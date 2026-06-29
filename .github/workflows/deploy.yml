@@ -56,17 +56,21 @@ jobs:
           AWS_REGION="${AWS_REGION:-ap-northeast-2}"
           S3_BUCKET_NAME="${S3_BUCKET_NAME:-roomlog-files}"
 
-          cat > .env.production <<EOF
+          if [ -n "${PROD_ENV:-}" ]; then
+            printf '%s\n' "$PROD_ENV" \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|NEXT_PUBLIC_API_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
+              > .env.production
+          else
+            : > .env.production
+          fi
+
+          cat >> .env.production <<EOF
           DATABASE_URL=${DATABASE_URL}
           NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           PORT=${PORT}
           AWS_REGION=${AWS_REGION}
           S3_BUCKET_NAME=${S3_BUCKET_NAME}
           EOF
-
-          if [ -n "${PROD_ENV:-}" ]; then
-            printf '\n%s\n' "$PROD_ENV" >> .env.production
-          fi
 
       - name: Deploy to EC2
         env:
