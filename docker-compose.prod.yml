@@ -32,6 +32,8 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: roomlog-api
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       PORT: ${PORT:-4000}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required for production}

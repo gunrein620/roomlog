@@ -1,0 +1,125 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          EC2_HOST: "${{ secrets.EC2_HOST }}"
+          EC2_SSH_KEY: "${{ secrets.EC2_SSH_KEY }}"
+          EC2_SSH_PORT: "${{ secrets.EC2_SSH_PORT }}"
+        run: |
+          set -euo pipefail
+
+          : "${EC2_HOST:?EC2_HOST secret is required}"
+          : "${EC2_SSH_KEY:?EC2_SSH_KEY secret is required}"
+
+          SSH_PORT="${EC2_SSH_PORT:-22}"
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/roomlog_ec2_key
+          chmod 600 ~/.ssh/roomlog_ec2_key
+
+          ssh-keyscan -p "$SSH_PORT" -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Write production environment
+        env:
+          PROD_ENV: "${{ secrets.PROD_ENV }}"
+          DATABASE_URL: "${{ secrets.DATABASE_URL }}"
+          NEXT_PUBLIC_API_URL: "${{ secrets.NEXT_PUBLIC_API_URL }}"
+          PORT: "${{ secrets.PORT }}"
+          AWS_REGION: "${{ secrets.AWS_REGION }}"
+          S3_BUCKET_NAME: "${{ secrets.S3_BUCKET_NAME }}"
+        run: |
+          set -euo pipefail
+
+          : "${DATABASE_URL:?DATABASE_URL secret is required}"
+
+          NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api}"
+          PORT="${PORT:-4000}"
+          AWS_REGION="${AWS_REGION:-ap-northeast-2}"
+          S3_BUCKET_NAME="${S3_BUCKET_NAME:-roomlog-files}"
+
+          cat > .env.production <<EOF
+          DATABASE_URL=${DATABASE_URL}
+          NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+          PORT=${PORT}
+          AWS_REGION=${AWS_REGION}
+          S3_BUCKET_NAME=${S3_BUCKET_NAME}
+          EOF
+
+          if [ -n "${PROD_ENV:-}" ]; then
+            printf '\n%s\n' "$PROD_ENV" >> .env.production
+          fi
+
+      - name: Deploy to EC2
+        env:
+          EC2_HOST: "${{ secrets.EC2_HOST }}"
+          EC2_USER: "${{ secrets.EC2_USER }}"
+          EC2_SSH_PORT: "${{ secrets.EC2_SSH_PORT }}"
+          EC2_APP_DIR: "${{ secrets.EC2_APP_DIR }}"
+          GITHUB_REPOSITORY: "${{ github.repository }}"
+          GITHUB_REF_NAME: "${{ github.ref_name }}"
+        run: |
+          set -euo pipefail
+
+          : "${EC2_HOST:?EC2_HOST secret is required}"
+          : "${EC2_USER:?EC2_USER secret is required}"
+
+          SSH_PORT="${EC2_SSH_PORT:-22}"
+          APP_DIR="${EC2_APP_DIR:-/home/ec2-user/roomlog}"
+          BRANCH="${GITHUB_REF_NAME:-main}"
+
+          scp -P "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
+            .env.production "$EC2_USER@$EC2_HOST:/tmp/roomlog.env"
+
+          ssh -p "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
+            "$EC2_USER@$EC2_HOST" \
+            "bash -se -- '$APP_DIR' '$GITHUB_REPOSITORY' '$BRANCH'" <<'REMOTE'
+          set -euo pipefail
+
+          APP_DIR="$1"
+          REPOSITORY="$2"
+          BRANCH="$3"
+
+          if [ ! -d "$APP_DIR/.git" ]; then
+            mkdir -p "$(dirname "$APP_DIR")"
+            git clone "https://github.com/$REPOSITORY.git" "$APP_DIR"
+          fi
+
+          cd "$APP_DIR"
+
+          git fetch origin "$BRANCH"
+          git reset --hard "origin/$BRANCH"
+
+          mv /tmp/roomlog.env .env
+
+          if docker compose version >/dev/null 2>&1; then
+            compose() { docker compose "$@"; }
+          elif command -v docker-compose >/dev/null 2>&1; then
+            compose() { docker-compose "$@"; }
+          else
+            echo "Docker Compose is not installed." >&2
+            exit 1
+          fi
+
+          compose -f docker-compose.prod.yml up -d --build
+          docker image prune -f
+          compose -f docker-compose.prod.yml ps
+          REMOTE
