@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>입주민 하자 상담 AI</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar">
+        <h1>입주민 하자 상담 AI</h1>
+        <p>Realtime API 음성 상담 데모</p>
+      </section>
+
+      <section id="errorBox" class="error-box" hidden></section>
+
+      <section class="status-grid" aria-label="상태">
+        <div class="status-item">
+          <span>연결</span>
+          <strong id="connectionState">대기 중</strong>
+        </div>
+        <div class="status-item">
+          <span>ICE</span>
+          <strong id="iceState">대기 중</strong>
+        </div>
+        <div class="status-item">
+          <span>마이크</span>
+          <strong id="micState">꺼짐</strong>
+        </div>
+        <div class="status-item">
+          <span>Data</span>
+          <strong id="dataState">닫힘</strong>
+        </div>
+        <div class="status-item">
+          <span>연결 지연</span>
+          <strong id="connectLatency">-</strong>
+        </div>
+        <div class="status-item">
+          <span>Turn 지연</span>
+          <strong id="turnLatency">-</strong>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="상담 제어">
+        <button id="startBtn" class="primary-button" type="button">상담 시작</button>
+        <button id="stopBtn" type="button" disabled>종료</button>
+        <button id="micBtn" type="button" disabled>마이크 끄기</button>
+      </section>
+
+      <section class="input-panel" aria-label="상담 입력">
+        <form id="textForm" class="text-row">
+          <input id="textInput" type="text" autocomplete="off" placeholder="음성 대신 텍스트로 입력" />
+          <button type="submit">보내기</button>
+        </form>
+
+        <label class="file-button" for="photoInput">사진 업로드</label>
+        <input id="photoInput" type="file" accept="image/*" capture="environment" />
+
+        <button id="quoteBtn" type="button">업체 견적 도착 시뮬레이션</button>
+      </section>
+
+      <section class="transcript-panel" aria-label="AI 응답 transcript">
+        <h2>AI 응답 transcript</h2>
+        <div id="transcript" class="transcript" aria-live="polite"></div>
+      </section>
+
+      <details class="event-details">
+        <summary>이벤트 로그</summary>
+        <pre id="eventLog" class="event-log"></pre>
+      </details>
+
+      <audio id="remoteAudio" autoplay playsinline></audio>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
