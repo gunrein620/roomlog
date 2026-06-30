@@ -3665,6 +3665,8 @@ export class RoomlogService {
           ? "중복 가능성이 있는 기존 티켓이 있습니다. 같은 문제라면 기존 티켓에 상담 내용을 추가하고, 별도 문제라면 새 티켓으로 접수하세요."
           : contextHints.length
           ? "같은 호실의 과거 기록과 현재 증상을 함께 확인하고, 반복 하자 가능성을 관리자에게 전달하세요."
+          : category === "소음"
+          ? "소음 발생 시간대, 반복 빈도, 가능한 녹음 또는 기록을 관리자에게 전달하고 생활민원으로 확인하세요."
           : priority === 1
           ? "관리자에게 긴급 티켓으로 전달하고 누수 확산 여부와 전기 안전을 먼저 확인하세요."
           : photoRequested
@@ -3765,6 +3767,10 @@ export class RoomlogService {
 
     if (input.category === "하자" && !input.hasPhoto) {
       guidance.push("사진은 문제 부위 근접 사진과 공간 전체 사진을 함께 올리면 관리자가 더 빨리 판단할 수 있습니다.");
+    }
+
+    if (input.category === "소음") {
+      guidance.push("소음이 반복되는 시간대와 빈도를 남기고, 가능하면 짧은 녹음이나 메모 기록을 함께 보관해 주세요.");
     }
 
     if (input.contextHints.length) {
@@ -5233,7 +5239,7 @@ export class RoomlogService {
   }
 
   private detectMainCategory(text: string, detailCategory: string): IntakeDraft["category"] {
-    if (["소음", "층간소음"].some((word) => text.includes(word))) {
+    if (["소음", "층간소음"].some((word) => text.includes(word)) || this.hasNoiseSignal(text)) {
       return "소음";
     }
 
@@ -5299,6 +5305,12 @@ export class RoomlogService {
 
     if (text.includes("공용")) {
       return "공용공간";
+    }
+
+    if (this.hasNoiseSignal(text)) {
+      return /(층간소음|윗집|위층|발망치|뛰|쿵쿵|걷는\s*소리)/.test(text)
+        ? "층간소음"
+        : "소음";
     }
 
     const fixtureIssue = this.detectFixtureIssueCategory(text);
@@ -5368,6 +5380,12 @@ export class RoomlogService {
     );
   }
 
+  private hasNoiseSignal(text: string) {
+    return /(층간소음|발망치|쿵쿵|윗집|위층|옆집|아랫집|뛰는\s*소리|걷는\s*소리|시끄럽|소음|밤마다[^.。!?]{0,20}소리|새벽[^.。!?]{0,20}소리)/.test(
+      text
+    );
+  }
+
   private detailCategoryNeedsPhoto(detailCategory: string) {
     return /(누수|곰팡이|벽지|바닥|에어컨)/.test(detailCategory);
   }
@@ -5391,6 +5409,13 @@ export class RoomlogService {
     }
 
     if (detailCategory.includes("누수") || detailCategory === "보일러") {
+      return 2;
+    }
+
+    if (
+      detailCategory.includes("소음") &&
+      /(잠|밤|새벽|계속|반복|매일|심하|못\s*자)/.test(text)
+    ) {
       return 2;
     }
 

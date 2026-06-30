@@ -2345,6 +2345,41 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("handles fallback upstairs noise complaints without turning them into repair intake", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "301호 윗집에서 밤마다 뛰는 소리랑 발망치가 심해서 잠을 못 잡니다.",
+        inputMode: "CHAT"
+      });
+      const draft = result.session.draft;
+      const reply = result.assistantMessage.messageText;
+
+      assert.equal(draft.category, "소음");
+      assert.equal(draft.detailCategory, "층간소음");
+      assert.equal(draft.priority, 2);
+      assert.equal(draft.photoRequested, false);
+      assert.equal(draft.readyToFinalize, true);
+      assert.doesNotMatch(reply, /문제 부위 근접 사진|공간 전체 사진|방문 가능 시간|전기|가스|침수/);
+      assert.match(reply, /층간소음|소음|밤|반복|녹음|기록/);
+
+      const finalized = service.finalizeIntakeSession("tenant-demo", session.id);
+
+      assert.equal(finalized.ticket.category, "층간소음");
+      assert.match(finalized.ticket.aiSummary, /층간소음|소음|밤|발망치/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("recognizes natural visit availability and surfaces same-room context in fallback replies", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
