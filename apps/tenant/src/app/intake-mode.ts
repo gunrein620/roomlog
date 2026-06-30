@@ -53,7 +53,8 @@ export function intakeModeConfig(mode: IntakeMode) {
 
 export function intakeSessionPayload(mode: IntakeMode) {
   return {
-    sourceChannel: intakeModeConfig(mode).sourceChannel
+    sourceChannel: intakeModeConfig(mode).sourceChannel,
+    reuseEmpty: true
   };
 }
 

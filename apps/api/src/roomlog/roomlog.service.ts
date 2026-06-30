@@ -836,12 +836,30 @@ export class RoomlogService {
 
   createIntakeSession(tenantId: string, input: CreateIntakeSessionInput = {}) {
     const roomId = input.roomId ?? this.store.tenantRooms[tenantId] ?? "room-301";
+    const sourceChannel = input.sourceChannel ?? "REALTIME_CHAT";
+    const reusableSession = input.reuseEmpty
+      ? this.store.intakeSessions.find(
+          (session) =>
+            session.tenantId === tenantId &&
+            session.roomId === roomId &&
+            session.sourceChannel === sourceChannel &&
+            this.isEmptyActiveIntakeSession(session)
+        )
+      : undefined;
+
+    if (reusableSession) {
+      reusableSession.updatedAt = now();
+      this.persistStore();
+
+      return { session: this.presentIntakeSession(reusableSession), reused: true };
+    }
+
     const createdAt = now();
     const session: IntakeSession = {
       id: id("sess"),
       tenantId,
       roomId,
-      sourceChannel: input.sourceChannel ?? "REALTIME_CHAT",
+      sourceChannel,
       status: "ACTIVE",
       draft: this.emptyDraft(),
       messages: [],
@@ -860,7 +878,16 @@ export class RoomlogService {
     this.store.intakeSessions.unshift(session);
     this.persistStore();
 
-    return { session: this.presentIntakeSession(session) };
+    return { session: this.presentIntakeSession(session), reused: false };
+  }
+
+  private isEmptyActiveIntakeSession(session: IntakeSession) {
+    return (
+      session.status === "ACTIVE" &&
+      !session.complaintId &&
+      !session.ticketId &&
+      session.messages.every((message) => message.sender !== "TENANT")
+    );
   }
 
   listIntakeSessions(tenantId: string) {

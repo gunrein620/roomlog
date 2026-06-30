@@ -315,6 +315,34 @@ describe("RoomlogService", () => {
     assert.match(callbot.session.messages[0].messageText, /차례로|한 번에 하나씩/);
   });
 
+  it("reuses an empty active intake thread instead of creating duplicate mock-looking threads", () => {
+    const service = new RoomlogService();
+    const first = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "REALTIME_CHAT",
+      reuseEmpty: true
+    });
+    const duplicate = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "REALTIME_CHAT",
+      reuseEmpty: true
+    });
+    const voice = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "VOICE_CHAT"
+    });
+
+    assert.equal(duplicate.session.id, first.session.id);
+    assert.equal((duplicate as { reused?: boolean }).reused, true);
+    assert.notEqual(voice.session.id, first.session.id);
+    assert.equal(
+      service
+        .listIntakeSessions("tenant-demo")
+        .filter((session) => session.sourceChannel === "REALTIME_CHAT").length,
+      1
+    );
+  });
+
   it("returns a Realtime setup response tied to an intake thread when OpenAI is not configured", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalRealtimeModel = process.env.OPENAI_REALTIME_MODEL;

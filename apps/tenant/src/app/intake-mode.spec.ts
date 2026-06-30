@@ -18,9 +18,18 @@ describe("tenant intake modes", () => {
       intakeModeOptions.map((option) => option.mode),
       ["CHAT", "VOICE", "CALLBOT"]
     );
-    assert.deepEqual(intakeSessionPayload("CHAT"), { sourceChannel: "REALTIME_CHAT" });
-    assert.deepEqual(intakeSessionPayload("VOICE"), { sourceChannel: "VOICE_CHAT" });
-    assert.deepEqual(intakeSessionPayload("CALLBOT"), { sourceChannel: "CALLBOT" });
+    assert.deepEqual(intakeSessionPayload("CHAT"), {
+      sourceChannel: "REALTIME_CHAT",
+      reuseEmpty: true
+    });
+    assert.deepEqual(intakeSessionPayload("VOICE"), {
+      sourceChannel: "VOICE_CHAT",
+      reuseEmpty: true
+    });
+    assert.deepEqual(intakeSessionPayload("CALLBOT"), {
+      sourceChannel: "CALLBOT",
+      reuseEmpty: true
+    });
   });
 
   it("uses callbot Realtime instructions only for callbot sessions", () => {

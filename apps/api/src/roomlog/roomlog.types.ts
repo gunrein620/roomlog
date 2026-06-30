@@ -484,6 +484,7 @@ export type CreateComplaintInput = {
 export type CreateIntakeSessionInput = {
   roomId?: string;
   sourceChannel?: ComplaintSourceChannel;
+  reuseEmpty?: boolean;
 };
 
 export type CreateComplaintFromCallInput = {
