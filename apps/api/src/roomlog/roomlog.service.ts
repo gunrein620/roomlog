@@ -3566,7 +3566,7 @@ export class RoomlogService {
           "OpenAI-Safety-Identifier": this.safetyIdentifier(session.tenantId, session.id)
         },
         body: JSON.stringify({
-          model: process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini",
+          model: process.env.OPENAI_CHAT_MODEL || "gpt-5.5",
           instructions: this.buildIntakeResponseInstructions(session),
           input: [
             {

@@ -946,6 +946,70 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("uses the documented latest Responses model when chat model env is not set", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFetch = globalThis.fetch;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    delete process.env.OPENAI_CHAT_MODEL;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+      return new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({
+            assistantMessage:
+              "현재 상담 스레드에 내용을 저장하고 관리자에게 전달할 접수 초안을 만들겠습니다. 누수 위치와 사진, 방문 가능 시간을 함께 확인할게요.",
+            draft: {
+              title: "301호 화장실 천장 누수",
+              summary: "301호 화장실 천장에서 물이 떨어지는 상담입니다.",
+              category: "하자",
+              detailCategory: "누수",
+              priority: 1,
+              responsibilityHint: "판단 어려움",
+              confidenceScore: 0.8,
+              reasons: ["천장 누수"],
+              recommendedAction: "관리자 확인 필요",
+              requiredInfo: ["사진"],
+              photoRequested: true,
+              readyToFinalize: false,
+              location: "301호 화장실"
+            }
+          })
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }) as typeof fetch;
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "화장실 천장에서 물이 떨어져요.",
+        inputMode: "CHAT"
+      });
+
+      assert.equal(capturedBody?.model, "gpt-5.5");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+      if (originalChatModel) {
+        process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      } else {
+        delete process.env.OPENAI_CHAT_MODEL;
+      }
+    }
+  });
+
   it("upgrades terse OpenAI intake replies using the structured draft context", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalFetch = globalThis.fetch;
