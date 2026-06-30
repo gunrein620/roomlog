@@ -2927,6 +2927,51 @@ export class RoomlogService {
     return match?.[0]?.trim();
   }
 
+  private detectContextualSafetyRiskInfo(
+    session: IntakeSession,
+    category: IntakeDraft["category"]
+  ) {
+    if (category !== "하자") {
+      return undefined;
+    }
+
+    const latestTenantIndex = [...session.messages]
+      .map((message, index) => ({ message, index }))
+      .reverse()
+      .find(({ message }) => message.sender === "TENANT")?.index;
+
+    if (latestTenantIndex === undefined) {
+      return undefined;
+    }
+
+    const latestTenantText = this.meaningfulTenantMessageText(session.messages[latestTenantIndex])
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (
+      !/(없어요|없습니다|없어|아니요|아뇨|괜찮아요|괜찮습니다|문제\s*없|위험\s*없)/.test(
+        latestTenantText
+      )
+    ) {
+      return undefined;
+    }
+
+    const previousAssistant = [...session.messages.slice(0, latestTenantIndex)]
+      .reverse()
+      .find((message) => message.sender === "AI_ASSISTANT");
+    const assistantText = previousAssistant?.messageText ?? "";
+
+    if (
+      !/(위험|안전|전기|가스|침수|문\s*잠김|콘센트|스위치|문제\s*없)/.test(
+        assistantText
+      )
+    ) {
+      return undefined;
+    }
+
+    return "위험 없음";
+  }
+
   private buildIntakeSlots(input: {
     text: string;
     category: IntakeDraft["category"];
@@ -2936,10 +2981,12 @@ export class RoomlogService {
     location?: string;
     availableTimes?: string;
     photoRequested: boolean;
+    safetyRiskInfo?: string;
   }): IntakeSlot[] {
     const text = input.text.trim();
     const occurrenceInfo = this.detectOccurrenceInfo(text);
-    const riskInfo = this.detectSafetyRiskInfo(text, input.category, input.priority);
+    const riskInfo =
+      input.safetyRiskInfo ?? this.detectSafetyRiskInfo(text, input.category, input.priority);
     const photoIsUseful =
       input.category === "하자" &&
       (input.photoRequested ||
@@ -3092,7 +3139,9 @@ export class RoomlogService {
     const category = this.detectMainCategory(text, detailCategory);
     const priority = this.detectPriority(text, detailCategory);
     const occurredAt = this.detectOccurrenceInfo(text);
-    const safetyRiskInfo = this.detectSafetyRiskInfo(text, category, priority);
+    const safetyRiskInfo =
+      this.detectSafetyRiskInfo(text, category, priority) ??
+      this.detectContextualSafetyRiskInfo(session, category);
     const photoRequested = category === "하자" && ["누수", "곰팡이", "벽지", "바닥", "에어컨"].includes(detailCategory) && !hasPhoto;
     const requiredInfo: string[] = [];
 
@@ -3138,7 +3187,8 @@ export class RoomlogService {
       photoRequested,
       location,
       availableTimes,
-      duplicateCandidates
+      duplicateCandidates,
+      safetyRiskInfo
     });
     const intakeSlots = this.buildIntakeSlots({
       text,
@@ -3148,7 +3198,8 @@ export class RoomlogService {
       hasPhoto,
       location,
       availableTimes,
-      photoRequested
+      photoRequested,
+      safetyRiskInfo
     });
     const tenantGuidance = this.tenantGuidanceForDraft({
       text,
@@ -3218,10 +3269,13 @@ export class RoomlogService {
     location?: string;
     availableTimes?: string;
     duplicateCandidates: DuplicateTicketCandidate[];
+    safetyRiskInfo?: string;
   }) {
     const questions: string[] = [];
     const occurrenceInfo = this.detectOccurrenceInfo(input.text);
-    const safetyRiskInfo = this.detectSafetyRiskInfo(input.text, input.category, input.priority);
+    const safetyRiskInfo =
+      input.safetyRiskInfo ??
+      this.detectSafetyRiskInfo(input.text, input.category, input.priority);
 
     if (!input.location) {
       questions.push("문제가 보이는 정확한 공간과 부위를 알려주실 수 있나요?");

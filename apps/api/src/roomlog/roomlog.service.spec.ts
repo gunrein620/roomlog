@@ -1629,6 +1629,44 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("uses the previous AI question to understand short tenant follow-up answers", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const first = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "화장실 세면대 수전 손잡이가 헐거워졌습니다. 오늘 저녁 7시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+      const firstSlots = Object.fromEntries(
+        first.session.draft.intakeSlots.map((slot) => [slot.key, slot])
+      );
+
+      assert.equal(firstSlots.risk.status, "NEEDS_INFO");
+      assert.match(first.assistantMessage.messageText, /위험|전기|가스|침수|문 잠김|안전/);
+
+      const second = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "어제부터요. 없어요.",
+        inputMode: "CHAT"
+      });
+      const secondSlots = Object.fromEntries(
+        second.session.draft.intakeSlots.map((slot) => [slot.key, slot])
+      );
+
+      assert.equal(secondSlots.occurrence.status, "COLLECTED");
+      assert.equal(secondSlots.risk.status, "COLLECTED");
+      assert.match(secondSlots.risk.value ?? "", /위험 없음|없어요|없습니다/);
+      assert.equal(second.session.draft.requiredInfo.includes("안전 위험 여부"), false);
+      assert.equal(second.session.draft.readyToFinalize, true);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("validates signup input and rejects forgeable demo-style tokens", () => {
     const service = new RoomlogService();
 
