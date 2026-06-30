@@ -6,6 +6,11 @@ import {
   canSubmitManagerSignup,
   managerSignupIssues
 } from "./manager-signup";
+import {
+  canSubmitManagerAssistantQuestion,
+  initialFeedbackReviewNote,
+  initialManagerAssistantQuestion
+} from "./manager-form-state";
 
 type AuthResult = {
   accessToken: string;
@@ -362,14 +367,12 @@ export default function ManagerApp() {
   const [tenantInviteForm, setTenantInviteForm] = useState(tenantInviteInitial);
   const [tenantOrigin, setTenantOrigin] = useState("");
   const [vendorOrigin, setVendorOrigin] = useState("");
-  const [assistantQuestion, setAssistantQuestion] = useState(
-    "콜봇으로 접수된 미처리 민원만 보여줘"
-  );
+  const [assistantQuestion, setAssistantQuestion] = useState(initialManagerAssistantQuestion);
   const [assistantResult, setAssistantResult] = useState<ManagerAssistantResult | null>(null);
   const [replyIntent, setReplyIntent] = useState<ManagerReplyIntent>("REQUEST_PHOTO");
   const [replyDraft, setReplyDraft] = useState<ManagerReplyDraft | null>(null);
   const [replyText, setReplyText] = useState("");
-  const [feedbackReviewNote, setFeedbackReviewNote] = useState("세입자 이의제기 내용을 검토했습니다.");
+  const [feedbackReviewNote, setFeedbackReviewNote] = useState(initialFeedbackReviewNote);
   const [feedbackCorrectedSummary, setFeedbackCorrectedSummary] = useState("");
   const [feedbackCorrectedPriority, setFeedbackCorrectedPriority] = useState("2");
   const [feedbackCorrectedResponsibility, setFeedbackCorrectedResponsibility] =
@@ -381,6 +384,7 @@ export default function ManagerApp() {
   );
   const signupIssues = useMemo(() => managerSignupIssues(signupForm), [signupForm]);
   const signupReady = canSubmitManagerSignup(signupForm);
+  const assistantQuestionReady = canSubmitManagerAssistantQuestion(assistantQuestion);
 
   useEffect(() => {
     setReplyDraft(null);
@@ -395,7 +399,7 @@ export default function ManagerApp() {
     } else {
       setReplyIntent("RECEIPT_ACK");
     }
-    setFeedbackReviewNote("세입자 이의제기 내용을 검토했습니다.");
+    setFeedbackReviewNote(initialFeedbackReviewNote());
     setFeedbackCorrectedSummary(selectedTicket?.aiSummary ?? "");
     setFeedbackCorrectedPriority(`${selectedTicket?.priority ?? 2}`);
     setFeedbackCorrectedResponsibility(selectedTicket?.responsibilityHint ?? "판단 어려움");
@@ -578,6 +582,11 @@ export default function ManagerApp() {
     event.preventDefault();
 
     if (!auth) {
+      return;
+    }
+
+    if (!assistantQuestionReady) {
+      setStatus("운영 데이터에 물어볼 내용을 입력해주세요.");
       return;
     }
 
@@ -970,7 +979,7 @@ export default function ManagerApp() {
             onChange={(event) => setAssistantQuestion(event.target.value)}
             placeholder="예: 콜봇으로 접수된 미처리 민원만 보여줘"
           />
-          <button type="submit" className="primary">
+          <button type="submit" className="primary" disabled={!assistantQuestionReady}>
             질의
           </button>
         </form>
@@ -1233,6 +1242,7 @@ export default function ManagerApp() {
                                 <textarea
                                   rows={3}
                                   value={feedbackReviewNote}
+                                  placeholder="검토 결과와 반영 여부를 직접 입력하세요."
                                   onChange={(event) => setFeedbackReviewNote(event.target.value)}
                                 />
                               </label>
