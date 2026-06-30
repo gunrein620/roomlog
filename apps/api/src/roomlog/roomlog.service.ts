@@ -4210,7 +4210,7 @@ export class RoomlogService {
           `가장 유사한 티켓: ${draft.duplicateCandidates[0].title} (${draft.duplicateCandidates[0].displayStatus})`
         ]
       : [];
-    const questionLines = this.visibleIntakeQuestions(draft).map((question) => `- ${question}`);
+    const questionLines = this.visibleIntakeQuestionLines(draft);
 
     if (!draft.readyToFinalize) {
       return [
@@ -4307,6 +4307,46 @@ export class RoomlogService {
     ].filter((question): question is string => Boolean(question));
 
     return Array.from(new Set(prioritizedQuestions)).slice(0, 3);
+  }
+
+  private visibleIntakeQuestionLines(draft: IntakeDraft) {
+    return this.visibleIntakeQuestions(draft).map((question) => {
+      const examples = this.quickAnswerExamplesForQuestion(question);
+
+      if (!examples.length) {
+        return `- ${question}`;
+      }
+
+      return `- ${question}\n  바로 답변 예시: ${examples.join(" / ")}`;
+    });
+  }
+
+  private quickAnswerExamplesForQuestion(question: string) {
+    if (/전기|콘센트|조명|위험|안전|가스|침수|잠김|지금도/.test(question)) {
+      return ["지금도 떨어지고 있어요", "전기 주변은 아니에요", "조명 근처까지 번졌어요"];
+    }
+
+    if (/사진|촬영|근접|전체|올려/.test(question)) {
+      return ["근접 사진과 전체 사진을 올릴게요", "지금은 어렵고 저녁에 올릴게요"];
+    }
+
+    if (/방문|시간|일정/.test(question)) {
+      return ["오늘 저녁 7시 이후", "내일 오전 10시부터 12시 사이"];
+    }
+
+    if (/언제부터|시작|계속|반복|발생/.test(question)) {
+      return ["오늘 아침부터 계속돼요", "어제부터 반복돼요", "방금 처음 확인했어요"];
+    }
+
+    if (/공간|부위|위치/.test(question)) {
+      return ["화장실 천장 쪽이에요", "싱크대 하부장 안쪽이에요"];
+    }
+
+    if (/기존 티켓|새 티켓|별도 문제/.test(question)) {
+      return ["기존 티켓에 추가해주세요", "별도 문제라 새로 접수해주세요"];
+    }
+
+    return [];
   }
 
   private ensureAssistantReplyQuality(
@@ -4409,6 +4449,7 @@ export class RoomlogService {
       "- 법적 책임, 비용 부담, 과실을 확정하지 말고 가능성/관리자 검토 필요로 표현합니다.",
       "- 가스 냄새, 누전, 화재, 침수, 문 잠김 실패, 천장 누수처럼 안전 위험이 있으면 먼저 안전 행동을 안내합니다.",
       "- 질문은 한 번에 1-3개만 하고, 이미 답한 내용을 반복해서 묻지 않습니다.",
+      "- assistantMessage에서 질문을 할 때는 세입자가 바로 답할 수 있도록 '바로 답변 예시:'를 붙여 짧은 예시 2-3개를 제공합니다.",
       "- draft.nextQuestions에는 세입자에게 바로 물을 1-3개의 구체 질문만 넣습니다.",
       "- draft.tenantGuidance에는 안전 행동, 사진 촬영 방법, 방문 준비처럼 세입자가 지금 할 일을 1-4개 넣습니다.",
       "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",

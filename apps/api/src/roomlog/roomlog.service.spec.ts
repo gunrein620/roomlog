@@ -1314,6 +1314,7 @@ describe("RoomlogService", () => {
       assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-test-roomlog");
       assert.ok(capturedHeaders?.get("OpenAI-Safety-Identifier"));
       assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.match(String(capturedBody?.instructions), /바로 답변 예시/);
       assert.equal(textFormat?.type, "json_schema");
       assert.equal(textFormat?.name, "roomlog_intake_turn");
       assert.equal(result.session.draft.title, "305호 화장실 천장 누수");
@@ -2681,6 +2682,11 @@ describe("RoomlogService", () => {
       assert.match(result.assistantMessage.messageText, /확인할게요|정리하고 있어요/);
       assert.match(result.assistantMessage.messageText, /다음으로/);
       assert.match(result.assistantMessage.messageText, /사진/);
+      assert.match(result.assistantMessage.messageText, /바로 답변 예시/);
+      assert.match(
+        result.assistantMessage.messageText,
+        /지금도 떨어지고|전기 주변|오늘 저녁/
+      );
       assert.doesNotMatch(result.assistantMessage.messageText, /필요 정보:/);
     } finally {
       if (originalApiKey) {
