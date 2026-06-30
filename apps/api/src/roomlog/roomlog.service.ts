@@ -3570,8 +3570,8 @@ export class RoomlogService {
         ...questionLines,
         "접수 상태",
         draft.requiredInfo.length
-          ? `- 추가 정보 필요: ${draft.requiredInfo.join(", ")}`
-          : "- 추가 확인 답변을 받으면 접수 확정 가능 여부를 다시 판단하겠습니다.",
+          ? `- 추가 정보 필요: ${draft.requiredInfo.join(", ")}. 답변을 받으면 관리자에게 전달할 접수 초안을 갱신하겠습니다.`
+          : "- 추가 확인 답변을 받으면 관리자에게 전달할 접수 초안 준비 여부를 다시 판단하겠습니다.",
         "- 답변과 사진은 이 상담 스레드에 이어서 저장됩니다."
       ].filter(Boolean).join("\n");
     }
@@ -3638,8 +3638,19 @@ export class RoomlogService {
     const lacksVisit = needsVisit && !/(방문|시간|일정|가능)/.test(generated);
     const needsQuestion = !draft.readyToFinalize && draft.nextQuestions.length > 0;
     const lacksQuestion = needsQuestion && !/[?？]|알려주|올려주|확인해/.test(generated);
+    const lacksRoomlogWorkflow =
+      !/(상담\s*스레드|같은 상담|이어.*저장|접수\s*(초안|상태|확정)|관리자|티켓)/.test(
+        generated
+      );
 
-    if (isTerse || lacksSafety || lacksPhoto || lacksVisit || lacksQuestion) {
+    if (
+      isTerse ||
+      lacksSafety ||
+      lacksPhoto ||
+      lacksVisit ||
+      lacksQuestion ||
+      lacksRoomlogWorkflow
+    ) {
       return composed;
     }
 

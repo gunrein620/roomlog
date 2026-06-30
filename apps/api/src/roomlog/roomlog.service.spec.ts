@@ -914,6 +914,87 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("upgrades OpenAI replies that miss Roomlog thread and handoff context", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({
+            assistantMessage:
+              "물이 계속 떨어진다면 전기 스위치나 콘센트 주변은 만지지 마세요. 문제 부위 근접 사진과 공간 전체 사진을 올려주시고 방문 가능한 시간도 알려주세요. 물이 지금도 떨어지는지 확인해 주세요?",
+            draft: {
+              title: "301호 화장실 천장 누수",
+              summary:
+                "301호 화장실 천장에서 물이 떨어져 전기 주변 안전 확인과 사진 자료가 필요한 상황입니다.",
+              category: "하자",
+              detailCategory: "누수",
+              priority: 1,
+              responsibilityHint: "임대인 책임 가능성",
+              confidenceScore: 0.82,
+              reasons: ["천장 누수", "전기 주변 안전 우려"],
+              recommendedAction: "관리자 긴급 확인이 필요합니다.",
+              contextHints: [],
+              nextQuestions: [
+                "물이 지금도 계속 떨어지고 있나요?",
+                "문제 부위 근접 사진과 공간 전체 사진을 올려주실 수 있나요?",
+                "방문 가능한 시간대가 언제인가요?"
+              ],
+              tenantGuidance: [
+                "전기 스위치나 콘센트 주변으로 물이 번지면 만지지 말고 안전한 곳에서 기다려주세요."
+              ],
+              photoAnalysis: {
+                attachmentUrls: [],
+                previousAttachmentUrls: [],
+                candidates: ["누수"],
+                comparisonStatus: "추가 사진 필요",
+                summary: "현재 상담 스레드에 사진이 없어 근접/전체 사진이 필요합니다.",
+                evidence: ["사진 없음"],
+                recommendedRetake: false
+              },
+              requiredInfo: ["사진", "방문 가능 시간"],
+              photoRequested: true,
+              readyToFinalize: false,
+              location: "301호 화장실",
+              occurredAt: "",
+              availableTimes: ""
+            }
+          })
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )) as typeof fetch;
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "301호 화장실 천장에서 물이 떨어지고 전등 근처라 불안합니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.match(result.assistantMessage.messageText, /상담 스레드/);
+      assert.match(result.assistantMessage.messageText, /접수 상태|접수 초안/);
+      assert.match(result.assistantMessage.messageText, /관리자/);
+      assert.match(result.assistantMessage.messageText, /사진|방문 가능 시간/);
+      assert.notEqual(
+        result.assistantMessage.messageText,
+        "물이 계속 떨어진다면 전기 스위치나 콘센트 주변은 만지지 마세요. 문제 부위 근접 사진과 공간 전체 사진을 올려주시고 방문 가능한 시간도 알려주세요. 물이 지금도 떨어지는지 확인해 주세요?"
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("formats local fallback chat replies like a high quality 상담사 response", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
