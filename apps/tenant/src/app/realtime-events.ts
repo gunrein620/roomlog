@@ -14,13 +14,63 @@ export type RealtimeEventPayload = {
   };
 };
 
+export type RealtimeConnectionOpenEvent = {
+  type: "conversation.item.create" | "response.create";
+  item?: {
+    type: "message";
+    role: "user";
+    content: Array<{
+      type: "input_text";
+      text: string;
+    }>;
+  };
+};
+
 export type RealtimeTurnState = {
   userTranscript: string;
   assistantTranscript: string;
   userTranscriptDone: boolean;
+  userSpeechStarted: boolean;
   responseDone: boolean;
   responseEventId: string;
 };
+
+export function buildRealtimeConnectionOpenEvents({
+  createResponseAutomatically,
+  sessionId,
+  contextSummary
+}: {
+  createResponseAutomatically: boolean;
+  sessionId: string;
+  contextSummary?: string;
+}): RealtimeConnectionOpenEvent[] {
+  if (createResponseAutomatically) {
+    return [];
+  }
+
+  const summary = contextSummary?.trim();
+  const events: RealtimeConnectionOpenEvent[] = [];
+
+  if (summary) {
+    events.push({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: `Roomlog 상담 스레드 ${sessionId}의 현재 요약입니다. ${summary}`
+          }
+        ]
+      }
+    });
+  }
+
+  events.push({ type: "response.create" });
+
+  return events;
+}
 
 export type RealtimeEventResult = {
   state: RealtimeTurnState;
@@ -36,6 +86,7 @@ export function emptyRealtimeTurnState(): RealtimeTurnState {
     userTranscript: "",
     assistantTranscript: "",
     userTranscriptDone: false,
+    userSpeechStarted: false,
     responseDone: false,
     responseEventId: ""
   };
@@ -97,6 +148,13 @@ export function applyRealtimeEventToTurn(
     state.responseDone = true;
     state.responseEventId = realtimeEventId(payload);
   } else if (type === "input_audio_buffer.speech_started") {
+    if (state.responseDone && !state.userTranscriptDone) {
+      state.assistantTranscript = "";
+      state.responseDone = false;
+      state.responseEventId = "";
+    }
+
+    state.userSpeechStarted = true;
     result.status = "세입자 음성이 감지되었습니다.";
   } else if (type === "input_audio_buffer.speech_stopped") {
     result.status = "음성 입력을 정리하는 중입니다.";
@@ -104,7 +162,11 @@ export function applyRealtimeEventToTurn(
     result.status = "잠시 말씀이 없어 AI가 확인 질문을 준비합니다.";
   }
 
-  if (state.responseDone && state.userTranscriptDone && (state.userTranscript || state.assistantTranscript)) {
+  if (
+    state.responseDone &&
+    state.userTranscriptDone &&
+    (state.userTranscript || state.assistantTranscript)
+  ) {
     result.shouldFlush = true;
     result.flushEventId = state.responseEventId || realtimeEventId(payload);
   }

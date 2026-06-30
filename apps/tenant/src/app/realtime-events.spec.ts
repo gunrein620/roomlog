@@ -1,12 +1,31 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { applyRealtimeEventToTurn, emptyRealtimeTurnState } from "./realtime-events";
+import {
+  applyRealtimeEventToTurn,
+  buildRealtimeConnectionOpenEvents,
+  emptyRealtimeTurnState
+} from "./realtime-events";
 
 describe("tenant realtime events", () => {
+  it("does not request an opening response when server VAD already creates responses", () => {
+    const events = buildRealtimeConnectionOpenEvents({
+      createResponseAutomatically: true,
+      sessionId: "session_voice",
+      contextSummary: "기존 접수 초안 요약"
+    });
+
+    assert.deepEqual(events, []);
+  });
+
   it("waits for late user transcription before flushing a completed response", () => {
     let state = emptyRealtimeTurnState();
 
     let result = applyRealtimeEventToTurn(state, {
+      type: "input_audio_buffer.speech_started"
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
       type: "response.output_audio_transcript.delta",
       delta: "관리자 확인을 위해 접수 초안을 정리하겠습니다."
     });
@@ -33,6 +52,37 @@ describe("tenant realtime events", () => {
       result.state.assistantTranscript,
       "관리자 확인을 위해 접수 초안을 정리하겠습니다."
     );
+  });
+
+  it("does not flush an assistant-only response with the next user transcript", () => {
+    let state = emptyRealtimeTurnState();
+
+    let result = applyRealtimeEventToTurn(state, {
+      type: "response.output_audio_transcript.delta",
+      delta: "현재 상담 스레드 내용을 확인했습니다."
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "response.done",
+      response_id: "resp_opening_summary"
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "input_audio_buffer.speech_started"
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_user_after_opening",
+      transcript: "301호 화장실 천장에서 물이 떨어집니다."
+    });
+
+    assert.equal(result.shouldFlush, false);
+    assert.equal(result.state.userTranscript, "301호 화장실 천장에서 물이 떨어집니다.");
+    assert.equal(result.state.assistantTranscript, "");
   });
 
   it("persists text-only realtime responses using GA output text events", () => {

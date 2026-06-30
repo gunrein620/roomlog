@@ -29,6 +29,7 @@ import {
 import { missingPhotoLabel, photoEvidenceItems } from "./photo-evidence";
 import {
   applyRealtimeEventToTurn,
+  buildRealtimeConnectionOpenEvents,
   emptyRealtimeTurnState,
   type RealtimeEventPayload
 } from "./realtime-events";
@@ -49,6 +50,7 @@ import {
   resetConsultationComposerState
 } from "./composer-state";
 import { initialMoveInChecklistForm } from "./move-in-form-state";
+import { resolveAttachmentUrl } from "./attachment-url";
 
 type AuthResult = {
   accessToken: string;
@@ -142,13 +144,14 @@ function AttachmentImageLink({
 }) {
   const [missing, setMissing] = useState(false);
   const fallback = missingPhotoLabel(label ?? alt);
+  const resolvedUrl = resolveAttachmentUrl(url);
 
   return (
-    <a href={url} target="_blank" rel="noreferrer" className={className}>
+    <a href={resolvedUrl} target="_blank" rel="noreferrer" className={className}>
       {missing ? (
         <span className="attachment-missing">{fallback}</span>
       ) : (
-        <img src={url} alt={alt} loading="lazy" onError={() => setMissing(true)} />
+        <img src={resolvedUrl} alt={alt} loading="lazy" onError={() => setMissing(true)} />
       )}
       {label ? <span className="photo-evidence-label">{label}</span> : null}
     </a>
@@ -1093,23 +1096,15 @@ export default function TenantApp() {
             .filter(Boolean)
             .join(" / ")
         : "";
+      const openEvents = buildRealtimeConnectionOpenEvents({
+        createResponseAutomatically: true,
+        sessionId: secret.sessionId,
+        contextSummary: summary
+      });
 
-      dataChannel.send(
-        JSON.stringify({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `Roomlog 상담 스레드 ${secret.sessionId}의 현재 요약입니다. ${summary}`
-              }
-            ]
-          }
-        })
-      );
-      dataChannel.send(JSON.stringify({ type: "response.create" }));
+      for (const openEvent of openEvents) {
+        dataChannel.send(JSON.stringify(openEvent));
+      }
     });
     dataChannel.addEventListener("message", (event) => {
       try {
