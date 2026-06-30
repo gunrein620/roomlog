@@ -143,6 +143,67 @@ describe("RoomlogService", () => {
     assert.throws(() => service.getDemoState(), /데모/);
   });
 
+  it("seeds a 302 room sample ticket for local manager and vendor demos", () => {
+    const service = new RoomlogService();
+    const demoState = service.getDemoState();
+
+    const room = demoState.rooms.find(
+      (item) => item.buildingName === "룸로그 빌라" && item.roomNo === "302호"
+    );
+
+    assert.ok(room);
+    assert.equal(room.landlordId, "landlord-demo");
+
+    const managerTickets = service.listTicketsForManager("landlord-demo");
+    const sampleTicket = managerTickets.find((ticket) => ticket.roomId === room.id);
+
+    assert.ok(sampleTicket);
+    assert.equal(sampleTicket.status, "VENDOR_ASSIGNED");
+    assert.equal(sampleTicket.assignedVendor?.id, "vendor-demo");
+    assert.match(sampleTicket.aiSummary, /302호|누수/);
+
+    const vendorRepairs = service.listVendorRepairs("vendor-demo");
+    const sampleRepair = vendorRepairs.find((repair) => repair.ticketId === sampleTicket.id);
+
+    assert.ok(sampleRepair);
+    assert.equal(sampleRepair.status, "REQUESTED");
+    assert.match(sampleRepair.description, /302호|누수/);
+  });
+
+  it("backfills the 302 sample ticket into existing local demo snapshots", () => {
+    const oldDemoService = new RoomlogService();
+    const oldDemoState = oldDemoService.getDemoState();
+    const oldDemoSnapshot = {
+      ...oldDemoState,
+      users: oldDemoState.users,
+      rooms: oldDemoState.rooms.filter((room) => room.id !== "room-302"),
+      tenantRooms: { "tenant-demo": "room-301" },
+      vendors: oldDemoState.vendors.map((vendor) => ({ ...vendor, activeJobs: 0 })),
+      complaints: [],
+      analyses: {},
+      tickets: [],
+      repairs: [],
+      messages: [],
+      history: []
+    };
+    const service = new RoomlogService({
+      seedDemoData: true,
+      initialStore: oldDemoSnapshot
+    } as any);
+
+    const sampleTicket = service
+      .listTicketsForManager("landlord-demo")
+      .find((ticket) => ticket.room?.roomNo === "302호");
+    const sampleRepair = service
+      .listVendorRepairs("vendor-demo")
+      .find((repair) => repair.ticket.room?.roomNo === "302호");
+
+    assert.ok(sampleTicket);
+    assert.equal(sampleTicket.assignedVendor?.id, "vendor-demo");
+    assert.ok(sampleRepair);
+    assert.equal(sampleRepair.status, "REQUESTED");
+  });
+
   it("projects signup state to configured persistence", async () => {
     const projectedStores: any[] = [];
     const service = new RoomlogService({

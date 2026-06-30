@@ -308,6 +308,24 @@ function complaintStatusFor(ticketStatus: TicketStatus): ComplaintStatus {
 
 function createDemoStore(): Store {
   const createdAt = now();
+  const sampleComplaintId = "cmp-demo-302-leak";
+  const sampleTicketId = "tkt-demo-302-leak";
+  const sampleRepairId = "rep-demo-302-leak";
+  const sampleAnalysis: AiAnalysis = {
+    summary:
+      "룸로그 빌라 302호 욕실 천장 누수로 벽지가 젖고 있어 원인 점검과 누수 보수가 필요합니다.",
+    category: "누수",
+    detailCategory: "욕실 천장",
+    priority: 2,
+    responsibilityHint: "임대인 책임 가능성",
+    confidenceScore: 0.86,
+    reasons: [
+      "천장과 벽지 젖음은 배관 또는 상층부 누수 가능성이 높습니다.",
+      "사진 추가 확인 후 방문 점검이 필요합니다."
+    ],
+    recommendedAction:
+      "빠른누수 설비에 현장 점검을 요청하고, 세입자에게 누수 부위 근접 사진과 욕실 전체 사진을 추가로 받으세요."
+  };
   const users: UserAccount[] = [
     {
       id: "tenant-demo",
@@ -315,6 +333,16 @@ function createDemoStore(): Store {
       passwordHash: hashPassword("password123!"),
       name: "김민수",
       phone: "010-1000-3001",
+      role: "TENANT",
+      status: "ACTIVE",
+      createdAt
+    },
+    {
+      id: "tenant-demo-302",
+      email: "tenant302@roomlog.test",
+      passwordHash: hashPassword("password123!"),
+      name: "최입주",
+      phone: "010-1000-3002",
       role: "TENANT",
       status: "ACTIVE",
       createdAt
@@ -350,10 +378,18 @@ function createDemoStore(): Store {
         roomNo: "301호",
         address: "서울시 성동구 성수동",
         landlordId: "landlord-demo"
+      },
+      {
+        id: "room-302",
+        buildingName: "룸로그 빌라",
+        roomNo: "302호",
+        address: "서울시 성동구 룸로그로 12",
+        landlordId: "landlord-demo"
       }
     ],
     tenantRooms: {
-      "tenant-demo": "room-301"
+      "tenant-demo": "room-301",
+      "tenant-demo-302": "room-302"
     },
     vendors: [
       {
@@ -363,7 +399,7 @@ function createDemoStore(): Store {
         contactPerson: "이수리",
         phone: "010-3000-0001",
         serviceArea: "성동구, 광진구",
-        activeJobs: 0
+        activeJobs: 1
       }
     ],
     vendorInvites: [],
@@ -372,12 +408,101 @@ function createDemoStore(): Store {
     moveInChecklist: [],
     aiFeedback: [],
     intakeSessions: [],
-    complaints: [],
-    analyses: {},
-    tickets: [],
-    repairs: [],
-    messages: [],
-    history: []
+    complaints: [
+      {
+        id: sampleComplaintId,
+        tenantId: "tenant-demo-302",
+        roomId: "room-302",
+        ticketId: sampleTicketId,
+        sourceChannel: "REALTIME_CHAT",
+        title: "302호 욕실 천장 누수",
+        description:
+          "욕실 천장에서 물방울이 떨어지고 벽지가 젖고 있습니다. 오늘 저녁 7시 이후 방문 가능합니다.",
+        location: "302호 욕실 천장",
+        availableTimes: "오늘 저녁 7시 이후",
+        status: "VENDOR_ASSIGNED",
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    analyses: {
+      [sampleTicketId]: sampleAnalysis
+    },
+    tickets: [
+      {
+        id: sampleTicketId,
+        complaintId: sampleComplaintId,
+        tenantId: "tenant-demo-302",
+        roomId: "room-302",
+        assignedVendorId: "vendor-demo",
+        sourceChannel: "REALTIME_CHAT",
+        category: sampleAnalysis.category,
+        priority: sampleAnalysis.priority,
+        status: "VENDOR_ASSIGNED",
+        responsibilityHint: sampleAnalysis.responsibilityHint,
+        aiSummary: sampleAnalysis.summary,
+        dueAt: priorityDueAt(sampleAnalysis.priority),
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    repairs: [
+      {
+        id: sampleRepairId,
+        ticketId: sampleTicketId,
+        vendorId: "vendor-demo",
+        status: "REQUESTED",
+        title: "302호 욕실 천장 누수 점검 요청",
+        description:
+          "룸로그 빌라 302호 욕실 천장 누수 원인 확인 후 필요한 보수 범위와 방문 가능 시간을 알려주세요.",
+        completionPhotoUrls: [],
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messages: [
+      {
+        id: "msg-demo-302-tenant",
+        ticketId: sampleTicketId,
+        complaintId: sampleComplaintId,
+        senderUserId: "tenant-demo-302",
+        senderRole: "TENANT",
+        messageText:
+          "욕실 천장에서 물방울이 떨어지고 벽지가 젖고 있습니다. 오늘 저녁 7시 이후 방문 가능합니다.",
+        attachmentUrls: [],
+        createdAt
+      },
+      {
+        id: "msg-demo-302-manager",
+        ticketId: sampleTicketId,
+        complaintId: sampleComplaintId,
+        senderUserId: "landlord-demo",
+        senderRole: "LANDLORD",
+        messageText:
+          "302호 욕실 천장 누수 원인 점검 후 견적과 방문 가능 시간을 남겨주세요.",
+        attachmentUrls: [],
+        createdAt
+      }
+    ],
+    history: [
+      {
+        id: "hst-demo-302-assigned",
+        ticketId: sampleTicketId,
+        changedByUserId: "landlord-demo",
+        fromStatus: "RECEIVED",
+        toStatus: "VENDOR_ASSIGNED",
+        note: "데모 업체 배정",
+        createdAt
+      },
+      {
+        id: "hst-demo-302-received",
+        ticketId: sampleTicketId,
+        changedByUserId: "system",
+        toStatus: "RECEIVED",
+        note: "데모 세입자 신고 접수",
+        createdAt
+      }
+    ]
   };
 }
 
@@ -2732,7 +2857,7 @@ export class RoomlogService {
   }
 
   private normalizeStoreSnapshot(parsed: Store): Store {
-    return {
+    const normalized: Store = {
       ...parsed,
       vendorInvites: parsed.vendorInvites ?? [],
       tenantInvites: parsed.tenantInvites ?? [],
@@ -2765,6 +2890,66 @@ export class RoomlogService {
         attachmentUrls: message.attachmentUrls ?? []
       }))
     };
+
+    return this.seedDemoData ? this.backfillDemoSampleData(normalized) : normalized;
+  }
+
+  private backfillDemoSampleData(store: Store): Store {
+    const demoStore = createDemoStore();
+    const addMissingById = <T extends { id: string }>(target: T[], samples: T[]) => {
+      const ids = new Set(target.map((item) => item.id));
+
+      for (const sample of samples) {
+        if (!ids.has(sample.id)) {
+          target.push(JSON.parse(JSON.stringify(sample)) as T);
+          ids.add(sample.id);
+        }
+      }
+    };
+
+    addMissingById(store.users, demoStore.users.filter((user) => user.id === "tenant-demo-302"));
+    addMissingById(store.rooms, demoStore.rooms.filter((room) => room.id === "room-302"));
+    addMissingById(
+      store.complaints,
+      demoStore.complaints.filter((complaint) => complaint.id === "cmp-demo-302-leak")
+    );
+    addMissingById(
+      store.tickets,
+      demoStore.tickets.filter((ticket) => ticket.id === "tkt-demo-302-leak")
+    );
+    addMissingById(
+      store.repairs,
+      demoStore.repairs.filter((repair) => repair.id === "rep-demo-302-leak")
+    );
+    addMissingById(
+      store.messages,
+      demoStore.messages.filter((message) => message.ticketId === "tkt-demo-302-leak")
+    );
+    addMissingById(
+      store.history,
+      demoStore.history.filter((history) => history.ticketId === "tkt-demo-302-leak")
+    );
+
+    if (!store.tenantRooms["tenant-demo-302"]) {
+      store.tenantRooms["tenant-demo-302"] = "room-302";
+    }
+
+    if (!store.analyses["tkt-demo-302-leak"]) {
+      store.analyses["tkt-demo-302-leak"] = JSON.parse(
+        JSON.stringify(demoStore.analyses["tkt-demo-302-leak"])
+      ) as AiAnalysis;
+    }
+
+    const demoVendor = store.vendors.find((vendor) => vendor.id === "vendor-demo");
+    if (demoVendor) {
+      const activeRepairCount = store.repairs.filter(
+        (repair) =>
+          repair.vendorId === demoVendor.id && !["COMPLETED", "CANCELLED"].includes(repair.status)
+      ).length;
+      demoVendor.activeJobs = Math.max(demoVendor.activeJobs ?? 0, activeRepairCount);
+    }
+
+    return store;
   }
 
   private persistStore() {
