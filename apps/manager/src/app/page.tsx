@@ -453,11 +453,6 @@ export default function ManagerApp() {
         }
 
         setDemoAuthEnabled(config.demoAuth.enabled);
-        if (config.demoAuth.enabled) {
-          setLoginForm((current) =>
-            current.email || current.password ? current : demoLogin
-          );
-        }
       })
       .catch(() => {
         if (active) {

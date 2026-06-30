@@ -96,7 +96,7 @@ Run:
 ```bash
 PATH="/Users/kunwoopark/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" pnpm build:vendor
 PATH="/Users/kunwoopark/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH" pnpm build:api
-docker compose up -d --build api vendor nginx
+docker compose up -d --build api vendor
 ```
 
 Then HTTP-smoke vendor message creation and completion photo reporting through the running stack.

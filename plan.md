@@ -936,18 +936,18 @@ Required screens:
 }
 ```
 
-- [ ] Create each frontend as Next.js App Router TypeScript app.
-- [ ] Set ports:
+- [x] Create each frontend as Next.js App Router TypeScript app.
+- [x] Set ports:
   - tenant: `3001`
   - manager: `3002`
   - vendor: `3003`
-- [ ] Keep API at `4000`.
-- [ ] Configure local Docker Compose without nginx:
+- [x] Keep API at `4000`.
+- [x] Configure local Docker Compose without nginx:
   - tenant app -> `localhost:3001`
   - manager app -> `localhost:3002`
   - vendor app -> `localhost:3003`
   - NestJS API -> `localhost:4000`
-- [ ] Verify:
+- [x] Verify:
 
 ```bash
 pnpm install
