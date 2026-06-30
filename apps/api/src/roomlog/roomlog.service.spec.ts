@@ -830,6 +830,10 @@ describe("RoomlogService", () => {
       assert.match(ticketText, /통화 녹음/);
       assert.match(ticketText, /사진 업로드 링크/);
       assert.match(ticketText, /301호 화장실 천장/);
+      assert.match(ticketText, /AI 상담 인계 요약/);
+      assert.match(ticketText, /콜봇/);
+      assert.match(ticketText, /긴급도 P1/);
+      assert.match(ticketText, /사진 상태/);
 
       const managerDetail = service.getTicketDetailForManager("landlord-demo", result.ticket.id);
 
@@ -2655,6 +2659,18 @@ describe("RoomlogService", () => {
       finalized.ticket.messages.some((message) => message.senderRole === "AI_ASSISTANT"),
       true
     );
+    const handoffMessage = finalized.ticket.messages.find(
+      (message) =>
+        message.senderRole === "SYSTEM" &&
+        message.senderUserId === "roomlog-ai" &&
+        message.messageText.includes("AI 상담 인계 요약")
+    );
+    assert.ok(handoffMessage, "expected finalized ticket timeline to include an AI handoff note");
+    assert.match(handoffMessage.messageText, /상담 스레드/);
+    assert.match(handoffMessage.messageText, /화장실|누수/);
+    assert.match(handoffMessage.messageText, /긴급도 P1/);
+    assert.match(handoffMessage.messageText, /방문 가능 시간/);
+    assert.match(handoffMessage.messageText, /사진/);
     const tenantMessageWithPhoto = finalized.ticket.messages.find((message) =>
       message.attachmentUrls.includes("/uploads/leak-305.jpg")
     );
@@ -2702,6 +2718,17 @@ describe("RoomlogService", () => {
     assert.equal(
       existingDetail.messages.some((message) =>
         message.messageText.includes("중복 가능성이 있어 기존 티켓에 상담 내용을 추가")
+      ),
+      true
+    );
+    assert.equal(
+      existingDetail.messages.some(
+        (message) =>
+          message.senderRole === "SYSTEM" &&
+          message.senderUserId === "roomlog-ai" &&
+          /AI 상담 인계 요약/.test(message.messageText) &&
+          /상담 스레드/.test(message.messageText) &&
+          /긴급도 P1/.test(message.messageText)
       ),
       true
     );

@@ -920,12 +920,20 @@ export class RoomlogService {
       session.sourceChannel,
       complaintInput,
       analysis,
-      session.messages.map((message) => ({
-        senderUserId: message.sender === "TENANT" ? tenantId : "roomlog-ai",
-        senderRole: message.sender,
-        messageText: message.messageText,
-        attachmentUrls: message.attachmentUrls
-      }))
+      [
+        ...session.messages.map((message) => ({
+          senderUserId: message.sender === "TENANT" ? tenantId : "roomlog-ai",
+          senderRole: message.sender,
+          messageText: message.messageText,
+          attachmentUrls: message.attachmentUrls
+        })),
+        {
+          senderUserId: "roomlog-ai",
+          senderRole: "SYSTEM",
+          messageText: this.buildIntakeHandoffMessage(session),
+          attachmentUrls: []
+        }
+      ]
     );
 
     session.status = "FINALIZED";
@@ -996,6 +1004,50 @@ export class RoomlogService {
     return changed ? ["세입자가 접수 전 AI 초안을 정정했습니다."] : [];
   }
 
+  private buildIntakeHandoffMessage(session: IntakeSession) {
+    const room = this.store.rooms.find((item) => item.id === session.roomId);
+    const roomLabel = room ? `${room.buildingName} ${room.roomNo}` : session.roomId;
+    const draft = session.draft;
+    const attachmentUrls = Array.from(
+      new Set(session.messages.flatMap((message) => message.attachmentUrls))
+    );
+    const tenantTurnCount = session.messages.filter((message) => message.sender === "TENANT").length;
+    const assistantTurnCount = session.messages.filter(
+      (message) => message.sender === "AI_ASSISTANT"
+    ).length;
+    const openItems = [
+      ...draft.requiredInfo,
+      ...draft.nextQuestions.filter(
+        (question) => !draft.requiredInfo.some((item) => question.includes(item))
+      )
+    ].slice(0, 4);
+    const guidance = draft.tenantGuidance.slice(0, 3);
+
+    return [
+      "AI 상담 인계 요약",
+      `- 상담 스레드: ${session.id} (${this.intakeChannelLabel(session.sourceChannel)})`,
+      `- 호실: ${roomLabel}`,
+      `- 대화 기록: 세입자 ${tenantTurnCount}건 / AI ${assistantTurnCount}건`,
+      `- 증상 요약: ${draft.summary}`,
+      `- 분류/긴급도: ${draft.category} / ${draft.detailCategory} · 긴급도 P${draft.priority}`,
+      `- 위치: ${draft.location || "위치 확인 필요"}`,
+      `- 방문 가능 시간: ${draft.availableTimes || "미확인"}`,
+      `- 사진 상태: ${
+        attachmentUrls.length
+          ? `첨부 ${attachmentUrls.length}건 · ${draft.photoAnalysis.summary}`
+          : `미첨부 · ${draft.photoAnalysis.summary}`
+      }`,
+      `- 책임 가능성: ${draft.responsibilityHint}`,
+      openItems.length
+        ? `- 추가 확인: ${openItems.join(" / ")}`
+        : "- 추가 확인: 현재 접수 초안 기준 필수 항목 충족",
+      guidance.length ? `- 세입자 안내: ${guidance.join(" / ")}` : undefined,
+      `- 관리자 권장 조치: ${draft.recommendedAction}`
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n");
+  }
+
   private attachIntakeSessionToExistingTicket(
     tenantId: string,
     session: IntakeSession,
@@ -1035,6 +1087,13 @@ export class RoomlogService {
         message.attachmentUrls
       );
     }
+    this.addMessageInternal(
+      ticket.id,
+      complaint.id,
+      "roomlog-ai",
+      "SYSTEM",
+      this.buildIntakeHandoffMessage(session)
+    );
 
     const attachmentUrls = Array.from(
       new Set(
@@ -1174,17 +1233,25 @@ export class RoomlogService {
       "CALLBOT",
       complaintInput,
       analysis,
-      session.messages.map((message) => ({
-        senderUserId:
-          message.sender === "TENANT"
-            ? tenantId
-            : message.sender === "SYSTEM"
-              ? "roomlog-system"
-              : "roomlog-ai",
-        senderRole: message.sender,
-        messageText: message.messageText,
-        attachmentUrls: message.attachmentUrls
-      }))
+      [
+        ...session.messages.map((message) => ({
+          senderUserId:
+            message.sender === "TENANT"
+              ? tenantId
+              : message.sender === "SYSTEM"
+                ? "roomlog-system"
+                : "roomlog-ai",
+          senderRole: message.sender,
+          messageText: message.messageText,
+          attachmentUrls: message.attachmentUrls
+        })),
+        {
+          senderUserId: "roomlog-ai",
+          senderRole: "SYSTEM",
+          messageText: this.buildIntakeHandoffMessage(session),
+          attachmentUrls: []
+        }
+      ]
     );
 
     session.status = "FINALIZED";
