@@ -64,6 +64,39 @@ describe("vendor signup preflight", () => {
     );
   });
 
+  it("rejects malformed phone numbers and weak passwords before signup", () => {
+    assert.deepEqual(
+      vendorSignupIssues(
+        {
+          ...completeForm,
+          phone: "123",
+          password: "password",
+          passwordConfirm: "password"
+        },
+        {
+          inviteToken: "invite-token",
+          emailLocked: false,
+          phoneLocked: false
+        }
+      ),
+      [
+        "휴대폰 번호는 숫자 10~11자리여야 합니다.",
+        "비밀번호는 영문과 숫자를 포함해야 합니다."
+      ]
+    );
+    assert.equal(
+      canSubmitVendorSignup(
+        { ...completeForm, phone: "123" },
+        {
+          inviteToken: "invite-token",
+          emailLocked: false,
+          phoneLocked: false
+        }
+      ),
+      false
+    );
+  });
+
   it("normalizes the invited vendor signup payload", () => {
     assert.deepEqual(buildVendorSignupPayload(completeForm), {
       role: "VENDOR",

@@ -65,6 +65,28 @@ describe("tenant signup preflight", () => {
     );
   });
 
+  it("rejects malformed phone numbers and weak passwords before signup", () => {
+    assert.deepEqual(
+      tenantSignupIssues({
+        ...completeForm,
+        phone: "123-45",
+        password: "password",
+        passwordConfirm: "password"
+      }),
+      [
+        "휴대폰 번호는 숫자 10~11자리여야 합니다.",
+        "비밀번호는 영문과 숫자를 포함해야 합니다."
+      ]
+    );
+    assert.equal(
+      canSubmitTenantSignup({
+        ...completeForm,
+        phone: "123-45"
+      }),
+      false
+    );
+  });
+
   it("normalizes the tenant signup payload for direct and invited flows", () => {
     assert.deepEqual(buildTenantSignupPayload(completeForm), {
       role: "TENANT",

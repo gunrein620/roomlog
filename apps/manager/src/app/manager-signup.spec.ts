@@ -50,6 +50,22 @@ describe("manager signup preflight", () => {
     );
   });
 
+  it("rejects malformed phone numbers and weak passwords before signup", () => {
+    assert.deepEqual(
+      managerSignupIssues({
+        ...completeForm,
+        phone: "123",
+        password: "password",
+        passwordConfirm: "password"
+      }),
+      [
+        "휴대폰 번호는 숫자 10~11자리여야 합니다.",
+        "비밀번호는 영문과 숫자를 포함해야 합니다."
+      ]
+    );
+    assert.equal(canSubmitManagerSignup({ ...completeForm, phone: "123" }), false);
+  });
+
   it("normalizes the manager signup payload", () => {
     assert.deepEqual(buildManagerSignupPayload(completeForm), {
       role: "LANDLORD",

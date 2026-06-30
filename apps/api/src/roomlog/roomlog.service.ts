@@ -120,6 +120,14 @@ function normalizePhoneNumber(phone?: string) {
   return digits || undefined;
 }
 
+function isValidPhoneNumber(phone: string) {
+  return /^\d{10,11}$/.test(phone);
+}
+
+function hasRequiredPasswordMix(password: string) {
+  return /[A-Za-z]/.test(password) && /\d/.test(password);
+}
+
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
@@ -2692,6 +2700,10 @@ export class RoomlogService {
       throw new BadRequestException("비밀번호는 8자 이상이어야 합니다.");
     }
 
+    if (!hasRequiredPasswordMix(input.password)) {
+      throw new BadRequestException("비밀번호는 영문과 숫자를 포함해야 합니다.");
+    }
+
     if (input.passwordConfirm !== undefined && input.password !== input.passwordConfirm) {
       throw new BadRequestException("비밀번호 확인이 일치하지 않습니다.");
     }
@@ -2702,6 +2714,10 @@ export class RoomlogService {
 
     if (!input.phone?.trim()) {
       throw new BadRequestException("휴대폰 번호를 입력해주세요.");
+    }
+
+    if (!isValidPhoneNumber(input.phone)) {
+      throw new BadRequestException("휴대폰 번호는 숫자 10~11자리여야 합니다.");
     }
 
     if (!["TENANT", "LANDLORD", "VENDOR"].includes(input.role)) {

@@ -788,6 +788,8 @@ export default function ManagerApp() {
               <label>
                 이메일
                 <input
+                  type="email"
+                  autoComplete="email"
                   value={loginForm.email}
                   onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
                 />
@@ -796,6 +798,7 @@ export default function ManagerApp() {
                 비밀번호
                 <input
                   type="password"
+                  autoComplete="current-password"
                   value={loginForm.password}
                   onChange={(event) =>
                     setLoginForm({ ...loginForm, password: event.target.value })
@@ -818,6 +821,8 @@ export default function ManagerApp() {
               <label>
                 이메일
                 <input
+                  type="email"
+                  autoComplete="email"
                   value={signupForm.email}
                   onChange={(event) =>
                     setSignupForm({ ...signupForm, email: event.target.value })
@@ -827,6 +832,9 @@ export default function ManagerApp() {
               <label>
                 휴대폰
                 <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={signupForm.phone}
                   onChange={(event) =>
                     setSignupForm({ ...signupForm, phone: event.target.value })
@@ -874,6 +882,7 @@ export default function ManagerApp() {
                 비밀번호
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={signupForm.password}
                   onChange={(event) =>
                     setSignupForm({ ...signupForm, password: event.target.value })
@@ -884,6 +893,7 @@ export default function ManagerApp() {
                 비밀번호 확인
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={signupForm.passwordConfirm}
                   onChange={(event) =>
                     setSignupForm({ ...signupForm, passwordConfirm: event.target.value })

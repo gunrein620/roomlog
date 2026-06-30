@@ -1540,6 +1540,42 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("rejects malformed signup phone numbers and weak passwords", () => {
+    const service = new RoomlogService();
+
+    assert.throws(
+      () =>
+        service.signup({
+          email: "bad-phone@roomlog.test",
+          password: "password123!",
+          passwordConfirm: "password123!",
+          name: "짧은 번호",
+          phone: "123-45",
+          role: "TENANT",
+          buildingName: "룸로그 빌라",
+          roomNo: "703호",
+          address: "서울시 성동구 테스트로 12"
+        } as any),
+      /휴대폰 번호는 숫자 10~11자리/
+    );
+
+    assert.throws(
+      () =>
+        service.signup({
+          email: "weak-password@roomlog.test",
+          password: "password",
+          passwordConfirm: "password",
+          name: "약한 비밀번호",
+          phone: "010-4444-7799",
+          role: "TENANT",
+          buildingName: "룸로그 빌라",
+          roomNo: "704호",
+          address: "서울시 성동구 테스트로 12"
+        } as any),
+      /비밀번호는 영문과 숫자를 포함/
+    );
+  });
+
   it("creates role-specific profiles and room links during signup", () => {
     const service = new RoomlogService();
 

@@ -1378,6 +1378,8 @@ export default function TenantApp() {
               <label>
                 이메일
                 <input
+                  type="email"
+                  autoComplete="email"
                   value={loginForm.email}
                   onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
                 />
@@ -1386,6 +1388,7 @@ export default function TenantApp() {
                 비밀번호
                 <input
                   type="password"
+                  autoComplete="current-password"
                   value={loginForm.password}
                   onChange={(event) =>
                     setLoginForm({ ...loginForm, password: event.target.value })
@@ -1408,6 +1411,8 @@ export default function TenantApp() {
               <label>
                 이메일
                 <input
+                  type="email"
+                  autoComplete="email"
                   value={signupForm.email}
                   disabled={Boolean(invitePreview?.emailLocked)}
                   onChange={(event) =>
@@ -1418,6 +1423,9 @@ export default function TenantApp() {
               <label>
                 휴대폰
                 <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={signupForm.phone}
                   disabled={Boolean(invitePreview?.phoneLocked)}
                   onChange={(event) =>
@@ -1500,6 +1508,7 @@ export default function TenantApp() {
                 비밀번호
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={signupForm.password}
                   onChange={(event) =>
                     setSignupForm({ ...signupForm, password: event.target.value })
@@ -1510,6 +1519,7 @@ export default function TenantApp() {
                 비밀번호 확인
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={signupForm.passwordConfirm}
                   onChange={(event) =>
                     setSignupForm({ ...signupForm, passwordConfirm: event.target.value })

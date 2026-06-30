@@ -24,6 +24,14 @@ function normalized(form: VendorSignupForm) {
   };
 }
 
+function hasValidPhoneLength(phone: string) {
+  return /^\d{10,11}$/.test(phone);
+}
+
+function hasRequiredPasswordMix(password: string) {
+  return /[A-Za-z]/.test(password) && /\d/.test(password);
+}
+
 export function vendorSignupIssues(
   form: VendorSignupForm,
   invitePreview?: VendorInvitePreviewForSignup | null
@@ -41,6 +49,8 @@ export function vendorSignupIssues(
 
   if (!input.phone) {
     issues.push("휴대폰 번호를 입력해주세요.");
+  } else if (!hasValidPhoneLength(input.phone)) {
+    issues.push("휴대폰 번호는 숫자 10~11자리여야 합니다.");
   }
 
   if (!input.inviteToken) {
@@ -51,6 +61,8 @@ export function vendorSignupIssues(
 
   if (!input.password || input.password.length < 8) {
     issues.push("비밀번호는 8자 이상이어야 합니다.");
+  } else if (!hasRequiredPasswordMix(input.password)) {
+    issues.push("비밀번호는 영문과 숫자를 포함해야 합니다.");
   }
 
   if (input.password !== input.passwordConfirm) {
