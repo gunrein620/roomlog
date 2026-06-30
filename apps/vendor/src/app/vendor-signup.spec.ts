@@ -71,7 +71,7 @@ describe("vendor signup preflight", () => {
       password: "password123!",
       passwordConfirm: "password123!",
       name: "협력 기사",
-      phone: "010-5555-9001",
+      phone: "01055559001",
       inviteToken: "invite-token"
     });
   });

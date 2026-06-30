@@ -114,6 +114,12 @@ type LoginInput = {
   password: string;
 };
 
+function normalizePhoneNumber(phone?: string) {
+  const digits = phone?.replace(/\D+/g, "") ?? "";
+
+  return digits || undefined;
+}
+
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
@@ -1813,7 +1819,7 @@ export class RoomlogService {
 
     const businessName = input.businessName?.trim();
     const contactPerson = input.contactPerson?.trim();
-    const phone = input.phone?.trim();
+    const phone = normalizePhoneNumber(input.phone);
     const serviceArea = input.serviceArea?.trim();
     const email = input.email?.trim().toLowerCase();
 
@@ -1876,7 +1882,7 @@ export class RoomlogService {
 
     const roomId = input.roomId?.trim();
     const tenantName = input.tenantName?.trim();
-    const phone = input.phone?.trim();
+    const phone = normalizePhoneNumber(input.phone);
     const moveInDate = input.moveInDate?.trim();
     const email = input.email?.trim().toLowerCase();
 
@@ -2659,7 +2665,7 @@ export class RoomlogService {
       ...input,
       email: input.email?.trim().toLowerCase(),
       name: input.name?.trim(),
-      phone: input.phone?.trim(),
+      phone: normalizePhoneNumber(input.phone),
       inviteToken: input.inviteToken?.trim(),
       buildingName: input.buildingName?.trim(),
       roomNo: input.roomNo?.trim(),

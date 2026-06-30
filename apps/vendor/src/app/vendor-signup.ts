@@ -19,7 +19,7 @@ function normalized(form: VendorSignupForm) {
     password: form.password,
     passwordConfirm: form.passwordConfirm,
     name: form.name.trim(),
-    phone: form.phone.trim(),
+    phone: form.phone.replace(/\D+/g, ""),
     inviteToken: form.inviteToken.trim()
   };
 }

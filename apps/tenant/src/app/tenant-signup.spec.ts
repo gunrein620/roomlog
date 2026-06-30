@@ -72,7 +72,7 @@ describe("tenant signup preflight", () => {
       password: "password123!",
       passwordConfirm: "password123!",
       name: "세입자",
-      phone: "010-5555-7001",
+      phone: "01055557001",
       buildingName: "룸로그 빌라",
       roomNo: "1201호",
       address: "서울시 성동구 테스트로 12"
@@ -92,7 +92,7 @@ describe("tenant signup preflight", () => {
         password: "password123!",
         passwordConfirm: "password123!",
         name: "세입자",
-        phone: "010-5555-7001",
+        phone: "01055557001",
         inviteToken: "invite-token"
       }
     );

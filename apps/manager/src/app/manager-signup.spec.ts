@@ -57,7 +57,7 @@ describe("manager signup preflight", () => {
       password: "password123!",
       passwordConfirm: "password123!",
       name: "관리자",
-      phone: "010-5555-1001",
+      phone: "01055551001",
       buildingName: "성수 관리 빌딩",
       roomNo: "301호",
       address: "서울시 성동구 관리로 3"

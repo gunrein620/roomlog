@@ -15,7 +15,7 @@ function normalized(form: ManagerSignupForm) {
     password: form.password,
     passwordConfirm: form.passwordConfirm,
     name: form.name.trim(),
-    phone: form.phone.trim(),
+    phone: form.phone.replace(/\D+/g, ""),
     buildingName: form.buildingName.trim(),
     roomNo: form.roomNo.trim(),
     address: form.address.trim()

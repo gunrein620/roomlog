@@ -1489,6 +1489,38 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("normalizes signup phone numbers before duplicate checks", () => {
+    const service = new RoomlogService();
+
+    service.signup({
+      email: "phone-normalized@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "번호 세입자",
+      phone: "010-4444-7788",
+      role: "TENANT",
+      buildingName: "룸로그 빌라",
+      roomNo: "701호",
+      address: "서울시 성동구 테스트로 12"
+    } as any);
+
+    assert.throws(
+      () =>
+        service.signup({
+          email: "phone-normalized-copy@roomlog.test",
+          password: "password123!",
+          passwordConfirm: "password123!",
+          name: "중복 세입자",
+          phone: "010 4444 7788",
+          role: "TENANT",
+          buildingName: "룸로그 빌라",
+          roomNo: "702호",
+          address: "서울시 성동구 테스트로 12"
+        } as any),
+      /휴대폰/
+    );
+  });
+
   it("creates role-specific profiles and room links during signup", () => {
     const service = new RoomlogService();
 
@@ -1506,7 +1538,7 @@ describe("RoomlogService", () => {
     const tenantProfile = service.getMe(`Bearer ${tenantAuth.accessToken}`);
     const tenantThread = service.createIntakeSession(tenantAuth.userId, {});
 
-    assert.equal(tenantProfile.phone, "010-4444-3001");
+    assert.equal(tenantProfile.phone, "01044443001");
     assert.equal(tenantProfile.roomId, tenantThread.session.roomId);
     assert.equal(tenantProfile.room?.buildingName, "룸로그 빌라");
     assert.equal(tenantProfile.room?.roomNo, "502호");
@@ -1698,7 +1730,7 @@ describe("RoomlogService", () => {
     assert.equal(tenantPreview.invitedBy, "미리보기 관리자");
     assert.equal(tenantPreview.expectedName, "프리뷰 세입자");
     assert.equal(tenantPreview.email, "preview-tenant@roomlog.test");
-    assert.equal(tenantPreview.phone, "010-4444-3200");
+    assert.equal(tenantPreview.phone, "01044443200");
     assert.equal(tenantPreview.emailLocked, true);
     assert.equal(tenantPreview.phoneLocked, true);
     assert.equal(tenantPreview.room?.buildingName, "프리뷰 하우스");
