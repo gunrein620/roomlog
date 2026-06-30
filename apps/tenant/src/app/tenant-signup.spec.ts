@@ -65,6 +65,30 @@ describe("tenant signup preflight", () => {
     );
   });
 
+  it("rejects edited email or phone when the invite preview locks tenant contact fields", () => {
+    assert.deepEqual(
+      tenantSignupIssues(
+        {
+          ...completeForm,
+          email: "other-tenant@roomlog.test",
+          phone: "010-9999-7001",
+          inviteToken: "invite-token"
+        },
+        {
+          inviteToken: "invite-token",
+          emailLocked: true,
+          phoneLocked: true,
+          email: "tenant-signup@roomlog.test",
+          phone: "01055557001"
+        }
+      ),
+      [
+        "초대된 이메일과 가입 이메일이 일치하지 않습니다.",
+        "초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다."
+      ]
+    );
+  });
+
   it("rejects malformed phone numbers and weak passwords before signup", () => {
     assert.deepEqual(
       tenantSignupIssues({
