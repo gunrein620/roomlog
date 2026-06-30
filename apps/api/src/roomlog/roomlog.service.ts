@@ -3334,8 +3334,19 @@ export class RoomlogService {
       return undefined;
     }
 
+    const currentIssueMatch = compact.match(
+      /(물이\s*(?:계속\s*)?(?:떨어지고|떨어집니다|떨어져요|새고|샙니다|고이고|고입니다)|천장[^.。!?]{0,16}물이\s*(?:떨어지고|떨어집니다|떨어져요)|바닥(?:에|이)?\s*(?:물이\s*)?(?:고이고|고입니다|젖었|젖어))/
+    );
+
+    if (
+      currentIssueMatch?.[0] &&
+      !/(것\s*같|듯(?:해|합니다)?|의심|아마|추정)/.test(currentIssueMatch[0])
+    ) {
+      return "현재 증상";
+    }
+
     const match = compact.match(
-      /(방금|어제(?:부터)?|오늘\s*(?:아침|오전|낮|오후|저녁|밤)?\s*부터|오늘부터|오늘\s*(?:처음|다시|또)|지난\s*\d*\s*(?:주|달|개월|일)?|며칠\s*(?:전|째|동안)?|\d{1,2}\s*일\s*전|\d{1,2}\s*시간\s*전|계속|지금도|반복|시작(?:됐|되었)?|발생(?:했|하였)?|떨어지(?:고|는|며|네요|나요|습니다)|떨어(?:집니다|져|졌)|새(?:고|는|네요|나요|어)|샙니다|고이(?:고|는|며|네요|나요|었습니다)|젖(?:고|은|었습니다)|잠기지\s*않|안\s*잠|나지\s*않|안\s*나|작동하지\s*않|고장(?:났|입니다)|[가-힣0-9]+\s*부터)/
+      /(방금|어제(?:부터)?|오늘\s*(?:아침|오전|낮|오후|저녁|밤)?\s*부터|오늘부터|오늘\s*(?:처음|다시|또)|지난\s*\d*\s*(?:주|달|개월|일)?|며칠\s*(?:전|째|동안)?|\d{1,2}\s*일\s*전|\d{1,2}\s*시간\s*전|계속|지금도|반복|시작(?:됐|되었)?|발생(?:했|하였)?|[가-힣0-9]+\s*부터)/
     );
 
     return match?.[0]?.trim();
@@ -4132,8 +4143,8 @@ export class RoomlogService {
   }
 
   private composeAssistantReply(draft: IntakeDraft, session?: IntakeSession) {
-    const threadText = this.threadText(session);
-    const safetyLines = this.safetyGuidance(threadText, draft);
+    const tenantThreadText = this.tenantThreadText(session);
+    const safetyLines = this.safetyGuidance(tenantThreadText, draft);
     const tenantGuidanceLines = draft.tenantGuidance.filter(
       (line) => !(safetyLines.length && /(전기|콘센트|스위치|물고임)/.test(line))
     );
@@ -4269,8 +4280,8 @@ export class RoomlogService {
     const isTerse =
       generated.length < 60 ||
       /^(확인했습니다|네|알겠습니다|접수했습니다|처리하겠습니다)[.!。]*$/.test(compact);
-    const threadText = this.threadText(session);
-    const needsSafety = this.safetyGuidance(threadText, draft).length > 0;
+    const tenantThreadText = this.tenantThreadText(session);
+    const needsSafety = this.safetyGuidance(tenantThreadText, draft).length > 0;
     const lacksSafety =
       needsSafety && !/(안전|전기|콘센트|스위치|가스|환기|불꽃|만지지|119|문이)/.test(generated);
     const needsPhoto =
@@ -4810,7 +4821,7 @@ export class RoomlogService {
         draft
           ? this.timelineEntryMatchesIntakeContext(
               entry,
-              `${this.threadText(session)} ${draft.location ?? ""} ${draft.detailCategory}`,
+              `${this.tenantThreadText(session)} ${draft.location ?? ""} ${draft.detailCategory}`,
               draft.detailCategory
             )
           : true
@@ -4992,6 +5003,23 @@ export class RoomlogService {
           ? ` 첨부: ${message.attachmentUrls.join(", ")}`
           : "";
         return `${message.sender}: ${message.transcriptText || message.messageText}${attachmentText}`;
+      })
+      .join("\n");
+  }
+
+  private tenantThreadText(session?: IntakeSession) {
+    if (!session) {
+      return "";
+    }
+
+    return session.messages
+      .filter((message) => message.sender === "TENANT")
+      .map((message) => {
+        const attachmentText = message.attachmentUrls.length
+          ? ` 첨부: ${message.attachmentUrls.join(", ")}`
+          : "";
+
+        return `${message.transcriptText || message.messageText}${attachmentText}`;
       })
       .join("\n");
   }

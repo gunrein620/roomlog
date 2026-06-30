@@ -2568,6 +2568,48 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("does not turn its own safety follow-up questions into fake gas guidance", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "화장실이 좀 이상해요.",
+        inputMode: "CHAT"
+      });
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "물이 새는 것 같아요.",
+        inputMode: "CHAT"
+      });
+      const reply = result.assistantMessage.messageText;
+
+      assert.match(reply, /누수|물|사진|방문/);
+      assert.doesNotMatch(reply, /가스 냄새|창문을 열어 환기|불꽃|라이터|119|가스 안전 신고/);
+      assert.equal(result.session.draft.requiredInfo.includes("발생 시점"), true);
+      assert.equal(
+        result.session.draft.nextQuestions.some((question) =>
+          /언제부터|시작|지금도|계속/.test(question)
+        ),
+        true
+      );
+      assert.equal(
+        result.session.draft.tenantGuidance.some((guide) => /가스 냄새|가스 안전/.test(guide)),
+        false
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("surfaces multiple prioritized fallback questions while preserving the draft queue", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
