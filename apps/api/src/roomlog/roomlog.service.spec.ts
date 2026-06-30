@@ -94,6 +94,22 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("can start without seeded demo accounts for production-style signup flows", () => {
+    const service = new RoomlogService({ seedDemoData: false } as any);
+    const state = service.getDemoState();
+
+    assert.equal(state.users.length, 0);
+    assert.equal(state.rooms.length, 0);
+    assert.throws(
+      () =>
+        service.login({
+          email: "tenant@roomlog.test",
+          password: "password123!"
+        }),
+      /올바르지/
+    );
+  });
+
   it("returns a Realtime setup response tied to an intake thread when OpenAI is not configured", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalRealtimeModel = process.env.OPENAI_REALTIME_MODEL;

@@ -115,6 +115,7 @@ type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
   publicUploadBaseUrl?: string;
+  seedDemoData?: boolean;
 };
 
 type AuthResult = {
@@ -332,12 +333,55 @@ function createDemoStore(): Store {
   };
 }
 
+function createEmptyStore(): Store {
+  return {
+    users: [],
+    rooms: [],
+    tenantRooms: {},
+    vendors: [],
+    vendorInvites: [],
+    tenantInvites: [],
+    attachments: [],
+    moveInChecklist: [],
+    aiFeedback: [],
+    intakeSessions: [],
+    complaints: [],
+    analyses: {},
+    tickets: [],
+    repairs: [],
+    messages: [],
+    history: []
+  };
+}
+
+function envFlag(value: string | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return /^(1|true|yes|on)$/i.test(value.trim());
+}
+
+function shouldSeedDemoData(option?: boolean) {
+  if (option !== undefined) {
+    return option;
+  }
+
+  const configured = envFlag(process.env.ROOMLOG_SEED_DEMO);
+  if (configured !== undefined) {
+    return configured;
+  }
+
+  return process.env.NODE_ENV !== "production";
+}
+
 @Injectable()
 export class RoomlogService {
   private readonly store: Store;
   private readonly storeFilePath?: string;
   private readonly uploadDir: string;
   private readonly publicUploadBaseUrl: string;
+  private readonly seedDemoData: boolean;
 
   constructor(
     @Optional()
@@ -347,6 +391,7 @@ export class RoomlogService {
     const configuredStoreFile = options.storeFilePath ?? process.env.ROOMLOG_STORE_FILE;
     this.storeFilePath = configuredStoreFile?.trim() || undefined;
     this.uploadDir = options.uploadDir ?? process.env.LOCAL_UPLOAD_DIR ?? "uploads";
+    this.seedDemoData = shouldSeedDemoData(options.seedDemoData);
     this.publicUploadBaseUrl = (
       options.publicUploadBaseUrl ??
       process.env.PUBLIC_UPLOAD_BASE_URL ??
@@ -394,7 +439,7 @@ export class RoomlogService {
     if (user.role === "TENANT") {
       this.store.tenantRooms[user.id] =
         tenantInvite?.roomId ??
-        this.findOrCreateRoomForSignup(normalizedInput, "landlord-demo");
+        this.findOrCreateRoomForSignup(normalizedInput, this.seededLandlordId());
 
       if (tenantInvite) {
         tenantInvite.status = "ACCEPTED";
@@ -2445,7 +2490,7 @@ export class RoomlogService {
 
   private loadStore(): Store {
     if (!this.storeFilePath || !existsSync(this.storeFilePath)) {
-      return createDemoStore();
+      return this.seedDemoData ? createDemoStore() : createEmptyStore();
     }
 
     const parsed = JSON.parse(readFileSync(this.storeFilePath, "utf8")) as unknown;
@@ -2636,6 +2681,12 @@ export class RoomlogService {
     this.store.rooms.push(room);
 
     return room.id;
+  }
+
+  private seededLandlordId() {
+    return this.store.users.some((user) => user.id === "landlord-demo")
+      ? "landlord-demo"
+      : undefined;
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
