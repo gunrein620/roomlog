@@ -1,112 +1,83 @@
 # Roomlog
 
-Roomlog는 임대/임차 관리를 위한 초기 모노레포 프로젝트입니다. 프론트엔드는 Next.js, 백엔드는 NestJS로 구성하며, EC2에서는 Docker Compose로 `nginx`, `web`, `api` 컨테이너를 함께 실행합니다. PostgreSQL은 별도 컨테이너를 띄우지 않고 AWS RDS PostgreSQL에 연결하는 구조입니다.
+Roomlog MVP는 하자 처리 E2E 흐름을 검증하는 모노레포입니다. 세입자, 관리자, 협력업체가 하나의 NestJS API와 공용 도메인 모델을 공유하고, 각 역할별 Next.js 앱에서 같은 티켓을 다르게 처리합니다.
+
+## MVP Scope
+
+- 세입자: 하자 신고 접수, AI 텍스트 분석 결과 확인, 처리 상태와 메시지 타임라인 조회
+- 관리자: 티켓 큐 확인, AI 분석 검토, 추가정보 요청, 협력업체 배정, 완료 승인
+- 협력업체: 배정된 수리 확인, 견적 제출, 방문 일정 입력, 완료 보고
+- API: 데모 인증, 신고-티켓 분리, 상태 변경 이력, 인메모리 저장소 기반 MVP 도메인
+
+실제 PostgreSQL, Prisma, S3, OpenAI 호출은 다음 단계에서 붙일 수 있게 도메인 서비스 뒤로 남겨두었습니다. 현재 MVP는 로컬에서 바로 실행되는 인메모리 버전입니다.
 
 ## Project Structure
 
 ```text
 roomlog/
 ├─ apps/
-│  ├─ web/          # Next.js frontend
-│  └─ api/          # NestJS backend
+│  ├─ api/       # NestJS API
+│  ├─ tenant/    # Next.js tenant app, port 3001
+│  ├─ manager/   # Next.js manager app, port 3002
+│  ├─ vendor/    # Next.js vendor app, port 3003
+│  └─ web/       # legacy scaffold kept for reference
 ├─ nginx/
-│  └─ default.conf
 ├─ docker-compose.yml
 ├─ docker-compose.prod.yml
-├─ .env.example
-├─ package.json
-├─ pnpm-workspace.yaml
+├─ plan.md
 └─ README.md
 ```
 
 ## Local Development
 
-필요하면 `.env.example`을 참고해 루트에 `.env` 파일을 만듭니다. 기본 로컬 값은 다음과 같습니다.
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:4000
-PORT=4000
-```
-
-개별 앱을 로컬에서 실행할 때는 다음 명령을 사용합니다.
-
 ```bash
 pnpm install
-pnpm dev:web
 pnpm dev:api
+pnpm dev:tenant
+pnpm dev:manager
+pnpm dev:vendor
 ```
 
-## Docker Compose
+Open the apps directly:
 
-로컬에서 전체 서비스를 한 번에 실행합니다.
+- Tenant: `http://localhost:3001`
+- Manager: `http://localhost:3002`
+- Vendor: `http://localhost:3003`
+- API health: `http://localhost:4000/api/health`
+
+Demo accounts use `password123!`:
+
+- `tenant@roomlog.test`
+- `manager@roomlog.test`
+- `vendor@roomlog.test`
+
+## Demo Flow
+
+1. Open the tenant app and submit the default defect report.
+2. Open the manager app, refresh, select the new ticket, and assign the vendor.
+3. Open the vendor app, refresh, submit an estimate, save a schedule, and report completion.
+4. Return to the manager app and approve completion.
+5. Refresh the tenant app to see the completed status.
+
+## Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-종료할 때는 다음 명령을 사용합니다.
+Nginx routes:
+
+- `http://localhost/tenant`
+- `http://localhost/manager`
+- `http://localhost/vendor`
+- `http://localhost/api/health`
+
+## Verification
 
 ```bash
-docker compose down
-```
-
-확인 URL:
-
-- Nginx: `http://localhost`
-- Next.js 직접 접근: `http://localhost:3000`
-- NestJS 직접 접근: `http://localhost:4000/api/health`
-- Nginx API 프록시: `http://localhost/api/health`
-
-## EC2 Deployment
-
-EC2 배포에는 `docker-compose.prod.yml`을 사용합니다.
-
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
-
-프로덕션에서는 루트 `.env`에 RDS 연결 문자열을 설정합니다.
-
-```env
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@roomlog-db.xxxxxx.ap-northeast-2.rds.amazonaws.com:5432/postgres
-NEXT_PUBLIC_API_URL=/api
-PORT=4000
-AWS_REGION=ap-northeast-2
-S3_BUCKET_NAME=roomlog-files
-```
-
-`docker-compose.prod.yml`은 `DATABASE_URL`이 없으면 실행 단계에서 실패하도록 구성되어 있습니다. RDS 보안 그룹은 EC2 인스턴스에서 PostgreSQL 기본 포트 `5432`로 접근할 수 있게 열어야 합니다.
-
-## Port Map
-
-| Service | Container Port | Host Port | Description |
-| --- | ---: | ---: | --- |
-| Nginx | 80 | 80 | Browser entrypoint and reverse proxy |
-| Next.js web | 3000 | 3000 | Frontend app |
-| NestJS api | 4000 | 4000 | Backend API |
-| RDS PostgreSQL | 5432 | 5432 | External AWS RDS database |
-
-## Routing
-
-```text
-Browser
-  ↓
-Nginx :80
-  ├─ /        -> web:3000
-  └─ /api     -> api:4000
-```
-
-The backend health endpoint is:
-
-```http
-GET /api/health
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "service": "roomlog-api"
-}
+pnpm test:api
+pnpm build:api
+pnpm build:tenant
+pnpm build:manager
+pnpm build:vendor
 ```

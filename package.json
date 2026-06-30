@@ -4,10 +4,15 @@
   "private": true,
   "packageManager": "pnpm@11.7.0",
   "scripts": {
-    "dev:web": "pnpm --filter web dev",
     "dev:api": "pnpm --filter api start:dev",
-    "build:web": "pnpm --filter web build",
+    "dev:tenant": "pnpm --filter tenant dev",
+    "dev:manager": "pnpm --filter manager dev",
+    "dev:vendor": "pnpm --filter vendor dev",
+    "build:tenant": "pnpm --filter tenant build",
+    "build:manager": "pnpm --filter manager build",
+    "build:vendor": "pnpm --filter vendor build",
     "build:api": "pnpm --filter api build",
+    "test:api": "pnpm --filter api test",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "docker:prod": "docker compose -f docker-compose.prod.yml up -d --build"

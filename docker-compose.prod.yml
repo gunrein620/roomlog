@@ -4,27 +4,65 @@ services:
     container_name: roomlog-nginx
     restart: unless-stopped
     depends_on:
-      - web
+      - tenant
+      - manager
+      - vendor
       - api
     ports:
       - "80:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
-  web:
+  tenant:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
+      dockerfile: apps/tenant/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-    container_name: roomlog-web
+        NEXT_PUBLIC_BASE_PATH: /tenant
+    container_name: roomlog-tenant
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+      NEXT_PUBLIC_BASE_PATH: /tenant
     depends_on:
       - api
     ports:
-      - "3000:3000"
+      - "3001:3001"
+
+  manager:
+    build:
+      context: .
+      dockerfile: apps/manager/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_BASE_PATH: /manager
+    container_name: roomlog-manager
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+      NEXT_PUBLIC_BASE_PATH: /manager
+    depends_on:
+      - api
+    ports:
+      - "3002:3002"
+
+  vendor:
+    build:
+      context: .
+      dockerfile: apps/vendor/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_BASE_PATH: /vendor
+    container_name: roomlog-vendor
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+      NEXT_PUBLIC_BASE_PATH: /vendor
+    depends_on:
+      - api
+    ports:
+      - "3003:3003"
 
   api:
     build:
