@@ -3413,6 +3413,39 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("does not let direct tenant signup claim an existing managed room without an invite", () => {
+    const service = new RoomlogService();
+    const managerAuth = service.signup({
+      email: "managed-room-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "관리 호실 관리자",
+      phone: "010-4444-1111",
+      role: "LANDLORD",
+      buildingName: "관리중 빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 관리중로 8"
+    } as any);
+    const managerProfile = service.getMe(`Bearer ${managerAuth.accessToken}`);
+
+    assert.equal(managerProfile.managedRooms?.[0].landlordId, managerAuth.userId);
+    assert.throws(
+      () =>
+        service.signup({
+          email: "managed-room-direct-tenant@roomlog.test",
+          password: "password123!",
+          passwordConfirm: "password123!",
+          name: "초대 없는 세입자",
+          phone: "010-4444-3111",
+          role: "TENANT",
+          buildingName: "관리중 빌라",
+          roomNo: "801호",
+          address: "서울시 성동구 관리중로 8"
+        } as any),
+      /초대|관리자/
+    );
+  });
+
   it("links an existing tenant account and its room records when accepting a manager invite", () => {
     const service = new RoomlogService({ seedDemoData: false } as any);
     const tenantAuth = service.signup({
@@ -3812,6 +3845,17 @@ describe("RoomlogService", () => {
       roomNo: "802호",
       address: "서울시 성동구 외부로 8"
     } as any);
+    const otherManagerProfile = service.getMe(`Bearer ${otherManager.accessToken}`);
+    const otherRoomId = otherManagerProfile.managedRooms?.[0].id;
+
+    assert.ok(otherRoomId);
+    const otherTenantInvite = service.createTenantInvite(otherManager.userId, {
+      roomId: otherRoomId,
+      email: "other-tenant@roomlog.test",
+      tenantName: "외부 세입자",
+      phone: "010-6666-3001",
+      moveInDate: "2026-07-01"
+    });
     const otherTenant = service.signup({
       email: "other-tenant@roomlog.test",
       password: "password123!",
@@ -3819,9 +3863,7 @@ describe("RoomlogService", () => {
       name: "외부 세입자",
       phone: "010-6666-3001",
       role: "TENANT",
-      buildingName: "외부 빌라",
-      roomNo: "802호",
-      address: "서울시 성동구 외부로 8"
+      inviteToken: otherTenantInvite.inviteToken
     } as any);
 
     const ownTicket = service.createComplaint("tenant-demo", {

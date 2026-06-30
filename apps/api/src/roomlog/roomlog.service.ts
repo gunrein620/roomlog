@@ -3241,6 +3241,12 @@ export class RoomlogService {
 
     if (existingRoom) {
       if (!landlordId) {
+        if (existingRoom.landlordId || this.roomHasTenantRecords(existingRoom.id)) {
+          throw new BadRequestException(
+            "이미 등록된 호실입니다. 관리자 초대 링크로 가입하거나 다른 호실 정보를 확인해주세요."
+          );
+        }
+
         return existingRoom.id;
       }
 
