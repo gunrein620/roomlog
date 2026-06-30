@@ -1589,6 +1589,47 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("caps same-room context shown to tenants to the latest three related records", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      for (const index of [1, 2, 3, 4]) {
+        const past = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+        await service.sendIntakeMessage("tenant-demo", past.session.id, {
+          messageText: `지난 ${index}번째 301호 화장실 천장에서 물이 떨어져 조치했습니다. 오늘 저녁 7시 이후 방문 가능합니다.`,
+          inputMode: "CHAT"
+        });
+        service.finalizeIntakeSession("tenant-demo", past.session.id, {
+          confirmedTitle: `지난 ${index}번째 301호 화장실 누수`,
+          confirmedSummary: `지난 ${index}번째 301호 화장실 천장 누수 처리 기록입니다.`,
+          confirmedLocation: "301호 화장실",
+          availableTimes: "오늘 저녁 7시 이후"
+        });
+      }
+
+      const current = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+      const result = await service.sendIntakeMessage("tenant-demo", current.session.id, {
+        messageText: "오늘 다시 301호 화장실 천장에서 물이 떨어져요. 오늘 저녁 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+      const contextText = result.session.draft.contextHints.join("\n");
+
+      assert.doesNotMatch(contextText, /4건/);
+      assert.match(contextText, /최근 3건/);
+      assert.equal(
+        result.session.draft.contextHints.filter((hint) => hint.startsWith("최근 관련 기록")).length,
+        3
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("generates high quality fallback intake guidance with concrete next questions", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

@@ -4192,10 +4192,17 @@ export class RoomlogService {
       return [];
     }
 
-    const latest = relevantEntries[0];
+    const visibleEntries = relevantEntries.slice(0, 3);
+    const summary =
+      relevantEntries.length > visibleEntries.length
+        ? `같은 호실에 ${detailCategory} 관련 과거 기록이 있습니다. 최근 ${visibleEntries.length}건만 우선 참고합니다.`
+        : `같은 호실에 ${detailCategory} 관련 과거 기록이 ${visibleEntries.length}건 있습니다.`;
+
     return [
-      `같은 호실에 ${detailCategory} 관련 과거 기록이 ${relevantEntries.length}건 있습니다.`,
-      `최근 관련 기록: ${latest.title} - ${latest.description}`
+      summary,
+      ...visibleEntries.map(
+        (entry, index) => `최근 관련 기록 ${index + 1}: ${entry.title} - ${entry.description}`
+      )
     ];
   }
 
