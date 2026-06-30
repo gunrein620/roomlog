@@ -215,6 +215,7 @@ type GeneratedIntakeTurn = {
   assistantMessage: string;
   draft: IntakeDraft;
   source: "openai" | "fallback";
+  openaiResponseId?: string;
 };
 
 const now = () => new Date().toISOString();
@@ -698,6 +699,9 @@ export class RoomlogService {
     const fallbackDraft = this.buildIntakeDraft(session);
     const generatedTurn = await this.generateIntakeTurn(session, fallbackDraft);
     session.draft = generatedTurn.draft;
+    if (generatedTurn.openaiResponseId) {
+      session.openaiPreviousResponseId = generatedTurn.openaiResponseId;
+    }
     const assistantMessage = this.createIntakeMessage(
       session.id,
       "AI_ASSISTANT",
@@ -773,6 +777,9 @@ export class RoomlogService {
     const fallbackDraft = this.buildIntakeDraft(session);
     const generatedTurn = await this.generateIntakeTurn(session, fallbackDraft);
     session.draft = generatedTurn.draft;
+    if (generatedTurn.openaiResponseId) {
+      session.openaiPreviousResponseId = generatedTurn.openaiResponseId;
+    }
 
     const assistantMessageText = assistantTranscript || generatedTurn.assistantMessage;
     const assistantMessage = this.createIntakeMessage(
@@ -3567,6 +3574,9 @@ export class RoomlogService {
         },
         body: JSON.stringify({
           model: process.env.OPENAI_CHAT_MODEL || "gpt-5.5",
+          ...(session.openaiPreviousResponseId
+            ? { previous_response_id: session.openaiPreviousResponseId }
+            : {}),
           instructions: this.buildIntakeResponseInstructions(session),
           input: [
             {
@@ -3591,6 +3601,8 @@ export class RoomlogService {
 
       const responseBody = (await response.json()) as Record<string, unknown>;
       const parsed = this.parseOpenAIIntakeTurn(responseBody);
+      const openaiResponseId =
+        typeof responseBody.id === "string" ? responseBody.id : undefined;
       const normalizedDraft = this.normalizeGeneratedDraft(parsed.draft, fallbackDraft);
       const draft = this.generatedDraftDriftsFromCurrentThread(
         normalizedDraft,
@@ -3603,6 +3615,7 @@ export class RoomlogService {
       return {
         source: "openai",
         draft,
+        openaiResponseId,
         assistantMessage: this.ensureAssistantReplyQuality(
           parsed.assistantMessage,
           draft,

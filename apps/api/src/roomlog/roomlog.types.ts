@@ -426,6 +426,7 @@ export type IntakeSession = {
   messages: IntakeMessage[];
   complaintId?: string;
   ticketId?: string;
+  openaiPreviousResponseId?: string;
   createdAt: string;
   updatedAt: string;
   finalizedAt?: string;

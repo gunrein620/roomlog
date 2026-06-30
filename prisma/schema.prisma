@@ -134,10 +134,10 @@ model UserAccount {
   updatedAt    DateTime   @updatedAt
 
   tenantRooms          TenantRoom[]
-  uploadedAttachments  Attachment[]       @relation("UploadedAttachments")
-  intakeSessions       IntakeSession[]     @relation("TenantIntakeSessions")
-  complaints           Complaint[]         @relation("TenantComplaints")
-  tickets              Ticket[]            @relation("TenantTickets")
+  uploadedAttachments  Attachment[]          @relation("UploadedAttachments")
+  intakeSessions       IntakeSession[]       @relation("TenantIntakeSessions")
+  complaints           Complaint[]           @relation("TenantComplaints")
+  tickets              Ticket[]              @relation("TenantTickets")
   moveInChecklistItems MoveInChecklistItem[]
 
   @@index([role, status])
@@ -158,8 +158,8 @@ model Room {
   intakeSessions       IntakeSession[]
   moveInChecklistItems MoveInChecklistItem[]
 
-  @@index([landlordId])
   @@unique([buildingName, roomNo])
+  @@index([landlordId])
 }
 
 model TenantRoom {
@@ -226,14 +226,14 @@ model TenantInvite {
 }
 
 model Attachment {
-  id          String             @id
-  uploadedBy  String
-  fileName    String
-  fileUrl     String
-  mimeType    String
-  sizeBytes   Int
-  category    AttachmentCategory
-  createdAt   DateTime           @default(now())
+  id         String             @id
+  uploadedBy String
+  fileName   String
+  fileUrl    String
+  mimeType   String
+  sizeBytes  Int
+  category   AttachmentCategory
+  createdAt  DateTime           @default(now())
 
   uploader UserAccount @relation("UploadedAttachments", fields: [uploadedBy], references: [id])
 
@@ -259,20 +259,21 @@ model MoveInChecklistItem {
 }
 
 model IntakeSession {
-  id            String                 @id
-  tenantId      String
-  roomId        String
-  sourceChannel ComplaintSourceChannel @default(REALTIME_CHAT)
-  status        IntakeSessionStatus    @default(ACTIVE)
-  draft         Json
-  complaintId   String?
-  ticketId      String?
-  finalizedAt   DateTime?
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  id                       String                 @id
+  tenantId                 String
+  roomId                   String
+  sourceChannel            ComplaintSourceChannel @default(REALTIME_CHAT)
+  status                   IntakeSessionStatus    @default(ACTIVE)
+  draft                    Json
+  complaintId              String?
+  ticketId                 String?
+  openaiPreviousResponseId String?
+  finalizedAt              DateTime?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 
-  tenant  UserAccount     @relation("TenantIntakeSessions", fields: [tenantId], references: [id])
-  room    Room            @relation(fields: [roomId], references: [id])
+  tenant   UserAccount     @relation("TenantIntakeSessions", fields: [tenantId], references: [id])
+  room     Room            @relation(fields: [roomId], references: [id])
   messages IntakeMessage[]
 
   @@index([tenantId, updatedAt])
@@ -350,7 +351,7 @@ model Ticket {
 }
 
 model AiAnalysis {
-  ticketId           String  @id
+  ticketId           String   @id
   summary            String
   category           String
   detailCategory     String?
@@ -391,26 +392,26 @@ model AiFeedback {
 }
 
 model RepairRequest {
-  id                  String            @id
-  ticketId            String
-  vendorId            String
-  status              RepairStatus
-  title               String
-  description         String
-  estimateAmount      Int?
-  estimateDescription String?
-  costBearer          RepairCostBearer?
-  estimateApprovedAt  DateTime?
+  id                   String            @id
+  ticketId             String
+  vendorId             String
+  status               RepairStatus
+  title                String
+  description          String
+  estimateAmount       Int?
+  estimateDescription  String?
+  costBearer           RepairCostBearer?
+  estimateApprovedAt   DateTime?
   estimateApprovalNote String?
-  scheduledAt         DateTime?
-  completedAt         DateTime?
-  completionNote      String?
-  completionPhotoUrls String[]
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  scheduledAt          DateTime?
+  completedAt          DateTime?
+  completionNote       String?
+  completionPhotoUrls  String[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
-  ticket   Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  vendor   VendorProfile @relation(fields: [vendorId], references: [id])
+  ticket   Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  vendor   VendorProfile   @relation(fields: [vendorId], references: [id])
   messages TicketMessage[]
 
   @@index([vendorId, status])
@@ -436,14 +437,14 @@ model TicketMessage {
 }
 
 model StatusHistory {
-  id          String   @id
+  id          String            @id
   ticketId    String
   fromStatus  String?
   toStatus    String
   actorUserId String
   actorRole   MessageSenderRole
   note        String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 

@@ -1010,6 +1010,93 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("chains OpenAI Responses within one intake thread without leaking across threads", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFetch = globalThis.fetch;
+    const service = new RoomlogService();
+    const first = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+    const second = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+    const capturedBodies: Record<string, unknown>[] = [];
+    const responseIds = ["resp_thread_first_1", "resp_thread_first_2", "resp_thread_second_1"];
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_CHAT_MODEL = "gpt-5.5";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      const responseId = responseIds[capturedBodies.length - 1];
+
+      return new Response(
+        JSON.stringify({
+          id: responseId,
+          output_text: JSON.stringify({
+            assistantMessage:
+              "이 상담 스레드에 이어서 저장하고, 관리자에게 넘길 접수 초안을 최신 상태로 정리하겠습니다.",
+            draft: {
+              title: "301호 화장실 누수",
+              summary: "301호 화장실에서 물이 새는 상담입니다.",
+              category: "하자",
+              detailCategory: "누수",
+              priority: 1,
+              responsibilityHint: "판단 어려움",
+              confidenceScore: 0.8,
+              reasons: ["누수 상담"],
+              recommendedAction: "관리자 확인 필요",
+              requiredInfo: ["사진"],
+              photoRequested: true,
+              readyToFinalize: false,
+              location: "301호 화장실"
+            }
+          })
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }) as typeof fetch;
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", first.session.id, {
+        messageText: "화장실 천장에서 물이 떨어집니다.",
+        inputMode: "CHAT"
+      });
+      await service.sendIntakeMessage("tenant-demo", first.session.id, {
+        messageText: "방금 찍은 사진도 올릴게요.",
+        inputMode: "CHAT",
+        attachmentUrls: ["/uploads/thread-first.jpg"]
+      });
+      await service.sendIntakeMessage("tenant-demo", second.session.id, {
+        messageText: "현관 도어락이 잠기지 않습니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.equal(capturedBodies[0].previous_response_id, undefined);
+      assert.equal(capturedBodies[1].previous_response_id, "resp_thread_first_1");
+      assert.equal(capturedBodies[2].previous_response_id, undefined);
+      assert.equal(
+        (service.getIntakeSession("tenant-demo", first.session.id) as any).openaiPreviousResponseId,
+        "resp_thread_first_2"
+      );
+      assert.equal(
+        (service.getIntakeSession("tenant-demo", second.session.id) as any).openaiPreviousResponseId,
+        "resp_thread_second_1"
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+      if (originalChatModel) {
+        process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      } else {
+        delete process.env.OPENAI_CHAT_MODEL;
+      }
+    }
+  });
+
   it("upgrades terse OpenAI intake replies using the structured draft context", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalFetch = globalThis.fetch;

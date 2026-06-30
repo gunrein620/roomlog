@@ -205,6 +205,7 @@ export class PrismaStoreProjector implements StoreProjector {
         })),
         complaintId: optional(session.complaintId),
         ticketId: optional(session.ticketId),
+        openaiPreviousResponseId: optional(session.openaiPreviousResponseId),
         createdAt: asIso(session.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(session.updatedAt) ?? new Date().toISOString(),
         finalizedAt: asIso(session.finalizedAt)
@@ -504,6 +505,7 @@ export class PrismaStoreProjector implements StoreProjector {
             draft: asJson(session.draft),
             complaintId: session.complaintId,
             ticketId: session.ticketId,
+            openaiPreviousResponseId: session.openaiPreviousResponseId,
             finalizedAt: asDate(session.finalizedAt),
             createdAt: asDate(session.createdAt),
             updatedAt: asDate(session.updatedAt)
@@ -516,6 +518,7 @@ export class PrismaStoreProjector implements StoreProjector {
             draft: asJson(session.draft),
             complaintId: session.complaintId,
             ticketId: session.ticketId,
+            openaiPreviousResponseId: session.openaiPreviousResponseId,
             finalizedAt: asDate(session.finalizedAt),
             updatedAt: asDate(session.updatedAt)
           }
