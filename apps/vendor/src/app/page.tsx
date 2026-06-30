@@ -13,13 +13,7 @@ import {
   initialVendorMessageText,
   initialVendorScheduleAt
 } from "./action-form-state";
-
-type AuthResult = {
-  accessToken: string;
-  name: string;
-  role: string;
-  userId: string;
-};
+import { ensureVendorAuth, type AuthResult } from "./auth-role";
 
 type SignupInvitePreview = {
   role: "TENANT" | "VENDOR";
@@ -227,7 +221,17 @@ export default function VendorApp() {
       return;
     }
 
-    const parsed = JSON.parse(saved) as AuthResult;
+    let parsed: AuthResult;
+
+    try {
+      parsed = ensureVendorAuth(JSON.parse(saved) as AuthResult);
+    } catch (error) {
+      window.localStorage.removeItem("roomlog.vendor.auth");
+      setAuth(null);
+      setStatus(error instanceof Error ? error.message : "업체 계정으로 로그인해주세요.");
+      return;
+    }
+
     setAuth(parsed);
     setStatus(`${parsed.name} 업체 계정 연결됨`);
     void refresh(parsed.accessToken).catch(() => {
@@ -279,10 +283,12 @@ export default function VendorApp() {
   }, [auth, authMode, signupForm.inviteToken]);
 
   async function completeAuth(result: AuthResult) {
-    setAuth(result);
-    window.localStorage.setItem("roomlog.vendor.auth", JSON.stringify(result));
-    setStatus(`${result.name} 업체 계정 연결됨`);
-    await refresh(result.accessToken);
+    const vendorAuth = ensureVendorAuth(result);
+
+    setAuth(vendorAuth);
+    window.localStorage.setItem("roomlog.vendor.auth", JSON.stringify(vendorAuth));
+    setStatus(`${vendorAuth.name} 업체 계정 연결됨`);
+    await refresh(vendorAuth.accessToken);
   }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {

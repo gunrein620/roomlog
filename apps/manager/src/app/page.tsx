@@ -15,13 +15,7 @@ import {
   filterManagerTickets,
   managerTicketFilterLabel
 } from "./manager-ticket-filter";
-
-type AuthResult = {
-  accessToken: string;
-  name: string;
-  role: string;
-  userId: string;
-};
+import { ensureManagerAuth, type AuthResult } from "./auth-role";
 
 type Vendor = {
   id: string;
@@ -476,7 +470,17 @@ export default function ManagerApp() {
       return;
     }
 
-    const parsed = JSON.parse(saved) as AuthResult;
+    let parsed: AuthResult;
+
+    try {
+      parsed = ensureManagerAuth(JSON.parse(saved) as AuthResult);
+    } catch (error) {
+      window.localStorage.removeItem("roomlog.manager.auth");
+      setAuth(null);
+      setStatus(error instanceof Error ? error.message : "관리자 계정으로 로그인해주세요.");
+      return;
+    }
+
     setAuth(parsed);
     setStatus(`${parsed.name} 관리자 계정 연결됨`);
     void refresh(parsed.accessToken).catch(() => {
@@ -487,10 +491,12 @@ export default function ManagerApp() {
   }, []);
 
   async function completeAuth(result: AuthResult) {
-    setAuth(result);
-    window.localStorage.setItem("roomlog.manager.auth", JSON.stringify(result));
-    setStatus(`${result.name} 관리자 계정 연결됨`);
-    await refresh(result.accessToken);
+    const managerAuth = ensureManagerAuth(result);
+
+    setAuth(managerAuth);
+    window.localStorage.setItem("roomlog.manager.auth", JSON.stringify(managerAuth));
+    setStatus(`${managerAuth.name} 관리자 계정 연결됨`);
+    await refresh(managerAuth.accessToken);
   }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {

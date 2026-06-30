@@ -18,6 +18,7 @@ import {
   canSubmitTenantSignup,
   tenantSignupIssues
 } from "./tenant-signup";
+import { ensureTenantAuth, type AuthResult } from "./auth-role";
 import {
   intakeSlotProgress,
   intakeSlotStatusLabel,
@@ -65,13 +66,6 @@ import {
 } from "./action-form-state";
 import { resolveAttachmentUrl } from "./attachment-url";
 import { chatMessageBlocks } from "./chat-message-format";
-
-type AuthResult = {
-  accessToken: string;
-  name: string;
-  role: string;
-  userId: string;
-};
 
 type SignupInvitePreview = {
   role: "TENANT" | "VENDOR";
@@ -746,7 +740,17 @@ export default function TenantApp() {
       return;
     }
 
-    const parsed = JSON.parse(saved) as AuthResult;
+    let parsed: AuthResult;
+
+    try {
+      parsed = ensureTenantAuth(JSON.parse(saved) as AuthResult);
+    } catch (error) {
+      window.localStorage.removeItem("roomlog.tenant.auth");
+      setAuth(null);
+      setStatus(error instanceof Error ? error.message : "세입자 계정으로 로그인해주세요.");
+      return;
+    }
+
     setAuth(parsed);
     setStatus(`${parsed.name} 세입자 계정 연결됨`);
     void refresh(parsed.accessToken).catch(() => {
@@ -804,10 +808,12 @@ export default function TenantApp() {
   }, []);
 
   async function completeAuth(result: AuthResult) {
-    setAuth(result);
-    window.localStorage.setItem("roomlog.tenant.auth", JSON.stringify(result));
-    setStatus(`${result.name} 세입자 계정 연결됨`);
-    await refresh(result.accessToken);
+    const tenantAuth = ensureTenantAuth(result);
+
+    setAuth(tenantAuth);
+    window.localStorage.setItem("roomlog.tenant.auth", JSON.stringify(tenantAuth));
+    setStatus(`${tenantAuth.name} 세입자 계정 연결됨`);
+    await refresh(tenantAuth.accessToken);
   }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
