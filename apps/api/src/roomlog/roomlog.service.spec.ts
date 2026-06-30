@@ -2733,6 +2733,49 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("classifies wall and floor surface damage as photo-backed defect intake", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const wallThread = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+    const floorThread = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const wall = await service.sendIntakeMessage("tenant-demo", wallThread.session.id, {
+        messageText:
+          "안방 벽지가 어제부터 찢어지고 들떴습니다. 위험한 상황은 없고 토요일 오전 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+      const floor = await service.sendIntakeMessage("tenant-demo", floorThread.session.id, {
+        messageText:
+          "거실 장판이 들뜨고 바닥 일부가 긁혔습니다. 어제 발견했고 위험한 상황은 없고 일요일 오후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.equal(wall.session.draft.category, "하자");
+      assert.equal(wall.session.draft.detailCategory, "벽지");
+      assert.equal(wall.session.draft.priority, 3);
+      assert.equal(wall.session.draft.photoRequested, true);
+      assert.equal(wall.session.draft.requiredInfo.includes("문제 부위 사진"), true);
+      assert.equal(wall.session.draft.photoAnalysis.candidates.includes("벽지 훼손"), true);
+      assert.match(wall.assistantMessage.messageText, /벽지|근접 사진|공간 전체/);
+
+      assert.equal(floor.session.draft.category, "하자");
+      assert.equal(floor.session.draft.detailCategory, "바닥");
+      assert.equal(floor.session.draft.priority, 3);
+      assert.equal(floor.session.draft.photoRequested, true);
+      assert.equal(floor.session.draft.requiredInfo.includes("문제 부위 사진"), true);
+      assert.equal(floor.session.draft.photoAnalysis.candidates.includes("바닥 손상"), true);
+      assert.match(floor.assistantMessage.messageText, /바닥|장판|근접 사진|공간 전체/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("keeps a fixture damage subject when a later answer mentions leaking water", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

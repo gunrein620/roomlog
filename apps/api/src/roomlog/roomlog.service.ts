@@ -5406,6 +5406,14 @@ export class RoomlogService {
       return "곰팡이";
     }
 
+    if (/(벽지|도배)/.test(text)) {
+      return "벽지";
+    }
+
+    if (/(바닥|마루|장판)/.test(text)) {
+      return "바닥";
+    }
+
     if (["도어락", "문이 안 잠", "현관"].some((word) => text.includes(word))) {
       return "도어락";
     }
