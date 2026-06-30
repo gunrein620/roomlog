@@ -1,6 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  intakeModeConfig,
+  intakeModeOptions,
+  intakeSessionPayload,
+  idleRealtimeStatusForMode,
+  messageInputModeForMode,
+  realtimePurposeForSourceChannel,
+  type IntakeMode
+} from "./intake-mode";
 
 type AuthResult = {
   accessToken: string;
@@ -460,7 +469,7 @@ export default function TenantApp() {
   const [aiFeedbackAction, setAiFeedbackAction] = useState("오늘 중 관리자 확인 요청");
   const [aiFeedbackPhotoFile, setAiFeedbackPhotoFile] = useState<File | null>(null);
   const [aiFeedbackPhotoInputKey, setAiFeedbackPhotoInputKey] = useState(0);
-  const [inputMode, setInputMode] = useState<"CHAT" | "VOICE">("CHAT");
+  const [inputMode, setInputMode] = useState<IntakeMode>("CHAT");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [loginForm, setLoginForm] = useState(emptyLogin);
   const [signupForm, setSignupForm] = useState(signupInitial);
@@ -468,7 +477,7 @@ export default function TenantApp() {
   const [invitePreview, setInvitePreview] = useState<SignupInvitePreview | null>(null);
   const [invitePreviewStatus, setInvitePreviewStatus] = useState("");
   const [status, setStatus] = useState("로그인 또는 회원가입이 필요합니다.");
-  const [realtimeStatus, setRealtimeStatus] = useState("음성 상담 대기");
+  const [realtimeStatus, setRealtimeStatus] = useState(idleRealtimeStatusForMode("CHAT"));
   const [realtimeSecret, setRealtimeSecret] = useState<RealtimeClientSecret | null>(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [realtimeUserTranscript, setRealtimeUserTranscript] = useState("");
@@ -493,6 +502,10 @@ export default function TenantApp() {
   const selectedRealtimeTurnSummary = selectedSession
     ? realtimeTurnSummaries[selectedSession.id]
     : undefined;
+  const selectedIntakeMode = selectedSession
+    ? intakeModeOptions.find((option) => option.sourceChannel === selectedSession.sourceChannel) ??
+      intakeModeConfig(inputMode)
+    : intakeModeConfig(inputMode);
   const selectedComplaint = useMemo(
     () =>
       home?.complaints.find((complaint) => complaint.id === selectedComplaintId) ??
@@ -711,7 +724,7 @@ export default function TenantApp() {
       auth.accessToken,
       {
         method: "POST",
-        body: JSON.stringify({ sourceChannel: inputMode === "VOICE" ? "VOICE_CHAT" : "REALTIME_CHAT" })
+        body: JSON.stringify(intakeSessionPayload(inputMode))
       }
     );
     await refresh();
@@ -720,8 +733,8 @@ export default function TenantApp() {
       ...current,
       [result.session.id]: draftCorrectionFrom(result.session.draft)
     }));
-    setStatus("새 상담이 시작되었습니다.");
-    setRealtimeStatus("음성 상담 대기");
+    setStatus(intakeModeConfig(inputMode).startStatus);
+    setRealtimeStatus(intakeModeConfig(inputMode).idleStatus);
     setRealtimeSecret(null);
     resetRealtimeTranscript();
   }
@@ -938,7 +951,7 @@ export default function TenantApp() {
         {
           method: "POST",
           body: JSON.stringify({
-            purpose: "TENANT_INTAKE",
+            purpose: realtimePurposeForSourceChannel(selectedSession.sourceChannel),
             voice: "marin"
           })
         }
@@ -955,6 +968,14 @@ export default function TenantApp() {
     } catch (error) {
       setRealtimeConnected(false);
       setRealtimeStatus(error instanceof Error ? error.message : "Realtime 음성 연결 실패");
+    }
+  }
+
+  function selectInputMode(mode: IntakeMode) {
+    setInputMode(mode);
+
+    if (!realtimeConnected && !realtimeSecret) {
+      setRealtimeStatus(idleRealtimeStatusForMode(mode));
     }
   }
 
@@ -1085,7 +1106,7 @@ export default function TenantApp() {
     setStatus("AI가 상담 내용을 정리 중");
     const payload = {
       messageText,
-      inputMode,
+      inputMode: messageInputModeForMode(inputMode),
       attachmentUrls: uploadedAttachment ? [uploadedAttachment.fileUrl] : []
     };
     const result = await apiRequest<{ session: IntakeSession }>(
@@ -1597,20 +1618,16 @@ export default function TenantApp() {
             <h2>상담</h2>
           </div>
           <div className="mode-row" role="group" aria-label="입력 방식">
-            <button
-              type="button"
-              className={inputMode === "CHAT" ? "active" : ""}
-              onClick={() => setInputMode("CHAT")}
-            >
-              채팅
-            </button>
-            <button
-              type="button"
-              className={inputMode === "VOICE" ? "active" : ""}
-              onClick={() => setInputMode("VOICE")}
-            >
-              음성
-            </button>
+            {intakeModeOptions.map((option) => (
+              <button
+                type="button"
+                className={inputMode === option.mode ? "active" : ""}
+                onClick={() => selectInputMode(option.mode)}
+                key={option.mode}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
           <button type="button" className="primary" onClick={() => void startSession()}>
             새 상담 시작
@@ -1685,7 +1702,9 @@ export default function TenantApp() {
           <div className="realtime-panel" aria-label="Realtime 음성 상담">
             <div>
               <span className={realtimeConnected ? "live-dot on" : "live-dot"} />
-              <strong>{realtimeConnected ? "음성 연결됨" : "Realtime Voice"}</strong>
+              <strong>
+                {realtimeConnected ? `${selectedIntakeMode.label} 연결됨` : selectedIntakeMode.realtimeLabel}
+              </strong>
               <p>{realtimeStatus}</p>
               {realtimeSecret ? (
                 <small>
@@ -1701,7 +1720,7 @@ export default function TenantApp() {
                 disabled={!selectedSession || selectedSession.status !== "ACTIVE"}
                 onClick={() => void prepareRealtimeVoice()}
               >
-                음성 연결
+                {selectedIntakeMode.connectLabel}
               </button>
               <button
                 type="button"
@@ -1709,7 +1728,7 @@ export default function TenantApp() {
                 disabled={!realtimeSecret && !realtimeConnected}
                 onClick={() => {
                   void disconnectRealtime();
-                  setRealtimeStatus("음성 상담 대기");
+                  setRealtimeStatus(selectedIntakeMode.idleStatus);
                 }}
               >
                 종료

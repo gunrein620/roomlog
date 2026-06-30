@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start -p 3001"
+    "start": "next start -p 3001",
+    "test": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\"}' node --test -r ts-node/register src/**/*.spec.ts"
   },
   "dependencies": {
     "next": "^16.2.9",
@@ -16,6 +17,7 @@
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
 }
