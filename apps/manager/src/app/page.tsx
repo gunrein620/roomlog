@@ -923,21 +923,19 @@ export default function ManagerApp() {
               </button>
             </form>
           )}
-          {demoAuthEnabled ? (
-            <button
-              type="button"
-              className="ghost"
-              onClick={async () => {
-                const result = await apiRequest<AuthResult>("/auth/login", undefined, {
-                  method: "POST",
-                  body: JSON.stringify(demoLogin)
-                });
-                await completeAuth(result);
-              }}
-            >
-              테스트 관리자 계정으로 시작
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="ghost"
+            onClick={async () => {
+              const result = await apiRequest<AuthResult>("/auth/login", undefined, {
+                method: "POST",
+                body: JSON.stringify(demoLogin)
+              });
+              await completeAuth(result);
+            }}
+          >
+            테스트 관리자 계정으로 시작
+          </button>
           <p className="status-line">{status}</p>
         </section>
       </main>
