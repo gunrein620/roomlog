@@ -61,6 +61,7 @@ import {
   initialTenantReopenText
 } from "./action-form-state";
 import { resolveAttachmentUrl } from "./attachment-url";
+import { chatMessageBlocks } from "./chat-message-format";
 
 type AuthResult = {
   accessToken: string;
@@ -491,6 +492,30 @@ function senderLabel(sender: IntakeMessage["sender"] | string) {
   }
 
   return "시스템";
+}
+
+function ChatMessageBody({ text }: { text: string }) {
+  return (
+    <div className="message-content">
+      {chatMessageBlocks(text).map((block, index) => {
+        if (block.kind === "heading") {
+          return <h4 key={`${block.kind}-${index}`}>{block.text}</h4>;
+        }
+
+        if (block.kind === "list") {
+          return (
+            <ul key={`${block.kind}-${index}`}>
+              {block.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        return <p key={`${block.kind}-${index}`}>{block.text}</p>;
+      })}
+    </div>
+  );
 }
 
 function timelineTypeLabel(type: RoomTimelineEntry["type"]) {
@@ -1936,7 +1961,7 @@ export default function TenantApp() {
                 className={message.sender === "TENANT" ? "bubble mine" : "bubble assistant"}
               >
                 <span>{senderLabel(message.sender)}</span>
-                <p>{message.messageText}</p>
+                <ChatMessageBody text={message.messageText} />
                 {message.attachmentUrls.length > 0 ? (
                   <div className="attachment-preview">
                     {message.attachmentUrls.map((url) => (
@@ -2331,7 +2356,7 @@ export default function TenantApp() {
                 {selectedComplaint.messages.map((message) => (
                   <li key={message.id}>
                     <span>{senderLabel(message.senderRole)}</span>
-                    <p>{message.messageText}</p>
+                    <ChatMessageBody text={message.messageText} />
                     {message.attachmentUrls.length ? (
                       <div className="attachment-preview">
                         {message.attachmentUrls.map((url) => (

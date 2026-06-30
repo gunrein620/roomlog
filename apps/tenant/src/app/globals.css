@@ -760,6 +760,36 @@ textarea {
   white-space: pre-line;
 }
 
+.message-content {
+  display: grid;
+  gap: 7px;
+  margin-top: 6px;
+  color: var(--slate);
+  line-height: 1.6;
+}
+
+.message-content p,
+.message-content h4,
+.message-content ul {
+  margin: 0;
+}
+
+.message-content h4 {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.message-content ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+}
+
+.message-content li {
+  padding-left: 2px;
+}
+
 .attachment-preview {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
