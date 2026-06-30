@@ -1406,6 +1406,58 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("falls back quickly when the OpenAI Responses request exceeds the configured timeout", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalTimeout = process.env.OPENAI_CHAT_TIMEOUT_MS;
+    const originalFetch = globalThis.fetch;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+    let capturedSignal: AbortSignal | undefined;
+    let aborted = false;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_CHAT_TIMEOUT_MS = "1";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedSignal = init?.signal as AbortSignal | undefined;
+
+      if (!capturedSignal) {
+        throw new Error("OpenAI request did not include an abort signal");
+      }
+
+      return new Promise<Response>((_resolve, reject) => {
+        capturedSignal?.addEventListener("abort", () => {
+          aborted = true;
+          reject(capturedSignal?.reason ?? new DOMException("Aborted", "AbortError"));
+        });
+      });
+    }) as typeof fetch;
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "301호 관리비 청구 금액이 계약서와 달라서 확인 요청드립니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.ok(capturedSignal, "expected OpenAI request to receive an abort signal");
+      assert.equal(aborted, true);
+      assert.equal(result.session.draft.category, "납부");
+      assert.equal(result.session.draft.detailCategory, "관리비 청구");
+      assert.match(result.assistantMessage.messageText, /로컬 안전 지침|접수 초안/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+      if (originalTimeout) {
+        process.env.OPENAI_CHAT_TIMEOUT_MS = originalTimeout;
+      } else {
+        delete process.env.OPENAI_CHAT_TIMEOUT_MS;
+      }
+    }
+  });
+
   it("chains OpenAI Responses within one intake thread without leaking across threads", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalChatModel = process.env.OPENAI_CHAT_MODEL;
@@ -2253,6 +2305,43 @@ describe("RoomlogService", () => {
 
     if (originalApiKey) {
       process.env.OPENAI_API_KEY = originalApiKey;
+    }
+  });
+
+  it("keeps fallback payment disputes out of repair photo and visit collection", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "301호 관리비 청구 금액이 계약서와 달라서 확인 요청드립니다.",
+        inputMode: "CHAT"
+      });
+      const draft = result.session.draft;
+      const reply = result.assistantMessage.messageText;
+
+      assert.equal(draft.category, "납부");
+      assert.equal(draft.detailCategory, "관리비 청구");
+      assert.equal(draft.photoRequested, false);
+      assert.equal(draft.readyToFinalize, true);
+      assert.deepEqual(draft.requiredInfo, []);
+      assert.equal(draft.intakeSlots.find((slot) => slot.key === "photo")?.status, "OPTIONAL");
+      assert.equal(draft.intakeSlots.find((slot) => slot.key === "visitTime")?.status, "OPTIONAL");
+      assert.doesNotMatch(reply, /문제 부위 근접 사진|공간 전체 사진|방문 가능 시간|전기|가스|침수/);
+      assert.match(reply, /관리비|청구|계약서/);
+
+      const finalized = service.finalizeIntakeSession("tenant-demo", session.id);
+
+      assert.equal(finalized.ticket.category, "관리비 청구");
+      assert.match(finalized.ticket.aiSummary, /관리비|청구|계약서/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
     }
   });
 

@@ -55,6 +55,7 @@ Demo accounts use `password123!`:
 
 API가 실행되는 환경의 `.env`에 `OPENAI_API_KEY`가 있어야 OpenAI 상담/음성 기능이 활성화됩니다. 로컬과 `ssh rlog` 서버에서 같은 OpenAI 동작을 기대한다면 두 환경의 API용 `.env`에 같은 키를 넣어야 합니다.
 텍스트 상담은 기본적으로 `OPENAI_CHAT_MODEL=gpt-5.5`를 사용하고, 필요하면 환경별 `.env`에서 다른 Responses API 모델로 바꿀 수 있습니다.
+텍스트 상담 OpenAI 호출은 기본 12초 뒤 로컬 fallback으로 전환되며, 필요하면 `OPENAI_CHAT_TIMEOUT_MS`로 조정할 수 있습니다.
 
 환경별로 달라져야 하는 값도 있습니다.
 

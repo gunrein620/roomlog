@@ -555,6 +555,30 @@ function openAiChatReasoningEffort() {
   return configured && allowed.has(configured) ? configured : "medium";
 }
 
+function openAiChatTimeoutMs() {
+  const configured = process.env.OPENAI_CHAT_TIMEOUT_MS?.trim();
+  const parsed = configured ? Number(configured) : Number.NaN;
+
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 60_000) : 12_000;
+}
+
+function abortSignalWithTimeout(timeoutMs: number) {
+  const timeoutFactory = (AbortSignal as typeof AbortSignal & {
+    timeout?: (milliseconds: number) => AbortSignal;
+  }).timeout;
+
+  if (timeoutFactory) {
+    return timeoutFactory(timeoutMs);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  timeout.unref?.();
+
+  return controller.signal;
+}
+
 @Injectable()
 export class RoomlogService {
   private readonly store: Store;
@@ -1017,10 +1041,11 @@ export class RoomlogService {
     const intakeSlots = this.draftIntakeSlots(session);
     const slotCounts = this.intakeSlotCounts(intakeSlots);
     const requiresPhoto =
-      draft.photoRequested ||
-      draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
-      draft.photoAnalysis.recommendedRetake ||
-      draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question));
+      draft.category === "하자" &&
+      (draft.photoRequested ||
+        draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
+        draft.photoAnalysis.recommendedRetake ||
+        draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question)));
     const nextQuestions = [
       draft.photoAnalysis.recommendedRetake &&
       !draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question))
@@ -3951,6 +3976,7 @@ export class RoomlogService {
     try {
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
+        signal: abortSignalWithTimeout(openAiChatTimeoutMs()),
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json",
@@ -4033,9 +4059,10 @@ export class RoomlogService {
       session?.messages.reduce((total, message) => total + message.attachmentUrls.length, 0) ||
       0;
     const needsPhoto =
-      draft.photoRequested ||
-      draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
-      draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question));
+      draft.category === "하자" &&
+      (draft.photoRequested ||
+        draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
+        draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question)));
     const contextLines = draft.contextHints.slice(0, 2);
     const duplicateLines = draft.duplicateCandidates.length
       ? [
@@ -4163,9 +4190,10 @@ export class RoomlogService {
     const lacksSafety =
       needsSafety && !/(안전|전기|콘센트|스위치|가스|환기|불꽃|만지지|119|문이)/.test(generated);
     const needsPhoto =
-      draft.photoRequested ||
-      draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
-      draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question));
+      draft.category === "하자" &&
+      (draft.photoRequested ||
+        draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
+        draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question)));
     const lacksPhoto = needsPhoto && !/(사진|촬영|첨부|근접|전체)/.test(generated);
     const needsVisit =
       draft.requiredInfo.some((item) => /방문|시간/.test(item)) ||
@@ -5225,6 +5253,54 @@ export class RoomlogService {
   }
 
   private detectDetailCategory(text: string) {
+    if (text.includes("관리비")) {
+      return "관리비 청구";
+    }
+
+    if (text.includes("월세")) {
+      return "월세 납부";
+    }
+
+    if (text.includes("연체")) {
+      return "연체 문의";
+    }
+
+    if (text.includes("납부")) {
+      return "납부 확인";
+    }
+
+    if (text.includes("보증금")) {
+      return "보증금";
+    }
+
+    if (/(계약\s*(갱신|연장)|재계약)/.test(text)) {
+      return "계약 갱신";
+    }
+
+    if (text.includes("특약")) {
+      return "특약 확인";
+    }
+
+    if (text.includes("계약")) {
+      return "계약 문의";
+    }
+
+    if (text.includes("엘리베이터")) {
+      return "엘리베이터";
+    }
+
+    if (text.includes("주차장")) {
+      return "주차장";
+    }
+
+    if (text.includes("복도")) {
+      return "복도";
+    }
+
+    if (text.includes("공용")) {
+      return "공용공간";
+    }
+
     const fixtureIssue = this.detectFixtureIssueCategory(text);
     const hasLeakSignal = this.hasLeakSignal(text);
 
