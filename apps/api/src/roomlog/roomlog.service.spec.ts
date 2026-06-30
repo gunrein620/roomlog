@@ -393,6 +393,42 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("includes unresolved intake slots in callbot Realtime instructions", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "CALLBOT"
+    });
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 천장에서 물이 계속 떨어집니다. 통화라 사진은 아직 못 보냈습니다.",
+        inputMode: "VOICE"
+      });
+
+      const result = await service.createRealtimeClientSecret("tenant-demo", session.id, {
+        purpose: "CALLBOT_INTAKE",
+        voice: "marin"
+      });
+
+      assert.equal(result.mode, "not_configured");
+      assert.match(result.instructions, /전화 통화 기반 민원 접수 콜봇/);
+      assert.match(result.instructions, /# 수집 정보 상태/);
+      assert.match(result.instructions, /사진: 확인 필요/);
+      assert.match(result.instructions, /방문 가능 시간: 확인 필요/);
+      assert.match(result.instructions, /근접 사진|공간 전체 사진/);
+      assert.match(result.instructions, /누락된 항목 중 가장 중요한 하나만 질문/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("records Realtime voice transcripts as isolated intake thread messages", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

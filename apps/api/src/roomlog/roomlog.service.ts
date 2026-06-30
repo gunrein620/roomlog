@@ -4434,6 +4434,23 @@ export class RoomlogService {
         ? "전화 통화 기반 민원 접수 콜봇"
         : "세입자 채팅/음성 기반 민원 접수 상담";
     const draft = session.draft;
+    const slotStatusLabel: Record<IntakeSlot["status"], string> = {
+      COLLECTED: "확인됨",
+      NEEDS_INFO: "확인 필요",
+      OPTIONAL: "선택"
+    };
+    const intakeSlotStatus = this.draftIntakeSlots(session)
+      .map((slot) =>
+        [
+          `${slot.label}: ${slotStatusLabel[slot.status]}`,
+          slot.value ? `값=${slot.value}` : undefined,
+          slot.evidence ? `근거=${slot.evidence}` : undefined,
+          slot.action ? `다음 행동=${slot.action}` : undefined
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      )
+      .join("\n");
     const draftStatus = [
       `제목: ${draft.title || "미정"}`,
       `요약: ${draft.summary || "미정"}`,
@@ -4486,6 +4503,9 @@ export class RoomlogService {
       "- 정보가 부족하면 누락된 항목 중 가장 중요한 하나만 질문합니다.",
       "- 접수 초안이 준비되면 세입자가 화면에서 수정 후 확정할 수 있다고 안내합니다.",
       input.instructions ? `추가 운영 지침: ${input.instructions}` : "",
+      "",
+      "# 수집 정보 상태",
+      intakeSlotStatus || "아직 수집된 정보가 없습니다.",
       "",
       "# 현재 접수 초안 상태",
       draftStatus,
