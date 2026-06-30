@@ -557,6 +557,14 @@ export class RoomlogService {
     };
   }
 
+  getRuntimeConfig() {
+    return {
+      demoAuth: {
+        enabled: this.seedDemoData
+      }
+    };
+  }
+
   createComplaint(tenantId: string, input: CreateComplaintInput) {
     this.validateComplaintInput(input);
 

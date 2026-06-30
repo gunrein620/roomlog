@@ -68,6 +68,12 @@ type Attachment = {
   fileUrl: string;
 };
 
+type RuntimeConfig = {
+  demoAuth: {
+    enabled: boolean;
+  };
+};
+
 function costBearerLabel(costBearer?: "LANDLORD" | "TENANT" | "PENDING") {
   if (costBearer === "LANDLORD") {
     return "임대인 부담";
@@ -87,6 +93,11 @@ function costBearerLabel(costBearer?: "LANDLORD" | "TENANT" | "PENDING") {
 const demoLogin = {
   email: "vendor@roomlog.test",
   password: "password123!"
+};
+
+const emptyLogin = {
+  email: "",
+  password: ""
 };
 
 const signupInitial = {
@@ -131,8 +142,9 @@ export default function VendorApp() {
   const [selectedId, setSelectedId] = useState("");
   const [status, setStatus] = useState("로그인 또는 회원가입이 필요합니다.");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [loginForm, setLoginForm] = useState(demoLogin);
+  const [loginForm, setLoginForm] = useState(emptyLogin);
   const [signupForm, setSignupForm] = useState(signupInitial);
+  const [demoAuthEnabled, setDemoAuthEnabled] = useState(false);
   const [invitePreview, setInvitePreview] = useState<SignupInvitePreview | null>(null);
   const [invitePreviewStatus, setInvitePreviewStatus] = useState("");
   const [estimateAmount, setEstimateAmount] = useState("120000");
@@ -157,6 +169,33 @@ export default function VendorApp() {
     setRepairs(data);
     setSelectedId((current) => current || data[0]?.id || "");
   }
+
+  useEffect(() => {
+    let active = true;
+
+    void apiRequest<RuntimeConfig>("/roomlog/runtime-config")
+      .then((config) => {
+        if (!active) {
+          return;
+        }
+
+        setDemoAuthEnabled(config.demoAuth.enabled);
+        if (config.demoAuth.enabled) {
+          setLoginForm((current) =>
+            current.email || current.password ? current : demoLogin
+          );
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDemoAuthEnabled(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const inviteToken = new URLSearchParams(window.location.search).get("inviteToken")?.trim();
@@ -540,19 +579,21 @@ export default function VendorApp() {
               </button>
             </form>
           )}
-          <button
-            type="button"
-            className="ghost"
-            onClick={async () => {
-              const result = await apiRequest<AuthResult>("/auth/login", undefined, {
-                method: "POST",
-                body: JSON.stringify(demoLogin)
-              });
-              await completeAuth(result);
-            }}
-          >
-            테스트 업체 계정으로 시작
-          </button>
+          {demoAuthEnabled ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={async () => {
+                const result = await apiRequest<AuthResult>("/auth/login", undefined, {
+                  method: "POST",
+                  body: JSON.stringify(demoLogin)
+                });
+                await completeAuth(result);
+              }}
+            >
+              테스트 업체 계정으로 시작
+            </button>
+          ) : null}
           <p className="status-line">{status}</p>
         </section>
       </main>

@@ -214,6 +214,12 @@ type ManagerReplyDraft = {
   generatedAt: string;
 };
 
+type RuntimeConfig = {
+  demoAuth: {
+    enabled: boolean;
+  };
+};
+
 const replyIntentOptions: { value: ManagerReplyIntent; label: string }[] = [
   { value: "RECEIPT_ACK", label: "접수 안내" },
   { value: "REQUEST_PHOTO", label: "사진 요청" },
@@ -226,6 +232,11 @@ const replyIntentOptions: { value: ManagerReplyIntent; label: string }[] = [
 const demoLogin = {
   email: "manager@roomlog.test",
   password: "password123!"
+};
+
+const emptyLogin = {
+  email: "",
+  password: ""
 };
 
 const signupInitial = {
@@ -330,8 +341,9 @@ export default function ManagerApp() {
   const [selectedId, setSelectedId] = useState("");
   const [status, setStatus] = useState("로그인 또는 회원가입이 필요합니다.");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [loginForm, setLoginForm] = useState(demoLogin);
+  const [loginForm, setLoginForm] = useState(emptyLogin);
   const [signupForm, setSignupForm] = useState(signupInitial);
+  const [demoAuthEnabled, setDemoAuthEnabled] = useState(false);
   const [inviteForm, setInviteForm] = useState(inviteInitial);
   const [tenantInviteForm, setTenantInviteForm] = useState(tenantInviteInitial);
   const [tenantOrigin, setTenantOrigin] = useState("");
@@ -401,6 +413,33 @@ export default function ManagerApp() {
     }));
     setSelectedId((current) => current || ticketData[0]?.id || "");
   }
+
+  useEffect(() => {
+    let active = true;
+
+    void apiRequest<RuntimeConfig>("/roomlog/runtime-config")
+      .then((config) => {
+        if (!active) {
+          return;
+        }
+
+        setDemoAuthEnabled(config.demoAuth.enabled);
+        if (config.demoAuth.enabled) {
+          setLoginForm((current) =>
+            current.email || current.password ? current : demoLogin
+          );
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDemoAuthEnabled(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const { protocol, hostname, port, origin } = window.location;
@@ -824,19 +863,21 @@ export default function ManagerApp() {
               </button>
             </form>
           )}
-          <button
-            type="button"
-            className="ghost"
-            onClick={async () => {
-              const result = await apiRequest<AuthResult>("/auth/login", undefined, {
-                method: "POST",
-                body: JSON.stringify(demoLogin)
-              });
-              await completeAuth(result);
-            }}
-          >
-            테스트 관리자 계정으로 시작
-          </button>
+          {demoAuthEnabled ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={async () => {
+                const result = await apiRequest<AuthResult>("/auth/login", undefined, {
+                  method: "POST",
+                  body: JSON.stringify(demoLogin)
+                });
+                await completeAuth(result);
+              }}
+            >
+              테스트 관리자 계정으로 시작
+            </button>
+          ) : null}
           <p className="status-line">{status}</p>
         </section>
       </main>

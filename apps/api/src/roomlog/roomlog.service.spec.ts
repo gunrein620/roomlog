@@ -110,6 +110,18 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("exposes runtime config so clients can hide demo auth in production-style mode", () => {
+    const productionStyleService = new RoomlogService({ seedDemoData: false } as any);
+    const demoStyleService = new RoomlogService({ seedDemoData: true } as any);
+
+    assert.deepEqual((productionStyleService as any).getRuntimeConfig(), {
+      demoAuth: { enabled: false }
+    });
+    assert.deepEqual((demoStyleService as any).getRuntimeConfig(), {
+      demoAuth: { enabled: true }
+    });
+  });
+
   it("returns a Realtime setup response tied to an intake thread when OpenAI is not configured", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalRealtimeModel = process.env.OPENAI_REALTIME_MODEL;

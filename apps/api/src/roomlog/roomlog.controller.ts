@@ -53,6 +53,11 @@ export class RoomlogController {
     return this.roomlogService.getDemoState();
   }
 
+  @Get("roomlog/runtime-config")
+  getRuntimeConfig() {
+    return this.roomlogService.getRuntimeConfig();
+  }
+
   @Post("auth/signup")
   signup(
     @Body()

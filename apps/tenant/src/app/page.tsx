@@ -314,6 +314,17 @@ type TenantHome = {
   roomTimeline: RoomTimelineEntry[];
 };
 
+type RuntimeConfig = {
+  demoAuth: {
+    enabled: boolean;
+  };
+};
+
+const emptyLogin = {
+  email: "",
+  password: ""
+};
+
 const demoLogin = {
   email: "tenant@roomlog.test",
   password: "password123!"
@@ -451,8 +462,9 @@ export default function TenantApp() {
   const [aiFeedbackPhotoInputKey, setAiFeedbackPhotoInputKey] = useState(0);
   const [inputMode, setInputMode] = useState<"CHAT" | "VOICE">("CHAT");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [loginForm, setLoginForm] = useState(demoLogin);
+  const [loginForm, setLoginForm] = useState(emptyLogin);
   const [signupForm, setSignupForm] = useState(signupInitial);
+  const [demoAuthEnabled, setDemoAuthEnabled] = useState(false);
   const [invitePreview, setInvitePreview] = useState<SignupInvitePreview | null>(null);
   const [invitePreviewStatus, setInvitePreviewStatus] = useState("");
   const [status, setStatus] = useState("로그인 또는 회원가입이 필요합니다.");
@@ -543,6 +555,33 @@ export default function TenantApp() {
     setSelectedSessionId((current) => current || sessionData[0]?.id || "");
     setSelectedComplaintId((current) => current || homeData.complaints[0]?.id || "");
   }
+
+  useEffect(() => {
+    let active = true;
+
+    void apiRequest<RuntimeConfig>("/roomlog/runtime-config")
+      .then((config) => {
+        if (!active) {
+          return;
+        }
+
+        setDemoAuthEnabled(config.demoAuth.enabled);
+        if (config.demoAuth.enabled) {
+          setLoginForm((current) =>
+            current.email || current.password ? current : demoLogin
+          );
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDemoAuthEnabled(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const inviteToken = new URLSearchParams(window.location.search).get("inviteToken")?.trim();
@@ -1424,19 +1463,21 @@ export default function TenantApp() {
               </button>
             </form>
           )}
-          <button
-            type="button"
-            className="ghost"
-            onClick={async () => {
-              const result = await apiRequest<AuthResult>("/auth/login", undefined, {
-                method: "POST",
-                body: JSON.stringify(demoLogin)
-              });
-              await completeAuth(result);
-            }}
-          >
-            테스트 세입자 계정으로 시작
-          </button>
+          {demoAuthEnabled ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={async () => {
+                const result = await apiRequest<AuthResult>("/auth/login", undefined, {
+                  method: "POST",
+                  body: JSON.stringify(demoLogin)
+                });
+                await completeAuth(result);
+              }}
+            >
+              테스트 세입자 계정으로 시작
+            </button>
+          ) : null}
           <p className="status-line">{status}</p>
         </section>
       </main>
