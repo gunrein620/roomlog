@@ -796,6 +796,43 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("upgrades realtime assistant transcripts that omit urgent safety and photo context", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "CALLBOT"
+    });
+
+    try {
+      const result = await service.recordRealtimeTurn("tenant-demo", session.id, {
+        userTranscript:
+          "301호 화장실 천장에서 물이 계속 떨어지고 전등 근처로 번지고 있습니다. 오늘 저녁 8시 이후 통화 가능합니다.",
+        assistantTranscript:
+          "내용 확인했습니다. 접수 내용을 정리해서 관리자에게 전달하겠습니다. 잠시만 기다려 주세요. 상담 내용을 저장해 두겠습니다.",
+        eventId: "evt_callbot_generic_but_unsafe"
+      });
+      const assistantMessage = result.recordedMessages.find(
+        (message) => message.sender === "AI_ASSISTANT"
+      );
+
+      assert.match(assistantMessage?.messageText ?? "", /전기|전등|스위치|콘센트/);
+      assert.match(assistantMessage?.messageText ?? "", /만지지|안전/);
+      assert.match(assistantMessage?.messageText ?? "", /사진|근접|전체/);
+      assert.notEqual(
+        assistantMessage?.messageText,
+        "내용 확인했습니다. 접수 내용을 정리해서 관리자에게 전달하겠습니다. 잠시만 기다려 주세요. 상담 내용을 저장해 두겠습니다."
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("returns a realtime turn summary with next questions and photo actions", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

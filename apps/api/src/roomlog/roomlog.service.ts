@@ -3976,8 +3976,30 @@ export class RoomlogService {
       /^(네|넵|예|알겠습니다|확인했습니다|접수했습니다|처리하겠습니다|네,?알겠습니다)[.!。]*$/.test(
         compact
       );
+    const fallbackNeedsSafety =
+      /(안전|전기|전등|콘센트|스위치|가스|환기|불꽃|만지지|119|문이 잠기지)/.test(
+        fallbackMessage
+      );
+    const generatedHasSafety =
+      /(안전|전기|전등|콘센트|스위치|가스|환기|불꽃|만지지|119|문이 잠기지)/.test(
+        generated
+      );
+    const fallbackNeedsPhoto = /(사진|촬영|첨부|근접|전체)/.test(fallbackMessage);
+    const generatedHasPhoto = /(사진|촬영|첨부|근접|전체)/.test(generated);
+    const fallbackNeedsVisit = /(방문|시간|일정|가능)/.test(fallbackMessage);
+    const generatedHasVisit = /(방문|시간|일정|가능)/.test(generated);
+    const lacksCriticalContext =
+      (fallbackNeedsSafety && !generatedHasSafety) ||
+      (fallbackNeedsPhoto && !generatedHasPhoto) ||
+      (fallbackNeedsVisit && !generatedHasVisit);
+    const hasSpecificHandoff =
+      /(콜봇\s*스레드|긴급\s*접수\s*초안|사진\s*업로드\s*링크|업로드\s*링크|통화|녹음|301호|302호|303호|304호|305호|화장실|욕실|천장|누수|도어락|수전|세면대|전등)/.test(
+        generated
+      );
 
-    return isTerse ? fallbackMessage : generated;
+    return isTerse || (lacksCriticalContext && !hasSpecificHandoff)
+      ? fallbackMessage
+      : generated;
   }
 
   private buildIntakeResponseInstructions(session: IntakeSession) {
