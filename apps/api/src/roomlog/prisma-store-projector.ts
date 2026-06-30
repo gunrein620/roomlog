@@ -10,6 +10,10 @@ function asJson<T>(value: T) {
   return value as Prisma.InputJsonValue;
 }
 
+function actorRoleFor(store: Store, userId: string) {
+  return store.users.find((user) => user.id === userId)?.role ?? "SYSTEM";
+}
+
 export class PrismaStoreProjector implements StoreProjector {
   private readonly prisma: PrismaClient;
 
@@ -94,6 +98,72 @@ export class PrismaStoreProjector implements StoreProjector {
         });
       }
 
+      for (const invite of store.vendorInvites) {
+        await tx.vendorInvite.upsert({
+          where: { id: invite.id },
+          create: {
+            id: invite.id,
+            inviteToken: invite.inviteToken,
+            invitedByManagerId: invite.invitedByManagerId,
+            email: invite.email,
+            businessName: invite.businessName,
+            contactPerson: invite.contactPerson,
+            phone: invite.phone,
+            serviceArea: invite.serviceArea,
+            status: invite.status,
+            signupUrl: invite.signupUrl,
+            createdAt: asDate(invite.createdAt),
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          },
+          update: {
+            invitedByManagerId: invite.invitedByManagerId,
+            email: invite.email,
+            businessName: invite.businessName,
+            contactPerson: invite.contactPerson,
+            phone: invite.phone,
+            serviceArea: invite.serviceArea,
+            status: invite.status,
+            signupUrl: invite.signupUrl,
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          }
+        });
+      }
+
+      for (const invite of store.tenantInvites) {
+        await tx.tenantInvite.upsert({
+          where: { id: invite.id },
+          create: {
+            id: invite.id,
+            inviteToken: invite.inviteToken,
+            invitedByManagerId: invite.invitedByManagerId,
+            roomId: invite.roomId,
+            email: invite.email,
+            tenantName: invite.tenantName,
+            phone: invite.phone,
+            moveInDate: asDate(invite.moveInDate),
+            status: invite.status,
+            signupUrl: invite.signupUrl,
+            createdAt: asDate(invite.createdAt),
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          },
+          update: {
+            invitedByManagerId: invite.invitedByManagerId,
+            roomId: invite.roomId,
+            email: invite.email,
+            tenantName: invite.tenantName,
+            phone: invite.phone,
+            moveInDate: asDate(invite.moveInDate),
+            status: invite.status,
+            signupUrl: invite.signupUrl,
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          }
+        });
+      }
+
       for (const attachment of store.attachments) {
         await tx.attachment.upsert({
           where: { id: attachment.id },
@@ -114,6 +184,34 @@ export class PrismaStoreProjector implements StoreProjector {
             mimeType: attachment.mimeType,
             sizeBytes: attachment.sizeBytes,
             category: attachment.category
+          }
+        });
+      }
+
+      for (const item of store.moveInChecklist) {
+        await tx.moveInChecklistItem.upsert({
+          where: { id: item.id },
+          create: {
+            id: item.id,
+            tenantId: item.tenantId,
+            roomId: item.roomId,
+            area: item.area,
+            itemName: item.itemName,
+            memo: item.memo,
+            guidance: item.guidance,
+            attachmentUrls: item.attachmentUrls,
+            createdAt: asDate(item.createdAt),
+            updatedAt: asDate(item.updatedAt)
+          },
+          update: {
+            tenantId: item.tenantId,
+            roomId: item.roomId,
+            area: item.area,
+            itemName: item.itemName,
+            memo: item.memo,
+            guidance: item.guidance,
+            attachmentUrls: item.attachmentUrls,
+            updatedAt: asDate(item.updatedAt)
           }
         });
       }
@@ -240,6 +338,142 @@ export class PrismaStoreProjector implements StoreProjector {
             aiSummary: ticket.aiSummary,
             dueAt: asDate(ticket.dueAt),
             updatedAt: asDate(ticket.updatedAt)
+          }
+        });
+      }
+
+      for (const feedback of store.aiFeedback) {
+        await tx.aiFeedback.upsert({
+          where: { id: feedback.id },
+          create: {
+            id: feedback.id,
+            ticketId: feedback.ticketId,
+            complaintId: feedback.complaintId,
+            tenantId: feedback.tenantId,
+            target: feedback.target,
+            targetLabel: feedback.targetLabel,
+            originalValue: feedback.originalValue,
+            reason: feedback.reason,
+            requestedAction: feedback.requestedAction,
+            attachmentUrls: feedback.attachmentUrls,
+            status: feedback.status,
+            managerReviewNote: feedback.managerReviewNote,
+            correctedValue: feedback.correctedValue,
+            reviewedByUserId: feedback.reviewedByUserId,
+            reviewedAt: asDate(feedback.reviewedAt),
+            createdAt: asDate(feedback.createdAt),
+            updatedAt: asDate(feedback.updatedAt)
+          },
+          update: {
+            ticketId: feedback.ticketId,
+            complaintId: feedback.complaintId,
+            tenantId: feedback.tenantId,
+            target: feedback.target,
+            targetLabel: feedback.targetLabel,
+            originalValue: feedback.originalValue,
+            reason: feedback.reason,
+            requestedAction: feedback.requestedAction,
+            attachmentUrls: feedback.attachmentUrls,
+            status: feedback.status,
+            managerReviewNote: feedback.managerReviewNote,
+            correctedValue: feedback.correctedValue,
+            reviewedByUserId: feedback.reviewedByUserId,
+            reviewedAt: asDate(feedback.reviewedAt),
+            updatedAt: asDate(feedback.updatedAt)
+          }
+        });
+      }
+
+      for (const repair of store.repairs) {
+        await tx.repairRequest.upsert({
+          where: { id: repair.id },
+          create: {
+            id: repair.id,
+            ticketId: repair.ticketId,
+            vendorId: repair.vendorId,
+            status: repair.status,
+            title: repair.title,
+            description: repair.description,
+            estimateAmount: repair.estimateAmount,
+            estimateDescription: repair.estimateDescription,
+            costBearer: repair.costBearer,
+            estimateApprovedAt: asDate(repair.estimateApprovedAt),
+            estimateApprovalNote: repair.estimateApprovalNote,
+            scheduledAt: asDate(repair.scheduledAt),
+            completedAt: asDate(repair.completedAt),
+            completionNote: repair.completionNote,
+            completionPhotoUrls: repair.completionPhotoUrls,
+            createdAt: asDate(repair.createdAt),
+            updatedAt: asDate(repair.updatedAt)
+          },
+          update: {
+            ticketId: repair.ticketId,
+            vendorId: repair.vendorId,
+            status: repair.status,
+            title: repair.title,
+            description: repair.description,
+            estimateAmount: repair.estimateAmount,
+            estimateDescription: repair.estimateDescription,
+            costBearer: repair.costBearer,
+            estimateApprovedAt: asDate(repair.estimateApprovedAt),
+            estimateApprovalNote: repair.estimateApprovalNote,
+            scheduledAt: asDate(repair.scheduledAt),
+            completedAt: asDate(repair.completedAt),
+            completionNote: repair.completionNote,
+            completionPhotoUrls: repair.completionPhotoUrls,
+            updatedAt: asDate(repair.updatedAt)
+          }
+        });
+      }
+
+      for (const message of store.messages) {
+        const repairId = (message as { repairId?: string }).repairId;
+
+        await tx.ticketMessage.upsert({
+          where: { id: message.id },
+          create: {
+            id: message.id,
+            ticketId: message.ticketId,
+            complaintId: message.complaintId,
+            repairId,
+            senderUserId: message.senderUserId,
+            senderRole: message.senderRole,
+            messageText: message.messageText,
+            attachmentUrls: message.attachmentUrls,
+            createdAt: asDate(message.createdAt)
+          },
+          update: {
+            ticketId: message.ticketId,
+            complaintId: message.complaintId,
+            repairId,
+            senderUserId: message.senderUserId,
+            senderRole: message.senderRole,
+            messageText: message.messageText,
+            attachmentUrls: message.attachmentUrls
+          }
+        });
+      }
+
+      for (const history of store.history) {
+        await tx.statusHistory.upsert({
+          where: { id: history.id },
+          create: {
+            id: history.id,
+            ticketId: history.ticketId,
+            fromStatus: history.fromStatus,
+            toStatus: history.toStatus,
+            actorUserId: history.changedByUserId,
+            actorRole: actorRoleFor(store, history.changedByUserId),
+            note: history.note ?? "",
+            createdAt: asDate(history.createdAt)
+          },
+          update: {
+            ticketId: history.ticketId,
+            fromStatus: history.fromStatus,
+            toStatus: history.toStatus,
+            actorUserId: history.changedByUserId,
+            actorRole: actorRoleFor(store, history.changedByUserId),
+            note: history.note ?? ""
           }
         });
       }

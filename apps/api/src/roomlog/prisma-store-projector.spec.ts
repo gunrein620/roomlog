@@ -189,4 +189,295 @@ describe("PrismaStoreProjector", () => {
       }
     }
   );
+
+  it(
+    "projects operational workflow state into Postgres tables",
+    { skip: !databaseUrl },
+    async () => {
+      const adapter = new PrismaPg({ connectionString: databaseUrl });
+      const prisma = new PrismaClient({ adapter });
+      const suffix = Date.now().toString(36);
+      const managerId = `usr_manager_${suffix}`;
+      const tenantId = `usr_ops_tenant_${suffix}`;
+      const vendorUserId = `usr_ops_vendor_${suffix}`;
+      const roomId = `room_ops_${suffix}`;
+      const vendorId = `ven_ops_${suffix}`;
+      const vendorInviteId = `vinv_ops_${suffix}`;
+      const tenantInviteId = `tinv_ops_${suffix}`;
+      const attachmentId = `att_ops_${suffix}`;
+      const checklistId = `mchk_ops_${suffix}`;
+      const complaintId = `cmp_ops_${suffix}`;
+      const ticketId = `tkt_ops_${suffix}`;
+      const feedbackId = `afb_ops_${suffix}`;
+      const repairId = `rep_ops_${suffix}`;
+      const messageId = `msg_ops_${suffix}`;
+      const historyId = `hst_ops_${suffix}`;
+      const projector = new PrismaStoreProjector(databaseUrl!);
+      const now = new Date().toISOString();
+      const store: Store = {
+        users: [
+          {
+            id: managerId,
+            email: `ops-manager-${suffix}@roomlog.test`,
+            passwordHash: "salt:hash",
+            name: "운영 관리자",
+            phone: `010-${suffix.slice(0, 4).padEnd(4, "0")}-4100`,
+            role: "LANDLORD",
+            status: "ACTIVE",
+            createdAt: now
+          },
+          {
+            id: tenantId,
+            email: `ops-tenant-${suffix}@roomlog.test`,
+            passwordHash: "salt:hash",
+            name: "운영 세입자",
+            phone: `010-${suffix.slice(0, 4).padEnd(4, "0")}-4101`,
+            role: "TENANT",
+            status: "ACTIVE",
+            createdAt: now
+          },
+          {
+            id: vendorUserId,
+            email: `ops-vendor-${suffix}@roomlog.test`,
+            passwordHash: "salt:hash",
+            name: "운영 기사",
+            phone: `010-${suffix.slice(0, 4).padEnd(4, "0")}-4102`,
+            role: "VENDOR",
+            status: "ACTIVE",
+            createdAt: now
+          }
+        ],
+        rooms: [
+          {
+            id: roomId,
+            buildingName: "운영 빌라",
+            roomNo: "901호",
+            address: "서울시 성동구 운영로 9",
+            landlordId: managerId
+          }
+        ],
+        tenantRooms: {
+          [tenantId]: roomId
+        },
+        vendors: [
+          {
+            id: vendorId,
+            userId: vendorUserId,
+            businessName: "운영 설비",
+            contactPerson: "운영 기사",
+            phone: "02-900-4102",
+            serviceArea: "성동구",
+            activeJobs: 1
+          }
+        ],
+        vendorInvites: [
+          {
+            id: vendorInviteId,
+            inviteToken: `vendor-token-${suffix}`,
+            invitedByManagerId: managerId,
+            email: `ops-vendor-invite-${suffix}@roomlog.test`,
+            businessName: "초대 설비",
+            contactPerson: "초대 기사",
+            phone: "02-900-4103",
+            serviceArea: "광진구",
+            status: "PENDING",
+            signupUrl: `/vendor?inviteToken=vendor-token-${suffix}`,
+            createdAt: now
+          }
+        ],
+        tenantInvites: [
+          {
+            id: tenantInviteId,
+            inviteToken: `tenant-token-${suffix}`,
+            invitedByManagerId: managerId,
+            roomId,
+            email: `ops-tenant-invite-${suffix}@roomlog.test`,
+            tenantName: "초대 세입자",
+            phone: "010-4103-4103",
+            moveInDate: now,
+            status: "PENDING",
+            signupUrl: `/tenant?inviteToken=tenant-token-${suffix}`,
+            createdAt: now
+          }
+        ],
+        attachments: [
+          {
+            id: attachmentId,
+            uploadedByUserId: tenantId,
+            category: "COMPLAINT_PHOTO",
+            fileName: "leak.jpg",
+            fileUrl: "/uploads/leak.jpg",
+            mimeType: "image/jpeg",
+            sizeBytes: 12345,
+            createdAt: now
+          }
+        ],
+        moveInChecklist: [
+          {
+            id: checklistId,
+            tenantId,
+            roomId,
+            area: "주방",
+            itemName: "싱크대 하부",
+            memo: "입주 전 이상 없음",
+            guidance: "기준 사진으로 보관하세요.",
+            attachmentUrls: ["/uploads/baseline.jpg"],
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        aiFeedback: [
+          {
+            id: feedbackId,
+            ticketId,
+            complaintId,
+            tenantId,
+            target: "RESPONSIBILITY",
+            targetLabel: "책임 판단",
+            originalValue: "판단 어려움",
+            reason: "입주 전 사진에는 이상이 없었습니다.",
+            requestedAction: "관리자가 다시 확인해주세요.",
+            attachmentUrls: ["/uploads/baseline.jpg"],
+            status: "OPEN",
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        intakeSessions: [],
+        complaints: [
+          {
+            id: complaintId,
+            tenantId,
+            roomId,
+            ticketId,
+            sourceChannel: "DIRECT_FORM",
+            title: "싱크대 누수",
+            description: "싱크대 하부 누수가 있습니다.",
+            location: "주방",
+            status: "VENDOR_ASSIGNED",
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        analyses: {
+          [ticketId]: {
+            summary: "싱크대 하부 누수",
+            category: "하자",
+            detailCategory: "누수",
+            priority: 2,
+            responsibilityHint: "판단 어려움",
+            confidenceScore: 0.81,
+            reasons: ["입주 전 사진 비교 필요"],
+            recommendedAction: "설비 업체 방문 점검"
+          }
+        },
+        tickets: [
+          {
+            id: ticketId,
+            complaintId,
+            tenantId,
+            roomId,
+            assignedVendorId: vendorId,
+            sourceChannel: "DIRECT_FORM",
+            category: "하자",
+            priority: 2,
+            status: "VENDOR_ASSIGNED",
+            responsibilityHint: "판단 어려움",
+            aiSummary: "싱크대 하부 누수",
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        repairs: [
+          {
+            id: repairId,
+            ticketId,
+            vendorId,
+            status: "REQUESTED",
+            title: "하자 처리 요청",
+            description: "싱크대 하부 점검 요청",
+            completionPhotoUrls: [],
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        messages: [
+          {
+            id: messageId,
+            ticketId,
+            complaintId,
+            senderUserId: managerId,
+            senderRole: "LANDLORD",
+            messageText: "업체를 배정했습니다.",
+            attachmentUrls: [],
+            createdAt: now
+          }
+        ],
+        history: [
+          {
+            id: historyId,
+            ticketId,
+            changedByUserId: managerId,
+            fromStatus: "RECEIVED",
+            toStatus: "VENDOR_ASSIGNED",
+            note: "업체 배정",
+            createdAt: now
+          }
+        ]
+      };
+
+      try {
+        await projector.persist(store);
+
+        const [
+          vendorInvite,
+          tenantInvite,
+          attachment,
+          checklist,
+          feedback,
+          repair,
+          message,
+          history
+        ] = await Promise.all([
+          prisma.vendorInvite.findUnique({ where: { id: vendorInviteId } }),
+          prisma.tenantInvite.findUnique({ where: { id: tenantInviteId } }),
+          prisma.attachment.findUnique({ where: { id: attachmentId } }),
+          prisma.moveInChecklistItem.findUnique({ where: { id: checklistId } }),
+          prisma.aiFeedback.findUnique({ where: { id: feedbackId } }),
+          prisma.repairRequest.findUnique({ where: { id: repairId } }),
+          prisma.ticketMessage.findUnique({ where: { id: messageId } }),
+          prisma.statusHistory.findUnique({ where: { id: historyId } })
+        ]);
+
+        assert.equal(vendorInvite?.businessName, "초대 설비");
+        assert.equal(tenantInvite?.tenantName, "초대 세입자");
+        assert.equal(attachment?.fileUrl, "/uploads/leak.jpg");
+        assert.equal(checklist?.itemName, "싱크대 하부");
+        assert.equal(feedback?.target, "RESPONSIBILITY");
+        assert.equal(repair?.vendorId, vendorId);
+        assert.equal(message?.messageText, "업체를 배정했습니다.");
+        assert.equal(history?.actorRole, "LANDLORD");
+      } finally {
+        await prisma.statusHistory.deleteMany({ where: { ticketId } });
+        await prisma.ticketMessage.deleteMany({ where: { ticketId } });
+        await prisma.repairRequest.deleteMany({ where: { ticketId } });
+        await prisma.aiFeedback.deleteMany({ where: { ticketId } });
+        await prisma.aiAnalysis.deleteMany({ where: { ticketId } });
+        await prisma.ticket.deleteMany({ where: { id: ticketId } });
+        await prisma.complaint.deleteMany({ where: { id: complaintId } });
+        await prisma.moveInChecklistItem.deleteMany({ where: { id: checklistId } });
+        await prisma.attachment.deleteMany({ where: { id: attachmentId } });
+        await prisma.tenantRoom.deleteMany({ where: { tenantId } });
+        await prisma.vendorProfile.deleteMany({ where: { id: vendorId } });
+        await prisma.vendorInvite.deleteMany({ where: { id: vendorInviteId } });
+        await prisma.tenantInvite.deleteMany({ where: { id: tenantInviteId } });
+        await prisma.room.deleteMany({ where: { id: roomId } });
+        await prisma.userAccount.deleteMany({
+          where: { id: { in: [managerId, tenantId, vendorUserId] } }
+        });
+        await projector.disconnect();
+        await prisma.$disconnect();
+      }
+    }
+  );
 });
