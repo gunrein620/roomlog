@@ -4935,6 +4935,14 @@ export class RoomlogService {
       return timeMatch[0].trim();
     }
 
+    const weekdayTimeMatch = text.match(
+      /(이번\s*주\s*)?(월|화|수|목|금|토|일)요일\s*(오전|오후|저녁|밤|낮|퇴근\s*후)?\s*(\d{1,2}시\s*(이후|전|부터)?)?/
+    );
+
+    if (weekdayTimeMatch?.[0]) {
+      return weekdayTimeMatch[0].replace(/\s+/g, " ").trim();
+    }
+
     const naturalTimeMatch = text.match(
       /(오늘|내일|평일|주말)\s*(오전|오후|저녁|밤|낮|퇴근\s*후)|(오전|오후|저녁|밤|낮|퇴근\s*후)\s*(방문|가능)/
     );

@@ -1538,6 +1538,53 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("understands weekday visit times from short tenant follow-up answers", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      const first = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 욕실 세면대 수전이 어제부터 헐거워졌고 위험한 상황은 없습니다.",
+        attachmentUrls: ["/uploads/faucet-loose.jpg"],
+        inputMode: "CHAT"
+      });
+
+      assert.equal(first.session.draft.availableTimes, undefined);
+      assert.equal(first.session.draft.readyToFinalize, false);
+      assert.equal(first.session.draft.requiredInfo.includes("방문 가능 시간"), true);
+      assert.equal(
+        first.session.draft.nextQuestions.some((question) => /방문 가능 시간|시간대/.test(question)),
+        true
+      );
+
+      const second = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "토요일 오전 가능합니다.",
+        inputMode: "CHAT"
+      });
+      const visitSlot = second.session.draft.intakeSlots.find(
+        (slot) => slot.key === "visitTime"
+      );
+
+      assert.equal(second.session.draft.availableTimes, "토요일 오전");
+      assert.equal(second.session.draft.requiredInfo.includes("방문 가능 시간"), false);
+      assert.equal(visitSlot?.status, "COLLECTED");
+      assert.equal(visitSlot?.value, "토요일 오전");
+      assert.match(second.assistantMessage.messageText, /토요일 오전/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("separates current intake thread from same-room historical context in OpenAI prompts", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalFetch = globalThis.fetch;
