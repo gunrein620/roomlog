@@ -346,6 +346,11 @@ describe("RoomlogService", () => {
       assert.equal(sessionPayload.audio?.output?.voice, "marin");
       assert.match(sessionPayload.instructions ?? "", /화장실/);
       assert.match(sessionPayload.instructions ?? "", /오늘 저녁 7시 이후/);
+      assert.match(sessionPayload.instructions ?? "", /# 역할과 목표/);
+      assert.match(sessionPayload.instructions ?? "", /# 대화 흐름/);
+      assert.match(sessionPayload.instructions ?? "", /한 번에 하나의 질문/);
+      assert.match(sessionPayload.instructions ?? "", /불명확한 음성/);
+      assert.match(sessionPayload.instructions ?? "", /완료 기준/);
       assert.equal(result.mode, "openai");
       assert.equal(result.clientSecret?.value, "ek_roomlog_test");
       assert.equal(result.openaiSessionId, "sess_openai_test");

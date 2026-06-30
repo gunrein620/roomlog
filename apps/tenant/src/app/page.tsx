@@ -25,6 +25,11 @@ import {
   photoUploadStatus,
   selectedPhotoSummary
 } from "./photo-selection";
+import {
+  applyRealtimeEventToTurn,
+  emptyRealtimeTurnState,
+  type RealtimeEventPayload
+} from "./realtime-events";
 
 type AuthResult = {
   accessToken: string;
@@ -211,22 +216,6 @@ type RealtimeTurnSummary = {
   nextQuestions: string[];
   tenantGuidance: string[];
   spokenReply: string;
-};
-
-type RealtimeEventPayload = {
-  type?: string;
-  transcript?: string;
-  text?: string;
-  delta?: string;
-  event_id?: string;
-  item_id?: string;
-  response_id?: string;
-  item?: {
-    id?: string;
-  };
-  response?: {
-    id?: string;
-  };
 };
 
 type Attachment = {
@@ -508,7 +497,7 @@ export default function TenantApp() {
   >({});
   const authRef = useRef<AuthResult | null>(null);
   const selectedSessionRef = useRef<IntakeSession | undefined>(undefined);
-  const realtimeTurnRef = useRef({ userTranscript: "", assistantTranscript: "" });
+  const realtimeTurnRef = useRef(emptyRealtimeTurnState());
   const realtimePersistingRef = useRef(false);
   const lastRealtimeEventRef = useRef("");
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -833,68 +822,30 @@ export default function TenantApp() {
   }
 
   function resetRealtimeTranscript() {
-    realtimeTurnRef.current = { userTranscript: "", assistantTranscript: "" };
+    realtimeTurnRef.current = emptyRealtimeTurnState();
     lastRealtimeEventRef.current = "";
     setRealtimeUserTranscript("");
     setRealtimeAssistantTranscript("");
   }
 
-  function realtimeEventId(payload: RealtimeEventPayload) {
-    return (
-      payload.response_id ||
-      payload.item_id ||
-      payload.event_id ||
-      payload.response?.id ||
-      payload.item?.id ||
-      ""
-    );
-  }
-
   function updateRealtimeTranscript(payload: RealtimeEventPayload) {
-    const type = payload.type ?? "";
+    const result = applyRealtimeEventToTurn(realtimeTurnRef.current, payload);
+    realtimeTurnRef.current = result.state;
 
-    if (type.includes("input_audio_transcription") && type.endsWith(".completed")) {
-      const transcript = (payload.transcript || payload.text || "").trim();
-
-      if (transcript) {
-        realtimeTurnRef.current = {
-          userTranscript: transcript,
-          assistantTranscript: ""
-        };
-        setRealtimeUserTranscript(transcript);
-        setRealtimeAssistantTranscript("");
-        setRealtimeStatus("세입자 음성 전사 수신됨");
-      }
-
-      return;
+    if (result.userTranscript !== undefined) {
+      setRealtimeUserTranscript(result.userTranscript);
     }
 
-    if (type.includes("audio_transcript.delta")) {
-      const delta = payload.delta || payload.text || "";
-
-      if (delta) {
-        realtimeTurnRef.current.assistantTranscript += delta;
-        setRealtimeAssistantTranscript(realtimeTurnRef.current.assistantTranscript);
-      }
-
-      return;
+    if (result.assistantTranscript !== undefined) {
+      setRealtimeAssistantTranscript(result.assistantTranscript);
     }
 
-    if (type.includes("audio_transcript.done")) {
-      const transcript =
-        payload.transcript || payload.text || realtimeTurnRef.current.assistantTranscript;
-
-      if (transcript) {
-        realtimeTurnRef.current.assistantTranscript = transcript;
-        setRealtimeAssistantTranscript(transcript);
-        setRealtimeStatus("AI 음성 전사 완료");
-      }
-
-      return;
+    if (result.status) {
+      setRealtimeStatus(result.status);
     }
 
-    if (type === "response.done") {
-      void flushRealtimeTurn(realtimeEventId(payload));
+    if (result.shouldFlush) {
+      void flushRealtimeTurn(result.flushEventId);
     }
   }
 
@@ -962,7 +913,7 @@ export default function TenantApp() {
 
     try {
       await recordRealtimeTurn(userTranscript, assistantTranscript, eventId);
-      realtimeTurnRef.current = { userTranscript: "", assistantTranscript: "" };
+      realtimeTurnRef.current = emptyRealtimeTurnState();
       setRealtimeStatus("Realtime 전사가 상담 스레드에 저장되었습니다.");
     } catch (error) {
       setRealtimeStatus(error instanceof Error ? error.message : "Realtime 전사 저장 실패");

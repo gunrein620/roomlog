@@ -1,0 +1,90 @@
+import { describe, it } from "node:test";
+import { strict as assert } from "node:assert";
+import { applyRealtimeEventToTurn, emptyRealtimeTurnState } from "./realtime-events";
+
+describe("tenant realtime events", () => {
+  it("waits for late user transcription before flushing a completed response", () => {
+    let state = emptyRealtimeTurnState();
+
+    let result = applyRealtimeEventToTurn(state, {
+      type: "response.output_audio_transcript.delta",
+      delta: "관리자 확인을 위해 접수 초안을 정리하겠습니다."
+    });
+    state = result.state;
+    assert.equal(result.shouldFlush, false);
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "response.done",
+      response: { id: "resp_late_user" }
+    });
+    state = result.state;
+    assert.equal(result.shouldFlush, false);
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_user_late",
+      transcript: "301호 화장실 천장에서 물이 떨어집니다."
+    });
+
+    assert.equal(result.shouldFlush, true);
+    assert.equal(result.flushEventId, "resp_late_user");
+    assert.equal(result.state.userTranscript, "301호 화장실 천장에서 물이 떨어집니다.");
+    assert.equal(
+      result.state.assistantTranscript,
+      "관리자 확인을 위해 접수 초안을 정리하겠습니다."
+    );
+  });
+
+  it("persists text-only realtime responses using GA output text events", () => {
+    let state = emptyRealtimeTurnState();
+
+    let result = applyRealtimeEventToTurn(state, {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_user_text_response",
+      transcript: "현관 도어락이 잠기지 않습니다."
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "response.output_text.delta",
+      delta: "문 잠김 문제라 안전 확인이 필요합니다."
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "response.done",
+      response_id: "resp_text_only"
+    });
+
+    assert.equal(result.shouldFlush, true);
+    assert.equal(result.flushEventId, "resp_text_only");
+    assert.equal(result.state.userTranscript, "현관 도어락이 잠기지 않습니다.");
+    assert.equal(result.state.assistantTranscript, "문 잠김 문제라 안전 확인이 필요합니다.");
+  });
+
+  it("keeps compatibility with audio transcript events that omit the output segment", () => {
+    let state = emptyRealtimeTurnState();
+
+    let result = applyRealtimeEventToTurn(state, {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_user_audio_response",
+      transcript: "주방 싱크대 아래에서 물이 샙니다."
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "response.audio_transcript.delta",
+      delta: "싱크대 하부 누수로 접수하겠습니다."
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "response.done",
+      response_id: "resp_legacy_audio"
+    });
+
+    assert.equal(result.shouldFlush, true);
+    assert.equal(result.flushEventId, "resp_legacy_audio");
+    assert.equal(result.state.assistantTranscript, "싱크대 하부 누수로 접수하겠습니다.");
+  });
+});
