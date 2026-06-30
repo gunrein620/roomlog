@@ -38,7 +38,11 @@ import {
   completeRealtimeTurnPersist,
   emptyRealtimePersistState
 } from "./realtime-persist";
-import { appendQuestionReplyPrompt } from "./question-reply";
+import {
+  appendQuestionAnswerPrompt,
+  appendQuestionReplyPrompt,
+  suggestedAnswersForQuestion
+} from "./question-reply";
 import {
   consultationThreadBadges,
   consultationThreadNextAction
@@ -639,6 +643,13 @@ export default function TenantApp() {
 
   function seedComposerFromQuestion(question: string) {
     setMessageText((current) => appendQuestionReplyPrompt(current, question));
+    window.requestAnimationFrame(() => {
+      messageInputRef.current?.focus();
+    });
+  }
+
+  function seedComposerFromSuggestedAnswer(question: string, answer: string) {
+    setMessageText((current) => appendQuestionAnswerPrompt(current, question, answer));
     window.requestAnimationFrame(() => {
       messageInputRef.current?.focus();
     });
@@ -1923,16 +1934,28 @@ export default function TenantApp() {
           {selectedSession?.status === "ACTIVE" &&
           selectedSession.draft.nextQuestions.length ? (
             <div className="question-reply-strip" aria-label="AI 다음 질문 답변">
-              <span>바로 답변</span>
+              <span>AI가 확인하려는 내용</span>
               {selectedSession.draft.nextQuestions.slice(0, 3).map((question) => (
-                <button
-                  type="button"
-                  className="question-chip"
-                  key={question}
-                  onClick={() => seedComposerFromQuestion(question)}
-                >
-                  {question}
-                </button>
+                <article className="question-card" key={question}>
+                  <button
+                    type="button"
+                    className="question-chip"
+                    onClick={() => seedComposerFromQuestion(question)}
+                  >
+                    {question}
+                  </button>
+                  <div className="answer-shortcuts" aria-label="답변 예시">
+                    {suggestedAnswersForQuestion(question).map((answer) => (
+                      <button
+                        type="button"
+                        key={answer}
+                        onClick={() => seedComposerFromSuggestedAnswer(question, answer)}
+                      >
+                        {answer}
+                      </button>
+                    ))}
+                  </div>
+                </article>
               ))}
             </div>
           ) : null}

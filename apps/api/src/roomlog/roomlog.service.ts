@@ -3572,7 +3572,14 @@ export class RoomlogService {
 
       const responseBody = (await response.json()) as Record<string, unknown>;
       const parsed = this.parseOpenAIIntakeTurn(responseBody);
-      const draft = this.normalizeGeneratedDraft(parsed.draft, fallbackDraft);
+      const normalizedDraft = this.normalizeGeneratedDraft(parsed.draft, fallbackDraft);
+      const draft = this.generatedDraftDriftsFromCurrentThread(
+        normalizedDraft,
+        fallbackDraft,
+        session
+      )
+        ? fallbackDraft
+        : normalizedDraft;
 
       return {
         source: "openai",
@@ -3939,6 +3946,55 @@ export class RoomlogService {
       availableTimes: generated.availableTimes?.trim() || fallback.availableTimes,
       duplicateCandidates: fallback.duplicateCandidates
     };
+  }
+
+  private generatedDraftDriftsFromCurrentThread(
+    generated: IntakeDraft,
+    fallback: IntakeDraft,
+    session: IntakeSession
+  ) {
+    const tenantText = session.messages
+      .filter((message) => message.sender === "TENANT")
+      .map((message) => this.meaningfulTenantMessageText(message))
+      .join(" ");
+    const supportedText = [
+      tenantText,
+      fallback.title,
+      fallback.summary,
+      fallback.detailCategory,
+      fallback.location
+    ].join(" ");
+    const generatedText = [
+      generated.title,
+      generated.summary,
+      generated.detailCategory,
+      generated.location
+    ].join(" ");
+    const issueMarkers = [
+      "에어컨",
+      "실내기",
+      "냉방",
+      "보일러",
+      "온수",
+      "난방",
+      "도어락",
+      "관리비",
+      "월세",
+      "계약",
+      "보증금",
+      "층간소음",
+      "곰팡이",
+      "벽지",
+      "도배",
+      "싱크대",
+      "수전",
+      "변기",
+      "세면대"
+    ];
+
+    return issueMarkers.some(
+      (marker) => generatedText.includes(marker) && !supportedText.includes(marker)
+    );
   }
 
   private normalizeIntakeSlots(value: unknown, fallback: IntakeSlot[]) {

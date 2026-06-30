@@ -1199,6 +1199,78 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("rejects OpenAI intake drafts that drift into unsupported same-room history", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 변기통이 깨져서 사용하기 어렵습니다. 오늘 저녁 7시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+
+      process.env.OPENAI_API_KEY = "sk-test-roomlog";
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            output_text: JSON.stringify({
+              assistantMessage:
+                "침실 에어컨 누수로 보입니다. 에어컨 본체와 배관 사진을 올려주세요.",
+              draft: {
+                title: "301호 침실 에어컨 누수",
+                summary:
+                  "정글빌라 301호에서 침실 침대 위로 에어컨 물이 새는 누수가 확인되었습니다.",
+                category: "설비",
+                detailCategory: "에어컨 누수",
+                priority: 2,
+                responsibilityHint: "임대인 책임 가능성",
+                confidenceScore: 0.91,
+                reasons: ["같은 호실 에어컨 누수 이력"],
+                recommendedAction: "에어컨 배수 점검을 요청하세요.",
+                requiredInfo: ["사진"],
+                photoRequested: true,
+                readyToFinalize: false,
+                location: "침실 에어컨 / 침대 위",
+                occurredAt: "",
+                availableTimes: "오늘 저녁"
+              }
+            })
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )) as typeof fetch;
+
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "변기통이 깨진 부분에서 물이 새고 있나요?\n답변: 네, 확인해서 답변하겠습니다.",
+        inputMode: "CHAT"
+      });
+
+      const draftText = [
+        result.session.draft.title,
+        result.session.draft.summary,
+        result.session.draft.detailCategory,
+        result.session.draft.location,
+        result.assistantMessage.messageText
+      ].join(" ");
+
+      assert.doesNotMatch(draftText, /에어컨|침실|배관/);
+      assert.match(draftText, /화장실|변기|누수|설비/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("sends uploaded intake photos to OpenAI Responses as image inputs", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalFetch = globalThis.fetch;
