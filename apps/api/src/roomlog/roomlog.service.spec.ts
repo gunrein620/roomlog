@@ -96,10 +96,7 @@ describe("RoomlogService", () => {
 
   it("can start without seeded demo accounts for production-style signup flows", () => {
     const service = new RoomlogService({ seedDemoData: false } as any);
-    const state = service.getDemoState();
 
-    assert.equal(state.users.length, 0);
-    assert.equal(state.rooms.length, 0);
     assert.throws(
       () =>
         service.login({
@@ -108,6 +105,7 @@ describe("RoomlogService", () => {
         }),
       /올바르지/
     );
+    assert.throws(() => service.getDemoState(), /데모/);
   });
 
   it("exposes runtime config so clients can hide demo auth in production-style mode", () => {

@@ -544,6 +544,10 @@ export class RoomlogService {
   }
 
   getDemoState() {
+    if (!this.seedDemoData) {
+      throw new ForbiddenException("데모 상태 조회가 비활성화되어 있습니다.");
+    }
+
     return {
       users: this.store.users.map(({ passwordHash, ...user }) => user),
       rooms: this.store.rooms,
