@@ -11,6 +11,10 @@ import {
   initialFeedbackReviewNote,
   initialManagerAssistantQuestion
 } from "./manager-form-state";
+import {
+  filterManagerTickets,
+  managerTicketFilterLabel
+} from "./manager-ticket-filter";
 
 type AuthResult = {
   accessToken: string;
@@ -367,6 +371,7 @@ export default function ManagerApp() {
   const [tenantInviteForm, setTenantInviteForm] = useState(tenantInviteInitial);
   const [tenantOrigin, setTenantOrigin] = useState("");
   const [vendorOrigin, setVendorOrigin] = useState("");
+  const [ticketFilterText, setTicketFilterText] = useState("");
   const [assistantQuestion, setAssistantQuestion] = useState(initialManagerAssistantQuestion);
   const [assistantResult, setAssistantResult] = useState<ManagerAssistantResult | null>(null);
   const [replyIntent, setReplyIntent] = useState<ManagerReplyIntent>("REQUEST_PHOTO");
@@ -381,6 +386,10 @@ export default function ManagerApp() {
   const selectedTicket = useMemo(
     () => tickets.find((ticket) => ticket.id === selectedId) ?? tickets[0],
     [selectedId, tickets]
+  );
+  const visibleTickets = useMemo(
+    () => filterManagerTickets(tickets, ticketFilterText),
+    [tickets, ticketFilterText]
   );
   const signupIssues = useMemo(() => managerSignupIssues(signupForm), [signupForm]);
   const signupReady = canSubmitManagerSignup(signupForm);
@@ -1024,9 +1033,19 @@ export default function ManagerApp() {
             <p className="eyebrow">M-DASH</p>
             <h2>확인 대기</h2>
           </div>
+          <div className="queue-filter">
+            <input
+              value={ticketFilterText}
+              onChange={(event) => setTicketFilterText(event.target.value)}
+              placeholder="티켓, 호실, 채널, 상태 검색"
+            />
+            <span>
+              {managerTicketFilterLabel(tickets.length, visibleTickets.length, ticketFilterText)}
+            </span>
+          </div>
           {tickets.length ? (
             <div className="ticket-list">
-              {tickets.map((ticket) => (
+              {visibleTickets.map((ticket) => (
                 <button
                   type="button"
                   key={ticket.id}
@@ -1040,6 +1059,9 @@ export default function ManagerApp() {
                   </small>
                 </button>
               ))}
+              {visibleTickets.length === 0 ? (
+                <p className="empty">검색 조건과 일치하는 티켓이 없습니다.</p>
+              ) : null}
             </div>
           ) : (
             <p className="empty">세입자 앱에서 신고를 접수하면 티켓이 여기에 표시됩니다.</p>

@@ -351,6 +351,18 @@ textarea {
   margin-bottom: 20px;
 }
 
+.queue-filter {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.queue-filter span {
+  color: var(--slate);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .ticket-list {
   display: grid;
   gap: 10px;
