@@ -42,6 +42,7 @@ import {
   consultationThreadBadges,
   consultationThreadNextAction
 } from "./thread-workflow";
+import { initialConsultationComposerText } from "./composer-state";
 
 type AuthResult = {
   accessToken: string;
@@ -494,9 +495,7 @@ export default function TenantApp() {
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [selectedComplaintId, setSelectedComplaintId] = useState("");
   const [draftCorrections, setDraftCorrections] = useState<Record<string, DraftCorrection>>({});
-  const [messageText, setMessageText] = useState(
-    "화장실 천장에서 물이 계속 떨어지고 바닥에 물이 고여요."
-  );
+  const [messageText, setMessageText] = useState(initialConsultationComposerText);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoInputKey, setPhotoInputKey] = useState(0);
   const [checklistArea, setChecklistArea] = useState("화장실");
