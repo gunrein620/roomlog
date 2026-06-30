@@ -11,8 +11,11 @@ FROM base AS deps
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
+COPY prisma prisma
+COPY prisma.config.ts prisma.config.ts
 
 RUN pnpm install --filter api --frozen-lockfile
+RUN pnpm --filter api exec prisma generate --schema ../../prisma/schema.prisma
 
 FROM deps AS builder
 
@@ -27,8 +30,11 @@ ENV PORT=4000
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
+COPY prisma prisma
+COPY prisma.config.ts prisma.config.ts
 
 RUN pnpm install --filter api --prod --frozen-lockfile
+RUN pnpm --filter api exec prisma generate --schema ../../prisma/schema.prisma
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
