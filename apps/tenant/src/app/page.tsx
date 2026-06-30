@@ -504,7 +504,7 @@ function ChatMessageBody({
   onQuickReply
 }: {
   text: string;
-  onQuickReply?: (reply: string) => void;
+  onQuickReply?: (reply: string) => Promise<void> | void;
 }) {
   return (
     <div className="message-content">
@@ -535,7 +535,7 @@ function ChatMessageBody({
                   type="button"
                   key={reply}
                   disabled={!onQuickReply}
-                  onClick={() => onQuickReply?.(reply)}
+                  onClick={() => void onQuickReply?.(reply)}
                 >
                   {reply}
                 </button>
@@ -763,11 +763,40 @@ export default function TenantApp() {
     });
   }
 
-  function seedComposerFromQuickReply(reply: string) {
-    setMessageText(reply);
-    window.requestAnimationFrame(() => {
-      messageInputRef.current?.focus();
-    });
+  async function sendQuickReply(reply: string) {
+    if (!auth || !selectedSession || selectedSession.status !== "ACTIVE" || !reply.trim()) {
+      return;
+    }
+
+    setMessageText("");
+    setStatus("AI가 빠른 답변을 반영 중");
+
+    try {
+      const result = await apiRequest<{ session: IntakeSession }>(
+        `/tenant/complaints/intake/sessions/${selectedSession.id}/messages`,
+        auth.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            messageText: reply.trim(),
+            inputMode: messageInputModeForMode(
+              intakeModeForSourceChannel(selectedSession.sourceChannel)
+            ),
+            attachmentUrls: []
+          })
+        }
+      );
+      setSessions((current) =>
+        current.map((session) => (session.id === result.session.id ? result.session : session))
+      );
+      setDraftCorrections((current) => ({
+        ...current,
+        [result.session.id]: draftCorrectionFrom(result.session.draft)
+      }));
+      setStatus("AI 상담 초안이 갱신되었습니다.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "빠른 답변 전송 실패");
+    }
   }
 
   function handleCaseFileAction(action: ThreadCaseFileAction) {
@@ -2271,7 +2300,7 @@ export default function TenantApp() {
                   text={message.messageText}
                   onQuickReply={
                     message.sender === "AI_ASSISTANT" && selectedSession.status === "ACTIVE"
-                      ? seedComposerFromQuickReply
+                      ? (reply) => sendQuickReply(reply)
                       : undefined
                   }
                 />

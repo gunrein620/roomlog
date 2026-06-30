@@ -35,10 +35,11 @@ describe("tenant thread case file UI", () => {
     assert.match(pageSource, /\/messages`/);
   });
 
-  it("renders assistant quick replies as composer actions", () => {
+  it("renders assistant quick replies as one-click AI follow-ups", () => {
     assert.match(pageSource, /className="quick-replies"/);
     assert.match(pageSource, /aria-label="빠른 답변 선택"/);
-    assert.match(pageSource, /onClick=\{\(\) => onQuickReply\?\.\(reply\)\}/);
-    assert.match(pageSource, /seedComposerFromQuickReply/);
+    assert.match(pageSource, /onClick=\{\(\) => void onQuickReply\?\.\(reply\)\}/);
+    assert.match(pageSource, /sendQuickReply\(reply\)/);
+    assert.match(pageSource, /messageText: reply\.trim\(\)/);
   });
 });
