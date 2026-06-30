@@ -3730,6 +3730,9 @@ describe("RoomlogService", () => {
       serviceArea: "성동구"
     });
 
+    assert.equal(tenantInvite.signupUrl, `/?inviteToken=${tenantInvite.inviteToken}`);
+    assert.equal(vendorInvite.signupUrl, `/?inviteToken=${vendorInvite.inviteToken}`);
+
     const tenantPreview = service.getSignupInvitePreview("TENANT", tenantInvite.inviteToken);
     const vendorPreview = service.getSignupInvitePreview("VENDOR", vendorInvite.inviteToken);
 

@@ -16,6 +16,7 @@ import {
   managerTicketFilterLabel
 } from "./manager-ticket-filter";
 import { ensureManagerAuth, type AuthResult } from "./auth-role";
+import { buildInviteHref } from "./invite-links";
 
 type Vendor = {
   id: string;
@@ -351,14 +352,6 @@ function costBearerLabel(costBearer?: "LANDLORD" | "TENANT" | "PENDING") {
   }
 
   return "비용 주체 미정";
-}
-
-function inviteHref(signupUrl: string, vendorOrigin: string) {
-  if (!vendorOrigin) {
-    return signupUrl;
-  }
-
-  return `${vendorOrigin}${signupUrl}`;
 }
 
 export default function ManagerApp() {
@@ -1645,11 +1638,11 @@ export default function ManagerApp() {
                         </strong>
                         <span>{invite.status}</span>
                         <a
-                          href={inviteHref(invite.signupUrl, tenantOrigin)}
+                          href={buildInviteHref(invite.signupUrl, tenantOrigin)}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          {inviteHref(invite.signupUrl, tenantOrigin)}
+                          {buildInviteHref(invite.signupUrl, tenantOrigin)}
                         </a>
                       </div>
                     ))
@@ -1720,11 +1713,11 @@ export default function ManagerApp() {
                         <strong>{invite.businessName}</strong>
                         <span>{invite.status}</span>
                         <a
-                          href={inviteHref(invite.signupUrl, vendorOrigin)}
+                          href={buildInviteHref(invite.signupUrl, vendorOrigin)}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          {inviteHref(invite.signupUrl, vendorOrigin)}
+                          {buildInviteHref(invite.signupUrl, vendorOrigin)}
                         </a>
                       </div>
                     ))

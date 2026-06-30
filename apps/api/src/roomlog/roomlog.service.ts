@@ -2274,7 +2274,7 @@ export class RoomlogService {
       phone,
       serviceArea,
       status: "PENDING",
-      signupUrl: `/vendor?inviteToken=${inviteToken}`,
+      signupUrl: `/?inviteToken=${inviteToken}`,
       createdAt
     };
 
@@ -2331,7 +2331,7 @@ export class RoomlogService {
       phone,
       moveInDate,
       status: "PENDING",
-      signupUrl: `/tenant?inviteToken=${inviteToken}`,
+      signupUrl: `/?inviteToken=${inviteToken}`,
       createdAt
     };
 
