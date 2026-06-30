@@ -140,6 +140,50 @@ describe("RoomlogService", () => {
     assert.equal(projected.tenantRooms[auth.userId], projected.rooms[0].id);
   });
 
+  it("hydrates an initial store snapshot before falling back to demo seed data", async () => {
+    const projectedStores: any[] = [];
+    const firstService = new RoomlogService({
+      seedDemoData: false,
+      storeProjector: {
+        persist: async (store: any) => {
+          projectedStores.push(JSON.parse(JSON.stringify(store)));
+        }
+      }
+    } as any);
+    const auth = firstService.signup({
+      email: "hydrated-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "복원 세입자",
+      phone: "010-9292-3001",
+      role: "TENANT",
+      buildingName: "복원 빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 복원로 80"
+    } as any);
+
+    await firstService.flushPersistence();
+    const hydratedService = new RoomlogService({
+      seedDemoData: true,
+      initialStore: projectedStores.at(-1)
+    });
+    const hydratedAuth = hydratedService.login({
+      email: "hydrated-tenant@roomlog.test",
+      password: "password123!"
+    });
+
+    assert.equal(hydratedAuth.userId, auth.userId);
+    assert.equal(hydratedService.getMe(`Bearer ${hydratedAuth.accessToken}`).room?.roomNo, "801호");
+    assert.throws(
+      () =>
+        hydratedService.login({
+          email: "tenant@roomlog.test",
+          password: "password123!"
+        }),
+      /올바르지/
+    );
+  });
+
   it("exposes runtime config so clients can hide demo auth in production-style mode", () => {
     const productionStyleService = new RoomlogService({ seedDemoData: false } as any);
     const demoStyleService = new RoomlogService({ seedDemoData: true } as any);

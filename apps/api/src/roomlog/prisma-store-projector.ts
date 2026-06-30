@@ -1,13 +1,26 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Store, StoreProjector } from "./roomlog.service";
+import { IntakeDraft, PhotoAnalysis, TicketMessage } from "./roomlog.types";
 
 function asDate(value?: string) {
   return value ? new Date(value) : undefined;
 }
 
+function asIso(value?: Date | null) {
+  return value?.toISOString();
+}
+
 function asJson<T>(value: T) {
   return value as Prisma.InputJsonValue;
+}
+
+function optional<T>(value: T | null | undefined) {
+  return value ?? undefined;
+}
+
+function asPhotoAnalysis(value: Prisma.JsonValue | null): PhotoAnalysis | undefined {
+  return value ? (value as unknown as PhotoAnalysis) : undefined;
 }
 
 function actorRoleFor(store: Store, userId: string) {
@@ -20,6 +33,269 @@ export class PrismaStoreProjector implements StoreProjector {
   constructor(databaseUrl: string) {
     const adapter = new PrismaPg({ connectionString: databaseUrl });
     this.prisma = new PrismaClient({ adapter });
+  }
+
+  async load(): Promise<Store | undefined> {
+    const [
+      users,
+      rooms,
+      tenantRooms,
+      vendors,
+      vendorInvites,
+      tenantInvites,
+      attachments,
+      moveInChecklist,
+      intakeSessions,
+      complaints,
+      tickets,
+      feedback,
+      repairs,
+      messages,
+      history,
+      analyses
+    ] = await Promise.all([
+      this.prisma.userAccount.findMany(),
+      this.prisma.room.findMany(),
+      this.prisma.tenantRoom.findMany(),
+      this.prisma.vendorProfile.findMany(),
+      this.prisma.vendorInvite.findMany(),
+      this.prisma.tenantInvite.findMany(),
+      this.prisma.attachment.findMany(),
+      this.prisma.moveInChecklistItem.findMany(),
+      this.prisma.intakeSession.findMany({
+        include: { messages: { orderBy: { createdAt: "asc" } } }
+      }),
+      this.prisma.complaint.findMany(),
+      this.prisma.ticket.findMany(),
+      this.prisma.aiFeedback.findMany(),
+      this.prisma.repairRequest.findMany(),
+      this.prisma.ticketMessage.findMany(),
+      this.prisma.statusHistory.findMany(),
+      this.prisma.aiAnalysis.findMany()
+    ]);
+
+    if (
+      !users.length &&
+      !rooms.length &&
+      !intakeSessions.length &&
+      !complaints.length &&
+      !tickets.length
+    ) {
+      return undefined;
+    }
+
+    return {
+      users: users.map((user) => ({
+        id: user.id,
+        email: user.email,
+        passwordHash: user.passwordHash,
+        name: user.name,
+        phone: optional(user.phone),
+        role: user.role,
+        status: user.status,
+        createdAt: asIso(user.createdAt) ?? new Date().toISOString()
+      })),
+      rooms: rooms.map((room) => ({
+        id: room.id,
+        buildingName: room.buildingName,
+        roomNo: room.roomNo,
+        address: room.address,
+        landlordId: optional(room.landlordId)
+      })),
+      tenantRooms: Object.fromEntries(
+        tenantRooms.map((tenantRoom) => [tenantRoom.tenantId, tenantRoom.roomId])
+      ),
+      vendors: vendors.map((vendor) => ({
+        id: vendor.id,
+        userId: vendor.userId,
+        businessName: vendor.businessName,
+        contactPerson: vendor.contactPerson,
+        phone: vendor.phone,
+        serviceArea: vendor.serviceArea,
+        activeJobs: vendor.activeJobs
+      })),
+      vendorInvites: vendorInvites.map((invite) => ({
+        id: invite.id,
+        inviteToken: invite.inviteToken,
+        invitedByManagerId: invite.invitedByManagerId,
+        email: optional(invite.email),
+        businessName: invite.businessName,
+        contactPerson: invite.contactPerson,
+        phone: invite.phone,
+        serviceArea: invite.serviceArea,
+        status: invite.status,
+        signupUrl: invite.signupUrl,
+        createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
+        acceptedAt: asIso(invite.acceptedAt),
+        acceptedByUserId: optional(invite.acceptedByUserId)
+      })),
+      tenantInvites: tenantInvites.map((invite) => ({
+        id: invite.id,
+        inviteToken: invite.inviteToken,
+        invitedByManagerId: invite.invitedByManagerId,
+        roomId: invite.roomId,
+        email: optional(invite.email),
+        tenantName: invite.tenantName,
+        phone: optional(invite.phone),
+        moveInDate: asIso(invite.moveInDate),
+        status: invite.status,
+        signupUrl: invite.signupUrl,
+        createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
+        acceptedAt: asIso(invite.acceptedAt),
+        acceptedByUserId: optional(invite.acceptedByUserId)
+      })),
+      attachments: attachments.map((attachment) => ({
+        id: attachment.id,
+        uploadedByUserId: attachment.uploadedBy,
+        category: attachment.category,
+        fileName: attachment.fileName,
+        fileUrl: attachment.fileUrl,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        createdAt: asIso(attachment.createdAt) ?? new Date().toISOString()
+      })),
+      moveInChecklist: moveInChecklist.map((item) => ({
+        id: item.id,
+        tenantId: item.tenantId,
+        roomId: item.roomId,
+        area: item.area,
+        itemName: item.itemName,
+        memo: optional(item.memo),
+        guidance: item.guidance,
+        attachmentUrls: item.attachmentUrls,
+        createdAt: asIso(item.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(item.updatedAt) ?? new Date().toISOString()
+      })),
+      aiFeedback: feedback.map((item) => ({
+        id: item.id,
+        ticketId: item.ticketId,
+        complaintId: item.complaintId,
+        tenantId: item.tenantId,
+        target: item.target,
+        targetLabel: item.targetLabel,
+        originalValue: item.originalValue,
+        reason: item.reason,
+        requestedAction: optional(item.requestedAction),
+        attachmentUrls: item.attachmentUrls,
+        status: item.status,
+        managerReviewNote: optional(item.managerReviewNote),
+        correctedValue: optional(item.correctedValue),
+        reviewedByUserId: optional(item.reviewedByUserId),
+        reviewedAt: asIso(item.reviewedAt),
+        createdAt: asIso(item.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(item.updatedAt) ?? new Date().toISOString()
+      })),
+      intakeSessions: intakeSessions.map((session) => ({
+        id: session.id,
+        tenantId: session.tenantId,
+        roomId: session.roomId,
+        sourceChannel: session.sourceChannel,
+        status: session.status,
+        draft: session.draft as unknown as IntakeDraft,
+        messages: session.messages.map((message) => ({
+          id: message.id,
+          sessionId: message.sessionId,
+          sender: message.sender as "TENANT" | "AI_ASSISTANT" | "SYSTEM",
+          messageText: message.messageText,
+          transcriptText: optional(message.transcriptText),
+          attachmentUrls: message.attachmentUrls,
+          inputMode: message.inputMode,
+          realtimeEventId: optional(message.realtimeEventId),
+          createdAt: asIso(message.createdAt) ?? new Date().toISOString()
+        })),
+        complaintId: optional(session.complaintId),
+        ticketId: optional(session.ticketId),
+        createdAt: asIso(session.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(session.updatedAt) ?? new Date().toISOString(),
+        finalizedAt: asIso(session.finalizedAt)
+      })),
+      complaints: complaints.map((complaint) => ({
+        id: complaint.id,
+        tenantId: complaint.tenantId,
+        roomId: complaint.roomId,
+        ticketId: complaint.ticketId,
+        sourceChannel: complaint.sourceChannel,
+        title: complaint.title,
+        description: complaint.description,
+        location: complaint.location,
+        occurredAt: asIso(complaint.occurredAt),
+        availableTimes: optional(complaint.availableTimes),
+        status: complaint.status,
+        createdAt: asIso(complaint.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(complaint.updatedAt) ?? new Date().toISOString()
+      })),
+      analyses: Object.fromEntries(
+        analyses.map((analysis) => [
+          analysis.ticketId,
+          {
+            summary: analysis.summary,
+            category: analysis.category,
+            detailCategory: optional(analysis.detailCategory),
+            priority: analysis.priority,
+            responsibilityHint: analysis.responsibilityHint as Store["analyses"][string]["responsibilityHint"],
+            confidenceScore: analysis.confidenceScore,
+            reasons: analysis.reasons,
+            recommendedAction: analysis.recommendedAction,
+            photoAnalysis: asPhotoAnalysis(analysis.photoAnalysis)
+          }
+        ])
+      ),
+      tickets: tickets.map((ticket) => ({
+        id: ticket.id,
+        complaintId: ticket.complaintId,
+        tenantId: ticket.tenantId,
+        roomId: ticket.roomId,
+        assignedVendorId: optional(ticket.assignedVendorId),
+        sourceChannel: ticket.sourceChannel,
+        category: ticket.category,
+        priority: ticket.priority,
+        status: ticket.status,
+        responsibilityHint: ticket.responsibilityHint,
+        aiSummary: ticket.aiSummary,
+        dueAt: asIso(ticket.dueAt),
+        createdAt: asIso(ticket.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(ticket.updatedAt) ?? new Date().toISOString()
+      })),
+      repairs: repairs.map((repair) => ({
+        id: repair.id,
+        ticketId: repair.ticketId,
+        vendorId: repair.vendorId,
+        status: repair.status,
+        title: repair.title,
+        description: repair.description,
+        estimateAmount: optional(repair.estimateAmount),
+        estimateDescription: optional(repair.estimateDescription),
+        costBearer: optional(repair.costBearer),
+        estimateApprovedAt: asIso(repair.estimateApprovedAt),
+        estimateApprovalNote: optional(repair.estimateApprovalNote),
+        scheduledAt: asIso(repair.scheduledAt),
+        completedAt: asIso(repair.completedAt),
+        completionNote: optional(repair.completionNote),
+        completionPhotoUrls: repair.completionPhotoUrls,
+        createdAt: asIso(repair.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(repair.updatedAt) ?? new Date().toISOString()
+      })),
+      messages: messages.map((message) => ({
+        id: message.id,
+        ticketId: message.ticketId,
+        complaintId: optional(message.complaintId),
+        repairId: optional(message.repairId),
+        senderUserId: message.senderUserId,
+        senderRole: message.senderRole,
+        messageText: message.messageText,
+        attachmentUrls: message.attachmentUrls,
+        createdAt: asIso(message.createdAt) ?? new Date().toISOString()
+      }) as TicketMessage & { repairId?: string }),
+      history: history.map((item) => ({
+        id: item.id,
+        ticketId: item.ticketId,
+        changedByUserId: item.actorUserId,
+        fromStatus: item.fromStatus as Store["history"][number]["fromStatus"],
+        toStatus: item.toStatus as Store["history"][number]["toStatus"],
+        note: item.note,
+        createdAt: asIso(item.createdAt) ?? new Date().toISOString()
+      }))
+    };
   }
 
   async persist(store: Store) {

@@ -118,6 +118,7 @@ export type RoomlogServiceOptions = {
   uploadDir?: string;
   publicUploadBaseUrl?: string;
   seedDemoData?: boolean;
+  initialStore?: Store;
   storeProjector?: StoreProjector;
 };
 
@@ -190,6 +191,7 @@ export type Store = {
 };
 
 export type StoreProjector = {
+  load?(): Store | undefined | Promise<Store | undefined>;
   persist(store: Store): void | Promise<void>;
   disconnect?(): void | Promise<void>;
 };
@@ -409,7 +411,9 @@ export class RoomlogService {
       process.env.PUBLIC_UPLOAD_BASE_URL ??
       "/api/files"
     ).replace(/\/$/, "");
-    this.store = this.loadStore();
+    this.store = options.initialStore
+      ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
+      : this.loadStore();
   }
 
   async flushPersistence() {
@@ -2536,6 +2540,10 @@ export class RoomlogService {
       throw new Error(`Roomlog store snapshot is invalid: ${this.storeFilePath}`);
     }
 
+    return this.normalizeStoreSnapshot(parsed);
+  }
+
+  private normalizeStoreSnapshot(parsed: Store): Store {
     return {
       ...parsed,
       vendorInvites: parsed.vendorInvites ?? [],
@@ -2555,6 +2563,8 @@ export class RoomlogService {
           nextQuestions: session.draft.nextQuestions ?? [],
           tenantGuidance: session.draft.tenantGuidance ?? [],
           photoAnalysis: session.draft.photoAnalysis ?? this.emptyPhotoAnalysis(),
+          intakeSlots: session.draft.intakeSlots ?? [],
+          requiredInfo: session.draft.requiredInfo ?? [],
           duplicateCandidates: session.draft.duplicateCandidates ?? []
         },
         messages: session.messages.map((message) => ({

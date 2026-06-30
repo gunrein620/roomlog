@@ -7,13 +7,15 @@ import {
 } from "./roomlog.service";
 import { PrismaStoreProjector } from "./prisma-store-projector";
 
-export function createRoomlogServiceOptions(
+export async function createRoomlogServiceOptions(
   env: NodeJS.ProcessEnv = process.env
-): RoomlogServiceOptions {
+): Promise<RoomlogServiceOptions> {
   const databaseUrl = env.DATABASE_URL?.trim();
+  const storeProjector = databaseUrl ? new PrismaStoreProjector(databaseUrl) : undefined;
 
   return {
-    storeProjector: databaseUrl ? new PrismaStoreProjector(databaseUrl) : undefined
+    initialStore: await storeProjector?.load?.(),
+    storeProjector
   };
 }
 
@@ -22,7 +24,7 @@ export function createRoomlogServiceOptions(
   providers: [
     {
       provide: ROOMLOG_SERVICE_OPTIONS,
-      useFactory: () => createRoomlogServiceOptions()
+      useFactory: async () => createRoomlogServiceOptions()
     },
     RoomlogService
   ]

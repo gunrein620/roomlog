@@ -4,7 +4,7 @@ import { createRoomlogServiceOptions } from "./roomlog.module";
 
 describe("RoomlogModule", () => {
   it("configures a Prisma projector when DATABASE_URL is present", async () => {
-    const options = createRoomlogServiceOptions({
+    const options = await createRoomlogServiceOptions({
       DATABASE_URL: "postgresql://roomlog:roomlog@localhost:5433/roomlog?schema=public"
     });
 
@@ -12,8 +12,8 @@ describe("RoomlogModule", () => {
     await options.storeProjector?.disconnect?.();
   });
 
-  it("does not configure a Prisma projector without DATABASE_URL", () => {
-    const options = createRoomlogServiceOptions({});
+  it("does not configure a Prisma projector without DATABASE_URL", async () => {
+    const options = await createRoomlogServiceOptions({});
 
     assert.equal(options.storeProjector, undefined);
   });

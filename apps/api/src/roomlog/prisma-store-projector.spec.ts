@@ -235,6 +235,201 @@ describe("PrismaStoreProjector", () => {
   );
 
   it(
+    "loads projected tenant, intake, complaint, ticket, and analysis state from Postgres",
+    { skip: !databaseUrl },
+    async () => {
+      const adapter = new PrismaPg({ connectionString: databaseUrl });
+      const prisma = new PrismaClient({ adapter });
+      const suffix = Date.now().toString(36);
+      const tenantId = `usr_load_${suffix}`;
+      const roomId = `room_load_${suffix}`;
+      const sessionId = `sess_load_${suffix}`;
+      const messageId = `msg_load_${suffix}`;
+      const complaintId = `cmp_load_${suffix}`;
+      const ticketId = `tkt_load_${suffix}`;
+      const projector = new PrismaStoreProjector(databaseUrl!);
+      const now = new Date().toISOString();
+      const store: Store = {
+        users: [
+          {
+            id: tenantId,
+            email: `load-${suffix}@roomlog.test`,
+            passwordHash: "salt:hash",
+            name: "로드 세입자",
+            phone: `010-${suffix.slice(0, 4).padEnd(4, "0")}-5001`,
+            role: "TENANT",
+            status: "ACTIVE",
+            createdAt: now
+          }
+        ],
+        rooms: [
+          {
+            id: roomId,
+            buildingName: "로드 빌라",
+            roomNo: "501호",
+            address: "서울시 성동구 로드로 5"
+          }
+        ],
+        tenantRooms: {
+          [tenantId]: roomId
+        },
+        vendors: [],
+        vendorInvites: [],
+        tenantInvites: [],
+        attachments: [],
+        moveInChecklist: [],
+        aiFeedback: [],
+        intakeSessions: [
+          {
+            id: sessionId,
+            tenantId,
+            roomId,
+            sourceChannel: "CALLBOT",
+            status: "FINALIZED",
+            draft: {
+              title: "콜봇 누수 상담",
+              summary: "전화로 접수된 천장 누수입니다.",
+              category: "하자",
+              detailCategory: "누수",
+              priority: 1,
+              responsibilityHint: "판단 어려움",
+              confidenceScore: 0.81,
+              reasons: ["천장에서 물이 계속 떨어짐"],
+              recommendedAction: "사진 수신 후 긴급 점검하세요.",
+              contextHints: [],
+              nextQuestions: [],
+              tenantGuidance: ["전기 설비 근처 물은 만지지 마세요."],
+              photoAnalysis: {
+                attachmentUrls: [],
+                previousAttachmentUrls: [],
+                candidates: [],
+                comparisonStatus: "추가 사진 필요",
+                summary: "통화 접수라 사진이 아직 없습니다.",
+                evidence: ["콜봇 전사"],
+                recommendedRetake: true
+              },
+              intakeSlots: [],
+              requiredInfo: ["사진"],
+              photoRequested: true,
+              readyToFinalize: false,
+              duplicateCandidates: []
+            },
+            messages: [
+              {
+                id: messageId,
+                sessionId,
+                sender: "TENANT",
+                messageText: "전화라 사진은 아직 못 보냈고 천장에서 물이 떨어집니다.",
+                transcriptText: "전화라 사진은 아직 못 보냈고 천장에서 물이 떨어집니다.",
+                attachmentUrls: [],
+                inputMode: "VOICE",
+                realtimeEventId: `evt_load_${suffix}`,
+                createdAt: now
+              }
+            ],
+            complaintId,
+            ticketId,
+            finalizedAt: now,
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        complaints: [
+          {
+            id: complaintId,
+            tenantId,
+            roomId,
+            ticketId,
+            sourceChannel: "CALLBOT",
+            title: "501호 천장 누수",
+            description: "전화로 접수된 천장 누수입니다.",
+            location: "501호 천장",
+            availableTimes: "오늘 저녁",
+            status: "SUBMITTED",
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        analyses: {
+          [ticketId]: {
+            summary: "콜봇 천장 누수 접수",
+            category: "하자",
+            detailCategory: "누수",
+            priority: 1,
+            responsibilityHint: "판단 어려움",
+            confidenceScore: 0.81,
+            reasons: ["콜봇 전사 기반"],
+            recommendedAction: "사진 업로드 링크를 보내고 긴급 점검하세요.",
+            photoAnalysis: {
+              attachmentUrls: [],
+              previousAttachmentUrls: [],
+              candidates: ["누수"],
+              comparisonStatus: "추가 사진 필요",
+              summary: "사진 필요",
+              evidence: ["사진 없음"],
+              recommendedRetake: true
+            }
+          }
+        },
+        tickets: [
+          {
+            id: ticketId,
+            complaintId,
+            tenantId,
+            roomId,
+            sourceChannel: "CALLBOT",
+            category: "하자",
+            priority: 1,
+            status: "ADDITIONAL_INFO_REQUESTED",
+            responsibilityHint: "판단 어려움",
+            aiSummary: "콜봇 천장 누수 접수",
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        repairs: [],
+        messages: [],
+        history: []
+      };
+
+      try {
+        await projector.persist(store);
+
+        const loaded = await projector.load();
+
+        assert.ok(loaded);
+        assert.equal(loaded.users.some((user) => user.id === tenantId), true);
+        assert.equal(loaded.tenantRooms[tenantId], roomId);
+        assert.equal(
+          loaded.intakeSessions.find((session) => session.id === sessionId)?.messages[0]
+            .realtimeEventId,
+          `evt_load_${suffix}`
+        );
+        assert.equal(
+          loaded.complaints.find((complaint) => complaint.id === complaintId)?.sourceChannel,
+          "CALLBOT"
+        );
+        assert.equal(
+          loaded.tickets.find((ticket) => ticket.id === ticketId)?.status,
+          "ADDITIONAL_INFO_REQUESTED"
+        );
+        assert.equal(loaded.analyses[ticketId]?.photoAnalysis?.comparisonStatus, "추가 사진 필요");
+      } finally {
+        await prisma.intakeMessage.deleteMany({ where: { sessionId } });
+        await prisma.intakeSession.deleteMany({ where: { id: sessionId } });
+        await prisma.aiAnalysis.deleteMany({ where: { ticketId } });
+        await prisma.ticket.deleteMany({ where: { id: ticketId } });
+        await prisma.complaint.deleteMany({ where: { id: complaintId } });
+        await prisma.tenantRoom.deleteMany({ where: { tenantId } });
+        await prisma.room.deleteMany({ where: { id: roomId } });
+        await prisma.userAccount.deleteMany({ where: { id: tenantId } });
+        await projector.disconnect();
+        await prisma.$disconnect();
+      }
+    }
+  );
+
+  it(
     "projects operational workflow state into Postgres tables",
     { skip: !databaseUrl },
     async () => {
