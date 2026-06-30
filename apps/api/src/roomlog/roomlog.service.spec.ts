@@ -1,9 +1,24 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { createHmac } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
+
+function base64UrlJson(value: Record<string, unknown>) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function signedJwt(payload: Record<string, unknown>) {
+  const header = base64UrlJson({ alg: "HS256", typ: "JWT" });
+  const body = base64UrlJson(payload);
+  const signature = createHmac("sha256", process.env.JWT_SECRET || "roomlog-local-dev-secret")
+    .update(`${header}.${body}`)
+    .digest("base64url");
+
+  return `${header}.${body}.${signature}`;
+}
 
 describe("RoomlogService", () => {
   it("stores uploaded image files locally and rejects non-image files", async () => {
@@ -2128,6 +2143,46 @@ describe("RoomlogService", () => {
       () => service.getUserFromToken(`Bearer ${forgedToken}`),
       /올바르지 않습니다/
     );
+  });
+
+  it("issues signed JWT access tokens with expiry and rejects expired tokens", () => {
+    const service = new RoomlogService({ seedDemoData: false } as any);
+    const auth = service.signup({
+      email: "jwt-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "JWT 세입자",
+      phone: "010-4444-7787",
+      role: "TENANT",
+      buildingName: "JWT 빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 토큰로 8"
+    } as any);
+    const parts = auth.accessToken.split(".");
+
+    assert.equal(parts.length, 3);
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+
+    assert.deepEqual(header, { alg: "HS256", typ: "JWT" });
+    assert.equal(payload.sub, auth.userId);
+    assert.equal(payload.role, "TENANT");
+    assert.equal(payload.email, "jwt-tenant@roomlog.test");
+    assert.equal(typeof payload.iat, "number");
+    assert.equal(typeof payload.exp, "number");
+    assert.equal(payload.exp > payload.iat, true);
+    assert.equal(service.getUserFromToken(`Bearer ${auth.accessToken}`).id, auth.userId);
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const expiredToken = signedJwt({
+      sub: auth.userId,
+      role: "TENANT",
+      email: "jwt-tenant@roomlog.test",
+      iat: nowSeconds - 7200,
+      exp: nowSeconds - 3600
+    });
+
+    assert.throws(() => service.getUserFromToken(`Bearer ${expiredToken}`), /만료/);
   });
 
   it("normalizes signup phone numbers before duplicate checks", () => {

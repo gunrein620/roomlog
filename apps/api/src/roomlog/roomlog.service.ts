@@ -238,15 +238,37 @@ function verifyPassword(password: string, storedHash: string) {
 }
 
 const tokenSecret = process.env.JWT_SECRET || "roomlog-local-dev-secret";
+const accessTokenTtlSeconds = 60 * 60 * 24 * 7;
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
 
-function tokenFor(user: UserAccount) {
-  const payload = Buffer.from(
-    JSON.stringify({ sub: user.id, role: user.role, email: user.email })
-  ).toString("base64url");
-  const signature = createHmac("sha256", tokenSecret).update(payload).digest("base64url");
+function encodeJwtPart(value: Record<string, unknown>) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
 
-  return `${payload}.${signature}`;
+function signJwt(header: string, payload: string) {
+  return createHmac("sha256", tokenSecret).update(`${header}.${payload}`).digest("base64url");
+}
+
+function signaturesMatch(actual: string, expected: string) {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function tokenFor(user: UserAccount) {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const header = encodeJwtPart({ alg: "HS256", typ: "JWT" });
+  const payload = encodeJwtPart({
+    sub: user.id,
+    role: user.role,
+    email: user.email,
+    iat: issuedAt,
+    exp: issuedAt + accessTokenTtlSeconds
+  });
+  const signature = signJwt(header, payload);
+
+  return `${header}.${payload}.${signature}`;
 }
 
 function priorityDueAt(priority: number) {
@@ -541,27 +563,50 @@ export class RoomlogService {
       throw new UnauthorizedException("인증 토큰이 필요합니다.");
     }
 
-    const [payload, signature] = token.split(".");
+    const parts = token.split(".");
 
-    if (!payload || !signature) {
+    if (parts.length !== 3) {
       throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
     }
 
-    const expectedSignature = createHmac("sha256", tokenSecret)
-      .update(payload)
-      .digest("base64url");
+    const [headerPart, payloadPart, signature] = parts;
+    const expectedSignature = signJwt(headerPart, payloadPart);
 
-    if (signature !== expectedSignature) {
+    if (!signaturesMatch(signature, expectedSignature)) {
       throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
     }
 
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+    let decoded: {
       sub?: string;
+      exp?: number;
     };
+
+    try {
+      const header = JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8")) as {
+        alg?: string;
+        typ?: string;
+      };
+
+      if (header.alg !== "HS256" || header.typ !== "JWT") {
+        throw new Error("Invalid JWT header");
+      }
+
+      decoded = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8")) as {
+        sub?: string;
+        exp?: number;
+      };
+    } catch {
+      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
+    }
+
+    if (typeof decoded.exp !== "number" || decoded.exp <= Math.floor(Date.now() / 1000)) {
+      throw new UnauthorizedException("인증 토큰이 만료되었습니다.");
+    }
+
     const userId = decoded.sub;
     const user = this.store.users.find((account) => account.id === userId);
 
-    if (!user) {
+    if (!user || user.status !== "ACTIVE") {
       throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
     }
 
