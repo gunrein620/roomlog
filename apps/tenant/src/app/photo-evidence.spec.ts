@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { photoEvidenceItems } from "./photo-evidence";
+import { missingPhotoLabel, photoEvidenceItems } from "./photo-evidence";
 
 describe("photo evidence", () => {
   it("labels current and previous photos for the intake analysis preview", () => {
@@ -47,6 +47,13 @@ describe("photo evidence", () => {
           variant: "previous"
         }
       ]
+    );
+  });
+
+  it("describes a missing photo without exposing the raw file url", () => {
+    assert.equal(
+      missingPhotoLabel("입주 전 기준 사진"),
+      "입주 전 기준 사진 파일을 불러올 수 없습니다."
     );
   });
 });

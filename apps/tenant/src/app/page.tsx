@@ -25,7 +25,7 @@ import {
   photoUploadStatus,
   selectedPhotoSummary
 } from "./photo-selection";
-import { photoEvidenceItems } from "./photo-evidence";
+import { missingPhotoLabel, photoEvidenceItems } from "./photo-evidence";
 import {
   applyRealtimeEventToTurn,
   emptyRealtimeTurnState,
@@ -115,6 +115,32 @@ const detailCategoryOptions = [
   "기타"
 ];
 const responsibilityOptions = ["임대인 책임 가능성", "임차인 책임 가능성", "판단 어려움"];
+
+function AttachmentImageLink({
+  url,
+  alt,
+  className,
+  label
+}: {
+  url: string;
+  alt: string;
+  className?: string;
+  label?: string;
+}) {
+  const [missing, setMissing] = useState(false);
+  const fallback = missingPhotoLabel(label ?? alt);
+
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className={className}>
+      {missing ? (
+        <span className="attachment-missing">{fallback}</span>
+      ) : (
+        <img src={url} alt={alt} loading="lazy" onError={() => setMissing(true)} />
+      )}
+      {label ? <span className="photo-evidence-label">{label}</span> : null}
+    </a>
+  );
+}
 
 function draftCorrectionFrom(draft: IntakeDraft): DraftCorrection {
   return {
@@ -1609,9 +1635,7 @@ export default function TenantApp() {
                 </div>
                 <div className="attachment-preview">
                   {item.attachmentUrls.map((url) => (
-                    <a href={url} target="_blank" rel="noreferrer" key={url}>
-                      <img src={url} alt="입주 전 기준 사진" />
-                    </a>
+                    <AttachmentImageLink url={url} alt="입주 전 기준 사진" key={url} />
                   ))}
                 </div>
               </article>
@@ -1803,9 +1827,7 @@ export default function TenantApp() {
                 {message.attachmentUrls.length > 0 ? (
                   <div className="attachment-preview">
                     {message.attachmentUrls.map((url) => (
-                      <a href={url} target="_blank" rel="noreferrer" key={url}>
-                        <img src={url} alt="상담 첨부 사진" />
-                      </a>
+                      <AttachmentImageLink url={url} alt="상담 첨부 사진" key={url} />
                     ))}
                   </div>
                 ) : null}
@@ -2087,16 +2109,13 @@ export default function TenantApp() {
                     {selectedPhotoEvidence.length ? (
                       <div className="photo-evidence-grid">
                         {selectedPhotoEvidence.map((item) => (
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noreferrer"
+                          <AttachmentImageLink
+                            url={item.url}
+                            alt={item.label}
+                            label={item.label}
                             key={`${item.variant}-${item.url}`}
                             className={`photo-evidence ${item.variant}`}
-                          >
-                            <img src={item.url} alt={item.label} />
-                            <span>{item.label}</span>
-                          </a>
+                          />
                         ))}
                       </div>
                     ) : null}
@@ -2173,9 +2192,7 @@ export default function TenantApp() {
                     {message.attachmentUrls.length ? (
                       <div className="attachment-preview">
                         {message.attachmentUrls.map((url) => (
-                          <a href={url} target="_blank" rel="noreferrer" key={url}>
-                            <img src={url} alt="민원 추가 첨부 사진" />
-                          </a>
+                          <AttachmentImageLink url={url} alt="민원 추가 첨부 사진" key={url} />
                         ))}
                       </div>
                     ) : null}
@@ -2226,9 +2243,11 @@ export default function TenantApp() {
                         {feedback.attachmentUrls.length ? (
                           <div className="attachment-preview">
                             {feedback.attachmentUrls.map((url) => (
-                              <a href={url} target="_blank" rel="noreferrer" key={url}>
-                                <img src={url} alt="이의제기 첨부 사진" />
-                              </a>
+                              <AttachmentImageLink
+                                url={url}
+                                alt="이의제기 첨부 사진"
+                                key={url}
+                              />
                             ))}
                           </div>
                         ) : null}
@@ -2389,9 +2408,7 @@ export default function TenantApp() {
                     {entry.attachmentUrls.length ? (
                       <div className="attachment-preview">
                         {entry.attachmentUrls.map((url) => (
-                          <a href={url} target="_blank" rel="noreferrer" key={url}>
-                            <img src={url} alt="호실 기록 첨부 사진" />
-                          </a>
+                          <AttachmentImageLink url={url} alt="호실 기록 첨부 사진" key={url} />
                         ))}
                       </div>
                     ) : null}

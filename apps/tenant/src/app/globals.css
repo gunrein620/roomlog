@@ -632,6 +632,8 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--paper);
+  color: inherit;
+  text-decoration: none;
 }
 
 .attachment-preview img {
@@ -669,7 +671,24 @@ textarea {
   object-fit: cover;
 }
 
-.photo-evidence span {
+.attachment-missing {
+  display: grid;
+  min-height: 92px;
+  place-items: center;
+  padding: 10px;
+  background: #f7fafc;
+  color: var(--slate);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.photo-evidence .attachment-missing {
+  border-bottom: 1px solid var(--line);
+}
+
+.photo-evidence-label {
   display: block;
   overflow: hidden;
   padding: 6px 8px;

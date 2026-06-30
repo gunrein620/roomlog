@@ -42,3 +42,7 @@ export function photoEvidenceItems(input: PhotoEvidenceInput): PhotoEvidenceItem
     ...buildItems(input.previousAttachmentUrls, "previous", "입주 전 기준 사진")
   ];
 }
+
+export function missingPhotoLabel(label: string) {
+  return `${label.trim() || "사진"} 파일을 불러올 수 없습니다.`;
+}
