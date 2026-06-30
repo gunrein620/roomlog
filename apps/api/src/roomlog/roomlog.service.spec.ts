@@ -2691,6 +2691,48 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("lets tenants defer requested photos while keeping the intake ready for ticket handoff", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const first = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "어제부터 안방 벽지에 곰팡이가 생겼습니다. 오늘 저녁 방문 가능하고 위험한 상황은 없습니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.equal(first.session.draft.photoRequested, true);
+      assert.equal(first.session.draft.requiredInfo.includes("문제 부위 사진"), true);
+
+      const second = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "사진은 지금 못 올려요. 퇴근 후에 올리겠습니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.equal(second.session.draft.photoRequested, true);
+      assert.equal(second.session.draft.requiredInfo.includes("문제 부위 사진"), false);
+      assert.equal(second.session.draft.readyToFinalize, true);
+      assert.match(second.assistantMessage.messageText, /접수 확정 가능|사진/);
+
+      const finalized = service.finalizeIntakeSession("tenant-demo", session.id);
+      const detail = service.getComplaintDetail("tenant-demo", finalized.complaint.id);
+
+      assert.equal(finalized.ticket.status, "ADDITIONAL_INFO_REQUESTED");
+      assert.match(finalized.analysis.recommendedAction, /사진|추가/);
+      assert.equal(
+        detail.messages.some((message) => /사진 업로드 요청/.test(message.messageText)),
+        true
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("keeps a fixture damage subject when a later answer mentions leaking water", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

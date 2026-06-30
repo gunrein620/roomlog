@@ -1128,7 +1128,10 @@ export class RoomlogService {
       responsibilityHint: confirmedResponsibilityHint,
       confidenceScore: session.draft.confidenceScore,
       reasons: [...correctionReasons, ...session.draft.reasons],
-      recommendedAction: session.draft.recommendedAction,
+      recommendedAction:
+        this.intakePhotoFollowupNeeded(session)
+          ? "세입자가 사진을 나중에 제출하겠다고 답했습니다. 티켓 접수 후 문제 부위 근접 사진과 공간 전체 사진을 추가 요청하세요."
+          : session.draft.recommendedAction,
       photoAnalysis: session.draft.photoAnalysis
     };
 
@@ -1168,6 +1171,24 @@ export class RoomlogService {
     session.ticketId = result.ticket.id;
     session.finalizedAt = now();
     session.updatedAt = session.finalizedAt;
+
+    if (this.intakePhotoFollowupNeeded(session)) {
+      const ticket = this.transitionTicket(
+        result.ticket.id,
+        "ADDITIONAL_INFO_REQUESTED",
+        "roomlog-ai",
+        "AI 상담 접수 후 사진 보완 요청"
+      );
+      this.addMessageInternal(
+        ticket.id,
+        ticket.complaintId,
+        "roomlog-ai",
+        "SYSTEM",
+        "사진 업로드 요청: 문제 부위 근접 사진과 공간 전체 사진을 추가로 올려주세요."
+      );
+      result.ticket = this.presentTicket(ticket);
+    }
+
     this.persistStore();
 
     return result;
@@ -3378,6 +3399,34 @@ export class RoomlogService {
     return "위험 없음";
   }
 
+  private detectPhotoDeferralInfo(session: IntakeSession) {
+    const tenantText = session.messages
+      .filter((message) => message.sender === "TENANT")
+      .map((message) => this.meaningfulTenantMessageText(message))
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!tenantText) {
+      return undefined;
+    }
+
+    const match = tenantText.match(
+      /(사진[^.。!?]{0,24}(?:못|어렵|나중|이따|후에|퇴근\s*후|나중에|추가)|(?:못|어렵|나중|이따|후에|퇴근\s*후|나중에)[^.。!?]{0,24}(?:사진|올리|첨부))/
+    );
+
+    return match?.[0]?.trim();
+  }
+
+  private intakePhotoFollowupNeeded(session: IntakeSession) {
+    return (
+      session.draft.photoRequested &&
+      !this.sessionHasPhoto(session) &&
+      Boolean(this.detectPhotoDeferralInfo(session))
+    );
+  }
+
   private buildIntakeSlots(input: {
     text: string;
     category: IntakeDraft["category"];
@@ -3575,6 +3624,7 @@ export class RoomlogService {
     const safetyRiskInfo =
       this.detectSafetyRiskInfo(text, category, priority) ??
       this.detectContextualSafetyRiskInfo(session, category);
+    const photoDeferralInfo = this.detectPhotoDeferralInfo(session);
     const photoRequested =
       category === "하자" && this.detailCategoryNeedsPhoto(detailCategory) && !hasPhoto;
     const requiredInfo: string[] = [];
@@ -3587,7 +3637,7 @@ export class RoomlogService {
       requiredInfo.push("문제 위치");
     }
 
-    if (photoRequested && priority !== 1) {
+    if (photoRequested && priority !== 1 && !photoDeferralInfo) {
       requiredInfo.push("문제 부위 사진");
     }
 
@@ -3663,6 +3713,7 @@ export class RoomlogService {
       confidenceScore: requiredInfo.length === 0 ? 0.84 : 0.58,
       reasons: [
         ...this.analysisReasons(text, detailCategory, priority, hasPhoto),
+        ...(photoDeferralInfo ? [`사진 제출 보류: ${photoDeferralInfo}`] : []),
         ...contextHints,
         ...duplicateCandidates.map(
           (candidate) => `중복 가능 티켓: ${candidate.title} (${candidate.displayStatus})`
