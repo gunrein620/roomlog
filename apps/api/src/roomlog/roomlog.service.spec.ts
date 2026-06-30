@@ -650,6 +650,48 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("records assistant-only realtime opening turns without generating a new intake draft", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch;
+
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "CALLBOT"
+    });
+
+    try {
+      const result = await service.recordRealtimeTurn("tenant-demo", session.id, {
+        assistantTranscript:
+          "안녕하세요. Roomlog AI 콜봇입니다. 지금 상담 스레드에 통화 내용을 남기고 필요한 정보를 차례로 확인하겠습니다.",
+        eventId: "resp_opening_assistant"
+      });
+
+      assert.equal(fetchCalls, 0);
+      assert.equal(result.recordedMessages.length, 1);
+      assert.equal(result.recordedMessages[0].sender, "AI_ASSISTANT");
+      assert.equal(result.recordedMessages[0].realtimeEventId, "resp_opening_assistant");
+      assert.match(result.recordedMessages[0].messageText, /Roomlog AI 콜봇/);
+      assert.equal(result.session.draft.title, "상담 초안");
+      assert.equal(result.session.draft.detailCategory, "확인 필요");
+      assert.equal(result.session.draft.readyToFinalize, false);
+      assert.equal(result.session.openaiPreviousResponseId, undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("upgrades terse Realtime assistant transcripts using the structured intake draft", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

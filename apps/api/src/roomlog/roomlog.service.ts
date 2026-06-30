@@ -803,6 +803,27 @@ export class RoomlogService {
 
     const recordedMessages: IntakeMessage[] = [];
 
+    if (!userTranscript && assistantTranscript && attachmentUrls.length === 0) {
+      const assistantMessage = this.createIntakeMessage(
+        session.id,
+        "AI_ASSISTANT",
+        assistantTranscript,
+        "VOICE"
+      );
+      assistantMessage.realtimeEventId = realtimeEventId;
+      session.messages.push(assistantMessage);
+      recordedMessages.push(assistantMessage);
+      session.updatedAt = now();
+      this.persistStore();
+
+      return {
+        session: this.presentIntakeSession(session),
+        turnSummary: this.presentRealtimeTurnSummary(session, assistantTranscript),
+        recordedMessages: this.presentIntakeMessages(recordedMessages),
+        deduplicated: false
+      };
+    }
+
     if (userTranscript || attachmentUrls.length > 0) {
       const tenantMessage: IntakeMessage = {
         ...this.createIntakeMessage(
