@@ -37,6 +37,10 @@ import {
   emptyRealtimePersistState
 } from "./realtime-persist";
 import { appendQuestionReplyPrompt } from "./question-reply";
+import {
+  consultationThreadBadges,
+  consultationThreadNextAction
+} from "./thread-workflow";
 
 type AuthResult = {
   accessToken: string;
@@ -1690,6 +1694,7 @@ export default function TenantApp() {
           <div className="ticket-list thread-list">
             {sessions.map((thread) => {
               const summary = thread.threadSummary;
+              const workflowBadges = consultationThreadBadges(summary);
 
               return (
                 <button
@@ -1700,6 +1705,14 @@ export default function TenantApp() {
                 >
                   <span>{summary.statusLabel}</span>
                   <strong>{summary.title}</strong>
+                  <div className="thread-badges" aria-label="상담 스레드 상태">
+                    {workflowBadges.map((badge) => (
+                      <em className={`thread-badge ${badge.tone}`} key={badge.label}>
+                        {badge.label}
+                      </em>
+                    ))}
+                  </div>
+                  <p className="thread-action">{consultationThreadNextAction(summary)}</p>
                   <small>
                     {summary.channelLabel} · P{summary.priority} · 메시지 {summary.messageCount} ·
                     사진 {summary.attachmentCount}
@@ -1742,11 +1755,23 @@ export default function TenantApp() {
               <p className="eyebrow">AI Intake</p>
               <h2>{selectedSession?.threadSummary.title ?? "새 상담을 시작하세요"}</h2>
               {selectedSession ? (
-                <small>
-                  {selectedSession.threadSummary.channelLabel} ·{" "}
-                  {selectedSession.threadSummary.statusLabel} · 메시지{" "}
-                  {selectedSession.threadSummary.messageCount}
-                </small>
+                <>
+                  <small>
+                    {selectedSession.threadSummary.channelLabel} ·{" "}
+                    {selectedSession.threadSummary.statusLabel} · 메시지{" "}
+                    {selectedSession.threadSummary.messageCount}
+                  </small>
+                  <div className="thread-badges heading-badges" aria-label="현재 상담 진행 상태">
+                    {consultationThreadBadges(selectedSession.threadSummary).map((badge) => (
+                      <em className={`thread-badge ${badge.tone}`} key={badge.label}>
+                        {badge.label}
+                      </em>
+                    ))}
+                  </div>
+                  <p className="thread-action heading-action">
+                    {consultationThreadNextAction(selectedSession.threadSummary)}
+                  </p>
+                </>
               ) : null}
             </div>
             {selectedSession ? (

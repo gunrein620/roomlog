@@ -548,6 +548,70 @@ textarea {
   line-height: 1.45;
 }
 
+.thread-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.thread-badge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--mist);
+  color: var(--slate);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.thread-badge.priority {
+  border-color: #ffd591;
+  background: #fff7e6;
+  color: var(--amber);
+}
+
+.thread-badge.warning {
+  border-color: #ffccc7;
+  background: #fff1f0;
+  color: var(--red);
+}
+
+.thread-badge.info {
+  border-color: #bae0ff;
+  background: #f0f7ff;
+  color: var(--blue);
+}
+
+.thread-badge.ready {
+  border-color: #abefc6;
+  background: #ecfdf3;
+  color: var(--green);
+}
+
+.thread-action {
+  margin: 6px 0 8px;
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.heading-badges {
+  margin-top: 10px;
+}
+
+.heading-action {
+  margin-bottom: 0;
+  color: var(--teal);
+}
+
 .thread-preview {
   display: -webkit-box;
   -webkit-box-orient: vertical;
