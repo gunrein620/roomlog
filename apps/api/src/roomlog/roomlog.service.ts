@@ -679,7 +679,8 @@ export class RoomlogService {
   }
 
   login(input: LoginInput): AuthResult {
-    const user = this.store.users.find((account) => account.email === input.email);
+    const email = input.email?.trim().toLowerCase();
+    const user = this.store.users.find((account) => account.email === email);
 
     if (!user || !verifyPassword(input.password, user.passwordHash)) {
       throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");

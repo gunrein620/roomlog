@@ -2616,6 +2616,29 @@ describe("RoomlogService", () => {
     assert.throws(() => service.getUserFromToken(`Bearer ${expiredToken}`), /만료/);
   });
 
+  it("normalizes login email casing and whitespace like signup", () => {
+    const service = new RoomlogService({ seedDemoData: false } as any);
+    const signupAuth = service.signup({
+      email: "normalized-login@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "로그인 세입자",
+      phone: "010-4444-7789",
+      role: "TENANT",
+      buildingName: "로그인 빌라",
+      roomNo: "901호",
+      address: "서울시 성동구 로그인로 9"
+    } as any);
+
+    const loginAuth = service.login({
+      email: "  NORMALIZED-LOGIN@ROOMLOG.TEST  ",
+      password: "password123!"
+    });
+
+    assert.equal(loginAuth.userId, signupAuth.userId);
+    assert.equal(loginAuth.role, "TENANT");
+  });
+
   it("normalizes signup phone numbers before duplicate checks", () => {
     const service = new RoomlogService();
 
