@@ -54,4 +54,38 @@ describe("tenant chat message formatting", () => {
       { kind: "paragraph", text: "오늘 저녁 8시 이후 방문 가능합니다." }
     ]);
   });
+
+  it("extracts quick reply examples from assistant questions", () => {
+    assert.deepEqual(
+      chatMessageBlocks(
+        [
+          "다음으로 확인할 질문",
+          "- 물이 지금도 떨어지고 있나요, 전기 콘센트나 조명 근처로 번졌나요?",
+          "  바로 답변 예시: 지금도 떨어지고 있어요 / 전기 주변은 아니에요 / 조명 근처까지 번졌어요",
+          "- 관리자나 업체가 확인할 수 있는 방문 가능 시간대가 언제인가요?",
+          "  바로 답변 예시: 오늘 저녁 7시 이후 / 내일 오전 10시부터 12시 사이"
+        ].join("\n")
+      ),
+      [
+        { kind: "heading", text: "다음으로 확인할 질문" },
+        {
+          kind: "list",
+          items: [
+            "물이 지금도 떨어지고 있나요, 전기 콘센트나 조명 근처로 번졌나요?",
+            "관리자나 업체가 확인할 수 있는 방문 가능 시간대가 언제인가요?"
+          ]
+        },
+        {
+          kind: "quickReplies",
+          replies: [
+            "지금도 떨어지고 있어요",
+            "전기 주변은 아니에요",
+            "조명 근처까지 번졌어요",
+            "오늘 저녁 7시 이후",
+            "내일 오전 10시부터 12시 사이"
+          ]
+        }
+      ]
+    );
+  });
 });

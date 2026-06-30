@@ -499,7 +499,13 @@ function senderLabel(sender: IntakeMessage["sender"] | string) {
   return "시스템";
 }
 
-function ChatMessageBody({ text }: { text: string }) {
+function ChatMessageBody({
+  text,
+  onQuickReply
+}: {
+  text: string;
+  onQuickReply?: (reply: string) => void;
+}) {
   return (
     <div className="message-content">
       {chatMessageBlocks(text).map((block, index) => {
@@ -514,6 +520,27 @@ function ChatMessageBody({ text }: { text: string }) {
                 <li key={item}>{item}</li>
               ))}
             </ul>
+          );
+        }
+
+        if (block.kind === "quickReplies") {
+          return (
+            <div
+              className="quick-replies"
+              aria-label="빠른 답변 선택"
+              key={`${block.kind}-${index}`}
+            >
+              {block.replies.map((reply) => (
+                <button
+                  type="button"
+                  key={reply}
+                  disabled={!onQuickReply}
+                  onClick={() => onQuickReply?.(reply)}
+                >
+                  {reply}
+                </button>
+              ))}
+            </div>
           );
         }
 
@@ -731,6 +758,13 @@ export default function TenantApp() {
 
   function seedComposerFromSuggestedAnswer(question: string, answer: string) {
     setMessageText((current) => appendQuestionAnswerPrompt(current, question, answer));
+    window.requestAnimationFrame(() => {
+      messageInputRef.current?.focus();
+    });
+  }
+
+  function seedComposerFromQuickReply(reply: string) {
+    setMessageText(reply);
     window.requestAnimationFrame(() => {
       messageInputRef.current?.focus();
     });
@@ -2175,7 +2209,14 @@ export default function TenantApp() {
                 className={message.sender === "TENANT" ? "bubble mine" : "bubble assistant"}
               >
                 <span>{senderLabel(message.sender)}</span>
-                <ChatMessageBody text={message.messageText} />
+                <ChatMessageBody
+                  text={message.messageText}
+                  onQuickReply={
+                    message.sender === "AI_ASSISTANT" && selectedSession.status === "ACTIVE"
+                      ? seedComposerFromQuickReply
+                      : undefined
+                  }
+                />
                 {message.attachmentUrls.length > 0 ? (
                   <div className="attachment-preview">
                     {message.attachmentUrls.map((url) => (

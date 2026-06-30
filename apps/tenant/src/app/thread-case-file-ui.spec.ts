@@ -31,4 +31,11 @@ describe("tenant thread case file UI", () => {
     assert.match(pageSource, /sessions\.length === 0/);
     assert.match(pageSource, /void startSession\(prompt\)/);
   });
+
+  it("renders assistant quick replies as composer actions", () => {
+    assert.match(pageSource, /className="quick-replies"/);
+    assert.match(pageSource, /aria-label="빠른 답변 선택"/);
+    assert.match(pageSource, /onClick=\{\(\) => onQuickReply\?\.\(reply\)\}/);
+    assert.match(pageSource, /seedComposerFromQuickReply/);
+  });
 });

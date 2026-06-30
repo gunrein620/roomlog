@@ -10,6 +10,10 @@ export type ChatMessageBlock =
   | {
       kind: "list";
       items: string[];
+    }
+  | {
+      kind: "quickReplies";
+      replies: string[];
     };
 
 const sectionHeadings = new Set([
@@ -24,6 +28,7 @@ const sectionHeadings = new Set([
 export function chatMessageBlocks(messageText: string): ChatMessageBlock[] {
   const blocks: ChatMessageBlock[] = [];
   let listItems: string[] = [];
+  const quickReplies: string[] = [];
 
   function flushList() {
     if (listItems.length > 0) {
@@ -40,6 +45,19 @@ export function chatMessageBlocks(messageText: string): ChatMessageBlock[] {
       continue;
     }
 
+    if (line.startsWith("바로 답변 예시:")) {
+      for (const reply of line
+        .replace(/^바로 답변 예시:\s*/, "")
+        .split("/")
+        .map((item) => item.trim())
+        .filter(Boolean)) {
+        if (!quickReplies.includes(reply)) {
+          quickReplies.push(reply);
+        }
+      }
+      continue;
+    }
+
     if (line.startsWith("- ")) {
       listItems.push(line.slice(2).trim());
       continue;
@@ -53,6 +71,10 @@ export function chatMessageBlocks(messageText: string): ChatMessageBlock[] {
   }
 
   flushList();
+
+  if (quickReplies.length) {
+    blocks.push({ kind: "quickReplies", replies: quickReplies });
+  }
 
   return blocks.length ? blocks : [{ kind: "paragraph", text: "" }];
 }
