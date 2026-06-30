@@ -3142,7 +3142,8 @@ export class RoomlogService {
     const safetyRiskInfo =
       this.detectSafetyRiskInfo(text, category, priority) ??
       this.detectContextualSafetyRiskInfo(session, category);
-    const photoRequested = category === "하자" && ["누수", "곰팡이", "벽지", "바닥", "에어컨"].includes(detailCategory) && !hasPhoto;
+    const photoRequested =
+      category === "하자" && this.detailCategoryNeedsPhoto(detailCategory) && !hasPhoto;
     const requiredInfo: string[] = [];
 
     if (!text.trim()) {
@@ -3297,7 +3298,7 @@ export class RoomlogService {
     if (
       input.category === "하자" &&
       !input.hasPhoto &&
-      (input.photoRequested || ["누수", "곰팡이", "벽지", "바닥", "에어컨"].includes(input.detailCategory))
+      (input.photoRequested || this.detailCategoryNeedsPhoto(input.detailCategory))
     ) {
       questions.push("문제 부위 근접 사진 1장과 공간 전체가 보이는 사진 1장을 올려주실 수 있나요?");
     }
@@ -4711,7 +4712,18 @@ export class RoomlogService {
   }
 
   private detectDetailCategory(text: string) {
-    if (["누수", "물", "천장", "샘", "침수"].some((word) => text.includes(word))) {
+    const fixtureIssue = this.detectFixtureIssueCategory(text);
+    const hasLeakSignal = this.hasLeakSignal(text);
+
+    if (fixtureIssue && hasLeakSignal) {
+      return `${fixtureIssue} 및 누수`;
+    }
+
+    if (fixtureIssue) {
+      return fixtureIssue;
+    }
+
+    if (hasLeakSignal) {
       return "누수";
     }
 
@@ -4738,6 +4750,39 @@ export class RoomlogService {
     return text.trim() ? "설비" : "확인 필요";
   }
 
+  private detectFixtureIssueCategory(text: string) {
+    const fixture = [
+      { label: "변기", words: ["변기", "변기통", "양변기"] },
+      { label: "수전", words: ["수전", "수도꼭지", "수도 손잡이"] },
+      { label: "세면대", words: ["세면대"] },
+      { label: "싱크대", words: ["싱크대", "싱크볼"] }
+    ].find((item) => item.words.some((word) => text.includes(word)));
+
+    if (!fixture) {
+      return undefined;
+    }
+
+    if (/(파손|깨|깨져|금|부서|부러)/.test(text)) {
+      return `${fixture.label} 파손`;
+    }
+
+    if (/(헐거|고장|작동 안|안 내려|막힘|역류)/.test(text)) {
+      return `${fixture.label} 고장`;
+    }
+
+    return undefined;
+  }
+
+  private hasLeakSignal(text: string) {
+    return /(누수|침수|물방울|물자국|물고임|물이\s*(계속\s*)?(떨어|새|샘|고이|번지)|물도\s*새|물\s*샘|물\s*떨어|천장.*물|바닥.*젖|젖었|젖어)/.test(
+      text
+    );
+  }
+
+  private detailCategoryNeedsPhoto(detailCategory: string) {
+    return /(누수|곰팡이|벽지|바닥|에어컨)/.test(detailCategory);
+  }
+
   private detectPriority(text: string, detailCategory: string): IntakeDraft["priority"] {
     const emergencyWords = [
       "가스 냄새",
@@ -4756,7 +4801,7 @@ export class RoomlogService {
       return 1;
     }
 
-    if (["누수", "보일러"].includes(detailCategory)) {
+    if (detailCategory.includes("누수") || detailCategory === "보일러") {
       return 2;
     }
 

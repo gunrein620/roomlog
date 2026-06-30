@@ -1739,6 +1739,35 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("keeps a fixture damage subject when a later answer mentions leaking water", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 변기통이 파손됐고 금이 가서 사용하기 어렵습니다. 오늘 저녁 7시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+
+      const second = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "네, 깨진 부분에서 물도 새고 있고 바닥이 젖었습니다. 위험한 상황은 없어요.",
+        inputMode: "CHAT"
+      });
+
+      assert.match(second.session.draft.title, /변기/);
+      assert.match(second.session.draft.title, /파손/);
+      assert.match(second.session.draft.title, /누수/);
+      assert.equal(second.session.draft.photoRequested, true);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("validates signup input and rejects forgeable demo-style tokens", () => {
     const service = new RoomlogService();
 
