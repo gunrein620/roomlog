@@ -111,6 +111,7 @@ const emptyLogin = {
   email: "",
   password: ""
 };
+const supportedImageAccept = "image/jpeg,image/png,image/webp";
 
 const signupInitial = {
   email: "",
@@ -850,7 +851,7 @@ export default function VendorApp() {
               작업 사진
               <input
                 type="file"
-                accept="image/*"
+                accept={supportedImageAccept}
                 multiple
                 onChange={(event) =>
                   setVendorMessageFiles(Array.from(event.target.files ?? []))
@@ -879,7 +880,7 @@ export default function VendorApp() {
             완료 사진
             <input
               type="file"
-              accept="image/*"
+              accept={supportedImageAccept}
               multiple
               onChange={(event) => setCompletionFiles(Array.from(event.target.files ?? []))}
             />

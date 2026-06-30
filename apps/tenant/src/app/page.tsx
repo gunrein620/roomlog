@@ -143,6 +143,7 @@ const detailCategoryOptions = [
   "기타"
 ];
 const responsibilityOptions = ["임대인 책임 가능성", "임차인 책임 가능성", "판단 어려움"];
+const supportedImageAccept = "image/jpeg,image/png,image/webp";
 
 function AttachmentImageLink({
   url,
@@ -1708,7 +1709,7 @@ export default function TenantApp() {
             <input
               key={checklistInputKey}
               type="file"
-              accept="image/*"
+              accept={supportedImageAccept}
               multiple
               onChange={(event) => setChecklistFiles(Array.from(event.target.files ?? []))}
             />
@@ -2015,7 +2016,7 @@ export default function TenantApp() {
               <input
                 key={photoInputKey}
                 type="file"
-                accept="image/*"
+                accept={supportedImageAccept}
                 multiple
                 onChange={(event) =>
                   setPhotoFiles(normalizeSelectedPhotos(event.target.files))
@@ -2460,7 +2461,7 @@ export default function TenantApp() {
                     <input
                       key={aiFeedbackPhotoInputKey}
                       type="file"
-                      accept="image/*"
+                      accept={supportedImageAccept}
                       onChange={(event) => setAiFeedbackPhotoFile(event.target.files?.[0] ?? null)}
                     />
                     <button type="submit" className="secondary">
@@ -2512,7 +2513,7 @@ export default function TenantApp() {
                       <input
                         key={reopenPhotoInputKey}
                         type="file"
-                        accept="image/*"
+                        accept={supportedImageAccept}
                         onChange={(event) => setReopenPhotoFile(event.target.files?.[0] ?? null)}
                       />
                       <button type="submit" className="secondary">
@@ -2542,7 +2543,7 @@ export default function TenantApp() {
                   <input
                     key={followupPhotoInputKey}
                     type="file"
-                    accept="image/*"
+                    accept={supportedImageAccept}
                     multiple
                     onChange={(event) =>
                       setFollowupPhotoFiles(normalizeSelectedPhotos(event.target.files))
