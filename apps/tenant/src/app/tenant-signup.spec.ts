@@ -3,7 +3,8 @@ import { strict as assert } from "node:assert";
 import {
   buildTenantSignupPayload,
   canSubmitTenantSignup,
-  tenantSignupIssues
+  tenantSignupIssues,
+  visibleTenantSignupIssues
 } from "./tenant-signup";
 
 const completeForm = {
@@ -108,6 +109,29 @@ describe("tenant signup preflight", () => {
         phone: "123-45"
       }),
       false
+    );
+  });
+
+  it("shows enough signup issues for a full form review", () => {
+    assert.deepEqual(
+      visibleTenantSignupIssues({
+        ...completeForm,
+        name: "",
+        email: "bad-email",
+        phone: "123",
+        buildingName: "",
+        roomNo: "",
+        address: "",
+        password: "password",
+        passwordConfirm: "different"
+      }),
+      [
+        "이름을 입력해주세요.",
+        "이메일 형식이 올바르지 않습니다.",
+        "휴대폰 번호는 숫자 10~11자리여야 합니다.",
+        "비밀번호는 영문과 숫자를 포함해야 합니다.",
+        "비밀번호 확인이 일치하지 않습니다."
+      ]
     );
   });
 

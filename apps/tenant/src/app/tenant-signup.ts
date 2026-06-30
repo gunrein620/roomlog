@@ -117,6 +117,13 @@ export function canSubmitTenantSignup(
   return tenantSignupIssues(form, invitePreview).length === 0;
 }
 
+export function visibleTenantSignupIssues(
+  form: TenantSignupForm,
+  invitePreview?: TenantInvitePreviewForSignup | null
+) {
+  return tenantSignupIssues(form, invitePreview).slice(0, 5);
+}
+
 export function buildTenantSignupPayload(form: TenantSignupForm) {
   const input = normalized(form);
   const base = {

@@ -16,7 +16,8 @@ import {
 import {
   buildTenantSignupPayload,
   canSubmitTenantSignup,
-  tenantSignupIssues
+  tenantSignupIssues,
+  visibleTenantSignupIssues
 } from "./tenant-signup";
 import { ensureTenantAuth, type AuthResult } from "./auth-role";
 import {
@@ -633,6 +634,10 @@ export default function TenantApp() {
   );
   const signupIssues = useMemo(
     () => tenantSignupIssues(signupForm, invitePreview),
+    [signupForm, invitePreview]
+  );
+  const visibleSignupIssues = useMemo(
+    () => visibleTenantSignupIssues(signupForm, invitePreview),
     [signupForm, invitePreview]
   );
   const signupReady = canSubmitTenantSignup(signupForm, invitePreview);
@@ -1533,6 +1538,7 @@ export default function TenantApp() {
               <label>
                 이름
                 <input
+                  autoComplete="name"
                   value={signupForm.name}
                   onChange={(event) => setSignupForm({ ...signupForm, name: event.target.value })}
                 />
@@ -1595,6 +1601,7 @@ export default function TenantApp() {
                   <label>
                     건물명
                     <input
+                      autoComplete="organization"
                       value={signupForm.buildingName}
                       onChange={(event) =>
                         setSignupForm({ ...signupForm, buildingName: event.target.value })
@@ -1604,6 +1611,7 @@ export default function TenantApp() {
                   <label>
                     호실
                     <input
+                      autoComplete="address-line2"
                       value={signupForm.roomNo}
                       onChange={(event) =>
                         setSignupForm({ ...signupForm, roomNo: event.target.value })
@@ -1613,6 +1621,7 @@ export default function TenantApp() {
                   <label>
                     건물 주소
                     <input
+                      autoComplete="address-line1"
                       value={signupForm.address}
                       onChange={(event) =>
                         setSignupForm({ ...signupForm, address: event.target.value })
@@ -1620,18 +1629,6 @@ export default function TenantApp() {
                     />
                   </label>
                 </>
-              ) : null}
-              {authMode === "signup" ? (
-                <div
-                  className={signupReady ? "signup-checklist ready" : "signup-checklist"}
-                  aria-live="polite"
-                >
-                  {signupReady ? (
-                    <span>회원가입 정보를 확인했습니다.</span>
-                  ) : (
-                    signupIssues.slice(0, 3).map((issue) => <span key={issue}>{issue}</span>)
-                  )}
-                </div>
               ) : null}
               <label>
                 비밀번호
@@ -1655,6 +1652,18 @@ export default function TenantApp() {
                   }
                 />
               </label>
+              {authMode === "signup" ? (
+                <div
+                  className={signupReady ? "signup-checklist ready" : "signup-checklist"}
+                  aria-live="polite"
+                >
+                  {signupReady ? (
+                    <span>회원가입 정보를 확인했습니다.</span>
+                  ) : (
+                    visibleSignupIssues.map((issue) => <span key={issue}>{issue}</span>)
+                  )}
+                </div>
+              ) : null}
               <button type="submit" className="primary" disabled={!signupReady}>
                 세입자 계정 만들기
               </button>
