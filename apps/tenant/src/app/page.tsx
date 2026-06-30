@@ -43,6 +43,7 @@ import {
   consultationThreadNextAction
 } from "./thread-workflow";
 import { initialConsultationComposerText } from "./composer-state";
+import { initialMoveInChecklistForm } from "./move-in-form-state";
 
 type AuthResult = {
   accessToken: string;
@@ -498,9 +499,10 @@ export default function TenantApp() {
   const [messageText, setMessageText] = useState(initialConsultationComposerText);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoInputKey, setPhotoInputKey] = useState(0);
-  const [checklistArea, setChecklistArea] = useState("화장실");
-  const [checklistItemName, setChecklistItemName] = useState("천장");
-  const [checklistMemo, setChecklistMemo] = useState("입주 시 누수 흔적 없음");
+  const initialChecklistForm = initialMoveInChecklistForm();
+  const [checklistArea, setChecklistArea] = useState(initialChecklistForm.area);
+  const [checklistItemName, setChecklistItemName] = useState(initialChecklistForm.itemName);
+  const [checklistMemo, setChecklistMemo] = useState(initialChecklistForm.memo);
   const [checklistFiles, setChecklistFiles] = useState<File[]>([]);
   const [checklistInputKey, setChecklistInputKey] = useState(0);
   const [followupText, setFollowupText] = useState("");
@@ -1613,6 +1615,7 @@ export default function TenantApp() {
             공간
             <input
               value={checklistArea}
+              placeholder="예: 화장실"
               onChange={(event) => setChecklistArea(event.target.value)}
             />
           </label>
@@ -1620,6 +1623,7 @@ export default function TenantApp() {
             항목
             <input
               value={checklistItemName}
+              placeholder="예: 천장, 세면대, 창틀"
               onChange={(event) => setChecklistItemName(event.target.value)}
             />
           </label>
@@ -1627,6 +1631,7 @@ export default function TenantApp() {
             메모
             <input
               value={checklistMemo}
+              placeholder="입주 시 상태를 직접 입력하세요."
               onChange={(event) => setChecklistMemo(event.target.value)}
             />
           </label>
