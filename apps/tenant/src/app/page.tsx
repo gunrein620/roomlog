@@ -48,6 +48,7 @@ import {
   appendQuestionReplyPrompt,
   suggestedAnswersForQuestion
 } from "./question-reply";
+import { activeQuickReplyMessageId } from "./chat-quick-replies";
 import {
   consultationThreadBadges,
   consultationThreadFilterCountLabel,
@@ -499,7 +500,7 @@ function senderLabel(sender: IntakeMessage["sender"] | string) {
   return "시스템";
 }
 
-function ChatMessageBody({
+export function ChatMessageBody({
   text,
   onQuickReply
 }: {
@@ -524,6 +525,10 @@ function ChatMessageBody({
         }
 
         if (block.kind === "quickReplies") {
+          if (!onQuickReply) {
+            return null;
+          }
+
           return (
             <div
               className="quick-replies"
@@ -642,6 +647,13 @@ export default function TenantApp() {
   );
   const selectedThreadCaseFile = useMemo(
     () => (selectedSession ? threadCaseFile(selectedSession) : undefined),
+    [selectedSession]
+  );
+  const selectedQuickReplyMessageId = useMemo(
+    () =>
+      selectedSession
+        ? activeQuickReplyMessageId(selectedSession.messages, selectedSession.status)
+        : undefined,
     [selectedSession]
   );
   const emptyConsultation = useMemo(
@@ -2299,7 +2311,7 @@ export default function TenantApp() {
                 <ChatMessageBody
                   text={message.messageText}
                   onQuickReply={
-                    message.sender === "AI_ASSISTANT" && selectedSession.status === "ACTIVE"
+                    message.id === selectedQuickReplyMessageId
                       ? (reply) => sendQuickReply(reply)
                       : undefined
                   }
