@@ -82,6 +82,50 @@ describe("PrismaStoreProjector", () => {
                 evidence: [],
                 recommendedRetake: false
               },
+              intakeSlots: [
+                {
+                  key: "symptom",
+                  label: "증상",
+                  status: "COLLECTED",
+                  value: "싱크대 하부에서 물이 떨어집니다.",
+                  evidence: "세입자 증상을 확인했습니다."
+                },
+                {
+                  key: "location",
+                  label: "위치",
+                  status: "COLLECTED",
+                  value: "싱크대",
+                  evidence: "싱크대 위치를 확인했습니다."
+                },
+                {
+                  key: "occurrence",
+                  label: "발생 시점",
+                  status: "NEEDS_INFO",
+                  evidence: "언제부터 발생했는지 아직 모릅니다.",
+                  action: "언제 시작됐고 지금도 계속되는지 알려주세요."
+                },
+                {
+                  key: "risk",
+                  label: "위험 여부",
+                  status: "NEEDS_INFO",
+                  evidence: "안전 위험 여부를 확인해야 합니다.",
+                  action: "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
+                },
+                {
+                  key: "photo",
+                  label: "사진",
+                  status: "NEEDS_INFO",
+                  evidence: "사진이 있으면 관리자 판단이 빨라집니다.",
+                  action: "문제 부위 근접 사진과 공간 전체 사진을 올려주세요."
+                },
+                {
+                  key: "visitTime",
+                  label: "방문 가능 시간",
+                  status: "NEEDS_INFO",
+                  evidence: "방문 가능 시간이 필요합니다.",
+                  action: "관리자나 업체가 확인할 수 있는 시간대를 알려주세요."
+                }
+              ],
               requiredInfo: ["발생 시점"],
               photoRequested: true,
               readyToFinalize: false,

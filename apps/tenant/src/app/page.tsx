@@ -15,6 +15,11 @@ import {
   canSubmitTenantSignup,
   tenantSignupIssues
 } from "./tenant-signup";
+import {
+  intakeSlotProgress,
+  intakeSlotStatusLabel,
+  type TenantIntakeSlot
+} from "./intake-slot-progress";
 
 type AuthResult = {
   accessToken: string;
@@ -58,6 +63,7 @@ type IntakeDraft = {
   nextQuestions: string[];
   tenantGuidance: string[];
   photoAnalysis: PhotoAnalysis;
+  intakeSlots: TenantIntakeSlot[];
   requiredInfo: string[];
   photoRequested: boolean;
   readyToFinalize: boolean;
@@ -152,6 +158,8 @@ type IntakeThreadSummary = {
   lastAssistantMessage: string;
   messageCount: number;
   attachmentCount: number;
+  collectedSlotCount: number;
+  openSlotCount: number;
   requiredInfoCount: number;
   unresolvedQuestionCount: number;
   readyToFinalize: boolean;
@@ -192,6 +200,9 @@ type RealtimeTurnSummary = {
   priority: 1 | 2 | 3 | 4;
   requiresPhoto: boolean;
   readyToFinalize: boolean;
+  intakeSlots: TenantIntakeSlot[];
+  collectedSlotCount: number;
+  openSlotCount: number;
   nextQuestions: string[];
   tenantGuidance: string[];
   spokenReply: string;
@@ -507,6 +518,10 @@ export default function TenantApp() {
   const selectedRealtimeTurnSummary = selectedSession
     ? realtimeTurnSummaries[selectedSession.id]
     : undefined;
+  const selectedSlotProgress = useMemo(
+    () => (selectedSession ? intakeSlotProgress(selectedSession.draft.intakeSlots) : undefined),
+    [selectedSession]
+  );
   const signupIssues = useMemo(
     () => tenantSignupIssues(signupForm, invitePreview),
     [signupForm, invitePreview]
@@ -1677,6 +1692,9 @@ export default function TenantApp() {
                     {summary.channelLabel} · P{summary.priority} · 메시지 {summary.messageCount} ·
                     사진 {summary.attachmentCount}
                   </small>
+                  <small>
+                    정보 {summary.collectedSlotCount}/6 · 확인 필요 {summary.openSlotCount}
+                  </small>
                   <p className="thread-preview">{summary.lastUserMessage}</p>
                   <p className="thread-preview assistant">AI: {summary.lastAssistantMessage}</p>
                 </button>
@@ -1992,6 +2010,34 @@ export default function TenantApp() {
               ) : null}
 
               <div className="info-stack">
+                <section className="slot-progress-card">
+                  <div className="slot-progress-heading">
+                    <h3>상담 정보 진행도</h3>
+                    {selectedSlotProgress ? <strong>{selectedSlotProgress.label}</strong> : null}
+                  </div>
+                  {selectedSlotProgress ? (
+                    <div
+                      className="slot-progress-bar"
+                      aria-label={`상담 정보 ${selectedSlotProgress.percent}% 확인`}
+                    >
+                      <span style={{ width: `${selectedSlotProgress.percent}%` }} />
+                    </div>
+                  ) : null}
+                  <div className="slot-grid">
+                    {selectedSession.draft.intakeSlots.map((slot) => (
+                      <article className={`slot-item ${slot.status.toLowerCase()}`} key={slot.key}>
+                        <div>
+                          <strong>{slot.label}</strong>
+                          <span>{intakeSlotStatusLabel(slot.status)}</span>
+                        </div>
+                        <p>{slot.value || slot.evidence}</p>
+                        {slot.status === "NEEDS_INFO" && slot.action ? (
+                          <small>{slot.action}</small>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                </section>
                 <section>
                   <h3>다음 질문</h3>
                   {selectedSession.draft.nextQuestions.length ? (

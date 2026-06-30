@@ -41,6 +41,8 @@ import {
   IntakeDraft,
   IntakeMessage,
   IntakeSession,
+  IntakeSlot,
+  IntakeSlotKey,
   IntakeThreadSummary,
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
@@ -774,6 +776,8 @@ export class RoomlogService {
 
   private presentRealtimeTurnSummary(session: IntakeSession, assistantMessageText: string) {
     const draft = session.draft;
+    const intakeSlots = this.draftIntakeSlots(session);
+    const slotCounts = this.intakeSlotCounts(intakeSlots);
     const requiresPhoto =
       draft.photoRequested ||
       draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
@@ -792,6 +796,9 @@ export class RoomlogService {
       priority: draft.priority,
       requiresPhoto,
       readyToFinalize: draft.readyToFinalize,
+      intakeSlots: this.presentIntakeSlots(intakeSlots),
+      collectedSlotCount: slotCounts.collectedSlotCount,
+      openSlotCount: slotCounts.openSlotCount,
       nextQuestions: [...draft.nextQuestions],
       tenantGuidance: [...draft.tenantGuidance],
       spokenReply: assistantMessageText
@@ -2772,6 +2779,50 @@ export class RoomlogService {
       ],
       tenantGuidance: ["사진이 있으면 상담창에 첨부해 주세요."],
       photoAnalysis: this.emptyPhotoAnalysis(),
+      intakeSlots: [
+        {
+          key: "symptom",
+          label: "증상",
+          status: "NEEDS_INFO",
+          evidence: "아직 세입자 증상이 없습니다.",
+          action: "어떤 문제가 보이는지 한 문장으로 알려주세요."
+        },
+        {
+          key: "location",
+          label: "위치",
+          status: "NEEDS_INFO",
+          evidence: "문제 위치가 필요합니다.",
+          action: "방/공간과 문제 부위를 알려주세요."
+        },
+        {
+          key: "occurrence",
+          label: "발생 시점",
+          status: "NEEDS_INFO",
+          evidence: "언제부터 발생했는지 아직 모릅니다.",
+          action: "언제 시작됐고 지금도 계속되는지 알려주세요."
+        },
+        {
+          key: "risk",
+          label: "위험 여부",
+          status: "NEEDS_INFO",
+          evidence: "안전 위험 여부를 확인해야 합니다.",
+          action: "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
+        },
+        {
+          key: "photo",
+          label: "사진",
+          status: "NEEDS_INFO",
+          evidence: "사진이 아직 첨부되지 않았습니다.",
+          action: "문제 부위 근접 사진과 공간 전체 사진을 올려주세요."
+        },
+        {
+          key: "visitTime",
+          label: "방문 가능 시간",
+          status: "NEEDS_INFO",
+          evidence: "방문 가능 시간이 필요합니다.",
+          action: "관리자나 업체가 확인할 수 있는 시간대를 알려주세요."
+        }
+      ],
       requiredInfo: ["문제 위치", "증상", "방문 가능 시간"],
       photoRequested: false,
       readyToFinalize: false,
@@ -2788,6 +2839,123 @@ export class RoomlogService {
       summary: "사진이 아직 첨부되지 않았습니다.",
       evidence: ["사진 첨부 후 문제 후보와 비교 상태를 분석합니다."],
       recommendedRetake: false
+    };
+  }
+
+  private buildIntakeSlots(input: {
+    text: string;
+    category: IntakeDraft["category"];
+    detailCategory: string;
+    priority: IntakeDraft["priority"];
+    hasPhoto: boolean;
+    location?: string;
+    availableTimes?: string;
+    photoRequested: boolean;
+  }): IntakeSlot[] {
+    const text = input.text.trim();
+    const occurrenceMatch = text.match(
+      /(계속|지금도|반복|어제|오늘|방금|부터|지난|아침|낮|저녁|밤|오전|오후|\d{1,2}시|\d{1,2}일|며칠)/
+    );
+    const riskMentioned =
+      input.priority === 1 ||
+      /(위험|가스|누전|전기|콘센트|스위치|침수|잠기지|문이 안|물고임|바닥|계속|떨어|불꽃|화재)/.test(
+        `${text} ${input.detailCategory}`
+      );
+    const photoIsUseful =
+      input.category === "하자" &&
+      (input.photoRequested ||
+        ["누수", "곰팡이", "벽지", "바닥", "에어컨", "도어락", "보일러"].includes(
+          input.detailCategory
+        ));
+
+    return [
+      {
+        key: "symptom",
+        label: "증상",
+        status: text ? "COLLECTED" : "NEEDS_INFO",
+        value: text ? this.compactThreadMessage(text, text) : undefined,
+        evidence: text ? "세입자 증상을 확인했습니다." : "아직 세입자 증상이 없습니다.",
+        action: text ? undefined : "어떤 문제가 보이는지 한 문장으로 알려주세요."
+      },
+      {
+        key: "location",
+        label: "위치",
+        status: input.location ? "COLLECTED" : "NEEDS_INFO",
+        value: input.location,
+        evidence: input.location
+          ? `${input.location} 위치를 확인했습니다.`
+          : "문제 위치가 필요합니다.",
+        action: input.location ? undefined : "방/공간과 문제 부위를 알려주세요."
+      },
+      {
+        key: "occurrence",
+        label: "발생 시점",
+        status: occurrenceMatch ? "COLLECTED" : "NEEDS_INFO",
+        value: occurrenceMatch?.[0],
+        evidence: occurrenceMatch
+          ? "발생 시점이나 지속 여부를 확인했습니다."
+          : "언제부터 발생했는지 아직 모릅니다.",
+        action: occurrenceMatch ? undefined : "언제 시작됐고 지금도 계속되는지 알려주세요."
+      },
+      {
+        key: "risk",
+        label: "위험 여부",
+        status: riskMentioned ? "COLLECTED" : input.category === "하자" ? "NEEDS_INFO" : "OPTIONAL",
+        value: riskMentioned ? (input.priority === 1 ? "긴급 위험 가능성" : "위험 여부 언급됨") : undefined,
+        evidence: riskMentioned
+          ? "안전 위험 판단에 필요한 단서를 확인했습니다."
+          : input.category === "하자"
+            ? "안전 위험 여부를 확인해야 합니다."
+            : "일반 문의라 위험 확인은 선택 사항입니다.",
+        action: riskMentioned
+          ? undefined
+          : input.category === "하자"
+            ? "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
+            : undefined
+      },
+      {
+        key: "photo",
+        label: "사진",
+        status: input.hasPhoto ? "COLLECTED" : photoIsUseful ? "NEEDS_INFO" : "OPTIONAL",
+        value: input.hasPhoto ? "첨부됨" : undefined,
+        evidence: input.hasPhoto
+          ? "사진이 이 상담 스레드에 첨부되었습니다."
+          : photoIsUseful
+            ? "사진이 있으면 관리자 판단이 빨라집니다."
+            : "사진은 선택 사항입니다.",
+        action: input.hasPhoto
+          ? undefined
+          : photoIsUseful
+            ? "문제 부위 근접 사진과 공간 전체 사진을 올려주세요."
+            : undefined
+      },
+      {
+        key: "visitTime",
+        label: "방문 가능 시간",
+        status: input.availableTimes
+          ? "COLLECTED"
+          : input.category === "하자"
+            ? "NEEDS_INFO"
+            : "OPTIONAL",
+        value: input.availableTimes,
+        evidence: input.availableTimes
+          ? `${input.availableTimes} 방문 가능 시간을 확인했습니다.`
+          : input.category === "하자"
+            ? "방문 가능 시간이 필요합니다."
+            : "방문 일정이 필요하면 추가로 확인합니다.",
+        action: input.availableTimes
+          ? undefined
+          : input.category === "하자"
+            ? "관리자나 업체가 확인할 수 있는 시간대를 알려주세요."
+            : undefined
+      }
+    ];
+  }
+
+  private intakeSlotCounts(slots: IntakeSlot[]) {
+    return {
+      collectedSlotCount: slots.filter((slot) => slot.status === "COLLECTED").length,
+      openSlotCount: slots.filter((slot) => slot.status === "NEEDS_INFO").length
     };
   }
 
@@ -2865,6 +3033,16 @@ export class RoomlogService {
       availableTimes,
       duplicateCandidates
     });
+    const intakeSlots = this.buildIntakeSlots({
+      text,
+      category,
+      detailCategory,
+      priority,
+      hasPhoto,
+      location,
+      availableTimes,
+      photoRequested
+    });
     const tenantGuidance = this.tenantGuidanceForDraft({
       text,
       category,
@@ -2912,6 +3090,7 @@ export class RoomlogService {
       nextQuestions,
       tenantGuidance,
       photoAnalysis,
+      intakeSlots,
       requiredInfo,
       photoRequested,
       readyToFinalize: requiredInfo.length === 0,
@@ -3391,6 +3570,7 @@ export class RoomlogService {
       "- 질문은 한 번에 1-3개만 하고, 이미 답한 내용을 반복해서 묻지 않습니다.",
       "- draft.nextQuestions에는 세입자에게 바로 물을 1-3개의 구체 질문만 넣습니다.",
       "- draft.tenantGuidance에는 안전 행동, 사진 촬영 방법, 방문 준비처럼 세입자가 지금 할 일을 1-4개 넣습니다.",
+      "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
       "- 사진이 있으면 사진 URL을 관리자 검토 자료로 연결하고, 사진이 부족하면 근접/전체 사진을 구분해서 요청합니다.",
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
       "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다."
@@ -3562,6 +3742,10 @@ export class RoomlogService {
         (generated as { photoAnalysis?: unknown }).photoAnalysis,
         fallback.photoAnalysis
       ),
+      intakeSlots: this.normalizeIntakeSlots(
+        (generated as { intakeSlots?: unknown }).intakeSlots,
+        fallback.intakeSlots
+      ),
       requiredInfo: this.nonEmptyStringArray(generated.requiredInfo, fallback.requiredInfo),
       photoRequested:
         typeof generated.photoRequested === "boolean"
@@ -3576,6 +3760,43 @@ export class RoomlogService {
       availableTimes: generated.availableTimes?.trim() || fallback.availableTimes,
       duplicateCandidates: fallback.duplicateCandidates
     };
+  }
+
+  private normalizeIntakeSlots(value: unknown, fallback: IntakeSlot[]) {
+    const keys: IntakeSlotKey[] = [
+      "symptom",
+      "location",
+      "occurrence",
+      "risk",
+      "photo",
+      "visitTime"
+    ];
+    const statuses = ["COLLECTED", "NEEDS_INFO", "OPTIONAL"];
+    const input = Array.isArray(value) ? value : [];
+
+    return fallback.map((fallbackSlot) => {
+      const candidate = input.find(
+        (slot) =>
+          slot &&
+          typeof slot === "object" &&
+          (slot as { key?: unknown }).key === fallbackSlot.key
+      ) as Partial<IntakeSlot> | undefined;
+
+      if (!candidate || !keys.includes(candidate.key as IntakeSlotKey)) {
+        return { ...fallbackSlot };
+      }
+
+      return {
+        ...fallbackSlot,
+        label: candidate.label?.trim() || fallbackSlot.label,
+        status: statuses.includes(candidate.status ?? "")
+          ? (candidate.status as IntakeSlot["status"])
+          : fallbackSlot.status,
+        value: candidate.value?.trim() || fallbackSlot.value,
+        evidence: candidate.evidence?.trim() || fallbackSlot.evidence,
+        action: candidate.action?.trim() || fallbackSlot.action
+      };
+    });
   }
 
   private normalizePhotoAnalysis(value: unknown, fallback: PhotoAnalysis): PhotoAnalysis {
@@ -3872,6 +4093,7 @@ export class RoomlogService {
             "nextQuestions",
             "tenantGuidance",
             "photoAnalysis",
+            "intakeSlots",
             "requiredInfo",
             "photoRequested",
             "readyToFinalize",
@@ -3954,6 +4176,37 @@ export class RoomlogService {
                   items: { type: "string" }
                 },
                 recommendedRetake: { type: "boolean" }
+              }
+            },
+            intakeSlots: {
+              type: "array",
+              minItems: 6,
+              maxItems: 6,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["key", "label", "status", "value", "evidence", "action"],
+                properties: {
+                  key: {
+                    type: "string",
+                    enum: [
+                      "symptom",
+                      "location",
+                      "occurrence",
+                      "risk",
+                      "photo",
+                      "visitTime"
+                    ]
+                  },
+                  label: { type: "string" },
+                  status: {
+                    type: "string",
+                    enum: ["COLLECTED", "NEEDS_INFO", "OPTIONAL"]
+                  },
+                  value: { type: "string" },
+                  evidence: { type: "string" },
+                  action: { type: "string" }
+                }
               }
             },
             requiredInfo: {
@@ -4493,6 +4746,8 @@ export class RoomlogService {
   }
 
   private presentIntakeSession(session: IntakeSession) {
+    const intakeSlots = this.draftIntakeSlots(session);
+
     return {
       ...session,
       threadSummary: this.presentIntakeThreadSummary(session),
@@ -4503,6 +4758,7 @@ export class RoomlogService {
         nextQuestions: [...(session.draft.nextQuestions ?? [])],
         tenantGuidance: [...(session.draft.tenantGuidance ?? [])],
         photoAnalysis: this.presentPhotoAnalysis(session.draft.photoAnalysis),
+        intakeSlots: this.presentIntakeSlots(intakeSlots),
         requiredInfo: [...session.draft.requiredInfo],
         duplicateCandidates: session.draft.duplicateCandidates.map((candidate) => ({
           ...candidate,
@@ -4517,6 +4773,16 @@ export class RoomlogService {
     };
   }
 
+  private draftIntakeSlots(session: IntakeSession) {
+    return session.draft.intakeSlots?.length
+      ? session.draft.intakeSlots
+      : this.buildIntakeDraft(session).intakeSlots;
+  }
+
+  private presentIntakeSlots(slots: IntakeSlot[]) {
+    return slots.map((slot) => ({ ...slot }));
+  }
+
   private presentIntakeThreadSummary(session: IntakeSession): IntakeThreadSummary {
     const tenantMessages = session.messages.filter((message) => message.sender === "TENANT");
     const assistantMessages = session.messages.filter((message) => message.sender === "AI_ASSISTANT");
@@ -4528,6 +4794,7 @@ export class RoomlogService {
     );
     const room = this.store.rooms.find((item) => item.id === session.roomId);
     const roomLabel = room ? `${room.buildingName} ${room.roomNo}` : "호실";
+    const slotCounts = this.intakeSlotCounts(this.draftIntakeSlots(session));
 
     return {
       title: this.intakeThreadTitle(session, roomLabel),
@@ -4545,6 +4812,8 @@ export class RoomlogService {
       ),
       messageCount: session.messages.length,
       attachmentCount,
+      collectedSlotCount: slotCounts.collectedSlotCount,
+      openSlotCount: slotCounts.openSlotCount,
       requiredInfoCount: session.draft.requiredInfo.length,
       unresolvedQuestionCount: session.draft.nextQuestions.length,
       readyToFinalize: session.draft.readyToFinalize,

@@ -317,6 +317,25 @@ export type PhotoAnalysis = {
   recommendedRetake: boolean;
 };
 
+export type IntakeSlotKey =
+  | "symptom"
+  | "location"
+  | "occurrence"
+  | "risk"
+  | "photo"
+  | "visitTime";
+
+export type IntakeSlotStatus = "COLLECTED" | "NEEDS_INFO" | "OPTIONAL";
+
+export type IntakeSlot = {
+  key: IntakeSlotKey;
+  label: string;
+  status: IntakeSlotStatus;
+  value?: string;
+  evidence: string;
+  action?: string;
+};
+
 export type IntakeDraft = {
   title: string;
   summary: string;
@@ -331,6 +350,7 @@ export type IntakeDraft = {
   nextQuestions: string[];
   tenantGuidance: string[];
   photoAnalysis: PhotoAnalysis;
+  intakeSlots: IntakeSlot[];
   requiredInfo: string[];
   photoRequested: boolean;
   readyToFinalize: boolean;
@@ -377,6 +397,8 @@ export type IntakeThreadSummary = {
   lastAssistantMessage: string;
   messageCount: number;
   attachmentCount: number;
+  collectedSlotCount: number;
+  openSlotCount: number;
   requiredInfoCount: number;
   unresolvedQuestionCount: number;
   readyToFinalize: boolean;

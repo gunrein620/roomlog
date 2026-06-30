@@ -1324,6 +1324,52 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("tracks intake readiness slots across a thread before finalizing", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const first = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "화장실 천장에서 물이 계속 떨어지고 바닥이 젖었어요.",
+        inputMode: "CHAT"
+      });
+      const firstSlots = Object.fromEntries(
+        first.session.draft.intakeSlots.map((slot) => [slot.key, slot])
+      );
+
+      assert.equal(firstSlots.symptom.status, "COLLECTED");
+      assert.equal(firstSlots.location.status, "COLLECTED");
+      assert.equal(firstSlots.risk.status, "COLLECTED");
+      assert.equal(firstSlots.photo.status, "NEEDS_INFO");
+      assert.equal(firstSlots.visitTime.status, "NEEDS_INFO");
+      assert.match(firstSlots.photo.action ?? "", /근접|전체|사진/);
+      assert.equal(first.session.threadSummary.openSlotCount, 2);
+      assert.equal(first.session.threadSummary.collectedSlotCount, 4);
+
+      const second = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "오늘 저녁 8시 이후 방문 가능합니다. 전체 사진과 천장 근접 사진도 첨부했습니다.",
+        attachmentUrls: ["/uploads/thread-wide.jpg", "/uploads/thread-close.jpg"],
+        inputMode: "CHAT"
+      });
+      const secondSlots = Object.fromEntries(
+        second.session.draft.intakeSlots.map((slot) => [slot.key, slot])
+      );
+
+      assert.equal(secondSlots.photo.status, "COLLECTED");
+      assert.equal(secondSlots.visitTime.status, "COLLECTED");
+      assert.equal(second.session.draft.readyToFinalize, true);
+      assert.equal(second.session.threadSummary.openSlotCount, 0);
+      assert.equal(second.session.threadSummary.collectedSlotCount, 6);
+      assert.match(second.assistantMessage.messageText, /접수 가능|필수 정보|사진|방문/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("validates signup input and rejects forgeable demo-style tokens", () => {
     const service = new RoomlogService();
 
