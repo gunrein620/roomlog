@@ -2324,6 +2324,7 @@ describe("RoomlogService", () => {
 
       assert.equal(draft.category, "납부");
       assert.equal(draft.detailCategory, "관리비 청구");
+      assert.equal(draft.priority, 4);
       assert.equal(draft.photoRequested, false);
       assert.equal(draft.readyToFinalize, true);
       assert.deepEqual(draft.requiredInfo, []);
@@ -2336,6 +2337,43 @@ describe("RoomlogService", () => {
 
       assert.equal(finalized.ticket.category, "관리비 청구");
       assert.match(finalized.ticket.aiSummary, /관리비|청구|계약서/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
+  it("keeps fallback contract questions as general inquiries instead of repair work", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "301호 계약 갱신 조건과 특약 내용을 확인하고 싶습니다.",
+        inputMode: "CHAT"
+      });
+      const draft = result.session.draft;
+      const reply = result.assistantMessage.messageText;
+
+      assert.equal(draft.category, "계약");
+      assert.equal(draft.detailCategory, "계약 갱신");
+      assert.equal(draft.priority, 4);
+      assert.equal(draft.photoRequested, false);
+      assert.equal(draft.readyToFinalize, true);
+      assert.doesNotMatch(draft.recommendedAction, /업체 배정|수리|문제 부위 사진/);
+      assert.doesNotMatch(reply, /문제 부위 근접 사진|공간 전체 사진|방문 가능 시간|전기|가스|침수/);
+      assert.match(reply, /계약|갱신|특약/);
+
+      const finalized = service.finalizeIntakeSession("tenant-demo", session.id);
+
+      assert.equal(finalized.ticket.priority, 4);
+      assert.equal(finalized.ticket.category, "계약 갱신");
+      assert.match(finalized.analysis.recommendedAction, /계약|특약|관리자/);
     } finally {
       if (originalApiKey) {
         process.env.OPENAI_API_KEY = originalApiKey;

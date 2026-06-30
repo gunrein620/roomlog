@@ -3667,6 +3667,12 @@ export class RoomlogService {
           ? "같은 호실의 과거 기록과 현재 증상을 함께 확인하고, 반복 하자 가능성을 관리자에게 전달하세요."
           : category === "소음"
           ? "소음 발생 시간대, 반복 빈도, 가능한 녹음 또는 기록을 관리자에게 전달하고 생활민원으로 확인하세요."
+          : category === "납부"
+          ? "관리자가 계약 조건과 청구·납부 내역을 대조해 세입자에게 답변하도록 전달하세요."
+          : category === "계약"
+          ? "관리자가 계약서, 갱신 조건, 특약 내용을 확인해 세입자에게 답변하도록 전달하세요."
+          : category === "공용공간"
+          ? "관리자가 공용공간 상태와 관리 범위를 확인하고 필요 시 현장 확인 일정을 안내하세요."
           : priority === 1
           ? "관리자에게 긴급 티켓으로 전달하고 누수 확산 여부와 전기 안전을 먼저 확인하세요."
           : photoRequested
@@ -3771,6 +3777,14 @@ export class RoomlogService {
 
     if (input.category === "소음") {
       guidance.push("소음이 반복되는 시간대와 빈도를 남기고, 가능하면 짧은 녹음이나 메모 기록을 함께 보관해 주세요.");
+    }
+
+    if (input.category === "납부") {
+      guidance.push("계약서의 청구 조건이나 이번 달 청구서처럼 확인받고 싶은 근거가 있으면 함께 적어주세요.");
+    }
+
+    if (input.category === "계약") {
+      guidance.push("계약서 조항, 갱신 조건, 특약 중 확인받고 싶은 항목을 적으면 관리자에게 더 정확히 전달됩니다.");
     }
 
     if (input.contextHints.length) {
@@ -5417,6 +5431,10 @@ export class RoomlogService {
       /(잠|밤|새벽|계속|반복|매일|심하|못\s*자)/.test(text)
     ) {
       return 2;
+    }
+
+    if (/(관리비|월세|납부|연체|보증금|계약|특약)/.test(detailCategory)) {
+      return 4;
     }
 
     return text.trim() ? 3 : 4;
