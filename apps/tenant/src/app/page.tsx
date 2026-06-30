@@ -47,6 +47,7 @@ import {
   consultationThreadBadges,
   consultationThreadNextAction
 } from "./thread-workflow";
+import { emptyConsultationState } from "./empty-consultation";
 import { consultationThreadContextHighlights } from "./thread-context";
 import {
   canSubmitConsultationComposer,
@@ -576,6 +577,10 @@ export default function TenantApp() {
           })
         : [],
     [selectedSession]
+  );
+  const emptyConsultation = useMemo(
+    () => emptyConsultationState(sessions.length),
+    [sessions.length]
   );
   const selectedPhotoEvidence = useMemo(
     () => (selectedSession ? photoEvidenceItems(selectedSession.draft.photoAnalysis) : []),
@@ -1794,7 +1799,7 @@ export default function TenantApp() {
           <div className="panel-heading chat-heading">
             <div>
               <p className="eyebrow">AI Intake</p>
-              <h2>{selectedSession?.threadSummary.title ?? "새 상담을 시작하세요"}</h2>
+              <h2>{selectedSession?.threadSummary.title ?? emptyConsultation.title}</h2>
               {selectedSession ? (
                 <>
                   <small>
@@ -1830,6 +1835,15 @@ export default function TenantApp() {
                   {item.value}
                 </span>
               ))}
+            </div>
+          ) : null}
+
+          {!selectedSession ? (
+            <div className="empty-consultation" aria-label="AI 상담 시작 안내">
+              <p>{emptyConsultation.description}</p>
+              <button type="button" className="primary" onClick={() => void startSession()}>
+                {emptyConsultation.actionLabel}
+              </button>
             </div>
           ) : null}
 

@@ -667,6 +667,28 @@ textarea {
   color: var(--green);
 }
 
+.empty-consultation {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #d9e5f4;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.empty-consultation p {
+  margin: 0;
+  color: var(--slate);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.empty-consultation button {
+  width: fit-content;
+}
+
 .thread-preview {
   display: -webkit-box;
   -webkit-box-orient: vertical;
