@@ -211,6 +211,27 @@ describe("RoomlogService", () => {
     });
   });
 
+  it("starts intake threads with a greeting matched to the source channel", () => {
+    const service = new RoomlogService();
+
+    const chat = service.createIntakeSession("tenant-demo", { sourceChannel: "REALTIME_CHAT" });
+    const voice = service.createIntakeSession("tenant-demo", { sourceChannel: "VOICE_CHAT" });
+    const callbot = service.createIntakeSession("tenant-demo", { sourceChannel: "CALLBOT" });
+
+    assert.equal(chat.session.messages[0].inputMode, "CHAT");
+    assert.match(chat.session.messages[0].messageText, /AI 채팅 상담/);
+    assert.match(chat.session.threadSummary.lastAssistantMessage, /AI 채팅 상담/);
+
+    assert.equal(voice.session.messages[0].inputMode, "VOICE");
+    assert.match(voice.session.messages[0].messageText, /AI 음성 상담/);
+    assert.match(voice.session.messages[0].messageText, /차례로|한 번에 하나씩/);
+
+    assert.equal(callbot.session.messages[0].inputMode, "VOICE");
+    assert.match(callbot.session.messages[0].messageText, /Roomlog AI 콜봇/);
+    assert.match(callbot.session.messages[0].messageText, /통화/);
+    assert.match(callbot.session.messages[0].messageText, /차례로|한 번에 하나씩/);
+  });
+
   it("returns a Realtime setup response tied to an intake thread when OpenAI is not configured", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalRealtimeModel = process.env.OPENAI_REALTIME_MODEL;

@@ -691,11 +691,12 @@ export class RoomlogService {
       createdAt,
       updatedAt: createdAt
     };
+    const greetingContent = this.intakeGreetingForSourceChannel(session.sourceChannel);
     const greeting = this.createIntakeMessage(
       session.id,
       "AI_ASSISTANT",
-      "안녕하세요. 어떤 문제인지 편하게 적어주세요. 위치, 언제부터 발생했는지, 현재 위험 여부, 방문 가능한 시간을 함께 알려주시면 접수 초안을 바로 정리할게요.",
-      "CHAT"
+      greetingContent.messageText,
+      greetingContent.inputMode
     );
 
     session.messages.push(greeting);
@@ -3256,6 +3257,33 @@ export class RoomlogService {
       attachmentUrls: [],
       inputMode,
       createdAt: now()
+    };
+  }
+
+  private intakeGreetingForSourceChannel(sourceChannel: ComplaintSourceChannel): {
+    messageText: string;
+    inputMode: IntakeMessage["inputMode"];
+  } {
+    if (sourceChannel === "CALLBOT") {
+      return {
+        messageText:
+          "안녕하세요. Roomlog AI 콜봇입니다. 이 통화 내용은 상담 스레드에 저장됩니다. 증상, 위치, 안전 위험, 사진 필요 여부, 방문 가능 시간을 한 번에 하나씩 확인하겠습니다.",
+        inputMode: "VOICE"
+      };
+    }
+
+    if (sourceChannel === "VOICE_CHAT") {
+      return {
+        messageText:
+          "안녕하세요. Roomlog AI 음성 상담입니다. 음성 전사는 이 상담 스레드에 저장됩니다. 증상, 위치, 안전 위험, 사진 필요 여부, 방문 가능 시간을 차례로 확인하겠습니다.",
+        inputMode: "VOICE"
+      };
+    }
+
+    return {
+      messageText:
+        "안녕하세요. Roomlog AI 채팅 상담입니다. 이 상담 스레드에 대화와 사진을 분리 저장하면서 접수 초안을 정리하겠습니다. 위치, 발생 시점, 위험 여부, 방문 가능 시간을 알려주세요.",
+      inputMode: "CHAT"
     };
   }
 
