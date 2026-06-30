@@ -53,7 +53,7 @@ describe("photo evidence", () => {
   it("describes a missing photo without exposing the raw file url", () => {
     assert.equal(
       missingPhotoLabel("입주 전 기준 사진"),
-      "입주 전 기준 사진 파일을 불러올 수 없습니다."
+      "입주 전 기준 사진 기록은 남아 있지만 로컬 파일이 없습니다."
     );
   });
 });

@@ -3,7 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Roomlog Tenant",
-  description: "Tenant defect intake MVP for Roomlog"
+  description: "Tenant defect intake MVP for Roomlog",
+  icons: {
+    icon: "/icon.svg"
+  }
 };
 
 export default function RootLayout({

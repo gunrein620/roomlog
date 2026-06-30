@@ -1030,8 +1030,11 @@ textarea {
   min-height: 92px;
   place-items: center;
   padding: 10px;
-  background: #f7fafc;
-  color: var(--slate);
+  border: 1px dashed #b7d1cb;
+  background:
+    linear-gradient(135deg, rgba(47, 125, 110, 0.08), rgba(255, 255, 255, 0.92)),
+    #f7fafc;
+  color: #4f6863;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.35;

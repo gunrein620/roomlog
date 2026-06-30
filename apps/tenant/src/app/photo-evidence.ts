@@ -44,5 +44,5 @@ export function photoEvidenceItems(input: PhotoEvidenceInput): PhotoEvidenceItem
 }
 
 export function missingPhotoLabel(label: string) {
-  return `${label.trim() || "사진"} 파일을 불러올 수 없습니다.`;
+  return `${label.trim() || "사진"} 기록은 남아 있지만 로컬 파일이 없습니다.`;
 }
