@@ -3470,23 +3470,49 @@ export class RoomlogService {
   }
 
   private detectPhotoDeferralInfo(session: IntakeSession) {
-    const tenantText = session.messages
+    const tenantMessages = session.messages
       .filter((message) => message.sender === "TENANT")
       .map((message) => this.meaningfulTenantMessageText(message))
       .filter(Boolean)
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+      .reverse();
 
-    if (!tenantText) {
-      return undefined;
+    for (const messageText of tenantMessages) {
+      const tenantText = messageText.replace(/\s+/g, " ").trim();
+
+      if (!tenantText) {
+        continue;
+      }
+
+      const match = tenantText.match(
+        /(사진[^.。!?]{0,24}(?:못|어렵|나중|이따|후에|퇴근\s*후|나중에|추가)|(?:못|어렵|나중|이따|후에|퇴근\s*후|나중에)[^.。!?]{0,24}(?:사진|올리|올릴|올려|업로드|첨부))/
+      );
+
+      if (match?.[0]) {
+        return this.normalizedPhotoDeferralInfo(match[0]);
+      }
     }
 
-    const match = tenantText.match(
-      /(사진[^.。!?]{0,24}(?:못|어렵|나중|이따|후에|퇴근\s*후|나중에|추가)|(?:못|어렵|나중|이따|후에|퇴근\s*후|나중에)[^.。!?]{0,24}(?:사진|올리|첨부))/
-    );
+    return undefined;
+  }
 
-    return match?.[0]?.trim();
+  private normalizedPhotoDeferralInfo(text: string) {
+    if (/퇴근/.test(text)) {
+      return "퇴근 후 사진을 올릴 예정";
+    }
+
+    if (/저녁/.test(text)) {
+      return "저녁에 사진을 올릴 예정";
+    }
+
+    if (/이따/.test(text)) {
+      return "이따가 사진을 올릴 예정";
+    }
+
+    if (/나중|후에|어렵|못/.test(text)) {
+      return "나중에 사진을 올릴 예정";
+    }
+
+    return text.trim();
   }
 
   private intakePhotoFollowupNeeded(session: IntakeSession) {
@@ -4196,6 +4222,7 @@ export class RoomlogService {
   private composeAssistantReply(draft: IntakeDraft, session?: IntakeSession) {
     const tenantThreadText = this.tenantThreadText(session);
     const safetyLines = this.safetyGuidance(tenantThreadText, draft);
+    const photoDeferralInfo = session ? this.detectPhotoDeferralInfo(session) : undefined;
     const tenantGuidanceLines = draft.tenantGuidance.filter(
       (line) => !(safetyLines.length && /(전기|콘센트|스위치|물고임)/.test(line))
     );
@@ -4216,7 +4243,9 @@ export class RoomlogService {
           `가장 유사한 티켓: ${draft.duplicateCandidates[0].title} (${draft.duplicateCandidates[0].displayStatus})`
         ]
       : [];
-    const questionLines = this.visibleIntakeQuestionLines(draft);
+    const questionLines = this.visibleIntakeQuestionLines(draft).filter(
+      (line) => !(photoDeferralInfo && /사진|촬영|근접|전체|올려/.test(line))
+    );
 
     if (!draft.readyToFinalize) {
       return [
@@ -4231,7 +4260,9 @@ export class RoomlogService {
         needsPhoto || currentPhotoCount
           ? [
               "필요한 사진",
-              currentPhotoCount
+              photoDeferralInfo
+                ? `- ${photoDeferralInfo}으로 기록했습니다. 사진을 올리면 이 상담 스레드에 이어서 연결하겠습니다.`
+                : currentPhotoCount
                 ? `- 현재 첨부 사진 ${currentPhotoCount}건을 이 상담 스레드에 연결했습니다.`
                 : "- 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올려주세요.",
               `- 사진 판단: ${draft.photoAnalysis.summary}`,
@@ -4266,7 +4297,9 @@ export class RoomlogService {
       needsPhoto || currentPhotoCount
         ? [
             "필요한 사진",
-            currentPhotoCount
+            photoDeferralInfo
+              ? `- ${photoDeferralInfo}으로 기록했습니다. 사진을 올리면 이 상담 스레드에 이어서 연결하겠습니다.`
+              : currentPhotoCount
               ? `- 현재 첨부 사진 ${currentPhotoCount}건을 관리자 검토 자료로 연결했습니다.`
               : "- 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올리면 관리자 판단이 빨라집니다.",
             `- 사진 판단: ${draft.photoAnalysis.summary}`,
@@ -4372,6 +4405,7 @@ export class RoomlogService {
       generated.length < 60 ||
       /^(확인했습니다|네|알겠습니다|접수했습니다|처리하겠습니다)[.!。]*$/.test(compact);
     const tenantThreadText = this.tenantThreadText(session);
+    const photoDeferralInfo = session ? this.detectPhotoDeferralInfo(session) : undefined;
     const needsSafety = this.safetyGuidance(tenantThreadText, draft).length > 0;
     const lacksSafety =
       needsSafety && !/(안전|전기|콘센트|스위치|가스|환기|불꽃|만지지|119|문이)/.test(generated);
@@ -4391,6 +4425,11 @@ export class RoomlogService {
       !/(상담\s*스레드|같은 상담|이어.*저장|접수\s*(초안|상태|확정)|관리자|티켓)/.test(
         generated
       );
+    const repeatsDeferredPhotoPrompt =
+      Boolean(photoDeferralInfo) &&
+      /(바로 답변 예시|문제 부위[^.。!?\n]{0,40}사진[^.。!?\n]{0,40}올려|근접 사진[^.。!?\n]{0,40}전체 사진[^.。!?\n]{0,40}올려)/.test(
+        generated
+      );
 
     if (
       isTerse ||
@@ -4398,7 +4437,8 @@ export class RoomlogService {
       lacksPhoto ||
       lacksVisit ||
       lacksQuestion ||
-      lacksRoomlogWorkflow
+      lacksRoomlogWorkflow ||
+      repeatsDeferredPhotoPrompt
     ) {
       return composed;
     }

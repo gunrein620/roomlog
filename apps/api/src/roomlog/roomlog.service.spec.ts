@@ -1812,6 +1812,90 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("upgrades OpenAI replies that repeat photo quick replies after a tenant defers photos", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+    delete process.env.OPENAI_API_KEY;
+
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 천장에서 오늘 오전부터 물이 떨어지고 있습니다. 안전 위험은 없고 오늘 저녁 7시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+
+      process.env.OPENAI_API_KEY = "sk-test-roomlog";
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            output_text: JSON.stringify({
+              assistantMessage:
+                "확인할게요. 이 상담 스레드에서 이어서 정리하고 있어요.\n다음으로 확인할 질문\n- 문제 부위 근접 사진 1장과 공간 전체가 보이는 사진 1장을 올려주실 수 있나요?\n  바로 답변 예시: 근접 사진과 전체 사진을 올릴게요 / 지금은 어렵고 저녁에 올릴게요\n접수 상태\n- 접수 확정 가능: 내용이 맞으면 관리자 티켓으로 전달할 수 있습니다.",
+              draft: {
+                title: "301호 화장실 누수",
+                summary:
+                  "301호 화장실 천장에서 누수가 발생했고 세입자가 사진은 저녁에 올리겠다고 답했습니다.",
+                category: "하자",
+                detailCategory: "누수",
+                priority: 2,
+                responsibilityHint: "임대인 책임 가능성",
+                confidenceScore: 0.82,
+                reasons: ["천장 누수", "사진 제출 예정"],
+                recommendedAction: "사진 제출 후 관리자 검토를 진행하세요.",
+                contextHints: [],
+                nextQuestions: [
+                  "문제 부위 근접 사진 1장과 공간 전체가 보이는 사진 1장을 올려주실 수 있나요?"
+                ],
+                tenantGuidance: [
+                  "사진은 문제 부위 근접 사진과 공간 전체 사진을 함께 올리면 관리자가 더 빨리 판단할 수 있습니다."
+                ],
+                photoAnalysis: {
+                  attachmentUrls: [],
+                  previousAttachmentUrls: [],
+                  candidates: ["누수"],
+                  comparisonStatus: "추가 사진 필요",
+                  summary: "누수 여부를 확인할 수 있는 사진이 필요합니다.",
+                  evidence: ["사진 제출 예정"],
+                  recommendedRetake: false
+                },
+                intakeSlots: [],
+                requiredInfo: [],
+                photoRequested: true,
+                readyToFinalize: true,
+                location: "301호 화장실",
+                occurredAt: "오늘 오전",
+                availableTimes: "오늘 저녁 7시 이후"
+              }
+            })
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )) as typeof fetch;
+
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "지금은 어렵고 저녁에 올릴게요.",
+        inputMode: "CHAT"
+      });
+
+      assert.match(result.assistantMessage.messageText, /저녁[^.\n]*(사진|올리|올릴|올려|업로드)/);
+      assert.doesNotMatch(result.assistantMessage.messageText, /바로 답변 예시/);
+      assert.doesNotMatch(result.assistantMessage.messageText, /올릴라고|올릴게요 지금|예정라고/);
+      assert.match(result.assistantMessage.messageText, /같은 상담 스레드|이어.*저장/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("formats local fallback chat replies like a high quality 상담사 response", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -3769,6 +3853,42 @@ describe("RoomlogService", () => {
 
     assert.equal(service.getIntakeSession("tenant-demo", first.session.id).status, "FINALIZED");
     assert.equal(service.getIntakeSession("tenant-demo", second.session.id).status, "ACTIVE");
+  });
+
+  it("acknowledges deferred photo plans instead of repeating the same photo prompt", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    try {
+      const service = new RoomlogService();
+      const session = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+      await service.sendIntakeMessage("tenant-demo", session.session.id, {
+        messageText:
+          "301호 화장실 천장에서 오늘 오전부터 물이 떨어지고 있습니다. 안전 위험은 없고 오늘 저녁 7시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+      const followup = await service.sendIntakeMessage("tenant-demo", session.session.id, {
+        messageText: "지금은 어렵고 저녁에 올릴게요.",
+        inputMode: "CHAT"
+      });
+
+      assert.match(
+        followup.assistantMessage.messageText,
+        /저녁[^.\n]*(사진|올리|올릴|올려|업로드)|사진[^.\n]*(저녁|올리기로|올릴|나중)/
+      );
+      assert.match(followup.assistantMessage.messageText, /같은 상담 스레드|이어.*저장/);
+      assert.doesNotMatch(followup.assistantMessage.messageText, /바로 답변 예시/);
+      assert.doesNotMatch(followup.assistantMessage.messageText, /올릴라고|올릴게요 지금|예정라고/);
+      assert.equal(
+        followup.session.draft.requiredInfo.includes("문제 부위 사진"),
+        false
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
   });
 
   it("detects duplicate intake candidates and can attach a consultation to an existing ticket", async () => {
