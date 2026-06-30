@@ -6,6 +6,13 @@ import {
   canSubmitVendorSignup,
   vendorSignupIssues
 } from "./vendor-signup";
+import {
+  initialVendorCompletionNote,
+  initialVendorEstimateAmount,
+  initialVendorEstimateDescription,
+  initialVendorMessageText,
+  initialVendorScheduleAt
+} from "./action-form-state";
 
 type AuthResult = {
   accessToken: string;
@@ -152,12 +159,12 @@ export default function VendorApp() {
   const [demoAuthEnabled, setDemoAuthEnabled] = useState(false);
   const [invitePreview, setInvitePreview] = useState<SignupInvitePreview | null>(null);
   const [invitePreviewStatus, setInvitePreviewStatus] = useState("");
-  const [estimateAmount, setEstimateAmount] = useState("120000");
-  const [estimateDescription, setEstimateDescription] = useState("누수 원인 점검 및 실리콘 보강 작업");
-  const [scheduledAt, setScheduledAt] = useState("2026-06-30T10:00");
-  const [completionNote, setCompletionNote] = useState("현장 확인 후 누수 부위 보수 완료");
+  const [estimateAmount, setEstimateAmount] = useState(initialVendorEstimateAmount);
+  const [estimateDescription, setEstimateDescription] = useState(initialVendorEstimateDescription);
+  const [scheduledAt, setScheduledAt] = useState(initialVendorScheduleAt);
+  const [completionNote, setCompletionNote] = useState(initialVendorCompletionNote);
   const [completionFiles, setCompletionFiles] = useState<File[]>([]);
-  const [vendorMessageText, setVendorMessageText] = useState("현장 도착 전 확인이 필요한 사항을 남깁니다.");
+  const [vendorMessageText, setVendorMessageText] = useState(initialVendorMessageText);
   const [vendorMessageFiles, setVendorMessageFiles] = useState<File[]>([]);
 
   const selectedRepair = useMemo(
@@ -332,15 +339,29 @@ export default function VendorApp() {
       return;
     }
 
+    const parsedEstimateAmount = Number(estimateAmount);
+
+    if (
+      !estimateAmount.trim() ||
+      !estimateDescription.trim() ||
+      !Number.isFinite(parsedEstimateAmount) ||
+      parsedEstimateAmount <= 0
+    ) {
+      setStatus("견적 금액과 작업 설명을 입력해주세요.");
+      return;
+    }
+
     try {
       setStatus("견적 제출 중");
       await apiRequest(`/vendor/repairs/${selectedRepair.id}/estimate`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
-          estimateAmount: Number(estimateAmount),
-          estimateDescription
+          estimateAmount: parsedEstimateAmount,
+          estimateDescription: estimateDescription.trim()
         })
       });
+      setEstimateAmount(initialVendorEstimateAmount());
+      setEstimateDescription(initialVendorEstimateDescription());
       setStatus("견적이 제출되었습니다.");
       await refresh();
     } catch (error) {
@@ -353,14 +374,27 @@ export default function VendorApp() {
       return;
     }
 
+    if (!scheduledAt.trim()) {
+      setStatus("방문 일정을 입력해주세요.");
+      return;
+    }
+
+    const scheduledDate = new Date(scheduledAt);
+
+    if (Number.isNaN(scheduledDate.getTime())) {
+      setStatus("방문 일정을 다시 확인해주세요.");
+      return;
+    }
+
     try {
       setStatus("방문 일정 저장 중");
       await apiRequest(`/vendor/repairs/${selectedRepair.id}/schedule`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
-          scheduledAt: new Date(scheduledAt).toISOString()
+          scheduledAt: scheduledDate.toISOString()
         })
       });
+      setScheduledAt(initialVendorScheduleAt());
       setStatus("방문 일정이 저장되었습니다.");
       await refresh();
     } catch (error) {
@@ -398,6 +432,11 @@ export default function VendorApp() {
       return;
     }
 
+    if (!vendorMessageText.trim() && vendorMessageFiles.length === 0) {
+      setStatus("작업 메시지 또는 사진을 입력해주세요.");
+      return;
+    }
+
     try {
       setStatus("업체 메시지 저장 중");
       const uploaded = await Promise.all(
@@ -406,11 +445,11 @@ export default function VendorApp() {
       await apiRequest(`/vendor/repairs/${selectedRepair.id}/messages`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
-          messageText: vendorMessageText,
+          messageText: vendorMessageText.trim(),
           attachmentUrls: uploaded.map((item) => item.fileUrl)
         })
       });
-      setVendorMessageText("");
+      setVendorMessageText(initialVendorMessageText());
       setVendorMessageFiles([]);
       setStatus("업체 메시지가 티켓에 저장되었습니다.");
       await refresh();
@@ -424,6 +463,11 @@ export default function VendorApp() {
       return;
     }
 
+    if (!completionNote.trim() && completionFiles.length === 0) {
+      setStatus("완료 메모 또는 사진을 입력해주세요.");
+      return;
+    }
+
     try {
       setStatus(completionFiles.length ? "완료 사진 업로드 중" : "완료 보고 제출 중");
       const uploaded = await Promise.all(
@@ -434,10 +478,11 @@ export default function VendorApp() {
       await apiRequest(`/vendor/repairs/${selectedRepair.id}/report-completion`, auth.accessToken, {
         method: "POST",
         body: JSON.stringify({
-          completionNote,
+          completionNote: completionNote.trim(),
           completionPhotoUrls: uploaded.map((item) => item.fileUrl)
         })
       });
+      setCompletionNote(initialVendorCompletionNote());
       setCompletionFiles([]);
       setStatus("완료 보고가 제출되었습니다.");
       await refresh();
@@ -766,6 +811,7 @@ export default function VendorApp() {
               견적 금액
               <input
                 inputMode="numeric"
+                placeholder="숫자만 입력"
                 value={estimateAmount}
                 onChange={(event) => setEstimateAmount(event.target.value)}
               />
@@ -774,6 +820,7 @@ export default function VendorApp() {
               견적 설명
               <textarea
                 rows={3}
+                placeholder="작업 범위와 자재를 입력"
                 value={estimateDescription}
                 onChange={(event) => setEstimateDescription(event.target.value)}
               />
@@ -786,6 +833,7 @@ export default function VendorApp() {
             방문 일정
             <input
               type="datetime-local"
+              placeholder="방문 일시 선택"
               value={scheduledAt}
               onChange={(event) => setScheduledAt(event.target.value)}
             />
@@ -798,6 +846,7 @@ export default function VendorApp() {
               작업 메시지
               <textarea
                 rows={3}
+                placeholder="현장 확인 사항 입력"
                 value={vendorMessageText}
                 onChange={(event) => setVendorMessageText(event.target.value)}
               />
@@ -826,6 +875,7 @@ export default function VendorApp() {
             완료 메모
             <textarea
               rows={3}
+              placeholder="완료 내용 입력"
               value={completionNote}
               onChange={(event) => setCompletionNote(event.target.value)}
             />
