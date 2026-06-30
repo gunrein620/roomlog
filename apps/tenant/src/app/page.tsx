@@ -44,6 +44,7 @@ import {
 } from "./thread-workflow";
 import { consultationThreadContextHighlights } from "./thread-context";
 import {
+  canSubmitConsultationComposer,
   initialConsultationComposerText,
   resetConsultationComposerState
 } from "./composer-state";
@@ -592,6 +593,9 @@ export default function TenantApp() {
     ? draftCorrections[selectedSession.id] ?? draftCorrectionFrom(selectedSession.draft)
     : undefined;
   const canEditDraft = selectedSession?.status === "ACTIVE";
+  const canSendComposer =
+    Boolean(selectedSession && selectedSession.status === "ACTIVE") &&
+    canSubmitConsultationComposer(messageText, photoFiles.length);
   const selectedAiFeedback = selectedComplaint?.aiFeedback ?? selectedComplaint?.ticket.aiFeedback ?? [];
   const completionReviewAvailable =
     selectedComplaint?.ticket.status === "COMPLETION_REPORTED" ||
@@ -1157,6 +1161,11 @@ export default function TenantApp() {
     event.preventDefault();
 
     if (!auth || !selectedSession) {
+      return;
+    }
+
+    if (!canSubmitConsultationComposer(messageText, photoFiles.length)) {
+      setStatus("상담 내용 또는 사진을 입력해주세요.");
       return;
     }
 
@@ -1958,7 +1967,7 @@ export default function TenantApp() {
               <button
                 type="submit"
                 className="primary"
-                disabled={!selectedSession || selectedSession.status !== "ACTIVE"}
+                disabled={!canSendComposer}
               >
                 보내기
               </button>
