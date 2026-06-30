@@ -5992,6 +5992,10 @@ export class RoomlogService {
       throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
     }
 
+    if (invite.phone && input.phone && invite.phone !== input.phone) {
+      throw new BadRequestException("초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다.");
+    }
+
     return invite;
   }
 

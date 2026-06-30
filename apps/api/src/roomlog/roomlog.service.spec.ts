@@ -2334,6 +2334,42 @@ describe("RoomlogService", () => {
     assert.throws(() => service.getSignupInvitePreview("TENANT", "missing-token"), /유효하지/);
   });
 
+  it("rejects vendor invite signup when locked contact information does not match", () => {
+    const service = new RoomlogService();
+    const managerAuth = service.signup({
+      email: "vendor-lock-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "업체 초대 관리자",
+      phone: "010-4444-1210",
+      role: "LANDLORD",
+      buildingName: "업체 잠금 하우스",
+      roomNo: "901호",
+      address: "서울시 성동구 업체로 9"
+    } as any);
+    const invite = service.createVendorInvite(managerAuth.userId, {
+      email: "locked-vendor@roomlog.test",
+      businessName: "잠금 설비",
+      contactPerson: "잠금 기사",
+      phone: "010-4444-9210",
+      serviceArea: "성동구"
+    });
+
+    assert.throws(
+      () =>
+        service.signup({
+          email: "locked-vendor@roomlog.test",
+          password: "password123!",
+          passwordConfirm: "password123!",
+          name: "잠금 기사",
+          phone: "010-0000-9210",
+          role: "VENDOR",
+          inviteToken: invite.inviteToken
+        } as any),
+      /휴대폰/
+    );
+  });
+
   it("validates role-specific signup profile fields", () => {
     const service = new RoomlogService();
 
@@ -3164,7 +3200,7 @@ describe("RoomlogService", () => {
       password: "password123!",
       passwordConfirm: "password123!",
       name: "다른 기사",
-      phone: "010-6666-7778",
+      phone: "010-6666-7777",
       role: "VENDOR",
       inviteToken: otherInvite.inviteToken
     } as any);

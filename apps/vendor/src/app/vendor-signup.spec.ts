@@ -41,6 +41,29 @@ describe("vendor signup preflight", () => {
     );
   });
 
+  it("rejects edited email or phone when the invite preview locks vendor contact fields", () => {
+    assert.deepEqual(
+      vendorSignupIssues(
+        {
+          ...completeForm,
+          email: "other-vendor@roomlog.test",
+          phone: "010-9999-9001"
+        },
+        {
+          inviteToken: "invite-token",
+          emailLocked: true,
+          phoneLocked: true,
+          email: "vendor-signup@roomlog.test",
+          phone: "01055559001"
+        }
+      ),
+      [
+        "초대된 이메일과 가입 이메일이 일치하지 않습니다.",
+        "초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다."
+      ]
+    );
+  });
+
   it("requires usable account credentials", () => {
     assert.deepEqual(
       vendorSignupIssues(

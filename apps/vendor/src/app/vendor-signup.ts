@@ -11,6 +11,8 @@ export type VendorInvitePreviewForSignup = {
   inviteToken: string;
   emailLocked: boolean;
   phoneLocked: boolean;
+  email?: string;
+  phone?: string;
 };
 
 function normalized(form: VendorSignupForm) {
@@ -57,6 +59,22 @@ export function vendorSignupIssues(
     issues.push("초대 토큰을 입력해주세요.");
   } else if (invitePreview?.inviteToken !== input.inviteToken) {
     issues.push("초대 정보를 먼저 확인해주세요.");
+  }
+
+  if (
+    invitePreview?.emailLocked &&
+    invitePreview.email?.trim().toLowerCase() &&
+    invitePreview.email.trim().toLowerCase() !== input.email
+  ) {
+    issues.push("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
+  }
+
+  if (
+    invitePreview?.phoneLocked &&
+    invitePreview.phone?.replace(/\D+/g, "") &&
+    invitePreview.phone.replace(/\D+/g, "") !== input.phone
+  ) {
+    issues.push("초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다.");
   }
 
   if (!input.password || input.password.length < 8) {
