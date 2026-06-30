@@ -872,6 +872,65 @@ textarea {
   width: fit-content;
 }
 
+.first-consultation-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.first-consultation-card span {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.first-consultation-card h3 {
+  margin: 4px 0 6px;
+  color: var(--navy);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.first-consultation-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.first-consultation-steps article {
+  min-width: 0;
+  border-left: 3px solid #7bb7ad;
+  padding-left: 10px;
+}
+
+.first-consultation-steps strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.starter-prompts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.starter-prompts button {
+  width: 100%;
+  border: 1px solid #c7daf5;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--paper);
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
+
 .thread-preview {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -1461,6 +1520,10 @@ ul {
 
   .realtime-actions {
     display: grid;
+  }
+
+  .first-consultation-steps {
+    grid-template-columns: 1fr;
   }
 
   .bubble {

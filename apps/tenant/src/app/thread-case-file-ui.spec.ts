@@ -24,4 +24,11 @@ describe("tenant thread case file UI", () => {
     assert.match(pageSource, /void finalizeSession\(\)/);
     assert.match(pageSource, /seedComposerFromQuestion\(action\.label\)/);
   });
+
+  it("renders first-consultation onboarding before the first AI thread starts", () => {
+    assert.match(pageSource, /firstConsultationOnboarding/);
+    assert.match(pageSource, /aria-label="첫 AI 상담 준비"/);
+    assert.match(pageSource, /sessions\.length === 0/);
+    assert.match(pageSource, /void startSession\(prompt\)/);
+  });
 });

@@ -57,6 +57,7 @@ import {
   type ConsultationThreadFilter
 } from "./thread-workflow";
 import { emptyConsultationState } from "./empty-consultation";
+import { firstConsultationOnboarding } from "./first-consultation-onboarding";
 import { consultationThreadContextHighlights } from "./thread-context";
 import { threadCaseFile, type ThreadCaseFileAction } from "./thread-case-file";
 import {
@@ -620,6 +621,15 @@ export default function TenantApp() {
     () => emptyConsultationState(sessions.length),
     [sessions.length]
   );
+  const firstOnboarding = useMemo(
+    () =>
+      firstConsultationOnboarding({
+        buildingName: home?.profile.room?.buildingName,
+        roomNo: home?.profile.room?.roomNo,
+        roomId: home?.profile.roomId
+      }),
+    [home?.profile.room?.buildingName, home?.profile.room?.roomNo, home?.profile.roomId]
+  );
   const visibleSessions = useMemo(
     () => filterConsultationThreads(sessions, threadFilter),
     [sessions, threadFilter]
@@ -914,7 +924,7 @@ export default function TenantApp() {
     }
   }
 
-  async function startSession() {
+  async function startSession(starterText = "") {
     if (!auth) {
       return;
     }
@@ -939,7 +949,7 @@ export default function TenantApp() {
       photoCount: photoFiles.length,
       photoInputKey
     });
-    setMessageText(clearedComposer.text);
+    setMessageText(starterText.trim() || clearedComposer.text);
     setPhotoFiles([]);
     setPhotoInputKey(clearedComposer.photoInputKey);
     setStatus(intakeModeConfig(inputMode).startStatus);
@@ -2044,6 +2054,34 @@ export default function TenantApp() {
 
           {!selectedSession ? (
             <div className="empty-consultation" aria-label="AI 상담 시작 안내">
+              {sessions.length === 0 ? (
+                <section className="first-consultation-card" aria-label="첫 AI 상담 준비">
+                  <div>
+                    <span>First Thread</span>
+                    <h3>{firstOnboarding.title}</h3>
+                    <p>{firstOnboarding.description}</p>
+                  </div>
+                  <div className="first-consultation-steps">
+                    {firstOnboarding.steps.map((step) => (
+                      <article key={step.title}>
+                        <strong>{step.title}</strong>
+                        <p>{step.description}</p>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="starter-prompts" aria-label="첫 상담 예시">
+                    {firstOnboarding.starterPrompts.map((prompt) => (
+                      <button
+                        type="button"
+                        key={prompt}
+                        onClick={() => void startSession(prompt)}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <p>{emptyConsultation.description}</p>
               <button type="button" className="primary" onClick={() => void startSession()}>
                 {emptyConsultation.actionLabel}
