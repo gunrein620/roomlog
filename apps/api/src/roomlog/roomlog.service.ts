@@ -3642,7 +3642,7 @@ export class RoomlogService {
           `가장 유사한 티켓: ${draft.duplicateCandidates[0].title} (${draft.duplicateCandidates[0].displayStatus})`
         ]
       : [];
-    const questionLines = draft.nextQuestions.slice(0, 3).map((question) => `- ${question}`);
+    const questionLines = this.visibleIntakeQuestions(draft).map((question) => `- ${question}`);
 
     if (!draft.readyToFinalize) {
       return [
@@ -3711,6 +3711,36 @@ export class RoomlogService {
       "- 접수 확정 가능: 내용이 맞으면 관리자 티켓으로 전달할 수 있습니다.",
       "- 이후 답변과 사진도 같은 상담 스레드에 이어서 저장됩니다."
     ].filter(Boolean).join("\n");
+  }
+
+  private visibleIntakeQuestions(draft: IntakeDraft) {
+    if (draft.nextQuestions.length === 0) {
+      return [];
+    }
+
+    const findQuestion = (pattern: RegExp) =>
+      draft.nextQuestions.find((question) => pattern.test(question));
+    const safetyQuestion =
+      draft.priority === 1
+        ? findQuestion(/물이 지금|전기|콘센트|조명|위험|안전|가스|침수|잠김/)
+        : undefined;
+    const visitQuestion = !draft.availableTimes ? findQuestion(/방문|시간|일정/) : undefined;
+    const photoQuestion =
+      draft.photoRequested ||
+      draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
+      draft.photoAnalysis.recommendedRetake
+        ? findQuestion(/사진|촬영|근접|전체/)
+        : undefined;
+
+    return [
+      draft.readyToFinalize ? visitQuestion : undefined,
+      safetyQuestion,
+      visitQuestion,
+      photoQuestion,
+      draft.nextQuestions[0]
+    ]
+      .filter((question): question is string => Boolean(question))
+      .slice(0, 1);
   }
 
   private ensureAssistantReplyQuality(

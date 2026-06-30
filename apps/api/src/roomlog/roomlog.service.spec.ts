@@ -1740,6 +1740,39 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("focuses fallback 상담 replies on one visible next question while preserving the draft queue", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "화장실 천장에서 물이 떨어지고 바닥이 젖었어요.",
+        inputMode: "CHAT"
+      });
+      const visibleQuestionSection =
+        result.assistantMessage.messageText
+          .split("다음으로 확인할 질문")[1]
+          ?.split("접수 상태")[0] ?? "";
+      const visibleQuestions = visibleQuestionSection
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("- "));
+
+      assert.equal(result.session.draft.nextQuestions.length >= 2, true);
+      assert.equal(visibleQuestions.length, 1);
+      assert.match(
+        visibleQuestions[0],
+        /물이 지금도|전기|콘센트|조명|위험|안전|떨어지고/
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("treats photo-only intake turns as evidence, not as a collected symptom", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
