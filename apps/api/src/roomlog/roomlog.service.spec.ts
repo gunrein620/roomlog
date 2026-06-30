@@ -2530,6 +2530,57 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("keeps same-room context hints compact when prior summaries include AI reply sections", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const past = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+    const priorAssistantLikeSummary = [
+      "접수 초안이 준비되었습니다. 이 상담 스레드의 내용을 아래처럼 정리했습니다.",
+      "제가 이해한 내용",
+      "- 301호 화장실 천장 누수로 당일 확인이 필요합니다.",
+      "관리자 참고 맥락",
+      "- 같은 호실에 누수 관련 과거 기록이 있습니다.",
+      "다음으로 확인할 질문",
+      "- 물이 지금도 떨어지고 있나요?",
+      "접수 상태",
+      "- 접수 확정 가능: 내용이 맞으면 관리자 티켓으로 전달할 수 있습니다."
+    ].join("\n");
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", past.session.id, {
+        messageText:
+          "지난번 301호 화장실 천장에서 물이 떨어졌고 전기 근처는 아니며 오늘 저녁 7시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+      service.finalizeIntakeSession("tenant-demo", past.session.id, {
+        confirmedTitle: "지난 301호 화장실 누수",
+        confirmedSummary: priorAssistantLikeSummary,
+        confirmedLocation: "301호 화장실",
+        availableTimes: "오늘 저녁 7시 이후"
+      });
+      const current = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+      const result = await service.sendIntakeMessage("tenant-demo", current.session.id, {
+        messageText: "오늘 다시 301호 화장실 천장에서 물이 새는 것 같아요.",
+        inputMode: "CHAT"
+      });
+      const contextText = result.session.draft.contextHints.join("\n");
+      const questionSectionCount =
+        result.assistantMessage.messageText.match(/다음으로 확인할 질문/g)?.length ?? 0;
+
+      assert.equal(questionSectionCount, 1);
+      assert.match(contextText, /최근 관련 기록/);
+      assert.doesNotMatch(
+        contextText,
+        /접수 초안이 준비되었습니다|확인할게요\.|다음으로 확인할 질문|접수 상태|관리자 참고 맥락/
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("generates high quality fallback intake guidance with concrete next questions", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -2601,6 +2652,49 @@ describe("RoomlogService", () => {
         result.session.draft.tenantGuidance.some((guide) => /가스 냄새|가스 안전/.test(guide)),
         false
       );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
+  it("asks problem-detail follow-up questions before scheduling a visit", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "화장실이 좀 이상해요.",
+        inputMode: "CHAT"
+      });
+      const visibleQuestionSection =
+        result.assistantMessage.messageText
+          .split("다음으로 확인할 질문")[1]
+          ?.split("접수 상태")[0] ?? "";
+      const visibleQuestions = visibleQuestionSection
+        .split("\n")
+        .map((line) => line.trim().replace(/^- /, ""))
+        .filter(Boolean);
+      const visitIndex = visibleQuestions.findIndex((question) => /방문|시간/.test(question));
+      const occurrenceIndex = visibleQuestions.findIndex((question) =>
+        /언제부터|시작|계속|지금도/.test(question)
+      );
+      const riskIndex = visibleQuestions.findIndex((question) =>
+        /전기|가스|침수|잠김|위험|안전/.test(question)
+      );
+
+      assert.equal(visibleQuestions.length >= 3, true);
+      assert.equal(occurrenceIndex, 0);
+      assert.equal(riskIndex > occurrenceIndex, true);
+      assert.equal(visitIndex > riskIndex, true);
     } finally {
       if (originalApiKey) {
         process.env.OPENAI_API_KEY = originalApiKey;

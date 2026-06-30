@@ -4243,10 +4243,8 @@ export class RoomlogService {
 
     const findQuestion = (pattern: RegExp) =>
       draft.nextQuestions.find((question) => pattern.test(question));
-    const safetyQuestion =
-      draft.priority === 1
-        ? findQuestion(/물이 지금|전기|콘센트|조명|위험|안전|가스|침수|잠김/)
-        : undefined;
+    const safetyQuestion = findQuestion(/물이 지금|전기|콘센트|조명|위험|안전|가스|침수|잠김/);
+    const occurrenceQuestion = findQuestion(/언제부터|시작|계속|지금도|반복|발생/);
     const visitQuestion = !draft.availableTimes ? findQuestion(/방문|시간|일정/) : undefined;
     const photoQuestion =
       draft.photoRequested ||
@@ -4255,7 +4253,9 @@ export class RoomlogService {
         ? findQuestion(/사진|촬영|근접|전체/)
         : undefined;
     const prioritizedQuestions = [
-      safetyQuestion,
+      draft.priority === 1 ? safetyQuestion : undefined,
+      occurrenceQuestion,
+      draft.priority !== 1 ? safetyQuestion : undefined,
       photoQuestion,
       visitQuestion,
       ...draft.nextQuestions
@@ -4810,7 +4810,8 @@ export class RoomlogService {
     return [
       summary,
       ...visibleEntries.map(
-        (entry, index) => `최근 관련 기록 ${index + 1}: ${entry.title} - ${entry.description}`
+        (entry, index) =>
+          `최근 관련 기록 ${index + 1}: ${entry.title} - ${this.compactTimelineDescription(entry.description)}`
       )
     ];
   }
@@ -4832,10 +4833,45 @@ export class RoomlogService {
           ? ` 첨부: ${entry.attachmentUrls.join(", ")}`
           : "";
         const statusText = entry.status ? ` 상태: ${entry.status}` : "";
+        const description = this.compactTimelineDescription(entry.description);
 
-        return `[${entry.type}] ${entry.title}${statusText} - ${entry.description}${attachmentText}`;
+        return `[${entry.type}] ${entry.title}${statusText} - ${description}${attachmentText}`;
       })
       .join("\n");
+  }
+
+  private compactTimelineDescription(description: string) {
+    const stopHeading = /^(관리자 참고 맥락|다음으로 확인할 질문|접수 상태|필요한 사진|지금 할 일)$/;
+    const skippedLine =
+      /^(접수 초안이 준비되었습니다|확인할게요\.|제가 이해한 내용|AI 상담 인계 요약)/;
+    const skippedPrefix =
+      /^(분류\/긴급도|분류|책임 가능성|위치|방문 가능 시간|사진 상태|추가 확인|세입자 안내|관리자 권장 조치|상담 스레드|호실|대화 기록):/;
+    const lines = description
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const compactLines: string[] = [];
+
+    for (const line of lines) {
+      if (stopHeading.test(line)) {
+        break;
+      }
+
+      const normalized = line.replace(/^-\s*/, "").replace(/^증상 요약:\s*/, "");
+
+      if (!normalized || skippedLine.test(normalized) || skippedPrefix.test(normalized)) {
+        continue;
+      }
+
+      compactLines.push(normalized);
+
+      if (compactLines.length >= 2) {
+        break;
+      }
+    }
+
+    const compact = compactLines.join(" ") || "이전 상담 기록";
+    return compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   }
 
   private roomHistoryEntriesForIntake(session: IntakeSession) {
