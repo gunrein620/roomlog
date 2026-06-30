@@ -4059,10 +4059,7 @@ export class RoomlogService {
       return {
         source: "fallback",
         draft: fallbackDraft,
-        assistantMessage: [
-          "OpenAI 상담 생성에 일시적으로 연결하지 못해 로컬 안전 지침으로 먼저 정리합니다.",
-          this.composeAssistantReply(fallbackDraft, session)
-        ].join("\n")
+        assistantMessage: this.composeAssistantReply(fallbackDraft, session)
       };
     }
   }

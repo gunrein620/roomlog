@@ -1442,7 +1442,11 @@ describe("RoomlogService", () => {
       assert.equal(aborted, true);
       assert.equal(result.session.draft.category, "납부");
       assert.equal(result.session.draft.detailCategory, "관리비 청구");
-      assert.match(result.assistantMessage.messageText, /로컬 안전 지침|접수 초안/);
+      assert.match(result.assistantMessage.messageText, /상담 스레드|접수 초안/);
+      assert.doesNotMatch(
+        result.assistantMessage.messageText,
+        /OpenAI|로컬 안전 지침|fallback|실패/
+      );
     } finally {
       globalThis.fetch = originalFetch;
       if (originalApiKey) {
