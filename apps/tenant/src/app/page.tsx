@@ -10,6 +10,11 @@ import {
   realtimePurposeForSourceChannel,
   type IntakeMode
 } from "./intake-mode";
+import {
+  buildTenantSignupPayload,
+  canSubmitTenantSignup,
+  tenantSignupIssues
+} from "./tenant-signup";
 
 type AuthResult = {
   accessToken: string;
@@ -502,6 +507,11 @@ export default function TenantApp() {
   const selectedRealtimeTurnSummary = selectedSession
     ? realtimeTurnSummaries[selectedSession.id]
     : undefined;
+  const signupIssues = useMemo(
+    () => tenantSignupIssues(signupForm, invitePreview),
+    [signupForm, invitePreview]
+  );
+  const signupReady = canSubmitTenantSignup(signupForm, invitePreview);
   const selectedIntakeMode = selectedSession
     ? intakeModeOptions.find((option) => option.sourceChannel === selectedSession.sourceChannel) ??
       intakeModeConfig(inputMode)
@@ -696,7 +706,12 @@ export default function TenantApp() {
     const inviteToken = signupForm.inviteToken.trim();
 
     if (inviteToken && invitePreview?.inviteToken !== inviteToken) {
-      setStatus(invitePreviewStatus || "초대 정보를 먼저 확인해주세요.");
+      setStatus(invitePreviewStatus || signupIssues[0] || "초대 정보를 먼저 확인해주세요.");
+      return;
+    }
+
+    if (!signupReady) {
+      setStatus(signupIssues[0] || "회원가입 정보를 확인해주세요.");
       return;
     }
 
@@ -704,7 +719,7 @@ export default function TenantApp() {
       setStatus("회원가입 처리 중");
       const result = await apiRequest<AuthResult>("/auth/signup", undefined, {
         method: "POST",
-        body: JSON.stringify({ ...signupForm, role: "TENANT" })
+        body: JSON.stringify(buildTenantSignupPayload(signupForm))
       });
       setSignupForm(signupInitial);
       await completeAuth(result);
@@ -1459,6 +1474,18 @@ export default function TenantApp() {
                   </label>
                 </>
               ) : null}
+              {authMode === "signup" ? (
+                <div
+                  className={signupReady ? "signup-checklist ready" : "signup-checklist"}
+                  aria-live="polite"
+                >
+                  {signupReady ? (
+                    <span>회원가입 정보를 확인했습니다.</span>
+                  ) : (
+                    signupIssues.slice(0, 3).map((issue) => <span key={issue}>{issue}</span>)
+                  )}
+                </div>
+              ) : null}
               <label>
                 비밀번호
                 <input
@@ -1479,7 +1506,7 @@ export default function TenantApp() {
                   }
                 />
               </label>
-              <button type="submit" className="primary">
+              <button type="submit" className="primary" disabled={!signupReady}>
                 세입자 계정 만들기
               </button>
             </form>

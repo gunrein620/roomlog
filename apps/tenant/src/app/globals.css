@@ -456,6 +456,23 @@ input:disabled {
   line-height: 1.45;
 }
 
+.signup-checklist {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--amber);
+  padding: 2px 0 2px 12px;
+}
+
+.signup-checklist.ready {
+  border-left-color: var(--green);
+}
+
+.signup-checklist span {
+  color: var(--slate);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 textarea {
   resize: vertical;
 }
