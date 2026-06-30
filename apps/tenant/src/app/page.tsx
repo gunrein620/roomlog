@@ -25,6 +25,7 @@ import {
   photoUploadStatus,
   selectedPhotoSummary
 } from "./photo-selection";
+import { photoEvidenceItems } from "./photo-evidence";
 import {
   applyRealtimeEventToTurn,
   emptyRealtimeTurnState,
@@ -518,6 +519,10 @@ export default function TenantApp() {
     : undefined;
   const selectedSlotProgress = useMemo(
     () => (selectedSession ? intakeSlotProgress(selectedSession.draft.intakeSlots) : undefined),
+    [selectedSession]
+  );
+  const selectedPhotoEvidence = useMemo(
+    () => (selectedSession ? photoEvidenceItems(selectedSession.draft.photoAnalysis) : []),
     [selectedSession]
   );
   const signupIssues = useMemo(
@@ -2075,10 +2080,26 @@ export default function TenantApp() {
                   </ul>
                 </section>
                 {selectedSession.draft.photoAnalysis.candidates.length ||
-                selectedSession.draft.photoAnalysis.attachmentUrls.length ? (
-                  <section>
+                selectedPhotoEvidence.length ? (
+                  <section className="photo-analysis">
                     <h3>사진 분석</h3>
                     <p>{selectedSession.draft.photoAnalysis.summary}</p>
+                    {selectedPhotoEvidence.length ? (
+                      <div className="photo-evidence-grid">
+                        {selectedPhotoEvidence.map((item) => (
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            key={`${item.variant}-${item.url}`}
+                            className={`photo-evidence ${item.variant}`}
+                          >
+                            <img src={item.url} alt={item.label} />
+                            <span>{item.label}</span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                     <ul>
                       <li>
                         후보:{" "}
