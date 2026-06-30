@@ -9,6 +9,7 @@
   --border: #d4e0ed;
   --success: #1d7a55;
   --danger: #b42318;
+  --warning: #a15c00;
   --shadow: rgba(71, 103, 136, 0.04) 0 4px 5px,
     rgba(71, 103, 136, 0.03) 0 8px 15px,
     rgba(71, 103, 136, 0.08) 0 30px 50px;
@@ -327,6 +328,23 @@ textarea {
   color: var(--slate);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.signup-checklist {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--warning);
+  padding: 2px 0 2px 12px;
+}
+
+.signup-checklist.ready {
+  border-left-color: var(--success);
+}
+
+.signup-checklist span {
+  color: var(--slate);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .panel-heading {

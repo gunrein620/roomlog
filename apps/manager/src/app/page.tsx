@@ -1,6 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  buildManagerSignupPayload,
+  canSubmitManagerSignup,
+  managerSignupIssues
+} from "./manager-signup";
 
 type AuthResult = {
   accessToken: string;
@@ -365,6 +370,8 @@ export default function ManagerApp() {
     () => tickets.find((ticket) => ticket.id === selectedId) ?? tickets[0],
     [selectedId, tickets]
   );
+  const signupIssues = useMemo(() => managerSignupIssues(signupForm), [signupForm]);
+  const signupReady = canSubmitManagerSignup(signupForm);
 
   useEffect(() => {
     setReplyDraft(null);
@@ -485,11 +492,17 @@ export default function ManagerApp() {
 
   async function submitSignup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!signupReady) {
+      setStatus(signupIssues[0] || "회원가입 정보를 확인해주세요.");
+      return;
+    }
+
     try {
       setStatus("관리자 계정 생성 중");
       const result = await apiRequest<AuthResult>("/auth/signup", undefined, {
         method: "POST",
-        body: JSON.stringify({ ...signupForm, role: "LANDLORD" })
+        body: JSON.stringify(buildManagerSignupPayload(signupForm))
       });
       setSignupForm(signupInitial);
       await completeAuth(result);
@@ -838,6 +851,16 @@ export default function ManagerApp() {
                   }
                 />
               </label>
+              <div
+                className={signupReady ? "signup-checklist ready" : "signup-checklist"}
+                aria-live="polite"
+              >
+                {signupReady ? (
+                  <span>회원가입 정보를 확인했습니다.</span>
+                ) : (
+                  signupIssues.slice(0, 3).map((issue) => <span key={issue}>{issue}</span>)
+                )}
+              </div>
               <label>
                 비밀번호
                 <input
@@ -858,7 +881,7 @@ export default function ManagerApp() {
                   }
                 />
               </label>
-              <button type="submit" className="primary">
+              <button type="submit" className="primary" disabled={!signupReady}>
                 관리자 계정 만들기
               </button>
             </form>

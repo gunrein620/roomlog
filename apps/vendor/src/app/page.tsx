@@ -1,6 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  buildVendorSignupPayload,
+  canSubmitVendorSignup,
+  vendorSignupIssues
+} from "./vendor-signup";
 
 type AuthResult = {
   accessToken: string;
@@ -159,6 +164,11 @@ export default function VendorApp() {
     () => repairs.find((repair) => repair.id === selectedId) ?? repairs[0],
     [repairs, selectedId]
   );
+  const signupIssues = useMemo(
+    () => vendorSignupIssues(signupForm, invitePreview),
+    [signupForm, invitePreview]
+  );
+  const signupReady = canSubmitVendorSignup(signupForm, invitePreview);
 
   async function refresh(token = auth?.accessToken) {
     if (!token) {
@@ -288,10 +298,9 @@ export default function VendorApp() {
 
   async function submitSignup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const inviteToken = signupForm.inviteToken.trim();
 
-    if (inviteToken && invitePreview?.inviteToken !== inviteToken) {
-      setStatus(invitePreviewStatus || "초대 정보를 먼저 확인해주세요.");
+    if (!signupReady) {
+      setStatus(invitePreviewStatus || signupIssues[0] || "회원가입 정보를 확인해주세요.");
       return;
     }
 
@@ -299,7 +308,7 @@ export default function VendorApp() {
       setStatus("협력업체 계정 생성 중");
       const result = await apiRequest<AuthResult>("/auth/signup", undefined, {
         method: "POST",
-        body: JSON.stringify({ ...signupForm, role: "VENDOR" })
+        body: JSON.stringify(buildVendorSignupPayload(signupForm))
       });
       setSignupForm(signupInitial);
       await completeAuth(result);
@@ -554,6 +563,16 @@ export default function VendorApp() {
                   )}
                 </div>
               ) : null}
+              <div
+                className={signupReady ? "signup-checklist ready" : "signup-checklist"}
+                aria-live="polite"
+              >
+                {signupReady ? (
+                  <span>회원가입 정보를 확인했습니다.</span>
+                ) : (
+                  signupIssues.slice(0, 3).map((issue) => <span key={issue}>{issue}</span>)
+                )}
+              </div>
               <label>
                 비밀번호
                 <input
@@ -574,7 +593,7 @@ export default function VendorApp() {
                   }
                 />
               </label>
-              <button type="submit" className="primary">
+              <button type="submit" className="primary" disabled={!signupReady}>
                 업체 계정 만들기
               </button>
             </form>
