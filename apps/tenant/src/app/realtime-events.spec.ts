@@ -73,7 +73,7 @@ describe("tenant realtime events", () => {
     );
   });
 
-  it("does not flush an assistant-only response with the next user transcript", () => {
+  it("flushes an assistant-only opening response without mixing it into the next user transcript", () => {
     let state = emptyRealtimeTurnState();
 
     let result = applyRealtimeEventToTurn(state, {
@@ -87,6 +87,11 @@ describe("tenant realtime events", () => {
       response_id: "resp_opening_summary"
     });
     state = result.state;
+
+    assert.equal(result.shouldFlush, true);
+    assert.equal(result.flushEventId, "resp_opening_summary");
+    assert.equal(result.state.userTranscript, "");
+    assert.equal(result.state.assistantTranscript, "현재 상담 스레드 내용을 확인했습니다.");
 
     result = applyRealtimeEventToTurn(state, {
       type: "input_audio_buffer.speech_started"

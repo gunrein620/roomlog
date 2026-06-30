@@ -176,7 +176,7 @@ export function applyRealtimeEventToTurn(
 
   if (
     state.responseDone &&
-    state.userTranscriptDone &&
+    (state.userTranscriptDone || (!state.userSpeechStarted && state.assistantTranscript)) &&
     (state.userTranscript || state.assistantTranscript)
   ) {
     result.shouldFlush = true;
