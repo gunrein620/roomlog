@@ -30,6 +30,11 @@ import {
   emptyRealtimeTurnState,
   type RealtimeEventPayload
 } from "./realtime-events";
+import {
+  beginRealtimeTurnPersist,
+  completeRealtimeTurnPersist,
+  emptyRealtimePersistState
+} from "./realtime-persist";
 
 type AuthResult = {
   accessToken: string;
@@ -498,8 +503,7 @@ export default function TenantApp() {
   const authRef = useRef<AuthResult | null>(null);
   const selectedSessionRef = useRef<IntakeSession | undefined>(undefined);
   const realtimeTurnRef = useRef(emptyRealtimeTurnState());
-  const realtimePersistingRef = useRef(false);
-  const lastRealtimeEventRef = useRef("");
+  const realtimePersistRef = useRef(emptyRealtimePersistState());
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -823,7 +827,7 @@ export default function TenantApp() {
 
   function resetRealtimeTranscript() {
     realtimeTurnRef.current = emptyRealtimeTurnState();
-    lastRealtimeEventRef.current = "";
+    realtimePersistRef.current = emptyRealtimePersistState();
     setRealtimeUserTranscript("");
     setRealtimeAssistantTranscript("");
   }
@@ -891,10 +895,6 @@ export default function TenantApp() {
   }
 
   async function flushRealtimeTurn(eventId = "") {
-    if (realtimePersistingRef.current) {
-      return;
-    }
-
     const userTranscript = realtimeTurnRef.current.userTranscript.trim();
     const assistantTranscript = realtimeTurnRef.current.assistantTranscript.trim();
 
@@ -902,23 +902,29 @@ export default function TenantApp() {
       return;
     }
 
-    if (eventId && lastRealtimeEventRef.current === eventId) {
-      return;
-    }
+    const persistAttempt = beginRealtimeTurnPersist(realtimePersistRef.current, eventId);
+    realtimePersistRef.current = persistAttempt.state;
 
-    realtimePersistingRef.current = true;
-    if (eventId) {
-      lastRealtimeEventRef.current = eventId;
+    if (!persistAttempt.shouldPersist) {
+      return;
     }
 
     try {
       await recordRealtimeTurn(userTranscript, assistantTranscript, eventId);
       realtimeTurnRef.current = emptyRealtimeTurnState();
+      realtimePersistRef.current = completeRealtimeTurnPersist(
+        realtimePersistRef.current,
+        eventId,
+        true
+      );
       setRealtimeStatus("Realtime 전사가 상담 스레드에 저장되었습니다.");
     } catch (error) {
+      realtimePersistRef.current = completeRealtimeTurnPersist(
+        realtimePersistRef.current,
+        eventId,
+        false
+      );
       setRealtimeStatus(error instanceof Error ? error.message : "Realtime 전사 저장 실패");
-    } finally {
-      realtimePersistingRef.current = false;
     }
   }
 
