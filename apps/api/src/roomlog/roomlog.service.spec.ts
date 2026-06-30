@@ -108,6 +108,38 @@ describe("RoomlogService", () => {
     assert.throws(() => service.getDemoState(), /데모/);
   });
 
+  it("projects signup state to configured persistence", async () => {
+    const projectedStores: any[] = [];
+    const service = new RoomlogService({
+      seedDemoData: false,
+      storeProjector: {
+        persist: async (store: any) => {
+          projectedStores.push(JSON.parse(JSON.stringify(store)));
+        }
+      }
+    } as any);
+
+    const auth = service.signup({
+      email: "projected-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "저장 세입자",
+      phone: "010-9191-3001",
+      role: "TENANT",
+      buildingName: "프로젝션 빌라",
+      roomNo: "701호",
+      address: "서울시 성동구 저장로 91"
+    } as any);
+
+    await (service as any).flushPersistence();
+    const projected = projectedStores.at(-1);
+
+    assert.equal(projected.users[0].id, auth.userId);
+    assert.equal(projected.users[0].email, "projected-tenant@roomlog.test");
+    assert.equal(projected.rooms[0].buildingName, "프로젝션 빌라");
+    assert.equal(projected.tenantRooms[auth.userId], projected.rooms[0].id);
+  });
+
   it("exposes runtime config so clients can hide demo auth in production-style mode", () => {
     const productionStyleService = new RoomlogService({ seedDemoData: false } as any);
     const demoStyleService = new RoomlogService({ seedDemoData: true } as any);

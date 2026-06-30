@@ -111,11 +111,12 @@ type LoginInput = {
   password: string;
 };
 
-type RoomlogServiceOptions = {
+export type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
   publicUploadBaseUrl?: string;
   seedDemoData?: boolean;
+  storeProjector?: StoreProjector;
 };
 
 type AuthResult = {
@@ -125,7 +126,7 @@ type AuthResult = {
   name: string;
 };
 
-type VendorSummary = {
+export type VendorSummary = {
   id: string;
   userId: string;
   businessName: string;
@@ -135,7 +136,7 @@ type VendorSummary = {
   activeJobs: number;
 };
 
-type VendorInvite = {
+export type VendorInvite = {
   id: string;
   inviteToken: string;
   invitedByManagerId: string;
@@ -151,7 +152,7 @@ type VendorInvite = {
   acceptedByUserId?: string;
 };
 
-type TenantInvite = {
+export type TenantInvite = {
   id: string;
   inviteToken: string;
   invitedByManagerId: string;
@@ -167,7 +168,7 @@ type TenantInvite = {
   acceptedByUserId?: string;
 };
 
-type Store = {
+export type Store = {
   users: UserAccount[];
   rooms: Room[];
   tenantRooms: Record<string, string>;
@@ -184,6 +185,11 @@ type Store = {
   repairs: RepairRequest[];
   messages: TicketMessage[];
   history: StatusHistory[];
+};
+
+export type StoreProjector = {
+  persist(store: Store): void | Promise<void>;
+  disconnect?(): void | Promise<void>;
 };
 
 type GeneratedIntakeTurn = {
@@ -212,7 +218,7 @@ function verifyPassword(password: string, storedHash: string) {
 }
 
 const tokenSecret = process.env.JWT_SECRET || "roomlog-local-dev-secret";
-const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
+export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
 
 function tokenFor(user: UserAccount) {
   const payload = Buffer.from(
@@ -382,6 +388,9 @@ export class RoomlogService {
   private readonly uploadDir: string;
   private readonly publicUploadBaseUrl: string;
   private readonly seedDemoData: boolean;
+  private readonly storeProjector?: StoreProjector;
+  private pendingPersistence = Promise.resolve();
+  private persistenceError: unknown;
 
   constructor(
     @Optional()
@@ -392,12 +401,21 @@ export class RoomlogService {
     this.storeFilePath = configuredStoreFile?.trim() || undefined;
     this.uploadDir = options.uploadDir ?? process.env.LOCAL_UPLOAD_DIR ?? "uploads";
     this.seedDemoData = shouldSeedDemoData(options.seedDemoData);
+    this.storeProjector = options.storeProjector;
     this.publicUploadBaseUrl = (
       options.publicUploadBaseUrl ??
       process.env.PUBLIC_UPLOAD_BASE_URL ??
       "/api/files"
     ).replace(/\/$/, "");
     this.store = this.loadStore();
+  }
+
+  async flushPersistence() {
+    await this.pendingPersistence;
+
+    if (this.persistenceError) {
+      throw this.persistenceError;
+    }
   }
 
   signup(input: SignupInput): AuthResult {
@@ -2546,6 +2564,7 @@ export class RoomlogService {
 
   private persistStore() {
     if (!this.storeFilePath) {
+      this.projectStore();
       return;
     }
 
@@ -2553,6 +2572,25 @@ export class RoomlogService {
     const tempFilePath = `${this.storeFilePath}.tmp`;
     writeFileSync(tempFilePath, JSON.stringify(this.store, null, 2));
     renameSync(tempFilePath, this.storeFilePath);
+    this.projectStore();
+  }
+
+  private projectStore() {
+    if (!this.storeProjector) {
+      return;
+    }
+
+    const snapshot = JSON.parse(JSON.stringify(this.store)) as Store;
+    this.pendingPersistence = this.pendingPersistence
+      .then(() => this.storeProjector?.persist(snapshot))
+      .then(
+        () => {
+          this.persistenceError = undefined;
+        },
+        (error) => {
+          this.persistenceError = error;
+        }
+      );
   }
 
   private isStoreSnapshot(value: unknown): value is Store {

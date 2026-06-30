@@ -40,4 +40,4 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 EXPOSE 4000
 
-CMD ["pnpm", "--filter", "api", "start:prod"]
+CMD ["sh", "-c", "pnpm --filter api exec prisma db push --config ../../prisma.config.ts && pnpm --filter api start:prod"]
