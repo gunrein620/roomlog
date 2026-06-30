@@ -16,11 +16,14 @@ describe("tenant first consultation onboarding", () => {
       onboarding.steps.map((step) => step.title),
       ["상황 설명", "사진 첨부", "초안 확인"]
     );
-    assert.deepEqual(onboarding.starterPrompts, [
-      "화장실 천장에서 물이 떨어지고 있습니다. 언제부터인지, 지금도 계속 새는지 확인해주세요.",
-      "보일러가 작동하지 않습니다. 온수와 난방 중 어떤 문제가 더 큰지 정리해주세요.",
-      "월세나 관리비 청구 내역이 이상합니다. 계약/납부 기록 기준으로 확인해주세요."
-    ]);
+    assert.equal(onboarding.starterPrompts.length, 3);
+    for (const prompt of onboarding.starterPrompts) {
+      assert.match(prompt, /정글빌라 301호/);
+      assert.match(prompt, /언제부터|오늘|어제|이번 달/);
+      assert.match(prompt, /위험|안전|전기|냄새|잠금/);
+      assert.match(prompt, /사진|첨부|없습니다/);
+      assert.match(prompt, /방문 가능|확인 가능|연락 가능/);
+    }
   });
 
   it("falls back to a room-connected label when detailed room fields are still loading", () => {
