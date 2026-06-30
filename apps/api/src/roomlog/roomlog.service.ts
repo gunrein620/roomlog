@@ -666,7 +666,7 @@ export class RoomlogService {
     if (user.role === "TENANT") {
       this.store.tenantRooms[user.id] =
         tenantInvite?.roomId ??
-        this.findOrCreateRoomForSignup(normalizedInput, this.seededLandlordId());
+        this.findOrCreateRoomForSignup(normalizedInput);
 
       if (tenantInvite) {
         tenantInvite.status = "ACCEPTED";
@@ -2897,10 +2897,7 @@ export class RoomlogService {
       attachments: parsed.attachments ?? [],
       moveInChecklist: parsed.moveInChecklist ?? [],
       aiFeedback: parsed.aiFeedback ?? [],
-      rooms: parsed.rooms.map((room) => ({
-        ...room,
-        landlordId: room.landlordId ?? "landlord-demo"
-      })),
+      rooms: parsed.rooms.map((room) => ({ ...room })),
       intakeSessions: parsed.intakeSessions.map((session) => ({
         ...session,
         draft: {
@@ -3186,12 +3183,6 @@ export class RoomlogService {
     this.store.rooms.push(room);
 
     return room.id;
-  }
-
-  private seededLandlordId() {
-    return this.store.users.some((user) => user.id === "landlord-demo")
-      ? "landlord-demo"
-      : undefined;
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {

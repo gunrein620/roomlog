@@ -118,8 +118,10 @@ describe("RoomlogService", () => {
       });
       const persistedThreads = restartedService.listIntakeSessions(restartedAuth.userId);
       const persistedComplaints = restartedService.listTenantComplaints(restartedAuth.userId);
+      const restartedProfile = restartedService.getMe(`Bearer ${restartedAuth.accessToken}`);
 
       assert.equal(restartedAuth.name, "지속 세입자");
+      assert.equal(restartedProfile.room?.landlordId, undefined);
       assert.equal(persistedThreads[0].id, firstThread.session.id);
       assert.equal(persistedThreads[0].status, "FINALIZED");
       assert.equal(persistedComplaints[0].id, finalized.complaint.id);
@@ -2894,6 +2896,7 @@ describe("RoomlogService", () => {
     assert.equal(tenantProfile.roomId, tenantThread.session.roomId);
     assert.equal(tenantProfile.room?.buildingName, "룸로그 빌라");
     assert.equal(tenantProfile.room?.roomNo, "502호");
+    assert.equal(tenantProfile.room?.landlordId, undefined);
     assert.equal(tenantThread.session.room?.roomNo, "502호");
 
     const managerAuth = service.signup({
