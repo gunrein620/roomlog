@@ -55,6 +55,11 @@ import {
   resetConsultationComposerState
 } from "./composer-state";
 import { initialMoveInChecklistForm } from "./move-in-form-state";
+import {
+  initialTenantAiFeedbackAction,
+  initialTenantAiFeedbackReason,
+  initialTenantReopenText
+} from "./action-form-state";
 import { resolveAttachmentUrl } from "./attachment-url";
 
 type AuthResult = {
@@ -521,14 +526,12 @@ export default function TenantApp() {
   const [followupText, setFollowupText] = useState("");
   const [followupPhotoFiles, setFollowupPhotoFiles] = useState<File[]>([]);
   const [followupPhotoInputKey, setFollowupPhotoInputKey] = useState(0);
-  const [reopenText, setReopenText] = useState("수리 후에도 같은 문제가 남아 있습니다.");
+  const [reopenText, setReopenText] = useState(initialTenantReopenText);
   const [reopenPhotoFile, setReopenPhotoFile] = useState<File | null>(null);
   const [reopenPhotoInputKey, setReopenPhotoInputKey] = useState(0);
   const [aiFeedbackTarget, setAiFeedbackTarget] = useState<AiFeedbackTarget>("PRIORITY");
-  const [aiFeedbackReason, setAiFeedbackReason] = useState(
-    "물이 계속 떨어져 일반 검토가 아니라 긴급 확인이 필요합니다."
-  );
-  const [aiFeedbackAction, setAiFeedbackAction] = useState("오늘 중 관리자 확인 요청");
+  const [aiFeedbackReason, setAiFeedbackReason] = useState(initialTenantAiFeedbackReason);
+  const [aiFeedbackAction, setAiFeedbackAction] = useState(initialTenantAiFeedbackAction);
   const [aiFeedbackPhotoFile, setAiFeedbackPhotoFile] = useState<File | null>(null);
   const [aiFeedbackPhotoInputKey, setAiFeedbackPhotoInputKey] = useState(0);
   const [inputMode, setInputMode] = useState<IntakeMode>("CHAT");
@@ -1320,8 +1323,8 @@ export default function TenantApp() {
         })
       });
       await refresh();
-      setAiFeedbackReason("");
-      setAiFeedbackAction("");
+      setAiFeedbackReason(initialTenantAiFeedbackReason());
+      setAiFeedbackAction(initialTenantAiFeedbackAction());
       setAiFeedbackPhotoFile(null);
       setAiFeedbackPhotoInputKey((current) => current + 1);
       setStatus("AI 판단 이의제기가 기존 티켓에 연결되었습니다.");
@@ -1385,7 +1388,7 @@ export default function TenantApp() {
       );
       await refresh();
       setSelectedComplaintId(result.complaint.id);
-      setReopenText("수리 후에도 같은 문제가 남아 있습니다.");
+      setReopenText(initialTenantReopenText());
       setReopenPhotoFile(null);
       setReopenPhotoInputKey((current) => current + 1);
       setStatus("미해결 재요청이 관리자에게 전달되었습니다.");
