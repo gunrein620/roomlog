@@ -809,7 +809,15 @@ export class RoomlogService {
     const requiresPhoto =
       draft.photoRequested ||
       draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
+      draft.photoAnalysis.recommendedRetake ||
       draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question));
+    const nextQuestions = [
+      draft.photoAnalysis.recommendedRetake &&
+      !draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question))
+        ? "문제 부위 근접 사진 1장과 공간 전체 사진 1장을 추가로 올려주실 수 있나요?"
+        : undefined,
+      ...draft.nextQuestions
+    ].filter((question): question is string => Boolean(question));
     const needsVisit = draft.requiredInfo.some((item) => /방문|시간/.test(item));
     const statusParts = [
       !draft.readyToFinalize ? "추가 확인 필요" : "접수 초안 준비",
@@ -827,7 +835,7 @@ export class RoomlogService {
       intakeSlots: this.presentIntakeSlots(intakeSlots),
       collectedSlotCount: slotCounts.collectedSlotCount,
       openSlotCount: slotCounts.openSlotCount,
-      nextQuestions: [...draft.nextQuestions],
+      nextQuestions,
       tenantGuidance: [...draft.tenantGuidance],
       spokenReply: assistantMessageText
     };

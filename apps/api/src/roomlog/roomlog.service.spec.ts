@@ -639,6 +639,45 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("keeps realtime photo actions on when one voice-turn photo still needs close-up and wide shots", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "CALLBOT"
+    });
+
+    try {
+      service.createMoveInChecklistItem("tenant-demo", {
+        roomId: "room-301",
+        area: "화장실",
+        itemName: "세면대",
+        memo: "입주 시 세면대 파손 없음",
+        attachmentUrls: ["/api/files/realtime-move-in-sink-clean.png"]
+      });
+
+      const result = await service.recordRealtimeTurn("tenant-demo", session.id, {
+        userTranscript: "301호 화장실 세면대가 깨진 사진을 보냈습니다. 오늘 저녁 방문 가능합니다.",
+        attachmentUrls: ["/api/files/realtime-current-sink-close.png"],
+        eventId: "evt_realtime_one_photo_needs_retake"
+      });
+
+      assert.equal(result.session.draft.photoAnalysis.recommendedRetake, true);
+      assert.equal(result.turnSummary.requiresPhoto, true);
+      assert.match(result.turnSummary.statusLabel, /사진/);
+      assert.equal(
+        result.turnSummary.nextQuestions.some((question) => /근접 사진|공간 전체/.test(question)),
+        true
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("keeps required realtime follow-up questions when duplicate candidates exist", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
