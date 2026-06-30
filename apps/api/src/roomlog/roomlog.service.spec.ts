@@ -566,6 +566,43 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("lists the most recently updated intake thread first", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const firstThread = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "REALTIME_CHAT"
+    });
+    const secondThread = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await service.sendIntakeMessage("tenant-demo", firstThread.session.id, {
+        messageText:
+          "301호 화장실 천장에서 물이 떨어지고 오늘 저녁 8시 이후 방문 가능합니다.",
+        attachmentUrls: ["/api/files/recent-thread-leak.jpg"],
+        inputMode: "CHAT"
+      });
+
+      const threads = service.listIntakeSessions("tenant-demo") as Array<any>;
+
+      assert.equal(threads[0].id, firstThread.session.id);
+      assert.equal(threads[1].id, secondThread.session.id);
+      assert.equal(
+        threads[0].threadSummary.updatedAt.localeCompare(threads[1].threadSummary.updatedAt) >= 0,
+        true
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("stores a generated AI voice reply when a Realtime turn only has the tenant transcript", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

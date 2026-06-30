@@ -662,6 +662,7 @@ export class RoomlogService {
   listIntakeSessions(tenantId: string) {
     return this.store.intakeSessions
       .filter((session) => session.tenantId === tenantId)
+      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .map((session) => this.presentIntakeSession(session));
   }
 
