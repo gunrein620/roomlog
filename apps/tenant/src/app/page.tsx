@@ -58,6 +58,7 @@ import {
 } from "./thread-workflow";
 import { emptyConsultationState } from "./empty-consultation";
 import { consultationThreadContextHighlights } from "./thread-context";
+import { threadCaseFile } from "./thread-case-file";
 import {
   canSubmitConsultationComposer,
   initialConsultationComposerText,
@@ -608,6 +609,10 @@ export default function TenantApp() {
             draft: selectedSession.draft
           })
         : [],
+    [selectedSession]
+  );
+  const selectedThreadCaseFile = useMemo(
+    () => (selectedSession ? threadCaseFile(selectedSession) : undefined),
     [selectedSession]
   );
   const emptyConsultation = useMemo(
@@ -1934,6 +1939,44 @@ export default function TenantApp() {
                 </span>
               ))}
             </div>
+          ) : null}
+
+          {selectedThreadCaseFile ? (
+            <section className="case-file" aria-label="AI 케이스 파일">
+              <div className="case-file-heading">
+                <div>
+                  <span>AI Case File</span>
+                  <h3>{selectedThreadCaseFile.title}</h3>
+                </div>
+                <strong>{selectedThreadCaseFile.status}</strong>
+              </div>
+              <div className="case-file-facts">
+                {selectedThreadCaseFile.facts.map((fact) => (
+                  <span className={`case-file-fact ${fact.tone}`} key={fact.label}>
+                    <strong>{fact.label}</strong>
+                    {fact.value}
+                  </span>
+                ))}
+              </div>
+              <div className="case-file-grid">
+                <section>
+                  <h4>AI 판단</h4>
+                  <ul>
+                    {selectedThreadCaseFile.findings.map((finding) => (
+                      <li key={finding}>{finding}</li>
+                    ))}
+                  </ul>
+                </section>
+                <section>
+                  <h4>다음 액션</h4>
+                  <ul>
+                    {selectedThreadCaseFile.nextActions.map((action) => (
+                      <li key={action}>{action}</li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            </section>
           ) : null}
 
           {!selectedSession ? (

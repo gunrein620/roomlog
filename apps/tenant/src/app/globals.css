@@ -686,6 +686,129 @@ textarea {
   color: var(--green);
 }
 
+.case-file {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #cfe0f5;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  padding: 14px;
+  background: #f8fbff;
+}
+
+.case-file-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.case-file-heading span {
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.case-file-heading h3 {
+  margin: 3px 0 0;
+  color: var(--navy);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.case-file-heading > strong {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #ecfdf3;
+  color: var(--green);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.case-file-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.case-file-fact {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--paper);
+  color: var(--slate);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.case-file-fact strong {
+  color: var(--navy);
+  font-size: 11px;
+}
+
+.case-file-fact.priority {
+  border-color: #ffd591;
+  background: #fff7e6;
+  color: var(--amber);
+}
+
+.case-file-fact.warning {
+  border-color: #ffccc7;
+  background: #fff1f0;
+  color: var(--red);
+}
+
+.case-file-fact.info {
+  border-color: #bae0ff;
+  background: #f0f7ff;
+  color: var(--blue);
+}
+
+.case-file-fact.ready {
+  border-color: #abefc6;
+  background: #ecfdf3;
+  color: var(--green);
+}
+
+.case-file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.case-file-grid section {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.case-file-grid h4 {
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.case-file-grid ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--slate);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.case-file-grid li {
+  overflow-wrap: anywhere;
+}
+
 .empty-consultation {
   display: grid;
   gap: 12px;
@@ -1285,6 +1408,8 @@ ul {
   .mode-row,
   .draft-grid,
   .move-in-form,
+  .case-file-heading,
+  .case-file-grid,
   .realtime-panel,
   .completion-heading {
     grid-template-columns: 1fr;
