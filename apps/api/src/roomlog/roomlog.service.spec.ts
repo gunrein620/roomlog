@@ -726,6 +726,39 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("asks multiple concrete intake questions in the chat reply when key slots are still open", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "301호 화장실 천장에서 물이 계속 떨어집니다.",
+        inputMode: "CHAT"
+      });
+      const questionSection =
+        result.assistantMessage.messageText
+          .split("다음으로 확인할 질문")[1]
+          ?.split("접수 상태")[0] ?? "";
+      const questionLines = questionSection
+        .split("\n")
+        .filter((line) => line.startsWith("- ") && /[?나요]|알려주|올려주/.test(line));
+
+      assert.match(result.assistantMessage.messageText, /다음으로 확인할 질문/);
+      assert.equal(questionLines.length >= 2, true);
+      assert.equal(questionLines.some((line) => /전기|콘센트|조명|위험/.test(line)), true);
+      assert.equal(questionLines.some((line) => /사진|근접|전체/.test(line)), true);
+      assert.match(result.assistantMessage.messageText, /방문 가능 시간|방문 가능 시간대/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("keeps realtime photo actions on when one voice-turn photo still needs close-up and wide shots", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -1982,7 +2015,7 @@ describe("RoomlogService", () => {
     }
   });
 
-  it("focuses fallback 상담 replies on one visible next question while preserving the draft queue", async () => {
+  it("surfaces multiple prioritized fallback questions while preserving the draft queue", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
     const service = new RoomlogService();
@@ -2003,10 +2036,17 @@ describe("RoomlogService", () => {
         .filter((line) => line.startsWith("- "));
 
       assert.equal(result.session.draft.nextQuestions.length >= 2, true);
-      assert.equal(visibleQuestions.length, 1);
-      assert.match(
-        visibleQuestions[0],
-        /물이 지금도|전기|콘센트|조명|위험|안전|떨어지고/
+      assert.equal(visibleQuestions.length >= 2, true);
+      assert.equal(visibleQuestions.length <= 3, true);
+      assert.equal(
+        visibleQuestions.some((question) =>
+          /물이 지금도|전기|콘센트|조명|위험|안전|떨어지고/.test(question)
+        ),
+        true
+      );
+      assert.equal(
+        visibleQuestions.some((question) => /사진|근접|전체/.test(question)),
+        true
       );
     } finally {
       if (originalApiKey) {

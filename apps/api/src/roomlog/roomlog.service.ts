@@ -3859,16 +3859,14 @@ export class RoomlogService {
       draft.photoAnalysis.recommendedRetake
         ? findQuestion(/사진|촬영|근접|전체/)
         : undefined;
-
-    return [
-      draft.readyToFinalize ? visitQuestion : undefined,
+    const prioritizedQuestions = [
       safetyQuestion,
-      visitQuestion,
       photoQuestion,
-      draft.nextQuestions[0]
-    ]
-      .filter((question): question is string => Boolean(question))
-      .slice(0, 1);
+      visitQuestion,
+      ...draft.nextQuestions
+    ].filter((question): question is string => Boolean(question));
+
+    return Array.from(new Set(prioritizedQuestions)).slice(0, 3);
   }
 
   private ensureAssistantReplyQuality(
