@@ -55,6 +55,16 @@ describe("RoomlogService", () => {
           }),
         /이미지/
       );
+      assert.throws(
+        () =>
+          service.saveAttachment("tenant-demo", {
+            buffer: Buffer.from("gif bytes"),
+            originalName: "animated-leak.gif",
+            mimeType: "image/gif",
+            category: "COMPLAINT_PHOTO"
+          }),
+        /jpeg|png|webp|지원/
+      );
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

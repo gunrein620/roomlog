@@ -2672,8 +2672,8 @@ export class RoomlogService {
       throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
     }
 
-    if (!input.mimeType.startsWith("image/")) {
-      throw new BadRequestException("이미지 파일만 업로드할 수 있습니다.");
+    if (!this.supportedImageMimeTypes().includes(input.mimeType)) {
+      throw new BadRequestException("지원하는 이미지 파일은 jpeg, png, webp 형식입니다.");
     }
 
     if (!input.buffer.length) {
@@ -2820,7 +2820,7 @@ export class RoomlogService {
 
   private extensionForMimeType(mimeType: string, originalName: string) {
     const extension = extname(originalName).toLowerCase();
-    const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"];
+    const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
     if (allowedExtensions.includes(extension)) {
       return extension;
@@ -2829,12 +2829,14 @@ export class RoomlogService {
     const fallback: Record<string, string> = {
       "image/jpeg": ".jpg",
       "image/png": ".png",
-      "image/webp": ".webp",
-      "image/gif": ".gif",
-      "image/heic": ".heic"
+      "image/webp": ".webp"
     };
 
     return fallback[mimeType] ?? ".img";
+  }
+
+  private supportedImageMimeTypes() {
+    return ["image/jpeg", "image/png", "image/webp"];
   }
 
   private normalizeSignupInput(input: SignupInput): SignupInput {
