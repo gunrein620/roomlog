@@ -1555,6 +1555,34 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("treats photo-only intake turns as evidence, not as a collected symptom", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        attachmentUrls: ["/api/files/photo-only-ceiling.jpg"],
+        inputMode: "CHAT"
+      });
+      const slots = Object.fromEntries(
+        result.session.draft.intakeSlots.map((slot) => [slot.key, slot])
+      );
+
+      assert.equal(slots.photo.status, "COLLECTED");
+      assert.equal(slots.symptom.status, "NEEDS_INFO");
+      assert.equal(result.session.draft.requiredInfo.includes("증상"), true);
+      assert.match(result.assistantMessage.messageText, /현재 첨부 사진 1건/);
+      assert.match(result.assistantMessage.messageText, /어떤 문제|증상|공간|부위/);
+      assert.doesNotMatch(result.assistantMessage.messageText, /접수 확정 가능/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("tracks intake readiness slots across a thread before finalizing", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

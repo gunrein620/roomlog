@@ -3067,10 +3067,22 @@ export class RoomlogService {
     );
   }
 
+  private meaningfulTenantMessageText(message: IntakeMessage) {
+    const messageText = message.messageText.trim();
+    const transcriptText = message.transcriptText?.trim();
+
+    if (messageText === "사진을 첨부했습니다." && message.attachmentUrls.length > 0) {
+      return transcriptText ?? "";
+    }
+
+    return [messageText, transcriptText].filter(Boolean).join(" ");
+  }
+
   private buildIntakeDraft(session: IntakeSession): IntakeDraft {
     const tenantMessages = session.messages.filter((message) => message.sender === "TENANT");
     const text = tenantMessages
-      .map((message) => [message.messageText, message.transcriptText].filter(Boolean).join(" "))
+      .map((message) => this.meaningfulTenantMessageText(message))
+      .filter(Boolean)
       .join(" ");
     const hasPhoto = tenantMessages.some((message) => message.attachmentUrls.length > 0);
     const room = this.store.rooms.find((item) => item.id === session.roomId);
