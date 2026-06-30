@@ -115,6 +115,17 @@ export type AiAnalysis = {
   reasons?: string[];
   recommendedAction: string;
   photoAnalysis?: PhotoAnalysis;
+  repeatSummary?: RepeatIssueSummary;
+};
+
+export type RepeatIssueSummary = {
+  isRepeated: boolean;
+  matchCount: number;
+  windowDays: number;
+  matchedTicketIds: string[];
+  matchedComplaintIds: string[];
+  label: string;
+  evidence: string[];
 };
 
 export type AiFeedbackTarget =

@@ -115,6 +115,15 @@ type Ticket = {
     reasons?: string[];
     recommendedAction?: string;
     confidenceScore?: number;
+    repeatSummary?: {
+      isRepeated: boolean;
+      matchCount: number;
+      windowDays: number;
+      matchedTicketIds: string[];
+      matchedComplaintIds: string[];
+      label: string;
+      evidence: string[];
+    };
     photoAnalysis?: {
       attachmentUrls: string[];
       previousAttachmentUrls: string[];
@@ -1102,6 +1111,20 @@ export default function ManagerApp() {
                   ) : (
                     <p>접수 대화와 첨부 자료를 기준으로 관리자 검토가 필요합니다.</p>
                   )}
+                  {selectedTicket.analysis?.repeatSummary?.isRepeated ? (
+                    <section className="repeat-summary" aria-label="반복 민원 요약">
+                      <div className="repeat-summary-heading">
+                        <h3>반복 민원</h3>
+                        <span>{selectedTicket.analysis.repeatSummary.matchCount}건</span>
+                      </div>
+                      <p>{selectedTicket.analysis.repeatSummary.label}</p>
+                      <ul>
+                        {selectedTicket.analysis.repeatSummary.evidence.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
                   {selectedTicket.analysis?.photoAnalysis ? (
                     <div className="photo-analysis">
                       <h3>사진 분석</h3>

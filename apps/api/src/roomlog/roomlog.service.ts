@@ -57,6 +57,7 @@ import {
   RealtimeClientSecretInput,
   RealtimeClientSecretResult,
   RecordRealtimeTurnInput,
+  RepeatIssueSummary,
   ReopenTenantComplaintInput,
   RepairRequest,
   RepairStatus,
@@ -4019,6 +4020,92 @@ export class RoomlogService {
     return this.issueContextMatches(text, entryText, detailCategory);
   }
 
+  private repeatIssueSummaryForTicket(
+    ticket: Ticket,
+    analysis: AiAnalysis
+  ): RepeatIssueSummary | undefined {
+    const windowDays = 90;
+    const currentComplaint = this.findComplaint(ticket.complaintId);
+    const detailCategory = analysis.detailCategory ?? analysis.category ?? ticket.category;
+    const currentText = [
+      currentComplaint.title,
+      currentComplaint.description,
+      currentComplaint.location,
+      ticket.category,
+      detailCategory,
+      ticket.aiSummary
+    ].join(" ");
+    const referenceTime = this.issueReferenceTime(currentComplaint, ticket);
+    const windowMs = windowDays * 24 * 60 * 60 * 1000;
+    const matchedTickets = this.store.tickets
+      .filter((candidate) => candidate.id !== ticket.id && candidate.roomId === ticket.roomId)
+      .map((candidate) => {
+        const complaint = this.findComplaint(candidate.complaintId);
+        const candidateAnalysis = this.store.analyses[candidate.id];
+        const candidateText = [
+          complaint.title,
+          complaint.description,
+          complaint.location,
+          candidate.category,
+          candidateAnalysis?.detailCategory,
+          candidate.aiSummary
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        return {
+          ticket: candidate,
+          complaint,
+          candidateText
+        };
+      })
+      .filter(({ ticket: candidate, complaint, candidateText }) => {
+        const candidateTime = this.issueReferenceTime(complaint, candidate);
+
+        if (Math.abs(referenceTime - candidateTime) > windowMs) {
+          return false;
+        }
+
+        return this.issueContextMatches(currentText, candidateText, detailCategory);
+      })
+      .sort((left, right) => right.ticket.createdAt.localeCompare(left.ticket.createdAt));
+
+    if (matchedTickets.length === 0) {
+      return undefined;
+    }
+
+    const isRepeated = matchedTickets.length >= 2;
+    const room = this.store.rooms.find((item) => item.id === ticket.roomId);
+    const roomLabel = [room?.buildingName, room?.roomNo].filter(Boolean).join(" ") || ticket.roomId;
+    const label = isRepeated
+      ? `최근 3개월 ${roomLabel} ${detailCategory} 관련 반복 민원 ${matchedTickets.length}건`
+      : `최근 3개월 ${roomLabel} ${detailCategory} 관련 이력 ${matchedTickets.length}건`;
+
+    return {
+      isRepeated,
+      matchCount: matchedTickets.length,
+      windowDays,
+      matchedTicketIds: matchedTickets.map(({ ticket: matchedTicket }) => matchedTicket.id),
+      matchedComplaintIds: matchedTickets.map(({ complaint }) => complaint.id),
+      label,
+      evidence: matchedTickets.slice(0, 3).map(({ complaint, ticket: matchedTicket }) => {
+        const issueDate = (complaint.occurredAt ?? matchedTicket.createdAt).slice(0, 10);
+        return `${issueDate} ${complaint.title}: ${complaint.description}`;
+      })
+    };
+  }
+
+  private issueReferenceTime(complaint: Complaint, ticket: Ticket) {
+    const occurredTime = complaint.occurredAt ? Date.parse(complaint.occurredAt) : NaN;
+
+    if (!Number.isNaN(occurredTime)) {
+      return occurredTime;
+    }
+
+    const createdTime = Date.parse(ticket.createdAt);
+    return Number.isNaN(createdTime) ? Date.now() : createdTime;
+  }
+
   private issueContextMatches(currentText: string, candidateText: string, detailCategory: string) {
     if (this.issueExplicitlyNegated(candidateText, detailCategory)) {
       return false;
@@ -5228,7 +5315,7 @@ export class RoomlogService {
       ...ticket,
       complaint,
       room,
-      analysis: this.presentAnalysis(analysis),
+      analysis: this.presentAnalysis(analysis, ticket),
       aiFeedback: this.store.aiFeedback
         .filter((feedback) => feedback.ticketId === ticket.id)
         .map((feedback) => this.presentAiFeedback(feedback)),
@@ -5314,13 +5401,27 @@ export class RoomlogService {
     };
   }
 
-  private presentAnalysis(analysis: AiAnalysis) {
+  private presentAnalysis(analysis: AiAnalysis, ticket?: Ticket) {
+    const repeatSummary = ticket
+      ? this.repeatIssueSummaryForTicket(ticket, analysis)
+      : analysis.repeatSummary;
+
     return {
       ...analysis,
       reasons: analysis.reasons ? [...analysis.reasons] : undefined,
       photoAnalysis: analysis.photoAnalysis
         ? this.presentPhotoAnalysis(analysis.photoAnalysis)
-        : undefined
+        : undefined,
+      repeatSummary: repeatSummary ? this.presentRepeatIssueSummary(repeatSummary) : undefined
+    };
+  }
+
+  private presentRepeatIssueSummary(summary: RepeatIssueSummary): RepeatIssueSummary {
+    return {
+      ...summary,
+      matchedTicketIds: [...summary.matchedTicketIds],
+      matchedComplaintIds: [...summary.matchedComplaintIds],
+      evidence: [...summary.evidence]
     };
   }
 

@@ -2180,6 +2180,43 @@ describe("RoomlogService", () => {
     assert.equal(complaint.analysis.responsibilityHint, "임대인 책임 가능성");
   });
 
+  it("surfaces repeated same-room issue context in manager ticket analysis", () => {
+    const service = new RoomlogService();
+
+    const first = service.createComplaint("tenant-demo", {
+      title: "301호 화장실 천장 누수",
+      description: "화장실 천장에서 물이 떨어지고 바닥에 물이 고입니다.",
+      location: "301호 화장실 천장",
+      occurredAt: "2026-06-10T20:00:00.000Z",
+      availableTimes: "평일 저녁"
+    });
+    const second = service.createComplaint("tenant-demo", {
+      title: "301호 화장실 천장 물샘 재발",
+      description: "지난번과 같은 화장실 천장 주변에서 다시 물이 떨어집니다.",
+      location: "301호 화장실 천장",
+      occurredAt: "2026-06-20T20:00:00.000Z",
+      availableTimes: "주말 오전"
+    });
+    const repeated = service.createComplaint("tenant-demo", {
+      title: "301호 화장실 천장 반복 누수",
+      description: "화장실 천장에서 또 물이 떨어져 반복 하자 여부 확인이 필요합니다.",
+      location: "301호 화장실 천장",
+      occurredAt: "2026-06-29T20:00:00.000Z",
+      availableTimes: "오늘 저녁"
+    });
+
+    const managerDetail = service.getTicketDetailForManager("landlord-demo", repeated.ticket.id);
+
+    assert.equal(managerDetail.analysis.repeatSummary?.isRepeated, true);
+    assert.equal(managerDetail.analysis.repeatSummary?.matchCount, 2);
+    assert.deepEqual(
+      managerDetail.analysis.repeatSummary?.matchedTicketIds.toSorted(),
+      [first.ticket.id, second.ticket.id].toSorted()
+    );
+    assert.match(managerDetail.analysis.repeatSummary?.label ?? "", /반복|3개월|2건/);
+    assert.match(managerDetail.analysis.repeatSummary?.evidence.join("\n") ?? "", /화장실|누수/);
+  });
+
   it("attaches tenant AI feedback to the existing ticket without creating a duplicate complaint", () => {
     const service = new RoomlogService();
     const created = service.createComplaint("tenant-demo", {
