@@ -3044,6 +3044,49 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("does not let manager signup claim an existing direct tenant room without an invite", () => {
+    const service = new RoomlogService();
+    const tenantAuth = service.signup({
+      email: "direct-room-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "직접 가입 세입자",
+      phone: "010-4444-3101",
+      role: "TENANT",
+      buildingName: "직접 가입 빌라",
+      roomNo: "301호",
+      address: "서울시 성동구 직접로 3"
+    } as any);
+    const tenantComplaint = service.createComplaint(tenantAuth.userId, {
+      title: "직접 가입 세입자 누수",
+      description: "초대 없이 가입한 세입자의 화장실 누수 기록입니다.",
+      location: "301호 화장실",
+      availableTimes: "오늘 저녁"
+    });
+    const managerAuth = service.signup({
+      email: "direct-room-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "나중 가입 관리자",
+      phone: "010-4444-1101",
+      role: "LANDLORD",
+      buildingName: "직접 가입 빌라",
+      roomNo: "301호",
+      address: "서울시 성동구 직접로 3"
+    } as any);
+
+    assert.equal(
+      service.listTicketsForManager(managerAuth.userId).some(
+        (ticket) => ticket.id === tenantComplaint.ticket.id
+      ),
+      false
+    );
+    assert.throws(
+      () => service.getTicketDetailForManager(managerAuth.userId, tenantComplaint.ticket.id),
+      /권한|담당 호실/
+    );
+  });
+
   it("links an existing tenant account and its room records when accepting a manager invite", () => {
     const service = new RoomlogService({ seedDemoData: false } as any);
     const tenantAuth = service.signup({

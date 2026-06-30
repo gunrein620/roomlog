@@ -3166,11 +3166,18 @@ export class RoomlogService {
     );
 
     if (existingRoom) {
-      if (landlordId && !existingRoom.landlordId) {
-        existingRoom.landlordId = landlordId;
+      if (!landlordId) {
+        return existingRoom.id;
       }
 
-      return existingRoom.id;
+      if (existingRoom.landlordId === landlordId) {
+        return existingRoom.id;
+      }
+
+      if (!existingRoom.landlordId && !this.roomHasTenantRecords(existingRoom.id)) {
+        existingRoom.landlordId = landlordId;
+        return existingRoom.id;
+      }
     }
 
     const room: Room = {
@@ -3183,6 +3190,16 @@ export class RoomlogService {
     this.store.rooms.push(room);
 
     return room.id;
+  }
+
+  private roomHasTenantRecords(roomId: string) {
+    return (
+      Object.values(this.store.tenantRooms).includes(roomId) ||
+      this.store.complaints.some((complaint) => complaint.roomId === roomId) ||
+      this.store.tickets.some((ticket) => ticket.roomId === roomId) ||
+      this.store.intakeSessions.some((session) => session.roomId === roomId) ||
+      this.store.moveInChecklist.some((item) => item.roomId === roomId)
+    );
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
