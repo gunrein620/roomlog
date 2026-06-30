@@ -15,4 +15,13 @@ describe("tenant thread case file UI", () => {
     assert.ok(caseFileIndex < realtimeIndex, "case file should appear before realtime controls");
     assert.match(pageSource, /threadCaseFile\(selectedSession\)/);
   });
+
+  it("wires case file actions to composer, photo input, and finalize flows", () => {
+    assert.match(pageSource, /className="case-file-actions"/);
+    assert.match(pageSource, /handleCaseFileAction\(action\)/);
+    assert.match(pageSource, /ref=\{photoInputRef\}/);
+    assert.match(pageSource, /photoInputRef\.current\?\.click\(\)/);
+    assert.match(pageSource, /void finalizeSession\(\)/);
+    assert.match(pageSource, /seedComposerFromQuestion\(action\.label\)/);
+  });
 });

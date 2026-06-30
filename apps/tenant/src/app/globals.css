@@ -809,6 +809,39 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.case-file-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.case-file-action {
+  min-height: 36px;
+  justify-content: start;
+  border-color: #cfe0f5;
+  background: var(--paper);
+  color: var(--navy);
+  text-align: left;
+  line-height: 1.35;
+}
+
+.case-file-action.info {
+  border-color: #bae0ff;
+  background: #f0f7ff;
+  color: var(--blue);
+}
+
+.case-file-action.warning {
+  border-color: #ffccc7;
+  background: #fff1f0;
+  color: var(--red);
+}
+
+.case-file-action.ready {
+  border-color: #abefc6;
+  background: #ecfdf3;
+  color: var(--green);
+}
+
 .empty-consultation {
   display: grid;
   gap: 12px;

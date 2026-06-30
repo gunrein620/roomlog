@@ -58,7 +58,7 @@ import {
 } from "./thread-workflow";
 import { emptyConsultationState } from "./empty-consultation";
 import { consultationThreadContextHighlights } from "./thread-context";
-import { threadCaseFile } from "./thread-case-file";
+import { threadCaseFile, type ThreadCaseFileAction } from "./thread-case-file";
 import {
   canSubmitConsultationComposer,
   initialConsultationComposerText,
@@ -589,6 +589,7 @@ export default function TenantApp() {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId) ?? sessions[0],
@@ -723,6 +724,23 @@ export default function TenantApp() {
     window.requestAnimationFrame(() => {
       messageInputRef.current?.focus();
     });
+  }
+
+  function handleCaseFileAction(action: ThreadCaseFileAction) {
+    if (action.kind === "FINALIZE") {
+      void finalizeSession();
+      return;
+    }
+
+    if (action.kind === "UPLOAD_PHOTO") {
+      setStatus("사진을 선택하면 현재 상담 스레드에 첨부됩니다.");
+      window.requestAnimationFrame(() => {
+        photoInputRef.current?.click();
+      });
+      return;
+    }
+
+    seedComposerFromQuestion(action.label);
   }
 
   async function refresh(token = auth?.accessToken) {
@@ -1969,11 +1987,19 @@ export default function TenantApp() {
                 </section>
                 <section>
                   <h4>다음 액션</h4>
-                  <ul>
-                    {selectedThreadCaseFile.nextActions.map((action) => (
-                      <li key={action}>{action}</li>
+                  <div className="case-file-actions">
+                    {selectedThreadCaseFile.actions.map((action) => (
+                      <button
+                        type="button"
+                        className={`case-file-action ${action.tone}`}
+                        key={`${action.kind}-${action.label}`}
+                        disabled={selectedSession.status !== "ACTIVE"}
+                        onClick={() => handleCaseFileAction(action)}
+                      >
+                        {action.label}
+                      </button>
                     ))}
-                  </ul>
+                  </div>
                 </section>
               </div>
             </section>
@@ -2126,6 +2152,7 @@ export default function TenantApp() {
             />
             <div className="composer-row">
               <input
+                ref={photoInputRef}
                 key={photoInputKey}
                 type="file"
                 accept={supportedImageAccept}

@@ -8,6 +8,14 @@ export type ThreadCaseFileFact = {
   tone: ThreadCaseFileTone;
 };
 
+export type ThreadCaseFileActionKind = "FINALIZE" | "ANSWER_QUESTION" | "UPLOAD_PHOTO";
+
+export type ThreadCaseFileAction = {
+  label: string;
+  kind: ThreadCaseFileActionKind;
+  tone: ThreadCaseFileTone;
+};
+
 export type ThreadCaseFileSummary = {
   title: string;
   channelLabel: string;
@@ -131,6 +139,58 @@ function uniqueNonEmpty(items: Array<string | undefined>) {
   );
 }
 
+function actionKindFor(label: string): ThreadCaseFileActionKind {
+  return /사진|촬영|첨부|근접|전체|올려/.test(label) ? "UPLOAD_PHOTO" : "ANSWER_QUESTION";
+}
+
+function caseFileActions(input: ThreadCaseFileInput): ThreadCaseFileAction[] {
+  const summary = threadSummary(input);
+  const actions: ThreadCaseFileAction[] = [];
+
+  if (summary.readyToFinalize) {
+    actions.push({
+      label: "민원 접수 확정",
+      kind: "FINALIZE",
+      tone: "ready"
+    });
+  }
+
+  for (const question of input.draft.nextQuestions) {
+    const kind = actionKindFor(question);
+    actions.push({
+      label: question,
+      kind,
+      tone: kind === "UPLOAD_PHOTO" ? "info" : "neutral"
+    });
+  }
+
+  for (const item of input.draft.requiredInfo) {
+    const label = `${item} 보완`;
+    const kind = actionKindFor(label);
+    actions.push({
+      label,
+      kind,
+      tone: kind === "UPLOAD_PHOTO" ? "info" : "warning"
+    });
+  }
+
+  if (
+    !input.draft.nextQuestions.some((question) => actionKindFor(question) === "UPLOAD_PHOTO") &&
+    !input.draft.requiredInfo.some((item) => actionKindFor(item) === "UPLOAD_PHOTO") &&
+    (input.draft.photoRequested ||
+      input.draft.photoAnalysis.recommendedRetake ||
+      input.draft.photoAnalysis.comparisonStatus === "추가 사진 필요")
+  ) {
+    actions.push({
+      label: "문제 부위 근접 사진과 공간 전체 사진 첨부",
+      kind: "UPLOAD_PHOTO",
+      tone: "info"
+    });
+  }
+
+  return actions.slice(0, 5);
+}
+
 export function threadCaseFile(input: ThreadCaseFileInput) {
   const summary = threadSummary(input);
   const location =
@@ -177,6 +237,7 @@ export function threadCaseFile(input: ThreadCaseFileInput) {
     status: caseFileStatus(input),
     facts,
     findings,
-    nextActions
+    nextActions,
+    actions: caseFileActions(input)
   };
 }

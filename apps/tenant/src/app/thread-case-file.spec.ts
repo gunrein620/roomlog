@@ -83,6 +83,10 @@ describe("tenant thread case file", () => {
       "관리자에게 긴급 확인을 요청하세요.",
       "물이 전기 설비 근처로 번지면 스위치나 콘센트를 만지지 말아주세요."
     ]);
+    assert.deepEqual(
+      caseFile.actions.map((action) => [action.kind, action.label]),
+      [["FINALIZE", "민원 접수 확정"]]
+    );
   });
 
   it("prioritizes missing photo, AI questions, and visit time for unfinished threads", () => {
@@ -144,5 +148,13 @@ describe("tenant thread case file", () => {
       "오늘 몇 시 이후 방문 가능하신가요?",
       "방문 가능 시간 보완"
     ]);
+    assert.deepEqual(
+      caseFile.actions.slice(0, 3).map((action) => [action.kind, action.label]),
+      [
+        ["UPLOAD_PHOTO", "문제 부위 근접 사진과 공간 전체 사진을 올려주실 수 있나요?"],
+        ["ANSWER_QUESTION", "오늘 몇 시 이후 방문 가능하신가요?"],
+        ["ANSWER_QUESTION", "방문 가능 시간 보완"]
+      ]
+    );
   });
 });
