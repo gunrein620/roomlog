@@ -36,6 +36,7 @@ import {
   completeRealtimeTurnPersist,
   emptyRealtimePersistState
 } from "./realtime-persist";
+import { appendQuestionReplyPrompt } from "./question-reply";
 
 type AuthResult = {
   accessToken: string;
@@ -535,6 +536,7 @@ export default function TenantApp() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId) ?? sessions[0],
@@ -605,6 +607,13 @@ export default function TenantApp() {
           ...patch
         }
       };
+    });
+  }
+
+  function seedComposerFromQuestion(question: string) {
+    setMessageText((current) => appendQuestionReplyPrompt(current, question));
+    window.requestAnimationFrame(() => {
+      messageInputRef.current?.focus();
     });
   }
 
@@ -1845,8 +1854,26 @@ export default function TenantApp() {
             ))}
           </ol>
 
+          {selectedSession?.status === "ACTIVE" &&
+          selectedSession.draft.nextQuestions.length ? (
+            <div className="question-reply-strip" aria-label="AI 다음 질문 답변">
+              <span>바로 답변</span>
+              {selectedSession.draft.nextQuestions.slice(0, 3).map((question) => (
+                <button
+                  type="button"
+                  className="question-chip"
+                  key={question}
+                  onClick={() => seedComposerFromQuestion(question)}
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <form className="composer" onSubmit={sendMessage}>
             <textarea
+              ref={messageInputRef}
               rows={4}
               value={messageText}
               onChange={(event) => setMessageText(event.target.value)}

@@ -699,6 +699,40 @@ textarea {
   white-space: nowrap;
 }
 
+.question-reply-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 14px;
+  border-top: 1px solid var(--line);
+}
+
+.question-reply-strip > span {
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.question-chip {
+  max-width: 100%;
+  border: 1px solid #c8d7ed;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #f7fbff;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.question-chip:hover,
+.question-chip:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+}
+
 .composer {
   border-top: 1px solid var(--line);
   padding-top: 16px;
