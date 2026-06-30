@@ -6,6 +6,7 @@ import {
   intakeModeOptions,
   intakeSessionPayload,
   idleRealtimeStatusForMode,
+  intakeModeForSourceChannel,
   messageInputModeForMode,
   realtimePurposeForSourceChannel,
   type IntakeMode
@@ -978,9 +979,10 @@ export default function TenantApp() {
     }
 
     try {
-      setInputMode("VOICE");
+      const sessionMode = intakeModeForSourceChannel(selectedSession.sourceChannel);
+      setInputMode(sessionMode);
       resetRealtimeTranscript();
-      setRealtimeStatus("Realtime 상담 준비 중");
+      setRealtimeStatus(`${intakeModeConfig(sessionMode).label} Realtime 연결 준비 중`);
       const result = await apiRequest<RealtimeClientSecret>(
         `/tenant/complaints/intake/sessions/${selectedSession.id}/realtime/client-secret`,
         auth.accessToken,

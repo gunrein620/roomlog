@@ -65,6 +65,18 @@ export function realtimePurposeForSourceChannel(sourceChannel: string) {
   return sourceChannel === "CALLBOT" ? "CALLBOT_INTAKE" : "TENANT_INTAKE";
 }
 
+export function intakeModeForSourceChannel(sourceChannel: string): IntakeMode {
+  if (sourceChannel === "CALLBOT") {
+    return "CALLBOT";
+  }
+
+  if (sourceChannel === "VOICE_CHAT") {
+    return "VOICE";
+  }
+
+  return "CHAT";
+}
+
 export function messageInputModeForMode(mode: IntakeMode): IntakeMessageInputMode {
   return mode === "CHAT" ? "CHAT" : "VOICE";
 }

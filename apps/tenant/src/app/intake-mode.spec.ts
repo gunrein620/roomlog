@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import {
   intakeModeOptions,
   idleRealtimeStatusForMode,
+  intakeModeForSourceChannel,
   intakeSessionPayload,
   intakeModeConfig,
   messageInputModeForMode,
@@ -24,6 +25,13 @@ describe("tenant intake modes", () => {
     assert.equal(realtimePurposeForMode("CHAT"), "TENANT_INTAKE");
     assert.equal(realtimePurposeForMode("VOICE"), "TENANT_INTAKE");
     assert.equal(realtimePurposeForMode("CALLBOT"), "CALLBOT_INTAKE");
+  });
+
+  it("keeps callbot sessions in callbot mode when opening a realtime connection", () => {
+    assert.equal(intakeModeForSourceChannel("REALTIME_CHAT"), "CHAT");
+    assert.equal(intakeModeForSourceChannel("VOICE_CHAT"), "VOICE");
+    assert.equal(intakeModeForSourceChannel("CALLBOT"), "CALLBOT");
+    assert.equal(intakeModeForSourceChannel("DIRECT_FORM"), "CHAT");
   });
 
   it("stores typed follow-up messages in callbot sessions as voice-context messages", () => {
