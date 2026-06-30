@@ -21,7 +21,6 @@ roomlog/
 │  ├─ manager/   # Next.js manager app, port 3002
 │  ├─ vendor/    # Next.js vendor app, port 3003
 │  └─ web/       # legacy scaffold kept for reference
-├─ nginx/
 ├─ docker-compose.yml
 ├─ docker-compose.prod.yml
 ├─ plan.md
@@ -58,8 +57,8 @@ API가 실행되는 환경의 `.env`에 `OPENAI_API_KEY`가 있어야 OpenAI 상
 
 환경별로 달라져야 하는 값도 있습니다.
 
-- 로컬 직접 실행: `NEXT_PUBLIC_API_URL=http://localhost:4000`
-- Docker/Nginx 경유 실행: `NEXT_PUBLIC_API_URL=/api`
+- 로컬 직접 실행 및 로컬 Docker Compose: `NEXT_PUBLIC_API_URL=http://localhost:4000`
+- 운영 ALB 경유 실행: `NEXT_PUBLIC_API_URL=/api` 또는 운영 API 절대 URL
 - Docker Compose 내부 DB: `DATABASE_URL=postgresql://roomlog:roomlog@postgres:5432/roomlog?schema=public`
 - 호스트에서 Compose DB에 직접 접속: `DATABASE_URL=postgresql://roomlog:roomlog@localhost:5433/roomlog?schema=public`
 - 운영 RDS: 운영 RDS 주소와 계정의 `DATABASE_URL`
@@ -81,15 +80,15 @@ docker compose up -d --build api
 ## Docker Compose
 
 ```bash
-docker compose up --build
+docker compose up --build --remove-orphans
 ```
 
-Nginx routes:
+Local Docker URLs:
 
-- `http://localhost/tenant`
-- `http://localhost/manager`
-- `http://localhost/vendor`
-- `http://localhost/api/health`
+- Tenant: `http://localhost:3001`
+- Manager: `http://localhost:3002`
+- Vendor: `http://localhost:3003`
+- API health: `http://localhost:4000/api/health`
 
 ## Verification
 

@@ -83,7 +83,6 @@ roomlog/
 │  ├─ schema.prisma
 │  └─ seed.ts
 ├─ uploads/                # local dev file storage, gitignored
-├─ nginx/
 ├─ docker-compose.yml
 ├─ docker-compose.prod.yml
 ├─ package.json
@@ -127,8 +126,8 @@ roomlog/
 ### 2.3 Deployment direction
 
 - Local: `pnpm dev:api`, `pnpm dev:tenant`, `pnpm dev:manager`, `pnpm dev:vendor`
-- Docker local: nginx reverse proxy + API + 3 frontends
-- Production: EC2 Docker Compose + RDS PostgreSQL + S3-compatible storage later
+- Docker local: API + 3 frontends exposed on their own ports, no nginx
+- Production: ALB -> EC2 Docker Compose services + RDS PostgreSQL + S3-compatible storage later
 
 Recommended local ports:
 
@@ -138,7 +137,6 @@ Recommended local ports:
 | Tenant | 3001 |
 | Manager | 3002 |
 | Vendor | 3003 |
-| Nginx | 80 |
 
 ---
 
@@ -916,7 +914,6 @@ Required screens:
 - Modify: `.env.example`
 - Modify: `docker-compose.yml`
 - Modify: `docker-compose.prod.yml`
-- Modify: `nginx/default.conf`
 - Replace: `apps/web` with `apps/tenant`, `apps/manager`, `apps/vendor`
 
 - [ ] Add workspace scripts:
@@ -945,11 +942,11 @@ Required screens:
   - manager: `3002`
   - vendor: `3003`
 - [ ] Keep API at `4000`.
-- [ ] Configure nginx paths:
-  - `/tenant` -> tenant app
-  - `/manager` -> manager app
-  - `/vendor` -> vendor app
-  - `/api` -> NestJS API
+- [ ] Configure local Docker Compose without nginx:
+  - tenant app -> `localhost:3001`
+  - manager app -> `localhost:3002`
+  - vendor app -> `localhost:3003`
+  - NestJS API -> `localhost:4000`
 - [ ] Verify:
 
 ```bash

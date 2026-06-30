@@ -123,7 +123,7 @@ jobs:
             exit 1
           fi
 
-          compose -f docker-compose.prod.yml up -d --build
+          compose -f docker-compose.prod.yml up -d --build --remove-orphans
           docker image prune -f
           compose -f docker-compose.prod.yml ps
           REMOTE

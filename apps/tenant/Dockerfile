@@ -37,7 +37,8 @@ ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/tenant/package.json apps/tenant/package.json
 
-RUN pnpm install --filter tenant --prod --frozen-lockfile
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/tenant/node_modules ./apps/tenant/node_modules
 
 COPY --from=builder /app/apps/tenant ./apps/tenant
 
