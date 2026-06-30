@@ -20,7 +20,7 @@ roomlog/
 │  ├─ tenant/    # Next.js tenant app, port 3001
 │  ├─ manager/   # Next.js manager app, port 3002
 │  ├─ vendor/    # Next.js vendor app, port 3003
-│  └─ web/       # legacy scaffold kept for reference
+│  └─ web/       # local test console, port 3000
 ├─ docker-compose.yml
 ├─ docker-compose.prod.yml
 ├─ plan.md
@@ -33,6 +33,7 @@ roomlog/
 pnpm install
 cp .env.example .env
 pnpm dev:api
+pnpm dev:web
 pnpm dev:tenant
 pnpm dev:manager
 pnpm dev:vendor
@@ -40,6 +41,7 @@ pnpm dev:vendor
 
 Open the apps directly:
 
+- Local console: `http://localhost:3000`
 - Tenant: `http://localhost:3001`
 - Manager: `http://localhost:3002`
 - Vendor: `http://localhost:3003`
@@ -97,6 +99,7 @@ Local Docker URLs:
 ```bash
 pnpm test:api
 pnpm build:api
+pnpm build:web
 pnpm build:tenant
 pnpm build:manager
 pnpm build:vendor
