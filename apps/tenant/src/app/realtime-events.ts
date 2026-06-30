@@ -38,20 +38,32 @@ export type RealtimeTurnState = {
 export function buildRealtimeConnectionOpenEvents({
   createResponseAutomatically,
   sessionId,
-  contextSummary
+  contextSummary,
+  openingPrompt
 }: {
   createResponseAutomatically: boolean;
   sessionId: string;
   contextSummary?: string;
+  openingPrompt?: string;
 }): RealtimeConnectionOpenEvent[] {
-  if (createResponseAutomatically) {
+  const prompt = openingPrompt?.trim();
+
+  if (createResponseAutomatically && !prompt) {
     return [];
   }
 
   const summary = contextSummary?.trim();
   const events: RealtimeConnectionOpenEvent[] = [];
 
-  if (summary) {
+  if (summary || prompt) {
+    const contextText = [
+      `Roomlog 상담 스레드 ${sessionId}의 연결 시작 맥락입니다.`,
+      summary ? `현재 요약: ${summary}` : "",
+      prompt ? `시작 지시: ${prompt}` : ""
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     events.push({
       type: "conversation.item.create",
       item: {
@@ -60,7 +72,7 @@ export function buildRealtimeConnectionOpenEvents({
         content: [
           {
             type: "input_text",
-            text: `Roomlog 상담 스레드 ${sessionId}의 현재 요약입니다. ${summary}`
+            text: contextText
           }
         ]
       }

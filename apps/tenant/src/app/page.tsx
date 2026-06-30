@@ -8,6 +8,8 @@ import {
   idleRealtimeStatusForMode,
   intakeModeForSourceChannel,
   messageInputModeForMode,
+  realtimeOpeningPromptForMode,
+  realtimeOpeningPromptForSourceChannel,
   realtimePurposeForSourceChannel,
   type IntakeMode
 } from "./intake-mode";
@@ -1138,7 +1140,10 @@ export default function TenantApp() {
       const openEvents = buildRealtimeConnectionOpenEvents({
         createResponseAutomatically: true,
         sessionId: secret.sessionId,
-        contextSummary: summary
+        contextSummary: summary,
+        openingPrompt: selectedSession
+          ? realtimeOpeningPromptForSourceChannel(selectedSession.sourceChannel)
+          : realtimeOpeningPromptForMode(inputMode)
       });
 
       for (const openEvent of openEvents) {

@@ -7,6 +7,8 @@ import {
   intakeSessionPayload,
   intakeModeConfig,
   messageInputModeForMode,
+  realtimeOpeningPromptForMode,
+  realtimeOpeningPromptForSourceChannel,
   realtimePurposeForMode
 } from "./intake-mode";
 
@@ -45,5 +47,18 @@ describe("tenant intake modes", () => {
     assert.equal(idleRealtimeStatusForMode("VOICE"), "AI 음성 상담 대기");
     assert.equal(idleRealtimeStatusForMode("CALLBOT"), "AI 콜봇 통화 대기");
     assert.equal(intakeModeConfig("CALLBOT").connectLabel, "콜봇 통화 연결");
+  });
+
+  it("asks realtime sessions to start with mode-specific 상담 copy", () => {
+    assert.match(realtimeOpeningPromptForMode("VOICE"), /AI 음성 상담/);
+    assert.match(realtimeOpeningPromptForMode("VOICE"), /한 번에 하나씩/);
+    assert.match(realtimeOpeningPromptForMode("CALLBOT"), /AI 콜봇/);
+    assert.match(realtimeOpeningPromptForMode("CALLBOT"), /통화가 연결되면/);
+  });
+
+  it("derives realtime opening copy from the active session source channel", () => {
+    assert.match(realtimeOpeningPromptForSourceChannel("CALLBOT"), /AI 콜봇/);
+    assert.match(realtimeOpeningPromptForSourceChannel("VOICE_CHAT"), /AI 음성 상담/);
+    assert.match(realtimeOpeningPromptForSourceChannel("REALTIME_CHAT"), /채팅 상담/);
   });
 });
