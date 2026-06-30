@@ -548,6 +548,13 @@ function shouldSeedDemoData(option?: boolean) {
   return process.env.NODE_ENV !== "production";
 }
 
+function openAiChatReasoningEffort() {
+  const allowed = new Set(["low", "medium", "high", "xhigh"]);
+  const configured = process.env.OPENAI_CHAT_REASONING_EFFORT?.trim().toLowerCase();
+
+  return configured && allowed.has(configured) ? configured : "medium";
+}
+
 @Injectable()
 export class RoomlogService {
   private readonly store: Store;
@@ -3950,6 +3957,9 @@ export class RoomlogService {
         },
         body: JSON.stringify({
           model: process.env.OPENAI_CHAT_MODEL || "gpt-5.5",
+          reasoning: {
+            effort: openAiChatReasoningEffort()
+          },
           ...(session.openaiPreviousResponseId
             ? { previous_response_id: session.openaiPreviousResponseId }
             : {}),
