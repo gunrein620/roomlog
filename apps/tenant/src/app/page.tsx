@@ -33,6 +33,7 @@ import {
   applyRealtimeEventToTurn,
   buildRealtimeConnectionOpenEvents,
   emptyRealtimeTurnState,
+  realtimeDisconnectFlushRequest,
   type RealtimeEventPayload
 } from "./realtime-events";
 import {
@@ -1183,6 +1184,12 @@ export default function TenantApp() {
   }
 
   async function disconnectRealtime() {
+    const disconnectFlush = realtimeDisconnectFlushRequest(realtimeTurnRef.current);
+
+    if (disconnectFlush.shouldFlush) {
+      await flushRealtimeTurn(disconnectFlush.eventId);
+    }
+
     dataChannelRef.current?.close();
     dataChannelRef.current = null;
     peerConnectionRef.current?.close();

@@ -185,3 +185,12 @@ export function applyRealtimeEventToTurn(
 
   return result;
 }
+
+export function realtimeDisconnectFlushRequest(state: RealtimeTurnState) {
+  const hasTranscript = Boolean(state.userTranscript.trim() || state.assistantTranscript.trim());
+
+  return {
+    shouldFlush: hasTranscript,
+    eventId: state.responseEventId
+  };
+}

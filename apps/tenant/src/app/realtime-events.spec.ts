@@ -3,7 +3,8 @@ import { strict as assert } from "node:assert";
 import {
   applyRealtimeEventToTurn,
   buildRealtimeConnectionOpenEvents,
-  emptyRealtimeTurnState
+  emptyRealtimeTurnState,
+  realtimeDisconnectFlushRequest
 } from "./realtime-events";
 
 describe("tenant realtime events", () => {
@@ -184,5 +185,35 @@ describe("tenant realtime events", () => {
     });
     assert.equal(result.status, "잠시 말씀이 없어 AI가 확인 질문을 준비합니다.");
     assert.equal(result.shouldFlush, false);
+  });
+
+  it("marks partial realtime transcripts for persistence when disconnecting before response.done", () => {
+    let state = emptyRealtimeTurnState();
+
+    let result = applyRealtimeEventToTurn(state, {
+      type: "input_audio_buffer.speech_started"
+    });
+    state = result.state;
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "item_disconnect_user",
+      transcript: "301호 현관 도어락이 잠기지 않습니다."
+    });
+    state = result.state;
+
+    const request = realtimeDisconnectFlushRequest(state);
+
+    assert.deepEqual(request, {
+      shouldFlush: true,
+      eventId: ""
+    });
+  });
+
+  it("skips disconnect persistence when no realtime transcript has been received", () => {
+    assert.deepEqual(realtimeDisconnectFlushRequest(emptyRealtimeTurnState()), {
+      shouldFlush: false,
+      eventId: ""
+    });
   });
 });
