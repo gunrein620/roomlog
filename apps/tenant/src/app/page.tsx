@@ -20,6 +20,11 @@ import {
   intakeSlotStatusLabel,
   type TenantIntakeSlot
 } from "./intake-slot-progress";
+import {
+  normalizeSelectedPhotos,
+  photoUploadStatus,
+  selectedPhotoSummary
+} from "./photo-selection";
 
 type AuthResult = {
   accessToken: string;
@@ -465,7 +470,7 @@ export default function TenantApp() {
   const [messageText, setMessageText] = useState(
     "화장실 천장에서 물이 계속 떨어지고 바닥에 물이 고여요."
   );
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoInputKey, setPhotoInputKey] = useState(0);
   const [checklistArea, setChecklistArea] = useState("화장실");
   const [checklistItemName, setChecklistItemName] = useState("천장");
@@ -473,7 +478,7 @@ export default function TenantApp() {
   const [checklistFiles, setChecklistFiles] = useState<File[]>([]);
   const [checklistInputKey, setChecklistInputKey] = useState(0);
   const [followupText, setFollowupText] = useState("");
-  const [followupPhotoFile, setFollowupPhotoFile] = useState<File | null>(null);
+  const [followupPhotoFiles, setFollowupPhotoFiles] = useState<File[]>([]);
   const [followupPhotoInputKey, setFollowupPhotoInputKey] = useState(0);
   const [reopenText, setReopenText] = useState("수리 후에도 같은 문제가 남아 있습니다.");
   const [reopenPhotoFile, setReopenPhotoFile] = useState<File | null>(null);
@@ -1129,15 +1134,15 @@ export default function TenantApp() {
       return;
     }
 
-    setStatus(photoFile ? "사진 업로드 중" : "AI가 상담 내용을 정리 중");
-    const uploadedAttachment = photoFile
-      ? await uploadAttachment(photoFile, auth.accessToken)
-      : undefined;
+    setStatus(photoUploadStatus(photoFiles));
+    const uploadedAttachments = await Promise.all(
+      photoFiles.map((file) => uploadAttachment(file, auth.accessToken))
+    );
     setStatus("AI가 상담 내용을 정리 중");
     const payload = {
       messageText,
       inputMode: messageInputModeForMode(inputMode),
-      attachmentUrls: uploadedAttachment ? [uploadedAttachment.fileUrl] : []
+      attachmentUrls: uploadedAttachments.map((attachment) => attachment.fileUrl)
     };
     const result = await apiRequest<{ session: IntakeSession }>(
       `/tenant/complaints/intake/sessions/${selectedSession.id}/messages`,
@@ -1155,7 +1160,7 @@ export default function TenantApp() {
       [result.session.id]: draftCorrectionFrom(result.session.draft)
     }));
     setMessageText("");
-    setPhotoFile(null);
+    setPhotoFiles([]);
     setPhotoInputKey((current) => current + 1);
     setStatus("AI 상담 초안이 갱신되었습니다.");
   }
@@ -1208,15 +1213,17 @@ export default function TenantApp() {
       return;
     }
 
-    if (!followupText.trim() && !followupPhotoFile) {
+    if (!followupText.trim() && !followupPhotoFiles.length) {
       setStatus("추가 설명 또는 사진을 입력해주세요.");
       return;
     }
 
-    setStatus(followupPhotoFile ? "추가 사진 업로드 중" : "추가 설명 제출 중");
-    const uploadedAttachment = followupPhotoFile
-      ? await uploadAttachment(followupPhotoFile, auth.accessToken, "ADDITIONAL_PHOTO")
-      : undefined;
+    setStatus(
+      followupPhotoFiles.length ? `추가 ${photoUploadStatus(followupPhotoFiles)}` : "추가 설명 제출 중"
+    );
+    const uploadedAttachments = await Promise.all(
+      followupPhotoFiles.map((file) => uploadAttachment(file, auth.accessToken, "ADDITIONAL_PHOTO"))
+    );
 
     setStatus("기존 티켓에 추가 자료 연결 중");
     const result = await apiRequest<{ complaint: ComplaintView }>(
@@ -1226,7 +1233,7 @@ export default function TenantApp() {
         method: "POST",
         body: JSON.stringify({
           messageText: followupText,
-          attachmentUrls: uploadedAttachment ? [uploadedAttachment.fileUrl] : []
+          attachmentUrls: uploadedAttachments.map((attachment) => attachment.fileUrl)
         })
       }
     );
@@ -1234,7 +1241,7 @@ export default function TenantApp() {
     await refresh();
     setSelectedComplaintId(result.complaint.id);
     setFollowupText("");
-    setFollowupPhotoFile(null);
+    setFollowupPhotoFiles([]);
     setFollowupPhotoInputKey((current) => current + 1);
     setStatus("추가 자료가 기존 티켓에 연결되었습니다.");
   }
@@ -1857,7 +1864,10 @@ export default function TenantApp() {
                 key={photoInputKey}
                 type="file"
                 accept="image/*"
-                onChange={(event) => setPhotoFile(event.target.files?.[0] ?? null)}
+                multiple
+                onChange={(event) =>
+                  setPhotoFiles(normalizeSelectedPhotos(event.target.files))
+                }
                 disabled={!selectedSession || selectedSession.status !== "ACTIVE"}
               />
               <button
@@ -1868,10 +1878,8 @@ export default function TenantApp() {
                 보내기
               </button>
             </div>
-            {photoFile ? (
-              <p className="selected-file">
-                첨부 예정: {photoFile.name} · {(photoFile.size / 1024).toFixed(1)}KB
-              </p>
+            {photoFiles.length ? (
+              <p className="selected-file">{selectedPhotoSummary(photoFiles)}</p>
             ) : null}
           </form>
         </section>
@@ -2370,17 +2378,17 @@ export default function TenantApp() {
                     key={followupPhotoInputKey}
                     type="file"
                     accept="image/*"
-                    onChange={(event) => setFollowupPhotoFile(event.target.files?.[0] ?? null)}
+                    multiple
+                    onChange={(event) =>
+                      setFollowupPhotoFiles(normalizeSelectedPhotos(event.target.files))
+                    }
                   />
                   <button type="submit" className="primary">
                     추가 자료 제출
                   </button>
                 </div>
-                {followupPhotoFile ? (
-                  <p className="selected-file">
-                    첨부 예정: {followupPhotoFile.name} ·{" "}
-                    {(followupPhotoFile.size / 1024).toFixed(1)}KB
-                  </p>
+                {followupPhotoFiles.length ? (
+                  <p className="selected-file">{selectedPhotoSummary(followupPhotoFiles)}</p>
                 ) : null}
               </form>
             </section>
