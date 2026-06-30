@@ -65,6 +65,16 @@ describe("RoomlogService", () => {
           }),
         /jpeg|png|webp|지원/
       );
+      assert.throws(
+        () =>
+          service.saveAttachment("tenant-demo", {
+            buffer: Buffer.from("not really a png"),
+            originalName: "spoofed-leak.png",
+            mimeType: "image/png",
+            category: "COMPLAINT_PHOTO"
+          }),
+        /이미지 파일 형식|손상/
+      );
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

@@ -2680,6 +2680,10 @@ export class RoomlogService {
       throw new BadRequestException("업로드할 파일이 비어 있습니다.");
     }
 
+    if (!this.hasSupportedImageSignature(input.mimeType, input.buffer)) {
+      throw new BadRequestException("이미지 파일 형식이 올바르지 않거나 손상되었습니다.");
+    }
+
     if (input.buffer.length > 10 * 1024 * 1024) {
       throw new BadRequestException("이미지는 10MB 이하만 업로드할 수 있습니다.");
     }
@@ -2837,6 +2841,28 @@ export class RoomlogService {
 
   private supportedImageMimeTypes() {
     return ["image/jpeg", "image/png", "image/webp"];
+  }
+
+  private hasSupportedImageSignature(mimeType: string, buffer: Buffer) {
+    if (mimeType === "image/png") {
+      return buffer.subarray(0, 8).equals(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      );
+    }
+
+    if (mimeType === "image/jpeg") {
+      return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    }
+
+    if (mimeType === "image/webp") {
+      return (
+        buffer.length >= 12 &&
+        buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+        buffer.subarray(8, 12).toString("ascii") === "WEBP"
+      );
+    }
+
+    return false;
   }
 
   private normalizeSignupInput(input: SignupInput): SignupInput {
