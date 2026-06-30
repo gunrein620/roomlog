@@ -1861,6 +1861,92 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("links an existing tenant account and its room records when accepting a manager invite", () => {
+    const service = new RoomlogService({ seedDemoData: false } as any);
+    const tenantAuth = service.signup({
+      email: "existing-invited-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "기존 세입자",
+      phone: "010-4444-3300",
+      role: "TENANT",
+      buildingName: "기존 임시 빌라",
+      roomNo: "909호",
+      address: "서울시 성동구 기존로 9"
+    } as any);
+    const oldTenantProfile = service.getMe(`Bearer ${tenantAuth.accessToken}`);
+    const complaintResult = service.createComplaint(tenantAuth.userId, {
+      title: "기존 가입 후 접수한 세면대 누수",
+      description: "초대 전에 세면대 아래에서 물이 떨어진다고 접수했습니다.",
+      location: "909호 화장실 세면대"
+    });
+    service.createMoveInChecklistItem(tenantAuth.userId, {
+      area: "화장실",
+      itemName: "세면대",
+      memo: "초대 전 등록한 입주 전 기준 사진",
+      attachmentUrls: ["/uploads/existing-move-in-sink.jpg"]
+    });
+    const existingSession = service.createIntakeSession(tenantAuth.userId, {});
+
+    const managerAuth = service.signup({
+      email: "existing-link-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "기존 연결 관리자",
+      phone: "010-4444-1300",
+      role: "LANDLORD",
+      buildingName: "관리자 정식 빌라",
+      roomNo: "909호",
+      address: "서울시 성동구 관리로 9"
+    } as any);
+    const managerProfile = service.getMe(`Bearer ${managerAuth.accessToken}`);
+    const managerRoomId = managerProfile.managedRooms?.[0].id;
+
+    assert.ok(oldTenantProfile.roomId);
+    assert.ok(managerRoomId);
+    assert.notEqual(oldTenantProfile.roomId, managerRoomId);
+
+    const invite = service.createTenantInvite(managerAuth.userId, {
+      roomId: managerRoomId,
+      email: "existing-invited-tenant@roomlog.test",
+      tenantName: "기존 세입자",
+      phone: "010-4444-3300",
+      moveInDate: "2026-07-03"
+    });
+    const linkedAuth = service.signup({
+      email: "existing-invited-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "기존 세입자",
+      phone: "010-4444-3300",
+      role: "TENANT",
+      inviteToken: invite.inviteToken
+    } as any);
+    const linkedProfile = service.getMe(`Bearer ${linkedAuth.accessToken}`);
+    const managerTicket = service.getTicketDetailForManager(
+      managerAuth.userId,
+      complaintResult.ticket.id
+    );
+    const managerChecklist = service.listManagerMoveInChecklist(managerAuth.userId, managerRoomId);
+    const managerTimeline = service.getManagerRoomTimeline(managerAuth.userId, managerRoomId);
+    const invites = service.listTenantInvites(managerAuth.userId);
+
+    assert.equal(linkedAuth.userId, tenantAuth.userId);
+    assert.equal(linkedProfile.roomId, managerRoomId);
+    assert.equal(managerTicket.room?.id, managerRoomId);
+    assert.equal(managerChecklist[0]?.memo, "초대 전 등록한 입주 전 기준 사진");
+    assert.ok(
+      managerTimeline.some((entry) => entry.ticketId === complaintResult.ticket.id),
+      "manager timeline should include the tenant's existing complaint"
+    );
+    assert.ok(
+      managerTimeline.some((entry) => entry.sessionId === existingSession.session.id),
+      "manager timeline should include the tenant's existing intake session"
+    );
+    assert.equal(invites[0].status, "ACCEPTED");
+    assert.equal(invites[0].acceptedByUserId, tenantAuth.userId);
+  });
+
   it("returns safe signup invite previews before account creation", () => {
     const service = new RoomlogService();
     const managerAuth = service.signup({

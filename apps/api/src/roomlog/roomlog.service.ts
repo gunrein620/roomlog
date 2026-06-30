@@ -450,6 +450,15 @@ export class RoomlogService {
       normalizedInput.role === "TENANT" && normalizedInput.inviteToken
         ? this.resolvePendingTenantInvite(normalizedInput)
         : undefined;
+    const existingInviteTenant = tenantInvite
+      ? this.findExistingTenantForInvite(normalizedInput)
+      : undefined;
+
+    if (tenantInvite && existingInviteTenant) {
+      this.acceptTenantInviteForExistingUser(existingInviteTenant, tenantInvite, normalizedInput);
+      this.persistStore();
+      return this.authResult(existingInviteTenant);
+    }
 
     if (this.store.users.some((user) => user.email === normalizedInput.email)) {
       throw new ConflictException("이미 가입된 이메일입니다.");
@@ -5801,6 +5810,78 @@ export class RoomlogService {
     }
 
     return invite;
+  }
+
+  private findExistingTenantForInvite(input: SignupInput) {
+    const emailMatch = this.store.users.find((user) => user.email === input.email);
+    const phoneMatch = input.phone
+      ? this.store.users.find((user) => user.phone === input.phone)
+      : undefined;
+
+    if (emailMatch && phoneMatch && emailMatch.id !== phoneMatch.id) {
+      throw new ConflictException("이미 가입된 이메일 또는 휴대폰 번호입니다.");
+    }
+
+    return emailMatch ?? phoneMatch;
+  }
+
+  private acceptTenantInviteForExistingUser(
+    user: UserAccount,
+    invite: TenantInvite,
+    input: SignupInput
+  ) {
+    if (user.role !== "TENANT") {
+      throw new ConflictException("임차인 계정만 임차인 초대를 수락할 수 있습니다.");
+    }
+
+    if (!verifyPassword(input.password, user.passwordHash)) {
+      throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
+    }
+
+    const previousRoomId = this.store.tenantRooms[user.id];
+    this.store.tenantRooms[user.id] = invite.roomId;
+
+    if (previousRoomId && previousRoomId !== invite.roomId) {
+      this.relinkTenantRoomRecords(user.id, previousRoomId, invite.roomId);
+    }
+
+    if (!user.phone && input.phone) {
+      user.phone = input.phone;
+    }
+
+    invite.status = "ACCEPTED";
+    invite.acceptedAt = now();
+    invite.acceptedByUserId = user.id;
+  }
+
+  private relinkTenantRoomRecords(tenantId: string, fromRoomId: string, toRoomId: string) {
+    for (const complaint of this.store.complaints) {
+      if (complaint.tenantId === tenantId && complaint.roomId === fromRoomId) {
+        complaint.roomId = toRoomId;
+        complaint.updatedAt = now();
+      }
+    }
+
+    for (const ticket of this.store.tickets) {
+      if (ticket.tenantId === tenantId && ticket.roomId === fromRoomId) {
+        ticket.roomId = toRoomId;
+        ticket.updatedAt = now();
+      }
+    }
+
+    for (const session of this.store.intakeSessions) {
+      if (session.tenantId === tenantId && session.roomId === fromRoomId) {
+        session.roomId = toRoomId;
+        session.updatedAt = now();
+      }
+    }
+
+    for (const checklistItem of this.store.moveInChecklist) {
+      if (checklistItem.tenantId === tenantId && checklistItem.roomId === fromRoomId) {
+        checklistItem.roomId = toRoomId;
+        checklistItem.updatedAt = now();
+      }
+    }
   }
 
   private assertPendingTenantInvite(invite: TenantInvite) {
