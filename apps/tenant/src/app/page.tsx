@@ -42,7 +42,10 @@ import {
   consultationThreadBadges,
   consultationThreadNextAction
 } from "./thread-workflow";
-import { initialConsultationComposerText } from "./composer-state";
+import {
+  initialConsultationComposerText,
+  resetConsultationComposerState
+} from "./composer-state";
 import { initialMoveInChecklistForm } from "./move-in-form-state";
 
 type AuthResult = {
@@ -807,6 +810,14 @@ export default function TenantApp() {
       ...current,
       [result.session.id]: draftCorrectionFrom(result.session.draft)
     }));
+    const clearedComposer = resetConsultationComposerState({
+      text: messageText,
+      photoCount: photoFiles.length,
+      photoInputKey
+    });
+    setMessageText(clearedComposer.text);
+    setPhotoFiles([]);
+    setPhotoInputKey(clearedComposer.photoInputKey);
     setStatus(intakeModeConfig(inputMode).startStatus);
     setRealtimeStatus(intakeModeConfig(inputMode).idleStatus);
     setRealtimeSecret(null);
