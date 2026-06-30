@@ -29,7 +29,10 @@ describe("tenant thread case file UI", () => {
     assert.match(pageSource, /firstConsultationOnboarding/);
     assert.match(pageSource, /aria-label="첫 AI 상담 준비"/);
     assert.match(pageSource, /sessions\.length === 0/);
-    assert.match(pageSource, /void startSession\(prompt\)/);
+    assert.match(pageSource, /void startSessionWithMessage\(prompt\)/);
+    assert.match(pageSource, /async function startSessionWithMessage\(starterText: string\)/);
+    assert.match(pageSource, /messageText: starterText\.trim\(\)/);
+    assert.match(pageSource, /\/messages`/);
   });
 
   it("renders assistant quick replies as composer actions", () => {

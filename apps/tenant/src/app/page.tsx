@@ -992,6 +992,64 @@ export default function TenantApp() {
     resetRealtimeTranscript();
   }
 
+  async function startSessionWithMessage(starterText: string) {
+    if (!auth) {
+      return;
+    }
+
+    if (!starterText.trim()) {
+      await startSession();
+      return;
+    }
+
+    setStatus("새 AI 상담 스레드 생성 중");
+    const created = await apiRequest<{ session: IntakeSession }>(
+      "/tenant/complaints/intake/sessions",
+      auth.accessToken,
+      {
+        method: "POST",
+        body: JSON.stringify(intakeSessionPayload(inputMode))
+      }
+    );
+    setSelectedSessionId(created.session.id);
+    setSessions((current) => [
+      created.session,
+      ...current.filter((session) => session.id !== created.session.id)
+    ]);
+    setDraftCorrections((current) => ({
+      ...current,
+      [created.session.id]: draftCorrectionFrom(created.session.draft)
+    }));
+    setPhotoFiles([]);
+    setPhotoInputKey((current) => current + 1);
+    setMessageText("");
+    setRealtimeStatus(intakeModeConfig(inputMode).idleStatus);
+    setRealtimeSecret(null);
+    resetRealtimeTranscript();
+
+    setStatus("AI가 첫 상담 내용을 정리 중");
+    const result = await apiRequest<{ session: IntakeSession }>(
+      `/tenant/complaints/intake/sessions/${created.session.id}/messages`,
+      auth.accessToken,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          messageText: starterText.trim(),
+          inputMode: messageInputModeForMode(inputMode),
+          attachmentUrls: []
+        })
+      }
+    );
+    setSessions((current) =>
+      current.map((session) => (session.id === result.session.id ? result.session : session))
+    );
+    setDraftCorrections((current) => ({
+      ...current,
+      [result.session.id]: draftCorrectionFrom(result.session.draft)
+    }));
+    setStatus("AI 상담 초안이 갱신되었습니다.");
+  }
+
   async function uploadAttachment(file: File, token: string, category = "COMPLAINT_PHOTO") {
     const formData = new FormData();
     formData.append("file", file);
@@ -2108,7 +2166,7 @@ export default function TenantApp() {
                       <button
                         type="button"
                         key={prompt}
-                        onClick={() => void startSession(prompt)}
+                        onClick={() => void startSessionWithMessage(prompt)}
                       >
                         {prompt}
                       </button>
