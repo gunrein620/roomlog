@@ -1449,6 +1449,39 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("asks for close-up and wide photos even when baseline photos exist", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      service.createMoveInChecklistItem("tenant-demo", {
+        roomId: "room-301",
+        area: "화장실",
+        itemName: "세면대",
+        memo: "입주 시 세면대 파손 없음",
+        attachmentUrls: ["/api/files/move-in-sink-clean.png"]
+      });
+
+      const current = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+      const result = await service.sendIntakeMessage("tenant-demo", current.session.id, {
+        messageText: "301호 화장실 세면대가 깨진 사진입니다. 오늘 저녁 방문 가능합니다.",
+        attachmentUrls: ["/api/files/current-sink-damage-close.png"],
+        inputMode: "CHAT"
+      });
+      const photoAnalysis = result.session.draft.photoAnalysis;
+
+      assert.equal(photoAnalysis.comparisonStatus, "신규 발생 가능성");
+      assert.equal(photoAnalysis.recommendedRetake, true);
+      assert.match(photoAnalysis.evidence.join("\n"), /근접|전체|사진/);
+      assert.match(result.assistantMessage.messageText, /근접 사진|공간 전체/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it("preserves the generated AI draft when finalizing an intake session", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalFetch = globalThis.fetch;

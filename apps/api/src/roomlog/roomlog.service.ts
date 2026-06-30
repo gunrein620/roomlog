@@ -3408,6 +3408,7 @@ export class RoomlogService {
       : previousAttachmentUrls.length
         ? "기존 하자 가능성"
         : "비교 어려움";
+    const recommendedRetake = attachmentUrls.length < 2;
     const evidence = [
       `현재 첨부 사진 ${attachmentUrls.length}건이 기존 티켓에 연결됨`,
       candidates.length
@@ -3423,18 +3424,26 @@ export class RoomlogService {
       evidence.push("비교 가능한 같은 위치의 과거 사진을 찾지 못함");
     }
 
+    if (recommendedRetake) {
+      evidence.push("촬영 보완 필요: 문제 부위 근접 사진과 공간 전체 사진을 각각 1장씩 추가하면 비교 정확도가 올라감");
+    }
+
+    const summary = baselineItems.length
+      ? "입주 전 체크리스트 기준 사진이 있어 신규 발생 가능성을 함께 검토해야 합니다."
+      : previousAttachmentUrls.length
+      ? "같은 호실의 과거 관련 사진이 있어 반복 또는 기존 하자 가능성을 함께 검토해야 합니다."
+      : "현재 사진은 접수 자료로 연결되었지만 같은 위치의 과거 사진이 부족해 비교가 어렵습니다.";
+
     return {
       attachmentUrls,
       previousAttachmentUrls,
       candidates,
       comparisonStatus,
-      summary: baselineItems.length
-        ? "입주 전 체크리스트 기준 사진이 있어 신규 발생 가능성을 함께 검토해야 합니다."
-        : previousAttachmentUrls.length
-        ? "같은 호실의 과거 관련 사진이 있어 반복 또는 기존 하자 가능성을 함께 검토해야 합니다."
-        : "현재 사진은 접수 자료로 연결되었지만 같은 위치의 과거 사진이 부족해 비교가 어렵습니다.",
+      summary: recommendedRetake
+        ? `${summary} 근접 사진과 공간 전체 사진을 분리해 추가하면 판단 정확도가 올라갑니다.`
+        : summary,
       evidence,
-      recommendedRetake: previousAttachmentUrls.length === 0 && attachmentUrls.length < 2
+      recommendedRetake
     };
   }
 
@@ -3643,7 +3652,10 @@ export class RoomlogService {
               currentPhotoCount
                 ? `- 현재 첨부 사진 ${currentPhotoCount}건을 이 상담 스레드에 연결했습니다.`
                 : "- 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올려주세요.",
-              `- 사진 판단: ${draft.photoAnalysis.summary}`
+              `- 사진 판단: ${draft.photoAnalysis.summary}`,
+              draft.photoAnalysis.recommendedRetake
+                ? "- 추가로 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 분리해서 올려주세요."
+                : ""
             ].join("\n")
           : "",
         [...contextLines, ...duplicateLines].length
@@ -3675,7 +3687,10 @@ export class RoomlogService {
             currentPhotoCount
               ? `- 현재 첨부 사진 ${currentPhotoCount}건을 관리자 검토 자료로 연결했습니다.`
               : "- 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올리면 관리자 판단이 빨라집니다.",
-            `- 사진 판단: ${draft.photoAnalysis.summary}`
+            `- 사진 판단: ${draft.photoAnalysis.summary}`,
+            draft.photoAnalysis.recommendedRetake
+              ? "- 추가로 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 분리해서 올려주세요."
+              : ""
           ].join("\n")
         : "",
       [...contextLines, ...duplicateLines].length
