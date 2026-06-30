@@ -1,0 +1,451 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  TENANT
+  LANDLORD
+  VENDOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum ComplaintSourceChannel {
+  DIRECT_FORM
+  REALTIME_CHAT
+  VOICE_CHAT
+  CALLBOT
+}
+
+enum ComplaintStatus {
+  SUBMITTED
+  REVIEWING
+  ADDITIONAL_INFO_REQUESTED
+  VENDOR_ASSIGNED
+  REPAIR_IN_PROGRESS
+  COMPLETED
+  REOPENED
+}
+
+enum TicketStatus {
+  RECEIVED
+  REVIEWING
+  ADDITIONAL_INFO_REQUESTED
+  VENDOR_ASSIGNMENT_PENDING
+  VENDOR_ASSIGNED
+  ESTIMATE_REVIEW
+  REPAIR_IN_PROGRESS
+  COMPLETION_REPORTED
+  COMPLETED
+  REOPENED
+  CANCELLED
+}
+
+enum RepairStatus {
+  REQUESTED
+  ACCEPTED
+  ESTIMATE_SUBMITTED
+  ESTIMATE_APPROVED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETION_REPORTED
+  COMPLETED
+  CANCELLED
+}
+
+enum RepairCostBearer {
+  LANDLORD
+  TENANT
+  PENDING
+}
+
+enum AttachmentCategory {
+  COMPLAINT_PHOTO
+  ADDITIONAL_PHOTO
+  WORK_PHOTO
+  COMPLETION_PHOTO
+  INTAKE_PHOTO
+}
+
+enum MessageSenderRole {
+  TENANT
+  LANDLORD
+  VENDOR
+  AI_ASSISTANT
+  SYSTEM
+}
+
+enum IntakeSessionStatus {
+  ACTIVE
+  FINALIZED
+  CANCELLED
+}
+
+enum IntakeInputMode {
+  CHAT
+  VOICE
+  PHOTO
+}
+
+enum PhotoComparisonStatus {
+  NEW_ISSUE_LIKELY
+  EXISTING_ISSUE_LIKELY
+  NEEDS_MORE_PHOTOS
+  DIFFICULT_TO_COMPARE
+}
+
+enum AiFeedbackTarget {
+  SUMMARY
+  CATEGORY
+  PRIORITY
+  RESPONSIBILITY
+  COMPLETION
+}
+
+enum AiFeedbackStatus {
+  OPEN
+  REVIEWED
+}
+
+model UserAccount {
+  id           String     @id
+  email        String     @unique
+  passwordHash String
+  name         String
+  phone        String?    @unique
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tenantRooms          TenantRoom[]
+  uploadedAttachments  Attachment[]       @relation("UploadedAttachments")
+  intakeSessions       IntakeSession[]     @relation("TenantIntakeSessions")
+  complaints           Complaint[]         @relation("TenantComplaints")
+  tickets              Ticket[]            @relation("TenantTickets")
+  moveInChecklistItems MoveInChecklistItem[]
+
+  @@index([role, status])
+}
+
+model Room {
+  id           String   @id
+  buildingName String
+  roomNo       String
+  address      String
+  landlordId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenants              TenantRoom[]
+  complaints           Complaint[]
+  tickets              Ticket[]
+  intakeSessions       IntakeSession[]
+  moveInChecklistItems MoveInChecklistItem[]
+
+  @@index([landlordId])
+  @@unique([buildingName, roomNo])
+}
+
+model TenantRoom {
+  tenantId  String
+  roomId    String
+  createdAt DateTime @default(now())
+
+  tenant UserAccount @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  room   Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, roomId])
+  @@index([roomId])
+}
+
+model VendorProfile {
+  id            String   @id
+  userId        String   @unique
+  businessName  String
+  contactPerson String
+  phone         String
+  serviceArea   String
+  activeJobs    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  repairs RepairRequest[]
+}
+
+model VendorInvite {
+  id                 String       @id
+  inviteToken        String       @unique
+  invitedByManagerId String
+  email              String?
+  businessName       String
+  contactPerson      String
+  phone              String
+  serviceArea        String
+  status             InviteStatus @default(PENDING)
+  signupUrl          String
+  createdAt          DateTime     @default(now())
+  acceptedAt         DateTime?
+  acceptedByUserId   String?
+
+  @@index([invitedByManagerId, status])
+}
+
+model TenantInvite {
+  id                 String       @id
+  inviteToken        String       @unique
+  invitedByManagerId String
+  roomId             String
+  email              String?
+  tenantName         String
+  phone              String?
+  moveInDate         DateTime?
+  status             InviteStatus @default(PENDING)
+  signupUrl          String
+  createdAt          DateTime     @default(now())
+  acceptedAt         DateTime?
+  acceptedByUserId   String?
+
+  @@index([invitedByManagerId, status])
+  @@index([roomId])
+}
+
+model Attachment {
+  id          String             @id
+  uploadedBy  String
+  fileName    String
+  fileUrl     String
+  mimeType    String
+  sizeBytes   Int
+  category    AttachmentCategory
+  createdAt   DateTime           @default(now())
+
+  uploader UserAccount @relation("UploadedAttachments", fields: [uploadedBy], references: [id])
+
+  @@index([uploadedBy, category])
+}
+
+model MoveInChecklistItem {
+  id             String   @id
+  tenantId       String
+  roomId         String
+  area           String
+  itemName       String
+  memo           String?
+  guidance       String
+  attachmentUrls String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant UserAccount @relation(fields: [tenantId], references: [id])
+  room   Room        @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, roomId])
+}
+
+model IntakeSession {
+  id            String                 @id
+  tenantId      String
+  roomId        String
+  sourceChannel ComplaintSourceChannel @default(REALTIME_CHAT)
+  status        IntakeSessionStatus    @default(ACTIVE)
+  draft         Json
+  complaintId   String?
+  ticketId      String?
+  finalizedAt   DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  tenant  UserAccount     @relation("TenantIntakeSessions", fields: [tenantId], references: [id])
+  room    Room            @relation(fields: [roomId], references: [id])
+  messages IntakeMessage[]
+
+  @@index([tenantId, updatedAt])
+  @@index([roomId, updatedAt])
+}
+
+model IntakeMessage {
+  id              String            @id
+  sessionId       String
+  sender          MessageSenderRole
+  messageText     String
+  transcriptText  String?
+  attachmentUrls  String[]
+  inputMode       IntakeInputMode
+  realtimeEventId String?
+  createdAt       DateTime          @default(now())
+
+  session IntakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([realtimeEventId])
+}
+
+model Complaint {
+  id             String                 @id
+  tenantId       String
+  roomId         String
+  ticketId       String                 @unique
+  sourceChannel  ComplaintSourceChannel
+  title          String
+  description    String
+  location       String
+  occurredAt     DateTime?
+  availableTimes String?
+  status         ComplaintStatus
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  tenant UserAccount @relation("TenantComplaints", fields: [tenantId], references: [id])
+  room   Room        @relation(fields: [roomId], references: [id])
+  ticket Ticket?
+
+  @@index([tenantId, createdAt])
+  @@index([roomId, createdAt])
+}
+
+model Ticket {
+  id                 String                 @id
+  complaintId        String                 @unique
+  tenantId           String
+  roomId             String
+  assignedVendorId   String?
+  sourceChannel      ComplaintSourceChannel
+  category           String
+  priority           Int
+  status             TicketStatus
+  responsibilityHint String
+  aiSummary          String
+  dueAt              DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  complaint Complaint       @relation(fields: [complaintId], references: [id])
+  tenant    UserAccount     @relation("TenantTickets", fields: [tenantId], references: [id])
+  room      Room            @relation(fields: [roomId], references: [id])
+  repairs   RepairRequest[]
+  messages  TicketMessage[]
+  feedback  AiFeedback[]
+  analysis  AiAnalysis?
+  history   StatusHistory[]
+
+  @@index([roomId, status])
+  @@index([assignedVendorId, status])
+  @@index([priority, status])
+}
+
+model AiAnalysis {
+  ticketId           String  @id
+  summary            String
+  category           String
+  detailCategory     String?
+  priority           Int
+  responsibilityHint String
+  confidenceScore    Float
+  reasons            String[]
+  recommendedAction  String
+  photoAnalysis      Json?
+  updatedAt          DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model AiFeedback {
+  id                String           @id
+  ticketId          String
+  complaintId       String
+  tenantId          String
+  target            AiFeedbackTarget
+  targetLabel       String
+  originalValue     String
+  reason            String
+  requestedAction   String?
+  attachmentUrls    String[]
+  status            AiFeedbackStatus @default(OPEN)
+  managerReviewNote String?
+  correctedValue    String?
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, status])
+  @@index([tenantId, createdAt])
+}
+
+model RepairRequest {
+  id                  String            @id
+  ticketId            String
+  vendorId            String
+  status              RepairStatus
+  title               String
+  description         String
+  estimateAmount      Int?
+  estimateDescription String?
+  costBearer          RepairCostBearer?
+  estimateApprovedAt  DateTime?
+  estimateApprovalNote String?
+  scheduledAt         DateTime?
+  completedAt         DateTime?
+  completionNote      String?
+  completionPhotoUrls String[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  ticket   Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  vendor   VendorProfile @relation(fields: [vendorId], references: [id])
+  messages TicketMessage[]
+
+  @@index([vendorId, status])
+  @@index([ticketId, status])
+}
+
+model TicketMessage {
+  id             String            @id
+  ticketId       String
+  complaintId    String?
+  repairId       String?
+  senderUserId   String
+  senderRole     MessageSenderRole
+  messageText    String
+  attachmentUrls String[]
+  createdAt      DateTime          @default(now())
+
+  ticket Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  repair RepairRequest? @relation(fields: [repairId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@index([repairId, createdAt])
+}
+
+model StatusHistory {
+  id          String   @id
+  ticketId    String
+  fromStatus  String?
+  toStatus    String
+  actorUserId String
+  actorRole   MessageSenderRole
+  note        String
+  createdAt   DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+}

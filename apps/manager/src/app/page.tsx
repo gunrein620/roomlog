@@ -835,7 +835,7 @@ export default function ManagerApp() {
               await completeAuth(result);
             }}
           >
-            데모 관리자로 시작
+            테스트 관리자 계정으로 시작
           </button>
           <p className="status-line">{status}</p>
         </section>

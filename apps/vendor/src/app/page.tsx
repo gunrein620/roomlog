@@ -551,7 +551,7 @@ export default function VendorApp() {
               await completeAuth(result);
             }}
           >
-            데모 업체로 시작
+            테스트 업체 계정으로 시작
           </button>
           <p className="status-line">{status}</p>
         </section>

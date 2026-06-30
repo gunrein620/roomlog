@@ -1435,7 +1435,7 @@ export default function TenantApp() {
               await completeAuth(result);
             }}
           >
-            데모 세입자로 시작
+            테스트 세입자 계정으로 시작
           </button>
           <p className="status-line">{status}</p>
         </section>

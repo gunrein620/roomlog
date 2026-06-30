@@ -70,7 +70,7 @@ services:
       - .env
     environment:
       PORT: ${PORT:-4000}
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://roomlog:roomlog@postgres:5432/roomlog?schema=public}
       ROOMLOG_STORE_FILE: ${ROOMLOG_STORE_FILE:-/data/roomlog-store.json}
       LOCAL_UPLOAD_DIR: ${LOCAL_UPLOAD_DIR:-/data/uploads}
       PUBLIC_UPLOAD_BASE_URL: ${PUBLIC_UPLOAD_BASE_URL:-/api/files}
@@ -80,6 +80,22 @@ services:
       - "4000:4000"
     volumes:
       - roomlog-api-data:/data
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: roomlog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-roomlog}
+      POSTGRES_USER: ${POSTGRES_USER:-roomlog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-roomlog}
+    ports:
+      - "5433:5432"
+    volumes:
+      - roomlog-postgres-data:/var/lib/postgresql/data
 
 volumes:
   roomlog-api-data:
+  roomlog-postgres-data:
