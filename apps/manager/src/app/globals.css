@@ -477,6 +477,29 @@ textarea {
   color: var(--blue);
 }
 
+.intake-handoff {
+  border-top-color: #cfe0f5;
+  background: #f8fbff;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.intake-handoff > p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.intake-handoff ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--slate);
+  line-height: 1.5;
+}
+
 .reply-composer {
   display: grid;
   gap: 12px;

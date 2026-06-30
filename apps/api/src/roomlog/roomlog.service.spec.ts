@@ -3511,6 +3511,17 @@ describe("RoomlogService", () => {
     );
     assert.ok(tenantMessageWithPhoto, "expected finalized ticket timeline to keep photo URLs");
     assert.equal(tenantMessageWithPhoto.messageText.includes("첨부:"), false);
+
+    const managerDetail = service.getTicketDetailForManager("landlord-demo", finalized.ticket.id);
+    assert.equal(managerDetail.intakeHandoff?.sessionId, first.session.id);
+    assert.equal(managerDetail.intakeHandoff?.channelLabel, "AI 채팅");
+    assert.match(managerDetail.intakeHandoff?.statusNote ?? "", /상담 스레드|메시지/);
+    assert.match(managerDetail.intakeHandoff?.summary ?? "", /화장실|누수/);
+    assert.match(managerDetail.intakeHandoff?.lastTenantMessage ?? "", /305호 화장실/);
+    assert.match(managerDetail.intakeHandoff?.lastAssistantMessage ?? "", /접수|관리자|사진/);
+    assert.equal(managerDetail.intakeHandoff?.photoCount, 1);
+    assert.deepEqual(managerDetail.intakeHandoff?.attachmentUrls, ["/uploads/leak-305.jpg"]);
+
     assert.equal(service.getIntakeSession("tenant-demo", first.session.id).status, "FINALIZED");
     assert.equal(service.getIntakeSession("tenant-demo", second.session.id).status, "ACTIVE");
   });

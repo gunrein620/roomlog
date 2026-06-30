@@ -6379,7 +6379,53 @@ export class RoomlogService {
         .map((message) => this.presentTicketMessage(message)),
       history: this.store.history.filter((history) => history.ticketId === ticket.id),
       roomTimeline: this.presentRoomTimeline(ticket.roomId),
+      intakeHandoff: this.presentIntakeHandoffContext(ticket),
       callbot: this.presentCallbotContext(ticket)
+    };
+  }
+
+  private presentIntakeHandoffContext(ticket: Ticket) {
+    const session = this.store.intakeSessions.find((item) => item.ticketId === ticket.id);
+
+    if (!session) {
+      return undefined;
+    }
+
+    const tenantMessages = session.messages.filter((message) => message.sender === "TENANT");
+    const assistantMessages = session.messages.filter(
+      (message) => message.sender === "AI_ASSISTANT"
+    );
+    const handoffMessage = this.store.messages.find(
+      (message) =>
+        message.ticketId === ticket.id &&
+        message.senderUserId === "roomlog-ai" &&
+        message.senderRole === "SYSTEM" &&
+        message.messageText.includes("AI 상담 인계 요약")
+    );
+    const attachmentUrls = Array.from(
+      new Set(tenantMessages.flatMap((message) => message.attachmentUrls))
+    );
+    const lastTenantMessage = tenantMessages.at(-1);
+    const lastAssistantMessage = assistantMessages.at(-1);
+
+    return {
+      sessionId: session.id,
+      channelLabel: this.intakeChannelLabel(session.sourceChannel),
+      statusNote: `상담 스레드 ${session.id} · 메시지 ${session.messages.length}개 인계`,
+      summary: handoffMessage?.messageText ?? session.draft.summary,
+      lastTenantMessage: this.compactThreadMessage(
+        lastTenantMessage?.transcriptText || lastTenantMessage?.messageText,
+        "세입자 메시지 확인 필요"
+      ),
+      lastAssistantMessage: this.compactThreadMessage(
+        this.sanitizeAssistantDisplayText(lastAssistantMessage?.messageText),
+        "AI 응답 확인 필요"
+      ),
+      photoCount: attachmentUrls.length,
+      attachmentUrls,
+      requiredInfo: [...session.draft.requiredInfo],
+      nextQuestions: [...session.draft.nextQuestions],
+      finalizedAt: session.finalizedAt
     };
   }
 

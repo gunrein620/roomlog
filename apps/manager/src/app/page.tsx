@@ -176,6 +176,19 @@ type Ticket = {
     note?: string;
   }[];
   roomTimeline?: RoomTimelineEntry[];
+  intakeHandoff?: {
+    sessionId: string;
+    channelLabel: string;
+    statusNote: string;
+    summary: string;
+    lastTenantMessage: string;
+    lastAssistantMessage: string;
+    photoCount: number;
+    attachmentUrls: string[];
+    requiredInfo: string[];
+    nextQuestions: string[];
+    finalizedAt?: string;
+  };
   callbot?: {
     hasRecording: boolean;
     recordingUrl?: string;
@@ -1138,6 +1151,52 @@ export default function ManagerApp() {
                         </div>
                       ) : null}
                     </dl>
+                  </section>
+                ) : null}
+                {selectedTicket.intakeHandoff ? (
+                  <section className="callbot-context intake-handoff" aria-label="AI 상담 인계 기록">
+                    <div className="callbot-heading">
+                      <div>
+                        <h3>AI 상담 인계 기록</h3>
+                        <p>{selectedTicket.intakeHandoff.statusNote}</p>
+                      </div>
+                      <span>{selectedTicket.intakeHandoff.channelLabel}</span>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>스레드</dt>
+                        <dd>{selectedTicket.intakeHandoff.sessionId}</dd>
+                      </div>
+                      <div>
+                        <dt>세입자</dt>
+                        <dd>{selectedTicket.intakeHandoff.lastTenantMessage}</dd>
+                      </div>
+                      <div>
+                        <dt>AI 응답</dt>
+                        <dd>{selectedTicket.intakeHandoff.lastAssistantMessage}</dd>
+                      </div>
+                      <div>
+                        <dt>사진</dt>
+                        <dd>{selectedTicket.intakeHandoff.photoCount}장</dd>
+                      </div>
+                    </dl>
+                    <p>{selectedTicket.intakeHandoff.summary}</p>
+                    {selectedTicket.intakeHandoff.nextQuestions.length ? (
+                      <ul>
+                        {selectedTicket.intakeHandoff.nextQuestions.map((question) => (
+                          <li key={question}>{question}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {selectedTicket.intakeHandoff.attachmentUrls.length ? (
+                      <div className="attachment-preview">
+                        {selectedTicket.intakeHandoff.attachmentUrls.map((url) => (
+                          <a href={url} target="_blank" rel="noreferrer" key={url}>
+                            <img src={url} alt="AI 상담 인계 사진" />
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                   </section>
                 ) : null}
                 <div className="evidence">
