@@ -931,6 +931,52 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("keeps defect intake open until occurrence and safety risk are confirmed", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      roomId: "room-301",
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      const first = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 세면대 수전 손잡이가 헐거워졌습니다. 오늘 저녁 7시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.equal(first.session.draft.readyToFinalize, false);
+      assert.equal(first.session.draft.requiredInfo.includes("발생 시점"), true);
+      assert.equal(first.session.draft.requiredInfo.includes("안전 위험 여부"), true);
+      assert.equal(
+        first.session.draft.nextQuestions.some((question) => /언제부터|시작|계속/.test(question)),
+        true
+      );
+      assert.equal(
+        first.session.draft.nextQuestions.some((question) => /전기|가스|침수|잠김|위험/.test(question)),
+        true
+      );
+
+      const second = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "어제부터 시작됐고 지금도 헐겁습니다. 전기나 가스 같은 위험은 없습니다.",
+        inputMode: "CHAT"
+      });
+
+      assert.equal(second.session.draft.readyToFinalize, true);
+      assert.equal(second.session.draft.requiredInfo.includes("발생 시점"), false);
+      assert.equal(second.session.draft.requiredInfo.includes("안전 위험 여부"), false);
+      assert.match(second.assistantMessage.messageText, /접수 초안|접수 확정/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("separates current intake thread from same-room historical context in OpenAI prompts", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalFetch = globalThis.fetch;

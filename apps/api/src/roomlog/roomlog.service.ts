@@ -2853,6 +2853,41 @@ export class RoomlogService {
     };
   }
 
+  private detectOccurrenceInfo(text: string) {
+    const compact = text.replace(/\s+/g, " ").trim();
+
+    if (!compact) {
+      return undefined;
+    }
+
+    const match = compact.match(
+      /(방금|어제(?:부터)?|오늘\s*(?:아침|오전|낮|오후|저녁|밤)?\s*부터|오늘부터|오늘\s*(?:처음|다시|또)|지난\s*\d*\s*(?:주|달|개월|일)?|며칠\s*(?:전|째|동안)?|\d{1,2}\s*일\s*전|\d{1,2}\s*시간\s*전|계속|지금도|반복|시작(?:됐|되었)?|발생(?:했|하였)?|떨어지(?:고|는|며|네요|나요|습니다)|떨어(?:집니다|져|졌)|새(?:고|는|네요|나요|어)|샙니다|고이(?:고|는|며|네요|나요|었습니다)|젖(?:고|은|었습니다)|잠기지\s*않|안\s*잠|나지\s*않|안\s*나|작동하지\s*않|고장(?:났|입니다)|[가-힣0-9]+\s*부터)/
+    );
+
+    return match?.[0]?.trim();
+  }
+
+  private detectSafetyRiskInfo(
+    text: string,
+    category: IntakeDraft["category"],
+    priority: IntakeDraft["priority"]
+  ) {
+    if (category !== "하자") {
+      return undefined;
+    }
+
+    if (priority === 1) {
+      return "긴급 위험 가능성";
+    }
+
+    const compact = text.replace(/\s+/g, " ").trim();
+    const match = compact.match(
+      /(위험(?:은|한)?\s*(?:없|아니)|안전(?:은)?\s*(?:괜찮|문제\s*없)|전기(?:나|는|와)?\s*(?:가스)?[^.。!?]{0,16}(?:없|아니|괜찮)|가스[^.。!?]{0,16}(?:없|아니|괜찮)|침수[^.。!?]{0,16}(?:없|아니)|문[^.。!?]{0,12}잠[^.。!?]{0,12}(?:괜찮|됩)|위험|가스|누전|전기|콘센트|스위치|침수|잠기지|문이 안|불꽃|화재|감전|안전|천장에서\s*물|물이\s*(?:떨어|새|샘|고이)|누수|바닥(?:에|이)?\s*(?:물|젖)|곰팡이\s*냄새|도어락)/
+    );
+
+    return match?.[0]?.trim();
+  }
+
   private buildIntakeSlots(input: {
     text: string;
     category: IntakeDraft["category"];
@@ -2864,14 +2899,8 @@ export class RoomlogService {
     photoRequested: boolean;
   }): IntakeSlot[] {
     const text = input.text.trim();
-    const occurrenceMatch = text.match(
-      /(계속|지금도|반복|어제|오늘|방금|부터|지난|아침|낮|저녁|밤|오전|오후|\d{1,2}시|\d{1,2}일|며칠)/
-    );
-    const riskMentioned =
-      input.priority === 1 ||
-      /(위험|가스|누전|전기|콘센트|스위치|침수|잠기지|문이 안|물고임|바닥|계속|떨어|불꽃|화재)/.test(
-        `${text} ${input.detailCategory}`
-      );
+    const occurrenceInfo = this.detectOccurrenceInfo(text);
+    const riskInfo = this.detectSafetyRiskInfo(text, input.category, input.priority);
     const photoIsUseful =
       input.category === "하자" &&
       (input.photoRequested ||
@@ -2901,24 +2930,30 @@ export class RoomlogService {
       {
         key: "occurrence",
         label: "발생 시점",
-        status: occurrenceMatch ? "COLLECTED" : "NEEDS_INFO",
-        value: occurrenceMatch?.[0],
-        evidence: occurrenceMatch
+        status: occurrenceInfo ? "COLLECTED" : input.category === "하자" ? "NEEDS_INFO" : "OPTIONAL",
+        value: occurrenceInfo,
+        evidence: occurrenceInfo
           ? "발생 시점이나 지속 여부를 확인했습니다."
-          : "언제부터 발생했는지 아직 모릅니다.",
-        action: occurrenceMatch ? undefined : "언제 시작됐고 지금도 계속되는지 알려주세요."
+          : input.category === "하자"
+            ? "언제부터 발생했는지 아직 모릅니다."
+            : "일반 문의라 발생 시점 확인은 선택 사항입니다.",
+        action: occurrenceInfo
+          ? undefined
+          : input.category === "하자"
+            ? "언제 시작됐고 지금도 계속되는지 알려주세요."
+            : undefined
       },
       {
         key: "risk",
         label: "위험 여부",
-        status: riskMentioned ? "COLLECTED" : input.category === "하자" ? "NEEDS_INFO" : "OPTIONAL",
-        value: riskMentioned ? (input.priority === 1 ? "긴급 위험 가능성" : "위험 여부 언급됨") : undefined,
-        evidence: riskMentioned
+        status: riskInfo ? "COLLECTED" : input.category === "하자" ? "NEEDS_INFO" : "OPTIONAL",
+        value: riskInfo,
+        evidence: riskInfo
           ? "안전 위험 판단에 필요한 단서를 확인했습니다."
           : input.category === "하자"
             ? "안전 위험 여부를 확인해야 합니다."
             : "일반 문의라 위험 확인은 선택 사항입니다.",
-        action: riskMentioned
+        action: riskInfo
           ? undefined
           : input.category === "하자"
             ? "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
@@ -3005,6 +3040,8 @@ export class RoomlogService {
     const detailCategory = this.detectDetailCategory(text);
     const category = this.detectMainCategory(text, detailCategory);
     const priority = this.detectPriority(text, detailCategory);
+    const occurredAt = this.detectOccurrenceInfo(text);
+    const safetyRiskInfo = this.detectSafetyRiskInfo(text, category, priority);
     const photoRequested = category === "하자" && ["누수", "곰팡이", "벽지", "바닥", "에어컨"].includes(detailCategory) && !hasPhoto;
     const requiredInfo: string[] = [];
 
@@ -3018,6 +3055,14 @@ export class RoomlogService {
 
     if (photoRequested && priority !== 1) {
       requiredInfo.push("문제 부위 사진");
+    }
+
+    if (!occurredAt && category === "하자") {
+      requiredInfo.push("발생 시점");
+    }
+
+    if (!safetyRiskInfo && category === "하자") {
+      requiredInfo.push("안전 위험 여부");
     }
 
     if (!availableTimes && category === "하자") {
@@ -3106,6 +3151,7 @@ export class RoomlogService {
       photoRequested,
       readyToFinalize: requiredInfo.length === 0,
       location,
+      occurredAt,
       availableTimes,
       duplicateCandidates
     };
@@ -3123,6 +3169,8 @@ export class RoomlogService {
     duplicateCandidates: DuplicateTicketCandidate[];
   }) {
     const questions: string[] = [];
+    const occurrenceInfo = this.detectOccurrenceInfo(input.text);
+    const safetyRiskInfo = this.detectSafetyRiskInfo(input.text, input.category, input.priority);
 
     if (!input.location) {
       questions.push("문제가 보이는 정확한 공간과 부위를 알려주실 수 있나요?");
@@ -3133,8 +3181,12 @@ export class RoomlogService {
       /(누수|천장|물이|침수|바닥)/.test(`${input.text} ${input.detailCategory}`)
     ) {
       questions.push("물이 지금도 떨어지고 있나요, 전기 콘센트나 조명 근처로 번졌나요?");
-    } else if (!/(계속|지금도|반복|어제|오늘|방금|부터)/.test(input.text)) {
+    } else if (!occurrenceInfo && input.category === "하자") {
       questions.push("언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?");
+    }
+
+    if (!safetyRiskInfo && input.category === "하자") {
+      questions.push("전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?");
     }
 
     if (
