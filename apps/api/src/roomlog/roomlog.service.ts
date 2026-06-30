@@ -826,7 +826,9 @@ export class RoomlogService {
       session.openaiPreviousResponseId = generatedTurn.openaiResponseId;
     }
 
-    const assistantMessageText = assistantTranscript || generatedTurn.assistantMessage;
+    const assistantMessageText = assistantTranscript
+      ? this.ensureRealtimeAssistantReplyQuality(assistantTranscript, generatedTurn.assistantMessage)
+      : generatedTurn.assistantMessage;
     const assistantMessage = this.createIntakeMessage(
       session.id,
       "AI_ASSISTANT",
@@ -3917,6 +3919,18 @@ export class RoomlogService {
     }
 
     return generated;
+  }
+
+  private ensureRealtimeAssistantReplyQuality(message: string, fallbackMessage: string) {
+    const generated = message.trim();
+    const compact = generated.replace(/\s+/g, "");
+    const isTerse =
+      generated.length < 30 ||
+      /^(네|넵|예|알겠습니다|확인했습니다|접수했습니다|처리하겠습니다|네,?알겠습니다)[.!。]*$/.test(
+        compact
+      );
+
+    return isTerse ? fallbackMessage : generated;
   }
 
   private buildIntakeResponseInstructions(session: IntakeSession) {

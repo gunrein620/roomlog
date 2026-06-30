@@ -650,6 +650,41 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("upgrades terse Realtime assistant transcripts using the structured intake draft", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "CALLBOT"
+    });
+
+    try {
+      const result = await service.recordRealtimeTurn("tenant-demo", session.id, {
+        userTranscript:
+          "301호 화장실 천장에서 물이 떨어지고 바닥에 물이 고입니다. 사진은 아직 못 보냈고 오늘 저녁 8시 이후 방문 가능합니다.",
+        assistantTranscript: "네, 알겠습니다.",
+        eventId: "evt_callbot_terse_assistant"
+      });
+      const assistantMessage = result.recordedMessages.find(
+        (message) => message.sender === "AI_ASSISTANT"
+      );
+
+      assert.ok(assistantMessage, "expected an AI assistant message to be recorded");
+      assert.notEqual(assistantMessage.messageText, "네, 알겠습니다.");
+      assert.match(assistantMessage.messageText, /상담 스레드|같은 상담/);
+      assert.match(assistantMessage.messageText, /누수|화장실|천장/);
+      assert.match(assistantMessage.messageText, /긴급도 P1/);
+      assert.match(assistantMessage.messageText, /사진|근접|전체/);
+      assert.match(result.turnSummary.spokenReply, /상담 스레드|같은 상담/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("returns a realtime turn summary with next questions and photo actions", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
