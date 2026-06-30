@@ -42,6 +42,7 @@ import {
   consultationThreadBadges,
   consultationThreadNextAction
 } from "./thread-workflow";
+import { consultationThreadContextHighlights } from "./thread-context";
 import {
   initialConsultationComposerText,
   resetConsultationComposerState
@@ -556,6 +557,16 @@ export default function TenantApp() {
     : undefined;
   const selectedSlotProgress = useMemo(
     () => (selectedSession ? intakeSlotProgress(selectedSession.draft.intakeSlots) : undefined),
+    [selectedSession]
+  );
+  const selectedThreadContext = useMemo(
+    () =>
+      selectedSession
+        ? consultationThreadContextHighlights({
+            summary: selectedSession.threadSummary,
+            draft: selectedSession.draft
+          })
+        : [],
     [selectedSession]
   );
   const selectedPhotoEvidence = useMemo(
@@ -1797,6 +1808,17 @@ export default function TenantApp() {
               </span>
             ) : null}
           </div>
+
+          {selectedThreadContext.length ? (
+            <div className="thread-context-strip" aria-label="현재 상담 핵심 맥락">
+              {selectedThreadContext.map((item) => (
+                <span className={`thread-context-item ${item.tone}`} key={item.label}>
+                  <strong>{item.label}</strong>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="realtime-panel" aria-label="Realtime 음성 상담">
             <div>
