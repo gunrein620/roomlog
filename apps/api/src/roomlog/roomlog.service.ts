@@ -5468,6 +5468,20 @@ export class RoomlogService {
       `근거: ${draft.photoAnalysis.evidence.join(" / ") || "없음"}`,
       `재촬영 요청: ${draft.photoAnalysis.recommendedRetake ? "필요" : "불필요"}`
     ].join("\n");
+    const sameRoomHistory =
+      this.roomHistoryContextForIntake(session, draft) || "현재 상담과 관련된 같은 호실 과거 기록이 없습니다.";
+    const duplicateCandidateStatus = draft.duplicateCandidates.length
+      ? draft.duplicateCandidates
+          .map((candidate) =>
+            [
+              `${candidate.ticketId}: ${candidate.title} (${candidate.displayStatus})`,
+              `요약=${candidate.summary}`,
+              `근거=${candidate.matchedSignals.join(", ") || "유형/위치 유사"}`,
+              "권장=같은 문제면 기존 티켓에 통화 내용을 추가하고, 별도 문제면 새 접수로 유지"
+            ].join(" · ")
+          )
+          .join("\n")
+      : "현재 중복 후보 티켓이 없습니다.";
 
     return [
       "# 역할과 목표",
@@ -5515,6 +5529,12 @@ export class RoomlogService {
       "",
       "# 사진 분석 상태",
       photoAnalysisStatus,
+      "",
+      "# 같은 호실 최근 관련 기록",
+      sameRoomHistory,
+      "",
+      "# 중복 가능 티켓",
+      duplicateCandidateStatus,
       "",
       "# 현재 접수 초안 상태",
       draftStatus,

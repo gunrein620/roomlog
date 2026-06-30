@@ -624,6 +624,51 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("includes same-room history and duplicate candidates in callbot Realtime instructions", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      const previous = service.createComplaint("tenant-demo", {
+        title: "과거 301호 화장실 천장 누수",
+        description:
+          "지난주에도 301호 화장실 천장에서 물이 떨어져 임시 보수 요청을 남겼습니다.",
+        location: "301호 화장실",
+        availableTimes: "평일 저녁"
+      });
+      const { session } = service.createIntakeSession("tenant-demo", {
+        sourceChannel: "CALLBOT",
+        roomId: "room-301"
+      });
+
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 천장에서 다시 물이 떨어집니다. 바닥까지 젖고 있습니다.",
+        inputMode: "VOICE"
+      });
+
+      const result = await service.createRealtimeClientSecret("tenant-demo", session.id, {
+        purpose: "CALLBOT_INTAKE",
+        voice: "marin"
+      });
+
+      assert.equal(result.mode, "not_configured");
+      assert.match(result.instructions, /# 같은 호실 최근 관련 기록/);
+      assert.match(result.instructions, /과거 301호 화장실 천장 누수/);
+      assert.match(result.instructions, /지난주에도 301호 화장실 천장에서 물이 떨어져/);
+      assert.match(result.instructions, /# 중복 가능 티켓/);
+      assert.match(result.instructions, new RegExp(previous.ticket.id));
+      assert.match(result.instructions, /같은 문제면 기존 티켓에 통화 내용을 추가/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("records Realtime voice transcripts as isolated intake thread messages", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
