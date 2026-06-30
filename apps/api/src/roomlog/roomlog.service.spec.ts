@@ -1896,6 +1896,83 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("upgrades generic OpenAI intake openings with thread-specific context", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      process.env.OPENAI_API_KEY = "sk-test-roomlog";
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            output_text: JSON.stringify({
+              assistantMessage:
+                "확인할게요. 이 상담 스레드에서 이어서 정리하고 있어요.\n제가 이해한 내용\n- 301호 화장실 천장에서 물이 떨어지고 전등 근처라 안전 확인이 필요합니다.\n지금 할 일\n- 전등 스위치 주변은 만지지 말아주세요.\n필요한 사진\n- 문제 부위 근접 사진 1장과 공간 전체 사진 1장을 올려주세요.\n접수 상태\n- 접수 확정 가능: 내용이 맞으면 관리자 티켓으로 전달할 수 있습니다.",
+              draft: {
+                title: "301호 화장실 천장 누수",
+                summary:
+                  "301호 화장실 천장에서 물이 떨어지고 전등 근처라 안전 확인이 필요합니다.",
+                category: "하자",
+                detailCategory: "누수",
+                priority: 1,
+                responsibilityHint: "임대인 책임 가능성",
+                confidenceScore: 0.88,
+                reasons: ["천장 누수", "전등 근처 안전 위험"],
+                recommendedAction: "전기 주변 접촉을 피하고 관리자가 긴급 확인하세요.",
+                contextHints: [],
+                nextQuestions: [],
+                tenantGuidance: ["전등 스위치 주변은 만지지 말아주세요."],
+                photoAnalysis: {
+                  attachmentUrls: [],
+                  previousAttachmentUrls: [],
+                  candidates: ["누수"],
+                  comparisonStatus: "추가 사진 필요",
+                  summary: "누수 위치와 확산 범위 확인 사진이 필요합니다.",
+                  evidence: [],
+                  recommendedRetake: false
+                },
+                intakeSlots: [],
+                requiredInfo: [],
+                photoRequested: true,
+                readyToFinalize: true,
+                location: "301호 화장실 천장",
+                occurredAt: "오늘",
+                availableTimes: "오늘 저녁 8시 이후"
+              }
+            })
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )) as typeof fetch;
+
+      const service = new RoomlogService();
+      const { session } = service.createIntakeSession("tenant-demo", {
+        roomId: "room-301",
+        sourceChannel: "REALTIME_CHAT"
+      });
+      const result = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 천장에서 물이 떨어지고 전등 근처라 무섭습니다. 오늘 저녁 8시 이후 방문 가능합니다.",
+        inputMode: "CHAT"
+      });
+      const openingLine = result.assistantMessage.messageText.split("\n")[0];
+
+      assert.match(openingLine, /301호|화장실|천장|누수|전등|위험/);
+      assert.doesNotMatch(openingLine, /^확인할게요\.|^접수 초안이 준비되었습니다/);
+      assert.doesNotMatch(openingLine, /누수은|하자은|문의은|곰팡이은/);
+      assert.match(result.assistantMessage.messageText, /상담 스레드|관리자|티켓/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("formats local fallback chat replies like a high quality 상담사 response", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -1912,7 +1989,11 @@ describe("RoomlogService", () => {
         inputMode: "CHAT"
       });
       const reply = result.assistantMessage.messageText;
+      const openingLine = reply.split("\n")[0];
 
+      assert.match(openingLine, /301호|화장실|천장|누수|전등|위험/);
+      assert.doesNotMatch(openingLine, /^접수 초안이 준비되었습니다|^확인할게요\./);
+      assert.doesNotMatch(openingLine, /누수은|하자은|문의은|곰팡이은/);
       assert.match(reply, /제가 이해한 내용/);
       assert.match(reply, /지금 할 일/);
       assert.match(reply, /필요한 사진|사진/);

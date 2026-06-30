@@ -288,6 +288,16 @@ function priorityLabelForAnalysis(priority: number) {
   return labels[priority] ?? "확인";
 }
 
+function topicParticle(text: string) {
+  const lastHangul = Array.from(text).reverse().find((char) => /[가-힣]/.test(char));
+
+  if (!lastHangul) {
+    return "은";
+  }
+
+  return (lastHangul.charCodeAt(0) - 0xac00) % 28 === 0 ? "는" : "은";
+}
+
 function complaintStatusFor(ticketStatus: TicketStatus): ComplaintStatus {
   const map: Record<TicketStatus, ComplaintStatus> = {
     RECEIVED: "SUBMITTED",
@@ -4223,6 +4233,7 @@ export class RoomlogService {
     const tenantThreadText = this.tenantThreadText(session);
     const safetyLines = this.safetyGuidance(tenantThreadText, draft);
     const photoDeferralInfo = session ? this.detectPhotoDeferralInfo(session) : undefined;
+    const openingLine = this.conversationalIntakeOpening(draft, safetyLines);
     const tenantGuidanceLines = draft.tenantGuidance.filter(
       (line) => !(safetyLines.length && /(전기|콘센트|스위치|물고임)/.test(line))
     );
@@ -4249,6 +4260,7 @@ export class RoomlogService {
 
     if (!draft.readyToFinalize) {
       return [
+        openingLine,
         "확인할게요. 이 상담 스레드에서 이어서 정리하고 있어요.",
         "제가 이해한 내용",
         `- ${draft.summary}`,
@@ -4285,6 +4297,7 @@ export class RoomlogService {
     }
 
     return [
+      openingLine,
       "접수 초안이 준비되었습니다. 이 상담 스레드의 내용을 아래처럼 정리했습니다.",
       "제가 이해한 내용",
       `- ${draft.summary}`,
@@ -4318,6 +4331,26 @@ export class RoomlogService {
       "- 접수 확정 가능: 내용이 맞으면 관리자 티켓으로 전달할 수 있습니다.",
       "- 이후 답변과 사진도 같은 상담 스레드에 이어서 저장됩니다."
     ].filter(Boolean).join("\n");
+  }
+
+  private conversationalIntakeOpening(draft: IntakeDraft, safetyLines: string[]) {
+    const location = draft.location?.trim();
+    const detail =
+      draft.detailCategory && draft.detailCategory !== "확인 필요"
+        ? draft.detailCategory
+        : draft.category;
+    const subject = [location, detail].filter(Boolean).join(" ");
+    const subjectLabel = subject || "말씀하신 내용";
+    const priorityLabel = `P${draft.priority} ${priorityLabelForAnalysis(draft.priority)}`;
+    const safetySuffix = safetyLines.length
+      ? " 전기·가스·침수 같은 안전 위험부터 먼저 보수적으로 확인하겠습니다."
+      : "";
+
+    if (draft.readyToFinalize) {
+      return `${subjectLabel}${topicParticle(subjectLabel)} ${priorityLabel} 접수 초안으로 정리할 수 있어요.${safetySuffix}`;
+    }
+
+    return `${subjectLabel} 상황으로 이해했고, ${priorityLabel} 기준으로 필요한 정보만 더 확인할게요.${safetySuffix}`;
   }
 
   private visibleIntakeQuestions(draft: IntakeDraft) {
@@ -4400,35 +4433,36 @@ export class RoomlogService {
       return composed;
     }
 
-    const compact = generated.replace(/\s+/g, "");
+    const contextualized = this.withThreadSpecificOpening(generated, draft, session);
+    const compact = contextualized.replace(/\s+/g, "");
     const isTerse =
-      generated.length < 60 ||
+      contextualized.length < 60 ||
       /^(확인했습니다|네|알겠습니다|접수했습니다|처리하겠습니다)[.!。]*$/.test(compact);
     const tenantThreadText = this.tenantThreadText(session);
     const photoDeferralInfo = session ? this.detectPhotoDeferralInfo(session) : undefined;
     const needsSafety = this.safetyGuidance(tenantThreadText, draft).length > 0;
     const lacksSafety =
-      needsSafety && !/(안전|전기|콘센트|스위치|가스|환기|불꽃|만지지|119|문이)/.test(generated);
+      needsSafety && !/(안전|전기|콘센트|스위치|가스|환기|불꽃|만지지|119|문이)/.test(contextualized);
     const needsPhoto =
       draft.category === "하자" &&
       (draft.photoRequested ||
         draft.photoAnalysis.comparisonStatus === "추가 사진 필요" ||
         draft.nextQuestions.some((question) => /사진|촬영|근접|전체/.test(question)));
-    const lacksPhoto = needsPhoto && !/(사진|촬영|첨부|근접|전체)/.test(generated);
+    const lacksPhoto = needsPhoto && !/(사진|촬영|첨부|근접|전체)/.test(contextualized);
     const needsVisit =
       draft.requiredInfo.some((item) => /방문|시간/.test(item)) ||
       draft.nextQuestions.some((question) => /방문|시간/.test(question));
-    const lacksVisit = needsVisit && !/(방문|시간|일정|가능)/.test(generated);
+    const lacksVisit = needsVisit && !/(방문|시간|일정|가능)/.test(contextualized);
     const needsQuestion = !draft.readyToFinalize && draft.nextQuestions.length > 0;
-    const lacksQuestion = needsQuestion && !/[?？]|알려주|올려주|확인해/.test(generated);
+    const lacksQuestion = needsQuestion && !/[?？]|알려주|올려주|확인해/.test(contextualized);
     const lacksRoomlogWorkflow =
       !/(상담\s*스레드|같은 상담|이어.*저장|접수\s*(초안|상태|확정)|관리자|티켓)/.test(
-        generated
+        contextualized
       );
     const repeatsDeferredPhotoPrompt =
       Boolean(photoDeferralInfo) &&
       /(바로 답변 예시|문제 부위[^.。!?\n]{0,40}사진[^.。!?\n]{0,40}올려|근접 사진[^.。!?\n]{0,40}전체 사진[^.。!?\n]{0,40}올려)/.test(
-        generated
+        contextualized
       );
 
     if (
@@ -4443,7 +4477,37 @@ export class RoomlogService {
       return composed;
     }
 
-    return generated;
+    return contextualized;
+  }
+
+  private withThreadSpecificOpening(
+    message: string,
+    draft: IntakeDraft,
+    session?: IntakeSession
+  ) {
+    const lines = message.split(/\r?\n/);
+    const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
+
+    if (firstContentIndex < 0) {
+      return message;
+    }
+
+    const firstLine = lines[firstContentIndex].trim();
+
+    if (
+      !/^(확인할게요|접수 초안이 준비되었습니다|알겠습니다|네[,. ]|내용 확인했습니다)/.test(
+        firstLine
+      )
+    ) {
+      return message;
+    }
+
+    lines[firstContentIndex] = this.conversationalIntakeOpening(
+      draft,
+      this.safetyGuidance(this.tenantThreadText(session), draft)
+    );
+
+    return lines.join("\n").trim();
   }
 
   private ensureRealtimeAssistantReplyQuality(message: string, fallbackMessage: string) {
