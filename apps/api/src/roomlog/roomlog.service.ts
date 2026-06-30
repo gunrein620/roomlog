@@ -1030,10 +1030,18 @@ export class RoomlogService {
   }
 
   private presentIntakeMessages(messages: IntakeMessage[]) {
-    return messages.map((message) => ({
+    return messages.map((message) => this.presentIntakeMessage(message));
+  }
+
+  private presentIntakeMessage(message: IntakeMessage) {
+    return {
       ...message,
+      messageText:
+        message.sender === "AI_ASSISTANT"
+          ? this.sanitizeAssistantDisplayText(message.messageText)
+          : message.messageText,
       attachmentUrls: [...message.attachmentUrls]
-    }));
+    };
   }
 
   private presentRealtimeTurnSummary(session: IntakeSession, assistantMessageText: string) {
@@ -5890,10 +5898,7 @@ export class RoomlogService {
           matchedSignals: [...candidate.matchedSignals]
         }))
       },
-      messages: session.messages.map((message) => ({
-        ...message,
-        attachmentUrls: [...message.attachmentUrls]
-      })),
+      messages: session.messages.map((message) => this.presentIntakeMessage(message)),
       room: this.store.rooms.find((room) => room.id === session.roomId)
     };
   }
@@ -5932,7 +5937,7 @@ export class RoomlogService {
         "아직 세입자 메시지가 없습니다."
       ),
       lastAssistantMessage: this.compactThreadMessage(
-        lastAssistantMessage?.messageText,
+        this.sanitizeAssistantDisplayText(lastAssistantMessage?.messageText),
         "AI가 상담 시작을 기다리고 있습니다."
       ),
       messageCount: session.messages.length,
@@ -5993,6 +5998,24 @@ export class RoomlogService {
     }
 
     return text.length > 86 ? `${text.slice(0, 83)}...` : text;
+  }
+
+  private sanitizeAssistantDisplayText(messageText: string | undefined) {
+    if (!messageText) {
+      return "";
+    }
+
+    const sanitized = messageText
+      .replace(
+        /OpenAI\s*상담\s*생성에\s*일시적으로\s*연결하지\s*못해\s*로컬\s*안전\s*지침으로\s*먼저\s*정리합니다[.。!?]?\s*/gi,
+        ""
+      )
+      .replace(/OpenAI[^.。!?\n]{0,120}(?:fallback|실패)[^.。!?\n]*[.。!?]?\s*/gi, "")
+      .replace(/로컬\s*안전\s*지침으로\s*먼저\s*정리합니다[.。!?]?\s*/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return sanitized || "상담 내용을 기준으로 접수 초안을 정리했습니다.";
   }
 
   private presentMoveInChecklistItem(item: MoveInChecklistItem) {

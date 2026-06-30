@@ -1464,6 +1464,35 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("hides legacy OpenAI fallback internals when presenting stored intake threads", () => {
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+    const storedSession = (service as any).store.intakeSessions.find(
+      (item: { id: string }) => item.id === session.id
+    );
+
+    storedSession.messages.push({
+      id: "imsg-legacy-fallback-copy",
+      sessionId: session.id,
+      sender: "AI_ASSISTANT",
+      messageText:
+        "OpenAI 상담 생성에 일시적으로 연결하지 못해 로컬 안전 지침으로 먼저 정리합니다. 접수 초안이 준비되었습니다. 이 상담 스레드의 내용을 관리자에게 전달할 수 있습니다.",
+      attachmentUrls: [],
+      inputMode: "CHAT",
+      createdAt: new Date().toISOString()
+    });
+    storedSession.updatedAt = new Date().toISOString();
+
+    const listed = service.listIntakeSessions("tenant-demo").find((item) => item.id === session.id);
+    const detail = service.getIntakeSession("tenant-demo", session.id);
+    const assistantMessage = detail.messages.at(-1)?.messageText ?? "";
+
+    assert.ok(listed);
+    assert.doesNotMatch(listed.threadSummary.lastAssistantMessage, /OpenAI|로컬 안전 지침|fallback|실패/);
+    assert.doesNotMatch(assistantMessage, /OpenAI|로컬 안전 지침|fallback|실패/);
+    assert.match(assistantMessage, /접수 초안|상담 스레드|관리자/);
+  });
+
   it("chains OpenAI Responses within one intake thread without leaking across threads", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     const originalChatModel = process.env.OPENAI_CHAT_MODEL;
