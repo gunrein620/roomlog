@@ -2,7 +2,10 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import {
   consultationThreadBadges,
+  consultationThreadFilterOptions,
+  consultationThreadFilterCountLabel,
   consultationThreadNextAction,
+  filterConsultationThreads,
   type TenantThreadWorkflowSummary
 } from "./thread-workflow";
 
@@ -67,5 +70,73 @@ describe("tenant consultation thread workflow", () => {
         { label: "접수 가능", tone: "ready" }
       ]
     );
+  });
+
+  it("filters consultation threads into GPT-style workflow buckets", () => {
+    const threads = [
+      {
+        id: "needs-info",
+        threadSummary: {
+          ...baseSummary,
+          statusLabel: "추가 정보 2개 필요",
+          readyToFinalize: false
+        }
+      },
+      {
+        id: "ready",
+        threadSummary: {
+          ...baseSummary,
+          statusLabel: "접수 확정 가능",
+          openSlotCount: 0,
+          requiredInfoCount: 0,
+          unresolvedQuestionCount: 0,
+          readyToFinalize: true
+        }
+      },
+      {
+        id: "finalized",
+        threadSummary: {
+          ...baseSummary,
+          statusLabel: "접수 완료",
+          readyToFinalize: true
+        }
+      },
+      {
+        id: "cancelled",
+        threadSummary: {
+          ...baseSummary,
+          statusLabel: "취소됨",
+          readyToFinalize: false
+        }
+      }
+    ];
+
+    assert.deepEqual(
+      filterConsultationThreads(threads, "ACTIVE").map((thread) => thread.id),
+      ["needs-info"]
+    );
+    assert.deepEqual(
+      filterConsultationThreads(threads, "READY").map((thread) => thread.id),
+      ["ready"]
+    );
+    assert.deepEqual(
+      filterConsultationThreads(threads, "FINALIZED").map((thread) => thread.id),
+      ["finalized"]
+    );
+    assert.deepEqual(
+      filterConsultationThreads(threads, "ALL").map((thread) => thread.id),
+      ["needs-info", "ready", "finalized", "cancelled"]
+    );
+  });
+
+  it("builds concise filter labels with visible counts", () => {
+    assert.deepEqual(
+      consultationThreadFilterOptions.map((option) => option.value),
+      ["ACTIVE", "READY", "FINALIZED", "ALL"]
+    );
+    assert.equal(consultationThreadFilterCountLabel("ACTIVE", 12), "진행 중 12");
+    assert.equal(consultationThreadFilterCountLabel("READY", 3), "접수 가능 3");
+    assert.equal(consultationThreadFilterCountLabel("FINALIZED", 8), "접수 완료 8");
+    assert.equal(consultationThreadFilterCountLabel("ALL", 23), "전체 23");
   });
 });

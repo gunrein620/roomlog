@@ -5,6 +5,13 @@ export type ThreadWorkflowBadge = {
   tone: ThreadWorkflowBadgeTone;
 };
 
+export type ConsultationThreadFilter = "ACTIVE" | "READY" | "FINALIZED" | "ALL";
+
+export type ConsultationThreadFilterOption = {
+  value: ConsultationThreadFilter;
+  label: string;
+};
+
 export type TenantThreadWorkflowSummary = {
   statusLabel: string;
   channelLabel: string;
@@ -18,6 +25,13 @@ export type TenantThreadWorkflowSummary = {
 };
 
 const intakeSlotTotal = 6;
+
+export const consultationThreadFilterOptions: ConsultationThreadFilterOption[] = [
+  { value: "ACTIVE", label: "진행 중" },
+  { value: "READY", label: "접수 가능" },
+  { value: "FINALIZED", label: "접수 완료" },
+  { value: "ALL", label: "전체" }
+];
 
 export function consultationThreadNextAction(summary: TenantThreadWorkflowSummary) {
   if (summary.statusLabel === "접수 완료") {
@@ -80,4 +94,42 @@ export function consultationThreadBadges(summary: TenantThreadWorkflowSummary) {
   }
 
   return badges;
+}
+
+export function consultationThreadMatchesFilter(
+  summary: TenantThreadWorkflowSummary,
+  filter: ConsultationThreadFilter
+) {
+  if (filter === "ALL") {
+    return true;
+  }
+
+  if (filter === "FINALIZED") {
+    return summary.statusLabel === "접수 완료";
+  }
+
+  if (filter === "READY") {
+    return summary.statusLabel !== "접수 완료" && summary.readyToFinalize;
+  }
+
+  return (
+    summary.statusLabel !== "접수 완료" &&
+    summary.statusLabel !== "취소됨" &&
+    !summary.readyToFinalize
+  );
+}
+
+export function filterConsultationThreads<
+  T extends { threadSummary: TenantThreadWorkflowSummary }
+>(threads: T[], filter: ConsultationThreadFilter) {
+  return threads.filter((thread) => consultationThreadMatchesFilter(thread.threadSummary, filter));
+}
+
+export function consultationThreadFilterCountLabel(
+  filter: ConsultationThreadFilter,
+  count: number
+) {
+  const option = consultationThreadFilterOptions.find((item) => item.value === filter);
+
+  return `${option?.label ?? "상담"} ${count}`;
 }

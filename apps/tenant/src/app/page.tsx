@@ -49,7 +49,11 @@ import {
 } from "./question-reply";
 import {
   consultationThreadBadges,
-  consultationThreadNextAction
+  consultationThreadFilterCountLabel,
+  consultationThreadFilterOptions,
+  consultationThreadNextAction,
+  filterConsultationThreads,
+  type ConsultationThreadFilter
 } from "./thread-workflow";
 import { emptyConsultationState } from "./empty-consultation";
 import { consultationThreadContextHighlights } from "./thread-context";
@@ -558,6 +562,7 @@ export default function TenantApp() {
   const [aiFeedbackPhotoFile, setAiFeedbackPhotoFile] = useState<File | null>(null);
   const [aiFeedbackPhotoInputKey, setAiFeedbackPhotoInputKey] = useState(0);
   const [inputMode, setInputMode] = useState<IntakeMode>("CHAT");
+  const [threadFilter, setThreadFilter] = useState<ConsultationThreadFilter>("ACTIVE");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [loginForm, setLoginForm] = useState(emptyLogin);
   const [signupForm, setSignupForm] = useState(signupInitial);
@@ -608,6 +613,20 @@ export default function TenantApp() {
     () => emptyConsultationState(sessions.length),
     [sessions.length]
   );
+  const visibleSessions = useMemo(
+    () => filterConsultationThreads(sessions, threadFilter),
+    [sessions, threadFilter]
+  );
+  const threadFilterCounts = useMemo(() => {
+    const counts: Record<ConsultationThreadFilter, number> = {
+      ACTIVE: filterConsultationThreads(sessions, "ACTIVE").length,
+      READY: filterConsultationThreads(sessions, "READY").length,
+      FINALIZED: filterConsultationThreads(sessions, "FINALIZED").length,
+      ALL: sessions.length
+    };
+
+    return counts;
+  }, [sessions]);
   const selectedPhotoEvidence = useMemo(
     () => (selectedSession ? photoEvidenceItems(selectedSession.draft.photoAnalysis) : []),
     [selectedSession]
@@ -651,6 +670,16 @@ export default function TenantApp() {
   useEffect(() => {
     selectedSessionRef.current = selectedSession;
   }, [selectedSession]);
+
+  useEffect(() => {
+    if (!visibleSessions.length) {
+      return;
+    }
+
+    if (!visibleSessions.some((session) => session.id === selectedSessionId)) {
+      setSelectedSessionId(visibleSessions[0].id);
+    }
+  }, [selectedSessionId, visibleSessions]);
 
   function updateDraftCorrection(sessionId: string, patch: Partial<DraftCorrection>) {
     setDraftCorrections((current) => {
@@ -1778,9 +1807,24 @@ export default function TenantApp() {
           <button type="button" className="primary" onClick={() => void startSession()}>
             새 상담 시작
           </button>
+          <div className="thread-filter-row" role="group" aria-label="상담 상태 필터">
+            {consultationThreadFilterOptions.map((option) => (
+              <button
+                type="button"
+                className={threadFilter === option.value ? "active" : ""}
+                onClick={() => setThreadFilter(option.value)}
+                key={option.value}
+              >
+                {consultationThreadFilterCountLabel(
+                  option.value,
+                  threadFilterCounts[option.value]
+                )}
+              </button>
+            ))}
+          </div>
 
           <div className="ticket-list thread-list">
-            {sessions.map((thread) => {
+            {visibleSessions.map((thread) => {
               const summary = thread.threadSummary;
               const workflowBadges = consultationThreadBadges(summary);
 
@@ -1813,6 +1857,9 @@ export default function TenantApp() {
                 </button>
               );
             })}
+            {!visibleSessions.length ? (
+              <p className="empty compact-empty">이 상태의 상담 스레드가 없습니다.</p>
+            ) : null}
           </div>
 
           <div className="panel-heading compact second">

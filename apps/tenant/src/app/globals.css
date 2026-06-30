@@ -128,7 +128,8 @@ h3 {
 .ghost,
 .session button,
 .auth-tabs button,
-.mode-row button {
+.mode-row button,
+.thread-filter-row button {
   min-height: 40px;
   border: 0;
   border-radius: 4px;
@@ -146,7 +147,8 @@ h3 {
 .secondary,
 .ghost,
 .mode-row button,
-.auth-tabs button {
+.auth-tabs button,
+.thread-filter-row button {
   background: var(--fog);
   color: var(--navy);
 }
@@ -407,7 +409,8 @@ small,
 }
 
 .auth-tabs button.active,
-.mode-row button.active {
+.mode-row button.active,
+.thread-filter-row button.active {
   background: var(--navy);
   color: var(--paper);
 }
@@ -486,6 +489,22 @@ textarea {
   max-height: 320px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.thread-filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.thread-filter-row button {
+  min-height: 36px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.compact-empty {
+  margin: 0;
 }
 
 .ticket {
