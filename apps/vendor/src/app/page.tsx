@@ -5,6 +5,24 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 type AuthResult = {
   accessToken: string;
   name: string;
+  role: string;
+  userId: string;
+};
+
+type SignupInvitePreview = {
+  role: "TENANT" | "VENDOR";
+  inviteToken: string;
+  status: string;
+  expectedName: string;
+  invitedBy: string;
+  email?: string;
+  phone?: string;
+  emailLocked: boolean;
+  phoneLocked: boolean;
+  businessName?: string;
+  serviceArea?: string;
+  targetLabel: string;
+  signupUrl: string;
 };
 
 type Repair = {
@@ -14,6 +32,9 @@ type Repair = {
   description: string;
   estimateAmount?: number;
   estimateDescription?: string;
+  costBearer?: "LANDLORD" | "TENANT" | "PENDING";
+  estimateApprovedAt?: string;
+  estimateApprovalNote?: string;
   scheduledAt?: string;
   completionNote?: string;
   ticket: {
@@ -37,13 +58,44 @@ type Repair = {
       id: string;
       senderRole: string;
       messageText: string;
+      attachmentUrls: string[];
     }[];
   };
 };
 
+type Attachment = {
+  id: string;
+  fileUrl: string;
+};
+
+function costBearerLabel(costBearer?: "LANDLORD" | "TENANT" | "PENDING") {
+  if (costBearer === "LANDLORD") {
+    return "임대인 부담";
+  }
+
+  if (costBearer === "TENANT") {
+    return "임차인 부담 가능성";
+  }
+
+  if (costBearer === "PENDING") {
+    return "비용 주체 판단 대기";
+  }
+
+  return "비용 주체 미정";
+}
+
 const demoLogin = {
   email: "vendor@roomlog.test",
   password: "password123!"
+};
+
+const signupInitial = {
+  email: "",
+  password: "",
+  passwordConfirm: "",
+  name: "",
+  phone: "",
+  inviteToken: ""
 };
 
 function apiUrl(path: string) {
@@ -65,7 +117,9 @@ async function apiRequest<T>(path: string, token?: string, init: RequestInit = {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with ${response.status}`);
+    const body = await response.json().catch(() => undefined);
+    const message = Array.isArray(body?.message) ? body.message.join(", ") : body?.message;
+    throw new Error(message || `Request failed with ${response.status}`);
   }
 
   return (await response.json()) as T;
@@ -75,11 +129,19 @@ export default function VendorApp() {
   const [auth, setAuth] = useState<AuthResult | null>(null);
   const [repairs, setRepairs] = useState<Repair[]>([]);
   const [selectedId, setSelectedId] = useState("");
-  const [status, setStatus] = useState("협력업체 계정 연결 중");
+  const [status, setStatus] = useState("로그인 또는 회원가입이 필요합니다.");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [loginForm, setLoginForm] = useState(demoLogin);
+  const [signupForm, setSignupForm] = useState(signupInitial);
+  const [invitePreview, setInvitePreview] = useState<SignupInvitePreview | null>(null);
+  const [invitePreviewStatus, setInvitePreviewStatus] = useState("");
   const [estimateAmount, setEstimateAmount] = useState("120000");
   const [estimateDescription, setEstimateDescription] = useState("누수 원인 점검 및 실리콘 보강 작업");
   const [scheduledAt, setScheduledAt] = useState("2026-06-30T10:00");
   const [completionNote, setCompletionNote] = useState("현장 확인 후 누수 부위 보수 완료");
+  const [completionFiles, setCompletionFiles] = useState<File[]>([]);
+  const [vendorMessageText, setVendorMessageText] = useState("현장 도착 전 확인이 필요한 사항을 남깁니다.");
+  const [vendorMessageFiles, setVendorMessageFiles] = useState<File[]>([]);
 
   const selectedRepair = useMemo(
     () => repairs.find((repair) => repair.id === selectedId) ?? repairs[0],
@@ -97,22 +159,123 @@ export default function VendorApp() {
   }
 
   useEffect(() => {
-    async function login() {
-      try {
-        const result = await apiRequest<AuthResult>("/auth/login", undefined, {
-          method: "POST",
-          body: JSON.stringify(demoLogin)
-        });
-        setAuth(result);
-        setStatus(`${result.name} 업체 계정 연결됨`);
-        await refresh(result.accessToken);
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : "로그인 실패");
-      }
+    const inviteToken = new URLSearchParams(window.location.search).get("inviteToken")?.trim();
+
+    if (inviteToken) {
+      window.localStorage.removeItem("roomlog.vendor.auth");
+      setAuthMode("signup");
+      setSignupForm((current) => ({ ...current, inviteToken }));
+      setStatus("관리자 초대 토큰이 입력되었습니다. 업체 계정을 생성해주세요.");
+      return;
     }
 
-    void login();
+    const saved = window.localStorage.getItem("roomlog.vendor.auth");
+
+    if (!saved) {
+      return;
+    }
+
+    const parsed = JSON.parse(saved) as AuthResult;
+    setAuth(parsed);
+    setStatus(`${parsed.name} 업체 계정 연결됨`);
+    void refresh(parsed.accessToken).catch(() => {
+      window.localStorage.removeItem("roomlog.vendor.auth");
+      setAuth(null);
+      setStatus("세션이 만료되었습니다. 다시 로그인해주세요.");
+    });
   }, []);
+
+  useEffect(() => {
+    if (auth || authMode !== "signup") {
+      return;
+    }
+
+    const token = signupForm.inviteToken.trim();
+
+    if (!token) {
+      setInvitePreview(null);
+      setInvitePreviewStatus("");
+      return;
+    }
+
+    setInvitePreviewStatus("초대 확인 중");
+
+    const timer = window.setTimeout(() => {
+      void apiRequest<SignupInvitePreview>(
+        `/auth/invites/VENDOR/${encodeURIComponent(token)}`
+      )
+        .then((preview) => {
+          setInvitePreview(preview);
+          setInvitePreviewStatus("");
+          setSignupForm((current) => ({
+            ...current,
+            name: current.name || preview.expectedName,
+            email: preview.email ?? current.email,
+            phone: preview.phone ?? current.phone
+          }));
+          setStatus(`${preview.targetLabel} 초대가 확인되었습니다.`);
+        })
+        .catch((error) => {
+          setInvitePreview(null);
+          setInvitePreviewStatus(
+            error instanceof Error ? error.message : "초대 확인 실패"
+          );
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [auth, authMode, signupForm.inviteToken]);
+
+  async function completeAuth(result: AuthResult) {
+    setAuth(result);
+    window.localStorage.setItem("roomlog.vendor.auth", JSON.stringify(result));
+    setStatus(`${result.name} 업체 계정 연결됨`);
+    await refresh(result.accessToken);
+  }
+
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      setStatus("로그인 확인 중");
+      const result = await apiRequest<AuthResult>("/auth/login", undefined, {
+        method: "POST",
+        body: JSON.stringify(loginForm)
+      });
+      await completeAuth(result);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "로그인 실패");
+    }
+  }
+
+  async function submitSignup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const inviteToken = signupForm.inviteToken.trim();
+
+    if (inviteToken && invitePreview?.inviteToken !== inviteToken) {
+      setStatus(invitePreviewStatus || "초대 정보를 먼저 확인해주세요.");
+      return;
+    }
+
+    try {
+      setStatus("협력업체 계정 생성 중");
+      const result = await apiRequest<AuthResult>("/auth/signup", undefined, {
+        method: "POST",
+        body: JSON.stringify({ ...signupForm, role: "VENDOR" })
+      });
+      setSignupForm(signupInitial);
+      await completeAuth(result);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "회원가입 실패");
+    }
+  }
+
+  function logout() {
+    window.localStorage.removeItem("roomlog.vendor.auth");
+    setAuth(null);
+    setRepairs([]);
+    setSelectedId("");
+    setStatus("로그아웃되었습니다.");
+  }
 
   async function submitEstimate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -121,16 +284,20 @@ export default function VendorApp() {
       return;
     }
 
-    setStatus("견적 제출 중");
-    await apiRequest(`/vendor/repairs/${selectedRepair.id}/estimate`, auth.accessToken, {
-      method: "POST",
-      body: JSON.stringify({
-        estimateAmount: Number(estimateAmount),
-        estimateDescription
-      })
-    });
-    setStatus("견적이 제출되었습니다.");
-    await refresh();
+    try {
+      setStatus("견적 제출 중");
+      await apiRequest(`/vendor/repairs/${selectedRepair.id}/estimate`, auth.accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          estimateAmount: Number(estimateAmount),
+          estimateDescription
+        })
+      });
+      setStatus("견적이 제출되었습니다.");
+      await refresh();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "견적 제출 실패");
+    }
   }
 
   async function scheduleRepair() {
@@ -138,15 +305,70 @@ export default function VendorApp() {
       return;
     }
 
-    setStatus("방문 일정 저장 중");
-    await apiRequest(`/vendor/repairs/${selectedRepair.id}/schedule`, auth.accessToken, {
+    try {
+      setStatus("방문 일정 저장 중");
+      await apiRequest(`/vendor/repairs/${selectedRepair.id}/schedule`, auth.accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          scheduledAt: new Date(scheduledAt).toISOString()
+        })
+      });
+      setStatus("방문 일정이 저장되었습니다.");
+      await refresh();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "방문 일정 저장 실패");
+    }
+  }
+
+  async function uploadAttachment(file: File, token: string, category: string) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("category", category);
+
+    const response = await fetch(apiUrl("/attachments"), {
       method: "POST",
-      body: JSON.stringify({
-        scheduledAt: new Date(scheduledAt).toISOString()
-      })
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: formData
     });
-    setStatus("방문 일정이 저장되었습니다.");
-    await refresh();
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => undefined);
+      const message = Array.isArray(body?.message) ? body.message.join(", ") : body?.message;
+      throw new Error(message || `Upload failed with ${response.status}`);
+    }
+
+    return (await response.json()) as Attachment;
+  }
+
+  async function sendVendorMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!auth || !selectedRepair) {
+      return;
+    }
+
+    try {
+      setStatus("업체 메시지 저장 중");
+      const uploaded = await Promise.all(
+        vendorMessageFiles.map((file) => uploadAttachment(file, auth.accessToken, "WORK_PHOTO"))
+      );
+      await apiRequest(`/vendor/repairs/${selectedRepair.id}/messages`, auth.accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          messageText: vendorMessageText,
+          attachmentUrls: uploaded.map((item) => item.fileUrl)
+        })
+      });
+      setVendorMessageText("");
+      setVendorMessageFiles([]);
+      setStatus("업체 메시지가 티켓에 저장되었습니다.");
+      await refresh();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "업체 메시지 저장 실패");
+    }
   }
 
   async function reportCompletion() {
@@ -154,16 +376,187 @@ export default function VendorApp() {
       return;
     }
 
-    setStatus("완료 보고 제출 중");
-    await apiRequest(`/vendor/repairs/${selectedRepair.id}/report-completion`, auth.accessToken, {
-      method: "POST",
-      body: JSON.stringify({
-        completionNote,
-        completionPhotoUrls: ["/uploads/demo-completion.jpg"]
-      })
-    });
-    setStatus("완료 보고가 제출되었습니다.");
-    await refresh();
+    try {
+      setStatus(completionFiles.length ? "완료 사진 업로드 중" : "완료 보고 제출 중");
+      const uploaded = await Promise.all(
+        completionFiles.map((file) =>
+          uploadAttachment(file, auth.accessToken, "COMPLETION_PHOTO")
+        )
+      );
+      await apiRequest(`/vendor/repairs/${selectedRepair.id}/report-completion`, auth.accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          completionNote,
+          completionPhotoUrls: uploaded.map((item) => item.fileUrl)
+        })
+      });
+      setCompletionFiles([]);
+      setStatus("완료 보고가 제출되었습니다.");
+      await refresh();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "완료 보고 실패");
+    }
+  }
+
+  const canSubmitEstimate = selectedRepair
+    ? ["REQUESTED", "ACCEPTED"].includes(selectedRepair.status)
+    : false;
+  const canSchedule = selectedRepair
+    ? selectedRepair.status === "ESTIMATE_APPROVED"
+    : false;
+  const canReportCompletion = selectedRepair
+    ? ["SCHEDULED", "IN_PROGRESS"].includes(selectedRepair.status)
+    : false;
+
+  if (!auth) {
+    return (
+      <main className="shell auth-shell">
+        <section className="auth-hero">
+          <p className="eyebrow">Roomlog Vendor</p>
+          <h1>협력업체 작업 계정</h1>
+          <p>배정된 수리 요청을 확인하고 견적, 방문 일정, 완료 보고를 제출합니다.</p>
+        </section>
+
+        <section className="auth-card" aria-label="업체 인증">
+          <div className="auth-tabs">
+            <button
+              type="button"
+              className={authMode === "login" ? "active" : ""}
+              onClick={() => setAuthMode("login")}
+            >
+              로그인
+            </button>
+            <button
+              type="button"
+              className={authMode === "signup" ? "active" : ""}
+              onClick={() => setAuthMode("signup")}
+            >
+              회원가입
+            </button>
+          </div>
+
+          {authMode === "login" ? (
+            <form onSubmit={submitLogin}>
+              <label>
+                이메일
+                <input
+                  value={loginForm.email}
+                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+                />
+              </label>
+              <label>
+                비밀번호
+                <input
+                  type="password"
+                  value={loginForm.password}
+                  onChange={(event) =>
+                    setLoginForm({ ...loginForm, password: event.target.value })
+                  }
+                />
+              </label>
+              <button type="submit" className="primary">
+                로그인
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={submitSignup}>
+              <label>
+                담당자명
+                <input
+                  value={signupForm.name}
+                  onChange={(event) => setSignupForm({ ...signupForm, name: event.target.value })}
+                />
+              </label>
+              <label>
+                이메일
+                <input
+                  value={signupForm.email}
+                  disabled={Boolean(invitePreview?.emailLocked)}
+                  onChange={(event) =>
+                    setSignupForm({ ...signupForm, email: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                휴대폰
+                <input
+                  value={signupForm.phone}
+                  disabled={Boolean(invitePreview?.phoneLocked)}
+                  onChange={(event) =>
+                    setSignupForm({ ...signupForm, phone: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                초대 토큰
+                <input
+                  value={signupForm.inviteToken}
+                  onChange={(event) =>
+                    setSignupForm({ ...signupForm, inviteToken: event.target.value })
+                  }
+                />
+              </label>
+              {signupForm.inviteToken ? (
+                <div
+                  className={invitePreview ? "invite-preview" : "invite-preview pending"}
+                  aria-live="polite"
+                >
+                  {invitePreview ? (
+                    <>
+                      <strong>{invitePreview.businessName ?? invitePreview.targetLabel}</strong>
+                      <span>초대자: {invitePreview.invitedBy}</span>
+                      {invitePreview.serviceArea ? (
+                        <span>서비스 지역: {invitePreview.serviceArea}</span>
+                      ) : null}
+                      {invitePreview.email ? <span>이메일: {invitePreview.email}</span> : null}
+                    </>
+                  ) : (
+                    <span>{invitePreviewStatus || "초대 확인 중"}</span>
+                  )}
+                </div>
+              ) : null}
+              <label>
+                비밀번호
+                <input
+                  type="password"
+                  value={signupForm.password}
+                  onChange={(event) =>
+                    setSignupForm({ ...signupForm, password: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                비밀번호 확인
+                <input
+                  type="password"
+                  value={signupForm.passwordConfirm}
+                  onChange={(event) =>
+                    setSignupForm({ ...signupForm, passwordConfirm: event.target.value })
+                  }
+                />
+              </label>
+              <button type="submit" className="primary">
+                업체 계정 만들기
+              </button>
+            </form>
+          )}
+          <button
+            type="button"
+            className="ghost"
+            onClick={async () => {
+              const result = await apiRequest<AuthResult>("/auth/login", undefined, {
+                method: "POST",
+                body: JSON.stringify(demoLogin)
+              });
+              await completeAuth(result);
+            }}
+          >
+            데모 업체로 시작
+          </button>
+          <p className="status-line">{status}</p>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -177,6 +570,9 @@ export default function VendorApp() {
           <span>{status}</span>
           <button type="button" onClick={() => void refresh()}>
             새로고침
+          </button>
+          <button type="button" className="ghost small" onClick={logout}>
+            로그아웃
           </button>
         </div>
       </header>
@@ -247,13 +643,42 @@ export default function VendorApp() {
                     <dt>관리 요청</dt>
                     <dd>{selectedRepair.description}</dd>
                   </div>
+                  {selectedRepair.estimateAmount ? (
+                    <div>
+                      <dt>견적</dt>
+                      <dd>
+                        {selectedRepair.estimateAmount.toLocaleString()}원 ·{" "}
+                        {costBearerLabel(selectedRepair.costBearer)}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {selectedRepair.estimateApprovalNote ? (
+                    <div>
+                      <dt>승인 메모</dt>
+                      <dd>{selectedRepair.estimateApprovalNote}</dd>
+                    </div>
+                  ) : null}
                 </dl>
+                {selectedRepair.status === "ESTIMATE_SUBMITTED" ? (
+                  <p className="note">
+                    관리자가 견적을 승인하면 방문 일정을 확정할 수 있습니다.
+                  </p>
+                ) : null}
               </div>
               <ol className="timeline">
                 {selectedRepair.ticket.messages.map((message) => (
                   <li key={message.id}>
                     <span>{message.senderRole}</span>
                     <p>{message.messageText}</p>
+                    {message.attachmentUrls.length ? (
+                      <div className="timeline-attachments">
+                        {message.attachmentUrls.map((url) => (
+                          <a href={url} target="_blank" rel="noreferrer" key={url}>
+                            <img src={url} alt="작업 메시지 첨부 사진" />
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ol>
@@ -285,7 +710,7 @@ export default function VendorApp() {
                 onChange={(event) => setEstimateDescription(event.target.value)}
               />
             </label>
-            <button type="submit" className="primary" disabled={!selectedRepair}>
+            <button type="submit" className="primary" disabled={!canSubmitEstimate}>
               견적 제출
             </button>
           </form>
@@ -297,9 +722,38 @@ export default function VendorApp() {
               onChange={(event) => setScheduledAt(event.target.value)}
             />
           </label>
-          <button type="button" className="secondary" disabled={!selectedRepair} onClick={() => void scheduleRepair()}>
+          <button type="button" className="secondary" disabled={!canSchedule} onClick={() => void scheduleRepair()}>
             일정 저장
           </button>
+          <form onSubmit={sendVendorMessage}>
+            <label>
+              작업 메시지
+              <textarea
+                rows={3}
+                value={vendorMessageText}
+                onChange={(event) => setVendorMessageText(event.target.value)}
+              />
+            </label>
+            <label>
+              작업 사진
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) =>
+                  setVendorMessageFiles(Array.from(event.target.files ?? []))
+                }
+              />
+            </label>
+            {vendorMessageFiles.length ? (
+              <p className="file-note">
+                {vendorMessageFiles.map((file) => file.name).join(", ")}
+              </p>
+            ) : null}
+            <button type="submit" className="secondary" disabled={!selectedRepair}>
+              메시지 저장
+            </button>
+          </form>
           <label>
             완료 메모
             <textarea
@@ -308,7 +762,19 @@ export default function VendorApp() {
               onChange={(event) => setCompletionNote(event.target.value)}
             />
           </label>
-          <button type="button" className="primary" disabled={!selectedRepair} onClick={() => void reportCompletion()}>
+          <label>
+            완료 사진
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(event) => setCompletionFiles(Array.from(event.target.files ?? []))}
+            />
+          </label>
+          {completionFiles.length ? (
+            <p className="file-note">{completionFiles.map((file) => file.name).join(", ")}</p>
+          ) : null}
+          <button type="button" className="primary" disabled={!canReportCompletion} onClick={() => void reportCompletion()}>
             완료 보고
           </button>
         </section>

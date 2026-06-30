@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -6,10 +7,42 @@ import {
   Headers,
   Param,
   Patch,
-  Post
+  Post,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
-import { CreateComplaintInput, UserAccount, UserRole } from "./roomlog.types";
+import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  AttachmentCategory,
+  AddTenantComplaintMessageInput,
+  AddVendorRepairMessageInput,
+  ApproveRepairEstimateInput,
+  ConfirmTenantCompletionInput,
+  CreateComplaintInput,
+  CreateComplaintFromCallInput,
+  CreateIntakeSessionInput,
+  CreateMoveInChecklistItemInput,
+  FinalizeIntakeInput,
+  ManagerAssistantQueryInput,
+  ManagerReplyDraftInput,
+  ManagerTicketReplyInput,
+  RealtimeClientSecretInput,
+  RecordRealtimeTurnInput,
+  ReopenTenantComplaintInput,
+  ReviewTenantAiFeedbackInput,
+  SendIntakeMessageInput,
+  SubmitTenantAiFeedbackInput,
+  UserAccount,
+  UserRole
+} from "./roomlog.types";
 import { RoomlogService } from "./roomlog.service";
+
+type UploadedImageFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+};
 
 @Controller()
 export class RoomlogController {
@@ -21,8 +54,32 @@ export class RoomlogController {
   }
 
   @Post("auth/signup")
-  signup(@Body() body: { email: string; password: string; name: string; phone?: string; role: UserRole }) {
+  signup(
+    @Body()
+    body: {
+      email: string;
+      password: string;
+      passwordConfirm?: string;
+      name: string;
+      phone?: string;
+      role: UserRole;
+      buildingName?: string;
+      roomNo?: string;
+      address?: string;
+      inviteToken?: string;
+      businessName?: string;
+      serviceArea?: string;
+    }
+  ) {
     return this.roomlogService.signup(body);
+  }
+
+  @Get("auth/invites/:role/:inviteToken")
+  getSignupInvitePreview(
+    @Param("role") role: UserRole,
+    @Param("inviteToken") inviteToken: string
+  ) {
+    return this.roomlogService.getSignupInvitePreview(role, inviteToken);
   }
 
   @Post("auth/login")
@@ -35,14 +92,61 @@ export class RoomlogController {
     return this.roomlogService.getMe(authorization);
   }
 
+  @Post("attachments")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadAttachment(
+    @Headers("authorization") authorization: string | undefined,
+    @UploadedFile() file: UploadedImageFile | undefined,
+    @Body() body: { category?: AttachmentCategory }
+  ) {
+    const user = this.requireRole(authorization, ["TENANT", "LANDLORD", "VENDOR"]);
+
+    if (!file?.buffer) {
+      throw new BadRequestException("업로드할 이미지 파일이 필요합니다.");
+    }
+
+    return this.roomlogService.saveAttachment(user.id, {
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      category: body.category ?? "COMPLAINT_PHOTO"
+    });
+  }
+
   @Get("tenant/home")
   getTenantHome(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return {
       profile: this.roomlogService.getMe(authorization),
-      complaints: this.roomlogService.listTenantComplaints(user.id)
+      complaints: this.roomlogService.listTenantComplaints(user.id),
+      moveInChecklist: this.roomlogService.listTenantMoveInChecklist(user.id),
+      roomTimeline: this.roomlogService.getTenantRoomTimeline(user.id)
     };
+  }
+
+  @Get("tenant/room/timeline")
+  getTenantRoomTimeline(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantRoomTimeline(user.id);
+  }
+
+  @Get("tenant/move-in-checklist")
+  listTenantMoveInChecklist(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantMoveInChecklist(user.id);
+  }
+
+  @Post("tenant/move-in-checklist")
+  createTenantMoveInChecklistItem(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateMoveInChecklistItemInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createMoveInChecklistItem(user.id, body);
   }
 
   @Get("tenant/complaints")
@@ -62,6 +166,109 @@ export class RoomlogController {
     return this.roomlogService.createComplaint(user.id, body);
   }
 
+  @Post("tenant/complaints/from-call")
+  createComplaintFromCall(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateComplaintFromCallInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createComplaintFromCall(user.id, body);
+  }
+
+  @Post("tenant/complaints/intake/sessions")
+  createIntakeSession(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateIntakeSessionInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createIntakeSession(user.id, body);
+  }
+
+  @Get("tenant/complaints/intake/sessions")
+  listIntakeSessions(@Headers("authorization") authorization: string | undefined) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listIntakeSessions(user.id);
+  }
+
+  @Get("tenant/complaints/intake/sessions/:sessionId")
+  getIntakeSession(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("sessionId") sessionId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getIntakeSession(user.id, sessionId);
+  }
+
+  @Post("tenant/complaints/intake/sessions/:sessionId/messages")
+  sendIntakeMessage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("sessionId") sessionId: string,
+    @Body() body: SendIntakeMessageInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.sendIntakeMessage(user.id, sessionId, body);
+  }
+
+  @Post("tenant/complaints/intake/sessions/:sessionId/finalize")
+  finalizeIntakeSession(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("sessionId") sessionId: string,
+    @Body() body: FinalizeIntakeInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.finalizeIntakeSession(user.id, sessionId, body);
+  }
+
+  @Post("tenant/complaints/intake/sessions/:sessionId/realtime/client-secret")
+  createRealtimeClientSecret(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("sessionId") sessionId: string,
+    @Body() body: RealtimeClientSecretInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createRealtimeClientSecret(user.id, sessionId, body);
+  }
+
+  @Post("tenant/complaints/intake/sessions/:sessionId/realtime/turns")
+  recordRealtimeTurn(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("sessionId") sessionId: string,
+    @Body() body: RecordRealtimeTurnInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.recordRealtimeTurn(user.id, sessionId, body);
+  }
+
+  @Post("tenant/complaints/:complaintId/confirm-completion")
+  confirmTenantCompletion(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("complaintId") complaintId: string,
+    @Body() body: ConfirmTenantCompletionInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.confirmTenantCompletion(user.id, complaintId, body);
+  }
+
+  @Post("tenant/complaints/:complaintId/reopen")
+  reopenTenantComplaint(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("complaintId") complaintId: string,
+    @Body() body: ReopenTenantComplaintInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.reopenTenantComplaint(user.id, complaintId, body);
+  }
+
   @Get("tenant/complaints/:complaintId")
   getComplaint(
     @Headers("authorization") authorization: string | undefined,
@@ -76,19 +283,39 @@ export class RoomlogController {
   addTenantMessage(
     @Headers("authorization") authorization: string | undefined,
     @Param("complaintId") complaintId: string,
-    @Body() body: { messageText: string }
+    @Body() body: AddTenantComplaintMessageInput
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
-    const complaint = this.roomlogService.getComplaintDetail(user.id, complaintId);
 
-    return this.roomlogService.addMessage(user.id, complaint.ticket.id, body.messageText);
+    return this.roomlogService.addTenantComplaintMessage(user.id, complaintId, body);
+  }
+
+  @Post("tenant/complaints/:complaintId/ai-feedback")
+  submitTenantAiFeedback(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("complaintId") complaintId: string,
+    @Body() body: SubmitTenantAiFeedbackInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.submitTenantAiFeedback(user.id, complaintId, body);
   }
 
   @Get("manager/tickets")
   listManagerTickets(@Headers("authorization") authorization?: string) {
-    this.requireRole(authorization, ["LANDLORD"]);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.listTickets();
+    return this.roomlogService.listTicketsForManager(user.id);
+  }
+
+  @Post("manager/assistant/query")
+  queryManagerAssistant(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: ManagerAssistantQueryInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.queryManagerAssistant(user.id, body);
   }
 
   @Get("manager/tickets/:ticketId")
@@ -96,9 +323,29 @@ export class RoomlogController {
     @Headers("authorization") authorization: string | undefined,
     @Param("ticketId") ticketId: string
   ) {
-    this.requireRole(authorization, ["LANDLORD"]);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getTicketDetail(ticketId);
+    return this.roomlogService.getTicketDetailForManager(user.id, ticketId);
+  }
+
+  @Get("manager/rooms/:roomId/timeline")
+  getManagerRoomTimeline(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("roomId") roomId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerRoomTimeline(user.id, roomId);
+  }
+
+  @Get("manager/rooms/:roomId/move-in-checklist")
+  listManagerMoveInChecklist(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("roomId") roomId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerMoveInChecklist(user.id, roomId);
   }
 
   @Patch("manager/tickets/:ticketId")
@@ -129,11 +376,93 @@ export class RoomlogController {
     return this.roomlogService.requestAdditionalInfo(user.id, ticketId, body.messageText);
   }
 
+  @Post("manager/tickets/:ticketId/reply-draft")
+  draftManagerReply(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: ManagerReplyDraftInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.draftManagerTicketReply(user.id, ticketId, body);
+  }
+
+  @Post("manager/tickets/:ticketId/replies")
+  sendManagerReply(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Body() body: ManagerTicketReplyInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.sendManagerTicketReply(user.id, ticketId, body);
+  }
+
+  @Post("manager/tickets/:ticketId/ai-feedback/:feedbackId/review")
+  reviewTenantAiFeedback(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Param("feedbackId") feedbackId: string,
+    @Body() body: ReviewTenantAiFeedbackInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.reviewTenantAiFeedback(user.id, ticketId, feedbackId, body);
+  }
+
   @Get("manager/vendors")
   listVendors(@Headers("authorization") authorization?: string) {
     this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.listVendors();
+  }
+
+  @Post("manager/vendors/invites")
+  createVendorInvite(
+    @Headers("authorization") authorization: string | undefined,
+    @Body()
+    body: {
+      email?: string;
+      businessName: string;
+      contactPerson: string;
+      phone: string;
+      serviceArea: string;
+    }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createVendorInvite(user.id, body);
+  }
+
+  @Get("manager/vendors/invites")
+  listVendorInvites(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listVendorInvites(user.id);
+  }
+
+  @Post("manager/tenants/invites")
+  createTenantInvite(
+    @Headers("authorization") authorization: string | undefined,
+    @Body()
+    body: {
+      roomId: string;
+      email?: string;
+      tenantName: string;
+      phone?: string;
+      moveInDate?: string;
+    }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createTenantInvite(user.id, body);
+  }
+
+  @Get("manager/tenants/invites")
+  listTenantInvites(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listTenantInvites(user.id);
   }
 
   @Post("manager/tickets/:ticketId/assign-vendor")
@@ -158,6 +487,17 @@ export class RoomlogController {
     return this.roomlogService.approveCompletion(user.id, ticketId, body.note);
   }
 
+  @Post("manager/repairs/:repairId/approve-estimate")
+  approveRepairEstimate(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: ApproveRepairEstimateInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.approveRepairEstimate(user.id, repairId, body);
+  }
+
   @Get("vendor/repairs")
   listVendorRepairs(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["VENDOR"]);
@@ -173,6 +513,17 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["VENDOR"]);
 
     return this.roomlogService.getVendorRepair(user.id, repairId);
+  }
+
+  @Post("vendor/repairs/:repairId/messages")
+  addVendorRepairMessage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: AddVendorRepairMessageInput
+  ) {
+    const user = this.requireRole(authorization, ["VENDOR"]);
+
+    return this.roomlogService.addVendorRepairMessage(user.id, repairId, body);
   }
 
   @Post("vendor/repairs/:repairId/estimate")
