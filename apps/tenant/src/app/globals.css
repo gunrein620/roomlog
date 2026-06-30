@@ -281,6 +281,14 @@ small,
   line-height: 1.45;
 }
 
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 160px;
+}
+
 .realtime-panel {
   display: grid;
   grid-template-columns: 1fr auto;

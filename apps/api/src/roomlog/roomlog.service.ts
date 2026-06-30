@@ -874,6 +874,24 @@ export class RoomlogService {
     return this.presentIntakeSession(this.findIntakeSession(tenantId, sessionId));
   }
 
+  cancelIntakeSession(tenantId: string, sessionId: string) {
+    const session = this.findIntakeSession(tenantId, sessionId);
+
+    if (session.status === "FINALIZED") {
+      throw new BadRequestException("이미 접수된 상담은 취소할 수 없습니다.");
+    }
+
+    if (session.status === "CANCELLED") {
+      return { session: this.presentIntakeSession(session), cancelled: false };
+    }
+
+    session.status = "CANCELLED";
+    session.updatedAt = now();
+    this.persistStore();
+
+    return { session: this.presentIntakeSession(session), cancelled: true };
+  }
+
   async sendIntakeMessage(tenantId: string, sessionId: string, input: SendIntakeMessageInput) {
     const session = this.findIntakeSession(tenantId, sessionId);
 

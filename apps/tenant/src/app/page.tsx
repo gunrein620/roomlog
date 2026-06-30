@@ -1351,6 +1351,33 @@ export default function TenantApp() {
     );
   }
 
+  async function cancelSession() {
+    if (!auth || !selectedSession || selectedSession.status !== "ACTIVE") {
+      return;
+    }
+
+    setStatus("상담 스레드 닫는 중");
+    await disconnectRealtime();
+    const result = await apiRequest<{ session: IntakeSession }>(
+      `/tenant/complaints/intake/sessions/${selectedSession.id}/cancel`,
+      auth.accessToken,
+      { method: "POST" }
+    );
+
+    setSessions((current) =>
+      current.map((session) => (session.id === result.session.id ? result.session : session))
+    );
+    setDraftCorrections((current) => {
+      const next = { ...current };
+      delete next[selectedSession.id];
+      return next;
+    });
+    setSelectedSessionId((current) => (current === result.session.id ? "" : current));
+    setRealtimeSecret(null);
+    resetRealtimeTranscript();
+    setStatus("상담 스레드가 취소됨으로 정리되었습니다.");
+  }
+
   async function submitComplaintFollowup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1942,9 +1969,19 @@ export default function TenantApp() {
               ) : null}
             </div>
             {selectedSession ? (
-              <span className={`priority p${selectedSession.draft.priority}`}>
-                P{selectedSession.draft.priority} {priorityLabel(selectedSession.draft.priority)}
-              </span>
+              <div className="heading-actions">
+                <span className={`priority p${selectedSession.draft.priority}`}>
+                  P{selectedSession.draft.priority} {priorityLabel(selectedSession.draft.priority)}
+                </span>
+                <button
+                  type="button"
+                  className="ghost small"
+                  disabled={selectedSession.status !== "ACTIVE"}
+                  onClick={() => void cancelSession()}
+                >
+                  상담 닫기
+                </button>
+              </div>
             ) : null}
           </div>
 

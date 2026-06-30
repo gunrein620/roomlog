@@ -230,6 +230,16 @@ export class RoomlogController {
     return this.roomlogService.finalizeIntakeSession(user.id, sessionId, body);
   }
 
+  @Post("tenant/complaints/intake/sessions/:sessionId/cancel")
+  cancelIntakeSession(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("sessionId") sessionId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.cancelIntakeSession(user.id, sessionId);
+  }
+
   @Post("tenant/complaints/intake/sessions/:sessionId/realtime/client-secret")
   createRealtimeClientSecret(
     @Headers("authorization") authorization: string | undefined,

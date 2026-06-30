@@ -770,6 +770,48 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("cancels an active intake thread without deleting its conversation history", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", {
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "실수로 시작한 상담입니다. 닫아주세요.",
+        inputMode: "CHAT"
+      });
+      const cancelled = service.cancelIntakeSession("tenant-demo", session.id);
+      const detail = service.getIntakeSession("tenant-demo", session.id);
+
+      assert.equal(cancelled.session.status, "CANCELLED");
+      assert.equal(cancelled.session.threadSummary.statusLabel, "취소됨");
+      assert.equal(detail.messages.length >= 3, true);
+      assert.equal(
+        service
+          .listIntakeSessions("tenant-demo")
+          .some((thread) => thread.id === session.id && thread.status === "CANCELLED"),
+        true
+      );
+      await assert.rejects(
+        () =>
+          service.sendIntakeMessage("tenant-demo", session.id, {
+            messageText: "취소 후 이어쓰기",
+            inputMode: "CHAT"
+          }),
+        /종료된 상담/
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("stores a generated AI voice reply when a Realtime turn only has the tenant transcript", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

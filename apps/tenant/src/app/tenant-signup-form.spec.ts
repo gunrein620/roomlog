@@ -25,4 +25,12 @@ describe("tenant signup form layout", () => {
     assert.match(pageSource, /autoComplete="name"/);
     assert.match(pageSource, /autoComplete="address-line1"/);
   });
+
+  it("offers a cancel action for an accidentally started AI consultation thread", () => {
+    assert.match(pageSource, /상담 닫기/);
+    assert.match(
+      pageSource,
+      /tenant\/complaints\/intake\/sessions\/\$\{selectedSession\.id\}\/cancel/
+    );
+  });
 });
