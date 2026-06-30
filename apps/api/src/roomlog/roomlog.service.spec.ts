@@ -444,6 +444,54 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("includes current and baseline photo analysis in callbot Realtime instructions", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      service.createMoveInChecklistItem("tenant-demo", {
+        roomId: "room-301",
+        area: "화장실",
+        itemName: "천장",
+        memo: "입주 전 천장 누수 흔적 없음",
+        attachmentUrls: ["/api/files/baseline-bathroom-ceiling.jpg"]
+      });
+      const { session } = service.createIntakeSession("tenant-demo", {
+        sourceChannel: "CALLBOT",
+        roomId: "room-301"
+      });
+
+      await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText:
+          "301호 화장실 천장에서 물이 떨어지는 사진입니다. 오늘 저녁 8시 이후 방문 가능합니다.",
+        attachmentUrls: ["/api/files/current-ceiling-leak.jpg"],
+        inputMode: "VOICE"
+      });
+
+      const result = await service.createRealtimeClientSecret("tenant-demo", session.id, {
+        purpose: "CALLBOT_INTAKE",
+        voice: "marin"
+      });
+
+      assert.equal(result.mode, "not_configured");
+      assert.match(result.instructions, /# 사진 분석 상태/);
+      assert.match(result.instructions, /현재 첨부: \/api\/files\/current-ceiling-leak\.jpg/);
+      assert.match(
+        result.instructions,
+        /이전\/기준 사진: \/api\/files\/baseline-bathroom-ceiling\.jpg/
+      );
+      assert.match(result.instructions, /비교 상태: 신규 발생 가능성/);
+      assert.match(result.instructions, /문제 후보: 누수/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("records Realtime voice transcripts as isolated intake thread messages", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

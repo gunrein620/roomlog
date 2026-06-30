@@ -4813,6 +4813,15 @@ export class RoomlogService {
       `필요 정보: ${draft.requiredInfo.join(", ") || "없음"}`,
       `다음 질문 후보: ${draft.nextQuestions.join(" / ") || "없음"}`
     ].join("\n");
+    const photoAnalysisStatus = [
+      `현재 첨부: ${draft.photoAnalysis.attachmentUrls.join(", ") || "없음"}`,
+      `이전/기준 사진: ${draft.photoAnalysis.previousAttachmentUrls.join(", ") || "없음"}`,
+      `비교 상태: ${draft.photoAnalysis.comparisonStatus}`,
+      `문제 후보: ${draft.photoAnalysis.candidates.join(", ") || "관리자 확인 필요"}`,
+      `요약: ${draft.photoAnalysis.summary}`,
+      `근거: ${draft.photoAnalysis.evidence.join(" / ") || "없음"}`,
+      `재촬영 요청: ${draft.photoAnalysis.recommendedRetake ? "필요" : "불필요"}`
+    ].join("\n");
 
     return [
       "# 역할과 목표",
@@ -4857,6 +4866,9 @@ export class RoomlogService {
       "",
       "# 수집 정보 상태",
       intakeSlotStatus || "아직 수집된 정보가 없습니다.",
+      "",
+      "# 사진 분석 상태",
+      photoAnalysisStatus,
       "",
       "# 현재 접수 초안 상태",
       draftStatus,
