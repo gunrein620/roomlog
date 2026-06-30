@@ -1238,6 +1238,14 @@ export class RoomlogService {
               transcription: {
                 model: transcriptionModel,
                 language: "ko"
+              },
+              turn_detection: {
+                type: "server_vad",
+                threshold: input.purpose === "CALLBOT_INTAKE" ? 0.5 : 0.55,
+                prefix_padding_ms: 300,
+                silence_duration_ms: input.purpose === "CALLBOT_INTAKE" ? 650 : 750,
+                create_response: true,
+                interrupt_response: true
               }
             },
             output: {

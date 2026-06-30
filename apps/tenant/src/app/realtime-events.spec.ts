@@ -87,4 +87,28 @@ describe("tenant realtime events", () => {
     assert.equal(result.flushEventId, "resp_legacy_audio");
     assert.equal(result.state.assistantTranscript, "싱크대 하부 누수로 접수하겠습니다.");
   });
+
+  it("surfaces speech detection events as realtime conversation status", () => {
+    let state = emptyRealtimeTurnState();
+
+    let result = applyRealtimeEventToTurn(state, {
+      type: "input_audio_buffer.speech_started"
+    });
+    state = result.state;
+    assert.equal(result.status, "세입자 음성이 감지되었습니다.");
+    assert.equal(result.shouldFlush, false);
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "input_audio_buffer.speech_stopped"
+    });
+    state = result.state;
+    assert.equal(result.status, "음성 입력을 정리하는 중입니다.");
+    assert.equal(result.shouldFlush, false);
+
+    result = applyRealtimeEventToTurn(state, {
+      type: "input_audio_buffer.timeout_triggered"
+    });
+    assert.equal(result.status, "잠시 말씀이 없어 AI가 확인 질문을 준비합니다.");
+    assert.equal(result.shouldFlush, false);
+  });
 });

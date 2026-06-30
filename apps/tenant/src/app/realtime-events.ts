@@ -96,6 +96,12 @@ export function applyRealtimeEventToTurn(
   } else if (type === "response.done") {
     state.responseDone = true;
     state.responseEventId = realtimeEventId(payload);
+  } else if (type === "input_audio_buffer.speech_started") {
+    result.status = "세입자 음성이 감지되었습니다.";
+  } else if (type === "input_audio_buffer.speech_stopped") {
+    result.status = "음성 입력을 정리하는 중입니다.";
+  } else if (type === "input_audio_buffer.timeout_triggered") {
+    result.status = "잠시 말씀이 없어 AI가 확인 질문을 준비합니다.";
   }
 
   if (state.responseDone && state.userTranscriptDone && (state.userTranscript || state.assistantTranscript)) {

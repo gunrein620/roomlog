@@ -328,7 +328,17 @@ describe("RoomlogService", () => {
         model?: string;
         instructions?: string;
         audio?: {
-          input?: { transcription?: { model?: string; language?: string } };
+          input?: {
+            transcription?: { model?: string; language?: string };
+            turn_detection?: {
+              type?: string;
+              threshold?: number;
+              prefix_padding_ms?: number;
+              silence_duration_ms?: number;
+              create_response?: boolean;
+              interrupt_response?: boolean;
+            };
+          };
           output?: { voice?: string };
         };
       };
@@ -343,6 +353,15 @@ describe("RoomlogService", () => {
         "gpt-4o-mini-transcribe"
       );
       assert.equal(sessionPayload.audio?.input?.transcription?.language, "ko");
+      assert.equal(sessionPayload.audio?.input?.turn_detection?.type, "server_vad");
+      assert.equal(typeof sessionPayload.audio?.input?.turn_detection?.threshold, "number");
+      assert.equal(sessionPayload.audio?.input?.turn_detection?.prefix_padding_ms, 300);
+      assert.equal(
+        typeof sessionPayload.audio?.input?.turn_detection?.silence_duration_ms,
+        "number"
+      );
+      assert.equal(sessionPayload.audio?.input?.turn_detection?.create_response, true);
+      assert.equal(sessionPayload.audio?.input?.turn_detection?.interrupt_response, true);
       assert.equal(sessionPayload.audio?.output?.voice, "marin");
       assert.match(sessionPayload.instructions ?? "", /화장실/);
       assert.match(sessionPayload.instructions ?? "", /오늘 저녁 7시 이후/);
