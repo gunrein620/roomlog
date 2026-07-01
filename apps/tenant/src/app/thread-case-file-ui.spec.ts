@@ -16,6 +16,16 @@ describe("tenant thread case file UI", () => {
     assert.match(pageSource, /threadCaseFile\(selectedSession\)/);
   });
 
+  it("renders stored thread provenance before the case file", () => {
+    const provenanceIndex = pageSource.indexOf('aria-label="상담 스레드 기록"');
+    const caseFileIndex = pageSource.indexOf('aria-label="AI 케이스 파일"');
+
+    assert.ok(provenanceIndex > -1, "expected stored thread provenance");
+    assert.ok(caseFileIndex > -1, "expected an AI case file region");
+    assert.ok(provenanceIndex < caseFileIndex, "thread provenance should orient the case file");
+    assert.match(pageSource, /threadProvenance\(selectedSession\)/);
+  });
+
   it("wires case file actions to composer, photo input, and finalize flows", () => {
     assert.match(pageSource, /className="case-file-actions"/);
     assert.match(pageSource, /handleCaseFileAction\(action\)/);

@@ -61,6 +61,7 @@ import { emptyConsultationState } from "./empty-consultation";
 import { firstConsultationOnboarding } from "./first-consultation-onboarding";
 import { consultationThreadContextHighlights } from "./thread-context";
 import { threadCaseFile, type ThreadCaseFileAction } from "./thread-case-file";
+import { threadProvenance } from "./thread-provenance";
 import {
   canSubmitConsultationComposer,
   initialConsultationComposerText,
@@ -647,6 +648,10 @@ export default function TenantApp() {
   );
   const selectedThreadCaseFile = useMemo(
     () => (selectedSession ? threadCaseFile(selectedSession) : undefined),
+    [selectedSession]
+  );
+  const selectedThreadProvenance = useMemo(
+    () => (selectedSession ? threadProvenance(selectedSession) : undefined),
     [selectedSession]
   );
   const selectedQuickReplyMessageId = useMemo(
@@ -2137,6 +2142,23 @@ export default function TenantApp() {
                 </span>
               ))}
             </div>
+          ) : null}
+
+          {selectedThreadProvenance ? (
+            <section className="thread-provenance" aria-label="상담 스레드 기록">
+              <div>
+                <span>{selectedThreadProvenance.title}</span>
+                <strong>{selectedThreadProvenance.status}</strong>
+              </div>
+              <div className="thread-provenance-items">
+                {selectedThreadProvenance.items.map((item) => (
+                  <span className={`thread-provenance-item ${item.tone}`} key={item.label}>
+                    <strong>{item.label}</strong>
+                    {item.value}
+                  </span>
+                ))}
+              </div>
+            </section>
           ) : null}
 
           {selectedThreadCaseFile ? (
