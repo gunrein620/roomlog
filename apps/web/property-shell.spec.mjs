@@ -8,6 +8,7 @@ const layoutSource = readFileSync(new URL("./src/app/layout.tsx", import.meta.ur
 const manifestSource = readFileSync(new URL("./src/app/manifest.ts", import.meta.url), "utf8");
 const pwaRegisterSource = readFileSync(new URL("./src/app/pwa-register.tsx", import.meta.url), "utf8");
 const serviceWorkerSource = readFileSync(new URL("./public/sw.js", import.meta.url), "utf8");
+const nextConfigSource = readFileSync(new URL("./next.config.ts", import.meta.url), "utf8");
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["조건에 맞는 방", "지도 열기", "추천 매물", "매물 57804322", "전체"]) {
@@ -646,6 +647,17 @@ test("is configured as an installable PWA shell", () => {
   assert.match(serviceWorkerSource, /caches\.open/);
   assert.match(serviceWorkerSource, /fetch\(request\)/);
   assert.doesNotMatch(pageSource, /ROOMLOG PWA|오프라인 캐시|Roomlog|ROOMLOG|룸로그/);
+});
+
+test("keeps local development free from stale service worker caches", () => {
+  assert.match(pwaRegisterSource, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(pwaRegisterSource, /getRegistrations\(\)/);
+  assert.match(pwaRegisterSource, /\.unregister\(\)/);
+  assert.match(pwaRegisterSource, /caches\.keys\(\)/);
+  assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/_next\/"\)/);
+  assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
+  assert.match(serviceWorkerSource, /new URL\(request\.url\)/);
+  assert.match(nextConfigSource, /allowedDevOrigins:\s*\[\s*"127\.0\.0\.1"\s*\]/);
 });
 
 test("removes obvious mockup copy from the visible product shell", () => {

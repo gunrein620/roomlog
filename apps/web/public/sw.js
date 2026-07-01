@@ -29,8 +29,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+  const url = new URL(request.url);
 
-  if (request.method !== "GET") {
+  if (
+    request.method !== "GET" ||
+    url.origin !== self.location.origin ||
+    request.mode === "navigate" ||
+    url.pathname.startsWith("/_next/")
+  ) {
     return;
   }
 
@@ -44,7 +50,7 @@ self.addEventListener("fetch", (event) => {
         .then((response) => {
           const copy = response.clone();
 
-          if (response.ok && new URL(request.url).origin === self.location.origin) {
+          if (response.ok) {
             caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           }
 
