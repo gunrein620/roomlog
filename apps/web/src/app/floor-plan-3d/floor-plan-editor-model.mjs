@@ -279,6 +279,61 @@ export function convertWallsToWheretoputSimulator(walls, options = {}) {
   );
 }
 
+export function convertWallsToWheretoputRoom3D(walls, options = {}) {
+  const pixelToMmRatio = options.pixelToMmRatio ?? 20;
+  const height = options.height ?? WHERETOPUT_WALL_HEIGHT;
+  const depth = options.depth ?? WHERETOPUT_WALL_DEPTH;
+  const walls3D = walls.map((wall, index) => {
+    const startX = (wall.start.x * pixelToMmRatio) / 1000;
+    const startZ = (wall.start.y * pixelToMmRatio) / 1000;
+    const endX = (wall.end.x * pixelToMmRatio) / 1000;
+    const endZ = (wall.end.y * pixelToMmRatio) / 1000;
+    const length = Math.hypot(endX - startX, endZ - startZ);
+    const centerX = (startX + endX) / 2;
+    const centerZ = (startZ + endZ) / 2;
+    const rotation = Math.atan2(endZ - startZ, endX - startX);
+
+    return {
+      id: `wall-${index}`,
+      wall_id: wall.id,
+      start: { x: roundMetric(startX), y: roundMetric(startZ) },
+      end: { x: roundMetric(endX), y: roundMetric(endZ) },
+      length: roundMetric(length),
+      height,
+      depth,
+      position: [centerX, height / 2, centerZ],
+      rotation: [0, rotation, 0],
+      dimensions: {
+        width: roundMetric(length),
+        height,
+        depth
+      },
+      material: "wall",
+      original2D: wall,
+      wall_order: index
+    };
+  });
+
+  if (walls3D.length === 0) return walls3D;
+
+  const centerX = walls3D.reduce((sum, wall) => sum + wall.position[0], 0) / walls3D.length;
+  const centerZ = walls3D.reduce((sum, wall) => sum + wall.position[2], 0) / walls3D.length;
+
+  return walls3D.map((wall) => ({
+    ...wall,
+    start: {
+      x: roundMetric(wall.start.x - centerX),
+      y: roundMetric(wall.start.y - centerZ)
+    },
+    end: {
+      x: roundMetric(wall.end.x - centerX),
+      y: roundMetric(wall.end.y - centerZ)
+    },
+    position: [roundMetric(wall.position[0] - centerX), roundMetric(wall.position[1]), roundMetric(wall.position[2] - centerZ)],
+    rotation: wall.rotation.map(roundMetric)
+  }));
+}
+
 function lineLength(line) {
   return Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
 }

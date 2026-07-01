@@ -1,430 +1,642 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { OrbitControls } from "@react-three/drei";
+import { Canvas } from "@react-three/fiber";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createStarterWalls,
-  createWall,
   createWallsFromDetectedLines,
-  createWallsFromRegisteredPlan,
-  convertWallsTo3D,
+  convertWallsToWheretoputRoom3D,
   convertWallsToWheretoputSimulator,
   detectWallLinesFromImageData,
-  findNearestWall,
-  removeWall,
-  snapToGrid,
+  distanceToWall,
+  snapToOrthogonal,
   summarizeWalls
 } from "./floor-plan-editor-model.mjs";
 
-type EditorTool = "wall" | "select" | "eraser";
+type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "scale" | "none";
 type ViewMode = "2d" | "3d";
 type Point = { x: number; y: number };
-type Wall = { id: string; start: Point; end: Point };
+type Wall = { id: string | number; start: Point; end: Point };
 type WallSummary = { wallCount: number; approximateMeters: number; status: "초안" | "편집중" };
-type RegisteredPlan = {
-  dataUrl?: string;
-  height: number;
-  name: string;
-  source: "image" | "json";
-  width: number;
-};
-type ViewerRotation = { yaw: number; pitch: number };
-type ViewerDrag = ViewerRotation & { pointerId: number; x: number; y: number };
-type WallBox3D = {
-  id: string;
-  frontPath: string;
-  topPath: string;
-  startCapPath: string;
-  endCapPath: string;
-};
-type ConvertedFloorPlan3D = {
-  wallPanels: Array<{
-    id: string;
-    path: string;
-    topLine: { start: Point; end: Point };
-  }>;
-  wallBoxes: WallBox3D[];
-  floor: { path: string };
-};
-type WheretoputWall = {
+type DetectedLine = { x1: number; y1: number; x2: number; y2: number; orientation?: "horizontal" | "vertical" };
+type WheretoputWall3D = {
   dimensions: { width: number; height: number; depth: number };
   id: string;
+  material?: "wall";
+  original2D?: Wall;
   position: [number, number, number];
   rotation: [number, number, number];
 };
-type DetectedLine = { x1: number; y1: number; x2: number; y2: number; orientation?: "horizontal" | "vertical" };
 
-const tools: Array<{ id: EditorTool; label: string; hint: string }> = [
-  { id: "wall", label: "벽", hint: "드래그해서 수평/수직 벽 생성" },
-  { id: "select", label: "선택", hint: "가까운 벽 선택" },
-  { id: "eraser", label: "지우개", hint: "가까운 벽 삭제" }
-];
+const CANVAS_WIDTH = 1600;
+const CANVAS_HEIGHT = 1200;
+const GRID_SIZE_PX = 25;
+const DEFAULT_PIXEL_TO_MM_RATIO = 20;
 
-function toSvgPoint(event: React.PointerEvent<SVGSVGElement>): Point {
-  const rect = event.currentTarget.getBoundingClientRect();
+class WallDetector {
+  async detectWalls(file: File) {
+    const imageUrl = URL.createObjectURL(file);
+    const image = await loadImage(imageUrl);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (!context) throw new Error("Canvas context is not available");
+
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const lines = detectWallLinesFromImageData(imageData, {
+      darkThreshold: 185,
+      minRunLength: Math.max(32, Math.round(Math.min(canvas.width, canvas.height) * 0.08))
+    }) as DetectedLine[];
+
+    return {
+      imageHeight: canvas.height,
+      imageUrl,
+      imageWidth: canvas.width,
+      lines
+    };
+  }
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to load image"));
+    image.src = source;
+  });
+}
+
+function calculateDistance(p1: Point, p2: Point, pixelToMmRatio: number) {
+  return Math.round(Math.hypot(p2.x - p1.x, p2.y - p1.y) * pixelToMmRatio);
+}
+
+function snapCanvasPoint(point: Point) {
+  return {
+    x: Math.round(point.x / GRID_SIZE_PX) * GRID_SIZE_PX,
+    y: Math.round(point.y / GRID_SIZE_PX) * GRID_SIZE_PX
+  };
+}
+
+function projectPointOntoWall(point: Point, wall: Wall): Point {
+  const dx = wall.end.x - wall.start.x;
+  const dy = wall.end.y - wall.start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return wall.start;
+
+  const t = Math.max(
+    0,
+    Math.min(1, ((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / lengthSquared)
+  );
 
   return {
-    x: ((event.clientX - rect.left) / rect.width) * 960,
-    y: ((event.clientY - rect.top) / rect.height) * 620
+    x: wall.start.x + dx * t,
+    y: wall.start.y + dy * t
   };
+}
+
+function splitWallByEraseArea(wall: Wall, eraseStart: Point, eraseEnd: Point): Wall[] {
+  const parameterOnLine = (point: Point) => {
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared === 0) return 0;
+    return Math.max(0, Math.min(1, ((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / lengthSquared));
+  };
+  const tStart = Math.min(parameterOnLine(eraseStart), parameterOnLine(eraseEnd));
+  const tEnd = Math.max(parameterOnLine(eraseStart), parameterOnLine(eraseEnd));
+  const segments: Wall[] = [];
+
+  if (tEnd - tStart < 0.05) return [wall];
+
+  if (tStart > 0.05) {
+    segments.push({
+      id: `${wall.id}-a-${Date.now()}`,
+      start: wall.start,
+      end: {
+        x: wall.start.x + (wall.end.x - wall.start.x) * tStart,
+        y: wall.start.y + (wall.end.y - wall.start.y) * tStart
+      }
+    });
+  }
+
+  if (tEnd < 0.95) {
+    segments.push({
+      id: `${wall.id}-b-${Date.now()}`,
+      start: {
+        x: wall.start.x + (wall.end.x - wall.start.x) * tEnd,
+        y: wall.start.y + (wall.end.y - wall.start.y) * tEnd
+      },
+      end: wall.end
+    });
+  }
+
+  return segments;
 }
 
 function getStarterWalls(): Wall[] {
   return createStarterWalls() as Wall[];
 }
 
-function buildWall(start: Point, end: Point, id: string): Wall | null {
-  return createWall(start, end, id) as Wall | null;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function parseUploadedJsonWalls(source: unknown): Wall[] {
-  if (!source || typeof source !== "object" || !("walls" in source)) return [];
-
-  const walls = (source as { walls?: unknown }).walls;
-  if (!Array.isArray(walls)) return [];
-
-  return walls
-    .map((wall, index) => {
-      if (!wall || typeof wall !== "object") return null;
-      const candidate = wall as { end?: Point; id?: string; start?: Point };
-      if (!candidate.start || !candidate.end) return null;
-      return createWall(candidate.start, candidate.end, candidate.id ?? `json-wall-${index + 1}`) as Wall | null;
-    })
-    .filter((wall): wall is Wall => Boolean(wall));
-}
-
-function detectWallsFromRegisteredImage(plan: RegisteredPlan): Promise<Wall[]> {
-  return new Promise((resolve) => {
-    if (!plan.dataUrl) {
-      resolve([]);
-      return;
+function RoomFloor({ wallsData }: { wallsData: WheretoputWall3D[] }) {
+  const bounds = useMemo(() => {
+    if (wallsData.length === 0) {
+      return { centerX: 0, centerZ: 0, height: 8, width: 8 };
     }
 
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement("canvas");
-      const width = image.naturalWidth || plan.width;
-      const height = image.naturalHeight || plan.height;
-      canvas.width = width;
-      canvas.height = height;
+    const points = wallsData.flatMap((wall) => {
+      const half = wall.dimensions.width / 2;
+      const angle = wall.rotation[1];
+      return [
+        {
+          x: wall.position[0] - Math.cos(angle) * half,
+          z: wall.position[2] - Math.sin(angle) * half
+        },
+        {
+          x: wall.position[0] + Math.cos(angle) * half,
+          z: wall.position[2] + Math.sin(angle) * half
+        }
+      ];
+    });
+    const minX = Math.min(...points.map((point) => point.x));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const minZ = Math.min(...points.map((point) => point.z));
+    const maxZ = Math.max(...points.map((point) => point.z));
 
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) {
-        resolve([]);
-        return;
-      }
-
-      context.drawImage(image, 0, 0, width, height);
-
-      // wheretoput wallDetection: image -> binary mask -> line runs -> editor walls
-      const imageData = context.getImageData(0, 0, width, height);
-      const lines = detectWallLinesFromImageData(imageData, {
-        darkThreshold: 185,
-        minRunLength: Math.max(32, Math.round(Math.min(width, height) * 0.08))
-      }) as DetectedLine[];
-      const detectedWalls = createWallsFromDetectedLines(lines, {
-        height,
-        name: plan.name,
-        width
-      }) as Wall[];
-
-      resolve(detectedWalls);
+    return {
+      centerX: (minX + maxX) / 2,
+      centerZ: (minZ + maxZ) / 2,
+      height: Math.max(0.5, maxZ - minZ - 0.1),
+      width: Math.max(0.5, maxX - minX - 0.1)
     };
-    image.onerror = () => resolve([]);
-    image.src = plan.dataUrl;
-  });
+  }, [wallsData]);
+
+  return (
+    <mesh position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <planeGeometry args={[bounds.width, bounds.height]} />
+      <meshBasicMaterial color="#f3d9a0" />
+    </mesh>
+  );
+}
+
+function WallMesh({ wall }: { wall: WheretoputWall3D }) {
+  return (
+    <mesh position={wall.position} rotation={wall.rotation} receiveShadow castShadow>
+      <boxGeometry args={[wall.dimensions.width, wall.dimensions.height, wall.dimensions.depth]} />
+      <meshBasicMaterial color="#eeeeec" opacity={0.78} transparent />
+    </mesh>
+  );
+}
+
+function RoomlogThreeFloorPlanView({ wallsData }: { wallsData: WheretoputWall3D[] }) {
+  return (
+    <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
+      <Canvas camera={{ fov: 50, position: [14, 12, 18] }} shadows>
+        <color attach="background" args={["#626260"]} />
+        <ambientLight intensity={0.72} />
+        <directionalLight castShadow intensity={1.4} position={[6, 12, 8]} />
+        <RoomFloor wallsData={wallsData} />
+        {wallsData.map((wall) => (
+          <WallMesh key={wall.id} wall={wall} />
+        ))}
+        <OrbitControls
+          enableDamping
+          makeDefault
+          maxDistance={42}
+          maxPolarAngle={Math.PI / 2.05}
+          minDistance={5}
+          minPolarAngle={0.2}
+          target={[0, 0, 0]}
+        />
+      </Canvas>
+      <span className="floor-3d-hint">화면 드래그 회전</span>
+    </div>
+  );
 }
 
 export default function RoomlogFloorPlanEditor() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [walls, setWalls] = useState<Wall[]>(() => getStarterWalls());
-  const [draftStart, setDraftStart] = useState<Point | null>(null);
-  const [draftWall, setDraftWall] = useState<Wall | null>(null);
-  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
-  const [registeredPlan, setRegisteredPlan] = useState<RegisteredPlan | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPoint, setStartPoint] = useState<Point | null>(null);
+  const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
+  const [selectedWall, setSelectedWall] = useState<Wall | null>(null);
+  const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
+  const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("샘플 도면으로 시작");
-  const [viewerRotation, setViewerRotation] = useState<ViewerRotation>({ yaw: -0.55, pitch: 1 });
-  const [viewerDrag, setViewerDrag] = useState<ViewerDrag | null>(null);
+  const [pixelToMmRatio, setPixelToMmRatio] = useState(DEFAULT_PIXEL_TO_MM_RATIO);
+  const [isScaleSet, setIsScaleSet] = useState(false);
+  const [scaleWall, setScaleWall] = useState<Wall | null>(null);
+  const [scaleRealLength, setScaleRealLength] = useState("");
+  const [viewScale, setViewScale] = useState(1);
+  const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
+  const [partialEraserSelectedWall, setPartialEraserSelectedWall] = useState<Wall | null>(null);
+  const [isSelectingEraseArea, setIsSelectingEraseArea] = useState(false);
+  const [eraseAreaStart, setEraseAreaStart] = useState<Point | null>(null);
+  const [eraseAreaEnd, setEraseAreaEnd] = useState<Point | null>(null);
   const summary = useMemo(() => summarizeWalls(walls) as WallSummary, [walls]);
-  const convertedFloorPlan = useMemo(
-    () =>
-      convertWallsTo3D(walls, {
-        height: 112,
-        depth: 10,
-        camera: viewerRotation
-      }) as ConvertedFloorPlan3D,
-    [walls, viewerRotation]
-  );
-  const wheretoputWalls = useMemo(
-    () => convertWallsToWheretoputSimulator(walls) as WheretoputWall[],
-    [walls]
+  const wheretoputWalls = useMemo(() => convertWallsToWheretoputSimulator(walls as never) as WheretoputWall3D[], [walls]);
+  const roomWalls3D = useMemo(
+    () => convertWallsToWheretoputRoom3D(walls as never, { pixelToMmRatio }) as WheretoputWall3D[],
+    [walls, pixelToMmRatio]
   );
 
-  const selectedWall = walls.find((wall) => wall.id === selectedWallId) ?? null;
+  const drawCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-  function resetTransientState() {
-    setDraftStart(null);
-    setDraftWall(null);
-  }
+    const context = canvas.getContext("2d");
+    if (!context) return;
 
-  async function extractWallsFromRegisteredPlan() {
-    if (!registeredPlan) return;
-    const imageWalls =
-      registeredPlan.source === "image" ? await detectWallsFromRegisteredImage(registeredPlan) : [];
-    const extractedWalls =
-      imageWalls.length > 0 ? imageWalls : (createWallsFromRegisteredPlan(registeredPlan) as Wall[]);
-    setWalls(extractedWalls);
-    setSelectedWallId(null);
-    setUploadStatus(
-      imageWalls.length > 0
-        ? `${registeredPlan.name} 이미지 벽 ${imageWalls.length}개 추출`
-        : `${registeredPlan.name} 벽 자동 추출 완료`
-    );
-  }
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = CANVAS_WIDTH * dpr;
+    canvas.height = CANVAS_HEIGHT * dpr;
+    canvas.style.width = `${CANVAS_WIDTH}px`;
+    canvas.style.height = `${CANVAS_HEIGHT}px`;
 
-  function convertTo3D() {
-    if (registeredPlan && walls.length === 0) {
-      setWalls(createWallsFromRegisteredPlan(registeredPlan) as Wall[]);
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    context.save();
+    context.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    context.scale(viewScale, viewScale);
+    context.translate(viewOffset.x, viewOffset.y);
+
+    if (uploadedImage && cachedBackgroundImage?.complete) {
+      const imageAspect = cachedBackgroundImage.width / cachedBackgroundImage.height;
+      const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
+      let drawWidth = CANVAS_WIDTH * 0.8;
+      let drawHeight = drawWidth / imageAspect;
+      if (imageAspect <= canvasAspect) {
+        drawHeight = CANVAS_HEIGHT * 0.8;
+        drawWidth = drawHeight * imageAspect;
+      }
+
+      context.globalAlpha = backgroundOpacity;
+      context.drawImage(cachedBackgroundImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      context.globalAlpha = 1;
     }
-    resetTransientState();
-    setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
+
+    context.strokeStyle = "#e0e0e0";
+    context.lineWidth = 0.5 / viewScale;
+    for (let x = -5000; x <= 5000; x += GRID_SIZE_PX) {
+      context.beginPath();
+      context.moveTo(x, -5000);
+      context.lineTo(x, 5000);
+      context.stroke();
+    }
+    for (let y = -5000; y <= 5000; y += GRID_SIZE_PX) {
+      context.beginPath();
+      context.moveTo(-5000, y);
+      context.lineTo(5000, y);
+      context.stroke();
+    }
+
+    const drawWall = (wall: Wall, variant: "normal" | "draft" | "selected" | "hover" | "scale" | "erase") => {
+      const colors = {
+        draft: "rgba(43, 43, 43, 0.7)",
+        erase: "#ff0000",
+        hover: "#0066ff",
+        normal: "rgba(43, 43, 43, 0.82)",
+        scale: "rgba(0, 68, 255, 0.76)",
+        selected: "#0066ff"
+      };
+      context.strokeStyle = colors[variant];
+      context.lineWidth = (variant === "draft" ? 10 : 8) / viewScale;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      if (variant === "draft") context.setLineDash([3 / viewScale, 3 / viewScale]);
+      context.beginPath();
+      context.moveTo(wall.start.x, wall.start.y);
+      context.lineTo(wall.end.x, wall.end.y);
+      context.stroke();
+      context.setLineDash([]);
+
+      if (variant !== "scale" && variant !== "erase") {
+        const midX = (wall.start.x + wall.end.x) / 2;
+        const midY = (wall.start.y + wall.end.y) / 2;
+        const angle = Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x);
+        const adjustedAngle = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle;
+        context.save();
+        context.translate(midX, midY);
+        context.rotate(adjustedAngle);
+        context.fillStyle = variant === "draft" ? "#0066ff" : "#333333";
+        context.font = `bold ${12 / viewScale}px Arial, sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "top";
+        context.fillText(`${calculateDistance(wall.start, wall.end, pixelToMmRatio)}mm`, 0, 8 / viewScale);
+        context.restore();
+      }
+    };
+
+    walls.forEach((wall) => {
+      if (selectedWall?.id === wall.id) drawWall(wall, "selected");
+      else if (partialEraserSelectedWall?.id === wall.id) drawWall(wall, "erase");
+      else if (hoveredWall?.id === wall.id) drawWall(wall, "hover");
+      else drawWall(wall, "normal");
+    });
+
+    if (scaleWall && tool === "scale") drawWall(scaleWall, "scale");
+    if (isDrawing && startPoint && currentPoint) drawWall({ id: "draft", start: startPoint, end: currentPoint }, "draft");
+    if (isSelectingEraseArea && eraseAreaStart && eraseAreaEnd) {
+      drawWall({ id: "erase-draft", start: eraseAreaStart, end: eraseAreaEnd }, "erase");
+    }
+
+    context.restore();
+  }, [
+    backgroundOpacity,
+    cachedBackgroundImage,
+    currentPoint,
+    eraseAreaEnd,
+    eraseAreaStart,
+    hoveredWall,
+    isDrawing,
+    isSelectingEraseArea,
+    partialEraserSelectedWall,
+    pixelToMmRatio,
+    scaleWall,
+    selectedWall,
+    startPoint,
+    tool,
+    uploadedImage,
+    viewOffset,
+    viewScale,
+    walls
+  ]);
+
+  useEffect(() => {
+    drawCanvas();
+  }, [drawCanvas]);
+
+  useEffect(() => {
+    if (!uploadedImage) {
+      setCachedBackgroundImage(null);
+      return;
+    }
+
+    let cancelled = false;
+    loadImage(uploadedImage).then((image) => {
+      if (!cancelled) setCachedBackgroundImage(image);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uploadedImage]);
+
+  function getCanvasCoordinates(event: React.MouseEvent<HTMLCanvasElement>): Point {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left - rect.width / 2) / viewScale - viewOffset.x,
+      y: (event.clientY - rect.top - rect.height / 2) / viewScale - viewOffset.y
+    };
   }
 
-  function handlePlanUpload(event: React.ChangeEvent<HTMLInputElement>) {
+  function findClosestWall(point: Point, maxDistance: number) {
+    return walls.reduce<{ distance: number; wall: Wall | null }>(
+      (closest, wall) => {
+        const distance = distanceToWall(point, wall as never);
+        return distance < closest.distance && distance < maxDistance ? { distance, wall } : closest;
+      },
+      { distance: Infinity, wall: null }
+    ).wall;
+  }
+
+  function handleMouseDown(event: React.MouseEvent<HTMLCanvasElement>) {
+    const shouldPan = tool === "none";
+    if (shouldPan) {
+      setIsDragging(true);
+      setLastPanPoint({ x: event.clientX, y: event.clientY });
+      return;
+    }
+
+    const coords = getCanvasCoordinates(event);
+    if (tool === "wall" || tool === "scale") {
+      const snappedStart = snapCanvasPoint(coords);
+      setStartPoint(snappedStart);
+      setCurrentPoint(snappedStart);
+      setIsDrawing(true);
+      return;
+    }
+
+    if (tool === "select") {
+      const closestWall = findClosestWall(coords, 30);
+      setSelectedWall(selectedWall?.id === closestWall?.id ? null : closestWall);
+      return;
+    }
+
+    if (tool === "eraser") {
+      const closestWall = findClosestWall(coords, 20);
+      if (closestWall) {
+        setWalls((currentWalls) => currentWalls.filter((wall) => wall.id !== closestWall.id));
+        if (selectedWall?.id === closestWall.id) setSelectedWall(null);
+      }
+      return;
+    }
+
+    if (tool === "partial_eraser") {
+      if (!partialEraserSelectedWall) {
+        setPartialEraserSelectedWall(findClosestWall(coords, 30));
+        return;
+      }
+
+      const constrainedStart = projectPointOntoWall(coords, partialEraserSelectedWall);
+      setEraseAreaStart(constrainedStart);
+      setEraseAreaEnd(constrainedStart);
+      setIsSelectingEraseArea(true);
+    }
+  }
+
+  function handleMouseMove(event: React.MouseEvent<HTMLCanvasElement>) {
+    if (isDragging && lastPanPoint) {
+      setViewOffset((currentOffset) => ({
+        x: currentOffset.x + (event.clientX - lastPanPoint.x) / viewScale,
+        y: currentOffset.y + (event.clientY - lastPanPoint.y) / viewScale
+      }));
+      setLastPanPoint({ x: event.clientX, y: event.clientY });
+      return;
+    }
+
+    const coords = getCanvasCoordinates(event);
+    if (isDrawing && startPoint && (tool === "wall" || tool === "scale")) {
+      setCurrentPoint(snapCanvasPoint(snapToOrthogonal(startPoint, coords)));
+      return;
+    }
+
+    if (isSelectingEraseArea && partialEraserSelectedWall) {
+      setEraseAreaEnd(projectPointOntoWall(coords, partialEraserSelectedWall));
+      return;
+    }
+
+    if (tool === "eraser" || tool === "select" || tool === "partial_eraser") {
+      setHoveredWall(findClosestWall(coords, tool === "eraser" ? 20 : 30));
+    } else {
+      setHoveredWall(null);
+    }
+  }
+
+  function handleMouseUp(event: React.MouseEvent<HTMLCanvasElement>) {
+    setIsDragging(false);
+    setLastPanPoint(null);
+
+    if (isDrawing && startPoint && currentPoint && (tool === "wall" || tool === "scale")) {
+      const snappedEnd = snapCanvasPoint(snapToOrthogonal(startPoint, getCanvasCoordinates(event)));
+      if (startPoint.x !== snappedEnd.x || startPoint.y !== snappedEnd.y) {
+        const nextWall = { id: `wall-${Date.now()}`, start: startPoint, end: snappedEnd };
+        if (tool === "scale") {
+          setScaleWall(nextWall);
+        } else {
+          setWalls((currentWalls) => [...currentWalls, nextWall]);
+        }
+      }
+      setIsDrawing(false);
+      setStartPoint(null);
+      setCurrentPoint(null);
+    }
+
+    if (isSelectingEraseArea && partialEraserSelectedWall && eraseAreaStart && eraseAreaEnd) {
+      setWalls((currentWalls) =>
+        currentWalls.flatMap((wall) =>
+          wall.id === partialEraserSelectedWall.id ? splitWallByEraseArea(wall, eraseAreaStart, eraseAreaEnd) : [wall]
+        )
+      );
+      setPartialEraserSelectedWall(null);
+      setIsSelectingEraseArea(false);
+      setEraseAreaStart(null);
+      setEraseAreaEnd(null);
+    }
+  }
+
+  function handleWheel(event: React.WheelEvent<HTMLCanvasElement>) {
+    event.preventDefault();
+    setViewScale((currentScale) => Math.max(0.1, Math.min(10, currentScale * (event.deltaY > 0 ? 0.9 : 1.1))));
+  }
+
+  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
+    setIsProcessing(true);
+    setUploadStatus(`${file.name} 이미지 벽 추출 중`);
+    try {
+      const detector = new WallDetector();
+      const result = await detector.detectWalls(file);
+      const detectedWalls = createWallsFromDetectedLines(result.lines, {
+        height: result.imageHeight,
+        name: file.name,
+        width: result.imageWidth
+      }) as Wall[];
 
-    if (file.type === "application/json" || file.name.endsWith(".json")) {
-      reader.onload = () => {
-        try {
-          const parsed = JSON.parse(String(reader.result));
-          const parsedWalls = parseUploadedJsonWalls(parsed);
-          setRegisteredPlan({ height: 620, name: file.name, source: "json", width: 960 });
-          if (parsedWalls.length > 0) {
-            setWalls(parsedWalls);
-            setUploadStatus(`${file.name} JSON 벽 ${parsedWalls.length}개 등록`);
-          } else {
-            setUploadStatus(`${file.name} 등록됨 - 벽 자동 추출을 눌러주세요`);
-          }
-        } catch {
-          setUploadStatus("JSON 도면을 읽지 못했습니다");
-        }
-      };
-      reader.readAsText(file);
-      return;
-    }
-
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      const image = new Image();
-      image.onload = () => {
-        setRegisteredPlan({
-          dataUrl,
-          height: image.naturalHeight || 900,
-          name: file.name,
-          source: "image",
-          width: image.naturalWidth || 1280
-        });
-        setUploadStatus(`${file.name} 도면 등록 완료`);
-      };
-      image.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handlePointerDown(event: React.PointerEvent<SVGSVGElement>) {
-    const point = toSvgPoint(event);
-
-    if (viewMode === "3d") return;
-
-    if (tool === "wall") {
-      const snappedPoint = snapToGrid(point);
-      setDraftStart(snappedPoint);
-      setDraftWall({ id: "draft", start: snappedPoint, end: snappedPoint });
-      event.currentTarget.setPointerCapture(event.pointerId);
-      return;
-    }
-
-    const nearestWall = findNearestWall(walls, point, 22) as Wall | null;
-
-    if (tool === "select") {
-      setSelectedWallId(nearestWall?.id ?? null);
-      return;
-    }
-
-    if (tool === "eraser" && nearestWall) {
-      setWalls((currentWalls) => removeWall(currentWalls, nearestWall.id));
-      if (selectedWallId === nearestWall.id) {
-        setSelectedWallId(null);
-      }
+      setWalls(detectedWalls.length > 0 ? detectedWalls : getStarterWalls());
+      setUploadedImage(result.imageUrl);
+      setUploadStatus(`${file.name} 이미지 벽 ${detectedWalls.length}개 추출`);
+    } catch {
+      setUploadStatus("이미지 벽 추출 실패");
+    } finally {
+      setIsProcessing(false);
+      event.target.value = "";
     }
   }
 
-  function handlePointerMove(event: React.PointerEvent<SVGSVGElement>) {
-    if (!draftStart || tool !== "wall") return;
+  function applyScale() {
+    if (!scaleWall || !scaleRealLength) return;
+    const pixelDistance = Math.hypot(scaleWall.end.x - scaleWall.start.x, scaleWall.end.y - scaleWall.start.y);
+    const realLengthMm = Number(scaleRealLength);
+    if (!pixelDistance || !realLengthMm) return;
 
-    const nextDraftWall = buildWall(draftStart, toSvgPoint(event), "draft");
-    setDraftWall(nextDraftWall);
+    setPixelToMmRatio(realLengthMm / pixelDistance);
+    setIsScaleSet(true);
+    setScaleWall(null);
+    setScaleRealLength("");
+    setTool("wall");
+    setUploadStatus(`축척 적용됨: 1px = ${(realLengthMm / pixelDistance).toFixed(2)}mm`);
   }
 
-  function handlePointerUp(event: React.PointerEvent<SVGSVGElement>) {
-    if (!draftStart || tool !== "wall") return;
-
-    const nextWall = buildWall(draftStart, toSvgPoint(event), `wall-${Date.now()}`);
-    if (nextWall) {
-      setWalls((currentWalls) => [...currentWalls, nextWall]);
-      setSelectedWallId(nextWall.id);
-    }
-    resetTransientState();
-  }
-
-  function handleViewerPointerDown(event: React.PointerEvent<SVGSVGElement>) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setViewerDrag({
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      ...viewerRotation
-    });
-  }
-
-  function handleViewerPointerMove(event: React.PointerEvent<SVGSVGElement>) {
-    if (!viewerDrag || viewerDrag.pointerId !== event.pointerId) return;
-
-    setViewerRotation({
-      yaw: viewerDrag.yaw + (event.clientX - viewerDrag.x) * 0.01,
-      pitch: clamp(viewerDrag.pitch + (event.clientY - viewerDrag.y) * 0.006, 0.55, 1.45)
-    });
-  }
-
-  function handleViewerPointerUp(event: React.PointerEvent<SVGSVGElement>) {
-    if (viewerDrag?.pointerId === event.pointerId) {
-      setViewerDrag(null);
-    }
+  function convertTo3D() {
+    setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
+    window.localStorage.setItem("floorPlanData", JSON.stringify({ pixelToMmRatio, timestamp: Date.now(), walls }));
   }
 
   return (
-    <section className="floor-plan-editor" aria-label="Roomlog 3D 도면 편집기">
-      <aside className="floor-plan-toolbar" aria-label="도면 도구">
-        {tools.map((currentTool) => (
+    <section className="floor-plan-editor wheretoput-floor-plan-editor" aria-label="Roomlog 3D 도면 편집기">
+      <aside className="floor-plan-toolbar wheretoput-floor-plan-toolbar" aria-label="도면 도구">
+        {[
+          ["wall", "드로잉", "벽 그리기"],
+          ["select", "선택", "벽 선택"],
+          ["eraser", "지우기", "벽 삭제"],
+          ["partial_eraser", "부분 지우기", "벽 일부 삭제"],
+          ["none", "이동", "화면 이동"]
+        ].map(([toolId, label, hint]) => (
           <button
-            className={tool === currentTool.id ? "active" : ""}
-            data-tool={currentTool.id}
-            key={currentTool.id}
+            className={tool === toolId ? "active" : ""}
+            key={toolId}
             onClick={() => {
-              setTool(currentTool.id);
-              resetTransientState();
+              setTool(toolId as EditorTool);
+              setPartialEraserSelectedWall(null);
+              setSelectedWall(null);
             }}
-            title={currentTool.hint}
+            title={hint}
             type="button"
           >
-            <strong>{currentTool.label}</strong>
-            <span>{currentTool.hint}</span>
+            <strong>{label}</strong>
+            <span>{hint}</span>
           </button>
         ))}
       </aside>
 
-      <section className="floor-plan-canvas" aria-label="도면 캔버스">
+      <section className="floor-plan-canvas wheretoput-floor-plan-canvas" aria-label="도면 캔버스">
         <div className="floor-plan-upload-row">
-          <input
-            accept="image/*,.json"
-            className="floor-plan-file-input"
-            onChange={handlePlanUpload}
-            ref={fileInputRef}
-            type="file"
-          />
-          <button className="floor-plan-secondary" onClick={() => fileInputRef.current?.click()} type="button">
+          <input accept="image/*" className="floor-plan-file-input" onChange={handleImageUpload} ref={fileInputRef} type="file" />
+          <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
             도면 등록
           </button>
-          <button
-            className="floor-plan-secondary"
-            disabled={!registeredPlan}
-            onClick={extractWallsFromRegisteredPlan}
-            type="button"
-          >
+          <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
             벽 자동 추출
+          </button>
+          <button className="floor-plan-secondary" onClick={() => setTool("scale")} type="button">
+            축척
           </button>
           <span>{uploadStatus}</span>
         </div>
 
         {viewMode === "2d" ? (
-          <svg
-            className="floor-plan-svg"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            role="img"
-            viewBox="0 0 960 620"
-          >
-            <defs>
-              <pattern id="roomlog-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-                <path d="M 24 0 L 0 0 0 24" fill="none" />
-              </pattern>
-            </defs>
-            <rect className="floor-svg-grid" width="960" height="620" />
-            {registeredPlan?.dataUrl ? (
-              <image
-                className="floor-plan-blueprint"
-                href={registeredPlan.dataUrl}
-                height="520"
-                preserveAspectRatio="xMidYMid meet"
-                width="860"
-                x="50"
-                y="50"
-              />
-            ) : null}
-            {[...walls, ...(draftWall ? [draftWall] : [])].map((wall) => (
-              <line
-                className={`floor-svg-wall${wall.id === selectedWallId ? " selected" : ""}${
-                  wall.id === "draft" ? " draft" : ""
-                }`}
-                key={wall.id}
-                x1={wall.start.x}
-                x2={wall.end.x}
-                y1={wall.start.y}
-                y2={wall.end.y}
-              />
-            ))}
-          </svg>
+          <div className="floor-plan-canvas-shell" ref={containerRef}>
+            <canvas
+              className="floor-plan-drawing-canvas"
+              onContextMenu={(event) => event.preventDefault()}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onWheel={handleWheel}
+              ref={canvasRef}
+            />
+          </div>
         ) : (
-          <svg
-            aria-label="화면 드래그 회전 3D 도면"
-            className="floor-plan-svg floor-plan-3d-preview"
-            data-renderer="wheretoput 3D room renderer"
-            onPointerDown={handleViewerPointerDown}
-            onPointerMove={handleViewerPointerMove}
-            onPointerUp={handleViewerPointerUp}
-            role="img"
-            viewBox="0 0 960 620"
-          >
-            <path className="floor-3d-plane" d={convertedFloorPlan.floor.path} />
-            {convertedFloorPlan.wallBoxes.map((box) => (
-              <g className="floor-3d-wall-box" key={box.id}>
-                <path className="floor-3d-wall-cap floor-3d-wall-cap-start" d={box.startCapPath} />
-                <path className="floor-3d-wall-cap floor-3d-wall-cap-end" d={box.endCapPath} />
-                <path className="floor-3d-wall-front" d={box.frontPath} />
-                <path className="floor-3d-wall-top-face" d={box.topPath} />
-              </g>
-            ))}
-            <text className="floor-3d-hint" x="26" y="42">
-              화면 드래그 회전
-            </text>
-          </svg>
+          <RoomlogThreeFloorPlanView wallsData={roomWalls3D} />
         )}
+
         <div className="floor-plan-actions">
           <button
             className="floor-plan-secondary"
             onClick={() => {
               setWalls([]);
-              setSelectedWallId(null);
-              resetTransientState();
+              setSelectedWall(null);
+              setUploadStatus("벽 전체 삭제");
             }}
             type="button"
           >
@@ -434,27 +646,25 @@ export default function RoomlogFloorPlanEditor() {
             className="floor-plan-secondary"
             onClick={() => {
               setWalls(getStarterWalls());
-              setSelectedWallId(null);
-              resetTransientState();
+              setSelectedWall(null);
               setUploadStatus("샘플 도면 복원");
             }}
             type="button"
           >
             샘플 복원
           </button>
-          <button
-            className={viewMode === "3d" ? "floor-plan-primary" : "floor-plan-secondary"}
-            onClick={convertTo3D}
-            type="button"
-          >
+          <button className={viewMode === "3d" ? "floor-plan-primary" : "floor-plan-secondary"} onClick={convertTo3D} type="button">
             {viewMode === "2d" ? "3D 변환" : "2D 편집"}
           </button>
           <button
             className="floor-plan-secondary"
-            onClick={() => setViewerRotation({ yaw: -0.55, pitch: 1 })}
+            onClick={() => {
+              setViewOffset({ x: 0, y: 0 });
+              setViewScale(1);
+            }}
             type="button"
           >
-            회전 초기화
+            Reset
           </button>
           <button className="floor-plan-primary" type="button">
             저장 초안
@@ -481,18 +691,41 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{viewMode === "3d" ? "3D 변환됨" : summary.status}</dd>
           </div>
           <div>
-            <dt>등록 도면</dt>
-            <dd>{registeredPlan ? registeredPlan.name : "없음"}</dd>
-          </div>
-          <div>
             <dt>3D 벽 데이터</dt>
-            <dd>{wheretoputWalls.length}개</dd>
+            <dd>{roomWalls3D.length}개</dd>
           </div>
           <div>
-            <dt>선택 벽</dt>
-            <dd>{selectedWall ? selectedWall.id.replace("starter-", "") : "없음"}</dd>
+            <dt>배율 조절</dt>
+            <dd>{Math.round(viewScale * 100)}%</dd>
+          </div>
+          <div>
+            <dt>축척</dt>
+            <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "1px=20mm"}</dd>
           </div>
         </dl>
+
+        {tool === "scale" ? (
+          <div className="floor-plan-sim-preview">
+            <span>축척 설정</span>
+            {scaleWall ? (
+              <>
+                <input
+                  aria-label="실제 길이 mm"
+                  onChange={(event) => setScaleRealLength(event.target.value)}
+                  placeholder="실제 길이 mm"
+                  type="number"
+                  value={scaleRealLength}
+                />
+                <button className="floor-plan-primary" disabled={!scaleRealLength} onClick={applyScale} type="button">
+                  축척 적용
+                </button>
+              </>
+            ) : (
+              <code>기준 벽을 그려주세요</code>
+            )}
+          </div>
+        ) : null}
+
         <div className="floor-plan-sim-preview">
           <span>position / rotation / dimensions</span>
           <code>

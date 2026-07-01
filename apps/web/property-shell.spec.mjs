@@ -8,6 +8,7 @@ const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPl
 const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
 const floorPlanEditorSource = existsSync(floorPlanEditorPath) ? readFileSync(floorPlanEditorPath, "utf8") : "";
 const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
+const webPackageSource = readFileSync(new URL("./package.json", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
 const floorPlanVisualSource = `${floorPlanRouteSource}\n${globalsCssSource}`;
 
@@ -72,33 +73,48 @@ test("links the landlord 3D floor plan action to the dedicated creation page", (
   }
 });
 
-test("adds a Roomlog floor plan editor core based on the 123123 wall editor workflow", () => {
+test("copies the wheretoput canvas-based 2D drawing workflow", () => {
   assert.match(floorPlanPageSource, /RoomlogFloorPlanEditor/);
   assert.equal(existsSync(floorPlanEditorPath), true, "Roomlog 도면 편집기 컴포넌트가 있어야 합니다.");
 
-  for (const label of ["use client", "onPointerDown", "onPointerMove", "onPointerUp", "createWall", "findNearestWall"]) {
+  for (const label of [
+    "use client",
+    "canvasRef",
+    "containerRef",
+    "handleMouseDown",
+    "handleMouseMove",
+    "handleMouseUp",
+    "handleWheel",
+    "partial_eraser",
+    "pixelToMmRatio",
+    "viewScale",
+    "viewOffset",
+    "drawCanvas"
+  ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
 });
 
 test("offers a 3D conversion mode for the floor plan editor", () => {
-  for (const label of ["3D 변환", "2D 편집", "convertWallsTo3D", "floor-plan-3d-preview"]) {
+  for (const label of ["3D 변환", "2D 편집", "convertWallsToWheretoputRoom3D", "floor-plan-3d-preview"]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
 });
 
-test("renders wheretoput-style floor and thick 3D wall boxes", () => {
+test("renders 3D conversion with the wheretoput React Three Fiber stack", () => {
   for (const label of [
-    "wallBoxes",
-    "floor-3d-wall-box",
-    "floor-3d-wall-front",
-    "floor-3d-wall-top-face",
-    "floor-3d-wall-cap",
+    "@react-three/fiber",
+    "@react-three/drei",
+    "three",
+    "Canvas",
+    "OrbitControls",
+    "boxGeometry",
+    "planeGeometry",
     "wheretoput 3D room renderer",
     "#626260",
     "#f3d9a0"
   ]) {
-    assert.match(floorPlanVisualSource, new RegExp(label));
+    assert.match(`${floorPlanVisualSource}\n${webPackageSource}`, new RegExp(label));
   }
 });
 
@@ -107,11 +123,11 @@ test("imports wheretoput-style upload, extraction, and rotatable 3D simulator co
     "도면 등록",
     "벽 자동 추출",
     "화면 드래그 회전",
-    "회전 초기화",
-    "handlePlanUpload",
-    "handleViewerPointerMove",
+    "배율 조절",
+    "handleImageUpload",
+    "WallDetector",
     "convertWallsToWheretoputSimulator",
-    "createWallsFromRegisteredPlan"
+    "convertWallsToWheretoputRoom3D"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
@@ -122,7 +138,7 @@ test("extracts uploaded image walls through a wheretoput-style pixel line pipeli
     "getImageData",
     "detectWallLinesFromImageData",
     "createWallsFromDetectedLines",
-    "wheretoput wallDetection",
+    "WallDetector",
     "이미지 벽"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
@@ -180,6 +196,22 @@ test("floor plan editor model creates wheretoput simulator wall data", async () 
   assert.deepEqual(converted[0].position, [1.2, 1.25, 0]);
   assert.deepEqual(converted[0].rotation, [0, 0, 0]);
   assert.deepEqual(converted[0].dimensions, { width: 2.4, height: 2.5, depth: 0.15 });
+});
+
+test("floor plan editor model creates centered wheretoput room 3D wall data", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const walls = [
+    { id: "left", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "right", start: { x: 100, y: 0 }, end: { x: 100, y: 100 } }
+  ];
+  const converted = model.convertWallsToWheretoputRoom3D(walls, { pixelToMmRatio: 20 });
+
+  assert.equal(converted.length, 2);
+  assert.equal(converted[0].material, "wall");
+  assert.deepEqual(converted[0].dimensions, { width: 2, height: 2.5, depth: 0.15 });
+  assert.equal(converted[0].position[1], 1.25);
+  assert.equal(converted[0].original2D.id, "left");
+  assert.equal(Math.abs(converted[0].position[0]) > 0 || Math.abs(converted[1].position[2]) > 0, true);
 });
 
 test("floor plan editor model can extract starter walls from a registered plan", async () => {

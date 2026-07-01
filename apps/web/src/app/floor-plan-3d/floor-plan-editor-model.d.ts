@@ -126,6 +126,15 @@ export function convertWallsToWheretoputSimulator(
   walls: Wall[],
   options?: { height?: number; depth?: number; pixelToMeterRatio?: number }
 ): WheretoputSimulatorWall[];
+export function convertWallsToWheretoputRoom3D(
+  walls: Wall[],
+  options?: { height?: number; depth?: number; pixelToMmRatio?: number }
+): Array<
+  WheretoputSimulatorWall & {
+    material: "wall";
+    original2D: Wall;
+  }
+>;
 export function detectWallLinesFromMask(
   mask: boolean[],
   options?: { width?: number; height?: number; minRunLength?: number }
