@@ -1471,9 +1471,30 @@ p {
 
 .floor-plan-canvas {
   display: grid;
-  grid-template-rows: minmax(420px, 1fr) auto;
+  grid-template-rows: auto minmax(420px, 1fr) auto;
   gap: 14px;
   padding: 14px;
+}
+
+.floor-plan-upload-row {
+  display: grid;
+  grid-template-columns: 132px 132px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.floor-plan-upload-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floor-plan-file-input {
+  display: none;
 }
 
 .floor-plan-svg {
@@ -1491,6 +1512,11 @@ p {
 
 .floor-svg-grid {
   fill: url("#roomlog-grid");
+}
+
+.floor-plan-blueprint {
+  opacity: 0.28;
+  pointer-events: none;
 }
 
 .floor-plan-svg pattern path {
@@ -1516,7 +1542,11 @@ p {
 .floor-plan-3d-preview {
   background:
     linear-gradient(180deg, #edf4ff 0%, #fbfcff 46%, #e7edf7 100%);
-  cursor: default;
+  cursor: grab;
+}
+
+.floor-plan-3d-preview:active {
+  cursor: grabbing;
 }
 
 .floor-3d-plane {
@@ -1538,6 +1568,13 @@ p {
   stroke-width: 4;
 }
 
+.floor-3d-hint {
+  fill: #516078;
+  font-size: 18px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
 .floor-plan-primary {
   min-height: 58px;
   border-radius: 14px;
@@ -1549,7 +1586,7 @@ p {
 
 .floor-plan-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1559,6 +1596,12 @@ p {
   background: #f6f8fc;
   color: var(--ink);
   font-weight: 900;
+}
+
+.floor-plan-secondary:disabled {
+  color: #a6adba;
+  cursor: not-allowed;
+  opacity: 0.56;
 }
 
 .floor-plan-sidepanel {
@@ -1621,6 +1664,24 @@ p {
   font-weight: 900;
 }
 
+.floor-plan-sim-preview {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #d9dfeb;
+  border-radius: 12px;
+  background: #fbfcff;
+}
+
+.floor-plan-sim-preview code {
+  overflow: hidden;
+  color: #172033;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 860px) {
   .floor-plan-editor {
     grid-template-columns: 1fr;
@@ -1649,10 +1710,14 @@ p {
   }
 
   .floor-plan-canvas {
-    grid-template-rows: 360px auto;
+    grid-template-rows: auto 360px auto;
   }
 
   .floor-plan-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .floor-plan-upload-row {
     grid-template-columns: 1fr;
   }
 

@@ -85,6 +85,21 @@ test("offers a 3D conversion mode for the floor plan editor", () => {
   }
 });
 
+test("imports wheretoput-style upload, extraction, and rotatable 3D simulator controls", () => {
+  for (const label of [
+    "도면 등록",
+    "벽 자동 추출",
+    "화면 드래그 회전",
+    "회전 초기화",
+    "handlePlanUpload",
+    "handleViewerPointerMove",
+    "convertWallsToWheretoputSimulator",
+    "createWallsFromRegisteredPlan"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
 test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {
   const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
   const wall = model.createWall({ x: 0, y: 0 }, { x: 130, y: 40 }, "w1");
@@ -115,4 +130,30 @@ test("floor plan editor model converts 2D walls into 3D wall panels", async () =
   assert.equal(converted.wallPanels[0].depth, 8);
   assert.match(converted.wallPanels[0].path, /^M /);
   assert.equal(converted.floor.path.includes("L"), true);
+});
+
+test("floor plan editor model creates wheretoput simulator wall data", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
+  const converted = model.convertWallsToWheretoputSimulator([wall], {
+    height: 2.5,
+    depth: 0.15,
+    pixelToMeterRatio: 0.02
+  });
+
+  assert.equal(converted.length, 1);
+  assert.equal(converted[0].id, "front");
+  assert.equal(converted[0].wall_id, "front");
+  assert.deepEqual(converted[0].position, [1.2, 1.25, 0]);
+  assert.deepEqual(converted[0].rotation, [0, 0, 0]);
+  assert.deepEqual(converted[0].dimensions, { width: 2.4, height: 2.5, depth: 0.15 });
+});
+
+test("floor plan editor model can extract starter walls from a registered plan", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const walls = model.createWallsFromRegisteredPlan({ width: 1600, height: 1000, name: "unit.png" });
+
+  assert.equal(walls.length >= 5, true);
+  assert.equal(walls[0].id.startsWith("upload-unit-"), true);
+  assert.equal(walls.every((wall) => wall.start && wall.end), true);
 });

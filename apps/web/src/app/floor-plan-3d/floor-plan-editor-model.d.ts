@@ -38,9 +38,36 @@ export interface ConvertedFloorPlan3D {
   };
 }
 
+export interface WheretoputSimulatorWall {
+  id: string;
+  wall_id: string;
+  start: Point;
+  end: Point;
+  length: number;
+  height: number;
+  depth: number;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  dimensions: {
+    width: number;
+    height: number;
+    depth: number;
+  };
+  wall_order: number | null;
+}
+
+export interface RegisteredPlanMetadata {
+  name?: string;
+  width?: number;
+  height?: number;
+}
+
 export const GRID_SIZE: number;
 export const DEFAULT_WALL_HEIGHT: number;
 export const DEFAULT_WALL_DEPTH: number;
+export const DEFAULT_PIXEL_TO_METER_RATIO: number;
+export const WHERETOPUT_WALL_HEIGHT: number;
+export const WHERETOPUT_WALL_DEPTH: number;
 
 export function snapToGrid(point: Point, gridSize?: number): Point;
 export function snapToOrthogonal(start: Point, end: Point): Point;
@@ -50,7 +77,26 @@ export function distanceToWall(point: Point, wall: Wall): number;
 export function findNearestWall(walls: Wall[], point: Point, maxDistance?: number): Wall | null;
 export function removeWall(walls: Wall[], wallId: string): Wall[];
 export function summarizeWalls(walls: Wall[]): WallSummary;
-export function projectPointTo3D(point: Point, z?: number): ProjectedPoint;
-export function convertWallTo3D(wall: Wall, options?: { height?: number; depth?: number }): WallPanel3D;
-export function convertWallsTo3D(walls: Wall[], options?: { height?: number; depth?: number }): ConvertedFloorPlan3D;
+export function projectPointTo3D(
+  point: Point,
+  z?: number,
+  camera?: { yaw?: number; pitch?: number; center?: Point }
+): ProjectedPoint;
+export function convertWallTo3D(
+  wall: Wall,
+  options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
+): WallPanel3D;
+export function convertWallsTo3D(
+  walls: Wall[],
+  options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
+): ConvertedFloorPlan3D;
+export function convertWallToWheretoputSimulator(
+  wall: Wall,
+  options?: { height?: number; depth?: number; pixelToMeterRatio?: number; wallOrder?: number | null }
+): WheretoputSimulatorWall;
+export function convertWallsToWheretoputSimulator(
+  walls: Wall[],
+  options?: { height?: number; depth?: number; pixelToMeterRatio?: number }
+): WheretoputSimulatorWall[];
+export function createWallsFromRegisteredPlan(plan?: RegisteredPlanMetadata): Wall[];
 export function createStarterWalls(): Wall[];

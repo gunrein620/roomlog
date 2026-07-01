@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   createStarterWalls,
   createWall,
+  createWallsFromRegisteredPlan,
   convertWallsTo3D,
+  convertWallsToWheretoputSimulator,
   findNearestWall,
   removeWall,
   snapToGrid,
@@ -16,6 +18,15 @@ type ViewMode = "2d" | "3d";
 type Point = { x: number; y: number };
 type Wall = { id: string; start: Point; end: Point };
 type WallSummary = { wallCount: number; approximateMeters: number; status: "초안" | "편집중" };
+type RegisteredPlan = {
+  dataUrl?: string;
+  height: number;
+  name: string;
+  source: "image" | "json";
+  width: number;
+};
+type ViewerRotation = { yaw: number; pitch: number };
+type ViewerDrag = ViewerRotation & { pointerId: number; x: number; y: number };
 type ConvertedFloorPlan3D = {
   wallPanels: Array<{
     id: string;
@@ -23,6 +34,12 @@ type ConvertedFloorPlan3D = {
     topLine: { start: Point; end: Point };
   }>;
   floor: { path: string };
+};
+type WheretoputWall = {
+  dimensions: { width: number; height: number; depth: number };
+  id: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
 };
 
 const tools: Array<{ id: EditorTool; label: string; hint: string }> = [
@@ -48,16 +65,50 @@ function buildWall(start: Point, end: Point, id: string): Wall | null {
   return createWall(start, end, id) as Wall | null;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseUploadedJsonWalls(source: unknown): Wall[] {
+  if (!source || typeof source !== "object" || !("walls" in source)) return [];
+
+  const walls = (source as { walls?: unknown }).walls;
+  if (!Array.isArray(walls)) return [];
+
+  return walls
+    .map((wall, index) => {
+      if (!wall || typeof wall !== "object") return null;
+      const candidate = wall as { end?: Point; id?: string; start?: Point };
+      if (!candidate.start || !candidate.end) return null;
+      return createWall(candidate.start, candidate.end, candidate.id ?? `json-wall-${index + 1}`) as Wall | null;
+    })
+    .filter((wall): wall is Wall => Boolean(wall));
+}
+
 export default function RoomlogFloorPlanEditor() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [walls, setWalls] = useState<Wall[]>(() => getStarterWalls());
   const [draftStart, setDraftStart] = useState<Point | null>(null);
   const [draftWall, setDraftWall] = useState<Wall | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
+  const [registeredPlan, setRegisteredPlan] = useState<RegisteredPlan | null>(null);
+  const [uploadStatus, setUploadStatus] = useState("샘플 도면으로 시작");
+  const [viewerRotation, setViewerRotation] = useState<ViewerRotation>({ yaw: -0.55, pitch: 1 });
+  const [viewerDrag, setViewerDrag] = useState<ViewerDrag | null>(null);
   const summary = useMemo(() => summarizeWalls(walls) as WallSummary, [walls]);
   const convertedFloorPlan = useMemo(
-    () => convertWallsTo3D(walls, { height: 112, depth: 10 }) as ConvertedFloorPlan3D,
+    () =>
+      convertWallsTo3D(walls, {
+        height: 112,
+        depth: 10,
+        camera: viewerRotation
+      }) as ConvertedFloorPlan3D,
+    [walls, viewerRotation]
+  );
+  const wheretoputWalls = useMemo(
+    () => convertWallsToWheretoputSimulator(walls) as WheretoputWall[],
     [walls]
   );
 
@@ -66,6 +117,66 @@ export default function RoomlogFloorPlanEditor() {
   function resetTransientState() {
     setDraftStart(null);
     setDraftWall(null);
+  }
+
+  function extractWallsFromRegisteredPlan() {
+    if (!registeredPlan) return;
+    const extractedWalls = createWallsFromRegisteredPlan(registeredPlan) as Wall[];
+    setWalls(extractedWalls);
+    setSelectedWallId(null);
+    setUploadStatus(`${registeredPlan.name} 벽 자동 추출 완료`);
+  }
+
+  function convertTo3D() {
+    if (registeredPlan && walls.length === 0) {
+      setWalls(createWallsFromRegisteredPlan(registeredPlan) as Wall[]);
+    }
+    resetTransientState();
+    setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
+  }
+
+  function handlePlanUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    if (file.type === "application/json" || file.name.endsWith(".json")) {
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result));
+          const parsedWalls = parseUploadedJsonWalls(parsed);
+          setRegisteredPlan({ height: 620, name: file.name, source: "json", width: 960 });
+          if (parsedWalls.length > 0) {
+            setWalls(parsedWalls);
+            setUploadStatus(`${file.name} JSON 벽 ${parsedWalls.length}개 등록`);
+          } else {
+            setUploadStatus(`${file.name} 등록됨 - 벽 자동 추출을 눌러주세요`);
+          }
+        } catch {
+          setUploadStatus("JSON 도면을 읽지 못했습니다");
+        }
+      };
+      reader.readAsText(file);
+      return;
+    }
+
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      const image = new Image();
+      image.onload = () => {
+        setRegisteredPlan({
+          dataUrl,
+          height: image.naturalHeight || 900,
+          name: file.name,
+          source: "image",
+          width: image.naturalWidth || 1280
+        });
+        setUploadStatus(`${file.name} 도면 등록 완료`);
+      };
+      image.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
   }
 
   function handlePointerDown(event: React.PointerEvent<SVGSVGElement>) {
@@ -114,6 +225,31 @@ export default function RoomlogFloorPlanEditor() {
     resetTransientState();
   }
 
+  function handleViewerPointerDown(event: React.PointerEvent<SVGSVGElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setViewerDrag({
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      ...viewerRotation
+    });
+  }
+
+  function handleViewerPointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    if (!viewerDrag || viewerDrag.pointerId !== event.pointerId) return;
+
+    setViewerRotation({
+      yaw: viewerDrag.yaw + (event.clientX - viewerDrag.x) * 0.01,
+      pitch: clamp(viewerDrag.pitch + (event.clientY - viewerDrag.y) * 0.006, 0.55, 1.45)
+    });
+  }
+
+  function handleViewerPointerUp(event: React.PointerEvent<SVGSVGElement>) {
+    if (viewerDrag?.pointerId === event.pointerId) {
+      setViewerDrag(null);
+    }
+  }
+
   return (
     <section className="floor-plan-editor" aria-label="Roomlog 3D 도면 편집기">
       <aside className="floor-plan-toolbar" aria-label="도면 도구">
@@ -136,6 +272,28 @@ export default function RoomlogFloorPlanEditor() {
       </aside>
 
       <section className="floor-plan-canvas" aria-label="도면 캔버스">
+        <div className="floor-plan-upload-row">
+          <input
+            accept="image/*,.json"
+            className="floor-plan-file-input"
+            onChange={handlePlanUpload}
+            ref={fileInputRef}
+            type="file"
+          />
+          <button className="floor-plan-secondary" onClick={() => fileInputRef.current?.click()} type="button">
+            도면 등록
+          </button>
+          <button
+            className="floor-plan-secondary"
+            disabled={!registeredPlan}
+            onClick={extractWallsFromRegisteredPlan}
+            type="button"
+          >
+            벽 자동 추출
+          </button>
+          <span>{uploadStatus}</span>
+        </div>
+
         {viewMode === "2d" ? (
           <svg
             className="floor-plan-svg"
@@ -151,6 +309,17 @@ export default function RoomlogFloorPlanEditor() {
               </pattern>
             </defs>
             <rect className="floor-svg-grid" width="960" height="620" />
+            {registeredPlan?.dataUrl ? (
+              <image
+                className="floor-plan-blueprint"
+                href={registeredPlan.dataUrl}
+                height="520"
+                preserveAspectRatio="xMidYMid meet"
+                width="860"
+                x="50"
+                y="50"
+              />
+            ) : null}
             {[...walls, ...(draftWall ? [draftWall] : [])].map((wall) => (
               <line
                 className={`floor-svg-wall${wall.id === selectedWallId ? " selected" : ""}${
@@ -165,7 +334,15 @@ export default function RoomlogFloorPlanEditor() {
             ))}
           </svg>
         ) : (
-          <svg className="floor-plan-svg floor-plan-3d-preview" role="img" viewBox="0 0 960 620">
+          <svg
+            aria-label="화면 드래그 회전 3D 도면"
+            className="floor-plan-svg floor-plan-3d-preview"
+            onPointerDown={handleViewerPointerDown}
+            onPointerMove={handleViewerPointerMove}
+            onPointerUp={handleViewerPointerUp}
+            role="img"
+            viewBox="0 0 960 620"
+          >
             <defs>
               <linearGradient id="roomlog-wall-face" x1="0%" x2="100%" y1="0%" y2="100%">
                 <stop offset="0%" stopColor="#f8fbff" />
@@ -185,6 +362,9 @@ export default function RoomlogFloorPlanEditor() {
                 />
               </g>
             ))}
+            <text className="floor-3d-hint" x="26" y="42">
+              화면 드래그 회전
+            </text>
           </svg>
         )}
         <div className="floor-plan-actions">
@@ -205,6 +385,7 @@ export default function RoomlogFloorPlanEditor() {
               setWalls(getStarterWalls());
               setSelectedWallId(null);
               resetTransientState();
+              setUploadStatus("샘플 도면 복원");
             }}
             type="button"
           >
@@ -212,10 +393,17 @@ export default function RoomlogFloorPlanEditor() {
           </button>
           <button
             className={viewMode === "3d" ? "floor-plan-primary" : "floor-plan-secondary"}
-            onClick={() => setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"))}
+            onClick={convertTo3D}
             type="button"
           >
             {viewMode === "2d" ? "3D 변환" : "2D 편집"}
+          </button>
+          <button
+            className="floor-plan-secondary"
+            onClick={() => setViewerRotation({ yaw: -0.55, pitch: 1 })}
+            type="button"
+          >
+            회전 초기화
           </button>
           <button className="floor-plan-primary" type="button">
             저장 초안
@@ -225,7 +413,7 @@ export default function RoomlogFloorPlanEditor() {
 
       <aside className="floor-plan-sidepanel" aria-label="도면 정보">
         <div>
-          <span>123123 FloorPlanEditor 코어</span>
+          <span>wheretoput simulator model</span>
           <strong>방배 루미에르 402호</strong>
         </div>
         <dl>
@@ -242,10 +430,28 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{viewMode === "3d" ? "3D 변환됨" : summary.status}</dd>
           </div>
           <div>
+            <dt>등록 도면</dt>
+            <dd>{registeredPlan ? registeredPlan.name : "없음"}</dd>
+          </div>
+          <div>
+            <dt>3D 벽 데이터</dt>
+            <dd>{wheretoputWalls.length}개</dd>
+          </div>
+          <div>
             <dt>선택 벽</dt>
             <dd>{selectedWall ? selectedWall.id.replace("starter-", "") : "없음"}</dd>
           </div>
         </dl>
+        <div className="floor-plan-sim-preview">
+          <span>position / rotation / dimensions</span>
+          <code>
+            {wheretoputWalls[0]
+              ? `${wheretoputWalls[0].position.join(", ")} / ${wheretoputWalls[0].rotation.join(", ")} / ${
+                  wheretoputWalls[0].dimensions.width
+                }m`
+              : "벽 데이터 없음"}
+          </code>
+        </div>
         <a href="/">마이페이지</a>
       </aside>
     </section>
