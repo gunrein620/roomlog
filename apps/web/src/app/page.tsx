@@ -1,9 +1,83 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import Script from "next/script";
+import loginHeroImage from "../../../../assets/img/image.png";
+import {
+  ArrowLeft,
+  Banknote,
+  Bed,
+  Bell,
+  BriefcaseBusiness,
+  Building,
+  Building2,
+  CalendarClock,
+  Copy,
+  DoorOpen,
+  Heart,
+  HomeIcon,
+  House,
+  Layers3,
+  MapPinned,
+  MessageCircle,
+  Phone,
+  Ruler,
+  Search,
+  Share2,
+  SlidersHorizontal,
+  UserRound
+} from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 
 type AppRole = "seeker" | "tenant" | "landlord";
+type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
+type MapResultTab = "rooms" | "complexes" | "agents";
+
+type NaverLatLng = unknown;
+type NaverMap = unknown;
+type NaverMarker = unknown;
+type NaverPoint = unknown;
+type NaverInfoWindow = {
+  open: (map: NaverMap, marker: NaverMarker) => void;
+};
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+type NaverMapsApi = {
+  LatLng: new (lat: number, lng: number) => NaverLatLng;
+  Map: new (
+    element: HTMLElement,
+    options: {
+      center: NaverLatLng;
+      zoom: number;
+      zoomControl: boolean;
+    }
+  ) => NaverMap;
+  Marker: new (options: {
+    map: NaverMap;
+    position: NaverLatLng;
+    icon?: {
+      content: string;
+      anchor?: NaverPoint;
+    };
+  }) => NaverMarker;
+  InfoWindow: new (options: { content: string }) => NaverInfoWindow;
+  Point: new (x: number, y: number) => NaverPoint;
+};
+
+type MapLoadState = "missing-key" | "loading" | "ready" | "error";
+
+declare global {
+  interface Window {
+    naver?: {
+      maps: NaverMapsApi;
+    };
+  }
+}
+
+const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
 const socialProviders = [
   { label: "카카오로 계속하기", className: "kakao", mark: "K" },
@@ -35,57 +109,443 @@ const devRoles: Array<{
 ];
 
 const categories = [
-  { label: "원룸", count: "632" },
-  { label: "투룸", count: "248" },
-  { label: "오피스텔", count: "186" },
-  { label: "아파트", count: "91" },
-  { label: "단기임대", count: "57" }
+  { label: "전체", count: "1,287", Icon: Building },
+  { label: "원룸", count: "632", Icon: DoorOpen },
+  { label: "투룸", count: "248", Icon: Bed },
+  { label: "오피스텔", count: "186", Icon: BriefcaseBusiness },
+  { label: "아파트", count: "91", Icon: Building2 },
+  { label: "빌라", count: "73", Icon: House },
+  { label: "단기임대", count: "57", Icon: CalendarClock }
 ];
 
 const quickFilters = ["월세", "전세", "관리비 포함", "반려동물", "주차", "풀옵션"];
 
-const listings = [
+const sortOptions = [
+  { label: "정확도순", description: "실매물 확인, 응답률, 거리 기준으로 추천" },
+  { label: "최신순", description: "오늘 확인되거나 새로 올라온 매물 먼저" },
+  { label: "낮은 월세순", description: "월세 부담이 낮은 매물부터 확인" },
+  { label: "3D 투어 우선", description: "3D 투어가 준비된 매물을 상단에 배치" }
+];
+
+const savedConditions = [
+  { label: "방배동 월세 1000/130 이하", area: "서초구 방배동", category: "원룸", filters: ["월세", "풀옵션"] },
+  { label: "내방역 도보 10분", area: "내방역 7호선", category: "오피스텔", filters: ["월세", "주차"] },
+  { label: "풀옵션 · 주차 가능", area: "강남역 오피스텔", category: "오피스텔", filters: ["월세", "주차", "풀옵션"] }
+];
+
+const searchSuggestions = {
+  recent: ["서초구 방배동", "내방역 원룸", "강남역 오피스텔"],
+  districts: ["방배동", "서초동", "역삼동", "성수동", "마포구 공덕동"],
+  subways: ["내방역 7호선", "강남역 2호선", "서울숲역 수인분당", "공덕역 5호선"]
+};
+
+const notificationItems = [
   {
-    title: "방배 루미에르 402호",
-    location: "방배동 · 내방역 도보 5분",
-    price: "월세 1,000 / 35",
-    spec: "24.5m² · 4층 · 즉시입주",
-    image: "/listing-studio.jpg",
-    badges: ["확인매물", "3D 투어"],
-    score: "안심 92"
+    label: "새 매물",
+    title: "방배동 월세 조건에 맞는 확인매물 3개",
+    body: "3D 투어 가능 매물 1개가 포함되어 있습니다.",
+    time: "방금"
   },
   {
-    title: "성수 어반 스튜디오",
-    location: "성수동 · 서울숲 9분",
-    price: "월세 800 / 80",
-    spec: "32.2m² · 복층 · 반려동물",
-    image: "/listing-loft.jpg",
-    badges: ["현장촬영", "신축급"],
-    score: "안심 88"
+    label: "문의",
+    title: "내방역 푸른공인중개사 답변 대기",
+    body: "평균 응답 8분 기준으로 문자 답변이 접수됐습니다.",
+    time: "5분 전"
   },
   {
-    title: "역삼 스카이 테라스",
-    location: "역삼동 · 강남역 7분",
-    price: "전세 4억 6,000",
-    spec: "30.0m² · 14층 · 관리비 15만",
-    image: "/listing-bedroom.jpg",
-    badges: ["확인매물", "헛걸음 보상"],
-    score: "안심 96"
+    label: "검수",
+    title: "집주인 등록 매물 실매물 확인 필요",
+    body: "사진과 3D방 자료 연결 후 검수 요청을 보낼 수 있습니다.",
+    time: "오늘"
   }
 ];
 
-const mapListings = [
+const marketSignals = [
+  { label: "전월세 평균", value: "월 76만", caption: "방배동 원룸 기준" },
+  { label: "실매물 확인", value: "92%", caption: "최근 7일 확인율" },
+  { label: "문의 응답", value: "8분", caption: "파트너 평균" }
+];
+
+const conditionSummaryItems = [
+  { label: "예산", value: "보증금 1,000만 · 월세 130만 이하" },
+  { label: "입주", value: "즉시입주 · 풀옵션 우선" },
+  { label: "생활권", value: "내방역 도보 10분 · 주차 가능" }
+];
+
+const homeServiceActions = [
+  { label: "최근 본 방", value: "3개", body: "가격·위치 비교하기" },
+  { label: "문의 대기", value: "1건", body: "평균 8분 내 답변" },
+  { label: "방 내놓기", value: "무료", body: "집주인 등록 바로가기" }
+];
+
+const neighborhoodItems = [
+  { label: "편의점", value: "4곳" },
+  { label: "지하철", value: "도보 5분" },
+  { label: "치안센터", value: "1곳" },
+  { label: "공원", value: "650m" }
+];
+
+const residentChecklist = [
+  { label: "등기·권리", value: "위험 낮음" },
+  { label: "관리비", value: "상세 공개" },
+  { label: "주변소음", value: "보통" },
+  { label: "채광", value: "남동향" }
+];
+
+const mapInsightItems = [
+  { label: "전월세 평균", value: "월 76만", caption: "방배동 원룸" },
+  { label: "안전시설", value: "CCTV 12곳", caption: "치안센터 1곳" },
+  { label: "즐겨찾기", value: "조건 저장", caption: "지도 조건 알림" },
+  { label: "3D 가능", value: "12개", caption: "투어 우선 보기" }
+];
+
+const ownerExposureItems = [
+  { label: "전달 범위", value: "반경 5km", caption: "인근 중개사 12곳" },
+  { label: "예상 검수", value: "2시간", caption: "사진 등록 후 요청" },
+  { label: "노출 배지", value: "3D 투어", caption: "3D방 연결 시 표시" }
+];
+
+const ownerReviewItems = [
+  { label: "기본정보", caption: "주소와 가격 확인" },
+  { label: "사진자료", caption: "대표 사진 3장 권장" },
+  { label: "3D방", caption: "투어 자료 연결" },
+  { label: "중개전달", caption: "반경 5km 우선" }
+];
+
+const savedComparisonItems = [
+  { label: "저장 조건", value: "월세 130 이하", caption: "방배동 · 내방역" },
+  { label: "가격 변동", value: "변동 없음", caption: "최근 7일 기준" },
+  { label: "방문 후보", value: "오늘 3시", caption: "2개 매물 가능" }
+];
+
+const inquiryTimelineItems = [
+  { time: "방금", title: "문자문의 작성 가능", body: "매물 상세에서 바로 문의를 보낼 수 있습니다." },
+  { time: "5분 전", title: "중개사 평균 응답 8분", body: "답변이 오면 문의센터에서 상태를 확인합니다." }
+];
+
+const homeWebSummaryItems = [
+  { label: "중개사 응답", value: "평균 8분" },
+  { label: "오늘 확인", value: "39개" },
+  { label: "3D 가능", value: "12개" },
+  { label: "안전시설", value: "CCTV 12곳" }
+];
+
+const aiBrokerSuggestions = [
+  { label: "방문 추천", value: "방배 루미에르", body: "예산·역세권·3D 투어 조건이 가장 잘 맞습니다." },
+  { label: "가격 주의", value: "관리비 확인", body: "월세가 낮은 매물은 관리비 포함 여부를 먼저 보세요." },
+  { label: "대체 후보", value: "성수 복층", body: "반려동물 조건을 유지하면 성수동 매물이 더 넓습니다." }
+];
+
+const neighborhoodRankItems = [
+  { rank: "1", label: "교통", value: "내방역 도보 5분" },
+  { rank: "2", label: "생활", value: "편의점 4곳 · 카페 7곳" },
+  { rank: "3", label: "안전", value: "CCTV 12곳 · 치안센터 1곳" }
+];
+
+const safetyReportItems = [
+  { label: "등기 변동", value: "최근 변동 없음", status: "안전" },
+  { label: "보증금 비율", value: "권장 범위", status: "양호" },
+  { label: "대출·특약", value: "방문 시 확인", status: "확인" },
+  { label: "주변 치안", value: "야간 동선 양호", status: "양호" }
+];
+
+const inquiryChannelItems = [
+  { label: "문자문의", value: "로그인 없이 가능", caption: "평균 8분 응답" },
+  { label: "전화문의", value: "중개사 연결", caption: "영업시간 09:00-20:00" },
+  { label: "방문예약", value: "오늘 3시 가능", caption: "3D 투어 먼저 확인" }
+];
+
+const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
+
+const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
+
+const detailTrustSignals = [
+  { label: "실매물 확인", value: "오늘 검수" },
+  { label: "문의 응답", value: "평균 8분" },
+  { label: "3D 투어", value: "실측 도면" },
+  { label: "보상 정책", value: "헛걸음 보상" }
+];
+
+const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: string }> = [
+  { key: "home", label: "홈", Icon: HomeIcon, href: "#home-title" },
+  { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
+  { key: "saved", label: "찜", Icon: Heart, href: "#saved-list" },
+  { key: "inquiry", label: "문의", Icon: MessageCircle, href: "#inquiry" },
+  { key: "mypage", label: "마이페이지", Icon: UserRound, href: "#my-page" }
+];
+
+const roleDisplayLabels: Record<AppRole, string> = {
+  seeker: "방 찾기",
+  tenant: "세입자",
+  landlord: "집주인"
+};
+
+const mapResultTabs: Array<{ key: MapResultTab; label: string }> = [
+  { key: "rooms", label: "전체 방" },
+  { key: "complexes", label: "단지" },
+  { key: "agents", label: "중개사무소" }
+];
+
+const listings = [
   {
+    listingNo: "57804322",
+    detailHeader: "매물 57804322",
+    listingLabel: "매물번호 57804322",
     title: "방배 루미에르 402호",
-    price: "월세 1,000 / 35",
-    meta: "원룸 · 24.5m² · 4층",
-    image: "/listing-studio.jpg"
+    location: "방배동 · 내방역 도보 5분",
+    price: "월세 1000/130",
+    headline: "전입OK 신축원룸 정말 깔끔해요 수납 굿",
+    spec: "24.5m² · 4층 · 즉시입주",
+    roomType: "오피스텔",
+    sizeLabel: "6평",
+    floorLabel: "고층/16층",
+    maintenanceFee: "10만원",
+    viewCount: "조회 21회",
+    unitCount: "14평",
+    complexPrice: "매1.4억",
+    image: "/listing-studio.jpg",
+    gallery: ["/listing-studio.jpg", "/listing-bedroom.jpg", "/listing-loft.jpg", "/room-sunlit.png"],
+    badges: ["확인매물", "3D 투어"],
+    tags: ["신축", "주차", "풀옵션", "보안/안전", "큰길가"],
+    score: "안심 92",
+    updated: "1일전",
+    broker: "내방역 푸른공인중개사",
+    verification: "오늘 현장확인",
+    response: "평균 응답 8분"
   },
   {
+    listingNo: "57804323",
+    detailHeader: "매물 57804323",
+    listingLabel: "매물번호 57804323",
+    title: "성수 어반 스튜디오",
+    location: "성수동 · 서울숲 9분",
+    price: "월세 800 / 80",
+    headline: "서울숲 가까운 복층 스튜디오 반려동물 가능",
+    spec: "32.2m² · 복층 · 반려동물",
+    roomType: "원룸",
+    sizeLabel: "9평",
+    floorLabel: "5층/9층",
+    maintenanceFee: "12만원",
+    viewCount: "조회 34회",
+    unitCount: "22평",
+    complexPrice: "매2.1억",
+    image: "/listing-loft.jpg",
+    gallery: ["/listing-loft.jpg", "/listing-studio.jpg", "/listing-bedroom.jpg", "/building-premium.png"],
+    badges: ["현장촬영", "신축급"],
+    tags: ["복층", "반려동물", "역세권", "채광", "현장촬영"],
+    score: "안심 88",
+    updated: "방금확인",
+    broker: "성수온도공인중개사",
+    verification: "중개사 검수",
+    response: "즉시 문의 가능"
+  },
+  {
+    listingNo: "57804324",
+    detailHeader: "매물 57804324",
+    listingLabel: "매물번호 57804324",
+    title: "역삼 스카이 테라스",
+    location: "역삼동 · 강남역 7분",
+    price: "전세 4억 6,000",
+    headline: "강남역 생활권 고층 오피스텔 전망 좋은 방",
+    spec: "30.0m² · 14층 · 관리비 15만",
+    roomType: "오피스텔",
+    sizeLabel: "8평",
+    floorLabel: "14층/20층",
+    maintenanceFee: "15만원",
+    viewCount: "조회 48회",
+    unitCount: "18평",
+    complexPrice: "매4.6억",
+    image: "/listing-bedroom.jpg",
+    gallery: ["/listing-bedroom.jpg", "/listing-building.jpg", "/listing-studio.jpg", "/listing-loft.jpg"],
+    badges: ["확인매물", "헛걸음 보상"],
+    tags: ["고층", "보안/안전", "큰길가", "엘리베이터", "주차"],
+    score: "안심 96",
+    updated: "오늘확인",
+    broker: "강남역 스카이부동산",
+    verification: "서류 확인",
+    response: "보상 정책 참여"
+  }
+];
+
+type Listing = (typeof listings)[number];
+
+const getListingPriceRows = (listing: Listing) => {
+  const monthlyMatch = listing.price.match(/월세\s*([\d,]+)\s*\/\s*([\d,]+)/);
+  const jeonseMatch = listing.price.match(/전세\s*(.+)/);
+
+  if (monthlyMatch) {
+    return [
+      ["거래유형", "월세"],
+      ["보증금", `${monthlyMatch[1]}만원`],
+      ["월세", `${monthlyMatch[2]}만원`],
+      ["관리비", listing.maintenanceFee],
+      ["입주가능일", listing.floorLabel.includes("고층") ? "즉시입주" : "협의 가능"],
+      ["계약기간", "12개월 이상"]
+    ];
+  }
+
+  return [
+    ["거래유형", "전세"],
+    ["전세금", jeonseMatch?.[1] ?? listing.price.replace("전세", "").trim()],
+    ["관리비", listing.maintenanceFee],
+    ["입주가능일", "협의 가능"],
+    ["보증보험", "상담 필요"],
+    ["계약기간", "24개월 기준"]
+  ];
+};
+
+const getListingBuildingRows = (listing: Listing) => [
+  ["건물유형", listing.roomType],
+  ["면적", listing.sizeLabel],
+  ["해당층/전체층", listing.floorLabel],
+  ["주차", listing.tags.includes("주차") ? "가능" : "문의"],
+  ["난방", "개별난방"],
+  ["엘리베이터", listing.floorLabel.includes("/") ? "있음" : "문의"]
+];
+
+const resetWindowScroll = () => {
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  document.querySelectorAll<HTMLElement>(".service-frame, .screen, .home-screen, .map-screen, .listing-detail-screen").forEach((element) => {
+    element.scrollTop = 0;
+    element.scrollLeft = 0;
+  });
+};
+
+const resetWindowScrollSoon = () => {
+  resetWindowScroll();
+  requestAnimationFrame(() => {
+    resetWindowScroll();
+    requestAnimationFrame(resetWindowScroll);
+  });
+  window.setTimeout(resetWindowScroll, 120);
+  window.setTimeout(resetWindowScroll, 320);
+};
+
+const mapListings = [
+  {
+    listingIndex: 0,
+    title: "방배 루미에르 402호",
+    price: "월세 1000/130",
+    meta: "원룸 · 24.5m² · 4층",
+    distance: "내방역 도보 5분 · 큰길가",
+    updated: "1일전",
+    flags: ["안심 92", "3D 투어", "풀옵션"],
+    image: "/listing-studio.jpg",
+    lat: 37.4875,
+    lng: 126.9931,
+    mapLabel: "1000/130",
+    clusterLabel: "14개",
+    verifyStatus: "오늘 현장확인",
+    responseStatus: "평균 응답 8분",
+    tourStatus: "3D 투어 가능",
+    accuracyRank: 1,
+    recencyRank: 2,
+    monthlyRent: 130,
+    has3DTour: true
+  },
+  {
+    listingIndex: 2,
     title: "역삼 스카이 테라스",
     price: "전세 4억 6,000",
     meta: "오피스텔 · 30.0m² · 14층",
-    image: "/listing-building.jpg"
+    distance: "강남역 도보 7분 · 보안 우수",
+    updated: "오늘확인",
+    flags: ["헛걸음 보상", "고층", "주차"],
+    image: "/listing-building.jpg",
+    lat: 37.4902,
+    lng: 126.9908,
+    mapLabel: "전세 4.6억",
+    clusterLabel: "오늘",
+    verifyStatus: "오늘 서류확인",
+    responseStatus: "보상 정책 참여",
+    tourStatus: "방문 예약 우선",
+    accuracyRank: 2,
+    recencyRank: 1,
+    monthlyRent: 999,
+    has3DTour: false
+  },
+  {
+    listingIndex: 1,
+    title: "성수 어반 스튜디오",
+    price: "월세 800/80",
+    meta: "복층 · 반려동물 가능",
+    distance: "서울숲 9분",
+    updated: "방금확인",
+    flags: ["반려동물", "복층", "3D 투어"],
+    image: "/listing-loft.jpg",
+    lat: 37.4859,
+    lng: 126.9964,
+    mapLabel: "800/80",
+    clusterLabel: "3D",
+    verifyStatus: "방금 갱신",
+    responseStatus: "즉시 문의 가능",
+    tourStatus: "3D 투어 가능",
+    accuracyRank: 3,
+    recencyRank: 0,
+    monthlyRent: 80,
+    has3DTour: true
+  }
+];
+
+const mapDealMarkers = mapListings;
+
+const getMapFilterSummary = (filter: string) => {
+  if (filter === "원룸·투룸") {
+    return "원룸·복층 중심";
+  }
+
+  if (filter === "보증금") {
+    return "낮은 월세 우선";
+  }
+
+  if (filter === "안전") {
+    return "안심 점수 높은 순";
+  }
+
+  if (filter === "3D 가능") {
+    return "3D 투어 가능";
+  }
+
+  return "시세 지도 기준";
+};
+
+const complexCards = [
+  {
+    name: "방배 루미에르",
+    address: "방배동 103-8 · 내방역 5분",
+    deal: "월세 평균 1000/118",
+    count: "확인매물 14개",
+    badge: "3D 단지투어",
+    score: "생활점수 91"
+  },
+  {
+    name: "방배 명지 해든터",
+    address: "방배중앙로 생활권 · 큰길가",
+    deal: "전월세 평균 8% 안정",
+    count: "최근 등록 6개",
+    badge: "실거주 리뷰",
+    score: "교통점수 88"
+  }
+];
+
+const agentCards = [
+  {
+    name: "내방역 푸른공인중개사",
+    manager: "대표 김하늘",
+    rating: "평점 4.8",
+    response: "평균 응답 8분",
+    inventory: "확인매물 126개",
+    tags: ["헛걸음 보상", "현장촬영", "문자문의"]
+  },
+  {
+    name: "방배 스마트부동산",
+    manager: "소장 박서준",
+    rating: "평점 4.6",
+    response: "오늘 문의 12건",
+    inventory: "3D 가능 18개",
+    tags: ["신축 전문", "야간 상담", "전세 상담"]
   }
 ];
 
@@ -95,42 +555,53 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-const detailFacts = [
-  ["주거형태", "오픈형 원룸"],
-  ["전용면적", "24.5m²"],
-  ["입주가능일", "즉시"],
-  ["주차", "가능"],
-  ["관리비", "8만원"],
-  ["층수", "4 / 7층"]
+const loginTrustItems = [
+  { label: "3D 투어", value: "방문 전 확인" },
+  { label: "확인매물", value: "실매물 검수" },
+  { label: "지도 검색", value: "시세·안전" }
 ];
 
-const amenities = ["에어컨", "세탁기", "냉장고", "인덕션", "도어락", "엘리베이터"];
-
 function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void }) {
+  const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
+
   return (
     <main className="app-canvas">
-      <section className="login-phone" aria-label="Roomlog Homes 로그인">
-        <div className="login-map" aria-hidden="true">
-          <span className="login-pin pin-a">1000/35</span>
-          <span className="login-pin pin-b">4.6억</span>
-          <span className="login-pin pin-c">800/80</span>
+      <section className="login-phone" aria-label="집우집주 로그인">
+        <div className="login-visual" aria-hidden="true">
+          <Image className="login-hero-image" src={loginHeroImage} alt="" priority />
         </div>
 
         <div className="login-panel">
-          <p className="brand-kicker">ROOMLOG HOMES</p>
+          <p className="brand-kicker">집우집주</p>
           <h1>방 보러 가기 전에 먼저 걸어보세요</h1>
           <p>
-            소셜 로그인으로 시작하고, 개발 중에는 아래 버튼으로 바로 데모 화면에 들어갑니다.
+            지도에서 조건에 맞는 방을 찾고, 방문 전 3D 투어와 안심 정보를 먼저 확인하세요.
           </p>
+
+          <div className="login-trust-row" aria-label="서비스 핵심 정보">
+            {loginTrustItems.map((item) => (
+              <span key={item.label}>
+                <b>{item.label}</b>
+                {item.value}
+              </span>
+            ))}
+          </div>
 
           <div className="social-stack" aria-label="소셜 로그인">
             {socialProviders.map((provider) => (
-              <button className={`social-button ${provider.className}`} type="button" key={provider.label}>
+              <button
+                className={`social-button ${provider.className}`}
+                type="button"
+                key={provider.label}
+                onClick={() => setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`)}
+              >
                 <span aria-hidden="true">{provider.mark}</span>
                 {provider.label}
               </button>
             ))}
           </div>
+
+          <p className="social-login-notice" role="status">{socialLoginNotice}</p>
 
           <div className="dev-login-panel" aria-label="개발용 로그인">
             <div>
@@ -153,15 +624,150 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
 }
 
 function LandlordMyPage() {
+  const [ownerForm, setOwnerForm] = useState({
+    title: "방배 루미에르 402호",
+    address: "서울특별시 서초구 방배동",
+    tradeType: "월세",
+    moveIn: "즉시",
+    deposit: "1000",
+    monthly: "35",
+    jeonse: "0",
+    maintenance: "8",
+    area: "24.5",
+    floor: "4층 / 16층"
+  });
+  const [photoCount, setPhotoCount] = useState(0);
+  const [has3DRoom, setHas3DRoom] = useState(false);
+  const [registrationStatus, setRegistrationStatus] = useState("작성 중");
+  const updateOwnerForm = (key: keyof typeof ownerForm, value: string) => {
+    setOwnerForm((current) => ({ ...current, [key]: value }));
+    setRegistrationStatus("작성 중");
+  };
+  const submitOwnerListing = () => {
+    setRegistrationStatus("검수 대기");
+  };
+  const continueOwnerRegistration = () => {
+    const scrollToOwnerForm = () => {
+      const form = document.getElementById("owner-registration-form");
+
+      if (!form) {
+        return;
+      }
+
+      window.scrollTo({
+        top: form.getBoundingClientRect().top + window.scrollY - 12,
+        left: 0,
+        behavior: "auto"
+      });
+    };
+
+    scrollToOwnerForm();
+    requestAnimationFrame(scrollToOwnerForm);
+    window.setTimeout(scrollToOwnerForm, 160);
+    window.setTimeout(scrollToOwnerForm, 360);
+  };
+  const ownerPriceLabel = ownerForm.tradeType === "전세"
+    ? `전세 ${ownerForm.jeonse || "0"}만원`
+    : `${ownerForm.tradeType} ${ownerForm.deposit || "0"}/${ownerForm.monthly || "0"}`;
+  const ownerCompletionRate = photoCount >= 3 && has3DRoom ? 92 : 68;
+
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
       <div className="owner-hero">
-        <p className="brand-kicker">MY PAGE</p>
+        <p className="brand-kicker">매물 관리</p>
         <h2 id="owner-title">집주인 마이페이지</h2>
-        <p>내 집 등록을 위한 입력 화면입니다. 저장 기능은 아직 연결하지 않은 프론트 셸입니다.</p>
+        <p>사진, 가격, 3D 방 자료를 한 번에 정리해 매물 등록을 진행합니다.</p>
       </div>
 
-      <form className="owner-form">
+      <section className="owner-status-board" aria-label="등록 매물 현황">
+        <article>
+          <span>등록 상태</span>
+          <strong>{registrationStatus}</strong>
+          <p>사진 {photoCount}장 · 3D방 {has3DRoom ? "연결됨" : "미등록"}</p>
+        </article>
+        <article>
+          <span>검수 상태</span>
+          <strong>{registrationStatus === "검수 대기" ? "실매물 확인 요청" : "실매물 확인 전"}</strong>
+          <p>{ownerForm.address} · {ownerPriceLabel}</p>
+        </article>
+      </section>
+
+      <section className="owner-preview-card" aria-label="등록 매물 미리보기">
+        <div>
+          <span>등록 미리보기</span>
+          <h3>{ownerForm.title}</h3>
+          <p>{ownerForm.address}</p>
+        </div>
+        <div className="owner-preview-actions">
+          <strong>{ownerPriceLabel}</strong>
+          <button type="button" onClick={continueOwnerRegistration}>입력 계속하기</button>
+        </div>
+      </section>
+
+      <section className="owner-exposure-card" aria-label="집 내놓기 전달 범위">
+        <div className="owner-exposure-head">
+          <div>
+            <span>집 내놓기 전달 범위</span>
+            <h3>검수 후 주변 중개사에게 매물 정보를 보냅니다</h3>
+          </div>
+          <strong>{ownerCompletionRate}% 완성</strong>
+        </div>
+        <div className="owner-exposure-grid">
+          {ownerExposureItems.map((item) => (
+            <article key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <small>{item.caption}</small>
+            </article>
+          ))}
+        </div>
+        <p className="owner-exposure-note">
+          사진 3장 이상과 3D방 자료를 연결하면 확인매물·3D 투어 배지가 함께 노출됩니다.
+        </p>
+      </section>
+
+      <section className="owner-readiness-card" aria-label="검수 준비 체크리스트">
+        <div className="owner-readiness-head">
+          <div>
+            <span>검수 준비 체크리스트</span>
+            <h3>등록 완료 전에 빠진 항목을 확인하세요</h3>
+          </div>
+          <strong>{ownerCompletionRate}%</strong>
+        </div>
+        <div className="owner-readiness-list">
+          {ownerReviewItems.map((item, index) => {
+            const done = index === 0 || (index === 1 && photoCount >= 3) || (index === 2 && has3DRoom);
+
+            return (
+              <article className={done ? "done" : ""} key={item.label}>
+                <span>{item.label}</span>
+                <strong>{done ? "완료" : "필요"}</strong>
+                <p>{item.caption}</p>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="owner-progress-card" aria-label="매물 등록 단계">
+        <div>
+          <span className="progress-dot done" />
+          <strong>기본 정보</strong>
+          <em>완료</em>
+        </div>
+        <div>
+          <span className="progress-dot done" />
+          <strong>사진 업로드</strong>
+          <em>검수중</em>
+        </div>
+        <div>
+          <span className="progress-dot" />
+          <strong>3D방 연결</strong>
+          <em>{has3DRoom ? "연결 완료" : "등록 전"}</em>
+        </div>
+      </section>
+
+      <form className="owner-form" id="owner-registration-form">
         <section className="owner-card">
           <div className="form-heading">
             <div>
@@ -173,18 +779,18 @@ function LandlordMyPage() {
 
           <label>
             매물명
-            <input defaultValue="방배 루미에르 402호" placeholder="예: 방배 루미에르 402호" />
+            <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
           </label>
 
           <label>
             주소
-            <input defaultValue="서울특별시 서초구 방배동" placeholder="도로명 또는 지번 주소" />
+            <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
           </label>
 
           <div className="form-grid">
             <label>
               거래유형
-              <select defaultValue="월세">
+              <select value={ownerForm.tradeType} onChange={(event) => updateOwnerForm("tradeType", event.target.value)}>
                 <option>월세</option>
                 <option>전세</option>
                 <option>반전세</option>
@@ -192,29 +798,40 @@ function LandlordMyPage() {
             </label>
             <label>
               입주가능일
-              <input defaultValue="즉시" placeholder="예: 즉시, 2026-08-01" />
+              <input value={ownerForm.moveIn} onChange={(event) => updateOwnerForm("moveIn", event.target.value)} placeholder="예: 즉시, 2026-08-01" />
             </label>
           </div>
 
           <div className="form-grid">
             <label>
               보증금
-              <input inputMode="numeric" defaultValue="1000" placeholder="만원 단위" />
+              <input inputMode="numeric" value={ownerForm.deposit} onChange={(event) => updateOwnerForm("deposit", event.target.value)} placeholder="만원 단위" />
             </label>
             <label>
               월세
-              <input inputMode="numeric" defaultValue="35" placeholder="만원 단위" />
+              <input inputMode="numeric" value={ownerForm.monthly} onChange={(event) => updateOwnerForm("monthly", event.target.value)} placeholder="만원 단위" />
             </label>
           </div>
 
           <div className="form-grid">
             <label>
-              관리비
-              <input inputMode="numeric" defaultValue="8" placeholder="만원 단위" />
+              전세금
+              <input inputMode="numeric" value={ownerForm.jeonse} onChange={(event) => updateOwnerForm("jeonse", event.target.value)} placeholder="전세일 때 입력" />
             </label>
             <label>
+              관리비
+              <input inputMode="numeric" value={ownerForm.maintenance} onChange={(event) => updateOwnerForm("maintenance", event.target.value)} placeholder="만원 단위" />
+            </label>
+          </div>
+
+          <div className="form-grid">
+            <label>
               전용면적
-              <input inputMode="decimal" defaultValue="24.5" placeholder="m²" />
+              <input inputMode="decimal" value={ownerForm.area} onChange={(event) => updateOwnerForm("area", event.target.value)} placeholder="m²" />
+            </label>
+            <label>
+              층수
+              <input value={ownerForm.floor} onChange={(event) => updateOwnerForm("floor", event.target.value)} placeholder="예: 4층 / 16층" />
             </label>
           </div>
         </section>
@@ -229,17 +846,56 @@ function LandlordMyPage() {
 
           <label className="upload-zone">
             <strong>사진 업로드</strong>
-            <span>대표 사진, 거실, 주방, 욕실 이미지를 올리는 자리</span>
-            <input type="file" multiple accept="image/*" aria-label="사진 업로드" />
+            <span>대표 사진, 거실, 주방, 욕실 이미지를 순서대로 등록합니다. 현재 {photoCount}장 선택</span>
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              aria-label="사진 업로드"
+              onChange={(event) => {
+                setPhotoCount(event.target.files?.length ?? 0);
+                setRegistrationStatus("작성 중");
+              }}
+            />
           </label>
 
-          <button className="upload-3d-button" type="button">
+          <button
+            className={has3DRoom ? "upload-3d-button active" : "upload-3d-button"}
+            type="button"
+            onClick={() => {
+              setHas3DRoom((current) => !current);
+              setRegistrationStatus("작성 중");
+            }}
+          >
             <strong>3D방 업로드</strong>
-            <span>다른 팀원이 연결 예정인 3D 방 파일 업로드 버튼</span>
+            <span>{has3DRoom ? "3D 방 자료가 연결된 상태입니다." : "3D 방 파일 또는 링크를 등록할 수 있습니다."}</span>
           </button>
         </section>
 
-        <button className="submit-listing" type="button">
+        <section className="owner-submit-summary" aria-label="검수 요청 요약">
+          <div>
+            <span>검수 요청 요약</span>
+            <h3>{ownerForm.title}</h3>
+            <p>{ownerPriceLabel} · 관리비 {ownerForm.maintenance}만원 · {ownerForm.area}m² · {ownerForm.floor}</p>
+          </div>
+          <div className="owner-submit-grid">
+            <span>
+              <b>{photoCount}장</b>
+              사진
+            </span>
+            <span>
+              <b>{has3DRoom ? "연결" : "대기"}</b>
+              3D방
+            </span>
+            <span>
+              <b>2시간</b>
+              예상 검수
+            </span>
+          </div>
+          <p>검수 요청 후 주변 중개사 12곳에 매물 정보가 전달되고, 확인매물 여부가 표시됩니다.</p>
+        </section>
+
+        <button className="submit-listing" type="button" onClick={submitOwnerListing}>
           매물 등록하기
         </button>
       </form>
@@ -247,62 +903,1909 @@ function LandlordMyPage() {
   );
 }
 
+function NaverMapPreview({ className = "" }: { className?: string }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const isMapInitializedRef = useRef(false);
+  const [isScriptReady, setIsScriptReady] = useState(false);
+  const [loadState, setLoadState] = useState<MapLoadState>(naverMapClientId ? "loading" : "missing-key");
+  const scriptUrl = naverMapClientId
+    ? `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${naverMapClientId}`
+    : "";
+
+  useEffect(() => {
+    if (window.naver?.maps) {
+      setIsScriptReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loadState !== "loading" || !isScriptReady || !naverMapClientId || !mapRef.current) {
+      return;
+    }
+
+    if (!window.naver?.maps) {
+      setLoadState("error");
+      return;
+    }
+
+    if (isMapInitializedRef.current) {
+      return;
+    }
+
+    isMapInitializedRef.current = true;
+    const maps = window.naver.maps;
+    const center = new maps.LatLng(37.4875, 126.9931);
+    const map = new maps.Map(mapRef.current, {
+      center,
+      zoom: 16,
+      zoomControl: true
+    });
+    mapDealMarkers.forEach((deal, index) => {
+      const position = new maps.LatLng(deal.lat, deal.lng);
+      new maps.Marker({
+        map,
+        position,
+        icon: {
+          content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${deal.title} ${deal.price}"><b>${deal.clusterLabel}</b><strong>${deal.mapLabel}</strong></button>`,
+          anchor: new maps.Point(42, 56)
+        }
+      });
+    });
+
+    const marker = new maps.Marker({
+      map,
+      position: center
+    });
+    const infoWindow = new maps.InfoWindow({
+      content: '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
+    });
+    infoWindow.open(map, marker);
+    setLoadState("ready");
+
+    window.setTimeout(() => {
+      const mapBackground = [
+        mapRef.current?.style.background,
+        mapRef.current ? window.getComputedStyle(mapRef.current).backgroundImage : ""
+      ].join(" ");
+
+      if (mapBackground.includes("auth_fail")) {
+        setLoadState("error");
+      }
+    }, 600);
+  }, [isScriptReady, loadState]);
+
+  const handleScriptReady = () => {
+    requestAnimationFrame(() => {
+      if (window.naver?.maps) {
+        setIsScriptReady(true);
+        return;
+      }
+
+      setLoadState("error");
+    });
+  };
+
+  return (
+    <div className={`naver-map-shell ${className}`} aria-label="네이버 지도 서비스로 보기" data-state={loadState}>
+      {scriptUrl ? (
+        <Script
+          id="naver-map-script"
+          src={scriptUrl}
+          strategy="afterInteractive"
+          onError={() => setLoadState("error")}
+          onLoad={handleScriptReady}
+          onReady={handleScriptReady}
+        />
+      ) : null}
+      <div ref={mapRef} className="naver-real-map" aria-label="네이버 지도 영역" data-state={loadState} />
+
+      {loadState === "missing-key" ? (
+        <div className="map-api-state" role="status">
+          <span>지도 서비스</span>
+          <strong>지도 설정 확인 중</strong>
+          <p>
+            지도 연동 정보가 확인되면 주변 매물과 시세 마커가 표시됩니다.
+          </p>
+        </div>
+      ) : null}
+
+      {loadState === "loading" ? (
+        <div className="map-api-state loading" role="status">
+          <span>지도 서비스</span>
+          <strong>네이버 지도 불러오는 중</strong>
+        </div>
+      ) : null}
+
+      {loadState === "error" ? (
+        <div className="map-api-state error" role="alert">
+          <span>네이버 지도</span>
+          <strong>지도 인증 확인 필요</strong>
+          <p>서비스 도메인 허용이 완료되면 실제 지도 타일과 매물 마커가 바로 표시됩니다.</p>
+          <div className="map-api-checklist" aria-label="네이버 지도 인증 점검 항목">
+            <small>Dynamic Map</small>
+            <small>Web URL 승인</small>
+            <small>실시간 마커 대기</small>
+          </div>
+        </div>
+      ) : null}
+
+      {loadState === "ready" ? (
+        <div className="map-live-controls" aria-label="지도 도구">
+          <button className="float-action shot" type="button">현장촬영</button>
+          <button className="float-action draw" type="button">그리기</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ListingDetailView({
+  listing,
+  isSaved,
+  onBack,
+  onToggleSaved
+}: {
+  listing: Listing;
+  isSaved: boolean;
+  onBack: () => void;
+  onToggleSaved: (listingNo: string) => void;
+}) {
+  const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
+  const [isInquirySheetOpen, setIsInquirySheetOpen] = useState(false);
+  const [isComplexSheetOpen, setIsComplexSheetOpen] = useState(false);
+  const [isAgentSheetOpen, setIsAgentSheetOpen] = useState(false);
+  const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
+  const [detailToast, setDetailToast] = useState("");
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
+  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
+  const [inquiryMemo, setInquiryMemo] = useState("실매물 여부와 방문 가능한 시간을 확인하고 싶습니다.");
+  const [inquirySent, setInquirySent] = useState(false);
+  const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
+  const listingPriceRows = getListingPriceRows(listing);
+  const listingBuildingRows = getListingBuildingRows(listing);
+  const safetyScore = listing.score.replace("안심 ", "");
+
+  const copyListingNo = async () => {
+    const text = listing.listingLabel;
+
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+    }
+
+    setDetailToast("매물번호를 복사했어요");
+    window.setTimeout(() => setDetailToast(""), 1600);
+  };
+  const scrollToSafetyReport = () => {
+    document.querySelector(".detail-report-card")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
+
+  return (
+    <section className="listing-detail-screen" aria-labelledby="clicked-detail-title">
+      <header className="detail-top-title">
+        <button className="detail-back-button" type="button" onClick={onBack} aria-label="목록으로 돌아가기">
+          <ArrowLeft size={24} strokeWidth={2.5} />
+        </button>
+        <h1 id="clicked-detail-title">{listing.detailHeader}</h1>
+        <div className="detail-header-actions">
+          <button type="button" aria-label="공유하기" onClick={() => setIsShareSheetOpen(true)}>
+            <Share2 size={22} strokeWidth={2.5} />
+          </button>
+          <button className={isSaved ? "active" : ""} type="button" aria-label="찜하기" onClick={() => onToggleSaved(listing.listingNo)}>
+            <Heart size={24} fill={isSaved ? "currentColor" : "none"} strokeWidth={2.5} />
+          </button>
+        </div>
+      </header>
+
+      <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
+        <div className="gallery-main">
+          <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority />
+          <span className="gallery-photo-count">{activePhotoIndex + 1} / {listing.gallery.length}</span>
+        </div>
+        <div className="gallery-stack">
+          {listing.gallery.map((image, index) => (
+            <button
+              className={activePhotoIndex === index ? "gallery-tile active" : "gallery-tile"}
+              type="button"
+              key={image}
+              aria-label={`${listing.title} 사진 ${index + 1} 보기`}
+              onClick={() => setActivePhotoIndex(index)}
+            >
+              <span className="gallery-image" style={{ backgroundImage: `url(${image})` }} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="listing-number-bar">
+        <strong>{listing.listingLabel}</strong>
+        <button type="button" aria-label="매물번호 복사" onClick={copyListingNo}>
+          <Copy size={18} strokeWidth={2.4} />
+        </button>
+        <span>1일전</span>
+      </div>
+
+      {detailToast ? <div className="detail-toast" role="status">{detailToast}</div> : null}
+
+      <div className="detail-price-block">
+        <h2>{listing.price}</h2>
+        <p>{listing.headline}</p>
+        <div className="detail-address-line">
+          <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
+          <span>{listing.location}</span>
+        </div>
+        <div className="detail-quick-actions" aria-label="상세 빠른 액션">
+          <button type="button" onClick={() => setIsTourSheetOpen(true)}>
+            <span>3D</span>
+            <strong>투어 보기</strong>
+          </button>
+          <button type="button" onClick={scrollToSafetyReport}>
+            <span>{safetyScore}</span>
+            <strong>안심 리포트</strong>
+          </button>
+          <button type="button" onClick={() => setIsComplexSheetOpen(true)}>
+            <span>단지</span>
+            <strong>정보 보기</strong>
+          </button>
+          <button type="button" onClick={() => setIsInquirySheetOpen(true)}>
+            <span>8분</span>
+            <strong>문의하기</strong>
+          </button>
+        </div>
+      </div>
+
+      <div className="listing-detail-facts" aria-label="매물 기본 정보">
+        <div>
+          <span aria-hidden="true"><Building2 size={20} strokeWidth={2.2} /></span>
+          <strong>{listing.roomType}</strong>
+        </div>
+        <div>
+          <span aria-hidden="true"><Ruler size={20} strokeWidth={2.2} /></span>
+          <strong>{listing.sizeLabel}</strong>
+        </div>
+        <div>
+          <span aria-hidden="true"><Layers3 size={20} strokeWidth={2.2} /></span>
+          <strong>{listing.floorLabel}</strong>
+        </div>
+        <div>
+          <span aria-hidden="true"><Banknote size={20} strokeWidth={2.2} /></span>
+          <strong>{listing.maintenanceFee}</strong>
+        </div>
+      </div>
+
+      <section className="detail-availability-strip" aria-label="거래 가능 정보">
+        <article>
+          <span>거래상태</span>
+          <strong>문의 가능</strong>
+        </article>
+        <article>
+          <span>사진</span>
+          <strong>{listing.gallery.length}장</strong>
+        </article>
+        <article>
+          <span>위치</span>
+          <strong>역세권</strong>
+        </article>
+        <article>
+          <span>확인</span>
+          <strong>중개사 검수</strong>
+        </article>
+      </section>
+
+      <section className="detail-trust-summary" aria-label="매물 신뢰 요약">
+        {detailTrustSignals.map((item) => (
+          <article key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <div className="detail-tags" aria-label="매물 태그">
+        {listing.tags.map((tag) => (
+          <span key={tag}>{tag}</span>
+        ))}
+      </div>
+
+      <p className="view-count">{listing.viewCount}</p>
+      <button className="complex-button" type="button" onClick={() => setIsComplexSheetOpen(true)}>
+        <Building2 size={20} strokeWidth={2.4} aria-hidden="true" />
+        단지 정보 보러가기
+      </button>
+
+      <section className="detail-info-section" aria-label="가격 정보">
+        <div className="detail-section-heading">
+          <h2>가격 정보</h2>
+          <span>방문 전 필수 확인</span>
+        </div>
+        <dl className="detail-info-table">
+          {listingPriceRows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section className="safety-analysis-card" aria-label="AI 안전분석">
+        <div>
+          <span>AI 안전분석</span>
+          <h2>권리관계 특이사항 낮음</h2>
+          <p>등기 변동, 보증금 비율, 관리비 수준을 함께 본 결과입니다.</p>
+        </div>
+        <strong>{safetyScore}점</strong>
+      </section>
+
+      <section className="detail-report-card" aria-label="지킴 진단 리포트">
+        <div className="detail-report-head">
+          <div>
+            <span>지킴 진단 리포트</span>
+            <h2>계약 전 확인할 항목을 정리했어요</h2>
+          </div>
+          <strong>{safetyScore}</strong>
+        </div>
+        <div className="detail-report-grid">
+          {safetyReportItems.map((item) => (
+            <article key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <small>{item.status}</small>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="agent-summary-card" aria-label="중개사 정보">
+        <div>
+          <span>중개사 평점 4.8</span>
+          <h2>내방역 푸른공인중개사</h2>
+          <p>최근 응답 8분 · 확인매물 126개 · 헛걸음 보상 참여</p>
+        </div>
+        <button type="button" onClick={() => setIsAgentSheetOpen(true)}>프로필</button>
+      </section>
+
+      <section className="messenger-card" aria-label="매물확인 메신저">
+        <div>
+          <span>매물확인 메신저</span>
+          <h2>방문 전 거래 가능 여부 확인</h2>
+          <p>중개사가 계약 가능, 계약 불가능, 대체 매물을 문자로 답변합니다.</p>
+        </div>
+        <button type="button" onClick={() => setIsInquirySheetOpen(true)}>간편문의</button>
+      </section>
+
+      <section className="detail-info-section" aria-label="옵션 정보">
+        <div className="detail-section-heading">
+          <h2>옵션 정보</h2>
+          <span>현장 확인 필요</span>
+        </div>
+        <div className="option-chip-grid">
+          {optionItems.map((option) => (
+            <span key={option}>{option}</span>
+          ))}
+        </div>
+      </section>
+
+      <section className="detail-info-section" aria-label="건물 정보">
+        <div className="detail-section-heading">
+          <h2>건물 정보</h2>
+          <span>등기·현장 기준</span>
+        </div>
+        <dl className="detail-info-table">
+          {listingBuildingRows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section className="detail-neighborhood-card" aria-label="상세 주변 정보">
+        <h2>주변 정보</h2>
+        <div>
+          {neighborhoodItems.map((item) => (
+            <span key={item.label}>
+              <b>{item.label}</b>
+              {item.value}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <button className="tour-banner detail-tour-banner" type="button" onClick={() => setIsTourSheetOpen(true)} aria-label="3D 가상 투어 시작하기">
+        <span>
+          <small>3D 공간 투어</small>
+          <strong>3D 보기 / 투어 예약</strong>
+          <em>실측 도면 기반으로 공간을 먼저 확인하세요</em>
+        </span>
+        <b aria-hidden="true">3D</b>
+      </button>
+
+      <section className="detail-map-section" aria-label="상세 위치">
+        <div>
+          <h2>위치</h2>
+          <p>정확한 위치와 주변 생활권을 지도에서 확인하세요.</p>
+        </div>
+        <NaverMapPreview className="detail-naver-map" />
+      </section>
+
+      <div className="detail-contact-bar" id="detail-contact">
+        <span className="contact-tooltip">로그인 없이 문의 가능 · 평균 응답 8분</span>
+        <button className="detail-contact-small" type="button" aria-label="전화문의" onClick={() => setIsInquirySheetOpen(true)}>
+          <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
+          <strong>전화</strong>
+        </button>
+        <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
+          <span>문자문의</span>
+          <strong>방문 가능 여부 확인</strong>
+        </button>
+        <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
+          <span>3D 투어</span>
+          <strong>예약</strong>
+        </button>
+      </div>
+
+      {isTourSheetOpen ? (
+        <div className="tour-sheet-backdrop" role="presentation" onClick={() => setIsTourSheetOpen(false)}>
+          <section className="tour-sheet" role="dialog" aria-modal="true" aria-labelledby="tour-sheet-title" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>3D 공간 미리보기</span>
+                <h2 id="tour-sheet-title">방문 전 3D로 먼저 보기</h2>
+                <p>방문 전에 구조와 옵션 위치를 확인하고, 원하는 시간에 투어 상담을 예약할 수 있습니다.</p>
+              </div>
+              <button type="button" onClick={() => setIsTourSheetOpen(false)} aria-label="3D 투어 닫기">×</button>
+            </header>
+
+            <div className="tour-preview-stage" aria-label="3D 투어 미리보기">
+              <div className="tour-room-box">
+                <span className="tour-wall wall-left" />
+                <span className="tour-wall wall-right" />
+                <span className="tour-bed" />
+                <span className="tour-desk" />
+                <span className="tour-window" />
+                <strong>공간 미리보기</strong>
+              </div>
+            </div>
+
+            <div className="tour-step-list">
+              <span>도면 기반 공간 스캔</span>
+              <span>옵션 배치 확인</span>
+              <span>투어 예약 연결</span>
+            </div>
+
+            <div className="tour-sheet-actions">
+              <button type="button" onClick={() => setIsTourSheetOpen(false)}>닫기</button>
+              <a href="#detail-contact" onClick={() => setIsTourSheetOpen(false)}>투어 예약</a>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isShareSheetOpen ? (
+        <div className="share-sheet-backdrop" role="presentation" onClick={() => setIsShareSheetOpen(false)}>
+          <section className="share-sheet" role="dialog" aria-modal="true" aria-labelledby="share-sheet-title" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>매물 공유</span>
+                <h2 id="share-sheet-title">매물 공유하기</h2>
+                <p>{listing.title} 정보를 같이 볼 사람에게 전달하세요.</p>
+              </div>
+              <button type="button" onClick={() => setIsShareSheetOpen(false)} aria-label="공유 닫기">×</button>
+            </header>
+
+            <div className="share-listing-preview">
+              <span>{listing.price}</span>
+              <strong>{listing.title}</strong>
+              <p>{listing.location} · {listing.spec}</p>
+            </div>
+
+            <div className="share-action-grid" aria-label="공유 방법">
+              {["링크 복사", "문자 공유", "카카오 공유", "관심목록 저장"].map((label) => (
+                <button
+                  type="button"
+                  key={label}
+                  onClick={() => {
+                    if (label === "관심목록 저장" && !isSaved) {
+                      onToggleSaved(listing.listingNo);
+                    }
+
+                    setDetailToast(label === "관심목록 저장" ? "관심목록에 저장했어요" : `${label}를 선택했어요`);
+                    setIsShareSheetOpen(false);
+                    window.setTimeout(() => setDetailToast(""), 1600);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isComplexSheetOpen ? (
+        <div className="complex-sheet-backdrop" role="presentation" onClick={() => setIsComplexSheetOpen(false)}>
+          <section className="complex-sheet" role="dialog" aria-modal="true" aria-labelledby="complex-sheet-title" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>단지 리포트</span>
+                <h2 id="complex-sheet-title">단지 정보</h2>
+                <p>{listing.location} 기준 건물, 시세, 주변 생활권을 요약했습니다.</p>
+              </div>
+              <button type="button" onClick={() => setIsComplexSheetOpen(false)} aria-label="단지 정보 닫기">×</button>
+            </header>
+
+            <div className="complex-price-summary">
+              <article>
+                <span>최근 실거래</span>
+                <strong>{listing.complexPrice}</strong>
+              </article>
+              <article>
+                <span>동일 면적 평균</span>
+                <strong>{listing.unitCount}</strong>
+              </article>
+              <article>
+                <span>월세 평균</span>
+                <strong>76만</strong>
+              </article>
+            </div>
+
+            <section className="complex-building-card" aria-label="단지 건물 요약">
+              <div>
+                <strong>방배 루미에르</strong>
+                <span>준공 2021년 · 총 16층 · 84세대</span>
+              </div>
+              <p>엘리베이터, CCTV, 무인택배함, 주차 가능 여부를 현장 확인 기준으로 정리했습니다.</p>
+            </section>
+
+            <div className="complex-score-grid" aria-label="단지 생활 점수">
+              {[
+                ["교통", "도보 5분"],
+                ["보안", "CCTV 7곳"],
+                ["관리", "관리비 보통"],
+                ["소음", "큰길가"]
+              ].map(([label, value]) => (
+                <span key={label}>
+                  <b>{label}</b>
+                  {value}
+                </span>
+              ))}
+            </div>
+
+            <div className="complex-sheet-actions">
+              <button type="button" onClick={() => setIsComplexSheetOpen(false)}>닫기</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsComplexSheetOpen(false);
+                  setIsInquirySheetOpen(true);
+                }}
+              >
+                단지 문의하기
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isAgentSheetOpen ? (
+        <div className="agent-sheet-backdrop" role="presentation" onClick={() => setIsAgentSheetOpen(false)}>
+          <section className="agent-sheet" role="dialog" aria-modal="true" aria-labelledby="agent-sheet-title" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>중개사 정보</span>
+                <h2 id="agent-sheet-title">내방역 푸른공인중개사</h2>
+                <p>확인매물 중심으로 운영하는 집우집주 파트너 중개사무소입니다.</p>
+              </div>
+              <button type="button" onClick={() => setIsAgentSheetOpen(false)} aria-label="중개사 프로필 닫기">×</button>
+            </header>
+
+            <div className="agent-profile-summary">
+              <div className="agent-avatar" aria-hidden="true">푸</div>
+              <div>
+                <strong>대표 공인중개사 김하늘</strong>
+                <span>서울 서초구 방배동 · 등록번호 9254-18-00421</span>
+              </div>
+            </div>
+
+            <section className="agent-metric-grid" aria-label="중개사 신뢰 지표">
+              {[
+                ["응답률", "98%"],
+                ["평균 응답", "8분"],
+                ["확인매물", "126개"],
+                ["후기 평점", "4.8"]
+              ].map(([label, value]) => (
+                <article key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </article>
+              ))}
+            </section>
+
+            <section className="agent-review-card" aria-label="최근 중개 후기">
+              <strong>최근 후기</strong>
+              <p>“방문 전 사진과 실제 상태가 거의 같았고, 관리비 포함 내역을 바로 알려줬어요.”</p>
+              <span>입주 상담 완료 · 2일 전</span>
+            </section>
+
+            <div className="agent-listing-row" aria-label="중개사 보유 매물">
+              <span>보유 매물</span>
+              <strong>방배동 원룸 42개 · 오피스텔 18개 · 3D 가능 12개</strong>
+            </div>
+
+            <div className="agent-sheet-actions">
+              <button type="button" onClick={() => setIsAgentSheetOpen(false)}>닫기</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAgentSheetOpen(false);
+                  setIsInquirySheetOpen(true);
+                }}
+              >
+                중개사 문의하기
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isInquirySheetOpen ? (
+        <div className="inquiry-sheet-backdrop" role="presentation" onClick={() => setIsInquirySheetOpen(false)}>
+          <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>문의하기</span>
+                <h2 id="inquiry-sheet-title">간편문의</h2>
+                <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
+              </div>
+              <button type="button" onClick={() => setIsInquirySheetOpen(false)} aria-label="문의 닫기">×</button>
+            </header>
+
+            <div className="inquiry-listing-summary">
+              <strong>{listing.price}</strong>
+              <span>{listing.title}</span>
+              <small>내방역 푸른공인중개사 · 평균 응답 8분</small>
+            </div>
+
+            <div className="inquiry-message-group">
+              <strong>문의 내용 선택</strong>
+              <div className="inquiry-message-grid">
+                {[
+                  "아직 거래 가능한가요?",
+                  "오늘 방문 가능한가요?",
+                  "관리비 포함 내역 알려주세요",
+                  "3D 투어 먼저 보고 싶어요"
+                ].map((message) => (
+                  <button
+                    className={selectedInquiryMessage === message ? "active" : ""}
+                    type="button"
+                    key={message}
+                    onClick={() => {
+                      setSelectedInquiryMessage(message);
+                      setInquirySent(false);
+                    }}
+                  >
+                    {message}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="visit-time-group">
+              <strong>방문 희망 시간</strong>
+              <div>
+                {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
+                  <button
+                    className={selectedVisitTime === time ? "active" : ""}
+                    type="button"
+                    key={time}
+                    onClick={() => {
+                      setSelectedVisitTime(time);
+                      setInquirySent(false);
+                    }}
+                  >
+                    {time}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="inquiry-textarea">
+              <span>추가 메모</span>
+              <textarea value={inquiryMemo} onChange={(event) => {
+                setInquiryMemo(event.target.value);
+                setInquirySent(false);
+              }} />
+            </label>
+
+            <div className="inquiry-selected-summary" role="status">
+              <strong>선택한 문의</strong>
+              <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
+            </div>
+
+            <div className="inquiry-agent-row">
+              <span aria-hidden="true">✓</span>
+              <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
+            </div>
+
+            <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
+              <strong>허위매물 차단</strong>
+              <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
+            </div>
+
+            <div className="inquiry-sheet-actions">
+              <button type="button" onClick={() => setIsInquirySheetOpen(false)}>닫기</button>
+              <button type="button" onClick={() => setInquirySent(true)}>문의 보내기</button>
+            </div>
+
+            {inquirySent ? (
+              <p className="inquiry-submit-feedback" role="status">
+                문의가 접수됐습니다. 중개사가 평균 8분 안에 문자로 답변합니다.
+              </p>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SavedListingsSection({
+  savedListingNos,
+  openListing,
+  onToggleSaved
+}: {
+  savedListingNos: string[];
+  openListing: (listing: Listing) => void;
+  onToggleSaved: (listingNo: string) => void;
+}) {
+  const savedListings = listings.filter((listing) => savedListingNos.includes(listing.listingNo));
+
+  return (
+    <section className="screen saved-screen" id="saved-list" aria-labelledby="saved-title">
+      <div className="section-title no-margin">
+        <div>
+          <h2 id="saved-title">찜한 매물</h2>
+          <p>최근 본 방과 비교하기 좋은 매물을 모아뒀습니다.</p>
+        </div>
+        <strong>{savedListings.length}개</strong>
+      </div>
+
+      <section className="saved-compare-strip" aria-label="찜한 매물 비교 요약">
+        {savedComparisonItems.map((item) => (
+          <article key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.caption}</small>
+          </article>
+        ))}
+      </section>
+
+      <div className="saved-card-list">
+        {savedListings.length > 0 ? (
+          savedListings.map((listing) => (
+            <article className="saved-card" key={listing.listingNo}>
+              <button type="button" onClick={() => openListing(listing)}>
+                <Image src={listing.image} alt={`${listing.title} 찜한 매물 사진`} width={240} height={180} />
+                <span>
+                  <b>{listing.price}</b>
+                  <strong>{listing.title}</strong>
+                  <em>{listing.location}</em>
+                </span>
+              </button>
+              <div>
+                <small>{listing.score} · {listing.badges.join(" · ")}</small>
+                <button type="button" onClick={() => onToggleSaved(listing.listingNo)}>찜 해제</button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <article className="saved-empty-card">
+            <strong>아직 찜한 매물이 없습니다</strong>
+            <p>추천 매물이나 지도 결과에서 하트를 누르면 여기에 모입니다.</p>
+          </article>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function InquiryHubSection() {
+  const [inquiryNotice, setInquiryNotice] = useState("최근 문의 상태가 여기에 표시됩니다.");
+
+  return (
+    <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
+      <div className="section-title no-margin">
+        <div>
+          <h2 id="inquiry-title">문의센터</h2>
+          <p>방문 전 문자문의와 전화 상담 흐름을 바로 확인합니다.</p>
+        </div>
+        <button type="button" onClick={() => setInquiryNotice("새 문의는 매물 상세에서 바로 보낼 수 있습니다.")}>새 문의</button>
+      </div>
+
+      <div className="inquiry-status-card">
+        <span>진행중 문의</span>
+        <strong>방배 루미에르 402호</strong>
+        <p>중개사가 평균 8분 안에 응답합니다. 로그인하지 않아도 문자문의가 가능합니다.</p>
+        <div>
+          <button type="button" onClick={() => setInquiryNotice("전화문의 대상: 대표 공인중개사 김하늘")}>전화문의</button>
+          <button type="button" onClick={() => setInquiryNotice("문자문의 대상: 방배 루미에르 402호")}>문자문의</button>
+        </div>
+      </div>
+
+      <p className="inquiry-notice" role="status">{inquiryNotice}</p>
+
+      <section className="inquiry-channel-card" aria-label="문의 채널 상태">
+        <div className="inquiry-channel-head">
+          <span>문의 채널</span>
+          <strong>원하는 방식으로 바로 확인</strong>
+        </div>
+        <div className="inquiry-channel-grid">
+          {inquiryChannelItems.map((item) => (
+            <article key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <small>{item.caption}</small>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="inquiry-timeline-card" aria-label="문의 타임라인">
+        <div className="inquiry-timeline-head">
+          <span>문의 타임라인</span>
+          <strong>최근 문의 흐름</strong>
+        </div>
+        {inquiryTimelineItems.map((item) => (
+          <article key={item.title}>
+            <span>{item.time}</span>
+            <div>
+              <strong>{item.title}</strong>
+              <p>{item.body}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <div className="inquiry-mini-grid">
+        <article>
+          <span>최근 응답</span>
+          <strong>8분</strong>
+        </article>
+        <article>
+          <span>예약 가능</span>
+          <strong>오늘 3시</strong>
+        </article>
+        <article>
+          <span>확인매물</span>
+          <strong>126개</strong>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function UserMyPage({ roleLabel }: { roleLabel?: string }) {
+  return (
+    <section className="screen profile-screen" id="my-page" aria-labelledby="profile-title">
+      <header className="profile-account-card">
+        <div className="profile-avatar" aria-hidden="true">
+          <UserRound size={26} strokeWidth={2.4} />
+        </div>
+        <div>
+          <p className="brand-kicker">내 정보</p>
+          <h2 id="profile-title">마이페이지</h2>
+          <p>{roleLabel} 활동에 맞춘 검색 조건과 문의 내역을 정리합니다.</p>
+        </div>
+      </header>
+
+      <section className="profile-activity-grid" aria-label="내 활동 요약">
+        <article>
+          <Heart size={18} strokeWidth={2.4} aria-hidden="true" />
+          <span>찜한 매물</span>
+          <strong>2개</strong>
+        </article>
+        <article>
+          <MessageCircle size={18} strokeWidth={2.4} aria-hidden="true" />
+          <span>문의 진행</span>
+          <strong>1건</strong>
+        </article>
+        <article>
+          <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
+          <span>저장 지역</span>
+          <strong>3곳</strong>
+        </article>
+      </section>
+
+      <div className="profile-summary-list">
+        <article>
+          <span>저장 조건</span>
+          <strong>방배동 월세 1000/130 이하</strong>
+          <p>새 매물이 올라오면 홈에서 바로 확인합니다.</p>
+        </article>
+        <article>
+          <span>입주 체크</span>
+          <strong>즉시입주 · 풀옵션 · 주차</strong>
+          <p>필수 조건과 예산을 한 화면에서 관리합니다.</p>
+        </article>
+      </div>
+
+      <section className="profile-inquiry-card" aria-label="최근 문의">
+        <div>
+          <span>최근 문의</span>
+          <strong>방배 루미에르 402호</strong>
+          <p>문자문의 가능 · 평균 응답 8분 · 오늘 3시 방문 후보</p>
+        </div>
+        <button type="button">문의 확인</button>
+      </section>
+
+      <section className="profile-menu-card" aria-label="마이페이지 메뉴">
+        {[
+          { label: "알림 설정", value: "새 매물 · 답변 알림", Icon: Bell },
+          { label: "검색 조건 관리", value: "예산, 지역, 옵션", Icon: SlidersHorizontal },
+          { label: "최근 본 방", value: "3개 매물 비교", Icon: MapPinned }
+        ].map((item) => {
+          const MenuIcon = item.Icon;
+
+          return (
+            <button type="button" key={item.label}>
+              <span aria-hidden="true">
+                <MenuIcon size={18} strokeWidth={2.4} />
+              </span>
+              <strong>{item.label}</strong>
+              <small>{item.value}</small>
+            </button>
+          );
+        })}
+      </section>
+
+      <PwaInstallCard />
+    </section>
+  );
+}
+
+function TenantMyPage() {
+  return (
+    <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
+      <div className="owner-hero compact-profile tenant-hero">
+        <p className="brand-kicker">입주 생활</p>
+        <h2 id="tenant-title">세입자 마이페이지</h2>
+        <p>계약, 관리비, 수리요청, 방문 일정을 한 화면에서 확인합니다.</p>
+      </div>
+
+      <section className="tenant-contract-card" aria-label="계약 상태">
+        <div>
+          <span>계약 상태</span>
+          <strong>D-124 재계약 예정</strong>
+          <p>방배 루미에르 402호 · 보증금 1,000만원 · 월세 130만원</p>
+        </div>
+        <button type="button">계약서 보기</button>
+      </section>
+
+      <div className="tenant-task-grid" aria-label="세입자 할 일">
+        <article>
+          <span>수리요청</span>
+          <strong>02건</strong>
+          <p>창문 누수 · 욕실 타일</p>
+        </article>
+        <article>
+          <span>관리비</span>
+          <strong>124,000원</strong>
+          <p>이번 달 납부 예정</p>
+        </article>
+        <article>
+          <span>방문 일정</span>
+          <strong>오늘 2:30</strong>
+          <p>에어컨 필터 점검</p>
+        </article>
+      </div>
+
+      <section className="maintenance-card" aria-label="긴급 점검 일정">
+        <span>오늘 방문 일정</span>
+        <h3>에어컨 필터 교체 방문</h3>
+        <p>관리 기사가 오늘 오후 2시 30분 방문합니다. 현관과 설비실 접근만 확인해주세요.</p>
+        <button type="button">방문 확인</button>
+      </section>
+    </section>
+  );
+}
+
+function FilterBottomSheet({
+  isOpen,
+  activeCategory,
+  activeQuickFilters,
+  resultCount,
+  onClose,
+  onApply,
+  onCategoryChange,
+  onQuickFilterToggle
+}: {
+  isOpen: boolean;
+  activeCategory: string;
+  activeQuickFilters: string[];
+  resultCount: number;
+  onClose: () => void;
+  onApply: () => void;
+  onCategoryChange: (category: string) => void;
+  onQuickFilterToggle: (filter: string) => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="filter-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="filter-sheet" aria-modal="true" role="dialog" aria-labelledby="filter-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <span>필터</span>
+            <h2 id="filter-sheet-title">조건 좁히기</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="필터 닫기">×</button>
+        </header>
+
+        <div className="filter-summary-card" aria-label="현재 필터 요약">
+          <div>
+            <span>현재 조건</span>
+            <strong>{[activeCategory, ...activeQuickFilters].join(" · ") || "전체"}</strong>
+          </div>
+          <em>예상 {resultCount}개</em>
+        </div>
+
+        <div className="filter-sheet-section">
+          <strong>거래 유형</strong>
+          <div className="filter-segment-grid">
+            {["월세", "전세", "단기", "매매"].map((dealType) => (
+              <button
+                className={activeQuickFilters.includes(dealType) ? "active" : ""}
+                type="button"
+                key={dealType}
+                onClick={() => {
+                  if (dealType === "단기" || dealType === "매매") {
+                    return;
+                  }
+
+                  onQuickFilterToggle(dealType);
+                }}
+              >
+                {dealType}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="filter-sheet-section">
+          <strong>매물 유형</strong>
+          <div className="filter-option-grid">
+            {categories.slice(0, 4).map((category) => (
+              <button
+                className={activeCategory === category.label ? "active" : ""}
+                type="button"
+                key={category.label}
+                onClick={() => onCategoryChange(category.label)}
+              >
+                {category.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="filter-sheet-section">
+          <strong>조건</strong>
+          <div className="filter-chip-cloud">
+            {quickFilters.map((filter) => (
+              <button
+                className={activeQuickFilters.includes(filter) ? "active" : ""}
+                type="button"
+                key={filter}
+                onClick={() => onQuickFilterToggle(filter)}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="filter-range-panel" aria-label="가격 범위">
+          <div>
+            <strong>가격 범위</strong>
+            <span>보증금 1,000만 이하 · 월세 130만 이하</span>
+          </div>
+          <div className="filter-range-bars">
+            <label>
+              <span>보증금</span>
+              <input type="range" min="0" max="5000" value="1000" readOnly aria-label="보증금 최대 1000만원" />
+            </label>
+            <label>
+              <span>월세</span>
+              <input type="range" min="0" max="200" value="130" readOnly aria-label="월세 최대 130만원" />
+            </label>
+          </div>
+        </div>
+
+        <div className="filter-price-grid">
+          <label>
+            보증금
+            <span>1,000만원 이하</span>
+          </label>
+          <label>
+            월세
+            <span>130만원 이하</span>
+          </label>
+          <label>
+            관리비
+            <span>포함 우선</span>
+          </label>
+        </div>
+
+        <div className="filter-sheet-section compact">
+          <strong>입주·검수</strong>
+          <div className="filter-priority-grid">
+            {[
+              ["즉시입주", "오늘 방문 가능"],
+              ["확인매물", "실매물 검수"],
+              ["3D 투어", "방문 전 구조 확인"],
+              ["안심분석", "권리관계 요약"]
+            ].map(([label, caption]) => (
+              <button type="button" key={label}>
+                <span>{label}</span>
+                <small>{caption}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button className="filter-apply-button" type="button" onClick={onApply}>
+          조건 적용하고 {resultCount}개 보기
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function SearchBottomSheet({
+  isOpen,
+  currentArea,
+  recentSearches,
+  onClose,
+  onClearRecentSearches,
+  onSelectArea
+}: {
+  isOpen: boolean;
+  currentArea: string;
+  recentSearches: string[];
+  onClose: () => void;
+  onClearRecentSearches: () => void;
+  onSelectArea: (area: string) => void;
+}) {
+  const [searchValue, setSearchValue] = useState(currentArea);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearchValue(currentArea);
+    }
+  }, [currentArea, isOpen]);
+
+  const submitSearch = () => {
+    const keyword = searchValue.trim();
+
+    if (!keyword) {
+      return;
+    }
+
+    onSelectArea(keyword);
+  };
+  const normalizedSearchValue = searchValue.trim() || currentArea;
+  const searchPreviewCount = normalizedSearchValue.includes("강남") || normalizedSearchValue.includes("역삼") ? 22 : normalizedSearchValue.includes("성수") ? 19 : 42;
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="search-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="search-sheet" role="dialog" aria-modal="true" aria-labelledby="search-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <span>통합검색</span>
+            <h2 id="search-sheet-title">어디에서 방을 찾을까요?</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="검색 닫기">×</button>
+        </header>
+
+        <form className="search-sheet-input" onSubmit={(event) => {
+          event.preventDefault();
+          submitSearch();
+        }}>
+          <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+          <input value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label="통합 검색어" />
+          <button type="submit">검색</button>
+        </form>
+
+        <section className="search-live-preview" aria-label="검색 결과 미리보기">
+          <div>
+            <span>바로 보기</span>
+            <strong>{normalizedSearchValue} 주변 확인매물</strong>
+            <p>지도에서 시세, 3D 투어, 중개사 응답 상태를 함께 비교합니다.</p>
+          </div>
+          <div className="search-live-stats">
+            <span>
+              <b>{searchPreviewCount}개</b>
+              예상 매물
+            </span>
+            <span>
+              <b>{Math.max(3, Math.round(searchPreviewCount * 0.28))}개</b>
+              3D 가능
+            </span>
+            <span>
+              <b>8분</b>
+              평균 응답
+            </span>
+          </div>
+          <button type="button" onClick={submitSearch}>지도에서 {normalizedSearchValue} 보기</button>
+        </section>
+
+        <section className="search-condition-strip" aria-label="추천 검색 조건">
+          {savedConditions.slice(0, 3).map((condition) => (
+            <button type="button" key={condition.label} onClick={() => onSelectArea(condition.area)}>
+              <span>{condition.category}</span>
+              <strong>{condition.label}</strong>
+            </button>
+          ))}
+        </section>
+
+        <section className="search-suggestion-section" aria-label="최근 검색">
+          <div>
+            <strong>최근 검색</strong>
+            <button type="button" onClick={onClearRecentSearches}>전체삭제</button>
+          </div>
+          <div className="search-chip-row">
+            {recentSearches.length > 0 ? (
+              recentSearches.map((keyword) => (
+                <button type="button" key={keyword} onClick={() => onSelectArea(keyword)}>
+                  {keyword}
+                </button>
+              ))
+            ) : (
+              <span className="recent-empty">최근 검색어가 없습니다</span>
+            )}
+          </div>
+        </section>
+
+        <section className="search-suggestion-section" aria-label="인기 지역">
+          <div>
+            <strong>인기 지역</strong>
+            <span>실매물 많은 순</span>
+          </div>
+          <div className="district-rank-list">
+            {searchSuggestions.districts.map((district, index) => (
+              <button type="button" key={district} onClick={() => onSelectArea(district)}>
+                <b>{index + 1}</b>
+                <span>{district}</span>
+                <em>{index === 0 ? "42개" : `${28 - index * 3}개`}</em>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="search-suggestion-section" aria-label="지하철 추천">
+          <div>
+            <strong>지하철로 찾기</strong>
+            <span>도보 10분 기준</span>
+          </div>
+          <div className="subway-suggestion-grid">
+            {searchSuggestions.subways.map((station) => (
+              <button type="button" key={station} onClick={() => onSelectArea(station)}>
+                {station}
+              </button>
+            ))}
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
+function SortBottomSheet({
+  isOpen,
+  activeSort,
+  onClose,
+  onSelect
+}: {
+  isOpen: boolean;
+  activeSort: string;
+  onClose: () => void;
+  onSelect: (sort: string) => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="sort-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="sort-sheet" role="dialog" aria-modal="true" aria-labelledby="sort-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <span>매물 정렬</span>
+            <h2 id="sort-sheet-title">정렬 방식</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="정렬 닫기">×</button>
+        </header>
+
+        <div className="sort-option-list">
+          {sortOptions.map((option) => (
+            <button
+              className={activeSort === option.label ? "active" : ""}
+              type="button"
+              key={option.label}
+              onClick={() => onSelect(option.label)}
+            >
+              <span>{option.label}</span>
+              <small>{option.description}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function NotificationSheet({
+  isOpen,
+  onClose
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="notification-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="notification-sheet" role="dialog" aria-modal="true" aria-labelledby="notification-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <span>알림센터</span>
+            <h2 id="notification-sheet-title">알림</h2>
+            <p>새 매물, 문의, 검수 상태를 한 번에 확인합니다.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="알림 닫기">×</button>
+        </header>
+
+        <div className="notification-list">
+          {notificationItems.map((item) => (
+            <article key={item.title}>
+              <div>
+                <span>{item.label}</span>
+                <small>{item.time}</small>
+              </div>
+              <strong>{item.title}</strong>
+              <p>{item.body}</p>
+            </article>
+          ))}
+        </div>
+
+        <button className="notification-action" type="button" onClick={onClose}>
+          확인
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function PwaInstallCard() {
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installState, setInstallState] = useState("설치 가능 확인 중");
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+      setInstallState("설치 가능");
+    };
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setInstallState("설치 완료");
+    };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  const installApp = async () => {
+    if (!installPrompt) {
+      setInstallState("브라우저 메뉴에서 홈 화면에 추가");
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setInstallState(choice.outcome === "accepted" ? "설치 완료" : "나중에 설치");
+  };
+
+  return (
+    <section className="pwa-install-card" aria-label="앱 설치">
+      <div>
+        <span>앱 설치</span>
+        <h2>집우집주를 앱처럼 빠르게 열기</h2>
+        <p>홈 화면에 추가하면 최근 본 방과 문의 흐름을 더 빠르게 다시 열 수 있습니다.</p>
+      </div>
+      <div className="pwa-status-grid" aria-label="앱 설치 상태">
+        <span>
+          <b>설치</b>
+          {installState}
+        </span>
+        <span>
+          <b>네트워크</b>
+          {isOnline ? "온라인" : "오프라인"}
+        </span>
+        <span>
+          <b>캐시</b>
+          재방문 준비
+        </span>
+      </div>
+      <button type="button" onClick={installApp}>
+        앱 설치
+      </button>
+    </section>
+  );
+}
+
 export default function Home() {
   const [activeRole, setActiveRole] = useState<AppRole | null>(null);
-  const activeRoleLabel = devRoles.find((role) => role.id === activeRole)?.label;
+  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [activeTab, setActiveTab] = useState<AppTab>("home");
+  const [selectedArea, setSelectedArea] = useState("서초구 방배동");
+  const [recentSearches, setRecentSearches] = useState(searchSuggestions.recent);
+  const [activeCategory, setActiveCategory] = useState(categories[0].label);
+  const [activeQuickFilters, setActiveQuickFilters] = useState<string[]>([]);
+  const [activeMapFilter, setActiveMapFilter] = useState("시세");
+  const [activeSort, setActiveSort] = useState(sortOptions[0].label);
+  const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
+  const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
+  const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
+  const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
+  const [isNotificationSheetOpen, setIsNotificationSheetOpen] = useState(false);
+  const activeRoleLabel = activeRole ? roleDisplayLabels[activeRole] : "";
+  const selectedAreaTitle = formatAreaTitle(selectedArea);
+  const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
+  const visibleHomeListings = listings.filter((listing) => {
+    const categoryMatches =
+      activeCategory === "전체"
+        ? true
+        : activeCategory === "원룸"
+        ? listing.roomType === "원룸"
+        : activeCategory === "오피스텔"
+          ? listing.roomType === "오피스텔"
+          : activeCategory === "투룸"
+            ? listing.spec.includes("투룸") || listing.spec.includes("복층")
+            : false;
+    const quickFilterMatches = activeQuickFilters.every((filter) => {
+      if (filter === "월세") {
+        return listing.price.includes("월세");
+      }
+
+      if (filter === "전세") {
+        return listing.price.includes("전세");
+      }
+
+      if (filter === "관리비 포함") {
+        return listing.maintenanceFee !== "15만원";
+      }
+
+      if (filter === "반려동물") {
+        return listing.tags.includes("반려동물");
+      }
+
+      return listing.tags.includes(filter);
+    });
+
+    return categoryMatches && quickFilterMatches;
+  });
+  const visibleHomeCount = visibleHomeListings.length;
+  const mapFilterSummary = getMapFilterSummary(activeMapFilter);
+  const visibleMapListings = [...mapListings]
+    .filter((listing) => {
+      if (activeMapFilter === "3D 가능") {
+        return listing.has3DTour;
+      }
+
+      if (activeMapFilter === "원룸·투룸") {
+        return listing.meta.includes("원룸") || listing.meta.includes("복층");
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      if (activeMapFilter === "보증금") {
+        return a.monthlyRent - b.monthlyRent;
+      }
+
+      if (activeMapFilter === "안전") {
+        return Number(b.flags[0].replace(/\D/g, "") || 0) - Number(a.flags[0].replace(/\D/g, "") || 0);
+      }
+
+      if (activeSort === "최신순") {
+        return a.recencyRank - b.recencyRank;
+      }
+
+      if (activeSort === "낮은 월세순") {
+        return a.monthlyRent - b.monthlyRent;
+      }
+
+      if (activeSort === "3D 투어 우선") {
+        return Number(b.has3DTour) - Number(a.has3DTour) || a.accuracyRank - b.accuracyRank;
+      }
+
+      return a.accuracyRank - b.accuracyRank;
+    });
+  const selectedMapListing = visibleMapListings.find((listing) => listing.listingIndex === selectedMapListingIndex) ?? visibleMapListings[0];
+
+  const openListing = (listing: Listing) => {
+    setSelectedListing(listing);
+    resetWindowScrollSoon();
+  };
+
+  const activateTab = (tab: AppTab) => {
+    setActiveTab(tab);
+    resetWindowScrollSoon();
+  };
+
+  const startRoleSession = (role: AppRole) => {
+    setActiveRole(role);
+    setActiveTab(role === "seeker" ? "home" : "mypage");
+    resetWindowScrollSoon();
+  };
+
+  const toggleQuickFilter = (filter: string) => {
+    setActiveQuickFilters((current) =>
+      current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter]
+    );
+  };
+
+  const toggleSavedListing = (listingNo: string) => {
+    setSavedListingNos((current) =>
+      current.includes(listingNo) ? current.filter((item) => item !== listingNo) : [...current, listingNo]
+    );
+  };
+
+  const selectSearchArea = (area: string) => {
+    setSelectedArea(area);
+    setRecentSearches((current) => [area, ...current.filter((item) => item !== area)].slice(0, 5));
+    setIsSearchSheetOpen(false);
+    setActiveMapResultTab("rooms");
+    activateTab("map");
+  };
+
+  const applySavedCondition = (condition: (typeof savedConditions)[number]) => {
+    setSelectedArea(condition.area);
+    setActiveCategory(condition.category);
+    setActiveQuickFilters(condition.filters);
+    setActiveMapResultTab("rooms");
+    activateTab("map");
+  };
+
+  useLayoutEffect(() => {
+    if (selectedListing) {
+      resetWindowScrollSoon();
+    }
+  }, [selectedListing]);
+
+  useEffect(() => {
+    if (activeRole && !selectedListing) {
+      resetWindowScrollSoon();
+    }
+  }, [activeRole, activeTab, selectedListing]);
+
+  useEffect(() => {
+    if (selectedListing) {
+      resetWindowScrollSoon();
+    }
+  }, [selectedListing]);
 
   if (!activeRole) {
-    return <LoginScreen setActiveRole={setActiveRole} />;
+    return <LoginScreen setActiveRole={startRoleSession} />;
+  }
+
+  if (selectedListing) {
+    return (
+      <main className="app-canvas">
+        <div className="service-frame detail-service-frame" aria-label="집우집주 매물 상세">
+          <ListingDetailView
+            listing={selectedListing}
+            isSaved={savedListingNos.includes(selectedListing.listingNo)}
+            onBack={() => setSelectedListing(null)}
+            onToggleSaved={toggleSavedListing}
+          />
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="app-canvas">
-      <div className="service-frame" aria-label="Roomlog Homes property app">
+      <div className="service-frame with-bottom-tabs" aria-label="집우집주 부동산 앱">
+        {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
           <header className="app-header">
             <div>
-              <p className="brand-kicker">ROOMLOG HOMES</p>
-              <h1 id="home-title">어디에서 방을 찾으세요?</h1>
-              <span className="role-chip">{activeRoleLabel} 모드</span>
+              <p className="brand-kicker">{selectedAreaTitle} 주변</p>
+              <h1 id="home-title">{selectedAreaTitle} 조건에 맞는 방 {visibleHomeCount}개</h1>
+              <span className="role-chip">{activeRoleLabel}</span>
+              <span className="active-condition-chip">선택 조건 {activeFilterSummary}</span>
             </div>
-            <button className="round-button" type="button" aria-label="알림">
-              !
+            <button className="round-button" type="button" aria-label="알림" onClick={() => setIsNotificationSheetOpen(true)}>
+              <Bell size={19} strokeWidth={2.4} aria-hidden="true" />
             </button>
           </header>
 
           <label className="search-box">
-            <span aria-hidden="true">⌕</span>
-            <input defaultValue="" placeholder="지역, 지하철, 건물명 검색" />
-            <button type="button" aria-label="필터">
-              조정
+            <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+            <input defaultValue="" placeholder="지역, 지하철, 건물명 검색" onFocus={() => setIsSearchSheetOpen(true)} />
+            <button type="button" aria-label="필터" onClick={() => setIsFilterSheetOpen(true)}>
+              <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
             </button>
           </label>
 
           <nav className="category-strip" aria-label="매물 유형">
-            {categories.map((category, index) => (
-              <button className={index === 0 ? "category-card active" : "category-card"} type="button" key={category.label}>
-                <span>{category.label}</span>
-                <strong>{category.count}</strong>
-              </button>
-            ))}
+            {categories.map((category) => {
+              const CategoryIcon = category.Icon;
+
+              return (
+                <button
+                  className={activeCategory === category.label ? "category-card active" : "category-card"}
+                  type="button"
+                  key={category.label}
+                  onClick={() => setActiveCategory(category.label)}
+                >
+                  <i aria-hidden="true">
+                    <CategoryIcon size={18} strokeWidth={2.4} />
+                  </i>
+                  <span>{category.label}</span>
+                  <strong>{category.count}</strong>
+                </button>
+              );
+            })}
           </nav>
 
           <div className="quick-filter-row" aria-label="빠른 필터">
-            {quickFilters.map((filter, index) => (
-              <button className={index === 0 ? "active" : ""} type="button" key={filter}>
+            {quickFilters.map((filter) => (
+              <button
+                className={activeQuickFilters.includes(filter) ? "active" : ""}
+                type="button"
+                key={filter}
+                onClick={() => toggleQuickFilter(filter)}
+              >
                 {filter}
               </button>
             ))}
           </div>
 
-          <article className="hero-service-card">
-            <Image src="/listing-studio.jpg" alt="채광 좋은 방배동 원룸" width={1200} height={800} priority />
-            <div className="hero-service-copy">
-              <span>DIGITAL TWIN READY</span>
-              <h2>사진 보고 끝내지 말고, 3D로 동선까지 확인</h2>
-              <p>VR홈투어와 3D 단지투어가 들어갈 핵심 진입점입니다.</p>
+          <div className="filter-feedback" role="status" aria-label={`선택 조건 ${activeFilterSummary}, 확인매물 ${visibleHomeCount}개`}>
+            <strong>{activeFilterSummary}</strong>
+            <span>확인매물 {visibleHomeCount}개를 보여주는 중</span>
+          </div>
+
+          <div className="section-title">
+            <div>
+              <h2>추천 매물</h2>
+              <p>{activeFilterSummary} 조건에 맞는 매물을 보여줍니다.</p>
+            </div>
+            <a href="#map-list" onClick={(event) => {
+              event.preventDefault();
+              activateTab("map");
+            }}>전체</a>
+          </div>
+
+          <div className="listing-feed">
+            {visibleHomeListings.length > 0 ? (
+              <>
+                {visibleHomeListings.map((listing) => (
+                  <article className="listing-card" key={listing.title}>
+                    <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
+                      <div className="listing-photo">
+                        <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} />
+                        <div className="badge-row">
+                          {listing.badges.map((badge) => (
+                            <span key={badge}>{badge}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="listing-body">
+                        <div className="listing-status-line">
+                          <span>{listing.listingLabel}</span>
+                          <span>{listing.updated}</span>
+                        </div>
+                        <div>
+                          <strong>{listing.price}</strong>
+                          <span>{listing.score}</span>
+                        </div>
+                        <h3>{listing.title}</h3>
+                        <p>{listing.spec}</p>
+                        <small>{listing.location}</small>
+                        <small className="listing-broker">{listing.broker}</small>
+                        <div className="listing-meta-row">
+                          <span>{listing.verification}</span>
+                          <span>{listing.response}</span>
+                          <span>{listing.badges.includes("3D 투어") ? "3D 투어 가능" : "방문 예약"}</span>
+                        </div>
+                      </div>
+                    </button>
+                    <div className="listing-card-footer" aria-label={`${listing.title} 빠른 액션`}>
+                      <button type="button" onClick={() => openListing(listing)}>상세 보기</button>
+                      <button type="button" onClick={() => activateTab("inquiry")}>문자문의</button>
+                      <button type="button" onClick={() => openListing(listing)}>3D 보기</button>
+                    </div>
+                    <button
+                      className={savedListingNos.includes(listing.listingNo) ? "save-listing-button saved" : "save-listing-button"}
+                      type="button"
+                      aria-label={`${listing.title} 찜하기`}
+                      onClick={() => toggleSavedListing(listing.listingNo)}
+                    >
+                      <Heart size={22} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                    </button>
+                  </article>
+                ))}
+                <article className="home-web-summary-card" aria-label="방배동 생활권 요약">
+                  <span>방배동 생활권 요약</span>
+                  <h3>방문 전에 확인할 핵심 정보</h3>
+                  <p>시세, 안전, 중개사 응답, 3D 가능 매물을 한 화면에서 같이 비교합니다.</p>
+                  <div>
+                    {homeWebSummaryItems.map((item) => (
+                      <strong key={item.label}>
+                        <small>{item.label}</small>
+                        {item.value}
+                      </strong>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => activateTab("map")}>지도에서 비교하기</button>
+                </article>
+              </>
+            ) : (
+              <article className="listing-empty-card">
+                <strong>조건에 맞는 추천 매물이 없습니다</strong>
+                <p>필터를 줄이거나 지도에서 주변 매물을 더 넓게 확인해보세요.</p>
+                <button type="button" onClick={() => {
+                  setActiveCategory("오피스텔");
+                  setActiveQuickFilters(["월세"]);
+                }}>
+                  기본 조건으로 보기
+                </button>
+              </article>
+            )}
+          </div>
+
+          <section className="condition-summary-card" aria-label="내 검색 조건 요약">
+            <div className="condition-summary-head">
+              <div>
+                <span>내 조건 요약</span>
+                <strong>{selectedAreaTitle}에서 바로 볼 만한 방</strong>
+              </div>
+              <button type="button" onClick={() => setIsFilterSheetOpen(true)}>수정</button>
+            </div>
+            <div className="condition-summary-list">
+              {conditionSummaryItems.map((item) => (
+                <article key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="ai-broker-card" aria-label="AI중개사 추천">
+            <div className="ai-broker-head">
+              <div>
+                <span>AI중개사 추천</span>
+                <h2>조건을 읽고 먼저 볼 방을 골랐어요</h2>
+              </div>
+              <button type="button" onClick={() => openListing(listings[0])}>1순위 보기</button>
+            </div>
+            <div className="ai-broker-list">
+              {aiBrokerSuggestions.map((item) => (
+                <article key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.body}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="saved-condition-panel" aria-label="저장한 검색 조건">
+            <div>
+              <strong>조건 저장</strong>
+              <span>맞는 방이 올라오면 바로 확인</span>
+            </div>
+            <div className="saved-condition-list">
+              {savedConditions.map((condition) => (
+                <button type="button" key={condition.label} onClick={() => applySavedCondition(condition)}>
+                  {condition.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="market-signal-grid" aria-label="지역 매물 지표">
+            {marketSignals.map((item) => (
+              <article key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.label === "전월세 평균" ? `${selectedAreaTitle} 원룸 기준` : item.caption}</p>
+              </article>
+            ))}
+          </section>
+
+          <article className="map-entry-card">
+            <div className="map-entry-copy">
+              <span>지도 기반 검색</span>
+              <h2>원하는 블록만 직접 그려 매물 보기</h2>
+              <p>전월세 평균가와 주변 생활권을 같이 확인합니다.</p>
+              <a href="#map-list" onClick={(event) => {
+                event.preventDefault();
+                activateTab("map");
+              }}>지도 열기</a>
+            </div>
+            <div className="map-provider-status">
+              <strong>실시간 지도 연동</strong>
+              <span>네이버 지도</span>
+              <small>시세 · 안전 · 3D 투어 매물 표시</small>
             </div>
           </article>
+
+          <section className="home-action-panel" aria-label="빠른 서비스 메뉴">
+            {homeServiceActions.map((action) => (
+              <button
+                type="button"
+                key={action.label}
+                onClick={() => {
+                  if (action.label === "최근 본 방") {
+                    openListing(listings[0]);
+                    return;
+                  }
+
+                  if (action.label === "문의 대기") {
+                    activateTab("inquiry");
+                    return;
+                  }
+
+                  activateTab("mypage");
+                }}
+              >
+                <span>{action.label}</span>
+                <strong>{action.value}</strong>
+                <small>{action.body}</small>
+              </button>
+            ))}
+          </section>
 
           <section className="trust-grid" aria-label="신뢰 정보">
             {trustItems.map((item) => (
@@ -313,210 +2816,338 @@ export default function Home() {
             ))}
           </section>
 
-          <div className="section-title">
+          <section className="neighborhood-strip" aria-label="주변 정보">
             <div>
-              <h2>추천 매물</h2>
-              <p>확인매물과 3D 투어 가능 매물을 먼저 보여줘요.</p>
+              <h2>주변 정보</h2>
+              <p>생활 편의시설과 이동 시간을 같이 봅니다.</p>
             </div>
-            <a href="#map-list">전체</a>
-          </div>
+            <div>
+              {neighborhoodItems.map((item) => (
+                <span key={item.label}>
+                  <b>{item.label}</b>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          </section>
 
-          <div className="listing-feed">
-            {listings.map((listing) => (
-              <article className="listing-card" key={listing.title}>
-                <div className="listing-photo">
-                  <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} />
-                  <div className="badge-row">
-                    {listing.badges.map((badge) => (
-                      <span key={badge}>{badge}</span>
-                    ))}
-                  </div>
-                  <button type="button" aria-label={`${listing.title} 찜하기`}>
-                    ♡
-                  </button>
-                </div>
-                <div className="listing-body">
-                  <div>
-                    <strong>{listing.price}</strong>
-                    <span>{listing.score}</span>
-                  </div>
-                  <h3>{listing.title}</h3>
-                  <p>{listing.spec}</p>
-                  <small>{listing.location}</small>
-                </div>
-              </article>
-            ))}
-          </div>
+          <section className="resident-check-card" aria-label="실거주 체크">
+            <div>
+              <span>실거주 체크</span>
+              <h2>사진만으로 놓치기 쉬운 정보를 먼저 확인해요</h2>
+              <p>권리관계, 관리비, 소음, 채광처럼 방문 전에 걸러야 할 항목을 매물 카드와 함께 봅니다.</p>
+            </div>
+            <div className="resident-check-grid">
+              {residentChecklist.map((item) => (
+                <article key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="neighborhood-rank-card" aria-label="동네정보 랭킹">
+            <div>
+              <span>동네정보 랭킹</span>
+              <h2>{selectedAreaTitle} 생활 점수</h2>
+              <p>교통, 생활, 안전 정보를 방문 전에 빠르게 비교합니다.</p>
+            </div>
+            <div className="neighborhood-rank-list">
+              {neighborhoodRankItems.map((item) => (
+                <article key={item.label}>
+                  <b>{item.rank}</b>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
         </section>
+        ) : null}
 
+        {activeTab === "map" ? (
         <section className="screen map-screen" id="map-list" aria-labelledby="map-title">
           <div className="map-topbar">
             <label>
-              <span aria-hidden="true">⌕</span>
-              <input defaultValue="서초구 방배동" aria-label="지도 검색어" />
+              <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+              <input value={selectedArea} readOnly aria-label="지도 검색어" onFocus={() => setIsSearchSheetOpen(true)} />
             </label>
-            <button type="button">필터</button>
+            <button type="button" onClick={() => setIsFilterSheetOpen(true)} aria-label="필터">
+              <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
           </div>
 
           <div className="map-filter-row">
-            {["매물", "원룸·투룸", "보증금", "관리비", "방 크기"].map((filter, index) => (
-              <button className={index === 0 ? "active" : ""} type="button" key={filter}>
+            {["시세", "원룸·투룸", "보증금", "안전", "3D 가능"].map((filter) => (
+              <button
+                className={activeMapFilter === filter ? "active" : ""}
+                type="button"
+                key={filter}
+                onClick={() => setActiveMapFilter(filter)}
+              >
                 {filter}
               </button>
             ))}
           </div>
 
-          <div className="map-stage" aria-label="지도에서 보기">
-            <Image src="/map-blueprint.png" alt="서초구 방배동 지도" fill loading="eager" sizes="430px" />
-            <div className="draw-area" aria-label="그리기 영역" />
-            <span className="map-pin p1">1000/35</span>
-            <span className="map-pin p2">800/80</span>
-            <span className="map-pin p3">4.6억</span>
-            <button className="float-action shot" type="button">현장촬영</button>
-            <button className="float-action draw" type="button">그리기</button>
+          <div className="map-context-bar" aria-label="지도 요약 정보">
+            <strong>{selectedAreaTitle} {activeMapFilter}</strong>
+            <span>{mapFilterSummary}</span>
+            <span>결과 {visibleMapListings.length}개</span>
+          </div>
+
+          <section className="map-insight-strip" aria-label="지도 생활권 요약">
+            {mapInsightItems.map((item) => (
+              <article key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <small>{item.caption}</small>
+              </article>
+            ))}
+          </section>
+
+          <div className="map-canvas-stack">
+            <NaverMapPreview className="map-stage" />
+            {selectedMapListing ? (
+              <article className="map-selected-card" aria-label="지도 선택 매물">
+                <button type="button" onClick={() => openListing(listings[selectedMapListing.listingIndex])}>
+                  <span>{selectedMapListing.clusterLabel} · {selectedMapListing.updated}</span>
+                  <strong>{selectedMapListing.title}</strong>
+                  <small>{selectedMapListing.price} · {selectedMapListing.distance}</small>
+                </button>
+                <div>
+                  <em>{selectedMapListing.flags[0]}</em>
+                  <button type="button" onClick={() => activateTab("inquiry")}>문의</button>
+                </div>
+              </article>
+            ) : null}
           </div>
 
           <div className="result-sheet">
             <div className="sheet-handle" aria-hidden="true" />
             <nav className="sheet-tabs" aria-label="지도 결과 탭">
-              <button className="active" type="button">전체 방</button>
-              <button type="button">단지</button>
-              <button type="button">중개사무소</button>
+              {mapResultTabs.map((tab) => (
+                <button
+                  className={activeMapResultTab === tab.key ? "active" : ""}
+                  type="button"
+                  key={tab.key}
+                  onClick={() => setActiveMapResultTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </nav>
 
             <div className="section-title compact">
               <div>
-                <h2 id="map-title">방배동 매물 42개</h2>
-                <p>시세 지도 · 주변 안전 · 정확도순</p>
+                <h2 id="map-title">
+                  {activeMapResultTab === "rooms" ? `${selectedAreaTitle} 매물 ${visibleMapListings.length}개` : null}
+                  {activeMapResultTab === "complexes" ? `${selectedAreaTitle} 단지 18곳` : null}
+                  {activeMapResultTab === "agents" ? "인근 중개사무소 9곳" : null}
+                </h2>
+                <p>시세 지도 · {mapFilterSummary} · {activeSort}</p>
               </div>
-              <button type="button">정렬</button>
+              {activeMapResultTab === "rooms" ? (
+                <button type="button" onClick={() => setIsSortSheetOpen(true)}>{activeSort}</button>
+              ) : (
+                <button type="button" onClick={() => setActiveMapResultTab("rooms")}>매물 보기</button>
+              )}
             </div>
 
-            <div className="map-list">
-              {mapListings.map((listing) => (
-                <article className="map-listing" key={listing.title}>
-                  <Image src={listing.image} alt={`${listing.title} 썸네일`} width={260} height={190} />
-                  <div>
-                    <span>확인매물</span>
-                    <h3>{listing.title}</h3>
-                    <strong>{listing.price}</strong>
-                    <p>{listing.meta}</p>
-                  </div>
-                  <button type="button" aria-label={`${listing.title} 저장`}>
-                    ♡
-                  </button>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
+            <section className="map-result-summary" aria-label="지도 결과 요약">
+              <article>
+                <span>확인매물</span>
+                <strong>39개</strong>
+              </article>
+              <article>
+                <span>3D 가능</span>
+                <strong>12개</strong>
+              </article>
+              <article>
+                <span>평균 응답</span>
+                <strong>8분</strong>
+              </article>
+            </section>
 
-        <section className="screen detail-screen" aria-labelledby="detail-title">
-          <div className="detail-hero">
-            <Image src="/listing-studio.jpg" alt="방배 루미에르 402호 대표 사진" fill loading="eager" sizes="430px" />
-            <div className="detail-nav">
-              <button type="button" aria-label="뒤로">←</button>
-              <div>
-                <button type="button" aria-label="공유">↗</button>
-                <button type="button" aria-label="저장">♡</button>
-              </div>
-            </div>
-            <span className="photo-count">1 / 18</span>
-          </div>
+            {activeMapResultTab === "rooms" ? (
+              <>
+                <p className="map-sort-feedback">
+                  {activeSort} · {mapFilterSummary} 조건으로 우선 매물 {visibleMapListings.length}개를 먼저 보여줍니다.
+                </p>
 
-          <div className="detail-content">
-            <div className="verified-row">
-              <span>확인매물</span>
-              <span>헛걸음 보상</span>
-              <span>안심 리포트</span>
-            </div>
-            <p className="trade-line">월세 · 관리비 8만</p>
-            <h2 id="detail-title">1,000 / 35</h2>
-            <p className="detail-address">서울특별시 서초구 방배동 · 내방역 도보 5분</p>
-
-            <a className="tour-banner" href="#contact" aria-label="3D 가상 투어 시작하기">
-              <span>
-                <small>ROOMLOG 3D TOUR</small>
-                <strong>3D 가상 투어 시작하기</strong>
-                <em>실측 도면 기반 투어 모듈 연결 예정</em>
-              </span>
-              <b aria-hidden="true">3D</b>
-            </a>
-
-            <dl className="fact-grid">
-              {detailFacts.map(([term, value]) => (
-                <div key={term}>
-                  <dt>{term}</dt>
-                  <dd>{value}</dd>
+                <div className="map-list">
+                  {visibleMapListings.map((listing) => (
+                    <article className="map-listing" key={listing.title}>
+                      <button
+                        className={selectedMapListing?.listingIndex === listing.listingIndex ? "map-listing-action active" : "map-listing-action"}
+                        type="button"
+                        onFocus={() => setSelectedMapListingIndex(listing.listingIndex)}
+                        onMouseEnter={() => setSelectedMapListingIndex(listing.listingIndex)}
+                        onClick={() => {
+                          setSelectedMapListingIndex(listing.listingIndex);
+                          openListing(listings[listing.listingIndex]);
+                        }}
+                      >
+                        <div
+                          className="map-listing-thumb"
+                          style={{ backgroundImage: `url(${listing.image})` }}
+                          role="img"
+                          aria-label={`${listing.title} 썸네일`}
+                        >
+                          <span>확인매물</span>
+                        </div>
+                        <div className="map-listing-copy">
+                          <div className="map-card-badge-row">
+                            <span>실매물 확인</span>
+                            <span>{listing.updated}</span>
+                          </div>
+                          <h3>{listing.title}</h3>
+                          <strong>{listing.price}</strong>
+                          <p>{listing.meta}</p>
+                          <small>{listing.distance}</small>
+                          <div className="map-card-tags">
+                            {listing.flags.map((flag) => (
+                              <em key={flag}>{flag}</em>
+                            ))}
+                          </div>
+                          <div className="map-verification-row" aria-label={`${listing.title} 검수 상태`}>
+                            <span>{listing.verifyStatus}</span>
+                            <span>{listing.responseStatus}</span>
+                            <span>{listing.tourStatus}</span>
+                          </div>
+                        </div>
+                      </button>
+                      <button
+                        className={savedListingNos.includes(listings[listing.listingIndex].listingNo) ? "saved" : ""}
+                        type="button"
+                        aria-label={`${listing.title} 저장`}
+                        onClick={() => toggleSavedListing(listings[listing.listingIndex].listingNo)}
+                      >
+                        <Heart size={20} fill={savedListingNos.includes(listings[listing.listingIndex].listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                      </button>
+                    </article>
+                  ))}
                 </div>
-              ))}
-            </dl>
+              </>
+            ) : null}
 
-            <section className="report-card">
-              <div>
-                <span>AI 분석</span>
-                <h3>매물 거래 안전도 높음</h3>
-                <p>최근 실거래가, 권리관계, 관리비, 주변 치안 데이터를 요약해 보여주는 자리입니다.</p>
+            {activeMapResultTab === "complexes" ? (
+              <div className="complex-map-list">
+                {complexCards.map((complex) => (
+                  <article className="complex-map-card" key={complex.name}>
+                    <div>
+                      <span>{complex.badge}</span>
+                      <h3>{complex.name}</h3>
+                      <p>{complex.address}</p>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>시세</dt>
+                        <dd>{complex.deal}</dd>
+                      </div>
+                      <div>
+                        <dt>매물</dt>
+                        <dd>{complex.count}</dd>
+                      </div>
+                      <div>
+                        <dt>평가</dt>
+                        <dd>{complex.score}</dd>
+                      </div>
+                    </dl>
+                    <button type="button" onClick={() => setActiveMapResultTab("rooms")}>단지 매물 보기</button>
+                  </article>
+                ))}
               </div>
-              <strong>92점</strong>
-            </section>
+            ) : null}
 
-            <section className="detail-section">
-              <h3>매물 상세</h3>
-              <p>
-                방배역 도보 5분 거리의 채광 좋은 신축급 원룸입니다. 화이트 톤 인테리어와 넓은 창,
-                풀옵션 구성, 방문 전 확인 가능한 3D 투어까지 갖춘 매물로 보여줍니다.
-              </p>
-            </section>
-
-            <div className="amenity-grid">
-              {amenities.map((amenity) => (
-                <button type="button" key={amenity}>
-                  <span aria-hidden="true">+</span>
-                  {amenity}
-                </button>
-              ))}
-            </div>
-
-            <section className="detail-section">
-              <h3>위치와 주변 안전</h3>
-              <div className="mini-map">
-                <Image src="/map-blueprint.png" alt="상세 위치 지도" fill loading="eager" sizes="430px" />
-                <span aria-hidden="true" />
+            {activeMapResultTab === "agents" ? (
+              <div className="agent-map-list">
+                {agentCards.map((agent) => (
+                  <article className="agent-map-card" key={agent.name}>
+                    <div className="agent-map-header">
+                      <span>공인중개사무소</span>
+                      <strong>{agent.rating}</strong>
+                    </div>
+                    <h3>{agent.name}</h3>
+                    <p>{agent.manager} · {agent.response} · {agent.inventory}</p>
+                    <div>
+                      {agent.tags.map((tag) => (
+                        <em key={tag}>{tag}</em>
+                      ))}
+                    </div>
+                    <footer>
+                      <button type="button" onClick={() => setActiveMapResultTab("rooms")}>보유 매물</button>
+                      <button type="button" onClick={() => activateTab("inquiry")}>문의하기</button>
+                    </footer>
+                  </article>
+                ))}
               </div>
-              <p className="location-copy">상세주소는 방문 예약 확정 후 공개 · CCTV 7곳 · 치안센터 1곳</p>
-            </section>
-
-            <section className="agent-card" id="contact">
-              <div>
-                <span>ROOMLOG 공인중개 파트너</span>
-                <h3>내방역 푸른공인중개사</h3>
-                <p>최근 응답 8분 · 확인매물 126개</p>
-              </div>
-              <button type="button">문의</button>
-            </section>
-          </div>
-
-          <div className="sticky-cta">
-            <button className="ghost-cta" type="button">중개사 문의</button>
-            <button className="primary-cta" type="button">3D 보기 / 투어 예약</button>
+            ) : null}
           </div>
         </section>
+        ) : null}
 
-        {activeRole === "landlord" ? <LandlordMyPage /> : null}
+        {activeTab === "saved" ? (
+        <SavedListingsSection
+          savedListingNos={savedListingNos}
+          openListing={openListing}
+          onToggleSaved={toggleSavedListing}
+        />
+        ) : null}
+        {activeTab === "inquiry" ? <InquiryHubSection /> : null}
+        {activeTab === "mypage" && activeRole === "landlord" ? <LandlordMyPage /> : null}
+        {activeTab === "mypage" && activeRole === "tenant" ? <TenantMyPage /> : null}
+        {activeTab === "mypage" && activeRole === "seeker" ? <UserMyPage roleLabel={activeRoleLabel} /> : null}
 
         <nav className="bottom-tabs" aria-label="앱 하단 메뉴">
-          {["홈", "지도", "찜", "문의", "마이페이지"].map((item, index) => (
+          {bottomTabs.map((item) => (
             <a
-              className={index === 0 ? "active" : ""}
-              href={index === 1 ? "#map-list" : index === 4 ? "#my-page" : "#home-title"}
-              key={item}
+              className={activeTab === item.key ? "active" : ""}
+              href={item.href}
+              key={item.label}
+              onClick={(event) => {
+                event.preventDefault();
+                activateTab(item.key);
+              }}
             >
-              <span aria-hidden="true">{index === 1 ? "⌖" : "·"}</span>
-              {item}
+              <item.Icon size={22} strokeWidth={2.3} aria-hidden="true" />
+              {item.label}
             </a>
           ))}
         </nav>
+
+        <FilterBottomSheet
+          isOpen={isFilterSheetOpen}
+          activeCategory={activeCategory}
+          activeQuickFilters={activeQuickFilters}
+          resultCount={activeTab === "map" ? visibleMapListings.length : visibleHomeCount}
+          onClose={() => setIsFilterSheetOpen(false)}
+          onApply={() => setIsFilterSheetOpen(false)}
+          onCategoryChange={setActiveCategory}
+          onQuickFilterToggle={toggleQuickFilter}
+        />
+        <SearchBottomSheet
+          isOpen={isSearchSheetOpen}
+          currentArea={selectedArea}
+          recentSearches={recentSearches}
+          onClose={() => setIsSearchSheetOpen(false)}
+          onClearRecentSearches={() => setRecentSearches([])}
+          onSelectArea={selectSearchArea}
+        />
+        <SortBottomSheet
+          isOpen={isSortSheetOpen}
+          activeSort={activeSort}
+          onClose={() => setIsSortSheetOpen(false)}
+          onSelect={(sort) => {
+            setActiveSort(sort);
+            setIsSortSheetOpen(false);
+          }}
+        />
+        <NotificationSheet
+          isOpen={isNotificationSheetOpen}
+          onClose={() => setIsNotificationSheetOpen(false)}
+        />
       </div>
     </main>
   );
