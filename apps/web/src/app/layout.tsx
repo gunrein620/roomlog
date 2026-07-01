@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Roomlog",
-  description: "Roomlog rental management platform"
+  title: "Roomlog Homes",
+  description: "3D tour-ready real estate discovery shell"
 };
 
 export default function RootLayout({
