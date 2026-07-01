@@ -1540,8 +1540,7 @@ p {
 }
 
 .floor-plan-3d-preview {
-  background:
-    linear-gradient(180deg, #edf4ff 0%, #fbfcff 46%, #e7edf7 100%);
+  background: #626260;
   cursor: grab;
 }
 
@@ -1550,26 +1549,38 @@ p {
 }
 
 .floor-3d-plane {
-  fill: rgba(47, 85, 255, 0.1);
-  stroke: rgba(47, 85, 255, 0.24);
+  fill: #f3d9a0;
+  stroke: rgba(255, 244, 217, 0.82);
   stroke-width: 2;
 }
 
-.floor-3d-wall-panel {
-  fill: url("#roomlog-wall-face");
-  stroke: #516078;
+.floor-3d-wall-box {
+  vector-effect: non-scaling-stroke;
+}
+
+.floor-3d-wall-front {
+  fill: #eeeeec;
+  stroke: rgba(255, 255, 255, 0.84);
   stroke-linejoin: round;
   stroke-width: 2;
 }
 
-.floor-3d-wall-top {
-  stroke: #173ad7;
-  stroke-linecap: round;
-  stroke-width: 4;
+.floor-3d-wall-top-face {
+  fill: #ffffff;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.floor-3d-wall-cap {
+  fill: #d8d8d5;
+  stroke: rgba(255, 255, 255, 0.78);
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .floor-3d-hint {
-  fill: #516078;
+  fill: rgba(255, 255, 255, 0.86);
   font-size: 18px;
   font-weight: 900;
   pointer-events: none;

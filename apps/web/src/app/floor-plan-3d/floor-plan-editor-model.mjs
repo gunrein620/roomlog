@@ -152,15 +152,76 @@ export function convertWallTo3D(wall, options = {}) {
   };
 }
 
+export function convertWallTo3DBox(wall, options = {}) {
+  const height = options.height ?? DEFAULT_WALL_HEIGHT;
+  const depth = options.depth ?? DEFAULT_WALL_DEPTH;
+  const camera = options.camera ?? {};
+  const lineX = wall.end.x - wall.start.x;
+  const lineY = wall.end.y - wall.start.y;
+  const length = Math.hypot(lineX, lineY) || 1;
+  const normal = {
+    x: (-lineY / length) * depth,
+    y: (lineX / length) * depth
+  };
+  const startDepth = {
+    x: wall.start.x + normal.x,
+    y: wall.start.y + normal.y
+  };
+  const endDepth = {
+    x: wall.end.x + normal.x,
+    y: wall.end.y + normal.y
+  };
+  const bottomStart = projectPointTo3D(wall.start, 0, camera);
+  const bottomEnd = projectPointTo3D(wall.end, 0, camera);
+  const topEnd = projectPointTo3D(wall.end, height, camera);
+  const topStart = projectPointTo3D(wall.start, height, camera);
+  const bottomStartDepth = projectPointTo3D(startDepth, 0, camera);
+  const bottomEndDepth = projectPointTo3D(endDepth, 0, camera);
+  const topEndDepth = projectPointTo3D(endDepth, height, camera);
+  const topStartDepth = projectPointTo3D(startDepth, height, camera);
+  const allPoints = [
+    bottomStart,
+    bottomEnd,
+    topEnd,
+    topStart,
+    bottomStartDepth,
+    bottomEndDepth,
+    topEndDepth,
+    topStartDepth
+  ];
+
+  return {
+    id: wall.id,
+    height,
+    depth,
+    frontPath: createPath([bottomStart, bottomEnd, topEnd, topStart]),
+    topPath: createPath([topStart, topEnd, topEndDepth, topStartDepth]),
+    startCapPath: createPath([bottomStartDepth, bottomStart, topStart, topStartDepth]),
+    endCapPath: createPath([bottomEnd, bottomEndDepth, topEndDepth, topEnd]),
+    sortY: Math.max(...allPoints.map((point) => point.y)),
+    topLine: {
+      start: topStart,
+      end: topEnd
+    }
+  };
+}
+
 export function convertWallsTo3D(walls, options = {}) {
-  const wallPanels = walls.map((wall) => convertWallTo3D(wall, options));
+  const wallBoxes = walls.map((wall) => convertWallTo3DBox(wall, options)).sort((left, right) => left.sortY - right.sortY);
+  const wallPanels = wallBoxes.map((box) => ({
+    id: box.id,
+    height: box.height,
+    depth: box.depth,
+    path: box.frontPath,
+    topLine: box.topLine
+  }));
   const points = walls.flatMap((wall) => [wall.start, wall.end]);
   const hasPoints = points.length > 0;
   const minX = hasPoints ? Math.min(...points.map((point) => point.x)) : 120;
   const maxX = hasPoints ? Math.max(...points.map((point) => point.x)) : 720;
   const minY = hasPoints ? Math.min(...points.map((point) => point.y)) : 120;
   const maxY = hasPoints ? Math.max(...points.map((point) => point.y)) : 456;
-  const pad = GRID_SIZE;
+  const pad = GRID_SIZE + (options.depth ?? DEFAULT_WALL_DEPTH);
   const camera = options.camera ?? {};
   const floorCorners = [
     projectPointTo3D({ x: minX - pad, y: minY - pad }, 0, camera),
@@ -171,6 +232,7 @@ export function convertWallsTo3D(walls, options = {}) {
 
   return {
     wallPanels,
+    wallBoxes,
     floor: {
       path: createPath(floorCorners)
     }

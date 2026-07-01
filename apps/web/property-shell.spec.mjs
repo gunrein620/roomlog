@@ -7,7 +7,9 @@ const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.met
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
 const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
 const floorPlanEditorSource = existsSync(floorPlanEditorPath) ? readFileSync(floorPlanEditorPath, "utf8") : "";
+const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
+const floorPlanVisualSource = `${floorPlanRouteSource}\n${globalsCssSource}`;
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["어디에서 방을 찾으세요?", "지도에서 보기", "추천 매물", "매물 상세"]) {
@@ -85,6 +87,21 @@ test("offers a 3D conversion mode for the floor plan editor", () => {
   }
 });
 
+test("renders wheretoput-style floor and thick 3D wall boxes", () => {
+  for (const label of [
+    "wallBoxes",
+    "floor-3d-wall-box",
+    "floor-3d-wall-front",
+    "floor-3d-wall-top-face",
+    "floor-3d-wall-cap",
+    "wheretoput 3D room renderer",
+    "#626260",
+    "#f3d9a0"
+  ]) {
+    assert.match(floorPlanVisualSource, new RegExp(label));
+  }
+});
+
 test("imports wheretoput-style upload, extraction, and rotatable 3D simulator controls", () => {
   for (const label of [
     "도면 등록",
@@ -131,16 +148,20 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
   });
 });
 
-test("floor plan editor model converts 2D walls into 3D wall panels", async () => {
+test("floor plan editor model converts 2D walls into wheretoput-style 3D wall boxes", async () => {
   const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
   const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
   const converted = model.convertWallsTo3D([wall], { height: 96, depth: 8 });
 
   assert.equal(converted.wallPanels.length, 1);
-  assert.equal(converted.wallPanels[0].id, "front");
-  assert.equal(converted.wallPanels[0].height, 96);
-  assert.equal(converted.wallPanels[0].depth, 8);
-  assert.match(converted.wallPanels[0].path, /^M /);
+  assert.equal(converted.wallBoxes.length, 1);
+  assert.equal(converted.wallBoxes[0].id, "front");
+  assert.equal(converted.wallBoxes[0].height, 96);
+  assert.equal(converted.wallBoxes[0].depth, 8);
+  assert.match(converted.wallBoxes[0].frontPath, /^M /);
+  assert.match(converted.wallBoxes[0].topPath, /^M /);
+  assert.match(converted.wallBoxes[0].endCapPath, /^M /);
+  assert.notEqual(converted.wallBoxes[0].frontPath, converted.wallBoxes[0].topPath);
   assert.equal(converted.floor.path.includes("L"), true);
 });
 

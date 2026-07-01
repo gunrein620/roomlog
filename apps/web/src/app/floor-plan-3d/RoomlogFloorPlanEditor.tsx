@@ -29,12 +29,20 @@ type RegisteredPlan = {
 };
 type ViewerRotation = { yaw: number; pitch: number };
 type ViewerDrag = ViewerRotation & { pointerId: number; x: number; y: number };
+type WallBox3D = {
+  id: string;
+  frontPath: string;
+  topPath: string;
+  startCapPath: string;
+  endCapPath: string;
+};
 type ConvertedFloorPlan3D = {
   wallPanels: Array<{
     id: string;
     path: string;
     topLine: { start: Point; end: Point };
   }>;
+  wallBoxes: WallBox3D[];
   floor: { path: string };
 };
 type WheretoputWall = {
@@ -389,29 +397,20 @@ export default function RoomlogFloorPlanEditor() {
           <svg
             aria-label="화면 드래그 회전 3D 도면"
             className="floor-plan-svg floor-plan-3d-preview"
+            data-renderer="wheretoput 3D room renderer"
             onPointerDown={handleViewerPointerDown}
             onPointerMove={handleViewerPointerMove}
             onPointerUp={handleViewerPointerUp}
             role="img"
             viewBox="0 0 960 620"
           >
-            <defs>
-              <linearGradient id="roomlog-wall-face" x1="0%" x2="100%" y1="0%" y2="100%">
-                <stop offset="0%" stopColor="#f8fbff" />
-                <stop offset="100%" stopColor="#b9c6dc" />
-              </linearGradient>
-            </defs>
             <path className="floor-3d-plane" d={convertedFloorPlan.floor.path} />
-            {convertedFloorPlan.wallPanels.map((panel) => (
-              <g key={panel.id}>
-                <path className="floor-3d-wall-panel" d={panel.path} />
-                <line
-                  className="floor-3d-wall-top"
-                  x1={panel.topLine.start.x}
-                  x2={panel.topLine.end.x}
-                  y1={panel.topLine.start.y}
-                  y2={panel.topLine.end.y}
-                />
+            {convertedFloorPlan.wallBoxes.map((box) => (
+              <g className="floor-3d-wall-box" key={box.id}>
+                <path className="floor-3d-wall-cap floor-3d-wall-cap-start" d={box.startCapPath} />
+                <path className="floor-3d-wall-cap floor-3d-wall-cap-end" d={box.endCapPath} />
+                <path className="floor-3d-wall-front" d={box.frontPath} />
+                <path className="floor-3d-wall-top-face" d={box.topPath} />
               </g>
             ))}
             <text className="floor-3d-hint" x="26" y="42">

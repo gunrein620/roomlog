@@ -31,8 +31,24 @@ export interface WallPanel3D {
   };
 }
 
+export interface WallBox3D {
+  id: string;
+  height: number;
+  depth: number;
+  frontPath: string;
+  topPath: string;
+  startCapPath: string;
+  endCapPath: string;
+  sortY: number;
+  topLine: {
+    start: ProjectedPoint;
+    end: ProjectedPoint;
+  };
+}
+
 export interface ConvertedFloorPlan3D {
   wallPanels: WallPanel3D[];
+  wallBoxes: WallBox3D[];
   floor: {
     path: string;
   };
@@ -94,6 +110,10 @@ export function convertWallTo3D(
   wall: Wall,
   options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
 ): WallPanel3D;
+export function convertWallTo3DBox(
+  wall: Wall,
+  options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
+): WallBox3D;
 export function convertWallsTo3D(
   walls: Wall[],
   options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
