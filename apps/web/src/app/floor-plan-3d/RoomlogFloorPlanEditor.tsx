@@ -15,12 +15,26 @@ import {
   summarizeWalls
 } from "./floor-plan-editor-model.mjs";
 
-type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "scale" | "none";
+type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "furniture" | "scale" | "none";
 type ViewMode = "2d" | "3d";
 type Point = { x: number; y: number };
 type Wall = { id: string | number; start: Point; end: Point };
 type WallSummary = { wallCount: number; approximateMeters: number; status: "초안" | "편집중" };
 type DetectedLine = { x1: number; y1: number; x2: number; y2: number; orientation?: "horizontal" | "vertical" };
+type FurnitureCatalogItem = {
+  brand: string;
+  color: string;
+  furniture_id: string;
+  length: [number, number, number];
+  name: string;
+  price: number;
+};
+type PlacedFurniture = FurnitureCatalogItem & {
+  id: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+};
 type WheretoputWall3D = {
   dimensions: { width: number; height: number; depth: number };
   id: string;
@@ -35,6 +49,48 @@ const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
 const GRID_SIZE_PX = 25;
 const DEFAULT_PIXEL_TO_MM_RATIO = 20;
+const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
+  {
+    brand: "Roomlog Basic",
+    color: "#8fb5ff",
+    furniture_id: "furniture-bed-queen",
+    length: [2000, 420, 1500],
+    name: "퀸 침대",
+    price: 390000
+  },
+  {
+    brand: "Wheretoput",
+    color: "#f3b36a",
+    furniture_id: "furniture-sofa-3",
+    length: [2100, 760, 880],
+    name: "3인 소파",
+    price: 520000
+  },
+  {
+    brand: "Roomlog Studio",
+    color: "#9ed8b3",
+    furniture_id: "furniture-desk",
+    length: [1200, 740, 600],
+    name: "책상",
+    price: 160000
+  },
+  {
+    brand: "Roomlog Studio",
+    color: "#d6b0ff",
+    furniture_id: "furniture-chair",
+    length: [520, 820, 520],
+    name: "의자",
+    price: 69000
+  },
+  {
+    brand: "Roomlog Storage",
+    color: "#f1d17a",
+    furniture_id: "furniture-wardrobe",
+    length: [900, 1900, 580],
+    name: "옷장",
+    price: 240000
+  }
+];
 
 class WallDetector {
   async detectWalls(file: File) {
@@ -165,7 +221,31 @@ function getStarterWalls(): Wall[] {
   return createStarterWalls() as Wall[];
 }
 
-function RoomFloor({ wallsData }: { wallsData: WheretoputWall3D[] }) {
+function createFurnitureModel(item: FurnitureCatalogItem, position: [number, number, number] = [0, 0, 0]): PlacedFurniture {
+  return {
+    ...item,
+    id: `furniture-${item.furniture_id}-${Date.now()}`,
+    position: [position[0], item.length[1] / 2000, position[2]],
+    rotation: [0, 0, 0],
+    scale: 1
+  };
+}
+
+function getFurnitureDimensions(furniture: Pick<PlacedFurniture, "length" | "scale">) {
+  return {
+    depth: Math.max(0.05, (furniture.length[2] / 1000) * furniture.scale),
+    height: Math.max(0.05, (furniture.length[1] / 1000) * furniture.scale),
+    width: Math.max(0.05, (furniture.length[0] / 1000) * furniture.scale)
+  };
+}
+
+function RoomFloor({
+  onFloorPointerDown,
+  wallsData
+}: {
+  onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
+  wallsData: WheretoputWall3D[];
+}) {
   const bounds = useMemo(() => {
     if (wallsData.length === 0) {
       return { centerX: 0, centerZ: 0, height: 8, width: 8 };
@@ -199,9 +279,40 @@ function RoomFloor({ wallsData }: { wallsData: WheretoputWall3D[] }) {
   }, [wallsData]);
 
   return (
-    <mesh position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh onPointerDown={onFloorPointerDown} position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[bounds.width, bounds.height]} />
       <meshBasicMaterial color="#f3d9a0" />
+    </mesh>
+  );
+}
+
+function FurnitureMesh({
+  furniture,
+  isPending = false,
+  isSelected,
+  onPointerDown
+}: {
+  furniture: PlacedFurniture;
+  isPending?: boolean;
+  isSelected: boolean;
+  onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
+}) {
+  const dimensions = getFurnitureDimensions(furniture);
+
+  return (
+    <mesh
+      onPointerDown={(event) => onPointerDown(furniture, event)}
+      position={furniture.position}
+      rotation={furniture.rotation}
+      receiveShadow
+      castShadow
+    >
+      <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
+      <meshBasicMaterial
+        color={isSelected ? "#2f55ff" : furniture.color}
+        opacity={isPending ? 0.42 : isSelected ? 0.96 : 0.86}
+        transparent
+      />
     </mesh>
   );
 }
@@ -230,11 +341,21 @@ function WallMesh({
 }
 
 function RoomlogThreeFloorPlanView({
+  furnitureData,
+  onFloorPointerDown,
+  onFurniturePointerDown,
   onWallPointerDown,
+  pendingFurniture,
+  selectedFurnitureId,
   selectedWallId,
   wallsData
 }: {
+  furnitureData: PlacedFurniture[];
+  onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
+  onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
+  pendingFurniture: PlacedFurniture | null;
+  selectedFurnitureId: string | null;
   selectedWallId: string | number | null;
   wallsData: WheretoputWall3D[];
 }) {
@@ -244,7 +365,7 @@ function RoomlogThreeFloorPlanView({
         <color attach="background" args={["#626260"]} />
         <ambientLight intensity={0.72} />
         <directionalLight castShadow intensity={1.4} position={[6, 12, 8]} />
-        <RoomFloor wallsData={wallsData} />
+        <RoomFloor onFloorPointerDown={onFloorPointerDown} wallsData={wallsData} />
         {wallsData.map((wall) => (
           <WallMesh
             isSelected={String(selectedWallId ?? "") === String(wall.wall_id)}
@@ -253,6 +374,17 @@ function RoomlogThreeFloorPlanView({
             wall={wall}
           />
         ))}
+        {furnitureData.map((furniture) => (
+          <FurnitureMesh
+            furniture={furniture}
+            isSelected={selectedFurnitureId === furniture.id}
+            key={furniture.id}
+            onPointerDown={onFurniturePointerDown}
+          />
+        ))}
+        {pendingFurniture ? (
+          <FurnitureMesh furniture={pendingFurniture} isPending isSelected={false} onPointerDown={onFurniturePointerDown} />
+        ) : null}
         <OrbitControls
           enableDamping
           makeDefault
@@ -281,6 +413,9 @@ export default function RoomlogFloorPlanEditor() {
   const [selectedWall, setSelectedWall] = useState<Wall | null>(null);
   const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
   const [hiddenWallIds, setHiddenWallIds] = useState<Set<string>>(() => new Set());
+  const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
+  const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
@@ -306,6 +441,10 @@ export default function RoomlogFloorPlanEditor() {
     [pixelToMmRatio, visibleWalls]
   );
   const hiddenWallCount = hiddenWallIds.size;
+  const selectedFurniture = useMemo(
+    () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
+    [placedFurnitures, selectedFurnitureId]
+  );
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -533,6 +672,78 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
+  function handleFurnitureSelect(item: FurnitureCatalogItem) {
+    const previewFurniture = createFurnitureModel(item);
+    setPendingFurniture(previewFurniture);
+    setSelectedFurnitureId(null);
+    setSelectedWall(null);
+    setTool("furniture");
+    setViewMode("3d");
+    setUploadStatus(`${item.name} 배치 위치를 3D 바닥에서 클릭`);
+  }
+
+  function handle3DFloorPointerDown(event: ThreeEvent<PointerEvent>) {
+    if (tool !== "furniture") return;
+    event.stopPropagation();
+
+    const nextPosition: [number, number, number] = [
+      Number(event.point.x.toFixed(2)),
+      pendingFurniture ? pendingFurniture.length[1] / 2000 : selectedFurniture?.position[1] ?? 0,
+      Number(event.point.z.toFixed(2))
+    ];
+
+    if (pendingFurniture) {
+      const nextFurniture = {
+        ...pendingFurniture,
+        id: `furniture-${pendingFurniture.furniture_id}-${Date.now()}`,
+        position: nextPosition
+      };
+      setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
+      setPendingFurniture(null);
+      setSelectedFurnitureId(nextFurniture.id);
+      setUploadStatus(`${nextFurniture.name} 배치 완료`);
+      return;
+    }
+
+    if (selectedFurnitureId) {
+      setPlacedFurnitures((currentFurnitures) =>
+        currentFurnitures.map((furniture) =>
+          furniture.id === selectedFurnitureId ? { ...furniture, position: nextPosition } : furniture
+        )
+      );
+      setUploadStatus(`${selectedFurniture?.name ?? "가구"} 위치 이동`);
+    }
+  }
+
+  function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
+    event.stopPropagation();
+    setSelectedFurnitureId(furniture.id);
+    setSelectedWall(null);
+    setPendingFurniture(null);
+    setTool("furniture");
+    setUploadStatus(`${furniture.name} 선택`);
+  }
+
+  function rotateSelectedFurniture() {
+    if (!selectedFurnitureId) return;
+    setPlacedFurnitures((currentFurnitures) =>
+      currentFurnitures.map((furniture) =>
+        furniture.id === selectedFurnitureId
+          ? { ...furniture, rotation: [0, Number((furniture.rotation[1] + Math.PI / 2).toFixed(4)), 0] }
+          : furniture
+      )
+    );
+    setUploadStatus(`${selectedFurniture?.name ?? "가구"} 90도 회전`);
+  }
+
+  function removeSelectedFurniture() {
+    if (!selectedFurnitureId) return;
+    const targetName = selectedFurniture?.name ?? "가구";
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((furniture) => furniture.id !== selectedFurnitureId));
+    setSelectedFurnitureId(null);
+    setUploadStatus(`${targetName} 삭제`);
+  }
+
   function handleMouseDown(event: React.MouseEvent<HTMLCanvasElement>) {
     const shouldPan = tool === "none";
     if (shouldPan) {
@@ -669,6 +880,8 @@ export default function RoomlogFloorPlanEditor() {
       setWalls(detectedWalls.length > 0 ? detectedWalls : getStarterWalls());
       setHiddenWallIds(new Set());
       setSelectedWall(null);
+      setPendingFurniture(null);
+      setSelectedFurnitureId(null);
       setUploadedImage(result.imageUrl);
       setUploadStatus(`${file.name} 이미지 벽 ${detectedWalls.length}개 추출`);
     } catch {
@@ -697,7 +910,13 @@ export default function RoomlogFloorPlanEditor() {
     setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
     window.localStorage.setItem(
       "floorPlanData",
-      JSON.stringify({ hiddenWallIds: Array.from(hiddenWallIds), pixelToMmRatio, timestamp: Date.now(), walls })
+      JSON.stringify({
+        furnitures: placedFurnitures,
+        hiddenWallIds: Array.from(hiddenWallIds),
+        pixelToMmRatio,
+        timestamp: Date.now(),
+        walls
+      })
     );
   }
 
@@ -710,6 +929,7 @@ export default function RoomlogFloorPlanEditor() {
           ["eraser", "지우기", "벽 삭제"],
           ["partial_eraser", "부분 지우기", "벽 일부 삭제"],
           ["hide", "숨기기", "3D 벽 숨기기"],
+          ["furniture", "가구", "가구 배치"],
           ["none", "이동", "화면 이동"]
         ].map(([toolId, label, hint]) => (
           <button
@@ -719,6 +939,10 @@ export default function RoomlogFloorPlanEditor() {
               setTool(toolId as EditorTool);
               setPartialEraserSelectedWall(null);
               if (toolId !== "select") setSelectedWall(null);
+              if (toolId !== "furniture") {
+                setPendingFurniture(null);
+                setSelectedFurnitureId(null);
+              }
             }}
             title={hint}
             type="button"
@@ -758,7 +982,12 @@ export default function RoomlogFloorPlanEditor() {
           </div>
         ) : (
           <RoomlogThreeFloorPlanView
+            furnitureData={placedFurnitures}
+            onFloorPointerDown={handle3DFloorPointerDown}
+            onFurniturePointerDown={handleFurniturePointerDown}
             onWallPointerDown={handle3DWallPointerDown}
+            pendingFurniture={pendingFurniture}
+            selectedFurnitureId={selectedFurnitureId}
             selectedWallId={selectedWall?.id ?? null}
             wallsData={roomWalls3D}
           />
@@ -770,7 +999,10 @@ export default function RoomlogFloorPlanEditor() {
             onClick={() => {
               setWalls([]);
               setHiddenWallIds(new Set());
+              setPlacedFurnitures([]);
+              setPendingFurniture(null);
               setSelectedWall(null);
+              setSelectedFurnitureId(null);
               setUploadStatus("벽 전체 삭제");
             }}
             type="button"
@@ -782,7 +1014,10 @@ export default function RoomlogFloorPlanEditor() {
             onClick={() => {
               setWalls(getStarterWalls());
               setHiddenWallIds(new Set());
+              setPlacedFurnitures([]);
+              setPendingFurniture(null);
               setSelectedWall(null);
+              setSelectedFurnitureId(null);
               setUploadStatus("샘플 도면 복원");
             }}
             type="button"
@@ -846,6 +1081,10 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{hiddenWallCount}개</dd>
           </div>
           <div>
+            <dt>배치 가구</dt>
+            <dd>{placedFurnitures.length}개</dd>
+          </div>
+          <div>
             <dt>배율 조절</dt>
             <dd>{Math.round(viewScale * 100)}%</dd>
           </div>
@@ -876,6 +1115,50 @@ export default function RoomlogFloorPlanEditor() {
             )}
           </div>
         ) : null}
+
+        <div className="floor-plan-furniture-library">
+          <span>wheretoput furniture picker</span>
+          <div className="floor-plan-furniture-grid">
+            {FURNITURE_CATALOG.map((item) => (
+              <button
+                className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
+                key={item.furniture_id}
+                onClick={() => handleFurnitureSelect(item)}
+                type="button"
+              >
+                <i style={{ backgroundColor: item.color }} />
+                <strong>{item.name}</strong>
+                <small>{item.brand}</small>
+                <em>{item.length.join("x")}mm</em>
+                <b>{Number(item.price).toLocaleString()}원</b>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="floor-plan-sim-preview">
+          <span>선택 가구</span>
+          {selectedFurniture ? (
+            <>
+              <code>
+                {selectedFurniture.name} / {selectedFurniture.position.map((value) => value.toFixed(2)).join(", ")}
+              </code>
+              <div className="floor-plan-furniture-actions">
+                <button className="floor-plan-secondary" onClick={rotateSelectedFurniture} type="button">
+                  90도 회전
+                </button>
+                <button className="floor-plan-secondary" onClick={removeSelectedFurniture} type="button">
+                  삭제
+                </button>
+              </div>
+              <code>가구 도구에서 바닥을 클릭하면 위치 이동</code>
+            </>
+          ) : pendingFurniture ? (
+            <code>{pendingFurniture.name} 배치 위치를 3D 바닥에서 클릭</code>
+          ) : (
+            <code>가구 카드를 선택해주세요</code>
+          )}
+        </div>
 
         <div className="floor-plan-sim-preview">
           <span>position / rotation / dimensions</span>

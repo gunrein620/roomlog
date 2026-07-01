@@ -116,6 +116,24 @@ test("lets 3D floor plan walls be selected, erased, partially erased, and hidden
   }
 });
 
+test("copies wheretoput-style furniture selection and 3D placement controls", () => {
+  for (const label of [
+    "wheretoput furniture picker",
+    "FURNITURE_CATALOG",
+    "createFurnitureModel",
+    "FurnitureMesh",
+    "handleFurnitureSelect",
+    "handle3DFloorPointerDown",
+    "placedFurnitures",
+    "pendingFurniture",
+    "배치 가구",
+    "90도 회전",
+    "가구 배치"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
 test("renders 3D conversion with the wheretoput React Three Fiber stack", () => {
   for (const label of [
     "@react-three/fiber",

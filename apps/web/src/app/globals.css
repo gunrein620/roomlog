@@ -1714,6 +1714,87 @@ p {
   white-space: nowrap;
 }
 
+.floor-plan-furniture-library {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d9dfeb;
+  border-radius: 12px;
+  background: #fbfcff;
+}
+
+.floor-plan-furniture-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.floor-plan-furniture-grid button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 74px;
+  padding: 10px;
+  border: 1px solid #e2e7f1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #172033;
+  text-align: left;
+}
+
+.floor-plan-furniture-grid button.active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(47, 85, 255, 0.12);
+}
+
+.floor-plan-furniture-grid i {
+  grid-row: 1 / 4;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(18, 24, 40, 0.08);
+}
+
+.floor-plan-furniture-grid strong,
+.floor-plan-furniture-grid small,
+.floor-plan-furniture-grid em,
+.floor-plan-furniture-grid b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floor-plan-furniture-grid strong {
+  font-size: 0.84rem;
+}
+
+.floor-plan-furniture-grid small,
+.floor-plan-furniture-grid em {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.floor-plan-furniture-grid b {
+  grid-column: 3;
+  grid-row: 1 / 4;
+  font-size: 0.72rem;
+}
+
+.floor-plan-furniture-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.floor-plan-furniture-actions .floor-plan-secondary {
+  min-height: 42px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+}
+
 @media (max-width: 860px) {
   .floor-plan-editor {
     grid-template-columns: 1fr;
