@@ -101,6 +101,21 @@ test("offers a 3D conversion mode for the floor plan editor", () => {
   }
 });
 
+test("lets 3D floor plan walls be selected, erased, partially erased, and hidden", () => {
+  for (const label of [
+    "handle3DWallPointerDown",
+    "selectedWallId",
+    "splitWallByRatio",
+    "hideWallById",
+    "hiddenWallIds",
+    "숨기기",
+    "숨김 복원",
+    "벽 클릭 편집"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
 test("renders 3D conversion with the wheretoput React Three Fiber stack", () => {
   for (const label of [
     "@react-three/fiber",

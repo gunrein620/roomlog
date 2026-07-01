@@ -2,6 +2,7 @@
 
 import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
+import type { ThreeEvent } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createStarterWalls,
@@ -14,7 +15,7 @@ import {
   summarizeWalls
 } from "./floor-plan-editor-model.mjs";
 
-type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "scale" | "none";
+type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "scale" | "none";
 type ViewMode = "2d" | "3d";
 type Point = { x: number; y: number };
 type Wall = { id: string | number; start: Point; end: Point };
@@ -27,6 +28,7 @@ type WheretoputWall3D = {
   original2D?: Wall;
   position: [number, number, number];
   rotation: [number, number, number];
+  wall_id: string | number;
 };
 
 const CANVAS_WIDTH = 1600;
@@ -138,6 +140,27 @@ function splitWallByEraseArea(wall: Wall, eraseStart: Point, eraseEnd: Point): W
   return segments;
 }
 
+function splitWallByRatio(wall: Wall, centerRatio: number): Wall[] {
+  const wallPixels = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+  if (wallPixels < GRID_SIZE_PX * 2) return [wall];
+
+  const eraseRatio = Math.max(0.1, Math.min(0.28, (GRID_SIZE_PX * 2) / wallPixels));
+  const tStart = Math.max(0, centerRatio - eraseRatio / 2);
+  const tEnd = Math.min(1, centerRatio + eraseRatio / 2);
+
+  return splitWallByEraseArea(
+    wall,
+    {
+      x: wall.start.x + (wall.end.x - wall.start.x) * tStart,
+      y: wall.start.y + (wall.end.y - wall.start.y) * tStart
+    },
+    {
+      x: wall.start.x + (wall.end.x - wall.start.x) * tEnd,
+      y: wall.start.y + (wall.end.y - wall.start.y) * tEnd
+    }
+  );
+}
+
 function getStarterWalls(): Wall[] {
   return createStarterWalls() as Wall[];
 }
@@ -183,16 +206,38 @@ function RoomFloor({ wallsData }: { wallsData: WheretoputWall3D[] }) {
   );
 }
 
-function WallMesh({ wall }: { wall: WheretoputWall3D }) {
+function WallMesh({
+  isSelected,
+  onPointerDown,
+  wall
+}: {
+  isSelected: boolean;
+  onPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
+  wall: WheretoputWall3D;
+}) {
   return (
-    <mesh position={wall.position} rotation={wall.rotation} receiveShadow castShadow>
+    <mesh
+      onPointerDown={(event) => onPointerDown(wall, event)}
+      position={wall.position}
+      rotation={wall.rotation}
+      receiveShadow
+      castShadow
+    >
       <boxGeometry args={[wall.dimensions.width, wall.dimensions.height, wall.dimensions.depth]} />
-      <meshBasicMaterial color="#eeeeec" opacity={0.78} transparent />
+      <meshBasicMaterial color={isSelected ? "#2f55ff" : "#eeeeec"} opacity={isSelected ? 0.92 : 0.78} transparent />
     </mesh>
   );
 }
 
-function RoomlogThreeFloorPlanView({ wallsData }: { wallsData: WheretoputWall3D[] }) {
+function RoomlogThreeFloorPlanView({
+  onWallPointerDown,
+  selectedWallId,
+  wallsData
+}: {
+  onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
+  selectedWallId: string | number | null;
+  wallsData: WheretoputWall3D[];
+}) {
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
       <Canvas camera={{ fov: 50, position: [14, 12, 18] }} shadows>
@@ -201,7 +246,12 @@ function RoomlogThreeFloorPlanView({ wallsData }: { wallsData: WheretoputWall3D[
         <directionalLight castShadow intensity={1.4} position={[6, 12, 8]} />
         <RoomFloor wallsData={wallsData} />
         {wallsData.map((wall) => (
-          <WallMesh key={wall.id} wall={wall} />
+          <WallMesh
+            isSelected={String(selectedWallId ?? "") === String(wall.wall_id)}
+            key={wall.id}
+            onPointerDown={onWallPointerDown}
+            wall={wall}
+          />
         ))}
         <OrbitControls
           enableDamping
@@ -213,7 +263,7 @@ function RoomlogThreeFloorPlanView({ wallsData }: { wallsData: WheretoputWall3D[
           target={[0, 0, 0]}
         />
       </Canvas>
-      <span className="floor-3d-hint">화면 드래그 회전</span>
+      <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>
     </div>
   );
 }
@@ -230,6 +280,7 @@ export default function RoomlogFloorPlanEditor() {
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
   const [selectedWall, setSelectedWall] = useState<Wall | null>(null);
   const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
+  const [hiddenWallIds, setHiddenWallIds] = useState<Set<string>>(() => new Set());
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
@@ -248,11 +299,13 @@ export default function RoomlogFloorPlanEditor() {
   const [eraseAreaStart, setEraseAreaStart] = useState<Point | null>(null);
   const [eraseAreaEnd, setEraseAreaEnd] = useState<Point | null>(null);
   const summary = useMemo(() => summarizeWalls(walls) as WallSummary, [walls]);
+  const visibleWalls = useMemo(() => walls.filter((wall) => !hiddenWallIds.has(String(wall.id))), [hiddenWallIds, walls]);
   const wheretoputWalls = useMemo(() => convertWallsToWheretoputSimulator(walls as never) as WheretoputWall3D[], [walls]);
   const roomWalls3D = useMemo(
-    () => convertWallsToWheretoputRoom3D(walls as never, { pixelToMmRatio }) as WheretoputWall3D[],
-    [walls, pixelToMmRatio]
+    () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
+    [pixelToMmRatio, visibleWalls]
   );
+  const hiddenWallCount = hiddenWallIds.size;
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -307,20 +360,21 @@ export default function RoomlogFloorPlanEditor() {
       context.stroke();
     }
 
-    const drawWall = (wall: Wall, variant: "normal" | "draft" | "selected" | "hover" | "scale" | "erase") => {
+    const drawWall = (wall: Wall, variant: "normal" | "draft" | "selected" | "hover" | "scale" | "erase" | "hidden") => {
       const colors = {
         draft: "rgba(43, 43, 43, 0.7)",
         erase: "#ff0000",
+        hidden: "rgba(121, 130, 145, 0.42)",
         hover: "#0066ff",
         normal: "rgba(43, 43, 43, 0.82)",
         scale: "rgba(0, 68, 255, 0.76)",
         selected: "#0066ff"
       };
       context.strokeStyle = colors[variant];
-      context.lineWidth = (variant === "draft" ? 10 : 8) / viewScale;
+      context.lineWidth = (variant === "draft" ? 10 : variant === "hidden" ? 6 : 8) / viewScale;
       context.lineCap = "round";
       context.lineJoin = "round";
-      if (variant === "draft") context.setLineDash([3 / viewScale, 3 / viewScale]);
+      if (variant === "draft" || variant === "hidden") context.setLineDash([3 / viewScale, 3 / viewScale]);
       context.beginPath();
       context.moveTo(wall.start.x, wall.start.y);
       context.lineTo(wall.end.x, wall.end.y);
@@ -348,6 +402,7 @@ export default function RoomlogFloorPlanEditor() {
       if (selectedWall?.id === wall.id) drawWall(wall, "selected");
       else if (partialEraserSelectedWall?.id === wall.id) drawWall(wall, "erase");
       else if (hoveredWall?.id === wall.id) drawWall(wall, "hover");
+      else if (hiddenWallIds.has(String(wall.id))) drawWall(wall, "hidden");
       else drawWall(wall, "normal");
     });
 
@@ -365,6 +420,7 @@ export default function RoomlogFloorPlanEditor() {
     eraseAreaEnd,
     eraseAreaStart,
     hoveredWall,
+    hiddenWallIds,
     isDrawing,
     isSelectingEraseArea,
     partialEraserSelectedWall,
@@ -417,6 +473,66 @@ export default function RoomlogFloorPlanEditor() {
     ).wall;
   }
 
+  function removeWallById(wallId: string | number) {
+    setWalls((currentWalls) => currentWalls.filter((wall) => String(wall.id) !== String(wallId)));
+    setHiddenWallIds((currentHidden) => {
+      const nextHidden = new Set(currentHidden);
+      nextHidden.delete(String(wallId));
+      return nextHidden;
+    });
+    if (String(selectedWall?.id ?? "") === String(wallId)) setSelectedWall(null);
+    if (String(partialEraserSelectedWall?.id ?? "") === String(wallId)) setPartialEraserSelectedWall(null);
+  }
+
+  function hideWallById(wallId: string | number) {
+    setHiddenWallIds((currentHidden) => new Set(currentHidden).add(String(wallId)));
+    if (String(selectedWall?.id ?? "") === String(wallId)) setSelectedWall(null);
+    setUploadStatus(`벽 ${wallId} 숨김`);
+  }
+
+  function partiallyEraseWallByRatio(wallId: string | number, eraseRatio: number) {
+    setWalls((currentWalls) =>
+      currentWalls.flatMap((wall) => (String(wall.id) === String(wallId) ? splitWallByRatio(wall, eraseRatio) : [wall]))
+    );
+    setHiddenWallIds((currentHidden) => {
+      const nextHidden = new Set(currentHidden);
+      nextHidden.delete(String(wallId));
+      return nextHidden;
+    });
+    setSelectedWall(null);
+    setPartialEraserSelectedWall(null);
+    setUploadStatus(`벽 ${wallId} 부분 삭제`);
+  }
+
+  function handle3DWallPointerDown(wallData: WheretoputWall3D, event: ThreeEvent<PointerEvent>) {
+    event.stopPropagation();
+    const wall = wallData.original2D;
+    const wallId = wall?.id ?? wallData.wall_id;
+
+    if (tool === "select" || tool === "wall" || tool === "none") {
+      setSelectedWall((currentWall) => (String(currentWall?.id ?? "") === String(wallId) ? null : wall ?? null));
+      setUploadStatus(`벽 ${wallId} 선택`);
+      return;
+    }
+
+    if (tool === "eraser") {
+      removeWallById(wallId);
+      setUploadStatus(`벽 ${wallId} 삭제`);
+      return;
+    }
+
+    if (tool === "hide") {
+      hideWallById(wallId);
+      return;
+    }
+
+    if (tool === "partial_eraser" && wall) {
+      const localPoint = event.object.worldToLocal(event.point.clone());
+      const eraseRatio = Math.max(0.05, Math.min(0.95, localPoint.x / wallData.dimensions.width + 0.5));
+      partiallyEraseWallByRatio(wall.id, eraseRatio);
+    }
+  }
+
   function handleMouseDown(event: React.MouseEvent<HTMLCanvasElement>) {
     const shouldPan = tool === "none";
     if (shouldPan) {
@@ -443,8 +559,16 @@ export default function RoomlogFloorPlanEditor() {
     if (tool === "eraser") {
       const closestWall = findClosestWall(coords, 20);
       if (closestWall) {
-        setWalls((currentWalls) => currentWalls.filter((wall) => wall.id !== closestWall.id));
-        if (selectedWall?.id === closestWall.id) setSelectedWall(null);
+        removeWallById(closestWall.id);
+        setUploadStatus(`벽 ${closestWall.id} 삭제`);
+      }
+      return;
+    }
+
+    if (tool === "hide") {
+      const closestWall = findClosestWall(coords, 30);
+      if (closestWall) {
+        hideWallById(closestWall.id);
       }
       return;
     }
@@ -483,7 +607,7 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
-    if (tool === "eraser" || tool === "select" || tool === "partial_eraser") {
+    if (tool === "eraser" || tool === "select" || tool === "partial_eraser" || tool === "hide") {
       setHoveredWall(findClosestWall(coords, tool === "eraser" ? 20 : 30));
     } else {
       setHoveredWall(null);
@@ -543,6 +667,8 @@ export default function RoomlogFloorPlanEditor() {
       }) as Wall[];
 
       setWalls(detectedWalls.length > 0 ? detectedWalls : getStarterWalls());
+      setHiddenWallIds(new Set());
+      setSelectedWall(null);
       setUploadedImage(result.imageUrl);
       setUploadStatus(`${file.name} 이미지 벽 ${detectedWalls.length}개 추출`);
     } catch {
@@ -569,7 +695,10 @@ export default function RoomlogFloorPlanEditor() {
 
   function convertTo3D() {
     setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
-    window.localStorage.setItem("floorPlanData", JSON.stringify({ pixelToMmRatio, timestamp: Date.now(), walls }));
+    window.localStorage.setItem(
+      "floorPlanData",
+      JSON.stringify({ hiddenWallIds: Array.from(hiddenWallIds), pixelToMmRatio, timestamp: Date.now(), walls })
+    );
   }
 
   return (
@@ -580,6 +709,7 @@ export default function RoomlogFloorPlanEditor() {
           ["select", "선택", "벽 선택"],
           ["eraser", "지우기", "벽 삭제"],
           ["partial_eraser", "부분 지우기", "벽 일부 삭제"],
+          ["hide", "숨기기", "3D 벽 숨기기"],
           ["none", "이동", "화면 이동"]
         ].map(([toolId, label, hint]) => (
           <button
@@ -588,7 +718,7 @@ export default function RoomlogFloorPlanEditor() {
             onClick={() => {
               setTool(toolId as EditorTool);
               setPartialEraserSelectedWall(null);
-              setSelectedWall(null);
+              if (toolId !== "select") setSelectedWall(null);
             }}
             title={hint}
             type="button"
@@ -627,7 +757,11 @@ export default function RoomlogFloorPlanEditor() {
             />
           </div>
         ) : (
-          <RoomlogThreeFloorPlanView wallsData={roomWalls3D} />
+          <RoomlogThreeFloorPlanView
+            onWallPointerDown={handle3DWallPointerDown}
+            selectedWallId={selectedWall?.id ?? null}
+            wallsData={roomWalls3D}
+          />
         )}
 
         <div className="floor-plan-actions">
@@ -635,6 +769,7 @@ export default function RoomlogFloorPlanEditor() {
             className="floor-plan-secondary"
             onClick={() => {
               setWalls([]);
+              setHiddenWallIds(new Set());
               setSelectedWall(null);
               setUploadStatus("벽 전체 삭제");
             }}
@@ -646,6 +781,7 @@ export default function RoomlogFloorPlanEditor() {
             className="floor-plan-secondary"
             onClick={() => {
               setWalls(getStarterWalls());
+              setHiddenWallIds(new Set());
               setSelectedWall(null);
               setUploadStatus("샘플 도면 복원");
             }}
@@ -665,6 +801,17 @@ export default function RoomlogFloorPlanEditor() {
             type="button"
           >
             Reset
+          </button>
+          <button
+            className="floor-plan-secondary"
+            disabled={hiddenWallCount === 0}
+            onClick={() => {
+              setHiddenWallIds(new Set());
+              setUploadStatus("숨긴 벽 복원");
+            }}
+            type="button"
+          >
+            숨김 복원
           </button>
           <button className="floor-plan-primary" type="button">
             저장 초안
@@ -693,6 +840,10 @@ export default function RoomlogFloorPlanEditor() {
           <div>
             <dt>3D 벽 데이터</dt>
             <dd>{roomWalls3D.length}개</dd>
+          </div>
+          <div>
+            <dt>숨긴 벽</dt>
+            <dd>{hiddenWallCount}개</dd>
           </div>
           <div>
             <dt>배율 조절</dt>
