@@ -3,11 +3,35 @@
 import Image from "next/image";
 import { useState } from "react";
 
+type AppRole = "seeker" | "tenant" | "landlord";
+
 const socialProviders = [
   { label: "카카오로 계속하기", className: "kakao", mark: "K" },
   { label: "네이버로 계속하기", className: "naver", mark: "N" },
   { label: "Apple로 계속하기", className: "apple", mark: "A" },
   { label: "Google로 계속하기", className: "google", mark: "G" }
+];
+
+const devRoles: Array<{
+  id: AppRole;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "seeker",
+    label: "일반 집보는 사람",
+    description: "지도와 매물 상세를 둘러보는 기본 탐색 모드"
+  },
+  {
+    id: "tenant",
+    label: "세입자",
+    description: "관심 매물과 입주 예정 방을 확인하는 임차인 모드"
+  },
+  {
+    id: "landlord",
+    label: "집주인",
+    description: "마이페이지에서 내 집을 등록하는 임대인 모드"
+  }
 ];
 
 const categories = [
@@ -82,7 +106,7 @@ const detailFacts = [
 
 const amenities = ["에어컨", "세탁기", "냉장고", "인덕션", "도어락", "엘리베이터"];
 
-function LoginScreen({ onEnter }: { onEnter: () => void }) {
+function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void }) {
   return (
     <main className="app-canvas">
       <section className="login-phone" aria-label="Roomlog Homes 로그인">
@@ -108,9 +132,18 @@ function LoginScreen({ onEnter }: { onEnter: () => void }) {
             ))}
           </div>
 
-          <button className="dev-login" type="button" onClick={onEnter}>
-            개발용 로그인
-          </button>
+          <div className="dev-login-panel" aria-label="개발용 로그인">
+            <div>
+              <strong>개발용 로그인</strong>
+              <span>역할을 골라 바로 입장</span>
+            </div>
+            {devRoles.map((role) => (
+              <button className="dev-role-button" type="button" key={role.id} onClick={() => setActiveRole(role.id)}>
+                <strong>{role.label}</strong>
+                <span>{role.description}</span>
+              </button>
+            ))}
+          </div>
 
           <small>일반 계정 로그인은 제공하지 않습니다.</small>
         </div>
@@ -119,11 +152,107 @@ function LoginScreen({ onEnter }: { onEnter: () => void }) {
   );
 }
 
-export default function Home() {
-  const [isSignedIn, setIsSignedIn] = useState(false);
+function LandlordMyPage() {
+  return (
+    <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
+      <div className="owner-hero">
+        <p className="brand-kicker">MY PAGE</p>
+        <h2 id="owner-title">집주인 마이페이지</h2>
+        <p>내 집 등록을 위한 입력 화면입니다. 저장 기능은 아직 연결하지 않은 프론트 셸입니다.</p>
+      </div>
 
-  if (!isSignedIn) {
-    return <LoginScreen onEnter={() => setIsSignedIn(true)} />;
+      <form className="owner-form">
+        <section className="owner-card">
+          <div className="form-heading">
+            <div>
+              <span>STEP 01</span>
+              <h3>내 집 등록</h3>
+            </div>
+            <strong>임대인 전용</strong>
+          </div>
+
+          <label>
+            매물명
+            <input defaultValue="방배 루미에르 402호" placeholder="예: 방배 루미에르 402호" />
+          </label>
+
+          <label>
+            주소
+            <input defaultValue="서울특별시 서초구 방배동" placeholder="도로명 또는 지번 주소" />
+          </label>
+
+          <div className="form-grid">
+            <label>
+              거래유형
+              <select defaultValue="월세">
+                <option>월세</option>
+                <option>전세</option>
+                <option>반전세</option>
+              </select>
+            </label>
+            <label>
+              입주가능일
+              <input defaultValue="즉시" placeholder="예: 즉시, 2026-08-01" />
+            </label>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              보증금
+              <input inputMode="numeric" defaultValue="1000" placeholder="만원 단위" />
+            </label>
+            <label>
+              월세
+              <input inputMode="numeric" defaultValue="35" placeholder="만원 단위" />
+            </label>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              관리비
+              <input inputMode="numeric" defaultValue="8" placeholder="만원 단위" />
+            </label>
+            <label>
+              전용면적
+              <input inputMode="decimal" defaultValue="24.5" placeholder="m²" />
+            </label>
+          </div>
+        </section>
+
+        <section className="owner-card">
+          <div className="form-heading">
+            <div>
+              <span>STEP 02</span>
+              <h3>사진과 3D방 자료</h3>
+            </div>
+          </div>
+
+          <label className="upload-zone">
+            <strong>사진 업로드</strong>
+            <span>대표 사진, 거실, 주방, 욕실 이미지를 올리는 자리</span>
+            <input type="file" multiple accept="image/*" aria-label="사진 업로드" />
+          </label>
+
+          <button className="upload-3d-button" type="button">
+            <strong>3D방 업로드</strong>
+            <span>다른 팀원이 연결 예정인 3D 방 파일 업로드 버튼</span>
+          </button>
+        </section>
+
+        <button className="submit-listing" type="button">
+          매물 등록하기
+        </button>
+      </form>
+    </section>
+  );
+}
+
+export default function Home() {
+  const [activeRole, setActiveRole] = useState<AppRole | null>(null);
+  const activeRoleLabel = devRoles.find((role) => role.id === activeRole)?.label;
+
+  if (!activeRole) {
+    return <LoginScreen setActiveRole={setActiveRole} />;
   }
 
   return (
@@ -134,6 +263,7 @@ export default function Home() {
             <div>
               <p className="brand-kicker">ROOMLOG HOMES</p>
               <h1 id="home-title">어디에서 방을 찾으세요?</h1>
+              <span className="role-chip">{activeRoleLabel} 모드</span>
             </div>
             <button className="round-button" type="button" aria-label="알림">
               !
@@ -373,9 +503,15 @@ export default function Home() {
           </div>
         </section>
 
+        {activeRole === "landlord" ? <LandlordMyPage /> : null}
+
         <nav className="bottom-tabs" aria-label="앱 하단 메뉴">
-          {["홈", "지도", "찜", "문의", "내정보"].map((item, index) => (
-            <a className={index === 0 ? "active" : ""} href={index === 1 ? "#map-list" : "#home-title"} key={item}>
+          {["홈", "지도", "찜", "문의", "마이페이지"].map((item, index) => (
+            <a
+              className={index === 0 ? "active" : ""}
+              href={index === 1 ? "#map-list" : index === 4 ? "#my-page" : "#home-title"}
+              key={item}
+            >
               <span aria-hidden="true">{index === 1 ? "⌖" : "·"}</span>
               {item}
             </a>
