@@ -79,6 +79,12 @@ test("adds a Roomlog floor plan editor core based on the 123123 wall editor work
   }
 });
 
+test("offers a 3D conversion mode for the floor plan editor", () => {
+  for (const label of ["3D 변환", "2D 편집", "convertWallsTo3D", "floor-plan-3d-preview"]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
 test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {
   const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
   const wall = model.createWall({ x: 0, y: 0 }, { x: 130, y: 40 }, "w1");
@@ -96,4 +102,17 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
     approximateMeters: 2.5,
     status: "편집중"
   });
+});
+
+test("floor plan editor model converts 2D walls into 3D wall panels", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
+  const converted = model.convertWallsTo3D([wall], { height: 96, depth: 8 });
+
+  assert.equal(converted.wallPanels.length, 1);
+  assert.equal(converted.wallPanels[0].id, "front");
+  assert.equal(converted.wallPanels[0].height, 96);
+  assert.equal(converted.wallPanels[0].depth, 8);
+  assert.match(converted.wallPanels[0].path, /^M /);
+  assert.equal(converted.floor.path.includes("L"), true);
 });

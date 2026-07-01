@@ -1513,6 +1513,31 @@ p {
   stroke-dasharray: 12 10;
 }
 
+.floor-plan-3d-preview {
+  background:
+    linear-gradient(180deg, #edf4ff 0%, #fbfcff 46%, #e7edf7 100%);
+  cursor: default;
+}
+
+.floor-3d-plane {
+  fill: rgba(47, 85, 255, 0.1);
+  stroke: rgba(47, 85, 255, 0.24);
+  stroke-width: 2;
+}
+
+.floor-3d-wall-panel {
+  fill: url("#roomlog-wall-face");
+  stroke: #516078;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.floor-3d-wall-top {
+  stroke: #173ad7;
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+
 .floor-plan-primary {
   min-height: 58px;
   border-radius: 14px;
@@ -1524,7 +1549,7 @@ p {
 
 .floor-plan-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
