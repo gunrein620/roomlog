@@ -60,8 +60,9 @@ API가 실행되는 환경의 `.env`에 `OPENAI_API_KEY`가 있어야 OpenAI 상
 
 - 로컬 직접 실행: `NEXT_PUBLIC_API_URL=http://localhost:4000`
 - Docker/Nginx 경유 실행: `NEXT_PUBLIC_API_URL=/api`
-- Docker Compose 내부 DB: `DATABASE_URL=postgresql://roomlog:roomlog@postgres:5432/roomlog?schema=public`
+- Docker Compose 내부 DB: PostgreSQL 18.3, `DATABASE_URL=postgresql://roomlog:roomlog@postgres:5432/roomlog?schema=public`
 - 호스트에서 Compose DB에 직접 접속: `DATABASE_URL=postgresql://roomlog:roomlog@localhost:5433/roomlog?schema=public`
+- 로컬 테스트 DB: `ROOMLOG_TEST_DATABASE_URL=postgresql://roomlog:roomlog@localhost:5433/roomlog_test?schema=public`
 - 운영 RDS: 운영 RDS 주소와 계정의 `DATABASE_URL`
 
 `.env`를 바꾼 뒤 이미 Docker 컨테이너가 떠 있다면 API 컨테이너를 다시 만들어야 반영됩니다.
@@ -83,6 +84,16 @@ docker compose up -d --build api
 ```bash
 docker compose up --build
 ```
+
+PostgreSQL만 로컬 테스트 DB로 먼저 띄울 때:
+
+```bash
+docker compose up -d postgres
+pnpm db:test:push
+ROOMLOG_TEST_DATABASE_URL=postgresql://roomlog:roomlog@localhost:5433/roomlog_test?schema=public pnpm test:api
+```
+
+`roomlog_test` DB는 `docker/postgres/init/01-create-test-db.sh`에서 컨테이너 첫 초기화 시 자동 생성됩니다. `pnpm db:test:push`는 Docker의 `roomlog-postgres` 컨테이너에 붙어 테스트 DB의 `public` 스키마를 초기화한 뒤 Prisma schema 기준 SQL을 다시 적용합니다. PostgreSQL 18 이미지는 데이터 볼륨을 `/var/lib/postgresql`에 마운트해야 하며, 이미 기존 `roomlog-postgres-data` 볼륨이 만들어진 상태라면 초기화 스크립트가 다시 실행되지 않으므로 새 테스트 DB가 필요할 때는 볼륨을 재생성하거나 직접 DB를 생성하세요.
 
 Nginx routes:
 

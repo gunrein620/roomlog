@@ -3,9 +3,11 @@ import { strict as assert } from "node:assert";
 import { createRoomlogServiceOptions } from "./roomlog.module";
 
 describe("RoomlogModule", () => {
-  it("configures a Prisma projector when DATABASE_URL is present", async () => {
+  const testDatabaseUrl = process.env.ROOMLOG_TEST_DATABASE_URL;
+
+  it("configures a Prisma projector when DATABASE_URL is present", { skip: !testDatabaseUrl }, async () => {
     const options = await createRoomlogServiceOptions({
-      DATABASE_URL: "postgresql://roomlog:roomlog@localhost:5433/roomlog?schema=public"
+      DATABASE_URL: testDatabaseUrl!
     });
 
     assert.equal(Boolean(options.storeProjector), true);
