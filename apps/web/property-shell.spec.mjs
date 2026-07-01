@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const pageSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
+const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
+const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["어디에서 방을 찾으세요?", "지도에서 보기", "추천 매물", "매물 상세"]) {
@@ -38,12 +40,12 @@ test("offers three developer login roles for seekers, tenants, and landlords", (
   assert.match(pageSource, /setActiveRole\(role\.id\)/);
 });
 
-test("shows a landlord my page with property registration fields and upload placeholders", () => {
+test("shows a landlord my page with property registration fields and media actions", () => {
   for (const label of [
     "집주인 마이페이지",
     "내 집 등록",
     "사진 업로드",
-    "3D방 업로드",
+    "3D 도면 만들기",
     "거래유형",
     "보증금",
     "월세",
@@ -51,5 +53,16 @@ test("shows a landlord my page with property registration fields and upload plac
     "매물 등록하기"
   ]) {
     assert.match(pageSource, new RegExp(label));
+  }
+});
+
+test("links the landlord 3D floor plan action to the dedicated creation page", () => {
+  assert.match(pageSource, /href="\/floor-plan-3d"/);
+  assert.match(pageSource, /3D 도면 만들기/);
+
+  assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
+
+  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "PC에서 도면 만들기"]) {
+    assert.match(floorPlanPageSource, new RegExp(label));
   }
 });

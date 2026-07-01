@@ -233,10 +233,10 @@ function LandlordMyPage() {
             <input type="file" multiple accept="image/*" aria-label="사진 업로드" />
           </label>
 
-          <button className="upload-3d-button" type="button">
-            <strong>3D방 업로드</strong>
-            <span>다른 팀원이 연결 예정인 3D 방 파일 업로드 버튼</span>
-          </button>
+          <a className="upload-3d-button floor-plan-link" href="/floor-plan-3d">
+            <strong>3D 도면 만들기</strong>
+            <span>실측 도면 기반 3D 편집 페이지로 이동</span>
+          </a>
         </section>
 
         <button className="submit-listing" type="button">
