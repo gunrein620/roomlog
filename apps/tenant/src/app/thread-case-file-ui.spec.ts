@@ -26,6 +26,17 @@ describe("tenant thread case file UI", () => {
     assert.match(pageSource, /threadProvenance\(selectedSession\)/);
   });
 
+  it("binds the active AI question to the composer guidance", () => {
+    const guidanceIndex = pageSource.indexOf('aria-label="AI 답변 안내"');
+    const composerIndex = pageSource.indexOf('className="composer"');
+
+    assert.ok(guidanceIndex > -1, "expected composer guidance near the chat input");
+    assert.ok(composerIndex > -1, "expected the consultation composer");
+    assert.ok(guidanceIndex < composerIndex, "guidance should appear before the composer");
+    assert.match(pageSource, /consultationComposerGuidance\(selectedSession\)/);
+    assert.match(pageSource, /placeholder=\{selectedComposerGuidance\.placeholder\}/);
+  });
+
   it("wires case file actions to composer, photo input, and finalize flows", () => {
     assert.match(pageSource, /className="case-file-actions"/);
     assert.match(pageSource, /handleCaseFileAction\(action\)/);

@@ -1282,13 +1282,42 @@ textarea {
   outline: none;
 }
 
-.composer {
+.composer-guidance {
+  display: grid;
+  gap: 4px;
   border-top: 1px solid var(--line);
   padding-top: 16px;
+  color: var(--slate);
+}
+
+.composer-guidance span {
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.composer-guidance strong {
+  color: var(--navy);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.composer-guidance.warning strong {
+  color: var(--red);
+}
+
+.composer-guidance.ready strong {
+  color: var(--green);
+}
+
+.composer {
+  padding-top: 0;
 }
 
 .composer-row {
-  grid-template-columns: 1fr 120px;
+  grid-template-columns: 1fr minmax(144px, 160px);
 }
 
 .analysis-card {

@@ -62,6 +62,7 @@ import { firstConsultationOnboarding } from "./first-consultation-onboarding";
 import { consultationThreadContextHighlights } from "./thread-context";
 import { threadCaseFile, type ThreadCaseFileAction } from "./thread-case-file";
 import { threadProvenance } from "./thread-provenance";
+import { consultationComposerGuidance } from "./composer-guidance";
 import {
   canSubmitConsultationComposer,
   initialConsultationComposerText,
@@ -652,6 +653,10 @@ export default function TenantApp() {
   );
   const selectedThreadProvenance = useMemo(
     () => (selectedSession ? threadProvenance(selectedSession) : undefined),
+    [selectedSession]
+  );
+  const selectedComposerGuidance = useMemo(
+    () => consultationComposerGuidance(selectedSession),
     [selectedSession]
   );
   const selectedQuickReplyMessageId = useMemo(
@@ -2378,13 +2383,21 @@ export default function TenantApp() {
             </div>
           ) : null}
 
+          <div
+            className={`composer-guidance ${selectedComposerGuidance.tone}`}
+            aria-label="AI 답변 안내"
+          >
+            <span>{selectedComposerGuidance.label}</span>
+            <strong>{selectedComposerGuidance.prompt}</strong>
+          </div>
+
           <form className="composer" onSubmit={sendMessage}>
             <textarea
               ref={messageInputRef}
               rows={4}
               value={messageText}
               onChange={(event) => setMessageText(event.target.value)}
-              placeholder="증상, 위치, 발생 시점, 방문 가능 시간을 입력하세요."
+              placeholder={selectedComposerGuidance.placeholder}
               disabled={!selectedSession || selectedSession.status !== "ACTIVE"}
             />
             <div className="composer-row">
@@ -2404,7 +2417,7 @@ export default function TenantApp() {
                 className="primary"
                 disabled={!canSendComposer}
               >
-                보내기
+                {selectedComposerGuidance.submitLabel}
               </button>
             </div>
             {photoFiles.length ? (
