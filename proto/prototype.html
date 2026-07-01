@@ -1,0 +1,1987 @@
+<!-- 관리자 대시보드 (App) -->
+<!DOCTYPE html>
+
+<html class="light" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<script type="text/javascript" nonce="XOJ0BVE+zr3qdJZKBBAaLFbFzesxhK/xP1QmLnOdycs=" src="//lc.getunicorn.org?type=base-script&amp;ri=AAA%2F1gARY29tLmdvb2dsZS5DaHJvbWUBBWh0dHBzOi8vY29udHJpYnV0aW9uLnVzZXJjb250ZW50Lmdvb2dsZS5jb20vZG93bmxvYWQ%2FYz1DZ3RoYVdSaFgyTnZaR1ZtZUJKNkVoMWhjSEJmWTI5dGNHRnVhVzl1WDJkbGJtVnlZWFJsWkY5bWFXeGxjeHBaQ2lWb2RHMXNYemxpWVRFNFkyWXlaR05rTWpRNVpXTmlOVE5sT0RCbVlXVTBaalprWkdJeEVnb1NCaERnaU1mNExoZ0JrZ0VqQ2dwd2NtOXFaV04wWDJsa0VoVkNFems0T1RjMk16WTNNVGMwTXpBMk9EY3pORFkmZmlsZW5hbWU9Jm9waT04OTM1NDA4Ng"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary-container": "#d9dbff",
+                    "on-primary": "#ffffff",
+                    "on-secondary-fixed-variant": "#474746",
+                    "annotation-gray": "#9A9A9A",
+                    "surface-dim": "#dad8e7",
+                    "on-tertiary": "#ffffff",
+                    "tertiary": "#8d2200",
+                    "on-tertiary-container": "#ffd4c9",
+                    "surface-container": "#eeecfb",
+                    "inverse-on-surface": "#f1effe",
+                    "on-primary-fixed": "#000965",
+                    "inverse-primary": "#bdc2ff",
+                    "on-tertiary-fixed-variant": "#872000",
+                    "charcoal-ink": "#2B2B2B",
+                    "error-container": "#ffdad6",
+                    "secondary-fixed-dim": "#c8c6c5",
+                    "primary-fixed-dim": "#bdc2ff",
+                    "blueprint-blue": "#2F45FF",
+                    "on-tertiary-fixed": "#3b0900",
+                    "on-surface": "#1a1b25",
+                    "on-secondary-container": "#656464",
+                    "surface-variant": "#e2e1ef",
+                    "surface-container-low": "#f4f2ff",
+                    "surface-bone": "#FAF9F6",
+                    "secondary-fixed": "#e4e2e1",
+                    "border-technical": "#B0B0B0",
+                    "primary": "#0022e5",
+                    "secondary": "#5f5e5e",
+                    "on-surface-variant": "#444557",
+                    "tertiary-fixed": "#ffdbd1",
+                    "surface": "#fbf8ff",
+                    "on-secondary-fixed": "#1b1c1c",
+                    "background": "#fbf8ff",
+                    "on-secondary": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "tertiary-container": "#b72f00",
+                    "surface-container-highest": "#e2e1ef",
+                    "surface-tint": "#2a41fc",
+                    "on-error": "#ffffff",
+                    "error": "#ba1a1a",
+                    "outline": "#757688",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary-fixed-variant": "#0020dc",
+                    "secondary-container": "#e4e2e1",
+                    "surface-container-high": "#e8e7f5",
+                    "primary-fixed": "#dfe0ff",
+                    "outline-variant": "#c5c5da",
+                    "on-background": "#1a1b25",
+                    "surface-bright": "#fbf8ff",
+                    "inverse-surface": "#2f303a",
+                    "tertiary-fixed-dim": "#ffb5a0",
+                    "primary-container": "#2f45ff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "stack-gap": "12px",
+                    "base": "4px",
+                    "gutter-md": "16px",
+                    "margin-lg": "24px",
+                    "container-padding": "16px"
+            },
+            "fontFamily": {
+                    "body-lg": ["Hanken Grotesk"],
+                    "body-md": ["Hanken Grotesk"],
+                    "label-md": ["JetBrains Mono"],
+                    "label-sm": ["JetBrains Mono"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .blueprint-dashed {
+            background-image: radial-gradient(#B0B0B0 1px, transparent 1px);
+            background-size: 10px 10px;
+        }
+        body {
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-bone font-body-md text-charcoal-ink">
+<!-- Top App Bar -->
+<header class="bg-surface-bright dark:bg-inverse-surface border-b border-outline-variant dark:border-outline fixed top-0 w-full z-40">
+<div class="flex justify-between items-center w-full px-container-padding py-3">
+<h1 class="text-headline-md font-headline-md font-bold text-blueprint-blue dark:text-primary-fixed-dim">Blueprint PropTech</h1>
+<div class="flex gap-4 items-center">
+<span class="material-symbols-outlined text-on-surface-variant">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant">account_circle</span>
+</div>
+</div>
+</header>
+<main class="pt-16 pb-24 px-container-padding max-w-md mx-auto">
+<!-- Welcome Section -->
+<section class="mt-6 mb-6">
+<p class="text-label-md font-label-md text-blueprint-blue uppercase tracking-widest">Master Dashboard</p>
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile mt-1">Status Overview</h2>
+</section>
+<!-- KPI Grid -->
+<section class="grid grid-cols-2 gap-4 mb-8">
+<div class="bg-surface-container-lowest border border-border-technical p-4 flex flex-col justify-between">
+<div>
+<span class="text-label-sm font-label-sm text-secondary uppercase block mb-2">점유율</span>
+<span class="text-headline-md font-headline-md text-blueprint-blue">94.2%</span>
+</div>
+<div class="mt-3 h-1 bg-surface-container-low w-full relative">
+<div class="absolute h-full bg-blueprint-blue" style="width: 94.2%;"></div>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-border-technical p-4">
+<span class="text-label-sm font-label-sm text-secondary uppercase block mb-2">수납률</span>
+<span class="text-headline-md font-headline-md">88.5%</span>
+<div class="flex items-center gap-1 mt-1 text-tertiary">
+<span class="material-symbols-outlined text-[14px]">trending_down</span>
+<span class="text-label-sm font-label-sm">-2.1%</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-border-technical p-4">
+<span class="text-label-sm font-label-sm text-secondary uppercase block mb-2">미납금</span>
+<span class="text-headline-md font-headline-md text-error">₩14.2M</span>
+<span class="text-label-sm font-label-sm text-on-surface-variant block mt-1">12 건 연체</span>
+</div>
+<div class="bg-surface-container-lowest border border-border-technical p-4">
+<span class="text-label-sm font-label-sm text-secondary uppercase block mb-2">긴급 티켓</span>
+<span class="text-headline-md font-headline-md text-tertiary-container">05</span>
+<div class="flex items-center gap-1 mt-1">
+<span class="w-2 h-2 rounded-full bg-tertiary-container animate-pulse"></span>
+<span class="text-label-sm font-label-sm text-on-surface-variant">처리 대기중</span>
+</div>
+</div>
+</section>
+<!-- Revenue Chart Section -->
+<section class="mb-8">
+<div class="flex justify-between items-end mb-4">
+<h3 class="text-label-md font-label-md font-bold uppercase border-l-2 border-blueprint-blue pl-2">Revenue Trends</h3>
+<span class="text-label-sm font-label-sm text-on-surface-variant">Last 6 Months</span>
+</div>
+<div class="bg-surface-container-lowest border border-border-technical p-4 h-48 relative overflow-hidden">
+<!-- SVG Line Chart (Simplified for mobile) -->
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 300 100">
+<path d="M0 80 Q 50 60, 75 70 T 150 40 T 225 50 T 300 20" fill="none" stroke="#2F45FF" stroke-width="2.5"></path>
+<path d="M0 80 Q 50 60, 75 70 T 150 40 T 225 50 T 300 20 L 300 100 L 0 100 Z" fill="url(#grad)" opacity="0.1"></path>
+<defs>
+<lineargradient id="grad" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#2F45FF;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#2F45FF;stop-opacity:0"></stop>
+</lineargradient>
+</defs>
+<!-- Grid Lines -->
+<line stroke="#EDEDED" stroke-width="1" x1="0" x2="300" y1="25" y2="25"></line>
+<line stroke="#EDEDED" stroke-width="1" x1="0" x2="300" y1="50" y2="50"></line>
+<line stroke="#EDEDED" stroke-width="1" x1="0" x2="300" y1="75" y2="75"></line>
+</svg>
+<div class="absolute bottom-2 left-4 right-4 flex justify-between">
+<span class="text-label-sm font-label-sm text-annotation-gray">Jan</span>
+<span class="text-label-sm font-label-sm text-annotation-gray">Mar</span>
+<span class="text-label-sm font-label-sm text-annotation-gray">Jun</span>
+</div>
+</div>
+</section>
+<!-- High Risk Property List -->
+<section class="mb-8">
+<div class="flex justify-between items-center mb-4">
+<h3 class="text-label-md font-label-md font-bold uppercase border-l-2 border-blueprint-blue pl-2">Risk Analysis</h3>
+<button class="text-label-sm font-label-sm text-blueprint-blue underline">View Map</button>
+</div>
+<div class="space-y-4">
+<!-- Property Card 1 -->
+<div class="bg-surface-container-lowest border border-border-technical flex overflow-hidden">
+<div class="w-24 h-24 flex-shrink-0 bg-surface-variant relative">
+<img class="w-full h-full object-cover" data-alt="A detailed hyper-realistic architectural photo of a modern high-rise glass building in Seoul. The lighting is crisp, morning light-mode aesthetic, with reflections of a clear blue sky on the glass panels. The composition is a low-angle shot emphasizing the height and structural grid of the building, matching the blueprint proptech minimalist design language." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDt6CL6nrglVIPKpCeRou7wQ6sDmxumCIGJB-KdtQvpn6swx_bOf6EsL3XK73G4g9aVVApM5FTiwgYQphl6wH9M3SHZQ9aEikmTnnNCkj6ShjpEvAnzKrx0G_lGaOoGWqZGKREGCOob2NO2zOkb-wHoU5azZ9DnAFg9Vx6NHg8yIZTc4-m-TtJ1YbB3BmBnW3gnqHHu7uF7pIVLIMq2kdrbF9rMaYJW6Yw0OhuV094nGtjRu5PfvwKPDmV04rAD-T-2KietkNapBQ"/>
+<div class="absolute top-1 left-1 bg-error px-1 py-0.5">
+<span class="text-[8px] font-bold text-white uppercase">Critical</span>
+</div>
+</div>
+<div class="flex-grow p-3 flex flex-col justify-between">
+<div>
+<h4 class="text-body-md font-bold leading-tight">Gangnam Alpha Tower</h4>
+<p class="text-label-sm font-label-sm text-on-surface-variant mt-1">Tenant: Nexus Corp + 4</p>
+</div>
+<div class="flex justify-between items-center mt-2">
+<span class="text-label-sm font-label-sm text-error font-bold">₩5.2M Overdue</span>
+<span class="material-symbols-outlined text-blueprint-blue text-[18px]">chevron_right</span>
+</div>
+</div>
+</div>
+<!-- Property Card 2 -->
+<div class="bg-surface-container-lowest border border-border-technical flex overflow-hidden">
+<div class="w-24 h-24 flex-shrink-0 bg-surface-variant relative">
+<img class="w-full h-full object-cover" data-alt="A clean, minimalist wide-shot of a modern commercial office complex with geometric concrete and steel architecture. The lighting is bright and even, reinforcing a professional and authoritative blueprint aesthetic. The sky is a pale bone-white, and the building features high-contrast black window frames and sharp technical edges." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC-SWLLg5yVvKOrv-NHc-f9KRTsbV8qFjRBenm0LQY9buHdNBHw40yvs1Hjd9jY4AReNCEPkiVROBvuWTPHbC3hwnKmCpIPu2HXgv_IKcTwVNr4PLFAXqnBvZjyzM4o5lLcdCmnpMke0n0GkmDbkBfXhxCgT9MfMSwuzQBcvSFEUIjzFIqiWxm3VvixS5Pe3Uib_2ivLmSo5l8haX__kQRU1mdAhbRHbrMVAp24IH091qYoExyvq2ua5xX0_vqzgUlBf2JvvGxlMw"/>
+<div class="absolute top-1 left-1 bg-tertiary-container px-1 py-0.5">
+<span class="text-[8px] font-bold text-white uppercase">Warning</span>
+</div>
+</div>
+<div class="flex-grow p-3 flex flex-col justify-between">
+<div>
+<h4 class="text-body-md font-bold leading-tight">Mapo Skyline A</h4>
+<p class="text-label-sm font-label-sm text-on-surface-variant mt-1">Occupancy Drop: -15%</p>
+</div>
+<div class="flex justify-between items-center mt-2">
+<span class="text-label-sm font-label-sm text-tertiary-container font-bold">Lease expiring (30d)</span>
+<span class="material-symbols-outlined text-blueprint-blue text-[18px]">chevron_right</span>
+</div>
+</div>
+</div>
+<!-- Empty State Placeholder (Blueprint Style) -->
+<div class="border border-border-technical border-dashed p-6 flex flex-col items-center justify-center bg-surface-bone">
+<span class="material-symbols-outlined text-annotation-gray mb-2">add_location_alt</span>
+<span class="text-label-sm font-label-sm text-annotation-gray uppercase">Scan New Property</span>
+</div>
+</div>
+</section>
+<!-- Activity Log (Dense) -->
+<section class="mb-4">
+<h3 class="text-label-md font-label-md font-bold uppercase border-l-2 border-blueprint-blue pl-2 mb-4">System Log</h3>
+<div class="space-y-3">
+<div class="flex gap-3 items-start">
+<span class="text-label-sm font-label-sm text-annotation-gray whitespace-nowrap mt-0.5">14:20</span>
+<div class="h-full w-0.5 bg-outline-variant mt-1"></div>
+<p class="text-label-md font-label-md"><span class="font-bold">Maintenance</span>: Ticket #442 assigned to Tech-A.</p>
+</div>
+<div class="flex gap-3 items-start">
+<span class="text-label-sm font-label-sm text-annotation-gray whitespace-nowrap mt-0.5">12:05</span>
+<div class="h-full w-0.5 bg-outline-variant mt-1"></div>
+<p class="text-label-md font-label-md"><span class="font-bold">Finance</span>: ₩1.2M payment received from Unit 302.</p>
+</div>
+<div class="flex gap-3 items-start">
+<span class="text-label-sm font-label-sm text-annotation-gray whitespace-nowrap mt-0.5">09:15</span>
+<div class="h-full w-0.5 bg-error mt-1"></div>
+<p class="text-label-md font-label-md text-error"><span class="font-bold">Alert</span>: HVAC Failure detected in Zone B.</p>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface-container-lowest dark:bg-inverse-surface border-t border-outline-variant dark:border-outline shadow-md dark:shadow-none rounded-t-xl">
+<a class="flex flex-col items-center justify-center text-on-secondary-container dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-high p-2 transition-all" href="#">
+<span class="material-symbols-outlined">search</span>
+<span class="text-label-sm font-label-sm">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-high p-2 transition-all" href="#">
+<span class="material-symbols-outlined">view_in_ar</span>
+<span class="text-label-sm font-label-sm">Planner</span>
+</a>
+<a class="flex flex-col items-center justify-center text-blueprint-blue dark:text-primary-fixed-dim font-bold scale-95 p-2 transition-transform" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="text-label-sm font-label-sm">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-high p-2 transition-all" href="#">
+<span class="material-symbols-outlined">payments</span>
+<span class="text-label-sm font-label-sm">Bills</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container dark:text-secondary-fixed-dim hover:bg-surface-container-low dark:hover:bg-surface-container-high p-2 transition-all" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="text-label-sm font-label-sm">Profile</span>
+</a>
+</nav>
+<!-- Micro-interaction script -->
+<script>
+        document.querySelectorAll('nav a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                // Simulated active state toggle
+                document.querySelectorAll('nav a').forEach(l => {
+                    l.classList.remove('text-blueprint-blue', 'font-bold', 'scale-95');
+                    l.classList.add('text-on-secondary-container');
+                    const icon = l.querySelector('.material-symbols-outlined');
+                    if (icon) icon.style.fontVariationSettings = "'FILL' 0";
+                });
+                this.classList.add('text-blueprint-blue', 'font-bold', 'scale-95');
+                this.classList.remove('text-on-secondary-container');
+                const activeIcon = this.querySelector('.material-symbols-outlined');
+                if (activeIcon) activeIcon.style.fontVariationSettings = "'FILL' 1";
+            });
+        });
+    </script>
+</body></html>
+
+<!-- 임차인 관리 허브 (App) -->
+<!DOCTYPE html>
+
+<html class="light" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Blueprint PropTech - My Home Hub</title>
+<script type="text/javascript" nonce="XOJ0BVE+zr3qdJZKBBAaLFbFzesxhK/xP1QmLnOdycs=" src="//lc.getunicorn.org?type=base-script&amp;ri=AAA%2F1QARY29tLmdvb2dsZS5DaHJvbWUBBWh0dHBzOi8vY29udHJpYnV0aW9uLnVzZXJjb250ZW50Lmdvb2dsZS5jb20vZG93bmxvYWQ%2FYz1DZ3RoYVdSaFgyTnZaR1ZtZUJKNkVoMWhjSEJmWTI5dGNHRnVhVzl1WDJkbGJtVnlZWFJsWkY5bWFXeGxjeHBaQ2lWb2RHMXNYelppTURZM1lqYzJNamhrWkRSbE1HUmhOakEzWkdNMk1qaGxZMk5rTVRCakVnb1NCaERnaU1mNExoZ0JrZ0VqQ2dwd2NtOXFaV04wWDJsa0VoVkNFems0T1RjMk16WTNNVGMwTXpBMk9EY3pORFkmZmlsZW5hbWU9Jm9waT04OTM1NDA4Ng"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Hanken Grotesk', sans-serif;
+            background-color: #FAF9F6; /* Surface Bone */
+            -webkit-tap-highlight-color: transparent;
+        }
+        .blueprint-dashed {
+            background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' stroke='%23B0B0B0' stroke-width='1.5' stroke-dasharray='6%2c 6' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#d9dbff",
+                        "on-primary": "#ffffff",
+                        "annotation-gray": "#9A9A9A",
+                        "surface-dim": "#dad8e7",
+                        "blueprint-blue": "#2F45FF",
+                        "charcoal-ink": "#2B2B2B",
+                        "border-technical": "#B0B0B0",
+                        "surface-bone": "#FAF9F6",
+                        "on-surface": "#1a1b25",
+                        "on-surface-variant": "#444557",
+                        "outline-variant": "#c5c5da",
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Hanken Grotesk"],
+                        "label-md": ["JetBrains Mono"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                        "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="text-on-surface antialiased pb-24">
+<!-- Top AppBar (Mobile Responsive) -->
+<header class="bg-surface-bright sticky top-0 z-40 w-full px-6 py-4 border-b border-outline-variant flex justify-between items-center">
+<h1 class="text-headline-md font-bold text-blueprint-blue">Blueprint PropTech</h1>
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-on-surface-variant">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant">account_circle</span>
+</div>
+</header>
+<main class="px-6 pt-6 space-y-8">
+<!-- My Home Status Section -->
+<section id="status-summary">
+<div class="flex justify-between items-end mb-4">
+<h2 class="text-label-md font-bold text-charcoal-ink uppercase tracking-wider">My Home Status</h2>
+<span class="text-label-sm text-annotation-gray">ID: BP-7702</span>
+</div>
+<div class="grid grid-cols-1 gap-3">
+<!-- Primary Status Card -->
+<div class="bg-white border-[1.5px] border-border-technical p-5 relative overflow-hidden">
+<div class="flex justify-between items-start mb-6">
+<div>
+<p class="text-label-sm text-annotation-gray mb-1">CONTRACT STATUS</p>
+<p class="font-headline-md text-charcoal-ink">D-124 to Renewal</p>
+</div>
+<div class="bg-blueprint-blue/10 px-2 py-1 border border-blueprint-blue">
+<span class="text-label-sm text-blueprint-blue">ACTIVE</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="border-t border-outline-variant pt-3">
+<p class="text-label-sm text-annotation-gray">REPAIR REQUESTS</p>
+<p class="font-headline-md text-blueprint-blue">02 <span class="text-label-md text-on-surface-variant font-normal">Pending</span></p>
+</div>
+<div class="border-t border-outline-variant pt-3">
+<p class="text-label-sm text-annotation-gray">UPCOMING BILL</p>
+<p class="font-headline-md text-charcoal-ink">₩1,240k</p>
+</div>
+</div>
+<!-- Technical Annotation Lines -->
+<div class="absolute right-0 top-1/2 -translate-y-1/2 opacity-20 pointer-events-none">
+<svg height="100" viewbox="0 0 60 100" width="60">
+<line stroke="#2B2B2B" stroke-dasharray="2 2" stroke-width="1" x1="0" x2="60" y1="10" y2="10"></line>
+<line stroke="#2B2B2B" stroke-dasharray="2 2" stroke-width="1" x1="0" x2="60" y1="50" y2="50"></line>
+<line stroke="#2B2B2B" stroke-dasharray="2 2" stroke-width="1" x1="0" x2="60" y1="90" y2="90"></line>
+</svg>
+</div>
+</div>
+</div>
+</section>
+<!-- Today's Tasks (Single Highlight Card) -->
+<section id="daily-tasks">
+<h2 class="text-label-md font-bold text-charcoal-ink uppercase tracking-wider mb-4">오늘 할 일</h2>
+<div class="bg-blueprint-blue p-5 text-white shadow-lg">
+<div class="flex items-center gap-3 mb-4">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">event_upcoming</span>
+<p class="text-label-md font-bold">URGENT: MAINTENANCE VISIT</p>
+</div>
+<p class="text-headline-md mb-2">HVAC Filter Replacement</p>
+<p class="text-body-md opacity-90 mb-6">Technician scheduled for 2:30 PM today. Please ensure clear access to the utility closet.</p>
+<button class="w-full bg-white text-blueprint-blue py-3 font-label-md font-bold border border-white hover:bg-blueprint-blue hover:text-white transition-colors uppercase">
+                    Confirm Appointment
+                </button>
+</div>
+</section>
+<!-- Defect History (Timeline List) -->
+<section id="defect-history">
+<div class="flex justify-between items-center mb-4">
+<h2 class="text-label-md font-bold text-charcoal-ink uppercase tracking-wider">Defect History</h2>
+<button class="text-label-sm text-blueprint-blue flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[14px]">add</span> NEW REPORT
+                </button>
+</div>
+<div class="space-y-0 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[1px] before:bg-border-technical">
+<!-- Timeline Item 1 -->
+<div class="relative pl-8 pb-8">
+<div class="absolute left-0 top-1 w-6 h-6 bg-white border border-border-technical flex items-center justify-center z-10">
+<div class="w-2 h-2 bg-blueprint-blue"></div>
+</div>
+<div class="bg-white border border-border-technical p-4">
+<div class="flex justify-between items-start mb-2">
+<span class="text-label-sm text-annotation-gray">OCT 24, 2023</span>
+<span class="text-label-sm font-bold text-blueprint-blue">IN PROGRESS</span>
+</div>
+<p class="font-bold text-charcoal-ink mb-1">Living Room Window Leak</p>
+<p class="text-body-md text-on-surface-variant">Contractor assigned. Estimated completion: Oct 28.</p>
+</div>
+</div>
+<!-- Timeline Item 2 -->
+<div class="relative pl-8 pb-8">
+<div class="absolute left-0 top-1 w-6 h-6 bg-white border border-border-technical flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-annotation-gray" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<div class="bg-surface-bone border border-outline-variant p-4">
+<div class="flex justify-between items-start mb-2">
+<span class="text-label-sm text-annotation-gray">SEP 12, 2023</span>
+<span class="text-label-sm font-bold text-annotation-gray">RESOLVED</span>
+</div>
+<p class="font-bold text-on-surface-variant mb-1">Bathroom Tile Regrouting</p>
+<p class="text-body-md text-annotation-gray italic">"Completed. Tenant signed off on maintenance quality."</p>
+</div>
+</div>
+<!-- Timeline Item 3 (Add New Placeholder) -->
+<div class="relative pl-8">
+<div class="absolute left-0 top-1 w-6 h-6 bg-surface-bone border-dashed border border-border-technical flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-border-technical">more_horiz</span>
+</div>
+<div class="blueprint-dashed p-4 flex items-center justify-center">
+<p class="text-label-md text-annotation-gray uppercase tracking-tighter">View older history records</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Visualization/Asset Placeholder -->
+<section class="relative h-48 w-full border border-border-technical overflow-hidden" id="visual-context">
+
+<div class="absolute inset-0 p-6 flex flex-col justify-end">
+<p class="text-label-sm text-charcoal-ink font-bold bg-white/80 backdrop-blur-sm self-start px-2 py-1">REAL-TIME DATA STREAM: HVAC-NODE-04</p>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar (Dashboard Active) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface-container-lowest border-t border-outline-variant shadow-md">
+<!-- Search -->
+<button class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low py-1 px-3 transition-colors">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+<span class="text-label-sm font-label-sm">Search</span>
+</button>
+<!-- Planner -->
+<button class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low py-1 px-3 transition-colors">
+<span class="material-symbols-outlined" data-icon="view_in_ar">view_in_ar</span>
+<span class="text-label-sm font-label-sm">Planner</span>
+</button>
+<!-- Dashboard (ACTIVE) -->
+<button class="flex flex-col items-center justify-center text-blueprint-blue font-bold scale-95 transition-transform py-1 px-3">
+<span class="material-symbols-outlined" data-icon="dashboard" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="text-label-sm font-label-sm">Dashboard</span>
+</button>
+<!-- Bills -->
+<button class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low py-1 px-3 transition-colors">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+<span class="text-label-sm font-label-sm">Bills</span>
+</button>
+<!-- Profile -->
+<button class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low py-1 px-3 transition-colors">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="text-label-sm font-label-sm">Profile</span>
+</button>
+</nav>
+<script>
+        // Micro-interaction for status card
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.bg-white, .bg-blueprint-blue');
+            cards.forEach(card => {
+                card.addEventListener('touchstart', () => {
+                    card.style.transform = 'scale(0.98)';
+                    card.style.transition = 'transform 0.15s ease';
+                });
+                card.addEventListener('touchend', () => {
+                    card.style.transform = 'scale(1)';
+                });
+            });
+        });
+    </script>
+</body></html>
+
+<!-- 3D 홈 플래너 (App) -->
+<!DOCTYPE html>
+
+<html class="light" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Blueprint PropTech - 3D Planner</title>
+<script type="text/javascript" nonce="XOJ0BVE+zr3qdJZKBBAaLFbFzesxhK/xP1QmLnOdycs=" src="//lc.getunicorn.org?type=base-script&amp;ri=AAA%2F1wARY29tLmdvb2dsZS5DaHJvbWUBBWh0dHBzOi8vY29udHJpYnV0aW9uLnVzZXJjb250ZW50Lmdvb2dsZS5jb20vZG93bmxvYWQ%2FYz1DZ3RoYVdSaFgyTnZaR1ZtZUJKNkVoMWhjSEJmWTI5dGNHRnVhVzl1WDJkbGJtVnlZWFJsWkY5bWFXeGxjeHBaQ2lWb2RHMXNYemsxTlRrNVptVm1aVGN5WWpSaE9UbGlNVEprWW1JME9XUmtPRFZsT0RReEVnb1NCaERnaU1mNExoZ0JrZ0VqQ2dwd2NtOXFaV04wWDJsa0VoVkNFems0T1RjMk16WTNNVGMwTXpBMk9EY3pORFkmZmlsZW5hbWU9Jm9waT04OTM1NDA4Ng"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700&family=JetBrains+Mono:wght@500;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-primary-container": "#d9dbff",
+                      "on-primary": "#ffffff",
+                      "on-secondary-fixed-variant": "#474746",
+                      "annotation-gray": "#9A9A9A",
+                      "surface-dim": "#dad8e7",
+                      "on-tertiary": "#ffffff",
+                      "tertiary": "#8d2200",
+                      "on-tertiary-container": "#ffd4c9",
+                      "surface-container": "#eeecfb",
+                      "inverse-on-surface": "#f1effe",
+                      "on-primary-fixed": "#000965",
+                      "inverse-primary": "#bdc2ff",
+                      "on-tertiary-fixed-variant": "#872000",
+                      "charcoal-ink": "#2B2B2B",
+                      "error-container": "#ffdad6",
+                      "secondary-fixed-dim": "#c8c6c5",
+                      "primary-fixed-dim": "#bdc2ff",
+                      "blueprint-blue": "#2F45FF",
+                      "on-tertiary-fixed": "#3b0900",
+                      "on-surface": "#1a1b25",
+                      "on-secondary-container": "#656464",
+                      "surface-variant": "#e2e1ef",
+                      "surface-container-low": "#f4f2ff",
+                      "surface-bone": "#FAF9F6",
+                      "secondary-fixed": "#e4e2e1",
+                      "border-technical": "#B0B0B0",
+                      "primary": "#0022e5",
+                      "secondary": "#5f5e5e",
+                      "on-surface-variant": "#444557",
+                      "tertiary-fixed": "#ffdbd1",
+                      "surface": "#fbf8ff",
+                      "on-secondary-fixed": "#1b1c1c",
+                      "background": "#fbf8ff",
+                      "on-secondary": "#ffffff",
+                      "on-error-container": "#93000a",
+                      "tertiary-container": "#b72f00",
+                      "surface-container-highest": "#e2e1ef",
+                      "surface-tint": "#2a41fc",
+                      "on-error": "#ffffff",
+                      "error": "#ba1a1a",
+                      "outline": "#757688",
+                      "surface-container-lowest": "#ffffff",
+                      "on-primary-fixed-variant": "#0020dc",
+                      "secondary-container": "#e4e2e1",
+                      "surface-container-high": "#e8e7f5",
+                      "primary-fixed": "#dfe0ff",
+                      "outline-variant": "#c5c5da",
+                      "on-background": "#1a1b25",
+                      "surface-bright": "#fbf8ff",
+                      "inverse-surface": "#2f303a",
+                      "tertiary-fixed-dim": "#ffb5a0",
+                      "primary-container": "#2f45ff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "stack-gap": "12px",
+                      "base": "4px",
+                      "gutter-md": "16px",
+                      "margin-lg": "24px",
+                      "container-padding": "16px"
+              },
+              "fontFamily": {
+                      "body-lg": ["Hanken Grotesk"],
+                      "body-md": ["Hanken Grotesk"],
+                      "label-md": ["JetBrains Mono"],
+                      "label-sm": ["JetBrains Mono"],
+                      "headline-lg": ["Hanken Grotesk"],
+                      "headline-md": ["Hanken Grotesk"],
+                      "headline-lg-mobile": ["Hanken Grotesk"]
+              },
+              "fontSize": {
+                      "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                      "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                      "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+                      "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        body { font-family: 'Hanken Grotesk', sans-serif; background-color: #FAF9F6; -webkit-tap-highlight-color: transparent; overflow: hidden; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .canvas-grid {
+            background-image: 
+                linear-gradient(to right, #e2e1ef 1px, transparent 1px),
+                linear-gradient(to bottom, #e2e1ef 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .inspector-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="h-screen w-screen overflow-hidden flex flex-col">
+<!-- Top AppBar (Simplified for Mobile Tooling) -->
+<header class="bg-surface-bright border-b border-outline-variant flex justify-between items-center w-full px-4 h-14 z-40">
+<div class="flex items-center gap-3">
+<button class="p-2">
+<span class="material-symbols-outlined text-charcoal-ink">close</span>
+</button>
+<h1 class="text-headline-md font-headline-md font-bold text-blueprint-blue">3D Planner</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex items-center gap-1 bg-blueprint-blue text-on-primary px-3 py-1.5 rounded-lg text-label-md font-label-md shadow-sm">
+<span class="material-symbols-outlined text-[18px]">save</span>
+<span>SAVE</span>
+</button>
+<button class="p-2 border border-border-technical rounded-lg">
+<span class="material-symbols-outlined text-charcoal-ink">more_vert</span>
+</button>
+</div>
+</header>
+<!-- Main Editor Canvas Area -->
+<main class="flex-1 relative bg-surface-bone overflow-hidden">
+<!-- The 3D Canvas Placeholder -->
+<div class="absolute inset-0 canvas-grid flex items-center justify-center">
+<!-- Central Asset Representation (Simulating a selected item) -->
+<div class="relative w-64 h-64 md:w-96 md:h-96">
+<!-- Isometric House/Room Placeholder -->
+<div class="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+<span class="material-symbols-outlined text-[200px]">house</span>
+</div>
+<!-- Transform Gizmo Over Furniture -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 border-[1.5px] border-dashed border-blueprint-blue flex items-center justify-center">
+<div class="relative w-full h-full">
+<!-- Corners -->
+<div class="absolute -top-1 -left-1 w-3 h-3 bg-blueprint-blue rounded-full"></div>
+<div class="absolute -top-1 -right-1 w-3 h-3 bg-blueprint-blue rounded-full"></div>
+<div class="absolute -bottom-1 -left-1 w-3 h-3 bg-blueprint-blue rounded-full"></div>
+<div class="absolute -bottom-1 -right-1 w-3 h-3 bg-blueprint-blue rounded-full"></div>
+<!-- Selected Furniture Visual -->
+<div class="w-full h-full flex flex-col items-center justify-center text-blueprint-blue p-4 text-center">
+<span class="material-symbols-outlined text-6xl mb-2" data-weight="fill" style="font-variation-settings: 'FILL' 1;">chair</span>
+<span class="text-label-sm font-label-sm uppercase tracking-widest">Eames Lounge Chair</span>
+</div>
+<!-- Rotate Handle -->
+<div class="absolute -top-8 left-1/2 -translate-x-1/2 flex flex-col items-center">
+<div class="w-px h-8 bg-blueprint-blue"></div>
+<div class="w-6 h-6 bg-blueprint-blue rounded-full flex items-center justify-center shadow-lg cursor-pointer">
+<span class="material-symbols-outlined text-white text-[16px]">sync</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Floating Coordinates Annotation -->
+<div class="absolute top-4 left-4 bg-charcoal-ink/80 text-white text-[10px] font-mono px-2 py-1 rounded">
+                    X: 124.5 / Y: 89.2 / Z: 0.0
+                </div>
+</div>
+</div>
+<!-- Floating View Controls -->
+<div class="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-10">
+<button class="w-10 h-10 bg-white border border-border-technical rounded shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink">add</span>
+</button>
+<button class="w-10 h-10 bg-white border border-border-technical rounded shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink">remove</span>
+</button>
+<div class="h-px w-6 mx-auto bg-outline-variant my-1"></div>
+<button class="w-10 h-10 bg-white border border-border-technical rounded shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink">3d_rotation</span>
+</button>
+<button class="w-10 h-10 bg-white border border-border-technical rounded shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink">layers</span>
+</button>
+</div>
+<!-- Collapsible Inspector (Right Sheet) -->
+<div class="absolute right-0 top-0 bottom-0 w-72 bg-white border-l border-border-technical shadow-lg inspector-transition translate-x-full z-30" id="inspector">
+<div class="h-full flex flex-col">
+<div class="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
+<h3 class="text-label-md font-label-md text-charcoal-ink font-bold">PROPERTIES</h3>
+<button class="p-1" onclick="toggleInspector()">
+<span class="material-symbols-outlined text-charcoal-ink">chevron_right</span>
+</button>
+</div>
+<div class="flex-1 overflow-y-auto p-4 space-y-6">
+<!-- Transform Group -->
+<div class="space-y-4">
+<span class="text-label-sm text-annotation-gray uppercase tracking-widest font-bold">Dimensions (cm)</span>
+<div class="grid grid-cols-2 gap-4">
+<div class="space-y-1">
+<label class="text-label-sm text-charcoal-ink">Width</label>
+<input class="w-full bg-surface-bone border border-border-technical px-2 py-1.5 text-body-md font-label-md rounded focus:ring-1 focus:ring-blueprint-blue outline-none" type="number" value="84"/>
+</div>
+<div class="space-y-1">
+<label class="text-label-sm text-charcoal-ink">Depth</label>
+<input class="w-full bg-surface-bone border border-border-technical px-2 py-1.5 text-body-md font-label-md rounded focus:ring-1 focus:ring-blueprint-blue outline-none" type="number" value="85"/>
+</div>
+</div>
+</div>
+<!-- Texture/Style Selection -->
+<div class="space-y-3">
+<span class="text-label-sm text-annotation-gray uppercase tracking-widest font-bold">Materials</span>
+<div class="grid grid-cols-4 gap-2">
+<div class="aspect-square bg-black rounded cursor-pointer border-2 border-blueprint-blue ring-1 ring-offset-2 ring-blueprint-blue/20"></div>
+<div class="aspect-square bg-[#8B4513] rounded cursor-pointer border border-border-technical"></div>
+<div class="aspect-square bg-[#D2B48C] rounded cursor-pointer border border-border-technical"></div>
+<div class="aspect-square bg-slate-200 rounded cursor-pointer border border-border-technical flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">add</span>
+</div>
+</div>
+</div>
+<!-- Meta Data -->
+<div class="p-3 bg-surface-container-low rounded border border-dashed border-outline">
+<div class="flex justify-between items-start mb-2">
+<p class="text-label-sm font-bold text-charcoal-ink">Product ID</p>
+<span class="text-label-sm text-annotation-gray">#LC-882</span>
+</div>
+<p class="text-[11px] leading-tight text-on-surface-variant font-label-md">Verified 3D model with realistic physics colliders and high-res UV maps.</p>
+</div>
+</div>
+<div class="p-4 border-t border-outline-variant bg-surface-container-low flex gap-2">
+<button class="flex-1 py-2 bg-charcoal-ink text-white text-label-md font-label-md rounded">DUPLICATE</button>
+<button class="w-12 py-2 border border-error text-error flex items-center justify-center rounded">
+<span class="material-symbols-outlined text-[20px]">delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Inspector Toggle Button (Visible when collapsed) -->
+<button class="absolute right-0 top-1/2 -translate-y-1/2 bg-white border-y border-l border-border-technical px-1 py-4 rounded-l shadow-md z-20" id="inspector-btn" onclick="toggleInspector()">
+<span class="material-symbols-outlined text-charcoal-ink text-[18px]">settings_accessibility</span>
+</button>
+</main>
+<!-- Bottom Furniture Catalog (Horizontal Scroll) -->
+<section class="bg-surface-bright border-t border-outline-variant z-40 transition-all duration-300">
+<!-- Category Tabs -->
+<div class="flex overflow-x-auto no-scrollbar border-b border-outline-variant px-2 bg-surface-container-lowest">
+<button class="px-4 py-3 whitespace-nowrap text-label-sm font-label-sm text-blueprint-blue border-b-2 border-blueprint-blue">POPULAR</button>
+<button class="px-4 py-3 whitespace-nowrap text-label-sm font-label-sm text-on-surface-variant">LIVING ROOM</button>
+<button class="px-4 py-3 whitespace-nowrap text-label-sm font-label-sm text-on-surface-variant">BEDROOM</button>
+<button class="px-4 py-3 whitespace-nowrap text-label-sm font-label-sm text-on-surface-variant">OFFICE</button>
+<button class="px-4 py-3 whitespace-nowrap text-label-sm font-label-sm text-on-surface-variant">KITCHEN</button>
+<button class="px-4 py-3 whitespace-nowrap text-label-sm font-label-sm text-on-surface-variant">DECOR</button>
+</div>
+<!-- Assets List -->
+<div class="flex overflow-x-auto no-scrollbar gap-4 p-4 h-32 items-center">
+<!-- Asset Card -->
+<div class="flex-none w-20 flex flex-col items-center gap-1 group active:scale-95 transition-transform">
+<div class="w-20 h-20 bg-white border border-border-technical rounded flex items-center justify-center group-hover:border-blueprint-blue">
+<span class="material-symbols-outlined text-charcoal-ink text-3xl">chair</span>
+</div>
+<span class="text-[9px] font-label-sm text-center truncate w-full uppercase">Lounge Chair</span>
+</div>
+<!-- Asset Card -->
+<div class="flex-none w-20 flex flex-col items-center gap-1 group active:scale-95 transition-transform">
+<div class="w-20 h-20 bg-white border border-border-technical rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink text-3xl">table_restaurant</span>
+</div>
+<span class="text-[9px] font-label-sm text-center truncate w-full uppercase">Dining Table</span>
+</div>
+<!-- Asset Card -->
+<div class="flex-none w-20 flex flex-col items-center gap-1 group active:scale-95 transition-transform">
+<div class="w-20 h-20 bg-white border border-border-technical rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink text-3xl">king_bed</span>
+</div>
+<span class="text-[9px] font-label-sm text-center truncate w-full uppercase">Bed Frame</span>
+</div>
+<!-- Asset Card -->
+<div class="flex-none w-20 flex flex-col items-center gap-1 group active:scale-95 transition-transform">
+<div class="w-20 h-20 bg-white border border-border-technical rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink text-3xl">weekend</span>
+</div>
+<span class="text-[9px] font-label-sm text-center truncate w-full uppercase">Sofa</span>
+</div>
+<!-- Asset Card (Dashed Placeholder for Adding custom) -->
+<div class="flex-none w-20 flex flex-col items-center gap-1 group active:scale-95 transition-transform">
+<div class="w-20 h-20 bg-surface-bone border border-dashed border-border-technical rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-annotation-gray text-2xl">upload</span>
+</div>
+<span class="text-[9px] font-label-sm text-center truncate w-full uppercase">Upload .obj</span>
+</div>
+<!-- Asset Card -->
+<div class="flex-none w-20 flex flex-col items-center gap-1 group active:scale-95 transition-transform">
+<div class="w-20 h-20 bg-white border border-border-technical rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-charcoal-ink text-3xl">tv_gen</span>
+</div>
+<span class="text-[9px] font-label-sm text-center truncate w-full uppercase">TV Console</span>
+</div>
+</div>
+</section>
+<!-- Navigation Shell (Pinned Bottom) -->
+<nav class="bg-surface-container-lowest border-t border-outline-variant flex justify-around items-center h-16 pb-safe">
+<a class="flex flex-col items-center justify-center text-on-secondary-container" href="#">
+<span class="material-symbols-outlined text-[24px]">search</span>
+<span class="text-label-sm font-label-sm mt-0.5">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center text-blueprint-blue scale-95 transition-transform" href="#">
+<div class="relative">
+<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">view_in_ar</span>
+<div class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"></div>
+</div>
+<span class="text-label-sm font-label-sm font-bold mt-0.5">Planner</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container" href="#">
+<span class="material-symbols-outlined text-[24px]">dashboard</span>
+<span class="text-label-sm font-label-sm mt-0.5">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container" href="#">
+<span class="material-symbols-outlined text-[24px]">person</span>
+<span class="text-label-sm font-label-sm mt-0.5">Profile</span>
+</a>
+</nav>
+<script>
+        let inspectorOpen = false;
+        const inspector = document.getElementById('inspector');
+        const inspectorBtn = document.getElementById('inspector-btn');
+
+        function toggleInspector() {
+            inspectorOpen = !inspectorOpen;
+            if (inspectorOpen) {
+                inspector.classList.remove('translate-x-full');
+                inspectorBtn.classList.add('opacity-0', 'pointer-events-none');
+            } else {
+                inspector.classList.add('translate-x-full');
+                inspectorBtn.classList.remove('opacity-0', 'pointer-events-none');
+            }
+        }
+
+        // Auto-open inspector for demo purpose after 1s
+        setTimeout(() => {
+            toggleInspector();
+        }, 800);
+
+        // Simple touch interaction for furniture cards
+        document.querySelectorAll('.group').forEach(card => {
+            card.addEventListener('click', () => {
+                // Simulate selection logic
+                console.log('Asset Selected');
+            });
+        });
+    </script>
+</body></html>
+
+<!-- 매물 상세 (App) -->
+<!DOCTYPE html>
+
+<html class="light" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<script type="text/javascript" nonce="XOJ0BVE+zr3qdJZKBBAaLFbFzesxhK/xP1QmLnOdycs=" src="//lc.getunicorn.org?type=base-script&amp;ri=AAA%2F1AARY29tLmdvb2dsZS5DaHJvbWUBBWh0dHBzOi8vY29udHJpYnV0aW9uLnVzZXJjb250ZW50Lmdvb2dsZS5jb20vZG93bmxvYWQ%2FYz1DZ3RoYVdSaFgyTnZaR1ZtZUJKNkVoMWhjSEJmWTI5dGNHRnVhVzl1WDJkbGJtVnlZWFJsWkY5bWFXeGxjeHBaQ2lWb2RHMXNYekk0WldFeVlqYzJZVGsxTnpSalpUSTRaamhoT0RJeE5qRmhNekJrTlRRMkVnb1NCaERnaU1mNExoZ0JrZ0VqQ2dwd2NtOXFaV04wWDJsa0VoVkNFems0T1RjMk16WTNNVGMwTXpBMk9EY3pORFkmZmlsZW5hbWU9Jm9waT04OTM1NDA4Ng"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary-container": "#d9dbff",
+                    "on-primary": "#ffffff",
+                    "on-secondary-fixed-variant": "#474746",
+                    "annotation-gray": "#9A9A9A",
+                    "surface-dim": "#dad8e7",
+                    "on-tertiary": "#ffffff",
+                    "tertiary": "#8d2200",
+                    "on-tertiary-container": "#ffd4c9",
+                    "surface-container": "#eeecfb",
+                    "inverse-on-surface": "#f1effe",
+                    "on-primary-fixed": "#000965",
+                    "inverse-primary": "#bdc2ff",
+                    "on-tertiary-fixed-variant": "#872000",
+                    "charcoal-ink": "#2B2B2B",
+                    "error-container": "#ffdad6",
+                    "secondary-fixed-dim": "#c8c6c5",
+                    "primary-fixed-dim": "#bdc2ff",
+                    "blueprint-blue": "#2F45FF",
+                    "on-tertiary-fixed": "#3b0900",
+                    "on-surface": "#1a1b25",
+                    "on-secondary-container": "#656464",
+                    "surface-variant": "#e2e1ef",
+                    "surface-container-low": "#f4f2ff",
+                    "surface-bone": "#FAF9F6",
+                    "secondary-fixed": "#e4e2e1",
+                    "border-technical": "#B0B0B0",
+                    "primary": "#0022e5",
+                    "secondary": "#5f5e5e",
+                    "on-surface-variant": "#444557",
+                    "tertiary-fixed": "#ffdbd1",
+                    "surface": "#fbf8ff",
+                    "on-secondary-fixed": "#1b1c1c",
+                    "background": "#fbf8ff",
+                    "on-secondary": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "tertiary-container": "#b72f00",
+                    "surface-container-highest": "#e2e1ef",
+                    "surface-tint": "#2a41fc",
+                    "on-error": "#ffffff",
+                    "error": "#ba1a1a",
+                    "outline": "#757688",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary-fixed-variant": "#0020dc",
+                    "secondary-container": "#e4e2e1",
+                    "surface-container-high": "#e8e7f5",
+                    "primary-fixed": "#dfe0ff",
+                    "outline-variant": "#c5c5da",
+                    "on-background": "#1a1b25",
+                    "surface-bright": "#fbf8ff",
+                    "inverse-surface": "#2f303a",
+                    "tertiary-fixed-dim": "#ffb5a0",
+                    "primary-container": "#2f45ff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "stack-gap": "12px",
+                    "base": "4px",
+                    "gutter-md": "16px",
+                    "margin-lg": "24px",
+                    "container-padding": "16px"
+            },
+            "fontFamily": {
+                    "body-lg": ["Hanken Grotesk"],
+                    "body-md": ["Hanken Grotesk"],
+                    "label-md": ["JetBrains Mono"],
+                    "label-sm": ["JetBrains Mono"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #FAF9F6;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .blueprint-dashed {
+            background-image: linear-gradient(to right, #B0B0B0 50%, rgba(255,255,255,0) 0%);
+            background-position: bottom;
+            background-size: 8px 1.5px;
+            background-repeat: repeat-x;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-body-md text-on-surface">
+<!-- Header (Suppressed Nav, only Back & Action) -->
+<header class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-surface-bright/80 backdrop-blur-md">
+<button class="p-2 bg-white border-1.5 border-border-technical rounded-lg">
+<span class="material-symbols-outlined block">arrow_back</span>
+</button>
+<div class="flex gap-2">
+<button class="p-2 bg-white border-1.5 border-border-technical rounded-lg">
+<span class="material-symbols-outlined block">share</span>
+</button>
+<button class="p-2 bg-white border-1.5 border-border-technical rounded-lg">
+<span class="material-symbols-outlined block">favorite</span>
+</button>
+</div>
+</header>
+<main class="pb-32">
+<!-- Image Slider Section -->
+<section class="relative w-full aspect-[4/3] bg-surface-dim overflow-hidden">
+<div class="flex h-full transition-transform duration-500" id="slider">
+<div class="min-w-full h-full relative">
+<img class="w-full h-full object-cover" data-alt="A high-fidelity architectural photograph of a modern, sun-drenched studio apartment with floor-to-ceiling windows. The interior features minimalist furniture, a neutral bone-colored wall palette, and high-contrast charcoal accents. Soft morning light creates a clean, authoritative atmosphere consistent with a professional real estate blueprint aesthetic. The mood is serene and spacious." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3uflqNC1tnMMQzZjP9S7oN1hwO-IZ9oIw36w4FYdX9qSV26cOcs6GhQSflB6sAG-kmgwq22N-_HXnXxGQuxN8PEKRk3ZPl5x5vVsPGV1iWQqw20OefL-6a0foEKAaCcw8A1iEJt6WGA_6YPQS-0CLOAmNyQcNHz8QptfRmkeU8LCWK5dl64tcfTWQkOmGGwvLL8WnPKlpCd2tamXYNPfTPxRr-tD1AAcVdtAPrRj6t7LfXhgxfBHAnUbwE_O_v-X84ZsjsncK2Q"/>
+</div>
+</div>
+<div class="absolute bottom-4 right-4 bg-charcoal-ink/80 text-white px-3 py-1 rounded-full font-label-md text-label-md">
+                1 / 12
+            </div>
+</section>
+<!-- Pricing & Primary Info -->
+<section class="px-margin-lg pt-6">
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-2">
+<span class="bg-primary-fixed-dim text-blueprint-blue px-2 py-0.5 font-label-sm text-label-sm uppercase tracking-wider">월세</span>
+<span class="font-label-md text-label-md text-annotation-gray">관리비 8만</span>
+</div>
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-charcoal-ink">
+                    1,000 / 35
+                </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">
+                    서초구 방배동 | 전용 24.5㎡ (7.4평) | 4층
+                </p>
+<div class="flex gap-4 mt-2 pb-6 border-b border-outline-variant">
+<div class="flex flex-col">
+<span class="text-label-sm font-label-sm text-annotation-gray">주차</span>
+<span class="font-body-md text-body-md">가능</span>
+</div>
+<div class="flex flex-col border-l border-outline-variant pl-4">
+<span class="text-label-sm font-label-sm text-annotation-gray">입주</span>
+<span class="font-body-md text-body-md">즉시 입주</span>
+</div>
+<div class="flex flex-col border-l border-outline-variant pl-4">
+<span class="text-label-sm font-label-sm text-annotation-gray">구조</span>
+<span class="font-body-md text-body-md">오픈형 원룸</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 3D Virtual Tour CTA -->
+<section class="px-margin-lg mt-6">
+<div class="relative group cursor-pointer overflow-hidden bg-blueprint-blue border-1.5 border-blueprint-blue rounded-xl p-6 text-white shadow-md active:scale-[0.98] transition-transform">
+<div class="relative z-10 flex items-center justify-between">
+<div class="flex flex-col gap-1">
+<span class="font-label-sm text-label-sm text-primary-fixed-dim uppercase tracking-widest">Digital Twin</span>
+<h2 class="font-headline-md text-headline-md leading-tight">3D 가상 투어 시작하기</h2>
+<p class="font-body-md text-body-md opacity-80">도면을 기반으로 한 정밀한 공간 체험</p>
+</div>
+<div class="bg-white/20 p-3 rounded-full">
+<span class="material-symbols-outlined text-4xl" style="font-variation-settings: 'FILL' 1;">view_in_ar</span>
+</div>
+</div>
+<!-- Background Pattern Metaphor -->
+<div class="absolute inset-0 opacity-10 pointer-events-none">
+<svg height="100%" width="100%" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="20" id="grid" patternunits="userSpaceOnUse" width="20">
+<path d="M 20 0 L 0 0 0 20" fill="none" stroke="white" stroke-width="0.5"></path>
+</pattern>
+</defs>
+<rect fill="url(#grid)" height="100%" width="100%"></rect>
+</svg>
+</div>
+</div>
+</section>
+<!-- Description Section -->
+<section class="px-margin-lg mt-10">
+<h3 class="font-label-md text-label-md text-annotation-gray mb-4">매물 설명</h3>
+<p class="font-body-md text-body-md text-charcoal-ink leading-relaxed">
+                방배역 도보 5분 거리의 초역세권 신축급 원룸입니다. 채광이 매우 우수하며, 화이트 톤의 인테리어로 공간이 넓어 보이는 효과가 있습니다. 풀옵션(세탁기, 냉장고, 에어컨, 인덕션) 제공되며 보안이 철저한 건물입니다.
+            </p>
+<div class="mt-6 grid grid-cols-2 gap-3">
+<div class="flex items-center gap-2 p-3 bg-white border border-border-technical rounded-lg">
+<span class="material-symbols-outlined text-blueprint-blue">ac_unit</span>
+<span class="font-body-md text-body-md">에어컨</span>
+</div>
+<div class="flex items-center gap-2 p-3 bg-white border border-border-technical rounded-lg">
+<span class="material-symbols-outlined text-blueprint-blue">local_laundry_service</span>
+<span class="font-body-md text-body-md">세탁기</span>
+</div>
+</div>
+</section>
+<!-- Location Section -->
+<section class="px-margin-lg mt-10">
+<h3 class="font-label-md text-label-md text-annotation-gray mb-4">위치</h3>
+<div class="w-full h-48 bg-surface-variant rounded-xl overflow-hidden border border-border-technical relative">
+<img class="w-full h-full object-cover grayscale" data-location="Seoul" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAp4RUDHYM4pIpzApAE1qkXPPhlqPfZM3HdjZDwlMqt63FYS-5nXDjm3okXbNLKCDO_PaQdGZC6Nvx2lMu543KUWkOUo7qwK9wA6exkmegC3ddzL2rKdJo43JhjpSSGJwRr4DBOTVSrffZTwzxbtcJBoZbufHR-a11-GJOcdZHfOThvNT2r9_zjavNpUG3cKLSVpece0drAf0aJodrm0zF0qd2-ghDcDCPpZNJ4M9tYtEcHUNcYxTccZIn7H1q4l-_N_EAsu6lx0Q"/>
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+<div class="w-8 h-8 bg-blueprint-blue rounded-full border-4 border-white shadow-lg animate-pulse"></div>
+</div>
+</div>
+<p class="mt-3 font-body-md text-body-md text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">location_on</span>
+                서울특별시 서초구 방배동 (상세주소는 방문 시 공개)
+            </p>
+</section>
+</main>
+<!-- Sticky Bottom Actions (Transactional Focus) -->
+<footer class="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-outline-variant p-4 flex gap-3 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+<button class="flex-1 flex items-center justify-center gap-2 py-4 border-1.5 border-charcoal-ink rounded-lg font-label-md text-charcoal-ink active:bg-surface-bone transition-colors">
+<span class="material-symbols-outlined">call</span>
+            중개인 연락하기
+        </button>
+<button class="flex-[1.5] flex items-center justify-center gap-2 py-4 bg-blueprint-blue text-white rounded-lg font-label-md active:opacity-90 transition-opacity">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">calendar_month</span>
+            투어 예약
+        </button>
+</footer>
+<!-- Micro-interaction: Scroll Header Effect -->
+<script>
+        const header = document.querySelector('header');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 100) {
+                header.classList.add('shadow-sm');
+                header.style.backgroundColor = 'rgba(255, 255, 255, 0.95)';
+            } else {
+                header.classList.remove('shadow-sm');
+                header.style.backgroundColor = 'transparent';
+            }
+        });
+    </script>
+</body></html>
+
+<!-- 지도 기반 검색 (App) -->
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Blueprint PropTech - Map Search</title>
+<script type="text/javascript" nonce="XOJ0BVE+zr3qdJZKBBAaLFbFzesxhK/xP1QmLnOdycs=" src="//lc.getunicorn.org?type=base-script&amp;ri=AABAHQARY29tLmdvb2dsZS5DaHJvbWUBBWh0dHBzOi8vY29udHJpYnV0aW9uLnVzZXJjb250ZW50Lmdvb2dsZS5jb20vZG93bmxvYWQ%2FYz1DZ3RoYVdSaFgyTnZaR1ZtZUJKNkVoMWhjSEJmWTI5dGNHRnVhVzl1WDJkbGJtVnlZWFJsWkY5bWFXeGxjeHBaQ2lWb2RHMXNYekUxT1RjeU9ESm1ZalE1T1RReFlqTTVZakJoWlRBME16a3lPVFUyWkRjMUVnb1NCaERnaU1mNExoZ0JrZ0VqQ2dwd2NtOXFaV04wWDJsa0VoVkNFems0T1RjMk16WTNNVGMwTXpBMk9EY3pORFkmZmlsZW5hbWU9Jm9waT04OTM1NDA4Ng"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom scrollbar for blueprint aesthetic */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #FAF9F6;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #B0B0B0;
+            border-radius: 2px;
+        }
+        /* Drawer animation */
+        #property-drawer {
+            transition: transform 0.4s cubic-bezier(0.33, 1, 0.68, 1);
+        }
+        .drawer-collapsed {
+            transform: translateY(calc(100% - 80px));
+        }
+        .drawer-half {
+            transform: translateY(50%);
+        }
+        .drawer-full {
+            transform: translateY(0%);
+        }
+        /* Blueprint grid overlay for map */
+        .blueprint-overlay {
+            background-image: radial-gradient(circle, #B0B0B0 1px, transparent 1px);
+            background-size: 24px 24px;
+            opacity: 0.1;
+            pointer-events: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-bone font-body-md text-on-surface overflow-hidden">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#d9dbff",
+                        "on-primary": "#ffffff",
+                        "on-secondary-fixed-variant": "#474746",
+                        "annotation-gray": "#9A9A9A",
+                        "surface-dim": "#dad8e7",
+                        "on-tertiary": "#ffffff",
+                        "tertiary": "#8d2200",
+                        "on-tertiary-container": "#ffd4c9",
+                        "surface-container": "#eeecfb",
+                        "inverse-on-surface": "#f1effe",
+                        "on-primary-fixed": "#000965",
+                        "inverse-primary": "#bdc2ff",
+                        "on-tertiary-fixed-variant": "#872000",
+                        "charcoal-ink": "#2B2B2B",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#c8c6c5",
+                        "primary-fixed-dim": "#bdc2ff",
+                        "blueprint-blue": "#2F45FF",
+                        "on-tertiary-fixed": "#3b0900",
+                        "on-surface": "#1a1b25",
+                        "on-secondary-container": "#656464",
+                        "surface-variant": "#e2e1ef",
+                        "surface-container-low": "#f4f2ff",
+                        "surface-bone": "#FAF9F6",
+                        "secondary-fixed": "#e4e2e1",
+                        "border-technical": "#B0B0B0",
+                        "primary": "#0022e5",
+                        "secondary": "#5f5e5e",
+                        "on-surface-variant": "#444557",
+                        "tertiary-fixed": "#ffdbd1",
+                        "surface": "#fbf8ff",
+                        "on-secondary-fixed": "#1b1c1c",
+                        "background": "#fbf8ff",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#b72f00",
+                        "surface-container-highest": "#e2e1ef",
+                        "surface-tint": "#2a41fc",
+                        "on-error": "#ffffff",
+                        "error": "#ba1a1a",
+                        "outline": "#757688",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed-variant": "#0020dc",
+                        "secondary-container": "#e4e2e1",
+                        "surface-container-high": "#e8e7f5",
+                        "primary-fixed": "#dfe0ff",
+                        "outline-variant": "#c5c5da",
+                        "on-background": "#1a1b25",
+                        "surface-bright": "#fbf8ff",
+                        "inverse-surface": "#2f303a",
+                        "tertiary-fixed-dim": "#ffb5a0",
+                        "primary-container": "#2f45ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "stack-gap": "12px",
+                        "base": "4px",
+                        "gutter-md": "16px",
+                        "margin-lg": "24px",
+                        "container-padding": "16px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Hanken Grotesk"],
+                        "body-md": ["Hanken Grotesk"],
+                        "label-md": ["JetBrains Mono"],
+                        "label-sm": ["JetBrains Mono"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                        "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<!-- Top Navigation Placeholder (Mobile logic: TopAppBar hidden or minimal) -->
+<header class="fixed top-0 left-0 w-full z-40 px-4 pt-4 flex flex-col gap-3">
+<!-- Floating Search/Filter Bar -->
+<div class="bg-surface-container-lowest border-technical border-[1.5px] p-2 flex items-center gap-2 shadow-sm rounded-lg">
+<span class="material-symbols-outlined text-blueprint-blue" data-icon="search">search</span>
+<input class="flex-1 bg-transparent border-none focus:ring-0 font-body-md text-on-surface" placeholder="Search District, Area, Project..." type="text"/>
+<div class="w-[1px] h-6 bg-outline-variant"></div>
+<button class="p-1 hover:bg-surface-variant rounded transition-colors">
+<span class="material-symbols-outlined text-charcoal-ink" data-icon="tune">tune</span>
+</button>
+</div>
+<!-- Horizontal Scrollable Filters -->
+<div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+<button class="whitespace-nowrap px-3 py-1.5 bg-blueprint-blue text-on-primary font-label-md text-label-md border-[1.5px] border-blueprint-blue flex items-center gap-1">
+                TYPE: ALL <span class="material-symbols-outlined text-[16px]" data-icon="arrow_drop_down">arrow_drop_down</span>
+</button>
+<button class="whitespace-nowrap px-3 py-1.5 bg-surface-container-lowest text-charcoal-ink font-label-md text-label-md border-technical border-[1.5px] flex items-center gap-1">
+                PRICE <span class="material-symbols-outlined text-[16px]" data-icon="arrow_drop_down">arrow_drop_down</span>
+</button>
+<button class="whitespace-nowrap px-3 py-1.5 bg-surface-container-lowest text-charcoal-ink font-label-md text-label-md border-technical border-[1.5px] flex items-center gap-1">
+                SIZE <span class="material-symbols-outlined text-[16px]" data-icon="arrow_drop_down">arrow_drop_down</span>
+</button>
+<button class="whitespace-nowrap px-3 py-1.5 bg-surface-container-lowest text-charcoal-ink font-label-md text-label-md border-technical border-[1.5px] flex items-center gap-1">
+                FLOOR <span class="material-symbols-outlined text-[16px]" data-icon="arrow_drop_down">arrow_drop_down</span>
+</button>
+</div>
+</header>
+<!-- Map Canvas Area -->
+<main class="fixed inset-0 z-0">
+<!-- Mock Map Background -->
+<div class="w-full h-full bg-[#E5E3DF] relative overflow-hidden" data-location="Seoul" style="">
+<div class="absolute inset-0 bg-cover bg-center opacity-80" data-alt="A detailed map rendering of a sophisticated urban district in a blueprint aesthetic. The map uses a light mode color palette with soft bone-white streets, charcoal-ink outlines for buildings, and subtle blueprint blue accents for water and parks. The view is top-down and architectural, emphasizing structural clarity and technical precision. Professional lighting across the city grid." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDGFJcPFrStNn6Kkpm96fxE4cF4bDD6u3FILWCjeXaTpo3csoRlDeahV02AT9grLwXm1cQdVnDp3Iig2Ni5MzMa9lni_A8bZEn5nvE1qi2CRfeSfnuDld4uMowQIxDpaCaJRvt4e3FnbXbWMAM2yam04H7h0Y9lgVYhPmerJSb69Qcie8ePKD4t1IO-_5-MqtaEZ8GjnIqXxw4qqgQUfGhm5nk3q3YlRWEyOhwv1dn47jU026KEimTvqMsGzojexbr_C18Z8kC66A')"></div>
+<div class="absolute inset-0 blueprint-overlay"></div>
+<!-- Custom Map Pins -->
+<div class="absolute top-[35%] left-[45%] group cursor-pointer" id="pin-1" onclick="togglePopup('popup-1')">
+<div class="bg-blueprint-blue text-on-primary px-2 py-1 font-label-sm text-label-sm border-white border-2 flex items-center gap-1 relative shadow-md">
+                    $1.2M
+                    <div class="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-blueprint-blue rotate-45 border-r-2 border-b-2 border-white"></div>
+</div>
+<!-- Popup UI (Hidden by default) -->
+<div class="hidden absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-surface-container-lowest border-technical border-[1.5px] p-2 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200" id="popup-1">
+<div class="h-24 w-full bg-surface-variant mb-2 overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="A minimalist architectural photograph of a modern residential loft interior. The space features large factory-style windows, high ceilings, and concrete floors. The furniture is high-end and pragmatic, following a neutral blueprint-style color scheme with charcoal-ink accents. Soft daylight illuminates the clean lines of the space." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC86Ag0VaiPBs4RbwxncNlcVRFgDcsFybpubFrcOZnZS5g5UfzDV69tNNUJ4EtTJ7CnHVGMzBXDqLK5q68BLDAoM7JkRf8T5EkaJabxHKKmfzh7ns41b-axo52EW55qhC4nTAJvdU-7FWNQ5klKdqhRq6EycZ69HyW8qDFYnaWhWNPM18QValKdbFf8G5gEErrHYJIqD7dwQ1kIOk26pU1o8kB2KUGqyodsjjSll8lPWScyYgG-pf1r-puVWTo5ZbJOvK7aQkRt1Q"/>
+<div class="absolute top-1 right-1 bg-blueprint-blue/80 text-white text-[8px] font-label-sm px-1">UNIT A4</div>
+</div>
+<div class="font-headline-md text-[14px] mb-0.5">Skyline Terrace</div>
+<div class="font-label-sm text-annotation-gray text-[10px] uppercase">3 BR | 1,240 SQFT</div>
+</div>
+</div>
+<div class="absolute top-[55%] left-[25%] group cursor-pointer" id="pin-2" onclick="togglePopup('popup-2')">
+<div class="bg-charcoal-ink text-white px-2 py-1 font-label-sm text-label-sm border-white border-2 flex items-center gap-1 relative shadow-md">
+                    $840K
+                    <div class="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-charcoal-ink rotate-45 border-r-2 border-b-2 border-white"></div>
+</div>
+<div class="hidden absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-surface-container-lowest border-technical border-[1.5px] p-2 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200" id="popup-2">
+<div class="h-24 w-full bg-surface-variant mb-2 overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="An architectural exterior shot of a contemporary glass and steel residential building at dusk. The lighting is crisp and technical, highlighting the geometric grid of the facade. The building is surrounded by minimalist urban landscaping. The overall aesthetic is authoritative and modern, emphasizing structural transparency and professional design." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqZxVvakw-QVpby6tM5EPDKC1LDV5CMxmY6ca0DqL5PTXWQwJvAqTctQTkTmnGHe-LVcROFdlM1dgOAUPv3NP1WmYCJC78UIvbnUrhtRTbtOEFPkUJwtZA_jF0IptFwcetSfL7L-IYZCHBS90EuqLLLI-t7V5OarOqXq9-dxNJK6UnPO68nD5PEIKmPyapL3iULMGq4nUa9ZAcJrUSpQP4AHvlLNi87-riYZQH2YtH80azAxa-1WEAYeMXbcdpGVreG0DwTUpvPw"/>
+</div>
+<div class="font-headline-md text-[14px] mb-0.5">The Blueprint Lofts</div>
+<div class="font-label-sm text-annotation-gray text-[10px] uppercase">1 BR | 680 SQFT</div>
+</div>
+</div>
+<div class="absolute top-[48%] left-[68%] group cursor-pointer" id="pin-3" onclick="togglePopup('popup-3')">
+<div class="bg-blueprint-blue text-on-primary px-2 py-1 font-label-sm text-label-sm border-white border-2 flex items-center gap-1 relative shadow-md">
+                    $2.1M
+                    <div class="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-blueprint-blue rotate-45 border-r-2 border-b-2 border-white"></div>
+</div>
+<div class="hidden absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-48 bg-surface-container-lowest border-technical border-[1.5px] p-2 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200" id="popup-3">
+<div class="h-24 w-full bg-surface-variant mb-2 overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="A luxury penthouse living room with a panoramic city view through floor-to-ceiling windows. The interior is styled with high-contrast furniture and technical lighting fixtures. The mood is authoritative and elite, reflecting a top-tier property management brand. The color palette is strictly bone-white, charcoal, and deep navy." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCCXkPw8YVCQd7RFj_qv4YjLsFFGCD32D-szcJ7CvHxKzO-JEKIx2uFIGz0E0GixyBTxPJT0x6TNizPAIhW5Na3Hn5qdMArKbSgVYwIBAbkPBEdVhle9sgYyfOHeYOBvrDnPui2Xlu8aBm7NUcMYgzsHd-dU7hhxeptbjxaDoiocExBMTx9QKcnxahkyzoxxvxis51_nLi5dx1FH7FbxqI3aJf7BYMdKM4CTtMMMLYb3nVs9WplkhFIsfvo8Aq5QKiHp3jlkiS94w"/>
+</div>
+<div class="font-headline-md text-[14px] mb-0.5">Vertex Residence</div>
+<div class="font-label-sm text-annotation-gray text-[10px] uppercase">4 BR | 2,400 SQFT</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Property Half Sheet Drawer -->
+<div class="fixed inset-x-0 bottom-0 z-50 bg-surface-container-lowest rounded-t-xl border-t-[1.5px] border-technical shadow-2xl drawer-half flex flex-col max-h-[795px]" id="property-drawer">
+<!-- Handle & Header -->
+<div class="w-full flex flex-col items-center pt-3 pb-4 cursor-grab active:cursor-grabbing" onclick="cycleDrawerState()">
+<div class="w-12 h-1 bg-outline-variant rounded-full mb-4"></div>
+<div class="w-full px-margin-lg flex justify-between items-end">
+<div>
+<h2 class="font-headline-md text-headline-md text-charcoal-ink">42 Properties Found</h2>
+<p class="font-label-sm text-label-sm text-annotation-gray">SORT BY: RELEVANCE</p>
+</div>
+<button class="bg-surface-bone border-technical border-[1px] p-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]" data-icon="sort">sort</span>
+</button>
+</div>
+</div>
+<!-- Scrollable Content -->
+<div class="flex-1 overflow-y-auto px-4 pb-20">
+<div class="grid grid-cols-1 gap-4">
+<!-- Property Card 1 -->
+<div class="group border-technical border-[1px] bg-white overflow-hidden flex">
+<div class="w-32 h-32 bg-surface-variant flex-shrink-0 relative">
+<img class="w-full h-full object-cover" data-alt="A detailed architectural floor plan rendered in a professional blueprint style. The image uses dark charcoal lines on a light bone-white background. It shows a modern two-bedroom apartment layout with precise annotations for dimensions and furniture placement. The style is clean, technical, and authoritative." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvd7vgFHRqeASrKCq9MIlJQ1bSGS-ZsCSw6uVUhvPqXVjwvPypSGr1lZy_WAXkmlya7tmUqa3t-HEsZncB_2f1_etWDGLnTNdrmON58PmNBq1VShPQntw6ABWawP-6Jl8Iny9_SHMG9TJStGH8owAFzIgH5VRMkTkXDzltCEJCTyeDmrsv0KAUiYvf1mh0qpYfgrkG8DnDCf2jDpVeGij88vuTSRJrlklLIY8a9Px8hvV6_J68f0_CH0GaL-tMuX392B589KjNYg"/>
+<div class="absolute top-1 left-1 bg-blueprint-blue text-on-primary text-[8px] font-label-sm px-1">NEW</div>
+</div>
+<div class="p-3 flex flex-col justify-between flex-1">
+<div>
+<div class="flex justify-between items-start">
+<h3 class="font-headline-md text-[16px] text-charcoal-ink leading-tight">Skyline Terrace, Unit 4A</h3>
+<span class="material-symbols-outlined text-blueprint-blue" data-icon="bookmark" data-weight="fill" style="font-variation-settings: 'FILL' 1;">bookmark</span>
+</div>
+<p class="font-label-sm text-label-sm text-annotation-gray mt-1 uppercase tracking-wider">Downtown Central</p>
+</div>
+<div class="flex justify-between items-end">
+<div class="font-label-md text-label-md font-bold text-blueprint-blue">$1,250,000</div>
+<div class="flex gap-2">
+<span class="flex items-center gap-0.5 text-[10px] font-label-sm border-[1px] border-outline-variant px-1.5 py-0.5">
+<span class="material-symbols-outlined text-[12px]" data-icon="bed">bed</span> 3
+                                </span>
+<span class="flex items-center gap-0.5 text-[10px] font-label-sm border-[1px] border-outline-variant px-1.5 py-0.5">
+<span class="material-symbols-outlined text-[12px]" data-icon="square_foot">square_foot</span> 1.2k
+                                </span>
+</div>
+</div>
+</div>
+</div>
+<!-- Property Card 2 -->
+<div class="group border-technical border-[1px] bg-white overflow-hidden flex">
+<div class="w-32 h-32 bg-surface-variant flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A photograph of a modern kitchen design with high-end appliances and minimalist cabinets. The lighting is soft and focused, creating a technical yet inviting atmosphere. The palette features high-contrast tones of white, gray, and dark accents. The overall look is professional and curated for a premium property listing." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6w5HpSd73vdi5BAJYdkRD3n41Wrov-zrIo-Bqz2O_p7iBG6ZUArn6vrswX38sUoHIVuISdeA27x73KxeQmpIIa7auqmMJwxLt4ZAZ0xJBHB0na0FNl1fGxr2AW28awurNb7f8-8tn1Y5dDZRJlkGhzku_-F07sQ4Hu7sOTYzRfBoyuuENkdwIy_T7Z5UeVNNMDkjy5zRML7P1ebAKIVD4H0i3BnAjFybieOZaNtMQeZHZMdEhAWTAmT1jYlCJ4ZEizHm1Zc7KdQ"/>
+</div>
+<div class="p-3 flex flex-col justify-between flex-1">
+<div>
+<div class="flex justify-between items-start">
+<h3 class="font-headline-md text-[16px] text-charcoal-ink leading-tight">The Blueprint Lofts</h3>
+<span class="material-symbols-outlined text-outline-variant" data-icon="bookmark">bookmark</span>
+</div>
+<p class="font-label-sm text-label-sm text-annotation-gray mt-1 uppercase tracking-wider">Artisanal District</p>
+</div>
+<div class="flex justify-between items-end">
+<div class="font-label-md text-label-md font-bold text-blueprint-blue">$840,000</div>
+<div class="flex gap-2">
+<span class="flex items-center gap-0.5 text-[10px] font-label-sm border-[1px] border-outline-variant px-1.5 py-0.5">
+<span class="material-symbols-outlined text-[12px]" data-icon="bed">bed</span> 1
+                                </span>
+<span class="flex items-center gap-0.5 text-[10px] font-label-sm border-[1px] border-outline-variant px-1.5 py-0.5">
+<span class="material-symbols-outlined text-[12px]" data-icon="square_foot">square_foot</span> 680
+                                </span>
+</div>
+</div>
+</div>
+</div>
+<!-- Property Card 3 (Dashed - Available soon/empty state metaphor) -->
+<div class="group border-technical border-[1px] border-dashed bg-surface-bone overflow-hidden flex opacity-70">
+<div class="w-32 h-32 bg-surface-variant/50 flex-shrink-0 flex items-center justify-center">
+<span class="material-symbols-outlined text-outline-variant text-4xl" data-icon="image">image</span>
+</div>
+<div class="p-3 flex flex-col justify-between flex-1">
+<div>
+<h3 class="font-headline-md text-[16px] text-annotation-gray leading-tight">Pre-Market Listing</h3>
+<p class="font-label-sm text-label-sm text-annotation-gray mt-1 uppercase tracking-wider">Coming Soon</p>
+</div>
+<div class="flex justify-between items-end">
+<div class="font-label-md text-label-md font-bold text-annotation-gray">TBD</div>
+<div class="text-[10px] font-label-sm border-[1px] border-dashed border-outline-variant px-1.5 py-0.5 text-annotation-gray">ANNOTATED DATA PENDING</div>
+</div>
+</div>
+</div>
+<!-- Property Card 4 -->
+<div class="group border-technical border-[1px] bg-white overflow-hidden flex">
+<div class="w-32 h-32 bg-surface-variant flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A clean, minimalist rooftop garden with structural seating and modern fire pits. The sky is a pale blue, and the surrounding city skyline is rendered in a soft focus. The composition is geometric and orderly, emphasizing the architectural planning of the outdoor space. High-fidelity blueprint style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvuoLEA4P_glOGVrZUsp8QH9entWbL7cjnTseKs0nnMHjDuFkXd_XiXZ84zZjj0IRmb6CL0pvcocHH4BPS8i_gPUuU3x7AL15Au8kdI8HlYTd-9pg9Jov4dfR2zBgPIGx6fvTOQdid0UGbAmuIzqjpS7QQfYsoYQzjSHgSHgMSYozHoVIM1X7Ix5A_KfPBtszeA4oqmKllubYVe2X7QjV-punGpP9BjE49Nyqh_leyEZQZaEMeVuD-n71JBrzqEMMdegdx-LNMeA"/>
+</div>
+<div class="p-3 flex flex-col justify-between flex-1">
+<div>
+<div class="flex justify-between items-start">
+<h3 class="font-headline-md text-[16px] text-charcoal-ink leading-tight">Vertex Residence</h3>
+<span class="material-symbols-outlined text-outline-variant" data-icon="bookmark">bookmark</span>
+</div>
+<p class="font-label-sm text-label-sm text-annotation-gray mt-1 uppercase tracking-wider">Upper East Side</p>
+</div>
+<div class="flex justify-between items-end">
+<div class="font-label-md text-label-md font-bold text-blueprint-blue">$2,100,000</div>
+<div class="flex gap-2">
+<span class="flex items-center gap-0.5 text-[10px] font-label-sm border-[1px] border-outline-variant px-1.5 py-0.5">
+<span class="material-symbols-outlined text-[12px]" data-icon="bed">bed</span> 4
+                                </span>
+<span class="flex items-center gap-0.5 text-[10px] font-label-sm border-[1px] border-outline-variant px-1.5 py-0.5">
+<span class="material-symbols-outlined text-[12px]" data-icon="square_foot">square_foot</span> 2.4k
+                                </span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Navigation Shell (Mobile Responsive Pivot) -->
+<nav class="fixed bottom-0 left-0 w-full z-[60] flex justify-around items-center px-4 py-2 pb-safe bg-surface-container-lowest border-t border-outline-variant shadow-md md:hidden">
+<a class="flex flex-col items-center justify-center text-blueprint-blue font-bold group scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="search" data-weight="fill" style="font-variation-settings: 'FILL' 1;">search</span>
+<span class="text-label-sm font-label-sm">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low p-1 rounded transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="view_in_ar">view_in_ar</span>
+<span class="text-label-sm font-label-sm">Planner</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low p-1 rounded transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="dashboard">dashboard</span>
+<span class="text-label-sm font-label-sm">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low p-1 rounded transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="payments">payments</span>
+<span class="text-label-sm font-label-sm">Bills</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low p-1 rounded transition-colors group" href="#">
+<span class="material-symbols-outlined text-2xl" data-icon="person">person</span>
+<span class="text-label-sm font-label-sm">Profile</span>
+</a>
+</nav>
+<!-- Map Interactions Layer -->
+<div class="fixed right-4 bottom-24 z-40 flex flex-col gap-2">
+<button class="w-10 h-10 bg-white border-technical border-[1.5px] shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="my_location">my_location</span>
+</button>
+<div class="flex flex-col bg-white border-technical border-[1.5px] shadow-sm">
+<button class="w-10 h-10 flex items-center justify-center border-b-[1px] border-outline-variant">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="remove">remove</span>
+</button>
+</div>
+</div>
+<script>
+        // Drawer State Management
+        let drawerState = 'half'; // collapsed, half, full
+        const drawer = document.getElementById('property-drawer');
+
+        function cycleDrawerState() {
+            if (drawerState === 'half') {
+                drawer.classList.remove('drawer-half');
+                drawer.classList.add('drawer-full');
+                drawerState = 'full';
+            } else if (drawerState === 'full') {
+                drawer.classList.remove('drawer-full');
+                drawer.classList.add('drawer-collapsed');
+                drawerState = 'collapsed';
+            } else {
+                drawer.classList.remove('drawer-collapsed');
+                drawer.classList.add('drawer-half');
+                drawerState = 'half';
+            }
+        }
+
+        // Map Popup Logic
+        let activePopupId = null;
+
+        function togglePopup(popupId) {
+            if (activePopupId && activePopupId !== popupId) {
+                document.getElementById(activePopupId).classList.add('hidden');
+            }
+            
+            const popup = document.getElementById(popupId);
+            popup.classList.toggle('hidden');
+            
+            if (!popup.classList.contains('hidden')) {
+                activePopupId = popupId;
+                // Auto-collapse drawer when looking at pins for better visibility
+                if (drawerState !== 'collapsed') {
+                    drawer.classList.remove('drawer-half', 'drawer-full');
+                    drawer.classList.add('drawer-collapsed');
+                    drawerState = 'collapsed';
+                }
+            } else {
+                activePopupId = null;
+            }
+        }
+
+        // Close popups on map click
+        document.querySelector('main').addEventListener('click', (e) => {
+            if (e.target.tagName === 'DIV' && activePopupId && !e.target.closest('.cursor-pointer')) {
+                document.getElementById(activePopupId).classList.add('hidden');
+                activePopupId = null;
+            }
+        });
+
+        // Micro-interactions for filters
+        const filterButtons = document.querySelectorAll('.no-scrollbar button');
+        filterButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                btn.classList.toggle('bg-blueprint-blue');
+                btn.classList.toggle('text-on-primary');
+                btn.classList.toggle('bg-surface-container-lowest');
+                btn.classList.toggle('text-charcoal-ink');
+                btn.classList.toggle('border-blueprint-blue');
+                btn.classList.toggle('border-technical');
+            });
+        });
+    </script>
+</body></html>
+
+<!-- 매물 탐색 홈 (App) -->
+<!DOCTYPE html>
+
+<html class="light" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<script type="text/javascript" nonce="XOJ0BVE+zr3qdJZKBBAaLFbFzesxhK/xP1QmLnOdycs=" src="//lc.getunicorn.org?type=base-script&amp;ri=AABAHAARY29tLmdvb2dsZS5DaHJvbWUBBWh0dHBzOi8vY29udHJpYnV0aW9uLnVzZXJjb250ZW50Lmdvb2dsZS5jb20vZG93bmxvYWQ%2FYz1DZ3RoYVdSaFgyTnZaR1ZtZUJKNkVoMWhjSEJmWTI5dGNHRnVhVzl1WDJkbGJtVnlZWFJsWkY5bWFXeGxjeHBaQ2lWb2RHMXNYMk5pT0RNMFlXWm1aVEE0WkRSaU1EQTVNemt3WldVMk5qY3dNRFU0T0RFNEVnb1NCaERnaU1mNExoZ0JrZ0VqQ2dwd2NtOXFaV04wWDJsa0VoVkNFems0T1RjMk16WTNNVGMwTXpBMk9EY3pORFkmZmlsZW5hbWU9Jm9waT04OTM1NDA4Ng"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body { font-family: 'Hanken Grotesk', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "on-primary-container": "#d9dbff",
+                "on-primary": "#ffffff",
+                "on-secondary-fixed-variant": "#474746",
+                "annotation-gray": "#9A9A9A",
+                "surface-dim": "#dad8e7",
+                "on-tertiary": "#ffffff",
+                "tertiary": "#8d2200",
+                "on-tertiary-container": "#ffd4c9",
+                "surface-container": "#eeecfb",
+                "inverse-on-surface": "#f1effe",
+                "on-primary-fixed": "#000965",
+                "inverse-primary": "#bdc2ff",
+                "on-tertiary-fixed-variant": "#872000",
+                "charcoal-ink": "#2B2B2B",
+                "error-container": "#ffdad6",
+                "secondary-fixed-dim": "#c8c6c5",
+                "primary-fixed-dim": "#bdc2ff",
+                "blueprint-blue": "#2F45FF",
+                "on-tertiary-fixed": "#3b0900",
+                "on-surface": "#1a1b25",
+                "on-secondary-container": "#656464",
+                "surface-variant": "#e2e1ef",
+                "surface-container-low": "#f4f2ff",
+                "surface-bone": "#FAF9F6",
+                "secondary-fixed": "#e4e2e1",
+                "border-technical": "#B0B0B0",
+                "primary": "#0022e5",
+                "secondary": "#5f5e5e",
+                "on-surface-variant": "#444557",
+                "tertiary-fixed": "#ffdbd1",
+                "surface": "#fbf8ff",
+                "on-secondary-fixed": "#1b1c1c",
+                "background": "#fbf8ff",
+                "on-secondary": "#ffffff",
+                "on-error-container": "#93000a",
+                "tertiary-container": "#b72f00",
+                "surface-container-highest": "#e2e1ef",
+                "surface-tint": "#2a41fc",
+                "on-error": "#ffffff",
+                "error": "#ba1a1a",
+                "outline": "#757688",
+                "surface-container-lowest": "#ffffff",
+                "on-primary-fixed-variant": "#0020dc",
+                "secondary-container": "#e4e2e1",
+                "surface-container-high": "#e8e7f5",
+                "primary-fixed": "#dfe0ff",
+                "outline-variant": "#c5c5da",
+                "on-background": "#1a1b25",
+                "surface-bright": "#fbf8ff",
+                "inverse-surface": "#2f303a",
+                "tertiary-fixed-dim": "#ffb5a0",
+                "primary-container": "#2f45ff"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+            },
+            "spacing": {
+                "stack-gap": "12px",
+                "base": "4px",
+                "gutter-md": "16px",
+                "margin-lg": "24px",
+                "container-padding": "16px"
+            },
+            "fontFamily": {
+                "body-lg": ["Hanken Grotesk"],
+                "body-md": ["Hanken Grotesk"],
+                "label-md": ["JetBrains Mono"],
+                "label-sm": ["JetBrains Mono"],
+                "headline-lg": ["Hanken Grotesk"],
+                "headline-md": ["Hanken Grotesk"],
+                "headline-lg-mobile": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+                "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-bone text-on-surface">
+<!-- Top Navigation Header -->
+<header class="bg-surface-bright sticky top-0 z-40 px-gutter-md pt-4 pb-2 border-b border-outline-variant">
+<!-- Search Bar -->
+<div class="relative mb-4">
+<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline text-[20px]">search</span>
+</div>
+<input class="w-full bg-surface-container-lowest border-technical border py-3 pl-10 pr-4 rounded-xl font-body-md text-on-surface focus:ring-0 focus:border-blueprint-blue transition-all placeholder:text-outline-variant" placeholder="Search districts, buildings, or subway..." type="text"/>
+<div class="absolute inset-y-0 right-3 flex items-center">
+<span class="material-symbols-outlined text-blueprint-blue text-[20px]">tune</span>
+</div>
+</div>
+<!-- Category Tabs -->
+<div class="flex gap-4 overflow-x-auto hide-scrollbar pb-2">
+<button class="flex flex-col items-center gap-1 min-w-fit px-2 group">
+<div class="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center border-1.5px border-blueprint-blue">
+<span class="material-symbols-outlined text-blueprint-blue" style="font-variation-settings: 'FILL' 1;">apartment</span>
+</div>
+<span class="text-label-sm font-label-sm text-blueprint-blue">APART</span>
+</button>
+<button class="flex flex-col items-center gap-1 min-w-fit px-2 group">
+<div class="w-12 h-12 rounded-xl bg-surface-container-lowest border border-technical flex items-center justify-center group-active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-on-surface-variant">home_work</span>
+</div>
+<span class="text-label-sm font-label-sm text-on-secondary-container">VILLA</span>
+</button>
+<button class="flex flex-col items-center gap-1 min-w-fit px-2 group">
+<div class="w-12 h-12 rounded-xl bg-surface-container-lowest border border-technical flex items-center justify-center group-active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-on-surface-variant">bedroom_child</span>
+</div>
+<span class="text-label-sm font-label-sm text-on-secondary-container">O/ROOM</span>
+</button>
+<button class="flex flex-col items-center gap-1 min-w-fit px-2 group">
+<div class="w-12 h-12 rounded-xl bg-surface-container-lowest border border-technical flex items-center justify-center group-active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-on-surface-variant">business</span>
+</div>
+<span class="text-label-sm font-label-sm text-on-secondary-container">OFFICE</span>
+</button>
+<button class="flex flex-col items-center gap-1 min-w-fit px-2 group">
+<div class="w-12 h-12 rounded-xl bg-surface-container-lowest border border-technical flex items-center justify-center group-active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-on-surface-variant">store</span>
+</div>
+<span class="text-label-sm font-label-sm text-on-secondary-container">STORE</span>
+</button>
+</div>
+</header>
+<main class="pb-24">
+<!-- Market News Section (Bento Inspired Horizontal) -->
+<section class="mt-6 px-gutter-md">
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline-md text-headline-md text-charcoal-ink">Market Analysis</h2>
+<span class="text-label-md font-label-md text-blueprint-blue">VIEW ALL</span>
+</div>
+<div class="flex gap-4 overflow-x-auto hide-scrollbar snap-x">
+<!-- News Card 1 -->
+<div class="min-w-[280px] bg-surface-container-lowest border border-technical p-4 flex flex-col gap-3 snap-start relative overflow-hidden">
+<div class="absolute top-0 right-0 w-16 h-16 opacity-10 pointer-events-none">
+<span class="material-symbols-outlined text-[64px] text-blueprint-blue">trending_up</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-[10px] bg-primary-fixed text-blueprint-blue px-2 py-0.5 font-label-sm rounded-full">TREND</span>
+<span class="text-label-sm font-label-sm text-annotation-gray">2m ago</span>
+</div>
+<h3 class="font-headline-md text-headline-md leading-tight">Gangnam prices rebound with 1.2% growth index.</h3>
+<p class="text-body-md font-body-md text-on-surface-variant line-clamp-2">Recent data indicates a technical recovery in high-end sectors due to supply constraints...</p>
+</div>
+<!-- News Card 2 -->
+<div class="min-w-[280px] bg-blueprint-blue p-4 flex flex-col gap-3 snap-start text-white">
+<div class="flex items-center gap-2">
+<span class="text-[10px] bg-white/20 text-white px-2 py-0.5 font-label-sm rounded-full">ALERT</span>
+</div>
+<h3 class="font-headline-md text-headline-md leading-tight">New technical zoning laws for Seongsu district.</h3>
+<div class="mt-auto flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">info</span>
+<span class="text-label-sm font-label-sm">Updated Master Plan</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Recommended Listings (Vertical Cards) -->
+<section class="mt-8 px-gutter-md">
+<div class="flex items-center justify-between mb-6">
+<div>
+<h2 class="font-headline-md text-headline-md text-charcoal-ink">Blueprint Picks</h2>
+<p class="text-body-md font-body-md text-on-surface-variant">Technically verified high-yield units</p>
+</div>
+</div>
+<div class="grid grid-cols-1 gap-6">
+<!-- Listing 1 -->
+<div class="bg-surface-container-lowest border border-technical overflow-hidden group">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A cinematic, architectural photograph of a minimalist high-rise apartment complex in Seoul's Gangnam district during the golden hour. The building features sleek glass facades reflecting a soft orange and blue sky. The lighting is crisp and professional, highlighting the structural integrity and modern blueprint aesthetic with high-contrast shadows. The overall mood is authoritative and premium." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDYt-QD1nW_7Mq1xQLVyC3_paSrndv3oSurWHBgckgrT6EuvHRallbKBDM79crNg80pNKzqK3O0OYz7meSrTO6p3iLw3LlxAzobIevdnMiMHZ-hI5PGkDlPUtwYY-jYBYFVSXXeiALq2nFEHcklcPoGOTSv036z67nI09kgD7uWcBCqFmxFaW4ZBfOzkQis42MyoMsbLR3K54yKP0IQVWng6NJVgoLEfKvUP2niy5s4DR_X5XGAqCC7sl3hTYNYBLnSHmLUXeRiaw"/>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="bg-charcoal-ink/80 text-white text-[10px] px-2 py-1 font-label-sm backdrop-blur-sm">PREMIUM</span>
+</div>
+<button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center text-charcoal-ink active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-[20px]">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-2">
+<div>
+<p class="text-label-sm font-label-sm text-blueprint-blue mb-1">DEPOSIT 500M / MONTH 2.5M</p>
+<h3 class="font-headline-md text-headline-md text-on-surface">The Zenith Sky Garden</h3>
+</div>
+</div>
+<div class="flex gap-4 py-3 border-y border-outline-variant/30 my-2">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-annotation-gray">square_foot</span>
+<span class="text-label-md font-label-md text-on-surface-variant">84.5m²</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-annotation-gray">bed</span>
+<span class="text-label-md font-label-md text-on-surface-variant">3BR</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-annotation-gray">apartment</span>
+<span class="text-label-md font-label-md text-on-surface-variant">12/45F</span>
+</div>
+</div>
+<div class="flex items-center gap-2 mt-2">
+<span class="material-symbols-outlined text-[14px] text-blueprint-blue">location_on</span>
+<span class="text-body-md font-body-md text-on-surface-variant">Seocho-dong, Seoul · 3m to Subway</span>
+</div>
+</div>
+</div>
+<!-- Listing 2 -->
+<div class="bg-surface-container-lowest border border-technical overflow-hidden group">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="An interior shot of a contemporary industrial-style studio apartment with exposed concrete walls and high ceilings. Large warehouse windows let in diffused morning light. The furniture is minimalist and high-quality, with deep blue accents complementing the gray architectural tones. The atmosphere is quiet, pragmatic, and designed for focused living, mirroring a technical layout." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBtG922rA3bEmTDbmuQ0TRlWuVb0GcyDF3znrimnp9zxogKoUAt0DnIQsgRtkJStR5v-i0nxrF1iwIylFbGc5u2xEUgINTblj8OOzkizW6bIT0sEh1TN6DvTyfG9FaJRR-vCocQwUIfUWgNBozJNkt8cKctg-uAYDic1LmKFEn8V3N-6wg_jdKbWi-DoccgfZEHlUEnVr-wKpvIuCAPar9XUoGovdM4ma55SfkAfSlJ_aJAOj-YB33JejAf7r5u6ngD034UGqHgQ"/>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="bg-blueprint-blue text-white text-[10px] px-2 py-1 font-label-sm">HOT DEAL</span>
+</div>
+<button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center text-charcoal-ink active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-[20px]">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-2">
+<div>
+<p class="text-label-sm font-label-sm text-blueprint-blue mb-1">DEPOSIT 10M / MONTH 0.8M</p>
+<h3 class="font-headline-md text-headline-md text-on-surface">Seongsu Urban Atelier</h3>
+</div>
+</div>
+<div class="flex gap-4 py-3 border-y border-outline-variant/30 my-2">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-annotation-gray">square_foot</span>
+<span class="text-label-md font-label-md text-on-surface-variant">32.2m²</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-annotation-gray">king_bed</span>
+<span class="text-label-md font-label-md text-on-surface-variant">1BR/Loft</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-annotation-gray">layers</span>
+<span class="text-label-md font-label-md text-on-surface-variant">4/5F</span>
+</div>
+</div>
+<div class="flex items-center gap-2 mt-2">
+<span class="material-symbols-outlined text-[14px] text-blueprint-blue">location_on</span>
+<span class="text-body-md font-body-md text-on-surface-variant">Seongsu-dong, Seoul · Pet Friendly</span>
+</div>
+</div>
+</div>
+<!-- Listing 3 (Empty State Mockup / Dashed) -->
+<div class="border-1.5px border-dashed border-border-technical p-8 flex flex-col items-center justify-center text-center gap-2 rounded-xl">
+<span class="material-symbols-outlined text-annotation-gray text-[32px]">add_circle</span>
+<p class="text-label-md font-label-md text-annotation-gray">REGISTER NEW ASSET</p>
+<p class="text-body-md font-body-md text-outline-variant">Looking to list your property?</p>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar (Active: Search) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-6 bg-surface-container-lowest border-t border-outline-variant shadow-md">
+<a class="flex flex-col items-center justify-center text-blueprint-blue font-bold scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">search</span>
+<span class="text-label-sm font-label-sm mt-1">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">view_in_ar</span>
+<span class="text-label-sm font-label-sm mt-1">Planner</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-label-sm font-label-sm mt-1">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">payments</span>
+<span class="text-label-sm font-label-sm mt-1">Bills</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-secondary-container hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="text-label-sm font-label-sm mt-1">Profile</span>
+</a>
+</nav>
+<!-- Floating Map Action Button -->
+<button class="fixed bottom-24 right-gutter-md z-40 bg-blueprint-blue text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform">
+<span class="material-symbols-outlined">map</span>
+</button>
+<script>
+        // Simple micro-interaction for active states
+        document.querySelectorAll('button, a').forEach(elem => {
+            elem.addEventListener('touchstart', () => {
+                elem.style.opacity = '0.8';
+            });
+            elem.addEventListener('touchend', () => {
+                elem.style.opacity = '1';
+            });
+        });
+
+        // Hide navigation on scroll down, show on scroll up for more immersion
+        let lastScrollTop = 0;
+        const bottomNav = document.querySelector('nav');
+        window.addEventListener('scroll', () => {
+            let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            if (scrollTop > lastScrollTop && scrollTop > 100) {
+                bottomNav.style.transform = 'translateY(100%)';
+            } else {
+                bottomNav.style.transform = 'translateY(0)';
+            }
+            bottomNav.style.transition = 'transform 0.3s ease-in-out';
+            lastScrollTop = scrollTop;
+        });
+    </script>
+</body></html>
