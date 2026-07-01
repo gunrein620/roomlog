@@ -5,6 +5,9 @@ import { test } from "node:test";
 const pageSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
+const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
+const floorPlanEditorSource = existsSync(floorPlanEditorPath) ? readFileSync(floorPlanEditorPath, "utf8") : "";
+const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["어디에서 방을 찾으세요?", "지도에서 보기", "추천 매물", "매물 상세"]) {
@@ -62,7 +65,35 @@ test("links the landlord 3D floor plan action to the dedicated creation page", (
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 
-  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "PC에서 도면 만들기"]) {
-    assert.match(floorPlanPageSource, new RegExp(label));
+  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "저장 초안"]) {
+    assert.match(floorPlanRouteSource, new RegExp(label));
   }
+});
+
+test("adds a Roomlog floor plan editor core based on the 123123 wall editor workflow", () => {
+  assert.match(floorPlanPageSource, /RoomlogFloorPlanEditor/);
+  assert.equal(existsSync(floorPlanEditorPath), true, "Roomlog 도면 편집기 컴포넌트가 있어야 합니다.");
+
+  for (const label of ["use client", "onPointerDown", "onPointerMove", "onPointerUp", "createWall", "findNearestWall"]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
+test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const wall = model.createWall({ x: 0, y: 0 }, { x: 130, y: 40 }, "w1");
+
+  assert.deepEqual(wall, {
+    id: "w1",
+    start: { x: 0, y: 0 },
+    end: { x: 120, y: 0 }
+  });
+
+  assert.equal(model.findNearestWall([wall], { x: 48, y: 5 }, 18)?.id, "w1");
+  assert.deepEqual(model.removeWall([wall], "w1"), []);
+  assert.deepEqual(model.summarizeWalls([wall]), {
+    wallCount: 1,
+    approximateMeters: 2.5,
+    status: "편집중"
+  });
 });

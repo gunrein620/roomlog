@@ -1414,7 +1414,7 @@ p {
   line-height: 1.1;
 }
 
-.floor-plan-workspace {
+.floor-plan-editor {
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr) 280px;
   gap: 14px;
@@ -1440,17 +1440,33 @@ p {
 }
 
 .floor-plan-toolbar button {
-  min-height: 54px;
+  display: grid;
+  min-height: 72px;
+  align-content: center;
+  gap: 4px;
   border-radius: 12px;
   background: #f6f8fc;
   color: #465064;
-  font-size: 0.82rem;
   font-weight: 900;
+}
+
+.floor-plan-toolbar strong {
+  font-size: 0.86rem;
+}
+
+.floor-plan-toolbar span {
+  color: #6f7787;
+  font-size: 0.68rem;
+  line-height: 1.25;
 }
 
 .floor-plan-toolbar button.active {
   background: var(--blue);
   color: #ffffff;
+}
+
+.floor-plan-toolbar button.active span {
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .floor-plan-canvas {
@@ -1460,134 +1476,41 @@ p {
   padding: 14px;
 }
 
-.blueprint-stage {
+.floor-plan-svg {
   position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
   overflow: hidden;
   border: 1px solid #cbd1dd;
   border-radius: 14px;
-  background:
-    linear-gradient(90deg, rgba(47, 85, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(47, 85, 255, 0.08) 1px, transparent 1px),
-    #fbfcff;
-  background-size: 28px 28px;
+  background: #fbfcff;
+  cursor: crosshair;
+  touch-action: none;
 }
 
-.room-outline {
-  position: absolute;
-  inset: 12% 13% 14% 12%;
+.floor-svg-grid {
+  fill: url("#roomlog-grid");
 }
 
-.wall,
-.inner-wall,
-.window-line,
-.door-swing,
-.furniture {
-  position: absolute;
-  display: block;
+.floor-plan-svg pattern path {
+  stroke: rgba(47, 85, 255, 0.1);
+  stroke-width: 1;
 }
 
-.wall {
-  background: #182033;
+.floor-svg-wall {
+  stroke: #172033;
+  stroke-linecap: round;
+  stroke-width: 11;
 }
 
-.wall-top,
-.wall-bottom {
-  right: 0;
-  left: 0;
-  height: 10px;
+.floor-svg-wall.selected {
+  stroke: var(--blue);
 }
 
-.wall-top {
-  top: 0;
-}
-
-.wall-bottom {
-  bottom: 0;
-}
-
-.wall-right,
-.wall-left {
-  top: 0;
-  bottom: 0;
-  width: 10px;
-}
-
-.wall-right {
-  right: 0;
-}
-
-.wall-left {
-  left: 0;
-}
-
-.inner-wall {
-  background: #4d5b75;
-}
-
-.inner-wall.horizontal {
-  top: 42%;
-  left: 0;
-  width: 48%;
-  height: 8px;
-}
-
-.inner-wall.vertical {
-  top: 42%;
-  right: 32%;
-  width: 8px;
-  height: 58%;
-}
-
-.door-swing {
-  right: 22%;
-  bottom: 10px;
-  width: 86px;
-  height: 86px;
-  border: 3px solid var(--green);
-  border-top: 0;
-  border-left: 0;
-  border-radius: 0 0 86px 0;
-}
-
-.window-line {
-  height: 6px;
-  border-radius: 999px;
-  background: #2f55ff;
-}
-
-.window-a {
-  top: 2px;
-  left: 14%;
-  width: 132px;
-}
-
-.window-b {
-  right: 2px;
-  bottom: 28%;
-  width: 96px;
-  transform: rotate(90deg);
-  transform-origin: right center;
-}
-
-.furniture {
-  border: 2px solid rgba(47, 85, 255, 0.42);
-  border-radius: 14px;
-  background: rgba(47, 85, 255, 0.12);
-}
-
-.furniture.bed {
-  top: 12%;
-  right: 8%;
-  width: 128px;
-  height: 94px;
-}
-
-.furniture.table {
-  bottom: 14%;
-  left: 12%;
-  width: 86px;
-  height: 86px;
-  border-radius: 50%;
+.floor-svg-wall.draft {
+  stroke: var(--green);
+  stroke-dasharray: 12 10;
 }
 
 .floor-plan-primary {
@@ -1597,6 +1520,20 @@ p {
   color: #ffffff;
   font-weight: 900;
   box-shadow: 0 14px 28px rgba(47, 85, 255, 0.22);
+}
+
+.floor-plan-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.floor-plan-secondary {
+  min-height: 58px;
+  border-radius: 14px;
+  background: #f6f8fc;
+  color: var(--ink);
+  font-weight: 900;
 }
 
 .floor-plan-sidepanel {
@@ -1660,12 +1597,12 @@ p {
 }
 
 @media (max-width: 860px) {
-  .floor-plan-workspace {
+  .floor-plan-editor {
     grid-template-columns: 1fr;
   }
 
   .floor-plan-toolbar {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .floor-plan-sidepanel {
@@ -1690,22 +1627,16 @@ p {
     grid-template-rows: 360px auto;
   }
 
+  .floor-plan-actions {
+    grid-template-columns: 1fr;
+  }
+
   .floor-plan-toolbar {
     gap: 6px;
   }
 
   .floor-plan-toolbar button {
-    min-height: 46px;
-    font-size: 0.74rem;
-  }
-
-  .room-outline {
-    inset: 12% 8% 16%;
-  }
-
-  .furniture.bed {
-    width: 92px;
-    height: 72px;
+    min-height: 58px;
   }
 }
 
