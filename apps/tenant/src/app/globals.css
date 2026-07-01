@@ -164,6 +164,14 @@ h3 {
   box-shadow: none;
 }
 
+.reset-consultations {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #f0c7c2;
+  background: #fff7f6;
+  color: #9f3a38;
+}
+
 .primary:disabled,
 .secondary:disabled,
 .ghost:disabled {

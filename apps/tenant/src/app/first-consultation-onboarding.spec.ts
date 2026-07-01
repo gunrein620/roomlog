@@ -20,9 +20,9 @@ describe("tenant first consultation onboarding", () => {
     for (const prompt of onboarding.starterPrompts) {
       assert.match(prompt, /정글빌라 301호/);
       assert.match(prompt, /언제부터|오늘|어제|이번 달/);
-      assert.match(prompt, /위험|안전|전기|냄새|잠금/);
       assert.match(prompt, /사진|첨부|없습니다/);
       assert.match(prompt, /방문 가능|확인 가능|연락 가능/);
+      assert.doesNotMatch(prompt, /위험|안전 확인/);
     }
   });
 

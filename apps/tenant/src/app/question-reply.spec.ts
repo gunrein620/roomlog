@@ -19,12 +19,12 @@ describe("question reply prompts", () => {
     assert.equal(
       appendQuestionReplyPrompt(
         "사진은 지금 바로 올릴 수 있습니다.",
-        "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?"
+        "언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?"
       ),
       [
         "사진은 지금 바로 올릴 수 있습니다.",
         "",
-        "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?",
+        "언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?",
         "답변: "
       ].join("\n")
     );
@@ -32,24 +32,20 @@ describe("question reply prompts", () => {
 
   it("does not duplicate the same question prompt in the composer", () => {
     const current = [
-      "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?",
-      "답변: 없습니다."
+      "언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?",
+      "답변: 오늘 아침부터 계속됩니다."
     ].join("\n");
 
     assert.equal(
       appendQuestionReplyPrompt(
         current,
-        "전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?"
+        "언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?"
       ),
       current
     );
   });
 
-  it("suggests focused reply shortcuts for safety, visit time, and photo questions", () => {
-    assert.deepEqual(
-      suggestedAnswersForQuestion("전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?"),
-      ["위험한 상황은 없습니다.", "지금도 위험해서 빠른 확인이 필요합니다."]
-    );
+  it("suggests focused reply shortcuts for visit time, photo, and occurrence questions", () => {
     assert.deepEqual(
       suggestedAnswersForQuestion("오늘 몇 시에 확인 가능하신가요?"),
       ["오늘 저녁 7시 이후 가능합니다.", "내일 오전 가능합니다.", "시간 조율이 필요합니다."]

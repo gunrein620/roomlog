@@ -24,7 +24,7 @@ export type TenantThreadWorkflowSummary = {
   readyToFinalize: boolean;
 };
 
-const intakeSlotTotal = 6;
+const intakeSlotTotal = 5;
 
 export const consultationThreadFilterOptions: ConsultationThreadFilterOption[] = [
   { value: "ACTIVE", label: "진행 중" },

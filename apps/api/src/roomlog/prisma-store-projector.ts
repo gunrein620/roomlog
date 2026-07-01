@@ -299,6 +299,54 @@ export class PrismaStoreProjector implements StoreProjector {
     };
   }
 
+  async deleteTenantConsultationHistory(input: {
+    intakeSessionIds: string[];
+    complaintIds: string[];
+    ticketIds: string[];
+  }) {
+    const intakeSessionIds = [...new Set(input.intakeSessionIds)];
+    const complaintIds = [...new Set(input.complaintIds)];
+    const ticketIds = [...new Set(input.ticketIds)];
+
+    await this.prisma.$transaction(async (tx) => {
+      if (intakeSessionIds.length) {
+        await tx.intakeMessage.deleteMany({
+          where: { sessionId: { in: intakeSessionIds } }
+        });
+        await tx.intakeSession.deleteMany({
+          where: { id: { in: intakeSessionIds } }
+        });
+      }
+
+      if (ticketIds.length) {
+        await tx.ticketMessage.deleteMany({
+          where: { ticketId: { in: ticketIds } }
+        });
+        await tx.statusHistory.deleteMany({
+          where: { ticketId: { in: ticketIds } }
+        });
+        await tx.aiFeedback.deleteMany({
+          where: { ticketId: { in: ticketIds } }
+        });
+        await tx.aiAnalysis.deleteMany({
+          where: { ticketId: { in: ticketIds } }
+        });
+        await tx.repairRequest.deleteMany({
+          where: { ticketId: { in: ticketIds } }
+        });
+        await tx.ticket.deleteMany({
+          where: { id: { in: ticketIds } }
+        });
+      }
+
+      if (complaintIds.length) {
+        await tx.complaint.deleteMany({
+          where: { id: { in: complaintIds } }
+        });
+      }
+    });
+  }
+
   async persist(store: Store) {
     await this.prisma.$transaction(async (tx) => {
       for (const user of store.users) {

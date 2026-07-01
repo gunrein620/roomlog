@@ -64,6 +64,7 @@ import { consultationThreadContextHighlights } from "./thread-context";
 import { threadCaseFile, type ThreadCaseFileAction } from "./thread-case-file";
 import { threadProvenance } from "./thread-provenance";
 import { consultationComposerGuidance } from "./composer-guidance";
+import { shouldAutoFinalizeConsultation } from "./auto-finalize-consultation";
 import {
   canSubmitConsultationComposer,
   initialConsultationComposerText,
@@ -483,6 +484,21 @@ function priorityLabel(priority: number) {
   return labels[priority] ?? "확인";
 }
 
+function compactThreadTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "시간 확인";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
 function senderLabel(sender: IntakeMessage["sender"] | string) {
   if (sender === "AI_ASSISTANT") {
     return "AI 상담";
@@ -620,6 +636,8 @@ export default function TenantApp() {
   const selectedSessionRef = useRef<IntakeSession | undefined>(undefined);
   const realtimeTurnRef = useRef(emptyRealtimeTurnState());
   const realtimePersistRef = useRef(emptyRealtimePersistState());
+  const photoFilesRef = useRef<File[]>([]);
+  const autoFinalizedSessionIdsRef = useRef(new Set<string>());
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -743,6 +761,27 @@ export default function TenantApp() {
   }, [selectedSession]);
 
   useEffect(() => {
+    photoFilesRef.current = photoFiles;
+  }, [photoFiles]);
+
+  useEffect(() => {
+    if (!selectedSession || !shouldAutoFinalizeConsultation(selectedSession)) {
+      return;
+    }
+
+    void maybeAutoFinalizeSession(selectedSession);
+  }, [
+    auth?.accessToken,
+    selectedSession?.id,
+    selectedSession?.status,
+    selectedSession?.draft.readyToFinalize,
+    selectedSession?.draft.requiredInfo.join("|"),
+    selectedSession?.draft.photoAnalysis.attachmentUrls.join("|"),
+    selectedSession?.draft.location,
+    selectedSession?.draft.availableTimes
+  ]);
+
+  useEffect(() => {
     if (!visibleSessions.length) {
       return;
     }
@@ -816,6 +855,14 @@ export default function TenantApp() {
         ...current,
         [result.session.id]: draftCorrectionFrom(result.session.draft)
       }));
+      if (await handleServerFinalizedSession(result.session, auth.accessToken)) {
+        return;
+      }
+
+      if (await maybeAutoFinalizeSession(result.session)) {
+        return;
+      }
+
       setStatus("AI 상담 초안이 갱신되었습니다.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "빠른 답변 전송 실패");
@@ -1029,6 +1076,38 @@ export default function TenantApp() {
     }
   }
 
+  async function resetConsultationHistory() {
+    if (!auth) {
+      return;
+    }
+
+    setStatus("상담내역 초기화 중");
+
+    try {
+      await disconnectRealtime();
+      await apiRequest<{
+        deleted: { intakeSessions: number; complaints: number; tickets: number };
+      }>("/tenant/consultations/reset", auth.accessToken, { method: "POST" });
+      setSelectedSessionId("");
+      setSelectedComplaintId("");
+      setSessions([]);
+      setDraftCorrections({});
+      setRealtimeTurnSummaries({});
+      setMessageText(initialConsultationComposerText);
+      setPhotoFiles([]);
+      setPhotoInputKey((current) => current + 1);
+      setRealtimeSecret(null);
+      selectedSessionRef.current = undefined;
+      photoFilesRef.current = [];
+      autoFinalizedSessionIdsRef.current.clear();
+      resetRealtimeTranscript();
+      await refresh(auth.accessToken);
+      setStatus("상담내역이 초기화되었습니다. 새 상담으로 바로 테스트할 수 있습니다.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "상담내역 초기화 실패");
+    }
+  }
+
   async function startSession(starterText = "") {
     if (!auth) {
       return;
@@ -1118,6 +1197,14 @@ export default function TenantApp() {
       ...current,
       [result.session.id]: draftCorrectionFrom(result.session.draft)
     }));
+    if (await handleServerFinalizedSession(result.session, auth.accessToken)) {
+      return;
+    }
+
+    if (await maybeAutoFinalizeSession(result.session)) {
+      return;
+    }
+
     setStatus("AI 상담 초안이 갱신되었습니다.");
   }
 
@@ -1210,7 +1297,8 @@ export default function TenantApp() {
   async function recordRealtimeTurn(
     userTranscript: string,
     assistantTranscript: string,
-    eventId: string
+    eventId: string,
+    attachmentUrls: string[] = []
   ) {
     const currentAuth = authRef.current;
     const currentSession = selectedSessionRef.current;
@@ -1230,7 +1318,8 @@ export default function TenantApp() {
         body: JSON.stringify({
           userTranscript,
           assistantTranscript,
-          eventId
+          eventId,
+          attachmentUrls
         })
       }
     );
@@ -1246,13 +1335,20 @@ export default function TenantApp() {
       [result.session.id]: result.turnSummary
     }));
     setSelectedSessionId(result.session.id);
+    if (await handleServerFinalizedSession(result.session, currentAuth.accessToken)) {
+      return true;
+    }
+
+    return maybeAutoFinalizeSession(result.session);
   }
 
   async function flushRealtimeTurn(eventId = "") {
     const userTranscript = realtimeTurnRef.current.userTranscript.trim();
     const assistantTranscript = realtimeTurnRef.current.assistantTranscript.trim();
+    const realtimePhotoFiles = photoFilesRef.current;
+    const currentAuth = authRef.current;
 
-    if (!userTranscript && !assistantTranscript) {
+    if (!userTranscript && !assistantTranscript && realtimePhotoFiles.length === 0) {
       return;
     }
 
@@ -1264,14 +1360,37 @@ export default function TenantApp() {
     }
 
     try {
-      await recordRealtimeTurn(userTranscript, assistantTranscript, eventId);
+      const uploadedRealtimeAttachments = realtimePhotoFiles.length && currentAuth
+        ? await Promise.all(
+            realtimePhotoFiles.map((file) => uploadAttachment(file, currentAuth.accessToken))
+          )
+        : [];
+      const didAutoFinalize = await recordRealtimeTurn(
+        userTranscript,
+        assistantTranscript,
+        eventId,
+        uploadedRealtimeAttachments.map((attachment) => attachment.fileUrl)
+      );
+
+      if (uploadedRealtimeAttachments.length) {
+        setPhotoFiles([]);
+        setPhotoInputKey((current) => current + 1);
+      }
+
       realtimeTurnRef.current = emptyRealtimeTurnState();
       realtimePersistRef.current = completeRealtimeTurnPersist(
         realtimePersistRef.current,
         eventId,
         true
       );
-      setRealtimeStatus("Realtime 전사가 상담 스레드에 저장되었습니다.");
+
+      if (!didAutoFinalize) {
+        setRealtimeStatus(
+          uploadedRealtimeAttachments.length
+            ? "Realtime 전사와 사진이 상담 스레드에 저장되었습니다."
+            : "Realtime 전사가 상담 스레드에 저장되었습니다."
+        );
+      }
     } catch (error) {
       realtimePersistRef.current = completeRealtimeTurnPersist(
         realtimePersistRef.current,
@@ -1480,20 +1599,63 @@ export default function TenantApp() {
     setMessageText("");
     setPhotoFiles([]);
     setPhotoInputKey((current) => current + 1);
-    setStatus("AI 상담 초안이 갱신되었습니다.");
-  }
-
-  async function finalizeSession(existingTicketId?: string) {
-    if (!auth || !selectedSession) {
+    if (await handleServerFinalizedSession(result.session, auth.accessToken)) {
       return;
     }
 
-    const correction = selectedDraftCorrection ?? draftCorrectionFrom(selectedSession.draft);
+    if (await maybeAutoFinalizeSession(result.session)) {
+      return;
+    }
+
+    setStatus("AI 상담 초안이 갱신되었습니다.");
+  }
+
+  async function maybeAutoFinalizeSession(session: IntakeSession) {
+    if (!authRef.current || !shouldAutoFinalizeConsultation(session)) {
+      return false;
+    }
+
+    if (autoFinalizedSessionIdsRef.current.has(session.id)) {
+      return false;
+    }
+
+    autoFinalizedSessionIdsRef.current.add(session.id);
+    setSelectedSessionId(session.id);
+    await finalizeSession(undefined, session);
+    return true;
+  }
+
+  async function handleServerFinalizedSession(
+    session: IntakeSession,
+    token = authRef.current?.accessToken
+  ) {
+    if (session.status !== "FINALIZED" || !token) {
+      return false;
+    }
+
+    await refresh(token);
+    setSelectedSessionId(session.id);
+    if (session.complaintId) {
+      setSelectedComplaintId(session.complaintId);
+    }
+    setStatus("상담 내용이 민원 티켓으로 접수되었습니다.");
+    return true;
+  }
+
+  async function finalizeSession(existingTicketId?: string, targetSession = selectedSession) {
+    const currentAuth = authRef.current;
+
+    if (!currentAuth || !targetSession) {
+      return;
+    }
+
+    const correction =
+      draftCorrections[targetSession.id] ?? draftCorrectionFrom(targetSession.draft);
 
     setStatus(existingTicketId ? "기존 티켓에 상담 내용 연결 중" : "민원 티켓 접수 중");
     const result = await apiRequest<{ complaint: ComplaintView }>(
-      `/tenant/complaints/intake/sessions/${selectedSession.id}/finalize`,
-      auth.accessToken,
+      `/tenant/complaints/intake/sessions/${targetSession.id}/finalize`,
+      currentAuth.accessToken,
       {
         method: "POST",
         body: JSON.stringify({
@@ -1514,7 +1676,7 @@ export default function TenantApp() {
     setSelectedComplaintId(result.complaint.id);
     setDraftCorrections((current) => {
       const next = { ...current };
-      delete next[selectedSession.id];
+      delete next[targetSession.id];
       return next;
     });
     setStatus(
@@ -2046,6 +2208,13 @@ export default function TenantApp() {
           <button type="button" className="primary" onClick={() => void startSession()}>
             새 상담 시작
           </button>
+          <button
+            type="button"
+            className="secondary reset-consultations"
+            onClick={() => void resetConsultationHistory()}
+          >
+            상담내역 초기화
+          </button>
           <div className="thread-filter-row" role="group" aria-label="상담 상태 필터">
             {consultationThreadFilterOptions.map((option) => (
               <button
@@ -2085,11 +2254,12 @@ export default function TenantApp() {
                   </div>
                   <p className="thread-action">{consultationThreadNextAction(summary)}</p>
                   <small>
-                    {summary.channelLabel} · P{summary.priority} · 메시지 {summary.messageCount} ·
-                    사진 {summary.attachmentCount}
+                    {summary.channelLabel} · {compactThreadTime(summary.updatedAt)} · P
+                    {summary.priority} · 메시지 {summary.messageCount} · 사진{" "}
+                    {summary.attachmentCount}
                   </small>
                   <small>
-                    정보 {summary.collectedSlotCount}/6 · 확인 필요 {summary.openSlotCount}
+                    정보 {summary.collectedSlotCount}/5 · 확인 필요 {summary.openSlotCount}
                   </small>
                   <p className="thread-preview">{summary.lastUserMessage}</p>
                   <p className="thread-preview assistant">AI: {summary.lastAssistantMessage}</p>

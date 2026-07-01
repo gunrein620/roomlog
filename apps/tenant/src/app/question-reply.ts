@@ -50,10 +50,6 @@ export function suggestedAnswersForQuestion(question: string) {
     return [];
   }
 
-  if (/전기|가스|침수|문\s*잠김|위험|누전|불꽃|냄새/.test(normalized)) {
-    return ["위험한 상황은 없습니다.", "지금도 위험해서 빠른 확인이 필요합니다."];
-  }
-
   if (/사진|이미지|촬영|첨부/.test(normalized)) {
     return ["사진을 지금 첨부하겠습니다.", "통화 중이라 사진은 나중에 올리겠습니다."];
   }

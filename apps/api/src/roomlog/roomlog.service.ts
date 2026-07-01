@@ -208,6 +208,11 @@ export type Store = {
 export type StoreProjector = {
   load?(): Store | undefined | Promise<Store | undefined>;
   persist(store: Store): void | Promise<void>;
+  deleteTenantConsultationHistory?(input: {
+    intakeSessionIds: string[];
+    complaintIds: string[];
+    ticketIds: string[];
+  }): void | Promise<void>;
   disconnect?(): void | Promise<void>;
 };
 
@@ -907,6 +912,64 @@ export class RoomlogService {
       .map((session) => this.presentIntakeSession(session));
   }
 
+  resetTenantConsultationHistory(tenantId: string) {
+    const tenantSessions = this.store.intakeSessions.filter(
+      (session) => session.tenantId === tenantId
+    );
+    const tenantComplaints = this.store.complaints.filter(
+      (complaint) => complaint.tenantId === tenantId
+    );
+    const complaintIds = new Set<string>([
+      ...tenantComplaints.map((complaint) => complaint.id),
+      ...tenantSessions
+        .map((session) => session.complaintId)
+        .filter((complaintId): complaintId is string => Boolean(complaintId))
+    ]);
+    const tenantTickets = this.store.tickets.filter(
+      (ticket) => ticket.tenantId === tenantId || complaintIds.has(ticket.complaintId)
+    );
+    const ticketIds = new Set<string>([
+      ...tenantTickets.map((ticket) => ticket.id),
+      ...tenantComplaints.map((complaint) => complaint.ticketId),
+      ...tenantSessions
+        .map((session) => session.ticketId)
+        .filter((ticketId): ticketId is string => Boolean(ticketId))
+    ]);
+    const intakeSessionIds = tenantSessions.map((session) => session.id);
+
+    this.store.intakeSessions = this.store.intakeSessions.filter(
+      (session) => session.tenantId !== tenantId
+    );
+    this.store.complaints = this.store.complaints.filter(
+      (complaint) => !complaintIds.has(complaint.id)
+    );
+    this.store.tickets = this.store.tickets.filter((ticket) => !ticketIds.has(ticket.id));
+    this.store.repairs = this.store.repairs.filter((repair) => !ticketIds.has(repair.ticketId));
+    this.store.messages = this.store.messages.filter((message) => !ticketIds.has(message.ticketId));
+    this.store.history = this.store.history.filter((entry) => !ticketIds.has(entry.ticketId));
+    this.store.aiFeedback = this.store.aiFeedback.filter(
+      (feedback) => !ticketIds.has(feedback.ticketId)
+    );
+    for (const ticketId of ticketIds) {
+      delete this.store.analyses[ticketId];
+    }
+
+    this.persistStore();
+    this.deleteProjectedTenantConsultationHistory(
+      intakeSessionIds,
+      [...complaintIds],
+      [...ticketIds]
+    );
+
+    return {
+      deleted: {
+        intakeSessions: intakeSessionIds.length,
+        complaints: complaintIds.size,
+        tickets: ticketIds.size
+      }
+    };
+  }
+
   getIntakeSession(tenantId: string, sessionId: string) {
     return this.presentIntakeSession(this.findIntakeSession(tenantId, sessionId));
   }
@@ -955,6 +1018,21 @@ export class RoomlogService {
     });
 
     const fallbackDraft = this.buildIntakeDraft(session);
+    session.draft = fallbackDraft;
+    const handoffAssistantMessage = this.finalizeIntakeHandoffCommandIfReady(
+      tenantId,
+      session,
+      messageText,
+      input.inputMode ?? "CHAT"
+    );
+
+    if (handoffAssistantMessage) {
+      return {
+        session: this.presentIntakeSession(session),
+        assistantMessage: handoffAssistantMessage
+      };
+    }
+
     const generatedTurn = await this.generateIntakeTurn(session, fallbackDraft);
     session.draft = generatedTurn.draft;
     if (generatedTurn.openaiResponseId) {
@@ -1054,6 +1132,26 @@ export class RoomlogService {
     }
 
     const fallbackDraft = this.buildIntakeDraft(session);
+    session.draft = fallbackDraft;
+    const handoffAssistantMessage = this.finalizeIntakeHandoffCommandIfReady(
+      tenantId,
+      session,
+      userTranscript,
+      "VOICE",
+      realtimeEventId
+    );
+
+    if (handoffAssistantMessage) {
+      recordedMessages.push(handoffAssistantMessage);
+
+      return {
+        session: this.presentIntakeSession(session),
+        turnSummary: this.presentRealtimeTurnSummary(session, handoffAssistantMessage.messageText),
+        recordedMessages: this.presentIntakeMessages(recordedMessages),
+        deduplicated: false
+      };
+    }
+
     const generatedTurn = await this.generateIntakeTurn(session, fallbackDraft);
     session.draft = generatedTurn.draft;
     if (generatedTurn.openaiResponseId) {
@@ -1139,6 +1237,110 @@ export class RoomlogService {
     };
   }
 
+  private isIntakeFinalizeCommand(text: string) {
+    const compact = text.replace(/\s+/g, "").trim();
+
+    if (!compact) {
+      return false;
+    }
+
+    if (/(사진|파일|이미지).*(보내줄게|올릴게|첨부할게|기다려|잠깐|나중)/.test(compact)) {
+      return false;
+    }
+
+    return (
+      /(관리자|관리인|집주인|임대인).*(보내|전달|접수|올려)/.test(compact) ||
+      /(접수초안|민원|하자|내용|이거).*(보내|전달|접수|확정)/.test(compact) ||
+      /(민원접수|접수확정|접수해줘|접수해주세요|확정해줘|확정해주세요|전달해줘|전달해주세요|보내줘|보내주세요|직접보내|바로보내)/.test(
+        compact
+      ) ||
+      /(보내준거야|보낸거야|접수된거야|접수한거야)/.test(compact)
+    );
+  }
+
+  private finalizeIntakeHandoffCommandIfReady(
+    tenantId: string,
+    session: IntakeSession,
+    messageText: string,
+    inputMode: IntakeMessage["inputMode"],
+    realtimeEventId?: string
+  ) {
+    if (!this.isIntakeFinalizeCommand(messageText)) {
+      return undefined;
+    }
+
+    if (!session.draft.readyToFinalize && this.draftReadyForDemoHandoff(session.draft)) {
+      session.draft = this.markDraftReadyForDemoHandoff(session.draft);
+    }
+
+    if (!session.draft.readyToFinalize) {
+      return undefined;
+    }
+
+    const assistantMessage = this.createIntakeMessage(
+      session.id,
+      "AI_ASSISTANT",
+      "관리자에게 민원으로 접수했습니다. 접수 내역에서 상태를 확인할 수 있습니다.",
+      inputMode
+    );
+    assistantMessage.realtimeEventId = realtimeEventId;
+    session.messages.push(assistantMessage);
+    session.updatedAt = now();
+
+    this.finalizeIntakeSession(tenantId, session.id, {
+      duplicateResolution: "CREATE_NEW"
+    });
+
+    return assistantMessage;
+  }
+
+  private isDemoSoftFollowupInfo(item: string) {
+    return /발생 시점|문제 부위 사진|사진/.test(item);
+  }
+
+  private draftHasCollectedSlot(draft: IntakeDraft, key: IntakeSlotKey) {
+    return draft.intakeSlots.some((slot) => slot.key === key && slot.status === "COLLECTED");
+  }
+
+  private draftHasPhotoEvidence(draft: IntakeDraft) {
+    return (
+      draft.photoAnalysis.attachmentUrls.length > 0 || this.draftHasCollectedSlot(draft, "photo")
+    );
+  }
+
+  private draftReadyForDemoHandoff(draft: IntakeDraft) {
+    const blockingRequiredInfo = draft.requiredInfo.filter(
+      (item) => !this.isDemoSoftFollowupInfo(item)
+    );
+
+    return (
+      draft.category === "하자" &&
+      blockingRequiredInfo.length === 0 &&
+      this.draftHasCollectedSlot(draft, "symptom") &&
+      this.draftHasCollectedSlot(draft, "location") &&
+      this.draftHasPhotoEvidence(draft) &&
+      (Boolean(draft.availableTimes?.trim()) || this.draftHasCollectedSlot(draft, "visitTime"))
+    );
+  }
+
+  private markDraftReadyForDemoHandoff(draft: IntakeDraft): IntakeDraft {
+    return {
+      ...draft,
+      confidenceScore: Math.max(draft.confidenceScore, 0.74),
+      recommendedAction: draft.duplicateCandidates.length
+        ? "사진과 방문 가능 시간이 확인되어 새 민원으로 관리자에게 접수하세요. 유사 티켓은 참고 자료로 함께 전달합니다."
+        : "사진과 방문 가능 시간이 확인되어 관리자에게 접수하세요.",
+      nextQuestions: draft.nextQuestions.filter(
+        (question) =>
+          !/(언제부터|시작|계속|지금도|사진|근접|전체|같은 문제|기존 티켓|별도 문제)/.test(
+            question
+          )
+      ),
+      requiredInfo: draft.requiredInfo.filter((item) => !this.isDemoSoftFollowupInfo(item)),
+      readyToFinalize: true
+    };
+  }
+
   finalizeIntakeSession(tenantId: string, sessionId: string, input: FinalizeIntakeInput = {}) {
     const session = this.findIntakeSession(tenantId, sessionId);
 
@@ -1147,6 +1349,10 @@ export class RoomlogService {
     }
 
     session.draft = session.draft.readyToFinalize ? session.draft : this.buildIntakeDraft(session);
+
+    if (!session.draft.readyToFinalize && this.draftReadyForDemoHandoff(session.draft)) {
+      session.draft = this.markDraftReadyForDemoHandoff(session.draft);
+    }
 
     if (!session.draft.readyToFinalize) {
       throw new BadRequestException(
@@ -3097,6 +3303,33 @@ export class RoomlogService {
       );
   }
 
+  private deleteProjectedTenantConsultationHistory(
+    intakeSessionIds: string[],
+    complaintIds: string[],
+    ticketIds: string[]
+  ) {
+    if (!this.storeProjector?.deleteTenantConsultationHistory) {
+      return;
+    }
+
+    this.pendingPersistence = this.pendingPersistence
+      .then(() =>
+        this.storeProjector?.deleteTenantConsultationHistory?.({
+          intakeSessionIds,
+          complaintIds,
+          ticketIds
+        })
+      )
+      .then(
+        () => {
+          this.persistenceError = undefined;
+        },
+        (error) => {
+          this.persistenceError = error;
+        }
+      );
+  }
+
   private isStoreSnapshot(value: unknown): value is Store {
     const snapshot = value as Partial<Store> | undefined;
 
@@ -3348,13 +3581,6 @@ export class RoomlogService {
           action: "언제 시작됐고 지금도 계속되는지 알려주세요."
         },
         {
-          key: "risk",
-          label: "위험 여부",
-          status: "NEEDS_INFO",
-          evidence: "안전 위험 여부를 확인해야 합니다.",
-          action: "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
-        },
-        {
           key: "photo",
           label: "사진",
           status: "NEEDS_INFO",
@@ -3411,72 +3637,6 @@ export class RoomlogService {
     );
 
     return match?.[0]?.trim();
-  }
-
-  private detectSafetyRiskInfo(
-    text: string,
-    category: IntakeDraft["category"],
-    priority: IntakeDraft["priority"]
-  ) {
-    if (category !== "하자") {
-      return undefined;
-    }
-
-    if (priority === 1) {
-      return "긴급 위험 가능성";
-    }
-
-    const compact = text.replace(/\s+/g, " ").trim();
-    const match = compact.match(
-      /(위험(?:은|한)?\s*(?:없|아니)|안전(?:은)?\s*(?:괜찮|문제\s*없)|전기(?:나|는|와)?\s*(?:가스)?[^.。!?]{0,16}(?:없|아니|괜찮)|가스[^.。!?]{0,16}(?:없|아니|괜찮)|침수[^.。!?]{0,16}(?:없|아니)|문[^.。!?]{0,12}잠[^.。!?]{0,12}(?:괜찮|됩)|위험|가스|누전|전기|콘센트|스위치|침수|잠기지|문이 안|불꽃|화재|감전|안전|천장에서\s*물|물이\s*(?:떨어|새|샘|고이)|누수|바닥(?:에|이)?\s*(?:물|젖)|곰팡이\s*냄새|도어락)/
-    );
-
-    return match?.[0]?.trim();
-  }
-
-  private detectContextualSafetyRiskInfo(
-    session: IntakeSession,
-    category: IntakeDraft["category"]
-  ) {
-    if (category !== "하자") {
-      return undefined;
-    }
-
-    const latestTenantIndex = [...session.messages]
-      .map((message, index) => ({ message, index }))
-      .reverse()
-      .find(({ message }) => message.sender === "TENANT")?.index;
-
-    if (latestTenantIndex === undefined) {
-      return undefined;
-    }
-
-    const latestTenantText = this.meaningfulTenantMessageText(session.messages[latestTenantIndex])
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (
-      !/(없어요|없습니다|없어|아니요|아뇨|괜찮아요|괜찮습니다|문제\s*없|위험\s*없)/.test(
-        latestTenantText
-      )
-    ) {
-      return undefined;
-    }
-
-    const previousAssistant = [...session.messages.slice(0, latestTenantIndex)]
-      .reverse()
-      .find((message) => message.sender === "AI_ASSISTANT");
-    const assistantText = previousAssistant?.messageText ?? "";
-
-    if (
-      !/(위험|안전|전기|가스|침수|문\s*잠김|콘센트|스위치|문제\s*없)/.test(
-        assistantText
-      )
-    ) {
-      return undefined;
-    }
-
-    return "위험 없음";
   }
 
   private detectPhotoDeferralInfo(session: IntakeSession) {
@@ -3542,12 +3702,9 @@ export class RoomlogService {
     location?: string;
     availableTimes?: string;
     photoRequested: boolean;
-    safetyRiskInfo?: string;
   }): IntakeSlot[] {
     const text = input.text.trim();
     const occurrenceInfo = this.detectOccurrenceInfo(text);
-    const riskInfo =
-      input.safetyRiskInfo ?? this.detectSafetyRiskInfo(text, input.category, input.priority);
     const photoIsUseful =
       input.category === "하자" &&
       (input.photoRequested ||
@@ -3588,22 +3745,6 @@ export class RoomlogService {
           ? undefined
           : input.category === "하자"
             ? "언제 시작됐고 지금도 계속되는지 알려주세요."
-            : undefined
-      },
-      {
-        key: "risk",
-        label: "위험 여부",
-        status: riskInfo ? "COLLECTED" : input.category === "하자" ? "NEEDS_INFO" : "OPTIONAL",
-        value: riskInfo,
-        evidence: riskInfo
-          ? "안전 위험 판단에 필요한 단서를 확인했습니다."
-          : input.category === "하자"
-            ? "안전 위험 여부를 확인해야 합니다."
-            : "일반 문의라 위험 확인은 선택 사항입니다.",
-        action: riskInfo
-          ? undefined
-          : input.category === "하자"
-            ? "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
             : undefined
       },
       {
@@ -3676,7 +3817,7 @@ export class RoomlogService {
     if (sourceChannel === "CALLBOT") {
       return {
         messageText:
-          "안녕하세요. Roomlog AI 콜봇입니다. 이 통화 내용은 상담 스레드에 저장됩니다. 증상, 위치, 안전 위험, 사진 필요 여부, 방문 가능 시간을 한 번에 하나씩 확인하겠습니다.",
+          "안녕하세요. Roomlog AI 콜봇입니다. 이 통화 내용은 상담 스레드에 저장됩니다. 증상, 위치, 사진 필요 여부, 방문 가능 시간을 한 번에 하나씩 확인하겠습니다.",
         inputMode: "VOICE"
       };
     }
@@ -3684,14 +3825,14 @@ export class RoomlogService {
     if (sourceChannel === "VOICE_CHAT") {
       return {
         messageText:
-          "안녕하세요. Roomlog AI 음성 상담입니다. 음성 전사는 이 상담 스레드에 저장됩니다. 증상, 위치, 안전 위험, 사진 필요 여부, 방문 가능 시간을 차례로 확인하겠습니다.",
+          "안녕하세요. Roomlog AI 음성 상담입니다. 음성 전사는 이 상담 스레드에 저장됩니다. 증상, 위치, 사진 필요 여부, 방문 가능 시간을 차례로 확인하겠습니다.",
         inputMode: "VOICE"
       };
     }
 
     return {
       messageText:
-        "안녕하세요. Roomlog AI 채팅 상담입니다. 이 상담 스레드에 대화와 사진을 분리 저장하면서 접수 초안을 정리하겠습니다. 위치, 발생 시점, 위험 여부, 방문 가능 시간을 알려주세요.",
+        "안녕하세요. Roomlog AI 채팅 상담입니다. 이 상담 스레드에 대화와 사진을 분리 저장하면서 접수 초안을 정리하겠습니다. 위치, 발생 시점, 방문 가능 시간을 알려주세요.",
       inputMode: "CHAT"
     };
   }
@@ -3727,9 +3868,6 @@ export class RoomlogService {
     const category = this.detectMainCategory(text, detailCategory);
     const priority = this.detectPriority(text, detailCategory);
     const occurredAt = this.detectOccurrenceInfo(text);
-    const safetyRiskInfo =
-      this.detectSafetyRiskInfo(text, category, priority) ??
-      this.detectContextualSafetyRiskInfo(session, category);
     const photoDeferralInfo = this.detectPhotoDeferralInfo(session);
     const photoRequested =
       category === "하자" && this.detailCategoryNeedsPhoto(detailCategory) && !hasPhoto;
@@ -3749,10 +3887,6 @@ export class RoomlogService {
 
     if (!occurredAt && category === "하자") {
       requiredInfo.push("발생 시점");
-    }
-
-    if (!safetyRiskInfo && category === "하자") {
-      requiredInfo.push("안전 위험 여부");
     }
 
     if (!availableTimes && category === "하자") {
@@ -3777,8 +3911,7 @@ export class RoomlogService {
       photoRequested,
       location,
       availableTimes,
-      duplicateCandidates,
-      safetyRiskInfo
+      duplicateCandidates
     });
     const intakeSlots = this.buildIntakeSlots({
       text,
@@ -3788,8 +3921,7 @@ export class RoomlogService {
       hasPhoto,
       location,
       availableTimes,
-      photoRequested,
-      safetyRiskInfo
+      photoRequested
     });
     const tenantGuidance = this.tenantGuidanceForDraft({
       text,
@@ -3803,7 +3935,7 @@ export class RoomlogService {
     const summaryLocation = location ?? room?.roomNo ?? "호실";
     const summary = `${summaryLocation}에서 ${detailCategory} 관련 문제가 접수되었습니다. ${
       priority === 1
-        ? "피해 확산 또는 안전 위험 가능성이 있어 당일 확인이 필요합니다."
+        ? "피해 확산 가능성이 있어 당일 확인이 필요합니다."
         : priority === 2
           ? "생활 불편이 커 빠른 확인과 일정 조율이 필요합니다."
           : "관리자 확인 후 일반 처리로 진행할 수 있습니다."
@@ -3868,29 +4000,16 @@ export class RoomlogService {
     location?: string;
     availableTimes?: string;
     duplicateCandidates: DuplicateTicketCandidate[];
-    safetyRiskInfo?: string;
   }) {
     const questions: string[] = [];
     const occurrenceInfo = this.detectOccurrenceInfo(input.text);
-    const safetyRiskInfo =
-      input.safetyRiskInfo ??
-      this.detectSafetyRiskInfo(input.text, input.category, input.priority);
 
     if (!input.location) {
       questions.push("문제가 보이는 정확한 공간과 부위를 알려주실 수 있나요?");
     }
 
-    if (
-      input.priority === 1 &&
-      /(누수|천장|물이|침수|바닥)/.test(`${input.text} ${input.detailCategory}`)
-    ) {
-      questions.push("물이 지금도 떨어지고 있나요, 전기 콘센트나 조명 근처로 번졌나요?");
-    } else if (!occurrenceInfo && input.category === "하자") {
+    if (!occurrenceInfo && input.category === "하자") {
       questions.push("언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?");
-    }
-
-    if (!safetyRiskInfo && input.category === "하자") {
-      questions.push("전기, 가스, 침수, 문 잠김처럼 바로 위험한 상황은 없나요?");
     }
 
     if (
@@ -4343,7 +4462,7 @@ export class RoomlogService {
     const subjectLabel = subject || "말씀하신 내용";
     const priorityLabel = `P${draft.priority} ${priorityLabelForAnalysis(draft.priority)}`;
     const safetySuffix = safetyLines.length
-      ? " 전기·가스·침수 같은 안전 위험부터 먼저 보수적으로 확인하겠습니다."
+      ? " 조심해야 할 행동이 있으면 먼저 안내하겠습니다."
       : "";
 
     if (draft.readyToFinalize) {
@@ -4360,7 +4479,6 @@ export class RoomlogService {
 
     const findQuestion = (pattern: RegExp) =>
       draft.nextQuestions.find((question) => pattern.test(question));
-    const safetyQuestion = findQuestion(/물이 지금|전기|콘센트|조명|위험|안전|가스|침수|잠김/);
     const occurrenceQuestion = findQuestion(/언제부터|시작|계속|지금도|반복|발생/);
     const visitQuestion = !draft.availableTimes ? findQuestion(/방문|시간|일정/) : undefined;
     const photoQuestion =
@@ -4370,9 +4488,7 @@ export class RoomlogService {
         ? findQuestion(/사진|촬영|근접|전체/)
         : undefined;
     const prioritizedQuestions = [
-      draft.priority === 1 ? safetyQuestion : undefined,
       occurrenceQuestion,
-      draft.priority !== 1 ? safetyQuestion : undefined,
       photoQuestion,
       visitQuestion,
       ...draft.nextQuestions
@@ -4394,10 +4510,6 @@ export class RoomlogService {
   }
 
   private quickAnswerExamplesForQuestion(question: string) {
-    if (/전기|콘센트|조명|위험|안전|가스|침수|잠김|지금도/.test(question)) {
-      return ["지금도 떨어지고 있어요", "전기 주변은 아니에요", "조명 근처까지 번졌어요"];
-    }
-
     if (/사진|촬영|근접|전체|올려/.test(question)) {
       return ["근접 사진과 전체 사진을 올릴게요", "지금은 어렵고 저녁에 올릴게요"];
     }
@@ -4464,6 +4576,10 @@ export class RoomlogService {
       /(바로 답변 예시|문제 부위[^.。!?\n]{0,40}사진[^.。!?\n]{0,40}올려|근접 사진[^.。!?\n]{0,40}전체 사진[^.。!?\n]{0,40}올려)/.test(
         contextualized
       );
+    const refusesHandoff =
+      /(대신[^.。!?\n]{0,20}(누를|보낼)|앱이나\s*웹|다른\s*기기|브라우저에서\s*시도)/.test(
+        contextualized
+      );
 
     if (
       isTerse ||
@@ -4472,7 +4588,8 @@ export class RoomlogService {
       lacksVisit ||
       lacksQuestion ||
       lacksRoomlogWorkflow ||
-      repeatsDeferredPhotoPrompt
+      repeatsDeferredPhotoPrompt ||
+      refusesHandoff
     ) {
       return composed;
     }
@@ -4538,8 +4655,12 @@ export class RoomlogService {
       /(콜봇\s*스레드|긴급\s*접수\s*초안|사진\s*업로드\s*링크|업로드\s*링크|통화|녹음|301호|302호|303호|304호|305호|화장실|욕실|천장|누수|도어락|수전|세면대|전등)/.test(
         generated
       );
+    const refusesHandoff =
+      /(대신[^.。!?\n]{0,20}(누를|보낼)|앱이나\s*웹|다른\s*기기|브라우저에서\s*시도)/.test(
+        generated
+      );
 
-    return isTerse || (lacksCriticalContext && !hasSpecificHandoff)
+    return isTerse || refusesHandoff || (lacksCriticalContext && !hasSpecificHandoff)
       ? fallbackMessage
       : generated;
   }
@@ -4557,12 +4678,14 @@ export class RoomlogService {
       "- 이전 스레드가 아닌 현재 스레드의 대화와 첨부만 근거로 답합니다.",
       "- 같은 호실 과거 기록은 반복 가능성, 과거 조치, 관리자 확인 포인트를 잡기 위한 참고 자료입니다. 현재 세입자가 말하지 않은 내용을 단정하지 않습니다.",
       "- 법적 책임, 비용 부담, 과실을 확정하지 말고 가능성/관리자 검토 필요로 표현합니다.",
-      "- 가스 냄새, 누전, 화재, 침수, 문 잠김 실패, 천장 누수처럼 안전 위험이 있으면 먼저 안전 행동을 안내합니다.",
+      "- 사용자가 먼저 가스 냄새, 누전, 화재 같은 상황을 말하면 필요한 안전 행동만 안내합니다.",
+      "- 위험 여부나 위험도는 별도 수집 항목으로 두지 않고, 세입자에게 위험 여부를 반복해서 묻지 않습니다.",
       "- 질문은 한 번에 1-3개만 하고, 이미 답한 내용을 반복해서 묻지 않습니다.",
       "- assistantMessage에서 질문을 할 때는 세입자가 바로 답할 수 있도록 '바로 답변 예시:'를 붙여 짧은 예시 2-3개를 제공합니다.",
+      "- 사용자가 접수, 확정, 관리자에게 보내기를 요청하면 앱 조작을 못 한다고 말하지 말고 '접수하겠습니다'라고 답합니다.",
       "- draft.nextQuestions에는 세입자에게 바로 물을 1-3개의 구체 질문만 넣습니다.",
       "- draft.tenantGuidance에는 안전 행동, 사진 촬영 방법, 방문 준비처럼 세입자가 지금 할 일을 1-4개 넣습니다.",
-      "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
+      "- draft.intakeSlots에는 symptom, location, occurrence, photo, visitTime 5개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
       "- 사진이 있으면 사진 URL을 관리자 검토 자료로 연결하고, 사진이 부족하면 근접/전체 사진을 구분해서 요청합니다.",
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
       "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다."
@@ -4808,7 +4931,6 @@ export class RoomlogService {
       "symptom",
       "location",
       "occurrence",
-      "risk",
       "photo",
       "visitTime"
     ];
@@ -5367,8 +5489,8 @@ export class RoomlogService {
             },
             intakeSlots: {
               type: "array",
-              minItems: 6,
-              maxItems: 6,
+              minItems: 5,
+              maxItems: 5,
               items: {
                 type: "object",
                 additionalProperties: false,
@@ -5380,7 +5502,6 @@ export class RoomlogService {
                       "symptom",
                       "location",
                       "occurrence",
-                      "risk",
                       "photo",
                       "visitTime"
                     ]
@@ -5494,19 +5615,22 @@ export class RoomlogService {
       "# 말투",
       "- 세입자 말을 끊지 말고 짧고 차분한 한국어로 응답합니다.",
       "- 직접 답변은 1-2문장으로 말하고, 추가 확인은 한 번에 하나의 질문만 합니다.",
-      "- 사용자가 이미 말한 위치, 시간, 사진 여부, 위험 신호는 반복해서 묻지 않습니다.",
-      "- 불안하거나 긴급한 상황에서는 먼저 안전 행동을 안내한 뒤 필요한 정보를 확인합니다.",
+      "- 사용자가 이미 말한 위치, 시간, 사진 여부는 반복해서 묻지 않습니다.",
+      "- 사용자가 접수, 확정, 관리자에게 보내기를 요청하면 '네, 관리자에게 접수하겠습니다'라고 답하고 앱 조작을 못 한다고 말하지 않습니다.",
+      "- 사용자가 먼저 가스 냄새, 누전, 화재 같은 상황을 말하면 필요한 안전 행동만 안내합니다.",
+      "- 위험 여부나 위험도는 별도 질문으로 확인하지 않습니다.",
       "",
       "# 대화 흐름",
       "1. 증상과 위치를 자연스럽게 확인합니다.",
-      "2. 발생 시점, 현재도 반복되는지, 안전 위험 여부를 확인합니다.",
+      "2. 발생 시점과 현재도 반복되는지 확인합니다.",
       "3. 사진이 없고 하자 판단에 필요하면 근접 사진 1장과 공간 전체 사진 1장을 요청합니다.",
       "4. 관리자나 업체 방문 가능 시간대를 확인합니다.",
       "5. 충분한 정보가 모이면 접수 초안 제목, 요약, 위치, 긴급도, 추가 필요 정보를 짧게 정리합니다.",
       "",
-      "# 안전 분류",
+      "# 긴급 상황 안내",
       "- 누수, 가스 냄새, 누전, 문 잠김 실패, 침수, 화재, 천장 물샘은 긴급 후보로 봅니다.",
-      "- 전기 설비 근처 물고임, 가스 냄새, 문이 잠기지 않는 상황은 즉시 안전한 행동을 먼저 안내합니다.",
+      "- 전기 설비 근처 물고임, 가스 냄새, 문이 잠기지 않는 상황을 사용자가 먼저 말하면 안전한 행동을 먼저 안내합니다.",
+      "- 단, 위험 여부를 별도 수집하거나 확인 질문으로 묻지 않습니다.",
       "- 책임 소재를 확정하지 말고, 비용 부담도 '관리자 확인 필요' 또는 가능성으로만 표현합니다.",
       "",
       "# 사진과 기록",
@@ -5519,7 +5643,7 @@ export class RoomlogService {
       "- 숫자, 호실, 시간처럼 중요한 값은 들은 값을 다시 확인합니다.",
       "",
       "# 완료 기준",
-      "- 증상, 위치, 위험 여부, 사진 필요 여부, 방문 가능 시간이 확인되면 접수 초안을 정리합니다.",
+      "- 증상, 위치, 사진 필요 여부, 방문 가능 시간이 확인되면 접수 초안을 정리합니다.",
       "- 정보가 부족하면 누락된 항목 중 가장 중요한 하나만 질문합니다.",
       "- 접수 초안이 준비되면 세입자가 화면에서 수정 후 확정할 수 있다고 안내합니다.",
       input.instructions ? `추가 운영 지침: ${input.instructions}` : "",
@@ -6184,9 +6308,11 @@ export class RoomlogService {
   }
 
   private draftIntakeSlots(session: IntakeSession) {
-    return session.draft.intakeSlots?.length
+    const slots = session.draft.intakeSlots?.length
       ? session.draft.intakeSlots
       : this.buildIntakeDraft(session).intakeSlots;
+
+    return slots.filter((slot) => (slot as { key: string }).key !== "risk");
   }
 
   private presentIntakeSlots(slots: IntakeSlot[]) {

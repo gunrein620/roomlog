@@ -7,8 +7,8 @@ describe("tenant consultation composer guidance", () => {
     const guidance = consultationComposerGuidance({
       status: "ACTIVE",
       draft: {
-        nextQuestions: ["물이 지금도 떨어지고 있나요, 전기 콘센트나 조명 근처로 번졌나요?"],
-        requiredInfo: ["안전 위험 여부", "방문 가능 시간"],
+        nextQuestions: ["언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?"],
+        requiredInfo: ["방문 가능 시간"],
         readyToFinalize: false,
         photoRequested: false,
         photoAnalysis: {
@@ -24,8 +24,8 @@ describe("tenant consultation composer guidance", () => {
     });
 
     assert.equal(guidance.label, "AI가 지금 확인할 질문");
-    assert.equal(guidance.prompt, "물이 지금도 떨어지고 있나요, 전기 콘센트나 조명 근처로 번졌나요?");
-    assert.match(guidance.placeholder, /물이 지금도 떨어지고 있나요/);
+    assert.equal(guidance.prompt, "언제부터 시작됐고 지금도 같은 증상이 계속되고 있나요?");
+    assert.match(guidance.placeholder, /언제부터 시작/);
     assert.equal(guidance.submitLabel, "답변 보내기");
     assert.equal(guidance.tone, "warning");
   });

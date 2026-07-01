@@ -843,6 +843,91 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("resets a tenant's consultation history without deleting other tenants", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const tenant = service.signup({
+      email: "reset-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "초기화 세입자",
+      phone: "010-7777-4100",
+      role: "TENANT",
+      buildingName: "초기화 빌라",
+      roomNo: "410호",
+      address: "서울시 성동구 초기화로 4"
+    } as any);
+    const otherTenant = service.signup({
+      email: "reset-other@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "다른 세입자",
+      phone: "010-7777-4101",
+      role: "TENANT",
+      buildingName: "다른 빌라",
+      roomNo: "411호",
+      address: "서울시 성동구 초기화로 5"
+    } as any);
+    const thread = service.createIntakeSession(tenant.userId, {
+      sourceChannel: "REALTIME_CHAT"
+    });
+
+    try {
+      await service.sendIntakeMessage(tenant.userId, thread.session.id, {
+        messageText: "410호 화장실 세면대가 깨졌고 내일 오후 2시 방문 가능합니다.",
+        attachmentUrls: ["/api/files/reset-sink.jpg"],
+        inputMode: "CHAT"
+      });
+      service.finalizeIntakeSession(tenant.userId, thread.session.id);
+      service.createComplaint(tenant.userId, {
+        title: "410호 현관등 고장",
+        description: "410호 현관등이 켜지지 않습니다.",
+        location: "현관",
+        availableTimes: "오늘 저녁"
+      });
+      service.createComplaint(otherTenant.userId, {
+        title: "411호 싱크대 누수",
+        description: "411호 싱크대 아래에서 물이 샙니다.",
+        location: "싱크대",
+        availableTimes: "오늘 저녁"
+      });
+
+      const beforeTimeline = service.getTenantRoomTimeline(tenant.userId);
+
+      assert.equal(service.listIntakeSessions(tenant.userId).length, 1);
+      assert.equal(service.listTenantComplaints(tenant.userId).length, 2);
+      assert.equal(beforeTimeline.some((entry) => entry.type === "INTAKE_SESSION"), true);
+      assert.equal(beforeTimeline.some((entry) => entry.type === "COMPLAINT"), true);
+
+      const result = service.resetTenantConsultationHistory(tenant.userId);
+      const afterTimeline = service.getTenantRoomTimeline(tenant.userId);
+
+      assert.deepEqual(result.deleted, {
+        intakeSessions: 1,
+        complaints: 2,
+        tickets: 2
+      });
+      assert.deepEqual(service.listIntakeSessions(tenant.userId), []);
+      assert.deepEqual(service.listTenantComplaints(tenant.userId), []);
+      assert.equal(
+        afterTimeline.some((entry) =>
+          ["INTAKE_SESSION", "COMPLAINT", "MESSAGE", "STATUS_CHANGE", "AI_FEEDBACK", "REPAIR"].includes(
+            entry.type
+          )
+        ),
+        false
+      );
+      assert.equal(service.listTenantComplaints(otherTenant.userId).length, 1);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      } else {
+        delete process.env.OPENAI_API_KEY;
+      }
+    }
+  });
+
   it("cancels an active intake thread without deleting its conversation history", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -1095,7 +1180,7 @@ describe("RoomlogService", () => {
 
       assert.match(result.assistantMessage.messageText, /다음으로 확인할 질문/);
       assert.equal(questionLines.length >= 2, true);
-      assert.equal(questionLines.some((line) => /전기|콘센트|조명|위험/.test(line)), true);
+      assert.equal(questionLines.some((line) => /전기|콘센트|조명|위험|안전/.test(line)), false);
       assert.equal(questionLines.some((line) => /사진|근접|전체/.test(line)), true);
       assert.match(result.assistantMessage.messageText, /방문 가능 시간|방문 가능 시간대/);
     } finally {
@@ -2058,7 +2143,7 @@ describe("RoomlogService", () => {
     }
   });
 
-  it("keeps defect intake open until occurrence and safety risk are confirmed", async () => {
+  it("does not keep defect intake open for separate safety risk confirmation", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
     const service = new RoomlogService();
@@ -2076,18 +2161,18 @@ describe("RoomlogService", () => {
 
       assert.equal(first.session.draft.readyToFinalize, false);
       assert.equal(first.session.draft.requiredInfo.includes("발생 시점"), true);
-      assert.equal(first.session.draft.requiredInfo.includes("안전 위험 여부"), true);
+      assert.equal(first.session.draft.requiredInfo.includes("안전 위험 여부"), false);
       assert.equal(
         first.session.draft.nextQuestions.some((question) => /언제부터|시작|계속/.test(question)),
         true
       );
       assert.equal(
-        first.session.draft.nextQuestions.some((question) => /전기|가스|침수|잠김|위험/.test(question)),
-        true
+        first.session.draft.nextQuestions.some((question) => /전기|가스|침수|잠김|위험|안전/.test(question)),
+        false
       );
 
       const second = await service.sendIntakeMessage("tenant-demo", session.id, {
-        messageText: "어제부터 시작됐고 지금도 헐겁습니다. 전기나 가스 같은 위험은 없습니다.",
+        messageText: "어제부터 시작됐고 지금도 헐겁습니다.",
         inputMode: "CHAT"
       });
 
@@ -2977,10 +3062,10 @@ describe("RoomlogService", () => {
         /전기|가스|침수|잠김|위험|안전/.test(question)
       );
 
-      assert.equal(visibleQuestions.length >= 3, true);
+      assert.equal(visibleQuestions.length >= 2, true);
       assert.equal(occurrenceIndex, 0);
-      assert.equal(riskIndex > occurrenceIndex, true);
-      assert.equal(visitIndex > riskIndex, true);
+      assert.equal(riskIndex, -1);
+      assert.equal(visitIndex > occurrenceIndex, true);
     } finally {
       if (originalApiKey) {
         process.env.OPENAI_API_KEY = originalApiKey;
@@ -3015,9 +3100,9 @@ describe("RoomlogService", () => {
       assert.equal(visibleQuestions.length <= 3, true);
       assert.equal(
         visibleQuestions.some((question) =>
-          /물이 지금도|전기|콘센트|조명|위험|안전|떨어지고/.test(question)
+          /전기|콘센트|조명|위험|안전|가스|침수|잠김/.test(question)
         ),
-        true
+        false
       );
       assert.equal(
         visibleQuestions.some((question) => /사진|근접|전체/.test(question)),
@@ -3075,12 +3160,12 @@ describe("RoomlogService", () => {
 
       assert.equal(firstSlots.symptom.status, "COLLECTED");
       assert.equal(firstSlots.location.status, "COLLECTED");
-      assert.equal(firstSlots.risk.status, "COLLECTED");
+      assert.equal(firstSlots.risk, undefined);
       assert.equal(firstSlots.photo.status, "NEEDS_INFO");
       assert.equal(firstSlots.visitTime.status, "NEEDS_INFO");
       assert.match(firstSlots.photo.action ?? "", /근접|전체|사진/);
       assert.equal(first.session.threadSummary.openSlotCount, 2);
-      assert.equal(first.session.threadSummary.collectedSlotCount, 4);
+      assert.equal(first.session.threadSummary.collectedSlotCount, 3);
 
       const second = await service.sendIntakeMessage("tenant-demo", session.id, {
         messageText: "오늘 저녁 8시 이후 방문 가능합니다. 전체 사진과 천장 근접 사진도 첨부했습니다.",
@@ -3095,8 +3180,98 @@ describe("RoomlogService", () => {
       assert.equal(secondSlots.visitTime.status, "COLLECTED");
       assert.equal(second.session.draft.readyToFinalize, true);
       assert.equal(second.session.threadSummary.openSlotCount, 0);
-      assert.equal(second.session.threadSummary.collectedSlotCount, 6);
+      assert.equal(second.session.threadSummary.collectedSlotCount, 5);
       assert.match(second.assistantMessage.messageText, /접수 가능|필수 정보|사진|방문/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
+  it("finalizes photo-backed demo defect intake even when only soft follow-ups remain", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const past = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      await service.sendIntakeMessage("tenant-demo", past.session.id, {
+        messageText:
+          "지난달 301호 화장실 세면대가 파손됐고 오늘 저녁 7시 이후 방문 가능합니다.",
+        attachmentUrls: ["/api/files/past-sink-damage.jpg"],
+        inputMode: "CHAT"
+      });
+      service.finalizeIntakeSession("tenant-demo", past.session.id, {
+        confirmedTitle: "화장실 세면대 파손",
+        confirmedSummary: "301호 화장실 세면대 파손 이력이 있습니다.",
+        confirmedLocation: "301호 화장실",
+        availableTimes: "오늘 저녁 7시 이후"
+      });
+
+      const current = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+      const result = await service.sendIntakeMessage("tenant-demo", current.session.id, {
+        messageText: "301호 화장실 세면대가 깨졌고 내일 오후 2시 방문 가능합니다.",
+        attachmentUrls: ["/api/files/current-sink-damage.jpg"],
+        inputMode: "CHAT"
+      });
+
+      assert.equal(result.session.draft.readyToFinalize, false);
+      assert.equal(result.session.draft.requiredInfo.includes("발생 시점"), true);
+      assert.equal(result.session.draft.duplicateCandidates.length > 0, true);
+
+      const finalized = service.finalizeIntakeSession("tenant-demo", current.session.id);
+      const detail = service.getComplaintDetail("tenant-demo", finalized.complaint.id);
+
+      assert.equal(finalized.ticket.status, "RECEIVED");
+      assert.equal(finalized.complaint.location, "301호 화장실");
+      assert.equal(finalized.complaint.availableTimes, "내일 오후 2시");
+      assert.equal(
+        detail.messages.some((message) =>
+          message.attachmentUrls.includes("/api/files/current-sink-damage.jpg")
+        ),
+        true
+      );
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
+  it("treats tenant handoff commands as a real intake finalization instead of AI refusal", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    try {
+      const draftResult = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "301호 화장실 세면대가 깨졌고 내일 오후 2시 방문 가능합니다.",
+        attachmentUrls: ["/api/files/current-sink-damage.jpg"],
+        inputMode: "CHAT"
+      });
+
+      assert.equal(draftResult.session.status, "ACTIVE");
+      assert.equal(draftResult.session.draft.requiredInfo.includes("발생 시점"), true);
+
+      const handoff = await service.sendIntakeMessage("tenant-demo", session.id, {
+        messageText: "그럼 접수초안 관리인한테 바로 보내줘.",
+        inputMode: "CHAT"
+      });
+      const complaints = service.listTenantComplaints("tenant-demo");
+      const detail = service.getComplaintDetail("tenant-demo", complaints[0].id);
+
+      assert.equal(handoff.session.status, "FINALIZED");
+      assert.equal(complaints[0].title, "301호 화장실 세면대 파손");
+      assert.equal(
+        detail.messages.some((message) =>
+          message.attachmentUrls.includes("/api/files/current-sink-damage.jpg")
+        ),
+        true
+      );
+      assert.doesNotMatch(handoff.assistantMessage.messageText, /대신|누를 수|앱|웹|브라우저/);
+      assert.match(handoff.assistantMessage.messageText, /관리자|관리인|접수/);
     } finally {
       if (originalApiKey) {
         process.env.OPENAI_API_KEY = originalApiKey;
@@ -3119,11 +3294,11 @@ describe("RoomlogService", () => {
         first.session.draft.intakeSlots.map((slot) => [slot.key, slot])
       );
 
-      assert.equal(firstSlots.risk.status, "NEEDS_INFO");
-      assert.match(first.assistantMessage.messageText, /위험|전기|가스|침수|문 잠김|안전/);
+      assert.equal(firstSlots.risk, undefined);
+      assert.doesNotMatch(first.assistantMessage.messageText, /위험 여부|전기, 가스|침수, 문 잠김|안전 위험/);
 
       const second = await service.sendIntakeMessage("tenant-demo", session.id, {
-        messageText: "어제부터요. 없어요.",
+        messageText: "어제부터요.",
         inputMode: "CHAT"
       });
       const secondSlots = Object.fromEntries(
@@ -3131,8 +3306,7 @@ describe("RoomlogService", () => {
       );
 
       assert.equal(secondSlots.occurrence.status, "COLLECTED");
-      assert.equal(secondSlots.risk.status, "COLLECTED");
-      assert.match(secondSlots.risk.value ?? "", /위험 없음|없어요|없습니다/);
+      assert.equal(secondSlots.risk, undefined);
       assert.equal(second.session.draft.requiredInfo.includes("안전 위험 여부"), false);
       assert.equal(second.session.draft.readyToFinalize, true);
     } finally {

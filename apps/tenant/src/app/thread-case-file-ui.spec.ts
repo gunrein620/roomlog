@@ -63,4 +63,35 @@ describe("tenant thread case file UI", () => {
     assert.match(pageSource, /sendQuickReply\(reply\)/);
     assert.match(pageSource, /messageText: reply\.trim\(\)/);
   });
+
+  it("passes selected photos into realtime turn persistence for voice consultations", () => {
+    assert.match(pageSource, /photoFilesRef/);
+    assert.match(pageSource, /uploadedRealtimeAttachments/);
+    assert.match(pageSource, /uploadedRealtimeAttachments\.map\(\(attachment\) => attachment\.fileUrl\)/);
+    assert.match(pageSource, /attachmentUrls/);
+    assert.match(pageSource, /setPhotoFiles\(\[\]\)/);
+  });
+
+  it("attempts auto finalization after AI updates a ready consultation", () => {
+    assert.match(pageSource, /shouldAutoFinalizeConsultation/);
+    assert.match(pageSource, /maybeAutoFinalizeSession\(result\.session\)/);
+    assert.match(pageSource, /autoFinalizedSessionIdsRef/);
+  });
+
+  it("attempts auto finalization when a selected consultation is loaded ready", () => {
+    assert.match(pageSource, /maybeAutoFinalizeSession\(selectedSession\)/);
+    assert.match(pageSource, /selectedSession\?\.draft\.photoAnalysis\.attachmentUrls\.join/);
+  });
+
+  it("refreshes complaints when the API finalizes a handoff command directly", () => {
+    assert.match(pageSource, /handleServerFinalizedSession\(result\.session/);
+    assert.match(pageSource, /상담 내용이 민원 티켓으로 접수되었습니다/);
+  });
+
+  it("offers a tenant consultation history reset action for demos", () => {
+    assert.match(pageSource, /상담내역 초기화/);
+    assert.match(pageSource, /resetConsultationHistory/);
+    assert.match(pageSource, /\/tenant\/consultations\/reset/);
+    assert.match(pageSource, /정보 \{summary\.collectedSlotCount\}\/5/);
+  });
 });

@@ -16,10 +16,10 @@ const photos: SelectablePhoto[] = [
 ];
 
 describe("photo selection", () => {
-  it("keeps multiple intake photos in one upload turn with a safe cap", () => {
+  it("keeps the intake photo turn focused on the two useful photos", () => {
     assert.deepEqual(
       normalizeSelectedPhotos(photos).map((photo) => photo.name),
-      ["bathroom-wide.jpg", "ceiling-close.jpg", "floor-water.jpg", "extra-angle.jpg"]
+      ["bathroom-wide.jpg", "ceiling-close.jpg"]
     );
   });
 

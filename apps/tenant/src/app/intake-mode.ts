@@ -88,11 +88,11 @@ export function idleRealtimeStatusForMode(mode: IntakeMode) {
 
 export function realtimeOpeningPromptForMode(mode: IntakeMode) {
   if (mode === "CALLBOT") {
-    return "Roomlog AI 콜봇입니다. 통화가 연결되면 짧게 인사하고, 증상·위치·안전 여부·사진 가능 여부·방문 가능 시간을 한 번에 하나씩 확인하세요.";
+    return "Roomlog AI 콜봇입니다. 통화가 연결되면 짧게 인사하고, 증상·위치·사진 가능 여부·방문 가능 시간을 한 번에 하나씩 확인하세요.";
   }
 
   if (mode === "VOICE") {
-    return "Roomlog AI 음성 상담입니다. 연결되면 짧게 인사하고, 증상·위치·안전 여부·사진 가능 여부·방문 가능 시간을 한 번에 하나씩 확인하세요.";
+    return "Roomlog AI 음성 상담입니다. 연결되면 짧게 인사하고, 증상·위치·사진 가능 여부·방문 가능 시간을 한 번에 하나씩 확인하세요.";
   }
 
   return "Roomlog AI 채팅 상담에서 음성으로 이어졌습니다. 연결되면 짧게 인사하고, 부족한 접수 정보를 한 번에 하나씩 확인하세요.";

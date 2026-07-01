@@ -14,7 +14,7 @@ const baseSummary: TenantThreadWorkflowSummary = {
   channelLabel: "AI 채팅",
   priority: 2,
   attachmentCount: 0,
-  collectedSlotCount: 4,
+  collectedSlotCount: 3,
   openSlotCount: 2,
   requiredInfoCount: 2,
   unresolvedQuestionCount: 3,
@@ -44,7 +44,7 @@ describe("tenant consultation thread workflow", () => {
     assert.deepEqual(consultationThreadBadges(baseSummary), [
       { label: "AI 채팅", tone: "neutral" },
       { label: "P2", tone: "priority" },
-      { label: "정보 4/6", tone: "neutral" },
+      { label: "정보 3/5", tone: "neutral" },
       { label: "추가 확인 2", tone: "warning" },
       { label: "AI 질문 3", tone: "info" }
     ]);
@@ -56,7 +56,7 @@ describe("tenant consultation thread workflow", () => {
         ...baseSummary,
         statusLabel: "접수 확정 가능",
         attachmentCount: 2,
-        collectedSlotCount: 6,
+        collectedSlotCount: 5,
         openSlotCount: 0,
         requiredInfoCount: 0,
         unresolvedQuestionCount: 0,
@@ -65,7 +65,7 @@ describe("tenant consultation thread workflow", () => {
       [
         { label: "AI 채팅", tone: "neutral" },
         { label: "P2", tone: "priority" },
-        { label: "정보 6/6", tone: "neutral" },
+        { label: "정보 5/5", tone: "neutral" },
         { label: "사진 2", tone: "info" },
         { label: "접수 가능", tone: "ready" }
       ]

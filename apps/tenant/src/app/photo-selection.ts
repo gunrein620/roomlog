@@ -3,7 +3,7 @@ export type SelectablePhoto = {
   size: number;
 };
 
-export const maxPhotosPerTurn = 4;
+export const maxPhotosPerTurn = 2;
 
 export function normalizeSelectedPhotos<T extends SelectablePhoto>(
   files: Iterable<T> | ArrayLike<T> | null | undefined,

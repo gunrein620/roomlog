@@ -46,12 +46,11 @@ export function buildRealtimeConnectionOpenEvents({
   contextSummary?: string;
   openingPrompt?: string;
 }): RealtimeConnectionOpenEvent[] {
-  const prompt = openingPrompt?.trim();
-
-  if (createResponseAutomatically && !prompt) {
+  if (createResponseAutomatically) {
     return [];
   }
 
+  const prompt = openingPrompt?.trim();
   const summary = contextSummary?.trim();
   const events: RealtimeConnectionOpenEvent[] = [];
 

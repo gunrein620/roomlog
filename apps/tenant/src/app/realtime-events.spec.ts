@@ -18,7 +18,7 @@ describe("tenant realtime events", () => {
     assert.deepEqual(events, []);
   });
 
-  it("can request a contextual opening response while keeping automatic VAD responses", () => {
+  it("does not request a contextual opening response while automatic VAD owns the first turn", () => {
     const events = buildRealtimeConnectionOpenEvents({
       createResponseAutomatically: true,
       sessionId: "session_callbot",
@@ -26,15 +26,7 @@ describe("tenant realtime events", () => {
       openingPrompt: "통화가 연결되면 Roomlog 콜봇으로 짧게 인사하고 증상부터 확인하세요."
     });
 
-    assert.equal(events.length, 2);
-    assert.equal(events[0].type, "conversation.item.create");
-    assert.match(
-      events[0].item?.content[0]?.text ?? "",
-      /Roomlog 상담 스레드 session_callbot/
-    );
-    assert.match(events[0].item?.content[0]?.text ?? "", /301호 화장실 천장 누수/);
-    assert.match(events[0].item?.content[0]?.text ?? "", /짧게 인사/);
-    assert.deepEqual(events[1], { type: "response.create" });
+    assert.deepEqual(events, []);
   });
 
   it("waits for late user transcription before flushing a completed response", () => {

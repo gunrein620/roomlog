@@ -181,6 +181,13 @@ export class RoomlogController {
     return this.roomlogService.createComplaintFromCall(user.id, body);
   }
 
+  @Post("tenant/consultations/reset")
+  resetTenantConsultations(@Headers("authorization") authorization: string | undefined) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.resetTenantConsultationHistory(user.id);
+  }
+
   @Post("tenant/complaints/intake/sessions")
   createIntakeSession(
     @Headers("authorization") authorization: string | undefined,

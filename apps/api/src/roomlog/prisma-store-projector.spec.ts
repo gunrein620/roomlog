@@ -105,13 +105,6 @@ describe("PrismaStoreProjector", () => {
                   action: "언제 시작됐고 지금도 계속되는지 알려주세요."
                 },
                 {
-                  key: "risk",
-                  label: "위험 여부",
-                  status: "NEEDS_INFO",
-                  evidence: "안전 위험 여부를 확인해야 합니다.",
-                  action: "전기, 가스, 침수, 문 잠김 같은 안전 위험이 있는지 알려주세요."
-                },
-                {
                   key: "photo",
                   label: "사진",
                   status: "NEEDS_INFO",

@@ -9,7 +9,7 @@ const baseInput = {
     statusLabel: "접수 확정 가능",
     priority: 1 as const,
     attachmentCount: 2,
-    collectedSlotCount: 6,
+    collectedSlotCount: 5,
     openSlotCount: 0,
     unresolvedQuestionCount: 0,
     readyToFinalize: true
@@ -43,13 +43,6 @@ const baseInput = {
         label: "증상",
         status: "COLLECTED" as const,
         value: "화장실 천장에서 물이 계속 떨어짐",
-        evidence: "세입자 대화"
-      },
-      {
-        key: "risk",
-        label: "위험",
-        status: "COLLECTED" as const,
-        value: "바닥 물고임",
         evidence: "세입자 대화"
       }
     ]
@@ -96,7 +89,7 @@ describe("tenant thread case file", () => {
         ...baseInput.summary,
         statusLabel: "추가 정보 3개 필요",
         attachmentCount: 0,
-        collectedSlotCount: 3,
+        collectedSlotCount: 2,
         openSlotCount: 3,
         unresolvedQuestionCount: 2,
         readyToFinalize: false

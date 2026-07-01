@@ -332,7 +332,6 @@ export type IntakeSlotKey =
   | "symptom"
   | "location"
   | "occurrence"
-  | "risk"
   | "photo"
   | "visitTime";
 
