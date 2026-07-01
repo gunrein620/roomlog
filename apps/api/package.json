@@ -7,6 +7,7 @@
     "test": "node --test -r ts-node/register src/**/*.spec.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
+    "sync:furniture": "ts-node src/furniture-catalog/sync-dummyjson.ts",
     "start:prod": "node dist/main"
   },
   "dependencies": {

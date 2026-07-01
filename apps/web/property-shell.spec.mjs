@@ -122,6 +122,10 @@ test("copies wheretoput-style furniture selection and 3D placement controls", ()
     "FURNITURE_CATALOG",
     "createFurnitureModel",
     "FurnitureMesh",
+    "FurnitureGlbMesh",
+    "useGLTF",
+    "modelUrl",
+    "furniture-models/bed-queen.glb",
     "handleFurnitureSelect",
     "handle3DFloorPointerDown",
     "placedFurnitures",
@@ -134,6 +138,17 @@ test("copies wheretoput-style furniture selection and 3D placement controls", ()
   }
 });
 
+test("loads furniture picker data from the local furniture catalog API", () => {
+  for (const label of [
+    "apiUrl\\(\"/furniture-catalog\"\\)",
+    "setFurnitureCatalog",
+    "카탈로그 동기화 필요",
+    "오늘의집 대신 공개 API 기반 로컬 DB"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
 test("renders 3D conversion with the wheretoput React Three Fiber stack", () => {
   for (const label of [
     "@react-three/fiber",
@@ -141,6 +156,7 @@ test("renders 3D conversion with the wheretoput React Three Fiber stack", () => 
     "three",
     "Canvas",
     "OrbitControls",
+    "Box3",
     "boxGeometry",
     "planeGeometry",
     "wheretoput 3D room renderer",

@@ -1,9 +1,10 @@
 "use client";
 
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 import {
   createStarterWalls,
   createWallsFromDetectedLines,
@@ -25,9 +26,14 @@ type FurnitureCatalogItem = {
   brand: string;
   color: string;
   furniture_id: string;
+  imageUrls?: string[];
   length: [number, number, number];
+  modelUrl?: string;
   name: string;
   price: number;
+  source?: string;
+  sourceUrl?: string;
+  thumbnailUrl?: string;
 };
 type PlacedFurniture = FurnitureCatalogItem & {
   id: string;
@@ -55,6 +61,7 @@ const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
     color: "#8fb5ff",
     furniture_id: "furniture-bed-queen",
     length: [2000, 420, 1500],
+    modelUrl: "/furniture-models/bed-queen.glb",
     name: "퀸 침대",
     price: 390000
   },
@@ -63,6 +70,7 @@ const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
     color: "#f3b36a",
     furniture_id: "furniture-sofa-3",
     length: [2100, 760, 880],
+    modelUrl: "/furniture-models/sofa-couch.glb",
     name: "3인 소파",
     price: 520000
   },
@@ -71,6 +79,7 @@ const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
     color: "#9ed8b3",
     furniture_id: "furniture-desk",
     length: [1200, 740, 600],
+    modelUrl: "/furniture-models/table-moon.glb",
     name: "책상",
     price: 160000
   },
@@ -79,6 +88,7 @@ const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
     color: "#d6b0ff",
     furniture_id: "furniture-chair",
     length: [520, 820, 520],
+    modelUrl: "/furniture-models/chair-kevi.glb",
     name: "의자",
     price: 69000
   },
@@ -87,10 +97,34 @@ const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
     color: "#f1d17a",
     furniture_id: "furniture-wardrobe",
     length: [900, 1900, 580],
+    modelUrl: "/furniture-models/wardrobe-cabinet.glb",
     name: "옷장",
     price: 240000
   }
 ];
+
+function normalizeCatalogItem(item: FurnitureCatalogItem, index: number): FurnitureCatalogItem {
+  const fallback = FURNITURE_CATALOG[index % FURNITURE_CATALOG.length];
+  const [width, height, depth] = Array.isArray(item.length) ? item.length : fallback.length;
+
+  return {
+    brand: item.brand || fallback.brand,
+    color: item.color || fallback.color,
+    furniture_id: item.furniture_id || fallback.furniture_id,
+    imageUrls: item.imageUrls,
+    length: [
+      Number.isFinite(Number(width)) ? Number(width) : fallback.length[0],
+      Number.isFinite(Number(height)) ? Number(height) : fallback.length[1],
+      Number.isFinite(Number(depth)) ? Number(depth) : fallback.length[2]
+    ],
+    modelUrl: item.modelUrl || fallback.modelUrl,
+    name: item.name || fallback.name,
+    price: Number.isFinite(Number(item.price)) ? Number(item.price) : fallback.price,
+    source: item.source,
+    sourceUrl: item.sourceUrl,
+    thumbnailUrl: item.thumbnailUrl
+  };
+}
 
 class WallDetector {
   async detectWalls(file: File) {
@@ -127,6 +161,29 @@ function loadImage(source: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error("Failed to load image"));
     image.src = source;
   });
+}
+
+function apiUrl(path: string) {
+  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const normalized = base.replace(/\/$/, "");
+
+  return normalized.endsWith("/api") ? `${normalized}${path}` : `${normalized}/api${path}`;
+}
+
+function isFurnitureCatalogItem(value: unknown): value is FurnitureCatalogItem {
+  const item = value as FurnitureCatalogItem;
+
+  return Boolean(
+    item &&
+      typeof item.brand === "string" &&
+      typeof item.color === "string" &&
+      typeof item.furniture_id === "string" &&
+      Array.isArray(item.length) &&
+      item.length.length === 3 &&
+      item.length.every((dimension) => typeof dimension === "number" && Number.isFinite(dimension) && dimension > 0) &&
+      typeof item.name === "string" &&
+      typeof item.price === "number"
+  );
 }
 
 function calculateDistance(p1: Point, p2: Point, pixelToMmRatio: number) {
@@ -286,7 +343,7 @@ function RoomFloor({
   );
 }
 
-function FurnitureMesh({
+function FurnitureBoxMesh({
   furniture,
   isPending = false,
   isSelected,
@@ -314,6 +371,98 @@ function FurnitureMesh({
         transparent
       />
     </mesh>
+  );
+}
+
+function FurnitureGlbMesh({
+  furniture,
+  isPending = false,
+  isSelected,
+  onPointerDown
+}: {
+  furniture: PlacedFurniture;
+  isPending?: boolean;
+  isSelected: boolean;
+  onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
+}) {
+  const gltf = useGLTF(furniture.modelUrl ?? FURNITURE_CATALOG[0].modelUrl ?? "");
+  const dimensions = getFurnitureDimensions(furniture);
+  const { modelOffsetY, scene, scale } = useMemo(() => {
+    const clonedScene = gltf.scene.clone(true);
+    clonedScene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+
+      child.castShadow = true;
+      child.receiveShadow = true;
+
+      if (Array.isArray(child.material)) {
+        child.material = child.material.map((material) => material.clone());
+      } else if (child.material) {
+        child.material = child.material.clone();
+      }
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        if (!material) return;
+        material.transparent = isPending;
+        material.opacity = isPending ? 0.48 : 1;
+        material.needsUpdate = true;
+      });
+    });
+
+    const box = new THREE.Box3().setFromObject(clonedScene);
+    const size = box.getSize(new THREE.Vector3());
+    const actualWidth = Math.max(size.x, 0.001);
+    const actualHeight = Math.max(size.y, 0.001);
+    const actualDepth = Math.max(size.z, 0.001);
+    const targetLongSide = Math.max(dimensions.width, dimensions.depth);
+    const targetShortSide = Math.min(dimensions.width, dimensions.depth);
+    const [targetWidth, targetDepth] =
+      actualWidth >= actualDepth ? [targetLongSide, targetShortSide] : [targetShortSide, targetLongSide];
+    const modelScale: [number, number, number] = [
+      targetWidth / actualWidth,
+      dimensions.height / actualHeight,
+      targetDepth / actualDepth
+    ];
+
+    return {
+      modelOffsetY: -box.min.y * modelScale[1],
+      scale: modelScale,
+      scene: clonedScene
+    };
+  }, [dimensions.depth, dimensions.height, dimensions.width, furniture.modelUrl, gltf.scene, isPending]);
+
+  return (
+    <group
+      onPointerDown={(event) => onPointerDown(furniture, event)}
+      position={[furniture.position[0], 0, furniture.position[2]]}
+      rotation={furniture.rotation}
+    >
+      <primitive object={scene} position={[0, modelOffsetY, 0]} scale={scale} />
+      {isSelected ? (
+        <mesh position={[0, dimensions.height / 2, 0]}>
+          <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
+          <meshBasicMaterial color="#2f55ff" opacity={0.4} transparent wireframe />
+        </mesh>
+      ) : null}
+    </group>
+  );
+}
+
+function FurnitureMesh(props: {
+  furniture: PlacedFurniture;
+  isPending?: boolean;
+  isSelected: boolean;
+  onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
+}) {
+  if (!props.furniture.modelUrl) {
+    return <FurnitureBoxMesh {...props} />;
+  }
+
+  return (
+    <Suspense fallback={<FurnitureBoxMesh {...props} />}>
+      <FurnitureGlbMesh {...props} />
+    </Suspense>
   );
 }
 
@@ -413,6 +562,8 @@ export default function RoomlogFloorPlanEditor() {
   const [selectedWall, setSelectedWall] = useState<Wall | null>(null);
   const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
   const [hiddenWallIds, setHiddenWallIds] = useState<Set<string>>(() => new Set());
+  const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
+  const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("오늘의집 대신 공개 API 기반 로컬 DB");
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
@@ -445,6 +596,40 @@ export default function RoomlogFloorPlanEditor() {
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
     [placedFurnitures, selectedFurnitureId]
   );
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadFurnitureCatalog() {
+      try {
+        const response = await fetch(apiUrl("/furniture-catalog"));
+        if (!response.ok) throw new Error(`Furniture catalog fetch failed: ${response.status}`);
+
+        const payload = (await response.json()) as unknown;
+        if (!isActive) return;
+
+        const items = Array.isArray(payload) ? payload.filter(isFurnitureCatalogItem).map(normalizeCatalogItem) : [];
+        if (!items.length) {
+          setFurnitureCatalog(FURNITURE_CATALOG);
+          setFurnitureCatalogStatus("카탈로그 동기화 필요 - 샘플 GLB 사용");
+          return;
+        }
+
+        setFurnitureCatalog(items);
+        setFurnitureCatalogStatus("오늘의집 대신 공개 API 기반 로컬 DB");
+      } catch {
+        if (!isActive) return;
+        setFurnitureCatalog(FURNITURE_CATALOG);
+        setFurnitureCatalogStatus("카탈로그 동기화 필요 - 샘플 GLB 사용");
+      }
+    }
+
+    void loadFurnitureCatalog();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -648,6 +833,11 @@ export default function RoomlogFloorPlanEditor() {
     const wall = wallData.original2D;
     const wallId = wall?.id ?? wallData.wall_id;
 
+    if (tool === "furniture" && (pendingFurniture || selectedFurnitureId)) {
+      placeFurnitureAtPoint(event.point);
+      return;
+    }
+
     if (tool === "select" || tool === "wall" || tool === "none") {
       setSelectedWall((currentWall) => (String(currentWall?.id ?? "") === String(wallId) ? null : wall ?? null));
       setUploadStatus(`벽 ${wallId} 선택`);
@@ -685,11 +875,14 @@ export default function RoomlogFloorPlanEditor() {
   function handle3DFloorPointerDown(event: ThreeEvent<PointerEvent>) {
     if (tool !== "furniture") return;
     event.stopPropagation();
+    placeFurnitureAtPoint(event.point);
+  }
 
+  function placeFurnitureAtPoint(point: { x: number; z: number }) {
     const nextPosition: [number, number, number] = [
-      Number(event.point.x.toFixed(2)),
+      Number(point.x.toFixed(2)),
       pendingFurniture ? pendingFurniture.length[1] / 2000 : selectedFurniture?.position[1] ?? 0,
-      Number(event.point.z.toFixed(2))
+      Number(point.z.toFixed(2))
     ];
 
     if (pendingFurniture) {
@@ -717,6 +910,11 @@ export default function RoomlogFloorPlanEditor() {
 
   function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
     event.stopPropagation();
+    if (tool === "furniture" && pendingFurniture) {
+      placeFurnitureAtPoint(event.point);
+      return;
+    }
+
     setSelectedFurnitureId(furniture.id);
     setSelectedWall(null);
     setPendingFurniture(null);
@@ -1118,8 +1316,9 @@ export default function RoomlogFloorPlanEditor() {
 
         <div className="floor-plan-furniture-library">
           <span>wheretoput furniture picker</span>
+          <code>{furnitureCatalogStatus}</code>
           <div className="floor-plan-furniture-grid">
-            {FURNITURE_CATALOG.map((item) => (
+            {furnitureCatalog.map((item) => (
               <button
                 className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
                 key={item.furniture_id}
