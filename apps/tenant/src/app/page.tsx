@@ -14,6 +14,7 @@ import {
   type IntakeMode
 } from "./intake-mode";
 import {
+  buildFreshTenantTestSignupPayload,
   buildTenantSignupPayload,
   canSubmitTenantSignup,
   tenantSignupIssues,
@@ -1009,6 +1010,25 @@ export default function TenantApp() {
     }
   }
 
+  async function startFreshTestTenant() {
+    const suffix =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+    try {
+      setStatus("빈 새 테스트 세입자 계정 생성 중");
+      const result = await apiRequest<AuthResult>("/auth/signup", undefined, {
+        method: "POST",
+        body: JSON.stringify(buildFreshTenantTestSignupPayload(suffix))
+      });
+      await completeAuth(result);
+      setStatus(`${result.name} 계정 생성됨 · 첫 AI 상담을 시작해보세요.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "새 테스트 세입자 생성 실패");
+    }
+  }
+
   async function startSession(starterText = "") {
     if (!auth) {
       return;
@@ -1884,6 +1904,13 @@ export default function TenantApp() {
             }}
           >
             테스트 세입자 계정으로 시작
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void startFreshTestTenant()}
+          >
+            빈 새 테스트 세입자로 시작
           </button>
           <p className="status-line">{status}</p>
         </section>

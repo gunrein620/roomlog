@@ -13,9 +13,15 @@ describe("tenant demo login button", () => {
     const markup = renderToStaticMarkup(React.createElement(TenantApp));
 
     assert.match(markup, /테스트 세입자 계정으로 시작/);
+    assert.match(markup, /빈 새 테스트 세입자로 시작/);
   });
 
   it("keeps the login form empty instead of auto-prefilling demo credentials", () => {
     assert.doesNotMatch(pageSource, /setLoginForm\(\s*\(current\)[\s\S]*?demoLogin/);
+  });
+
+  it("starts a fresh test tenant through signup instead of reusing seeded demo data", () => {
+    assert.match(pageSource, /buildFreshTenantTestSignupPayload/);
+    assert.match(pageSource, /apiRequest<AuthResult>\(\"\/auth\/signup\"/);
   });
 });

@@ -149,3 +149,37 @@ export function buildTenantSignupPayload(form: TenantSignupForm) {
     address: input.address
   };
 }
+
+function safeTestSuffix(suffix: string | number) {
+  const value = String(suffix)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return value || "local";
+}
+
+function testPhoneDigits(suffix: string | number) {
+  const digits = String(suffix).replace(/\D+/g, "");
+
+  return digits.slice(-7).padStart(7, "0");
+}
+
+export function buildFreshTenantTestSignupPayload(suffix: string | number = Date.now()) {
+  const normalizedSuffix = safeTestSuffix(suffix);
+  const phoneDigits = testPhoneDigits(suffix);
+  const roomDigits = phoneDigits.slice(-3);
+
+  return {
+    role: "TENANT" as const,
+    email: `fresh-tenant-${normalizedSuffix}@roomlog.test`,
+    password: "password123!",
+    passwordConfirm: "password123!",
+    name: "새 테스트 세입자",
+    phone: `010${phoneDigits}`,
+    buildingName: "Roomlog 테스트 빌라",
+    roomNo: `${roomDigits}호`,
+    address: "서울시 성동구 테스트로 12"
+  };
+}

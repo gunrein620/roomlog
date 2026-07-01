@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import {
   buildTenantSignupPayload,
+  buildFreshTenantTestSignupPayload,
   canSubmitTenantSignup,
   tenantSignupIssues,
   visibleTenantSignupIssues
@@ -166,5 +167,19 @@ describe("tenant signup preflight", () => {
         inviteToken: "invite-token"
       }
     );
+  });
+
+  it("builds a valid fresh test tenant payload through the real signup shape", () => {
+    assert.deepEqual(buildFreshTenantTestSignupPayload(" 202607010101 "), {
+      role: "TENANT",
+      email: "fresh-tenant-202607010101@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "새 테스트 세입자",
+      phone: "0107010101",
+      buildingName: "Roomlog 테스트 빌라",
+      roomNo: "101호",
+      address: "서울시 성동구 테스트로 12"
+    });
   });
 });
