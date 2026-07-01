@@ -62,6 +62,14 @@ export interface RegisteredPlanMetadata {
   height?: number;
 }
 
+export interface DetectedWallLine {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  orientation?: "horizontal" | "vertical";
+}
+
 export const GRID_SIZE: number;
 export const DEFAULT_WALL_HEIGHT: number;
 export const DEFAULT_WALL_DEPTH: number;
@@ -98,5 +106,17 @@ export function convertWallsToWheretoputSimulator(
   walls: Wall[],
   options?: { height?: number; depth?: number; pixelToMeterRatio?: number }
 ): WheretoputSimulatorWall[];
+export function detectWallLinesFromMask(
+  mask: boolean[],
+  options?: { width?: number; height?: number; minRunLength?: number }
+): DetectedWallLine[];
+export function detectWallLinesFromImageData(
+  imageData: ImageData,
+  options?: { darkThreshold?: number; width?: number; height?: number; minRunLength?: number }
+): DetectedWallLine[];
+export function createWallsFromDetectedLines(
+  lines: DetectedWallLine[],
+  plan?: RegisteredPlanMetadata
+): Wall[];
 export function createWallsFromRegisteredPlan(plan?: RegisteredPlanMetadata): Wall[];
 export function createStarterWalls(): Wall[];

@@ -100,6 +100,18 @@ test("imports wheretoput-style upload, extraction, and rotatable 3D simulator co
   }
 });
 
+test("extracts uploaded image walls through a wheretoput-style pixel line pipeline", () => {
+  for (const label of [
+    "getImageData",
+    "detectWallLinesFromImageData",
+    "createWallsFromDetectedLines",
+    "wheretoput wallDetection",
+    "이미지 벽"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
 test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {
   const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
   const wall = model.createWall({ x: 0, y: 0 }, { x: 130, y: 40 }, "w1");
@@ -156,4 +168,32 @@ test("floor plan editor model can extract starter walls from a registered plan",
   assert.equal(walls.length >= 5, true);
   assert.equal(walls[0].id.startsWith("upload-unit-"), true);
   assert.equal(walls.every((wall) => wall.start && wall.end), true);
+});
+
+test("floor plan editor model detects wall lines from a binary image mask", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const width = 12;
+  const height = 10;
+  const mask = Array.from({ length: width * height }, () => false);
+
+  for (let x = 1; x <= 10; x += 1) mask[2 * width + x] = true;
+  for (let y = 1; y <= 8; y += 1) mask[y * width + 6] = true;
+
+  const lines = model.detectWallLinesFromMask(mask, { width, height, minRunLength: 6 });
+
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 === 2), true);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 === 6), true);
+});
+
+test("floor plan editor model scales detected image lines into editor walls", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const walls = model.createWallsFromDetectedLines(
+    [{ x1: 100, y1: 50, x2: 900, y2: 50, orientation: "horizontal" }],
+    { width: 1000, height: 500, name: "scan.png" }
+  );
+
+  assert.equal(walls.length, 1);
+  assert.equal(walls[0].id, "scan-wall-1");
+  assert.equal(walls[0].start.y, walls[0].end.y);
+  assert.equal(walls[0].end.x > walls[0].start.x, true);
 });

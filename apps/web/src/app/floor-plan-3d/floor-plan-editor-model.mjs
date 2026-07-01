@@ -217,6 +217,112 @@ export function convertWallsToWheretoputSimulator(walls, options = {}) {
   );
 }
 
+function lineLength(line) {
+  return Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+}
+
+export function detectWallLinesFromMask(mask, options = {}) {
+  const width = Number(options.width) || 0;
+  const height = Number(options.height) || 0;
+  const minRunLength = options.minRunLength ?? Math.max(24, Math.round(Math.min(width, height) * 0.08));
+  const lines = [];
+
+  if (width <= 0 || height <= 0 || !Array.isArray(mask)) return lines;
+
+  for (let y = 0; y < height; y += 1) {
+    let runStart = null;
+    for (let x = 0; x <= width; x += 1) {
+      const isWall = x < width && Boolean(mask[y * width + x]);
+      if (isWall && runStart === null) runStart = x;
+      if ((!isWall || x === width) && runStart !== null) {
+        const runEnd = x - 1;
+        if (runEnd - runStart + 1 >= minRunLength) {
+          lines.push({
+            x1: runStart,
+            y1: y,
+            x2: runEnd,
+            y2: y,
+            orientation: "horizontal"
+          });
+        }
+        runStart = null;
+      }
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    let runStart = null;
+    for (let y = 0; y <= height; y += 1) {
+      const isWall = y < height && Boolean(mask[y * width + x]);
+      if (isWall && runStart === null) runStart = y;
+      if ((!isWall || y === height) && runStart !== null) {
+        const runEnd = y - 1;
+        if (runEnd - runStart + 1 >= minRunLength) {
+          lines.push({
+            x1: x,
+            y1: runStart,
+            x2: x,
+            y2: runEnd,
+            orientation: "vertical"
+          });
+        }
+        runStart = null;
+      }
+    }
+  }
+
+  return lines.sort((lineA, lineB) => lineLength(lineB) - lineLength(lineA));
+}
+
+export function detectWallLinesFromImageData(imageData, options = {}) {
+  const width = imageData?.width ?? 0;
+  const height = imageData?.height ?? 0;
+  const data = imageData?.data;
+  const darkThreshold = options.darkThreshold ?? 170;
+
+  if (!data || width <= 0 || height <= 0) return [];
+
+  const mask = Array.from({ length: width * height }, (_, index) => {
+    const offset = index * 4;
+    const red = data[offset] ?? 255;
+    const green = data[offset + 1] ?? 255;
+    const blue = data[offset + 2] ?? 255;
+    const alpha = data[offset + 3] ?? 255;
+    const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+
+    return alpha > 24 && luminance < darkThreshold;
+  });
+
+  return detectWallLinesFromMask(mask, { ...options, width, height });
+}
+
+export function createWallsFromDetectedLines(lines, plan = {}) {
+  const imageWidth = Math.max(1, Number(plan.width) || 960);
+  const imageHeight = Math.max(1, Number(plan.height) || 620);
+  const scale = Math.min(860 / imageWidth, 520 / imageHeight);
+  const offsetX = (960 - imageWidth * scale) / 2;
+  const offsetY = (620 - imageHeight * scale) / 2;
+  const baseId = normalizePlanName(plan.name) || "detected";
+
+  return lines
+    .filter((line) => lineLength(line) > 0)
+    .slice(0, 24)
+    .map((line, index) =>
+      createWall(
+        {
+          x: offsetX + line.x1 * scale,
+          y: offsetY + line.y1 * scale
+        },
+        {
+          x: offsetX + line.x2 * scale,
+          y: offsetY + line.y2 * scale
+        },
+        `${baseId}-wall-${index + 1}`
+      )
+    )
+    .filter(Boolean);
+}
+
 export function createWallsFromRegisteredPlan(plan = {}) {
   const planWidth = Math.max(1, Number(plan.width) || 1280);
   const planHeight = Math.max(1, Number(plan.height) || 900);

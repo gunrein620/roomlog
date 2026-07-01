@@ -4,9 +4,11 @@ import { useMemo, useRef, useState } from "react";
 import {
   createStarterWalls,
   createWall,
+  createWallsFromDetectedLines,
   createWallsFromRegisteredPlan,
   convertWallsTo3D,
   convertWallsToWheretoputSimulator,
+  detectWallLinesFromImageData,
   findNearestWall,
   removeWall,
   snapToGrid,
@@ -41,6 +43,7 @@ type WheretoputWall = {
   position: [number, number, number];
   rotation: [number, number, number];
 };
+type DetectedLine = { x1: number; y1: number; x2: number; y2: number; orientation?: "horizontal" | "vertical" };
 
 const tools: Array<{ id: EditorTool; label: string; hint: string }> = [
   { id: "wall", label: "벽", hint: "드래그해서 수평/수직 벽 생성" },
@@ -85,6 +88,48 @@ function parseUploadedJsonWalls(source: unknown): Wall[] {
     .filter((wall): wall is Wall => Boolean(wall));
 }
 
+function detectWallsFromRegisteredImage(plan: RegisteredPlan): Promise<Wall[]> {
+  return new Promise((resolve) => {
+    if (!plan.dataUrl) {
+      resolve([]);
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      const width = image.naturalWidth || plan.width;
+      const height = image.naturalHeight || plan.height;
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        resolve([]);
+        return;
+      }
+
+      context.drawImage(image, 0, 0, width, height);
+
+      // wheretoput wallDetection: image -> binary mask -> line runs -> editor walls
+      const imageData = context.getImageData(0, 0, width, height);
+      const lines = detectWallLinesFromImageData(imageData, {
+        darkThreshold: 185,
+        minRunLength: Math.max(32, Math.round(Math.min(width, height) * 0.08))
+      }) as DetectedLine[];
+      const detectedWalls = createWallsFromDetectedLines(lines, {
+        height,
+        name: plan.name,
+        width
+      }) as Wall[];
+
+      resolve(detectedWalls);
+    };
+    image.onerror = () => resolve([]);
+    image.src = plan.dataUrl;
+  });
+}
+
 export default function RoomlogFloorPlanEditor() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [tool, setTool] = useState<EditorTool>("wall");
@@ -119,12 +164,19 @@ export default function RoomlogFloorPlanEditor() {
     setDraftWall(null);
   }
 
-  function extractWallsFromRegisteredPlan() {
+  async function extractWallsFromRegisteredPlan() {
     if (!registeredPlan) return;
-    const extractedWalls = createWallsFromRegisteredPlan(registeredPlan) as Wall[];
+    const imageWalls =
+      registeredPlan.source === "image" ? await detectWallsFromRegisteredImage(registeredPlan) : [];
+    const extractedWalls =
+      imageWalls.length > 0 ? imageWalls : (createWallsFromRegisteredPlan(registeredPlan) as Wall[]);
     setWalls(extractedWalls);
     setSelectedWallId(null);
-    setUploadStatus(`${registeredPlan.name} 벽 자동 추출 완료`);
+    setUploadStatus(
+      imageWalls.length > 0
+        ? `${registeredPlan.name} 이미지 벽 ${imageWalls.length}개 추출`
+        : `${registeredPlan.name} 벽 자동 추출 완료`
+    );
   }
 
   function convertTo3D() {
