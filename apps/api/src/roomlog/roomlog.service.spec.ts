@@ -2843,6 +2843,10 @@ describe("RoomlogService", () => {
       vendorId: "vendor-demo",
       requestNote: "누수 부위 확인 전 현장 사진을 남겨주세요."
     });
+    service.addTenantComplaintMessage("tenant-demo", ticket.complaintId, {
+      messageText: "물방울 사진을 추가로 남깁니다.",
+      attachmentUrls: ["/api/files/tenant-leak.jpg"]
+    });
     const otherInvite = service.createVendorInvite("landlord-demo", {
       email: "other-vendor-message@roomlog.test",
       businessName: "다른 설비",
@@ -2865,7 +2869,15 @@ describe("RoomlogService", () => {
       attachmentUrls: ["/api/files/vendor-before-visit.jpg"]
     });
     const managerDetail = service.getTicketDetailForManager("landlord-demo", ticket.id);
+    const vendorList = service.listVendorRepairs("vendor-demo");
     const vendorDetail = service.getVendorRepair("vendor-demo", repair.id);
+    const vendorTicket = vendorDetail.ticket as Record<string, unknown>;
+    const vendorComplaint = vendorDetail.ticket.complaint as Record<string, unknown>;
+    const vendorRoom = vendorDetail.ticket.room as Record<string, unknown>;
+    const vendorPhotoAnalysis = vendorDetail.ticket.analysis.photoAnalysis as
+      | Record<string, unknown>
+      | undefined;
+    const vendorMessageTicket = vendorMessage.ticket as Record<string, unknown>;
 
     assert.equal(vendorMessage.message.senderRole, "VENDOR");
     assert.deepEqual(vendorMessage.message.attachmentUrls, [
@@ -2880,14 +2892,32 @@ describe("RoomlogService", () => {
       ),
       true
     );
+    assert.equal(vendorList[0]?.ticket.complaint.title, "욕실 천장 점검 요청");
+    assert.equal(vendorDetail.managerRequestText, "누수 부위 확인 전 현장 사진을 남겨주세요.");
+    assert.equal(vendorDetail.visitMemo, "내일 오전");
+    assert.deepEqual(vendorDetail.ticket.attachmentUrls, ["/api/files/tenant-leak.jpg"]);
+    assert.deepEqual(vendorDetail.ticket.complaint.attachmentUrls, [
+      "/api/files/tenant-leak.jpg"
+    ]);
+    assert.deepEqual(vendorDetail.ticket.room, {
+      buildingName: "정글빌라",
+      roomNo: "301호"
+    });
+    assert.equal("tenantId" in vendorTicket, false);
+    assert.equal("roomId" in vendorTicket, false);
+    assert.equal("messages" in vendorTicket, false);
+    assert.equal("history" in vendorTicket, false);
+    assert.equal("roomTimeline" in vendorTicket, false);
+    assert.equal("callbot" in vendorTicket, false);
+    assert.equal("aiFeedback" in vendorTicket, false);
+    assert.equal("tenantId" in vendorComplaint, false);
+    assert.equal("roomId" in vendorComplaint, false);
+    assert.equal("address" in vendorRoom, false);
     assert.equal(
-      vendorDetail.ticket.messages.some(
-        (message) =>
-          message.senderRole === "VENDOR" &&
-          message.attachmentUrls.includes("/api/files/vendor-before-visit.jpg")
-      ),
-      true
+      Boolean(vendorPhotoAnalysis && "previousAttachmentUrls" in vendorPhotoAnalysis),
+      false
     );
+    assert.equal("messages" in vendorMessageTicket, false);
     assert.throws(
       () =>
         service.addVendorRepairMessage(otherVendor.userId, repair.id, {
