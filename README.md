@@ -1,3 +1,8 @@
+docker compose up -d 서버실행
+docker compose down 서버끄기
+docker compose up -d --build 코드반영후 서버재실행
+
+
 # Roomlog
 
 Roomlog MVP는 하자 처리 E2E 흐름을 검증하는 모노레포입니다. 세입자, 관리자, 협력업체가 하나의 NestJS API와 공용 도메인 모델을 공유하고, 각 역할별 Next.js 앱에서 같은 티켓을 다르게 처리합니다.

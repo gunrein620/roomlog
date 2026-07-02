@@ -53,15 +53,21 @@ test("api image trusts the Amazon RDS certificate bundle for TLS database connec
   assert.match(apiDockerfileSource, /NODE_EXTRA_CA_CERTS=\/usr\/local\/share\/ca-certificates\/aws-rds-global-bundle\.pem/);
 });
 
-test("keeps tenant, manager, and vendor screens available as web routes", () => {
+test("keeps tenant, manager, and vendor entry routes available (redirect to domain screens)", () => {
+  // KAN-130 1-E: 거대 단일-page 뷰 셸은 은퇴하고, 역할 진입 인덱스는 App Router
+  // 도메인 첫 화면으로 리다이렉트한다(화면 = app/<role>/<domain>/<screen>).
+  const redirectTargets = {
+    tenant: "/tenant/defect/00",
+    manager: "/manager/home/00",
+    vendor: "/vendor/job/00"
+  };
   for (const route of ["tenant", "manager", "vendor"]) {
     assert.equal(existsSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url)), true);
     assert.equal(existsSync(new URL(`./src/app/${route}/layout.tsx`, import.meta.url)), true);
-    assert.equal(existsSync(new URL(`./src/app/${route}/globals.css`, import.meta.url)), true);
 
     const routePageSource = readFileSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url), "utf8");
-    assert.match(routePageSource, new RegExp(`Roomlog ${route[0].toUpperCase()}${route.slice(1)}`));
-    assert.match(routePageSource, /NEXT_PUBLIC_API_URL/);
+    assert.match(routePageSource, /redirect\(/);
+    assert.match(routePageSource, new RegExp(redirectTargets[route]));
   }
 });
 
@@ -69,6 +75,11 @@ test("renders a mobile real-estate app shell with search, map list, and listing 
   for (const label of ["조건에 맞는 방", "지도 열기", "추천 매물", "매물 57804322", "전체"]) {
     assert.match(pageSource, new RegExp(label));
   }
+});
+
+test("opens the public website directly on the listing home instead of signup", () => {
+  assert.match(pageSource, /useState<AppRole>\("seeker"\)/);
+  assert.doesNotMatch(pageSource, /useState<AppRole \| null>\(null\)/);
 });
 
 test("promotes the future 3D room tour as a primary listing detail action", () => {
@@ -81,11 +92,9 @@ test("promotes the future 3D room tour as a primary listing detail action", () =
   assert.doesNotMatch(pageSource, /3D ENGINE SLOT|다른 팀의 3D 엔진|연결될 위치/);
 });
 
-test("offers social-only sign in with a developer shortcut for local entry", () => {
+test("offers a clean white social sign-in limited to Naver and Google with a developer shortcut", () => {
   for (const label of [
-    "카카오",
     "네이버",
-    "Apple",
     "Google",
     "개발용 로그인",
     "집우집주",
@@ -101,17 +110,32 @@ test("offers social-only sign in with a developer shortcut for local entry", () 
   assert.match(pageSource, /socialLoginNotice/);
   assert.match(pageSource, /setSocialLoginNotice/);
   assert.match(pageSource, /setActiveRole/);
-  assert.match(pageSource, /assets\/img\/image\.png/);
-  assert.match(pageSource, /loginHeroImage/);
-  assert.match(pageSource, /login-visual/);
-  assert.match(pageSource, /login-hero-image/);
-  assert.match(cssSource, /\.login-visual/);
-  assert.match(cssSource, /\.login-hero-image/);
-  assert.match(cssSource, /\.login-hero-image\s*{[^}]*object-fit:\s*contain/s);
+  assert.match(pageSource, /login-brandmark/);
+  assert.match(pageSource, /brand-mark-icon/);
+  assert.match(cssSource, /\.login-phone\s*{[^}]*background:\s*#ffffff/s);
   assert.match(cssSource, /\.login-trust-row/);
   assert.match(cssSource, /\.social-login-notice/);
+  assert.doesNotMatch(pageSource, /카카오로 계속하기/);
+  assert.doesNotMatch(pageSource, /Apple로 계속하기/);
+  assert.doesNotMatch(pageSource, /assets\/img\/image\.png/);
+  assert.doesNotMatch(pageSource, /loginHeroImage/);
+  assert.doesNotMatch(pageSource, /login-visual/);
+  assert.doesNotMatch(pageSource, /login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.login-visual/);
+  assert.doesNotMatch(cssSource, /\.login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.social-button\.kakao/);
+  assert.doesNotMatch(cssSource, /\.social-button\.apple/);
   assert.doesNotMatch(pageSource, /개발 중에는/);
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
+});
+
+test("opens the social signup screen from the topbar signup actions", () => {
+  assert.match(pageSource, /const \[authMode, setAuthMode\]/);
+  assert.match(pageSource, /openAuthScreen/);
+  assert.match(pageSource, /className="web-signup"[^>]*onClick=\{\(\) => openAuthScreen\("signup"\)\}/);
+  assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
+  assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
+  assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);
 });
 
 test("borrows mature Zigbang and Dabang product patterns for trust and map search", () => {
@@ -331,10 +355,10 @@ test("offers three developer login roles for seekers, tenants, and landlords", (
   assert.match(pageSource, /setActiveRole\(role\.id\)/);
   assert.match(pageSource, /startRoleSession/);
   assert.match(pageSource, /setActiveTab\(role === "seeker" \? "home" : "mypage"\)/);
-  assert.match(pageSource, /<LoginScreen setActiveRole=\{startRoleSession\}/);
+  assert.match(pageSource, /function LoginScreen/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
-  assert.match(pageSource, /\[activeRole, activeTab, selectedListing\]/);
+  assert.match(pageSource, /\[activeRole, activeTab, selectedListing, authMode\]/);
 });
 
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
