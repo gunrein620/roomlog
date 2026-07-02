@@ -40,15 +40,21 @@ test("serves role frontends from the single web container on port 3000", () => {
   assert.match(webDockerfileSource, /CMD \["pnpm", "--filter", "web", "start"\]/);
 });
 
-test("keeps tenant, manager, and vendor screens available as web routes", () => {
+test("keeps tenant, manager, and vendor entry routes available (redirect to domain screens)", () => {
+  // KAN-130 1-E: 거대 단일-page 뷰 셸은 은퇴하고, 역할 진입 인덱스는 App Router
+  // 도메인 첫 화면으로 리다이렉트한다(화면 = app/<role>/<domain>/<screen>).
+  const redirectTargets = {
+    tenant: "/tenant/defect/00",
+    manager: "/manager/home/00",
+    vendor: "/vendor/job/00"
+  };
   for (const route of ["tenant", "manager", "vendor"]) {
     assert.equal(existsSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url)), true);
     assert.equal(existsSync(new URL(`./src/app/${route}/layout.tsx`, import.meta.url)), true);
-    assert.equal(existsSync(new URL(`./src/app/${route}/globals.css`, import.meta.url)), true);
 
     const routePageSource = readFileSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url), "utf8");
-    assert.match(routePageSource, new RegExp(`Roomlog ${route[0].toUpperCase()}${route.slice(1)}`));
-    assert.match(routePageSource, /NEXT_PUBLIC_API_URL/);
+    assert.match(routePageSource, /redirect\(/);
+    assert.match(routePageSource, new RegExp(redirectTargets[route]));
   }
 });
 
