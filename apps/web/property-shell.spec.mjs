@@ -1430,3 +1430,249 @@ test("floor plan editor model keeps small detected openings instead of snapping 
   assert.equal(walls[1].start.x > walls[0].end.x, true);
   assert.equal(walls[1].start.x - walls[0].end.x < 16, true);
 });
+
+test("floor plan editor model builds normalized floor plan draft payload", async () => {
+  const payloadModel = await import("./src/app/floor-plan-3d/room-model/room-payload.ts");
+  const walls3D = [{ id: "wall-0", wall_id: "w1", position: [0, 1.25, 0], rotation: [0, 0, 0], dimensions: { width: 2, height: 2.5, depth: 0.15 } }];
+  const confirmed = { id: "c1", status: "CONFIRMED" };
+  const pending = { id: "c2", status: "PENDING" };
+  const payload = payloadModel.buildFloorPlanDraftPayload({
+    extractionMeta: { detectedLineCount: 4 },
+    fixtureCandidates: [confirmed, pending],
+    hiddenWallCount: 1,
+    hiddenWallIds: new Set(["w2"]),
+    landlordFurnitures: [{ id: "f1", source: "LANDLORD_OPTION" }],
+    openingCandidates: [pending],
+    pixelToMmRatio: 20,
+    scaleConfirmed: true,
+    status: "DRAFT",
+    uploadedFloorPlanSource: { attachmentId: "att-1", imageUrl: "https://img" },
+    uploadedImage: "data:fallback",
+    walls: [{ id: "w1", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } }],
+    walls3D
+  });
+
+  assert.equal(payload.status, "DRAFT");
+  assert.equal(payload.extractionMeta.scaleConfirmed, true);
+  assert.equal(payload.extractionMeta.detectedLineCount, 4);
+  assert.deepEqual(payload.hiddenWallIds, ["w2"]);
+  assert.equal(payload.fixtures.length, 2);
+  assert.equal(payload.sourceAttachmentId, "att-1");
+  assert.equal(payload.sourceImageUrl, "https://img");
+  assert.equal(payload.room3d.wallCount, 1);
+  assert.equal(payload.room3d.hiddenWallCount, 1);
+  assert.deepEqual(payload.room3d.fixtures, [confirmed]);
+  assert.deepEqual(payload.room3d.openings, []);
+});
+
+test("floor plan editor model builds resident design and local snapshot payloads", async () => {
+  const payloadModel = await import("./src/app/floor-plan-3d/room-model/room-payload.ts");
+  const walls3D = [{ id: "wall-0", wall_id: "w1", position: [0, 1.25, 0], rotation: [0, 0, 0], dimensions: { width: 2, height: 2.5, depth: 0.15 } }];
+  const resident = payloadModel.buildResidentDesignPayload({
+    fixtureCandidates: [{ id: "c1", status: "CONFIRMED" }],
+    floorPlanDraftId: "draft-9",
+    hiddenWallIds: [],
+    landlordOptionFurnitures: [{ id: "f1", source: "LANDLORD_OPTION" }],
+    openingCandidates: [],
+    pixelToMmRatio: 20,
+    residentDesignFurnitures: [{ id: "f2", source: "RESIDENT_DESIGN" }],
+    savedAt: 1234,
+    walls: [],
+    walls3D
+  });
+
+  assert.equal(resident.mode, "resident");
+  assert.equal(resident.sourceFloorPlanDraftId, "draft-9");
+  assert.equal(resident.lockedFurnitures[0].id, "f1");
+  assert.equal(resident.furnitures[0].id, "f2");
+  assert.deepEqual(resident.room3d, { walls: walls3D });
+
+  const snapshot = payloadModel.buildFloorPlanLocalSnapshot({
+    extractionMeta: { detectedLineCount: 4 },
+    fixtureCandidates: [{ id: "c1", status: "CONFIRMED" }],
+    hiddenWallIds: ["w2"],
+    landlordFurnitures: [],
+    openingCandidates: [{ id: "c3", status: "PENDING" }],
+    pixelToMmRatio: 20,
+    timestamp: 5678,
+    walls: [],
+    walls3D
+  });
+
+  assert.equal(snapshot.timestamp, 5678);
+  assert.equal(snapshot.extractionMeta.scaleConfirmed, undefined);
+  assert.equal(snapshot.room3d.fixtures.length, 1);
+  assert.deepEqual(snapshot.room3d.openings, []);
+  assert.equal(snapshot.room3d.wallCount, undefined);
+});
+
+test("floor plan editor model builds wall endpoint graphs and finds dangling ends", async () => {
+  const graphModel = await import("./src/app/floor-plan-3d/room-model/wall-graph.ts");
+  const walls = [
+    { id: "top", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "right", start: { x: 100.4, y: 0.3 }, end: { x: 100, y: 80 } },
+    { id: "broken", start: { x: 180, y: 0 }, end: { x: 220, y: 0 } }
+  ];
+
+  const graph = graphModel.buildWallGraph(walls, 1);
+  const corners = graphModel.findCorners(walls, 1);
+  const danglingEnds = graphModel.findDanglingEnds(walls, 1);
+
+  assert.equal(graph.nodes.some((node) => node.wallIds.includes("top") && node.wallIds.includes("right")), true);
+  assert.equal(corners.length, 1);
+  assert.deepEqual(corners[0].wallIds, ["top", "right"]);
+  assert.equal(danglingEnds.length, 4);
+  assert.deepEqual(
+    danglingEnds.map((end) => `${end.wallId}:${end.end}`).sort(),
+    ["broken:end", "broken:start", "right:end", "top:start"]
+  );
+});
+
+test("floor plan editor model merges collinear overlapping wall runs", async () => {
+  const graphModel = await import("./src/app/floor-plan-3d/room-model/wall-graph.ts");
+  const walls = [
+    { id: "a", start: { x: 0, y: 0 }, end: { x: 50, y: 0 } },
+    { id: "b", start: { x: 50.4, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "c", start: { x: 80, y: 0 }, end: { x: 130, y: 0 } },
+    { id: "side", start: { x: 160, y: 0 }, end: { x: 160, y: 40 } }
+  ];
+
+  const merged = graphModel.mergeCollinearWalls(walls, { gapTolerancePx: 1, tolerancePx: 1 });
+
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged[0], {
+    id: "merged:a+b+c",
+    start: { x: 0, y: 0 },
+    end: { x: 130, y: 0 }
+  });
+  assert.deepEqual(merged[1], walls[3]);
+  assert.deepEqual(walls[1].start, { x: 50.4, y: 0 });
+});
+
+test("floor plan editor model detects closed wall loops", async () => {
+  const graphModel = await import("./src/app/floor-plan-3d/room-model/wall-graph.ts");
+  const square = [
+    { id: "top", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "right", start: { x: 100, y: 0 }, end: { x: 100, y: 80 } },
+    { id: "bottom", start: { x: 100, y: 80 }, end: { x: 0, y: 80 } },
+    { id: "left", start: { x: 0, y: 80 }, end: { x: 0, y: 0 } }
+  ];
+
+  const loops = graphModel.detectClosedLoops(square, 1);
+  const openLoops = graphModel.detectClosedLoops(square.slice(0, 3), 1);
+
+  assert.equal(loops.length, 1);
+  assert.deepEqual(loops[0].wallIds.sort(), ["bottom", "left", "right", "top"]);
+  assert.equal(loops[0].points.length, 4);
+  assert.equal(loops[0].perimeterPx, 360);
+  assert.deepEqual(openLoops, []);
+});
+
+test("floor plan editor model calculates rotated furniture footprints", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const furniture = {
+    id: "desk-1",
+    furniture_id: "desk",
+    length: [2000, 740, 1000],
+    position: [1, 0.37, 2],
+    rotation: [0, Math.PI / 2, 0],
+    scale: 1
+  };
+
+  const footprint = collisionModel.getFurnitureFootprint(furniture);
+
+  assert.equal(footprint.width, 2);
+  assert.equal(footprint.depth, 1);
+  assert.deepEqual(footprint.bounds, { maxX: 1.5, maxZ: 3, minX: 0.5, minZ: 1 });
+  assert.deepEqual(footprint.corners, [
+    { x: 1.5, z: 1 },
+    { x: 1.5, z: 3 },
+    { x: 0.5, z: 3 },
+    { x: 0.5, z: 1 }
+  ]);
+  assert.deepEqual(furniture.position, [1, 0.37, 2]);
+});
+
+test("floor plan editor model detects furniture wall and furniture overlaps", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const wall = {
+    id: "wall-0",
+    wall_id: "top",
+    position: [0, 1.25, 0],
+    rotation: [0, 0, 0],
+    dimensions: { width: 4, height: 2.5, depth: 0.2 }
+  };
+  const sofa = {
+    id: "sofa",
+    furniture_id: "sofa",
+    length: [1200, 700, 800],
+    position: [0, 0.35, 0.15],
+    rotation: [0, 0, 0],
+    scale: 1
+  };
+  const table = {
+    ...sofa,
+    id: "table",
+    position: [0.5, 0.35, 0.2]
+  };
+  const farChair = {
+    ...sofa,
+    id: "chair",
+    position: [3, 0.35, 2]
+  };
+
+  assert.equal(collisionModel.furnitureIntersectsWall(sofa, wall), true);
+  assert.equal(collisionModel.furnitureIntersectsWall(farChair, wall), false);
+  assert.equal(collisionModel.furnitureOverlapsFurniture(sofa, table), true);
+  assert.equal(collisionModel.furnitureOverlapsFurniture(sofa, farChair), false);
+});
+
+test("floor plan editor model clamps furniture inside wall bounds", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const walls = [
+    { id: "top", wall_id: "top", position: [0, 1.25, -2], rotation: [0, 0, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } },
+    { id: "right", wall_id: "right", position: [2, 1.25, 0], rotation: [0, Math.PI / 2, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } },
+    { id: "bottom", wall_id: "bottom", position: [0, 1.25, 2], rotation: [0, 0, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } },
+    { id: "left", wall_id: "left", position: [-2, 1.25, 0], rotation: [0, Math.PI / 2, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } }
+  ];
+  const bed = {
+    id: "bed",
+    furniture_id: "bed",
+    length: [1000, 500, 1000],
+    position: [2.4, 0.25, -2.3],
+    rotation: [0, 0, 0],
+    scale: 1
+  };
+
+  const clamped = collisionModel.clampFurnitureIntoRoom(bed, walls);
+
+  assert.deepEqual(clamped.position, [1.5, 0.25, -1.5]);
+  assert.notEqual(clamped, bed);
+  assert.deepEqual(bed.position, [2.4, 0.25, -2.3]);
+});
+
+test("floor plan editor model snaps furniture to the nearest wall", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const wall = {
+    id: "wall-0",
+    wall_id: "top",
+    position: [0, 1.25, 0],
+    rotation: [0, 0, 0],
+    dimensions: { width: 4, height: 2.5, depth: 0.2 }
+  };
+  const wardrobe = {
+    id: "wardrobe",
+    furniture_id: "wardrobe",
+    length: [1000, 1900, 600],
+    position: [0.4, 0.95, 0.45],
+    rotation: [0, Math.PI / 2, 0],
+    scale: 1
+  };
+
+  const snapped = collisionModel.snapFurnitureToWall(wardrobe, [wall], 0.4);
+  const unchanged = collisionModel.snapFurnitureToWall({ ...wardrobe, position: [0.4, 0.95, 1.4] }, [wall], 0.4);
+
+  assert.deepEqual(snapped.position, [0.4, 0.95, 0.4]);
+  assert.deepEqual(snapped.rotation, [0, 0, 0]);
+  assert.deepEqual(unchanged.position, [0.4, 0.95, 1.4]);
+});
