@@ -1,5 +1,6 @@
 import { Badge, Card } from "@roomlog/ui";
-import { VENDOR_DEMO_TICKET_ID, getVendorAnalysis, getVendorTicket } from "@/lib/vendor-api";
+import { getVendorAnalysis, getVendorTicket } from "@/lib/vendor-api";
+import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
 import {
   Body,
@@ -14,10 +15,11 @@ import {
   mutedStyle,
 } from "../_components";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  const { id } = await searchParams;
   const [ticket, analysis] = await Promise.all([
-    getVendorTicket(VENDOR_DEMO_TICKET_ID),
-    getVendorAnalysis(VENDOR_DEMO_TICKET_ID),
+    getVendorTicket(id),
+    getVendorAnalysis(id),
   ]);
 
   return (
@@ -45,7 +47,7 @@ export default async function Page() {
         <ContactThread />
       </Body>
       <Footer>
-        <LinkButton href={ROUTES["V-JOB-02"]}>견적 회신하기</LinkButton>
+        <LinkButton href={withId(ROUTES["V-JOB-02"], id)}>견적 회신하기</LinkButton>
       </Footer>
     </>
   );

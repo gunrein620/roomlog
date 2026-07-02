@@ -1,12 +1,14 @@
 import { Button, Card } from "@roomlog/ui";
-import { VENDOR_DEMO_TICKET_ID, getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
+import { getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
+import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
 import { Body, Footer, LinkButton, QuoteSummary, ScreenHeader, Stepper, labelStyle, mutedStyle } from "../_components";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  const { id } = await searchParams;
   const [ticket, repair] = await Promise.all([
-    getVendorTicket(VENDOR_DEMO_TICKET_ID),
-    getVendorRepair(VENDOR_DEMO_TICKET_ID),
+    getVendorTicket(id),
+    getVendorRepair(id),
   ]);
 
   return (
@@ -29,8 +31,8 @@ export default async function Page() {
       </Body>
       <Footer>
         <Button fullWidth variant="secondary">진행 상태 새로고침</Button>
-        <LinkButton href={ROUTES["V-JOB-02"]} variant="secondary">견적 수정</LinkButton>
-        <LinkButton href={ROUTES["V-JOB-04"]}>일정 확정하러 가기</LinkButton>
+        <LinkButton href={withId(ROUTES["V-JOB-02"], id)} variant="secondary">견적 수정</LinkButton>
+        <LinkButton href={withId(ROUTES["V-JOB-04"], id)}>일정 확정하러 가기</LinkButton>
       </Footer>
     </>
   );

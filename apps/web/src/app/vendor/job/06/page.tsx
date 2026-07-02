@@ -1,18 +1,20 @@
 import { Button, Card, Input } from "@roomlog/ui";
-import { VENDOR_DEMO_TICKET_ID, getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
+import { getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
+import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
 import { Body, Footer, InfoRow, PhotoPreview, ScreenHeader, labelStyle, mutedStyle } from "../_components";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  const { id } = await searchParams;
   const [ticket, repair] = await Promise.all([
-    getVendorTicket(VENDOR_DEMO_TICKET_ID),
-    getVendorRepair(VENDOR_DEMO_TICKET_ID),
+    getVendorTicket(id),
+    getVendorRepair(id),
   ]);
   const baseAmount = repair.onsiteQuoteAmount ?? repair.quoteAmount ?? 0;
 
   return (
     <>
-      <ScreenHeader title="완료 보고" ticketId={ticket.id} backTo={ROUTES["V-JOB-05"]} />
+      <ScreenHeader title="완료 보고" ticketId={ticket.id} backTo={withId(ROUTES["V-JOB-05"], id)} />
       <Body>
         <section>
           <div style={labelStyle}>완료 사진</div>

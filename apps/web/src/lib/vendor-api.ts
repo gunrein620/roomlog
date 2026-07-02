@@ -82,6 +82,21 @@ async function activeVendorRepair(): Promise<TeamVendorRepair | null> {
   }
 }
 
+async function getVendorRepairById(id: string): Promise<TeamVendorRepair | null> {
+  try {
+    return await serverFetch<TeamVendorRepair>(`/vendor/repairs/${id}`);
+  } catch (error) {
+    console.error(`[vendor/api] /vendor/repairs/${id} 조회 실패:`, error);
+    return null;
+  }
+}
+
+// 실제 수리 id면 그 건을, "active"/데모 sentinel/미지정이면 첫 배정 건을 해석.
+async function resolveVendorRepair(id?: string): Promise<TeamVendorRepair | null> {
+  if (id && id !== VENDOR_DEMO_TICKET_ID) return getVendorRepairById(id);
+  return activeVendorRepair();
+}
+
 export async function listVendorJobs(): Promise<RepairJob[]> {
   try {
     const list = await listTeamVendorRepairs();
@@ -92,24 +107,24 @@ export async function listVendorJobs(): Promise<RepairJob[]> {
   }
 }
 
-export async function getVendorRepair(_ticketId?: string): Promise<RepairJob> {
-  const r = await activeVendorRepair();
+export async function getVendorRepair(id?: string): Promise<RepairJob> {
+  const r = await resolveVendorRepair(id);
   const mapped = r && repairOf(r);
   if (mapped) return mapped;
   console.warn("[vendor/api] 배정된 수리 없음 → 데모 폴백");
   return VENDOR_DEMO_REPAIR;
 }
 
-export async function getVendorAnalysis(_ticketId?: string): Promise<DefectAnalysis> {
-  const r = await activeVendorRepair();
+export async function getVendorAnalysis(id?: string): Promise<DefectAnalysis> {
+  const r = await resolveVendorRepair(id);
   const mapped = r && toManagerAnalysis(r.ticket);
   if (mapped) return mapped;
   console.warn("[vendor/api] 배정된 수리 분석 없음 → 데모 폴백");
   return VENDOR_DEMO_ANALYSIS;
 }
 
-export async function getVendorTicket(_ticketId?: string): Promise<Ticket> {
-  const r = await activeVendorRepair();
+export async function getVendorTicket(id?: string): Promise<Ticket> {
+  const r = await resolveVendorRepair(id);
   if (r) return toManagerTicket(r.ticket);
   console.warn("[vendor/api] 배정된 수리 티켓 없음 → 데모 폴백");
   return VENDOR_DEMO_TICKET;

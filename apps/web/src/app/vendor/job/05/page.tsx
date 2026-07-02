@@ -1,12 +1,14 @@
 import { Badge, Button, Card, Input } from "@roomlog/ui";
-import { VENDOR_DEMO_TICKET_ID, getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
+import { getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
+import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
 import { Body, Footer, InfoRow, LinkButton, ScreenHeader, Stepper, formatVisitTime, labelStyle, mutedStyle } from "../_components";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  const { id } = await searchParams;
   const [ticket, repair] = await Promise.all([
-    getVendorTicket(VENDOR_DEMO_TICKET_ID),
-    getVendorRepair(VENDOR_DEMO_TICKET_ID),
+    getVendorTicket(id),
+    getVendorRepair(id),
   ]);
   const needsGate = repair.quoteType === "visit" && repair.onsiteApproval !== "approved";
 
@@ -51,9 +53,9 @@ export default async function Page() {
         {needsGate ? (
           <Button fullWidth>현장 확정가 제출</Button>
         ) : (
-          <LinkButton href={ROUTES["V-JOB-06"]}>완료 보고하기</LinkButton>
+          <LinkButton href={withId(ROUTES["V-JOB-06"], id)}>완료 보고하기</LinkButton>
         )}
-        <LinkButton href={ROUTES["V-JOB-04"]} variant="secondary">일정 재확정</LinkButton>
+        <LinkButton href={withId(ROUTES["V-JOB-04"], id)} variant="secondary">일정 재확정</LinkButton>
       </Footer>
     </>
   );

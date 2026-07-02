@@ -58,7 +58,7 @@ export function ScreenHeader({
 }: {
   title: string;
   ticketId?: string;
-  backTo?: VendorRoute;
+  backTo?: string;
 }) {
   return (
     <header
@@ -127,7 +127,7 @@ export function LinkButton({
   children,
   variant = "primary",
 }: {
-  href: VendorRoute;
+  href: string;
   children: React.ReactNode;
   variant?: "primary" | "secondary";
 }) {

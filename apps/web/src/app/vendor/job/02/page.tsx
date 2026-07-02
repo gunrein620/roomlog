@@ -1,14 +1,16 @@
 import { Button, Card, Input } from "@roomlog/ui";
-import { VENDOR_DEMO_TICKET_ID, getVendorTicket } from "@/lib/vendor-api";
+import { getVendorTicket } from "@/lib/vendor-api";
+import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
 import { Body, ContactThread, Footer, LinkButton, ScreenHeader, labelStyle, mutedStyle } from "../_components";
 
-export default async function Page() {
-  const ticket = await getVendorTicket(VENDOR_DEMO_TICKET_ID);
+export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  const { id } = await searchParams;
+  const ticket = await getVendorTicket(id);
 
   return (
     <>
-      <ScreenHeader title="견적 회신" ticketId={ticket.id} backTo={ROUTES["V-JOB-01"]} />
+      <ScreenHeader title="견적 회신" ticketId={ticket.id} backTo={withId(ROUTES["V-JOB-01"], id)} />
       <Body>
         <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={labelStyle}>회신 유형 3택</div>
@@ -50,7 +52,7 @@ export default async function Page() {
         <ContactThread />
       </Body>
       <Footer>
-        <LinkButton href={ROUTES["V-JOB-03"]}>견적 제출</LinkButton>
+        <LinkButton href={withId(ROUTES["V-JOB-03"], id)}>견적 제출</LinkButton>
         <Button fullWidth variant="ghost">임시 저장</Button>
       </Footer>
     </>

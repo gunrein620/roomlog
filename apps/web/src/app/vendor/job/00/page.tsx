@@ -1,5 +1,6 @@
 import { Badge, Card } from "@roomlog/ui";
 import { VENDOR_DEMO_TICKET_ID, getVendorAnalysis, getVendorTicket, listVendorJobs } from "@/lib/vendor-api";
+import { withId } from "@/lib/nav";
 import { ROUTES, type VendorRoute } from "@/lib/vendor-nav";
 import {
   Body,
@@ -74,7 +75,7 @@ export default async function Page() {
       </Body>
 
       <Footer>
-        <LinkButton href={cta.href}>{cta.label}</LinkButton>
+        <LinkButton href={withId(cta.href, job?.id)}>{cta.label}</LinkButton>
       </Footer>
     </>
   );
