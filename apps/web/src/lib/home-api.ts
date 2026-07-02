@@ -1,52 +1,44 @@
-import type { Ticket, Bill, Thread, Announcement } from "@roomlog/types";
+import type { Ticket, Bill } from "@roomlog/types";
 import { listTickets } from "./api";
-import { listBills } from "./payment-api";
-import { listThreads, listAnnouncements } from "./messaging-api";
+import { getUser } from "./session";
 import { CROSS_ROUTES } from "./home-nav";
 
-// 임차인 통합 홈 집계 — 하자(티켓)는 팀 실 백엔드(serverFetch)로 연결(레퍼런스 패턴).
-// 납부·대화·공지는 아직 팀 백엔드가 없어 데모 유지(stage-3 도메인).
-// getHomeSummary는 서버 컴포넌트 전용(listTickets가 쿠키를 읽음). 서버 화면에서만 호출.
+// 임차인 통합 홈 집계 — 하자(티켓)·호실은 팀 실 백엔드(serverFetch)로 연결(레퍼런스 패턴).
+// 납부·대화·공지는 아직 팀 백엔드가 없다 → 데모를 실데이터처럼 노출하지 않는다(빈/0).
+// 근거: 공백 ≠ 책임/사실 추정(D27)·fabrication 회피. getHomeSummary는 서버 컴포넌트 전용(쿠키).
 
-/** '오늘 할 일' 1건 — D19 임차인 멘탈모델 우선순위(안전>내 하자>납부 중립>계약).
- *  미납은 빚 독촉 프레임 금지 → 중립 문구. */
+/** '오늘 할 일' 1건 — D19 임차인 멘탈모델 우선순위(안전 > 내 하자). 실 데이터에서만 도출. */
 export type TodoItem = { frame: string; label: string; href: string } | null;
 
 export interface HomeSummary {
   unitId: string;
-  activeTickets: Ticket[]; // 진행 중 하자 (라이브 배지 최대 2)
-  billsDue: Bill[]; // 납부 안내(중립)
-  unreadThreads: number; // 미읽음 대화 (단일 소스 = messaging)
-  unreadAnnouncements: number;
-  todo: TodoItem; // 우선순위 1건
+  activeTickets: Ticket[]; // 진행 중 하자 (실데이터, 최대 2)
+  billsDue: Bill[]; // 납부 백엔드 부재 → 빈(stage-3)
+  unreadThreads: number; // 대화 백엔드 부재 → 0
+  unreadAnnouncements: number; // 공지 백엔드 부재 → 0
+  todo: TodoItem;
 }
 
 const isActiveTicket = (t: Ticket) => t.status !== "resolved";
-const isBillDue = (b: Bill) => b.status !== "paid";
+const stripHo = (s?: string) => (s ?? "").replace(/\s*호\s*$/, "");
 
 export async function getHomeSummary(): Promise<HomeSummary> {
-  const [tickets, bills, threads, anns] = await Promise.all([
-    listTickets(),
-    listBills(),
-    listThreads(),
-    listAnnouncements(),
-  ]);
+  const [user, tickets] = await Promise.all([getUser(), listTickets()]);
   const active = tickets.filter(isActiveTicket);
-  const due = bills.filter(isBillDue);
 
-  // 우선순위: 1) 긴급(urgency<=1) 진행 하자 2) 진행 하자 3) 납부(중립) 4) 계약
+  // 오늘 할 일: 실제 진행 하자에서만 도출(데모 미납 청구를 실제 업무처럼 제시하지 않는다).
   let todo: TodoItem = null;
   const urgent = active.find((t) => t.urgency <= 1);
   if (urgent) todo = { frame: "빠른 조치 필요", label: urgent.title, href: CROSS_ROUTES.defectStatus };
   else if (active[0]) todo = { frame: "내 신고 진행", label: active[0].title, href: CROSS_ROUTES.defectStatus };
-  else if (due[0]) todo = { frame: "납부 도와드릴게요", label: `${due[0].billingMonth} 청구`, href: CROSS_ROUTES.payment };
 
   return {
-    unitId: tickets[0]?.unitId ?? bills[0]?.unitId ?? "—",
+    // 호실은 인증된 사용자의 실제 room 우선(없으면 티켓, 그것도 없으면 미연결 "—").
+    unitId: stripHo(user?.room?.roomNo) || tickets[0]?.unitId || "—",
     activeTickets: active.slice(0, 2),
-    billsDue: due,
-    unreadThreads: threads.reduce((n, t: Thread) => n + (t.unreadCount ?? 0), 0),
-    unreadAnnouncements: anns.filter((a: Announcement) => a.state === "unread").length,
-    todo,
+    billsDue: [],
+    unreadThreads: 0,
+    unreadAnnouncements: 0,
+    todo
   };
 }
