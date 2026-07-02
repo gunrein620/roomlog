@@ -2737,6 +2737,66 @@ describe("RoomlogService", () => {
     assert.equal(service.getComplaint(completed.complaintId)?.status, "COMPLETED");
   });
 
+  it("projects manager vendor management data from completed repairs with sample guards", () => {
+    const service = new RoomlogService();
+    const { ticket } = service.createComplaint("tenant-demo", {
+      title: "욕실 누수 점검 요청",
+      description: "욕실 천장 모서리에서 물이 떨어져 배관 점검이 필요합니다.",
+      location: "욕실 천장",
+      occurredAt: "2026-06-29T08:30:00.000Z",
+      availableTimes: "평일 오전"
+    });
+
+    const repair = service.assignVendor("landlord-demo", ticket.id, {
+      vendorId: "vendor-demo",
+      requestNote: "누수 부위 확인 후 현장 사진을 남겨주세요."
+    });
+    service.submitEstimate("vendor-demo", repair.id, {
+      estimateAmount: 120000,
+      estimateDescription: "욕실 배관 누수 점검 및 실리콘 보수"
+    });
+    service.approveRepairEstimate("landlord-demo", repair.id, {
+      costBearer: "LANDLORD",
+      note: "기본 배관 문제로 임대인 부담 승인"
+    });
+    service.scheduleRepair("vendor-demo", repair.id, {
+      scheduledAt: "2026-06-30T10:00:00.000Z"
+    });
+    service.reportCompletion("vendor-demo", repair.id, {
+      completionNote: "배관 연결부 보수 후 누수 테스트 완료",
+      completionPhotoUrls: ["/uploads/vendor-complete.jpg"]
+    });
+    service.approveCompletion("landlord-demo", ticket.id, "완료 확인");
+
+    const vendors = service.listManagerVendorMgmtVendors("landlord-demo", {
+      q: "빠른",
+      trade: "plumbing",
+      sort: "trade_recent"
+    });
+    assert.equal(vendors.length, 1);
+    assert.equal(vendors[0].id, "vendor-demo");
+    assert.equal(vendors[0].name, "빠른누수 설비");
+    assert.equal(vendors[0].source, "auto");
+    assert.equal(vendors[0].dealCount, 1);
+    assert.deepEqual(vendors[0].trades.includes("plumbing"), true);
+
+    const detail = service.getManagerVendorMgmtDetail("landlord-demo", "vendor-demo");
+    assert.equal(detail.jobs.length, 1);
+    assert.equal(detail.jobs[0].ticketId, ticket.id);
+    assert.equal(detail.jobs[0].vendorJobId, repair.id);
+    assert.equal(detail.jobs[0].unitId, "301");
+    assert.equal(detail.jobs[0].rated, false);
+    assert.equal(detail.perf.completedCount, 1);
+    assert.equal(detail.perf.ratedCount, 0);
+    assert.equal(detail.perf.ratingVisible, false);
+    assert.equal(detail.perf.aiCommentEnabled, false);
+    assert.equal(detail.perf.satisfactionAvg, undefined);
+    assert.match(detail.perf.mirrorNotice, /V-JOB/);
+
+    const noMatch = service.listManagerVendorMgmtVendors("landlord-demo", { trade: "electrical" });
+    assert.equal(noMatch.length, 0);
+  });
+
   it("lets tenants confirm completion or reopen unresolved repairs after vendor completion reports", () => {
     const service = new RoomlogService();
     const createReportedRepair = (title: string) => {

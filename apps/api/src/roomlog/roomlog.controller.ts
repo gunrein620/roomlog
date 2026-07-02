@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -452,6 +453,45 @@ export class RoomlogController {
     this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.listVendors();
+  }
+
+  @Get("manager/vendor-mgmt/vendors")
+  listManagerVendorMgmtVendors(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("q") q?: string,
+    @Query("trade") trade?: string,
+    @Query("sort") sort?: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerVendorMgmtVendors(user.id, { q, trade, sort });
+  }
+
+  @Get("manager/vendor-mgmt/vendors/:vendorId")
+  getManagerVendorMgmtDetail(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("vendorId") vendorId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerVendorMgmtDetail(user.id, vendorId);
+  }
+
+  @Get("manager/vendor-mgmt/vendors/:vendorId/perf")
+  getManagerVendorMgmtPerf(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("vendorId") vendorId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerVendorMgmtPerf(user.id, vendorId);
+  }
+
+  @Get("manager/vendor-mgmt/duplicate-candidates")
+  listManagerVendorDuplicateCandidates(@Headers("authorization") authorization: string | undefined) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerVendorDuplicateCandidates(user.id);
   }
 
   @Post("manager/vendors/invites")

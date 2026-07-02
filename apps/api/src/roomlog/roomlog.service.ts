@@ -118,6 +118,37 @@ type LoginInput = {
   password: string;
 };
 
+type VendorMgmtTrade =
+  | "plumbing"
+  | "electrical"
+  | "hvac"
+  | "appliance"
+  | "locksmith"
+  | "waterproofing"
+  | "cleaning"
+  | "general"
+  | "other";
+
+type VendorMgmtListFilters = {
+  q?: string;
+  trade?: string;
+  sort?: string;
+};
+
+const VENDOR_PERF_MIN_N = 5;
+const VENDOR_MIRROR_NOTICE = "이 업체는 V-JOB에서 본인 성과를 보고 이의할 수 있어요.";
+const VENDOR_MGMT_TRADES: VendorMgmtTrade[] = [
+  "plumbing",
+  "electrical",
+  "hvac",
+  "appliance",
+  "locksmith",
+  "waterproofing",
+  "cleaning",
+  "general",
+  "other"
+];
+
 function normalizePhoneNumber(phone?: string) {
   const digits = phone?.replace(/\D+/g, "") ?? "";
 
@@ -1834,6 +1865,62 @@ export class RoomlogService {
 
   listVendors() {
     return this.store.vendors.map((vendor) => ({ ...vendor }));
+  }
+
+  listManagerVendorMgmtVendors(managerId: string, filters: VendorMgmtListFilters = {}) {
+    return this.filteredManagerVendorProfiles(managerId, filters);
+  }
+
+  getManagerVendorMgmtDetail(managerId: string, vendorId: string) {
+    const vendor = this.findManagerVendorProfile(managerId, vendorId);
+    const jobs = this.managerVendorJobRecords(managerId, vendor.id);
+
+    return {
+      vendor,
+      jobs,
+      perf: this.managerVendorPerf(managerId, vendor.id, jobs)
+    };
+  }
+
+  getManagerVendorMgmtPerf(managerId: string, vendorId: string) {
+    const detail = this.getManagerVendorMgmtDetail(managerId, vendorId);
+
+    return {
+      vendor: detail.vendor,
+      jobs: detail.jobs,
+      perf: detail.perf
+    };
+  }
+
+  listManagerVendorDuplicateCandidates(managerId: string) {
+    const vendors = this.filteredManagerVendorProfiles(managerId);
+    const candidates: { vendorId: string; name: string; reason: "same_phone" | "same_name" }[] = [];
+
+    for (const vendor of vendors) {
+      const normalizedPhone = normalizePhoneNumber(vendor.phone);
+      if (
+        normalizedPhone &&
+        vendors.some(
+          (candidate) =>
+            candidate.id !== vendor.id && normalizePhoneNumber(candidate.phone) === normalizedPhone
+        )
+      ) {
+        candidates.push({ vendorId: vendor.id, name: vendor.name, reason: "same_phone" });
+        continue;
+      }
+
+      if (
+        vendors.some(
+          (candidate) =>
+            candidate.id !== vendor.id &&
+            candidate.name.trim().toLowerCase() === vendor.name.trim().toLowerCase()
+        )
+      ) {
+        candidates.push({ vendorId: vendor.id, name: vendor.name, reason: "same_name" });
+      }
+    }
+
+    return candidates;
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
@@ -5965,6 +6052,212 @@ export class RoomlogService {
           .flatMap((message) => message.attachmentUrls)
       ])
     );
+  }
+
+  private filteredManagerVendorProfiles(managerId: string, filters: VendorMgmtListFilters = {}) {
+    const normalizedQuery = filters.q?.trim().toLowerCase();
+    const trade = this.isVendorMgmtTrade(filters.trade) ? filters.trade : undefined;
+
+    return this.store.vendors
+      .map((vendor) => this.presentManagerVendorProfile(managerId, vendor))
+      .filter((vendor) => {
+        const matchesQuery =
+          !normalizedQuery ||
+          vendor.name.toLowerCase().includes(normalizedQuery) ||
+          vendor.phone?.toLowerCase().includes(normalizedQuery) ||
+          vendor.contactPerson?.toLowerCase().includes(normalizedQuery);
+        const matchesTrade = !trade || vendor.trades.includes(trade);
+
+        return matchesQuery && matchesTrade;
+      })
+      .sort((a, b) => {
+        if (filters.sort === "recent") {
+          return this.timeOf(b.lastUsedAt) - this.timeOf(a.lastUsedAt);
+        }
+
+        const aTrade = trade && a.trades.includes(trade) ? 1 : 0;
+        const bTrade = trade && b.trades.includes(trade) ? 1 : 0;
+
+        if (aTrade !== bTrade) return bTrade - aTrade;
+        return this.timeOf(b.lastUsedAt) - this.timeOf(a.lastUsedAt);
+      });
+  }
+
+  private findManagerVendorProfile(managerId: string, vendorId: string) {
+    const vendor = this.filteredManagerVendorProfiles(managerId).find((item) => item.id === vendorId);
+
+    if (!vendor) {
+      throw new NotFoundException("관리 가능한 업체를 찾을 수 없습니다.");
+    }
+
+    return vendor;
+  }
+
+  private presentManagerVendorProfile(managerId: string, vendor: VendorSummary) {
+    const jobs = this.managerVendorJobRecords(managerId, vendor.id);
+    const user = this.store.users.find((account) => account.id === vendor.userId);
+    const lastUsedAt = jobs[0]?.completedAt;
+    const createdAt = user?.createdAt ?? jobs[jobs.length - 1]?.completedAt ?? now();
+
+    return {
+      id: vendor.id,
+      name: vendor.businessName,
+      trades: this.inferVendorTrades(vendor, jobs),
+      status: this.inferVendorStatus(vendor),
+      source: jobs.length > 0 ? "auto" : "manual",
+      dealCount: jobs.length,
+      lastUsedAt,
+      isNew: jobs.length <= 1,
+      phone: vendor.phone,
+      contactPerson: vendor.contactPerson,
+      address: vendor.serviceArea,
+      memo:
+        jobs.length > 0
+          ? "완료 수리에서 자동 누적된 업체입니다."
+          : "아직 완료 수리 이력이 없는 업체입니다.",
+      createdAt,
+      updatedAt: lastUsedAt ?? createdAt
+    };
+  }
+
+  private managerVendorJobRecords(managerId: string, vendorId: string) {
+    return this.store.repairs
+      .filter((repair) => repair.vendorId === vendorId && repair.status === "COMPLETED")
+      .filter((repair) => this.canManagerAccessRoom(managerId, this.findTicket(repair.ticketId).roomId))
+      .map((repair) => this.presentManagerVendorJobRecord(repair))
+      .sort((a, b) => this.timeOf(b.completedAt) - this.timeOf(a.completedAt));
+  }
+
+  private presentManagerVendorJobRecord(repair: RepairRequest) {
+    const ticket = this.findTicket(repair.ticketId);
+    const room = this.findRoom(ticket.roomId);
+
+    return {
+      id: `vjr_${repair.id}`,
+      vendorId: repair.vendorId,
+      ticketId: ticket.id,
+      vendorJobId: repair.id,
+      completedAt: repair.completedAt ?? repair.updatedAt,
+      unitId: room.roomNo.replace(/호$/u, ""),
+      unitMasked: false,
+      quoteAmount: repair.estimateAmount,
+      responseHours: repair.estimateApprovedAt
+        ? this.elapsedHours(repair.createdAt, repair.estimateApprovedAt)
+        : undefined,
+      rated: false,
+      satisfaction: undefined,
+      ratedAt: undefined
+    };
+  }
+
+  private managerVendorPerf(managerId: string, vendorId: string, jobs = this.managerVendorJobRecords(managerId, vendorId)) {
+    const ratedJobs = jobs.filter((job) => job.rated && typeof job.satisfaction === "number");
+    const completedCount = jobs.length;
+    const ratedCount = ratedJobs.length;
+    const coverageRatio = completedCount === 0 ? 0 : ratedCount / completedCount;
+    const coverageLow = completedCount > 0 && coverageRatio < 0.5;
+    const ratingVisible = ratedCount >= VENDOR_PERF_MIN_N && !coverageLow;
+    const satisfactionAvg =
+      ratingVisible && ratedJobs.length > 0
+        ? ratedJobs.reduce((sum, job) => sum + (job.satisfaction ?? 0), 0) / ratedJobs.length
+        : undefined;
+    const responseHours = jobs
+      .map((job) => job.responseHours)
+      .filter((value): value is number => typeof value === "number");
+    const allQuoteAmounts = this.store.repairs
+      .filter((repair) => repair.status === "COMPLETED")
+      .filter((repair) => this.canManagerAccessRoom(managerId, this.findTicket(repair.ticketId).roomId))
+      .map((repair) => repair.estimateAmount)
+      .filter((value): value is number => typeof value === "number" && value > 0);
+    const quoteAmounts = jobs
+      .map((job) => job.quoteAmount)
+      .filter((value): value is number => typeof value === "number" && value > 0);
+    const quoteVsAvgPct =
+      allQuoteAmounts.length > 0 && quoteAmounts.length > 0
+        ? Math.round((this.average(quoteAmounts) / this.average(allQuoteAmounts)) * 100)
+        : undefined;
+
+    return {
+      vendorId,
+      sampleN: ratedCount,
+      minN: VENDOR_PERF_MIN_N,
+      completedCount,
+      ratedCount,
+      coverageRatio,
+      coverageLow,
+      responseMedianHours: this.median(responseHours),
+      quoteVsAvgPct,
+      satisfactionAvg,
+      ratingVisible,
+      aiCommentEnabled: ratingVisible,
+      aiComment: ratingVisible
+        ? {
+            summary: `완료 ${completedCount}건 기준으로 산출한 참고용 성과입니다.`,
+            basisJobIds: jobs.slice(0, 5).map((job) => job.vendorJobId),
+            label: "참고용"
+          }
+        : undefined,
+      mirrorNotice: VENDOR_MIRROR_NOTICE,
+      updatedAt: jobs[0]?.completedAt ?? now()
+    };
+  }
+
+  private inferVendorTrades(vendor: VendorSummary, jobs: { ticketId: string }[]): VendorMgmtTrade[] {
+    const text = [
+      vendor.businessName,
+      vendor.serviceArea,
+      ...jobs.map((job) => {
+        const ticket = this.findTicket(job.ticketId);
+        const complaint = this.findComplaint(ticket.complaintId);
+        return `${ticket.category} ${complaint.title} ${complaint.description}`;
+      })
+    ]
+      .join(" ")
+      .toLowerCase();
+    const trades = new Set<VendorMgmtTrade>();
+
+    if (/누수|배관|수도|하수|욕실|싱크|배수/u.test(text)) trades.add("plumbing");
+    if (/방수|물샘|누수/u.test(text)) trades.add("waterproofing");
+    if (/전기|조명|콘센트|차단기|배선/u.test(text)) trades.add("electrical");
+    if (/에어컨|냉난방|보일러|난방|온수/u.test(text)) trades.add("hvac");
+    if (/가전|냉장고|세탁기|전자레인지|인덕션/u.test(text)) trades.add("appliance");
+    if (/도어락|열쇠|잠금|문이 안/u.test(text)) trades.add("locksmith");
+    if (/청소|소독|폐기/u.test(text)) trades.add("cleaning");
+
+    if (trades.size === 0) trades.add("general");
+    return Array.from(trades);
+  }
+
+  private inferVendorStatus(vendor: VendorSummary) {
+    return /폐업|중단|closed/i.test(vendor.businessName) ? "closed" : "active";
+  }
+
+  private isVendorMgmtTrade(value?: string): value is VendorMgmtTrade {
+    return Boolean(value && VENDOR_MGMT_TRADES.includes(value as VendorMgmtTrade));
+  }
+
+  private elapsedHours(startIso: string, endIso: string) {
+    const elapsed = this.timeOf(endIso) - this.timeOf(startIso);
+
+    return elapsed > 0 ? Math.round((elapsed / 3_600_000) * 10) / 10 : undefined;
+  }
+
+  private median(values: number[]) {
+    if (values.length === 0) return undefined;
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+
+    return sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  }
+
+  private average(values: number[]) {
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+
+  private timeOf(iso?: string) {
+    return iso ? new Date(iso).getTime() || 0 : 0;
   }
 
   private displayStatus(status: TicketStatus) {
