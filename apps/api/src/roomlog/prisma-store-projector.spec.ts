@@ -51,6 +51,7 @@ describe("PrismaStoreProjector", () => {
         vendorInvites: [],
         tenantInvites: [],
         attachments: [],
+        floorPlans: [],
         moveInChecklist: [],
         aiFeedback: [],
         intakeSessions: [
@@ -277,6 +278,7 @@ describe("PrismaStoreProjector", () => {
         vendorInvites: [],
         tenantInvites: [],
         attachments: [],
+        floorPlans: [],
         moveInChecklist: [],
         aiFeedback: [],
         intakeSessions: [
@@ -551,6 +553,7 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        floorPlans: [],
         moveInChecklist: [
           {
             id: checklistId,

@@ -30,6 +30,7 @@ import {
   RecordRealtimeTurnInput,
   ReopenTenantComplaintInput,
   ReviewTenantAiFeedbackInput,
+  SaveFloorPlanDraftInput,
   SendIntakeMessageInput,
   SubmitTenantAiFeedbackInput,
   UserAccount,
@@ -116,6 +117,37 @@ export class RoomlogController {
       mimeType: file.mimetype,
       category: body.category ?? "COMPLAINT_PHOTO"
     });
+  }
+
+  @Post("floor-plans")
+  createFloorPlanDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: SaveFloorPlanDraftInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createFloorPlanDraft(user.id, body);
+  }
+
+  @Get("floor-plans/:floorPlanId")
+  getFloorPlanDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("floorPlanId") floorPlanId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getFloorPlanDraft(user.id, floorPlanId);
+  }
+
+  @Patch("floor-plans/:floorPlanId")
+  updateFloorPlanDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("floorPlanId") floorPlanId: string,
+    @Body() body: SaveFloorPlanDraftInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateFloorPlanDraft(user.id, floorPlanId, body);
   }
 
   @Get("tenant/home")

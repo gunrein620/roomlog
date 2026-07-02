@@ -30,9 +30,9 @@ describe("RoomlogService", () => {
       assert.equal(attachment.fileName.includes(".."), false);
       assert.equal(existsSync(join(dir, attachment.fileName)), true);
       assert.deepEqual(readFileSync(join(dir, attachment.fileName)), pngBytes);
-      assert.throws(
-        () =>
-          service.saveAttachment("tenant-demo", {
+      await assert.rejects(
+        async () =>
+          await service.saveAttachment("tenant-demo", {
             buffer: Buffer.from("not an image"),
             originalName: "note.txt",
             mimeType: "text/plain",
@@ -43,6 +43,96 @@ describe("RoomlogService", () => {
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }
+  });
+
+  it("saves an independent 2D and 3D floor plan draft without a room dependency", async () => {
+    const service = new RoomlogService();
+    const attachment = await service.saveAttachment("landlord-demo", {
+      buffer: Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d
+      ]),
+      originalName: "floor-plan.png",
+      mimeType: "image/png",
+      category: "FLOOR_PLAN_SOURCE"
+    });
+
+    const created = service.createFloorPlanDraft("landlord-demo", {
+      sourceAttachmentId: attachment.id,
+      sourceImageUrl: attachment.fileUrl,
+      pixelToMmRatio: 18.5,
+      walls: [
+        { id: "wall-a", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } },
+        { id: "wall-b", start: { x: 120, y: 0 }, end: { x: 120, y: 80 } }
+      ],
+      hiddenWallIds: ["wall-b"],
+      extractionMeta: {
+        processingMs: 842,
+        detectedWallCount: 2,
+        removedNoiseCount: 14,
+        scaleCandidates: [{ pixelLength: 220, realLengthMm: 5860, pixelToMmRatio: 26.64, confidence: 0.88 }],
+        scaleConfirmed: true
+      },
+      openings: [{ id: "opening-a", type: "DOOR", status: "CONFIRMED", confidence: 0.81, source: "arc" }],
+      fixtures: [{ id: "fixture-a", type: "SINK", status: "CONFIRMED", confidence: 0.76, source: "ocr+shape" }],
+      room3d: {
+        openings: [{ id: "opening-a" }],
+        fixtures: [{ id: "fixture-a" }],
+        walls: [{ id: "wall-a-3d", dimensions: { width: 2.2, height: 2.5, depth: 0.15 } }]
+      }
+    });
+
+    assert.equal(created.ownerId, "landlord-demo");
+    assert.equal(created.status, "DRAFT");
+    assert.equal(created.sourceAttachmentId, attachment.id);
+    assert.equal(created.sourceImageUrl, attachment.fileUrl);
+    assert.equal(created.pixelToMmRatio, 18.5);
+    assert.equal(created.walls.length, 2);
+    assert.deepEqual(created.hiddenWallIds, ["wall-b"]);
+    assert.equal(created.extractionMeta.scaleConfirmed, true);
+    assert.equal(created.openings[0].status, "CONFIRMED");
+    assert.equal(created.fixtures[0].type, "SINK");
+    assert.deepEqual(created.furnitures, []);
+    assert.equal("roomId" in created, false);
+
+    const fetched = service.getFloorPlanDraft("landlord-demo", created.id);
+    assert.equal(fetched.id, created.id);
+
+    const updated = service.updateFloorPlanDraft("landlord-demo", created.id, {
+      pixelToMmRatio: 20,
+      hiddenWallIds: [],
+      walls: [created.walls[0]],
+      status: "PUBLISHED",
+      extractionMeta: { ...created.extractionMeta, scaleConfirmed: true },
+      openings: [{ ...created.openings[0], status: "CONFIRMED" }],
+      fixtures: [{ ...created.fixtures[0], status: "CONFIRMED" }],
+      room3d: { walls: [{ id: "wall-a-3d", dimensions: { width: 2.4, height: 2.5, depth: 0.15 } }] }
+    });
+
+    assert.equal(updated.pixelToMmRatio, 20);
+    assert.equal(updated.status, "PUBLISHED");
+    assert.equal(updated.walls.length, 1);
+    assert.deepEqual(updated.hiddenWallIds, []);
+    assert.throws(() => service.getFloorPlanDraft("tenant-demo", created.id), /집주인|권한/);
+  });
+
+  it("blocks publishing a commercial floor plan until scale and 3D data are confirmed", () => {
+    const service = new RoomlogService();
+    const created = service.createFloorPlanDraft("landlord-demo", {
+      pixelToMmRatio: 18.5,
+      walls: [{ id: "wall-a", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }],
+      extractionMeta: { scaleConfirmed: false },
+      room3d: {}
+    });
+
+    assert.throws(
+      () =>
+        service.updateFloorPlanDraft("landlord-demo", created.id, {
+          status: "PUBLISHED",
+          extractionMeta: { scaleConfirmed: false },
+          room3d: {}
+        }),
+      /축척|3D|발행/
+    );
   });
 
   it("persists users, intake threads, complaints, and tickets across service restarts", async () => {
@@ -1208,7 +1298,7 @@ describe("RoomlogService", () => {
       publicUploadBaseUrl: "/api/files"
     });
     const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
-    const attachment = service.saveAttachment("tenant-demo", {
+    const attachment = await service.saveAttachment("tenant-demo", {
       buffer: Buffer.from([
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d
       ]),
