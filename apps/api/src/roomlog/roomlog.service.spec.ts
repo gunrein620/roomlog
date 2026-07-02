@@ -135,6 +135,106 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("stores room walls from detected floor-plan coordinates and returns simulator wallsData", () => {
+    const service = new RoomlogService();
+
+    const created = service.createRoom("landlord-demo", {
+      buildingName: "도면빌라",
+      roomNo: "501호",
+      address: "서울시 성동구 도면로 5",
+      roomData: {
+        pixelToMmRatio: 20,
+        walls: [
+          { id: "wall-a", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+          { id: "wall-b", start: { x: 100, y: 0 }, end: { x: 100, y: 80 } }
+        ]
+      }
+    });
+
+    assert.equal(created.room.buildingName, "도면빌라");
+    assert.equal(created.roomWalls.length, 2);
+    assert.equal(created.roomWalls[0].roomId, created.room.id);
+    assert.equal(created.roomWalls[0].sourceWallId, "wall-a");
+    assert.equal(created.roomWalls[0].lengthMm, 2000);
+    assert.equal(created.roomWalls[0].rotationRad, 0);
+    assert.equal(created.roomWalls[1].lengthMm, 1600);
+
+    const simulator = service.loadSimulatorRoom(created.room.id);
+    assert.equal(simulator.room.id, created.room.id);
+    assert.equal(simulator.wallsData.length, 2);
+    assert.deepEqual(simulator.wallsData[0].dimensions, { width: 2, height: 2.5, depth: 0.15 });
+    assert.deepEqual(simulator.wallsData[0].position, [-0.5, 1.25, -0.4]);
+    assert.equal(simulator.room_objects.length, 0);
+
+    const updatedWalls = service.replaceRoomWalls("landlord-demo", created.room.id, {
+      pixelToMmRatio: 10,
+      walls: [{ id: "wall-c", start: { x: 0, y: 0 }, end: { x: 0, y: 300 } }]
+    });
+
+    assert.equal(updatedWalls.length, 1);
+    assert.equal(updatedWalls[0].sourceWallId, "wall-c");
+    assert.equal(updatedWalls[0].lengthMm, 3000);
+    assert.equal(service.loadSimulatorRoom(created.room.id).wallsData[0].dimensions.width, 3);
+  });
+
+  it("exposes only hosted NVIDIA floor plan model choices", () => {
+    const service = new RoomlogService();
+    const models = service.listFloorPlanAiModels();
+
+    assert.deepEqual(
+      models.map((model) => model.id),
+      [
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/cosmos3-nano-reasoner"
+      ]
+    );
+    assert.equal(models.every((model) => model.mode === "vision-reasoning"), true);
+  });
+
+  it("uses NVIDIA integrate chat completions for floor plan reasoning models", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.NVIDIA_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.NVIDIA_API_KEY = "nvapi-test";
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"summary":"도면 치수 후보를 검토했습니다.","scaleCandidates":[{"realLengthMm":5860,"pixelLength":320,"pixelToMmRatio":18.31,"confidence":0.82,"source":"nvidia/vlm"}]}'
+              }
+            }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+      });
+
+      assert.equal(capturedUrl, "https://integrate.api.nvidia.com/v1/chat/completions");
+      assert.equal(capturedBody?.model, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
+      assert.equal(result.status, "ready");
+      assert.equal(result.scaleCandidates[0].realLengthMm, 5860);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.NVIDIA_API_KEY = originalApiKey;
+      else delete process.env.NVIDIA_API_KEY;
+    }
+  });
+
   it("persists users, intake threads, complaints, and tickets across service restarts", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-store-"));
     const storeFilePath = join(dir, "store.json");

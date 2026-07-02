@@ -18,6 +18,7 @@ import {
 } from "./plan-extraction/wall-detection.mjs";
 import { loadImage, normalizeMainPlanBounds, OPENCV_URL, WallDetector } from "./plan-extraction/wall-detector";
 import {
+  catalogKind,
   createFurnitureModel,
   createLandlordOptionFurniture,
   createResidentDesignFurniture,
@@ -62,9 +63,34 @@ import { RoomlogThreeFloorPlanView } from "./room-scene/RoomlogThreeFloorPlanVie
 
 type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "opening" | "fixture" | "furniture" | "scale" | "none";
 type ViewMode = "2d" | "3d";
+type FloorPlanAiModelId =
+  | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+  | "nvidia/cosmos3-nano-reasoner";
+
+type FloorPlanAiAnalysisResult = {
+  model: FloorPlanAiModelId;
+  rawText?: string;
+  scaleCandidates?: Array<{
+    confidence: number;
+    pixelLength?: number;
+    pixelToMmRatio?: number;
+    realLengthMm: number;
+    source: string;
+  }>;
+  status: "ready" | "config-required" | "failed";
+  summary: string;
+  textDetections?: Array<{ confidence?: number; text: string }>;
+};
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
+const AI_IMAGE_MAX_DIMENSION = 1600;
+const FLOOR_PLAN_AI_MODELS: Array<{ id: FloorPlanAiModelId; label: string }> = [
+  { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", label: "Nemotron Omni" },
+  { id: "nvidia/cosmos3-nano-reasoner", label: "Cosmos3 Reasoner" }
+];
+const FURNITURE_KIND_FILTERS = ["전체", "침대", "식탁", "의자", "소파", "책상", "서랍", "옷장", "기타"] as const;
+type FurnitureKindFilter = (typeof FURNITURE_KIND_FILTERS)[number];
 
 function apiUrl(path: string) {
   const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -111,6 +137,26 @@ async function uploadFloorPlanSource(file: File): Promise<UploadedFloorPlanSourc
   }
 }
 
+async function fileToCompressedDataUrl(file: File) {
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImage(imageUrl);
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    const scale = Math.min(1, AI_IMAGE_MAX_DIMENSION / Math.max(sourceWidth, sourceHeight));
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    if (!context) throw new Error("Canvas context is not available");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
 export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -128,6 +174,8 @@ export default function RoomlogFloorPlanEditor() {
   const [hiddenWallIds, setHiddenWallIds] = useState<Set<string>>(() => new Set());
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
   const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("사용자 모드 배치 카탈로그");
+  const [furnitureKindFilter, setFurnitureKindFilter] = useState<FurnitureKindFilter>("전체");
+  const [furnitureSearchQuery, setFurnitureSearchQuery] = useState("");
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
@@ -144,11 +192,15 @@ export default function RoomlogFloorPlanEditor() {
     scaleConfirmed: false
   });
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [uploadedAiImageDataUrl, setUploadedAiImageDataUrl] = useState<string | null>(null);
   const [uploadedFloorPlanSource, setUploadedFloorPlanSource] = useState<UploadedFloorPlanSource | null>(null);
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("샘플 도면으로 시작");
+  const [selectedAiModel, setSelectedAiModel] = useState<FloorPlanAiModelId>("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
+  const [aiAnalysisStatus, setAiAnalysisStatus] = useState("AI 정밀 수치 읽기 대기");
+  const [lastAiAnalysis, setLastAiAnalysis] = useState<FloorPlanAiAnalysisResult | null>(null);
   const [opencvReady, setOpenCvReady] = useState(false);
   const [lastExtractionMs, setLastExtractionMs] = useState<number | null>(null);
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
@@ -181,6 +233,28 @@ export default function RoomlogFloorPlanEditor() {
     () => placedFurnitures.filter((furniture) => !isLandlordOptionFurniture(furniture)),
     [placedFurnitures]
   );
+  const furnitureKindCounts = useMemo(
+    () =>
+      furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
+        const kind = catalogKind(item);
+        counts[kind] = (counts[kind] ?? 0) + 1;
+
+        return counts;
+      }, {}),
+    [furnitureCatalog]
+  );
+  const filteredFurnitureCatalog = useMemo(() => {
+    const query = furnitureSearchQuery.trim().toLowerCase();
+
+    return furnitureCatalog.filter((item) => {
+      const kind = catalogKind(item);
+      const matchesKind = furnitureKindFilter === "전체" || kind === furnitureKindFilter;
+      const searchableText = `${item.name} ${item.brand} ${item.category ?? ""} ${item.source ?? ""}`.toLowerCase();
+      const matchesQuery = !query || searchableText.includes(query);
+
+      return matchesKind && matchesQuery;
+    });
+  }, [furnitureCatalog, furnitureKindFilter, furnitureSearchQuery]);
 
   useEffect(() => {
     let isActive = true;
@@ -786,9 +860,11 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(opencvReady ? `${file.name} 도면 분석중` : `${file.name} 추출 엔진 준비중 - fallback 가능`);
     try {
       const sourceUploadPromise = uploadFloorPlanSource(file);
+      const aiImageDataUrlPromise = fileToCompressedDataUrl(file);
       const detector = new WallDetector(getExtractionWorker());
       const result = await detector.detectWalls(file);
       const sourceUpload = await sourceUploadPromise;
+      const aiImageDataUrl = await aiImageDataUrlPromise;
       const detectedWalls = createWallsFromDetectedLines(result.lines, {
         height: result.imageHeight,
         name: file.name,
@@ -819,7 +895,10 @@ export default function RoomlogFloorPlanEditor() {
       setOpeningCandidates(nextOpeningCandidates);
       setFixtureCandidates(nextFixtureCandidates);
       setUploadedImage(result.imageUrl);
+      setUploadedAiImageDataUrl(aiImageDataUrl);
       setUploadedFloorPlanSource(sourceUpload ?? { imageUrl: result.imageUrl });
+      setLastAiAnalysis(null);
+      setAiAnalysisStatus("AI 정밀 수치 읽기 대기");
       setFloorPlanDraftId(null);
       setLastExtractionMs(result.processingMs ?? null);
       setExtractionMeta({
@@ -848,6 +927,68 @@ export default function RoomlogFloorPlanEditor() {
     } finally {
       setIsProcessing(false);
       event.target.value = "";
+    }
+  }
+
+  async function runAiDimensionAnalysis() {
+    const sourceAttachmentId = uploadedFloorPlanSource?.attachmentId;
+    if (!sourceAttachmentId && !uploadedAiImageDataUrl) {
+      setAiAnalysisStatus("먼저 도면 이미지를 업로드하세요");
+      return;
+    }
+
+    setIsProcessing(true);
+    setAiAnalysisStatus(`${FLOOR_PLAN_AI_MODELS.find((model) => model.id === selectedAiModel)?.label ?? "NVIDIA"} 분석중`);
+    try {
+      const token = await getFloorPlanAccessToken();
+      const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
+        body: JSON.stringify({
+          imageDataUrl: sourceAttachmentId ? undefined : uploadedAiImageDataUrl,
+          model: selectedAiModel,
+          sourceAttachmentId
+        }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      if (!response.ok) throw new Error(`AI floor plan analysis failed: ${response.status}`);
+
+      const result = (await response.json()) as FloorPlanAiAnalysisResult;
+      const scaleCandidates = (result.scaleCandidates ?? []).map((candidate) => ({
+        confidence: candidate.confidence,
+        pixelLength: candidate.pixelLength ?? 0,
+        pixelToMmRatio: candidate.pixelToMmRatio ?? 0,
+        realLengthMm: candidate.realLengthMm,
+        source: candidate.source
+      }));
+      const usableScaleCandidates = scaleCandidates.filter((candidate) => candidate.pixelLength > 0 && candidate.pixelToMmRatio > 0);
+      const bestScaleCandidate = usableScaleCandidates[0];
+
+      setLastAiAnalysis(result);
+      setExtractionMeta((currentMeta) => ({
+        ...currentMeta,
+        aiModel: result.model,
+        aiRawText: result.rawText,
+        aiSummary: result.summary,
+        aiTextDetections: result.textDetections ?? [],
+        ocrStatus: result.status === "ready" ? "ready" : currentMeta.ocrStatus,
+        scaleCandidates: [...usableScaleCandidates, ...currentMeta.scaleCandidates]
+      }));
+      if (bestScaleCandidate) {
+        setPixelToMmRatio(bestScaleCandidate.pixelToMmRatio);
+        setIsScaleSet(false);
+      }
+      setAiAnalysisStatus(
+        result.status === "ready"
+          ? `${result.summary} ${usableScaleCandidates.length ? "축척 후보 확인 필요" : "치수 텍스트를 참고해 수동 축척 필요"}`
+          : result.summary
+      );
+    } catch {
+      setAiAnalysisStatus("AI 정밀 수치 읽기 실패");
+    } finally {
+      setIsProcessing(false);
     }
   }
 
@@ -1048,6 +1189,27 @@ export default function RoomlogFloorPlanEditor() {
               <button className="floor-plan-secondary" onClick={() => setTool("scale")} type="button">
                 축척
               </button>
+              <select
+                aria-label="NVIDIA 도면 AI 모델"
+                className="floor-plan-ai-model-select"
+                disabled={isProcessing}
+                onChange={(event) => setSelectedAiModel(event.target.value as FloorPlanAiModelId)}
+                value={selectedAiModel}
+              >
+                {FLOOR_PLAN_AI_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="floor-plan-secondary"
+                disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
+                onClick={runAiDimensionAnalysis}
+                type="button"
+              >
+                AI 정밀 수치 읽기
+              </button>
             </>
           ) : (
             <button className="floor-plan-secondary" onClick={() => setViewMode("3d")} type="button">
@@ -1055,6 +1217,7 @@ export default function RoomlogFloorPlanEditor() {
             </button>
           )}
           <span>{uploadStatus}</span>
+          {uploadedImage || lastAiAnalysis ? <span>{aiAnalysisStatus}</span> : null}
         </div>
 
         {viewMode === "2d" ? (
@@ -1292,10 +1455,35 @@ export default function RoomlogFloorPlanEditor() {
             <div className="floor-plan-furniture-library">
               <span>{experienceMode === "landlord" ? "임대인 옵션 가구" : "wheretoput furniture picker"}</span>
               <code>
-                {furnitureCatalogStatus} / 옵션 {landlordOptionFurnitures.length} / 내 배치 {residentDesignFurnitures.length}
+                {furnitureCatalogStatus} {filteredFurnitureCatalog.length}/{furnitureCatalog.length} / 옵션 {landlordOptionFurnitures.length} / 내 배치{" "}
+                {residentDesignFurnitures.length}
               </code>
+              <div className="floor-plan-furniture-search">
+                <input
+                  aria-label="가구 검색"
+                  onChange={(event) => setFurnitureSearchQuery(event.target.value)}
+                  placeholder="가구명, 브랜드, 카테고리 검색"
+                  type="search"
+                  value={furnitureSearchQuery}
+                />
+              </div>
+              <div className="floor-plan-furniture-kind-tabs" role="tablist" aria-label="가구 카테고리">
+                {FURNITURE_KIND_FILTERS.map((kind) => (
+                  <button
+                    aria-selected={furnitureKindFilter === kind}
+                    className={furnitureKindFilter === kind ? "active" : ""}
+                    key={kind}
+                    onClick={() => setFurnitureKindFilter(kind)}
+                    role="tab"
+                    type="button"
+                  >
+                    {kind}
+                    <small>{kind === "전체" ? furnitureCatalog.length : furnitureKindCounts[kind] ?? 0}</small>
+                  </button>
+                ))}
+              </div>
               <div className="floor-plan-furniture-grid">
-                {furnitureCatalog.map((item) => (
+                {filteredFurnitureCatalog.map((item) => (
                   <button
                     className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
                     key={item.furniture_id}
@@ -1304,7 +1492,9 @@ export default function RoomlogFloorPlanEditor() {
                   >
                     <i style={{ backgroundColor: item.color }} />
                     <strong>{item.name}</strong>
-                    <small>{item.brand}</small>
+                    <small>
+                      {catalogKind(item)} · {item.brand}
+                    </small>
                     <em>{item.length.join("x")}mm</em>
                     <b>{Number(item.price).toLocaleString()}원</b>
                   </button>

@@ -22,7 +22,9 @@ import {
   CreateComplaintFromCallInput,
   CreateIntakeSessionInput,
   CreateMoveInChecklistItemInput,
+  CreateRoomInput,
   FinalizeIntakeInput,
+  FloorPlanAiAnalysisInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
   ManagerTicketReplyInput,
@@ -31,6 +33,7 @@ import {
   ReopenTenantComplaintInput,
   ReviewTenantAiFeedbackInput,
   SaveFloorPlanDraftInput,
+  SaveRoomWallsInput,
   SendIntakeMessageInput,
   SubmitTenantAiFeedbackInput,
   UserAccount,
@@ -129,6 +132,23 @@ export class RoomlogController {
     return this.roomlogService.createFloorPlanDraft(user.id, body);
   }
 
+  @Get("floor-plans/ai-models")
+  listFloorPlanAiModels(@Headers("authorization") authorization: string | undefined) {
+    this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listFloorPlanAiModels();
+  }
+
+  @Post("floor-plans/ai-analysis")
+  analyzeFloorPlanWithAi(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: FloorPlanAiAnalysisInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.analyzeFloorPlanWithAi(body, user.id);
+  }
+
   @Get("floor-plans/:floorPlanId")
   getFloorPlanDraft(
     @Headers("authorization") authorization: string | undefined,
@@ -148,6 +168,37 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.updateFloorPlanDraft(user.id, floorPlanId, body);
+  }
+
+  @Post("rooms")
+  createRoom(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateRoomInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createRoom(user.id, body);
+  }
+
+  @Get("room-walls/:roomId")
+  getRoomWalls(@Param("roomId") roomId: string) {
+    return this.roomlogService.listRoomWalls(roomId);
+  }
+
+  @Patch("room-walls/:roomId")
+  replaceRoomWalls(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("roomId") roomId: string,
+    @Body() body: SaveRoomWallsInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.replaceRoomWalls(user.id, roomId, body);
+  }
+
+  @Get("sim/load/:roomId")
+  loadSimulatorRoom(@Param("roomId") roomId: string) {
+    return this.roomlogService.loadSimulatorRoom(roomId);
   }
 
   @Get("tenant/home")

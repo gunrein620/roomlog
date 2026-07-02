@@ -100,5 +100,11 @@ export function detectFixtureCandidates(input?: {
 }): FloorPlanCandidate[];
 export function createWallsFromDetectedLines(
   lines: DetectedLine[],
-  plan?: RegisteredPlanMetadata & { axisTolerance?: number; containedRangeTolerance?: number }
+  plan?: RegisteredPlanMetadata & {
+    axisTolerance?: number;
+    canvasHeight?: number;
+    canvasWidth?: number;
+    containedRangeTolerance?: number;
+    imageFillRatio?: number;
+  }
 ): Wall[];
