@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ResponsibilityVerdict, Urgency } from "@roomlog/types";
 import { Badge, Button } from "@roomlog/ui";
 import { ROUTES } from "@/lib/nav";
-import { getAnalysis, DEMO_TICKET_ID } from "@/lib/api";
+import { getAnalysis, DEMO_TICKET_ID } from "@/lib/defect-api";
 import { MoreDetails } from "./MoreDetails";
 
 // T-DEF-04 · 분석 결과

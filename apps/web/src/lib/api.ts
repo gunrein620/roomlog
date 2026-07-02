@@ -1,86 +1,184 @@
-import type { Ticket, DefectAnalysis, RepairJob } from "@roomlog/types";
-import { DEMO_TICKET, DEMO_ANALYSIS, DEMO_REPAIR } from "./demo-ticket";
-import { serverFetch } from "./server-api";
-import { toTicket, toAnalysis, toRepair, type TeamComplaint } from "./defect-mapping";
+// 공용 API 클라이언트. 백엔드 NestJS(/api/*)를 호출한다.
+// 기존 페이지들이 인라인으로 쓰던 NEXT_PUBLIC_API_URL 패턴을 한 곳으로 모은다.
 
-// 룸로그 하자 슬라이스 API 클라이언트 — 팀 실 백엔드(/tenant/complaints)에 쿠키 인증으로 연결.
-// [레퍼런스 패턴] 서버 컴포넌트에서만 호출: serverFetch가 httpOnly 쿠키의 토큰을
-// Authorization: Bearer 로 Nest에 forward (팀 백엔드 불변). 나머지 도메인이 이 패턴을 복제한다.
-//
-// GET /tenant/complaints 는 presentComplaint[] 를 반환하며 각 항목이 ticket(analysis·repairs 포함)을
-// 품고 있어 단일 fetch로 하자 화면 데이터가 모두 나온다. 셸 슬라이스는 단일 활성 하자 흐름이므로
-// 상세 화면은 목록의 첫 활성 건을 사용한다.
-//
-// 데모 폴백: 인증 전/데이터 없음/네트워크 오류 시 셸이 깨지지 않도록 데모로 대체.
-// (실인증 상태에서 실데이터가 있으면 항상 실데이터가 우선한다.)
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-async function listComplaints(): Promise<TeamComplaint[]> {
-  return serverFetch<TeamComplaint[]>("/tenant/complaints");
+export const apiUrl = (path: string) => `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+
+export type PropertyType = "apt" | "offi";
+
+export type MarketTransaction = {
+  complexName: string;
+  tradeType: "월세" | "전세";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  areaM2: number;
+  floor: number | null;
+  buildYear: number | null;
+  dong: string;
+  sggCode: string;
+  dealDate: string;
+  propertyType: PropertyType;
+};
+
+export type MarketSummary = {
+  lawdCd: string;
+  propertyType: PropertyType;
+  count: number;
+  monthlyCount: number;
+  jeonseCount: number;
+  avgDepositManwon: number;
+  avgMonthlyRentManwon: number;
+  avgJeonseDepositManwon: number;
+  recent: MarketTransaction[];
+};
+
+// 앱이 테마로 쓰는 동 → 법정동 시군구 코드. 백엔드 /api/market/regions와 일치.
+const DONG_TO_LAWD: Array<{ keyword: string; lawdCd: string; center: [number, number] }> = [
+  { keyword: "방배", lawdCd: "11650", center: [37.4816, 126.9971] },
+  { keyword: "성수", lawdCd: "11200", center: [37.5445, 127.0559] },
+  { keyword: "역삼", lawdCd: "11680", center: [37.5006, 127.0366] }
+];
+
+export function regionForLocation(location: string): { lawdCd: string; center: [number, number] } {
+  const hit = DONG_TO_LAWD.find((region) => location.includes(region.keyword));
+  return hit ?? { lawdCd: DONG_TO_LAWD[0].lawdCd, center: DONG_TO_LAWD[0].center };
 }
 
-async function activeComplaint(): Promise<TeamComplaint | null> {
+export function propertyTypeForRoom(roomType: string): PropertyType {
+  return roomType.includes("오피스텔") ? "offi" : "apt";
+}
+
+/** 만원 단위 정수를 "1.4억 / 76만" 형태의 한국어 금액 문자열로 변환. */
+export function formatManwon(manwon: number): string {
+  if (!manwon || manwon <= 0) {
+    return "-";
+  }
+  if (manwon >= 10000) {
+    const eok = manwon / 10000;
+    const rounded = Math.round(eok * 10) / 10;
+    return `${rounded}억`;
+  }
+  return `${Math.round(manwon)}만`;
+}
+
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T | null> {
   try {
-    const list = await listComplaints();
-    return list[0] ?? null;
-  } catch (error) {
-    console.error("[tenant/api] /tenant/complaints 조회 실패:", error);
-    return null;
+    const response = await fetch(apiUrl(path), { signal });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as T;
+  } catch {
+    return null; // 네트워크/서버 오류 시 null → 호출부가 하드코딩 폴백 유지.
   }
 }
 
-async function getComplaintById(id: string): Promise<TeamComplaint | null> {
-  try {
-    return await serverFetch<TeamComplaint>(`/tenant/complaints/${id}`);
-  } catch (error) {
-    console.error(`[tenant/api] /tenant/complaints/${id} 조회 실패:`, error);
-    return null;
+export function getMarketSummary(
+  params: { lawdCd: string; propertyType: PropertyType; months?: number },
+  signal?: AbortSignal
+): Promise<MarketSummary | null> {
+  const query = new URLSearchParams({
+    lawdCd: params.lawdCd,
+    propertyType: params.propertyType,
+    months: String(params.months ?? 3)
+  });
+  return getJson<MarketSummary>(`/api/market/summary?${query.toString()}`, signal);
+}
+
+export function getMarketTransactions(
+  params: { lawdCd: string; propertyType: PropertyType; months?: number },
+  signal?: AbortSignal
+): Promise<MarketTransaction[] | null> {
+  const query = new URLSearchParams({
+    lawdCd: params.lawdCd,
+    propertyType: params.propertyType,
+    months: String(params.months ?? 3)
+  });
+  return getJson<MarketTransaction[]>(`/api/market/transactions?${query.toString()}`, signal);
+}
+
+// --- 매물(가상 시드) ----------------------------------------------------------
+// 백엔드 apps/api/src/listings/listings.data.ts 의 Listing 스키마와 일치.
+
+export type TradeType = "월세" | "전세" | "매매";
+export type PropertyKind = "원룸" | "투룸" | "쓰리룸" | "오피스텔" | "아파트" | "빌라";
+
+export type Listing = {
+  id: string;
+  title: string;
+  headline: string;
+  registeredAt: string;
+  status: "거래중" | "거래완료";
+  viewCount: number;
+  tradeType: TradeType;
+  depositManwon: number;
+  monthlyRentManwon: number;
+  salePriceManwon: number;
+  maintenanceManwon: number;
+  maintenanceIncludes: string[];
+  loanManwon: number;
+  availableFrom: string;
+  contractMonths: number;
+  kind: PropertyKind;
+  areaExclusiveM2: number;
+  areaSupplyM2: number;
+  floor: number;
+  totalFloors: number;
+  rooms: number;
+  bathrooms: number;
+  direction: string;
+  buildYear: number;
+  parking: boolean;
+  elevator: boolean;
+  heating: string;
+  address: string;
+  jibunAddress: string;
+  dong: string;
+  lawdCd: string;
+  lat: number;
+  lng: number;
+  nearestStation: string;
+  walkMinutes: number;
+  options: string[];
+  petsAllowed: boolean;
+  tags: string[];
+  coverImage: string;
+  gallery: string[];
+  tourId: string | null;
+  registrantType: "집주인" | "중개사";
+  brokerName: string;
+  contactPhone: string;
+  responseMinutes: number;
+  verified: boolean;
+  reviewStatus: string;
+  safetyScore: number;
+};
+
+/** 거래 조건을 "월세 1000/130" / "전세 4.6억" 형태의 표시 문자열로 변환. */
+export function formatListingPrice(listing: Listing): string {
+  if (listing.tradeType === "월세") {
+    return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
   }
-}
-
-// id가 실제 complaint id면 그 건을, "active"/미지정이면 목록 첫 활성 건을 해석.
-// (목록→상세를 ?id=로 스레딩해 복수 하자에서도 목록↔상세가 일치 — 적대검토 지적.)
-async function resolveComplaint(id?: string): Promise<TeamComplaint | null> {
-  if (id && id !== DEMO_TICKET_ID) return getComplaintById(id);
-  return activeComplaint();
-}
-
-// listTickets는 실제 목록을 반환한다. 빈 목록이면 빈 배열([]) — 화면 00은 빈 상태 UI가 있다.
-// (데모로 채우면 실제 "데이터 없음"과 API 오류를 은폐하므로 금지 — 적대검토 지적.)
-export async function listTickets(): Promise<Ticket[]> {
-  try {
-    const list = await listComplaints();
-    return list.map(toTicket);
-  } catch (error) {
-    console.error("[tenant/api] listTickets 실패 → 빈 목록:", error);
-    return [];
+  if (listing.tradeType === "전세") {
+    return `전세 ${formatManwon(listing.depositManwon)}`;
   }
+  return `매매 ${formatManwon(listing.salePriceManwon)}`;
 }
 
-// 상세 getter는 활성 하자를 매핑해 반환한다. 실제 데이터가 없을 때만 데모로 폴백하되,
-// 조용히 넘어가지 않도록 경고를 남긴다(관측성). 미배정 등으로 analysis/repair가 없으면
-// 데모 대신 진짜 상태를 보여주도록 개선하는 것은 화면 빈 상태 작업과 함께 후속(KNOWN-GAPS).
-export async function getTicket(id?: string): Promise<Ticket> {
-  const c = await resolveComplaint(id);
-  if (c) return toTicket(c);
-  console.warn("[tenant/api] 하자 없음 → 데모 티켓 폴백");
-  return DEMO_TICKET;
+export function getListings(
+  filters?: { kind?: PropertyKind; tradeType?: TradeType; lawdCd?: string; petsAllowed?: boolean },
+  signal?: AbortSignal
+): Promise<Listing[] | null> {
+  const query = new URLSearchParams();
+  if (filters?.kind) query.set("kind", filters.kind);
+  if (filters?.tradeType) query.set("tradeType", filters.tradeType);
+  if (filters?.lawdCd) query.set("lawdCd", filters.lawdCd);
+  if (filters?.petsAllowed) query.set("petsAllowed", "true");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return getJson<Listing[]>(`/api/listings${suffix}`, signal);
 }
 
-export async function getAnalysis(id?: string): Promise<DefectAnalysis> {
-  const c = await resolveComplaint(id);
-  const mapped = c && toAnalysis(c);
-  if (mapped) return mapped;
-  console.warn("[tenant/api] 실제 분석 없음 → 데모 분석 폴백");
-  return DEMO_ANALYSIS;
+export function getListing(id: string, signal?: AbortSignal): Promise<Listing | null> {
+  return getJson<Listing>(`/api/listings/${id}`, signal);
 }
-
-export async function getRepair(id?: string): Promise<RepairJob> {
-  const c = await resolveComplaint(id);
-  const mapped = c && toRepair(c);
-  if (mapped) return mapped;
-  console.warn("[tenant/api] 실제 수리 없음(미배정/취소) → 데모 수리 폴백");
-  return DEMO_REPAIR;
-}
-
-/** 상세 화면들이 참조하는 활성 하자 sentinel (단일 활성 흐름 — 실제 id는 서버에서 해석). */
-export const DEMO_TICKET_ID = "active";

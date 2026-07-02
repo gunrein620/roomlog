@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Card } from "@roomlog/ui";
 import type { TicketStatus } from "@roomlog/types";
 import { routeFor } from "@/lib/nav";
-import { DEMO_TICKET_ID, getAnalysis, getTicket } from "@/lib/api";
+import { DEMO_TICKET_ID, getAnalysis, getTicket } from "@/lib/defect-api";
 
 // T-DEF-09 · 관리자 처리 현황 — 티켓 상태 전용(수리 타임라인은 08 소관, 여기서 섞지 않음).
 // v3: 관리자 결정에 따라 05(동의 미완) 또는 06(동의완료·업체확보)으로 복귀하는 간선을 지원.

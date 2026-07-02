@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Card } from "@roomlog/ui";
 import { routeFor } from "@/lib/nav";
-import { DEMO_TICKET_ID, getTicket } from "@/lib/api";
+import { DEMO_TICKET_ID, getTicket } from "@/lib/defect-api";
 
 // T-DEF-10 · 처리 완료 — 임차인책임(결제완료)·임대인책임(관리자처리완료) 두 종료를 한 화면으로 합류.
 

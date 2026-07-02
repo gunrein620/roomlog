@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
 import { routeFor, withId } from "@/lib/nav";
-import { DEMO_TICKET_ID, getRepair, getTicket } from "@/lib/api";
+import { DEMO_TICKET_ID, getRepair, getTicket } from "@/lib/defect-api";
 
 // T-DEF-11 · 내 신고 현황(hub) — 접수·검토(티켓)와 수리 진행(수리) 섹션을 라벨로 분리해 한 화면에.
 // 진입은 단일(11), 표시만 분리 — #3 데이터 분리 원칙 유지.

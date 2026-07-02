@@ -77,6 +77,11 @@ test("renders a mobile real-estate app shell with search, map list, and listing 
   }
 });
 
+test("opens the public website directly on the listing home instead of signup", () => {
+  assert.match(pageSource, /useState<AppRole>\("seeker"\)/);
+  assert.doesNotMatch(pageSource, /useState<AppRole \| null>\(null\)/);
+});
+
 test("promotes the future 3D room tour as a primary listing detail action", () => {
   assert.match(pageSource, /3D\s*(가상\s*)?투어/);
   assert.match(pageSource, /투어\s*예약/);
@@ -87,11 +92,9 @@ test("promotes the future 3D room tour as a primary listing detail action", () =
   assert.doesNotMatch(pageSource, /3D ENGINE SLOT|다른 팀의 3D 엔진|연결될 위치/);
 });
 
-test("offers social-only sign in with a developer shortcut for local entry", () => {
+test("offers a clean white social sign-in limited to Naver and Google with a developer shortcut", () => {
   for (const label of [
-    "카카오",
     "네이버",
-    "Apple",
     "Google",
     "개발용 로그인",
     "집우집주",
@@ -107,17 +110,32 @@ test("offers social-only sign in with a developer shortcut for local entry", () 
   assert.match(pageSource, /socialLoginNotice/);
   assert.match(pageSource, /setSocialLoginNotice/);
   assert.match(pageSource, /setActiveRole/);
-  assert.match(pageSource, /assets\/img\/image\.png/);
-  assert.match(pageSource, /loginHeroImage/);
-  assert.match(pageSource, /login-visual/);
-  assert.match(pageSource, /login-hero-image/);
-  assert.match(cssSource, /\.login-visual/);
-  assert.match(cssSource, /\.login-hero-image/);
-  assert.match(cssSource, /\.login-hero-image\s*{[^}]*object-fit:\s*contain/s);
+  assert.match(pageSource, /login-brandmark/);
+  assert.match(pageSource, /brand-mark-icon/);
+  assert.match(cssSource, /\.login-phone\s*{[^}]*background:\s*#ffffff/s);
   assert.match(cssSource, /\.login-trust-row/);
   assert.match(cssSource, /\.social-login-notice/);
+  assert.doesNotMatch(pageSource, /카카오로 계속하기/);
+  assert.doesNotMatch(pageSource, /Apple로 계속하기/);
+  assert.doesNotMatch(pageSource, /assets\/img\/image\.png/);
+  assert.doesNotMatch(pageSource, /loginHeroImage/);
+  assert.doesNotMatch(pageSource, /login-visual/);
+  assert.doesNotMatch(pageSource, /login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.login-visual/);
+  assert.doesNotMatch(cssSource, /\.login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.social-button\.kakao/);
+  assert.doesNotMatch(cssSource, /\.social-button\.apple/);
   assert.doesNotMatch(pageSource, /개발 중에는/);
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
+});
+
+test("opens the social signup screen from the topbar signup actions", () => {
+  assert.match(pageSource, /const \[authMode, setAuthMode\]/);
+  assert.match(pageSource, /openAuthScreen/);
+  assert.match(pageSource, /className="web-signup"[^>]*onClick=\{\(\) => openAuthScreen\("signup"\)\}/);
+  assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
+  assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
+  assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);
 });
 
 test("borrows mature Zigbang and Dabang product patterns for trust and map search", () => {
@@ -337,10 +355,10 @@ test("offers three developer login roles for seekers, tenants, and landlords", (
   assert.match(pageSource, /setActiveRole\(role\.id\)/);
   assert.match(pageSource, /startRoleSession/);
   assert.match(pageSource, /setActiveTab\(role === "seeker" \? "home" : "mypage"\)/);
-  assert.match(pageSource, /<LoginScreen setActiveRole=\{startRoleSession\}/);
+  assert.match(pageSource, /function LoginScreen/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
-  assert.match(pageSource, /\[activeRole, activeTab, selectedListing\]/);
+  assert.match(pageSource, /\[activeRole, activeTab, selectedListing, authMode\]/);
 });
 
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
@@ -662,15 +680,26 @@ test("keeps the bottom app tabs fixed to the viewport", () => {
   assert.match(cssSource, /\.map-card-tags/);
 });
 
-test("supports a responsive desktop web layout beyond the phone frame", () => {
+test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /@media \(min-width:\s*1080px\)/);
-  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*min\(calc\(100vw - 48px\), 1180px\)/s);
-  assert.match(cssSource, /\.home-screen\s*{[^}]*grid-template-columns:\s*minmax\(340px, 0\.86fr\) minmax\(500px, 1\.14fr\)/s);
+  // 데스크톱은 전체폭 포털 셸(모바일 카드 프레임 제거)
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*block/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*100%/s);
+  // 상단 가로 네비 + 히어로는 기본(모바일) 숨김, 데스크톱에서 노출
+  assert.match(cssSource, /\.web-topbar,\s*\.web-hero-head\s*{[^}]*display:\s*none/s);
+  assert.match(cssSource, /\.web-topbar\s*{[^}]*position:\s*sticky/s);
+  assert.match(cssSource, /\.web-hero-head\s*{[^}]*display:\s*block/s);
+  assert.match(pageSource, /web-topbar/);
+  assert.match(pageSource, /web-hero-head/);
+  assert.match(pageSource, /방 구할 땐, 집우집주/);
+  // 카테고리 = 큰 카드 한 줄, 매물 = 넓은 3열 그리드
+  assert.match(cssSource, /\.home-screen > \.category-strip\s*{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/s);
+  assert.match(cssSource, /\.home-screen > \.listing-feed\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
+  // 지도/상세 데스크톱 그리드는 유지
   assert.match(cssSource, /\.map-screen\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 390px/s);
   assert.match(cssSource, /\.listing-detail-screen\s*{[^}]*grid-template-columns:\s*minmax\(460px, 1fr\) 360px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*width:\s*min\(540px, calc\(100vw - 48px\)\)/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*border-radius:\s*999px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*backdrop-filter:\s*blur\(18px\)/s);
+  // 데스크톱에서는 하단 탭 숨김(상단 네비가 대체)
+  assert.match(cssSource, /@media \(min-width:\s*1080px\)[\s\S]*\.bottom-tabs\s*{\s*display:\s*none/);
 });
 
 test("is configured as an installable PWA shell", () => {

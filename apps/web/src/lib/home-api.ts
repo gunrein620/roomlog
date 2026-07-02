@@ -1,5 +1,5 @@
 import type { Ticket, Bill } from "@roomlog/types";
-import { listTickets } from "./api";
+import { listTickets } from "./defect-api";
 import { getUser } from "./session";
 import { CROSS_ROUTES } from "./home-nav";
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Card } from "@roomlog/ui";
 import { routeFor } from "@/lib/nav";
-import { DEMO_TICKET_ID, getRepair } from "@/lib/api";
+import { DEMO_TICKET_ID, getRepair } from "@/lib/defect-api";
 
 // T-DEF-06 · 업체 견적 — 임차인책임 경로. 견적 수락은 결제가 아니라 수리 진행(08)으로 이어진다.
 

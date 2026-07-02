@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card } from "@roomlog/ui";
 import { routeFor } from "@/lib/nav";
-import { DEMO_TICKET_ID, getRepair, getTicket } from "@/lib/api";
+import { DEMO_TICKET_ID, getRepair, getTicket } from "@/lib/defect-api";
 
 // T-DEF-07 · 수리비 결제 — 수리 완료 후 결제. '결제하기' 라벨은 이 화면 단독(08은 '결제 단계로').
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Ticket, TicketStatus } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import { ROUTES } from "@/lib/nav";
-import { listTickets } from "@/lib/api";
+import { listTickets } from "@/lib/defect-api";
 
 // T-DEF-00 · 내 하자 홈 (center)
 // 진행 중 신고를 한눈에 + "새 하자 신고" 진입점. 빈 상태는 인-스크린.

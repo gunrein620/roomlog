@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Button, Card } from "@roomlog/ui";
 import type { RepairStage } from "@roomlog/types";
 import { routeFor } from "@/lib/nav";
-import { DEMO_TICKET_ID, getRepair } from "@/lib/api";
+import { DEMO_TICKET_ID, getRepair } from "@/lib/defect-api";
 
 // T-DEF-08 · 수리 진행 — 수리 상태 전용(티켓 상태는 09/11 소관, 여기서 섞지 않음).
 
