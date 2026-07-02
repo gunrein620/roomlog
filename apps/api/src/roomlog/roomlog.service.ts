@@ -2028,7 +2028,7 @@ export class RoomlogService {
 
     return this.store.repairs
       .filter((repair) => repair.vendorId === vendor.id)
-      .map((repair) => this.presentRepair(repair));
+      .map((repair) => this.presentRepairForVendor(repair));
   }
 
   getVendorRepair(vendorUserOrProfileId: string, repairId: string) {
@@ -2041,7 +2041,7 @@ export class RoomlogService {
       throw new NotFoundException("수리 요청을 찾을 수 없습니다.");
     }
 
-    return this.presentRepair(repair);
+    return this.presentRepairForVendor(repair);
   }
 
   submitEstimate(vendorUserOrProfileId: string, repairId: string, input: SubmitEstimateInput) {
@@ -2190,8 +2190,8 @@ export class RoomlogService {
 
     return {
       message: this.presentTicketMessage(message),
-      repair: this.presentRepair(repair),
-      ticket: this.presentTicket(ticket)
+      repair: this.presentRepairForVendor(repair),
+      ticket: this.presentTicketForVendor(ticket, repair)
     };
   }
 
@@ -5859,6 +5859,112 @@ export class RoomlogService {
       ...repair,
       ticket: this.presentTicket(ticket)
     };
+  }
+
+  private presentRepairForVendor(repair: RepairRequest) {
+    const ticket = this.findTicket(repair.ticketId);
+    const complaint = this.findComplaint(ticket.complaintId);
+
+    return {
+      ...repair,
+      managerRequestText: repair.description,
+      visitMemo: complaint.availableTimes,
+      ticket: this.presentTicketForVendor(ticket, repair)
+    };
+  }
+
+  private presentTicketForVendor(ticket: Ticket, repair: RepairRequest) {
+    const complaint = this.findComplaint(ticket.complaintId);
+    const room = this.store.rooms.find((item) => item.id === ticket.roomId);
+    const analysis = this.store.analyses[ticket.id];
+    const attachmentUrls = this.vendorComplaintAttachmentUrls(ticket, analysis);
+
+    if (!analysis) {
+      throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
+    }
+
+    return {
+      id: ticket.id,
+      complaintId: ticket.complaintId,
+      status: ticket.status,
+      category: ticket.category,
+      priority: ticket.priority,
+      responsibilityHint: ticket.responsibilityHint,
+      dueAt: ticket.dueAt,
+      createdAt: ticket.createdAt,
+      updatedAt: ticket.updatedAt,
+      managerRequestText: repair.description,
+      visitMemo: complaint.availableTimes,
+      attachmentUrls,
+      complaint: {
+        id: complaint.id,
+        ticketId: complaint.ticketId,
+        sourceChannel: complaint.sourceChannel,
+        title: complaint.title,
+        description: complaint.description,
+        category: ticket.category,
+        location: complaint.location,
+        occurredAt: complaint.occurredAt,
+        availableTimes: complaint.availableTimes,
+        status: complaint.status,
+        createdAt: complaint.createdAt,
+        updatedAt: complaint.updatedAt,
+        attachmentUrls,
+        visitMemo: complaint.availableTimes
+      },
+      room: room
+        ? {
+            buildingName: room.buildingName,
+            roomNo: room.roomNo
+          }
+        : undefined,
+      analysis: this.presentAnalysisForVendor(analysis),
+      assignedVendor: this.presentAssignedVendorForVendor(ticket.assignedVendorId),
+      repairs: [{ ...repair, completionPhotoUrls: [...repair.completionPhotoUrls] }]
+    };
+  }
+
+  private presentAnalysisForVendor(analysis: AiAnalysis) {
+    return {
+      category: analysis.category,
+      detailCategory: analysis.detailCategory,
+      priority: analysis.priority,
+      responsibilityHint: analysis.responsibilityHint,
+      confidenceScore: analysis.confidenceScore,
+      photoAnalysis: analysis.photoAnalysis
+        ? {
+            attachmentUrls: [...analysis.photoAnalysis.attachmentUrls],
+            candidates: [...analysis.photoAnalysis.candidates],
+            comparisonStatus: analysis.photoAnalysis.comparisonStatus,
+            summary: analysis.photoAnalysis.summary,
+            evidence: [...analysis.photoAnalysis.evidence],
+            recommendedRetake: analysis.photoAnalysis.recommendedRetake
+          }
+        : undefined
+    };
+  }
+
+  private presentAssignedVendorForVendor(vendorId?: string) {
+    const vendor = vendorId
+      ? this.store.vendors.find((item) => item.id === vendorId)
+      : undefined;
+
+    return vendor
+      ? {
+          businessName: vendor.businessName
+        }
+      : undefined;
+  }
+
+  private vendorComplaintAttachmentUrls(ticket: Ticket, analysis?: AiAnalysis) {
+    return Array.from(
+      new Set([
+        ...(analysis?.photoAnalysis?.attachmentUrls ?? []),
+        ...this.store.messages
+          .filter((message) => message.ticketId === ticket.id && message.senderRole === "TENANT")
+          .flatMap((message) => message.attachmentUrls)
+      ])
+    );
   }
 
   private displayStatus(status: TicketStatus) {
