@@ -1042,6 +1042,50 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
   assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 2.4);
 });
 
+test("floor plan editor model optimizes wall conversion with stable ids", async () => {
+  const model = floorPlanModel;
+  const walls = [
+    { id: "a", start: { x: 0, y: 0 }, end: { x: 50, y: 0 } },
+    { id: "b", start: { x: 50, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "side", start: { x: 100, y: 0 }, end: { x: 100, y: 100 } }
+  ];
+
+  const converted = model.convertOptimizedWallsToWheretoputRoom3D(walls, {
+    mergeCollinear: true,
+    pixelToMmRatio: 20,
+    stableIds: true
+  });
+
+  assert.equal(converted.length, 2);
+  assert.equal(converted[0].id, "wall-merged-a-b");
+  assert.equal(converted[0].wall_id, "merged:a+b");
+  assert.deepEqual(converted[0].dimensions, { width: 2, height: 2.5, depth: 0.15 });
+  assert.equal(converted[1].id, "wall-side");
+  assert.deepEqual(walls[0], { id: "a", start: { x: 0, y: 0 }, end: { x: 50, y: 0 } });
+});
+
+test("floor plan editor model builds closed-loop floor polygon data", async () => {
+  const model = floorPlanModel;
+  const square = [
+    { id: "top", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "right", start: { x: 100, y: 0 }, end: { x: 100, y: 100 } },
+    { id: "bottom", start: { x: 100, y: 100 }, end: { x: 0, y: 100 } },
+    { id: "left", start: { x: 0, y: 100 }, end: { x: 0, y: 0 } }
+  ];
+
+  const polygons = model.buildClosedLoopFloorPolygons(square, { pixelToMmRatio: 20 });
+
+  assert.equal(polygons.length, 1);
+  assert.deepEqual(polygons[0].wallIds.sort(), ["bottom", "left", "right", "top"]);
+  assert.deepEqual(polygons[0].points, [
+    { x: 0, z: 0 },
+    { x: 2, z: 0 },
+    { x: 2, z: 2 },
+    { x: 0, z: 2 }
+  ]);
+  assert.equal(polygons[0].perimeterMeters, 8);
+});
+
 test("floor plan editor model converts 2D walls into wheretoput-style 3D wall boxes", async () => {
   const model = floorPlanModel;
   const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");

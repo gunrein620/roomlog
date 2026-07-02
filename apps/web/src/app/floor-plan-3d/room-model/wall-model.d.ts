@@ -53,12 +53,37 @@ export function convertWallsToWheretoputSimulator(
 ): WheretoputSimulatorWall[];
 export function convertWallsToWheretoputRoom3D(
   walls: Wall[],
-  options?: { height?: number; depth?: number; pixelToMmRatio?: number }
+  options?: { height?: number; depth?: number; pixelToMmRatio?: number; stableIds?: boolean }
 ): Array<
   WheretoputSimulatorWall & {
     material: "wall";
     original2D: Wall;
   }
 >;
+export function convertOptimizedWallsToWheretoputRoom3D(
+  walls: Wall[],
+  options?: {
+    depth?: number;
+    gapTolerancePx?: number;
+    height?: number;
+    mergeCollinear?: boolean;
+    pixelToMmRatio?: number;
+    stableIds?: boolean;
+    tolerancePx?: number;
+  }
+): Array<
+  WheretoputSimulatorWall & {
+    material: "wall";
+    original2D: Wall;
+  }
+>;
+export function buildClosedLoopFloorPolygons(
+  walls: Wall[],
+  options?: { pixelToMmRatio?: number; tolerancePx?: number }
+): Array<{
+  perimeterMeters: number;
+  points: Array<{ x: number; z: number }>;
+  wallIds: Array<Wall["id"]>;
+}>;
 export function createWallsFromRegisteredPlan(plan?: RegisteredPlanMetadata): Wall[];
 export function createStarterWalls(): Wall[];

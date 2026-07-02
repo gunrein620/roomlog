@@ -86,10 +86,10 @@
 
 room-model은 순수 로직이라 직접적 병목은 아니지만, **렌더링 비용을 줄이는 데이터**를 만들어 줄 수 있다:
 
-- [ ] `mergeCollinearWalls`를 3D 변환 전에 적용하는 opt-in 경로 제공 → 벽 메시 수 감소
-- [ ] `convertWallsToWheretoputRoom3D` id 안정화 검토: 현재 `wall-${index}`라 벽 추가/삭제 시 전체 id가 밀려 React key 재생성 → `wall_id` 기반 id 옵션 추가 (기존 동작은 기본값으로 유지)
-- [ ] 변환 함수 할당(allocation) 점검 — 60fps 드래그 중 불필요한 배열/객체 생성 줄이기 (반환 구조는 유지)
-- [ ] 닫힌 방 폴리곤(`detectClosedLoops`) 기반 바닥 생성 데이터 제공 → room-scene의 바닥을 벽 bounds 추정 대신 실제 방 모양으로
+- [x] `mergeCollinearWalls`를 3D 변환 전에 적용하는 opt-in 경로 제공 → 벽 메시 수 감소
+- [x] `convertWallsToWheretoputRoom3D` id 안정화 검토: 현재 `wall-${index}`라 벽 추가/삭제 시 전체 id가 밀려 React key 재생성 → `wall_id` 기반 id 옵션 추가 (기존 동작은 기본값으로 유지)
+- [x] 변환 함수 할당(allocation) 점검 — 60fps 드래그 중 불필요한 배열/객체 생성 줄이기 (반환 구조는 유지)
+- [x] 닫힌 방 폴리곤(`detectClosedLoops`) 기반 바닥 생성 데이터 제공 → room-scene의 바닥을 벽 bounds 추정 대신 실제 방 모양으로
 
 ### 다른 담당자 소관 (전달할 협업 목록 — 여기서 작업하지 않음)
 
