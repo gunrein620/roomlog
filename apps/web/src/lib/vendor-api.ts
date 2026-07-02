@@ -1,16 +1,11 @@
 import type { DefectAnalysis, RepairJob, Ticket } from "@roomlog/types";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
-
-async function tryFetch<T>(path: string, fallback: T): Promise<T> {
-  try {
-    const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
-    return fallback;
-  }
-}
+import { serverFetch } from "./server-api";
+import {
+  toManagerTicket,
+  toManagerAnalysis,
+  toManagerRepair,
+  type TeamManagerTicket
+} from "./manager-mapping";
 
 export const VENDOR_DEMO_TICKET: Ticket = {
   id: "tk_0001",
@@ -62,18 +57,61 @@ export const VENDOR_DEMO_REPAIR: RepairJob = {
 
 export const VENDOR_DEMO_TICKET_ID = VENDOR_DEMO_TICKET.id;
 
-export function listVendorJobs(): Promise<RepairJob[]> {
-  return tryFetch("/tickets/vendor/jobs", [VENDOR_DEMO_REPAIR]);
+// 수리업체 API 클라이언트 — 팀 GET /vendor/repairs 에 쿠키 인증으로 연결(레퍼런스 패턴 복제).
+// 서버 컴포넌트 전용. 응답 presentRepair = {...repair, ticket: presentTicket} 이므로
+// 중첩 ticket을 manager 매퍼로 재사용(단일방향 매핑·교정 공유). 배정된 수리만 반환된다.
+// NOTE: 업체는 최소 정보만 봐야 함(호실 라벨·증상·사진·메모) — 필드 제한은 백엔드 projection 책임.
+
+interface TeamVendorRepair {
+  id: string;
+  ticket: TeamManagerTicket;
 }
 
-export function getVendorRepair(ticketId: string): Promise<RepairJob> {
-  return tryFetch(`/tickets/${ticketId}/repair`, VENDOR_DEMO_REPAIR);
+async function listTeamVendorRepairs(): Promise<TeamVendorRepair[]> {
+  return serverFetch<TeamVendorRepair[]>("/vendor/repairs");
 }
 
-export function getVendorAnalysis(ticketId: string): Promise<DefectAnalysis> {
-  return tryFetch(`/tickets/${ticketId}/analysis`, VENDOR_DEMO_ANALYSIS);
+async function activeVendorRepair(): Promise<TeamVendorRepair | null> {
+  try {
+    const list = await listTeamVendorRepairs();
+    return list[0] ?? null;
+  } catch (error) {
+    console.error("[vendor/api] /vendor/repairs 조회 실패:", error);
+    return null;
+  }
 }
 
-export function getVendorTicket(ticketId: string): Promise<Ticket> {
-  return tryFetch(`/tickets/${ticketId}`, VENDOR_DEMO_TICKET);
+export async function listVendorJobs(): Promise<RepairJob[]> {
+  try {
+    const list = await listTeamVendorRepairs();
+    return list
+      .map((r) => toManagerRepair(r.ticket))
+      .filter((r): r is RepairJob => r !== null);
+  } catch (error) {
+    console.error("[vendor/api] listVendorJobs 실패 → 빈 목록:", error);
+    return [];
+  }
+}
+
+export async function getVendorRepair(_ticketId?: string): Promise<RepairJob> {
+  const r = await activeVendorRepair();
+  const mapped = r && toManagerRepair(r.ticket);
+  if (mapped) return mapped;
+  console.warn("[vendor/api] 배정된 수리 없음 → 데모 폴백");
+  return VENDOR_DEMO_REPAIR;
+}
+
+export async function getVendorAnalysis(_ticketId?: string): Promise<DefectAnalysis> {
+  const r = await activeVendorRepair();
+  const mapped = r && toManagerAnalysis(r.ticket);
+  if (mapped) return mapped;
+  console.warn("[vendor/api] 배정된 수리 분석 없음 → 데모 폴백");
+  return VENDOR_DEMO_ANALYSIS;
+}
+
+export async function getVendorTicket(_ticketId?: string): Promise<Ticket> {
+  const r = await activeVendorRepair();
+  if (r) return toManagerTicket(r.ticket);
+  console.warn("[vendor/api] 배정된 수리 티켓 없음 → 데모 폴백");
+  return VENDOR_DEMO_TICKET;
 }
