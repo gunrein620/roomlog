@@ -55,7 +55,7 @@ function limitLines(lines: DetectedLine[], maxLines = 40) {
 
 function mergeLines(lines: DetectedLine[]) {
   const sorted = lines
-    .filter((line) => lineLength(line) >= 28)
+    .filter((line) => lineLength(line) >= 20)
     .sort((a, b) => {
       if (a.orientation !== b.orientation) return a.orientation === "horizontal" ? -1 : 1;
       const axisA = a.orientation === "horizontal" ? a.y1 : a.x1;
@@ -168,6 +168,12 @@ function runOverlapRatio(runA: { start: number; end: number }, runB: { start: nu
   return overlap / shortest;
 }
 
+function runBalanceRatio(runA: { start: number; end: number }, runB: { start: number; end: number }) {
+  const overlap = overlapLength(runA.start, runA.end, runB.start, runB.end);
+  const longest = Math.max(1, Math.max(runA.end - runA.start, runB.end - runB.start));
+  return overlap / longest;
+}
+
 function createBandLine(
   band: { minAxis: number; maxAxis: number; runs: Array<{ start: number; end: number }> },
   orientation: "horizontal" | "vertical",
@@ -229,6 +235,8 @@ function extractBandsFromRows(
 
       for (const band of activeBands) {
         if (axis - band.maxAxis > 2) continue;
+        // 길이가 크게 다른 run(가구 채움)이 벽 밴드를 흡수하지 못하게 막는다.
+        if (runBalanceRatio(run, band.lastRun) < 0.6) continue;
         const candidateOverlap = runOverlapRatio(run, band.lastRun);
         if (candidateOverlap > bestOverlap) {
           bestBand = band;
@@ -297,7 +305,23 @@ function extractWallBandLinesFromMask(mask: boolean[], width: number, height: nu
   }
 
   const options = { height, minRunLength, width };
-  return [...extractBandsFromRows(horizontalRows, "horizontal", options), ...extractBandsFromRows(verticalRows, "vertical", options)];
+  const primaryLines = [
+    ...extractBandsFromRows(horizontalRows, "horizontal", options),
+    ...extractBandsFromRows(verticalRows, "vertical", options)
+  ];
+
+  // 짧고 두꺼운 벽(문설주, 샤프트, 작은 사각 벽)은 기본 minRunLength에서 소실되므로
+  // 두께 조건을 강화한 짧은 run 기준으로 한 번 더 추출해 보강한다.
+  const shortMinRunLength = Math.max(20, Math.round(Math.min(width, height) * 0.025));
+  if (shortMinRunLength >= minRunLength) return primaryLines;
+
+  const shortOptions = { height, minRunLength: shortMinRunLength, minWallThickness: 5, width };
+  const shortLines = [
+    ...extractBandsFromRows(horizontalRows, "horizontal", shortOptions),
+    ...extractBandsFromRows(verticalRows, "vertical", shortOptions)
+  ].filter((line) => lineLength(line) < minRunLength);
+
+  return [...primaryLines, ...shortLines];
 }
 
 function createDarkWallMask(imageData: ImageData, threshold = 145) {
@@ -313,13 +337,76 @@ function createStrictLineMask(imageData: ImageData) {
   return createDarkWallMask(imageData, 128);
 }
 
+// 어두운 픽셀 분포를 둘로 나눠(Otsu) 순흑 벽과 진회색 가구 채움(싱크대 상판 등)을
+// 분리할 수 있으면 벽 쪽 임계값을 돌려준다. 분리가 불확실하면 baseThreshold 유지.
+function estimateWallLuminanceThreshold(imageData: ImageData, baseThreshold = 128) {
+  const { data, height, width } = imageData;
+  const pixelCount = width * height;
+  if (!pixelCount) return baseThreshold;
+
+  const histogram = new Array(baseThreshold).fill(0);
+  let darkTotal = 0;
+
+  for (let index = 0; index < pixelCount; index += 1) {
+    const offset = index * 4;
+    if ((data[offset + 3] ?? 255) <= 24) continue;
+    const luminance = Math.round(
+      (data[offset] ?? 255) * 0.2126 + (data[offset + 1] ?? 255) * 0.7152 + (data[offset + 2] ?? 255) * 0.0722
+    );
+    if (luminance >= baseThreshold) continue;
+    histogram[luminance] += 1;
+    darkTotal += 1;
+  }
+
+  if (darkTotal < Math.max(400, Math.round(pixelCount * 0.002))) return baseThreshold;
+
+  let totalSum = 0;
+  for (let luminance = 0; luminance < baseThreshold; luminance += 1) totalSum += luminance * histogram[luminance];
+
+  let weightDarker = 0;
+  let sumDarker = 0;
+  let bestVariance = 0;
+  let bestSplit: { meanDarker: number; meanLighter: number; weightDarker: number; weightLighter: number } | null = null;
+
+  for (let luminance = 0; luminance < baseThreshold; luminance += 1) {
+    weightDarker += histogram[luminance];
+    sumDarker += luminance * histogram[luminance];
+    if (!weightDarker) continue;
+    const weightLighter = darkTotal - weightDarker;
+    if (!weightLighter) break;
+    const meanDarker = sumDarker / weightDarker;
+    const meanLighter = (totalSum - sumDarker) / weightLighter;
+    const variance = weightDarker * weightLighter * (meanDarker - meanLighter) ** 2;
+    if (variance > bestVariance) {
+      bestVariance = variance;
+      bestSplit = { meanDarker, meanLighter, weightDarker, weightLighter };
+    }
+  }
+
+  if (!bestSplit) return baseThreshold;
+  if (bestSplit.meanLighter - bestSplit.meanDarker < 26) return baseThreshold;
+  if (bestSplit.weightDarker / darkTotal < 0.3 || bestSplit.weightLighter / darkTotal < 0.05) return baseThreshold;
+
+  return Math.max(32, Math.min(baseThreshold, Math.round((bestSplit.meanDarker + bestSplit.meanLighter) / 2)));
+}
+
+function extractAdaptiveBandLines(imageData: ImageData) {
+  const baseThreshold = 128;
+  const wallThreshold = estimateWallLuminanceThreshold(imageData, baseThreshold);
+  const bandLines = extractWallBandLinesFromMask(createDarkWallMask(imageData, wallThreshold), imageData.width, imageData.height);
+  if (wallThreshold >= baseThreshold || bandLines.length >= 3) return bandLines;
+
+  // 적응 임계값이 벽까지 지워버린 경우(밴드 부족) 원래 임계값으로 되돌린다.
+  return extractWallBandLinesFromMask(createStrictLineMask(imageData), imageData.width, imageData.height);
+}
+
 function fallbackExtract(imageData: ImageData) {
   const { height, width } = imageData;
-  const mask = createStrictLineMask(imageData);
-  const bandLines = extractWallBandLinesFromMask(mask, width, height);
+  const bandLines = extractAdaptiveBandLines(imageData);
   if (bandLines.length >= 3) {
     return annotateFillSupport(mergeLines(bandLines), imageData);
   }
+  const mask = createStrictLineMask(imageData);
   const lines: DetectedLine[] = [];
   const minRunLength = Math.max(28, Math.round(Math.min(width, height) * 0.06));
 
@@ -351,7 +438,7 @@ function fallbackExtract(imageData: ImageData) {
 }
 
 function extractWithOpenCv(imageData: ImageData) {
-  const maskLines = extractWallBandLinesFromMask(createStrictLineMask(imageData), imageData.width, imageData.height);
+  const maskLines = extractAdaptiveBandLines(imageData);
   if (maskLines.length >= 3) {
     return annotateFillSupport(mergeLines(maskLines), imageData);
   }

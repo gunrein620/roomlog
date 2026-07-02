@@ -1708,6 +1708,164 @@ test("floor plan editor model strict line mask ignores filled surfaces and small
   assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 70 && line.x1 <= 165), false);
 });
 
+test("floor plan editor model separates dark furniture fill from black walls with adaptive luminance", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 상단 벽 안쪽에 붙은 진회색 싱크대 채움 — 벽으로 검출되면 안 된다.
+  fillRect(100, 38, 200, 80, 90);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 40, strictLineMask: true, width }
+  );
+
+  assert.equal(
+    lines.some((line) => line.orientation === "horizontal" && Math.abs(line.y1 - 33) <= 3 && line.x1 <= 34 && line.x2 >= 266),
+    true
+  );
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 40 && line.y1 <= 85), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 95 && line.x1 <= 205 && line.y2 <= 90), false);
+});
+
+test("floor plan editor model keeps wall bands separate from adjacent solid fill blocks", async () => {
+  const model = floorPlanModel;
+  const width = 220;
+  const height = 120;
+  const mask = Array.from({ length: width * height }, () => false);
+  const fillRect = (x1, y1, x2, y2) => {
+    for (let y = y1; y <= y2; y += 1) {
+      for (let x = x1; x <= x2; x += 1) mask[y * width + x] = true;
+    }
+  };
+
+  fillRect(10, 20, 209, 27);
+  // 벽 바로 아래 같은 색으로 붙은 채움 블록 — 벽 밴드를 흡수하면 안 된다.
+  fillRect(60, 28, 119, 70);
+
+  const lines = model.detectWallBandLinesFromMask(mask, { height, minRunLength: 40, width });
+  const wallBand = lines.find((line) => line.orientation === "horizontal" && line.y1 <= 28);
+
+  assert.equal(Boolean(wallBand), true);
+  assert.equal(wallBand.thickness <= 10, true);
+  assert.equal(wallBand.x1 <= 12 && wallBand.x2 >= 207, true);
+});
+
+test("floor plan editor model recovers short thick wall stubs below the primary run length", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  fillRect(146, 38, 153, 74, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const recoveredStub = lines.find(
+    (line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80
+  );
+
+  assert.equal(Boolean(recoveredStub), true);
+  assert.equal(recoveredStub.markers?.includes("short-wall-recovered"), true);
+
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  assert.equal(
+    filtered.walls.some((line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80),
+    true
+  );
+});
+
+test("floor plan editor model keeps small solid rectangular wall blocks as single walls", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 순흑으로 채운 24x32 덕트/샤프트 — 긴 축 방향 벽 하나로 남아야 한다.
+  fillRect(180, 120, 203, 151, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  const blockWalls = filtered.walls.filter(
+    (line) => line.x1 >= 172 && line.x2 <= 211 && line.y1 >= 112 && line.y2 <= 159
+  );
+
+  assert.equal(blockWalls.length, 1);
+  assert.equal(blockWalls[0].orientation, "vertical");
+});
+
+test("floor plan editor model classifies over-thick fill bands as furniture candidates", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 410, y2: 180, orientation: "horizontal", thickness: 60 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => Number(line.thickness ?? 1) >= 60), false);
+  assert.equal(result.annotationCandidates.some((candidate) => candidate.source === "furniture-fill-band"), true);
+});
+
 test("floor plan editor model estimates scale from outside dimensions", async () => {
   const model = floorPlanModel;
   const candidate = model.estimateScaleCandidateFromDimensions([

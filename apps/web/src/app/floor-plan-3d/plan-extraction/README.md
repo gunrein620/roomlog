@@ -22,6 +22,18 @@
       → createWallsFromDetectedLines()     # 에디터 좌표계 Wall[]로 변환
 ```
 
+마스크 → 라인 추출(strict 경로)의 내부 단계:
+
+1. `estimateWallLuminanceThreshold` — 어두운 픽셀 히스토그램을 Otsu로 분할해 순흑 벽과
+   진회색 가구 채움(싱크대 상판 등)을 분리. 분리 실패 시 기본 임계값(128)으로 자동 복귀.
+2. 밴드 추출 시 run 길이 균형 검사(`bandRunBalanceRatio`) — 벽에 붙은 채움 블록이
+   벽 밴드를 흡수해 실제 벽 라인을 파괴하는 것을 방지.
+3. 짧은 세그먼트 복구 패스 — 기본 `minRunLength`(≈6%)에서 소실되는 문설주·짧은 벽·
+   작은 사각 벽(덕트/샤프트)을 두께 조건(≥5px)을 강화한 짧은 기준으로 재추출
+   (`short-wall-recovered` 마커).
+4. 필터 단계에서 `furniture-fill-band`(벽 두께 중앙값보다 3배 이상 두꺼운 밴드 → 주석 후보)와
+   솔리드 블록 구제(`isSolidWallBlockLine`, 긴 축 방향 한 줄만 유지)로 정밀도 보강.
+
 ## 규칙
 
 - `room-model`의 export만 import 가능 (`room-scene`, React 금지).

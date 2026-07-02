@@ -428,7 +428,7 @@ function isConservativeWallLine(line, structuralBounds, options = {}, threshold 
 function isConnectedThickWallStub(line, candidateWalls, structuralBounds, options = {}, threshold = 4) {
   const thickness = Number(line.thickness ?? 1);
   const length = lineLength(line);
-  const minStubLength = options.wallFirstMinStubLength ?? Math.max(40, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.055));
+  const minStubLength = options.wallFirstMinStubLength ?? Math.max(24, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.032));
   if (!Number.isFinite(thickness) || thickness < Math.max(4, threshold * 0.8)) return false;
   if (length < minStubLength) return false;
 
@@ -453,7 +453,7 @@ function isConnectedThickWallStub(line, candidateWalls, structuralBounds, option
 function isSmallClosedWallLoopSegment(line, candidateWalls, structuralBounds, options = {}, threshold = 4) {
   const thickness = Number(line.thickness ?? 1);
   const length = lineLength(line);
-  const minLoopLength = options.wallFirstMinLoopLength ?? Math.max(48, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.06));
+  const minLoopLength = options.wallFirstMinLoopLength ?? Math.max(30, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.045));
   const maxLoopLength = options.wallFirstMaxLoopLength ?? Math.max(120, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.18));
   if (!Number.isFinite(thickness) || thickness < Math.max(4, threshold * 0.8)) return false;
   if (length < minLoopLength || length > maxLoopLength) return false;
@@ -483,6 +483,56 @@ function isSmallClosedWallLoopSegment(line, candidateWalls, structuralBounds, op
   );
 }
 
+// 순흑으로 꽉 채워 그린 작은 사각 벽(덕트/샤프트/기둥)은 굵고 짧은 밴드 하나로 나온다.
+// 긴 축 방향 밴드(length >= thickness)만 벽으로 삼아 교차 중복을 피한다.
+function isSolidWallBlockLine(line, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  const length = lineLength(line);
+  const maxBlockLength =
+    options.wallFirstMaxBlockLength ?? Math.max(72, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.09));
+  // 덕트/기둥은 350mm(≈4% 스케일)를 넘지 않는다. 그보다 두꺼운 채움은 가구다.
+  const maxBlockThickness =
+    options.wallFirstMaxBlockThickness ?? Math.max(26, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.04));
+  if (!Number.isFinite(thickness) || thickness < Math.max(10, threshold * 1.6)) return false;
+  if (thickness > maxBlockThickness) return false;
+  if (length > maxBlockLength || thickness > length) return false;
+  if (thickness < length * 0.4) return false;
+
+  if (!structuralBounds) return true;
+
+  const bounds = lineBounds(line);
+  return (
+    bounds.minX >= structuralBounds.minX - 24 &&
+    bounds.maxX <= structuralBounds.maxX + 24 &&
+    bounds.minY >= structuralBounds.minY - 24 &&
+    bounds.maxY <= structuralBounds.maxY + 24
+  );
+}
+
+function typicalLongWallThickness(lines, options = {}) {
+  const minLongLength = Math.max(90, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.11));
+  const thicknesses = (lines ?? [])
+    .filter((line) => lineLength(line) >= minLongLength)
+    .map((line) => Number(line.thickness ?? 0))
+    .filter((thickness) => Number.isFinite(thickness) && thickness >= 3)
+    .sort((left, right) => left - right);
+  if (thicknesses.length < 3) return null;
+
+  return thicknesses[Math.floor(thicknesses.length / 2)];
+}
+
+// 벽 두께 중앙값보다 훨씬 두꺼운 밴드는 가구 채움(싱크대 상판, 붙박이 진회색 면)이다.
+// 작은 솔리드 벽 블록은 예외로 남긴다.
+function isFurnitureFillBand(line, typicalThickness, structuralBounds, options = {}, threshold = 4) {
+  if (!typicalThickness) return false;
+
+  const thickness = Number(line.thickness ?? 1);
+  const cap = options.maxWallThickness ?? Math.max(24, Math.round(typicalThickness * 3.2));
+  if (!Number.isFinite(thickness) || thickness <= cap) return false;
+
+  return !isSolidWallBlockLine(line, structuralBounds, options, threshold);
+}
+
 function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
   const thickness = Number(line.thickness ?? 1);
   if (!Number.isFinite(thickness) || thickness < Math.max(3, threshold * 0.68)) return false;
@@ -491,7 +541,8 @@ function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
   if (lineLength(line) < minLength) {
     return (
       isConnectedThickWallStub(line, options.candidateWalls ?? [], structuralBounds, options, threshold) ||
-      isSmallClosedWallLoopSegment(line, options.candidateWalls ?? [], structuralBounds, options, threshold)
+      isSmallClosedWallLoopSegment(line, options.candidateWalls ?? [], structuralBounds, options, threshold) ||
+      isSolidWallBlockLine(line, structuralBounds, options, threshold)
     );
   }
 
@@ -680,9 +731,21 @@ export function filterCommercialWallCandidates(lines, options = {}) {
   }
 
   const structuralBounds = inferStructuralBounds(candidateWalls, options);
+  const typicalThickness = typicalLongWallThickness(candidateWalls, options);
+  const furnitureThreshold = conservativeThicknessThreshold(candidateWalls, options);
   const walls = [];
 
   for (const line of candidateWalls) {
+    if (isFurnitureFillBand(line, typicalThickness, structuralBounds, options, furnitureThreshold)) {
+      annotationCandidates.push({
+        confidence: Number(line.confidence ?? 0.78),
+        line,
+        source: "furniture-fill-band"
+      });
+      removedNoiseCount += 1;
+      continue;
+    }
+
     if (isThinInteriorSymbol(line, candidateWalls, structuralBounds, options)) {
       annotationCandidates.push({
         confidence: Number(line.confidence ?? 0.7),
@@ -1030,6 +1093,12 @@ function runOverlapRatio(runA, runB) {
   return overlap / shortest;
 }
 
+function runBalanceRatio(runA, runB) {
+  const overlap = overlapLength(runA.start, runA.end, runB.start, runB.end);
+  const longest = Math.max(1, Math.max(runA.end - runA.start, runB.end - runB.start));
+  return overlap / longest;
+}
+
 function createBandLine(band, orientation, options = {}) {
   const thickness = band.maxAxis - band.minAxis + 1;
   const minWallThickness = options.minWallThickness ?? Math.max(3, Math.round(Math.min(options.width ?? 900, options.height ?? 700) * 0.004));
@@ -1074,6 +1143,8 @@ function extractWallBandsFromRuns(rows, orientation, options = {}) {
   const minRunLength = options.minRunLength ?? 24;
   const axisGapTolerance = options.bandAxisGapTolerance ?? 1;
   const overlapRatio = options.bandOverlapRatio ?? 0.64;
+  // 벽 run과 길이가 크게 다른 run(가구 채움/카운터)은 같은 밴드로 흡수하지 않는다.
+  const balanceRatio = options.bandRunBalanceRatio ?? 0.6;
   const bands = [];
   let activeBands = [];
 
@@ -1088,6 +1159,7 @@ function extractWallBandsFromRuns(rows, orientation, options = {}) {
 
       for (const band of activeBands) {
         if (axis - band.maxAxis > axisGapTolerance + 1) continue;
+        if (runBalanceRatio(run, band.lastRun) < balanceRatio) continue;
         const candidateOverlap = runOverlapRatio(run, band.lastRun);
         if (candidateOverlap > bestOverlap) {
           bestBand = band;
@@ -1342,6 +1414,106 @@ export function detectWallLinesFromMask(mask, options = {}) {
   );
 }
 
+function buildLuminanceMask(imageData, threshold) {
+  const { data } = imageData;
+  return Array.from({ length: imageData.width * imageData.height }, (_, index) => {
+    const offset = index * 4;
+    const red = data[offset] ?? 255;
+    const green = data[offset + 1] ?? 255;
+    const blue = data[offset + 2] ?? 255;
+    const alpha = data[offset + 3] ?? 255;
+    const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+
+    return alpha > 24 && luminance < threshold;
+  });
+}
+
+// 어두운 픽셀 분포를 둘로 나눠(Otsu) 순흑 벽과 진회색 가구 채움(싱크대 상판 등)을
+// 분리할 수 있으면 벽 쪽 임계값을 돌려준다. 분리가 불확실하면 baseThreshold 유지.
+export function estimateWallLuminanceThreshold(imageData, options = {}) {
+  const baseThreshold = Math.round(options.baseThreshold ?? 128);
+  const data = imageData?.data;
+  const pixelCount = (imageData?.width ?? 0) * (imageData?.height ?? 0);
+  if (!data || pixelCount <= 0) return baseThreshold;
+
+  const histogram = new Array(Math.max(1, baseThreshold)).fill(0);
+  let darkTotal = 0;
+
+  for (let index = 0; index < pixelCount; index += 1) {
+    const offset = index * 4;
+    if ((data[offset + 3] ?? 255) <= 24) continue;
+    const luminance = Math.round(
+      (data[offset] ?? 255) * 0.2126 + (data[offset + 1] ?? 255) * 0.7152 + (data[offset + 2] ?? 255) * 0.0722
+    );
+    if (luminance >= baseThreshold) continue;
+    histogram[luminance] += 1;
+    darkTotal += 1;
+  }
+
+  if (darkTotal < Math.max(400, Math.round(pixelCount * 0.002))) return baseThreshold;
+
+  let totalSum = 0;
+  for (let luminance = 0; luminance < baseThreshold; luminance += 1) totalSum += luminance * histogram[luminance];
+
+  let weightDarker = 0;
+  let sumDarker = 0;
+  let bestVariance = 0;
+  let bestSplit = null;
+
+  for (let luminance = 0; luminance < baseThreshold; luminance += 1) {
+    weightDarker += histogram[luminance];
+    sumDarker += luminance * histogram[luminance];
+    if (!weightDarker) continue;
+    const weightLighter = darkTotal - weightDarker;
+    if (!weightLighter) break;
+    const meanDarker = sumDarker / weightDarker;
+    const meanLighter = (totalSum - sumDarker) / weightLighter;
+    const variance = weightDarker * weightLighter * (meanDarker - meanLighter) ** 2;
+    if (variance > bestVariance) {
+      bestVariance = variance;
+      bestSplit = { meanDarker, meanLighter, weightDarker, weightLighter };
+    }
+  }
+
+  if (!bestSplit) return baseThreshold;
+
+  const separation = bestSplit.meanLighter - bestSplit.meanDarker;
+  const darkerRatio = bestSplit.weightDarker / darkTotal;
+  const lighterRatio = bestSplit.weightLighter / darkTotal;
+  // 벽(가장 어두운 계층)이 지배적이고 두 계층이 뚜렷이 떨어져 있을 때만 낮춘다.
+  if (separation < (options.minClassSeparation ?? 26)) return baseThreshold;
+  if (darkerRatio < (options.minDarkerRatio ?? 0.3) || lighterRatio < (options.minLighterRatio ?? 0.05)) {
+    return baseThreshold;
+  }
+
+  return Math.max(32, Math.min(baseThreshold, Math.round((bestSplit.meanDarker + bestSplit.meanLighter) / 2)));
+}
+
+// 문설주·짧은 벽·샤프트 같은 짧고 두꺼운 세그먼트는 기본 minRunLength에서 소실되므로
+// 두께 조건을 강화한 짧은 run 기준으로 한 번 더 추출해 보강한다.
+function recoverShortWallBandLines(mask, primaryLines, options = {}) {
+  const width = Number(options.width) || 0;
+  const height = Number(options.height) || 0;
+  const primaryMinRunLength = options.minRunLength ?? Math.max(24, Math.round(Math.min(width, height) * 0.06));
+  const shortMinRunLength =
+    options.shortSegmentMinRunLength ?? Math.max(20, Math.round(Math.min(width, height) * 0.025));
+  if (shortMinRunLength >= primaryMinRunLength) return primaryLines;
+
+  const shortLines = detectWallBandLinesFromMask(mask, {
+    ...options,
+    height,
+    minRunLength: shortMinRunLength,
+    minWallThickness: Math.max(options.shortSegmentMinThickness ?? 5, options.minWallThickness ?? 3),
+    width
+  })
+    .filter((line) => lineLength(line) < primaryMinRunLength)
+    .map((line) => ({ ...line, markers: [...(line.markers ?? []), "short-wall-recovered"] }));
+
+  if (!shortLines.length) return primaryLines;
+
+  return removeContainedDetectedWallFragments([...primaryLines, ...shortLines], options);
+}
+
 export function detectWallLinesFromImageData(imageData, options = {}) {
   const width = imageData?.width ?? 0;
   const height = imageData?.height ?? 0;
@@ -1351,35 +1523,38 @@ export function detectWallLinesFromImageData(imageData, options = {}) {
 
   if (!data || width <= 0 || height <= 0) return [];
 
-  const mask = Array.from({ length: width * height }, (_, index) => {
-    const offset = index * 4;
-    const red = data[offset] ?? 255;
-    const green = data[offset + 1] ?? 255;
-    const blue = data[offset + 2] ?? 255;
-    const alpha = data[offset + 3] ?? 255;
-    const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+  const cleanMask = (mask) =>
+    removeSmallWallComponents(mask, {
+      height,
+      minArea: options.minComponentArea ?? Math.max(16, Math.round((width * height) / 20000)),
+      width
+    });
 
-    return alpha > 24 && luminance < (options.strictLineMask ? strictLineThreshold : darkThreshold);
-  });
+  if (options.strictLineMask) {
+    const bandOptions = {
+      ...options,
+      bandAxisGapTolerance: options.bandAxisGapTolerance ?? 2,
+      bandOverlapRatio: options.bandOverlapRatio ?? 0.5,
+      height,
+      minWallThickness: options.minWallThickness ?? 3,
+      width
+    };
+    const wallThreshold = estimateWallLuminanceThreshold(imageData, { baseThreshold: strictLineThreshold });
+    let cleanedMask = cleanMask(buildLuminanceMask(imageData, wallThreshold));
+    let bandLines = detectWallBandLinesFromMask(cleanedMask, bandOptions);
 
-  const cleanedMask = removeSmallWallComponents(mask, {
-    height,
-    minArea: options.minComponentArea ?? Math.max(16, Math.round((width * height) / 20000)),
-    width
-  });
+    // 적응 임계값이 벽까지 지워버린 경우(밴드 부족) 원래 임계값으로 되돌린다.
+    if (wallThreshold < strictLineThreshold && bandLines.length < 3) {
+      cleanedMask = cleanMask(buildLuminanceMask(imageData, strictLineThreshold));
+      bandLines = detectWallBandLinesFromMask(cleanedMask, bandOptions);
+    }
 
-  const lines = options.strictLineMask
-    ? detectWallBandLinesFromMask(cleanedMask, {
-        ...options,
-        bandAxisGapTolerance: options.bandAxisGapTolerance ?? 2,
-        bandOverlapRatio: options.bandOverlapRatio ?? 0.5,
-        height,
-        minWallThickness: options.minWallThickness ?? 3,
-        width
-      })
-    : detectWallLinesFromMask(cleanedMask, { ...options, width, height });
+    return annotateLinesWithFillSupport(recoverShortWallBandLines(cleanedMask, bandLines, bandOptions), imageData);
+  }
 
-  return annotateLinesWithFillSupport(lines, imageData);
+  const cleanedMask = cleanMask(buildLuminanceMask(imageData, darkThreshold));
+
+  return annotateLinesWithFillSupport(detectWallLinesFromMask(cleanedMask, { ...options, width, height }), imageData);
 }
 
 function isFilledInteriorImagePixel(imageData, x, y) {
@@ -1456,7 +1631,7 @@ export function createWallsFromDetectedLines(lines, plan = {}) {
 
   return cleanedLines
     .filter((line) => lineLength(line) > 0)
-    .slice(0, 24)
+    .slice(0, Math.max(1, Number(plan.maxWalls) || 32))
     .map((line, index) =>
       createDetectedWall(
         {

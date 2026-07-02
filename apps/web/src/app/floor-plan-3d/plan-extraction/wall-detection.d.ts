@@ -22,8 +22,18 @@ export function detectWallBandLinesFromMask(
     minWallThickness?: number;
     bandAxisGapTolerance?: number;
     bandOverlapRatio?: number;
+    bandRunBalanceRatio?: number;
   }
 ): DetectedLine[];
+export function estimateWallLuminanceThreshold(
+  imageData: ImageData | { width: number; height: number; data: Uint8ClampedArray },
+  options?: {
+    baseThreshold?: number;
+    minClassSeparation?: number;
+    minDarkerRatio?: number;
+    minLighterRatio?: number;
+  }
+): number;
 export function detectWallLinesFromImageData(
   imageData: ImageData,
   options?: {
@@ -41,6 +51,9 @@ export function detectWallLinesFromImageData(
     minWallThickness?: number;
     bandAxisGapTolerance?: number;
     bandOverlapRatio?: number;
+    bandRunBalanceRatio?: number;
+    shortSegmentMinRunLength?: number;
+    shortSegmentMinThickness?: number;
   }
 ): DetectedLine[];
 export function removeSmallWallComponents(
@@ -77,8 +90,12 @@ export function filterCommercialWallCandidates(
     maxLines?: number;
     mode?: "balanced" | "conservative" | "wall-first";
     minConservativeWallThickness?: number;
+    maxWallThickness?: number;
     wallFirstGapTolerance?: number;
+    wallFirstMaxBlockLength?: number;
     wallFirstMaxInferredEdgeWallCount?: number;
+    wallFirstMaxLoopLength?: number;
+    wallFirstMinLoopLength?: number;
     wallFirstMinStubLength?: number;
     wallFirstSideTolerance?: number;
     wallFirstSnapDistance?: number;
@@ -123,5 +140,6 @@ export function createWallsFromDetectedLines(
     canvasWidth?: number;
     containedRangeTolerance?: number;
     imageFillRatio?: number;
+    maxWalls?: number;
   }
 ): Wall[];
