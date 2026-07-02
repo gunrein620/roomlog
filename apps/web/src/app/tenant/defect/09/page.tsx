@@ -45,6 +45,7 @@ const STATUSES: { key: TicketStatus; label: string }[] = [
   { key: "processing", label: "처리 중" },
   { key: "resolved", label: "완료" },
   { key: "reopened", label: "재요청" },
+  { key: "cancelled", label: "취소됨" },
 ];
 
 export default async function Page() {

@@ -16,6 +16,7 @@ const TICKET_TRACK_LABEL: Record<TicketStatus, string> = {
   processing: "처리 중",
   resolved: "완료",
   reopened: "재요청됨",
+  cancelled: "취소됨",
 };
 
 const labelStyle = {

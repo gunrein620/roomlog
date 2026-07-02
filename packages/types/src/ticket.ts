@@ -12,7 +12,8 @@ export type TicketStatus =
   | "info_requested" // 추가정보 요청
   | "processing" // 처리 중
   | "resolved" // 완료
-  | "reopened"; // 재요청
+  | "reopened" // 재요청
+  | "cancelled"; // 취소됨
 
 /** 수리(업체 실행) 상태 — 티켓 상태와 별개로 진행 */
 export type RepairStage =

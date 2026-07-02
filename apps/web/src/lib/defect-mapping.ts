@@ -53,7 +53,7 @@ export interface TeamComplaint {
   ticket: TeamTicket;
 }
 
-// 팀 TicketStatus(11) → 프로토타입 TicketStatus(6, 접수·검토 트랙만). 수리 트랙은 RepairJob로 분리.
+// 팀 TicketStatus(11) → 프로토타입 TicketStatus(7, 접수·검토 트랙만). 수리 트랙은 RepairJob로 분리.
 const TICKET_STATUS: Record<string, TicketStatus> = {
   RECEIVED: "received",
   REVIEWING: "reviewing",
@@ -65,7 +65,7 @@ const TICKET_STATUS: Record<string, TicketStatus> = {
   COMPLETION_REPORTED: "processing",
   COMPLETED: "resolved",
   REOPENED: "reopened",
-  CANCELLED: "resolved"
+  CANCELLED: "cancelled"
 };
 
 // 팀 RepairStatus(9) → 프로토타입 RepairStage(6).
