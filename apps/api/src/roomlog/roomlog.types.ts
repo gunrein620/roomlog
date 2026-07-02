@@ -64,6 +64,36 @@ export type Room = {
   landlordId?: string;
 };
 
+export type RoomWall = {
+  id: string;
+  roomId: string;
+  sourceWallId: string;
+  start: FloorPlanWallPoint;
+  end: FloorPlanWallPoint;
+  lengthMm: number;
+  rotationRad: number;
+  position: [number, number, number];
+  dimensions: { width: number; height: number; depth: number };
+  wallOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SimulatorWallData = {
+  id: string;
+  wall_id: string;
+  start: FloorPlanWallPoint;
+  end: FloorPlanWallPoint;
+  length: number;
+  height: number;
+  depth: number;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  dimensions: { width: number; height: number; depth: number };
+  material: "wall";
+  wall_order: number;
+};
+
 export type RoomTimelineEntryType =
   | "MOVE_IN_CHECKLIST"
   | "AI_FEEDBACK"
@@ -344,6 +374,7 @@ export type FloorPlanCandidate = {
 export type FloorPlanDraft = {
   id: string;
   ownerId: string;
+  roomId?: string;
   sourceAttachmentId?: string;
   sourceImageUrl?: string;
   status: FloorPlanStatus;
@@ -357,6 +388,50 @@ export type FloorPlanDraft = {
   fixtures: FloorPlanCandidate[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type FloorPlanAiModelId =
+  | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+  | "nvidia/cosmos3-nano-reasoner";
+
+export type FloorPlanAiModelMode = "vision-reasoning";
+
+export type FloorPlanAiModel = {
+  id: FloorPlanAiModelId;
+  label: string;
+  mode: FloorPlanAiModelMode;
+  description: string;
+};
+
+export type FloorPlanAiAnalysisInput = {
+  imageDataUrl?: string;
+  model?: FloorPlanAiModelId;
+  prompt?: string;
+  sourceAttachmentId?: string;
+};
+
+export type FloorPlanAiTextDetection = {
+  text: string;
+  confidence?: number;
+  boundingBox?: unknown;
+};
+
+export type FloorPlanAiScaleCandidate = {
+  confidence: number;
+  pixelLength?: number;
+  pixelToMmRatio?: number;
+  realLengthMm: number;
+  source: string;
+};
+
+export type FloorPlanAiAnalysisResult = {
+  model: FloorPlanAiModelId;
+  mode: FloorPlanAiModelMode;
+  status: "ready" | "config-required" | "failed";
+  summary: string;
+  textDetections: FloorPlanAiTextDetection[];
+  scaleCandidates: FloorPlanAiScaleCandidate[];
+  rawText?: string;
 };
 
 export type IntakeSessionStatus = "ACTIVE" | "FINALIZED" | "CANCELLED";
@@ -595,6 +670,7 @@ export type SaveAttachmentInput = {
 };
 
 export type SaveFloorPlanDraftInput = {
+  roomId?: string;
   sourceAttachmentId?: string;
   sourceImageUrl?: string;
   status?: FloorPlanStatus;
@@ -606,6 +682,18 @@ export type SaveFloorPlanDraftInput = {
   extractionMeta?: FloorPlanExtractionMeta;
   openings?: FloorPlanCandidate[];
   fixtures?: FloorPlanCandidate[];
+};
+
+export type SaveRoomWallsInput = {
+  pixelToMmRatio?: number;
+  walls?: FloorPlanWall[];
+};
+
+export type CreateRoomInput = {
+  buildingName?: string;
+  roomNo?: string;
+  address?: string;
+  roomData?: SaveRoomWallsInput;
 };
 
 export type FinalizeIntakeInput = {

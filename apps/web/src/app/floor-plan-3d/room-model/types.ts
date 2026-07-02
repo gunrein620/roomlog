@@ -69,6 +69,7 @@ export type RegisteredPlanMetadata = {
 
 export type FurnitureCatalogItem = {
   brand: string;
+  category?: string;
   color: string;
   furniture_id: string;
   imageUrls?: string[];

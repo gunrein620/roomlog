@@ -1124,9 +1124,20 @@ function annotateLinesWithFillSupport(lines, imageData) {
 export function createWallsFromDetectedLines(lines, plan = {}) {
   const imageWidth = Math.max(1, Number(plan.width) || 960);
   const imageHeight = Math.max(1, Number(plan.height) || 620);
-  const scale = Math.min(860 / imageWidth, 520 / imageHeight);
-  const offsetX = (960 - imageWidth * scale) / 2;
-  const offsetY = (620 - imageHeight * scale) / 2;
+  const canvasWidth = Math.max(1, Number(plan.canvasWidth) || 1600);
+  const canvasHeight = Math.max(1, Number(plan.canvasHeight) || 1200);
+  const imageFillRatio = Math.max(0.1, Math.min(1, Number(plan.imageFillRatio) || 0.8));
+  const imageAspect = imageWidth / imageHeight;
+  const canvasAspect = canvasWidth / canvasHeight;
+  let drawWidth = canvasWidth * imageFillRatio;
+  let drawHeight = drawWidth / imageAspect;
+  if (imageAspect <= canvasAspect) {
+    drawHeight = canvasHeight * imageFillRatio;
+    drawWidth = drawHeight * imageAspect;
+  }
+  const scale = drawWidth / imageWidth;
+  const offsetX = -drawWidth / 2;
+  const offsetY = -drawHeight / 2;
   const baseId = normalizePlanName(plan.name) || "detected";
   const cleanedLines = removeContainedDetectedWallFragments(lines, {
     axisTolerance: plan.axisTolerance ?? 5,

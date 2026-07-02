@@ -863,6 +863,26 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   }
 });
 
+test("offers NVIDIA floor plan AI model selection for precise dimension reading", () => {
+  for (const label of [
+    "FLOOR_PLAN_AI_MODELS",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "nvidia/cosmos3-nano-reasoner",
+    "selectedAiModel",
+    "uploadedAiImageDataUrl",
+    "fileToCompressedDataUrl",
+    "canvas\\.toDataURL\\(\"image/jpeg\"",
+    "runAiDimensionAnalysis",
+    "sourceAttachmentId",
+    "uploadedFloorPlanSource\\?\\.attachmentId",
+    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
+    "AI 정밀 수치 읽기"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+  assert.doesNotMatch(floorPlanEditorSource, /nvidia\/nemotron-ocr-v2/);
+});
+
 test("stores extraction metadata, openings, and fixtures through the floor plan API", () => {
   for (const label of [
     "extractionMeta",
@@ -1401,6 +1421,20 @@ test("floor plan editor model scales detected image lines into editor walls", as
   assert.equal(walls[0].id, "scan-wall-1");
   assert.equal(walls[0].start.y, walls[0].end.y);
   assert.equal(walls[0].end.x > walls[0].start.x, true);
+});
+
+test("floor plan editor model overlays detected walls on the centered uploaded image", async () => {
+  const model = floorPlanModel;
+  const walls = model.createWallsFromDetectedLines(
+    [{ x1: 500, y1: 0, x2: 500, y2: 500, orientation: "vertical" }],
+    { width: 1000, height: 500, name: "scan.png" }
+  );
+
+  assert.equal(walls.length, 1);
+  assert.equal(walls[0].start.x, 0);
+  assert.equal(walls[0].end.x, 0);
+  assert.equal(walls[0].start.y, -320);
+  assert.equal(walls[0].end.y, 320);
 });
 
 test("floor plan editor model keeps small detected openings instead of snapping them closed", async () => {

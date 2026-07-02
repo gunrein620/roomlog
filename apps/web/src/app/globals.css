@@ -6325,7 +6325,7 @@ p {
 
 .floor-plan-upload-row {
   display: grid;
-  grid-template-columns: 132px 132px 132px minmax(0, 1fr);
+  grid-template-columns: repeat(5, minmax(112px, 132px)) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }
@@ -6342,6 +6342,21 @@ p {
 
 .floor-plan-file-input {
   display: none;
+}
+
+.floor-plan-ai-model-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  border: 1px solid #d9deea;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 900;
+  overflow: hidden;
+  padding: 0 12px;
+  text-overflow: ellipsis;
 }
 
 .floor-plan-svg,
@@ -6575,6 +6590,56 @@ p {
 .floor-plan-furniture-grid {
   display: grid;
   gap: 8px;
+  max-height: 430px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.floor-plan-furniture-search input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #d9dfeb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.floor-plan-furniture-kind-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.floor-plan-furniture-kind-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #d9dfeb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4e5b73;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.floor-plan-furniture-kind-tabs button.active {
+  border-color: var(--blue);
+  background: rgba(47, 85, 255, 0.08);
+  color: var(--blue);
+}
+
+.floor-plan-furniture-kind-tabs small {
+  color: inherit;
+  font-size: 0.66rem;
+  font-weight: 900;
 }
 
 .floor-plan-furniture-grid button {

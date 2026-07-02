@@ -9,6 +9,8 @@ node_modules/
 dist/
 coverage/
 uploads/
+data/furniture-crawl/
+apps/api/src/furniture-catalog/crawl-ikea.ts
 
 npm-debug.log*
 pnpm-debug.log*

@@ -3,6 +3,16 @@
 
 import type { ExperienceMode, FurnitureCatalogItem, PlacedFurniture } from "./types";
 
+const MODEL_BY_KIND = {
+  bed: "/furniture-models/bed-queen.glb",
+  chair: "/furniture-models/chair-kevi.glb",
+  desk: "/furniture-models/table-moon.glb",
+  drawer: "/furniture-models/wardrobe-cabinet.glb",
+  sofa: "/furniture-models/sofa-couch.glb",
+  table: "/furniture-models/table-moon.glb",
+  wardrobe: "/furniture-models/wardrobe-cabinet.glb"
+};
+
 export const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
   {
     brand: "Roomlog Basic",
@@ -54,9 +64,11 @@ export const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
 export function normalizeCatalogItem(item: FurnitureCatalogItem, index: number): FurnitureCatalogItem {
   const fallback = FURNITURE_CATALOG[index % FURNITURE_CATALOG.length];
   const [width, height, depth] = Array.isArray(item.length) ? item.length : fallback.length;
+  const modelUrl = item.modelUrl || modelUrlForCatalogItem(item) || fallback.modelUrl;
 
   return {
     brand: item.brand || fallback.brand,
+    category: item.category,
     color: item.color || fallback.color,
     furniture_id: item.furniture_id || fallback.furniture_id,
     imageUrls: item.imageUrls,
@@ -65,13 +77,39 @@ export function normalizeCatalogItem(item: FurnitureCatalogItem, index: number):
       Number.isFinite(Number(height)) ? Number(height) : fallback.length[1],
       Number.isFinite(Number(depth)) ? Number(depth) : fallback.length[2]
     ],
-    modelUrl: item.modelUrl || fallback.modelUrl,
+    modelUrl,
     name: item.name || fallback.name,
     price: Number.isFinite(Number(item.price)) ? Number(item.price) : fallback.price,
     source: item.source,
     sourceUrl: item.sourceUrl,
     thumbnailUrl: item.thumbnailUrl
   };
+}
+
+export function catalogKind(item: Pick<FurnitureCatalogItem, "category" | "furniture_id" | "name" | "source">) {
+  const text = `${item.source ?? ""} ${item.category ?? ""} ${item.name} ${item.furniture_id}`.toLowerCase();
+  if (/bed|침대|매트리스/.test(text)) return "침대";
+  if (/dining|table|식탁|테이블/.test(text)) return "식탁";
+  if (/chair|stool|bench|의자|체어|스툴|벤치/.test(text)) return "의자";
+  if (/sofa|couch|소파/.test(text)) return "소파";
+  if (/desk|책상|데스크/.test(text)) return "책상";
+  if (/drawer|서랍/.test(text)) return "서랍";
+  if (/wardrobe|closet|옷장|장롱/.test(text)) return "옷장";
+
+  return "기타";
+}
+
+function modelUrlForCatalogItem(item: Pick<FurnitureCatalogItem, "category" | "furniture_id" | "name" | "source">) {
+  const kind = catalogKind(item);
+  if (kind === "침대") return MODEL_BY_KIND.bed;
+  if (kind === "식탁") return MODEL_BY_KIND.table;
+  if (kind === "의자") return MODEL_BY_KIND.chair;
+  if (kind === "소파") return MODEL_BY_KIND.sofa;
+  if (kind === "책상") return MODEL_BY_KIND.desk;
+  if (kind === "서랍") return MODEL_BY_KIND.drawer;
+  if (kind === "옷장") return MODEL_BY_KIND.wardrobe;
+
+  return undefined;
 }
 
 export function isFurnitureCatalogItem(value: unknown): value is FurnitureCatalogItem {
