@@ -1,4 +1,4 @@
-import { normalizePlanName, snapToOrthogonal } from "../room-model/wall-model.mjs";
+import { DEFAULT_PIXEL_TO_MM_RATIO, normalizePlanName, snapToOrthogonal } from "../room-model/wall-model.mjs";
 
 function createDetectedWall(start, end, id) {
   const roundedStart = {
@@ -634,7 +634,7 @@ export function detectOpeningCandidates(input = {}) {
 
   arcs.forEach((arc, index) => {
     const nearGap = gaps.find((gap) => Math.hypot((gap.x1 + gap.x2) / 2 - arc.x, (gap.y1 + gap.y2) / 2 - arc.y) <= (arc.radius ?? 36) * 1.4);
-    const widthMm = nearGap ? Math.round(lineLength(nearGap) * (input.pixelToMmRatio ?? 20)) : undefined;
+    const widthMm = nearGap ? Math.round(lineLength(nearGap) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO)) : undefined;
     candidates.push({
       confidence: nearGap ? 0.84 : 0.66,
       id: candidateId("door", index, arc),
@@ -654,7 +654,7 @@ export function detectOpeningCandidates(input = {}) {
       source: "thin-double-line",
       status: "CANDIDATE",
       type: "WINDOW",
-      widthMm: Math.round(lineLength(line) * (input.pixelToMmRatio ?? 20))
+      widthMm: Math.round(lineLength(line) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO))
     });
   });
 
@@ -706,8 +706,8 @@ export function detectFixtureCandidates(input = {}) {
         position: { x: Number(label.x) || 0, y: Number(label.y) || 0 },
         sizeMm: nearShape
           ? {
-              depth: Math.round(Number(nearShape.height ?? 0) * (input.pixelToMmRatio ?? 20)),
-              width: Math.round(Number(nearShape.width ?? 0) * (input.pixelToMmRatio ?? 20))
+              depth: Math.round(Number(nearShape.height ?? 0) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO)),
+              width: Math.round(Number(nearShape.width ?? 0) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO))
             }
           : undefined,
         source: nearShape ? "ocr+shape" : "ocr",

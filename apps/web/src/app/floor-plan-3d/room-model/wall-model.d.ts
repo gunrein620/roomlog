@@ -13,6 +13,7 @@ import type {
 export const GRID_SIZE: number;
 export const DEFAULT_WALL_HEIGHT: number;
 export const DEFAULT_WALL_DEPTH: number;
+export const DEFAULT_PIXEL_TO_MM_RATIO: number;
 export const DEFAULT_PIXEL_TO_METER_RATIO: number;
 export const WHERETOPUT_WALL_HEIGHT: number;
 export const WHERETOPUT_WALL_DEPTH: number;

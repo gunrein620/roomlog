@@ -1659,7 +1659,7 @@ export default function RoomlogFloorPlanEditor() {
           </div>
           <div>
             <dt>축척</dt>
-            <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "1px=20mm"}</dd>
+            <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "1px=10mm"}</dd>
           </div>
           <div>
             <dt>OpenCV</dt>

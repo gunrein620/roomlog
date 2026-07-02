@@ -1060,16 +1060,16 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
 
   assert.equal(model.GRID_SIZE, 25);
   assert.equal(units.GRID_SIZE_PX, 25);
-  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 20);
-  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.02);
+  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 10);
+  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.01);
   assert.equal(model.findNearestWall([wall], { x: 48, y: 5 }, 18)?.id, "w1");
   assert.deepEqual(model.removeWall([wall], "w1"), []);
   assert.deepEqual(model.summarizeWalls([wall]), {
     wallCount: 1,
-    approximateMeters: 2.5,
+    approximateMeters: 1.3,
     status: "편집중"
   });
-  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 2.4);
+  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 1.2);
 });
 
 test("floor plan editor model optimizes wall conversion with stable ids", async () => {
