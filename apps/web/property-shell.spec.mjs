@@ -1080,6 +1080,20 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
   assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 1.2);
 });
 
+test("floor plan editor model moves and resizes selected walls without mutating originals", async () => {
+  const model = floorPlanModel;
+  const wall = { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } };
+
+  const moved = model.moveWall(wall, { x: 25, y: 50 });
+  const resizedEnd = model.resizeWall(wall, "end", { x: 360, y: 140 });
+  const resizedStart = model.resizeWall(wall, "start", { x: 80, y: 60 });
+
+  assert.deepEqual(moved, { id: "edit-wall", start: { x: 125, y: 150 }, end: { x: 325, y: 150 } });
+  assert.deepEqual(resizedEnd, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 360, y: 100 } });
+  assert.deepEqual(resizedStart, { id: "edit-wall", start: { x: 80, y: 100 }, end: { x: 300, y: 100 } });
+  assert.deepEqual(wall, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } });
+});
+
 test("floor plan editor model optimizes wall conversion with stable ids", async () => {
   const model = floorPlanModel;
   const walls = [
@@ -1523,6 +1537,43 @@ test("floor plan editor model wall-first mode infers missing outer edges and ext
   assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320 && line.y1 === 140 && line.y2 === 520), true);
   assert.equal(result.walls.length, 5);
   assert.equal(result.needsReview, true);
+});
+
+test("floor plan editor model strict line mask ignores filled surfaces and small dark noise", async () => {
+  const model = floorPlanModel;
+  const width = 240;
+  const height = 180;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const paint = (x, y, color) => {
+    const offset = (y * width + x) * 4;
+    data[offset] = color;
+    data[offset + 1] = color;
+    data[offset + 2] = color;
+    data[offset + 3] = 255;
+  };
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) paint(x, y, color);
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 200, 35, 0);
+  fillRect(30, 140, 200, 145, 0);
+  fillRect(30, 30, 35, 145, 0);
+  fillRect(195, 30, 200, 145, 0);
+  fillRect(70, 65, 165, 110, 135);
+  fillRect(12, 12, 18, 18, 0);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+
+  assert.equal(lines.length, 4);
+  assert.equal(lines.every((line) => line.thickness <= 8), true);
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 65 && line.y1 <= 110), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 70 && line.x1 <= 165), false);
 });
 
 test("floor plan editor model estimates scale from outside dimensions", async () => {

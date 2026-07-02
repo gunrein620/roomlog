@@ -36,6 +36,11 @@ export function detectWallLinesFromImageData(
     gapTolerance?: number;
     minLength?: number;
     maxLines?: number;
+    strictLineMask?: boolean;
+    strictLineThreshold?: number;
+    minWallThickness?: number;
+    bandAxisGapTolerance?: number;
+    bandOverlapRatio?: number;
   }
 ): DetectedLine[];
 export function removeSmallWallComponents(

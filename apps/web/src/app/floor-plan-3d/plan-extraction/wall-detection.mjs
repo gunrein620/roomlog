@@ -1231,6 +1231,7 @@ export function detectWallLinesFromImageData(imageData, options = {}) {
   const height = imageData?.height ?? 0;
   const data = imageData?.data;
   const darkThreshold = options.darkThreshold ?? 170;
+  const strictLineThreshold = Math.min(darkThreshold, options.strictLineThreshold ?? 128);
 
   if (!data || width <= 0 || height <= 0) return [];
 
@@ -1242,7 +1243,7 @@ export function detectWallLinesFromImageData(imageData, options = {}) {
     const alpha = data[offset + 3] ?? 255;
     const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
 
-    return alpha > 24 && luminance < darkThreshold;
+    return alpha > 24 && luminance < (options.strictLineMask ? strictLineThreshold : darkThreshold);
   });
 
   const cleanedMask = removeSmallWallComponents(mask, {
@@ -1251,7 +1252,18 @@ export function detectWallLinesFromImageData(imageData, options = {}) {
     width
   });
 
-  return annotateLinesWithFillSupport(detectWallLinesFromMask(cleanedMask, { ...options, width, height }), imageData);
+  const lines = options.strictLineMask
+    ? detectWallBandLinesFromMask(cleanedMask, {
+        ...options,
+        bandAxisGapTolerance: options.bandAxisGapTolerance ?? 2,
+        bandOverlapRatio: options.bandOverlapRatio ?? 0.5,
+        height,
+        minWallThickness: options.minWallThickness ?? 3,
+        width
+      })
+    : detectWallLinesFromMask(cleanedMask, { ...options, width, height });
+
+  return annotateLinesWithFillSupport(lines, imageData);
 }
 
 function isFilledInteriorImagePixel(imageData, x, y) {

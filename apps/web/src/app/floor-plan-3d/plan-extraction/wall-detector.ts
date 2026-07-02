@@ -47,7 +47,8 @@ async function fallbackCanvasWallExtraction(file: File): Promise<DetectedWallRes
     const lines = detectWallLinesFromImageData(imageData, {
       darkThreshold: 185,
       maxLines: 40,
-      minRunLength: Math.max(28, Math.round(Math.min(canvas.width, canvas.height) * 0.06))
+      minRunLength: Math.max(28, Math.round(Math.min(canvas.width, canvas.height) * 0.06)),
+      strictLineMask: true
     }) as DetectedLine[];
     const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, mode: "wall-first", width: canvas.width }) as {
       annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;

@@ -56,6 +56,8 @@ import {
   convertWallsToWheretoputRoom3D,
   convertWallsToWheretoputSimulator,
   distanceToWall,
+  moveWall,
+  resizeWall,
   snapToOrthogonal,
   summarizeWalls
 } from "./room-model/wall-model.mjs";
@@ -63,6 +65,8 @@ import { RoomlogThreeFloorPlanView } from "./room-scene/RoomlogThreeFloorPlanVie
 
 type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "opening" | "fixture" | "furniture" | "scale" | "none";
 type ViewMode = "2d" | "3d";
+type WallDragMode = "move" | "resize-start" | "resize-end";
+type WallDragOperation = { mode: WallDragMode; originPoint: Point; originalWall: Wall; wallId: Wall["id"] };
 type FloorPlanAiModelId =
   | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   | "nvidia/cosmos3-nano-reasoner"
@@ -102,6 +106,7 @@ type AiWallCandidatePayload = {
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
+const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
 const AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH = 90_000;
 const FLOOR_PLAN_AI_MODELS: Array<{ id: FloorPlanAiModelId; label: string }> = [
@@ -314,6 +319,7 @@ export default function RoomlogFloorPlanEditor() {
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
+  const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
   const [partialEraserSelectedWall, setPartialEraserSelectedWall] = useState<Wall | null>(null);
   const [isSelectingEraseArea, setIsSelectingEraseArea] = useState(false);
   const [eraseAreaStart, setEraseAreaStart] = useState<Point | null>(null);
@@ -564,6 +570,21 @@ export default function RoomlogFloorPlanEditor() {
       context.stroke();
       context.setLineDash([]);
 
+      if (variant === "selected") {
+        const handleRadius = WALL_EDIT_HANDLE_RADIUS / viewScale;
+        const midX = (wall.start.x + wall.end.x) / 2;
+        const midY = (wall.start.y + wall.end.y) / 2;
+        context.fillStyle = "#ffffff";
+        context.strokeStyle = "#0066ff";
+        context.lineWidth = 2 / viewScale;
+        for (const point of [wall.start, wall.end, { x: midX, y: midY }]) {
+          context.beginPath();
+          context.arc(point.x, point.y, handleRadius, 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+        }
+      }
+
       if (variant !== "scale" && variant !== "erase") {
         const midX = (wall.start.x + wall.end.x) / 2;
         const midY = (wall.start.y + wall.end.y) / 2;
@@ -684,6 +705,30 @@ export default function RoomlogFloorPlanEditor() {
       },
       { distance: Infinity, wall: null }
     ).wall;
+  }
+
+  function getWallDragMode(wall: Wall, point: Point): WallDragMode {
+    const startDistance = Math.hypot(point.x - wall.start.x, point.y - wall.start.y);
+    const endDistance = Math.hypot(point.x - wall.end.x, point.y - wall.end.y);
+    const handleRadius = WALL_EDIT_HANDLE_RADIUS / viewScale;
+
+    if (startDistance <= handleRadius) return "resize-start";
+    if (endDistance <= handleRadius) return "resize-end";
+
+    return "move";
+  }
+
+  function updateDraggedWall(operation: WallDragOperation, point: Point) {
+    const nextWall =
+      operation.mode === "move"
+        ? (moveWall(operation.originalWall as never, {
+            x: point.x - operation.originPoint.x,
+            y: point.y - operation.originPoint.y
+          }) as Wall)
+        : (resizeWall(operation.originalWall as never, operation.mode === "resize-start" ? "start" : "end", point) as Wall);
+
+    setWalls((currentWalls) => currentWalls.map((wall) => (String(wall.id) === String(operation.wallId) ? nextWall : wall)));
+    setSelectedWall(nextWall);
   }
 
   function findClosestCandidate(candidates: FloorPlanCandidate[], point: Point, maxDistance = 28) {
@@ -881,7 +926,16 @@ export default function RoomlogFloorPlanEditor() {
 
     if (tool === "select") {
       const closestWall = findClosestWall(coords, 30);
-      setSelectedWall(selectedWall?.id === closestWall?.id ? null : closestWall);
+      if (!closestWall) {
+        setSelectedWall(null);
+        setWallDragOperation(null);
+        return;
+      }
+
+      const mode = getWallDragMode(closestWall, coords);
+      setSelectedWall(closestWall);
+      setWallDragOperation({ mode, originPoint: coords, originalWall: closestWall, wallId: closestWall.id });
+      setUploadStatus(mode === "move" ? `벽 ${closestWall.id} 이동` : `벽 ${closestWall.id} 길이 조절`);
       return;
     }
 
@@ -942,6 +996,11 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     const coords = getCanvasCoordinates(event);
+    if (wallDragOperation) {
+      updateDraggedWall(wallDragOperation, coords);
+      return;
+    }
+
     if (isDrawing && startPoint && (tool === "wall" || tool === "scale")) {
       setCurrentPoint(snapCanvasPoint(snapToOrthogonal(startPoint, coords)));
       return;
@@ -966,6 +1025,12 @@ export default function RoomlogFloorPlanEditor() {
 
   function handleMouseUp(event: React.MouseEvent<HTMLCanvasElement>) {
     stopCanvasPan();
+
+    if (wallDragOperation) {
+      updateDraggedWall(wallDragOperation, getCanvasCoordinates(event));
+      setWallDragOperation(null);
+      return;
+    }
 
     if (isDrawing && startPoint && currentPoint && (tool === "wall" || tool === "scale")) {
       const snappedEnd = snapCanvasPoint(snapToOrthogonal(startPoint, getCanvasCoordinates(event)));
@@ -999,6 +1064,7 @@ export default function RoomlogFloorPlanEditor() {
     if (isDragging) {
       stopCanvasPan();
     }
+    setWallDragOperation(null);
   }
 
   function handleWheel(event: React.WheelEvent<HTMLCanvasElement>) {

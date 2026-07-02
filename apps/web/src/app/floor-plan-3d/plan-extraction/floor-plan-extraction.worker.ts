@@ -309,9 +309,13 @@ function createDarkWallMask(imageData: ImageData, threshold = 145) {
   });
 }
 
+function createStrictLineMask(imageData: ImageData) {
+  return createDarkWallMask(imageData, 128);
+}
+
 function fallbackExtract(imageData: ImageData) {
   const { height, width } = imageData;
-  const mask = createDarkWallMask(imageData);
+  const mask = createStrictLineMask(imageData);
   const bandLines = extractWallBandLinesFromMask(mask, width, height);
   if (bandLines.length >= 3) {
     return annotateFillSupport(mergeLines(bandLines), imageData);
@@ -347,7 +351,7 @@ function fallbackExtract(imageData: ImageData) {
 }
 
 function extractWithOpenCv(imageData: ImageData) {
-  const maskLines = extractWallBandLinesFromMask(createDarkWallMask(imageData), imageData.width, imageData.height);
+  const maskLines = extractWallBandLinesFromMask(createStrictLineMask(imageData), imageData.width, imageData.height);
   if (maskLines.length >= 3) {
     return annotateFillSupport(mergeLines(maskLines), imageData);
   }
