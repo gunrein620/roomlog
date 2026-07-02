@@ -140,6 +140,12 @@ const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
     label: "Cosmos3 Nano Reasoner",
     mode: "vision-reasoning",
     description: "이미지 구조를 물리 공간 관점으로 검토해 치수 후보를 보조 검증합니다."
+  },
+  {
+    id: "openai/floor-plan-vision",
+    label: "OpenAI Vision",
+    mode: "vision-reasoning",
+    description: "도면 이미지를 1차로 해석해 치수 텍스트와 구조 후보를 OpenCV 검출 결과 보정에 활용합니다."
   }
 ];
 
@@ -2788,6 +2794,21 @@ export class RoomlogService {
       ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
       : this.validFloorPlanImageDataUrl(input.imageDataUrl);
 
+    if (model === "openai/floor-plan-vision") {
+      if (!process.env.OPENAI_API_KEY) {
+        return {
+          model,
+          mode: modelInfo.mode,
+          status: "config-required",
+          summary: "OPENAI_API_KEY가 설정되지 않아 OpenAI 도면 1차 분석을 실행하지 않았습니다.",
+          textDetections: [],
+          scaleCandidates: []
+        };
+      }
+
+      return this.analyzeFloorPlanWithOpenAiVision(model, imageDataUrl, input.prompt);
+    }
+
     if (!process.env.NVIDIA_API_KEY) {
       return {
         model,
@@ -2909,6 +2930,81 @@ export class RoomlogService {
         scaleCandidates: []
       };
     }
+  }
+
+  private async analyzeFloorPlanWithOpenAiVision(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 한국 부동산 도면 1차 분석기입니다.",
+      "도면 이미지에서 방 구조, 치수 텍스트, 치수선 관계, 문/창문/설비처럼 OpenCV 후처리에 도움이 되는 단서를 읽습니다.",
+      "픽셀 좌표나 길이를 확신하지 못하면 추측하지 말고 textDetections에 읽은 텍스트만 남깁니다.",
+      "벽 최종 좌표는 OpenCV와 사용자가 확정하므로, 이 응답은 후보 분석으로만 사용됩니다.",
+      "JSON schema: {\"summary\": string, \"textDetections\": [{\"text\": string, \"confidence\": number}], \"scaleCandidates\": [{\"realLengthMm\": number, \"pixelLength\": number, \"pixelToMmRatio\": number, \"confidence\": number, \"source\": string}]}"
+    ].join("\n");
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt?.trim() || "도면 이미지의 치수 텍스트와 축척 후보를 JSON으로 분석해줘."
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "auto" }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan vision failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+      const textDetections = this.validAiTextDetections(parsed.textDetections);
+      const scaleCandidates = this.validAiScaleCandidates(parsed.scaleCandidates);
+
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI 도면 1차 분석을 완료했습니다.",
+        textDetections,
+        scaleCandidates,
+        rawText
+      };
+    } catch {
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 도면 1차 분석에 실패했습니다. OpenCV 추출 결과를 검수하거나 수동 축척을 사용하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private extractOpenAiResponseText(payload: Record<string, unknown>) {
+    if (typeof payload.output_text === "string") return payload.output_text;
+
+    return this.extractOutputText(payload.output) ?? "";
   }
 
   private extractChatCompletionText(payload: Record<string, unknown>) {

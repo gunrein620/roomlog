@@ -877,11 +877,13 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   }
 });
 
-test("offers NVIDIA floor plan AI model selection for precise dimension reading", () => {
+test("offers floor plan AI model selection for precise dimension reading", () => {
   for (const label of [
     "FLOOR_PLAN_AI_MODELS",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/cosmos3-nano-reasoner",
+    "openai/floor-plan-vision",
+    "OpenAI Vision",
     "selectedAiModel",
     "uploadedAiImageDataUrl",
     "fileToCompressedDataUrl",

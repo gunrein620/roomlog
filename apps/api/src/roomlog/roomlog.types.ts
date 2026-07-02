@@ -392,7 +392,8 @@ export type FloorPlanDraft = {
 
 export type FloorPlanAiModelId =
   | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
-  | "nvidia/cosmos3-nano-reasoner";
+  | "nvidia/cosmos3-nano-reasoner"
+  | "openai/floor-plan-vision";
 
 export type FloorPlanAiModelMode = "vision-reasoning";
 

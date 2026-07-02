@@ -65,7 +65,8 @@ type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "op
 type ViewMode = "2d" | "3d";
 type FloorPlanAiModelId =
   | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
-  | "nvidia/cosmos3-nano-reasoner";
+  | "nvidia/cosmos3-nano-reasoner"
+  | "openai/floor-plan-vision";
 
 type FloorPlanAiAnalysisResult = {
   model: FloorPlanAiModelId;
@@ -87,7 +88,8 @@ const CANVAS_HEIGHT = 1200;
 const AI_IMAGE_MAX_DIMENSION = 1600;
 const FLOOR_PLAN_AI_MODELS: Array<{ id: FloorPlanAiModelId; label: string }> = [
   { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", label: "Nemotron Omni" },
-  { id: "nvidia/cosmos3-nano-reasoner", label: "Cosmos3 Reasoner" }
+  { id: "nvidia/cosmos3-nano-reasoner", label: "Cosmos3 Reasoner" },
+  { id: "openai/floor-plan-vision", label: "OpenAI Vision" }
 ];
 const FURNITURE_KIND_FILTERS = ["전체", "침대", "식탁", "의자", "소파", "책상", "서랍", "옷장", "기타"] as const;
 type FurnitureKindFilter = (typeof FURNITURE_KIND_FILTERS)[number];

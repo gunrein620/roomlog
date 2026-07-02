@@ -177,7 +177,7 @@ describe("RoomlogService", () => {
     assert.equal(service.loadSimulatorRoom(created.room.id).wallsData[0].dimensions.width, 3);
   });
 
-  it("exposes only hosted NVIDIA floor plan model choices", () => {
+  it("exposes hosted floor plan AI model choices including OpenAI vision", () => {
     const service = new RoomlogService();
     const models = service.listFloorPlanAiModels();
 
@@ -185,7 +185,8 @@ describe("RoomlogService", () => {
       models.map((model) => model.id),
       [
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-        "nvidia/cosmos3-nano-reasoner"
+        "nvidia/cosmos3-nano-reasoner",
+        "openai/floor-plan-vision"
       ]
     );
     assert.equal(models.every((model) => model.mode === "vision-reasoning"), true);
@@ -232,6 +233,57 @@ describe("RoomlogService", () => {
       globalThis.fetch = originalFetch;
       if (originalApiKey) process.env.NVIDIA_API_KEY = originalApiKey;
       else delete process.env.NVIDIA_API_KEY;
+    }
+  });
+
+  it("uses OpenAI Responses for the floor plan vision model", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedHeaders: Headers | undefined;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    delete process.env.OPENAI_CHAT_MODEL;
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedHeaders = new Headers(init?.headers);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"OpenAI가 도면 구조와 치수 후보를 검토했습니다.","textDetections":[{"text":"5860","confidence":0.84}],"scaleCandidates":[{"realLengthMm":5860,"pixelLength":293,"pixelToMmRatio":20,"confidence":0.78,"source":"openai/vision"}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      assert.equal(capturedUrl, "https://api.openai.com/v1/responses");
+      assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-test-roomlog");
+      assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.equal(result.status, "ready");
+      assert.equal(result.model, "openai/floor-plan-vision");
+      assert.equal(result.scaleCandidates[0].source, "openai/vision");
+      assert.equal(result.scaleCandidates[0].pixelToMmRatio, 20);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+      if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      else delete process.env.OPENAI_CHAT_MODEL;
     }
   });
 
