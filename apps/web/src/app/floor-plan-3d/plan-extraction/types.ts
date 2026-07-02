@@ -43,6 +43,8 @@ export type ExtractionMeta = {
   annotationCandidateCount?: number;
   detectedWallCount: number;
   dimensionCandidateCount?: number;
+  aiRawText?: string;
+  aiSummary?: string;
   aiTextDetections?: Array<{ confidence?: number; text: string }>;
   mainPlanBounds?: { height: number; width: number; x: number; y: number };
   needsReview?: boolean;

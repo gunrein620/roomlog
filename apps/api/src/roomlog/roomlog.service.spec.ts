@@ -272,6 +272,8 @@ describe("RoomlogService", () => {
       assert.equal(capturedUrl, "https://api.openai.com/v1/responses");
       assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-test-roomlog");
       assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.match(String(capturedBody?.instructions), /단위 없는 3-5자리 치수 숫자/);
+      assert.match(String(capturedBody?.instructions), /textDetections에 모든 보이는 치수 숫자/);
       assert.equal(result.status, "ready");
       assert.equal(result.model, "openai/floor-plan-vision");
       assert.equal(result.scaleCandidates[0].source, "openai/vision");

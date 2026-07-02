@@ -160,18 +160,40 @@ async function fileToCompressedDataUrl(file: File) {
   }
 }
 
-function parseDimensionTextToMm(text: string) {
-  const match = text.trim().match(/(\d+(?:[.,]\d+)?)\s*(mm|밀리미터|cm|센티미터|m|미터)/i);
-  if (!match) return null;
-
-  const value = Number(match[1].replace(",", "."));
+function convertDimensionToMm(valueText: string, unit: string) {
+  const value = Number(valueText.replace(",", "."));
   if (!Number.isFinite(value) || value <= 0) return null;
 
-  const unit = match[2].toLowerCase();
-  if (unit === "mm" || unit === "밀리미터") return Math.round(value);
-  if (unit === "cm" || unit === "센티미터") return Math.round(value * 10);
+  const normalizedUnit = unit.toLowerCase();
+  if (normalizedUnit === "mm" || normalizedUnit === "밀리미터") return Math.round(value);
+  if (normalizedUnit === "cm" || normalizedUnit === "센티미터") return Math.round(value * 10);
 
   return Math.round(value * 1000);
+}
+
+function parseDimensionTextsToMm(text: string) {
+  const trimmedText = text.trim();
+  const values: number[] = [];
+
+  for (const match of trimmedText.matchAll(/(\d+(?:[.,]\d+)?)\s*(mm|밀리미터|cm|센티미터|m|미터)/gi)) {
+    const realLengthMm = convertDimensionToMm(match[1], match[2]);
+    if (realLengthMm && realLengthMm >= 1000) values.push(realLengthMm);
+  }
+
+  if (values.length) return values;
+
+  const bareMillimeterMatch = trimmedText.matchAll(/\b(\d{3,5})\b/g);
+  // 단위 없는 3-5자리 치수는 mm로 처리한다. 국내 평면도 치수선은 보통 2760, 5040처럼 mm 값만 적힌다.
+  for (const match of bareMillimeterMatch) {
+    const realLengthMm = Number(match[1]);
+    if (realLengthMm >= 1000 && realLengthMm <= 30000) values.push(realLengthMm);
+  }
+
+  return values;
+}
+
+function parseDimensionTextToMm(text: string) {
+  return parseDimensionTextsToMm(text)[0] ?? null;
 }
 
 export default function RoomlogFloorPlanEditor() {
@@ -243,29 +265,55 @@ export default function RoomlogFloorPlanEditor() {
   );
   const aiTextDetections = useMemo(() => {
     const seen = new Set<string>();
+    const aiRawTextDetectionSources = [lastAiAnalysis?.rawText, lastAiAnalysis?.summary, extractionMeta.aiRawText, extractionMeta.aiSummary].flatMap((text) =>
+      text ? [{ confidence: 0.35, text }] : []
+    );
 
-    return [...(lastAiAnalysis?.textDetections ?? []), ...(extractionMeta.aiTextDetections ?? [])].filter((detection) => {
+    return [...(lastAiAnalysis?.textDetections ?? []), ...(extractionMeta.aiTextDetections ?? []), ...aiRawTextDetectionSources].filter((detection) => {
       const key = `${detection.text}:${detection.confidence ?? ""}`;
       if (seen.has(key)) return false;
       seen.add(key);
 
       return true;
     });
-  }, [extractionMeta.aiTextDetections, lastAiAnalysis?.textDetections]);
+  }, [
+    extractionMeta.aiRawText,
+    extractionMeta.aiSummary,
+    extractionMeta.aiTextDetections,
+    lastAiAnalysis?.rawText,
+    lastAiAnalysis?.summary,
+    lastAiAnalysis?.textDetections
+  ]);
   const aiDimensionDetections = useMemo<AiDimensionDetection[]>(() => {
     const seen = new Set<string>();
 
     return aiTextDetections.flatMap((detection) => {
-      const realLengthMm = parseDimensionTextToMm(detection.text);
-      if (!realLengthMm) return [];
+      return parseDimensionTextsToMm(detection.text).flatMap((realLengthMm) => {
+        const key = String(realLengthMm);
+        if (seen.has(key)) return [];
+        seen.add(key);
 
-      const key = `${detection.text}:${realLengthMm}`;
-      if (seen.has(key)) return [];
-      seen.add(key);
-
-      return [{ confidence: detection.confidence, realLengthMm, text: detection.text }];
+        return [{ confidence: detection.confidence, realLengthMm, text: `${realLengthMm}mm` }];
+      });
     });
   }, [aiTextDetections]);
+  const visibleAiDimensionDetections = useMemo(
+    () => {
+      const seen = new Set<number>();
+
+      return aiDimensionDetections
+        .filter((dimension) => dimension.realLengthMm >= 1000)
+        .sort((a, b) => b.realLengthMm - a.realLengthMm)
+        .filter((dimension) => {
+          if (seen.has(dimension.realLengthMm)) return false;
+          seen.add(dimension.realLengthMm);
+
+          return true;
+        })
+        .slice(0, 2);
+    },
+    [aiDimensionDetections]
+  );
   const hiddenWallCount = hiddenWallIds.size;
   const selectedFurniture = useMemo(
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
@@ -1542,12 +1590,12 @@ export default function RoomlogFloorPlanEditor() {
                 >
                   선택 벽 축척 적용
                 </button>
-                {aiDimensionDetections.length ? (
+                {visibleAiDimensionDetections.length ? (
                   <>
-                    <span>AI가 읽은 치수</span>
+                    <span>최대 가로/세로 치수</span>
                     <code>{selectedWall ? `선택 벽 ${selectedWall.id}에 적용` : "벽을 선택한 뒤 치수 적용"}</code>
                     <div className="floor-plan-furniture-actions">
-                      {aiDimensionDetections.slice(0, 8).map((dimension) => (
+                      {visibleAiDimensionDetections.map((dimension) => (
                         <button
                           className="floor-plan-secondary"
                           key={`${dimension.text}-${dimension.realLengthMm}`}

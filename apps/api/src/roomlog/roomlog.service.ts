@@ -2942,6 +2942,8 @@ export class RoomlogService {
       "당신은 Roomlog의 한국 부동산 도면 1차 분석기입니다.",
       "도면 이미지에서 방 구조, 치수 텍스트, 치수선 관계, 문/창문/설비처럼 OpenCV 후처리에 도움이 되는 단서를 읽습니다.",
       "픽셀 좌표나 길이를 확신하지 못하면 추측하지 말고 textDetections에 읽은 텍스트만 남깁니다.",
+      "도면에 2760, 5040처럼 단위 없는 3-5자리 치수 숫자가 보이면 mm 치수로 보고 각 숫자를 textDetections에 별도 항목으로 넣습니다.",
+      "summary에만 치수 숫자를 쓰지 말고, 사용자가 버튼으로 고를 수 있도록 textDetections에 모든 보이는 치수 숫자를 반복 없이 포함합니다.",
       "벽 최종 좌표는 OpenCV와 사용자가 확정하므로, 이 응답은 후보 분석으로만 사용됩니다.",
       "JSON schema: {\"summary\": string, \"textDetections\": [{\"text\": string, \"confidence\": number}], \"scaleCandidates\": [{\"realLengthMm\": number, \"pixelLength\": number, \"pixelToMmRatio\": number, \"confidence\": number, \"source\": string}]}"
     ].join("\n");
