@@ -69,6 +69,8 @@ const TICKET_STATUS: Record<string, TicketStatus> = {
 };
 
 // 팀 RepairStatus(9) → 프로토타입 RepairStage(6).
+// COMPLETION_REPORTED은 "완료 보고"일 뿐 관리인 완료 승인 전이므로 completed로 올리지 않는다(in_progress).
+// CANCELLED는 활성 수리가 아니므로 stage로 매핑하지 않고 toRepair에서 null 처리.
 const REPAIR_STAGE: Record<string, RepairStage> = {
   REQUESTED: "vendor_assigned",
   ACCEPTED: "vendor_assigned",
@@ -76,9 +78,8 @@ const REPAIR_STAGE: Record<string, RepairStage> = {
   ESTIMATE_APPROVED: "quoted",
   SCHEDULED: "scheduled",
   IN_PROGRESS: "in_progress",
-  COMPLETION_REPORTED: "completed",
-  COMPLETED: "completed",
-  CANCELLED: "vendor_assigned"
+  COMPLETION_REPORTED: "in_progress",
+  COMPLETED: "completed"
 };
 
 // 한글 책임 힌트 → verdict. AI 책임 확정 금지(가능성/판단어려움만) 원칙 유지.
@@ -89,14 +90,20 @@ const RESPONSIBILITY: Record<string, ResponsibilityVerdict> = {
 };
 
 function clampUrgency(n: number): Urgency {
-  return Math.min(4, Math.max(1, Math.round(n || 3))) as Urgency;
+  // 0은 1로 clamp돼야 하고(‖n||3‖는 0을 3으로 만드는 버그), 비숫자/NaN은 기본 3.
+  const rounded = Number.isFinite(n) ? Math.round(n) : 3;
+  return Math.min(4, Math.max(1, rounded)) as Urgency;
 }
 
 export function mapTicketStatus(status: string): TicketStatus {
-  return TICKET_STATUS[status] ?? "received";
+  const mapped = TICKET_STATUS[status];
+  if (!mapped) console.warn(`[defect-mapping] 미매핑 TicketStatus: ${status} → received`);
+  return mapped ?? "received";
 }
 export function mapResponsibility(hint: string): ResponsibilityVerdict {
-  return RESPONSIBILITY[hint] ?? "unclear";
+  const mapped = RESPONSIBILITY[hint];
+  if (!mapped) console.warn(`[defect-mapping] 미매핑 responsibilityHint: ${hint} → unclear`);
+  return mapped ?? "unclear";
 }
 
 export function toTicket(c: TeamComplaint): Ticket {
@@ -113,7 +120,7 @@ export function toTicket(c: TeamComplaint): Ticket {
     urgency: clampUrgency(c.ticket.priority),
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
-    analysisId: c.ticket.analysis ? `${c.id}-analysis` : undefined,
+    analysisId: c.ticket.analysis ? `${c.ticket.id}-analysis` : undefined,
     repairJobId: repair?.id
   };
 }
@@ -122,8 +129,9 @@ export function toAnalysis(c: TeamComplaint): DefectAnalysis | null {
   const a = c.ticket.analysis;
   if (!a) return null;
   return {
-    id: `${c.id}-analysis`,
-    ticketId: c.id,
+    // ticket-scoped 식별자는 complaint id(c.id)가 아니라 실제 ticket id를 쓴다.
+    id: `${c.ticket.id}-analysis`,
+    ticketId: c.ticket.id,
     problemCandidates: [a.detailCategory ?? a.category].filter(Boolean) as string[],
     urgency: clampUrgency(a.priority),
     responsibility: mapResponsibility(a.responsibilityHint),
@@ -138,9 +146,10 @@ export function toAnalysis(c: TeamComplaint): DefectAnalysis | null {
 export function toRepair(c: TeamComplaint): RepairJob | null {
   const r = c.ticket.repairs?.[0];
   if (!r) return null;
+  if (r.status === "CANCELLED") return null; // 취소된 수리는 활성 수리로 표시하지 않는다
   return {
     id: r.id,
-    ticketId: c.id,
+    ticketId: c.ticket.id,
     stage: REPAIR_STAGE[r.status] ?? "vendor_assigned",
     vendorName: c.ticket.assignedVendor?.businessName,
     quoteAmount: r.estimateAmount,

@@ -25,8 +25,10 @@ export async function serverFetch<T>(path: string, init: RequestInit = {}): Prom
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers
+      ...init.headers,
+      // 쿠키 토큰의 Authorization은 호출자 헤더로 덮어쓸 수 없게 마지막에 둔다
+      // (BFF 불변식: 업스트림 인증은 오직 httpOnly 쿠키 토큰으로만).
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
     }
   });
 

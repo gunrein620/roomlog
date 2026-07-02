@@ -22,33 +22,48 @@ async function activeComplaint(): Promise<TeamComplaint | null> {
   try {
     const list = await listComplaints();
     return list[0] ?? null;
-  } catch {
+  } catch (error) {
+    console.error("[tenant/api] /tenant/complaints 조회 실패:", error);
     return null;
   }
 }
 
+// listTickets는 실제 목록을 반환한다. 빈 목록이면 빈 배열([]) — 화면 00은 빈 상태 UI가 있다.
+// (데모로 채우면 실제 "데이터 없음"과 API 오류를 은폐하므로 금지 — 적대검토 지적.)
 export async function listTickets(): Promise<Ticket[]> {
   try {
     const list = await listComplaints();
-    return list.length ? list.map(toTicket) : [DEMO_TICKET];
-  } catch {
-    return [DEMO_TICKET];
+    return list.map(toTicket);
+  } catch (error) {
+    console.error("[tenant/api] listTickets 실패 → 빈 목록:", error);
+    return [];
   }
 }
 
+// 상세 getter는 활성 하자를 매핑해 반환한다. 실제 데이터가 없을 때만 데모로 폴백하되,
+// 조용히 넘어가지 않도록 경고를 남긴다(관측성). 미배정 등으로 analysis/repair가 없으면
+// 데모 대신 진짜 상태를 보여주도록 개선하는 것은 화면 빈 상태 작업과 함께 후속(KNOWN-GAPS).
 export async function getTicket(_id?: string): Promise<Ticket> {
   const c = await activeComplaint();
-  return c ? toTicket(c) : DEMO_TICKET;
+  if (c) return toTicket(c);
+  console.warn("[tenant/api] 활성 하자 없음 → 데모 티켓 폴백");
+  return DEMO_TICKET;
 }
 
 export async function getAnalysis(_id?: string): Promise<DefectAnalysis> {
   const c = await activeComplaint();
-  return (c && toAnalysis(c)) || DEMO_ANALYSIS;
+  const mapped = c && toAnalysis(c);
+  if (mapped) return mapped;
+  console.warn("[tenant/api] 실제 분석 없음 → 데모 분석 폴백");
+  return DEMO_ANALYSIS;
 }
 
 export async function getRepair(_id?: string): Promise<RepairJob> {
   const c = await activeComplaint();
-  return (c && toRepair(c)) || DEMO_REPAIR;
+  const mapped = c && toRepair(c);
+  if (mapped) return mapped;
+  console.warn("[tenant/api] 실제 수리 없음(미배정/취소) → 데모 수리 폴백");
+  return DEMO_REPAIR;
 }
 
 /** 상세 화면들이 참조하는 활성 하자 sentinel (단일 활성 흐름 — 실제 id는 서버에서 해석). */

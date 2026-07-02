@@ -27,9 +27,17 @@ export async function getUser(): Promise<SessionUser | null> {
   }
 }
 
-/** 보호 화면 상단에서 호출. 미인증이면 로그인으로 리다이렉트. */
-export async function requireUser(loginPath = "/tenant/login"): Promise<SessionUser> {
+/**
+ * 보호 화면 상단에서 호출. 미인증이면 로그인으로 리다이렉트.
+ * role을 주면 역할까지 강제 — 다른 역할 세션의 진입을 막는다(백엔드 403이
+ * 데모 폴백으로 가려지는 것 방지). 각 도메인 가드가 자기 역할을 명시한다.
+ */
+export async function requireUser(
+  loginPath = "/tenant/login",
+  role?: UserRole
+): Promise<SessionUser> {
   const user = await getUser();
   if (!user) redirect(loginPath);
+  if (role && user.role !== role) redirect(loginPath);
   return user;
 }
