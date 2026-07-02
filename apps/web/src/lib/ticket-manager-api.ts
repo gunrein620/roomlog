@@ -1,11 +1,4 @@
-import type {
-  DefectAnalysis,
-  ManagerQueueSummary,
-  RepairJob,
-  Ticket,
-  TicketDisposition,
-  TicketStatus
-} from "@roomlog/types";
+import type { DefectAnalysis, ManagerQueueSummary, RepairJob, Ticket } from "@roomlog/types";
 import { serverFetch } from "./server-api";
 import {
   toManagerTicket,
@@ -86,18 +79,8 @@ export async function getManagerRepair(
   return managerDemoRepair(ticketId);
 }
 
-// 관리인 mutation — 팀 PATCH /manager/tickets/:id. 서버 액션/서버 컴포넌트에서 호출.
-// NOTE(follow-up): 화면 TicketStatus(lowercase 6)→팀 TicketStatus(UPPERCASE 11) 역매핑은
-// 손실적이라(예: processing↔5종) 별도 정합 필요. 현재 대시 화면은 상태 변경을 배선하지 않음.
-export async function updateManagerTicket(
-  id: string,
-  patch: { category?: string; priority?: number; responsibilityHint?: string; status?: string; note?: string }
-): Promise<TeamManagerTicket> {
-  return serverFetch<TeamManagerTicket>(`/manager/tickets/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch)
-  });
-}
+// 관리인 mutation(상태/책임/긴급도 변경)은 화면 TicketStatus(lowercase 6)→팀 UPPERCASE(11)
+// 역매핑이 손실적이라 별도 정합이 필요하고, 현재 대시 화면이 배선하지 않으므로 여기서 제공하지 않는다.
+// (섣부른 raw PATCH는 백엔드 enum 필드를 오염시킬 수 있음 — follow-up에서 안전한 액션으로 추가.)
 
 export { MANAGER_DEMO_TICKET_ID };
-export type { TicketStatus, TicketDisposition };

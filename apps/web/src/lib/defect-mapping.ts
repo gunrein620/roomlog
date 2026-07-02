@@ -111,7 +111,8 @@ export function toTicket(c: TeamComplaint): Ticket {
   return {
     id: c.id,
     type: "defect",
-    unitId: c.room?.roomNo ?? "",
+    // 화면들이 `{unitId}호`로 렌더하므로 unitId는 호 없는 숫자여야 한다(roomNo "301호" → "301").
+    unitId: (c.room?.roomNo ?? "").replace(/\s*호\s*$/, ""),
     title: c.title,
     description: c.description,
     location: c.location,
@@ -143,15 +144,20 @@ export function toAnalysis(c: TeamComplaint): DefectAnalysis | null {
   };
 }
 
-export function toRepair(c: TeamComplaint): RepairJob | null {
-  const r = c.ticket.repairs?.[0];
+// 특정 TeamRepair 하나를 RepairJob으로 매핑(호출자가 '어떤 repair'인지 명시).
+// repairs[0] 고정 선택의 오류(복수 수리 시 엉뚱한 건)를 피하려면 이 함수를 직접 쓴다.
+export function mapRepair(
+  r: TeamRepair | undefined,
+  ticketId: string,
+  vendorName?: string
+): RepairJob | null {
   if (!r) return null;
   if (r.status === "CANCELLED") return null; // 취소된 수리는 활성 수리로 표시하지 않는다
   return {
     id: r.id,
-    ticketId: c.ticket.id,
+    ticketId,
     stage: REPAIR_STAGE[r.status] ?? "vendor_assigned",
-    vendorName: c.ticket.assignedVendor?.businessName,
+    vendorName,
     quoteAmount: r.estimateAmount,
     quoteItems:
       r.estimateAmount != null
@@ -159,4 +165,8 @@ export function toRepair(c: TeamComplaint): RepairJob | null {
         : undefined,
     scheduledAt: r.scheduledAt
   };
+}
+
+export function toRepair(c: TeamComplaint): RepairJob | null {
+  return mapRepair(c.ticket.repairs?.[0], c.ticket.id, c.ticket.assignedVendor?.businessName);
 }

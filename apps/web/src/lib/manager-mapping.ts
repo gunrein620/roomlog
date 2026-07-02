@@ -34,7 +34,9 @@ export interface TeamManagerTicket {
 
 function asComplaint(t: TeamManagerTicket): TeamComplaint {
   return {
-    id: t.complaintId,
+    // 관리인 표면의 Ticket.id는 실제 ticket id여야 한다(PATCH/상세 타깃). toTicket이
+    // TeamComplaint.id를 Ticket.id로 쓰므로 여기에 ticket id를 넣는다(임차인 표면과 반대).
+    id: t.id,
     title: t.complaint.title,
     description: t.complaint.description,
     location: t.complaint.location,
@@ -70,13 +72,21 @@ export function computeQueueSummary(
   tickets: Ticket[],
   repairs: (RepairJob | null)[]
 ): ManagerQueueSummary {
-  const today = new Date().toISOString().slice(0, 10);
+  // today 기준은 Asia/Seoul(KST) 날짜 — createdAt(ISO/UTC)도 KST로 환산해 비교.
+  const kstDate = (iso?: string) =>
+    iso ? new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) : "";
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
   return {
     total: tickets.length,
     urgent: tickets.filter((t) => t.urgency === 1).length,
-    awaitingReview: tickets.filter((t) => t.status === "received" || t.status === "reviewing").length,
-    today: tickets.filter((t) => t.createdAt?.slice(0, 10) === today).length,
+    // 재요청(reopened)도 확인대기에 포함(데모 요약과 동일 기준).
+    awaitingReview: tickets.filter(
+      (t) => t.status === "received" || t.status === "reviewing" || t.status === "reopened"
+    ).length,
+    today: tickets.filter((t) => kstDate(t.createdAt) === today).length,
+    // 결제완료(paid) 상태가 백엔드에 없어 완료 수리를 결제대기로 근사(follow-up: 결제 도메인).
     awaitingPayment: repairs.filter((r) => r?.stage === "completed").length,
-    onHold: tickets.filter((t) => t.disposition === "on_hold").length
+    // disposition(보류)은 현재 팀 Ticket에 없어 항상 0(follow-up: disposition 축 정합).
+    onHold: 0
   };
 }

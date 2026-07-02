@@ -1,11 +1,7 @@
 import type { DefectAnalysis, RepairJob, Ticket } from "@roomlog/types";
 import { serverFetch } from "./server-api";
-import {
-  toManagerTicket,
-  toManagerAnalysis,
-  toManagerRepair,
-  type TeamManagerTicket
-} from "./manager-mapping";
+import { mapRepair, type TeamRepair } from "./defect-mapping";
+import { toManagerTicket, toManagerAnalysis, type TeamManagerTicket } from "./manager-mapping";
 
 export const VENDOR_DEMO_TICKET: Ticket = {
   id: "tk_0001",
@@ -62,9 +58,14 @@ export const VENDOR_DEMO_TICKET_ID = VENDOR_DEMO_TICKET.id;
 // 중첩 ticket을 manager 매퍼로 재사용(단일방향 매핑·교정 공유). 배정된 수리만 반환된다.
 // NOTE: 업체는 최소 정보만 봐야 함(호실 라벨·증상·사진·메모) — 필드 제한은 백엔드 projection 책임.
 
-interface TeamVendorRepair {
-  id: string;
+// /vendor/repairs 응답 = presentRepair(=RepairRequest + 중첩 ticket). 각 row의 top-level repair를
+// 그 row의 것으로 매핑한다(ticket.repairs[0] 고정 선택 금지 — 복수 수리 시 오매핑 방지).
+interface TeamVendorRepair extends TeamRepair {
   ticket: TeamManagerTicket;
+}
+
+function repairOf(r: TeamVendorRepair): RepairJob | null {
+  return mapRepair(r, r.ticket.id, r.ticket.assignedVendor?.businessName);
 }
 
 async function listTeamVendorRepairs(): Promise<TeamVendorRepair[]> {
@@ -84,9 +85,7 @@ async function activeVendorRepair(): Promise<TeamVendorRepair | null> {
 export async function listVendorJobs(): Promise<RepairJob[]> {
   try {
     const list = await listTeamVendorRepairs();
-    return list
-      .map((r) => toManagerRepair(r.ticket))
-      .filter((r): r is RepairJob => r !== null);
+    return list.map(repairOf).filter((r): r is RepairJob => r !== null);
   } catch (error) {
     console.error("[vendor/api] listVendorJobs 실패 → 빈 목록:", error);
     return [];
@@ -95,7 +94,7 @@ export async function listVendorJobs(): Promise<RepairJob[]> {
 
 export async function getVendorRepair(_ticketId?: string): Promise<RepairJob> {
   const r = await activeVendorRepair();
-  const mapped = r && toManagerRepair(r.ticket);
+  const mapped = r && repairOf(r);
   if (mapped) return mapped;
   console.warn("[vendor/api] 배정된 수리 없음 → 데모 폴백");
   return VENDOR_DEMO_REPAIR;
