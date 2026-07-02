@@ -6309,7 +6309,7 @@ p {
 
 .floor-plan-canvas {
   display: grid;
-  grid-template-rows: auto minmax(420px, 1fr) auto;
+  grid-template-rows: auto minmax(420px, min(62vh, 720px)) auto;
   gap: 14px;
   padding: 14px;
 }
@@ -6352,6 +6352,8 @@ p {
 
 .floor-plan-canvas-shell {
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
   cursor: crosshair;
 }
 

@@ -91,10 +91,17 @@ type FurnitureCatalogItem = {
   thumbnailUrl?: string;
 };
 type PlacedFurniture = FurnitureCatalogItem & {
+  editableBy?: ["LANDLORD"];
+  furnitureId?: string;
   id: string;
+  includedInLease?: boolean;
+  locked?: boolean;
   position: [number, number, number];
   rotation: [number, number, number];
   scale: number;
+  sizeMm?: { depth: number; height?: number; width: number };
+  source?: "LANDLORD_OPTION" | "RESIDENT_DESIGN" | string;
+  visibleToTenant?: boolean;
 };
 type WheretoputWall3D = {
   dimensions: { width: number; height: number; depth: number };
@@ -487,6 +494,34 @@ function createFurnitureModel(item: FurnitureCatalogItem, position: [number, num
   };
 }
 
+function createLandlordOptionFurniture(furniture: PlacedFurniture): PlacedFurniture {
+  return {
+    ...furniture,
+    editableBy: ["LANDLORD"],
+    furnitureId: furniture.furniture_id,
+    includedInLease: true,
+    locked: true,
+    sizeMm: { depth: furniture.length[2], height: furniture.length[1], width: furniture.length[0] },
+    source: "LANDLORD_OPTION",
+    visibleToTenant: true
+  };
+}
+
+function createResidentDesignFurniture(furniture: PlacedFurniture): PlacedFurniture {
+  return {
+    ...furniture,
+    source: furniture.source === "LANDLORD_OPTION" ? furniture.source : "RESIDENT_DESIGN"
+  };
+}
+
+function isLandlordOptionFurniture(furniture: PlacedFurniture) {
+  return furniture.source === "LANDLORD_OPTION" || furniture.locked === true;
+}
+
+function isLockedFurnitureForResident(furniture: PlacedFurniture, experienceMode: ExperienceMode) {
+  return experienceMode === "resident" && isLandlordOptionFurniture(furniture);
+}
+
 function getFurnitureDimensions(furniture: Pick<PlacedFurniture, "length" | "scale">) {
   return {
     depth: Math.max(0.05, (furniture.length[2] / 1000) * furniture.scale),
@@ -810,6 +845,11 @@ export default function RoomlogFloorPlanEditor() {
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
     [placedFurnitures, selectedFurnitureId]
   );
+  const landlordOptionFurnitures = useMemo(() => placedFurnitures.filter(isLandlordOptionFurniture), [placedFurnitures]);
+  const residentDesignFurnitures = useMemo(
+    () => placedFurnitures.filter((furniture) => !isLandlordOptionFurniture(furniture)),
+    [placedFurnitures]
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -846,11 +886,6 @@ export default function RoomlogFloorPlanEditor() {
   }, []);
 
   useEffect(() => {
-    if (experienceMode === "landlord" && tool === "furniture") {
-      setTool("wall");
-      setPendingFurniture(null);
-      setSelectedFurnitureId(null);
-    }
     if (experienceMode === "resident" && (tool === "opening" || tool === "fixture" || tool === "scale")) {
       setTool("furniture");
       setSelectedWall(null);
@@ -1177,6 +1212,11 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function placeFurnitureAtPoint(point: { x: number; z: number }) {
+    if (selectedFurniture && isLockedFurnitureForResident(selectedFurniture, experienceMode)) {
+      setUploadStatus("세입자는 임대인 옵션 가구를 변경할 수 없습니다");
+      return;
+    }
+
     const nextPosition: [number, number, number] = [
       Number(point.x.toFixed(2)),
       pendingFurniture ? pendingFurniture.length[1] / 2000 : selectedFurniture?.position[1] ?? 0,
@@ -1184,15 +1224,17 @@ export default function RoomlogFloorPlanEditor() {
     ];
 
     if (pendingFurniture) {
-      const nextFurniture = {
+      const baseFurniture = {
         ...pendingFurniture,
         id: `furniture-${pendingFurniture.furniture_id}-${Date.now()}`,
         position: nextPosition
       };
+      const nextFurniture =
+        experienceMode === "landlord" ? createLandlordOptionFurniture(baseFurniture) : createResidentDesignFurniture(baseFurniture);
       setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
       setPendingFurniture(null);
       setSelectedFurnitureId(nextFurniture.id);
-      setUploadStatus(`${nextFurniture.name} 배치 완료`);
+      setUploadStatus(experienceMode === "landlord" ? `${nextFurniture.name} 임대인 옵션 가구 배치 완료` : `${nextFurniture.name} 배치 완료`);
       return;
     }
 
@@ -1217,11 +1259,19 @@ export default function RoomlogFloorPlanEditor() {
     setSelectedWall(null);
     setPendingFurniture(null);
     setTool("furniture");
-    setUploadStatus(`${furniture.name} 선택`);
+    setUploadStatus(
+      isLockedFurnitureForResident(furniture, experienceMode)
+        ? "임대인 옵션 가구는 세입자 모드에서 고정됩니다"
+        : `${furniture.name} 선택`
+    );
   }
 
   function rotateSelectedFurniture() {
     if (!selectedFurnitureId) return;
+    if (selectedFurniture && isLockedFurnitureForResident(selectedFurniture, experienceMode)) {
+      setUploadStatus("세입자는 임대인 옵션 가구를 변경할 수 없습니다");
+      return;
+    }
     setPlacedFurnitures((currentFurnitures) =>
       currentFurnitures.map((furniture) =>
         furniture.id === selectedFurnitureId
@@ -1234,6 +1284,10 @@ export default function RoomlogFloorPlanEditor() {
 
   function removeSelectedFurniture() {
     if (!selectedFurnitureId) return;
+    if (selectedFurniture && isLockedFurnitureForResident(selectedFurniture, experienceMode)) {
+      setUploadStatus("세입자는 임대인 옵션 가구를 변경할 수 없습니다");
+      return;
+    }
     const targetName = selectedFurniture?.name ?? "가구";
     setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((furniture) => furniture.id !== selectedFurnitureId));
     setSelectedFurnitureId(null);
@@ -1381,8 +1435,10 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function handleWheel(event: React.WheelEvent<HTMLCanvasElement>) {
+    if (!(event.ctrlKey || event.metaKey || event.altKey)) return;
     event.preventDefault();
     setViewScale((currentScale) => Math.max(0.1, Math.min(10, currentScale * (event.deltaY > 0 ? 0.9 : 1.1))));
+    setUploadStatus("Ctrl/Cmd/Alt 휠로 확대");
   }
 
   function handleCanvasAuxClick(event: React.MouseEvent<HTMLCanvasElement>) {
@@ -1492,8 +1548,10 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   async function saveFloorPlanDraft(nextStatus: "DRAFT" | "PUBLISHED" = "DRAFT") {
+    const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
     const room3d = {
       fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+      furnitures: landlordOptionFurnitures,
       hiddenWallCount,
       openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
       walls: roomWalls3D,
@@ -1503,7 +1561,7 @@ export default function RoomlogFloorPlanEditor() {
     const payload = {
       extractionMeta: nextExtractionMeta,
       fixtures: fixtureCandidates,
-      furnitures: [],
+      furnitures: landlordOptionFurnitures,
       hiddenWallIds: Array.from(hiddenWallIds),
       openings: openingCandidates,
       pixelToMmRatio,
@@ -1543,17 +1601,20 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function convertTo3D() {
+    const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
     setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
     window.localStorage.setItem(
       "floorPlanData",
       JSON.stringify({
         extractionMeta,
         fixtures: fixtureCandidates,
+        furnitures: landlordOptionFurnitures,
         hiddenWallIds: Array.from(hiddenWallIds),
         openings: openingCandidates,
         pixelToMmRatio,
         room3d: {
           fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+          furnitures: landlordOptionFurnitures,
           openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
           walls: roomWalls3D
         },
@@ -1564,10 +1625,13 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function saveResidentFurnitureDesign() {
+    const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
+    const residentDesignFurnitures = placedFurnitures.filter((furniture) => !isLandlordOptionFurniture(furniture));
     const payload = {
       fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
-      furnitures: placedFurnitures,
+      furnitures: residentDesignFurnitures,
       hiddenWallIds: Array.from(hiddenWallIds),
+      lockedFurnitures: landlordOptionFurnitures,
       mode: "resident",
       openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
       pixelToMmRatio,
@@ -1613,6 +1677,7 @@ export default function RoomlogFloorPlanEditor() {
               ["hide", "숨기기", "3D 벽 숨기기"],
               ["opening", "문창문", "문/창문 후보 검수"],
               ["fixture", "설비", "고정 설비 후보 검수"],
+              ["furniture", "옵션가구", "임대인 옵션 가구 배치"],
               ["none", "이동", "화면 이동"]
             ]
           : [
@@ -1762,7 +1827,7 @@ export default function RoomlogFloorPlanEditor() {
               </button>
             </>
           ) : (
-            <button className="floor-plan-primary" disabled={placedFurnitures.length === 0} onClick={saveResidentFurnitureDesign} type="button">
+            <button className="floor-plan-primary" disabled={residentDesignFurnitures.length === 0} onClick={saveResidentFurnitureDesign} type="button">
               배치 저장
             </button>
           )}
@@ -1893,11 +1958,15 @@ export default function RoomlogFloorPlanEditor() {
                 </div>
               ))}
           </>
-        ) : (
+        ) : null}
+
+        {experienceMode === "resident" || tool === "furniture" ? (
           <>
             <div className="floor-plan-furniture-library">
-              <span>wheretoput furniture picker</span>
-              <code>{furnitureCatalogStatus}</code>
+              <span>{experienceMode === "landlord" ? "임대인 옵션 가구" : "wheretoput furniture picker"}</span>
+              <code>
+                {furnitureCatalogStatus} / 옵션 {landlordOptionFurnitures.length} / 내 배치 {residentDesignFurnitures.length}
+              </code>
               <div className="floor-plan-furniture-grid">
                 {furnitureCatalog.map((item) => (
                   <button
@@ -1924,14 +1993,28 @@ export default function RoomlogFloorPlanEditor() {
                     {selectedFurniture.name} / {selectedFurniture.position.map((value) => value.toFixed(2)).join(", ")}
                   </code>
                   <div className="floor-plan-furniture-actions">
-                    <button className="floor-plan-secondary" onClick={rotateSelectedFurniture} type="button">
+                    <button
+                      className="floor-plan-secondary"
+                      disabled={isLockedFurnitureForResident(selectedFurniture, experienceMode)}
+                      onClick={rotateSelectedFurniture}
+                      type="button"
+                    >
                       90도 회전
                     </button>
-                    <button className="floor-plan-secondary" onClick={removeSelectedFurniture} type="button">
+                    <button
+                      className="floor-plan-secondary"
+                      disabled={isLockedFurnitureForResident(selectedFurniture, experienceMode)}
+                      onClick={removeSelectedFurniture}
+                      type="button"
+                    >
                       삭제
                     </button>
                   </div>
-                  <code>가구 도구에서 바닥을 클릭하면 위치 이동</code>
+                  <code>
+                    {isLockedFurnitureForResident(selectedFurniture, experienceMode)
+                      ? "임대인 옵션 가구는 세입자 모드에서 고정됩니다"
+                      : "가구 도구에서 바닥을 클릭하면 위치 이동"}
+                  </code>
                 </>
               ) : pendingFurniture ? (
                 <code>{pendingFurniture.name} 배치 위치를 3D 바닥에서 클릭</code>
@@ -1940,7 +2023,7 @@ export default function RoomlogFloorPlanEditor() {
               )}
             </div>
           </>
-        )}
+        ) : null}
 
         <div className="floor-plan-sim-preview">
           <span>position / rotation / dimensions</span>

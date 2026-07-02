@@ -748,6 +748,18 @@ test("lets 3D floor plan walls be selected, erased, partially erased, and hidden
   }
 });
 
+test("keeps the 2D floor plan canvas scrollable inside its editor shell", () => {
+  for (const label of [
+    "floor-plan-canvas-shell",
+    "overscroll-behavior",
+    "scrollbar-gutter",
+    "if (!(event.ctrlKey || event.metaKey || event.altKey)) return",
+    "Ctrl/Cmd/Alt 휠로 확대"
+  ]) {
+    assert.ok(`${floorPlanEditorSource}\n${globalsCssSource}`.includes(label));
+  }
+});
+
 test("switches between landlord authoring and resident furniture placement modes", () => {
   for (const label of [
     "experienceMode",
@@ -755,16 +767,34 @@ test("switches between landlord authoring and resident furniture placement modes
     "resident",
     "집주인 모드",
     "임차인/일반사용자 모드",
+    "임대인 옵션 가구",
     "wheretoput furniture picker",
     "handleFurnitureSelect",
     "placeFurnitureAtPoint",
+    "createLandlordOptionFurniture",
+    "isLockedFurnitureForResident",
     "saveResidentFurnitureDesign"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
 
-  assert.match(floorPlanEditorSource, /furnitures:\s*\[\]/);
+  assert.match(floorPlanEditorSource, /source:\s*"LANDLORD_OPTION"/);
+  assert.match(floorPlanEditorSource, /locked:\s*true/);
+  assert.match(floorPlanEditorSource, /editableBy:\s*\["LANDLORD"\]/);
+  assert.match(floorPlanEditorSource, /visibleToTenant:\s*true/);
   assert.match(floorPlanEditorSource, /localStorage\.setItem\("residentFloorPlanDesign"/);
+});
+
+test("keeps landlord option furniture locked away from resident furniture designs", () => {
+  for (const label of [
+    "landlordOptionFurnitures",
+    "residentDesignFurnitures",
+    "lockedFurnitures",
+    "세입자는 임대인 옵션 가구를 변경할 수 없습니다",
+    "임대인 옵션 가구는 세입자 모드에서 고정됩니다"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
 });
 
 test("offers commercial candidate layers for openings and fixed fixtures", () => {
