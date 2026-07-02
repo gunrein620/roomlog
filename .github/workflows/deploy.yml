@@ -102,6 +102,24 @@ jobs:
           REPOSITORY="$2"
           BRANCH="$3"
 
+          dump_docker_state() {
+            echo "== roomlog containers =="
+            docker ps -a --filter "name=roomlog" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || true
+            echo "== listeners on roomlog ports =="
+            (sudo ss -ltnp 2>/dev/null || ss -ltnp) | grep -E ':(80|3000|3001|3002|3003|4000)\b' || true
+          }
+
+          on_exit() {
+            status="$?"
+            if [ "$status" -ne 0 ]; then
+              echo "Deploy failed. Capturing Docker state for diagnosis."
+              dump_docker_state
+            fi
+            exit "$status"
+          }
+
+          trap on_exit EXIT
+
           if [ ! -d "$APP_DIR/.git" ]; then
             mkdir -p "$(dirname "$APP_DIR")"
             git clone "https://github.com/$REPOSITORY.git" "$APP_DIR"
@@ -123,7 +141,12 @@ jobs:
             exit 1
           fi
 
-          compose -f docker-compose.prod.yml up -d --build
+          echo "Container state before deploy:"
+          dump_docker_state
+
+          docker rm -f roomlog-nginx roomlog-tenant roomlog-manager roomlog-vendor 2>/dev/null || true
+
+          compose -f docker-compose.prod.yml up -d --build --remove-orphans
           docker image prune -f
           compose -f docker-compose.prod.yml ps
           REMOTE

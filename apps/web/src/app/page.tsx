@@ -29,6 +29,13 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import {
+  formatManwon,
+  getMarketSummary,
+  propertyTypeForRoom,
+  regionForLocation,
+  type MarketSummary
+} from "../lib/market-api";
 
 type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
@@ -1057,10 +1064,40 @@ function ListingDetailView({
   const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
   const [inquiryMemo, setInquiryMemo] = useState("실매물 여부와 방문 가능한 시간을 확인하고 싶습니다.");
   const [inquirySent, setInquirySent] = useState(false);
+  const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const safetyScore = listing.score.replace("안심 ", "");
+
+  // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
+  // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
+  useEffect(() => {
+    const controller = new AbortController();
+    const region = regionForLocation(listing.location);
+    getMarketSummary(
+      { lawdCd: region.lawdCd, propertyType: propertyTypeForRoom(listing.roomType), months: 3 },
+      controller.signal
+    ).then((summary) => {
+      if (summary && summary.count > 0) {
+        setMarketSummary(summary);
+      }
+    });
+    return () => controller.abort();
+  }, [listing.location, listing.roomType]);
+
+  const marketRecent = marketSummary?.recent[0];
+  const complexRecentLabel = marketRecent
+    ? marketRecent.tradeType === "월세"
+      ? `${formatManwon(marketRecent.depositManwon)}/${marketRecent.monthlyRentManwon}만`
+      : formatManwon(marketRecent.depositManwon)
+    : listing.complexPrice;
+  const complexAvgLabel =
+    marketSummary && marketSummary.count > 0
+      ? formatManwon(marketSummary.avgJeonseDepositManwon || marketSummary.avgDepositManwon)
+      : listing.unitCount;
+  const complexMonthlyAvgLabel =
+    marketSummary && marketSummary.monthlyCount > 0 ? `${marketSummary.avgMonthlyRentManwon}만` : "76만";
 
   const copyListingNo = async () => {
     const text = listing.listingLabel;
@@ -1333,8 +1370,8 @@ function ListingDetailView({
           <strong>전화</strong>
         </button>
         <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
-          <span>3D 투어</span>
-          <strong>예약하기</strong>
+          <span>3D</span>
+          <strong>둘러보기</strong>
         </button>
         <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
           <strong>문자로 문의하기</strong>
@@ -1438,17 +1475,23 @@ function ListingDetailView({
             <div className="complex-price-summary">
               <article>
                 <span>최근 실거래</span>
-                <strong>{listing.complexPrice}</strong>
+                <strong>{complexRecentLabel}</strong>
               </article>
               <article>
                 <span>동일 면적 평균</span>
-                <strong>{listing.unitCount}</strong>
+                <strong>{complexAvgLabel}</strong>
               </article>
               <article>
                 <span>월세 평균</span>
-                <strong>76만</strong>
+                <strong>{complexMonthlyAvgLabel}</strong>
               </article>
             </div>
+
+            {marketSummary && marketSummary.count > 0 ? (
+              <p className="complex-source-note">
+                국토교통부 실거래가 {marketSummary.count}건 기준 · 최근 3개월
+              </p>
+            ) : null}
 
             <section className="complex-building-card" aria-label="단지 건물 요약">
               <div>
