@@ -240,10 +240,21 @@ export default function RoomlogFloorPlanEditor() {
     () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
     [pixelToMmRatio, visibleWalls]
   );
+  const aiTextDetections = useMemo(() => {
+    const seen = new Set<string>();
+
+    return [...(lastAiAnalysis?.textDetections ?? []), ...(extractionMeta.aiTextDetections ?? [])].filter((detection) => {
+      const key = `${detection.text}:${detection.confidence ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+
+      return true;
+    });
+  }, [extractionMeta.aiTextDetections, lastAiAnalysis?.textDetections]);
   const aiDimensionDetections = useMemo<AiDimensionDetection[]>(() => {
     const seen = new Set<string>();
 
-    return (extractionMeta.aiTextDetections ?? []).flatMap((detection) => {
+    return aiTextDetections.flatMap((detection) => {
       const realLengthMm = parseDimensionTextToMm(detection.text);
       if (!realLengthMm) return [];
 
@@ -253,7 +264,7 @@ export default function RoomlogFloorPlanEditor() {
 
       return [{ confidence: detection.confidence, realLengthMm, text: detection.text }];
     });
-  }, [extractionMeta.aiTextDetections]);
+  }, [aiTextDetections]);
   const hiddenWallCount = hiddenWallIds.size;
   const selectedFurniture = useMemo(
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
@@ -1480,22 +1491,36 @@ export default function RoomlogFloorPlanEditor() {
               </div>
             ) : null}
 
-            {aiDimensionDetections.length ? (
+            {uploadedImage || lastAiAnalysis || aiTextDetections.length ? (
               <div className="floor-plan-sim-preview">
-                <span>AI가 읽은 치수</span>
-                <code>{selectedWall ? `선택 벽 ${selectedWall.id}에 적용` : "벽을 선택한 뒤 치수 적용"}</code>
-                <div className="floor-plan-furniture-actions">
-                  {aiDimensionDetections.slice(0, 8).map((dimension) => (
-                    <button
-                      className="floor-plan-secondary"
-                      key={`${dimension.text}-${dimension.realLengthMm}`}
-                      onClick={() => applyAiDimensionToSelectedWall(dimension)}
-                      type="button"
-                    >
-                      {dimension.text} 치수 적용
-                    </button>
-                  ))}
-                </div>
+                <span>AI 분석 결과</span>
+                <code>
+                  {lastAiAnalysis
+                    ? lastAiAnalysis.summary
+                    : uploadedImage
+                      ? "OpenAI Vision 분석 후 표시"
+                      : "분석 결과 없음"}
+                </code>
+                {aiDimensionDetections.length ? (
+                  <>
+                    <span>AI가 읽은 치수</span>
+                    <code>{selectedWall ? `선택 벽 ${selectedWall.id}에 적용` : "벽을 선택한 뒤 치수 적용"}</code>
+                    <div className="floor-plan-furniture-actions">
+                      {aiDimensionDetections.slice(0, 8).map((dimension) => (
+                        <button
+                          className="floor-plan-secondary"
+                          key={`${dimension.text}-${dimension.realLengthMm}`}
+                          onClick={() => applyAiDimensionToSelectedWall(dimension)}
+                          type="button"
+                        >
+                          {dimension.text} 치수 적용
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <code>{aiTextDetections.length ? "m/cm/mm 단위 치수만 적용 가능" : "아직 읽은 치수가 없습니다"}</code>
+                )}
               </div>
             ) : null}
 
