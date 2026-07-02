@@ -3,6 +3,10 @@ import type { CSSProperties } from "react";
 import { Badge, Card } from "@roomlog/ui";
 import { CROSS_ROUTES, HOME_ROUTES } from "@/lib/home-nav";
 import { getHomeSummary } from "@/lib/home-api";
+import { requireUser } from "@/lib/session";
+
+// 통합 홈은 인증 쿠키로 실 티켓을 읽는다 → 요청마다 렌더(정적 프리렌더 제외).
+export const dynamic = "force-dynamic";
 
 const iconLinkStyle: CSSProperties = {
   position: "relative",
@@ -58,6 +62,8 @@ const secondaryLinkStyle: CSSProperties = {
 };
 
 export default async function Page() {
+  // [레퍼런스 가드] 통합홈은 임차인 전용(온보딩/인증 화면은 홈의 다른 세그먼트).
+  await requireUser("/tenant/login", "TENANT");
   const summary = await getHomeSummary();
   const hasRoom = summary.unitId !== "—";
   const unreadCount = summary.unreadThreads + summary.unreadAnnouncements;

@@ -1,11 +1,12 @@
 import type { Ticket, Bill, Thread, Announcement } from "@roomlog/types";
-import { listDemoTickets } from "./demo-ticket";
+import { listTickets } from "./api";
 import { listBills } from "./payment-api";
 import { listThreads, listAnnouncements } from "./messaging-api";
 import { CROSS_ROUTES } from "./home-nav";
 
-// 임차인 통합 홈 집계 — 새 백엔드 없이 기존 도메인 엔드포인트를 조합한다.
-// (api 미기동 시 각 클라이언트가 데모로 폴백하므로 홈도 안 막힘)
+// 임차인 통합 홈 집계 — 하자(티켓)는 팀 실 백엔드(serverFetch)로 연결(레퍼런스 패턴).
+// 납부·대화·공지는 아직 팀 백엔드가 없어 데모 유지(stage-3 도메인).
+// getHomeSummary는 서버 컴포넌트 전용(listTickets가 쿠키를 읽음). 서버 화면에서만 호출.
 
 /** '오늘 할 일' 1건 — D19 임차인 멘탈모델 우선순위(안전>내 하자>납부 중립>계약).
  *  미납은 빚 독촉 프레임 금지 → 중립 문구. */
@@ -25,7 +26,7 @@ const isBillDue = (b: Bill) => b.status !== "paid";
 
 export async function getHomeSummary(): Promise<HomeSummary> {
   const [tickets, bills, threads, anns] = await Promise.all([
-    listDemoTickets(),
+    listTickets(),
     listBills(),
     listThreads(),
     listAnnouncements(),
