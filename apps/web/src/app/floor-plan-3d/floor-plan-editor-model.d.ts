@@ -79,6 +79,7 @@ export interface RegisteredPlanMetadata {
 }
 
 export interface DetectedWallLine {
+  fillSupport?: number;
   x1: number;
   y1: number;
   x2: number;
@@ -172,6 +173,17 @@ export function detectWallLinesFromMask(
     maxLines?: number;
   }
 ): DetectedWallLine[];
+export function detectWallBandLinesFromMask(
+  mask: boolean[],
+  options?: {
+    width?: number;
+    height?: number;
+    minRunLength?: number;
+    minWallThickness?: number;
+    bandAxisGapTolerance?: number;
+    bandOverlapRatio?: number;
+  }
+): DetectedWallLine[];
 export function detectWallLinesFromImageData(
   imageData: ImageData,
   options?: {
@@ -194,6 +206,10 @@ export function mergeDetectedWallLines(
   lines: DetectedWallLine[],
   options?: { axisTolerance?: number; gapTolerance?: number; minLength?: number; maxLines?: number }
 ): DetectedWallLine[];
+export function removeContainedDetectedWallFragments(
+  lines: DetectedWallLine[],
+  options?: { axisTolerance?: number; containedAxisTolerance?: number; containedRangeTolerance?: number }
+): DetectedWallLine[];
 export function limitDetectedWallCandidates(
   lines: DetectedWallLine[],
   options?: { maxLines?: number }
@@ -201,7 +217,14 @@ export function limitDetectedWallCandidates(
 export function filterCommercialWallCandidates(
   lines: DetectedWallLine[],
   options?: { width?: number; height?: number; axisTolerance?: number; gapTolerance?: number; minLength?: number; maxLines?: number }
-): { walls: DetectedWallLine[]; dimensionCandidates: Array<{ line: DetectedWallLine; confidence: number; source: string }>; removedNoiseCount: number };
+): {
+  walls: DetectedWallLine[];
+  annotationCandidates: Array<{ line: DetectedWallLine; confidence: number; source: string }>;
+  dimensionCandidates: Array<{ line: DetectedWallLine; confidence: number; source: string }>;
+  mainPlanBounds: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  needsReview: boolean;
+  removedNoiseCount: number;
+};
 export function estimateScaleCandidateFromDimensions(
   candidates: Array<{ line: DetectedWallLine; text?: string; label?: string; confidence?: number }>
 ): ScaleCandidate | null;

@@ -49,7 +49,11 @@ type ScaleCandidate = {
   source: string;
 };
 type ExtractionMeta = {
+  annotationCandidateCount?: number;
   detectedWallCount: number;
+  dimensionCandidateCount?: number;
+  mainPlanBounds?: { height: number; width: number; x: number; y: number };
+  needsReview?: boolean;
   ocrStatus: "ready" | "failed" | "manual-scale-required";
   processingMs?: number;
   removedNoiseCount: number;
@@ -58,6 +62,7 @@ type ExtractionMeta = {
 };
 type DetectedLine = {
   confidence?: number;
+  fillSupport?: number;
   markers?: string[];
   orientation?: "horizontal" | "vertical";
   thickness?: number;
@@ -67,11 +72,14 @@ type DetectedLine = {
   y2: number;
 };
 type DetectedWallResult = {
+  annotationCandidates?: Array<{ confidence: number; line: DetectedLine; source: string }>;
   dimensionCandidates?: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
   imageHeight: number;
   imageUrl: string;
   imageWidth: number;
   lines: DetectedLine[];
+  mainPlanBounds?: { maxX: number; maxY: number; minX: number; minY: number } | null;
+  needsReview?: boolean;
   removedNoiseCount?: number;
   scaleCandidates?: ScaleCandidate[];
   processingMs?: number;
@@ -228,18 +236,24 @@ async function fallbackCanvasWallExtraction(file: File): Promise<DetectedWallRes
       minRunLength: Math.max(32, Math.round(Math.min(canvas.width, canvas.height) * 0.08))
     }) as DetectedLine[];
     const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, width: canvas.width }) as {
+      annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;
       dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
+      mainPlanBounds: DetectedWallResult["mainPlanBounds"];
+      needsReview: boolean;
       removedNoiseCount: number;
       walls: DetectedLine[];
     };
     const scaleCandidate = estimateScaleCandidateFromDimensions(commercialCandidates.dimensionCandidates) as ScaleCandidate | null;
 
     return {
+      annotationCandidates: commercialCandidates.annotationCandidates,
       dimensionCandidates: commercialCandidates.dimensionCandidates,
       imageHeight: canvas.height,
       imageUrl,
       imageWidth: canvas.width,
       lines: commercialCandidates.walls,
+      mainPlanBounds: commercialCandidates.mainPlanBounds,
+      needsReview: commercialCandidates.needsReview,
       removedNoiseCount: commercialCandidates.removedNoiseCount,
       scaleCandidates: scaleCandidate ? [scaleCandidate] : [],
       processingMs: Math.round(performance.now() - startedAt)
@@ -254,6 +268,16 @@ function scaledImageSize(width: number, height: number) {
   return {
     height: Math.max(1, Math.round(height * scale)),
     width: Math.max(1, Math.round(width * scale))
+  };
+}
+
+function normalizeMainPlanBounds(bounds: DetectedWallResult["mainPlanBounds"]) {
+  if (!bounds) return undefined;
+  return {
+    height: Math.max(0, bounds.maxY - bounds.minY),
+    width: Math.max(0, bounds.maxX - bounds.minX),
+    x: bounds.minX,
+    y: bounds.minY
   };
 }
 
@@ -280,7 +304,10 @@ function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWall
             height: Number(event.data.imageHeight) || height,
             width: Number(event.data.imageWidth) || width
           }) as {
+            annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;
             dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
+            mainPlanBounds: DetectedWallResult["mainPlanBounds"];
+            needsReview: boolean;
             removedNoiseCount: number;
             walls: DetectedLine[];
           };
@@ -289,11 +316,14 @@ function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWall
             ...(Array.isArray(event.data.dimensionCandidates) ? event.data.dimensionCandidates : [])
           ]) as ScaleCandidate | null;
           resolve({
+            annotationCandidates: commercialCandidates.annotationCandidates,
             dimensionCandidates: commercialCandidates.dimensionCandidates,
             imageHeight: Number(event.data.imageHeight) || height,
             imageUrl,
             imageWidth: Number(event.data.imageWidth) || width,
             lines: commercialCandidates.walls,
+            mainPlanBounds: commercialCandidates.mainPlanBounds,
+            needsReview: commercialCandidates.needsReview,
             removedNoiseCount: commercialCandidates.removedNoiseCount + (Number(event.data.removedNoiseCount) || 0),
             scaleCandidates: scaleCandidate ? [scaleCandidate] : Array.isArray(event.data.scaleCandidates) ? event.data.scaleCandidates : [],
             processingMs: Number(event.data.processingMs) || undefined
@@ -806,7 +836,10 @@ export default function RoomlogFloorPlanEditor() {
   const [openingCandidates, setOpeningCandidates] = useState<FloorPlanCandidate[]>([]);
   const [fixtureCandidates, setFixtureCandidates] = useState<FloorPlanCandidate[]>([]);
   const [extractionMeta, setExtractionMeta] = useState<ExtractionMeta>({
+    annotationCandidateCount: 0,
     detectedWallCount: 0,
+    dimensionCandidateCount: 0,
+    needsReview: false,
     ocrStatus: "manual-scale-required",
     removedNoiseCount: 0,
     scaleCandidates: [],
@@ -1463,6 +1496,11 @@ export default function RoomlogFloorPlanEditor() {
         name: file.name,
         width: result.imageWidth
       }) as Wall[];
+      if (process.env.NODE_ENV !== "production") {
+        (window as typeof window & {
+          __roomlogFloorPlanDebug?: { detectedWalls: Wall[]; extractionResult: DetectedWallResult };
+        }).__roomlogFloorPlanDebug = { detectedWalls, extractionResult: result };
+      }
       const scaleCandidates = result.scaleCandidates ?? [];
       const bestScaleCandidate = scaleCandidates[0];
       const nextOpeningCandidates = detectOpeningCandidates({
@@ -1487,7 +1525,11 @@ export default function RoomlogFloorPlanEditor() {
       setFloorPlanDraftId(null);
       setLastExtractionMs(result.processingMs ?? null);
       setExtractionMeta({
+        annotationCandidateCount: result.annotationCandidates?.length ?? 0,
         detectedWallCount: detectedWalls.length,
+        dimensionCandidateCount: result.dimensionCandidates?.length ?? 0,
+        mainPlanBounds: normalizeMainPlanBounds(result.mainPlanBounds),
+        needsReview: result.needsReview ?? false,
         ocrStatus: bestScaleCandidate ? "ready" : "manual-scale-required",
         processingMs: result.processingMs,
         removedNoiseCount: result.removedNoiseCount ?? 0,
@@ -1501,7 +1543,7 @@ export default function RoomlogFloorPlanEditor() {
       setUploadStatus(
         `${file.name} 벽 후보 ${detectedWalls.length}개 추출, ${
           bestScaleCandidate ? "축척 확인 필요" : "수동 축척 필요"
-        }, 검수 후 저장${result.processingMs ? ` (${result.processingMs}ms)` : ""}`
+        }, ${result.needsReview ? "정밀 검수 필요" : "검수 후 저장"}${result.processingMs ? ` (${result.processingMs}ms)` : ""}`
       );
     } catch {
       setUploadStatus("이미지 벽 추출 실패");
