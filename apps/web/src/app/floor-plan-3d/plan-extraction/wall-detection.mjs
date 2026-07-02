@@ -450,13 +450,49 @@ function isConnectedThickWallStub(line, candidateWalls, structuralBounds, option
   });
 }
 
+function isSmallClosedWallLoopSegment(line, candidateWalls, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  const length = lineLength(line);
+  const minLoopLength = options.wallFirstMinLoopLength ?? Math.max(48, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.06));
+  const maxLoopLength = options.wallFirstMaxLoopLength ?? Math.max(120, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.18));
+  if (!Number.isFinite(thickness) || thickness < Math.max(4, threshold * 0.8)) return false;
+  if (length < minLoopLength || length > maxLoopLength) return false;
+
+  if (structuralBounds) {
+    const bounds = lineBounds(line);
+    const insideStructuralBounds =
+      bounds.minX >= structuralBounds.minX - 24 &&
+      bounds.maxX <= structuralBounds.maxX + 24 &&
+      bounds.minY >= structuralBounds.minY - 24 &&
+      bounds.maxY <= structuralBounds.maxY + 24;
+    if (!insideStructuralBounds) return false;
+  }
+
+  const orthogonalNeighbors = candidateWalls.filter((otherLine) => {
+    if (otherLine === line || lineOrientation(otherLine) === lineOrientation(line)) return false;
+    if (Number(otherLine.thickness ?? 1) < Math.max(4, threshold * 0.8)) return false;
+    const otherLength = lineLength(otherLine);
+    if (otherLength < minLoopLength || otherLength > maxLoopLength) return false;
+    return linesIntersectOrthogonally(line, otherLine, 10);
+  });
+
+  if (orthogonalNeighbors.length < 2) return false;
+
+  return orthogonalNeighbors.some((firstNeighbor, firstIndex) =>
+    orthogonalNeighbors.slice(firstIndex + 1).some((secondNeighbor) => Math.abs(lineAxisPosition(firstNeighbor) - lineAxisPosition(secondNeighbor)) >= minLoopLength * 0.65)
+  );
+}
+
 function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
   const thickness = Number(line.thickness ?? 1);
   if (!Number.isFinite(thickness) || thickness < Math.max(3, threshold * 0.68)) return false;
 
   const minLength = Math.max(90, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.11));
   if (lineLength(line) < minLength) {
-    return isConnectedThickWallStub(line, options.candidateWalls ?? [], structuralBounds, options, threshold);
+    return (
+      isConnectedThickWallStub(line, options.candidateWalls ?? [], structuralBounds, options, threshold) ||
+      isSmallClosedWallLoopSegment(line, options.candidateWalls ?? [], structuralBounds, options, threshold)
+    );
   }
 
   if (!structuralBounds) return true;
@@ -1174,8 +1210,11 @@ export function mergeDetectedWallLines(lines, options = {}) {
       if (lineA.orientation !== lineB.orientation) return lineA.orientation === "horizontal" ? -1 : 1;
       const axisA = lineA.orientation === "horizontal" ? lineA.y1 : lineA.x1;
       const axisB = lineB.orientation === "horizontal" ? lineB.y1 : lineB.x1;
+      const startA = lineA.orientation === "horizontal" ? lineA.x1 : lineA.y1;
+      const startB = lineB.orientation === "horizontal" ? lineB.x1 : lineB.y1;
+      if (Math.abs(axisA - axisB) <= axisTolerance && startA !== startB) return startA - startB;
       if (axisA !== axisB) return axisA - axisB;
-      return lineA.orientation === "horizontal" ? lineA.x1 - lineB.x1 : lineA.y1 - lineB.y1;
+      return startA - startB;
     });
   const merged = [];
 

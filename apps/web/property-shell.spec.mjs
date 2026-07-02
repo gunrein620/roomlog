@@ -1314,6 +1314,21 @@ test("floor plan editor model does not merge wall gaps marked by perpendicular j
   assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 315 && line.x2 === 420), true);
 });
 
+test("floor plan editor model does not merge distant same-axis walls when axis sorting differs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 602, y1: 144, x2: 743, y2: 144, orientation: "horizontal", thickness: 6 },
+      { x1: 151, y1: 148, x2: 475, y2: 148, orientation: "horizontal", thickness: 12 }
+    ],
+    { axisTolerance: 4, gapTolerance: 35, maxLines: 10 }
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged.some((line) => line.x1 === 151 && line.x2 === 475), true);
+  assert.equal(merged.some((line) => line.x1 === 602 && line.x2 === 743), true);
+});
+
 test("floor plan editor model preserves wall thickness and removes thin interior symbols", async () => {
   const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
@@ -1590,6 +1605,28 @@ test("floor plan editor model wall-first mode preserves short thick wall stubs c
   );
 
   assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 === 140 && line.y2 === 198), true);
+});
+
+test("floor plan editor model wall-first mode preserves small thick rectangular wall loops", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 360, y1: 320, x2: 425, y2: 320, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 380, x2: 425, y2: 380, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 320, x2: 360, y2: 380, orientation: "vertical", thickness: 7 },
+      { x1: 425, y1: 320, x2: 425, y2: 380, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 320), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 360 && line.y1 === 320 && line.y2 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 425 && line.y1 === 320 && line.y2 === 380), true);
 });
 
 test("floor plan editor model wall-first mode infers missing outer edges and extends near walls", async () => {
