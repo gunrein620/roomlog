@@ -135,6 +135,48 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("stores room walls from detected floor-plan coordinates and returns simulator wallsData", () => {
+    const service = new RoomlogService();
+
+    const created = service.createRoom("landlord-demo", {
+      buildingName: "도면빌라",
+      roomNo: "501호",
+      address: "서울시 성동구 도면로 5",
+      roomData: {
+        pixelToMmRatio: 20,
+        walls: [
+          { id: "wall-a", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+          { id: "wall-b", start: { x: 100, y: 0 }, end: { x: 100, y: 80 } }
+        ]
+      }
+    });
+
+    assert.equal(created.room.buildingName, "도면빌라");
+    assert.equal(created.roomWalls.length, 2);
+    assert.equal(created.roomWalls[0].roomId, created.room.id);
+    assert.equal(created.roomWalls[0].sourceWallId, "wall-a");
+    assert.equal(created.roomWalls[0].lengthMm, 2000);
+    assert.equal(created.roomWalls[0].rotationRad, 0);
+    assert.equal(created.roomWalls[1].lengthMm, 1600);
+
+    const simulator = service.loadSimulatorRoom(created.room.id);
+    assert.equal(simulator.room.id, created.room.id);
+    assert.equal(simulator.wallsData.length, 2);
+    assert.deepEqual(simulator.wallsData[0].dimensions, { width: 2, height: 2.5, depth: 0.15 });
+    assert.deepEqual(simulator.wallsData[0].position, [-0.5, 1.25, -0.4]);
+    assert.equal(simulator.room_objects.length, 0);
+
+    const updatedWalls = service.replaceRoomWalls("landlord-demo", created.room.id, {
+      pixelToMmRatio: 10,
+      walls: [{ id: "wall-c", start: { x: 0, y: 0 }, end: { x: 0, y: 300 } }]
+    });
+
+    assert.equal(updatedWalls.length, 1);
+    assert.equal(updatedWalls[0].sourceWallId, "wall-c");
+    assert.equal(updatedWalls[0].lengthMm, 3000);
+    assert.equal(service.loadSimulatorRoom(created.room.id).wallsData[0].dimensions.width, 3);
+  });
+
   it("persists users, intake threads, complaints, and tickets across service restarts", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-store-"));
     const storeFilePath = join(dir, "store.json");

@@ -1403,6 +1403,20 @@ test("floor plan editor model scales detected image lines into editor walls", as
   assert.equal(walls[0].end.x > walls[0].start.x, true);
 });
 
+test("floor plan editor model overlays detected walls on the centered uploaded image", async () => {
+  const model = floorPlanModel;
+  const walls = model.createWallsFromDetectedLines(
+    [{ x1: 500, y1: 0, x2: 500, y2: 500, orientation: "vertical" }],
+    { width: 1000, height: 500, name: "scan.png" }
+  );
+
+  assert.equal(walls.length, 1);
+  assert.equal(walls[0].start.x, 0);
+  assert.equal(walls[0].end.x, 0);
+  assert.equal(walls[0].start.y, -320);
+  assert.equal(walls[0].end.y, 320);
+});
+
 test("floor plan editor model keeps small detected openings instead of snapping them closed", async () => {
   const model = floorPlanModel;
   const walls = model.createWallsFromDetectedLines(

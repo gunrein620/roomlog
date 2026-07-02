@@ -22,6 +22,7 @@ import {
   CreateComplaintFromCallInput,
   CreateIntakeSessionInput,
   CreateMoveInChecklistItemInput,
+  CreateRoomInput,
   FinalizeIntakeInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
@@ -31,6 +32,7 @@ import {
   ReopenTenantComplaintInput,
   ReviewTenantAiFeedbackInput,
   SaveFloorPlanDraftInput,
+  SaveRoomWallsInput,
   SendIntakeMessageInput,
   SubmitTenantAiFeedbackInput,
   UserAccount,
@@ -148,6 +150,37 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.updateFloorPlanDraft(user.id, floorPlanId, body);
+  }
+
+  @Post("rooms")
+  createRoom(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateRoomInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createRoom(user.id, body);
+  }
+
+  @Get("room-walls/:roomId")
+  getRoomWalls(@Param("roomId") roomId: string) {
+    return this.roomlogService.listRoomWalls(roomId);
+  }
+
+  @Patch("room-walls/:roomId")
+  replaceRoomWalls(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("roomId") roomId: string,
+    @Body() body: SaveRoomWallsInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.replaceRoomWalls(user.id, roomId, body);
+  }
+
+  @Get("sim/load/:roomId")
+  loadSimulatorRoom(@Param("roomId") roomId: string) {
+    return this.roomlogService.loadSimulatorRoom(roomId);
   }
 
   @Get("tenant/home")

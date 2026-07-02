@@ -44,6 +44,7 @@ describe("PrismaStoreProjector", () => {
             address: "서울시 성동구 DB로 8"
           }
         ],
+        roomWalls: [],
         tenantRooms: {
           [tenantId]: roomId
         },
@@ -271,6 +272,7 @@ describe("PrismaStoreProjector", () => {
             address: "서울시 성동구 로드로 5"
           }
         ],
+        roomWalls: [],
         tenantRooms: {
           [tenantId]: roomId
         },
@@ -497,6 +499,7 @@ describe("PrismaStoreProjector", () => {
             landlordId: managerId
           }
         ],
+        roomWalls: [],
         tenantRooms: {
           [tenantId]: roomId
         },

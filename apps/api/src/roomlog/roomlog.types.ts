@@ -64,6 +64,36 @@ export type Room = {
   landlordId?: string;
 };
 
+export type RoomWall = {
+  id: string;
+  roomId: string;
+  sourceWallId: string;
+  start: FloorPlanWallPoint;
+  end: FloorPlanWallPoint;
+  lengthMm: number;
+  rotationRad: number;
+  position: [number, number, number];
+  dimensions: { width: number; height: number; depth: number };
+  wallOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SimulatorWallData = {
+  id: string;
+  wall_id: string;
+  start: FloorPlanWallPoint;
+  end: FloorPlanWallPoint;
+  length: number;
+  height: number;
+  depth: number;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  dimensions: { width: number; height: number; depth: number };
+  material: "wall";
+  wall_order: number;
+};
+
 export type RoomTimelineEntryType =
   | "MOVE_IN_CHECKLIST"
   | "AI_FEEDBACK"
@@ -344,6 +374,7 @@ export type FloorPlanCandidate = {
 export type FloorPlanDraft = {
   id: string;
   ownerId: string;
+  roomId?: string;
   sourceAttachmentId?: string;
   sourceImageUrl?: string;
   status: FloorPlanStatus;
@@ -595,6 +626,7 @@ export type SaveAttachmentInput = {
 };
 
 export type SaveFloorPlanDraftInput = {
+  roomId?: string;
   sourceAttachmentId?: string;
   sourceImageUrl?: string;
   status?: FloorPlanStatus;
@@ -606,6 +638,18 @@ export type SaveFloorPlanDraftInput = {
   extractionMeta?: FloorPlanExtractionMeta;
   openings?: FloorPlanCandidate[];
   fixtures?: FloorPlanCandidate[];
+};
+
+export type SaveRoomWallsInput = {
+  pixelToMmRatio?: number;
+  walls?: FloorPlanWall[];
+};
+
+export type CreateRoomInput = {
+  buildingName?: string;
+  roomNo?: string;
+  address?: string;
+  roomData?: SaveRoomWallsInput;
 };
 
 export type FinalizeIntakeInput = {

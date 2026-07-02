@@ -33,6 +33,7 @@ import {
   ComplaintSourceChannel,
   ComplaintStatus,
   ConfirmTenantCompletionInput,
+  CreateRoomInput,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
@@ -67,9 +68,12 @@ import {
   ReviewTenantAiFeedbackInput,
   ReportCompletionInput,
   Room,
+  RoomWall,
   RoomTimelineEntry,
   SaveAttachmentInput,
   SaveFloorPlanDraftInput,
+  SaveRoomWallsInput,
+  SimulatorWallData,
   ScheduleRepairInput,
   SendIntakeMessageInput,
   StatusHistory,
@@ -194,6 +198,7 @@ export type TenantInvite = {
 export type Store = {
   users: UserAccount[];
   rooms: Room[];
+  roomWalls: RoomWall[];
   tenantRooms: Record<string, string>;
   vendors: VendorSummary[];
   vendorInvites: VendorInvite[];
@@ -224,6 +229,8 @@ type GeneratedIntakeTurn = {
 };
 
 const now = () => new Date().toISOString();
+const ROOM_WALL_HEIGHT_M = 2.5;
+const ROOM_WALL_DEPTH_M = 0.15;
 
 function id(prefix: string) {
   return `${prefix}_${randomBytes(5).toString("hex")}`;
@@ -335,6 +342,7 @@ function createDemoStore(): Store {
         landlordId: "landlord-demo"
       }
     ],
+    roomWalls: [],
     tenantRooms: {
       "tenant-demo": "room-301"
     },
@@ -369,6 +377,7 @@ function createEmptyStore(): Store {
   return {
     users: [],
     rooms: [],
+    roomWalls: [],
     tenantRooms: {},
     vendors: [],
     vendorInvites: [],
@@ -2516,6 +2525,80 @@ export class RoomlogService {
       .map((item) => this.presentMoveInChecklistItem(item));
   }
 
+  createRoom(ownerId: string, input: CreateRoomInput) {
+    this.assertFloorPlanOwner(ownerId);
+    const buildingName = input.buildingName?.trim();
+    const roomNo = input.roomNo?.trim();
+    const address = input.address?.trim();
+
+    if (!buildingName || !roomNo || !address) {
+      throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
+    }
+
+    const existingRoom = this.store.rooms.find(
+      (room) => room.buildingName === buildingName && room.roomNo === roomNo && room.address === address
+    );
+    const room =
+      existingRoom ??
+      ({
+        id: id("room"),
+        buildingName,
+        roomNo,
+        address,
+        landlordId: ownerId
+      } satisfies Room);
+
+    if (room.landlordId && room.landlordId !== ownerId) {
+      throw new ForbiddenException("담당 호실에만 도면을 저장할 수 있습니다.");
+    }
+    room.landlordId = ownerId;
+
+    if (!existingRoom) {
+      this.store.rooms.push(room);
+    }
+
+    const roomWalls = input.roomData
+      ? this.replaceRoomWallsForRoom(room, input.roomData)
+      : this.listRoomWalls(room.id);
+    this.persistStore();
+
+    return {
+      room: { ...room },
+      roomWalls
+    };
+  }
+
+  listRoomWalls(roomId: string) {
+    this.findRoom(roomId);
+
+    return this.store.roomWalls
+      .filter((wall) => wall.roomId === roomId)
+      .sort((left, right) => left.wallOrder - right.wallOrder)
+      .map((wall) => this.presentRoomWall(wall));
+  }
+
+  replaceRoomWalls(ownerId: string, roomId: string, input: SaveRoomWallsInput) {
+    this.assertManagerCanAccessRoom(ownerId, roomId);
+    const room = this.findRoom(roomId);
+    const roomWalls = this.replaceRoomWallsForRoom(room, input);
+    this.persistStore();
+
+    return roomWalls;
+  }
+
+  loadSimulatorRoom(roomId: string) {
+    const room = this.findRoom(roomId);
+    const roomWalls = this.listRoomWalls(roomId);
+    const wallsData = roomWalls.map((wall) => this.roomWallToSimulatorWall(wall));
+
+    return {
+      room: { ...room },
+      room_objects: [],
+      room_walls: roomWalls,
+      wallsData
+    };
+  }
+
   async saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
     const user = this.store.users.find((account) => account.id === uploadedByUserId);
 
@@ -2572,6 +2655,7 @@ export class RoomlogService {
     const draft: FloorPlanDraft = {
       id: id("plan"),
       ownerId,
+      roomId: this.optionalOwnedRoomId(ownerId, input.roomId),
       sourceAttachmentId: this.optionalAttachmentId(ownerId, input.sourceAttachmentId),
       sourceImageUrl: this.optionalUrl(input.sourceImageUrl),
       status: "DRAFT",
@@ -2623,6 +2707,9 @@ export class RoomlogService {
     if (input.sourceAttachmentId !== undefined) {
       draft.sourceAttachmentId = this.optionalAttachmentId(ownerId, input.sourceAttachmentId);
     }
+    if (input.roomId !== undefined) {
+      draft.roomId = this.optionalOwnedRoomId(ownerId, input.roomId);
+    }
     if (input.sourceImageUrl !== undefined) {
       draft.sourceImageUrl = this.optionalUrl(input.sourceImageUrl);
     }
@@ -2655,6 +2742,12 @@ export class RoomlogService {
     }
     if (draft.status === "PUBLISHED") {
       this.assertPublishableFloorPlan(draft);
+      if (draft.roomId) {
+        this.replaceRoomWallsForRoom(this.findRoom(draft.roomId), {
+          pixelToMmRatio: draft.pixelToMmRatio,
+          walls: draft.walls
+        });
+      }
     }
 
     draft.updatedAt = now();
@@ -2675,6 +2768,98 @@ export class RoomlogService {
     }
   }
 
+  private replaceRoomWallsForRoom(room: Room, input: SaveRoomWallsInput) {
+    const walls = this.validFloorPlanWalls(input.walls);
+    const pixelToMmRatio = this.validPixelToMmRatio(input.pixelToMmRatio);
+    const nextWalls = this.createRoomWallsFromFloorPlanWalls(room.id, walls, pixelToMmRatio);
+
+    this.store.roomWalls = this.store.roomWalls.filter((wall) => wall.roomId !== room.id);
+    this.store.roomWalls.push(...nextWalls);
+
+    return nextWalls.map((wall) => this.presentRoomWall(wall));
+  }
+
+  private createRoomWallsFromFloorPlanWalls(roomId: string, walls: FloorPlanWall[], pixelToMmRatio: number) {
+    if (walls.length === 0) return [];
+
+    const createdAt = now();
+    const rawWalls = walls.map((wall, index) => {
+      const startM = {
+        x: (wall.start.x * pixelToMmRatio) / 1000,
+        y: (wall.start.y * pixelToMmRatio) / 1000
+      };
+      const endM = {
+        x: (wall.end.x * pixelToMmRatio) / 1000,
+        y: (wall.end.y * pixelToMmRatio) / 1000
+      };
+      const lengthM = Math.hypot(endM.x - startM.x, endM.y - startM.y);
+      const centerX = (startM.x + endM.x) / 2;
+      const centerZ = (startM.y + endM.y) / 2;
+
+      return {
+        id: id("room_wall"),
+        roomId,
+        sourceWallId: String(wall.id ?? `wall-${index + 1}`),
+        start: wall.start,
+        end: wall.end,
+        lengthM,
+        rotationRad: Math.atan2(endM.y - startM.y, endM.x - startM.x),
+        position: [centerX, ROOM_WALL_HEIGHT_M / 2, centerZ] as [number, number, number],
+        wallOrder: index
+      };
+    });
+    const centerX = rawWalls.reduce((sum, wall) => sum + wall.position[0], 0) / rawWalls.length;
+    const centerZ = rawWalls.reduce((sum, wall) => sum + wall.position[2], 0) / rawWalls.length;
+
+    return rawWalls.map((wall) => ({
+      id: wall.id,
+      roomId: wall.roomId,
+      sourceWallId: wall.sourceWallId,
+      start: wall.start,
+      end: wall.end,
+      lengthMm: Math.round(wall.lengthM * 1000),
+      rotationRad: this.roundMetric(wall.rotationRad),
+      position: [
+        this.roundMetric(wall.position[0] - centerX),
+        this.roundMetric(wall.position[1]),
+        this.roundMetric(wall.position[2] - centerZ)
+      ] as [number, number, number],
+      dimensions: {
+        width: this.roundMetric(wall.lengthM),
+        height: ROOM_WALL_HEIGHT_M,
+        depth: ROOM_WALL_DEPTH_M
+      },
+      wallOrder: wall.wallOrder,
+      createdAt,
+      updatedAt: createdAt
+    }));
+  }
+
+  private roomWallToSimulatorWall(wall: RoomWall): SimulatorWallData {
+    return {
+      id: wall.id,
+      wall_id: wall.sourceWallId,
+      start: wall.start,
+      end: wall.end,
+      length: wall.dimensions.width,
+      height: wall.dimensions.height,
+      depth: wall.dimensions.depth,
+      position: wall.position,
+      rotation: [0, wall.rotationRad, 0],
+      dimensions: wall.dimensions,
+      material: "wall",
+      wall_order: wall.wallOrder
+    };
+  }
+
+  private presentRoomWall(wall: RoomWall): RoomWall {
+    return JSON.parse(JSON.stringify(wall)) as RoomWall;
+  }
+
+  private roundMetric(value: number) {
+    return Math.round(value * 1000) / 1000;
+  }
+
   private optionalAttachmentId(ownerId: string, attachmentId?: string) {
     if (!attachmentId) return undefined;
 
@@ -2687,6 +2872,14 @@ export class RoomlogService {
     }
 
     return attachment.id;
+  }
+
+  private optionalOwnedRoomId(ownerId: string, roomId?: string) {
+    if (!roomId) return undefined;
+
+    this.assertManagerCanAccessRoom(ownerId, roomId);
+
+    return roomId;
   }
 
   private optionalUrl(value?: string) {
@@ -2827,6 +3020,7 @@ export class RoomlogService {
       attachments: parsed.attachments ?? [],
       floorPlans: (parsed.floorPlans ?? []).map((floorPlan) => ({
         ...floorPlan,
+        roomId: floorPlan.roomId,
         extractionMeta: floorPlan.extractionMeta ?? { scaleConfirmed: false },
         openings: floorPlan.openings ?? [],
         fixtures: floorPlan.fixtures ?? [],
@@ -2838,6 +3032,7 @@ export class RoomlogService {
         ...room,
         landlordId: room.landlordId ?? "landlord-demo"
       })),
+      roomWalls: parsed.roomWalls ?? [],
       intakeSessions: parsed.intakeSessions.map((session) => ({
         ...session,
         draft: {
@@ -2900,6 +3095,7 @@ export class RoomlogService {
       snapshot &&
         Array.isArray(snapshot.users) &&
         Array.isArray(snapshot.rooms) &&
+        (snapshot.roomWalls === undefined || Array.isArray(snapshot.roomWalls)) &&
         snapshot.tenantRooms &&
         Array.isArray(snapshot.vendors) &&
         (snapshot.vendorInvites === undefined || Array.isArray(snapshot.vendorInvites)) &&
