@@ -49,7 +49,14 @@ export function removeSmallWallComponents(
 ): boolean[];
 export function mergeDetectedWallLines(
   lines: DetectedLine[],
-  options?: { axisTolerance?: number; gapTolerance?: number; minLength?: number; maxLines?: number }
+  options?: {
+    axisTolerance?: number;
+    gapMarkerTolerance?: number;
+    gapTolerance?: number;
+    minLength?: number;
+    maxLines?: number;
+    respectPerpendicularGapMarkers?: boolean;
+  }
 ): DetectedLine[];
 export function removeContainedDetectedWallFragments(
   lines: DetectedLine[],
@@ -71,6 +78,8 @@ export function filterCommercialWallCandidates(
     mode?: "balanced" | "conservative" | "wall-first";
     minConservativeWallThickness?: number;
     wallFirstGapTolerance?: number;
+    wallFirstMaxInferredEdgeWallCount?: number;
+    wallFirstMinStubLength?: number;
     wallFirstSideTolerance?: number;
     wallFirstSnapDistance?: number;
   }

@@ -425,12 +425,39 @@ function isConservativeWallLine(line, structuralBounds, options = {}, threshold 
   return nearStructuralBounds;
 }
 
+function isConnectedThickWallStub(line, candidateWalls, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  const length = lineLength(line);
+  const minStubLength = options.wallFirstMinStubLength ?? Math.max(40, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.055));
+  if (!Number.isFinite(thickness) || thickness < Math.max(4, threshold * 0.8)) return false;
+  if (length < minStubLength) return false;
+
+  if (structuralBounds) {
+    const bounds = lineBounds(line);
+    const insideStructuralBounds =
+      bounds.minX >= structuralBounds.minX - 18 &&
+      bounds.maxX <= structuralBounds.maxX + 18 &&
+      bounds.minY >= structuralBounds.minY - 18 &&
+      bounds.maxY <= structuralBounds.maxY + 18;
+    if (!insideStructuralBounds) return false;
+  }
+
+  return candidateWalls.some((otherLine) => {
+    if (otherLine === line || lineOrientation(otherLine) === lineOrientation(line)) return false;
+    if (Number(otherLine.thickness ?? 1) < Math.max(4, threshold * 0.8)) return false;
+    if (lineLength(otherLine) < Math.max(80, length * 1.3)) return false;
+    return linesIntersectOrthogonally(line, otherLine, 10);
+  });
+}
+
 function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
   const thickness = Number(line.thickness ?? 1);
   if (!Number.isFinite(thickness) || thickness < Math.max(3, threshold * 0.68)) return false;
 
   const minLength = Math.max(90, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.11));
-  if (lineLength(line) < minLength) return false;
+  if (lineLength(line) < minLength) {
+    return isConnectedThickWallStub(line, options.candidateWalls ?? [], structuralBounds, options, threshold);
+  }
 
   if (!structuralBounds) return true;
 
@@ -521,8 +548,9 @@ function wallFirstCompleteAndExtend(lines, structuralBounds, options = {}) {
   const presentSideCount = Object.values(sides).filter(Boolean).length;
   const inferredWalls = [];
   const inferredThickness = Math.max(4, Math.round(conservativeThicknessThreshold(extendedWalls, options)));
+  const allowInferredOuterEdges = extendedWalls.length <= (options.wallFirstMaxInferredEdgeWallCount ?? 8);
 
-  if (presentSideCount >= 3 && !sides.left) {
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.left) {
     inferredWalls.push({
       confidence: 0.48,
       markers: ["wall-first-inferred-outer"],
@@ -534,7 +562,7 @@ function wallFirstCompleteAndExtend(lines, structuralBounds, options = {}) {
       y2: structuralBounds.maxY
     });
   }
-  if (presentSideCount >= 3 && !sides.right) {
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.right) {
     inferredWalls.push({
       confidence: 0.48,
       markers: ["wall-first-inferred-outer"],
@@ -546,7 +574,7 @@ function wallFirstCompleteAndExtend(lines, structuralBounds, options = {}) {
       y2: structuralBounds.maxY
     });
   }
-  if (presentSideCount >= 3 && !sides.top) {
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.top) {
     inferredWalls.push({
       confidence: 0.48,
       markers: ["wall-first-inferred-outer"],
@@ -558,7 +586,7 @@ function wallFirstCompleteAndExtend(lines, structuralBounds, options = {}) {
       y2: structuralBounds.minY
     });
   }
-  if (presentSideCount >= 3 && !sides.bottom) {
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.bottom) {
     inferredWalls.push({
       confidence: 0.48,
       markers: ["wall-first-inferred-outer"],
@@ -674,7 +702,7 @@ export function filterCommercialWallCandidates(lines, options = {}) {
         })
       : mode === "wall-first"
         ? walls.filter((line) => {
-            const keep = isWallFirstLine(line, structuralBounds, options, conservativeThreshold);
+            const keep = isWallFirstLine(line, structuralBounds, { ...options, candidateWalls: walls }, conservativeThreshold);
             if (!keep) {
               annotationCandidates.push({
                 confidence: Number(line.confidence ?? 0.68),
@@ -695,8 +723,9 @@ export function filterCommercialWallCandidates(lines, options = {}) {
           gapTolerance:
             options.wallFirstGapTolerance ??
             options.gapTolerance ??
-            Math.max(40, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.06)),
-          maxLines: options.maxLines ?? 40
+            Math.max(32, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.04)),
+          maxLines: options.maxLines ?? 40,
+          respectPerpendicularGapMarkers: true
         }
       : options
   );
@@ -911,6 +940,54 @@ export function limitDetectedWallCandidates(lines, options = {}) {
   return [...lines].sort((lineA, lineB) => lineLength(lineB) - lineLength(lineA)).slice(0, maxLines);
 }
 
+function hasPerpendicularGapMarker(lines, firstLine, secondLine, options = {}) {
+  if (!options.respectPerpendicularGapMarkers) return false;
+  if (lineOrientation(firstLine) !== lineOrientation(secondLine)) return false;
+
+  const orientation = lineOrientation(firstLine);
+  const axisTolerance = options.axisTolerance ?? 4;
+  const markerTolerance = options.gapMarkerTolerance ?? Math.max(10, axisTolerance * 2);
+  const firstBounds = lineBounds(firstLine);
+  const secondBounds = lineBounds(secondLine);
+  const minThickness = Math.max(3, Math.min(Number(firstLine.thickness ?? 6), Number(secondLine.thickness ?? 6)) * 0.55);
+
+  if (orientation === "horizontal") {
+    const gapStart = firstBounds.maxX;
+    const gapEnd = secondBounds.minX;
+    const axis = Math.round((firstLine.y1 + secondLine.y1) / 2);
+
+    return lines.some((line) => {
+      if (line === firstLine || line === secondLine || lineOrientation(line) !== "vertical") return false;
+      if (Number(line.thickness ?? 1) < minThickness) return false;
+      const bounds = lineBounds(line);
+      const markerX = Math.round((line.x1 + line.x2) / 2);
+      return (
+        markerX >= gapStart - markerTolerance &&
+        markerX <= gapEnd + markerTolerance &&
+        axis >= bounds.minY - markerTolerance &&
+        axis <= bounds.maxY + markerTolerance
+      );
+    });
+  }
+
+  const gapStart = firstBounds.maxY;
+  const gapEnd = secondBounds.minY;
+  const axis = Math.round((firstLine.x1 + secondLine.x1) / 2);
+
+  return lines.some((line) => {
+    if (line === firstLine || line === secondLine || lineOrientation(line) !== "horizontal") return false;
+    if (Number(line.thickness ?? 1) < minThickness) return false;
+    const bounds = lineBounds(line);
+    const markerY = Math.round((line.y1 + line.y2) / 2);
+    return (
+      markerY >= gapStart - markerTolerance &&
+      markerY <= gapEnd + markerTolerance &&
+      axis >= bounds.minX - markerTolerance &&
+      axis <= bounds.maxX + markerTolerance
+    );
+  });
+}
+
 function runOverlapRatio(runA, runB) {
   const overlap = overlapLength(runA.start, runA.end, runB.start, runB.end);
   const shortest = Math.max(1, Math.min(runA.end - runA.start, runB.end - runB.start));
@@ -1112,7 +1189,7 @@ export function mergeDetectedWallLines(lines, options = {}) {
     if (line.orientation === "horizontal") {
       const sameAxis = Math.abs(previous.y1 - line.y1) <= axisTolerance;
       const closeGap = line.x1 - previous.x2 <= gapTolerance;
-      if (sameAxis && closeGap) {
+      if (sameAxis && closeGap && !hasPerpendicularGapMarker(normalized, previous, line, options)) {
         const weight = previous.weight + 1;
         const y = Math.round((previous.y1 * previous.weight + line.y1) / weight);
         previous.x1 = Math.min(previous.x1, line.x1);
@@ -1129,7 +1206,7 @@ export function mergeDetectedWallLines(lines, options = {}) {
     } else {
       const sameAxis = Math.abs(previous.x1 - line.x1) <= axisTolerance;
       const closeGap = line.y1 - previous.y2 <= gapTolerance;
-      if (sameAxis && closeGap) {
+      if (sameAxis && closeGap && !hasPerpendicularGapMarker(normalized, previous, line, options)) {
         const weight = previous.weight + 1;
         const x = Math.round((previous.x1 * previous.weight + line.x1) / weight);
         previous.y1 = Math.min(previous.y1, line.y1);

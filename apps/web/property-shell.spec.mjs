@@ -1297,6 +1297,23 @@ test("floor plan editor model merges nearby wall candidates and caps noisy outpu
   assert.equal(capped.length, 24);
 });
 
+test("floor plan editor model does not merge wall gaps marked by perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 286, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 286, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { axisTolerance: 4, gapTolerance: 50, maxLines: 10, respectPerpendicularGapMarkers: true }
+  );
+
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 420), false);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 315 && line.x2 === 420), true);
+});
+
 test("floor plan editor model preserves wall thickness and removes thin interior symbols", async () => {
   const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
@@ -1521,6 +1538,60 @@ test("floor plan editor model wall-first mode reconnects dark wall runs", async 
   assert.equal(result.removedNoiseCount, 2);
 });
 
+test("floor plan editor model wall-first mode keeps door gaps open when gap has perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 288, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 288, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 <= 180 && line.x2 >= 420), false);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 315 && line.x2 === 420), true);
+});
+
+test("floor plan editor model wall-first mode does not bridge larger probable opening gaps by default", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 260, y2: 320, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 358, x2: 260, y2: 490, orientation: "vertical", thickness: 8 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 <= 180 && line.y2 >= 490), false);
+});
+
+test("floor plan editor model wall-first mode preserves short thick wall stubs connected to structure", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 140, x2: 260, y2: 198, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 === 140 && line.y2 === 198), true);
+});
+
 test("floor plan editor model wall-first mode infers missing outer edges and extends near walls", async () => {
   const model = floorPlanModel;
   const result = model.filterCommercialWallCandidates(
@@ -1537,6 +1608,30 @@ test("floor plan editor model wall-first mode infers missing outer edges and ext
   assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320 && line.y1 === 140 && line.y2 === 520), true);
   assert.equal(result.walls.length, 5);
   assert.equal(result.needsReview, true);
+});
+
+test("floor plan editor model wall-first mode skips inferred outer edges on complex multi-room plans", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 100, y1: 100, x2: 620, y2: 100, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 100, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 100, y1: 520, x2: 100, y2: 100, orientation: "vertical", thickness: 8 },
+      { x1: 220, y1: 100, x2: 220, y2: 260, orientation: "vertical", thickness: 7 },
+      { x1: 360, y1: 100, x2: 360, y2: 280, orientation: "vertical", thickness: 7 },
+      { x1: 480, y1: 280, x2: 480, y2: 520, orientation: "vertical", thickness: 7 },
+      { x1: 100, y1: 220, x2: 260, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 300, y1: 220, x2: 460, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 100, y1: 340, x2: 260, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 340, y1: 340, x2: 520, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 180, y1: 420, x2: 300, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 420, x2: 540, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 540, y1: 360, x2: 540, y2: 520, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.markers?.includes("wall-first-inferred-outer")), false);
 });
 
 test("floor plan editor model strict line mask ignores filled surfaces and small dark noise", async () => {
