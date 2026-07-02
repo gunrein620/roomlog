@@ -9,7 +9,7 @@ export default function HomeLayout({ children }: { children: ReactNode }) {
     <PhoneFrame
       label={
         <>
-          <Link href="/" style={{ color: "var(--primary)", textDecoration: "none" }}>
+          <Link href="/shell" style={{ color: "var(--primary)", textDecoration: "none" }}>
             ← 셸 인덱스
           </Link>
           <span>T-HOME 통합 홈 · 임차인 · 390×844</span>

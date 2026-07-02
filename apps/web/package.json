@@ -9,6 +9,8 @@
     "test": "node --test property-shell.spec.mjs"
   },
   "dependencies": {
+    "@roomlog/types": "workspace:*",
+    "@roomlog/ui": "workspace:*",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "lucide-react": "^1.22.0",

@@ -10,7 +10,7 @@ export default function PaymentLayout({ children }: { children: ReactNode }) {
       label={
         <>
           <Link
-            href="/"
+            href="/shell"
             style={{ color: "var(--primary)", textDecoration: "none" }}
           >
             ← 셸 인덱스

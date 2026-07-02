@@ -7014,3 +7014,15 @@ p {
     align-items: center;
   }
 }
+
+/* ── 룸로그 하자(T-DEF-03) AI 분석중 점 깜빡임 (prototype에서 이식) ── */
+@keyframes wfblink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.18;
+  }
+  40% {
+    opacity: 1;
+  }
+}

@@ -8,7 +8,7 @@ export default function ManagerVoxLayout({ children }: { children: ReactNode }) 
     <PhoneFrame
       label={
         <>
-          <Link href="/" style={{ color: "var(--primary)", textDecoration: "none" }}>
+          <Link href="/shell" style={{ color: "var(--primary)", textDecoration: "none" }}>
             ← 셸 인덱스
           </Link>
           <span>M-VOX 통화비서 · 관리인 · 390×844</span>

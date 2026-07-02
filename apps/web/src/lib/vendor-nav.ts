@@ -6,14 +6,14 @@
  */
 
 export const ROUTES = {
-  "V-JOB-00": "/vendor/00",
-  "V-JOB-01": "/vendor/01",
-  "V-JOB-02": "/vendor/02",
-  "V-JOB-03": "/vendor/03",
-  "V-JOB-04": "/vendor/04",
-  "V-JOB-05": "/vendor/05",
-  "V-JOB-06": "/vendor/06",
-  "V-JOB-E0": "/vendor/e0",
+  "V-JOB-00": "/vendor/job/00",
+  "V-JOB-01": "/vendor/job/01",
+  "V-JOB-02": "/vendor/job/02",
+  "V-JOB-03": "/vendor/job/03",
+  "V-JOB-04": "/vendor/job/04",
+  "V-JOB-05": "/vendor/job/05",
+  "V-JOB-06": "/vendor/job/06",
+  "V-JOB-E0": "/vendor/job/e0",
 } as const;
 
 export type VendorScreenId = keyof typeof ROUTES;

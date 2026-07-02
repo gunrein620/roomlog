@@ -8,7 +8,7 @@ export default function MessagingLayout({ children }: { children: ReactNode }) {
     <PhoneFrame
       label={
         <>
-          <Link href="/" style={{ color: "var(--primary)", textDecoration: "none" }}>
+          <Link href="/shell" style={{ color: "var(--primary)", textDecoration: "none" }}>
             ← 셸 인덱스
           </Link>
           <span>T-MSG 커뮤니케이션 · 임차인 · 390×844</span>
