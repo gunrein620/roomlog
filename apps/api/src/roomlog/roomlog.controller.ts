@@ -386,6 +386,67 @@ export class RoomlogController {
     return this.roomlogService.listManagerMoveInChecklist(user.id, roomId);
   }
 
+  @Get("manager/costs")
+  listManagerCosts(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerCosts(user.id);
+  }
+
+  @Get("manager/costs/review-queue-summary")
+  getManagerCostReviewQueueSummary(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerCostReviewQueueSummary(user.id);
+  }
+
+  @Get("manager/costs/monthly-summary")
+  getManagerMonthlyCostSummary(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("month") month?: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMonthlyCostSummary(user.id, month);
+  }
+
+  @Get("manager/costs/receipts")
+  listManagerReceipts(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerReceipts(user.id);
+  }
+
+  @Get("manager/costs/receipt-ocrs/:ocrId")
+  getManagerReceiptOcr(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ocrId") ocrId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerReceiptOcr(user.id, ocrId);
+  }
+
+  @Get("manager/costs/disclosure-settings")
+  getManagerDisclosureSetting(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("month") month?: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerDisclosureSetting(user.id, month);
+  }
+
+  @Get("manager/costs/:costId")
+  getManagerCost(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("costId") costId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerCost(user.id, costId);
+  }
+
   @Patch("manager/tickets/:ticketId")
   updateTicket(
     @Headers("authorization") authorization: string | undefined,

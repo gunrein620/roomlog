@@ -9,10 +9,13 @@ import {
   QueueRows,
   ScreenHeader,
   Section,
+  filterGridStyle,
   grid3Style,
   typeLabel,
   won,
 } from "../_components";
+
+export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const [costs, queue, monthly] = await Promise.all([listCosts(), getCostQueueSummary(), getMonthlyCostSummary()]);
@@ -33,7 +36,7 @@ export default async function Page() {
       </section>
 
       <Section title="검색·필터">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 180px", gap: "var(--space-md)" }}>
+        <div style={filterGridStyle}>
           <Input aria-label="비용 검색" placeholder="항목, 호실, 영수증 검색" readOnly />
           <Input aria-label="기간 필터" value={monthly.month} readOnly />
           <Input aria-label="건물 필터" value="연남 스테이" readOnly />

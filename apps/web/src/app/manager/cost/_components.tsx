@@ -32,6 +32,12 @@ export const reasonLabel: Record<CostReviewReason, string> = {
   unit_unmatched: "호실 미매칭",
 };
 
+export const mutedStyle: CSSProperties = {
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  lineHeight: 1.5,
+};
+
 export function ScreenHeader({
   eyebrow,
   title,
@@ -44,19 +50,23 @@ export function ScreenHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", marginBottom: "var(--space-lg)" }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        gap: "var(--space-lg)",
+        flexWrap: "wrap",
+      }}
+    >
       <div>
         <Badge emphasis>{eyebrow}</Badge>
         <h1 style={{ margin: "var(--space-sm) 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
           {title}
         </h1>
-        {desc ? (
-          <p style={{ margin: "var(--space-xs) 0 0", color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-            {desc}
-          </p>
-        ) : null}
+        {desc ? <p style={{ ...mutedStyle, margin: "var(--space-xs) 0 0", maxWidth: 760 }}>{desc}</p> : null}
       </div>
-      {actions ? <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "flex-start" }}>{actions}</div> : null}
+      {actions ? <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>{actions}</div> : null}
     </div>
   );
 }
@@ -80,9 +90,9 @@ export function Section({ title, children, action }: { title: string; children: 
 export function MetricCard({ label, value, note }: { label: string; value: ReactNode; note?: string }) {
   return (
     <Card style={{ minHeight: 112 }}>
-      <div style={captionStyle}>{label}</div>
-      <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-title)", fontWeight: 850 }}>{value}</div>
-      {note ? <div style={{ marginTop: "var(--space-xs)", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>{note}</div> : null}
+      <div style={{ ...mutedStyle, fontWeight: 700 }}>{label}</div>
+      <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-title)", fontWeight: 900 }}>{value}</div>
+      {note ? <div style={{ ...mutedStyle, marginTop: "var(--space-xs)" }}>{note}</div> : null}
     </Card>
   );
 }
@@ -101,11 +111,10 @@ export function LinkButton({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "0 16px",
+    padding: "0 var(--space-lg)",
     borderRadius: "var(--radius-btn)",
     textDecoration: "none",
     fontWeight: 800,
-    fontSize: "var(--fs-body)",
     whiteSpace: "nowrap",
   };
   const variants: Record<typeof variant, CSSProperties> = {
@@ -123,10 +132,10 @@ export function LinkButton({
 
 export function CostTable({ costs }: { costs: Cost[] }) {
   return (
-    <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
+    <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900, background: "var(--surface-container-lowest)" }}>
         <thead>
-          <tr>
+          <tr style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", textAlign: "left" }}>
             {["날짜", "항목", "금액", "유형", "귀속", "상태", "공개", ""].map((head) => (
               <th key={head} style={thStyle}>
                 {head}
@@ -136,7 +145,7 @@ export function CostTable({ costs }: { costs: Cost[] }) {
         </thead>
         <tbody>
           {costs.map((cost) => (
-            <tr key={cost.id}>
+            <tr key={cost.id} style={{ minHeight: "var(--list-item-min)", borderTop: "1px solid var(--border)" }}>
               <td style={tdStyle}>{formatDate(cost.date)}</td>
               <td style={tdStyle}>
                 <div style={{ fontWeight: 800 }}>{cost.item}</div>
@@ -253,7 +262,7 @@ export function DisclosurePreview({ setting }: { setting: DisclosureSetting }) {
 
 export function EmptyBox({ children }: { children: ReactNode }) {
   return (
-    <Card style={{ border: "1.5px dashed var(--outline-variant)", color: "var(--on-surface-variant)", textAlign: "center" }}>
+    <Card style={{ border: "1.5px dashed var(--outline-variant)", ...mutedStyle, textAlign: "center" }}>
       {children}
     </Card>
   );
@@ -281,14 +290,27 @@ export function formatDate(value: string) {
 
 export const grid3Style: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "var(--space-md)",
 };
 
 export const grid2Style: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
   gap: "var(--space-md)",
+};
+
+export const filterGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "var(--space-md)",
+};
+
+export const actionRowStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "var(--space-sm)",
+  flexWrap: "wrap",
 };
 
 export const captionStyle: CSSProperties = {
@@ -310,23 +332,21 @@ export const rowStyle: CSSProperties = {
   gap: "var(--space-md)",
   padding: "var(--space-md)",
   border: "1px solid var(--border)",
-  borderRadius: "var(--radius-md)",
+  borderRadius: "var(--radius)",
   background: "var(--surface-container-lowest)",
 };
 
 const thStyle: CSSProperties = {
-  padding: "12px",
-  textAlign: "left",
-  borderBottom: "1px solid var(--border)",
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
+  padding: "var(--space-md)",
+  fontWeight: 800,
+  whiteSpace: "nowrap",
 };
 
 const tdStyle: CSSProperties = {
-  padding: "12px",
-  borderBottom: "1px solid var(--border)",
-  fontSize: "var(--fs-body)",
+  padding: "var(--space-md)",
   verticalAlign: "middle",
+  minHeight: "var(--list-item-min)",
+  fontSize: "var(--fs-caption)",
 };
 
 const linkStyle: CSSProperties = {

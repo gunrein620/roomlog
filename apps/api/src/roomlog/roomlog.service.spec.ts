@@ -2797,6 +2797,130 @@ describe("RoomlogService", () => {
     assert.equal(noMatch.length, 0);
   });
 
+  it("projects manager cost ledger from landlord repair costs and excludes non-spend states", () => {
+    const service = new RoomlogService();
+    const completeRepair = (
+      title: string,
+      costBearer: "LANDLORD" | "TENANT" | "PENDING",
+      estimateAmount: number
+    ) => {
+      const { ticket } = service.createComplaint("tenant-demo", {
+        title,
+        description: "욕실 천장 누수 보수 요청입니다.",
+        location: "욕실 천장",
+        occurredAt: "2026-07-01T08:30:00.000Z",
+        availableTimes: "평일 오전"
+      });
+      const repair = service.assignVendor("landlord-demo", ticket.id, {
+        vendorId: "vendor-demo",
+        requestNote: "현장 확인 후 견적을 남겨주세요."
+      });
+
+      service.submitEstimate("vendor-demo", repair.id, {
+        estimateAmount,
+        estimateDescription: "누수 점검 및 실리콘 보수"
+      });
+      service.approveRepairEstimate("landlord-demo", repair.id, {
+        costBearer,
+        note: "비용 주체 확인"
+      });
+      service.scheduleRepair("vendor-demo", repair.id, {
+        scheduledAt: "2026-07-02T10:00:00.000Z"
+      });
+      service.reportCompletion("vendor-demo", repair.id, {
+        completionNote: "보수 완료"
+      });
+      service.approveCompletion("landlord-demo", ticket.id, "완료 확인");
+
+      return repair;
+    };
+
+    const landlordRepair = completeRepair("임대인 부담 누수 보수", "LANDLORD", 120000);
+    const tenantRepair = completeRepair("임차인 부담 소모품 교체", "TENANT", 80000);
+    const projectedCost = service
+      .listManagerCosts("landlord-demo")
+      .find((cost) => cost.paymentRef === landlordRepair.id);
+    assert.ok(projectedCost);
+
+    const store = (service as unknown as { store: { costs: any[]; rooms: any[] } }).store;
+    store.rooms.push({
+      id: "room-other-manager-101",
+      buildingName: "다른 관리동",
+      roomNo: "101호",
+      address: "서울시 테스트구 1",
+      landlordId: "landlord-other"
+    });
+    store.costs.push(
+      {
+        id: "cost_review_draft",
+        managerId: "landlord-demo",
+        date: projectedCost.date,
+        item: "복도 조명 교체",
+        amount: 48000,
+        type: "common",
+        scope: "building",
+        status: "draft",
+        verified: false,
+        reviewReason: "ocr_low_confidence",
+        createdAt: projectedCost.createdAt,
+        updatedAt: projectedCost.updatedAt
+      },
+      {
+        id: "cost_private_maintenance",
+        managerId: "landlord-demo",
+        date: projectedCost.date,
+        item: "공용 관리비 정산",
+        amount: 30000,
+        type: "maintenance",
+        scope: "building",
+        status: "confirmed",
+        verified: false,
+        disclosure: "private",
+        createdAt: projectedCost.createdAt,
+        updatedAt: projectedCost.updatedAt
+      },
+      {
+        id: "cost_void_duplicate",
+        date: projectedCost.date,
+        item: "중복 등록 출장비",
+        amount: 50000,
+        type: "repair",
+        scope: "unit",
+        unitId: "301",
+        status: "void",
+        verified: true,
+        voidReason: "중복 등록",
+        createdAt: projectedCost.createdAt,
+        updatedAt: projectedCost.updatedAt
+      }
+    );
+
+    const costs = service.listManagerCosts("landlord-demo");
+    assert.ok(costs.some((cost) => cost.paymentRef === landlordRepair.id));
+    assert.equal(costs.some((cost) => cost.paymentRef === tenantRepair.id), false);
+    assert.equal(
+      service.listManagerCosts("landlord-other").some((cost) => cost.id === "cost_private_maintenance"),
+      false
+    );
+
+    const queue = service.getManagerCostReviewQueueSummary("landlord-demo");
+    assert.equal(queue.ocrLowConfidence, 1);
+    assert.equal(queue.total, 1);
+    assert.equal(queue.unverifiedConfirmed, 1);
+
+    const month = projectedCost.date.slice(0, 7);
+    const summary = service.getManagerMonthlyCostSummary("landlord-demo", month);
+    assert.equal(summary.totalAmount, 150000);
+    assert.equal(summary.byType.repair, 120000);
+    assert.equal(summary.byType.maintenance, 30000);
+    assert.equal(summary.byType.common, 0);
+    assert.equal(summary.confirmedCount, 2);
+
+    const disclosure = service.getManagerDisclosureSetting("landlord-demo", month);
+    assert.equal(disclosure.hiddenCount, 1);
+    assert.equal(disclosure.entries[0].costId, "cost_private_maintenance");
+  });
+
   it("lets tenants confirm completion or reopen unresolved repairs after vendor completion reports", () => {
     const service = new RoomlogService();
     const createReportedRepair = (title: string) => {

@@ -2,6 +2,7 @@ import { Card } from "@roomlog/ui";
 import { getReceiptOcr } from "@/lib/cost-api";
 import { MANAGER_COST_ROUTES } from "@/lib/cost-nav";
 import {
+  actionRowStyle,
   LinkButton,
   OcrFieldRows,
   PageStack,
@@ -13,6 +14,8 @@ import {
   typeLabel,
   won,
 } from "../_components";
+
+export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const ocr = await getReceiptOcr();
@@ -81,7 +84,7 @@ export default async function Page() {
         </div>
       </Section>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
+      <div style={actionRowStyle}>
         <LinkButton href={MANAGER_COST_ROUTES["M-COST-00"]} variant="ghost">나중에</LinkButton>
         <LinkButton href={MANAGER_COST_ROUTES["M-COST-03"]}>미검증 라벨로 확정</LinkButton>
       </div>

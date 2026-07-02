@@ -39,6 +39,7 @@ export type ReceiptSource = "camera" | "file" | "online" | "manual";
  */
 export interface Cost {
   id: string;
+  managerId?: string; // owner landlord for building-scope spend visibility
   date: string; // 발생일(영수증 일자) ISO
   item: string; // 항목명 (예: "배수관 보수")
   amount: number; // 원
@@ -86,6 +87,7 @@ export interface ReceiptLineItem {
 /** 영수증(원본). 증빙 없음(수동)·중복 검사 구분. */
 export interface Receipt {
   id: string;
+  managerId?: string; // owner landlord for unlinked receipt visibility
   source: ReceiptSource;
   imageUrl?: string;
   /** 증빙 있음 여부 — false=수동 입력(OCR 미경유) 원장 구분. */

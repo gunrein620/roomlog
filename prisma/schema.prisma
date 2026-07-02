@@ -74,6 +74,48 @@ enum RepairCostBearer {
   PENDING
 }
 
+enum CostType {
+  REPAIR
+  MAINTENANCE
+  COMMON
+  OTHER
+}
+
+enum CostStatus {
+  DRAFT
+  CONFIRMED
+  AMENDED
+  VOID
+}
+
+enum CostAttributionScope {
+  UNIT
+  BUILDING
+}
+
+enum DisclosureState {
+  PUBLIC
+  PRIVATE
+}
+
+enum RepairPaymentState {
+  ALREADY_PAID
+  UNPAID
+}
+
+enum CostReviewReason {
+  OCR_LOW_CONFIDENCE
+  CLASSIFICATION_UNCLEAR
+  UNIT_UNMATCHED
+}
+
+enum ReceiptSource {
+  CAMERA
+  FILE
+  ONLINE
+  MANUAL
+}
+
 enum AttachmentCategory {
   COMPLAINT_PHOTO
   ADDITIONAL_PHOTO
@@ -471,6 +513,86 @@ model RepairRequest {
 
   @@index([vendorId, status])
   @@index([ticketId, status])
+}
+
+model Receipt {
+  id            String        @id
+  managerId     String?
+  source        ReceiptSource
+  imageUrl      String?
+  hasEvidence   Boolean
+  uploadedAt    DateTime      @default(now())
+  duplicateOfId String?
+
+  duplicateOf Receipt?     @relation("ReceiptDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates  Receipt[]    @relation("ReceiptDuplicates")
+  costs       Cost[]
+  ocrs        ReceiptOcr[]
+
+  @@index([uploadedAt])
+  @@index([managerId])
+  @@index([duplicateOfId])
+}
+
+model Cost {
+  id            String                 @id
+  managerId     String?
+  date          DateTime
+  item          String
+  amount        Int
+  type          CostType
+  scope         CostAttributionScope
+  unitId        String?
+  status        CostStatus             @default(DRAFT)
+  verified      Boolean                @default(false)
+  reviewReason  CostReviewReason?
+  disclosure    DisclosureState?
+  repairPayment RepairPaymentState?
+  paymentRef    String?
+  receiptId     String?
+  supersedesId  String?
+  voidReason    String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  receipt   Receipt?     @relation(fields: [receiptId], references: [id])
+  supersedes Cost?       @relation("CostAmendments", fields: [supersedesId], references: [id])
+  amendments Cost[]      @relation("CostAmendments")
+  ocrs      ReceiptOcr[]
+
+  @@index([managerId])
+  @@index([status, date])
+  @@index([type, date])
+  @@index([receiptId])
+  @@index([supersedesId])
+}
+
+model ReceiptOcr {
+  id                String    @id
+  receiptId         String
+  costId            String?
+  itemValue         String
+  itemConfidence    Float
+  itemNeedsReview   Boolean
+  dateValue         String
+  dateConfidence    Float
+  dateNeedsReview   Boolean
+  amountValue       Int
+  amountConfidence  Float
+  amountNeedsReview Boolean
+  unitIdValue       String?
+  unitIdConfidence  Float?
+  unitIdNeedsReview Boolean?
+  suggestedType     CostType?
+  typeConfidence    Float?
+  lineItems         Json
+  createdAt         DateTime  @default(now())
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  cost    Cost?   @relation(fields: [costId], references: [id])
+
+  @@index([receiptId])
+  @@index([costId])
 }
 
 model TicketMessage {
