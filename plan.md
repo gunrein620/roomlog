@@ -4,7 +4,7 @@
 
 **Goal:** 하자 처리 E2E를 중심으로 세입자, 관리인, 협력업체가 하나의 백엔드와 공용 데이터 모델 위에서 작동하는 Roomlog MVP를 만든다.
 
-**Architecture:** 백엔드는 `apps/api`의 단일 NestJS API 서버로 유지하고, 프론트엔드는 `apps/tenant`, `apps/manager`, `apps/vendor` 3개의 Next.js App Router 앱으로 분리한다. DB는 PostgreSQL + Prisma를 사용하고, 파일 저장과 AI 분석은 각각 어댑터 인터페이스 뒤에 둬서 로컬 개발과 운영 확장을 분리한다.
+**Architecture:** 백엔드는 `apps/api`의 단일 NestJS API 서버로 유지하고, 프론트엔드는 `apps/web`의 단일 Next.js App Router 앱에서 `/tenant`, `/manager`, `/vendor` 라우트로 분리한다. DB는 PostgreSQL + Prisma를 사용하고, 파일 저장과 AI 분석은 각각 어댑터 인터페이스 뒤에 둬서 로컬 개발과 운영 확장을 분리한다.
 
 **Tech Stack:** pnpm workspace, Next.js App Router, React, NestJS, Prisma, PostgreSQL, JWT auth, OpenAI text analysis, local file storage with S3-compatible abstraction, Docker Compose.
 
@@ -66,15 +66,13 @@ Roomlog는 임차인과 임대인이 같은 문제를 서로 다른 화면에서
 
 ### 2.1 모노레포 구조
 
-현재 `apps/web` 단일 프론트 방향을 역할별 앱 3개로 대체한다.
+프론트는 `apps/web` 단일 Next.js 앱으로 유지하고 역할별 화면을 라우트로 분리한다.
 
 ```text
 roomlog/
 ├─ apps/
 │  ├─ api/                 # NestJS single backend
-│  ├─ tenant/              # Next.js PWA for tenants
-│  ├─ manager/             # Next.js responsive web/PWA for landlords/managers
-│  └─ vendor/              # Next.js PWA for repair vendors
+│  └─ web/                 # Next.js frontend, routes /tenant, /manager, /vendor
 ├─ packages/
 │  ├─ config/              # shared tsconfig/eslint/prettier if introduced
 │  ├─ types/               # shared DTO/status/type definitions
@@ -83,7 +81,6 @@ roomlog/
 │  ├─ schema.prisma
 │  └─ seed.ts
 ├─ uploads/                # local dev file storage, gitignored
-├─ nginx/
 ├─ docker-compose.yml
 ├─ docker-compose.prod.yml
 ├─ package.json
@@ -93,7 +90,7 @@ roomlog/
 
 ### 2.2 App responsibilities
 
-`apps/tenant`:
+`apps/web/src/app/tenant`:
 - 세입자 회원가입/로그인
 - 본인 호실 홈
 - 하자 신고 작성
@@ -102,7 +99,7 @@ roomlog/
 - 하자 처리 상태 조회
 - 티켓 메시지와 추가 정보 제출
 
-`apps/manager`:
+`apps/web/src/app/manager`:
 - 관리인 회원가입/로그인
 - 티켓 큐
 - 티켓 상세와 AI 분석 검토
@@ -112,7 +109,7 @@ roomlog/
 - 견적/일정/완료 보고 확인
 - 최종 완료 승인
 
-`apps/vendor`:
+`apps/web/src/app/vendor`:
 - 관리자 초대 링크 기반 가입/로그인
 - 배정된 수리 목록
 - 수리 상세 확인
@@ -126,19 +123,16 @@ roomlog/
 
 ### 2.3 Deployment direction
 
-- Local: `pnpm dev:api`, `pnpm dev:tenant`, `pnpm dev:manager`, `pnpm dev:vendor`
-- Docker local: nginx reverse proxy + API + 3 frontends
-- Production: EC2 Docker Compose + RDS PostgreSQL + S3-compatible storage later
+- Local: `pnpm dev:api`, `pnpm dev:web`
+- Docker local: API + single frontend exposed on port 3000
+- Production: AWS ALB path routing + EC2 Docker Compose + RDS PostgreSQL + S3-compatible storage later
 
 Recommended local ports:
 
 | App | Port |
 | --- | ---: |
+| Web | 3000 |
 | API | 4000 |
-| Tenant | 3001 |
-| Manager | 3002 |
-| Vendor | 3003 |
-| Nginx | 80 |
 
 ---
 
@@ -648,7 +642,7 @@ Content-Type: application/json
 ```json
 {
   "inviteId": "vinv_...",
-  "inviteUrl": "http://localhost:3003/invite/vinv_token..."
+  "inviteUrl": "http://localhost:3000/vendor?inviteToken=vinv_token..."
 }
 ```
 
@@ -718,7 +712,7 @@ Content-Type: application/json
 ### 4.7 Attachments and storage modules
 
 Responsibilities:
-- Upload image files from tenant/vendor apps.
+- Upload image files from tenant/vendor routes.
 - Store locally in dev under `/uploads`.
 - Save metadata in `Attachment`.
 - Return stable URL through API.
@@ -796,7 +790,7 @@ Reference docs:
 
 ## 5. Frontend route maps
 
-### 5.1 `apps/tenant`
+### 5.1 `apps/web/src/app/tenant`
 
 ```text
 /login
@@ -831,7 +825,7 @@ Required screens:
   - Ticket messages.
   - Additional info request state.
 
-### 5.2 `apps/manager`
+### 5.2 `apps/web/src/app/manager`
 
 ```text
 /login
@@ -869,7 +863,7 @@ Required screens:
   - Completion note/photos.
   - Complete approval button.
 
-### 5.3 `apps/vendor`
+### 5.3 `apps/web/src/app/vendor`
 
 ```text
 /login
@@ -916,21 +910,16 @@ Required screens:
 - Modify: `.env.example`
 - Modify: `docker-compose.yml`
 - Modify: `docker-compose.prod.yml`
-- Modify: `nginx/default.conf`
-- Replace: `apps/web` with `apps/tenant`, `apps/manager`, `apps/vendor`
+- Modify: `apps/web`
 
 - [ ] Add workspace scripts:
 
 ```json
 {
   "scripts": {
-    "dev:tenant": "pnpm --filter tenant dev",
-    "dev:manager": "pnpm --filter manager dev",
-    "dev:vendor": "pnpm --filter vendor dev",
     "dev:api": "pnpm --filter api start:dev",
-    "build:tenant": "pnpm --filter tenant build",
-    "build:manager": "pnpm --filter manager build",
-    "build:vendor": "pnpm --filter vendor build",
+    "dev:web": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web build",
     "build:api": "pnpm --filter api build",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
@@ -939,25 +928,19 @@ Required screens:
 }
 ```
 
-- [ ] Create each frontend as Next.js App Router TypeScript app.
+- [ ] Create role routes inside the single Next.js App Router frontend.
 - [ ] Set ports:
-  - tenant: `3001`
-  - manager: `3002`
-  - vendor: `3003`
+  - web: `3000`
 - [ ] Keep API at `4000`.
-- [ ] Configure nginx paths:
-  - `/tenant` -> tenant app
-  - `/manager` -> manager app
-  - `/vendor` -> vendor app
+- [ ] Configure ALB paths:
+  - `/`, `/tenant`, `/manager`, `/vendor` -> web app
   - `/api` -> NestJS API
 - [ ] Verify:
 
 ```bash
 pnpm install
 pnpm build:api
-pnpm build:tenant
-pnpm build:manager
-pnpm build:vendor
+pnpm build:web
 ```
 
 Expected: all builds complete without TypeScript errors.
@@ -1126,9 +1109,7 @@ Expected: Prisma client generated, migration applied, seed records present.
 **Frontend verification:**
 
 ```bash
-pnpm build:tenant
-pnpm build:manager
-pnpm build:vendor
+pnpm build:web
 ```
 
 Expected: all frontend builds pass.
@@ -1203,9 +1184,7 @@ Expected: all frontend builds pass.
 
 ```bash
 pnpm build:api
-pnpm build:tenant
-pnpm build:manager
-pnpm build:vendor
+pnpm build:web
 ```
 
 If test scripts are added:
@@ -1230,9 +1209,7 @@ JWT_SECRET=replace-with-local-dev-secret
 OPENAI_API_KEY=replace-with-openai-api-key
 LOCAL_UPLOAD_DIR=uploads
 PUBLIC_UPLOAD_BASE_URL=http://localhost:4000/api/files
-TENANT_APP_URL=http://localhost:3001
-MANAGER_APP_URL=http://localhost:3002
-VENDOR_APP_URL=http://localhost:3003
+WEB_APP_URL=http://localhost:3000
 AWS_REGION=ap-northeast-2
 S3_BUCKET_NAME=roomlog-files
 ```

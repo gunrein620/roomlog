@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "./node_modules/.bin/next",
+      "runtimeArgs": ["dev", "-p", "3005"],
+      "cwd": "apps/web",
+      "port": 3005,
+      "autoPort": false
+    }
+  ]
+}
