@@ -35,6 +35,8 @@ const serviceWorkerSource = readFileSync(new URL("./public/sw.js", import.meta.u
 const nextConfigSource = readFileSync(new URL("./next.config.ts", import.meta.url), "utf8");
 const dockerComposeSource = readFileSync(new URL("../../docker-compose.yml", import.meta.url), "utf8");
 const prodComposeSource = readFileSync(new URL("../../docker-compose.prod.yml", import.meta.url), "utf8");
+const deployWorkflowSource = readFileSync(new URL("../../.github/workflows/deploy.yml", import.meta.url), "utf8");
+const apiDockerfileSource = readFileSync(new URL("../api/Dockerfile", import.meta.url), "utf8");
 const webDockerfileSource = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
@@ -52,6 +54,17 @@ test("serves role frontends from the single web container on port 3000", () => {
   assert.match(webDockerfileSource, /COPY assets assets/);
   assert.match(webDockerfileSource, /EXPOSE 3000/);
   assert.match(webDockerfileSource, /CMD \["pnpm", "--filter", "web", "start"\]/);
+});
+
+test("production deploy removes stale role containers before rebinding port 3000", () => {
+  assert.match(deployWorkflowSource, /roomlog-nginx roomlog-tenant roomlog-manager roomlog-vendor/);
+  assert.match(deployWorkflowSource, /up -d --build --remove-orphans/);
+  assert.match(deployWorkflowSource, /docker ps -a --filter "name=roomlog"/);
+});
+
+test("api image trusts the Amazon RDS certificate bundle for TLS database connections", () => {
+  assert.match(apiDockerfileSource, /truststore\.pki\.rds\.amazonaws\.com\/global\/global-bundle\.pem/);
+  assert.match(apiDockerfileSource, /NODE_EXTRA_CA_CERTS=\/usr\/local\/share\/ca-certificates\/aws-rds-global-bundle\.pem/);
 });
 
 test("keeps tenant, manager, and vendor screens available as web routes", () => {
