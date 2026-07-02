@@ -1036,6 +1036,24 @@ test("floor plan editor model removes dimension candidates before wall creation"
   assert.equal(result.removedNoiseCount, 1);
 });
 
+test("floor plan editor model removes dimension lines offset from the main wall cluster", async () => {
+  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const lines = [
+    { x1: 100, y1: 120, x2: 500, y2: 120, orientation: "horizontal" },
+    { x1: 500, y1: 120, x2: 500, y2: 420, orientation: "vertical" },
+    { x1: 500, y1: 420, x2: 100, y2: 420, orientation: "horizontal" },
+    { x1: 100, y1: 420, x2: 100, y2: 120, orientation: "vertical" },
+    { x1: 100, y1: 70, x2: 500, y2: 70, orientation: "horizontal" },
+    { x1: 560, y1: 120, x2: 560, y2: 420, orientation: "vertical" }
+  ];
+
+  const result = model.filterCommercialWallCandidates(lines, { height: 640, width: 760 });
+
+  assert.equal(result.walls.length, 4);
+  assert.equal(result.dimensionCandidates.length, 2);
+  assert.equal(result.removedNoiseCount, 2);
+});
+
 test("floor plan editor model estimates scale from outside dimensions", async () => {
   const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
   const candidate = model.estimateScaleCandidateFromDimensions([

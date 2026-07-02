@@ -382,9 +382,81 @@ function isOutsideDimensionLine(line, options = {}) {
   return bounds.maxX <= marginX || (width > 0 && bounds.minX >= width - marginX);
 }
 
+function linesIntersectOrthogonally(lineA, lineB, tolerance = 6) {
+  const orientationA = lineOrientation(lineA);
+  const orientationB = lineOrientation(lineB);
+  if (orientationA === orientationB) return false;
+
+  const horizontal = orientationA === "horizontal" ? lineA : lineB;
+  const vertical = orientationA === "vertical" ? lineA : lineB;
+  const hBounds = lineBounds(horizontal);
+  const vBounds = lineBounds(vertical);
+  const y = Math.round((horizontal.y1 + horizontal.y2) / 2);
+  const x = Math.round((vertical.x1 + vertical.x2) / 2);
+
+  return (
+    x >= hBounds.minX - tolerance &&
+    x <= hBounds.maxX + tolerance &&
+    y >= vBounds.minY - tolerance &&
+    y <= vBounds.maxY + tolerance
+  );
+}
+
+function inferStructuralBounds(lines) {
+  const structuralLines = lines.filter((line, index) =>
+    lines.some((otherLine, otherIndex) => otherIndex !== index && linesIntersectOrthogonally(line, otherLine))
+  );
+  const sourceLines = structuralLines.length >= 2 ? structuralLines : lines;
+  if (!sourceLines.length) return null;
+
+  const bounds = sourceLines.map(lineBounds);
+
+  return {
+    maxX: Math.max(...bounds.map((bound) => bound.maxX)),
+    maxY: Math.max(...bounds.map((bound) => bound.maxY)),
+    minX: Math.min(...bounds.map((bound) => bound.minX)),
+    minY: Math.min(...bounds.map((bound) => bound.minY))
+  };
+}
+
+function overlapLength(aStart, aEnd, bStart, bEnd) {
+  return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+}
+
+function isOffsetDimensionFromStructuralBounds(line, structuralBounds, options = {}) {
+  if (!structuralBounds) return false;
+
+  const orientation = lineOrientation(line);
+  const bounds = lineBounds(line);
+  const tolerance = options.dimensionOffsetTolerance ?? 18;
+  const maxOffset = options.dimensionMaxOffset ?? Math.max(90, Math.min(options.width ?? 900, options.height ?? 700) * 0.18);
+
+  if (orientation === "horizontal") {
+    const horizontalOverlap = overlapLength(bounds.minX, bounds.maxX, structuralBounds.minX, structuralBounds.maxX);
+    const structuralWidth = Math.max(1, structuralBounds.maxX - structuralBounds.minX);
+    const offsetAbove = structuralBounds.minY - bounds.maxY;
+    const offsetBelow = bounds.minY - structuralBounds.maxY;
+    const outsideByBand =
+      (offsetAbove >= tolerance && offsetAbove <= maxOffset) ||
+      (offsetBelow >= tolerance && offsetBelow <= maxOffset);
+
+    return outsideByBand && horizontalOverlap / structuralWidth >= 0.55;
+  }
+
+  const verticalOverlap = overlapLength(bounds.minY, bounds.maxY, structuralBounds.minY, structuralBounds.maxY);
+  const structuralHeight = Math.max(1, structuralBounds.maxY - structuralBounds.minY);
+  const offsetLeft = structuralBounds.minX - bounds.maxX;
+  const offsetRight = bounds.minX - structuralBounds.maxX;
+  const outsideByBand =
+    (offsetLeft >= tolerance && offsetLeft <= maxOffset) ||
+    (offsetRight >= tolerance && offsetRight <= maxOffset);
+
+  return outsideByBand && verticalOverlap / structuralHeight >= 0.55;
+}
+
 export function filterCommercialWallCandidates(lines, options = {}) {
   const dimensionCandidates = [];
-  const walls = [];
+  const candidateWalls = [];
   let removedNoiseCount = 0;
 
   for (const line of lines ?? []) {
@@ -402,6 +474,23 @@ export function filterCommercialWallCandidates(lines, options = {}) {
     }
 
     if (thickness <= 2 && lineLength(line) < Math.max(80, Math.min(options.width ?? 0, options.height ?? 0) * 0.28)) {
+      removedNoiseCount += 1;
+      continue;
+    }
+
+    candidateWalls.push(line);
+  }
+
+  const structuralBounds = inferStructuralBounds(candidateWalls);
+  const walls = [];
+
+  for (const line of candidateWalls) {
+    if (isOffsetDimensionFromStructuralBounds(line, structuralBounds, options)) {
+      dimensionCandidates.push({
+        confidence: Number(line.confidence ?? 0.72),
+        line,
+        source: "offset-dimension-line"
+      });
       removedNoiseCount += 1;
       continue;
     }
