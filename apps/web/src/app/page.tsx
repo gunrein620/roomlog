@@ -259,13 +259,6 @@ const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, ""
 
 const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
 
-const detailTrustSignals = [
-  { label: "실매물 확인", value: "오늘 검수" },
-  { label: "문의 응답", value: "평균 8분" },
-  { label: "3D 투어", value: "실측 도면" },
-  { label: "보상 정책", value: "헛걸음 보상" }
-];
-
 const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: string }> = [
   { key: "home", label: "홈", Icon: HomeIcon, href: "#home-title" },
   { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
@@ -1118,11 +1111,11 @@ function ListingDetailView({
       </div>
 
       <div className="listing-number-bar">
-        <strong>{listing.listingLabel}</strong>
         <button type="button" aria-label="매물번호 복사" onClick={copyListingNo}>
-          <Copy size={18} strokeWidth={2.4} />
+          <span>{listing.listingLabel}</span>
+          <Copy size={15} strokeWidth={2.4} aria-hidden="true" />
         </button>
-        <span>1일전</span>
+        <span className="listing-updated">{listing.updated} 갱신 · {listing.viewCount}</span>
       </div>
 
       {detailToast ? <div className="detail-toast" role="status">{detailToast}</div> : null}
@@ -1140,7 +1133,7 @@ function ListingDetailView({
             <strong>투어 보기</strong>
           </button>
           <button type="button" onClick={scrollToSafetyReport}>
-            <span>{safetyScore}</span>
+            <span>{safetyScore}점</span>
             <strong>안심 리포트</strong>
           </button>
           <button type="button" onClick={() => setIsComplexSheetOpen(true)}>
@@ -1148,7 +1141,7 @@ function ListingDetailView({
             <strong>정보 보기</strong>
           </button>
           <button type="button" onClick={() => setIsInquirySheetOpen(true)}>
-            <span>8분</span>
+            <span>8분 응답</span>
             <strong>문의하기</strong>
           </button>
         </div>
@@ -1173,41 +1166,41 @@ function ListingDetailView({
         </div>
       </div>
 
-      <section className="detail-availability-strip" aria-label="거래 가능 정보">
-        <article>
-          <span>거래상태</span>
-          <strong>문의 가능</strong>
-        </article>
-        <article>
-          <span>사진</span>
-          <strong>{listing.gallery.length}장</strong>
-        </article>
-        <article>
-          <span>위치</span>
-          <strong>역세권</strong>
-        </article>
-        <article>
-          <span>확인</span>
-          <strong>중개사 검수</strong>
-        </article>
-      </section>
-
-      <section className="detail-trust-summary" aria-label="매물 신뢰 요약">
-        {detailTrustSignals.map((item) => (
-          <article key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </section>
-
       <div className="detail-tags" aria-label="매물 태그">
         {listing.tags.map((tag) => (
           <span key={tag}>{tag}</span>
         ))}
       </div>
 
-      <p className="view-count">{listing.viewCount}</p>
+      <section className="detail-trust-list" aria-label="안심 거래 정보">
+        <div className="detail-section-heading">
+          <h2>안심 거래 정보</h2>
+          <span>{listing.verification}</span>
+        </div>
+        <ul>
+          <li>
+            <span>거래상태</span>
+            <strong>문의 가능</strong>
+          </li>
+          <li>
+            <span>실매물 확인</span>
+            <strong>{listing.verification}</strong>
+          </li>
+          <li>
+            <span>문의 응답</span>
+            <strong>{listing.response}</strong>
+          </li>
+          <li>
+            <span>등록 사진</span>
+            <strong>{listing.gallery.length}장 · 현장 촬영</strong>
+          </li>
+          <li>
+            <span>헛걸음 보상</span>
+            <strong>정보 불일치 시 보상</strong>
+          </li>
+        </ul>
+      </section>
+
       <button className="complex-button" type="button" onClick={() => setIsComplexSheetOpen(true)}>
         <Building2 size={20} strokeWidth={2.4} aria-hidden="true" />
         단지 정보 보러가기
@@ -1259,8 +1252,8 @@ function ListingDetailView({
       <section className="agent-summary-card" aria-label="중개사 정보">
         <div>
           <span>중개사 평점 4.8</span>
-          <h2>내방역 푸른공인중개사</h2>
-          <p>최근 응답 8분 · 확인매물 126개 · 헛걸음 보상 참여</p>
+          <h2>{listing.broker}</h2>
+          <p>{listing.response} · 확인매물 126개 · 헛걸음 보상 참여</p>
         </div>
         <button type="button" onClick={() => setIsAgentSheetOpen(true)}>프로필</button>
       </section>
@@ -1336,13 +1329,13 @@ function ListingDetailView({
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
         </button>
-        <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
-          <span>문자문의</span>
-          <strong>방문 가능 여부 확인</strong>
-        </button>
         <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
           <span>3D 투어</span>
-          <strong>예약</strong>
+          <strong>예약하기</strong>
+        </button>
+        <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
+          <strong>문자로 문의하기</strong>
+          <span>방문 가능 여부 바로 확인</span>
         </button>
       </div>
 
@@ -1570,7 +1563,7 @@ function ListingDetailView({
             <div className="inquiry-listing-summary">
               <strong>{listing.price}</strong>
               <span>{listing.title}</span>
-              <small>내방역 푸른공인중개사 · 평균 응답 8분</small>
+              <small>{listing.broker} · {listing.response}</small>
             </div>
 
             <div className="inquiry-message-group">

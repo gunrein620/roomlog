@@ -20,20 +20,16 @@ FROM deps AS builder
 ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+COPY assets assets
 COPY apps/web apps/web
 
 RUN pnpm --filter web build
 
-FROM base AS runner
+FROM deps AS runner
 
 ENV NODE_ENV=production
 ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY apps/web/package.json apps/web/package.json
-
-RUN pnpm install --filter web --prod --frozen-lockfile
 
 COPY --from=builder /app/apps/web ./apps/web
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const pageSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
@@ -9,6 +9,38 @@ const manifestSource = readFileSync(new URL("./src/app/manifest.ts", import.meta
 const pwaRegisterSource = readFileSync(new URL("./src/app/pwa-register.tsx", import.meta.url), "utf8");
 const serviceWorkerSource = readFileSync(new URL("./public/sw.js", import.meta.url), "utf8");
 const nextConfigSource = readFileSync(new URL("./next.config.ts", import.meta.url), "utf8");
+const dockerComposeSource = readFileSync(new URL("../../docker-compose.yml", import.meta.url), "utf8");
+const prodComposeSource = readFileSync(new URL("../../docker-compose.prod.yml", import.meta.url), "utf8");
+const webDockerfileSource = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
+
+test("serves role frontends from the single web container on port 3000", () => {
+  for (const source of [dockerComposeSource, prodComposeSource]) {
+    assert.match(source, /^\s{2}web:/m);
+    assert.match(source, /container_name: roomlog-web/);
+    assert.match(source, /"3000:3000"/);
+    assert.doesNotMatch(source, /^\s{2}tenant:/m);
+    assert.doesNotMatch(source, /^\s{2}manager:/m);
+    assert.doesNotMatch(source, /^\s{2}vendor:/m);
+    assert.doesNotMatch(source, /roomlog-tenant|roomlog-manager|roomlog-vendor/);
+    assert.doesNotMatch(source, /3001:3001|3002:3002|3003:3003/);
+  }
+
+  assert.match(webDockerfileSource, /COPY assets assets/);
+  assert.match(webDockerfileSource, /EXPOSE 3000/);
+  assert.match(webDockerfileSource, /CMD \["pnpm", "--filter", "web", "start"\]/);
+});
+
+test("keeps tenant, manager, and vendor screens available as web routes", () => {
+  for (const route of ["tenant", "manager", "vendor"]) {
+    assert.equal(existsSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url)), true);
+    assert.equal(existsSync(new URL(`./src/app/${route}/layout.tsx`, import.meta.url)), true);
+    assert.equal(existsSync(new URL(`./src/app/${route}/globals.css`, import.meta.url)), true);
+
+    const routePageSource = readFileSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url), "utf8");
+    assert.match(routePageSource, new RegExp(`Roomlog ${route[0].toUpperCase()}${route.slice(1)}`));
+    assert.match(routePageSource, /NEXT_PUBLIC_API_URL/);
+  }
+});
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["조건에 맞는 방", "지도 열기", "추천 매물", "매물 57804322", "전체"]) {
@@ -442,14 +474,14 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
     "간편문의",
     "문자문의",
     "로그인 없이 문의 가능",
-    "방문 가능 여부 확인",
+    "방문 가능 여부 바로 확인",
     "3D 투어",
     "예약",
-    "매물 신뢰 요약",
-    "오늘 검수",
+    "안심 거래 정보",
+    "실매물 확인",
     "평균 8분",
     "실측 도면",
-    "보상 정책",
+    "헛걸음 보상",
     "지킴 진단 리포트",
     "계약 전 확인할 항목을 정리했어요",
     "등기 변동",
@@ -466,7 +498,7 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
     assert.match(pageSource, new RegExp(label));
   }
 
-  for (const label of ["거래 가능 정보", "문의 가능", "사진", "중개사 검수", "방배동 · 내방역 도보 5분"]) {
+  for (const label of ["안심 거래 정보", "문의 가능", "등록 사진", "중개사 검수", "방배동 · 내방역 도보 5분"]) {
     assert.match(pageSource, new RegExp(label));
   }
 
@@ -480,7 +512,7 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(pageSource, /투어 보기/);
   assert.match(pageSource, /안심 리포트/);
   assert.match(pageSource, /정보 보기/);
-  assert.match(pageSource, /detail-availability-strip/);
+  assert.match(pageSource, /detail-trust-list/);
   assert.match(pageSource, /getListingPriceRows/);
   assert.match(pageSource, /getListingBuildingRows/);
   assert.match(pageSource, /listingPriceRows/);
@@ -514,10 +546,10 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*position:\s*fixed/s);
   assert.match(cssSource, /\.detail-quick-actions/);
   assert.match(cssSource, /\.detail-quick-actions button:first-child/);
-  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*54px minmax\(0, 1fr\) 74px/s);
-  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*padding:\s*17px 14px 10px/s);
-  assert.match(cssSource, /\.detail-contact-small,\s*[\s\S]*?\.detail-contact-tour\s*{[^}]*min-height:\s*50px/s);
-  assert.match(cssSource, /\.detail-gallery\s*{[^}]*height:\s*clamp\(340px, 43vh, 390px\)/s);
+  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*56px 84px minmax\(0, 1fr\)/s);
+  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*padding:\s*24px 14px 12px/s);
+  assert.match(cssSource, /\.detail-contact-small,\s*[\s\S]*?\.detail-contact-tour\s*{[^}]*min-height:\s*54px/s);
+  assert.match(cssSource, /\.detail-gallery\s*{[^}]*height:\s*clamp\(380px, 48vh, 440px\)/s);
   assert.match(cssSource, /\.detail-top-title\s*{[^}]*min-height:\s*74px/s);
   assert.match(cssSource, /\.detail-price-block\s*{[^}]*padding:\s*24px 18px 16px/s);
   assert.match(cssSource, /\.detail-contact-small/);
@@ -525,7 +557,7 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(cssSource, /\.detail-contact-tour/);
   assert.doesNotMatch(cssSource, /\.contact-icon-button/);
   assert.match(cssSource, /\.detail-address-line/);
-  assert.match(cssSource, /\.detail-availability-strip/);
+  assert.match(cssSource, /\.detail-trust-list/);
   assert.match(cssSource, /\.share-sheet\s*{/);
   assert.match(cssSource, /\.share-action-grid/);
   assert.match(cssSource, /\.detail-toast/);
@@ -533,7 +565,7 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(cssSource, /\.complex-score-grid/);
   assert.match(cssSource, /\.agent-sheet\s*{/);
   assert.match(cssSource, /\.agent-metric-grid/);
-  assert.match(cssSource, /\.detail-trust-summary/);
+  assert.match(cssSource, /\.detail-trust-list li/);
   assert.match(cssSource, /\.detail-report-card/);
   assert.match(cssSource, /\.inquiry-sheet\s*{/);
   assert.match(cssSource, /\.inquiry-message-grid/);
@@ -651,6 +683,10 @@ test("is configured as an installable PWA shell", () => {
 
 test("keeps local development free from stale service worker caches", () => {
   assert.match(pwaRegisterSource, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(pwaRegisterSource, /isLocalOrigin/);
+  assert.match(pwaRegisterSource, /window\.location\.hostname/);
+  assert.match(pwaRegisterSource, /localhost/);
+  assert.match(pwaRegisterSource, /127\.0\.0\.1/);
   assert.match(pwaRegisterSource, /getRegistrations\(\)/);
   assert.match(pwaRegisterSource, /\.unregister\(\)/);
   assert.match(pwaRegisterSource, /caches\.keys\(\)/);
