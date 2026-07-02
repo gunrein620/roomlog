@@ -893,10 +893,15 @@ test("offers floor plan AI model selection for precise dimension reading", () =>
     "uploadedFloorPlanSource\\?\\.attachmentId",
     "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
     "applyAiDimensionToSelectedWall",
+    "applyManualAiScaleToSelectedWall",
+    "manualAiScaleRealLength",
     "AI가 읽은 치수",
     "AI 분석 결과",
+    "선택 벽 실제 길이",
+    "mm 입력",
+    "선택 벽 축척 적용",
     "m/cm/mm 단위 치수만 적용 가능",
-    "치수 적용",
+    "축척 적용",
     "AI 정밀 수치 읽기"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));

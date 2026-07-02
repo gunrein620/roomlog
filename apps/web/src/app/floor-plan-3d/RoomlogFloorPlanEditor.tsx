@@ -225,6 +225,7 @@ export default function RoomlogFloorPlanEditor() {
   const [isScaleSet, setIsScaleSet] = useState(false);
   const [scaleWall, setScaleWall] = useState<Wall | null>(null);
   const [scaleRealLength, setScaleRealLength] = useState("");
+  const [manualAiScaleRealLength, setManualAiScaleRealLength] = useState("");
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -1078,6 +1079,31 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(`AI 치수 ${dimension.text} 적용됨: 1px = ${nextPixelToMmRatio.toFixed(2)}mm`);
   }
 
+  function applyManualAiScaleToSelectedWall() {
+    if (!selectedWall) {
+      setTool("select");
+      setUploadStatus("축척을 적용할 벽을 먼저 선택하세요");
+      return;
+    }
+
+    const pixelDistance = Math.hypot(selectedWall.end.x - selectedWall.start.x, selectedWall.end.y - selectedWall.start.y);
+    const realLengthMm = Number(manualAiScaleRealLength);
+    if (!pixelDistance || !Number.isFinite(realLengthMm) || realLengthMm <= 0) {
+      setUploadStatus("선택 벽 실제 길이를 mm로 입력하세요");
+      return;
+    }
+
+    const nextPixelToMmRatio = realLengthMm / pixelDistance;
+    setPixelToMmRatio(nextPixelToMmRatio);
+    setIsScaleSet(true);
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
+    setScaleWall(null);
+    setScaleRealLength("");
+    setManualAiScaleRealLength("");
+    setTool("select");
+    setUploadStatus(`선택 벽 축척 적용됨: 1px = ${nextPixelToMmRatio.toFixed(2)}mm`);
+  }
+
   function toggleCandidateStatus(layer: "opening" | "fixture", candidateId: string, status: CandidateStatus) {
     const updater = (candidates: FloorPlanCandidate[]) =>
       updateCandidateStatus(candidates, candidateId, status) as FloorPlanCandidate[];
@@ -1501,6 +1527,21 @@ export default function RoomlogFloorPlanEditor() {
                       ? "OpenAI Vision 분석 후 표시"
                       : "분석 결과 없음"}
                 </code>
+                <span>선택 벽 실제 길이</span>
+                <input
+                  onChange={(event) => setManualAiScaleRealLength(event.target.value)}
+                  placeholder="mm 입력"
+                  type="number"
+                  value={manualAiScaleRealLength}
+                />
+                <button
+                  className="floor-plan-primary"
+                  disabled={!manualAiScaleRealLength}
+                  onClick={applyManualAiScaleToSelectedWall}
+                  type="button"
+                >
+                  선택 벽 축척 적용
+                </button>
                 {aiDimensionDetections.length ? (
                   <>
                     <span>AI가 읽은 치수</span>
@@ -1513,7 +1554,7 @@ export default function RoomlogFloorPlanEditor() {
                           onClick={() => applyAiDimensionToSelectedWall(dimension)}
                           type="button"
                         >
-                          {dimension.text} 치수 적용
+                          {dimension.text} 축척 적용
                         </button>
                       ))}
                     </div>
