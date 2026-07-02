@@ -82,6 +82,7 @@ type FloorPlanAiAnalysisResult = {
   summary: string;
   textDetections?: Array<{ confidence?: number; text: string }>;
 };
+type AiDimensionDetection = { confidence?: number; realLengthMm: number; text: string };
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
@@ -159,6 +160,20 @@ async function fileToCompressedDataUrl(file: File) {
   }
 }
 
+function parseDimensionTextToMm(text: string) {
+  const match = text.trim().match(/(\d+(?:[.,]\d+)?)\s*(mm|밀리미터|cm|센티미터|m|미터)/i);
+  if (!match) return null;
+
+  const value = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const unit = match[2].toLowerCase();
+  if (unit === "mm" || unit === "밀리미터") return Math.round(value);
+  if (unit === "cm" || unit === "센티미터") return Math.round(value * 10);
+
+  return Math.round(value * 1000);
+}
+
 export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -225,6 +240,20 @@ export default function RoomlogFloorPlanEditor() {
     () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
     [pixelToMmRatio, visibleWalls]
   );
+  const aiDimensionDetections = useMemo<AiDimensionDetection[]>(() => {
+    const seen = new Set<string>();
+
+    return (extractionMeta.aiTextDetections ?? []).flatMap((detection) => {
+      const realLengthMm = parseDimensionTextToMm(detection.text);
+      if (!realLengthMm) return [];
+
+      const key = `${detection.text}:${realLengthMm}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+
+      return [{ confidence: detection.confidence, realLengthMm, text: detection.text }];
+    });
+  }, [extractionMeta.aiTextDetections]);
   const hiddenWallCount = hiddenWallIds.size;
   const selectedFurniture = useMemo(
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
@@ -1015,6 +1044,29 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(`축척 확인 완료: 1px = ${pixelToMmRatio.toFixed(2)}mm`);
   }
 
+  function applyAiDimensionToSelectedWall(dimension: AiDimensionDetection) {
+    if (!selectedWall) {
+      setTool("select");
+      setUploadStatus("치수를 적용할 벽을 먼저 선택하세요");
+      return;
+    }
+
+    const pixelDistance = Math.hypot(selectedWall.end.x - selectedWall.start.x, selectedWall.end.y - selectedWall.start.y);
+    if (!pixelDistance) {
+      setUploadStatus("선택한 벽 길이를 계산할 수 없습니다");
+      return;
+    }
+
+    const nextPixelToMmRatio = dimension.realLengthMm / pixelDistance;
+    setPixelToMmRatio(nextPixelToMmRatio);
+    setIsScaleSet(true);
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
+    setScaleWall(null);
+    setScaleRealLength("");
+    setTool("select");
+    setUploadStatus(`AI 치수 ${dimension.text} 적용됨: 1px = ${nextPixelToMmRatio.toFixed(2)}mm`);
+  }
+
   function toggleCandidateStatus(layer: "opening" | "fixture", candidateId: string, status: CandidateStatus) {
     const updater = (candidates: FloorPlanCandidate[]) =>
       updateCandidateStatus(candidates, candidateId, status) as FloorPlanCandidate[];
@@ -1425,6 +1477,25 @@ export default function RoomlogFloorPlanEditor() {
                 ) : (
                   <code>기준 벽을 그려주세요</code>
                 )}
+              </div>
+            ) : null}
+
+            {aiDimensionDetections.length ? (
+              <div className="floor-plan-sim-preview">
+                <span>AI가 읽은 치수</span>
+                <code>{selectedWall ? `선택 벽 ${selectedWall.id}에 적용` : "벽을 선택한 뒤 치수 적용"}</code>
+                <div className="floor-plan-furniture-actions">
+                  {aiDimensionDetections.slice(0, 8).map((dimension) => (
+                    <button
+                      className="floor-plan-secondary"
+                      key={`${dimension.text}-${dimension.realLengthMm}`}
+                      onClick={() => applyAiDimensionToSelectedWall(dimension)}
+                      type="button"
+                    >
+                      {dimension.text} 치수 적용
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : null}
 
