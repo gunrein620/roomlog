@@ -37,6 +37,7 @@ export const ticketStatusLabel: Record<TicketStatus, string> = {
   processing: "처리 중",
   resolved: "완료",
   reopened: "재요청",
+  cancelled: "취소됨",
 };
 
 export const repairStageLabel: Record<RepairStage, string> = {
