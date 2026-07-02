@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Script from "next/script";
-import loginHeroImage from "../../../../assets/img/image.png";
 import {
   ArrowLeft,
   Banknote,
@@ -39,6 +38,7 @@ import {
 
 type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
+type AuthMode = "login" | "signup" | "broker";
 type MapResultTab = "rooms" | "complexes" | "agents";
 
 type NaverLatLng = unknown;
@@ -87,9 +87,7 @@ declare global {
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
 const socialProviders = [
-  { label: "카카오로 계속하기", className: "kakao", mark: "K" },
   { label: "네이버로 계속하기", className: "naver", mark: "N" },
-  { label: "Apple로 계속하기", className: "apple", mark: "A" },
   { label: "Google로 계속하기", className: "google", mark: "G" }
 ];
 
@@ -567,12 +565,27 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
   return (
     <main className="app-canvas">
       <section className="login-phone" aria-label="집우집주 로그인">
-        <div className="login-visual" aria-hidden="true">
-          <Image className="login-hero-image" src={loginHeroImage} alt="" priority />
+        <div className="login-brandmark">
+          <div className="brand-mark-icon">
+            <div className="brand-orbit">
+              <span className="brand-star">
+                <svg viewBox="0 0 24 24"><path d="M12 0c1.1 6.2 4.8 9.9 12 12-7.2 2.1-10.9 5.8-12 12-1.1-6.2-4.8-9.9-12-12 7.2-2.1 10.9-5.8 12-12Z" /></svg>
+              </span>
+            </div>
+            <svg className="brand-roof" viewBox="0 0 140 68" fill="none">
+              <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+              <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+            </svg>
+          </div>
+          <div className="brand-word">우주</div>
+          <p className="brand-tagline">방 보러 가기 전에, 3D로 먼저 둘러보기</p>
         </div>
 
         <div className="login-panel">
-          <p className="brand-kicker">집우집주</p>
+          <p className="brand-kicker">우주 · WOOZU</p>
           <h1>방 보러 가기 전에 먼저 걸어보세요</h1>
           <p>
             지도에서 조건에 맞는 방을 찾고, 방문 전 3D 투어와 안심 정보를 먼저 확인하세요.
@@ -2417,7 +2430,8 @@ function PwaInstallCard() {
 }
 
 export default function Home() {
-  const [activeRole, setActiveRole] = useState<AppRole | null>(null);
+  const [activeRole, setActiveRole] = useState<AppRole>("seeker");
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [selectedArea, setSelectedArea] = useState("서초구 방배동");
@@ -2433,7 +2447,7 @@ export default function Home() {
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
   const [isNotificationSheetOpen, setIsNotificationSheetOpen] = useState(false);
-  const activeRoleLabel = activeRole ? roleDisplayLabels[activeRole] : "";
+  const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const visibleHomeListings = listings.filter((listing) => {
@@ -2514,11 +2528,19 @@ export default function Home() {
   };
 
   const activateTab = (tab: AppTab) => {
+    setAuthMode(null);
     setActiveTab(tab);
     resetWindowScrollSoon();
   };
 
+  const openAuthScreen = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setSelectedListing(null);
+    resetWindowScrollSoon();
+  };
+
   const startRoleSession = (role: AppRole) => {
+    setAuthMode(null);
     setActiveRole(role);
     setActiveTab(role === "seeker" ? "home" : "mypage");
     resetWindowScrollSoon();
@@ -2559,10 +2581,10 @@ export default function Home() {
   }, [selectedListing]);
 
   useEffect(() => {
-    if (activeRole && !selectedListing) {
+    if (activeRole && !selectedListing && !authMode) {
       resetWindowScrollSoon();
     }
-  }, [activeRole, activeTab, selectedListing]);
+  }, [activeRole, activeTab, selectedListing, authMode]);
 
   useEffect(() => {
     if (selectedListing) {
@@ -2570,7 +2592,7 @@ export default function Home() {
     }
   }, [selectedListing]);
 
-  if (!activeRole) {
+  if (authMode) {
     return <LoginScreen setActiveRole={startRoleSession} />;
   }
 
@@ -2604,9 +2626,9 @@ export default function Home() {
               <button type="button" onClick={() => activateTab("mypage")}>우리집</button>
             </nav>
             <div className="web-topbar-actions">
-              <button className="web-login" type="button" onClick={() => activateTab("mypage")}>로그인</button>
-              <button className="web-signup" type="button" onClick={() => activateTab("mypage")}>회원가입</button>
-              <button className="web-cta" type="button" onClick={() => activateTab("mypage")}>중개사 가입</button>
+              <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
+              <button className="web-signup" type="button" onClick={() => openAuthScreen("signup")}>회원가입</button>
+              <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
             </div>
           </div>
         </header>

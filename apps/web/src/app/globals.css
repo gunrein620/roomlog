@@ -9,7 +9,6 @@
   --blue-dark: #173ad7;
   --blue-soft: #eef2ff;
   --green: #00bf72;
-  --yellow: #fee500;
   --naver: #03c75a;
   --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
   font-family:
@@ -76,43 +75,117 @@ img {
 .login-phone {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  background: #101632;
+  flex-direction: column;
+  background: #ffffff;
 }
 
-.login-visual {
+/* 우주 브랜드마크 + 공전하는 분홍 별 */
+.login-brandmark {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 52px 24px 6px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.brand-mark-icon {
+  position: relative;
+  display: grid;
+  width: 96px;
+  height: 96px;
+  place-items: center;
+}
+
+.brand-roof {
+  width: 72px;
+  height: auto;
+  color: var(--ink);
+}
+
+.brand-word {
+  margin-top: 10px;
+  font-size: 2.3rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.brand-tagline {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* 별이 로고 주위를 도는 공전 궤도 */
+.brand-orbit {
   position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: #101632;
+  top: 50%;
+  left: 50%;
+  width: 176px;
+  height: 176px;
+  margin: -88px 0 0 -88px;
+  pointer-events: none;
+  animation: brand-orbit 7s linear infinite;
 }
 
-.login-visual::before {
+.brand-star {
   position: absolute;
-  z-index: 1;
-  inset: 0;
-  background:
-    linear-gradient(180deg, rgba(16, 22, 50, 0) 0%, rgba(16, 22, 50, 0.08) 44%, rgba(232, 237, 244, 0.92) 100%);
-  content: "";
+  top: -6px;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  animation: brand-twinkle 2.4s ease-in-out infinite;
 }
 
-.login-hero-image {
+.brand-star svg {
   width: 100%;
-  height: min(50vh, 420px);
-  padding: 12px 0 104px;
-  object-fit: contain;
-  object-position: center;
+  height: 100%;
+  fill: #ec6a86;
+  filter: drop-shadow(0 0 12px rgba(236, 106, 134, 0.65));
+}
+
+@keyframes brand-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes brand-twinkle {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.62) rotate(45deg);
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-orbit {
+    animation: none;
+    transform: rotate(28deg);
+  }
+
+  .brand-star {
+    animation: none;
+  }
 }
 
 .login-panel {
   position: relative;
   z-index: 1;
   width: 100%;
-  margin-top: 240px;
-  padding: 30px 22px 28px;
-  border-radius: 28px 28px 0 0;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 -20px 50px rgba(18, 24, 40, 0.16);
+  padding: 18px 22px 28px;
+  background: #ffffff;
 }
 
 .brand-kicker {
@@ -198,18 +271,8 @@ p {
   font-size: 0.78rem;
 }
 
-.social-button.kakao {
-  background: var(--yellow);
-  color: #191600;
-}
-
 .social-button.naver {
   background: var(--naver);
-  color: #ffffff;
-}
-
-.social-button.apple {
-  background: #111111;
   color: #ffffff;
 }
 
@@ -6710,10 +6773,6 @@ p {
     min-height: calc(100vh - 64px);
     border: 1px solid rgba(18, 24, 40, 0.12);
     border-radius: 24px;
-  }
-
-  .login-panel {
-    border-radius: 28px 28px 24px 24px;
   }
 
   .bottom-tabs {
