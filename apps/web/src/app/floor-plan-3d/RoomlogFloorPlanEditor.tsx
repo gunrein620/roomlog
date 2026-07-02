@@ -943,8 +943,9 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function handleMouseDown(event: React.MouseEvent<HTMLCanvasElement>) {
-    const shouldPan = tool === "none";
+    const shouldPan = tool === "none" || event.button === 1 || event.button === 2;
     if (shouldPan) {
+      event.preventDefault();
       setIsDragging(true);
       setLastPanPoint({ x: event.clientX, y: event.clientY });
       return;
@@ -1023,9 +1024,13 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
-  function handleMouseUp(event: React.MouseEvent<HTMLCanvasElement>) {
+  function stopCanvasPan() {
     setIsDragging(false);
     setLastPanPoint(null);
+  }
+
+  function handleMouseUp(event: React.MouseEvent<HTMLCanvasElement>) {
+    stopCanvasPan();
 
     if (isDrawing && startPoint && currentPoint && (tool === "wall" || tool === "scale")) {
       const snappedEnd = snapCanvasPoint(snapToOrthogonal(startPoint, getCanvasCoordinates(event)));
@@ -1055,9 +1060,21 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
+  function handleCanvasMouseLeave() {
+    if (isDragging) {
+      stopCanvasPan();
+    }
+  }
+
   function handleWheel(event: React.WheelEvent<HTMLCanvasElement>) {
     event.preventDefault();
     setViewScale((currentScale) => Math.max(0.1, Math.min(10, currentScale * (event.deltaY > 0 ? 0.9 : 1.1))));
+  }
+
+  function handleCanvasAuxClick(event: React.MouseEvent<HTMLCanvasElement>) {
+    if (event.button === 1) {
+      event.preventDefault();
+    }
   }
 
   async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1170,8 +1187,10 @@ export default function RoomlogFloorPlanEditor() {
           <div className="floor-plan-canvas-shell" ref={containerRef}>
             <canvas
               className="floor-plan-drawing-canvas"
+              onAuxClick={handleCanvasAuxClick}
               onContextMenu={(event) => event.preventDefault()}
               onMouseDown={handleMouseDown}
+              onMouseLeave={handleCanvasMouseLeave}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onWheel={handleWheel}
