@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">집우집주</title>
+  <rect width="512" height="512" rx="112" fill="#2f55ff"/>
+  <path d="M106 252L256 120l150 132v151c0 15-12 27-27 27h-86V302h-74v128h-86c-15 0-27-12-27-27V252z" fill="#fff"/>
+  <path d="M151 257h210" stroke="#dfe7ff" stroke-width="28" stroke-linecap="round"/>
+  <path d="M147 362h55M310 362h55" stroke="#2f55ff" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="386" cy="126" r="48" fill="#00bf72"/>
+  <path d="M362 126l16 17 32-38" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
