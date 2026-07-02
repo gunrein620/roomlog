@@ -44,8 +44,11 @@ import {
   FloorPlanAiAnalysisResult,
   FloorPlanAiModel,
   FloorPlanAiModelId,
+  FloorPlanAiCandidateReview,
+  FloorPlanAiMissingWallHint,
   FloorPlanAiScaleCandidate,
   FloorPlanAiTextDetection,
+  FloorPlanAiWallCandidate,
   FloorPlanDraft,
   FloorPlanWall,
   IntakeDraft,
@@ -2806,6 +2809,10 @@ export class RoomlogService {
         };
       }
 
+      if (input.analysisMode === "candidate-review") {
+        return this.reviewFloorPlanCandidatesWithOpenAi(model, imageDataUrl, this.validFloorPlanAiWallCandidates(input.wallCandidates), input.prompt);
+      }
+
       return this.analyzeFloorPlanWithOpenAiVision(model, imageDataUrl, input.prompt);
     }
 
@@ -2865,6 +2872,34 @@ export class RoomlogService {
     }
 
     return trimmed.replace(/^data:image\/jpg;/i, "data:image/jpeg;");
+  }
+
+  private validFloorPlanAiWallCandidates(value: unknown): FloorPlanAiWallCandidate[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 80).flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim().slice(0, 24) : "";
+      const start = item?.start as { x?: unknown; y?: unknown } | undefined;
+      const end = item?.end as { x?: unknown; y?: unknown } | undefined;
+      const startX = Number(start?.x);
+      const startY = Number(start?.y);
+      const endX = Number(end?.x);
+      const endY = Number(end?.y);
+      const lengthPx = Number(item?.lengthPx);
+      const orientation = item?.orientation;
+      if (!id || !Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) return [];
+
+      return [
+        {
+          end: { x: endX, y: endY },
+          id,
+          lengthPx: Number.isFinite(lengthPx) && lengthPx > 0 ? lengthPx : Math.hypot(endX - startX, endY - startY),
+          orientation: orientation === "horizontal" || orientation === "vertical" || orientation === "diagonal" ? orientation : "diagonal",
+          originalWallId: typeof item?.originalWallId === "string" ? item.originalWallId.slice(0, 80) : undefined,
+          start: { x: startX, y: startY }
+        }
+      ];
+    });
   }
 
   private async analyzeFloorPlanWithNvidiaVisionReasoning(
@@ -3003,6 +3038,94 @@ export class RoomlogService {
     }
   }
 
+  private async reviewFloorPlanCandidatesWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    wallCandidates: FloorPlanAiWallCandidate[],
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 OpenCV 도면 벽 후보 검토기입니다.",
+      "이미지에는 OpenCV가 뽑은 벽 후보가 파란 선과 W1, W2 같은 라벨로 표시되어 있습니다.",
+      "제공된 wallCandidates 목록의 id만 검토하고, 새 좌표나 새 후보 id를 만들지 마세요.",
+      "각 후보가 실제 방 외곽/내벽인지 keep, 치수선/가구/문자/노이즈면 reject, 애매하면 review로 판정합니다.",
+      "OpenCV가 놓친 것으로 보이는 큰 외곽/내벽은 missingWallHints에 설명만 적습니다.",
+      "반드시 JSON만 반환하세요.",
+      "JSON schema: {\"summary\": string, \"candidateReviews\": [{\"id\": string, \"verdict\": \"keep\"|\"reject\"|\"review\", \"confidence\": number, \"reason\": string}], \"missingWallHints\": [{\"description\": string, \"confidence\": number}]}"
+    ].join("\n");
+    const candidateSummary = JSON.stringify(
+      wallCandidates.map((candidate) => ({
+        end: candidate.end,
+        id: candidate.id,
+        lengthPx: Math.round(candidate.lengthPx),
+        orientation: candidate.orientation,
+        start: candidate.start
+      }))
+    );
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-candidate-review", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: [
+                    prompt?.trim() || "OpenCV 벽 후보를 원본 도면과 비교해서 후보별 판정을 JSON으로 반환해줘.",
+                    `wallCandidates: ${candidateSummary}`
+                  ].join("\n")
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan candidate review failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: this.validAiCandidateReviews(parsed.candidateReviews),
+        missingWallHints: this.validAiMissingWallHints(parsed.missingWallHints),
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 OpenCV 벽 후보를 검토했습니다.",
+        textDetections: [],
+        scaleCandidates: [],
+        rawText
+      };
+    } catch {
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: [],
+        missingWallHints: [],
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 벽 후보 검토에 실패했습니다. OpenCV 추출 결과를 직접 검수하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
   private extractOpenAiResponseText(payload: Record<string, unknown>) {
     if (typeof payload.output_text === "string") return payload.output_text;
 
@@ -3026,6 +3149,8 @@ export class RoomlogService {
   }
 
   private parseFloorPlanAiJson(rawText: string): {
+    candidateReviews?: unknown;
+    missingWallHints?: unknown;
     summary?: string;
     textDetections?: unknown;
     scaleCandidates?: unknown;
@@ -3037,6 +3162,8 @@ export class RoomlogService {
       const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
 
       return {
+        candidateReviews: parsed.candidateReviews,
+        missingWallHints: parsed.missingWallHints,
         summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
         textDetections: parsed.textDetections,
         scaleCandidates: parsed.scaleCandidates
@@ -3087,6 +3214,43 @@ export class RoomlogService {
           ...(Number.isFinite(pixelToMmRatio) && pixelToMmRatio > 0 ? { pixelToMmRatio } : {}),
           realLengthMm,
           source: typeof item.source === "string" ? item.source : "nvidia/vlm"
+        }
+      ];
+    });
+  }
+
+  private validAiCandidateReviews(value: unknown): FloorPlanAiCandidateReview[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim() : "";
+      const verdict = item?.verdict;
+      if (!id || (verdict !== "keep" && verdict !== "reject" && verdict !== "review")) return [];
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          id,
+          reason: typeof item.reason === "string" ? item.reason.slice(0, 180) : undefined,
+          verdict
+        }
+      ];
+    });
+  }
+
+  private validAiMissingWallHints(value: unknown): FloorPlanAiMissingWallHint[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const description = typeof item?.description === "string" ? item.description.trim() : "";
+      if (!description) return [];
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          description: description.slice(0, 220)
         }
       ];
     });

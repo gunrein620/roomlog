@@ -69,6 +69,14 @@ type FloorPlanAiModelId =
   | "openai/floor-plan-vision";
 
 type FloorPlanAiAnalysisResult = {
+  analysisMode?: "dimension" | "candidate-review";
+  candidateReviews?: Array<{
+    confidence?: number;
+    id: string;
+    reason?: string;
+    verdict: "keep" | "reject" | "review";
+  }>;
+  missingWallHints?: Array<{ confidence?: number; description: string }>;
   model: FloorPlanAiModelId;
   rawText?: string;
   scaleCandidates?: Array<{
@@ -83,6 +91,14 @@ type FloorPlanAiAnalysisResult = {
   textDetections?: Array<{ confidence?: number; text: string }>;
 };
 type AiDimensionDetection = { confidence?: number; realLengthMm: number; text: string };
+type AiWallCandidatePayload = {
+  end: Point;
+  id: string;
+  lengthPx: number;
+  orientation: "horizontal" | "vertical" | "diagonal";
+  originalWallId: string;
+  start: Point;
+};
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
@@ -314,6 +330,15 @@ export default function RoomlogFloorPlanEditor() {
     },
     [aiDimensionDetections]
   );
+  const aiCandidateReviewSummary = useMemo(() => {
+    const reviews = lastAiAnalysis?.candidateReviews ?? [];
+
+    return {
+      keep: reviews.filter((review) => review.verdict === "keep").length,
+      reject: reviews.filter((review) => review.verdict === "reject").length,
+      review: reviews.filter((review) => review.verdict === "review").length
+    };
+  }, [lastAiAnalysis?.candidateReviews]);
   const hiddenWallCount = hiddenWallIds.size;
   const selectedFurniture = useMemo(
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
@@ -1083,6 +1108,111 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
+  function buildAiWallCandidatePayload() {
+    return walls.slice(0, 80).map((wall, index): AiWallCandidatePayload => {
+      const dx = wall.end.x - wall.start.x;
+      const dy = wall.end.y - wall.start.y;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      const orientation = absDx > absDy * 2 ? "horizontal" : absDy > absDx * 2 ? "vertical" : "diagonal";
+
+      return {
+        end: wall.end,
+        id: `W${index + 1}`,
+        lengthPx: Math.hypot(dx, dy),
+        orientation,
+        originalWallId: String(wall.id),
+        start: wall.start
+      };
+    });
+  }
+
+  function createAiCandidateOverlayDataUrl(candidates: AiWallCandidatePayload[]) {
+    const sourceCanvas = canvasRef.current;
+    if (!sourceCanvas) return uploadedAiImageDataUrl;
+
+    const overlayCanvas = document.createElement("canvas");
+    overlayCanvas.width = CANVAS_WIDTH;
+    overlayCanvas.height = CANVAS_HEIGHT;
+    const context = overlayCanvas.getContext("2d");
+    if (!context) return uploadedAiImageDataUrl;
+
+    context.drawImage(sourceCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    context.save();
+    context.font = "bold 20px Arial, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+
+    candidates.forEach((candidate) => {
+      const midX = (candidate.start.x + candidate.end.x) / 2;
+      const midY = (candidate.start.y + candidate.end.y) / 2;
+      const screenX = CANVAS_WIDTH / 2 + (midX + viewOffset.x) * viewScale;
+      const screenY = CANVAS_HEIGHT / 2 + (midY + viewOffset.y) * viewScale;
+      if (screenX < 0 || screenX > CANVAS_WIDTH || screenY < 0 || screenY > CANVAS_HEIGHT) return;
+
+      context.fillStyle = "rgba(0, 102, 255, 0.92)";
+      context.fillRect(screenX - 22, screenY - 14, 44, 28);
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 2;
+      context.strokeRect(screenX - 22, screenY - 14, 44, 28);
+      context.fillStyle = "#ffffff";
+      context.fillText(candidate.id, screenX, screenY + 1);
+    });
+
+    context.restore();
+
+    return overlayCanvas.toDataURL("image/jpeg", 0.86);
+  }
+
+  async function runAiCandidateReview() {
+    if (!uploadedImage || !walls.length) {
+      setAiAnalysisStatus("먼저 도면을 업로드하고 벽 후보를 추출하세요");
+      return;
+    }
+
+    const wallCandidates = buildAiWallCandidatePayload();
+    const candidateOverlayDataUrl = createAiCandidateOverlayDataUrl(wallCandidates);
+    if (!candidateOverlayDataUrl) {
+      setAiAnalysisStatus("후보 검토 이미지를 만들 수 없습니다");
+      return;
+    }
+
+    setIsProcessing(true);
+    setAiAnalysisStatus("OpenAI가 OpenCV 벽 후보 검토중");
+    try {
+      const token = await getFloorPlanAccessToken();
+      const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
+        body: JSON.stringify({
+          analysisMode: "candidate-review",
+          imageDataUrl: candidateOverlayDataUrl,
+          model: "openai/floor-plan-vision",
+          wallCandidates
+        }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      if (!response.ok) throw new Error(`AI floor plan candidate review failed: ${response.status}`);
+
+      const result = (await response.json()) as FloorPlanAiAnalysisResult;
+      setLastAiAnalysis(result);
+      setExtractionMeta((currentMeta) => ({
+        ...currentMeta,
+        aiModel: result.model,
+        aiRawText: result.rawText,
+        aiSummary: result.summary,
+        ocrStatus: result.status === "ready" ? "ready" : currentMeta.ocrStatus
+      }));
+      setAiAnalysisStatus(result.status === "ready" ? `${result.summary} 후보별 판정 확인` : result.summary);
+    } catch {
+      setAiAnalysisStatus("AI 벽 후보 검토 실패");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   function applyScale() {
     if (!scaleWall || !scaleRealLength) return;
     const pixelDistance = Math.hypot(scaleWall.end.x - scaleWall.start.x, scaleWall.end.y - scaleWall.start.y);
@@ -1349,6 +1479,9 @@ export default function RoomlogFloorPlanEditor() {
               >
                 AI 정밀 수치 읽기
               </button>
+              <button className="floor-plan-secondary" disabled={isProcessing || !uploadedImage || !walls.length} onClick={runAiCandidateReview} type="button">
+                AI 후보 검토
+              </button>
             </>
           ) : (
             <button className="floor-plan-secondary" onClick={() => setViewMode("3d")} type="button">
@@ -1610,6 +1743,24 @@ export default function RoomlogFloorPlanEditor() {
                 ) : (
                   <code>{aiTextDetections.length ? "m/cm/mm 단위 치수만 적용 가능" : "아직 읽은 치수가 없습니다"}</code>
                 )}
+                {lastAiAnalysis?.candidateReviews?.length ? (
+                  <>
+                    <span>AI 후보 검토</span>
+                    <code>
+                      유지 {aiCandidateReviewSummary.keep} / 제외 {aiCandidateReviewSummary.reject} / 검토 {aiCandidateReviewSummary.review}
+                    </code>
+                    <div className="floor-plan-furniture-actions">
+                      {lastAiAnalysis.candidateReviews.slice(0, 8).map((review) => (
+                        <code key={`${review.id}-${review.verdict}`}>
+                          {review.id} {review.verdict} {review.confidence ? `${Math.round(review.confidence * 100)}%` : ""} {review.reason ?? ""}
+                        </code>
+                      ))}
+                    </div>
+                    {lastAiAnalysis.missingWallHints?.length ? (
+                      <code>누락 후보: {lastAiAnalysis.missingWallHints.map((hint) => hint.description).join(" / ")}</code>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             ) : null}
 

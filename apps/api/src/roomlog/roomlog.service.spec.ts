@@ -289,6 +289,60 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("uses OpenAI Responses to review OpenCV floor plan wall candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"OpenCV 후보를 검토했습니다.","candidateReviews":[{"id":"W1","verdict":"keep","confidence":0.86,"reason":"외곽 벽과 일치"}],"missingWallHints":[{"description":"오른쪽 세로 외곽 벽이 약하게 누락됨","confidence":0.62}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        analysisMode: "candidate-review",
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision",
+        wallCandidates: [
+          {
+            end: { x: 120, y: 10 },
+            id: "W1",
+            lengthPx: 110,
+            orientation: "horizontal",
+            start: { x: 10, y: 10 }
+          }
+        ]
+      });
+
+      assert.match(String(capturedBody?.instructions), /OpenCV 도면 벽 후보 검토기/);
+      assert.match(String(capturedBody?.instructions), /candidateReviews/);
+      assert.match(JSON.stringify(capturedBody), /wallCandidates/);
+      assert.equal(result.analysisMode, "candidate-review");
+      assert.equal(result.status, "ready");
+      assert.equal(result.candidateReviews?.[0].id, "W1");
+      assert.equal(result.candidateReviews?.[0].verdict, "keep");
+      assert.equal(result.missingWallHints?.[0].description, "오른쪽 세로 외곽 벽이 약하게 누락됨");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    }
+  });
+
   it("persists users, intake threads, complaints, and tickets across service restarts", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-store-"));
     const storeFilePath = join(dir, "store.json");

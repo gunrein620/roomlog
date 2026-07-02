@@ -405,10 +405,12 @@ export type FloorPlanAiModel = {
 };
 
 export type FloorPlanAiAnalysisInput = {
+  analysisMode?: "dimension" | "candidate-review";
   imageDataUrl?: string;
   model?: FloorPlanAiModelId;
   prompt?: string;
   sourceAttachmentId?: string;
+  wallCandidates?: FloorPlanAiWallCandidate[];
 };
 
 export type FloorPlanAiTextDetection = {
@@ -425,11 +427,35 @@ export type FloorPlanAiScaleCandidate = {
   source: string;
 };
 
+export type FloorPlanAiWallCandidate = {
+  id: string;
+  end: FloorPlanWallPoint;
+  lengthPx: number;
+  orientation: "horizontal" | "vertical" | "diagonal";
+  originalWallId?: string;
+  start: FloorPlanWallPoint;
+};
+
+export type FloorPlanAiCandidateReview = {
+  id: string;
+  confidence?: number;
+  reason?: string;
+  verdict: "keep" | "reject" | "review";
+};
+
+export type FloorPlanAiMissingWallHint = {
+  confidence?: number;
+  description: string;
+};
+
 export type FloorPlanAiAnalysisResult = {
   model: FloorPlanAiModelId;
   mode: FloorPlanAiModelMode;
   status: "ready" | "config-required" | "failed";
   summary: string;
+  analysisMode?: "dimension" | "candidate-review";
+  candidateReviews?: FloorPlanAiCandidateReview[];
+  missingWallHints?: FloorPlanAiMissingWallHint[];
   textDetections: FloorPlanAiTextDetection[];
   scaleCandidates: FloorPlanAiScaleCandidate[];
   rawText?: string;
