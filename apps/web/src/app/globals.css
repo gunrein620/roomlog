@@ -3609,6 +3609,14 @@ p {
   font-size: 0.94rem;
 }
 
+.complex-source-note {
+  margin-top: 10px;
+  color: #7a828f;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-align: right;
+}
+
 .complex-building-card {
   display: grid;
   gap: 10px;
@@ -6960,10 +6968,9 @@ p {
   }
 
   .detail-gallery {
-    position: sticky;
-    top: 24px;
     grid-column: 1;
     grid-row: 3 / span 5;
+    align-self: start;
     height: min(680px, calc(100vh - 160px));
     min-height: 540px;
   }
