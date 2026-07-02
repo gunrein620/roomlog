@@ -1,5 +1,5 @@
 import type { Ticket, Bill, Thread, Announcement } from "@roomlog/types";
-import { listTickets } from "./api";
+import { listDemoTickets } from "./demo-ticket";
 import { listBills } from "./payment-api";
 import { listThreads, listAnnouncements } from "./messaging-api";
 import { CROSS_ROUTES } from "./home-nav";
@@ -25,7 +25,7 @@ const isBillDue = (b: Bill) => b.status !== "paid";
 
 export async function getHomeSummary(): Promise<HomeSummary> {
   const [tickets, bills, threads, anns] = await Promise.all([
-    listTickets(),
+    listDemoTickets(),
     listBills(),
     listThreads(),
     listAnnouncements(),

@@ -1,5 +1,5 @@
 import type { Ticket, Bill } from "@roomlog/types";
-import { listTickets } from "./api";
+import { listDemoTickets } from "./demo-ticket";
 import { listBills } from "./payment-api";
 import { MANAGER_CROSS } from "./manager-home-nav";
 
@@ -29,7 +29,7 @@ const pendingTicket = (t: Ticket) =>
 const unpaidBill = (b: Bill) => b.status !== "paid";
 
 export async function getManagerHomeSummary(): Promise<ManagerHomeSummary> {
-  const [tickets, bills] = await Promise.all([listTickets(), listBills()]);
+  const [tickets, bills] = await Promise.all([listDemoTickets(), listBills()]);
   const pending = tickets.filter(pendingTicket);
   const unpaid = bills.filter(unpaidBill);
   const urgent = tickets.filter((t) => t.urgency <= 1 && t.status !== "resolved");

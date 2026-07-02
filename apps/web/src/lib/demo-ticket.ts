@@ -2,6 +2,14 @@ import type { Ticket, DefectAnalysis, RepairJob } from "@roomlog/types";
 
 // 하자 슬라이스 데모 시드 — api(인메모리 리포)와 동일한 값으로 맞춘다.
 // 화면이 api 없이도 렌더되도록 프론트 폴백으로도 쓰인다.
+
+/**
+ * 클라이언트 안전 데모 티켓 목록. 홈·관리인홈 등 stage-2 집계 화면이
+ * (아직 실 백엔드 미배선) 데모로 렌더할 때 사용. 서버 전용 lib/api.ts에 의존하지 않는다.
+ */
+export async function listDemoTickets(): Promise<Ticket[]> {
+  return [DEMO_TICKET];
+}
 export const DEMO_TICKET: Ticket = {
   id: "tk_0001",
   type: "defect",
