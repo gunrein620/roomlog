@@ -1013,8 +1013,8 @@ test("uses OCR only for scale candidate extraction and keeps manual scale fallba
   }
 });
 
-test("uses conservative uploaded floor plan extraction without starter wall fallback", () => {
-  assert.match(floorPlanEditorSource, /mode:\s*"conservative"/);
+test("uses wall-first uploaded floor plan extraction without starter wall fallback", () => {
+  assert.match(floorPlanEditorSource, /mode:\s*"wall-first"/);
   assert.doesNotMatch(floorPlanEditorSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
   assert.match(floorPlanEditorSource, /직접 그려주세요/);
 });
@@ -1474,6 +1474,29 @@ test("floor plan editor model conservative mode drops all ambiguous thin wall ca
   assert.equal(result.walls.length, 0);
   assert.equal(result.annotationCandidates.length, 4);
   assert.equal(result.needsReview, true);
+});
+
+test("floor plan editor model wall-first mode reconnects dark wall runs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 330, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 362, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 320, y1: 180, x2: 320, y2: 490, orientation: "vertical", thickness: 7 },
+      { x1: 120, y1: 92, x2: 620, y2: 92, orientation: "horizontal", thickness: 1, markers: ["arrow-start", "arrow-end"] },
+      { x1: 260, y1: 270, x2: 300, y2: 270, orientation: "horizontal", thickness: 2 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 140 && line.x1 === 120 && line.x2 === 620), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320), true);
+  assert.equal(result.dimensionCandidates.length, 1);
+  assert.equal(result.removedNoiseCount, 2);
 });
 
 test("floor plan editor model estimates scale from outside dimensions", async () => {

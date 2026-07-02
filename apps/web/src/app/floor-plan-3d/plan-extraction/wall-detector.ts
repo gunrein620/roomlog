@@ -49,7 +49,7 @@ async function fallbackCanvasWallExtraction(file: File): Promise<DetectedWallRes
       maxLines: 24,
       minRunLength: Math.max(32, Math.round(Math.min(canvas.width, canvas.height) * 0.08))
     }) as DetectedLine[];
-    const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, mode: "conservative", width: canvas.width }) as {
+    const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, mode: "wall-first", width: canvas.width }) as {
       annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;
       dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
       mainPlanBounds: DetectedWallResult["mainPlanBounds"];
@@ -116,7 +116,7 @@ function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWall
           const rawLines = Array.isArray(event.data.lines) ? event.data.lines : [];
           const commercialCandidates = filterCommercialWallCandidates(rawLines, {
             height: Number(event.data.imageHeight) || height,
-            mode: "conservative",
+            mode: "wall-first",
             width: Number(event.data.imageWidth) || width
           }) as {
             annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;

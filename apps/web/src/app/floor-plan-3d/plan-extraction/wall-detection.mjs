@@ -425,6 +425,24 @@ function isConservativeWallLine(line, structuralBounds, options = {}, threshold 
   return nearStructuralBounds;
 }
 
+function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  if (!Number.isFinite(thickness) || thickness < Math.max(3, threshold * 0.68)) return false;
+
+  const minLength = Math.max(90, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.11));
+  if (lineLength(line) < minLength) return false;
+
+  if (!structuralBounds) return true;
+
+  const bounds = lineBounds(line);
+  return (
+    bounds.minX >= structuralBounds.minX - 36 &&
+    bounds.maxX <= structuralBounds.maxX + 36 &&
+    bounds.minY >= structuralBounds.minY - 36 &&
+    bounds.maxY <= structuralBounds.maxY + 36
+  );
+}
+
 export function filterCommercialWallCandidates(lines, options = {}) {
   const annotationCandidates = [];
   const dimensionCandidates = [];
@@ -504,10 +522,11 @@ export function filterCommercialWallCandidates(lines, options = {}) {
   }
 
   const mode = options.mode ?? "balanced";
+  const conservativeThreshold = conservativeThicknessThreshold(walls, options);
   const finalWalls =
     mode === "conservative"
       ? walls.filter((line) => {
-          const keep = isConservativeWallLine(line, structuralBounds, options, conservativeThicknessThreshold(walls, options));
+          const keep = isConservativeWallLine(line, structuralBounds, options, conservativeThreshold);
           if (!keep) {
             annotationCandidates.push({
               confidence: Number(line.confidence ?? 0.68),
@@ -519,8 +538,34 @@ export function filterCommercialWallCandidates(lines, options = {}) {
 
           return keep;
         })
-      : walls;
-  const mergedWalls = mergeDetectedWallLines(finalWalls, options);
+      : mode === "wall-first"
+        ? walls.filter((line) => {
+            const keep = isWallFirstLine(line, structuralBounds, options, conservativeThreshold);
+            if (!keep) {
+              annotationCandidates.push({
+                confidence: Number(line.confidence ?? 0.68),
+                line,
+                source: "wall-first-non-wall-line"
+              });
+              removedNoiseCount += 1;
+            }
+
+            return keep;
+          })
+        : walls;
+  const mergedWalls = mergeDetectedWallLines(
+    finalWalls,
+    mode === "wall-first"
+      ? {
+          ...options,
+          gapTolerance:
+            options.wallFirstGapTolerance ??
+            options.gapTolerance ??
+            Math.max(40, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.06)),
+          maxLines: options.maxLines ?? 32
+        }
+      : options
+  );
   const cleanedWalls = removeContainedDetectedWallFragments(mergedWalls, options);
   removedNoiseCount += mergedWalls.length - cleanedWalls.length;
 
