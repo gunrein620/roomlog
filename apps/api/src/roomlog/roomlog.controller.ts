@@ -24,6 +24,7 @@ import {
   CreateMoveInChecklistItemInput,
   CreateRoomInput,
   FinalizeIntakeInput,
+  FloorPlanAiAnalysisInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
   ManagerTicketReplyInput,
@@ -129,6 +130,23 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.createFloorPlanDraft(user.id, body);
+  }
+
+  @Get("floor-plans/ai-models")
+  listFloorPlanAiModels(@Headers("authorization") authorization: string | undefined) {
+    this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listFloorPlanAiModels();
+  }
+
+  @Post("floor-plans/ai-analysis")
+  analyzeFloorPlanWithAi(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: FloorPlanAiAnalysisInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.analyzeFloorPlanWithAi(body, user.id);
   }
 
   @Get("floor-plans/:floorPlanId")

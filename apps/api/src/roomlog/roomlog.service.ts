@@ -40,6 +40,12 @@ import {
   CreateMoveInChecklistItemInput,
   DuplicateTicketCandidate,
   FinalizeIntakeInput,
+  FloorPlanAiAnalysisInput,
+  FloorPlanAiAnalysisResult,
+  FloorPlanAiModel,
+  FloorPlanAiModelId,
+  FloorPlanAiScaleCandidate,
+  FloorPlanAiTextDetection,
   FloorPlanDraft,
   FloorPlanWall,
   IntakeDraft,
@@ -121,6 +127,21 @@ type LoginInput = {
   email: string;
   password: string;
 };
+
+const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
+  {
+    id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    label: "Nemotron 3 Nano Omni",
+    mode: "vision-reasoning",
+    description: "도면 이미지와 치수선을 함께 보고 축척 후보를 추론합니다."
+  },
+  {
+    id: "nvidia/cosmos3-nano-reasoner",
+    label: "Cosmos3 Nano Reasoner",
+    mode: "vision-reasoning",
+    description: "이미지 구조를 물리 공간 관점으로 검토해 치수 후보를 보조 검증합니다."
+  }
+];
 
 function normalizePhoneNumber(phone?: string) {
   const digits = phone?.replace(/\D+/g, "") ?? "";
@@ -2754,6 +2775,223 @@ export class RoomlogService {
     this.persistStore();
 
     return this.presentFloorPlanDraft(draft);
+  }
+
+  listFloorPlanAiModels() {
+    return FLOOR_PLAN_AI_MODELS.map((model) => ({ ...model }));
+  }
+
+  async analyzeFloorPlanWithAi(input: FloorPlanAiAnalysisInput, ownerId?: string): Promise<FloorPlanAiAnalysisResult> {
+    const model = this.validFloorPlanAiModel(input.model);
+    const modelInfo = FLOOR_PLAN_AI_MODELS.find((item) => item.id === model) ?? FLOOR_PLAN_AI_MODELS[0];
+    const imageDataUrl = input.sourceAttachmentId
+      ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
+      : this.validFloorPlanImageDataUrl(input.imageDataUrl);
+
+    if (!process.env.NVIDIA_API_KEY) {
+      return {
+        model,
+        mode: modelInfo.mode,
+        status: "config-required",
+        summary: "NVIDIA_API_KEY가 설정되지 않아 AI 정밀 분석을 실행하지 않았습니다.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+
+    return this.analyzeFloorPlanWithNvidiaVisionReasoning(model, imageDataUrl, input.prompt);
+  }
+
+  private floorPlanAttachmentDataUrl(attachmentId: string, ownerId?: string) {
+    const attachment = this.store.attachments.find((item) => item.id === attachmentId);
+
+    if (!attachment) {
+      throw new NotFoundException("도면 이미지 첨부를 찾을 수 없습니다.");
+    }
+
+    if (ownerId && attachment.uploadedByUserId !== ownerId) {
+      throw new ForbiddenException("이 도면 이미지 첨부를 사용할 권한이 없습니다.");
+    }
+
+    if (!attachment.mimeType.startsWith("image/")) {
+      throw new BadRequestException("도면 이미지 첨부만 AI 분석에 사용할 수 있습니다.");
+    }
+
+    const filePath = join(this.uploadDir, attachment.fileName);
+    if (!existsSync(filePath)) {
+      throw new NotFoundException("저장된 도면 이미지 파일을 찾을 수 없습니다.");
+    }
+
+    return `data:${attachment.mimeType};base64,${readFileSync(filePath).toString("base64")}`;
+  }
+
+  private validFloorPlanAiModel(model?: string): FloorPlanAiModelId {
+    const fallback = FLOOR_PLAN_AI_MODELS[0].id;
+    const selected = model ?? fallback;
+
+    if (FLOOR_PLAN_AI_MODELS.some((item) => item.id === selected)) {
+      return selected as FloorPlanAiModelId;
+    }
+
+    throw new BadRequestException("지원하지 않는 도면 AI 모델입니다.");
+  }
+
+  private validFloorPlanImageDataUrl(value?: string) {
+    const trimmed = value?.trim() ?? "";
+
+    if (!/^data:image\/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
+      throw new BadRequestException("도면 이미지는 png 또는 jpeg data URL이어야 합니다.");
+    }
+
+    return trimmed.replace(/^data:image\/jpg;/i, "data:image/jpeg;");
+  }
+
+  private async analyzeFloorPlanWithNvidiaVisionReasoning(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const endpoint = (process.env.NVIDIA_INTEGRATE_API_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, "");
+    const instructions = [
+      "한국 부동산 방 도면 이미지에서 벽 치수 텍스트와 치수선 관계를 읽어라.",
+      "반드시 JSON만 반환해라.",
+      "schema: {\"summary\": string, \"textDetections\": [{\"text\": string, \"confidence\": number}], \"scaleCandidates\": [{\"realLengthMm\": number, \"pixelLength\": number, \"pixelToMmRatio\": number, \"confidence\": number, \"source\": string}]}",
+      "확신이 낮거나 픽셀 길이를 모르면 scaleCandidates는 비워두고 textDetections에 치수 문자열만 남겨라."
+    ].join("\n");
+
+    try {
+      const response = await fetch(`${endpoint}/chat/completions`, {
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: `${instructions}\n${prompt?.trim() || "도면 치수와 축척 후보를 읽어줘."}` },
+                { type: "image_url", image_url: { url: imageDataUrl } }
+              ]
+            }
+          ],
+          max_tokens: 2048,
+          temperature: 0.1
+        }),
+        headers: {
+          Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+
+      if (!response.ok) throw new Error(`NVIDIA VLM failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractChatCompletionText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+      const textDetections = this.validAiTextDetections(parsed.textDetections);
+      const scaleCandidates = this.validAiScaleCandidates(parsed.scaleCandidates);
+
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "AI 도면 치수 분석을 완료했습니다.",
+        textDetections,
+        scaleCandidates,
+        rawText
+      };
+    } catch {
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "NVIDIA 비전 추론 분석에 실패했습니다. 다른 모델 또는 수동 축척을 사용하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private extractChatCompletionText(payload: Record<string, unknown>) {
+    const choices = Array.isArray(payload.choices) ? payload.choices : [];
+    const firstChoice = choices[0] as { message?: { content?: unknown } } | undefined;
+    const content = firstChoice?.message?.content;
+
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => (typeof part === "string" ? part : typeof part?.text === "string" ? part.text : ""))
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    return "";
+  }
+
+  private parseFloorPlanAiJson(rawText: string): {
+    summary?: string;
+    textDetections?: unknown;
+    scaleCandidates?: unknown;
+  } {
+    const trimmed = rawText.trim();
+    const jsonCandidate = trimmed.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
+
+    try {
+      const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
+
+      return {
+        summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+        textDetections: parsed.textDetections,
+        scaleCandidates: parsed.scaleCandidates
+      };
+    } catch {
+      return {
+        summary: rawText.slice(0, 200),
+        textDetections: rawText
+          .split(/\n|,/)
+          .map((text) => ({ text: text.trim(), confidence: 0.4 }))
+          .filter((item) => item.text)
+      };
+    }
+  }
+
+  private validAiTextDetections(value: unknown): FloorPlanAiTextDetection[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const text = typeof item?.text === "string" ? item.text.trim() : "";
+      if (!text) return [];
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          text,
+          ...(Number.isFinite(confidence) ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+          boundingBox: item.boundingBox
+        }
+      ];
+    });
+  }
+
+  private validAiScaleCandidates(value: unknown): FloorPlanAiScaleCandidate[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const realLengthMm = Number(item?.realLengthMm);
+      if (!Number.isFinite(realLengthMm) || realLengthMm <= 0) return [];
+      const pixelLength = Number(item.pixelLength);
+      const pixelToMmRatio = Number(item.pixelToMmRatio);
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          ...(Number.isFinite(pixelLength) && pixelLength > 0 ? { pixelLength } : {}),
+          ...(Number.isFinite(pixelToMmRatio) && pixelToMmRatio > 0 ? { pixelToMmRatio } : {}),
+          realLengthMm,
+          source: typeof item.source === "string" ? item.source : "nvidia/vlm"
+        }
+      ];
+    });
   }
 
   private assertFloorPlanOwner(ownerId: string) {

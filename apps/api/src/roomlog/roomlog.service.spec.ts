@@ -177,6 +177,64 @@ describe("RoomlogService", () => {
     assert.equal(service.loadSimulatorRoom(created.room.id).wallsData[0].dimensions.width, 3);
   });
 
+  it("exposes only hosted NVIDIA floor plan model choices", () => {
+    const service = new RoomlogService();
+    const models = service.listFloorPlanAiModels();
+
+    assert.deepEqual(
+      models.map((model) => model.id),
+      [
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/cosmos3-nano-reasoner"
+      ]
+    );
+    assert.equal(models.every((model) => model.mode === "vision-reasoning"), true);
+  });
+
+  it("uses NVIDIA integrate chat completions for floor plan reasoning models", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.NVIDIA_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.NVIDIA_API_KEY = "nvapi-test";
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"summary":"도면 치수 후보를 검토했습니다.","scaleCandidates":[{"realLengthMm":5860,"pixelLength":320,"pixelToMmRatio":18.31,"confidence":0.82,"source":"nvidia/vlm"}]}'
+              }
+            }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+      });
+
+      assert.equal(capturedUrl, "https://integrate.api.nvidia.com/v1/chat/completions");
+      assert.equal(capturedBody?.model, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
+      assert.equal(result.status, "ready");
+      assert.equal(result.scaleCandidates[0].realLengthMm, 5860);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.NVIDIA_API_KEY = originalApiKey;
+      else delete process.env.NVIDIA_API_KEY;
+    }
+  });
+
   it("persists users, intake threads, complaints, and tickets across service restarts", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-store-"));
     const storeFilePath = join(dir, "store.json");

@@ -390,6 +390,50 @@ export type FloorPlanDraft = {
   updatedAt: string;
 };
 
+export type FloorPlanAiModelId =
+  | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+  | "nvidia/cosmos3-nano-reasoner";
+
+export type FloorPlanAiModelMode = "vision-reasoning";
+
+export type FloorPlanAiModel = {
+  id: FloorPlanAiModelId;
+  label: string;
+  mode: FloorPlanAiModelMode;
+  description: string;
+};
+
+export type FloorPlanAiAnalysisInput = {
+  imageDataUrl?: string;
+  model?: FloorPlanAiModelId;
+  prompt?: string;
+  sourceAttachmentId?: string;
+};
+
+export type FloorPlanAiTextDetection = {
+  text: string;
+  confidence?: number;
+  boundingBox?: unknown;
+};
+
+export type FloorPlanAiScaleCandidate = {
+  confidence: number;
+  pixelLength?: number;
+  pixelToMmRatio?: number;
+  realLengthMm: number;
+  source: string;
+};
+
+export type FloorPlanAiAnalysisResult = {
+  model: FloorPlanAiModelId;
+  mode: FloorPlanAiModelMode;
+  status: "ready" | "config-required" | "failed";
+  summary: string;
+  textDetections: FloorPlanAiTextDetection[];
+  scaleCandidates: FloorPlanAiScaleCandidate[];
+  rawText?: string;
+};
+
 export type IntakeSessionStatus = "ACTIVE" | "FINALIZED" | "CANCELLED";
 export type IntakeInputMode = "CHAT" | "VOICE" | "PHOTO";
 export type IntakeMessageSender = "TENANT" | "AI_ASSISTANT" | "SYSTEM";

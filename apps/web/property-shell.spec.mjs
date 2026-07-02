@@ -863,6 +863,26 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   }
 });
 
+test("offers NVIDIA floor plan AI model selection for precise dimension reading", () => {
+  for (const label of [
+    "FLOOR_PLAN_AI_MODELS",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "nvidia/cosmos3-nano-reasoner",
+    "selectedAiModel",
+    "uploadedAiImageDataUrl",
+    "fileToCompressedDataUrl",
+    "canvas\\.toDataURL\\(\"image/jpeg\"",
+    "runAiDimensionAnalysis",
+    "sourceAttachmentId",
+    "uploadedFloorPlanSource\\?\\.attachmentId",
+    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
+    "AI 정밀 수치 읽기"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+  assert.doesNotMatch(floorPlanEditorSource, /nvidia\/nemotron-ocr-v2/);
+});
+
 test("stores extraction metadata, openings, and fixtures through the floor plan API", () => {
   for (const label of [
     "extractionMeta",
