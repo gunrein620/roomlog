@@ -4,70 +4,100 @@ import type {
   RepairJob,
   Ticket,
   TicketDisposition,
-  TicketStatus,
+  TicketStatus
 } from "@roomlog/types";
+import { serverFetch } from "./server-api";
 import {
-  MANAGER_DEMO_TICKETS,
+  toManagerTicket,
+  toManagerAnalysis,
+  toManagerRepair,
+  computeQueueSummary,
+  type TeamManagerTicket
+} from "./manager-mapping";
+import {
   MANAGER_DEMO_TICKET_ID,
   managerDemoAnalysis,
   managerDemoRepair,
-  managerDemoSummary,
-  managerDemoTicket,
+  managerDemoTicket
 } from "./ticket-manager-demo";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+// 관리인 티켓 API 클라이언트 — 팀 실 백엔드(GET /manager/tickets)에 쿠키 인증으로 연결.
+// [레퍼런스 패턴 복제] 서버 컴포넌트 전용(serverFetch가 httpOnly 쿠키→Bearer forward).
+// 목록/요약은 실집계(빈 목록은 [], 위조 금지). 상세는 활성 티켓 매핑, 없을 때만 데모+경고.
 
-async function tryFetch<T>(path: string, fallback: T, init?: RequestInit): Promise<T> {
+async function listTeamTickets(filter?: string): Promise<TeamManagerTicket[]> {
+  const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
+  return serverFetch<TeamManagerTicket[]>(`/manager/tickets${query}`);
+}
+
+async function activeTeamTicket(): Promise<TeamManagerTicket | null> {
   try {
-    const res = await fetch(`${BASE}${path}`, { cache: "no-store", ...init });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
-    return fallback;
+    const list = await listTeamTickets();
+    return list[0] ?? null;
+  } catch (error) {
+    console.error("[manager/api] /manager/tickets 조회 실패:", error);
+    return null;
   }
 }
 
-export function listManagerTickets(filter?: string): Promise<Ticket[]> {
-  const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
-  return tryFetch(`/tickets${query}`, MANAGER_DEMO_TICKETS);
+export async function listManagerTickets(filter?: string): Promise<Ticket[]> {
+  try {
+    return (await listTeamTickets(filter)).map(toManagerTicket);
+  } catch (error) {
+    console.error("[manager/api] listManagerTickets 실패 → 빈 목록:", error);
+    return [];
+  }
 }
 
-export function getManagerQueueSummary(): Promise<ManagerQueueSummary> {
-  return tryFetch("/tickets/summary", managerDemoSummary());
+export async function getManagerQueueSummary(): Promise<ManagerQueueSummary> {
+  try {
+    const list = await listTeamTickets();
+    return computeQueueSummary(list.map(toManagerTicket), list.map(toManagerRepair));
+  } catch (error) {
+    console.error("[manager/api] 큐 요약 실패 → 0:", error);
+    return { today: 0, urgent: 0, awaitingReview: 0, awaitingPayment: 0, onHold: 0, total: 0 };
+  }
 }
 
-export function getManagerTicket(id: string = MANAGER_DEMO_TICKET_ID): Promise<Ticket> {
-  return tryFetch(`/tickets/${id}`, managerDemoTicket(id));
+export async function getManagerTicket(id: string = MANAGER_DEMO_TICKET_ID): Promise<Ticket> {
+  const t = await activeTeamTicket();
+  if (t) return toManagerTicket(t);
+  console.warn("[manager/api] 활성 티켓 없음 → 데모 폴백");
+  return managerDemoTicket(id);
 }
 
-export function getManagerAnalysis(ticketId: string = MANAGER_DEMO_TICKET_ID): Promise<DefectAnalysis> {
-  return tryFetch(`/tickets/${ticketId}/analysis`, managerDemoAnalysis(ticketId));
+export async function getManagerAnalysis(
+  ticketId: string = MANAGER_DEMO_TICKET_ID
+): Promise<DefectAnalysis> {
+  const t = await activeTeamTicket();
+  const mapped = t && toManagerAnalysis(t);
+  if (mapped) return mapped;
+  console.warn("[manager/api] 실제 분석 없음 → 데모 폴백");
+  return managerDemoAnalysis(ticketId);
 }
 
-export function getManagerRepair(ticketId: string = MANAGER_DEMO_TICKET_ID): Promise<RepairJob> {
-  return tryFetch(`/tickets/${ticketId}/repair`, managerDemoRepair(ticketId));
+export async function getManagerRepair(
+  ticketId: string = MANAGER_DEMO_TICKET_ID
+): Promise<RepairJob> {
+  const t = await activeTeamTicket();
+  const mapped = t && toManagerRepair(t);
+  if (mapped) return mapped;
+  console.warn("[manager/api] 실제 수리 없음(미배정/취소) → 데모 폴백");
+  return managerDemoRepair(ticketId);
 }
 
-export function updateManagerTicketStatus(
+// 관리인 mutation — 팀 PATCH /manager/tickets/:id. 서버 액션/서버 컴포넌트에서 호출.
+// NOTE(follow-up): 화면 TicketStatus(lowercase 6)→팀 TicketStatus(UPPERCASE 11) 역매핑은
+// 손실적이라(예: processing↔5종) 별도 정합 필요. 현재 대시 화면은 상태 변경을 배선하지 않음.
+export async function updateManagerTicket(
   id: string,
-  status: TicketStatus,
-): Promise<Ticket> {
-  return tryFetch(`/tickets/${id}/status`, { ...managerDemoTicket(id), status }, {
+  patch: { category?: string; priority?: number; responsibilityHint?: string; status?: string; note?: string }
+): Promise<TeamManagerTicket> {
+  return serverFetch<TeamManagerTicket>(`/manager/tickets/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
-  });
-}
-
-export function updateManagerTicketDisposition(
-  id: string,
-  disposition: TicketDisposition,
-): Promise<Ticket> {
-  return tryFetch(`/tickets/${id}/disposition`, { ...managerDemoTicket(id), disposition }, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ disposition }),
+    body: JSON.stringify(patch)
   });
 }
 
 export { MANAGER_DEMO_TICKET_ID };
+export type { TicketStatus, TicketDisposition };

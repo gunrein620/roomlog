@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
 
+// M-CALL 화면도 ticket-manager-api(쿠키)를 읽으므로 요청마다 렌더(정적 프리렌더 제외).
+export const dynamic = "force-dynamic";
+
 export default function CallLayout({ children }: { children: ReactNode }) {
   return (
     <PhoneFrame
