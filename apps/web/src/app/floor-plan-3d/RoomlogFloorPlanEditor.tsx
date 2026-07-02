@@ -213,6 +213,50 @@ function parseDimensionTextToMm(text: string) {
   return parseDimensionTextsToMm(text)[0] ?? null;
 }
 
+function snapWallToLengthBounds(wall: Wall, bounds: { maxX: number; maxY: number; minX: number; minY: number }, tolerancePx = GRID_SIZE_PX * 2) {
+  const dx = wall.end.x - wall.start.x;
+  const dy = wall.end.y - wall.start.y;
+  const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
+
+  if (isHorizontal) {
+    const y = Math.round((wall.start.y + wall.end.y) / 2);
+    let startX = Math.min(wall.start.x, wall.end.x);
+    let endX = Math.max(wall.start.x, wall.end.x);
+    const length = endX - startX;
+
+    if (length >= width * 0.55) {
+      startX = bounds.minX;
+      endX = bounds.maxX;
+    } else {
+      if (Math.abs(startX - bounds.minX) <= tolerancePx) startX = bounds.minX;
+      if (Math.abs(startX - bounds.maxX) <= tolerancePx) startX = bounds.maxX;
+      if (Math.abs(endX - bounds.minX) <= tolerancePx) endX = bounds.minX;
+      if (Math.abs(endX - bounds.maxX) <= tolerancePx) endX = bounds.maxX;
+    }
+
+    return { ...wall, end: { x: endX, y }, start: { x: startX, y } };
+  }
+
+  const x = Math.round((wall.start.x + wall.end.x) / 2);
+  let startY = Math.min(wall.start.y, wall.end.y);
+  let endY = Math.max(wall.start.y, wall.end.y);
+  const length = endY - startY;
+
+  if (length >= height * 0.55) {
+    startY = bounds.minY;
+    endY = bounds.maxY;
+  } else {
+    if (Math.abs(startY - bounds.minY) <= tolerancePx) startY = bounds.minY;
+    if (Math.abs(startY - bounds.maxY) <= tolerancePx) startY = bounds.maxY;
+    if (Math.abs(endY - bounds.minY) <= tolerancePx) endY = bounds.minY;
+    if (Math.abs(endY - bounds.maxY) <= tolerancePx) endY = bounds.maxY;
+  }
+
+  return { ...wall, end: { x, y: endY }, start: { x, y: startY } };
+}
+
 export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -257,6 +301,7 @@ export default function RoomlogFloorPlanEditor() {
   const [selectedAiModel, setSelectedAiModel] = useState<FloorPlanAiModelId>("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
   const [aiAnalysisStatus, setAiAnalysisStatus] = useState("AI 정밀 수치 읽기 대기");
   const [lastAiAnalysis, setLastAiAnalysis] = useState<FloorPlanAiAnalysisResult | null>(null);
+  const [aiReviewedWallCandidates, setAiReviewedWallCandidates] = useState<AiWallCandidatePayload[]>([]);
   const [opencvReady, setOpenCvReady] = useState(false);
   const [lastExtractionMs, setLastExtractionMs] = useState<number | null>(null);
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
@@ -1015,6 +1060,7 @@ export default function RoomlogFloorPlanEditor() {
       setUploadedAiImageDataUrl(aiImageDataUrl);
       setUploadedFloorPlanSource(sourceUpload ?? { imageUrl: result.imageUrl });
       setLastAiAnalysis(null);
+      setAiReviewedWallCandidates([]);
       setAiAnalysisStatus("AI 정밀 수치 읽기 대기");
       setFloorPlanDraftId(null);
       setLastExtractionMs(result.processingMs ?? null);
@@ -1190,6 +1236,7 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     const wallCandidates = buildAiWallCandidatePayload();
+    setAiReviewedWallCandidates(wallCandidates);
     const candidateOverlayDataUrl = createAiCandidateOverlayDataUrl(wallCandidates);
     if (!candidateOverlayDataUrl) {
       setAiAnalysisStatus("후보 검토 이미지를 만들 수 없습니다");
@@ -1234,6 +1281,59 @@ export default function RoomlogFloorPlanEditor() {
     } finally {
       setIsProcessing(false);
     }
+  }
+
+  function removeRejectedAiWallCandidates() {
+    const rejectedIds = new Set((lastAiAnalysis?.candidateReviews ?? []).filter((review) => review.verdict === "reject").map((review) => review.id));
+    const rejectedWallIds = new Set(
+      aiReviewedWallCandidates.filter((candidate) => rejectedIds.has(candidate.id)).map((candidate) => candidate.originalWallId)
+    );
+    if (!rejectedWallIds.size) {
+      setUploadStatus("AI가 제외로 판정한 벽 후보가 없습니다");
+      return;
+    }
+
+    const nextWalls = walls.filter((wall) => !rejectedWallIds.has(String(wall.id)));
+    const nextHiddenWallIds = new Set([...hiddenWallIds].filter((wallId) => !rejectedWallIds.has(String(wallId))));
+    setWalls(nextWalls);
+    setHiddenWallIds(nextHiddenWallIds);
+    setSelectedWall((currentWall) => (currentWall && rejectedWallIds.has(String(currentWall.id)) ? null : currentWall));
+    setScaleWall((currentWall) => (currentWall && rejectedWallIds.has(String(currentWall.id)) ? null : currentWall));
+    setHoveredWall((currentWall) => (currentWall && rejectedWallIds.has(String(currentWall.id)) ? null : currentWall));
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, detectedWallCount: nextWalls.length, needsReview: true }));
+    setUploadStatus(`AI 제외 후보 ${walls.length - nextWalls.length}개 삭제`);
+  }
+
+  function normalizeWallLengths() {
+    if (walls.length < 2) {
+      setUploadStatus("길이를 맞출 벽이 부족합니다");
+      return;
+    }
+
+    const points = walls.flatMap((wall) => [wall.start, wall.end]);
+    const bounds = {
+      maxX: Math.max(...points.map((point) => point.x)),
+      maxY: Math.max(...points.map((point) => point.y)),
+      minX: Math.min(...points.map((point) => point.x)),
+      minY: Math.min(...points.map((point) => point.y))
+    };
+    const nextWalls = walls.map((wall) => snapWallToLengthBounds(wall, bounds));
+    const changedCount = nextWalls.filter((wall, index) => {
+      const previous = walls[index];
+      return (
+        previous.start.x !== wall.start.x ||
+        previous.start.y !== wall.start.y ||
+        previous.end.x !== wall.end.x ||
+        previous.end.y !== wall.end.y
+      );
+    }).length;
+
+    setWalls(nextWalls);
+    setSelectedWall((currentWall) => (currentWall ? nextWalls.find((wall) => wall.id === currentWall.id) ?? null : null));
+    setScaleWall((currentWall) => (currentWall ? nextWalls.find((wall) => wall.id === currentWall.id) ?? null : null));
+    setHoveredWall((currentWall) => (currentWall ? nextWalls.find((wall) => wall.id === currentWall.id) ?? null : null));
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, detectedWallCount: nextWalls.length, needsReview: true }));
+    setUploadStatus(changedCount ? `벽 길이 ${changedCount}개 보정` : "보정할 길이 차이가 없습니다");
   }
 
   function applyScale() {
@@ -1773,6 +1873,17 @@ export default function RoomlogFloorPlanEditor() {
                       유지 {aiCandidateReviewSummary.keep} / 제외 {aiCandidateReviewSummary.reject} / 검토 {aiCandidateReviewSummary.review}
                     </code>
                     <div className="floor-plan-furniture-actions">
+                      <button
+                        className="floor-plan-secondary"
+                        disabled={!aiCandidateReviewSummary.reject}
+                        onClick={removeRejectedAiWallCandidates}
+                        type="button"
+                      >
+                        AI 제외 후보 삭제
+                      </button>
+                      <button className="floor-plan-secondary" disabled={walls.length < 2} onClick={normalizeWallLengths} type="button">
+                        벽 길이 자동 보정
+                      </button>
                       {lastAiAnalysis.candidateReviews.slice(0, 8).map((review) => (
                         <code key={`${review.id}-${review.verdict}`}>
                           {review.id} {review.verdict} {review.confidence ? `${Math.round(review.confidence * 100)}%` : ""} {review.reason ?? ""}
