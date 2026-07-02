@@ -1,9 +1,19 @@
-export const GRID_SIZE = 24;
-export const DEFAULT_WALL_HEIGHT = 96;
-export const DEFAULT_WALL_DEPTH = 8;
-export const DEFAULT_PIXEL_TO_METER_RATIO = 1 / 48;
-export const WHERETOPUT_WALL_HEIGHT = 2.5;
-export const WHERETOPUT_WALL_DEPTH = 0.15;
+import {
+  DEFAULT_PIXEL_TO_METER_RATIO,
+  DEFAULT_WALL_DEPTH_PX,
+  DEFAULT_WALL_HEIGHT_PX,
+  GRID_SIZE_PX,
+  WHERETOPUT_WALL_DEPTH_M,
+  WHERETOPUT_WALL_HEIGHT_M
+} from "./units.ts";
+import { detectClosedLoops, mergeCollinearWalls } from "./wall-graph.ts";
+
+export const GRID_SIZE = GRID_SIZE_PX;
+export const DEFAULT_WALL_HEIGHT = DEFAULT_WALL_HEIGHT_PX;
+export const DEFAULT_WALL_DEPTH = DEFAULT_WALL_DEPTH_PX;
+export { DEFAULT_PIXEL_TO_METER_RATIO };
+export const WHERETOPUT_WALL_HEIGHT = WHERETOPUT_WALL_HEIGHT_M;
+export const WHERETOPUT_WALL_DEPTH = WHERETOPUT_WALL_DEPTH_M;
 
 export function snapToGrid(point, gridSize = GRID_SIZE) {
   return {
@@ -90,7 +100,7 @@ export function summarizeWalls(walls) {
 
   return {
     wallCount: walls.length,
-    approximateMeters: Math.round((totalLength / GRID_SIZE) * 0.5 * 10) / 10,
+    approximateMeters: Math.round(totalLength * DEFAULT_PIXEL_TO_METER_RATIO * 10) / 10,
     status: walls.length > 0 ? "편집중" : "초안"
   };
 }
@@ -104,6 +114,10 @@ function createPath(points) {
 
 function roundMetric(value) {
   return Math.round(value * 1000) / 1000;
+}
+
+function stableWallId(wallId) {
+  return `wall-${String(wallId).replace(/[^a-z0-9가-힣_-]+/gi, "-").replace(/^-+|-+$/g, "") || "unknown"}`;
 }
 
 export function normalizePlanName(name = "plan") {
@@ -294,7 +308,7 @@ export function convertWallsToWheretoputRoom3D(walls, options = {}) {
     const rotation = Math.atan2(endZ - startZ, endX - startX);
 
     return {
-      id: `wall-${index}`,
+      id: options.stableIds ? stableWallId(wall.id) : `wall-${index}`,
       wall_id: wall.id,
       start: { x: roundMetric(startX), y: roundMetric(startZ) },
       end: { x: roundMetric(endX), y: roundMetric(endZ) },
@@ -331,6 +345,32 @@ export function convertWallsToWheretoputRoom3D(walls, options = {}) {
     },
     position: [roundMetric(wall.position[0] - centerX), roundMetric(wall.position[1]), roundMetric(wall.position[2] - centerZ)],
     rotation: wall.rotation.map(roundMetric)
+  }));
+}
+
+export function convertOptimizedWallsToWheretoputRoom3D(walls, options = {}) {
+  const optimizedWalls = options.mergeCollinear
+    ? mergeCollinearWalls(walls, {
+        gapTolerancePx: options.gapTolerancePx,
+        tolerancePx: options.tolerancePx
+      })
+    : walls;
+
+  return convertWallsToWheretoputRoom3D(optimizedWalls, options);
+}
+
+export function buildClosedLoopFloorPolygons(walls, options = {}) {
+  const pixelToMmRatio = options.pixelToMmRatio ?? 20;
+  const pixelToMeterRatio = pixelToMmRatio / 1000;
+  const loops = detectClosedLoops(walls, options.tolerancePx ?? 1);
+
+  return loops.map((loop) => ({
+    perimeterMeters: roundMetric(loop.perimeterPx * pixelToMeterRatio),
+    points: loop.points.map((point) => ({
+      x: roundMetric(point.x * pixelToMeterRatio),
+      z: roundMetric(point.y * pixelToMeterRatio)
+    })),
+    wallIds: [...loop.wallIds]
   }));
 }
 
