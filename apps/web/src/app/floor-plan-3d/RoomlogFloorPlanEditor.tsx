@@ -103,6 +103,7 @@ type AiWallCandidatePayload = {
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
 const AI_IMAGE_MAX_DIMENSION = 1600;
+const AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH = 90_000;
 const FLOOR_PLAN_AI_MODELS: Array<{ id: FloorPlanAiModelId; label: string }> = [
   { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", label: "Nemotron Omni" },
   { id: "nvidia/cosmos3-nano-reasoner", label: "Cosmos3 Reasoner" },
@@ -1131,37 +1132,55 @@ export default function RoomlogFloorPlanEditor() {
     const sourceCanvas = canvasRef.current;
     if (!sourceCanvas) return uploadedAiImageDataUrl;
 
-    const overlayCanvas = document.createElement("canvas");
-    overlayCanvas.width = CANVAS_WIDTH;
-    overlayCanvas.height = CANVAS_HEIGHT;
-    const context = overlayCanvas.getContext("2d");
-    if (!context) return uploadedAiImageDataUrl;
+    const sizes = [
+      { fontSize: 18, height: 720, labelHeight: 26, labelWidth: 42, width: 960 },
+      { fontSize: 16, height: 600, labelHeight: 24, labelWidth: 38, width: 800 },
+      { fontSize: 14, height: 480, labelHeight: 22, labelWidth: 34, width: 640 }
+    ];
+    const qualities = [0.68, 0.54, 0.42, 0.32];
+    let fallbackDataUrl = uploadedAiImageDataUrl;
 
-    context.drawImage(sourceCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    context.save();
-    context.font = "bold 20px Arial, sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
+    for (const size of sizes) {
+      const overlayCanvas = document.createElement("canvas");
+      overlayCanvas.width = size.width;
+      overlayCanvas.height = size.height;
+      const context = overlayCanvas.getContext("2d");
+      if (!context) return fallbackDataUrl;
 
-    candidates.forEach((candidate) => {
-      const midX = (candidate.start.x + candidate.end.x) / 2;
-      const midY = (candidate.start.y + candidate.end.y) / 2;
-      const screenX = CANVAS_WIDTH / 2 + (midX + viewOffset.x) * viewScale;
-      const screenY = CANVAS_HEIGHT / 2 + (midY + viewOffset.y) * viewScale;
-      if (screenX < 0 || screenX > CANVAS_WIDTH || screenY < 0 || screenY > CANVAS_HEIGHT) return;
+      const scaleX = size.width / CANVAS_WIDTH;
+      const scaleY = size.height / CANVAS_HEIGHT;
+      context.drawImage(sourceCanvas, 0, 0, size.width, size.height);
+      context.save();
+      context.font = `bold ${size.fontSize}px Arial, sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
 
-      context.fillStyle = "rgba(0, 102, 255, 0.92)";
-      context.fillRect(screenX - 22, screenY - 14, 44, 28);
-      context.strokeStyle = "#ffffff";
-      context.lineWidth = 2;
-      context.strokeRect(screenX - 22, screenY - 14, 44, 28);
-      context.fillStyle = "#ffffff";
-      context.fillText(candidate.id, screenX, screenY + 1);
-    });
+      candidates.forEach((candidate) => {
+        const midX = (candidate.start.x + candidate.end.x) / 2;
+        const midY = (candidate.start.y + candidate.end.y) / 2;
+        const screenX = (CANVAS_WIDTH / 2 + (midX + viewOffset.x) * viewScale) * scaleX;
+        const screenY = (CANVAS_HEIGHT / 2 + (midY + viewOffset.y) * viewScale) * scaleY;
+        if (screenX < 0 || screenX > size.width || screenY < 0 || screenY > size.height) return;
 
-    context.restore();
+        context.fillStyle = "rgba(0, 102, 255, 0.92)";
+        context.fillRect(screenX - size.labelWidth / 2, screenY - size.labelHeight / 2, size.labelWidth, size.labelHeight);
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = 2;
+        context.strokeRect(screenX - size.labelWidth / 2, screenY - size.labelHeight / 2, size.labelWidth, size.labelHeight);
+        context.fillStyle = "#ffffff";
+        context.fillText(candidate.id, screenX, screenY + 1);
+      });
 
-    return overlayCanvas.toDataURL("image/jpeg", 0.86);
+      context.restore();
+
+      for (const quality of qualities) {
+        const dataUrl = overlayCanvas.toDataURL("image/jpeg", quality);
+        fallbackDataUrl = dataUrl;
+        if (dataUrl.length <= AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH) return dataUrl;
+      }
+    }
+
+    return fallbackDataUrl;
   }
 
   async function runAiCandidateReview() {
@@ -1174,6 +1193,10 @@ export default function RoomlogFloorPlanEditor() {
     const candidateOverlayDataUrl = createAiCandidateOverlayDataUrl(wallCandidates);
     if (!candidateOverlayDataUrl) {
       setAiAnalysisStatus("후보 검토 이미지를 만들 수 없습니다");
+      return;
+    }
+    if (candidateOverlayDataUrl.length > AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH) {
+      setAiAnalysisStatus("후보 검토 이미지가 커서 전송하지 않았습니다. 화면을 확대하지 않은 상태에서 다시 시도하세요");
       return;
     }
 
