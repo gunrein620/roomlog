@@ -852,17 +852,20 @@ function LandlordMyPage() {
             />
           </label>
 
-          <button
-            className={has3DRoom ? "upload-3d-button active" : "upload-3d-button"}
-            type="button"
+          <a
+            className={has3DRoom ? "upload-3d-button floor-plan-link active" : "upload-3d-button floor-plan-link"}
+            href="/floor-plan-3d"
             onClick={() => {
-              setHas3DRoom((current) => !current);
+              setHas3DRoom(true);
               setRegistrationStatus("작성 중");
             }}
           >
-            <strong>3D방 업로드</strong>
-            <span>{has3DRoom ? "3D 방 자료가 연결된 상태입니다." : "3D 방 파일 또는 링크를 등록할 수 있습니다."}</span>
-          </button>
+            <strong>3D 도면 만들기</strong>
+            <span>
+              {has3DRoom ? "3D 방 자료가 연결된 상태입니다." : "3D 방 파일 또는 링크를 등록할 수 있습니다."} 실측 도면 기반
+              3D 편집 페이지로 이동
+            </span>
+          </a>
         </section>
 
         <section className="owner-submit-summary" aria-label="검수 요청 요약">

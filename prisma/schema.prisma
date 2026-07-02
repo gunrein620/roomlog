@@ -80,6 +80,13 @@ enum AttachmentCategory {
   WORK_PHOTO
   COMPLETION_PHOTO
   INTAKE_PHOTO
+  FLOOR_PLAN_SOURCE
+}
+
+enum FloorPlanStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 enum MessageSenderRole {
@@ -135,6 +142,7 @@ model UserAccount {
 
   tenantRooms          TenantRoom[]
   uploadedAttachments  Attachment[]       @relation("UploadedAttachments")
+  floorPlans           FloorPlan[]        @relation("OwnedFloorPlans")
   intakeSessions       IntakeSession[]     @relation("TenantIntakeSessions")
   complaints           Complaint[]         @relation("TenantComplaints")
   tickets              Ticket[]            @relation("TenantTickets")
@@ -240,6 +248,29 @@ model Attachment {
   @@index([uploadedBy, category])
 }
 
+model FloorPlan {
+  id                 String          @id
+  ownerId            String
+  sourceAttachmentId String?
+  sourceImageUrl     String?
+  status             FloorPlanStatus @default(DRAFT)
+  pixelToMmRatio     Float
+  walls              Json
+  hiddenWallIds      String[]
+  furnitures         Json
+  room3d             Json
+  extractionMeta     Json?
+  openings           Json?
+  fixtures           Json?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  owner UserAccount @relation("OwnedFloorPlans", fields: [ownerId], references: [id])
+
+  @@index([ownerId, updatedAt])
+  @@index([status])
+}
+
 model MoveInChecklistItem {
   id             String   @id
   tenantId       String
@@ -256,6 +287,31 @@ model MoveInChecklistItem {
   room   Room        @relation(fields: [roomId], references: [id])
 
   @@index([tenantId, roomId])
+}
+
+model FurnitureCatalogItem {
+  id              String   @id
+  source          String
+  sourceProductId String
+  sourceUrl       String
+  category        String
+  name            String
+  brand           String
+  priceKrw        Int
+  currency        String   @default("KRW")
+  color           String
+  widthMm         Int
+  heightMm        Int
+  depthMm         Int
+  thumbnailUrl    String?
+  imageUrls       String[]
+  raw             Json
+  syncedAt        DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([source, sourceProductId])
+  @@index([category])
 }
 
 model IntakeSession {

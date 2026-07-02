@@ -44,6 +44,7 @@ export class PrismaStoreProjector implements StoreProjector {
       vendorInvites,
       tenantInvites,
       attachments,
+      floorPlans,
       moveInChecklist,
       intakeSessions,
       complaints,
@@ -61,6 +62,7 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.vendorInvite.findMany(),
       this.prisma.tenantInvite.findMany(),
       this.prisma.attachment.findMany(),
+      this.prisma.floorPlan.findMany(),
       this.prisma.moveInChecklistItem.findMany(),
       this.prisma.intakeSession.findMany({
         include: { messages: { orderBy: { createdAt: "asc" } } }
@@ -77,6 +79,7 @@ export class PrismaStoreProjector implements StoreProjector {
     if (
       !users.length &&
       !rooms.length &&
+      !floorPlans.length &&
       !intakeSessions.length &&
       !complaints.length &&
       !tickets.length
@@ -153,6 +156,23 @@ export class PrismaStoreProjector implements StoreProjector {
         mimeType: attachment.mimeType,
         sizeBytes: attachment.sizeBytes,
         createdAt: asIso(attachment.createdAt) ?? new Date().toISOString()
+      })),
+      floorPlans: floorPlans.map((floorPlan) => ({
+        id: floorPlan.id,
+        ownerId: floorPlan.ownerId,
+        sourceAttachmentId: optional(floorPlan.sourceAttachmentId),
+        sourceImageUrl: optional(floorPlan.sourceImageUrl),
+        status: floorPlan.status,
+        pixelToMmRatio: floorPlan.pixelToMmRatio,
+        walls: floorPlan.walls as any,
+        hiddenWallIds: floorPlan.hiddenWallIds,
+        furnitures: floorPlan.furnitures as any,
+        room3d: floorPlan.room3d as any,
+        extractionMeta: (floorPlan.extractionMeta as any) ?? { scaleConfirmed: false },
+        openings: (floorPlan.openings as any) ?? [],
+        fixtures: (floorPlan.fixtures as any) ?? [],
+        createdAt: asIso(floorPlan.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(floorPlan.updatedAt) ?? new Date().toISOString()
       })),
       moveInChecklist: moveInChecklist.map((item) => ({
         id: item.id,
@@ -460,6 +480,44 @@ export class PrismaStoreProjector implements StoreProjector {
             mimeType: attachment.mimeType,
             sizeBytes: attachment.sizeBytes,
             category: attachment.category
+          }
+        });
+      }
+
+      for (const floorPlan of store.floorPlans) {
+        await tx.floorPlan.upsert({
+          where: { id: floorPlan.id },
+          create: {
+            id: floorPlan.id,
+            ownerId: floorPlan.ownerId,
+            sourceAttachmentId: floorPlan.sourceAttachmentId,
+            sourceImageUrl: floorPlan.sourceImageUrl,
+            status: floorPlan.status,
+            pixelToMmRatio: floorPlan.pixelToMmRatio,
+            walls: asJson(floorPlan.walls),
+            hiddenWallIds: floorPlan.hiddenWallIds,
+            furnitures: asJson(floorPlan.furnitures),
+            room3d: asJson(floorPlan.room3d),
+            extractionMeta: asJson(floorPlan.extractionMeta),
+            openings: asJson(floorPlan.openings),
+            fixtures: asJson(floorPlan.fixtures),
+            createdAt: asDate(floorPlan.createdAt),
+            updatedAt: asDate(floorPlan.updatedAt)
+          },
+          update: {
+            ownerId: floorPlan.ownerId,
+            sourceAttachmentId: floorPlan.sourceAttachmentId,
+            sourceImageUrl: floorPlan.sourceImageUrl,
+            status: floorPlan.status,
+            pixelToMmRatio: floorPlan.pixelToMmRatio,
+            walls: asJson(floorPlan.walls),
+            hiddenWallIds: floorPlan.hiddenWallIds,
+            furnitures: asJson(floorPlan.furnitures),
+            room3d: asJson(floorPlan.room3d),
+            extractionMeta: asJson(floorPlan.extractionMeta),
+            openings: asJson(floorPlan.openings),
+            fixtures: asJson(floorPlan.fixtures),
+            updatedAt: asDate(floorPlan.updatedAt)
           }
         });
       }

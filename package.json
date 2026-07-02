@@ -10,6 +10,7 @@
     "build:api": "pnpm --filter api build",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:test:push": "docker exec roomlog-postgres psql -U ${POSTGRES_USER:-roomlog} -d ${POSTGRES_TEST_DB:-roomlog_test} -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' && prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script | docker exec -i roomlog-postgres psql -U ${POSTGRES_USER:-roomlog} -d ${POSTGRES_TEST_DB:-roomlog_test} -v ON_ERROR_STOP=1",
     "db:migrate": "prisma migrate dev",
     "test:api": "pnpm --filter api test",
     "test:web": "pnpm --filter web test",

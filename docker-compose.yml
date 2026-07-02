@@ -19,7 +19,8 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: roomlog-api
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       PORT: ${PORT:-4000}
       DATABASE_URL: ${DATABASE_URL:-postgresql://roomlog:roomlog@postgres:5432/roomlog?schema=public}
@@ -33,20 +34,28 @@ services:
     volumes:
       - roomlog-api-data:/data
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18.3-alpine
     container_name: roomlog-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-roomlog}
       POSTGRES_USER: ${POSTGRES_USER:-roomlog}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-roomlog}
+      POSTGRES_TEST_DB: ${POSTGRES_TEST_DB:-roomlog_test}
     ports:
       - "5433:5432"
     volumes:
-      - roomlog-postgres-data:/var/lib/postgresql/data
+      - roomlog-postgres-data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   roomlog-api-data:

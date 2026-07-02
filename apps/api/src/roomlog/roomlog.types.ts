@@ -42,7 +42,8 @@ export type AttachmentCategory =
   | "ADDITIONAL_PHOTO"
   | "WORK_PHOTO"
   | "COMPLETION_PHOTO"
-  | "INTAKE_PHOTO";
+  | "INTAKE_PHOTO"
+  | "FLOOR_PLAN_SOURCE";
 
 export type UserAccount = {
   id: string;
@@ -309,6 +310,55 @@ export type Attachment = {
   createdAt: string;
 };
 
+export type FloorPlanStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+
+export type FloorPlanWallPoint = {
+  x: number;
+  y: number;
+};
+
+export type FloorPlanWall = {
+  id: string | number;
+  start: FloorPlanWallPoint;
+  end: FloorPlanWallPoint;
+};
+
+export type FloorPlanExtractionMeta = {
+  processingMs?: number;
+  detectedWallCount?: number;
+  removedNoiseCount?: number;
+  scaleCandidates?: unknown[];
+  scaleConfirmed?: boolean;
+  [key: string]: unknown;
+};
+
+export type FloorPlanCandidate = {
+  id: string;
+  type: string;
+  status: "CANDIDATE" | "CONFIRMED" | "REJECTED";
+  confidence?: number;
+  source?: string;
+  [key: string]: unknown;
+};
+
+export type FloorPlanDraft = {
+  id: string;
+  ownerId: string;
+  sourceAttachmentId?: string;
+  sourceImageUrl?: string;
+  status: FloorPlanStatus;
+  pixelToMmRatio: number;
+  walls: FloorPlanWall[];
+  hiddenWallIds: string[];
+  furnitures: unknown[];
+  room3d: Record<string, unknown>;
+  extractionMeta: FloorPlanExtractionMeta;
+  openings: FloorPlanCandidate[];
+  fixtures: FloorPlanCandidate[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type IntakeSessionStatus = "ACTIVE" | "FINALIZED" | "CANCELLED";
 export type IntakeInputMode = "CHAT" | "VOICE" | "PHOTO";
 export type IntakeMessageSender = "TENANT" | "AI_ASSISTANT" | "SYSTEM";
@@ -542,6 +592,20 @@ export type SaveAttachmentInput = {
   originalName: string;
   mimeType: string;
   category: AttachmentCategory;
+};
+
+export type SaveFloorPlanDraftInput = {
+  sourceAttachmentId?: string;
+  sourceImageUrl?: string;
+  status?: FloorPlanStatus;
+  pixelToMmRatio?: number;
+  walls?: FloorPlanWall[];
+  hiddenWallIds?: string[];
+  furnitures?: unknown[];
+  room3d?: Record<string, unknown>;
+  extractionMeta?: FloorPlanExtractionMeta;
+  openings?: FloorPlanCandidate[];
+  fixtures?: FloorPlanCandidate[];
 };
 
 export type FinalizeIntakeInput = {

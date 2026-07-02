@@ -7,9 +7,14 @@
     "test": "node --test -r ts-node/register src/**/*.spec.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
+    "crawl:furniture:url": "ts-node src/furniture-catalog/crawl-url.ts",
+    "import:furniture:csv": "ts-node src/furniture-catalog/import-csv.ts",
+    "sync:furniture:naver": "ts-node src/furniture-catalog/sync-naver-shopping.ts",
+    "sync:furniture": "ts-node src/furniture-catalog/sync-dummyjson.ts",
     "start:prod": "node dist/main"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1077.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/platform-express": "^11.1.27",
