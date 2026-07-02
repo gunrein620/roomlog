@@ -34,3 +34,12 @@ export type Route = (typeof ROUTES)[ScreenId];
 export function routeFor(id: ScreenId): Route {
   return ROUTES[id];
 }
+
+/**
+ * 하자 상세 흐름에서 현재 보고 있는 complaint id를 링크에 전파(?id=).
+ * 이걸로 목록→상세→하위상세 내내 같은 하자를 유지(복수 하자 시 목록↔상세 일치).
+ * id가 없으면(활성 흐름) 라우트를 그대로 반환.
+ */
+export function withId(route: string, id?: string): string {
+  return id ? `${route}?id=${encodeURIComponent(id)}` : route;
+}

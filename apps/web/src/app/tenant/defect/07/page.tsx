@@ -34,8 +34,13 @@ function formatDate(iso?: string) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export default async function Page() {
-  const [ticket, repair] = await Promise.all([getTicket(DEMO_TICKET_ID), getRepair(DEMO_TICKET_ID)]);
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const [ticket, repair] = await Promise.all([getTicket(id), getRepair(id)]);
 
   return (
     <>

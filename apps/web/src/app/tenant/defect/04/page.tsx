@@ -32,8 +32,13 @@ const sectionLabel = {
   marginBottom: 7,
 } as const;
 
-export default async function Page() {
-  const analysis = await getAnalysis(DEMO_TICKET_ID);
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const analysis = await getAnalysis(id);
   const problem = analysis.problemCandidates[0] ?? "하자 후보 미상";
 
   return (

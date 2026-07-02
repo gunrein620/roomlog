@@ -52,8 +52,13 @@ function formatVisitTime(iso?: string) {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours() < 12 ? "오전" : "오후"}`;
 }
 
-export default async function Page() {
-  const repair = await getRepair(DEMO_TICKET_ID);
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const repair = await getRepair(id);
   const currentIndex = STAGES.findIndex((s) => s.key === repair.stage);
   const completedIndex = STAGES.findIndex((s) => s.key === "completed");
   const reachedPayment = currentIndex >= completedIndex;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
-import { routeFor } from "@/lib/nav";
+import { routeFor, withId } from "@/lib/nav";
 import { DEMO_TICKET_ID, getRepair, getTicket } from "@/lib/api";
 
 // T-DEF-11 · 내 신고 현황(hub) — 접수·검토(티켓)와 수리 진행(수리) 섹션을 라벨로 분리해 한 화면에.
@@ -53,8 +53,13 @@ function formatVisit(iso?: string) {
   return `${d.getMonth() + 1}/${d.getDate()} 방문`;
 }
 
-export default async function Page() {
-  const [ticket, repair] = await Promise.all([getTicket(DEMO_TICKET_ID), getRepair(DEMO_TICKET_ID)]);
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const [ticket, repair] = await Promise.all([getTicket(id), getRepair(id)]);
   // 임차인책임 경로 여부 — repairJobId 존재 = 수리 트랙이 열려 있음(#3 데이터 분리 기준).
   const isTenantPath = Boolean(ticket.repairJobId);
 
@@ -109,7 +114,7 @@ export default async function Page() {
           </div>
           {!isTenantPath && (
             <Link
-              href={routeFor("T-DEF-09")}
+              href={withId(routeFor("T-DEF-09"), id)}
               style={{ ...secondaryLinkStyle, alignSelf: "flex-start", width: "auto", height: "auto", padding: "var(--space-sm) var(--space-md)" }}
             >
               처리 현황 자세히 ›
@@ -128,7 +133,7 @@ export default async function Page() {
                 {REPAIR_STAGE_LABEL[repair.stage]} · {repair.vendorName ?? "업체 미정"} · {formatVisit(repair.scheduledAt)}
               </div>
               <Link
-                href={routeFor("T-DEF-08")}
+                href={withId(routeFor("T-DEF-08"), id)}
                 style={{ ...secondaryLinkStyle, alignSelf: "flex-start", width: "auto", height: "auto", padding: "var(--space-sm) var(--space-md)" }}
               >
                 수리 진행 자세히 ›
@@ -163,7 +168,7 @@ export default async function Page() {
                 추가 정보 요청 항목이 있어요.
               </div>
               <Link
-                href={routeFor("T-DEF-02")}
+                href={withId(routeFor("T-DEF-02"), id)}
                 style={{ ...secondaryLinkStyle, alignSelf: "flex-start", width: "auto", height: "auto", padding: "var(--space-sm) var(--space-md)" }}
               >
                 추가 정보 제출

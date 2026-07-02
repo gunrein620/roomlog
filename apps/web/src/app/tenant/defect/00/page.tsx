@@ -212,7 +212,10 @@ export default async function Page() {
 function InProgressCard({ ticket }: { ticket: Ticket }) {
   const hasRepair = Boolean(ticket.repairJobId);
   return (
-    <Link href={ROUTES["T-DEF-11"]} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      href={`${ROUTES["T-DEF-11"]}?id=${ticket.id}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       <Card
         style={{
           display: "flex",

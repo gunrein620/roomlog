@@ -41,8 +41,13 @@ function formatDate(iso: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default async function Page() {
-  const ticket = await getTicket(DEMO_TICKET_ID);
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const ticket = await getTicket(id);
 
   return (
     <>

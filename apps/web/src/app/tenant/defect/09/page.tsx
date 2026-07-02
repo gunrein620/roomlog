@@ -48,8 +48,13 @@ const STATUSES: { key: TicketStatus; label: string }[] = [
   { key: "cancelled", label: "취소됨" },
 ];
 
-export default async function Page() {
-  const [ticket, analysis] = await Promise.all([getTicket(DEMO_TICKET_ID), getAnalysis(DEMO_TICKET_ID)]);
+export default async function Page({
+  searchParams
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const [ticket, analysis] = await Promise.all([getTicket(id), getAnalysis(id)]);
   const currentIndex = STATUSES.findIndex((s) => s.key === ticket.status);
 
   // 진입 사유 라벨 — Ticket에 별도 reason 필드가 없어 책임 가능성으로 근사한다.
