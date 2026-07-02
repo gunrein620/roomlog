@@ -443,6 +443,140 @@ function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
   );
 }
 
+function lineCoversStructuralSide(line, structuralBounds, side, tolerance = 10) {
+  const bounds = lineBounds(line);
+  if (side === "top") {
+    return (
+      lineOrientation(line) === "horizontal" &&
+      Math.abs(lineAxisPosition(line) - structuralBounds.minY) <= tolerance &&
+      overlapLength(bounds.minX, bounds.maxX, structuralBounds.minX, structuralBounds.maxX) >=
+        (structuralBounds.maxX - structuralBounds.minX) * 0.62
+    );
+  }
+  if (side === "bottom") {
+    return (
+      lineOrientation(line) === "horizontal" &&
+      Math.abs(lineAxisPosition(line) - structuralBounds.maxY) <= tolerance &&
+      overlapLength(bounds.minX, bounds.maxX, structuralBounds.minX, structuralBounds.maxX) >=
+        (structuralBounds.maxX - structuralBounds.minX) * 0.62
+    );
+  }
+  if (side === "left") {
+    return (
+      lineOrientation(line) === "vertical" &&
+      Math.abs(lineAxisPosition(line) - structuralBounds.minX) <= tolerance &&
+      overlapLength(bounds.minY, bounds.maxY, structuralBounds.minY, structuralBounds.maxY) >=
+        (structuralBounds.maxY - structuralBounds.minY) * 0.62
+    );
+  }
+
+  return (
+    lineOrientation(line) === "vertical" &&
+    Math.abs(lineAxisPosition(line) - structuralBounds.maxX) <= tolerance &&
+    overlapLength(bounds.minY, bounds.maxY, structuralBounds.minY, structuralBounds.maxY) >=
+      (structuralBounds.maxY - structuralBounds.minY) * 0.62
+  );
+}
+
+function wallFirstCompleteAndExtend(lines, structuralBounds, options = {}) {
+  if (!structuralBounds) return { adjustedCount: 0, walls: lines };
+
+  const snapDistance = options.wallFirstSnapDistance ?? Math.max(36, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.055));
+  let adjustedCount = 0;
+  const extendedWalls = lines.map((line) => {
+    const orientation = lineOrientation(line);
+    const bounds = lineBounds(line);
+    const nextLine = { ...line };
+
+    if (orientation === "horizontal") {
+      if (bounds.minX > structuralBounds.minX && bounds.minX - structuralBounds.minX <= snapDistance) {
+        nextLine.x1 = structuralBounds.minX;
+        adjustedCount += 1;
+      }
+      if (bounds.maxX < structuralBounds.maxX && structuralBounds.maxX - bounds.maxX <= snapDistance) {
+        nextLine.x2 = structuralBounds.maxX;
+        adjustedCount += 1;
+      }
+    } else {
+      if (bounds.minY > structuralBounds.minY && bounds.minY - structuralBounds.minY <= snapDistance) {
+        nextLine.y1 = structuralBounds.minY;
+        adjustedCount += 1;
+      }
+      if (bounds.maxY < structuralBounds.maxY && structuralBounds.maxY - bounds.maxY <= snapDistance) {
+        nextLine.y2 = structuralBounds.maxY;
+        adjustedCount += 1;
+      }
+    }
+
+    return nextLine;
+  });
+
+  const sideTolerance = options.wallFirstSideTolerance ?? Math.max(10, Math.round(snapDistance * 0.3));
+  const sides = {
+    bottom: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "bottom", sideTolerance)),
+    left: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "left", sideTolerance)),
+    right: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "right", sideTolerance)),
+    top: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "top", sideTolerance))
+  };
+  const presentSideCount = Object.values(sides).filter(Boolean).length;
+  const inferredWalls = [];
+  const inferredThickness = Math.max(4, Math.round(conservativeThicknessThreshold(extendedWalls, options)));
+
+  if (presentSideCount >= 3 && !sides.left) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "vertical",
+      thickness: inferredThickness,
+      x1: structuralBounds.minX,
+      x2: structuralBounds.minX,
+      y1: structuralBounds.minY,
+      y2: structuralBounds.maxY
+    });
+  }
+  if (presentSideCount >= 3 && !sides.right) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "vertical",
+      thickness: inferredThickness,
+      x1: structuralBounds.maxX,
+      x2: structuralBounds.maxX,
+      y1: structuralBounds.minY,
+      y2: structuralBounds.maxY
+    });
+  }
+  if (presentSideCount >= 3 && !sides.top) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "horizontal",
+      thickness: inferredThickness,
+      x1: structuralBounds.minX,
+      x2: structuralBounds.maxX,
+      y1: structuralBounds.minY,
+      y2: structuralBounds.minY
+    });
+  }
+  if (presentSideCount >= 3 && !sides.bottom) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "horizontal",
+      thickness: inferredThickness,
+      x1: structuralBounds.minX,
+      x2: structuralBounds.maxX,
+      y1: structuralBounds.maxY,
+      y2: structuralBounds.maxY
+    });
+  }
+
+  return {
+    adjustedCount: adjustedCount + inferredWalls.length,
+    walls: [...extendedWalls, ...inferredWalls]
+  };
+}
+
 export function filterCommercialWallCandidates(lines, options = {}) {
   const annotationCandidates = [];
   const dimensionCandidates = [];
@@ -562,18 +696,21 @@ export function filterCommercialWallCandidates(lines, options = {}) {
             options.wallFirstGapTolerance ??
             options.gapTolerance ??
             Math.max(40, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.06)),
-          maxLines: options.maxLines ?? 32
+          maxLines: options.maxLines ?? 40
         }
       : options
   );
-  const cleanedWalls = removeContainedDetectedWallFragments(mergedWalls, options);
-  removedNoiseCount += mergedWalls.length - cleanedWalls.length;
+  const wallFirstCompletion =
+    mode === "wall-first" ? wallFirstCompleteAndExtend(mergedWalls, structuralBounds, options) : { adjustedCount: 0, walls: mergedWalls };
+  const cleanedWalls = removeContainedDetectedWallFragments(wallFirstCompletion.walls, options);
+  removedNoiseCount += wallFirstCompletion.walls.length - cleanedWalls.length;
 
   return {
     annotationCandidates,
     dimensionCandidates,
     mainPlanBounds: structuralBounds,
     needsReview:
+      wallFirstCompletion.adjustedCount > 0 ||
       (mode === "conservative" && cleanedWalls.length === 0) ||
       cleanedWalls.length > 18 ||
       annotationCandidates.length > 8 ||

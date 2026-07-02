@@ -49,7 +49,7 @@ function lineLength(line: DetectedLine) {
   return Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
 }
 
-function limitLines(lines: DetectedLine[], maxLines = 24) {
+function limitLines(lines: DetectedLine[], maxLines = 40) {
   return [...lines].sort((a, b) => lineLength(b) - lineLength(a)).slice(0, maxLines);
 }
 
@@ -317,7 +317,7 @@ function fallbackExtract(imageData: ImageData) {
     return annotateFillSupport(mergeLines(bandLines), imageData);
   }
   const lines: DetectedLine[] = [];
-  const minRunLength = Math.max(32, Math.round(Math.min(width, height) * 0.08));
+  const minRunLength = Math.max(28, Math.round(Math.min(width, height) * 0.06));
 
   for (let y = 0; y < height; y += 1) {
     let start: number | null = null;

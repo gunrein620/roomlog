@@ -1015,6 +1015,8 @@ test("uses OCR only for scale candidate extraction and keeps manual scale fallba
 
 test("uses wall-first uploaded floor plan extraction without starter wall fallback", () => {
   assert.match(floorPlanEditorSource, /mode:\s*"wall-first"/);
+  assert.match(floorPlanEditorSource, /maxLines:\s*40/);
+  assert.match(floorPlanEditorSource, /\*\s*0\.06/);
   assert.doesNotMatch(floorPlanEditorSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
   assert.match(floorPlanEditorSource, /직접 그려주세요/);
 });
@@ -1497,6 +1499,24 @@ test("floor plan editor model wall-first mode reconnects dark wall runs", async 
   assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320), true);
   assert.equal(result.dimensionCandidates.length, 1);
   assert.equal(result.removedNoiseCount, 2);
+});
+
+test("floor plan editor model wall-first mode infers missing outer edges and extends near walls", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 120, y1: 520, x2: 620, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 320, y1: 168, x2: 320, y2: 493, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 120 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.needsReview, true);
 });
 
 test("floor plan editor model estimates scale from outside dimensions", async () => {

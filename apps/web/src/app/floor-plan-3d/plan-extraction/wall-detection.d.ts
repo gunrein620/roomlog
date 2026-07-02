@@ -66,6 +66,8 @@ export function filterCommercialWallCandidates(
     mode?: "balanced" | "conservative" | "wall-first";
     minConservativeWallThickness?: number;
     wallFirstGapTolerance?: number;
+    wallFirstSideTolerance?: number;
+    wallFirstSnapDistance?: number;
   }
 ): {
   walls: DetectedLine[];
