@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "web",
-      "runtimeExecutable": "./node_modules/.bin/next",
-      "runtimeArgs": ["dev", "-p", "3005"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "set -a; [ -f ../../.env ] && . ../../.env; set +a; exec ./node_modules/.bin/next dev -p 3005"],
       "cwd": "apps/web",
       "port": 3005,
       "autoPort": false

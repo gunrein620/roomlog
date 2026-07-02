@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Script from "next/script";
-import loginHeroImage from "../../../../assets/img/image.png";
 import {
   ArrowLeft,
   Banknote,
@@ -29,9 +28,17 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import {
+  formatManwon,
+  getMarketSummary,
+  propertyTypeForRoom,
+  regionForLocation,
+  type MarketSummary
+} from "../lib/api";
 
 type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
+type AuthMode = "login" | "signup" | "broker";
 type MapResultTab = "rooms" | "complexes" | "agents";
 
 type NaverLatLng = unknown;
@@ -80,9 +87,7 @@ declare global {
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
 const socialProviders = [
-  { label: "카카오로 계속하기", className: "kakao", mark: "K" },
   { label: "네이버로 계속하기", className: "naver", mark: "N" },
-  { label: "Apple로 계속하기", className: "apple", mark: "A" },
   { label: "Google로 계속하기", className: "google", mark: "G" }
 ];
 
@@ -560,12 +565,27 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
   return (
     <main className="app-canvas">
       <section className="login-phone" aria-label="집우집주 로그인">
-        <div className="login-visual" aria-hidden="true">
-          <Image className="login-hero-image" src={loginHeroImage} alt="" priority />
+        <div className="login-brandmark">
+          <div className="brand-mark-icon">
+            <div className="brand-orbit">
+              <span className="brand-star">
+                <svg viewBox="0 0 24 24"><path d="M12 0c1.1 6.2 4.8 9.9 12 12-7.2 2.1-10.9 5.8-12 12-1.1-6.2-4.8-9.9-12-12 7.2-2.1 10.9-5.8 12-12Z" /></svg>
+              </span>
+            </div>
+            <svg className="brand-roof" viewBox="0 0 140 68" fill="none">
+              <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+              <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+            </svg>
+          </div>
+          <div className="brand-word">우주</div>
+          <p className="brand-tagline">방 보러 가기 전에, 3D로 먼저 둘러보기</p>
         </div>
 
         <div className="login-panel">
-          <p className="brand-kicker">집우집주</p>
+          <p className="brand-kicker">우주 · WOOZU</p>
           <h1>방 보러 가기 전에 먼저 걸어보세요</h1>
           <p>
             지도에서 조건에 맞는 방을 찾고, 방문 전 3D 투어와 안심 정보를 먼저 확인하세요.
@@ -1057,10 +1077,40 @@ function ListingDetailView({
   const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
   const [inquiryMemo, setInquiryMemo] = useState("실매물 여부와 방문 가능한 시간을 확인하고 싶습니다.");
   const [inquirySent, setInquirySent] = useState(false);
+  const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const safetyScore = listing.score.replace("안심 ", "");
+
+  // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
+  // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
+  useEffect(() => {
+    const controller = new AbortController();
+    const region = regionForLocation(listing.location);
+    getMarketSummary(
+      { lawdCd: region.lawdCd, propertyType: propertyTypeForRoom(listing.roomType), months: 3 },
+      controller.signal
+    ).then((summary) => {
+      if (summary && summary.count > 0) {
+        setMarketSummary(summary);
+      }
+    });
+    return () => controller.abort();
+  }, [listing.location, listing.roomType]);
+
+  const marketRecent = marketSummary?.recent[0];
+  const complexRecentLabel = marketRecent
+    ? marketRecent.tradeType === "월세"
+      ? `${formatManwon(marketRecent.depositManwon)}/${marketRecent.monthlyRentManwon}만`
+      : formatManwon(marketRecent.depositManwon)
+    : listing.complexPrice;
+  const complexAvgLabel =
+    marketSummary && marketSummary.count > 0
+      ? formatManwon(marketSummary.avgJeonseDepositManwon || marketSummary.avgDepositManwon)
+      : listing.unitCount;
+  const complexMonthlyAvgLabel =
+    marketSummary && marketSummary.monthlyCount > 0 ? `${marketSummary.avgMonthlyRentManwon}만` : "76만";
 
   const copyListingNo = async () => {
     const text = listing.listingLabel;
@@ -1333,8 +1383,8 @@ function ListingDetailView({
           <strong>전화</strong>
         </button>
         <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
-          <span>3D 투어</span>
-          <strong>예약하기</strong>
+          <span>3D</span>
+          <strong>둘러보기</strong>
         </button>
         <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
           <strong>문자로 문의하기</strong>
@@ -1438,17 +1488,23 @@ function ListingDetailView({
             <div className="complex-price-summary">
               <article>
                 <span>최근 실거래</span>
-                <strong>{listing.complexPrice}</strong>
+                <strong>{complexRecentLabel}</strong>
               </article>
               <article>
                 <span>동일 면적 평균</span>
-                <strong>{listing.unitCount}</strong>
+                <strong>{complexAvgLabel}</strong>
               </article>
               <article>
                 <span>월세 평균</span>
-                <strong>76만</strong>
+                <strong>{complexMonthlyAvgLabel}</strong>
               </article>
             </div>
+
+            {marketSummary && marketSummary.count > 0 ? (
+              <p className="complex-source-note">
+                국토교통부 실거래가 {marketSummary.count}건 기준 · 최근 3개월
+              </p>
+            ) : null}
 
             <section className="complex-building-card" aria-label="단지 건물 요약">
               <div>
@@ -2374,7 +2430,8 @@ function PwaInstallCard() {
 }
 
 export default function Home() {
-  const [activeRole, setActiveRole] = useState<AppRole | null>(null);
+  const [activeRole, setActiveRole] = useState<AppRole>("seeker");
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [selectedArea, setSelectedArea] = useState("서초구 방배동");
@@ -2390,7 +2447,7 @@ export default function Home() {
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
   const [isNotificationSheetOpen, setIsNotificationSheetOpen] = useState(false);
-  const activeRoleLabel = activeRole ? roleDisplayLabels[activeRole] : "";
+  const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const visibleHomeListings = listings.filter((listing) => {
@@ -2471,11 +2528,19 @@ export default function Home() {
   };
 
   const activateTab = (tab: AppTab) => {
+    setAuthMode(null);
     setActiveTab(tab);
     resetWindowScrollSoon();
   };
 
+  const openAuthScreen = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setSelectedListing(null);
+    resetWindowScrollSoon();
+  };
+
   const startRoleSession = (role: AppRole) => {
+    setAuthMode(null);
     setActiveRole(role);
     setActiveTab(role === "seeker" ? "home" : "mypage");
     resetWindowScrollSoon();
@@ -2516,10 +2581,10 @@ export default function Home() {
   }, [selectedListing]);
 
   useEffect(() => {
-    if (activeRole && !selectedListing) {
+    if (activeRole && !selectedListing && !authMode) {
       resetWindowScrollSoon();
     }
-  }, [activeRole, activeTab, selectedListing]);
+  }, [activeRole, activeTab, selectedListing, authMode]);
 
   useEffect(() => {
     if (selectedListing) {
@@ -2527,7 +2592,7 @@ export default function Home() {
     }
   }, [selectedListing]);
 
-  if (!activeRole) {
+  if (authMode) {
     return <LoginScreen setActiveRole={startRoleSession} />;
   }
 
@@ -2549,6 +2614,24 @@ export default function Home() {
   return (
     <main className="app-canvas">
       <div className="service-frame with-bottom-tabs" aria-label="집우집주 부동산 앱">
+        <header className="web-topbar" aria-label="웹 상단 메뉴">
+          <div className="web-topbar-inner">
+            <button className="web-logo" type="button" onClick={() => activateTab("home")}>
+              집우집주<span>WOOZU</span>
+            </button>
+            <nav className="web-nav" aria-label="주요 메뉴">
+              <button type="button" onClick={() => activateTab("map")}>지도</button>
+              <button type="button" onClick={() => activateTab("map")}>분양</button>
+              <button type="button" onClick={() => activateTab("saved")}>관심목록</button>
+              <button type="button" onClick={() => activateTab("mypage")}>우리집</button>
+            </nav>
+            <div className="web-topbar-actions">
+              <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
+              <button className="web-signup" type="button" onClick={() => openAuthScreen("signup")}>회원가입</button>
+              <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
+            </div>
+          </div>
+        </header>
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
           <header className="app-header">
@@ -2562,6 +2645,11 @@ export default function Home() {
               <Bell size={19} strokeWidth={2.4} aria-hidden="true" />
             </button>
           </header>
+
+          <div className="web-hero-head" aria-hidden="true">
+            <h1>방 구할 땐, 집우집주</h1>
+            <p>전월세부터 매매까지 · 방문 전 3D로 먼저 둘러보기</p>
+          </div>
 
           <label className="search-box">
             <Search size={20} strokeWidth={2.4} aria-hidden="true" />
