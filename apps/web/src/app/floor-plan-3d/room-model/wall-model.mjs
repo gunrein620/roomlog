@@ -1,9 +1,18 @@
-export const GRID_SIZE = 24;
-export const DEFAULT_WALL_HEIGHT = 96;
-export const DEFAULT_WALL_DEPTH = 8;
-export const DEFAULT_PIXEL_TO_METER_RATIO = 1 / 48;
-export const WHERETOPUT_WALL_HEIGHT = 2.5;
-export const WHERETOPUT_WALL_DEPTH = 0.15;
+import {
+  DEFAULT_PIXEL_TO_METER_RATIO,
+  DEFAULT_WALL_DEPTH_PX,
+  DEFAULT_WALL_HEIGHT_PX,
+  GRID_SIZE_PX,
+  WHERETOPUT_WALL_DEPTH_M,
+  WHERETOPUT_WALL_HEIGHT_M
+} from "./units.ts";
+
+export const GRID_SIZE = GRID_SIZE_PX;
+export const DEFAULT_WALL_HEIGHT = DEFAULT_WALL_HEIGHT_PX;
+export const DEFAULT_WALL_DEPTH = DEFAULT_WALL_DEPTH_PX;
+export { DEFAULT_PIXEL_TO_METER_RATIO };
+export const WHERETOPUT_WALL_HEIGHT = WHERETOPUT_WALL_HEIGHT_M;
+export const WHERETOPUT_WALL_DEPTH = WHERETOPUT_WALL_DEPTH_M;
 
 export function snapToGrid(point, gridSize = GRID_SIZE) {
   return {
@@ -90,7 +99,7 @@ export function summarizeWalls(walls) {
 
   return {
     wallCount: walls.length,
-    approximateMeters: Math.round((totalLength / GRID_SIZE) * 0.5 * 10) / 10,
+    approximateMeters: Math.round(totalLength * DEFAULT_PIXEL_TO_METER_RATIO * 10) / 10,
     status: walls.length > 0 ? "편집중" : "초안"
   };
 }

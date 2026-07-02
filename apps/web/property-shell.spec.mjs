@@ -985,13 +985,18 @@ test("saves floor plan drafts through the API while keeping a local fallback", (
 test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {
   const model = floorPlanModel;
   const wall = model.createWall({ x: 0, y: 0 }, { x: 130, y: 40 }, "w1");
+  const units = await import("./src/app/floor-plan-3d/room-model/units.ts");
 
   assert.deepEqual(wall, {
     id: "w1",
     start: { x: 0, y: 0 },
-    end: { x: 120, y: 0 }
+    end: { x: 125, y: 0 }
   });
 
+  assert.equal(model.GRID_SIZE, 25);
+  assert.equal(units.GRID_SIZE_PX, 25);
+  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 20);
+  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.02);
   assert.equal(model.findNearestWall([wall], { x: 48, y: 5 }, 18)?.id, "w1");
   assert.deepEqual(model.removeWall([wall], "w1"), []);
   assert.deepEqual(model.summarizeWalls([wall]), {
@@ -999,6 +1004,7 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
     approximateMeters: 2.5,
     status: "편집중"
   });
+  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 2.4);
 });
 
 test("floor plan editor model converts 2D walls into wheretoput-style 3D wall boxes", async () => {
@@ -1030,9 +1036,9 @@ test("floor plan editor model creates wheretoput simulator wall data", async () 
   assert.equal(converted.length, 1);
   assert.equal(converted[0].id, "front");
   assert.equal(converted[0].wall_id, "front");
-  assert.deepEqual(converted[0].position, [1.2, 1.25, 0]);
+  assert.deepEqual(converted[0].position, [1.25, 1.25, 0]);
   assert.deepEqual(converted[0].rotation, [0, 0, 0]);
-  assert.deepEqual(converted[0].dimensions, { width: 2.4, height: 2.5, depth: 0.15 });
+  assert.deepEqual(converted[0].dimensions, { width: 2.5, height: 2.5, depth: 0.15 });
 });
 
 test("floor plan editor model creates centered wheretoput room 3D wall data", async () => {

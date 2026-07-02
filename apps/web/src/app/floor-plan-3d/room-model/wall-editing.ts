@@ -2,9 +2,10 @@
 
 import { createStarterWalls } from "./wall-model.mjs";
 import type { Point, Wall } from "./types";
+import { DEFAULT_PIXEL_TO_MM_RATIO as MODEL_PIXEL_TO_MM_RATIO, GRID_SIZE_PX as MODEL_GRID_SIZE_PX } from "./units";
 
-export const GRID_SIZE_PX = 25;
-export const DEFAULT_PIXEL_TO_MM_RATIO = 20;
+export const GRID_SIZE_PX = MODEL_GRID_SIZE_PX;
+export const DEFAULT_PIXEL_TO_MM_RATIO = MODEL_PIXEL_TO_MM_RATIO;
 
 export function calculateDistance(p1: Point, p2: Point, pixelToMmRatio: number) {
   return Math.round(Math.hypot(p2.x - p1.x, p2.y - p1.y) * pixelToMmRatio);
