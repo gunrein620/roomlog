@@ -656,15 +656,26 @@ test("keeps the bottom app tabs fixed to the viewport", () => {
   assert.match(cssSource, /\.map-card-tags/);
 });
 
-test("supports a responsive desktop web layout beyond the phone frame", () => {
+test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /@media \(min-width:\s*1080px\)/);
-  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*min\(calc\(100vw - 48px\), 1180px\)/s);
-  assert.match(cssSource, /\.home-screen\s*{[^}]*grid-template-columns:\s*minmax\(340px, 0\.86fr\) minmax\(500px, 1\.14fr\)/s);
+  // 데스크톱은 전체폭 포털 셸(모바일 카드 프레임 제거)
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*block/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*100%/s);
+  // 상단 가로 네비 + 히어로는 기본(모바일) 숨김, 데스크톱에서 노출
+  assert.match(cssSource, /\.web-topbar,\s*\.web-hero-head\s*{[^}]*display:\s*none/s);
+  assert.match(cssSource, /\.web-topbar\s*{[^}]*position:\s*sticky/s);
+  assert.match(cssSource, /\.web-hero-head\s*{[^}]*display:\s*block/s);
+  assert.match(pageSource, /web-topbar/);
+  assert.match(pageSource, /web-hero-head/);
+  assert.match(pageSource, /방 구할 땐, 집우집주/);
+  // 카테고리 = 큰 카드 한 줄, 매물 = 넓은 3열 그리드
+  assert.match(cssSource, /\.home-screen > \.category-strip\s*{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/s);
+  assert.match(cssSource, /\.home-screen > \.listing-feed\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
+  // 지도/상세 데스크톱 그리드는 유지
   assert.match(cssSource, /\.map-screen\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 390px/s);
   assert.match(cssSource, /\.listing-detail-screen\s*{[^}]*grid-template-columns:\s*minmax\(460px, 1fr\) 360px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*width:\s*min\(540px, calc\(100vw - 48px\)\)/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*border-radius:\s*999px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*backdrop-filter:\s*blur\(18px\)/s);
+  // 데스크톱에서는 하단 탭 숨김(상단 네비가 대체)
+  assert.match(cssSource, /@media \(min-width:\s*1080px\)[\s\S]*\.bottom-tabs\s*{\s*display:\s*none/);
 });
 
 test("is configured as an installable PWA shell", () => {

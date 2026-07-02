@@ -2592,6 +2592,24 @@ export default function Home() {
   return (
     <main className="app-canvas">
       <div className="service-frame with-bottom-tabs" aria-label="집우집주 부동산 앱">
+        <header className="web-topbar" aria-label="웹 상단 메뉴">
+          <div className="web-topbar-inner">
+            <button className="web-logo" type="button" onClick={() => activateTab("home")}>
+              집우집주<span>WOOZU</span>
+            </button>
+            <nav className="web-nav" aria-label="주요 메뉴">
+              <button type="button" onClick={() => activateTab("map")}>지도</button>
+              <button type="button" onClick={() => activateTab("map")}>분양</button>
+              <button type="button" onClick={() => activateTab("saved")}>관심목록</button>
+              <button type="button" onClick={() => activateTab("mypage")}>우리집</button>
+            </nav>
+            <div className="web-topbar-actions">
+              <button className="web-login" type="button" onClick={() => activateTab("mypage")}>로그인</button>
+              <button className="web-signup" type="button" onClick={() => activateTab("mypage")}>회원가입</button>
+              <button className="web-cta" type="button" onClick={() => activateTab("mypage")}>중개사 가입</button>
+            </div>
+          </div>
+        </header>
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
           <header className="app-header">
@@ -2605,6 +2623,11 @@ export default function Home() {
               <Bell size={19} strokeWidth={2.4} aria-hidden="true" />
             </button>
           </header>
+
+          <div className="web-hero-head" aria-hidden="true">
+            <h1>방 구할 땐, 집우집주</h1>
+            <p>전월세부터 매매까지 · 방문 전 3D로 먼저 둘러보기</p>
+          </div>
 
           <label className="search-box">
             <Search size={20} strokeWidth={2.4} aria-hidden="true" />

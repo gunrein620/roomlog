@@ -6729,19 +6729,27 @@ p {
   }
 }
 
+.web-topbar,
+.web-hero-head {
+  display: none;
+}
+
 @media (min-width: 1080px) {
   .app-canvas {
-    padding: 24px;
+    padding: 0;
+    background: #f3f4f7;
   }
 
+  /* 데스크톱 = 다방식 전체폭 포털 (모바일 카드 프레임 제거) */
   .service-frame.with-bottom-tabs {
-    display: grid;
-    grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.1fr);
-    align-items: start;
-    width: min(calc(100vw - 48px), 1180px);
-    min-height: calc(100vh - 48px);
+    display: block;
+    width: 100%;
+    min-height: 100vh;
     padding-bottom: 0;
-    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: #f3f4f7;
+    overflow: visible;
   }
 
   .service-frame:not(.with-bottom-tabs) {
@@ -6753,26 +6761,112 @@ p {
     overflow: visible;
   }
 
+  /* 상단 가로 네비게이션 */
+  .web-topbar {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 55;
+    background: #ffffff;
+    border-bottom: 1px solid #ecedf2;
+  }
+
+  .web-topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    width: min(100% - 64px, 1200px);
+    height: 68px;
+    margin: 0 auto;
+  }
+
+  .web-logo {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 0;
+    background: none;
+    color: var(--blue);
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+  }
+
+  .web-logo span {
+    color: #aab0bd;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+  }
+
+  .web-nav {
+    display: flex;
+    gap: 2px;
+  }
+
+  .web-nav button {
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: none;
+    color: #3d4351;
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  .web-nav button:hover {
+    background: #f2f4f8;
+    color: var(--blue);
+  }
+
+  .web-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  .web-topbar-actions .web-login {
+    padding: 9px 6px;
+    background: none;
+    color: #5b6270;
+    font-weight: 800;
+  }
+
+  .web-topbar-actions .web-signup {
+    padding: 9px 16px;
+    border-radius: 10px;
+    background: #eef1fb;
+    color: var(--blue);
+    font-weight: 800;
+  }
+
+  .web-topbar-actions .web-cta {
+    padding: 9px 16px;
+    border-radius: 10px;
+    background: var(--blue);
+    color: #ffffff;
+    font-weight: 800;
+  }
+
   .screen {
     padding: 24px 28px 104px;
   }
 
+  /* 홈: 다방식 세로 포털 흐름 */
   .home-screen {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(340px, 0.86fr) minmax(500px, 1.14fr);
-    gap: 16px 24px;
-    align-items: start;
-    max-height: calc(100vh - 48px);
-    overflow-y: auto;
+    display: block;
+    width: 100%;
+    max-height: none;
+    padding: 0 0 88px;
+    overflow: visible;
+    background: transparent;
     border-bottom: 0;
   }
 
+  /* 비-시세/부가 섹션은 데스크톱 홈에서 숨겨 다방식으로 정돈 */
   .home-screen > .app-header,
-  .home-screen > .search-box,
-  .home-screen > .category-strip,
-  .home-screen > .quick-filter-row,
   .home-screen > .filter-feedback,
+  .home-screen > .home-web-summary-card,
   .home-screen > .condition-summary-card,
   .home-screen > .ai-broker-card,
   .home-screen > .saved-condition-panel,
@@ -6783,25 +6877,137 @@ p {
   .home-screen > .neighborhood-strip,
   .home-screen > .resident-check-card,
   .home-screen > .neighborhood-rank-card {
-    grid-column: 1;
+    display: none;
+  }
+
+  /* 히어로 */
+  .web-hero-head {
+    display: block;
+    padding: 56px 24px 0;
+    text-align: center;
+  }
+
+  .web-hero-head h1 {
+    font-size: 2.3rem;
+    line-height: 1.14;
+    letter-spacing: -0.02em;
+  }
+
+  .web-hero-head p {
+    margin-top: 12px;
+    color: #6b7280;
+    font-size: 1.02rem;
+    font-weight: 700;
+  }
+
+  .home-screen > .search-box {
+    width: min(100% - 48px, 720px);
+    height: 62px;
+    margin: 24px auto 0;
+    border-radius: 16px;
+    box-shadow: 0 14px 30px rgba(18, 24, 40, 0.1);
+  }
+
+  /* 카테고리 = 큰 카드 한 줄 */
+  .home-screen > .category-strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 14px;
+    width: min(100% - 48px, 1180px);
+    margin: 36px auto 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .home-screen > .category-strip .category-card {
+    justify-items: start;
+    align-content: space-between;
+    gap: 14px;
+    min-width: 0;
+    min-height: 128px;
+    padding: 18px 15px;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(18, 24, 40, 0.05);
+    transition: transform 0.14s ease, box-shadow 0.14s ease;
+  }
+
+  .home-screen > .category-strip .category-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 30px rgba(18, 24, 40, 0.12);
+  }
+
+  .home-screen > .category-strip .category-card i {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+  }
+
+  .home-screen > .category-strip .category-card i svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .home-screen > .category-strip .category-card span {
+    font-size: 1.02rem;
+  }
+
+  .home-screen > .category-strip .category-card strong {
+    font-size: 0.82rem;
+  }
+
+  .home-screen > .category-strip .category-card.active {
+    border: 1.5px solid var(--blue);
+    color: var(--blue);
+    box-shadow: 0 12px 26px rgba(47, 85, 255, 0.16);
+  }
+
+  .home-screen > .category-strip .category-card.active strong {
+    color: var(--blue);
+  }
+
+  .home-screen > .category-strip .category-card.active i {
+    background: var(--blue);
+    color: #ffffff;
+  }
+
+  .home-screen > .quick-filter-row {
+    width: min(100% - 48px, 1180px);
+    margin: 20px auto 0;
+    padding: 0;
+    justify-content: center;
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   .home-screen > .section-title {
-    grid-column: 2;
-    grid-row: 1;
-    margin-top: 0;
+    width: min(100% - 48px, 1180px);
+    margin: 48px auto 0;
   }
 
+  /* 매물 = 넓은 3열 그리드 */
   .home-screen > .listing-feed {
-    grid-column: 2;
-    grid-row: 2 / span 10;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-content: start;
-    margin-top: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    width: min(100% - 48px, 1180px);
+    margin: 20px auto 0;
   }
 
   .listing-photo img {
-    height: 184px;
+    height: 190px;
+  }
+
+  /* 홈 외 화면은 중앙 정렬 */
+  .map-screen,
+  .saved-screen,
+  .inquiry-screen,
+  .owner-screen,
+  .tenant-screen,
+  .profile-screen {
+    width: min(100% - 48px, 1180px);
+    margin-right: auto;
+    margin-left: auto;
   }
 
   .map-screen {
@@ -6986,17 +7192,7 @@ p {
   }
 
   .bottom-tabs {
-    bottom: 24px;
-    width: min(540px, calc(100vw - 48px));
-    border: 1px solid rgba(18, 24, 40, 0.1);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.94);
-    backdrop-filter: blur(18px);
-  }
-
-  .bottom-tabs a {
-    min-height: 56px;
-    font-size: 0.68rem;
+    display: none;
   }
 
   .filter-sheet,
