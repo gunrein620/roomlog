@@ -27,6 +27,11 @@ import {
   isLockedFurnitureForResident,
   normalizeCatalogItem
 } from "./room-model/furniture-model";
+import {
+  buildFloorPlanDraftPayload,
+  buildFloorPlanLocalSnapshot,
+  buildResidentDesignPayload
+} from "./room-model/room-payload";
 import type {
   ExperienceMode,
   FurnitureCatalogItem,
@@ -884,28 +889,21 @@ export default function RoomlogFloorPlanEditor() {
 
   async function saveFloorPlanDraft(nextStatus: "DRAFT" | "PUBLISHED" = "DRAFT") {
     const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
-    const room3d = {
-      fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
-      furnitures: landlordOptionFurnitures,
+    const payload = buildFloorPlanDraftPayload({
+      extractionMeta,
+      fixtureCandidates,
       hiddenWallCount,
-      openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
-      walls: roomWalls3D,
-      wallCount: roomWalls3D.length
-    };
-    const nextExtractionMeta = { ...extractionMeta, scaleConfirmed: isScaleSet };
-    const payload = {
-      extractionMeta: nextExtractionMeta,
-      fixtures: fixtureCandidates,
-      furnitures: landlordOptionFurnitures,
       hiddenWallIds: Array.from(hiddenWallIds),
-      openings: openingCandidates,
+      landlordFurnitures: landlordOptionFurnitures,
+      openingCandidates,
       pixelToMmRatio,
-      room3d,
-      sourceAttachmentId: uploadedFloorPlanSource?.attachmentId,
-      sourceImageUrl: uploadedFloorPlanSource?.imageUrl ?? uploadedImage ?? undefined,
+      scaleConfirmed: isScaleSet,
       status: nextStatus,
-      walls
-    };
+      uploadedFloorPlanSource,
+      uploadedImage,
+      walls,
+      walls3D: roomWalls3D
+    });
 
     try {
       if (nextStatus === "PUBLISHED" && (!isScaleSet || roomWalls3D.length === 0 || walls.length === 0)) {
@@ -940,41 +938,35 @@ export default function RoomlogFloorPlanEditor() {
     setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
     window.localStorage.setItem(
       "floorPlanData",
-      JSON.stringify({
+      JSON.stringify(buildFloorPlanLocalSnapshot({
         extractionMeta,
-        fixtures: fixtureCandidates,
-        furnitures: landlordOptionFurnitures,
+        fixtureCandidates,
         hiddenWallIds: Array.from(hiddenWallIds),
-        openings: openingCandidates,
+        landlordFurnitures: landlordOptionFurnitures,
+        openingCandidates,
         pixelToMmRatio,
-        room3d: {
-          fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
-          furnitures: landlordOptionFurnitures,
-          openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
-          walls: roomWalls3D
-        },
         timestamp: Date.now(),
-        walls
-      })
+        walls,
+        walls3D: roomWalls3D
+      }))
     );
   }
 
   function saveResidentFurnitureDesign() {
     const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
     const residentDesignFurnitures = placedFurnitures.filter((furniture) => !isLandlordOptionFurniture(furniture));
-    const payload = {
-      fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
-      furnitures: residentDesignFurnitures,
+    const payload = buildResidentDesignPayload({
+      fixtureCandidates,
+      floorPlanDraftId,
       hiddenWallIds: Array.from(hiddenWallIds),
-      lockedFurnitures: landlordOptionFurnitures,
-      mode: "resident",
-      openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+      landlordOptionFurnitures,
+      openingCandidates,
       pixelToMmRatio,
-      room3d: { walls: roomWalls3D },
+      residentDesignFurnitures,
       savedAt: Date.now(),
-      sourceFloorPlanDraftId: floorPlanDraftId,
-      walls
-    };
+      walls,
+      walls3D: roomWalls3D
+    });
     window.localStorage.setItem("residentFloorPlanDesign", JSON.stringify(payload));
     setUploadStatus("임차인/일반사용자 배치 저장 완료");
   }

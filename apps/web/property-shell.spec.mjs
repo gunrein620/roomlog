@@ -6,6 +6,7 @@ const pageSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), 
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
 const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
+const floorPlanContainerSource = existsSync(floorPlanEditorPath) ? readFileSync(floorPlanEditorPath, "utf8") : "";
 // floor-plan-3d는 plan-extraction / room-model / room-scene 폴더로 분할되어 있어서
 // 편집기 기능 검증은 폴더 아래 모든 소스 파일을 합친 코퍼스를 대상으로 한다.
 const floorPlanDirUrl = new URL("./src/app/floor-plan-3d/", import.meta.url);
@@ -980,6 +981,20 @@ test("saves floor plan drafts through the API while keeping a local fallback", (
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
+});
+
+test("floor plan editor container wires room-model payload helpers", () => {
+  for (const label of [
+    "buildFloorPlanDraftPayload",
+    "buildFloorPlanLocalSnapshot",
+    "buildResidentDesignPayload"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+
+  assert.doesNotMatch(floorPlanContainerSource, /const room3d = \{/);
+  assert.doesNotMatch(floorPlanContainerSource, /const nextExtractionMeta = \{/);
+  assert.match(floorPlanContainerSource, /JSON\.stringify\(\{ \.\.\.payload, id: saved\.id, savedAt: Date\.now\(\) \}\)/);
 });
 
 test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {

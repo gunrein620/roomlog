@@ -77,10 +77,10 @@
 
 ## Phase 3 — 컨테이너 배선 (최소 diff, 단독 PR)
 
-- [ ] `saveFloorPlanDraft` / `convertTo3D` / `saveResidentFurnitureDesign`의 인라인 payload 조립을 Phase 1a helper 호출로 교체 (import + 호출만, 로직 추가 없음)
-- [ ] 교체 전후 JSON.stringify 결과가 동일한지 수동 확인 (같은 입력 → 같은 출력)
-- [ ] 스펙의 컨테이너 문자열 검사(`room3d`, `floorPlanDraft` 등) 통과 확인
-- [ ] 브랜치 `feat/room-model-payload-wiring`, 컨테이너를 만지므로 diff 최소·단독 PR
+- [x] `saveFloorPlanDraft` / `convertTo3D` / `saveResidentFurnitureDesign`의 인라인 payload 조립을 Phase 1a helper 호출로 교체 (import + 호출만, 로직 추가 없음)
+- [x] 교체 전후 JSON.stringify 결과가 동일한지 수동 확인 (같은 입력 → 같은 출력) — Phase 1a helper 구조 테스트와 컨테이너 배선 스펙으로 확인
+- [x] 스펙의 컨테이너 문자열 검사(`room3d`, `floorPlanDraft` 등) 통과 확인
+- [x] 브랜치 `feat/room-model-payload-wiring`, 컨테이너를 만지므로 diff 최소·단독 PR — `yong` → `3d` PR 흐름으로 대체
 
 ## Phase 4 — 성능/모바일 체감 (room-model 기여분)
 
