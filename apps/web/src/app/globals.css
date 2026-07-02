@@ -6895,10 +6895,9 @@ p {
   }
 
   .detail-gallery {
-    position: sticky;
-    top: 24px;
     grid-column: 1;
     grid-row: 3 / span 5;
+    align-self: start;
     height: min(680px, calc(100vh - 160px));
     min-height: 540px;
   }

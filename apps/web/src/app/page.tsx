@@ -1333,8 +1333,8 @@ function ListingDetailView({
           <strong>전화</strong>
         </button>
         <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
-          <span>3D 투어</span>
-          <strong>예약하기</strong>
+          <span>3D</span>
+          <strong>둘러보기</strong>
         </button>
         <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
           <strong>문자로 문의하기</strong>
