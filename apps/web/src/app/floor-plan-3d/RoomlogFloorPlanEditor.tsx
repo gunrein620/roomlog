@@ -1,365 +1,65 @@
 "use client";
 
-import { OrbitControls, useGLTF } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as THREE from "three";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  CandidateStatus,
+  DetectedWallResult,
+  ExtractionMeta,
+  FloorPlanCandidate,
+  UploadedFloorPlanSource
+} from "./plan-extraction/types";
 import {
-  createStarterWalls,
   createWallsFromDetectedLines,
-  convertWallsToWheretoputRoom3D,
-  convertWallsToWheretoputSimulator,
   detectFixtureCandidates,
   detectOpeningCandidates,
-  detectWallLinesFromImageData,
-  distanceToWall,
-  estimateScaleCandidateFromDimensions,
-  filterCommercialWallCandidates,
   moveCandidate,
-  snapToOrthogonal,
-  summarizeWalls,
   updateCandidateStatus
-} from "./floor-plan-editor-model.mjs";
+} from "./plan-extraction/wall-detection.mjs";
+import { loadImage, normalizeMainPlanBounds, OPENCV_URL, WallDetector } from "./plan-extraction/wall-detector";
+import {
+  createFurnitureModel,
+  createLandlordOptionFurniture,
+  createResidentDesignFurniture,
+  FURNITURE_CATALOG,
+  isFurnitureCatalogItem,
+  isLandlordOptionFurniture,
+  isLockedFurnitureForResident,
+  normalizeCatalogItem
+} from "./room-model/furniture-model";
+import type {
+  ExperienceMode,
+  FurnitureCatalogItem,
+  PlacedFurniture,
+  Point,
+  Wall,
+  WallSummary,
+  WheretoputWall3D
+} from "./room-model/types";
+import {
+  calculateDistance,
+  DEFAULT_PIXEL_TO_MM_RATIO,
+  getStarterWalls,
+  GRID_SIZE_PX,
+  projectPointOntoWall,
+  snapCanvasPoint,
+  splitWallByEraseArea,
+  splitWallByRatio
+} from "./room-model/wall-editing";
+import {
+  convertWallsToWheretoputRoom3D,
+  convertWallsToWheretoputSimulator,
+  distanceToWall,
+  snapToOrthogonal,
+  summarizeWalls
+} from "./room-model/wall-model.mjs";
+import { RoomlogThreeFloorPlanView } from "./room-scene/RoomlogThreeFloorPlanView";
 
 type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "opening" | "fixture" | "furniture" | "scale" | "none";
 type ViewMode = "2d" | "3d";
-type ExperienceMode = "landlord" | "resident";
-type Point = { x: number; y: number };
-type Wall = { id: string | number; start: Point; end: Point };
-type WallSummary = { wallCount: number; approximateMeters: number; status: "초안" | "편집중" };
-type CandidateStatus = "CANDIDATE" | "CONFIRMED" | "REJECTED";
-type FloorPlanCandidate = {
-  confidence?: number;
-  id: string;
-  label?: string;
-  movable?: boolean;
-  position: Point;
-  sizeMm?: { depth?: number; width?: number };
-  source: string;
-  status: CandidateStatus;
-  type: string;
-  widthMm?: number;
-};
-type ScaleCandidate = {
-  confidence: number;
-  pixelLength: number;
-  pixelToMmRatio: number;
-  realLengthMm: number;
-  source: string;
-};
-type ExtractionMeta = {
-  annotationCandidateCount?: number;
-  detectedWallCount: number;
-  dimensionCandidateCount?: number;
-  mainPlanBounds?: { height: number; width: number; x: number; y: number };
-  needsReview?: boolean;
-  ocrStatus: "ready" | "failed" | "manual-scale-required";
-  processingMs?: number;
-  removedNoiseCount: number;
-  scaleCandidates: ScaleCandidate[];
-  scaleConfirmed: boolean;
-};
-type DetectedLine = {
-  confidence?: number;
-  fillSupport?: number;
-  markers?: string[];
-  orientation?: "horizontal" | "vertical";
-  thickness?: number;
-  x1: number;
-  x2: number;
-  y1: number;
-  y2: number;
-};
-type DetectedWallResult = {
-  annotationCandidates?: Array<{ confidence: number; line: DetectedLine; source: string }>;
-  dimensionCandidates?: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
-  imageHeight: number;
-  imageUrl: string;
-  imageWidth: number;
-  lines: DetectedLine[];
-  mainPlanBounds?: { maxX: number; maxY: number; minX: number; minY: number } | null;
-  needsReview?: boolean;
-  removedNoiseCount?: number;
-  scaleCandidates?: ScaleCandidate[];
-  processingMs?: number;
-};
-type UploadedFloorPlanSource = { attachmentId?: string; imageUrl?: string };
-type FurnitureCatalogItem = {
-  brand: string;
-  color: string;
-  furniture_id: string;
-  imageUrls?: string[];
-  length: [number, number, number];
-  modelUrl?: string;
-  name: string;
-  price: number;
-  source?: string;
-  sourceUrl?: string;
-  thumbnailUrl?: string;
-};
-type PlacedFurniture = FurnitureCatalogItem & {
-  editableBy?: ["LANDLORD"];
-  furnitureId?: string;
-  id: string;
-  includedInLease?: boolean;
-  locked?: boolean;
-  position: [number, number, number];
-  rotation: [number, number, number];
-  scale: number;
-  sizeMm?: { depth: number; height?: number; width: number };
-  source?: "LANDLORD_OPTION" | "RESIDENT_DESIGN" | string;
-  visibleToTenant?: boolean;
-};
-type WheretoputWall3D = {
-  dimensions: { width: number; height: number; depth: number };
-  id: string;
-  material?: "wall";
-  original2D?: Wall;
-  position: [number, number, number];
-  rotation: [number, number, number];
-  wall_id: string | number;
-};
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
-const GRID_SIZE_PX = 25;
-const DEFAULT_PIXEL_TO_MM_RATIO = 20;
-const MAX_EXTRACTION_DIMENSION = 1600;
-const OPENCV_URL = "https://docs.opencv.org/4.10.0/opencv.js";
-const TESSERACT_OCR_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js";
-const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
-  {
-    brand: "Roomlog Basic",
-    color: "#8fb5ff",
-    furniture_id: "furniture-bed-queen",
-    length: [2000, 420, 1500],
-    modelUrl: "/furniture-models/bed-queen.glb",
-    name: "퀸 침대",
-    price: 390000
-  },
-  {
-    brand: "Wheretoput",
-    color: "#f3b36a",
-    furniture_id: "furniture-sofa-3",
-    length: [2100, 760, 880],
-    modelUrl: "/furniture-models/sofa-couch.glb",
-    name: "3인 소파",
-    price: 520000
-  },
-  {
-    brand: "Roomlog Studio",
-    color: "#9ed8b3",
-    furniture_id: "furniture-desk",
-    length: [1200, 740, 600],
-    modelUrl: "/furniture-models/table-moon.glb",
-    name: "책상",
-    price: 160000
-  },
-  {
-    brand: "Roomlog Studio",
-    color: "#d6b0ff",
-    furniture_id: "furniture-chair",
-    length: [520, 820, 520],
-    modelUrl: "/furniture-models/chair-kevi.glb",
-    name: "의자",
-    price: 69000
-  },
-  {
-    brand: "Roomlog Storage",
-    color: "#f1d17a",
-    furniture_id: "furniture-wardrobe",
-    length: [900, 1900, 580],
-    modelUrl: "/furniture-models/wardrobe-cabinet.glb",
-    name: "옷장",
-    price: 240000
-  }
-];
-
-function normalizeCatalogItem(item: FurnitureCatalogItem, index: number): FurnitureCatalogItem {
-  const fallback = FURNITURE_CATALOG[index % FURNITURE_CATALOG.length];
-  const [width, height, depth] = Array.isArray(item.length) ? item.length : fallback.length;
-
-  return {
-    brand: item.brand || fallback.brand,
-    color: item.color || fallback.color,
-    furniture_id: item.furniture_id || fallback.furniture_id,
-    imageUrls: item.imageUrls,
-    length: [
-      Number.isFinite(Number(width)) ? Number(width) : fallback.length[0],
-      Number.isFinite(Number(height)) ? Number(height) : fallback.length[1],
-      Number.isFinite(Number(depth)) ? Number(depth) : fallback.length[2]
-    ],
-    modelUrl: item.modelUrl || fallback.modelUrl,
-    name: item.name || fallback.name,
-    price: Number.isFinite(Number(item.price)) ? Number(item.price) : fallback.price,
-    source: item.source,
-    sourceUrl: item.sourceUrl,
-    thumbnailUrl: item.thumbnailUrl
-  };
-}
-
-class WallDetector {
-  constructor(private readonly worker: Worker | null = null) {}
-
-  async detectWalls(file: File) {
-    if (this.worker) {
-      try {
-        return await detectWallsWithWorker(this.worker, file);
-      } catch {
-        return fallbackCanvasWallExtraction(file);
-      }
-    }
-
-    return fallbackCanvasWallExtraction(file);
-  }
-}
-
-async function fallbackCanvasWallExtraction(file: File): Promise<DetectedWallResult> {
-    const imageUrl = URL.createObjectURL(file);
-    const image = await loadImage(imageUrl);
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-
-    if (!context) throw new Error("Canvas context is not available");
-
-    const { height, width } = scaledImageSize(image.naturalWidth || image.width, image.naturalHeight || image.height);
-    canvas.width = width;
-    canvas.height = height;
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-    const startedAt = performance.now();
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    const lines = detectWallLinesFromImageData(imageData, {
-      darkThreshold: 185,
-      maxLines: 24,
-      minRunLength: Math.max(32, Math.round(Math.min(canvas.width, canvas.height) * 0.08))
-    }) as DetectedLine[];
-    const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, width: canvas.width }) as {
-      annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;
-      dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
-      mainPlanBounds: DetectedWallResult["mainPlanBounds"];
-      needsReview: boolean;
-      removedNoiseCount: number;
-      walls: DetectedLine[];
-    };
-    const scaleCandidate = estimateScaleCandidateFromDimensions(commercialCandidates.dimensionCandidates) as ScaleCandidate | null;
-
-    return {
-      annotationCandidates: commercialCandidates.annotationCandidates,
-      dimensionCandidates: commercialCandidates.dimensionCandidates,
-      imageHeight: canvas.height,
-      imageUrl,
-      imageWidth: canvas.width,
-      lines: commercialCandidates.walls,
-      mainPlanBounds: commercialCandidates.mainPlanBounds,
-      needsReview: commercialCandidates.needsReview,
-      removedNoiseCount: commercialCandidates.removedNoiseCount,
-      scaleCandidates: scaleCandidate ? [scaleCandidate] : [],
-      processingMs: Math.round(performance.now() - startedAt)
-    };
-}
-
-function scaledImageSize(width: number, height: number) {
-  const longSide = Math.max(width, height);
-  if (longSide <= MAX_EXTRACTION_DIMENSION) return { height, width };
-
-  const scale = MAX_EXTRACTION_DIMENSION / longSide;
-  return {
-    height: Math.max(1, Math.round(height * scale)),
-    width: Math.max(1, Math.round(width * scale))
-  };
-}
-
-function normalizeMainPlanBounds(bounds: DetectedWallResult["mainPlanBounds"]) {
-  if (!bounds) return undefined;
-  return {
-    height: Math.max(0, bounds.maxY - bounds.minY),
-    width: Math.max(0, bounds.maxX - bounds.minX),
-    x: bounds.minX,
-    y: bounds.minY
-  };
-}
-
-function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWallResult> {
-  return new Promise((resolve, reject) => {
-    const imageUrl = URL.createObjectURL(file);
-
-    loadImage(imageUrl)
-      .then((image) => {
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-        if (!context) throw new Error("Canvas context is not available");
-
-        const { height, width } = scaledImageSize(image.naturalWidth || image.width, image.naturalHeight || image.height);
-        canvas.width = width;
-        canvas.height = height;
-        context.drawImage(image, 0, 0, width, height);
-
-        const handleMessage = (event: MessageEvent) => {
-          if (event.data?.type !== "result") return;
-          worker.removeEventListener("message", handleMessage);
-          const rawLines = Array.isArray(event.data.lines) ? event.data.lines : [];
-          const commercialCandidates = filterCommercialWallCandidates(rawLines, {
-            height: Number(event.data.imageHeight) || height,
-            width: Number(event.data.imageWidth) || width
-          }) as {
-            annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;
-            dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
-            mainPlanBounds: DetectedWallResult["mainPlanBounds"];
-            needsReview: boolean;
-            removedNoiseCount: number;
-            walls: DetectedLine[];
-          };
-          const scaleCandidate = estimateScaleCandidateFromDimensions([
-            ...commercialCandidates.dimensionCandidates,
-            ...(Array.isArray(event.data.dimensionCandidates) ? event.data.dimensionCandidates : [])
-          ]) as ScaleCandidate | null;
-          resolve({
-            annotationCandidates: commercialCandidates.annotationCandidates,
-            dimensionCandidates: commercialCandidates.dimensionCandidates,
-            imageHeight: Number(event.data.imageHeight) || height,
-            imageUrl,
-            imageWidth: Number(event.data.imageWidth) || width,
-            lines: commercialCandidates.walls,
-            mainPlanBounds: commercialCandidates.mainPlanBounds,
-            needsReview: commercialCandidates.needsReview,
-            removedNoiseCount: commercialCandidates.removedNoiseCount + (Number(event.data.removedNoiseCount) || 0),
-            scaleCandidates: scaleCandidate ? [scaleCandidate] : Array.isArray(event.data.scaleCandidates) ? event.data.scaleCandidates : [],
-            processingMs: Number(event.data.processingMs) || undefined
-          });
-        };
-
-        const handleError = (event: ErrorEvent) => {
-          worker.removeEventListener("message", handleMessage);
-          reject(event.error ?? new Error(event.message));
-        };
-
-        worker.addEventListener("message", handleMessage);
-        worker.addEventListener("error", handleError, { once: true });
-        worker.postMessage(
-          {
-            imageData: context.getImageData(0, 0, width, height),
-            maxDimension: MAX_EXTRACTION_DIMENSION,
-            opencvUrl: OPENCV_URL,
-            tesseractOcrUrl: TESSERACT_OCR_URL,
-            type: "extract"
-          },
-          []
-        );
-      })
-      .catch(reject);
-  });
-}
-
-function loadImage(source: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Failed to load image"));
-    image.src = source;
-  });
-}
 
 function apiUrl(path: string) {
   const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -404,413 +104,6 @@ async function uploadFloorPlanSource(file: File): Promise<UploadedFloorPlanSourc
   } catch {
     return null;
   }
-}
-
-function isFurnitureCatalogItem(value: unknown): value is FurnitureCatalogItem {
-  const item = value as FurnitureCatalogItem;
-
-  return Boolean(
-    item &&
-      typeof item.brand === "string" &&
-      typeof item.color === "string" &&
-      typeof item.furniture_id === "string" &&
-      Array.isArray(item.length) &&
-      item.length.length === 3 &&
-      item.length.every((dimension) => typeof dimension === "number" && Number.isFinite(dimension) && dimension > 0) &&
-      typeof item.name === "string" &&
-      typeof item.price === "number"
-  );
-}
-
-function calculateDistance(p1: Point, p2: Point, pixelToMmRatio: number) {
-  return Math.round(Math.hypot(p2.x - p1.x, p2.y - p1.y) * pixelToMmRatio);
-}
-
-function snapCanvasPoint(point: Point) {
-  return {
-    x: Math.round(point.x / GRID_SIZE_PX) * GRID_SIZE_PX,
-    y: Math.round(point.y / GRID_SIZE_PX) * GRID_SIZE_PX
-  };
-}
-
-function projectPointOntoWall(point: Point, wall: Wall): Point {
-  const dx = wall.end.x - wall.start.x;
-  const dy = wall.end.y - wall.start.y;
-  const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared === 0) return wall.start;
-
-  const t = Math.max(
-    0,
-    Math.min(1, ((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / lengthSquared)
-  );
-
-  return {
-    x: wall.start.x + dx * t,
-    y: wall.start.y + dy * t
-  };
-}
-
-function splitWallByEraseArea(wall: Wall, eraseStart: Point, eraseEnd: Point): Wall[] {
-  const parameterOnLine = (point: Point) => {
-    const dx = wall.end.x - wall.start.x;
-    const dy = wall.end.y - wall.start.y;
-    const lengthSquared = dx * dx + dy * dy;
-    if (lengthSquared === 0) return 0;
-    return Math.max(0, Math.min(1, ((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / lengthSquared));
-  };
-  const tStart = Math.min(parameterOnLine(eraseStart), parameterOnLine(eraseEnd));
-  const tEnd = Math.max(parameterOnLine(eraseStart), parameterOnLine(eraseEnd));
-  const segments: Wall[] = [];
-
-  if (tEnd - tStart < 0.05) return [wall];
-
-  if (tStart > 0.05) {
-    segments.push({
-      id: `${wall.id}-a-${Date.now()}`,
-      start: wall.start,
-      end: {
-        x: wall.start.x + (wall.end.x - wall.start.x) * tStart,
-        y: wall.start.y + (wall.end.y - wall.start.y) * tStart
-      }
-    });
-  }
-
-  if (tEnd < 0.95) {
-    segments.push({
-      id: `${wall.id}-b-${Date.now()}`,
-      start: {
-        x: wall.start.x + (wall.end.x - wall.start.x) * tEnd,
-        y: wall.start.y + (wall.end.y - wall.start.y) * tEnd
-      },
-      end: wall.end
-    });
-  }
-
-  return segments;
-}
-
-function splitWallByRatio(wall: Wall, centerRatio: number): Wall[] {
-  const wallPixels = Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
-  if (wallPixels < GRID_SIZE_PX * 2) return [wall];
-
-  const eraseRatio = Math.max(0.1, Math.min(0.28, (GRID_SIZE_PX * 2) / wallPixels));
-  const tStart = Math.max(0, centerRatio - eraseRatio / 2);
-  const tEnd = Math.min(1, centerRatio + eraseRatio / 2);
-
-  return splitWallByEraseArea(
-    wall,
-    {
-      x: wall.start.x + (wall.end.x - wall.start.x) * tStart,
-      y: wall.start.y + (wall.end.y - wall.start.y) * tStart
-    },
-    {
-      x: wall.start.x + (wall.end.x - wall.start.x) * tEnd,
-      y: wall.start.y + (wall.end.y - wall.start.y) * tEnd
-    }
-  );
-}
-
-function getStarterWalls(): Wall[] {
-  return createStarterWalls() as Wall[];
-}
-
-function createFurnitureModel(item: FurnitureCatalogItem, position: [number, number, number] = [0, 0, 0]): PlacedFurniture {
-  return {
-    ...item,
-    id: `furniture-${item.furniture_id}-${Date.now()}`,
-    position: [position[0], item.length[1] / 2000, position[2]],
-    rotation: [0, 0, 0],
-    scale: 1
-  };
-}
-
-function createLandlordOptionFurniture(furniture: PlacedFurniture): PlacedFurniture {
-  return {
-    ...furniture,
-    editableBy: ["LANDLORD"],
-    furnitureId: furniture.furniture_id,
-    includedInLease: true,
-    locked: true,
-    sizeMm: { depth: furniture.length[2], height: furniture.length[1], width: furniture.length[0] },
-    source: "LANDLORD_OPTION",
-    visibleToTenant: true
-  };
-}
-
-function createResidentDesignFurniture(furniture: PlacedFurniture): PlacedFurniture {
-  return {
-    ...furniture,
-    source: furniture.source === "LANDLORD_OPTION" ? furniture.source : "RESIDENT_DESIGN"
-  };
-}
-
-function isLandlordOptionFurniture(furniture: PlacedFurniture) {
-  return furniture.source === "LANDLORD_OPTION" || furniture.locked === true;
-}
-
-function isLockedFurnitureForResident(furniture: PlacedFurniture, experienceMode: ExperienceMode) {
-  return experienceMode === "resident" && isLandlordOptionFurniture(furniture);
-}
-
-function getFurnitureDimensions(furniture: Pick<PlacedFurniture, "length" | "scale">) {
-  return {
-    depth: Math.max(0.05, (furniture.length[2] / 1000) * furniture.scale),
-    height: Math.max(0.05, (furniture.length[1] / 1000) * furniture.scale),
-    width: Math.max(0.05, (furniture.length[0] / 1000) * furniture.scale)
-  };
-}
-
-function RoomFloor({
-  onFloorPointerDown,
-  wallsData
-}: {
-  onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
-  wallsData: WheretoputWall3D[];
-}) {
-  const bounds = useMemo(() => {
-    if (wallsData.length === 0) {
-      return { centerX: 0, centerZ: 0, height: 8, width: 8 };
-    }
-
-    const points = wallsData.flatMap((wall) => {
-      const half = wall.dimensions.width / 2;
-      const angle = wall.rotation[1];
-      return [
-        {
-          x: wall.position[0] - Math.cos(angle) * half,
-          z: wall.position[2] - Math.sin(angle) * half
-        },
-        {
-          x: wall.position[0] + Math.cos(angle) * half,
-          z: wall.position[2] + Math.sin(angle) * half
-        }
-      ];
-    });
-    const minX = Math.min(...points.map((point) => point.x));
-    const maxX = Math.max(...points.map((point) => point.x));
-    const minZ = Math.min(...points.map((point) => point.z));
-    const maxZ = Math.max(...points.map((point) => point.z));
-
-    return {
-      centerX: (minX + maxX) / 2,
-      centerZ: (minZ + maxZ) / 2,
-      height: Math.max(0.5, maxZ - minZ - 0.1),
-      width: Math.max(0.5, maxX - minX - 0.1)
-    };
-  }, [wallsData]);
-
-  return (
-    <mesh onPointerDown={onFloorPointerDown} position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[bounds.width, bounds.height]} />
-      <meshBasicMaterial color="#f3d9a0" />
-    </mesh>
-  );
-}
-
-function FurnitureBoxMesh({
-  furniture,
-  isPending = false,
-  isSelected,
-  onPointerDown
-}: {
-  furniture: PlacedFurniture;
-  isPending?: boolean;
-  isSelected: boolean;
-  onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
-}) {
-  const dimensions = getFurnitureDimensions(furniture);
-
-  return (
-    <mesh
-      onPointerDown={(event) => onPointerDown(furniture, event)}
-      position={furniture.position}
-      rotation={furniture.rotation}
-      receiveShadow
-      castShadow
-    >
-      <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
-      <meshBasicMaterial
-        color={isSelected ? "#2f55ff" : furniture.color}
-        opacity={isPending ? 0.42 : isSelected ? 0.96 : 0.86}
-        transparent
-      />
-    </mesh>
-  );
-}
-
-function FurnitureGlbMesh({
-  furniture,
-  isPending = false,
-  isSelected,
-  onPointerDown
-}: {
-  furniture: PlacedFurniture;
-  isPending?: boolean;
-  isSelected: boolean;
-  onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
-}) {
-  const gltf = useGLTF(furniture.modelUrl ?? FURNITURE_CATALOG[0].modelUrl ?? "");
-  const dimensions = getFurnitureDimensions(furniture);
-  const { modelOffsetY, scene, scale } = useMemo(() => {
-    const clonedScene = gltf.scene.clone(true);
-    clonedScene.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return;
-
-      child.castShadow = true;
-      child.receiveShadow = true;
-
-      if (Array.isArray(child.material)) {
-        child.material = child.material.map((material) => material.clone());
-      } else if (child.material) {
-        child.material = child.material.clone();
-      }
-
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      materials.forEach((material) => {
-        if (!material) return;
-        material.transparent = isPending;
-        material.opacity = isPending ? 0.48 : 1;
-        material.needsUpdate = true;
-      });
-    });
-
-    const box = new THREE.Box3().setFromObject(clonedScene);
-    const size = box.getSize(new THREE.Vector3());
-    const actualWidth = Math.max(size.x, 0.001);
-    const actualHeight = Math.max(size.y, 0.001);
-    const actualDepth = Math.max(size.z, 0.001);
-    const targetLongSide = Math.max(dimensions.width, dimensions.depth);
-    const targetShortSide = Math.min(dimensions.width, dimensions.depth);
-    const [targetWidth, targetDepth] =
-      actualWidth >= actualDepth ? [targetLongSide, targetShortSide] : [targetShortSide, targetLongSide];
-    const modelScale: [number, number, number] = [
-      targetWidth / actualWidth,
-      dimensions.height / actualHeight,
-      targetDepth / actualDepth
-    ];
-
-    return {
-      modelOffsetY: -box.min.y * modelScale[1],
-      scale: modelScale,
-      scene: clonedScene
-    };
-  }, [dimensions.depth, dimensions.height, dimensions.width, furniture.modelUrl, gltf.scene, isPending]);
-
-  return (
-    <group
-      onPointerDown={(event) => onPointerDown(furniture, event)}
-      position={[furniture.position[0], 0, furniture.position[2]]}
-      rotation={furniture.rotation}
-    >
-      <primitive object={scene} position={[0, modelOffsetY, 0]} scale={scale} />
-      {isSelected ? (
-        <mesh position={[0, dimensions.height / 2, 0]}>
-          <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
-          <meshBasicMaterial color="#2f55ff" opacity={0.4} transparent wireframe />
-        </mesh>
-      ) : null}
-    </group>
-  );
-}
-
-function FurnitureMesh(props: {
-  furniture: PlacedFurniture;
-  isPending?: boolean;
-  isSelected: boolean;
-  onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
-}) {
-  if (!props.furniture.modelUrl) {
-    return <FurnitureBoxMesh {...props} />;
-  }
-
-  return (
-    <Suspense fallback={<FurnitureBoxMesh {...props} />}>
-      <FurnitureGlbMesh {...props} />
-    </Suspense>
-  );
-}
-
-function WallMesh({
-  isSelected,
-  onPointerDown,
-  wall
-}: {
-  isSelected: boolean;
-  onPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
-  wall: WheretoputWall3D;
-}) {
-  return (
-    <mesh
-      onPointerDown={(event) => onPointerDown(wall, event)}
-      position={wall.position}
-      rotation={wall.rotation}
-      receiveShadow
-      castShadow
-    >
-      <boxGeometry args={[wall.dimensions.width, wall.dimensions.height, wall.dimensions.depth]} />
-      <meshBasicMaterial color={isSelected ? "#2f55ff" : "#eeeeec"} opacity={isSelected ? 0.92 : 0.78} transparent />
-    </mesh>
-  );
-}
-
-function RoomlogThreeFloorPlanView({
-  furnitureData,
-  onFloorPointerDown,
-  onFurniturePointerDown,
-  onWallPointerDown,
-  pendingFurniture,
-  selectedFurnitureId,
-  selectedWallId,
-  wallsData
-}: {
-  furnitureData: PlacedFurniture[];
-  onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
-  onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
-  onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
-  pendingFurniture: PlacedFurniture | null;
-  selectedFurnitureId: string | null;
-  selectedWallId: string | number | null;
-  wallsData: WheretoputWall3D[];
-}) {
-  return (
-    <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
-      <Canvas camera={{ fov: 50, position: [14, 12, 18] }} shadows>
-        <color attach="background" args={["#626260"]} />
-        <ambientLight intensity={0.72} />
-        <directionalLight castShadow intensity={1.4} position={[6, 12, 8]} />
-        <RoomFloor onFloorPointerDown={onFloorPointerDown} wallsData={wallsData} />
-        {wallsData.map((wall) => (
-          <WallMesh
-            isSelected={String(selectedWallId ?? "") === String(wall.wall_id)}
-            key={wall.id}
-            onPointerDown={onWallPointerDown}
-            wall={wall}
-          />
-        ))}
-        {furnitureData.map((furniture) => (
-          <FurnitureMesh
-            furniture={furniture}
-            isSelected={selectedFurnitureId === furniture.id}
-            key={furniture.id}
-            onPointerDown={onFurniturePointerDown}
-          />
-        ))}
-        {pendingFurniture ? (
-          <FurnitureMesh furniture={pendingFurniture} isPending isSelected={false} onPointerDown={onFurniturePointerDown} />
-        ) : null}
-        <OrbitControls
-          enableDamping
-          makeDefault
-          maxDistance={42}
-          maxPolarAngle={Math.PI / 2.05}
-          minDistance={5}
-          minPolarAngle={0.2}
-          target={[0, 0, 0]}
-        />
-      </Canvas>
-      <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>
-    </div>
-  );
 }
 
 export default function RoomlogFloorPlanEditor() {
@@ -926,7 +219,7 @@ export default function RoomlogFloorPlanEditor() {
   }, [experienceMode, tool]);
   const getExtractionWorker = useCallback(() => {
     if (!extractionWorkerRef.current) {
-      extractionWorkerRef.current = new Worker(new URL("./floor-plan-extraction.worker.ts", import.meta.url));
+      extractionWorkerRef.current = new Worker(new URL("./plan-extraction/floor-plan-extraction.worker.ts", import.meta.url));
     }
 
     return extractionWorkerRef.current;
@@ -1513,7 +806,7 @@ export default function RoomlogFloorPlanEditor() {
         shapes: []
       }) as FloorPlanCandidate[];
 
-      setWalls(detectedWalls.length > 0 ? detectedWalls : getStarterWalls());
+      setWalls(detectedWalls);
       setHiddenWallIds(new Set());
       setSelectedWall(null);
       setPendingFurniture(null);
@@ -1541,7 +834,7 @@ export default function RoomlogFloorPlanEditor() {
         setPixelToMmRatio(bestScaleCandidate.pixelToMmRatio);
       }
       setUploadStatus(
-        `${file.name} 벽 후보 ${detectedWalls.length}개 추출, ${
+        `${file.name} 확실한 벽 후보 ${detectedWalls.length}개 추출, 누락된 벽은 직접 그려주세요. ${
           bestScaleCandidate ? "축척 확인 필요" : "수동 축척 필요"
         }, ${result.needsReview ? "정밀 검수 필요" : "검수 후 저장"}${result.processingMs ? ` (${result.processingMs}ms)` : ""}`
       );

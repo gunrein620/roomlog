@@ -1,14 +1,28 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const pageSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
 const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
-const floorPlanEditorSource = existsSync(floorPlanEditorPath) ? readFileSync(floorPlanEditorPath, "utf8") : "";
-const floorPlanWorkerPath = new URL("./src/app/floor-plan-3d/floor-plan-extraction.worker.ts", import.meta.url);
+// floor-plan-3d는 plan-extraction / room-model / room-scene 폴더로 분할되어 있어서
+// 편집기 기능 검증은 폴더 아래 모든 소스 파일을 합친 코퍼스를 대상으로 한다.
+const floorPlanDirUrl = new URL("./src/app/floor-plan-3d/", import.meta.url);
+const floorPlanEditorSource = existsSync(floorPlanDirUrl)
+  ? readdirSync(floorPlanDirUrl, { recursive: true })
+      .map((name) => String(name).replaceAll("\\", "/"))
+      .filter((name) => /\.(tsx|ts|mjs)$/.test(name) && name !== "page.tsx")
+      .sort()
+      .map((name) => readFileSync(new URL(name, floorPlanDirUrl), "utf8"))
+      .join("\n")
+  : "";
+const floorPlanWorkerPath = new URL("./src/app/floor-plan-3d/plan-extraction/floor-plan-extraction.worker.ts", import.meta.url);
 const floorPlanWorkerSource = existsSync(floorPlanWorkerPath) ? readFileSync(floorPlanWorkerPath, "utf8") : "";
+const floorPlanModel = {
+  ...(await import("./src/app/floor-plan-3d/room-model/wall-model.mjs")),
+  ...(await import("./src/app/floor-plan-3d/plan-extraction/wall-detection.mjs"))
+};
 const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const webPackageSource = readFileSync(new URL("./package.json", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
@@ -935,6 +949,12 @@ test("uses OCR only for scale candidate extraction and keeps manual scale fallba
   }
 });
 
+test("uses conservative uploaded floor plan extraction without starter wall fallback", () => {
+  assert.match(floorPlanEditorSource, /mode:\s*"conservative"/);
+  assert.doesNotMatch(floorPlanEditorSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
+  assert.match(floorPlanEditorSource, /직접 그려주세요/);
+});
+
 test("saves floor plan drafts through the API while keeping a local fallback", () => {
   for (const label of [
     "apiUrl\\(\"/floor-plans\"\\)",
@@ -950,7 +970,7 @@ test("saves floor plan drafts through the API while keeping a local fallback", (
 });
 
 test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const wall = model.createWall({ x: 0, y: 0 }, { x: 130, y: 40 }, "w1");
 
   assert.deepEqual(wall, {
@@ -969,7 +989,7 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
 });
 
 test("floor plan editor model converts 2D walls into wheretoput-style 3D wall boxes", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
   const converted = model.convertWallsTo3D([wall], { height: 96, depth: 8 });
 
@@ -986,7 +1006,7 @@ test("floor plan editor model converts 2D walls into wheretoput-style 3D wall bo
 });
 
 test("floor plan editor model creates wheretoput simulator wall data", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
   const converted = model.convertWallsToWheretoputSimulator([wall], {
     height: 2.5,
@@ -1003,7 +1023,7 @@ test("floor plan editor model creates wheretoput simulator wall data", async () 
 });
 
 test("floor plan editor model creates centered wheretoput room 3D wall data", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = [
     { id: "left", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
     { id: "right", start: { x: 100, y: 0 }, end: { x: 100, y: 100 } }
@@ -1019,7 +1039,7 @@ test("floor plan editor model creates centered wheretoput room 3D wall data", as
 });
 
 test("floor plan editor model can extract starter walls from a registered plan", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = model.createWallsFromRegisteredPlan({ width: 1600, height: 1000, name: "unit.png" });
 
   assert.equal(walls.length >= 5, true);
@@ -1028,7 +1048,7 @@ test("floor plan editor model can extract starter walls from a registered plan",
 });
 
 test("floor plan editor model detects wall lines from a binary image mask", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const width = 12;
   const height = 10;
   const mask = Array.from({ length: width * height }, () => false);
@@ -1043,7 +1063,7 @@ test("floor plan editor model detects wall lines from a binary image mask", asyn
 });
 
 test("floor plan editor model extracts wall center bands and preserves open gaps", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const width = 220;
   const height = 180;
   const mask = Array.from({ length: width * height }, () => false);
@@ -1082,7 +1102,7 @@ test("floor plan editor model extracts wall center bands and preserves open gaps
 });
 
 test("floor plan editor model removes small text noise before extracting wall lines", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const width = 40;
   const height = 24;
   const mask = Array.from({ length: width * height }, () => false);
@@ -1102,7 +1122,7 @@ test("floor plan editor model removes small text noise before extracting wall li
 });
 
 test("floor plan editor model merges nearby wall candidates and caps noisy output", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
     [
       { x1: 10, y1: 20, x2: 100, y2: 20, orientation: "horizontal" },
@@ -1128,7 +1148,7 @@ test("floor plan editor model merges nearby wall candidates and caps noisy outpu
 });
 
 test("floor plan editor model preserves wall thickness and removes thin interior symbols", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
     [
       { x1: 20, y1: 100, x2: 360, y2: 100, orientation: "horizontal" },
@@ -1156,7 +1176,7 @@ test("floor plan editor model preserves wall thickness and removes thin interior
 });
 
 test("floor plan editor model removes contained duplicate wall fragments", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const result = model.filterCommercialWallCandidates(
     [
       { x1: 100, y1: 100, x2: 500, y2: 100, orientation: "horizontal", thickness: 6 },
@@ -1174,7 +1194,7 @@ test("floor plan editor model removes contained duplicate wall fragments", async
 });
 
 test("floor plan editor model uses filled interior support without breaking monochrome plans", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const coloredPlan = model.filterCommercialWallCandidates(
     [
       { x1: 100, y1: 100, x2: 500, y2: 100, orientation: "horizontal", thickness: 7, fillSupport: 0.56 },
@@ -1202,7 +1222,7 @@ test("floor plan editor model uses filled interior support without breaking mono
 });
 
 test("floor plan editor model removes dimension candidates before wall creation", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 40, y1: 40, x2: 300, y2: 40, orientation: "horizontal", thickness: 8 },
     { x1: 30, y1: 12, x2: 330, y2: 12, orientation: "horizontal", thickness: 1, markers: ["arrow-start", "arrow-end"] }
@@ -1216,7 +1236,7 @@ test("floor plan editor model removes dimension candidates before wall creation"
 });
 
 test("floor plan editor model removes dimension lines offset from the main wall cluster", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 100, y1: 120, x2: 500, y2: 120, orientation: "horizontal" },
     { x1: 500, y1: 120, x2: 500, y2: 420, orientation: "vertical" },
@@ -1234,7 +1254,7 @@ test("floor plan editor model removes dimension lines offset from the main wall 
 });
 
 test("floor plan editor model removes far outside dimensions without losing structural walls", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 150, y1: 180, x2: 650, y2: 180, orientation: "horizontal", thickness: 9 },
     { x1: 650, y1: 180, x2: 650, y2: 560, orientation: "vertical", thickness: 9 },
@@ -1253,7 +1273,7 @@ test("floor plan editor model removes far outside dimensions without losing stru
 });
 
 test("floor plan editor model keeps crossing outer dimensions out of structural bounds", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 150, y1: 140, x2: 620, y2: 140, orientation: "horizontal" },
     { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical" },
@@ -1271,7 +1291,7 @@ test("floor plan editor model keeps crossing outer dimensions out of structural 
 });
 
 test("floor plan editor model separates dashed annotations from wall candidates", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 100, y1: 100, x2: 440, y2: 100, orientation: "horizontal", thickness: 8 },
     { x1: 440, y1: 100, x2: 440, y2: 340, orientation: "vertical", thickness: 8 },
@@ -1288,8 +1308,48 @@ test("floor plan editor model separates dashed annotations from wall candidates"
   assert.equal(result.removedNoiseCount, 2);
 });
 
+test("floor plan editor model conservative mode keeps only confident thick wall lines", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 9 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 9 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 9 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 9 },
+      { x1: 300, y1: 140, x2: 300, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 180, y1: 260, x2: 410, y2: 260, orientation: "horizontal", thickness: 3 },
+      { x1: 100, y1: 88, x2: 640, y2: 88, orientation: "horizontal", thickness: 1 },
+      { x1: 210, y1: 330, x2: 260, y2: 330, orientation: "horizontal", thickness: 2 }
+    ],
+    { height: 680, mode: "conservative", width: 760 }
+  );
+
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.walls.some((line) => line.x1 === 300 && line.x2 === 300), true);
+  assert.equal(result.walls.some((line) => line.thickness <= 3), false);
+  assert.equal(result.dimensionCandidates.length, 1);
+  assert.equal(result.removedNoiseCount, 3);
+});
+
+test("floor plan editor model conservative mode drops all ambiguous thin wall candidates", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 160, y1: 160, x2: 520, y2: 160, orientation: "horizontal", thickness: 2 },
+      { x1: 520, y1: 160, x2: 520, y2: 420, orientation: "vertical", thickness: 2 },
+      { x1: 520, y1: 420, x2: 160, y2: 420, orientation: "horizontal", thickness: 2 },
+      { x1: 160, y1: 420, x2: 160, y2: 160, orientation: "vertical", thickness: 2 }
+    ],
+    { height: 560, mode: "conservative", width: 680 }
+  );
+
+  assert.equal(result.walls.length, 0);
+  assert.equal(result.annotationCandidates.length, 4);
+  assert.equal(result.needsReview, true);
+});
+
 test("floor plan editor model estimates scale from outside dimensions", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const candidate = model.estimateScaleCandidateFromDimensions([
     {
       line: { x1: 100, y1: 20, x2: 420, y2: 20, orientation: "horizontal" },
@@ -1305,7 +1365,7 @@ test("floor plan editor model estimates scale from outside dimensions", async ()
 });
 
 test("floor plan editor model creates opening candidates as editable layers", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const candidates = model.detectOpeningCandidates({
     arcs: [{ x: 120, y: 140, radius: 36 }],
     gaps: [{ x1: 100, y1: 140, x2: 150, y2: 140 }]
@@ -1319,7 +1379,7 @@ test("floor plan editor model creates opening candidates as editable layers", as
 });
 
 test("floor plan editor model creates fixed fixture candidates separately from movable furniture", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const candidates = model.detectFixtureCandidates({
     labels: [{ text: "싱크대", x: 220, y: 320, confidence: 0.86 }],
     shapes: [{ kind: "cabinet", x: 210, y: 300, width: 120, height: 36 }]
@@ -1331,7 +1391,7 @@ test("floor plan editor model creates fixed fixture candidates separately from m
 });
 
 test("floor plan editor model scales detected image lines into editor walls", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = model.createWallsFromDetectedLines(
     [{ x1: 100, y1: 50, x2: 900, y2: 50, orientation: "horizontal" }],
     { width: 1000, height: 500, name: "scan.png" }
@@ -1344,7 +1404,7 @@ test("floor plan editor model scales detected image lines into editor walls", as
 });
 
 test("floor plan editor model keeps small detected openings instead of snapping them closed", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = model.createWallsFromDetectedLines(
     [
       { x1: 120, y1: 100, x2: 420, y2: 100, orientation: "horizontal" },
