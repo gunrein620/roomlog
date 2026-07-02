@@ -338,6 +338,348 @@ function lineLength(line) {
   return Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
 }
 
+function lineOrientation(line) {
+  if (line.orientation) return line.orientation;
+
+  return Math.abs(line.x2 - line.x1) >= Math.abs(line.y2 - line.y1) ? "horizontal" : "vertical";
+}
+
+function lineBounds(line) {
+  return {
+    maxX: Math.max(line.x1, line.x2),
+    maxY: Math.max(line.y1, line.y2),
+    minX: Math.min(line.x1, line.x2),
+    minY: Math.min(line.y1, line.y2)
+  };
+}
+
+function lineCenter(line) {
+  return {
+    x: (line.x1 + line.x2) / 2,
+    y: (line.y1 + line.y2) / 2
+  };
+}
+
+function isOutsideDimensionLine(line, options = {}) {
+  const width = Number(options.width) || 0;
+  const height = Number(options.height) || 0;
+  const orientation = lineOrientation(line);
+  const bounds = lineBounds(line);
+  const marginX = Math.max(18, width * 0.08);
+  const marginY = Math.max(18, height * 0.08);
+  const longEnough = lineLength(line) >= Math.max(48, Math.min(width || 600, height || 400) * 0.18);
+  const thinEnough = Number(line.thickness ?? 1) <= 3;
+  const hasArrowMarkers = Array.isArray(line.markers) && line.markers.some((marker) => String(marker).startsWith("arrow"));
+
+  if (!longEnough) return false;
+  if (hasArrowMarkers) return true;
+  if (!thinEnough) return false;
+
+  if (orientation === "horizontal") {
+    return bounds.maxY <= marginY || (height > 0 && bounds.minY >= height - marginY);
+  }
+
+  return bounds.maxX <= marginX || (width > 0 && bounds.minX >= width - marginX);
+}
+
+export function filterCommercialWallCandidates(lines, options = {}) {
+  const dimensionCandidates = [];
+  const walls = [];
+  let removedNoiseCount = 0;
+
+  for (const line of lines ?? []) {
+    if (!line || lineLength(line) <= 0) continue;
+    const thickness = Number(line.thickness ?? 6);
+
+    if (isOutsideDimensionLine(line, options)) {
+      dimensionCandidates.push({
+        confidence: Number(line.confidence ?? 0.78),
+        line,
+        source: "outside-dimension-line"
+      });
+      removedNoiseCount += 1;
+      continue;
+    }
+
+    if (thickness <= 2 && lineLength(line) < Math.max(80, Math.min(options.width ?? 0, options.height ?? 0) * 0.28)) {
+      removedNoiseCount += 1;
+      continue;
+    }
+
+    walls.push(line);
+  }
+
+  return {
+    dimensionCandidates,
+    removedNoiseCount,
+    walls: mergeDetectedWallLines(walls, options)
+  };
+}
+
+function parseDimensionLengthMm(text = "") {
+  const normalized = String(text).replace(/,/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(m|mm|cm)?/);
+  if (!match) return null;
+
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const unit = match[2] ?? (value >= 100 ? "mm" : "m");
+  if (unit === "m") return Math.round(value * 1000);
+  if (unit === "cm") return Math.round(value * 10);
+
+  return Math.round(value);
+}
+
+export function estimateScaleCandidateFromDimensions(candidates = []) {
+  const parsed = candidates
+    .map((candidate) => {
+      const line = candidate.line ?? candidate;
+      const pixelLength = Math.round(lineLength(line));
+      const realLengthMm = parseDimensionLengthMm(candidate.text ?? candidate.label ?? "");
+      if (!pixelLength || !realLengthMm) return null;
+
+      return {
+        confidence: Number(candidate.confidence ?? 0.6),
+        line,
+        pixelLength,
+        pixelToMmRatio: realLengthMm / pixelLength,
+        realLengthMm,
+        source: "outside-dimension-ocr"
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.confidence - left.confidence);
+
+  return parsed[0] ?? null;
+}
+
+function candidateId(prefix, index, point) {
+  return `${prefix}-${Math.round(point.x)}-${Math.round(point.y)}-${index + 1}`;
+}
+
+export function detectOpeningCandidates(input = {}) {
+  const candidates = [];
+  const arcs = Array.isArray(input.arcs) ? input.arcs : [];
+  const gaps = Array.isArray(input.gaps) ? input.gaps : [];
+  const windowLines = Array.isArray(input.windowLines) ? input.windowLines : [];
+
+  arcs.forEach((arc, index) => {
+    const nearGap = gaps.find((gap) => Math.hypot((gap.x1 + gap.x2) / 2 - arc.x, (gap.y1 + gap.y2) / 2 - arc.y) <= (arc.radius ?? 36) * 1.4);
+    const widthMm = nearGap ? Math.round(lineLength(nearGap) * (input.pixelToMmRatio ?? 20)) : undefined;
+    candidates.push({
+      confidence: nearGap ? 0.84 : 0.66,
+      id: candidateId("door", index, arc),
+      position: { x: Number(arc.x) || 0, y: Number(arc.y) || 0 },
+      source: nearGap ? "arc+wall-gap" : "arc",
+      status: "CANDIDATE",
+      type: "DOOR",
+      widthMm
+    });
+  });
+
+  windowLines.forEach((line, index) => {
+    candidates.push({
+      confidence: Number(line.confidence ?? 0.72),
+      id: candidateId("window", index, lineCenter(line)),
+      position: lineCenter(line),
+      source: "thin-double-line",
+      status: "CANDIDATE",
+      type: "WINDOW",
+      widthMm: Math.round(lineLength(line) * (input.pixelToMmRatio ?? 20))
+    });
+  });
+
+  return candidates;
+}
+
+export function updateCandidateStatus(candidates = [], candidateIdValue, status) {
+  return candidates.map((candidate) =>
+    candidate.id === candidateIdValue && ["CANDIDATE", "CONFIRMED", "REJECTED"].includes(status)
+      ? { ...candidate, status }
+      : candidate
+  );
+}
+
+export function moveCandidate(candidates = [], candidateIdValue, delta = {}) {
+  return candidates.map((candidate) =>
+    candidate.id === candidateIdValue
+      ? {
+          ...candidate,
+          position: {
+            x: Number(candidate.position?.x ?? 0) + Number(delta.x ?? 0),
+            y: Number(candidate.position?.y ?? 0) + Number(delta.y ?? 0)
+          }
+        }
+      : candidate
+  );
+}
+
+function fixtureTypeFromText(text = "") {
+  const normalized = String(text).replace(/\s+/g, "");
+  if (/싱크|주방|식당/.test(normalized)) return "SINK";
+  if (/욕실|화장실|샤워/.test(normalized)) return "BATH";
+  if (/붙박|수납|창고|장/.test(normalized)) return "BUILT_IN_STORAGE";
+  return "FIXTURE";
+}
+
+export function detectFixtureCandidates(input = {}) {
+  const labels = Array.isArray(input.labels) ? input.labels : [];
+  const shapes = Array.isArray(input.shapes) ? input.shapes : [];
+
+  return labels
+    .map((label, index) => {
+      const nearShape = shapes.find((shape) => Math.hypot((shape.x ?? 0) - (label.x ?? 0), (shape.y ?? 0) - (label.y ?? 0)) <= 80);
+      return {
+        confidence: Math.min(0.98, Number(label.confidence ?? 0.55) + (nearShape ? 0.08 : 0)),
+        id: candidateId("fixture", index, { x: Number(label.x) || 0, y: Number(label.y) || 0 }),
+        label: String(label.text ?? ""),
+        movable: false,
+        position: { x: Number(label.x) || 0, y: Number(label.y) || 0 },
+        sizeMm: nearShape
+          ? {
+              depth: Math.round(Number(nearShape.height ?? 0) * (input.pixelToMmRatio ?? 20)),
+              width: Math.round(Number(nearShape.width ?? 0) * (input.pixelToMmRatio ?? 20))
+            }
+          : undefined,
+        source: nearShape ? "ocr+shape" : "ocr",
+        status: "CANDIDATE",
+        type: fixtureTypeFromText(label.text)
+      };
+    })
+    .filter((candidate) => candidate.type !== "FIXTURE" || candidate.confidence >= 0.7);
+}
+
+export function removeSmallWallComponents(mask, options = {}) {
+  const width = Number(options.width) || 0;
+  const height = Number(options.height) || 0;
+  const minArea = options.minArea ?? 18;
+
+  if (width <= 0 || height <= 0 || !Array.isArray(mask)) return [];
+
+  const cleaned = Array.from({ length: width * height }, () => false);
+  const visited = Array.from({ length: width * height }, () => false);
+  const neighbors = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ];
+
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index] || visited[index]) continue;
+
+    const queue = [index];
+    const component = [];
+    visited[index] = true;
+
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const current = queue[cursor];
+      const x = current % width;
+      const y = Math.floor(current / width);
+      component.push(current);
+
+      for (const [dx, dy] of neighbors) {
+        const nextX = x + dx;
+        const nextY = y + dy;
+        const next = nextY * width + nextX;
+        if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) continue;
+        if (visited[next] || !mask[next]) continue;
+        visited[next] = true;
+        queue.push(next);
+      }
+    }
+
+    if (component.length >= minArea) {
+      component.forEach((componentIndex) => {
+        cleaned[componentIndex] = true;
+      });
+    }
+  }
+
+  return cleaned;
+}
+
+export function limitDetectedWallCandidates(lines, options = {}) {
+  const maxLines = options.maxLines ?? 24;
+
+  return [...lines].sort((lineA, lineB) => lineLength(lineB) - lineLength(lineA)).slice(0, maxLines);
+}
+
+export function mergeDetectedWallLines(lines, options = {}) {
+  const axisTolerance = options.axisTolerance ?? 4;
+  const gapTolerance = options.gapTolerance ?? 12;
+  const minLength = options.minLength ?? 24;
+  const maxLines = options.maxLines ?? 24;
+  const normalized = lines
+    .map((line) => {
+      const orientation = lineOrientation(line);
+      if (orientation === "horizontal") {
+        const x1 = Math.min(line.x1, line.x2);
+        const x2 = Math.max(line.x1, line.x2);
+        const y = Math.round((line.y1 + line.y2) / 2);
+        return { x1, y1: y, x2, y2: y, orientation };
+      }
+
+      const y1 = Math.min(line.y1, line.y2);
+      const y2 = Math.max(line.y1, line.y2);
+      const x = Math.round((line.x1 + line.x2) / 2);
+      return { x1: x, y1, x2: x, y2, orientation };
+    })
+    .filter((line) => lineLength(line) >= minLength)
+    .sort((lineA, lineB) => {
+      if (lineA.orientation !== lineB.orientation) return lineA.orientation === "horizontal" ? -1 : 1;
+      const axisA = lineA.orientation === "horizontal" ? lineA.y1 : lineA.x1;
+      const axisB = lineB.orientation === "horizontal" ? lineB.y1 : lineB.x1;
+      if (axisA !== axisB) return axisA - axisB;
+      return lineA.orientation === "horizontal" ? lineA.x1 - lineB.x1 : lineA.y1 - lineB.y1;
+    });
+  const merged = [];
+
+  for (const line of normalized) {
+    const previous = merged.at(-1);
+    if (!previous || previous.orientation !== line.orientation) {
+      merged.push({ ...line, weight: 1 });
+      continue;
+    }
+
+    if (line.orientation === "horizontal") {
+      const sameAxis = Math.abs(previous.y1 - line.y1) <= axisTolerance;
+      const closeGap = line.x1 - previous.x2 <= gapTolerance;
+      if (sameAxis && closeGap) {
+        const weight = previous.weight + 1;
+        const y = Math.round((previous.y1 * previous.weight + line.y1) / weight);
+        previous.x1 = Math.min(previous.x1, line.x1);
+        previous.x2 = Math.max(previous.x2, line.x2);
+        previous.y1 = y;
+        previous.y2 = y;
+        previous.weight = weight;
+        continue;
+      }
+    } else {
+      const sameAxis = Math.abs(previous.x1 - line.x1) <= axisTolerance;
+      const closeGap = line.y1 - previous.y2 <= gapTolerance;
+      if (sameAxis && closeGap) {
+        const weight = previous.weight + 1;
+        const x = Math.round((previous.x1 * previous.weight + line.x1) / weight);
+        previous.y1 = Math.min(previous.y1, line.y1);
+        previous.y2 = Math.max(previous.y2, line.y2);
+        previous.x1 = x;
+        previous.x2 = x;
+        previous.weight = weight;
+        continue;
+      }
+    }
+
+    merged.push({ ...line, weight: 1 });
+  }
+
+  return limitDetectedWallCandidates(
+    merged.map(({ weight: _weight, ...line }) => line),
+    { maxLines }
+  );
+}
+
 export function detectWallLinesFromMask(mask, options = {}) {
   const width = Number(options.width) || 0;
   const height = Number(options.height) || 0;
@@ -388,7 +730,10 @@ export function detectWallLinesFromMask(mask, options = {}) {
     }
   }
 
-  return lines.sort((lineA, lineB) => lineLength(lineB) - lineLength(lineA));
+  return limitDetectedWallCandidates(
+    mergeDetectedWallLines(lines, { ...options, minLength: options.minLength ?? minRunLength }),
+    options
+  );
 }
 
 export function detectWallLinesFromImageData(imageData, options = {}) {
@@ -410,7 +755,13 @@ export function detectWallLinesFromImageData(imageData, options = {}) {
     return alpha > 24 && luminance < darkThreshold;
   });
 
-  return detectWallLinesFromMask(mask, { ...options, width, height });
+  const cleanedMask = removeSmallWallComponents(mask, {
+    height,
+    minArea: options.minComponentArea ?? Math.max(16, Math.round((width * height) / 20000)),
+    width
+  });
+
+  return detectWallLinesFromMask(cleanedMask, { ...options, width, height });
 }
 
 export function createWallsFromDetectedLines(lines, plan = {}) {

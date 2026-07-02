@@ -10,18 +10,73 @@ import {
   createWallsFromDetectedLines,
   convertWallsToWheretoputRoom3D,
   convertWallsToWheretoputSimulator,
+  detectFixtureCandidates,
+  detectOpeningCandidates,
   detectWallLinesFromImageData,
   distanceToWall,
+  estimateScaleCandidateFromDimensions,
+  filterCommercialWallCandidates,
+  moveCandidate,
   snapToOrthogonal,
-  summarizeWalls
+  summarizeWalls,
+  updateCandidateStatus
 } from "./floor-plan-editor-model.mjs";
 
-type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "furniture" | "scale" | "none";
+type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "opening" | "fixture" | "furniture" | "scale" | "none";
 type ViewMode = "2d" | "3d";
+type ExperienceMode = "landlord" | "resident";
 type Point = { x: number; y: number };
 type Wall = { id: string | number; start: Point; end: Point };
 type WallSummary = { wallCount: number; approximateMeters: number; status: "초안" | "편집중" };
-type DetectedLine = { x1: number; y1: number; x2: number; y2: number; orientation?: "horizontal" | "vertical" };
+type CandidateStatus = "CANDIDATE" | "CONFIRMED" | "REJECTED";
+type FloorPlanCandidate = {
+  confidence?: number;
+  id: string;
+  label?: string;
+  movable?: boolean;
+  position: Point;
+  sizeMm?: { depth?: number; width?: number };
+  source: string;
+  status: CandidateStatus;
+  type: string;
+  widthMm?: number;
+};
+type ScaleCandidate = {
+  confidence: number;
+  pixelLength: number;
+  pixelToMmRatio: number;
+  realLengthMm: number;
+  source: string;
+};
+type ExtractionMeta = {
+  detectedWallCount: number;
+  ocrStatus: "ready" | "failed" | "manual-scale-required";
+  processingMs?: number;
+  removedNoiseCount: number;
+  scaleCandidates: ScaleCandidate[];
+  scaleConfirmed: boolean;
+};
+type DetectedLine = {
+  confidence?: number;
+  markers?: string[];
+  orientation?: "horizontal" | "vertical";
+  thickness?: number;
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+};
+type DetectedWallResult = {
+  dimensionCandidates?: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
+  imageHeight: number;
+  imageUrl: string;
+  imageWidth: number;
+  lines: DetectedLine[];
+  removedNoiseCount?: number;
+  scaleCandidates?: ScaleCandidate[];
+  processingMs?: number;
+};
+type UploadedFloorPlanSource = { attachmentId?: string; imageUrl?: string };
 type FurnitureCatalogItem = {
   brand: string;
   color: string;
@@ -55,6 +110,9 @@ const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
 const GRID_SIZE_PX = 25;
 const DEFAULT_PIXEL_TO_MM_RATIO = 20;
+const MAX_EXTRACTION_DIMENSION = 1600;
+const OPENCV_URL = "https://docs.opencv.org/4.10.0/opencv.js";
+const TESSERACT_OCR_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js";
 const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
   {
     brand: "Roomlog Basic",
@@ -127,7 +185,22 @@ function normalizeCatalogItem(item: FurnitureCatalogItem, index: number): Furnit
 }
 
 class WallDetector {
+  constructor(private readonly worker: Worker | null = null) {}
+
   async detectWalls(file: File) {
+    if (this.worker) {
+      try {
+        return await detectWallsWithWorker(this.worker, file);
+      } catch {
+        return fallbackCanvasWallExtraction(file);
+      }
+    }
+
+    return fallbackCanvasWallExtraction(file);
+  }
+}
+
+async function fallbackCanvasWallExtraction(file: File): Promise<DetectedWallResult> {
     const imageUrl = URL.createObjectURL(file);
     const image = await loadImage(imageUrl);
     const canvas = document.createElement("canvas");
@@ -135,23 +208,111 @@ class WallDetector {
 
     if (!context) throw new Error("Canvas context is not available");
 
-    canvas.width = image.naturalWidth || image.width;
-    canvas.height = image.naturalHeight || image.height;
+    const { height, width } = scaledImageSize(image.naturalWidth || image.width, image.naturalHeight || image.height);
+    canvas.width = width;
+    canvas.height = height;
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
+    const startedAt = performance.now();
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
     const lines = detectWallLinesFromImageData(imageData, {
       darkThreshold: 185,
+      maxLines: 24,
       minRunLength: Math.max(32, Math.round(Math.min(canvas.width, canvas.height) * 0.08))
     }) as DetectedLine[];
+    const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, width: canvas.width }) as {
+      dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
+      removedNoiseCount: number;
+      walls: DetectedLine[];
+    };
+    const scaleCandidate = estimateScaleCandidateFromDimensions(commercialCandidates.dimensionCandidates) as ScaleCandidate | null;
 
     return {
+      dimensionCandidates: commercialCandidates.dimensionCandidates,
       imageHeight: canvas.height,
       imageUrl,
       imageWidth: canvas.width,
-      lines
+      lines: commercialCandidates.walls,
+      removedNoiseCount: commercialCandidates.removedNoiseCount,
+      scaleCandidates: scaleCandidate ? [scaleCandidate] : [],
+      processingMs: Math.round(performance.now() - startedAt)
     };
-  }
+}
+
+function scaledImageSize(width: number, height: number) {
+  const longSide = Math.max(width, height);
+  if (longSide <= MAX_EXTRACTION_DIMENSION) return { height, width };
+
+  const scale = MAX_EXTRACTION_DIMENSION / longSide;
+  return {
+    height: Math.max(1, Math.round(height * scale)),
+    width: Math.max(1, Math.round(width * scale))
+  };
+}
+
+function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWallResult> {
+  return new Promise((resolve, reject) => {
+    const imageUrl = URL.createObjectURL(file);
+
+    loadImage(imageUrl)
+      .then((image) => {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) throw new Error("Canvas context is not available");
+
+        const { height, width } = scaledImageSize(image.naturalWidth || image.width, image.naturalHeight || image.height);
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(image, 0, 0, width, height);
+
+        const handleMessage = (event: MessageEvent) => {
+          if (event.data?.type !== "result") return;
+          worker.removeEventListener("message", handleMessage);
+          const rawLines = Array.isArray(event.data.lines) ? event.data.lines : [];
+          const commercialCandidates = filterCommercialWallCandidates(rawLines, {
+            height: Number(event.data.imageHeight) || height,
+            width: Number(event.data.imageWidth) || width
+          }) as {
+            dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
+            removedNoiseCount: number;
+            walls: DetectedLine[];
+          };
+          const scaleCandidate = estimateScaleCandidateFromDimensions([
+            ...commercialCandidates.dimensionCandidates,
+            ...(Array.isArray(event.data.dimensionCandidates) ? event.data.dimensionCandidates : [])
+          ]) as ScaleCandidate | null;
+          resolve({
+            dimensionCandidates: commercialCandidates.dimensionCandidates,
+            imageHeight: Number(event.data.imageHeight) || height,
+            imageUrl,
+            imageWidth: Number(event.data.imageWidth) || width,
+            lines: commercialCandidates.walls,
+            removedNoiseCount: commercialCandidates.removedNoiseCount + (Number(event.data.removedNoiseCount) || 0),
+            scaleCandidates: scaleCandidate ? [scaleCandidate] : Array.isArray(event.data.scaleCandidates) ? event.data.scaleCandidates : [],
+            processingMs: Number(event.data.processingMs) || undefined
+          });
+        };
+
+        const handleError = (event: ErrorEvent) => {
+          worker.removeEventListener("message", handleMessage);
+          reject(event.error ?? new Error(event.message));
+        };
+
+        worker.addEventListener("message", handleMessage);
+        worker.addEventListener("error", handleError, { once: true });
+        worker.postMessage(
+          {
+            imageData: context.getImageData(0, 0, width, height),
+            maxDimension: MAX_EXTRACTION_DIMENSION,
+            opencvUrl: OPENCV_URL,
+            tesseractOcrUrl: TESSERACT_OCR_URL,
+            type: "extract"
+          },
+          []
+        );
+      })
+      .catch(reject);
+  });
 }
 
 function loadImage(source: string): Promise<HTMLImageElement> {
@@ -168,6 +329,44 @@ function apiUrl(path: string) {
   const normalized = base.replace(/\/$/, "");
 
   return normalized.endsWith("/api") ? `${normalized}${path}` : `${normalized}/api${path}`;
+}
+
+async function getFloorPlanAccessToken() {
+  const cachedToken = window.localStorage.getItem("floorPlanAccessToken");
+  if (cachedToken) return cachedToken;
+
+  const response = await fetch(apiUrl("/auth/login"), {
+    body: JSON.stringify({ email: "manager@roomlog.test", password: "password123!" }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST"
+  });
+  if (!response.ok) throw new Error("Floor plan login failed");
+
+  const payload = (await response.json()) as { accessToken?: string };
+  if (!payload.accessToken) throw new Error("Floor plan token missing");
+  window.localStorage.setItem("floorPlanAccessToken", payload.accessToken);
+
+  return payload.accessToken;
+}
+
+async function uploadFloorPlanSource(file: File): Promise<UploadedFloorPlanSource | null> {
+  try {
+    const token = await getFloorPlanAccessToken();
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("category", "FLOOR_PLAN_SOURCE");
+    const response = await fetch(apiUrl("/attachments"), {
+      body: formData,
+      headers: { Authorization: `Bearer ${token}` },
+      method: "POST"
+    });
+    if (!response.ok) throw new Error("Floor plan source upload failed");
+    const payload = (await response.json()) as { id?: string; fileUrl?: string };
+
+    return { attachmentId: payload.id, imageUrl: payload.fileUrl };
+  } catch {
+    return null;
+  }
 }
 
 function isFurnitureCatalogItem(value: unknown): value is FurnitureCatalogItem {
@@ -553,6 +752,8 @@ export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const extractionWorkerRef = useRef<Worker | null>(null);
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("landlord");
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [walls, setWalls] = useState<Wall[]>(() => getStarterWalls());
@@ -563,15 +764,28 @@ export default function RoomlogFloorPlanEditor() {
   const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
   const [hiddenWallIds, setHiddenWallIds] = useState<Set<string>>(() => new Set());
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
-  const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("오늘의집 대신 공개 API 기반 로컬 DB");
+  const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("사용자 모드 배치 카탈로그");
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  const [openingCandidates, setOpeningCandidates] = useState<FloorPlanCandidate[]>([]);
+  const [fixtureCandidates, setFixtureCandidates] = useState<FloorPlanCandidate[]>([]);
+  const [extractionMeta, setExtractionMeta] = useState<ExtractionMeta>({
+    detectedWallCount: 0,
+    ocrStatus: "manual-scale-required",
+    removedNoiseCount: 0,
+    scaleCandidates: [],
+    scaleConfirmed: false
+  });
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [uploadedFloorPlanSource, setUploadedFloorPlanSource] = useState<UploadedFloorPlanSource | null>(null);
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("샘플 도면으로 시작");
+  const [opencvReady, setOpenCvReady] = useState(false);
+  const [lastExtractionMs, setLastExtractionMs] = useState<number | null>(null);
+  const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
   const [pixelToMmRatio, setPixelToMmRatio] = useState(DEFAULT_PIXEL_TO_MM_RATIO);
   const [isScaleSet, setIsScaleSet] = useState(false);
   const [scaleWall, setScaleWall] = useState<Wall | null>(null);
@@ -611,16 +825,16 @@ export default function RoomlogFloorPlanEditor() {
         const items = Array.isArray(payload) ? payload.filter(isFurnitureCatalogItem).map(normalizeCatalogItem) : [];
         if (!items.length) {
           setFurnitureCatalog(FURNITURE_CATALOG);
-          setFurnitureCatalogStatus("카탈로그 동기화 필요 - 샘플 GLB 사용");
+          setFurnitureCatalogStatus("샘플 가구 카탈로그");
           return;
         }
 
         setFurnitureCatalog(items);
-        setFurnitureCatalogStatus("오늘의집 대신 공개 API 기반 로컬 DB");
+        setFurnitureCatalogStatus("로컬 가구 카탈로그");
       } catch {
         if (!isActive) return;
         setFurnitureCatalog(FURNITURE_CATALOG);
-        setFurnitureCatalogStatus("카탈로그 동기화 필요 - 샘플 GLB 사용");
+        setFurnitureCatalogStatus("샘플 가구 카탈로그");
       }
     }
 
@@ -630,6 +844,49 @@ export default function RoomlogFloorPlanEditor() {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (experienceMode === "landlord" && tool === "furniture") {
+      setTool("wall");
+      setPendingFurniture(null);
+      setSelectedFurnitureId(null);
+    }
+    if (experienceMode === "resident" && (tool === "opening" || tool === "fixture" || tool === "scale")) {
+      setTool("furniture");
+      setSelectedWall(null);
+    }
+  }, [experienceMode, tool]);
+  const getExtractionWorker = useCallback(() => {
+    if (!extractionWorkerRef.current) {
+      extractionWorkerRef.current = new Worker(new URL("./floor-plan-extraction.worker.ts", import.meta.url));
+    }
+
+    return extractionWorkerRef.current;
+  }, []);
+
+  const preloadOpenCvWorker = useCallback(() => {
+    const worker = getExtractionWorker();
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "ready") return;
+      setOpenCvReady(Boolean(event.data.ready));
+      worker.removeEventListener("message", handleMessage);
+    };
+
+    worker.addEventListener("message", handleMessage);
+    worker.postMessage({ opencvUrl: OPENCV_URL, type: "preload" });
+  }, [getExtractionWorker]);
+
+  useEffect(() => {
+    const scheduleIdle = window.requestIdleCallback ?? ((callback: IdleRequestCallback) => window.setTimeout(callback, 250));
+    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout;
+    const idleId = scheduleIdle(() => preloadOpenCvWorker());
+
+    return () => {
+      cancelIdle(idleId as never);
+      extractionWorkerRef.current?.terminate();
+      extractionWorkerRef.current = null;
+    };
+  }, [preloadOpenCvWorker]);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -730,6 +987,34 @@ export default function RoomlogFloorPlanEditor() {
       else drawWall(wall, "normal");
     });
 
+    const drawCandidate = (candidate: FloorPlanCandidate, layer: "opening" | "fixture") => {
+      const position = candidate.position ?? { x: 0, y: 0 };
+      const color =
+        candidate.status === "CONFIRMED" ? (layer === "opening" ? "#00a36c" : "#7a4fd6") : candidate.status === "REJECTED" ? "#9aa3b2" : "#ff8a00";
+      context.save();
+      context.globalAlpha = candidate.status === "REJECTED" ? 0.38 : 0.9;
+      context.strokeStyle = color;
+      context.fillStyle = color;
+      context.lineWidth = 3 / viewScale;
+      context.setLineDash(candidate.status === "CANDIDATE" ? [6 / viewScale, 4 / viewScale] : []);
+      if (layer === "opening") {
+        context.beginPath();
+        context.arc(position.x, position.y, 14 / viewScale, 0, Math.PI * 2);
+        context.stroke();
+      } else {
+        context.strokeRect(position.x - 16 / viewScale, position.y - 10 / viewScale, 32 / viewScale, 20 / viewScale);
+      }
+      context.setLineDash([]);
+      context.font = `bold ${11 / viewScale}px Arial, sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "bottom";
+      context.fillText(candidate.type, position.x, position.y - 16 / viewScale);
+      context.restore();
+    };
+
+    openingCandidates.forEach((candidate) => drawCandidate(candidate, "opening"));
+    fixtureCandidates.forEach((candidate) => drawCandidate(candidate, "fixture"));
+
     if (scaleWall && tool === "scale") drawWall(scaleWall, "scale");
     if (isDrawing && startPoint && currentPoint) drawWall({ id: "draft", start: startPoint, end: currentPoint }, "draft");
     if (isSelectingEraseArea && eraseAreaStart && eraseAreaEnd) {
@@ -747,6 +1032,8 @@ export default function RoomlogFloorPlanEditor() {
     hiddenWallIds,
     isDrawing,
     isSelectingEraseArea,
+    fixtureCandidates,
+    openingCandidates,
     partialEraserSelectedWall,
     pixelToMmRatio,
     scaleWall,
@@ -795,6 +1082,17 @@ export default function RoomlogFloorPlanEditor() {
       },
       { distance: Infinity, wall: null }
     ).wall;
+  }
+
+  function findClosestCandidate(candidates: FloorPlanCandidate[], point: Point, maxDistance = 28) {
+    return candidates.reduce<{ candidate: FloorPlanCandidate | null; distance: number }>(
+      (closest, candidate) => {
+        const position = candidate.position ?? { x: 0, y: 0 };
+        const distance = Math.hypot(position.x - point.x, position.y - point.y);
+        return distance < closest.distance && distance <= maxDistance ? { candidate, distance } : closest;
+      },
+      { candidate: null, distance: Infinity }
+    ).candidate;
   }
 
   function removeWallById(wallId: string | number) {
@@ -966,6 +1264,22 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
+    if (tool === "opening") {
+      const closestCandidate = findClosestCandidate(openingCandidates, coords);
+      if (closestCandidate) {
+        toggleCandidateStatus("opening", closestCandidate.id, event.shiftKey ? "REJECTED" : "CONFIRMED");
+      }
+      return;
+    }
+
+    if (tool === "fixture") {
+      const closestCandidate = findClosestCandidate(fixtureCandidates, coords);
+      if (closestCandidate) {
+        toggleCandidateStatus("fixture", closestCandidate.id, event.shiftKey ? "REJECTED" : "CONFIRMED");
+      }
+      return;
+    }
+
     if (tool === "eraser") {
       const closestWall = findClosestWall(coords, 20);
       if (closestWall) {
@@ -1082,23 +1396,57 @@ export default function RoomlogFloorPlanEditor() {
     if (!file) return;
 
     setIsProcessing(true);
-    setUploadStatus(`${file.name} 이미지 벽 추출 중`);
+    setUploadStatus(opencvReady ? `${file.name} 도면 분석중` : `${file.name} 추출 엔진 준비중 - fallback 가능`);
     try {
-      const detector = new WallDetector();
+      const sourceUploadPromise = uploadFloorPlanSource(file);
+      const detector = new WallDetector(getExtractionWorker());
       const result = await detector.detectWalls(file);
+      const sourceUpload = await sourceUploadPromise;
       const detectedWalls = createWallsFromDetectedLines(result.lines, {
         height: result.imageHeight,
         name: file.name,
         width: result.imageWidth
       }) as Wall[];
+      const scaleCandidates = result.scaleCandidates ?? [];
+      const bestScaleCandidate = scaleCandidates[0];
+      const nextOpeningCandidates = detectOpeningCandidates({
+        gaps: result.lines,
+        pixelToMmRatio: bestScaleCandidate?.pixelToMmRatio ?? pixelToMmRatio
+      }) as FloorPlanCandidate[];
+      const nextFixtureCandidates = detectFixtureCandidates({
+        labels: [],
+        pixelToMmRatio: bestScaleCandidate?.pixelToMmRatio ?? pixelToMmRatio,
+        shapes: []
+      }) as FloorPlanCandidate[];
 
       setWalls(detectedWalls.length > 0 ? detectedWalls : getStarterWalls());
       setHiddenWallIds(new Set());
       setSelectedWall(null);
       setPendingFurniture(null);
       setSelectedFurnitureId(null);
+      setOpeningCandidates(nextOpeningCandidates);
+      setFixtureCandidates(nextFixtureCandidates);
       setUploadedImage(result.imageUrl);
-      setUploadStatus(`${file.name} 이미지 벽 ${detectedWalls.length}개 추출`);
+      setUploadedFloorPlanSource(sourceUpload ?? { imageUrl: result.imageUrl });
+      setFloorPlanDraftId(null);
+      setLastExtractionMs(result.processingMs ?? null);
+      setExtractionMeta({
+        detectedWallCount: detectedWalls.length,
+        ocrStatus: bestScaleCandidate ? "ready" : "manual-scale-required",
+        processingMs: result.processingMs,
+        removedNoiseCount: result.removedNoiseCount ?? 0,
+        scaleCandidates,
+        scaleConfirmed: false
+      });
+      setIsScaleSet(false);
+      if (bestScaleCandidate) {
+        setPixelToMmRatio(bestScaleCandidate.pixelToMmRatio);
+      }
+      setUploadStatus(
+        `${file.name} 벽 후보 ${detectedWalls.length}개 추출, ${
+          bestScaleCandidate ? "축척 확인 필요" : "수동 축척 필요"
+        }, 검수 후 저장${result.processingMs ? ` (${result.processingMs}ms)` : ""}`
+      );
     } catch {
       setUploadStatus("이미지 벽 추출 실패");
     } finally {
@@ -1115,10 +1463,83 @@ export default function RoomlogFloorPlanEditor() {
 
     setPixelToMmRatio(realLengthMm / pixelDistance);
     setIsScaleSet(true);
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
     setScaleWall(null);
     setScaleRealLength("");
     setTool("wall");
     setUploadStatus(`축척 적용됨: 1px = ${(realLengthMm / pixelDistance).toFixed(2)}mm`);
+  }
+
+  function confirmSuggestedScale() {
+    setIsScaleSet(true);
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
+    setUploadStatus(`축척 확인 완료: 1px = ${pixelToMmRatio.toFixed(2)}mm`);
+  }
+
+  function toggleCandidateStatus(layer: "opening" | "fixture", candidateId: string, status: CandidateStatus) {
+    const updater = (candidates: FloorPlanCandidate[]) =>
+      updateCandidateStatus(candidates, candidateId, status) as FloorPlanCandidate[];
+    if (layer === "opening") setOpeningCandidates(updater);
+    else setFixtureCandidates(updater);
+    setUploadStatus(`후보 레이어 ${candidateId} ${status}`);
+  }
+
+  function moveCandidateInLayer(layer: "opening" | "fixture", candidateId: string, delta: Point) {
+    const updater = (candidates: FloorPlanCandidate[]) => moveCandidate(candidates, candidateId, delta) as FloorPlanCandidate[];
+    if (layer === "opening") setOpeningCandidates(updater);
+    else setFixtureCandidates(updater);
+    setUploadStatus(`후보 레이어 ${candidateId} 이동`);
+  }
+
+  async function saveFloorPlanDraft(nextStatus: "DRAFT" | "PUBLISHED" = "DRAFT") {
+    const room3d = {
+      fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+      hiddenWallCount,
+      openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+      walls: roomWalls3D,
+      wallCount: roomWalls3D.length
+    };
+    const nextExtractionMeta = { ...extractionMeta, scaleConfirmed: isScaleSet };
+    const payload = {
+      extractionMeta: nextExtractionMeta,
+      fixtures: fixtureCandidates,
+      furnitures: [],
+      hiddenWallIds: Array.from(hiddenWallIds),
+      openings: openingCandidates,
+      pixelToMmRatio,
+      room3d,
+      sourceAttachmentId: uploadedFloorPlanSource?.attachmentId,
+      sourceImageUrl: uploadedFloorPlanSource?.imageUrl ?? uploadedImage ?? undefined,
+      status: nextStatus,
+      walls
+    };
+
+    try {
+      if (nextStatus === "PUBLISHED" && (!isScaleSet || roomWalls3D.length === 0 || walls.length === 0)) {
+        setUploadStatus("발행 전 축척 확인과 3D 변환이 필요합니다");
+        return;
+      }
+      setUploadStatus(nextStatus === "PUBLISHED" ? "도면 발행중" : "도면 저장중");
+      const token = await getFloorPlanAccessToken();
+      const endpoint = floorPlanDraftId ? apiUrl(`/floor-plans/${floorPlanDraftId}`) : apiUrl("/floor-plans");
+      const response = await fetch(endpoint, {
+        body: JSON.stringify(payload),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        method: floorPlanDraftId ? "PATCH" : "POST"
+      });
+      if (!response.ok) throw new Error(`Floor plan save failed: ${response.status}`);
+
+      const saved = (await response.json()) as { id?: string };
+      if (saved.id) setFloorPlanDraftId(saved.id);
+      window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, id: saved.id, savedAt: Date.now() }));
+      setUploadStatus(nextStatus === "PUBLISHED" ? "발행 완료" : "저장 완료");
+    } catch {
+      window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, savedAt: Date.now(), status: "LOCAL_DRAFT" }));
+      setUploadStatus("API 저장 실패 - 로컬 임시 저장");
+    }
   }
 
   function convertTo3D() {
@@ -1126,27 +1547,80 @@ export default function RoomlogFloorPlanEditor() {
     window.localStorage.setItem(
       "floorPlanData",
       JSON.stringify({
-        furnitures: placedFurnitures,
+        extractionMeta,
+        fixtures: fixtureCandidates,
         hiddenWallIds: Array.from(hiddenWallIds),
+        openings: openingCandidates,
         pixelToMmRatio,
+        room3d: {
+          fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+          openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+          walls: roomWalls3D
+        },
         timestamp: Date.now(),
         walls
       })
     );
   }
 
+  function saveResidentFurnitureDesign() {
+    const payload = {
+      fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+      furnitures: placedFurnitures,
+      hiddenWallIds: Array.from(hiddenWallIds),
+      mode: "resident",
+      openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
+      pixelToMmRatio,
+      room3d: { walls: roomWalls3D },
+      savedAt: Date.now(),
+      sourceFloorPlanDraftId: floorPlanDraftId,
+      walls
+    };
+    window.localStorage.setItem("residentFloorPlanDesign", JSON.stringify(payload));
+    setUploadStatus("임차인/일반사용자 배치 저장 완료");
+  }
+
   return (
     <section className="floor-plan-editor wheretoput-floor-plan-editor" aria-label="Roomlog 3D 도면 편집기">
       <aside className="floor-plan-toolbar wheretoput-floor-plan-toolbar" aria-label="도면 도구">
-        {[
-          ["wall", "드로잉", "벽 그리기"],
-          ["select", "선택", "벽 선택"],
-          ["eraser", "지우기", "벽 삭제"],
-          ["partial_eraser", "부분 지우기", "벽 일부 삭제"],
-          ["hide", "숨기기", "3D 벽 숨기기"],
-          ["furniture", "가구", "가구 배치"],
-          ["none", "이동", "화면 이동"]
-        ].map(([toolId, label, hint]) => (
+        <div className="floor-plan-mode-switch" aria-label="사용 모드">
+          <button
+            className={experienceMode === "landlord" ? "active" : ""}
+            onClick={() => setExperienceMode("landlord")}
+            type="button"
+          >
+            <strong>집주인 모드</strong>
+            <span>도면 생성/검수/발행</span>
+          </button>
+          <button
+            className={experienceMode === "resident" ? "active" : ""}
+            onClick={() => {
+              setExperienceMode("resident");
+              setViewMode("3d");
+            }}
+            type="button"
+          >
+            <strong>임차인/일반사용자 모드</strong>
+            <span>가구 배치 체험</span>
+          </button>
+        </div>
+        {(experienceMode === "landlord"
+          ? [
+              ["wall", "드로잉", "벽 그리기"],
+              ["select", "선택", "벽 선택"],
+              ["eraser", "지우기", "벽 삭제"],
+              ["partial_eraser", "부분 지우기", "벽 일부 삭제"],
+              ["hide", "숨기기", "3D 벽 숨기기"],
+              ["opening", "문창문", "문/창문 후보 검수"],
+              ["fixture", "설비", "고정 설비 후보 검수"],
+              ["none", "이동", "화면 이동"]
+            ]
+          : [
+              ["furniture", "가구", "가구 배치"],
+              ["select", "선택", "배치/벽 선택"],
+              ["none", "이동", "화면 이동"]
+            ]
+        ).map(([toolId, label, hint]) => (
           <button
             className={tool === toolId ? "active" : ""}
             key={toolId}
@@ -1154,7 +1628,7 @@ export default function RoomlogFloorPlanEditor() {
               setTool(toolId as EditorTool);
               setPartialEraserSelectedWall(null);
               if (toolId !== "select") setSelectedWall(null);
-              if (toolId !== "furniture") {
+              if (toolId !== "fixture" && toolId !== "opening") {
                 setPendingFurniture(null);
                 setSelectedFurnitureId(null);
               }
@@ -1171,15 +1645,23 @@ export default function RoomlogFloorPlanEditor() {
       <section className="floor-plan-canvas wheretoput-floor-plan-canvas" aria-label="도면 캔버스">
         <div className="floor-plan-upload-row">
           <input accept="image/*" className="floor-plan-file-input" onChange={handleImageUpload} ref={fileInputRef} type="file" />
-          <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
-            도면 등록
-          </button>
-          <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
-            벽 자동 추출
-          </button>
-          <button className="floor-plan-secondary" onClick={() => setTool("scale")} type="button">
-            축척
-          </button>
+          {experienceMode === "landlord" ? (
+            <>
+              <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
+                도면 등록
+              </button>
+              <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
+                벽 자동 추출
+              </button>
+              <button className="floor-plan-secondary" onClick={() => setTool("scale")} type="button">
+                축척
+              </button>
+            </>
+          ) : (
+            <button className="floor-plan-secondary" onClick={() => setViewMode("3d")} type="button">
+              3D 배치 보기
+            </button>
+          )}
           <span>{uploadStatus}</span>
         </div>
 
@@ -1265,9 +1747,25 @@ export default function RoomlogFloorPlanEditor() {
           >
             숨김 복원
           </button>
-          <button className="floor-plan-primary" type="button">
-            저장 초안
-          </button>
+          {experienceMode === "landlord" ? (
+            <>
+              <button className="floor-plan-primary" disabled={isProcessing || walls.length === 0} onClick={() => saveFloorPlanDraft("DRAFT")} type="button">
+                저장 초안
+              </button>
+              <button
+                className="floor-plan-primary"
+                disabled={isProcessing || walls.length === 0 || !isScaleSet}
+                onClick={() => saveFloorPlanDraft("PUBLISHED")}
+                type="button"
+              >
+                발행
+              </button>
+            </>
+          ) : (
+            <button className="floor-plan-primary" disabled={placedFurnitures.length === 0} onClick={saveResidentFurnitureDesign} type="button">
+              배치 저장
+            </button>
+          )}
         </div>
       </section>
 
@@ -1298,8 +1796,12 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{hiddenWallCount}개</dd>
           </div>
           <div>
-            <dt>배치 가구</dt>
-            <dd>{placedFurnitures.length}개</dd>
+            <dt>확정 문창문</dt>
+            <dd>{openingCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{openingCandidates.length}개</dd>
+          </div>
+          <div>
+            <dt>확정 고정설비</dt>
+            <dd>{fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{fixtureCandidates.length}개</dd>
           </div>
           <div>
             <dt>배율 조절</dt>
@@ -1309,74 +1811,136 @@ export default function RoomlogFloorPlanEditor() {
             <dt>축척</dt>
             <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "1px=20mm"}</dd>
           </div>
+          <div>
+            <dt>OpenCV</dt>
+            <dd>{opencvReady ? "준비됨" : "추출 엔진 준비중"}</dd>
+          </div>
+          <div>
+            <dt>추출 시간</dt>
+            <dd>{lastExtractionMs ? `${lastExtractionMs}ms` : "대기"}</dd>
+          </div>
+          <div>
+            <dt>저장 ID</dt>
+            <dd>{floorPlanDraftId ?? "로컬 초안"}</dd>
+          </div>
+          <div>
+            <dt>사용 모드</dt>
+            <dd>{experienceMode === "landlord" ? "집주인 모드" : "임차인/일반사용자 모드"}</dd>
+          </div>
         </dl>
 
-        {tool === "scale" ? (
-          <div className="floor-plan-sim-preview">
-            <span>축척 설정</span>
-            {scaleWall ? (
-              <>
-                <input
-                  aria-label="실제 길이 mm"
-                  onChange={(event) => setScaleRealLength(event.target.value)}
-                  placeholder="실제 길이 mm"
-                  type="number"
-                  value={scaleRealLength}
-                />
-                <button className="floor-plan-primary" disabled={!scaleRealLength} onClick={applyScale} type="button">
-                  축척 적용
-                </button>
-              </>
-            ) : (
-              <code>기준 벽을 그려주세요</code>
-            )}
-          </div>
-        ) : null}
-
-        <div className="floor-plan-furniture-library">
-          <span>wheretoput furniture picker</span>
-          <code>{furnitureCatalogStatus}</code>
-          <div className="floor-plan-furniture-grid">
-            {furnitureCatalog.map((item) => (
-              <button
-                className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
-                key={item.furniture_id}
-                onClick={() => handleFurnitureSelect(item)}
-                type="button"
-              >
-                <i style={{ backgroundColor: item.color }} />
-                <strong>{item.name}</strong>
-                <small>{item.brand}</small>
-                <em>{item.length.join("x")}mm</em>
-                <b>{Number(item.price).toLocaleString()}원</b>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="floor-plan-sim-preview">
-          <span>선택 가구</span>
-          {selectedFurniture ? (
-            <>
+        {experienceMode === "landlord" ? (
+          <>
+            <div className="floor-plan-sim-preview">
+              <span>후보 레이어</span>
               <code>
-                {selectedFurniture.name} / {selectedFurniture.position.map((value) => value.toFixed(2)).join(", ")}
+                벽 {summary.wallCount} / 문창문 {openingCandidates.length} / 고정설비 {fixtureCandidates.length}
               </code>
-              <div className="floor-plan-furniture-actions">
-                <button className="floor-plan-secondary" onClick={rotateSelectedFurniture} type="button">
-                  90도 회전
-                </button>
-                <button className="floor-plan-secondary" onClick={removeSelectedFurniture} type="button">
-                  삭제
-                </button>
+              <code>일반 클릭 확정, Shift 클릭 거절</code>
+            </div>
+
+            {tool === "scale" ? (
+              <div className="floor-plan-sim-preview">
+                <span>축척 설정</span>
+                {extractionMeta.scaleCandidates[0] && !isScaleSet ? (
+                  <>
+                    <code>
+                      자동 추정 {extractionMeta.scaleCandidates[0].realLengthMm}mm / {extractionMeta.scaleCandidates[0].pixelLength}px
+                    </code>
+                    <button className="floor-plan-primary" onClick={confirmSuggestedScale} type="button">
+                      축척 확인
+                    </button>
+                  </>
+                ) : null}
+                {scaleWall ? (
+                  <>
+                    <input
+                      aria-label="실제 길이 mm"
+                      onChange={(event) => setScaleRealLength(event.target.value)}
+                      placeholder="실제 길이 mm"
+                      type="number"
+                      value={scaleRealLength}
+                    />
+                    <button className="floor-plan-primary" disabled={!scaleRealLength} onClick={applyScale} type="button">
+                      축척 적용
+                    </button>
+                  </>
+                ) : (
+                  <code>기준 벽을 그려주세요</code>
+                )}
               </div>
-              <code>가구 도구에서 바닥을 클릭하면 위치 이동</code>
-            </>
-          ) : pendingFurniture ? (
-            <code>{pendingFurniture.name} 배치 위치를 3D 바닥에서 클릭</code>
-          ) : (
-            <code>가구 카드를 선택해주세요</code>
-          )}
-        </div>
+            ) : null}
+
+            {[...openingCandidates.map((candidate) => ["opening", candidate] as const), ...fixtureCandidates.map((candidate) => ["fixture", candidate] as const)]
+              .slice(0, 6)
+              .map(([layer, candidate]) => (
+                <div className="floor-plan-sim-preview" key={`${layer}-${candidate.id}`}>
+                  <span>{layer === "opening" ? "문창문 후보" : "고정설비 후보"}</span>
+                  <code>
+                    {candidate.type} / {candidate.status} / {Math.round((candidate.confidence ?? 0) * 100)}%
+                  </code>
+                  <div className="floor-plan-furniture-actions">
+                    <button className="floor-plan-secondary" onClick={() => toggleCandidateStatus(layer, candidate.id, "CONFIRMED")} type="button">
+                      확정
+                    </button>
+                    <button className="floor-plan-secondary" onClick={() => toggleCandidateStatus(layer, candidate.id, "REJECTED")} type="button">
+                      삭제
+                    </button>
+                    <button className="floor-plan-secondary" onClick={() => moveCandidateInLayer(layer, candidate.id, { x: 4, y: 0 })} type="button">
+                      이동
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </>
+        ) : (
+          <>
+            <div className="floor-plan-furniture-library">
+              <span>wheretoput furniture picker</span>
+              <code>{furnitureCatalogStatus}</code>
+              <div className="floor-plan-furniture-grid">
+                {furnitureCatalog.map((item) => (
+                  <button
+                    className={pendingFurniture?.furniture_id === item.furniture_id ? "active" : ""}
+                    key={item.furniture_id}
+                    onClick={() => handleFurnitureSelect(item)}
+                    type="button"
+                  >
+                    <i style={{ backgroundColor: item.color }} />
+                    <strong>{item.name}</strong>
+                    <small>{item.brand}</small>
+                    <em>{item.length.join("x")}mm</em>
+                    <b>{Number(item.price).toLocaleString()}원</b>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="floor-plan-sim-preview">
+              <span>선택 가구</span>
+              {selectedFurniture ? (
+                <>
+                  <code>
+                    {selectedFurniture.name} / {selectedFurniture.position.map((value) => value.toFixed(2)).join(", ")}
+                  </code>
+                  <div className="floor-plan-furniture-actions">
+                    <button className="floor-plan-secondary" onClick={rotateSelectedFurniture} type="button">
+                      90도 회전
+                    </button>
+                    <button className="floor-plan-secondary" onClick={removeSelectedFurniture} type="button">
+                      삭제
+                    </button>
+                  </div>
+                  <code>가구 도구에서 바닥을 클릭하면 위치 이동</code>
+                </>
+              ) : pendingFurniture ? (
+                <code>{pendingFurniture.name} 배치 위치를 3D 바닥에서 클릭</code>
+              ) : (
+                <code>가구 카드를 선택해주세요</code>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="floor-plan-sim-preview">
           <span>position / rotation / dimensions</span>

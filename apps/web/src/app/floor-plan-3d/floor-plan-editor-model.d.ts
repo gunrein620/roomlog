@@ -84,6 +84,31 @@ export interface DetectedWallLine {
   x2: number;
   y2: number;
   orientation?: "horizontal" | "vertical";
+  thickness?: number;
+  markers?: string[];
+  confidence?: number;
+}
+
+export interface FloorPlanCandidate {
+  id: string;
+  type: string;
+  status: "CANDIDATE" | "CONFIRMED" | "REJECTED";
+  confidence?: number;
+  source?: string;
+  position?: Point;
+  widthMm?: number;
+  sizeMm?: { width?: number; depth?: number };
+  label?: string;
+  movable?: boolean;
+}
+
+export interface ScaleCandidate {
+  confidence: number;
+  line: DetectedWallLine;
+  pixelLength: number;
+  pixelToMmRatio: number;
+  realLengthMm: number;
+  source: "outside-dimension-ocr";
 }
 
 export const GRID_SIZE: number;
@@ -137,12 +162,70 @@ export function convertWallsToWheretoputRoom3D(
 >;
 export function detectWallLinesFromMask(
   mask: boolean[],
-  options?: { width?: number; height?: number; minRunLength?: number }
+  options?: {
+    width?: number;
+    height?: number;
+    minRunLength?: number;
+    axisTolerance?: number;
+    gapTolerance?: number;
+    minLength?: number;
+    maxLines?: number;
+  }
 ): DetectedWallLine[];
 export function detectWallLinesFromImageData(
   imageData: ImageData,
-  options?: { darkThreshold?: number; width?: number; height?: number; minRunLength?: number }
+  options?: {
+    darkThreshold?: number;
+    width?: number;
+    height?: number;
+    minRunLength?: number;
+    minComponentArea?: number;
+    axisTolerance?: number;
+    gapTolerance?: number;
+    minLength?: number;
+    maxLines?: number;
+  }
 ): DetectedWallLine[];
+export function removeSmallWallComponents(
+  mask: boolean[],
+  options?: { width?: number; height?: number; minArea?: number }
+): boolean[];
+export function mergeDetectedWallLines(
+  lines: DetectedWallLine[],
+  options?: { axisTolerance?: number; gapTolerance?: number; minLength?: number; maxLines?: number }
+): DetectedWallLine[];
+export function limitDetectedWallCandidates(
+  lines: DetectedWallLine[],
+  options?: { maxLines?: number }
+): DetectedWallLine[];
+export function filterCommercialWallCandidates(
+  lines: DetectedWallLine[],
+  options?: { width?: number; height?: number; axisTolerance?: number; gapTolerance?: number; minLength?: number; maxLines?: number }
+): { walls: DetectedWallLine[]; dimensionCandidates: Array<{ line: DetectedWallLine; confidence: number; source: string }>; removedNoiseCount: number };
+export function estimateScaleCandidateFromDimensions(
+  candidates: Array<{ line: DetectedWallLine; text?: string; label?: string; confidence?: number }>
+): ScaleCandidate | null;
+export function detectOpeningCandidates(input?: {
+  arcs?: Array<{ x: number; y: number; radius?: number }>;
+  gaps?: DetectedWallLine[];
+  windowLines?: DetectedWallLine[];
+  pixelToMmRatio?: number;
+}): FloorPlanCandidate[];
+export function updateCandidateStatus(
+  candidates: FloorPlanCandidate[],
+  candidateId: string,
+  status: "CANDIDATE" | "CONFIRMED" | "REJECTED"
+): FloorPlanCandidate[];
+export function moveCandidate(
+  candidates: FloorPlanCandidate[],
+  candidateId: string,
+  delta: Point
+): FloorPlanCandidate[];
+export function detectFixtureCandidates(input?: {
+  labels?: Array<{ text: string; x: number; y: number; confidence?: number }>;
+  shapes?: Array<{ kind?: string; x: number; y: number; width?: number; height?: number }>;
+  pixelToMmRatio?: number;
+}): FloorPlanCandidate[];
 export function createWallsFromDetectedLines(
   lines: DetectedWallLine[],
   plan?: RegisteredPlanMetadata
