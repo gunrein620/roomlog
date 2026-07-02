@@ -1,0 +1,33 @@
+/* 룸로그 셸 전역 스타일 — 최소 리셋 + 와이어 프레임 지원.
+   프레임 HTML은 자체 inline style을 쓰므로 전역은 얇게 유지한다. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #fbf9f4; /* _DESIGN_tokens surface */
+  color: #1b1c19;
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", ui-sans-serif, system-ui,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* T-DEF-03 AI 분석 중 화면의 점 깜빡임 (원본 helmet 스타일에서 가져옴) */
+@keyframes wfblink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.18;
+  }
+  40% {
+    opacity: 1;
+  }
+}
