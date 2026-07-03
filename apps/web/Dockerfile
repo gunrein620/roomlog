@@ -12,8 +12,10 @@ FROM base AS deps
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/package.json
+COPY packages/types/package.json packages/types/package.json
+COPY packages/ui/package.json packages/ui/package.json
 
-RUN pnpm install --filter web --frozen-lockfile
+RUN pnpm install --filter web... --frozen-lockfile
 
 FROM deps AS builder
 
@@ -23,6 +25,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=$NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
 
 COPY assets assets
+COPY packages packages
 COPY apps/web apps/web
 
 RUN pnpm --filter web build
@@ -35,6 +38,7 @@ ARG NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=$NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
 
+COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/web ./apps/web
 
 EXPOSE 3000

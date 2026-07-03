@@ -114,10 +114,9 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
     "개발용 로그인",
     "집우집주",
     "소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다",
-    "방문 전 3D 투어와 안심 정보를 먼저 확인하세요",
-    "3D 투어",
-    "확인매물",
-    "지도 검색"
+    "3D투어",
+    "입주관리AI",
+    "업체연결"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
@@ -128,7 +127,7 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
   assert.match(pageSource, /login-brandmark/);
   assert.match(pageSource, /brand-mark-icon/);
   assert.match(cssSource, /\.login-phone\s*{[^}]*background:\s*#ffffff/s);
-  assert.match(cssSource, /\.login-trust-row/);
+  assert.match(cssSource, /\.login-feature-bar/);
   assert.match(cssSource, /\.social-login-notice/);
   assert.doesNotMatch(pageSource, /카카오로 계속하기/);
   assert.doesNotMatch(pageSource, /Apple로 계속하기/);
