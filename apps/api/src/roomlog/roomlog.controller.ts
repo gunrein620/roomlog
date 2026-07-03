@@ -530,6 +530,26 @@ export class RoomlogController {
     return this.roomlogService.listManagerMoveoutRows(user.id);
   }
 
+  @Get("moveouts/:moveoutId/manager")
+  getManagerMoveout(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMoveout(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/manager-records")
+  listManagerMoveoutRecords(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMoveoutRecords(user.id, moveoutId);
+  }
+
   @Get("moveouts/:moveoutId/manager-settlement")
   getManagerMoveoutSettlement(
     @Headers("authorization") authorization: string | undefined,

@@ -4,6 +4,8 @@ import { Badge, Button, Card } from "@roomlog/ui";
 import { DEMO_MOVEOUT_ID, getChecklist, getMoveout } from "@/lib/moveout-api";
 import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
 
+export const dynamic = "force-dynamic";
+
 const labelStyle = {
   fontSize: "var(--fs-caption)",
   color: "var(--on-surface-variant)",

@@ -71,6 +71,39 @@ test("keeps tenant, manager, and vendor entry routes available (redirect to doma
   }
 });
 
+test("wires moveout screens to backend mutations instead of static links", () => {
+  const tenantSettlementSource = readFileSync(
+    new URL("./src/app/tenant/moveout/03/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const tenantDisputeSource = readFileSync(
+    new URL("./src/app/tenant/moveout/04/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerReviewSource = readFileSync(
+    new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerDisputeSource = readFileSync(
+    new URL("./src/app/manager/moveout/03/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(tenantSettlementSource, /createMoveoutInquiry/);
+  assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
+  assert.match(tenantDisputeSource, /createMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
+  assert.match(managerReviewSource, /completeReview/);
+  assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
+  assert.match(managerDisputeSource, /respondDispute/);
+  assert.match(managerDisputeSource, /action=\{respondDisputeAction\}/);
+
+  assert.doesNotMatch(tenantSettlementSource, /disabled[\s\S]*관리자 문의/);
+  assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
+  assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
+  assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);
+});
+
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["조건에 맞는 방", "지도 열기", "추천 매물", "매물 57804322", "전체"]) {
     assert.match(pageSource, new RegExp(label));
