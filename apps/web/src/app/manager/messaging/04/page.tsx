@@ -1,6 +1,11 @@
+import { redirect } from "next/navigation";
 import type { Message, Thread } from "@roomlog/types";
-import { Input } from "@roomlog/ui";
-import { DEMO_MANAGER_THREAD_ID, getManagerThread } from "@/lib/messaging-manager-api";
+import { Button, Input } from "@roomlog/ui";
+import {
+  addManagerThreadMessage,
+  DEMO_MANAGER_THREAD_ID,
+  getManagerThread,
+} from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import {
   Badge,
@@ -14,7 +19,26 @@ import {
   sectionTitleStyle,
 } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = Promise<{ id?: string; unitId?: string }>;
+
+async function sendManagerMessage(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (threadId && body) {
+    await addManagerThreadMessage(threadId, { body });
+  }
+
+  redirect(
+    `${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(
+      threadId || DEMO_MANAGER_THREAD_ID,
+    )}`,
+  );
+}
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id, unitId } = await searchParams;
@@ -41,9 +65,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             ))}
           </Card>
 
-          <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-sm)", alignItems: "center" }}>
-            <Input aria-label="답장 입력" placeholder="답장을 입력하세요" readOnly />
-            <StaticButton>답장 보내기</StaticButton>
+          <Card>
+            <form
+              action={sendManagerMessage}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: "var(--space-sm)",
+                alignItems: "center",
+              }}
+            >
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Input name="body" aria-label="답장 입력" placeholder="답장을 입력하세요" />
+              <Button type="submit">답장 보내기</Button>
+            </form>
           </Card>
         </div>
 

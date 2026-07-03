@@ -4,6 +4,8 @@ import { Badge, Card, Input } from "@roomlog/ui";
 import { listAnnouncements, listThreads } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = Promise<{ tab?: string }>;
 
 const labelStyle = {

@@ -1,38 +1,75 @@
 import type { Announcement, Thread } from "@roomlog/types";
 import { DEMO_ANNOUNCEMENTS, DEMO_THREAD_ID, DEMO_THREADS } from "./demo-messaging";
+import { serverFetch } from "./server-api";
 
 // 룸로그 API 클라이언트 (임차인 커뮤니케이션 T-MSG 슬라이스).
 // api가 안 떠 있어도 화면이 렌더되도록 데모 데이터로 폴백 → 빌드/프리렌더 안 막힘.
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 const DEMO_ANNOUNCEMENT_ID = DEMO_ANNOUNCEMENTS[0].id;
 
-async function tryFetch<T>(path: string, fallback: T): Promise<T> {
+export const tenantMessagingPaths = {
+  threads: () => "/tenant/messaging/threads",
+  thread: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}`,
+  threadMessages: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}/messages`,
+  announcements: () => "/tenant/messaging/announcements",
+  announcement: (id: string) => `/tenant/messaging/announcements/${encodeURIComponent(id)}`,
+  readAnnouncement: (id: string) =>
+    `/tenant/messaging/announcements/${encodeURIComponent(id)}/read`,
+  confirmAnnouncement: (id: string) =>
+    `/tenant/messaging/announcements/${encodeURIComponent(id)}/confirm`,
+};
+
+async function tryFetch<T>(path: string, fallback: T, label: string): Promise<T> {
   try {
-    const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
+    return await serverFetch<T>(path);
+  } catch (error) {
+    console.warn(`[messaging/api] ${label} 실패 → 데모 폴백`, error);
     return fallback;
   }
 }
 
 export function listThreads(): Promise<Thread[]> {
-  return tryFetch("/threads", DEMO_THREADS);
+  return tryFetch(tenantMessagingPaths.threads(), DEMO_THREADS, "임차인 메시지 목록 조회");
 }
 
 export function getThread(id: string = DEMO_THREAD_ID): Promise<Thread> {
   const fallback = DEMO_THREADS.find((thread) => thread.id === id) ?? DEMO_THREADS[0];
-  return tryFetch(`/threads/${id}`, fallback);
+  return tryFetch(tenantMessagingPaths.thread(id), fallback, "임차인 메시지 상세 조회");
+}
+
+export function addTenantThreadMessage(
+  id: string,
+  input: { body?: string; kind?: "text" | "photo_request" | "photo_response"; attachmentUrls?: string[] },
+): Promise<Thread> {
+  return serverFetch<Thread>(tenantMessagingPaths.threadMessages(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function listAnnouncements(): Promise<Announcement[]> {
-  return tryFetch("/announcements", DEMO_ANNOUNCEMENTS);
+  return tryFetch(
+    tenantMessagingPaths.announcements(),
+    DEMO_ANNOUNCEMENTS,
+    "임차인 공지 목록 조회",
+  );
 }
 
 export function getAnnouncement(id: string = DEMO_ANNOUNCEMENT_ID): Promise<Announcement> {
   const fallback =
     DEMO_ANNOUNCEMENTS.find((announcement) => announcement.id === id) ?? DEMO_ANNOUNCEMENTS[0];
-  return tryFetch(`/announcements/${id}`, fallback);
+  return tryFetch(tenantMessagingPaths.announcement(id), fallback, "임차인 공지 상세 조회");
+}
+
+export function markAnnouncementRead(id: string): Promise<Announcement> {
+  return serverFetch<Announcement>(tenantMessagingPaths.readAnnouncement(id), {
+    method: "POST",
+  });
+}
+
+export function confirmAnnouncement(id: string): Promise<Announcement> {
+  return serverFetch<Announcement>(tenantMessagingPaths.confirmAnnouncement(id), {
+    method: "POST",
+  });
 }
 
 export { DEMO_ANNOUNCEMENT_ID, DEMO_THREAD_ID };
