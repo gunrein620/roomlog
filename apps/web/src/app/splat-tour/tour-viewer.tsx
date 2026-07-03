@@ -39,8 +39,8 @@ export default function TourViewer() {
           .tour-viewer-shell {
             position: relative;
             width: 100%;
-            height: 100%;
-            min-height: 70vh;
+            height: calc(100dvh - 96px);
+            min-height: 480px;
             overflow: hidden;
             border-radius: 12px;
             background: var(--canvas);
@@ -205,7 +205,8 @@ export default function TourViewer() {
 
           @media (max-width: 560px) and (orientation: portrait) {
             .tour-viewer-shell {
-              min-height: 76dvh;
+              height: calc(100dvh - 96px);
+              min-height: 480px;
               border-radius: 8px;
             }
 

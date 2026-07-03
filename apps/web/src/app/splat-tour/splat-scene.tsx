@@ -3,9 +3,38 @@
 import { useThree } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import type { SparkRenderer as SparkRendererObject, SplatMesh as SplatMeshObject } from "@sparkjsdev/spark";
+import { Vector3 } from "three";
 
 // 약 3m(가로) × 4m(세로), 층고 2.4m 원룸. 바닥 중앙이 원점.
 const ROOM = { width: 3, depth: 4, height: 2.4, thickness: 0.06 };
+const SPLAT_TARGET_MAX_DIMENSION_METERS = 2.7;
+const SPLAT_MIN_VISIBLE_SIZE_METERS = 1.5;
+const SPLAT_MIN_AUTO_SCALE = SPLAT_MIN_VISIBLE_SIZE_METERS / SPLAT_TARGET_MAX_DIMENSION_METERS;
+const SPLAT_MAX_AUTO_SCALE = 1.6;
+const SPLAT_FLOATER_GUARD_SCALE = 0.6;
+const SPZ_Y_DOWN_TO_Y_UP_ROTATION_X_DEGREES = 180;
+const DEFAULT_SPLAT_SCALE_MULTIPLIER = 1;
+const DEFAULT_SPLAT_CENTER = { x: 0, y: ROOM.height / 2, z: -0.5 };
+
+interface SplatTuning {
+  scaleMultiplier: number;
+  rotationXDegrees: number;
+  centerY: number;
+  overrides: {
+    scaleMultiplier: boolean;
+    rotationXDegrees: boolean;
+    centerY: boolean;
+  };
+}
+
+interface SplatFitInfo {
+  scale: number;
+  scaleReason: "bbox" | "min-guard" | "max-guard" | "fallback";
+  rawScale: number | null;
+  maxDimension: number | null;
+  size: [number, number, number] | null;
+  center: [number, number, number] | null;
+}
 
 export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => void }) {
   const gl = useThree((state) => state.gl);
@@ -41,7 +70,21 @@ export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => vo
 
         if (isDisposed) return;
 
-        fitSplatToDemoRoom(nextSplatMesh);
+        const tuning = readSplatTuningFromLocation();
+        const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
+        console.info("[splat-tour] applied splat transform", {
+          src,
+          rotationXDegrees: tuning.rotationXDegrees,
+          scaleMultiplier: tuning.scaleMultiplier,
+          centerY: tuning.centerY,
+          scale: fitInfo.scale,
+          scaleReason: fitInfo.scaleReason,
+          rawScale: fitInfo.rawScale,
+          maxDimension: fitInfo.maxDimension,
+          size: fitInfo.size,
+          center: fitInfo.center,
+          overrides: tuning.overrides
+        });
         setSparkRenderer(nextSparkRenderer);
         setSplatMesh(nextSplatMesh);
         invalidate();
@@ -84,19 +127,36 @@ export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => vo
   );
 }
 
-function fitSplatToDemoRoom(splatMesh: SplatMeshObject) {
-  const box = splatMesh.getBoundingBox(true);
-  const size = box.getSize(splatMesh.position.clone());
-  const center = box.getCenter(splatMesh.position.clone());
+function fitSplatToDemoRoom(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatFitInfo {
+  splatMesh.position.set(0, 0, 0);
+  splatMesh.scale.setScalar(1);
+  applySplatRotationX(splatMesh, tuning.rotationXDegrees);
+  splatMesh.updateMatrixWorld(true);
+
+  const box = splatMesh.getBoundingBox(true).clone().applyMatrix4(splatMesh.matrixWorld);
+  const size = box.getSize(new Vector3());
+  const center = box.getCenter(new Vector3());
   const maxDimension = Math.max(size.x, size.y, size.z);
+  const targetCenter = { ...DEFAULT_SPLAT_CENTER, y: tuning.centerY };
 
   if (!Number.isFinite(maxDimension) || maxDimension <= 0) {
-    splatMesh.position.set(0, ROOM.height / 2, -0.5);
-    return;
+    const fallbackScale = SPLAT_FLOATER_GUARD_SCALE * tuning.scaleMultiplier;
+    splatMesh.scale.setScalar(fallbackScale);
+    splatMesh.position.set(targetCenter.x, targetCenter.y, targetCenter.z);
+    splatMesh.updateMatrixWorld(true);
+
+    return {
+      scale: fallbackScale,
+      scaleReason: "fallback",
+      rawScale: null,
+      maxDimension: null,
+      size: null,
+      center: null
+    };
   }
 
-  const scale = 2.7 / maxDimension;
-  const targetCenter = { x: 0, y: ROOM.height / 2, z: -0.5 };
+  const scaleFit = resolveSplatScale(maxDimension);
+  const scale = scaleFit.scale * tuning.scaleMultiplier;
 
   splatMesh.scale.setScalar(scale);
   splatMesh.position.set(
@@ -104,6 +164,96 @@ function fitSplatToDemoRoom(splatMesh: SplatMeshObject) {
     targetCenter.y - center.y * scale,
     targetCenter.z - center.z * scale
   );
+  splatMesh.updateMatrixWorld(true);
+
+  return {
+    scale,
+    scaleReason: scaleFit.reason,
+    rawScale: scaleFit.rawScale,
+    maxDimension,
+    size: vectorToTuple(size),
+    center: vectorToTuple(center)
+  };
+}
+
+function applySplatRotationX(splatMesh: SplatMeshObject, degrees: number) {
+  if (degrees === SPZ_Y_DOWN_TO_Y_UP_ROTATION_X_DEGREES) {
+    splatMesh.quaternion.set(1, 0, 0, 0);
+    return;
+  }
+
+  const radians = (degrees * Math.PI) / 180;
+  splatMesh.quaternion.set(Math.sin(radians / 2), 0, 0, Math.cos(radians / 2));
+}
+
+function resolveSplatScale(maxDimension: number): {
+  scale: number;
+  reason: SplatFitInfo["scaleReason"];
+  rawScale: number;
+} {
+  const rawScale = SPLAT_TARGET_MAX_DIMENSION_METERS / maxDimension;
+
+  if (rawScale < SPLAT_MIN_AUTO_SCALE) {
+    return { scale: SPLAT_FLOATER_GUARD_SCALE, reason: "min-guard", rawScale };
+  }
+
+  if (rawScale > SPLAT_MAX_AUTO_SCALE) {
+    return { scale: SPLAT_MAX_AUTO_SCALE, reason: "max-guard", rawScale };
+  }
+
+  return { scale: rawScale, reason: "bbox", rawScale };
+}
+
+function readSplatTuningFromLocation(): SplatTuning {
+  const defaultTuning: SplatTuning = {
+    scaleMultiplier: DEFAULT_SPLAT_SCALE_MULTIPLIER,
+    rotationXDegrees: SPZ_Y_DOWN_TO_Y_UP_ROTATION_X_DEGREES,
+    centerY: DEFAULT_SPLAT_CENTER.y,
+    overrides: {
+      scaleMultiplier: false,
+      rotationXDegrees: false,
+      centerY: false
+    }
+  };
+
+  if (typeof window === "undefined") {
+    return defaultTuning;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const scaleMultiplier = readNumberParam(params, "splatScale", { minExclusive: 0 });
+  const rotationXDegrees = readNumberParam(params, "splatRotX");
+  const centerY = readNumberParam(params, "splatY");
+
+  return {
+    scaleMultiplier: scaleMultiplier ?? defaultTuning.scaleMultiplier,
+    rotationXDegrees: rotationXDegrees ?? defaultTuning.rotationXDegrees,
+    centerY: centerY ?? defaultTuning.centerY,
+    overrides: {
+      scaleMultiplier: scaleMultiplier !== undefined,
+      rotationXDegrees: rotationXDegrees !== undefined,
+      centerY: centerY !== undefined
+    }
+  };
+}
+
+function readNumberParam(
+  params: URLSearchParams,
+  key: string,
+  options: { minExclusive?: number } = {}
+): number | undefined {
+  const rawValue = params.get(key);
+  if (rawValue === null) return undefined;
+
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) return undefined;
+  if (options.minExclusive !== undefined && value <= options.minExclusive) return undefined;
+
+  return value;
+}
+
+function vectorToTuple(vector: Vector3): [number, number, number] {
+  return [vector.x, vector.y, vector.z];
 }
 
 function FallbackRoom() {
