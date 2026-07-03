@@ -1,3 +1,4 @@
+# 서버 실행 명령어
 docker compose up -d 서버실행
 docker compose down 서버끄기
 docker compose up -d --build 코드반영후 서버재실행
