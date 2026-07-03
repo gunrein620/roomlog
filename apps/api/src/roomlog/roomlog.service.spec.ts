@@ -678,6 +678,94 @@ describe("RoomlogService", () => {
     assert.throws(() => service.getDemoState(), /데모/);
   });
 
+  it("logs in and links a verified Google account through the social auth flow", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalClientId = process.env.GOOGLE_LOGIN_CLIENT_ID;
+    const originalClientSecret = process.env.GOOGLE_LOGIN_CLIENT_SECRET;
+    const requests: string[] = [];
+
+    process.env.GOOGLE_LOGIN_CLIENT_ID = "google-client-id";
+    process.env.GOOGLE_LOGIN_CLIENT_SECRET = "google-client-secret";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      requests.push(url);
+
+      if (url === "https://oauth2.googleapis.com/token") {
+        const body = String(init?.body);
+        assert.match(body, /client_id=google-client-id/);
+        assert.match(body, /redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fgoogle%2Fcallback/);
+
+        return new Response(JSON.stringify({ access_token: "google-access-token" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      if (url === "https://openidconnect.googleapis.com/v1/userinfo") {
+        assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer google-access-token");
+
+        return new Response(
+          JSON.stringify({
+            sub: "google-user-001",
+            email: "GoogleUser@Roomlog.Test",
+            email_verified: true,
+            name: "Google User",
+            picture: "https://example.test/avatar.png"
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const service = new RoomlogService({ seedDemoData: false } as any);
+
+      await assert.rejects(
+        () =>
+          service.loginWithGoogle({
+            code: "google-code-before-signup",
+            redirectUri: "http://localhost:3000/api/auth/google/callback",
+            role: "TENANT"
+          }),
+        /SOCIAL_SIGNUP_REQUIRED/
+      );
+      assert.equal((service as any).store.users.length, 0);
+      assert.equal((service as any).store.socialAccounts.length, 0);
+
+      const auth = await service.loginWithGoogle({
+        code: "google-code",
+        redirectUri: "http://localhost:3000/api/auth/google/callback",
+        role: "TENANT",
+        flow: "signup"
+      });
+
+      assert.equal(auth.role, "TENANT");
+      assert.equal(auth.name, "Google User");
+      assert.equal(service.getMe(`Bearer ${auth.accessToken}`).email, "googleuser@roomlog.test");
+      assert.equal((service as any).store.socialAccounts.length, 1);
+      assert.equal((service as any).store.socialAccounts[0].provider, "GOOGLE");
+
+      const linked = await service.loginWithGoogle({
+        code: "google-code-again",
+        redirectUri: "http://localhost:3000/api/auth/google/callback",
+        role: "TENANT"
+      });
+
+      assert.equal(linked.userId, auth.userId);
+      assert.equal((service as any).store.users.length, 1);
+      assert.equal((service as any).store.socialAccounts.length, 1);
+      assert.equal(requests.filter((url) => url === "https://oauth2.googleapis.com/token").length, 3);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalClientId === undefined) delete process.env.GOOGLE_LOGIN_CLIENT_ID;
+      else process.env.GOOGLE_LOGIN_CLIENT_ID = originalClientId;
+      if (originalClientSecret === undefined) delete process.env.GOOGLE_LOGIN_CLIENT_SECRET;
+      else process.env.GOOGLE_LOGIN_CLIENT_SECRET = originalClientSecret;
+    }
+  });
+
   it("projects signup state to configured persistence", async () => {
     const projectedStores: any[] = [];
     const service = new RoomlogService({

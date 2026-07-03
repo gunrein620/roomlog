@@ -26,7 +26,7 @@ import {
   SlidersHorizontal,
   UserRound
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -40,6 +40,12 @@ type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
 type AuthMode = "login" | "signup" | "broker";
 type MapResultTab = "rooms" | "complexes" | "agents";
+type ViewerProfile = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+};
 
 type NaverLatLng = unknown;
 type NaverMap = unknown;
@@ -86,9 +92,23 @@ declare global {
 
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
-const socialProviders = [
-  { label: "네이버로 계속하기", className: "naver", mark: "N" },
-  { label: "Google로 계속하기", className: "google", mark: "G" }
+const googleLogoSvg = (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" fill="#EA4335" />
+  </svg>
+);
+
+const socialProviders: Array<{ label: string; className: string; mark: ReactNode; href?: string }> = [
+  { label: "네이버로 계속하기", className: "naver", mark: <span aria-hidden="true">N</span> },
+  {
+    label: "Google로 계속하기",
+    className: "google",
+    mark: <span className="google-logo-icon" aria-hidden="true">{googleLogoSvg}</span>,
+    href: "/api/auth/google/start?role=TENANT&flow=login&redirectTo=%2F%3Frole%3Dtenant%26tab%3Dmypage&errorRedirectTo=%2F"
+  }
 ];
 
 const devRoles: Array<{
@@ -112,6 +132,37 @@ const devRoles: Array<{
     description: "마이페이지에서 내 집을 등록하는 임대인 모드"
   }
 ];
+
+const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
+  { id: "seeker", label: "일반 이용자", href: "/" },
+  { id: "tenant", label: "세입자", href: "/?role=tenant&tab=mypage" },
+  { id: "landlord", label: "임대인", href: "/?role=landlord&tab=mypage" }
+];
+
+const protectedRoleConfig = {
+  tenant: {
+    sessionRole: "TENANT",
+    loginPath: "/tenant/login",
+    redirectTo: "/?role=tenant&tab=mypage"
+  },
+  landlord: {
+    sessionRole: "LANDLORD",
+    loginPath: "/manager/login",
+    redirectTo: "/?role=landlord&tab=mypage"
+  }
+} as const;
+
+const normalizeAppRole = (value: string | null): AppRole | null => {
+  if (value === "seeker" || value === "tenant" || value === "landlord") return value;
+  return null;
+};
+
+const normalizeAppTab = (value: string | null): AppTab | null => {
+  if (value === "home" || value === "map" || value === "saved" || value === "inquiry" || value === "mypage") {
+    return value;
+  }
+  return null;
+};
 
 const categories = [
   { label: "전체", count: "1,287", Icon: Building },
@@ -553,24 +604,24 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-const loginTrustItems = [
-  { label: "3D 투어", value: "방문 전 확인" },
-  { label: "확인매물", value: "실매물 검수" },
-  { label: "지도 검색", value: "시세·안전" }
-];
+const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as const;
 
 function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void }) {
   const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
 
   return (
-    <main className="app-canvas">
+    <main className="app-canvas login-canvas">
       <section className="login-phone" aria-label="집우집주 로그인">
         <div className="login-brandmark">
           <div className="brand-mark-icon">
             <div className="brand-orbit">
-              <span className="brand-star">
-                <svg viewBox="0 0 24 24"><path d="M12 0c1.1 6.2 4.8 9.9 12 12-7.2 2.1-10.9 5.8-12 12-1.1-6.2-4.8-9.9-12-12 7.2-2.1 10.9-5.8 12-12Z" /></svg>
-              </span>
+              <div className="brand-orbit-spin">
+                <span className="brand-star-fix">
+                  <span className="brand-star">
+                    <svg viewBox="0 0 24 24"><path d="M12 0c1.1 6.2 4.8 9.9 12 12-7.2 2.1-10.9 5.8-12 12-1.1-6.2-4.8-9.9-12-12 7.2-2.1 10.9-5.8 12-12Z" /></svg>
+                  </span>
+                </span>
+              </div>
             </div>
             <svg className="brand-roof" viewBox="0 0 140 68" fill="none">
               <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
@@ -581,22 +632,22 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
             </svg>
           </div>
           <div className="brand-word">우주</div>
-          <p className="brand-tagline">방 보러 가기 전에, 3D로 먼저 둘러보기</p>
+          <p className="brand-tagline">우주 | 3D공간 시뮬레이션</p>
         </div>
 
         <div className="login-panel">
-          <p className="brand-kicker">우주 · WOOZU</p>
-          <h1>방 보러 가기 전에 먼저 걸어보세요</h1>
+          <p className="brand-kicker">|집우집주|  입주부터 관리까지 우주에서</p>
+          <h1>우주에서 방을 구해보세요!</h1>
           <p>
-            지도에서 조건에 맞는 방을 찾고, 방문 전 3D 투어와 안심 정보를 먼저 확인하세요.
+            조건에 맞는 방을 찾고, 3D 투어와 정보확인은 우주에서
           </p>
 
-          <div className="login-trust-row" aria-label="서비스 핵심 정보">
-            {loginTrustItems.map((item) => (
-              <span key={item.label}>
-                <b>{item.label}</b>
-                {item.value}
-              </span>
+          <div className="login-feature-bar" aria-label="서비스 핵심 기능">
+            {loginFeaturePills.map((label, index) => (
+              <Fragment key={label}>
+                {index > 0 ? <span className="login-feature-sep" aria-hidden="true" /> : null}
+                <span className={`login-feature-pill login-feature-pill--${index}`}>{label}</span>
+              </Fragment>
             ))}
           </div>
 
@@ -606,9 +657,15 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
                 className={`social-button ${provider.className}`}
                 type="button"
                 key={provider.label}
-                onClick={() => setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`)}
+                onClick={() => {
+                  if (provider.href) {
+                    window.location.href = provider.href;
+                    return;
+                  }
+                  setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`);
+                }}
               >
-                <span aria-hidden="true">{provider.mark}</span>
+                {provider.mark}
                 {provider.label}
               </button>
             ))}
@@ -2447,6 +2504,9 @@ export default function Home() {
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
   const [isNotificationSheetOpen, setIsNotificationSheetOpen] = useState(false);
+  const [viewer, setViewer] = useState<ViewerProfile | null>(null);
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const [isRouteReady, setIsRouteReady] = useState(false);
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
@@ -2592,8 +2652,98 @@ export default function Home() {
     }
   }, [selectedListing]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const role = normalizeAppRole(params.get("role"));
+    const tab = normalizeAppTab(params.get("tab"));
+
+    if (role) {
+      setActiveRole(role);
+      setActiveTab(tab ?? (role === "seeker" ? "home" : "mypage"));
+      setSelectedListing(null);
+      setAuthMode(null);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (tab) {
+      setActiveTab(tab);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    }
+    setIsRouteReady(true);
+  }, []);
+
+  useEffect(() => {
+    let isAlive = true;
+
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then(async (response) => {
+        if (!isAlive) return;
+        if (!response.ok) {
+          setViewer(null);
+          setIsAuthChecked(true);
+          return;
+        }
+
+        setViewer((await response.json()) as ViewerProfile);
+        setIsAuthChecked(true);
+      })
+      .catch(() => {
+        if (isAlive) {
+          setViewer(null);
+          setIsAuthChecked(true);
+        }
+      });
+
+    return () => {
+      isAlive = false;
+    };
+  }, []);
+
+  const protectedConfig =
+    activeTab === "mypage" && (activeRole === "tenant" || activeRole === "landlord")
+      ? protectedRoleConfig[activeRole]
+      : null;
+  const isProtectedRolePage = Boolean(protectedConfig);
+  const canAccessProtectedRolePage =
+    !protectedConfig || (viewer?.role === protectedConfig.sessionRole);
+
+  useEffect(() => {
+    if (!isRouteReady || !isAuthChecked || !protectedConfig || canAccessProtectedRolePage) return;
+
+    window.location.href = `${protectedConfig.loginPath}?redirectTo=${encodeURIComponent(protectedConfig.redirectTo)}`;
+  }, [canAccessProtectedRolePage, isAuthChecked, isRouteReady, protectedConfig]);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    setViewer(null);
+    setActiveRole("seeker");
+    setActiveTab("home");
+    setSelectedListing(null);
+    setAuthMode(null);
+  };
+
+  const navigateRoleHome = (role: AppRole) => {
+    const target = roleSwitchOptions.find((item) => item.id === role);
+    if (!target) return;
+
+    setActiveRole(role);
+    setActiveTab(role === "seeker" ? "home" : "mypage");
+    window.location.href = target.href;
+  };
+
   if (authMode) {
     return <LoginScreen setActiveRole={startRoleSession} />;
+  }
+
+  if (isProtectedRolePage && (!isAuthChecked || !canAccessProtectedRolePage)) {
+    return (
+      <main className="app-canvas">
+        <section className="auth-check-screen" aria-live="polite">
+          <strong>로그인 확인 중</strong>
+          <span>세입자/임대인 페이지는 로그인 후 접속할 수 있습니다.</span>
+        </section>
+      </main>
+    );
   }
 
   if (selectedListing) {
@@ -2617,6 +2767,15 @@ export default function Home() {
         <header className="web-topbar" aria-label="웹 상단 메뉴">
           <div className="web-topbar-inner">
             <button className="web-logo" type="button" onClick={() => activateTab("home")}>
+              <span className="web-logo-icon" aria-hidden="true">
+                <svg className="web-logo-roof" viewBox="0 0 140 68" fill="none">
+                  <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+                  <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                </svg>
+              </span>
               집우집주<span>WOOZU</span>
             </button>
             <nav className="web-nav" aria-label="주요 메뉴">
@@ -2626,9 +2785,29 @@ export default function Home() {
               <button type="button" onClick={() => activateTab("mypage")}>우리집</button>
             </nav>
             <div className="web-topbar-actions">
-              <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
-              <button className="web-signup" type="button" onClick={() => openAuthScreen("signup")}>회원가입</button>
-              <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
+              <label className="web-role-select">
+                <span>역할군</span>
+                <select value={activeRole} onChange={(event) => navigateRoleHome(event.target.value as AppRole)}>
+                  {roleSwitchOptions.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {viewer ? (
+                <div className="web-profile-menu" aria-label="로그인 사용자">
+                  <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
+                  <span className="web-profile-name">{viewer.name}</span>
+                  <button className="web-logout" type="button" onClick={logout}>로그아웃</button>
+                </div>
+              ) : (
+                <>
+                  <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
+                  <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup/social"; }}>회원가입</button>
+                  <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
+                </>
+              )}
             </div>
           </div>
         </header>
@@ -2647,8 +2826,8 @@ export default function Home() {
           </header>
 
           <div className="web-hero-head" aria-hidden="true">
-            <h1>방 구할 땐, 집우집주</h1>
-            <p>전월세부터 매매까지 · 방문 전 3D로 먼저 둘러보기</p>
+            <h1>방 구할 땐, 우주에서</h1>
+            <p className="web-hero-sub">전월세부터 매매까지 | 방문 전 3D로 먼저 둘러보세요</p>
           </div>
 
           <label className="search-box">

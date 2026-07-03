@@ -2,11 +2,14 @@
 // RoomlogService가 생성자에서 store/persistStore/findRoom을 주입해 생성하고, public 표면은 그대로 위임한다.
 // 메서드 본문은 원본을 verbatim 복사(this.store/this.persistStore()/this.findRoom() 참조 동일).
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   UnauthorizedException
 } from "@nestjs/common";
 import { createHmac } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   hasRequiredPasswordMix,
   hashPassword,
@@ -21,12 +24,64 @@ import {
 import type { Room, UserAccount, UserRole } from "../roomlog.types";
 import type {
   AuthResult,
+  GoogleSocialLoginInput,
   LoginInput,
   SignupInput,
   Store,
   TenantInvite,
   VendorInvite
 } from "../roomlog.service";
+
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+const SOCIAL_SIGNUP_REQUIRED = "SOCIAL_SIGNUP_REQUIRED";
+const rootEnvCandidatePaths = [
+  resolve(process.cwd(), ".env"),
+  resolve(process.cwd(), "..", ".env"),
+  resolve(process.cwd(), "..", "..", ".env")
+];
+
+function runtimeEnv(key: string) {
+  const current = process.env[key]?.trim();
+  if (current) return current;
+
+  for (const envPath of rootEnvCandidatePaths) {
+    if (!existsSync(envPath)) continue;
+
+    const contents = readFileSync(envPath, "utf8");
+    for (const rawLine of contents.split(/\r?\n/)) {
+      const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(rawLine.trim());
+      if (!match || match[1] !== key) continue;
+
+      let value = match[2].trim();
+      const quote = value[0];
+      if ((quote === "\"" || quote === "'") && value.endsWith(quote)) {
+        value = value.slice(1, -1);
+      }
+
+      if (value) {
+        process.env[key] = value;
+        return value;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+type GoogleTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type GoogleUserInfoResponse = {
+  sub?: string;
+  email?: string;
+  email_verified?: boolean | string;
+  name?: string;
+  picture?: string;
+};
 
 export class RoomlogAuthDomain {
   constructor(
@@ -117,6 +172,56 @@ export class RoomlogAuthDomain {
       throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
     }
 
+    return this.authResult(user);
+  }
+
+  async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
+    const role = this.normalizeSocialRole(input.role);
+    const flow = input.flow === "signup" ? "signup" : "login";
+    const code = input.code?.trim();
+    const redirectUri = input.redirectUri?.trim();
+
+    if (!code || !redirectUri) {
+      throw new BadRequestException("Google authorization code and redirect URI are required.");
+    }
+
+    const profile = await this.fetchGoogleProfile(code, redirectUri);
+    const email = profile.email?.trim().toLowerCase();
+
+    if (!profile.sub || !email) {
+      throw new UnauthorizedException("Google account did not return a usable email identity.");
+    }
+
+    if (!this.isVerifiedGoogleEmail(profile.email_verified)) {
+      throw new UnauthorizedException("Google email verification is required.");
+    }
+
+    const existingSocialAccount = this.store.socialAccounts.find(
+      (account) => account.provider === "GOOGLE" && account.providerUserId === profile.sub
+    );
+
+    if (existingSocialAccount) {
+      const user = this.findActiveSocialUser(existingSocialAccount.userId, role);
+      this.updateSocialAccount(existingSocialAccount.id, user.id, profile);
+      this.persistStore();
+      return this.authResult(user);
+    }
+
+    const existingUser = this.store.users.find((account) => account.email === email);
+
+    if (!existingUser && flow === "login") {
+      throw new BadRequestException(SOCIAL_SIGNUP_REQUIRED);
+    }
+
+    const user = existingUser ?? this.createSocialUser(profile, role, input.inviteToken);
+
+    if (existingUser) {
+      this.assertSocialRole(existingUser, role);
+      this.assertActiveUser(existingUser);
+    }
+
+    this.updateSocialAccount(undefined, user.id, profile);
+    this.persistStore();
     return this.authResult(user);
   }
 
@@ -243,6 +348,205 @@ export class RoomlogAuthDomain {
     }
 
     throw new BadRequestException("초대 역할이 올바르지 않습니다.");
+  }
+
+  private async fetchGoogleProfile(code: string, redirectUri: string): Promise<GoogleUserInfoResponse> {
+    const clientId = runtimeEnv("GOOGLE_LOGIN_CLIENT_ID");
+    const clientSecret = runtimeEnv("GOOGLE_LOGIN_CLIENT_SECRET");
+
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException("Google login client credentials are not configured.");
+    }
+
+    const tokenResponse = await fetch(GOOGLE_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code"
+      })
+    }).catch((error) => {
+      throw new BadGatewayException(`Google token request failed: ${String(error)}`);
+    });
+
+    const tokenJson = (await tokenResponse.json().catch(() => ({}))) as GoogleTokenResponse;
+
+    if (!tokenResponse.ok || !tokenJson.access_token) {
+      throw new UnauthorizedException(
+        tokenJson.error_description || tokenJson.error || "Google authorization code exchange failed."
+      );
+    }
+
+    const profileResponse = await fetch(GOOGLE_USERINFO_URL, {
+      headers: { Authorization: `Bearer ${tokenJson.access_token}`, Accept: "application/json" }
+    }).catch((error) => {
+      throw new BadGatewayException(`Google profile request failed: ${String(error)}`);
+    });
+
+    const profile = (await profileResponse.json().catch(() => ({}))) as GoogleUserInfoResponse;
+
+    if (!profileResponse.ok) {
+      throw new UnauthorizedException("Google profile lookup failed.");
+    }
+
+    return profile;
+  }
+
+  private normalizeSocialRole(role?: UserRole): UserRole {
+    const normalizedRole = role ?? "TENANT";
+
+    if (!["TENANT", "LANDLORD", "VENDOR"].includes(normalizedRole)) {
+      throw new BadRequestException("Invalid social login role.");
+    }
+
+    return normalizedRole;
+  }
+
+  private isVerifiedGoogleEmail(value: boolean | string | undefined) {
+    return value === true || value === "true";
+  }
+
+  private findActiveSocialUser(userId: string, role: UserRole) {
+    const user = this.store.users.find((account) => account.id === userId);
+
+    if (!user) {
+      throw new UnauthorizedException("Linked Roomlog account was not found.");
+    }
+
+    this.assertSocialRole(user, role);
+    this.assertActiveUser(user);
+    return user;
+  }
+
+  private assertSocialRole(user: UserAccount, role: UserRole) {
+    if (user.role !== role) {
+      throw new BadRequestException("Google account is linked to a different Roomlog role.");
+    }
+  }
+
+  private assertActiveUser(user: UserAccount) {
+    if (user.status !== "ACTIVE") {
+      throw new UnauthorizedException("Roomlog account is not active.");
+    }
+  }
+
+  private createSocialUser(
+    profile: GoogleUserInfoResponse,
+    role: UserRole,
+    inviteToken?: string
+  ): UserAccount {
+    const email = profile.email?.trim().toLowerCase();
+
+    if (!email) {
+      throw new UnauthorizedException("Google account email is required.");
+    }
+
+    let phone: string | undefined;
+    const nowIso = now();
+    const user: UserAccount = {
+      id: id("usr"),
+      email,
+      passwordHash: hashPassword(`google:${profile.sub}:${id("pwd")}`),
+      name: profile.name?.trim() || email.split("@")[0],
+      role,
+      status: "ACTIVE",
+      createdAt: nowIso
+    };
+
+    if (role === "TENANT" && inviteToken?.trim()) {
+      const tenantInvite = this.resolvePendingTenantInvite({
+        email,
+        inviteToken,
+        name: user.name,
+        password: "google-social-login",
+        role: "TENANT"
+      });
+      phone = tenantInvite.phone;
+      this.store.tenantRooms[user.id] = tenantInvite.roomId;
+      tenantInvite.status = "ACCEPTED";
+      tenantInvite.acceptedAt = nowIso;
+      tenantInvite.acceptedByUserId = user.id;
+    }
+
+    if (role === "VENDOR") {
+      if (!inviteToken?.trim()) {
+        throw new BadRequestException("Vendor Google login requires a manager invite token.");
+      }
+
+      const vendorInvite = this.resolvePendingVendorInvite({
+        email,
+        inviteToken,
+        name: user.name,
+        password: "google-social-login",
+        role: "VENDOR"
+      });
+      phone = vendorInvite.phone;
+      this.store.vendors.push({
+        id: id("vnd"),
+        userId: user.id,
+        businessName: vendorInvite.businessName,
+        contactPerson: vendorInvite.contactPerson || user.name,
+        phone: vendorInvite.phone,
+        serviceArea: vendorInvite.serviceArea,
+        activeJobs: 0
+      });
+      vendorInvite.status = "ACCEPTED";
+      vendorInvite.acceptedAt = nowIso;
+      vendorInvite.acceptedByUserId = user.id;
+    }
+
+    if (phone) {
+      const normalizedPhone = normalizePhoneNumber(phone);
+
+      if (normalizedPhone && this.store.users.some((account) => account.phone === normalizedPhone)) {
+        throw new ConflictException("Phone number is already registered.");
+      }
+
+      user.phone = normalizedPhone;
+    }
+
+    this.store.users.push(user);
+    return user;
+  }
+
+  private updateSocialAccount(
+    socialAccountId: string | undefined,
+    userId: string,
+    profile: GoogleUserInfoResponse
+  ) {
+    const nowIso = now();
+    const existing =
+      socialAccountId !== undefined
+        ? this.store.socialAccounts.find((account) => account.id === socialAccountId)
+        : this.store.socialAccounts.find(
+            (account) => account.provider === "GOOGLE" && account.providerUserId === profile.sub
+          );
+
+    if (existing) {
+      existing.userId = userId;
+      existing.email = profile.email?.trim().toLowerCase();
+      existing.name = profile.name?.trim();
+      existing.avatarUrl = profile.picture;
+      existing.updatedAt = nowIso;
+      return existing;
+    }
+
+    const created = {
+      id: id("social"),
+      provider: "GOOGLE" as const,
+      providerUserId: profile.sub || "",
+      userId,
+      email: profile.email?.trim().toLowerCase(),
+      name: profile.name?.trim(),
+      avatarUrl: profile.picture,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+    this.store.socialAccounts.push(created);
+    return created;
   }
 
   private normalizeSignupInput(input: SignupInput): SignupInput {

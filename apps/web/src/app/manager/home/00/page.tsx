@@ -20,16 +20,20 @@ export default async function Page() {
   ];
 
   return (
-    <ManagerShell title="자산현황 대시보드" context="워크스페이스 · 큰 화면" nav={<HomeNav active="home" />}>
+    <ManagerShell title={`${summary.managerName} 자산현황 대시보드`} context="워크스페이스 · 큰 화면" nav={<HomeNav active="home" />}>
       <div style={{ display: "grid", gap: "var(--space-xl)" }}>
         <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-xl)", alignItems: "center", background: "var(--surface-container-high)" }}>
           <div>
-            <Badge emphasis>M-HOME-00</Badge>
+            <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+              <Badge emphasis>M-HOME-00</Badge>
+              <Badge>{summary.managerName}</Badge>
+              {summary.managedRoomCount > 0 ? <Badge>관리 호실 {summary.managedRoomCount}개</Badge> : null}
+            </div>
             <h1 style={{ margin: "var(--space-md) 0 var(--space-sm)", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
               오늘 할 일 {summary.todoCount}건
             </h1>
             <p style={{ margin: 0, color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-              홈에서는 총량만 보고, 세부 업무 분해와 처리는 미처리 업무 허브에서 시작합니다.
+              {summary.managerName}님에게 배정된 호실과 티켓 기준으로만 요약합니다.
             </p>
           </div>
           <LinkButton href={MHOME_ROUTES["M-HOME-01"]} primary>

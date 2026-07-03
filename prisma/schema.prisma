@@ -18,6 +18,11 @@ enum UserStatus {
   DISABLED
 }
 
+enum SocialProvider {
+  GOOGLE
+  NAVER
+}
+
 enum InviteStatus {
   PENDING
   ACCEPTED
@@ -350,8 +355,26 @@ model UserAccount {
   tickets              Ticket[]            @relation("TenantTickets")
   moveoutRequests      MoveoutRequest[]    @relation("TenantMoveouts")
   moveInChecklistItems MoveInChecklistItem[]
+  socialAccounts       SocialAccount[]
 
   @@index([role, status])
+}
+
+model SocialAccount {
+  id             String         @id
+  provider       SocialProvider
+  providerUserId String
+  userId         String
+  email          String?
+  name           String?
+  avatarUrl      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
 }
 
 model Room {

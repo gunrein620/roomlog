@@ -143,6 +143,7 @@ import {
   Ticket,
   TicketMessage,
   TicketStatus,
+  SocialAccount,
   UserAccount,
   UserRole
 } from "./roomlog.types";
@@ -181,6 +182,14 @@ export type CreateTenantInviteInput = {
 export type LoginInput = {
   email: string;
   password: string;
+};
+
+export type GoogleSocialLoginInput = {
+  code: string;
+  redirectUri: string;
+  role?: UserRole;
+  inviteToken?: string;
+  flow?: "login" | "signup";
 };
 
 export type VendorMgmtTrade =
@@ -281,6 +290,7 @@ export type TenantInvite = {
 
 export type Store = {
   users: UserAccount[];
+  socialAccounts: SocialAccount[];
   rooms: Room[];
   tenantRooms: Record<string, string>;
   vendors: VendorSummary[];
@@ -411,6 +421,7 @@ function createDemoStore(): Store {
 
   return {
     users,
+    socialAccounts: [],
     rooms: [
       {
         id: "room-301",
@@ -666,6 +677,7 @@ function createDemoStore(): Store {
 function createEmptyStore(): Store {
   return {
     users: [],
+    socialAccounts: [],
     rooms: [],
     tenantRooms: {},
     vendors: [],
@@ -886,6 +898,10 @@ export class RoomlogService {
 
   login(input: LoginInput): AuthResult {
     return this.auth.login(input);
+  }
+
+  async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
+    return await this.auth.loginWithGoogle(input);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
@@ -2853,6 +2869,7 @@ export class RoomlogService {
   private normalizeStoreSnapshot(parsed: Store): Store {
     return {
       ...parsed,
+      socialAccounts: parsed.socialAccounts ?? [],
       vendorInvites: parsed.vendorInvites ?? [],
       tenantInvites: parsed.tenantInvites ?? [],
       contracts: parsed.contracts ?? [],
@@ -2982,6 +2999,7 @@ export class RoomlogService {
     return Boolean(
       snapshot &&
         Array.isArray(snapshot.users) &&
+        (snapshot.socialAccounts === undefined || Array.isArray(snapshot.socialAccounts)) &&
         Array.isArray(snapshot.rooms) &&
         snapshot.tenantRooms &&
         Array.isArray(snapshot.vendors) &&
