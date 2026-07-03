@@ -20,6 +20,17 @@ import {
 import { basename, dirname, extname, join } from "node:path";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
+  hasRequiredPasswordMix,
+  hashPassword,
+  id,
+  isValidPhoneNumber,
+  normalizePhoneNumber,
+  now,
+  tokenFor,
+  tokenSecret,
+  verifyPassword
+} from "./roomlog-support";
+import {
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
   AiFeedback,
@@ -180,20 +191,6 @@ const VENDOR_MGMT_TRADES: VendorMgmtTrade[] = [
   "other"
 ];
 
-function normalizePhoneNumber(phone?: string) {
-  const digits = phone?.replace(/\D+/g, "") ?? "";
-
-  return digits || undefined;
-}
-
-function isValidPhoneNumber(phone: string) {
-  return /^\d{10,11}$/.test(phone);
-}
-
-function hasRequiredPasswordMix(password: string) {
-  return /[A-Za-z]/.test(password) && /\d/.test(password);
-}
-
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
@@ -293,36 +290,7 @@ type GeneratedIntakeTurn = {
   source: "openai" | "fallback";
 };
 
-const now = () => new Date().toISOString();
-
-function id(prefix: string) {
-  return `${prefix}_${randomBytes(5).toString("hex")}`;
-}
-
-function hashPassword(password: string, salt = randomBytes(12).toString("hex")) {
-  const key = scryptSync(password, salt, 32).toString("hex");
-  return `${salt}:${key}`;
-}
-
-function verifyPassword(password: string, storedHash: string) {
-  const [salt, key] = storedHash.split(":");
-  const actual = Buffer.from(hashPassword(password, salt).split(":")[1], "hex");
-  const expected = Buffer.from(key, "hex");
-
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-const tokenSecret = process.env.JWT_SECRET || "roomlog-local-dev-secret";
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
-
-function tokenFor(user: UserAccount) {
-  const payload = Buffer.from(
-    JSON.stringify({ sub: user.id, role: user.role, email: user.email })
-  ).toString("base64url");
-  const signature = createHmac("sha256", tokenSecret).update(payload).digest("base64url");
-
-  return `${payload}.${signature}`;
-}
 
 function priorityDueAt(priority: number) {
   const due = new Date();
