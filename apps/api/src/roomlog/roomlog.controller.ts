@@ -35,6 +35,8 @@ import {
   FinalizeIntakeInput,
   FloorPlanOpeningDetectionInput,
   AskManagerReportChatInput,
+  CreateRoomInput,
+  FloorPlanAiAnalysisInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
   MessagingThreadContext,
