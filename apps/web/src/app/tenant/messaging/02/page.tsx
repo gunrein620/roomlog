@@ -1,8 +1,16 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Announcement, AnnouncementCategory, AnnouncementScope } from "@roomlog/types";
-import { Badge, Card } from "@roomlog/ui";
-import { DEMO_ANNOUNCEMENT_ID, getAnnouncement } from "@/lib/messaging-api";
+import { Badge, Button, Card } from "@roomlog/ui";
+import {
+  confirmAnnouncement,
+  DEMO_ANNOUNCEMENT_ID,
+  getAnnouncement,
+  markAnnouncementRead,
+} from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -26,6 +34,27 @@ function formatTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
+}
+
+async function updateAnnouncementState(formData: FormData) {
+  "use server";
+
+  const announcementId = String(formData.get("announcementId") ?? "");
+  const intent = String(formData.get("intent") ?? "");
+
+  if (announcementId) {
+    if (intent === "confirm") {
+      await confirmAnnouncement(announcementId);
+    } else {
+      await markAnnouncementRead(announcementId);
+    }
+  }
+
+  redirect(
+    `${MESSAGING_ROUTES["T-MSG-02"]}?id=${encodeURIComponent(
+      announcementId || DEMO_ANNOUNCEMENT_ID,
+    )}`,
+  );
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
@@ -134,7 +163,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           gap: 8,
         }}
       >
-        <StaticAction emphasis>{isUrgent ? "확인" : "읽음"}</StaticAction>
+        <form action={updateAnnouncementState}>
+          <input type="hidden" name="announcementId" value={announcement.id} />
+          <input type="hidden" name="intent" value={isUrgent ? "confirm" : "read"} />
+          <Button type="submit" fullWidth>
+            {isUrgent ? "확인" : "읽음"}
+          </Button>
+        </form>
         <Link
           href={`${MESSAGING_ROUTES["T-MSG-01"]}?announcementId=${announcement.id}`}
           style={{
@@ -157,30 +192,5 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </Link>
       </footer>
     </>
-  );
-}
-
-function StaticAction({ children, emphasis }: { children: React.ReactNode; emphasis?: boolean }) {
-  return (
-    <div
-      role="button"
-      aria-disabled="true"
-      style={{
-        display: "flex",
-        width: "100%",
-        boxSizing: "border-box",
-        height: "var(--touch-target)",
-        alignItems: "center",
-        justifyContent: "center",
-        border: "none",
-        background: emphasis ? "var(--primary)" : "var(--surface-container)",
-        color: emphasis ? "var(--on-primary)" : "var(--on-surface)",
-        borderRadius: "var(--radius-btn)",
-        fontSize: "var(--fs-body)",
-        fontWeight: 700,
-      }}
-    >
-      {children}
-    </div>
   );
 }

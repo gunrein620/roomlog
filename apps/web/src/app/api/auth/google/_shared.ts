@@ -1,0 +1,144 @@
+import { NextResponse } from "next/server";
+
+export const GOOGLE_OAUTH_STATE_COOKIE = "roomlog_google_oauth_state";
+export const GOOGLE_OAUTH_CONTEXT_COOKIE = "roomlog_google_oauth_context";
+
+export type GoogleOauthRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
+export type GoogleOauthFlow = "login" | "signup";
+
+export const SOCIAL_SIGNUP_REQUIRED = "SOCIAL_SIGNUP_REQUIRED";
+
+export type GoogleOauthContext = {
+  role: GoogleOauthRole;
+  flow: GoogleOauthFlow;
+  redirectTo: string;
+  errorRedirectTo?: string;
+  inviteToken?: string;
+};
+
+export const googleOauthCookieOptions = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: 60 * 10
+};
+
+export async function runtimeEnv(key: string) {
+  const current = process.env[key]?.trim();
+  if (current) return current;
+  if (process.env.NODE_ENV === "production") return undefined;
+
+  const [{ existsSync, readFileSync }, { resolve }] = await Promise.all([
+    import("node:fs"),
+    import("node:path")
+  ]);
+  const rootEnvCandidatePaths = [
+    resolve(process.cwd(), ".env"),
+    resolve(process.cwd(), "..", ".env"),
+    resolve(process.cwd(), "..", "..", ".env")
+  ];
+
+  for (const envPath of rootEnvCandidatePaths) {
+    if (!existsSync(envPath)) continue;
+
+    const contents = readFileSync(envPath, "utf8");
+    for (const rawLine of contents.split(/\r?\n/)) {
+      const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(rawLine.trim());
+      if (!match || match[1] !== key) continue;
+
+      let value = match[2].trim();
+      const quote = value[0];
+      if ((quote === "\"" || quote === "'") && value.endsWith(quote)) {
+        value = value.slice(1, -1);
+      }
+
+      if (value) {
+        process.env[key] = value;
+        return value;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export function defaultRedirectForRole(role: GoogleOauthRole) {
+  if (role === "LANDLORD") return "/?role=landlord&tab=mypage";
+  if (role === "VENDOR") return "/vendor/job/00";
+  if (role === "TENANT") return "/?role=tenant&tab=mypage";
+  return "/";
+}
+
+export function loginPathForRole(role: GoogleOauthRole) {
+  if (role === "LANDLORD") return "/manager/login";
+  if (role === "VENDOR") return "/vendor/login";
+  if (role === "TENANT") return "/tenant/login";
+  return "/?auth=login";
+}
+
+export function normalizeGoogleOauthRole(value: string | null): GoogleOauthRole {
+  if (value === "SEEKER" || value === "LANDLORD" || value === "VENDOR" || value === "TENANT") return value;
+  return "SEEKER";
+}
+
+export function normalizeGoogleOauthFlow(value: string | null): GoogleOauthFlow {
+  return value === "signup" ? "signup" : "login";
+}
+
+export function safeRedirectPath(value: string | null, fallback: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
+  return value;
+}
+
+export function socialSignupPath(role: GoogleOauthRole, redirectTo: string) {
+  const url = new URL("http://roomlog.local/signup");
+  url.searchParams.set("provider", "google");
+  url.searchParams.set("role", role);
+  url.searchParams.set("redirectTo", safeRedirectPath(redirectTo, "/"));
+  return `${url.pathname}${url.search}`;
+}
+
+export function googleCallbackUrl(requestUrl: string) {
+  const configured = process.env.GOOGLE_LOGIN_CALLBACK_URL?.trim();
+  if (configured) return configured;
+
+  const origin = new URL(requestUrl).origin;
+  return `${origin}/api/auth/google/callback`;
+}
+
+export function encodeGoogleOauthContext(context: GoogleOauthContext) {
+  return Buffer.from(JSON.stringify(context), "utf8").toString("base64url");
+}
+
+export function decodeGoogleOauthContext(value: string | undefined): GoogleOauthContext | undefined {
+  if (!value) return undefined;
+
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<GoogleOauthContext>;
+    const role = normalizeGoogleOauthRole(parsed.role ?? null);
+    const flow = normalizeGoogleOauthFlow(parsed.flow ?? null);
+    const redirectTo = safeRedirectPath(parsed.redirectTo ?? null, defaultRedirectForRole(role));
+    const errorRedirectTo = safeRedirectPath(parsed.errorRedirectTo ?? null, loginPathForRole(role));
+
+    return {
+      role,
+      flow,
+      redirectTo,
+      errorRedirectTo,
+      inviteToken: parsed.inviteToken?.trim() || undefined
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function redirectToPathWithError(requestUrl: string, path: string, error: string) {
+  const url = new URL(safeRedirectPath(path, "/"), requestUrl);
+  url.searchParams.set("error", error);
+  return NextResponse.redirect(url);
+}
+
+export function redirectToLoginWithError(requestUrl: string, role: GoogleOauthRole, error: string) {
+  return redirectToPathWithError(requestUrl, loginPathForRole(role), error);
+}

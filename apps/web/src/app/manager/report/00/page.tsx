@@ -2,6 +2,8 @@ import { getReportHub } from "@/lib/report-api";
 import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
 import { Grid, LinkButton, MetricCard, PageStack, ReportTable, ScreenHeader, Section, TrustNotice } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const { reports, recipients, faq } = await getReportHub();
   const delivered = reports.filter((report) => report.status === "delivered").length;
@@ -51,4 +53,3 @@ export default async function Page() {
     </PageStack>
   );
 }
-

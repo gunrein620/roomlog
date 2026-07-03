@@ -39,6 +39,10 @@ const prodComposeSource = readFileSync(new URL("../../docker-compose.prod.yml", 
 const deployWorkflowSource = readFileSync(new URL("../../.github/workflows/deploy.yml", import.meta.url), "utf8");
 const apiDockerfileSource = readFileSync(new URL("../api/Dockerfile", import.meta.url), "utf8");
 const webDockerfileSource = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
+const googleAuthSharedSource = readFileSync(new URL("./src/app/api/auth/google/_shared.ts", import.meta.url), "utf8");
+const signupPageSource = readFileSync(new URL("./src/app/signup/page.tsx", import.meta.url), "utf8");
+const signupRouteSource = readFileSync(new URL("./src/app/api/auth/signup/route.ts", import.meta.url), "utf8");
+const loginRouteSource = readFileSync(new URL("./src/app/api/auth/login/route.ts", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
@@ -68,12 +72,12 @@ test("api image trusts the Amazon RDS certificate bundle for TLS database connec
   assert.match(apiDockerfileSource, /NODE_EXTRA_CA_CERTS=\/usr\/local\/share\/ca-certificates\/aws-rds-global-bundle\.pem/);
 });
 
-test("keeps tenant, manager, and vendor entry routes available (redirect to domain screens)", () => {
+test("keeps tenant, manager, and vendor entry routes available", () => {
   // KAN-130 1-E: 거대 단일-page 뷰 셸은 은퇴하고, 역할 진입 인덱스는 App Router
   // 도메인 첫 화면으로 리다이렉트한다(화면 = app/<role>/<domain>/<screen>).
   const redirectTargets = {
-    tenant: "/tenant/defect/00",
-    manager: "/manager/home/00",
+    tenant: "/?role=tenant&tab=mypage",
+    manager: "/?role=landlord&tab=mypage",
     vendor: "/vendor/job/00"
   };
   for (const route of ["tenant", "manager", "vendor"]) {
@@ -84,6 +88,39 @@ test("keeps tenant, manager, and vendor entry routes available (redirect to doma
     assert.match(routePageSource, /redirect\(/);
     assert.match(routePageSource, new RegExp(redirectTargets[route]));
   }
+});
+
+test("wires moveout screens to backend mutations instead of static links", () => {
+  const tenantSettlementSource = readFileSync(
+    new URL("./src/app/tenant/moveout/03/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const tenantDisputeSource = readFileSync(
+    new URL("./src/app/tenant/moveout/04/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerReviewSource = readFileSync(
+    new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerDisputeSource = readFileSync(
+    new URL("./src/app/manager/moveout/03/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(tenantSettlementSource, /createMoveoutInquiry/);
+  assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
+  assert.match(tenantDisputeSource, /createMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
+  assert.match(managerReviewSource, /completeReview/);
+  assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
+  assert.match(managerDisputeSource, /respondDispute/);
+  assert.match(managerDisputeSource, /action=\{respondDisputeAction\}/);
+
+  assert.doesNotMatch(tenantSettlementSource, /disabled[\s\S]*관리자 문의/);
+  assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
+  assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
+  assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
@@ -123,6 +160,13 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
 
   assert.match(pageSource, /socialLoginNotice/);
   assert.match(pageSource, /setSocialLoginNotice/);
+  assert.match(pageSource, /service-login-panel/);
+  assert.match(pageSource, /submitServiceLogin/);
+  assert.match(pageSource, /\/api\/auth\/login/);
+  assert.match(pageSource, /expectedRole: "SEEKER"/);
+  assert.match(loginRouteSource, /expectedRole/);
+  assert.match(loginRouteSource, /profile\.role !== expectedRole/);
+  assert.match(pageSource, /\/api\/auth\/me/);
   assert.match(pageSource, /setActiveRole/);
   assert.match(pageSource, /login-brandmark/);
   assert.match(pageSource, /brand-mark-icon/);
@@ -143,10 +187,23 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
 });
 
-test("opens the social signup screen from the topbar signup actions", () => {
+test("opens the dedicated signup page from signup actions and social fallback", () => {
   assert.match(pageSource, /const \[authMode, setAuthMode\]/);
   assert.match(pageSource, /openAuthScreen/);
-  assert.match(pageSource, /className="web-signup"[^>]*onClick=\{\(\) => openAuthScreen\("signup"\)\}/);
+  assert.match(pageSource, /normalizeAuthMode/);
+  assert.match(pageSource, /socialProvidersForMode/);
+  assert.match(pageSource, /flow=\$\{flow\}/);
+  assert.match(pageSource, /role=SEEKER/);
+  assert.match(pageSource, /className="web-signup"/);
+  assert.match(pageSource, /window\.location\.href = "\/signup"/);
+  assert.equal(existsSync(new URL("./src/app/signup/page.tsx", import.meta.url)), true);
+  assert.equal(existsSync(new URL("./src/app/signup/social/page.tsx", import.meta.url)), true);
+  assert.match(googleAuthSharedSource, /roomlog\.local\/signup/);
+  assert.doesNotMatch(googleAuthSharedSource, /roomlog\.local\/signup\/social/);
+  assert.match(signupPageSource, /role: "SEEKER"/);
+  assert.match(signupPageSource, /Google로 회원가입/);
+  assert.match(signupRouteSource, /apiUrl\("\/auth\/signup"/);
+  assert.match(signupRouteSource, /AUTH_COOKIE/);
   assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
   assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
   assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);
@@ -705,7 +762,10 @@ test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /\.web-hero-head\s*{[^}]*display:\s*block/s);
   assert.match(pageSource, /web-topbar/);
   assert.match(pageSource, /web-hero-head/);
-  assert.match(pageSource, /방 구할 땐, 집우집주/);
+  assert.match(pageSource, /web-logo-roof/);
+  assert.match(pageSource, /방 구할 땐, 우주에서/);
+  assert.match(pageSource, /web-hero-sub/);
+  assert.match(cssSource, /web-hero-sub-shine/);
   // 카테고리 = 큰 카드 한 줄, 매물 = 넓은 3열 그리드
   assert.match(cssSource, /\.home-screen > \.category-strip\s*{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/s);
   assert.match(cssSource, /\.home-screen > \.listing-feed\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);

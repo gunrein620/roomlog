@@ -10,6 +10,8 @@ import {
   grid4Style,
 } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const [summary, rows] = await Promise.all([getManagerDashboard(), listManagerRows()]);
 
