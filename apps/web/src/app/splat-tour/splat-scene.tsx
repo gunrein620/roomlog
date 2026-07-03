@@ -1,20 +1,112 @@
 "use client";
 
-// TODO(agent-A): Spark SplatMesh로 교체 — 지금은 placeholder 박스 방.
-// src(splat 파일 경로)는 계약상 존재하지만 placeholder는 사용하지 않는다.
-
-import { useEffect } from "react";
+import { useThree } from "@react-three/fiber";
+import { useEffect, useRef, useState } from "react";
+import type { SparkRenderer as SparkRendererObject, SplatMesh as SplatMeshObject } from "@sparkjsdev/spark";
 
 // 약 3m(가로) × 4m(세로), 층고 2.4m 원룸. 바닥 중앙이 원점.
 const ROOM = { width: 3, depth: 4, height: 2.4, thickness: 0.06 };
 
 export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => void }) {
-  void src;
+  const gl = useThree((state) => state.gl);
+  const invalidate = useThree((state) => state.invalidate);
+  const onLoadedRef = useRef(onLoaded);
+  const [sparkRenderer, setSparkRenderer] = useState<SparkRendererObject | null>(null);
+  const [splatMesh, setSplatMesh] = useState<SplatMeshObject | null>(null);
+  const [hasFailed, setHasFailed] = useState(false);
 
   useEffect(() => {
-    onLoaded?.();
+    onLoadedRef.current = onLoaded;
   }, [onLoaded]);
 
+  useEffect(() => {
+    let isDisposed = false;
+    let nextSparkRenderer: SparkRendererObject | null = null;
+    let nextSplatMesh: SplatMeshObject | null = null;
+
+    setHasFailed(false);
+    setSparkRenderer(null);
+    setSplatMesh(null);
+
+    async function loadSplat() {
+      try {
+        const { SparkRenderer, SplatMesh } = await import("@sparkjsdev/spark");
+
+        if (isDisposed) return;
+
+        nextSparkRenderer = new SparkRenderer({ renderer: gl, onDirty: invalidate });
+        nextSplatMesh = new SplatMesh({ url: src });
+
+        await nextSplatMesh.initialized;
+
+        if (isDisposed) return;
+
+        fitSplatToDemoRoom(nextSplatMesh);
+        setSparkRenderer(nextSparkRenderer);
+        setSplatMesh(nextSplatMesh);
+        invalidate();
+        onLoadedRef.current?.();
+      } catch (error) {
+        if (isDisposed) return;
+
+        console.error("Failed to load Spark splat scene", error);
+        nextSplatMesh?.dispose();
+        nextSparkRenderer?.dispose();
+        nextSplatMesh = null;
+        nextSparkRenderer = null;
+        setHasFailed(true);
+        onLoadedRef.current?.();
+      }
+    }
+
+    void loadSplat();
+
+    return () => {
+      isDisposed = true;
+      nextSplatMesh?.dispose();
+      nextSparkRenderer?.dispose();
+    };
+  }, [gl, invalidate, src]);
+
+  if (hasFailed) {
+    return <FallbackRoom />;
+  }
+
+  if (!sparkRenderer || !splatMesh) {
+    return null;
+  }
+
+  return (
+    <group>
+      <primitive object={sparkRenderer} />
+      <primitive object={splatMesh} />
+    </group>
+  );
+}
+
+function fitSplatToDemoRoom(splatMesh: SplatMeshObject) {
+  const box = splatMesh.getBoundingBox(true);
+  const size = box.getSize(splatMesh.position.clone());
+  const center = box.getCenter(splatMesh.position.clone());
+  const maxDimension = Math.max(size.x, size.y, size.z);
+
+  if (!Number.isFinite(maxDimension) || maxDimension <= 0) {
+    splatMesh.position.set(0, ROOM.height / 2, -0.5);
+    return;
+  }
+
+  const scale = 2.7 / maxDimension;
+  const targetCenter = { x: 0, y: ROOM.height / 2, z: -0.5 };
+
+  splatMesh.scale.setScalar(scale);
+  splatMesh.position.set(
+    targetCenter.x - center.x * scale,
+    targetCenter.y - center.y * scale,
+    targetCenter.z - center.z * scale
+  );
+}
+
+function FallbackRoom() {
   const { width, depth, height, thickness } = ROOM;
 
   return (
