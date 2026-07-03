@@ -28,6 +28,8 @@ import {
   ApproveRepairEstimateInput,
   AssignVendorInput,
   Attachment,
+  Bill,
+  BillStatus,
   CallbotTicketContext,
   Complaint,
   ComplaintSourceChannel,
@@ -46,7 +48,9 @@ import {
   CreateComplaintInput,
   CreateIntakeSessionInput,
   CreateMoveInChecklistItemInput,
+  CreatePaymentReportInput,
   DisclosureSetting,
+  Deposit,
   DuplicateTicketCandidate,
   FinalizeIntakeInput,
   FloorPlanDraft,
@@ -64,7 +68,11 @@ import {
   ManagerReplyDraftResult,
   ManagerReplyIntent,
   ManagerTicketReplyInput,
+  MaintenanceFee,
+  MatchDepositInput,
   MoveInChecklistItem,
+  PaymentBadge,
+  PaymentReport,
   PhotoAnalysis,
   PhotoComparisonStatus,
   RealtimeClientSecretInput,
@@ -84,9 +92,19 @@ import {
   SaveFloorPlanDraftInput,
   ScheduleRepairInput,
   SendIntakeMessageInput,
+  SendDunningInput,
   StatusHistory,
   SubmitTenantAiFeedbackInput,
   SubmitEstimateInput,
+  TeamBill,
+  TeamBillRow,
+  TeamCollection,
+  TeamDashSummary,
+  TeamDeposit,
+  TeamDunning,
+  TeamMaintenance,
+  TeamOverdue,
+  TeamReport,
   Ticket,
   TicketMessage,
   TicketStatus,
@@ -265,6 +283,10 @@ export type Store = {
   contractExtractions: ContractExtraction[];
   contractPrivacies: ContractPrivacy[];
   contractInvites: ContractInvite[];
+  bills: Bill[];
+  paymentReports: PaymentReport[];
+  deposits: Deposit[];
+  maintenanceFees: MaintenanceFee[];
   attachments: Attachment[];
   floorPlans: FloorPlanDraft[];
   moveInChecklist: MoveInChecklistItem[];
@@ -395,6 +417,17 @@ function createDemoStore(): Store {
   ];
   const contractCreatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
   const contractUpdatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 10 * 60 * 1000).toISOString();
+  const billingDate = new Date();
+  const currentBillingMonth = billingDate.toISOString().slice(0, 7);
+  const previousBillingDate = new Date(billingDate);
+  previousBillingDate.setMonth(previousBillingDate.getMonth() - 1);
+  const previousBillingMonth = previousBillingDate.toISOString().slice(0, 7);
+  const currentDueDate = new Date(billingDate);
+  currentDueDate.setDate(currentDueDate.getDate() + 5);
+  const guardedDueDate = new Date(billingDate);
+  guardedDueDate.setDate(guardedDueDate.getDate() - 3);
+  const guardedDepositDate = new Date(guardedDueDate);
+  guardedDepositDate.setDate(guardedDepositDate.getDate() + 1);
 
   return {
     users,
@@ -531,6 +564,85 @@ function createDemoStore(): Store {
         acceptedByUserId: "tenant-demo"
       }
     ],
+    bills: [
+      {
+        id: "bill-demo-current",
+        unitId: "301호",
+        billingMonth: currentBillingMonth,
+        status: "SENT",
+        totalAmount: 720000,
+        paidAmount: 0,
+        dueDate: currentDueDate.toISOString(),
+        bankName: "룸로그은행",
+        accountNumber: "123-45-678921",
+        accountHolder: "박관리",
+        correctionHistory: [],
+        maintenanceFeeId: "mfee-demo-current",
+        depositConfirmationRequested: false,
+        items: [
+          { id: "bill-line-current-rent", label: "월세", amount: 650000 },
+          { id: "bill-line-current-maintenance", label: "관리비", amount: 70000 }
+        ],
+        createdAt,
+        updatedAt: createdAt
+      },
+      {
+        id: "bill-demo-guarded",
+        unitId: "301호",
+        billingMonth: previousBillingMonth,
+        status: "CONFIRMING",
+        totalAmount: 720000,
+        paidAmount: 0,
+        dueDate: guardedDueDate.toISOString(),
+        bankName: "룸로그은행",
+        accountNumber: "123-45-678921",
+        accountHolder: "박관리",
+        correctionHistory: [],
+        depositConfirmationRequested: true,
+        items: [
+          { id: "bill-line-guarded-rent", label: "월세", amount: 650000 },
+          { id: "bill-line-guarded-maintenance", label: "관리비", amount: 70000 }
+        ],
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    paymentReports: [
+      {
+        id: "payrep-demo-guarded",
+        billId: "bill-demo-guarded",
+        unitId: "301호",
+        amount: 720000,
+        depositorName: "김민수",
+        status: "CONFIRMING",
+        etaHours: 24,
+        reportedAt: guardedDepositDate.toISOString()
+      }
+    ],
+    deposits: [
+      {
+        id: "dep-demo-orphan",
+        depositorName: "김미숙",
+        amount: 720000,
+        depositedAt: guardedDepositDate.toISOString(),
+        matchStatus: "ORPHAN",
+        guessedUnitId: "301호"
+      }
+    ],
+    maintenanceFees: [
+      {
+        id: "mfee-demo-current",
+        unitId: "301호",
+        billingMonth: currentBillingMonth,
+        totalAmount: 70000,
+        available: true,
+        items: [
+          { id: "mfee-line-current-cleaning", label: "공용부 청소", amount: 30000, receiptAvailable: true },
+          { id: "mfee-line-current-electricity", label: "공용 전기", amount: 25000, receiptAvailable: true },
+          { id: "mfee-line-current-elevator", label: "승강기 점검", amount: 15000, receiptAvailable: false }
+        ]
+      }
+    ],
     attachments: [],
     floorPlans: [],
     moveInChecklist: [],
@@ -561,6 +673,10 @@ function createEmptyStore(): Store {
     contractExtractions: [],
     contractPrivacies: [],
     contractInvites: [],
+    bills: [],
+    paymentReports: [],
+    deposits: [],
+    maintenanceFees: [],
     attachments: [],
     floorPlans: [],
     moveInChecklist: [],
@@ -800,6 +916,10 @@ export class RoomlogService {
       contractExtractions: this.store.contractExtractions,
       contractPrivacies: this.store.contractPrivacies,
       contractInvites: this.store.contractInvites,
+      bills: this.store.bills,
+      paymentReports: this.store.paymentReports,
+      deposits: this.store.deposits,
+      maintenanceFees: this.store.maintenanceFees,
       complaints: this.store.complaints,
       intakeSessions: this.store.intakeSessions,
       tickets: this.store.tickets,
@@ -817,6 +937,262 @@ export class RoomlogService {
         enabled: this.seedDemoData
       }
     };
+  }
+
+  listTenantBills(tenantId: string): TeamBill[] {
+    return this.tenantBills(tenantId)
+      .filter((bill) => this.deriveBillStatus(bill) !== "DRAFT")
+      .map((bill) => this.presentBill(bill));
+  }
+
+  getTenantBill(tenantId: string, billId: string): TeamBill {
+    return this.presentBill(this.findTenantBill(tenantId, billId));
+  }
+
+  getTenantBillMaintenance(tenantId: string, billId: string): TeamMaintenance {
+    const bill = this.findTenantBill(tenantId, billId);
+
+    return this.presentMaintenanceFee(this.resolveMaintenanceFeeForBill(bill));
+  }
+
+  createTenantPaymentReport(
+    tenantId: string,
+    billId: string,
+    input: CreatePaymentReportInput
+  ): TeamReport {
+    const bill = this.findTenantBill(tenantId, billId);
+    const amount = Number(input.amount);
+    const status = this.deriveBillStatus(bill);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException("신고 금액은 0보다 커야 합니다.");
+    }
+
+    if (["PAID", "CORRECTED", "CANCELED"].includes(status)) {
+      throw new BadRequestException("이 청구서에는 납부 신고를 접수할 수 없습니다.");
+    }
+
+    const report: PaymentReport = {
+      id: id("payrep"),
+      billId: bill.id,
+      unitId: bill.unitId,
+      amount: Math.round(amount),
+      depositorName: input.depositorName?.trim() || undefined,
+      status: "CONFIRMING",
+      etaHours: 24,
+      reportedAt: now()
+    };
+
+    this.store.paymentReports.unshift(report);
+    bill.status = "CONFIRMING";
+    bill.depositConfirmationRequested = false;
+    bill.updatedAt = now();
+    this.persistStore();
+
+    return this.presentPaymentReport(report);
+  }
+
+  getManagerBillDashboard(managerId: string): { summary: TeamDashSummary; bills: TeamBillRow[] } {
+    const bills = this.managerBills(managerId);
+    const overdue = bills.filter((bill) => this.isBillInActiveOverdue(bill)).length;
+    const confirmNeeded = bills.filter((bill) => this.dunningGuardForBill(bill).blocked).length;
+    const pending = bills.filter((bill) => {
+      const status = this.deriveBillStatus(bill);
+
+      return ["SENT", "PARTIALLY_PAID"].includes(status) && !this.isBillPastDue(bill);
+    }).length;
+
+    return {
+      summary: {
+        total: bills.length,
+        confirmNeeded,
+        pending,
+        overdue
+      },
+      bills: bills.map((bill) => this.presentManagerBillRow(bill))
+    };
+  }
+
+  getManagerBill(managerId: string, billId: string): TeamBill {
+    return this.presentBill(this.findManagerBill(managerId, billId));
+  }
+
+  getManagerCollection(managerId: string): TeamCollection {
+    const bills = this.managerBills(managerId);
+    const billingMonth =
+      [...new Set(bills.map((bill) => bill.billingMonth))].sort().at(-1) ??
+      new Date().toISOString().slice(0, 7);
+    const scopedBills = bills.filter((bill) => bill.billingMonth === billingMonth);
+    const billedAmount = scopedBills.reduce((sum, bill) => sum + bill.totalAmount, 0);
+    const collectedAmount = scopedBills.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    const confirmingAmount = scopedBills.reduce(
+      (sum, bill) => sum + this.confirmingAmountForBill(bill),
+      0
+    );
+    const orphanAmount = this.managerRelevantDeposits(managerId)
+      .filter(
+        (deposit) =>
+          deposit.matchStatus === "ORPHAN" &&
+          scopedBills.some((bill) => this.orphanDepositAppliesToBill(deposit, bill))
+      )
+      .reduce((sum, deposit) => sum + deposit.amount, 0);
+    const grossUnpaid = scopedBills.reduce((sum, bill) => sum + this.unpaidAmount(bill), 0);
+    const recentDeposits = this.managerRelevantDeposits(managerId)
+      .sort((left, right) => right.depositedAt.localeCompare(left.depositedAt))
+      .slice(0, 5)
+      .map((deposit) => this.presentDeposit(deposit));
+
+    return {
+      billingMonth,
+      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
+      collectedAmount,
+      unpaidAmount: Math.max(0, grossUnpaid - confirmingAmount - orphanAmount),
+      vacancyLoss: 0,
+      confirmingAmount,
+      orphanAmount,
+      recentDeposits
+    };
+  }
+
+  listManagerBillDeposits(managerId: string): {
+    paymentReports: TeamBillRow[];
+    deposits: TeamDeposit[];
+    orphanDeposits: TeamDeposit[];
+    mismatchDeposits: TeamDeposit[];
+  } {
+    const billIdsWithReports = new Set(
+      this.store.paymentReports
+        .filter((report) => report.status === "CONFIRMING")
+        .map((report) => report.billId)
+    );
+    for (const deposit of this.store.deposits.filter((item) => item.matchStatus === "MISMATCH")) {
+      if (deposit.matchedBillId) {
+        billIdsWithReports.add(deposit.matchedBillId);
+      }
+    }
+
+    const paymentReports = this.managerBills(managerId)
+      .filter((bill) => billIdsWithReports.has(bill.id))
+      .map((bill) => this.presentManagerBillRow(bill));
+    const deposits = this.managerRelevantDeposits(managerId);
+
+    return {
+      paymentReports,
+      deposits: deposits
+        .filter((deposit) => !["ORPHAN", "MISMATCH"].includes(deposit.matchStatus))
+        .map((deposit) => this.presentDeposit(deposit)),
+      orphanDeposits: deposits
+        .filter((deposit) => deposit.matchStatus === "ORPHAN")
+        .map((deposit) => this.presentDeposit(deposit)),
+      mismatchDeposits: deposits
+        .filter((deposit) => deposit.matchStatus === "MISMATCH")
+        .map((deposit) => this.presentDeposit(deposit))
+    };
+  }
+
+  matchManagerDeposit(managerId: string, depositId: string, input: MatchDepositInput): TeamDeposit {
+    const bill = this.findManagerBill(managerId, input.billId);
+    const deposit = this.findDeposit(depositId);
+
+    if (!this.canManagerAccessDeposit(managerId, deposit)) {
+      throw new ForbiddenException("담당 호실의 입금 내역만 매칭할 수 있습니다.");
+    }
+
+    const previousBill =
+      deposit.matchStatus === "MATCHED" && deposit.matchedBillId
+        ? this.store.bills.find((item) => item.id === deposit.matchedBillId)
+        : undefined;
+
+    if (previousBill && previousBill.id !== bill.id) {
+      this.applyConfirmedPayment(previousBill, -deposit.amount);
+      this.refreshBillStatusAfterPaymentChange(previousBill);
+    }
+
+    if (deposit.matchStatus !== "MATCHED" || deposit.matchedBillId !== bill.id) {
+      this.applyConfirmedPayment(bill, deposit.amount);
+    }
+
+    deposit.matchStatus = "MATCHED";
+    deposit.matchedBillId = bill.id;
+    deposit.guessedUnitId = bill.unitId;
+
+    const report = this.store.paymentReports.find(
+      (item) => item.billId === bill.id && item.status === "CONFIRMING" && item.amount === deposit.amount
+    ) ?? this.store.paymentReports.find(
+      (item) => item.billId === bill.id && item.status === "CONFIRMING"
+    );
+
+    if (report) {
+      report.status = "MATCHED";
+    }
+
+    this.refreshBillStatusAfterPaymentChange(bill);
+    this.persistStore();
+
+    return this.presentDeposit(deposit);
+  }
+
+  confirmManagerPaymentReport(managerId: string, billId: string, reportId: string): TeamBill {
+    const bill = this.findManagerBill(managerId, billId);
+    const report = this.store.paymentReports.find(
+      (item) => item.id === reportId && item.billId === bill.id
+    );
+
+    if (!report) {
+      throw new NotFoundException("납부 신고를 찾을 수 없습니다.");
+    }
+
+    if (report.status !== "MATCHED") {
+      this.applyConfirmedPayment(bill, report.amount);
+      report.status = "MATCHED";
+    }
+
+    this.refreshBillStatusAfterPaymentChange(bill);
+    this.persistStore();
+
+    return this.presentBill(bill);
+  }
+
+  listManagerOverdueCases(managerId: string): { activeCases: TeamOverdue[]; waitingCases: TeamOverdue[] } {
+    const cases = this.managerBills(managerId)
+      .filter((bill) => this.canAutoOverdue(bill))
+      .map((bill) => this.presentOverdueCase(bill));
+
+    return {
+      activeCases: cases.filter((item) => !item.guard.blocked),
+      waitingCases: cases.filter((item) => item.guard.blocked)
+    };
+  }
+
+  getManagerDunningDraft(managerId: string, billId: string): TeamDunning {
+    return this.presentDunningDraft(this.findManagerBill(managerId, billId));
+  }
+
+  sendManagerDunning(
+    managerId: string,
+    billId: string,
+    input: SendDunningInput
+  ): { ok: true } {
+    const bill = this.findManagerBill(managerId, billId);
+    const text = input.text?.trim();
+    const channel = input.channel?.trim();
+
+    if (!text || !channel) {
+      throw new BadRequestException("독촉 발송에는 관리인이 편집한 문구와 채널이 필요합니다.");
+    }
+
+    if (this.unpaidAmount(bill) <= 0) {
+      throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
+    }
+
+    const guard = this.dunningGuardForBill(bill);
+
+    if (guard.blocked) {
+      throw new ConflictException("입금 확인 중이거나 미확인 입금이 있어 독촉을 보낼 수 없습니다.");
+    }
+
+    // TODO(KAN-131): messaging 소유 트랙에서 결제 컨텍스트 1:1 독촉 발송을 같은 가드로 차단해야 한다.
+    return { ok: true };
   }
 
   listTenantContracts(tenantId: string): Contract[] {
@@ -3333,6 +3709,393 @@ export class RoomlogService {
     return JSON.parse(JSON.stringify(draft)) as FloorPlanDraft;
   }
 
+  private tenantBills(tenantId: string) {
+    const roomId = this.store.tenantRooms[tenantId];
+
+    if (!roomId) {
+      return [];
+    }
+
+    const room = this.findRoom(roomId);
+
+    return this.store.bills
+      .filter((bill) => this.unitMatchesRoom(bill.unitId, room))
+      .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  private managerBills(managerId: string) {
+    return this.store.bills
+      .filter((bill) => this.canManagerAccessBill(managerId, bill))
+      .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  private findBill(billId: string) {
+    const bill = this.store.bills.find((item) => item.id === billId);
+
+    if (!bill) {
+      throw new NotFoundException("청구서를 찾을 수 없습니다.");
+    }
+
+    return bill;
+  }
+
+  private findTenantBill(tenantId: string, billId: string) {
+    const bill = this.findBill(billId);
+    const roomId = this.store.tenantRooms[tenantId];
+    const room = roomId ? this.findRoom(roomId) : undefined;
+
+    if (!room || !this.unitMatchesRoom(bill.unitId, room)) {
+      throw new ForbiddenException("본인 호실의 청구서만 조회할 수 있습니다.");
+    }
+
+    if (this.deriveBillStatus(bill) === "DRAFT") {
+      throw new NotFoundException("청구서를 찾을 수 없습니다.");
+    }
+
+    return bill;
+  }
+
+  private findManagerBill(managerId: string, billId: string) {
+    const bill = this.findBill(billId);
+
+    this.assertManagerCanAccessBill(managerId, bill);
+
+    return bill;
+  }
+
+  private findDeposit(depositId: string) {
+    const deposit = this.store.deposits.find((item) => item.id === depositId);
+
+    if (!deposit) {
+      throw new NotFoundException("입금 내역을 찾을 수 없습니다.");
+    }
+
+    return deposit;
+  }
+
+  private canManagerAccessBill(managerId: string, bill: Bill) {
+    return this.store.rooms.some(
+      (room) => room.landlordId === managerId && this.unitMatchesRoom(bill.unitId, room)
+    );
+  }
+
+  private assertManagerCanAccessBill(managerId: string, bill: Bill) {
+    if (!this.canManagerAccessBill(managerId, bill)) {
+      throw new ForbiddenException("담당 호실의 청구서만 조회할 수 있습니다.");
+    }
+  }
+
+  private unitMatchesRoom(unitId: string | undefined, room: Room) {
+    return (
+      this.unitsEqual(unitId, room.roomNo) ||
+      this.unitsEqual(unitId, room.id) ||
+      this.unitsEqual(unitId, `${room.roomNo}호`)
+    );
+  }
+
+  private unitsEqual(left?: string, right?: string) {
+    return Boolean(left && right && this.normalizeUnitId(left) === this.normalizeUnitId(right));
+  }
+
+  private normalizeUnitId(value: string) {
+    return value.replace(/\s*호\s*$/u, "").trim();
+  }
+
+  private monthKey(iso: string) {
+    return iso.slice(0, 7);
+  }
+
+  private unpaidAmount(bill: Bill) {
+    return Math.max(0, bill.totalAmount - bill.paidAmount);
+  }
+
+  private isBillPastDue(bill: Bill) {
+    return Date.parse(bill.dueDate) < Date.now();
+  }
+
+  private canAutoOverdue(bill: Bill) {
+    return (
+      this.isBillPastDue(bill) &&
+      this.unpaidAmount(bill) > 0 &&
+      !["DRAFT", "PAID", "CORRECTED", "CANCELED"].includes(bill.status)
+    );
+  }
+
+  private isBillInActiveOverdue(bill: Bill) {
+    return this.canAutoOverdue(bill) && !this.dunningGuardForBill(bill).blocked;
+  }
+
+  private deriveBillStatus(bill: Bill): BillStatus {
+    if (bill.status === "CANCELED" || bill.status === "CORRECTED" || bill.status === "DRAFT") {
+      return bill.status;
+    }
+
+    if (this.unpaidAmount(bill) === 0) {
+      return "PAID";
+    }
+
+    const guard = this.dunningGuardForBill(bill);
+
+    if (guard.hasConfirming) {
+      return "CONFIRMING";
+    }
+
+    if (bill.paidAmount > 0) {
+      return this.canAutoOverdue(bill) && !guard.blocked ? "OVERDUE" : "PARTIALLY_PAID";
+    }
+
+    if (this.canAutoOverdue(bill) && !guard.blocked) {
+      return "OVERDUE";
+    }
+
+    if (bill.status === "OVERDUE" && !this.isBillInActiveOverdue(bill)) {
+      return bill.paidAmount > 0 ? "PARTIALLY_PAID" : "SENT";
+    }
+
+    return bill.status;
+  }
+
+  private refreshBillStatusAfterPaymentChange(bill: Bill) {
+    bill.status = this.deriveBillStatus(bill);
+    bill.updatedAt = now();
+  }
+
+  private applyConfirmedPayment(bill: Bill, amount: number) {
+    bill.paidAmount = Math.min(bill.totalAmount, Math.max(0, bill.paidAmount + amount));
+    bill.updatedAt = now();
+  }
+
+  private dunningGuardForBill(bill: Bill) {
+    const hasConfirming = this.hasConfirmingPaymentContext(bill);
+    const hasOrphan = this.hasOrphanDepositForBillPeriod(bill);
+
+    return {
+      blocked: hasConfirming || hasOrphan,
+      hasConfirming,
+      hasOrphan
+    };
+  }
+
+  private hasConfirmingPaymentContext(bill: Bill) {
+    return (
+      this.store.paymentReports.some(
+        (report) => report.billId === bill.id && report.status === "CONFIRMING"
+      ) ||
+      this.store.deposits.some(
+        (deposit) => deposit.matchedBillId === bill.id && deposit.matchStatus === "MISMATCH"
+      )
+    );
+  }
+
+  // orphan 입금은 입금월 또는 그 이전의 같은 호실 미납 청구를 가드한다.
+  // 미래 청구월은 가드하지 않아 다음 달 청구의 과잉 차단을 막는다.
+  private orphanDepositAppliesToBill(deposit: Deposit, bill: Bill) {
+    return (
+      this.unitsEqual(deposit.guessedUnitId, bill.unitId) &&
+      bill.billingMonth <= this.monthKey(deposit.depositedAt)
+    );
+  }
+
+  private hasOrphanDepositForBillPeriod(bill: Bill) {
+    return this.store.deposits.some(
+      (deposit) =>
+        deposit.matchStatus === "ORPHAN" &&
+        this.orphanDepositAppliesToBill(deposit, bill)
+    );
+  }
+
+  private confirmingAmountForBill(bill: Bill) {
+    const reports = this.store.paymentReports
+      .filter((report) => report.billId === bill.id && report.status === "CONFIRMING")
+      .reduce((sum, report) => sum + report.amount, 0);
+    const mismatches = this.store.deposits
+      .filter((deposit) => deposit.matchedBillId === bill.id && deposit.matchStatus === "MISMATCH")
+      .reduce((sum, deposit) => sum + deposit.amount, 0);
+
+    return reports + mismatches;
+  }
+
+  private managerRelevantDeposits(managerId: string) {
+    return this.store.deposits.filter((deposit) => {
+      return this.canManagerAccessDeposit(managerId, deposit);
+    });
+  }
+
+  private canManagerAccessDeposit(managerId: string, deposit: Deposit) {
+    if (!deposit.matchedBillId && !deposit.guessedUnitId) {
+      return false;
+    }
+
+    if (deposit.matchedBillId) {
+      const bill = this.store.bills.find((item) => item.id === deposit.matchedBillId);
+
+      return Boolean(bill && this.canManagerAccessBill(managerId, bill));
+    }
+
+    if (deposit.guessedUnitId) {
+      return this.store.rooms.some(
+        (room) => room.landlordId === managerId && this.unitMatchesRoom(deposit.guessedUnitId, room)
+      );
+    }
+
+    return false;
+  }
+
+  private resolveMaintenanceFeeForBill(bill: Bill): MaintenanceFee {
+    const maintenanceFee =
+      (bill.maintenanceFeeId
+        ? this.store.maintenanceFees.find((item) => item.id === bill.maintenanceFeeId)
+        : undefined) ??
+      this.store.maintenanceFees.find(
+        (item) => this.unitsEqual(item.unitId, bill.unitId) && item.billingMonth === bill.billingMonth
+      );
+
+    return (
+      maintenanceFee ?? {
+        id: bill.maintenanceFeeId ?? `maintenance-${bill.id}`,
+        unitId: bill.unitId,
+        billingMonth: bill.billingMonth,
+        totalAmount: 0,
+        available: false,
+        items: []
+      }
+    );
+  }
+
+  private tenantNameForBill(bill: Bill) {
+    const room = this.store.rooms.find((item) => this.unitMatchesRoom(bill.unitId, item));
+    const tenantId = room
+      ? Object.entries(this.store.tenantRooms).find(([, roomId]) => roomId === room.id)?.[0]
+      : undefined;
+
+    return this.store.users.find((user) => user.id === tenantId)?.name ?? "미연결 임차인";
+  }
+
+  private paymentBadgeForBill(bill: Bill): PaymentBadge {
+    const status = this.deriveBillStatus(bill);
+    const map: Record<BillStatus, PaymentBadge> = {
+      DRAFT: "NONE",
+      SENT: "DUE",
+      CONFIRMING: "CONFIRMING",
+      PARTIALLY_PAID: "PARTIAL",
+      PAID: "PAID",
+      OVERDUE: "OVERDUE",
+      CORRECTED: "DUE",
+      CANCELED: "NONE"
+    };
+
+    return map[status];
+  }
+
+  private presentBill(bill: Bill): TeamBill {
+    return {
+      id: bill.id,
+      unitId: bill.unitId,
+      billingMonth: bill.billingMonth,
+      status: this.deriveBillStatus(bill),
+      items: bill.items.map((item) => ({
+        label: item.label,
+        amount: item.amount
+      })),
+      totalAmount: bill.totalAmount,
+      paidAmount: bill.paidAmount,
+      dueDate: bill.dueDate,
+      account: {
+        bankName: bill.bankName,
+        accountNumber: bill.accountNumber,
+        accountHolder: bill.accountHolder
+      },
+      correctionHistory: bill.correctionHistory ?? [],
+      maintenanceFeeId: bill.maintenanceFeeId,
+      depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+      createdAt: bill.createdAt,
+      updatedAt: bill.updatedAt
+    };
+  }
+
+  private presentPaymentReport(report: PaymentReport): TeamReport {
+    return { ...report };
+  }
+
+  private presentDeposit(deposit: Deposit): TeamDeposit {
+    return { ...deposit };
+  }
+
+  private presentMaintenanceFee(fee: MaintenanceFee): TeamMaintenance {
+    return {
+      id: fee.id,
+      unitId: fee.unitId,
+      billingMonth: fee.billingMonth,
+      totalAmount: fee.totalAmount,
+      available: fee.available,
+      items: fee.items.map((item) => ({
+        label: item.label,
+        amount: item.amount,
+        receiptAvailable: item.receiptAvailable
+      }))
+    };
+  }
+
+  private presentManagerBillRow(bill: Bill): TeamBillRow {
+    return {
+      billId: bill.id,
+      unitId: bill.unitId,
+      tenantName: this.tenantNameForBill(bill),
+      billingMonth: bill.billingMonth,
+      totalAmount: bill.totalAmount,
+      paidAmount: bill.paidAmount,
+      status: this.deriveBillStatus(bill),
+      dueDate: bill.dueDate,
+      badge: this.paymentBadgeForBill(bill)
+    };
+  }
+
+  private presentOverdueCase(bill: Bill): TeamOverdue {
+    const daysOverdue = Math.max(
+      0,
+      Math.floor((Date.now() - Date.parse(bill.dueDate)) / (24 * 60 * 60 * 1000))
+    );
+
+    return {
+      billId: bill.id,
+      unitId: bill.unitId,
+      tenantName: this.tenantNameForBill(bill),
+      unpaidAmount: this.unpaidAmount(bill),
+      daysOverdue,
+      stage: this.stageForDaysOverdue(daysOverdue),
+      dueDate: bill.dueDate,
+      guard: this.dunningGuardForBill(bill)
+    };
+  }
+
+  private stageForDaysOverdue(daysOverdue: number): TeamOverdue["stage"] {
+    if (daysOverdue >= 30) {
+      return "SEVERE";
+    }
+
+    if (daysOverdue >= 7) {
+      return "WARNING";
+    }
+
+    return "MINOR";
+  }
+
+  private presentDunningDraft(bill: Bill): TeamDunning {
+    const tenantName = this.tenantNameForBill(bill);
+    const unpaidAmount = this.unpaidAmount(bill);
+    const dueDate = bill.dueDate.slice(0, 10);
+
+    return {
+      billId: bill.id,
+      unitId: bill.unitId,
+      tenantName,
+      unpaidAmount,
+      draftText: `${tenantName}님, ${bill.billingMonth} 청구 잔액 ${unpaidAmount.toLocaleString("ko-KR")}원이 ${dueDate} 기준 미납으로 확인되어 안내드립니다. 이미 납부하셨다면 앱에서 입금 확인 신고를 남겨주세요.`,
+      channel: "SMS",
+      guard: this.dunningGuardForBill(bill)
+    };
+  }
+
   private loadStore(): Store {
     if (!this.storeFilePath || !existsSync(this.storeFilePath)) {
       return this.seedDemoData ? createDemoStore() : createEmptyStore();
@@ -3357,6 +4120,18 @@ export class RoomlogService {
       contractExtractions: parsed.contractExtractions ?? [],
       contractPrivacies: parsed.contractPrivacies ?? [],
       contractInvites: parsed.contractInvites ?? [],
+      bills: (parsed.bills ?? []).map((bill) => ({
+        ...bill,
+        correctionHistory: bill.correctionHistory ?? [],
+        depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+        items: bill.items ?? []
+      })),
+      paymentReports: parsed.paymentReports ?? [],
+      deposits: parsed.deposits ?? [],
+      maintenanceFees: (parsed.maintenanceFees ?? []).map((fee) => ({
+        ...fee,
+        items: fee.items ?? []
+      })),
       attachments: parsed.attachments ?? [],
       floorPlans: (parsed.floorPlans ?? []).map((floorPlan) => ({
         ...floorPlan,
@@ -3445,6 +4220,10 @@ export class RoomlogService {
         (snapshot.contractExtractions === undefined || Array.isArray(snapshot.contractExtractions)) &&
         (snapshot.contractPrivacies === undefined || Array.isArray(snapshot.contractPrivacies)) &&
         (snapshot.contractInvites === undefined || Array.isArray(snapshot.contractInvites)) &&
+        (snapshot.bills === undefined || Array.isArray(snapshot.bills)) &&
+        (snapshot.paymentReports === undefined || Array.isArray(snapshot.paymentReports)) &&
+        (snapshot.deposits === undefined || Array.isArray(snapshot.deposits)) &&
+        (snapshot.maintenanceFees === undefined || Array.isArray(snapshot.maintenanceFees)) &&
         (snapshot.attachments === undefined || Array.isArray(snapshot.attachments)) &&
         (snapshot.floorPlans === undefined || Array.isArray(snapshot.floorPlans)) &&
         (snapshot.moveInChecklist === undefined || Array.isArray(snapshot.moveInChecklist)) &&

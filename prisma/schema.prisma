@@ -88,6 +88,36 @@ enum CostStatus {
   VOID
 }
 
+enum BillStatus {
+  DRAFT
+  SENT
+  CONFIRMING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CORRECTED
+  CANCELED
+}
+
+enum PaymentReportStatus {
+  CONFIRMING
+  MATCHED
+  MISMATCH
+}
+
+enum DepositMatchStatus {
+  UNMATCHED
+  MATCHED
+  ORPHAN
+  MISMATCH
+}
+
+enum OverdueStage {
+  MINOR
+  WARNING
+  SEVERE
+}
+
 enum CostAttributionScope {
   UNIT
   BUILDING
@@ -257,6 +287,95 @@ model TenantRoom {
 
   @@id([tenantId, roomId])
   @@index([roomId])
+}
+
+model Bill {
+  id                             String         @id
+  unitId                         String
+  billingMonth                   String
+  status                         BillStatus     @default(DRAFT)
+  totalAmount                    Int
+  paidAmount                     Int            @default(0)
+  dueDate                        DateTime
+  bankName                       String
+  accountNumber                  String
+  accountHolder                  String
+  correctionHistory              String[]       @default([])
+  maintenanceFeeId               String?
+  depositConfirmationRequested   Boolean        @default(false)
+  items                          BillLineItem[]
+  reports                        PaymentReport[]
+  deposits                       Deposit[]
+  createdAt                      DateTime       @default(now())
+  updatedAt                      DateTime       @updatedAt
+
+  @@index([unitId, billingMonth])
+  @@index([status])
+}
+
+model BillLineItem {
+  id     String @id
+  billId String
+  label  String
+  amount Int
+
+  bill Bill @relation(fields: [billId], references: [id])
+
+  @@index([billId])
+}
+
+model PaymentReport {
+  id            String              @id
+  billId        String
+  unitId        String
+  amount        Int
+  depositorName String?
+  status        PaymentReportStatus @default(CONFIRMING)
+  etaHours      Int                 @default(24)
+  reportedAt    DateTime            @default(now())
+
+  bill Bill @relation(fields: [billId], references: [id])
+
+  @@index([billId])
+  @@index([unitId, status])
+}
+
+model Deposit {
+  id            String             @id
+  depositorName String
+  amount        Int
+  depositedAt   DateTime
+  matchStatus   DepositMatchStatus @default(UNMATCHED)
+  matchedBillId String?
+  guessedUnitId String?
+
+  bill Bill? @relation(fields: [matchedBillId], references: [id])
+
+  @@index([matchStatus])
+  @@index([guessedUnitId])
+}
+
+model MaintenanceFee {
+  id            String               @id
+  unitId        String
+  billingMonth  String
+  totalAmount   Int
+  available     Boolean              @default(false)
+  items         MaintenanceFeeItem[]
+
+  @@index([unitId, billingMonth])
+}
+
+model MaintenanceFeeItem {
+  id                 String  @id
+  maintenanceFeeId   String
+  label              String
+  amount             Int
+  receiptAvailable   Boolean @default(false)
+
+  fee MaintenanceFee @relation(fields: [maintenanceFeeId], references: [id])
+
+  @@index([maintenanceFeeId])
 }
 
 model VendorProfile {

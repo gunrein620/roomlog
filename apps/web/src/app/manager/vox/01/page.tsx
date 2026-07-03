@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Badge, Button, Card } from "@roomlog/ui";
-import { getManagerHomeSummary, type ManagerHomeSummary } from "@/lib/manager-home-api";
+import type { ManagerHomeSummary } from "@/lib/manager-home-api";
 import { MANAGER_CROSS, MHOME_ROUTES, MVOX_ROUTES } from "@/lib/manager-home-nav";
 
 const muted: CSSProperties = {
@@ -26,9 +26,15 @@ export default function Page() {
   useEffect(() => {
     let mounted = true;
 
-    getManagerHomeSummary().then((nextSummary) => {
-      if (mounted) setSummary(nextSummary);
-    });
+    // server-only 집계 BFF는 라우트 핸들러를 거쳐 가져온다(클라이언트에서 직접 import 불가).
+    fetch("/api/manager/home-summary")
+      .then((res) => res.json() as Promise<ManagerHomeSummary>)
+      .then((nextSummary) => {
+        if (mounted) setSummary(nextSummary);
+      })
+      .catch(() => {
+        /* 셸 단계: 집계 실패는 조용히 무시(홈은 0/빈 큐로 렌더) */
+      });
 
     return () => {
       mounted = false;

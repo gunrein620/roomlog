@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Card } from "@roomlog/ui";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
-import { getMaintenance, DEMO_BILL_ID } from "@/lib/payment-api";
+import { getMaintenance } from "@/lib/payment-api";
 
 // T-PAY-04 · 관리비 사용 내역
 // 관리비 사용처 항목별 투명 공개 + 영수증 유무. 관리자 미입력(available=false)이면 빈 상태.
@@ -19,8 +19,13 @@ function won(n: number): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
 
-export default async function Page() {
-  const maintenance = await getMaintenance(DEMO_BILL_ID);
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const maintenance = await getMaintenance(id);
   const hasData = maintenance.available && maintenance.items.length > 0;
 
   return (

@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation";
 import { Button, Card } from "@roomlog/ui";
-import { getManagerDunning } from "@/lib/billing-manager-api";
+import { getManagerDunning, sendManagerDunning } from "@/lib/billing-manager-api";
 import {
   BillingShell,
   DisabledAction,
@@ -9,13 +10,28 @@ import {
   PageStack,
   Section,
   TextButtonLink,
+  formFieldStyle,
   routes,
   won,
 } from "../../_components";
 
-export default async function Page({ params }: { params: Promise<{ billId: string }> }) {
-  const { billId } = await params;
-  const draft = await getManagerDunning(billId);
+type Params = Promise<{ billId: string }>;
+type SearchParams = Promise<{ id?: string }>;
+
+async function sendDunningAction(formData: FormData) {
+  "use server";
+
+  const billId = String(formData.get("billId") ?? "");
+  const text = String(formData.get("text") ?? "");
+  const channel = String(formData.get("channel") ?? "");
+  const sent = billId && text && channel ? await sendManagerDunning(billId, { text, channel }) : false;
+  redirect(`${routes.dunning(billId)}&send=${sent ? "ok" : "failed"}`);
+}
+
+export default async function Page({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
+  const [{ billId }, { id }] = await Promise.all([params, searchParams]);
+  const targetBillId = id || billId;
+  const draft = await getManagerDunning(targetBillId);
 
   return (
     <BillingShell title="독촉문 작성·발송" active={routes.overdue}>
@@ -37,33 +53,39 @@ export default async function Page({ params }: { params: Promise<{ billId: strin
           hasOrphan={draft.guard.hasOrphan}
         />
 
-        <Section title="AI 독촉문 초안 편집">
-          <Card>
-            <div
-              style={{
-                minHeight: 240,
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
-                padding: "var(--space-md)",
-                lineHeight: "var(--lh-body)",
-                color: "var(--on-surface)",
-                background: "var(--surface-container-lowest)",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {draft.draftText}
-            </div>
-          </Card>
-        </Section>
+        <form action={sendDunningAction} style={{ display: "contents" }}>
+          <input type="hidden" name="billId" value={draft.billId} />
+          <input type="hidden" name="channel" value={draft.channel} />
+          <Section title="AI 독촉문 초안 편집">
+            <Card>
+              <textarea
+                name="text"
+                defaultValue={draft.draftText}
+                disabled={draft.guard.blocked}
+                style={{
+                  ...formFieldStyle,
+                  width: "100%",
+                  minHeight: 240,
+                  padding: "var(--space-md)",
+                  lineHeight: "var(--lh-body)",
+                  resize: "vertical",
+                  whiteSpace: "pre-wrap",
+                }}
+              />
+            </Card>
+          </Section>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
-          <Button variant="secondary">초안 다시 생성</Button>
-          {draft.guard.blocked ? (
-            <DisabledAction>가드 해소 후 수정·승인 발송</DisabledAction>
-          ) : (
-            <Button>수정 후 관리인 승인 발송</Button>
-          )}
-        </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
+            <Button type="button" variant="secondary" disabled>
+              초안 다시 생성
+            </Button>
+            {draft.guard.blocked ? (
+              <DisabledAction>가드 해소 후 수정·승인 발송</DisabledAction>
+            ) : (
+              <Button type="submit">수정 후 관리인 승인 발송</Button>
+            )}
+          </div>
+        </form>
       </PageStack>
     </BillingShell>
   );

@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { BillStatus } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
-import { getBill, DEMO_BILL_ID } from "@/lib/payment-api";
+import { getBill } from "@/lib/payment-api";
 
 // T-PAY-01 · 청구 상세
 // 항목 분해 + 계좌·기한 + 청구 상태(정정 이력). primary=납부하기(→02). 관리비 세부·과거는 미룸.
@@ -30,8 +30,17 @@ function won(n: number): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
 
-export default async function Page() {
-  const bill = await getBill(DEMO_BILL_ID);
+function withBillId(route: string, billId?: string): string {
+  return billId ? `${route}?id=${encodeURIComponent(billId)}` : route;
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const bill = await getBill(id);
 
   return (
     <>
@@ -157,7 +166,10 @@ export default async function Page() {
           borderTop: "1px solid var(--border)",
         }}
       >
-        <Link href={PAYMENT_ROUTES["T-PAY-02"]} style={{ textDecoration: "none", display: "block" }}>
+        <Link
+          href={withBillId(PAYMENT_ROUTES["T-PAY-02"], bill.id)}
+          style={{ textDecoration: "none", display: "block" }}
+        >
           <Button fullWidth>납부하기</Button>
         </Link>
       </footer>

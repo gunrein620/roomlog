@@ -48,13 +48,17 @@ function ddayOf(dueIso: string): number {
   return Math.ceil(diff / 86_400_000);
 }
 
+function withBillId(route: string, billId?: string): string {
+  return billId ? `${route}?id=${encodeURIComponent(billId)}` : route;
+}
+
 export default async function Page() {
   const bills = await listBills();
   // 청구월 내림차순 → 이번 달(center)이 맨 위.
   const sorted = [...bills].sort((a, b) => b.billingMonth.localeCompare(a.billingMonth));
   const current = sorted[0];
   const recentDone = sorted.find((b) => b.id !== current?.id && b.status === "paid");
-  const unit = current?.unitId ?? "302";
+  const unit = current?.unitId ?? "내 호실";
 
   return (
     <>
@@ -71,7 +75,9 @@ export default async function Page() {
         }}
       >
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{unit}호 · 이번 달</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>
+            {current ? `${unit}호` : unit} · 이번 달
+          </div>
           <div style={{ fontSize: 11, color: "var(--on-surface-variant)", marginTop: 2 }}>
             룸로그 · 납부
           </div>
@@ -186,36 +192,75 @@ export default async function Page() {
           gap: 10,
         }}
       >
-        <Link
-          href={PAYMENT_ROUTES["T-PAY-02"]}
-          style={{
-            display: "flex",
-            width: "100%",
-            boxSizing: "border-box",
-            height: "var(--touch-target)",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "none",
-            background: "var(--primary)",
-            color: "var(--on-primary)",
-            borderRadius: "var(--radius-btn)",
-            fontSize: "var(--fs-body)",
-            fontWeight: 700,
-            textDecoration: "none",
-          }}
-        >
-          납부하기
-        </Link>
+        {current ? (
+          <Link
+            href={withBillId(PAYMENT_ROUTES["T-PAY-02"], current.id)}
+            style={{
+              display: "flex",
+              width: "100%",
+              boxSizing: "border-box",
+              height: "var(--touch-target)",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              background: "var(--primary)",
+              color: "var(--on-primary)",
+              borderRadius: "var(--radius-btn)",
+              fontSize: "var(--fs-body)",
+              fontWeight: 700,
+              textDecoration: "none",
+            }}
+          >
+            납부하기
+          </Link>
+        ) : (
+          <span
+            aria-disabled="true"
+            style={{
+              display: "flex",
+              width: "100%",
+              boxSizing: "border-box",
+              height: "var(--touch-target)",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "1px dashed var(--outline-variant)",
+              background: "var(--surface-container)",
+              color: "var(--on-surface-variant)",
+              borderRadius: "var(--radius-btn)",
+              fontSize: "var(--fs-body)",
+              fontWeight: 700,
+            }}
+          >
+            납부할 청구가 없어요
+          </span>
+        )}
 
         <nav style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-          <SecondaryLink href={PAYMENT_ROUTES["T-PAY-01"]} label="청구 상세" />
+          {current ? (
+            <SecondaryLink
+              href={withBillId(PAYMENT_ROUTES["T-PAY-01"], current.id)}
+              label="청구 상세"
+            />
+          ) : (
+            <SecondaryDisabled label="청구 상세" />
+          )}
           <SecondaryLink href={PAYMENT_ROUTES["T-PAY-03"]} label="납부 기록" />
           {current?.maintenanceFeeId ? (
-            <SecondaryLink href={PAYMENT_ROUTES["T-PAY-04"]} label="관리비 내역" />
+            <SecondaryLink
+              href={withBillId(PAYMENT_ROUTES["T-PAY-04"], current.id)}
+              label="관리비 내역"
+            />
           ) : (
             <SecondaryDisabled label="관리비 내역" />
           )}
-          <SecondaryLink href={PAYMENT_ROUTES["T-PAY-05"]} label="연체 안내" />
+          {current ? (
+            <SecondaryLink
+              href={withBillId(PAYMENT_ROUTES["T-PAY-05"], current.id)}
+              label="연체 안내"
+            />
+          ) : (
+            <SecondaryDisabled label="연체 안내" />
+          )}
         </nav>
       </footer>
     </>
