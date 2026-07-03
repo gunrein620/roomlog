@@ -1,12 +1,15 @@
 import { getReport, getReportDelivery } from "@/lib/report-api";
-import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
+import { reportHref } from "@/lib/report-nav";
 import { Badge, Card } from "@roomlog/ui";
 import { Grid, LinkButton, PageStack, ScreenHeader, Section, formatDateTime } from "../_components";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
-  const report = await getReport();
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const report = await getReport(id);
   const delivery = await getReportDelivery(report.id);
 
   return (
@@ -15,7 +18,7 @@ export default async function Page() {
         eyebrow="M-RPT-03"
         title="임대인 보고·내보내기"
         subtitle={`${report.periodLabel} · ${delivery.recipient.name}`}
-        actions={<LinkButton href={MANAGER_REPORT_ROUTES["M-RPT-02"]} variant="secondary">상세로</LinkButton>}
+        actions={<LinkButton href={reportHref("M-RPT-02", report.id)} variant="secondary">상세로</LinkButton>}
       />
 
       <Grid>
@@ -60,7 +63,7 @@ export default async function Page() {
       </Section>
 
       <Card style={{ display: "flex", justifyContent: "flex-end" }}>
-        <LinkButton href={MANAGER_REPORT_ROUTES["M-RPT-02"]}>전달/내보내기 확정</LinkButton>
+        <LinkButton href={reportHref("M-RPT-02", report.id)}>전달/내보내기 확정</LinkButton>
       </Card>
     </PageStack>
   );

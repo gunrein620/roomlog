@@ -11,7 +11,7 @@ import type {
   ReportStatus,
 } from "@roomlog/types";
 import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
-import { actionHref, MANAGER_REPORT_ROUTES, sourceHref } from "@/lib/report-nav";
+import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
 
 const navItems = [
   ["허브", MANAGER_REPORT_ROUTES["M-RPT-00"]],
@@ -156,7 +156,7 @@ export function ReportTable({ reports }: { reports: Report[] }) {
               <td style={tdStyle}><StatusBadge status={report.status} /></td>
               <td style={tdStyle}>{report.recipient?.name ?? "미지정"}</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>
-                <Link href={MANAGER_REPORT_ROUTES["M-RPT-02"]} style={inlineLinkStyle}>상세</Link>
+                <Link href={reportHref("M-RPT-02", report.id)} style={inlineLinkStyle}>상세</Link>
               </td>
             </tr>
           ))}

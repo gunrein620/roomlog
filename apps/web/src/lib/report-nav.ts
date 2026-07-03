@@ -24,6 +24,12 @@ export function routeFor(id: ManagerReportScreenId): ManagerReportRoute {
   return MANAGER_REPORT_ROUTES[id];
 }
 
+export function reportHref(id: ManagerReportScreenId, reportId?: string): string {
+  const route = routeFor(id);
+
+  return reportId ? `${route}?id=${encodeURIComponent(reportId)}` : route;
+}
+
 export function sourceHref(source: ReportSource): string {
   switch (source.drilldownScreenId) {
     case "M-BILL-04":
@@ -51,4 +57,3 @@ export function actionHref(action: ReportNextAction | ChatDraftSuggestion): stri
   if (action.targetScreenId === "M-MSG-00") return "/manager/messaging/00";
   return MANAGER_REPORT_ROUTES["M-RPT-00"];
 }
-
