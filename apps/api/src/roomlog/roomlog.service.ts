@@ -958,6 +958,17 @@ function createEmptyStore(): Store {
   };
 }
 
+function mergeMissingById<T extends { id: string }>(current: T[], demo: T[]): T[] {
+  return mergeMissingByKey(current, demo, (item) => item.id);
+}
+
+function mergeMissingByKey<T>(current: T[], demo: T[], keyOf: (item: T) => string): T[] {
+  const currentKeys = new Set(current.map((item) => keyOf(item)));
+  const missingDemoItems = demo.filter((item) => !currentKeys.has(keyOf(item)));
+
+  return missingDemoItems.length ? [...current, ...missingDemoItems] : current;
+}
+
 function envFlag(value: string | undefined) {
   if (value === undefined) {
     return undefined;
@@ -1019,9 +1030,10 @@ export class RoomlogService {
     this.storageAdapter =
       options.storageAdapter ??
       createFileStorageAdapter(process.env, this.uploadDir, this.publicUploadBaseUrl);
-    this.store = options.initialStore
+    const loadedStore = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
+    this.store = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
     this.auth = new RoomlogAuthDomain(
       this.store,
       () => this.persistStore(),
@@ -3204,6 +3216,78 @@ export class RoomlogService {
         history: dispute.history ?? []
       })),
       moveoutReportAudits: parsed.moveoutReportAudits ?? []
+    };
+  }
+
+  private backfillDemoStoreSnapshot(snapshot: Store): Store {
+    const demo = createDemoStore();
+
+    return {
+      ...snapshot,
+      tenantRooms: {
+        ...demo.tenantRooms,
+        ...snapshot.tenantRooms
+      },
+      analyses: {
+        ...demo.analyses,
+        ...snapshot.analyses
+      },
+      users: mergeMissingById(snapshot.users, demo.users),
+      socialAccounts: mergeMissingById(snapshot.socialAccounts, demo.socialAccounts),
+      rooms: mergeMissingById(snapshot.rooms, demo.rooms),
+      vendors: mergeMissingById(snapshot.vendors, demo.vendors),
+      vendorInvites: mergeMissingById(snapshot.vendorInvites, demo.vendorInvites),
+      tenantInvites: mergeMissingById(snapshot.tenantInvites, demo.tenantInvites),
+      contracts: mergeMissingById(snapshot.contracts, demo.contracts),
+      contractDocuments: mergeMissingById(snapshot.contractDocuments, demo.contractDocuments),
+      contractExtractions: mergeMissingById(snapshot.contractExtractions, demo.contractExtractions),
+      contractPrivacies: mergeMissingByKey(
+        snapshot.contractPrivacies,
+        demo.contractPrivacies,
+        (privacy) => privacy.contractId
+      ),
+      contractInvites: mergeMissingById(snapshot.contractInvites, demo.contractInvites),
+      attachments: mergeMissingById(snapshot.attachments, demo.attachments),
+      floorPlans: mergeMissingById(snapshot.floorPlans, demo.floorPlans),
+      moveInChecklist: mergeMissingById(snapshot.moveInChecklist, demo.moveInChecklist),
+      aiFeedback: mergeMissingById(snapshot.aiFeedback, demo.aiFeedback),
+      intakeSessions: mergeMissingById(snapshot.intakeSessions, demo.intakeSessions),
+      complaints: mergeMissingById(snapshot.complaints, demo.complaints),
+      tickets: mergeMissingById(snapshot.tickets, demo.tickets),
+      repairs: mergeMissingById(snapshot.repairs, demo.repairs),
+      costs: mergeMissingById(snapshot.costs, demo.costs),
+      receipts: mergeMissingById(snapshot.receipts, demo.receipts),
+      receiptOcrs: mergeMissingById(snapshot.receiptOcrs, demo.receiptOcrs),
+      messages: mergeMissingById(snapshot.messages, demo.messages),
+      messagingThreads: mergeMissingById(snapshot.messagingThreads, demo.messagingThreads),
+      messagingMessages: mergeMissingById(snapshot.messagingMessages, demo.messagingMessages),
+      messagingAnnouncementDrafts: mergeMissingById(
+        snapshot.messagingAnnouncementDrafts,
+        demo.messagingAnnouncementDrafts
+      ),
+      messagingAnnouncements: mergeMissingById(snapshot.messagingAnnouncements, demo.messagingAnnouncements),
+      messagingAnnouncementDeliveries: mergeMissingById(
+        snapshot.messagingAnnouncementDeliveries,
+        demo.messagingAnnouncementDeliveries
+      ),
+      managerReports: mergeMissingById(snapshot.managerReports, demo.managerReports),
+      managerReportSourceReferences: mergeMissingById(
+        snapshot.managerReportSourceReferences,
+        demo.managerReportSourceReferences
+      ),
+      managerReportExternalShares: mergeMissingById(
+        snapshot.managerReportExternalShares,
+        demo.managerReportExternalShares
+      ),
+      managerReportAuditLogs: mergeMissingById(snapshot.managerReportAuditLogs, demo.managerReportAuditLogs),
+      moveouts: mergeMissingById(snapshot.moveouts, demo.moveouts),
+      moveoutRecords: mergeMissingById(snapshot.moveoutRecords, demo.moveoutRecords),
+      moveoutChecklist: mergeMissingById(snapshot.moveoutChecklist, demo.moveoutChecklist),
+      moveoutSettlements: mergeMissingById(snapshot.moveoutSettlements, demo.moveoutSettlements),
+      moveoutDeductions: mergeMissingById(snapshot.moveoutDeductions, demo.moveoutDeductions),
+      moveoutDisputes: mergeMissingById(snapshot.moveoutDisputes, demo.moveoutDisputes),
+      moveoutReportAudits: mergeMissingById(snapshot.moveoutReportAudits, demo.moveoutReportAudits),
+      history: mergeMissingById(snapshot.history, demo.history)
     };
   }
 
