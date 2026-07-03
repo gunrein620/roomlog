@@ -1628,17 +1628,18 @@ export default function RoomlogFloorPlanEditor() {
       const sourceUpload = await sourceUploadPromise;
       const aiImageDataUrl = await aiImageDataUrlPromise;
       const imageSize = await imageSizePromise;
-      const objectGraphImageSize = sourceUpload?.attachmentId ? imageSize : compressedImageSizeForAi(imageSize);
+      // OpenAI는 내부적으로 ~2048px로 다운스케일하므로 1600px 압축본을 보내 payload/비용을 줄이고, 좌표도 압축 크기 기준으로 맞춘다.
+      const objectGraphImageSize = compressedImageSizeForAi(imageSize);
       if (selectedAiModel === "openai/floor-plan-vision") {
         try {
           setAiAnalysisStatus("OpenAI object-graph 분석중");
           const objectGraphResult = await requestFloorPlanAiAnalysis({
             analysisMode: "object-graph",
-            imageDataUrl: sourceUpload?.attachmentId ? undefined : aiImageDataUrl,
+            imageDataUrl: aiImageDataUrl,
             imageHeight: objectGraphImageSize.height,
             imageWidth: objectGraphImageSize.width,
             model: "openai/floor-plan-vision",
-            sourceAttachmentId: sourceUpload?.attachmentId
+            sourceAttachmentId: undefined
           });
           if (objectGraphResult.status === "ready" && (objectGraphResult.walls?.length ?? 0) >= 1) {
             const applied = applyObjectGraphResult(objectGraphResult, objectGraphImageSize);
