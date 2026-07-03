@@ -33,11 +33,6 @@ type ManagerReportAuditLogEntry = {
   detail?: string;
 };
 
-type ExternalReportShareResponse = {
-  report: Report;
-  delivery: ReportDelivery;
-};
-
 export const reportPaths = {
   reports: () => "/manager/reports",
   report: (reportId: string) => `/manager/reports/${encodeURIComponent(reportId)}`,
@@ -147,17 +142,13 @@ export function getReport(id = DEMO_REPORT_ID): Promise<Report> {
 export function getReportDelivery(reportId = DEMO_REPORT_ID): Promise<ReportDelivery> {
   return apiOrFallback(async () => {
     const report = await getCurrentReport(reportId);
-    const share = await serverFetch<ManagerReportExternalShare>(reportPaths.externalShares(report.id), {
-      method: "POST",
-      body: JSON.stringify({
-        recipientName: report.recipient?.name ?? DEMO_RECIPIENTS[0].name,
-      }),
-    });
-    const shared = await serverFetch<ExternalReportShareResponse>(reportPaths.externalReport(share.token));
-    const auditLog = await fetchDeliveryAuditLog(report.id, shared.delivery.auditLog);
+    const auditLog = await fetchDeliveryAuditLog(report.id, []);
 
     return {
-      ...shared.delivery,
+      reportId: report.id,
+      format: "link",
+      masked: true,
+      recipient: report.recipient ?? DEMO_RECIPIENTS[0],
       auditLog,
     };
   }, DEMO_DELIVERY);
@@ -193,6 +184,16 @@ export function getReportChat(reportId = DEMO_REPORT_ID): Promise<ReportChatData
     scopeLabel: "담당 건물 · 연남 스테이",
     messages: DEMO_CHAT_MESSAGES,
     faq: DEMO_FAQ,
+  });
+}
+
+export function createReportExternalShare(
+  reportId: string,
+  recipientName: string
+): Promise<ManagerReportExternalShare> {
+  return serverFetch<ManagerReportExternalShare>(reportPaths.externalShares(reportId), {
+    method: "POST",
+    body: JSON.stringify({ recipientName }),
   });
 }
 

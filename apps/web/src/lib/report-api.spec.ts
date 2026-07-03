@@ -28,3 +28,15 @@ test("report reads do not create reports as a hidden side effect", () => {
   assert.doesNotMatch(source, /createDefaultReport/);
   assert.match(source, /export function createManagerReport/);
 });
+
+test("report delivery reads do not create or view external shares", () => {
+  const deliverySource = source.slice(
+    source.indexOf("export function getReportDelivery"),
+    source.indexOf("export function getReportChat"),
+  );
+
+  assert.doesNotMatch(deliverySource, /method: "POST"/);
+  assert.doesNotMatch(deliverySource, /externalReport/);
+  assert.match(deliverySource, /fetchDeliveryAuditLog/);
+  assert.match(source, /export function createReportExternalShare/);
+});

@@ -1,11 +1,26 @@
-import { getReport, getReportDelivery } from "@/lib/report-api";
-import { reportHref } from "@/lib/report-nav";
-import { Badge, Card } from "@roomlog/ui";
+import { redirect } from "next/navigation";
+import { createReportExternalShare, getReport, getReportDelivery } from "@/lib/report-api";
+import { MANAGER_REPORT_ROUTES, reportHref } from "@/lib/report-nav";
+import { Badge, Button, Card } from "@roomlog/ui";
 import { Grid, LinkButton, PageStack, ScreenHeader, Section, formatDateTime } from "../_components";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
+
+async function createExternalShareAction(formData: FormData) {
+  "use server";
+
+  const reportId = String(formData.get("reportId") ?? "");
+  const recipientName = String(formData.get("recipientName") ?? "").trim();
+
+  if (!reportId) {
+    redirect(MANAGER_REPORT_ROUTES["M-RPT-00"]);
+  }
+
+  await createReportExternalShare(reportId, recipientName);
+  redirect(reportHref("M-RPT-03", reportId));
+}
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
@@ -63,7 +78,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       </Section>
 
       <Card style={{ display: "flex", justifyContent: "flex-end" }}>
-        <LinkButton href={reportHref("M-RPT-02", report.id)}>전달/내보내기 확정</LinkButton>
+        <form action={createExternalShareAction}>
+          <input type="hidden" name="reportId" value={report.id} />
+          <input type="hidden" name="recipientName" value={delivery.recipient.name} />
+          <Button type="submit">마스킹 공유 링크 생성</Button>
+        </form>
       </Card>
     </PageStack>
   );
