@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roomlog 3D Floor Plan</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f5f7fb;
+        color: #172033;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .toolbar {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.92);
+        border-bottom: 1px solid rgba(23, 32, 51, 0.1);
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        min-height: 58px;
+        padding: 10px 14px;
+        position: relative;
+        z-index: 2;
+      }
+
+      .title {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .title strong {
+        font-size: 15px;
+        line-height: 1.2;
+      }
+
+      .title span {
+        color: #5c667a;
+        font-size: 12px;
+        line-height: 1.2;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        appearance: none;
+        background: #172033;
+        border: 0;
+        border-radius: 7px;
+        color: #ffffff;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        min-height: 34px;
+        padding: 0 12px;
+        white-space: nowrap;
+      }
+
+      button.secondary {
+        background: #e8edf5;
+        color: #172033;
+      }
+
+      #scene {
+        height: 100%;
+        min-height: 0;
+        position: relative;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .legend {
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(23, 32, 51, 0.12);
+        border-radius: 8px;
+        bottom: 14px;
+        box-shadow: 0 14px 42px rgba(23, 32, 51, 0.12);
+        display: grid;
+        gap: 7px;
+        left: 14px;
+        max-width: min(320px, calc(100vw - 28px));
+        padding: 10px 12px;
+        position: absolute;
+        z-index: 2;
+      }
+
+      .legend-row {
+        align-items: center;
+        color: #3a4457;
+        display: flex;
+        font-size: 12px;
+        gap: 8px;
+        line-height: 1.25;
+      }
+
+      .swatch {
+        border-radius: 4px;
+        display: inline-block;
+        flex: 0 0 auto;
+        height: 13px;
+        width: 22px;
+      }
+
+      .hint {
+        color: #667086;
+        font-size: 11px;
+        line-height: 1.35;
+        margin-top: 2px;
+      }
+
+      @media (max-width: 680px) {
+        .toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .actions {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        button {
+          padding: 0 8px;
+        }
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.185.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.185.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="title">
+        <strong>5.86m x 5.53m 3D 도면</strong>
+        <span>평면설명.png 기준 수작업 모델링</span>
+      </div>
+      <div class="actions">
+        <button id="view-top" class="secondary" type="button">Top</button>
+        <button id="view-front" class="secondary" type="button">Front</button>
+        <button id="view-iso" type="button">3D</button>
+      </div>
+    </header>
+    <main id="scene">
+      <aside class="legend" aria-label="도면 정보">
+        <div class="legend-row"><span class="swatch" style="background:#f0d6a6"></span>바닥: 전체 5.86m x 5.53m</div>
+        <div class="legend-row"><span class="swatch" style="background:#101010"></span>벽체: 두께 약 0.12m, 높이 2.45m</div>
+        <div class="legend-row"><span class="swatch" style="background:#bfc8d1"></span>창문/문/가전 블록 표시</div>
+        <div class="hint">마우스 드래그 회전, 휠 줌, 우클릭 이동</div>
+      </aside>
+    </main>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      const M = 1;
+      const plan = {
+        width: 5.86 * M,
+        depth: 5.53 * M,
+        wallHeight: 2.45 * M,
+        wallThickness: 0.12 * M
+      };
+
+      const sceneHost = document.querySelector("#scene");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf5f7fb);
+
+      const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      sceneHost.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.target.set(0, 0.35, 0);
+      controls.maxPolarAngle = Math.PI * 0.49;
+      controls.minDistance = 4.2;
+      controls.maxDistance = 16;
+
+      const materials = {
+        floor: new THREE.MeshStandardMaterial({ color: 0xf0d6a6, roughness: 0.78 }),
+        wetFloor: new THREE.MeshStandardMaterial({ color: 0xe9c98f, roughness: 0.82 }),
+        wall: new THREE.MeshStandardMaterial({ color: 0x0d0d0d, roughness: 0.55 }),
+        window: new THREE.MeshStandardMaterial({
+          color: 0xd7efff,
+          emissive: 0x79bfe8,
+          emissiveIntensity: 0.18,
+          transparent: true,
+          opacity: 0.62,
+          roughness: 0.2,
+          metalness: 0.05
+        }),
+        glassFrame: new THREE.MeshStandardMaterial({ color: 0xe8edf4, metalness: 0.35, roughness: 0.32 }),
+        door: new THREE.MeshStandardMaterial({ color: 0xf7f7f2, roughness: 0.72 }),
+        furniture: new THREE.MeshStandardMaterial({ color: 0xb8b8b3, roughness: 0.64 }),
+        furnitureDark: new THREE.MeshStandardMaterial({ color: 0x8f9492, roughness: 0.58 }),
+        fixture: new THREE.MeshStandardMaterial({ color: 0xf3f4f0, roughness: 0.5 }),
+        metal: new THREE.MeshStandardMaterial({ color: 0xa8a9a5, metalness: 0.3, roughness: 0.38 }),
+        line: new THREE.LineBasicMaterial({ color: 0x172033 })
+      };
+
+      function addBox({ name, x, z, w, d, h, y = h / 2, material = materials.wall, cast = true, receive = true }) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+        mesh.name = name || "";
+        mesh.position.set(x, y, z);
+        mesh.castShadow = cast;
+        mesh.receiveShadow = receive;
+        scene.add(mesh);
+        return mesh;
+      }
+
+      function addFloor(name, x, z, w, d, material = materials.floor) {
+        return addBox({ name, x, z, w, d, h: 0.04, y: 0.02, material, cast: false, receive: true });
+      }
+
+      function addWall(name, x1, z1, x2, z2, thickness = plan.wallThickness) {
+        const dx = x2 - x1;
+        const dz = z2 - z1;
+        const length = Math.hypot(dx, dz);
+        const mesh = addBox({
+          name,
+          x: (x1 + x2) / 2,
+          z: (z1 + z2) / 2,
+          w: length,
+          d: thickness,
+          h: plan.wallHeight,
+          material: materials.wall
+        });
+        mesh.rotation.y = -Math.atan2(dz, dx);
+        return mesh;
+      }
+
+      function addLabel(text, x, z, options = {}) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 160;
+        const context = canvas.getContext("2d");
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = "rgba(255,255,255,0.82)";
+        context.roundRect(16, 38, 480, 84, 18);
+        context.fill();
+        context.strokeStyle = "rgba(23,32,51,0.16)";
+        context.lineWidth = 3;
+        context.stroke();
+        context.fillStyle = "#172033";
+        context.font = "700 42px system-ui, -apple-system, Segoe UI, sans-serif";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(text, 256, 82);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        const sprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+        );
+        sprite.position.set(x, options.y ?? 0.08, z);
+        sprite.scale.set(options.scaleX ?? 1.25, options.scaleY ?? 0.39, 1);
+        scene.add(sprite);
+        return sprite;
+      }
+
+      function addDimensionLine(text, start, end, offsetY = 0.06) {
+        const points = [
+          new THREE.Vector3(start.x, offsetY, start.z),
+          new THREE.Vector3(end.x, offsetY, end.z)
+        ];
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), materials.line);
+        scene.add(line);
+        addLabel(text, (start.x + end.x) / 2, (start.z + end.z) / 2, { y: 0.13, scaleX: 1.0, scaleY: 0.32 });
+        return line;
+      }
+
+      function addDoorSwing(x, z, radius, startAngle, endAngle) {
+        const curve = new THREE.EllipseCurve(x, z, radius, radius, startAngle, endAngle, false, 0);
+        const points = curve.getPoints(36).map((point) => new THREE.Vector3(point.x, 0.065, point.y));
+        const arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xb4bac4 }));
+        scene.add(arc);
+        return arc;
+      }
+
+      function addWindow(name, x, z, w, d, horizontal = true) {
+        const sill = addBox({
+          name,
+          x,
+          z,
+          w: horizontal ? w : d,
+          d: horizontal ? d : w,
+          h: 0.1,
+          y: 1.22,
+          material: materials.window,
+          cast: false,
+          receive: false
+        });
+        addBox({
+          name: `${name}-frame-1`,
+          x: horizontal ? x - w / 2 : x,
+          z: horizontal ? z : z - w / 2,
+          w: horizontal ? 0.035 : d,
+          d: horizontal ? d + 0.05 : 0.035,
+          h: 0.16,
+          y: 1.22,
+          material: materials.glassFrame
+        });
+        addBox({
+          name: `${name}-frame-2`,
+          x: horizontal ? x + w / 2 : x,
+          z: horizontal ? z : z + w / 2,
+          w: horizontal ? 0.035 : d,
+          d: horizontal ? d + 0.05 : 0.035,
+          h: 0.16,
+          y: 1.22,
+          material: materials.glassFrame
+        });
+        return sill;
+      }
+
+      function addStairTreads(x, z, w, d, count) {
+        for (let i = 0; i < count; i += 1) {
+          addBox({
+            name: `stair-${i + 1}`,
+            x,
+            z: z + (i - (count - 1) / 2) * (d / count),
+            w,
+            d: 0.035,
+            h: 0.045,
+            y: 0.09,
+            material: materials.metal
+          });
+        }
+      }
+
+      const left = -plan.width / 2;
+      const right = plan.width / 2;
+      const top = -plan.depth / 2;
+      const bottom = plan.depth / 2;
+      const splitX = -0.02;
+      const roomBottomZ = 1.22;
+      const bathRightX = -1.62;
+      const bathTopZ = 1.15;
+      const corridorLeftX = -0.9;
+
+      addFloor("left-room-floor", -1.55, -0.88, 2.7, 3.75);
+      addFloor("right-room-floor", 1.45, -0.88, 2.75, 3.78);
+      addFloor("lower-corridor-floor", 0.9, 2.0, 4.03, 1.35);
+      addFloor("bath-floor", -2.25, 1.92, 1.32, 1.22, materials.wetFloor);
+
+      addWall("top-left-wall", left, top, -0.62, top);
+      addWall("top-center-post", -0.45, top, 0.35, top);
+      addWall("top-right-wall", 1.48, top, right, top);
+      addWall("left-outer-wall", left, top, left, bottom);
+      addWall("right-outer-upper", right, top, right, 1.15);
+      addWall("right-outer-lower", right, 1.95, right, bottom);
+      addWall("bottom-outer-wall", left, bottom, right, bottom);
+      addWall("middle-wall-upper", splitX, top, splitX, -0.62);
+      addWall("middle-wall-lower", splitX, -0.48, splitX, roomBottomZ);
+      addWall("right-room-bottom-wall", splitX, roomBottomZ, right, roomBottomZ);
+      addWall("bath-top-left", left, bathTopZ, bathRightX, bathTopZ);
+      addWall("bath-top-right", bathRightX, bathTopZ, corridorLeftX, bathTopZ);
+      addWall("bath-right-wall", bathRightX, bathTopZ, bathRightX, bottom);
+      addWall("lower-left-wall", left, 1.3, left, bottom);
+
+      addWindow("left-room-window", -1.52, top - 0.01, 1.45, 0.08, true);
+      addWindow("right-room-window", 1.43, top - 0.01, 1.45, 0.08, true);
+      addWindow("bath-window", left - 0.01, 1.84, 0.72, 0.08, false);
+      addWindow("entry-side-light", right + 0.01, 1.57, 0.76, 0.08, false);
+
+      addBox({ name: "entry-door", x: right + 0.02, z: 1.62, w: 0.04, d: 0.82, h: 2.05, y: 1.03, material: materials.door });
+      addDoorSwing(right - 0.02, 1.22, 0.72, 0, Math.PI / 2);
+      addBox({ name: "bath-door", x: bathRightX + 0.02, z: 1.38, w: 0.04, d: 0.72, h: 1.98, y: 0.99, material: materials.door });
+      addDoorSwing(bathRightX, bathTopZ, 0.58, 0.1, Math.PI / 2);
+
+      addBox({ name: "built-in-closet", x: -2.55, z: -1.9, w: 0.55, d: 1.18, h: 1.85, y: 0.94, material: materials.furniture });
+      addBox({ name: "sink-counter", x: 0.2, z: 2.42, w: 1.7, d: 0.42, h: 0.55, y: 0.3, material: materials.furnitureDark });
+      addBox({ name: "fridge", x: 1.45, z: 2.42, w: 0.55, d: 0.5, h: 1.65, y: 0.84, material: materials.fixture });
+      addStairTreads(2.25, 2.34, 0.68, 0.56, 5);
+      addBox({ name: "toilet", x: -2.45, z: 2.5, w: 0.38, d: 0.42, h: 0.32, y: 0.18, material: materials.fixture });
+      addBox({ name: "basin", x: -2.5, z: 1.26, w: 0.52, d: 0.25, h: 0.34, y: 0.2, material: materials.fixture });
+      addBox({ name: "bath-partition", x: -2.08, z: 2.18, w: 0.48, d: 0.82, h: 0.8, y: 0.42, material: materials.fixture });
+
+      addLabel("붙박이장", -2.54, -1.88, { scaleX: 0.9, scaleY: 0.28 });
+      addLabel("미닫이", -0.17, 0.82, { scaleX: 0.78, scaleY: 0.28 });
+      addLabel("냉장고", 1.45, 2.12, { scaleX: 0.72, scaleY: 0.26 });
+      addLabel("화장실", -2.18, 1.68, { scaleX: 0.76, scaleY: 0.26 });
+      addLabel("주방", 0.28, 2.06, { scaleX: 0.66, scaleY: 0.25 });
+
+      addDimensionLine("2.60 m", { x: left + 0.08, z: top - 0.68 }, { x: splitX - 0.08, z: top - 0.68 });
+      addDimensionLine("2.69 m", { x: splitX + 0.08, z: top - 0.68 }, { x: right - 0.08, z: top - 0.68 });
+      addDimensionLine("5.86 m", { x: left, z: bottom + 0.62 }, { x: right, z: bottom + 0.62 });
+      addDimensionLine("5.53 m", { x: right + 0.75, z: top }, { x: right + 0.75, z: bottom });
+      addDimensionLine("3.77 m", { x: left - 0.75, z: top }, { x: left - 0.75, z: roomBottomZ });
+      addDimensionLine("3.84 m", { x: right + 0.42, z: top }, { x: right + 0.42, z: roomBottomZ });
+
+      const grid = new THREE.GridHelper(8, 16, 0xd8dee8, 0xe8edf4);
+      grid.position.y = 0.01;
+      scene.add(grid);
+
+      const hemi = new THREE.HemisphereLight(0xffffff, 0xc9d0db, 2.2);
+      scene.add(hemi);
+      const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+      sun.position.set(-4, 7, 5);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.near = 0.5;
+      sun.shadow.camera.far = 18;
+      sun.shadow.camera.left = -6;
+      sun.shadow.camera.right = 6;
+      sun.shadow.camera.top = 6;
+      sun.shadow.camera.bottom = -6;
+      scene.add(sun);
+
+      function setView(kind) {
+        if (kind === "top") camera.position.set(0, 9.6, 0.001);
+        if (kind === "front") camera.position.set(0, 4.1, 8.2);
+        if (kind === "iso") camera.position.set(5.8, 6.2, 7.2);
+        controls.target.set(0, 0.38, 0);
+        controls.update();
+      }
+
+      document.querySelector("#view-top").addEventListener("click", () => setView("top"));
+      document.querySelector("#view-front").addEventListener("click", () => setView("front"));
+      document.querySelector("#view-iso").addEventListener("click", () => setView("iso"));
+
+      function resize() {
+        const width = Math.max(1, sceneHost.clientWidth);
+        const height = Math.max(1, sceneHost.clientHeight);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height, false);
+      }
+
+      window.addEventListener("resize", resize);
+      resize();
+      setView("iso");
+
+      function animate() {
+        controls.update();
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>

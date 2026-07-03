@@ -1,0 +1,1257 @@
+{
+  "model": "gpt-5.5",
+  "elapsedMs": 134899,
+  "sourceImage": "/Users/kimyong/Desktop/스크린샷 2026-07-02 오후 10.22.33.png",
+  "label": "image4-dimensions",
+  "summary": "Extracted approximate structural wall centerlines from the 860x894 floor-plan image. Thick/double wall graphics were merged to centerlines; visible doors and entrance openings were treated as gaps; window runs were bridged as continuous walls. Coordinates are in the original image pixel system and are approximate due to raster blur and perspective.",
+  "imageSize": {
+    "width": 860,
+    "height": 894
+  },
+  "walls": [
+    {
+      "id": "W001",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 130,
+        "y": 158
+      },
+      "end": {
+        "x": 300,
+        "y": 158
+      },
+      "confidence": 0.93,
+      "lengthMm": 3300,
+      "lengthText": "3,300",
+      "dimensionEvidence": "Top dimension span from left exterior to first division.",
+      "notes": "Top exterior wall segment of left block."
+    },
+    {
+      "id": "W002",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 300,
+        "y": 158
+      },
+      "end": {
+        "x": 450,
+        "y": 158
+      },
+      "confidence": 0.92,
+      "lengthMm": 3000,
+      "lengthText": "3,000",
+      "dimensionEvidence": "Top dimension span between first and second division.",
+      "notes": "Top exterior wall over kitchen/service zone."
+    },
+    {
+      "id": "W003",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 130,
+        "y": 158
+      },
+      "end": {
+        "x": 130,
+        "y": 242
+      },
+      "confidence": 0.92,
+      "lengthMm": 1620,
+      "lengthText": "1,620",
+      "dimensionEvidence": "Left-side vertical dimension segment.",
+      "notes": "Left exterior upper segment."
+    },
+    {
+      "id": "W004",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 130,
+        "y": 242
+      },
+      "end": {
+        "x": 130,
+        "y": 369
+      },
+      "confidence": 0.91,
+      "lengthMm": 3500,
+      "lengthText": "3,500",
+      "dimensionEvidence": "Left-side vertical dimension segment.",
+      "notes": "Left exterior bedroom segment."
+    },
+    {
+      "id": "W005",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 130,
+        "y": 369
+      },
+      "end": {
+        "x": 130,
+        "y": 482
+      },
+      "confidence": 0.9,
+      "lengthMm": 1600,
+      "lengthText": "1,600",
+      "dimensionEvidence": "Left-side vertical dimension segment.",
+      "notes": "Left exterior bathroom/core segment."
+    },
+    {
+      "id": "W006",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 130,
+        "y": 482
+      },
+      "end": {
+        "x": 130,
+        "y": 738
+      },
+      "confidence": 0.91,
+      "lengthMm": 3900,
+      "lengthText": "3,900",
+      "dimensionEvidence": "Left-side lower vertical dimension segment approximately applies to lower left exterior run.",
+      "notes": "Left exterior lower bedroom/balcony side."
+    },
+    {
+      "id": "W007",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 130,
+        "y": 738
+      },
+      "end": {
+        "x": 350,
+        "y": 738
+      },
+      "confidence": 0.9,
+      "lengthMm": 4500,
+      "lengthText": "4,500",
+      "dimensionEvidence": "Bottom dimension left span.",
+      "notes": "Bottom-left exterior balcony/terrace wall; nearby door symbol rejected as opening graphic."
+    },
+    {
+      "id": "W008",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 350,
+        "y": 738
+      },
+      "end": {
+        "x": 350,
+        "y": 752
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short exterior notch at lower balcony."
+    },
+    {
+      "id": "W009",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 350,
+        "y": 752
+      },
+      "end": {
+        "x": 578,
+        "y": 752
+      },
+      "confidence": 0.9,
+      "lengthMm": 4500,
+      "lengthText": "4,500",
+      "dimensionEvidence": "Bottom dimension middle span.",
+      "notes": "Lower exterior wall of long balcony."
+    },
+    {
+      "id": "W010",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 578,
+        "y": 648
+      },
+      "end": {
+        "x": 578,
+        "y": 752
+      },
+      "confidence": 0.9,
+      "lengthMm": 1700,
+      "lengthText": "1,700",
+      "dimensionEvidence": "Right-side lower vertical dimension segment approximately aligns with lower return.",
+      "notes": "Exterior vertical return between living balcony and right-side lower block."
+    },
+    {
+      "id": "W011",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 450,
+        "y": 158
+      },
+      "end": {
+        "x": 450,
+        "y": 292
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right exterior/party wall of kitchen upper portion before step."
+    },
+    {
+      "id": "W012",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 450,
+        "y": 292
+      },
+      "end": {
+        "x": 414,
+        "y": 292
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short step wall at kitchen/balcony indentation."
+    },
+    {
+      "id": "W013",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 414,
+        "y": 292
+      },
+      "end": {
+        "x": 414,
+        "y": 408
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Stepped wall separating kitchen/living from upper-right room zone."
+    },
+    {
+      "id": "W014",
+      "role": "balcony",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 450,
+        "y": 200
+      },
+      "end": {
+        "x": 578,
+        "y": 200
+      },
+      "confidence": 0.88,
+      "lengthMm": 2700,
+      "lengthText": "2,700",
+      "dimensionEvidence": "Top dimension third span approximately applies to this middle bay width.",
+      "notes": "Top balcony upper wall; window/frame lines ignored."
+    },
+    {
+      "id": "W015",
+      "role": "balcony",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 450,
+        "y": 200
+      },
+      "end": {
+        "x": 450,
+        "y": 280
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left side of upper balcony recess."
+    },
+    {
+      "id": "W016",
+      "role": "inner",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 450,
+        "y": 280
+      },
+      "end": {
+        "x": 578,
+        "y": 280
+      },
+      "confidence": 0.89,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wall between upper balcony and bedroom; window shown but treated as continuous wall."
+    },
+    {
+      "id": "W017",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 578,
+        "y": 158
+      },
+      "end": {
+        "x": 578,
+        "y": 200
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left side of right stair/core block above balcony junction."
+    },
+    {
+      "id": "W018",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 578,
+        "y": 200
+      },
+      "end": {
+        "x": 578,
+        "y": 280
+      },
+      "confidence": 0.87,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right side of upper balcony / core party wall."
+    },
+    {
+      "id": "W019",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 578,
+        "y": 280
+      },
+      "end": {
+        "x": 578,
+        "y": 377
+      },
+      "confidence": 0.9,
+      "lengthMm": 2700,
+      "lengthText": "2,700",
+      "dimensionEvidence": "Right-side vertical dimension segment approximately aligns with upper stair/bedroom height.",
+      "notes": "Right boundary of upper bedroom and left boundary of stair/core."
+    },
+    {
+      "id": "W020",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 578,
+        "y": 158
+      },
+      "end": {
+        "x": 640,
+        "y": 124
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Sloped top-left roof/exterior wall of stair/core outline."
+    },
+    {
+      "id": "W021",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 640,
+        "y": 124
+      },
+      "end": {
+        "x": 718,
+        "y": 158
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Sloped top-right roof/exterior wall of stair/core outline."
+    },
+    {
+      "id": "W022",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 718,
+        "y": 158
+      },
+      "end": {
+        "x": 718,
+        "y": 377
+      },
+      "confidence": 0.91,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right exterior wall of stair room."
+    },
+    {
+      "id": "W023",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 718,
+        "y": 377
+      },
+      "end": {
+        "x": 718,
+        "y": 410
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right exterior corridor wall above visible door opening."
+    },
+    {
+      "id": "W024",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 718,
+        "y": 462
+      },
+      "end": {
+        "x": 718,
+        "y": 648
+      },
+      "confidence": 0.87,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right exterior corridor wall below visible door opening."
+    },
+    {
+      "id": "W025",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 718,
+        "y": 648
+      },
+      "end": {
+        "x": 718,
+        "y": 748
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right exterior lower vertical return."
+    },
+    {
+      "id": "W026",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 578,
+        "y": 377
+      },
+      "end": {
+        "x": 612,
+        "y": 377
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Stair-room bottom wall segment left of double-door opening."
+    },
+    {
+      "id": "W027",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 687,
+        "y": 377
+      },
+      "end": {
+        "x": 718,
+        "y": 377
+      },
+      "confidence": 0.85,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Stair-room bottom wall segment right of double-door opening."
+    },
+    {
+      "id": "W028",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 578,
+        "y": 377
+      },
+      "end": {
+        "x": 578,
+        "y": 408
+      },
+      "confidence": 0.84,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Core/apartment boundary segment above entrance opening."
+    },
+    {
+      "id": "W029",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 578,
+        "y": 483
+      },
+      "end": {
+        "x": 578,
+        "y": 648
+      },
+      "confidence": 0.88,
+      "lengthMm": 1600,
+      "lengthText": "1,600",
+      "dimensionEvidence": "Right-side dimension segment approximately aligns with corridor/living transition zone.",
+      "notes": "Core/apartment boundary below entrance opening."
+    },
+    {
+      "id": "W030",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 578,
+        "y": 648
+      },
+      "end": {
+        "x": 718,
+        "y": 648
+      },
+      "confidence": 0.91,
+      "lengthMm": 2800,
+      "lengthText": "2,800",
+      "dimensionEvidence": "Bottom dimension right span.",
+      "notes": "Bottom wall of right-side core block."
+    },
+    {
+      "id": "W031",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 450,
+        "y": 408
+      },
+      "end": {
+        "x": 485,
+        "y": 408
+      },
+      "confidence": 0.76,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short segment of wall between right bedroom and living/entry zone; adjacent door opening visible."
+    },
+    {
+      "id": "W032",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 518,
+        "y": 408
+      },
+      "end": {
+        "x": 578,
+        "y": 408
+      },
+      "confidence": 0.87,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wall between right bedroom and entry/living zone, split at bedroom door opening."
+    },
+    {
+      "id": "W033",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 450,
+        "y": 280
+      },
+      "end": {
+        "x": 450,
+        "y": 408
+      },
+      "confidence": 0.85,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left wall of right bedroom."
+    },
+    {
+      "id": "W034",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 512,
+        "y": 408
+      },
+      "end": {
+        "x": 512,
+        "y": 483
+      },
+      "confidence": 0.8,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Small entry/vestibule partition at living side."
+    },
+    {
+      "id": "W035",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 512,
+        "y": 483
+      },
+      "end": {
+        "x": 578,
+        "y": 483
+      },
+      "confidence": 0.8,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom partition of entry/vestibule zone."
+    },
+    {
+      "id": "W036",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 300,
+        "y": 158
+      },
+      "end": {
+        "x": 300,
+        "y": 242
+      },
+      "confidence": 0.9,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wall between upper service rooms and kitchen."
+    },
+    {
+      "id": "W037",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 300,
+        "y": 242
+      },
+      "end": {
+        "x": 300,
+        "y": 369
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wall between upper-left bedroom and kitchen."
+    },
+    {
+      "id": "W038",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 300,
+        "y": 369
+      },
+      "end": {
+        "x": 300,
+        "y": 482
+      },
+      "confidence": 0.87,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wall between wet-area cluster and kitchen/circulation."
+    },
+    {
+      "id": "W039",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 130,
+        "y": 242
+      },
+      "end": {
+        "x": 300,
+        "y": 242
+      },
+      "confidence": 0.9,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Horizontal wall between upper service/balcony strip and upper-left bedroom."
+    },
+    {
+      "id": "W040",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 130,
+        "y": 369
+      },
+      "end": {
+        "x": 164,
+        "y": 369
+      },
+      "confidence": 0.84,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bathroom/bedroom divider wall segment left of door opening."
+    },
+    {
+      "id": "W041",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 185,
+        "y": 369
+      },
+      "end": {
+        "x": 300,
+        "y": 369
+      },
+      "confidence": 0.85,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bathroom/bedroom divider wall segment right of door opening."
+    },
+    {
+      "id": "W042",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 130,
+        "y": 482
+      },
+      "end": {
+        "x": 306,
+        "y": 482
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wall between lower-left bedroom and bathroom/circulation, left of doorway."
+    },
+    {
+      "id": "W043",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 340,
+        "y": 482
+      },
+      "end": {
+        "x": 350,
+        "y": 482
+      },
+      "confidence": 0.72,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short residual segment at lower-left bedroom/living doorway."
+    },
+    {
+      "id": "W044",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 350,
+        "y": 520
+      },
+      "end": {
+        "x": 350,
+        "y": 674
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Vertical wall between lower-left bedroom and living room below visible doorway."
+    },
+    {
+      "id": "W045",
+      "role": "inner",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 130,
+        "y": 674
+      },
+      "end": {
+        "x": 154,
+        "y": 674
+      },
+      "confidence": 0.83,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Balcony/bedroom wall segment left of balcony door opening."
+    },
+    {
+      "id": "W046",
+      "role": "inner",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 195,
+        "y": 674
+      },
+      "end": {
+        "x": 350,
+        "y": 674
+      },
+      "confidence": 0.89,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Balcony/bedroom wall continued through window symbol; door gap to left is not bridged."
+    },
+    {
+      "id": "W047",
+      "role": "inner",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 350,
+        "y": 674
+      },
+      "end": {
+        "x": 578,
+        "y": 674
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Living/balcony separating wall; window symbols treated as wall continuity."
+    },
+    {
+      "id": "W048",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 177,
+        "y": 158
+      },
+      "end": {
+        "x": 177,
+        "y": 194
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Upper-left service partition, split around visible door swing/opening."
+    },
+    {
+      "id": "W049",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 177,
+        "y": 214
+      },
+      "end": {
+        "x": 177,
+        "y": 242
+      },
+      "confidence": 0.76,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Lower part of upper-left service partition."
+    },
+    {
+      "id": "W050",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 130,
+        "y": 195
+      },
+      "end": {
+        "x": 177,
+        "y": 195
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short horizontal partition in upper-left service area."
+    },
+    {
+      "id": "W051",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 177,
+        "y": 195
+      },
+      "end": {
+        "x": 300,
+        "y": 195
+      },
+      "confidence": 0.74,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Upper-left service/balcony horizontal wall; some door/window details ignored except opening uncertainty."
+    },
+    {
+      "id": "W052",
+      "role": "wet-area",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 177,
+        "y": 369
+      },
+      "end": {
+        "x": 177,
+        "y": 482
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wet-area partition; fixture outlines rejected."
+    },
+    {
+      "id": "W053",
+      "role": "wet-area",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 198,
+        "y": 369
+      },
+      "end": {
+        "x": 198,
+        "y": 482
+      },
+      "confidence": 0.76,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Wet-area internal partition, approximate centerline from thick boundary."
+    },
+    {
+      "id": "W054",
+      "role": "wet-area",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 242,
+        "y": 369
+      },
+      "end": {
+        "x": 242,
+        "y": 482
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bathroom partition; toilet/sink symbols excluded."
+    },
+    {
+      "id": "W055",
+      "role": "inner",
+      "sourceEvidence": "filled-wall-mass",
+      "openingPolicy": "none",
+      "start": {
+        "x": 610,
+        "y": 582
+      },
+      "end": {
+        "x": 672,
+        "y": 582
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Structural shaft/elevator enclosure top wall; interior X symbol ignored."
+    },
+    {
+      "id": "W056",
+      "role": "inner",
+      "sourceEvidence": "filled-wall-mass",
+      "openingPolicy": "none",
+      "start": {
+        "x": 672,
+        "y": 582
+      },
+      "end": {
+        "x": 672,
+        "y": 644
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Structural shaft/elevator enclosure right wall."
+    },
+    {
+      "id": "W057",
+      "role": "inner",
+      "sourceEvidence": "filled-wall-mass",
+      "openingPolicy": "none",
+      "start": {
+        "x": 672,
+        "y": 644
+      },
+      "end": {
+        "x": 610,
+        "y": 644
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Structural shaft/elevator enclosure bottom wall."
+    },
+    {
+      "id": "W058",
+      "role": "inner",
+      "sourceEvidence": "filled-wall-mass",
+      "openingPolicy": "none",
+      "start": {
+        "x": 610,
+        "y": 644
+      },
+      "end": {
+        "x": 610,
+        "y": 582
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Structural shaft/elevator enclosure left wall."
+    }
+  ],
+  "dimensionTexts": [
+    {
+      "text": "11,800",
+      "valueMm": 11800,
+      "appliesTo": "overall horizontal building span, top and bottom dimension strings",
+      "confidence": 0.96
+    },
+    {
+      "text": "3,300",
+      "valueMm": 3300,
+      "appliesTo": "top-left horizontal bay",
+      "confidence": 0.93
+    },
+    {
+      "text": "3,000",
+      "valueMm": 3000,
+      "appliesTo": "top middle-left horizontal bay",
+      "confidence": 0.93
+    },
+    {
+      "text": "2,700",
+      "valueMm": 2700,
+      "appliesTo": "top middle-right bay / upper balcony-bedroom width",
+      "confidence": 0.9
+    },
+    {
+      "text": "2,800",
+      "valueMm": 2800,
+      "appliesTo": "right-side core width",
+      "confidence": 0.92
+    },
+    {
+      "text": "4,500",
+      "valueMm": 4500,
+      "appliesTo": "bottom-left and bottom-middle horizontal spans",
+      "confidence": 0.93
+    },
+    {
+      "text": "10,620",
+      "valueMm": 10620,
+      "appliesTo": "left overall vertical plan span",
+      "confidence": 0.9
+    },
+    {
+      "text": "1,620",
+      "valueMm": 1620,
+      "appliesTo": "left upper vertical segment",
+      "confidence": 0.87
+    },
+    {
+      "text": "3,500",
+      "valueMm": 3500,
+      "appliesTo": "left upper bedroom vertical segment",
+      "confidence": 0.87
+    },
+    {
+      "text": "1,600",
+      "valueMm": 1600,
+      "appliesTo": "left wet-area vertical segment and also a right-side segment",
+      "confidence": 0.84
+    },
+    {
+      "text": "3,900",
+      "valueMm": 3900,
+      "appliesTo": "lower vertical spans",
+      "confidence": 0.86
+    },
+    {
+      "text": "12,800",
+      "valueMm": 12800,
+      "appliesTo": "right overall vertical extent including stair/core projection",
+      "confidence": 0.9
+    },
+    {
+      "text": "1,400",
+      "valueMm": 1400,
+      "appliesTo": "right top roof/core vertical segment",
+      "confidence": 0.78
+    },
+    {
+      "text": "1,500",
+      "valueMm": 1500,
+      "appliesTo": "right upper vertical segment",
+      "confidence": 0.82
+    },
+    {
+      "text": "2,700",
+      "valueMm": 2700,
+      "appliesTo": "right stair/upper room vertical segment",
+      "confidence": 0.84
+    },
+    {
+      "text": "1,700",
+      "valueMm": 1700,
+      "appliesTo": "right lower vertical projection",
+      "confidence": 0.82
+    }
+  ],
+  "scaleCandidates": [
+    {
+      "sourceText": "11,800 overall horizontal",
+      "pixelLength": 590,
+      "realLengthMm": 11800,
+      "pixelToMmRatio": 20,
+      "confidence": 0.94
+    },
+    {
+      "sourceText": "bottom 4,500 + 4,500 + 2,800 spans",
+      "pixelLength": 590,
+      "realLengthMm": 11800,
+      "pixelToMmRatio": 20,
+      "confidence": 0.9
+    },
+    {
+      "sourceText": "right 12,800 overall vertical",
+      "pixelLength": 626,
+      "realLengthMm": 12800,
+      "pixelToMmRatio": 20.45,
+      "confidence": 0.72
+    },
+    {
+      "sourceText": "top 3,300 bay",
+      "pixelLength": 165,
+      "realLengthMm": 3300,
+      "pixelToMmRatio": 20,
+      "confidence": 0.88
+    }
+  ],
+  "rejectionSummary": {
+    "doorSymbols": 14,
+    "windowFrameOnly": 12,
+    "furnitureOrFixtures": 18,
+    "dimensionOrText": 26,
+    "textureOrHatching": 10,
+    "uiChrome": 0
+  },
+  "warnings": [
+    "Coordinates are approximate because the source is a low-resolution raster screenshot with anti-aliased/thick wall graphics.",
+    "Some small wet-area partitions and service-room partitions are lower confidence where door swings, fixtures, and wall masses overlap.",
+    "Windows were intentionally bridged as wall continuity; only visible door/entrance openings were split.",
+    "The right-side stair/core and elevator/shaft enclosure were included where thick structural wall outlines were visible; stair treads and rail lines were rejected."
+  ]
+}

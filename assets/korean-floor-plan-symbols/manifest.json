@@ -1,0 +1,271 @@
+{
+  "version": "0.1.0",
+  "locale": "ko-KR",
+  "licensePolicy": "project-owned-svg-references",
+  "notes": [
+    "These symbols are authored for Roomlog as simple SVG references based on common Korean residential floor-plan conventions.",
+    "Do not treat third-party web examples as bundled assets unless their license is explicitly compatible with commercial redistribution.",
+    "Floor regions are used for home/non-home filtering only, not as final room segmentation."
+  ],
+  "classes": [
+    {
+      "id": "swingDoor",
+      "koLabel": "여닫이문",
+      "aliases": ["문", "도어", "D", "WD", "PD", "SD", "방문", "현관문"],
+      "category": "opening",
+      "reference": "references/doors/swing-door-left.svg",
+      "visualHints": [
+        "벽 개구부에 직선 문짝과 90도 원호가 함께 있다",
+        "원호는 문 열림 방향을 나타낸다",
+        "문 위치에서는 벽 중심선을 끊는다"
+      ],
+      "modelBehavior": {
+        "objectType": "door",
+        "wallPolicy": "splitWallAtOpening"
+      }
+    },
+    {
+      "id": "doubleSwingDoor",
+      "koLabel": "양개 여닫이문",
+      "aliases": ["양개문", "쌍여닫이문", "double door"],
+      "category": "opening",
+      "reference": "references/doors/double-swing-door.svg",
+      "visualHints": [
+        "두 장의 문짝과 양쪽 원호가 대칭으로 있다",
+        "거실, 현관, 공용부 경계에서 자주 보인다"
+      ],
+      "modelBehavior": {
+        "objectType": "door",
+        "wallPolicy": "splitWallAtOpening"
+      }
+    },
+    {
+      "id": "slidingDoor",
+      "koLabel": "미닫이문/슬라이딩도어",
+      "aliases": ["미닫이문", "슬라이딩도어", "중문", "MSD", "PD"],
+      "category": "opening",
+      "reference": "references/doors/sliding-door.svg",
+      "visualHints": [
+        "벽 개구부 안에 얇은 평행선이나 겹친 패널로 표현된다",
+        "문 열림 원호가 없다",
+        "발코니, 다용도실, 드레스룸 경계에 자주 보인다"
+      ],
+      "modelBehavior": {
+        "objectType": "slidingDoor",
+        "wallPolicy": "splitWallAtOpening"
+      }
+    },
+    {
+      "id": "pocketDoor",
+      "koLabel": "포켓도어",
+      "aliases": ["매입문", "포켓문", "pocket door"],
+      "category": "opening",
+      "reference": "references/doors/pocket-door.svg",
+      "visualHints": [
+        "문짝이 벽 내부로 들어가는 표현",
+        "벽 옆에 얇은 문 패널이 매입 방향으로 표시된다"
+      ],
+      "modelBehavior": {
+        "objectType": "slidingDoor",
+        "wallPolicy": "splitWallAtOpening"
+      }
+    },
+    {
+      "id": "window",
+      "koLabel": "창문/창호",
+      "aliases": ["창", "창문", "창호", "W", "PW", "AW", "HW", "WW"],
+      "category": "opening",
+      "reference": "references/windows/window-line.svg",
+      "visualHints": [
+        "벽 위나 벽 내부에 얇은 이중선 또는 프레임으로 표현된다",
+        "문 열림 원호가 없다",
+        "창문은 벽 연속으로 처리한다"
+      ],
+      "modelBehavior": {
+        "objectType": "window",
+        "wallPolicy": "keepWallContinuous"
+      }
+    },
+    {
+      "id": "balconyWindow",
+      "koLabel": "발코니 창호",
+      "aliases": ["발코니창", "샷시", "하이샷시", "베란다창", "PW", "HW"],
+      "category": "opening",
+      "reference": "references/windows/balcony-window.svg",
+      "visualHints": [
+        "긴 외벽 구간에 다중 평행선이나 긴 창호 프레임으로 표시된다",
+        "발코니와 실내 사이 또는 외벽에 자주 보인다"
+      ],
+      "modelBehavior": {
+        "objectType": "window",
+        "wallPolicy": "keepWallContinuous"
+      }
+    },
+    {
+      "id": "toilet",
+      "koLabel": "변기",
+      "aliases": ["변기", "양변기", "WC", "화장실 변기"],
+      "category": "bathroomFixture",
+      "reference": "references/bathroom/toilet.svg",
+      "visualHints": [
+        "작은 원형/타원형 볼과 뒤쪽 탱크 사각형 조합",
+        "욕실 안 벽 가까이에 배치된다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "sink",
+      "koLabel": "세면대",
+      "aliases": ["세면대", "세면기", "wash basin", "lavatory"],
+      "category": "bathroomFixture",
+      "reference": "references/bathroom/sink.svg",
+      "visualHints": [
+        "작은 사각형 또는 반원형 세면볼",
+        "욕실 벽면에 붙어 있다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "bathtub",
+      "koLabel": "욕조",
+      "aliases": ["욕조", "bathtub", "bath"],
+      "category": "bathroomFixture",
+      "reference": "references/bathroom/bathtub.svg",
+      "visualHints": [
+        "긴 직사각형 내부에 둥근 모서리 또는 타원형 욕조 선",
+        "욕실 한쪽 벽에 길게 붙어 있다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "showerBooth",
+      "koLabel": "샤워부스",
+      "aliases": ["샤워부스", "샤워실", "shower"],
+      "category": "bathroomFixture",
+      "reference": "references/bathroom/shower-booth.svg",
+      "visualHints": [
+        "작은 사각 구획과 대각선 또는 배수 표시",
+        "욕실 코너에 배치되는 경우가 많다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "floorDrain",
+      "koLabel": "바닥 배수구",
+      "aliases": ["배수구", "드레인", "floor drain"],
+      "category": "bathroomFixture",
+      "reference": "references/bathroom/floor-drain.svg",
+      "visualHints": [
+        "작은 원 또는 사각형 안의 십자/격자 표시",
+        "욕실, 발코니, 다용도실 바닥에 표시된다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "kitchenSink",
+      "koLabel": "주방 싱크대",
+      "aliases": ["싱크대", "싱크볼", "주방 싱크", "sink"],
+      "category": "kitchenFixture",
+      "reference": "references/kitchen/kitchen-sink.svg",
+      "visualHints": [
+        "주방 가구 위 사각 싱크볼과 작은 원형 배수 표시",
+        "조리대 라인과 함께 나타난다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "gasRange",
+      "koLabel": "가스레인지/쿡탑",
+      "aliases": ["가스레인지", "쿡탑", "인덕션", "레인지"],
+      "category": "kitchenFixture",
+      "reference": "references/kitchen/gas-range.svg",
+      "visualHints": [
+        "사각형 안에 2개 또는 4개의 작은 원",
+        "주방 조리대 위에 표시된다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "refrigerator",
+      "koLabel": "냉장고",
+      "aliases": ["냉장고", "김치냉장고", "REF", "refrigerator"],
+      "category": "kitchenFixture",
+      "reference": "references/kitchen/refrigerator.svg",
+      "visualHints": [
+        "큰 사각형 가전 배치",
+        "주방 또는 다용도실 주변에 배치된다"
+      ],
+      "modelBehavior": {
+        "objectType": "fixture",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "stairs",
+      "koLabel": "계단",
+      "aliases": ["계단", "UP", "DN", "stairs"],
+      "category": "structure",
+      "reference": "references/structure/stairs.svg",
+      "visualHints": [
+        "반복되는 평행 디딤선",
+        "UP 또는 DN 텍스트가 붙을 수 있다"
+      ],
+      "modelBehavior": {
+        "objectType": "structure",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "elevator",
+      "koLabel": "엘리베이터",
+      "aliases": ["엘리베이터", "승강기", "EV", "E/V"],
+      "category": "structure",
+      "reference": "references/structure/elevator.svg",
+      "visualHints": [
+        "작은 정사각형 샤프트와 X 또는 문 표시",
+        "공용부나 코어 주변에 나타난다"
+      ],
+      "modelBehavior": {
+        "objectType": "structure",
+        "wallPolicy": "ignoreForWalls"
+      }
+    },
+    {
+      "id": "column",
+      "koLabel": "기둥",
+      "aliases": ["기둥", "column", "COL"],
+      "category": "structure",
+      "reference": "references/structure/column.svg",
+      "visualHints": [
+        "작은 검은 사각형 또는 구조체 사각 블록",
+        "벽과 별개로 독립 구조물처럼 보인다"
+      ],
+      "modelBehavior": {
+        "objectType": "structure",
+        "wallPolicy": "objectNotWall"
+      }
+    }
+  ]
+}
+

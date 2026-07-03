@@ -8,12 +8,14 @@ type DraftStatus = "DRAFT" | "PUBLISHED" | string;
 // plan-extraction의 FloorPlanCandidate / ExtractionMeta / UploadedFloorPlanSource를
 // 직접 import하면 의존성 규칙(room-model은 폴더 내부만)에 어긋나므로 필요한 모양만 요구한다.
 type CandidateLike = { status?: string };
+type ObjectLike = { status?: string };
 
 type UploadedSourceLike = { attachmentId?: string; imageUrl?: string };
 
-type RoomPayloadBaseInput<TCandidate extends CandidateLike> = {
+type RoomPayloadBaseInput<TCandidate extends CandidateLike, TObject extends ObjectLike> = {
   fixtureCandidates: readonly TCandidate[];
   landlordFurnitures: readonly PlacedFurniture[];
+  objects?: readonly TObject[];
   openingCandidates: readonly TCandidate[];
   walls3D: readonly WheretoputWall3D[];
 };
@@ -22,29 +24,32 @@ type HiddenWallIdsInput = {
   hiddenWallIds: Iterable<string | number>;
 };
 
-export function buildRoom3DSnapshot<TCandidate extends CandidateLike>({
+export function buildRoom3DSnapshot<TCandidate extends CandidateLike, TObject extends ObjectLike>({
   fixtureCandidates,
   hiddenWallCount,
   landlordFurnitures,
+  objects = [],
   openingCandidates,
   walls3D
-}: RoomPayloadBaseInput<TCandidate> & { hiddenWallCount: number }) {
+}: RoomPayloadBaseInput<TCandidate, TObject> & { hiddenWallCount: number }) {
   return {
     fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
     furnitures: [...landlordFurnitures],
     hiddenWallCount,
+    objects: objects.filter((object) => object.status === "CONFIRMED"),
     openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
     walls: [...walls3D],
     wallCount: walls3D.length
   };
 }
 
-export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMeta extends object>({
+export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TObject extends ObjectLike, TMeta extends object>({
   extractionMeta,
   fixtureCandidates,
   hiddenWallCount,
   hiddenWallIds,
   landlordFurnitures,
+  objects = [],
   openingCandidates,
   pixelToMmRatio,
   scaleConfirmed,
@@ -53,7 +58,7 @@ export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMe
   uploadedImage,
   walls,
   walls3D
-}: RoomPayloadBaseInput<TCandidate> &
+}: RoomPayloadBaseInput<TCandidate, TObject> &
   HiddenWallIdsInput & {
     extractionMeta: TMeta;
     hiddenWallCount: number;
@@ -68,6 +73,7 @@ export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMe
     fixtureCandidates,
     hiddenWallCount,
     landlordFurnitures,
+    objects,
     openingCandidates,
     walls3D
   });
@@ -78,6 +84,7 @@ export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMe
     fixtures: [...fixtureCandidates],
     furnitures: [...landlordFurnitures],
     hiddenWallIds: Array.from(hiddenWallIds),
+    objects: [...objects],
     openings: [...openingCandidates],
     pixelToMmRatio,
     room3d,
@@ -88,17 +95,18 @@ export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMe
   };
 }
 
-export function buildFloorPlanLocalSnapshot<TCandidate extends CandidateLike, TMeta extends object>({
+export function buildFloorPlanLocalSnapshot<TCandidate extends CandidateLike, TObject extends ObjectLike, TMeta extends object>({
   extractionMeta,
   fixtureCandidates,
   hiddenWallIds,
   landlordFurnitures,
+  objects = [],
   openingCandidates,
   pixelToMmRatio,
   timestamp,
   walls,
   walls3D
-}: RoomPayloadBaseInput<TCandidate> &
+}: RoomPayloadBaseInput<TCandidate, TObject> &
   HiddenWallIdsInput & {
     extractionMeta: TMeta;
     pixelToMmRatio: number;
@@ -110,11 +118,13 @@ export function buildFloorPlanLocalSnapshot<TCandidate extends CandidateLike, TM
     fixtures: [...fixtureCandidates],
     furnitures: [...landlordFurnitures],
     hiddenWallIds: Array.from(hiddenWallIds),
+    objects: [...objects],
     openings: [...openingCandidates],
     pixelToMmRatio,
     room3d: {
       fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
       furnitures: [...landlordFurnitures],
+      objects: objects.filter((object) => object.status === "CONFIRMED"),
       openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
       walls: [...walls3D]
     },
@@ -123,11 +133,12 @@ export function buildFloorPlanLocalSnapshot<TCandidate extends CandidateLike, TM
   };
 }
 
-export function buildResidentDesignPayload<TCandidate extends CandidateLike>({
+export function buildResidentDesignPayload<TCandidate extends CandidateLike, TObject extends ObjectLike>({
   fixtureCandidates,
   floorPlanDraftId,
   hiddenWallIds,
   landlordOptionFurnitures,
+  objects = [],
   openingCandidates,
   pixelToMmRatio,
   residentDesignFurnitures,
@@ -138,6 +149,7 @@ export function buildResidentDesignPayload<TCandidate extends CandidateLike>({
   fixtureCandidates: readonly TCandidate[];
   floorPlanDraftId: string | null;
   landlordOptionFurnitures: readonly PlacedFurniture[];
+  objects?: readonly TObject[];
   openingCandidates: readonly TCandidate[];
   pixelToMmRatio: number;
   residentDesignFurnitures: readonly PlacedFurniture[];
@@ -151,9 +163,10 @@ export function buildResidentDesignPayload<TCandidate extends CandidateLike>({
     hiddenWallIds: Array.from(hiddenWallIds),
     lockedFurnitures: [...landlordOptionFurnitures],
     mode: "resident",
+    objects: [...objects],
     openings: openingCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
     pixelToMmRatio,
-    room3d: { walls: [...walls3D] },
+    room3d: { objects: objects.filter((object) => object.status === "CONFIRMED"), walls: [...walls3D] },
     savedAt,
     sourceFloorPlanDraftId: floorPlanDraftId,
     walls: [...walls]

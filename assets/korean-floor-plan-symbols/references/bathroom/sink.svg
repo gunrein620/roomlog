@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="세면대">
+  <rect width="120" height="120" fill="white"/>
+  <rect x="24" y="30" width="72" height="52" rx="8" fill="none" stroke="#111" stroke-width="5"/>
+  <ellipse cx="60" cy="58" rx="24" ry="16" fill="none" stroke="#111" stroke-width="3"/>
+  <circle cx="60" cy="58" r="3" fill="#111"/>
+  <path d="M52 28 V20 H68 V28" fill="none" stroke="#111" stroke-width="4"/>
+</svg>
+

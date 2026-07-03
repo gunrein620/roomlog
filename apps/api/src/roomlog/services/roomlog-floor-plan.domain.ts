@@ -90,6 +90,7 @@ export class RoomlogFloorPlanDomain {
       furnitures: [],
       room3d: this.validJsonObject(input.room3d),
       extractionMeta: this.validExtractionMeta(input.extractionMeta),
+      objects: this.validFloorPlanCandidates(input.objects),
       openings: this.validFloorPlanCandidates(input.openings),
       fixtures: this.validFloorPlanCandidates(input.fixtures),
       createdAt,
@@ -155,6 +156,9 @@ export class RoomlogFloorPlanDomain {
     }
     if (input.extractionMeta !== undefined) {
       draft.extractionMeta = this.validExtractionMeta(input.extractionMeta);
+    }
+    if (input.objects !== undefined) {
+      draft.objects = this.validFloorPlanCandidates(input.objects);
     }
     if (input.openings !== undefined) {
       draft.openings = this.validFloorPlanCandidates(input.openings);

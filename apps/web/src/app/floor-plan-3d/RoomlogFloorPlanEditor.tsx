@@ -7,8 +7,17 @@ import type {
   DetectedWallResult,
   ExtractionMeta,
   FloorPlanCandidate,
+  FloorPlanObject,
   UploadedFloorPlanSource
 } from "./plan-extraction/types";
+import {
+  findObjectAtPoint,
+  moveObject,
+  removeObject,
+  rotateObjectQuarterTurn,
+  updateObjectStatus
+} from "./plan-extraction/object-editing";
+import { normalizeObjectGraph } from "./plan-extraction/object-graph-normalize.mjs";
 import {
   createWallCandidatesFromRoomPolygons,
   createWallsFromDetectedLines,
@@ -37,6 +46,7 @@ import {
   buildFloorPlanLocalSnapshot,
   buildResidentDesignPayload
 } from "./room-model/room-payload";
+import { convertFloorPlanObjectsTo3D } from "./room-model/floor-plan-object-3d";
 import type {
   ExperienceMode,
   FurnitureCatalogItem,
@@ -71,13 +81,14 @@ type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "op
 type ViewMode = "2d" | "3d";
 type WallDragMode = "move" | "resize-start" | "resize-end";
 type WallDragOperation = { mode: WallDragMode; originPoint: Point; originalWall: Wall; wallId: Wall["id"] };
+type ObjectDragOperation = { objectId: string; originPoint: Point };
 type FloorPlanAiModelId =
   | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   | "nvidia/cosmos3-nano-reasoner"
   | "openai/floor-plan-vision";
 
 type FloorPlanAiAnalysisResult = {
-  analysisMode?: "dimension" | "candidate-review" | "room-structure";
+  analysisMode?: "dimension" | "candidate-review" | "room-structure" | "object-graph";
   candidateReviews?: Array<{
     confidence?: number;
     id: string;
@@ -92,6 +103,7 @@ type FloorPlanAiAnalysisResult = {
   }>;
   model: FloorPlanAiModelId;
   noiseFlags?: { decorativeHatching: boolean; watermark: boolean };
+  objects?: unknown[];
   planStyle?: "solid-filled" | "double-line-hollow" | "hatched" | "gray-fill";
   rawText?: string;
   rooms?: Array<{
@@ -109,6 +121,8 @@ type FloorPlanAiAnalysisResult = {
   status: "ready" | "config-required" | "failed";
   summary: string;
   textDetections?: Array<{ confidence?: number; text: string }>;
+  walls?: Array<{ end: Point; id: string; start: Point; thicknessPx?: number | null }>;
+  warnings?: string[];
 };
 type AiDimensionDetection = { confidence?: number; realLengthMm: number; text: string };
 type AiGeneratedWall = Wall & { markers?: string[]; source?: "ai-missing-wall-hint" | "ai-room-edge" };
@@ -121,7 +135,9 @@ type AiWallCandidatePayload = {
   start: Point;
 };
 type FloorPlanAiRequest = {
-  analysisMode?: "dimension" | "candidate-review" | "room-structure";
+  analysisMode?: "dimension" | "candidate-review" | "room-structure" | "object-graph";
+  imageHeight?: number;
+  imageWidth?: number;
   imageDataUrl?: string | null;
   model: FloorPlanAiModelId;
   sourceAttachmentId?: string;
@@ -209,6 +225,57 @@ async function fileToCompressedDataUrl(file: File) {
   } finally {
     URL.revokeObjectURL(imageUrl);
   }
+}
+
+async function getImageNaturalSize(file: File) {
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImage(imageUrl);
+
+    return {
+      height: image.naturalHeight || image.height,
+      width: image.naturalWidth || image.width
+    };
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
+function compressedImageSizeForAi(sourceSize: { height: number; width: number }) {
+  const scale = Math.min(1, AI_IMAGE_MAX_DIMENSION / Math.max(sourceSize.width, sourceSize.height));
+
+  return {
+    height: Math.max(1, Math.round(sourceSize.height * scale)),
+    width: Math.max(1, Math.round(sourceSize.width * scale))
+  };
+}
+
+function imageToEditorTransform(imageWidth: number, imageHeight: number) {
+  const imageAspect = imageWidth / imageHeight;
+  const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
+  let drawWidth = CANVAS_WIDTH * 0.8;
+  let drawHeight = drawWidth / imageAspect;
+  if (imageAspect <= canvasAspect) {
+    drawHeight = CANVAS_HEIGHT * 0.8;
+    drawWidth = drawHeight * imageAspect;
+  }
+  const scale = drawWidth / imageWidth;
+
+  return {
+    bounds: { height: drawHeight, width: drawWidth, x: -drawWidth / 2, y: -drawHeight / 2 },
+    point(point: Point) {
+      return {
+        x: -drawWidth / 2 + point.x * scale,
+        y: -drawHeight / 2 + point.y * scale
+      };
+    },
+    size(size: { height: number; width: number }) {
+      return {
+        height: size.height * scale,
+        width: size.width * scale
+      };
+    }
+  };
 }
 
 function convertDimensionToMm(valueText: string, unit: string) {
@@ -315,6 +382,10 @@ export default function RoomlogFloorPlanEditor() {
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [openingCandidates, setOpeningCandidates] = useState<FloorPlanCandidate[]>([]);
   const [fixtureCandidates, setFixtureCandidates] = useState<FloorPlanCandidate[]>([]);
+  const [detectedObjects, setDetectedObjects] = useState<FloorPlanObject[]>([]);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [objectDragOperation, setObjectDragOperation] = useState<ObjectDragOperation | null>(null);
+  const [objectGraphWallThicknessPx, setObjectGraphWallThicknessPx] = useState(12);
   const [extractionMeta, setExtractionMeta] = useState<ExtractionMeta>({
     annotationCandidateCount: 0,
     detectedWallCount: 0,
@@ -360,6 +431,10 @@ export default function RoomlogFloorPlanEditor() {
   const roomWalls3D = useMemo(
     () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
     [pixelToMmRatio, visibleWalls]
+  );
+  const roomObjects3D = useMemo(
+    () => convertFloorPlanObjectsTo3D(detectedObjects, visibleWalls, { pixelToMmRatio }),
+    [detectedObjects, pixelToMmRatio, visibleWalls]
   );
   const aiTextDetections = useMemo(() => {
     const seen = new Set<string>();
@@ -426,6 +501,14 @@ export default function RoomlogFloorPlanEditor() {
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
     [placedFurnitures, selectedFurnitureId]
   );
+  const selectedObject = useMemo(
+    () => detectedObjects.find((object) => object.id === selectedObjectId) ?? null,
+    [detectedObjects, selectedObjectId]
+  );
+  const confirmedObjectCount = useMemo(
+    () => detectedObjects.filter((object) => object.status === "CONFIRMED").length,
+    [detectedObjects]
+  );
   const landlordOptionFurnitures = useMemo(() => placedFurnitures.filter(isLandlordOptionFurniture), [placedFurnitures]);
   const residentDesignFurnitures = useMemo(
     () => placedFurnitures.filter((furniture) => !isLandlordOptionFurniture(furniture)),
@@ -489,11 +572,60 @@ export default function RoomlogFloorPlanEditor() {
   }, []);
 
   useEffect(() => {
+    const rawDraft = window.localStorage.getItem("floorPlanDraft");
+    if (!rawDraft) return;
+    try {
+      const draft = JSON.parse(rawDraft) as {
+        extractionMeta?: ExtractionMeta;
+        fixtures?: FloorPlanCandidate[];
+        hiddenWallIds?: Array<string | number>;
+        id?: string;
+        objects?: FloorPlanObject[];
+        openings?: FloorPlanCandidate[];
+        pixelToMmRatio?: number;
+        sourceImageUrl?: string;
+        walls?: Wall[];
+      };
+      if (!Array.isArray(draft.walls) || draft.walls.length === 0) return;
+      setWalls(draft.walls);
+      setDetectedObjects(Array.isArray(draft.objects) ? draft.objects : []);
+      setOpeningCandidates(Array.isArray(draft.openings) ? draft.openings : []);
+      setFixtureCandidates(Array.isArray(draft.fixtures) ? draft.fixtures : []);
+      setHiddenWallIds(new Set((draft.hiddenWallIds ?? []).map(String)));
+      setExtractionMeta((currentMeta) => ({ ...currentMeta, ...(draft.extractionMeta ?? {}) }));
+      if (draft.pixelToMmRatio && Number.isFinite(draft.pixelToMmRatio)) setPixelToMmRatio(draft.pixelToMmRatio);
+      if (draft.id) setFloorPlanDraftId(draft.id);
+      if (draft.sourceImageUrl) setUploadedImage(draft.sourceImageUrl);
+      setUploadStatus("로컬 도면 초안 복원");
+    } catch {
+      setUploadStatus("로컬 도면 초안 복원 실패");
+    }
+  }, []);
+
+  useEffect(() => {
     if (experienceMode === "resident" && (tool === "opening" || tool === "fixture" || tool === "scale")) {
       setTool("furniture");
       setSelectedWall(null);
     }
   }, [experienceMode, tool]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!selectedObjectId || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.key === "r" || event.key === "R") {
+        event.preventDefault();
+        rotateSelectedObject();
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        removeSelectedObject();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedObjectId]);
   const getExtractionWorker = useCallback(() => {
     if (!extractionWorkerRef.current) {
       extractionWorkerRef.current = new Worker(new URL("./plan-extraction/floor-plan-extraction.worker.ts", import.meta.url));
@@ -579,6 +711,7 @@ export default function RoomlogFloorPlanEditor() {
       context.stroke();
     }
 
+    const wallBandPx = Math.max(8, Math.min(22, objectGraphWallThicknessPx || 12));
     const drawWall = (wall: Wall, variant: "normal" | "ai-room" | "ai-missing" | "draft" | "selected" | "hover" | "scale" | "erase" | "hidden") => {
       const colors = {
         "ai-missing": "#d97706",
@@ -587,13 +720,13 @@ export default function RoomlogFloorPlanEditor() {
         erase: "#ff0000",
         hidden: "rgba(121, 130, 145, 0.42)",
         hover: "#0066ff",
-        normal: "rgba(43, 43, 43, 0.82)",
+        normal: "#3f3f42",
         scale: "rgba(0, 68, 255, 0.76)",
         selected: "#0066ff"
       };
       context.strokeStyle = colors[variant];
-      context.lineWidth = (variant === "draft" ? 10 : variant === "hidden" ? 6 : 8) / viewScale;
-      context.lineCap = "round";
+      context.lineWidth = variant === "draft" ? wallBandPx : variant === "hidden" ? wallBandPx * 0.75 : wallBandPx;
+      context.lineCap = "butt";
       context.lineJoin = "round";
       if (variant === "draft" || variant === "hidden" || variant === "ai-room" || variant === "ai-missing") {
         context.setLineDash([3 / viewScale, 3 / viewScale]);
@@ -603,6 +736,14 @@ export default function RoomlogFloorPlanEditor() {
       context.lineTo(wall.end.x, wall.end.y);
       context.stroke();
       context.setLineDash([]);
+      if (variant !== "scale" && variant !== "erase") {
+        context.fillStyle = colors[variant];
+        for (const point of [wall.start, wall.end]) {
+          context.beginPath();
+          context.arc(point.x, point.y, context.lineWidth / 2, 0, Math.PI * 2);
+          context.fill();
+        }
+      }
 
       if (variant === "selected") {
         const handleRadius = WALL_EDIT_HANDLE_RADIUS / viewScale;
@@ -646,6 +787,112 @@ export default function RoomlogFloorPlanEditor() {
       else drawWall(wall, "normal");
     });
 
+    const drawOpeningObject = (object: FloorPlanObject) => {
+      if (!object.spanOnWall) return;
+      const start = object.spanOnWall.start;
+      const end = object.spanOnWall.end;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const nx = -dy / length;
+      const ny = dx / length;
+      const color = object.status === "CONFIRMED" ? "#00a36c" : object.status === "REJECTED" ? "#9aa3b2" : "#ff8a00";
+      context.save();
+      context.globalAlpha = object.status === "REJECTED" ? 0.38 : 0.95;
+      context.lineCap = "butt";
+      context.lineWidth = wallBandPx + 2;
+      context.strokeStyle = "#ffffff";
+      context.beginPath();
+      context.moveTo(start.x, start.y);
+      context.lineTo(end.x, end.y);
+      context.stroke();
+      context.lineWidth = 2 / viewScale;
+      context.strokeStyle = color;
+      context.setLineDash(object.status === "CANDIDATE" ? [6 / viewScale, 4 / viewScale] : []);
+      context.strokeRect(Math.min(start.x, end.x) - 1, Math.min(start.y, end.y) - 1, Math.abs(dx) + 2 || 2, Math.abs(dy) + 2 || 2);
+      context.setLineDash([]);
+      if (object.type === "window" || object.type === "balconyWindow") {
+        context.strokeStyle = "#3f3f42";
+        context.lineWidth = 2 / viewScale;
+        context.beginPath();
+        context.moveTo(start.x + nx * wallBandPx * 0.28, start.y + ny * wallBandPx * 0.28);
+        context.lineTo(end.x + nx * wallBandPx * 0.28, end.y + ny * wallBandPx * 0.28);
+        context.stroke();
+        context.beginPath();
+        context.moveTo(start.x - nx * wallBandPx * 0.28, start.y - ny * wallBandPx * 0.28);
+        context.lineTo(end.x - nx * wallBandPx * 0.28, end.y - ny * wallBandPx * 0.28);
+        context.stroke();
+      } else if (object.type === "slidingDoor" || object.type === "pocketDoor") {
+        context.strokeStyle = color;
+        for (const offset of [-0.22, 0.22]) {
+          context.beginPath();
+          context.moveTo(start.x + nx * wallBandPx * offset, start.y + ny * wallBandPx * offset);
+          context.lineTo(end.x + nx * wallBandPx * offset, end.y + ny * wallBandPx * offset);
+          context.stroke();
+        }
+      } else {
+        const drawSwingLeaf = (hinge: Point, openDir: Point, radius: number) => {
+          const towards = object.swing?.opensTowards;
+          const side = towards ? (((towards.x - hinge.x) * nx + (towards.y - hinge.y) * ny) >= 0 ? 1 : -1) : 1;
+          const leafDir = { x: nx * side, y: ny * side };
+          const leafEnd = { x: hinge.x + leafDir.x * radius, y: hinge.y + leafDir.y * radius };
+          const startAngle = Math.atan2(openDir.y, openDir.x);
+          const endAngle = Math.atan2(leafDir.y, leafDir.x);
+          const cross = openDir.x * leafDir.y - openDir.y * leafDir.x;
+          context.strokeStyle = color;
+          context.beginPath();
+          context.moveTo(hinge.x, hinge.y);
+          context.lineTo(leafEnd.x, leafEnd.y);
+          context.stroke();
+          context.beginPath();
+          context.arc(hinge.x, hinge.y, radius, startAngle, endAngle, cross < 0);
+          context.stroke();
+        };
+
+        if (object.type === "doubleSwingDoor") {
+          drawSwingLeaf(start, { x: dx / length, y: dy / length }, length / 2);
+          drawSwingLeaf(end, { x: -dx / length, y: -dy / length }, length / 2);
+        } else {
+          const hingeAtEnd = object.swing?.hinge === "end";
+          drawSwingLeaf(
+            hingeAtEnd ? end : start,
+            hingeAtEnd ? { x: -dx / length, y: -dy / length } : { x: dx / length, y: dy / length },
+            length
+          );
+        }
+      }
+      context.restore();
+    };
+
+    const drawBoxObject = (object: FloorPlanObject) => {
+      const color =
+        object.status === "CONFIRMED" ? (object.category === "opening" ? "#00a36c" : object.category === "fixture" ? "#7a4fd6" : "#44464d") : object.status === "REJECTED" ? "#9aa3b2" : "#ff8a00";
+      context.save();
+      context.globalAlpha = object.status === "REJECTED" ? 0.38 : 0.92;
+      context.translate(object.center.x, object.center.y);
+      context.rotate((object.rotationDeg * Math.PI) / 180);
+      context.fillStyle = object.type === "column" ? "#3f3f42" : "#ffffff";
+      context.strokeStyle = object.id === selectedObjectId ? "#0066ff" : color;
+      context.lineWidth = 2.5 / viewScale;
+      context.setLineDash(object.status === "CANDIDATE" ? [6 / viewScale, 4 / viewScale] : []);
+      context.beginPath();
+      context.rect(-object.size.width / 2, -object.size.height / 2, object.size.width, object.size.height);
+      context.fill();
+      context.stroke();
+      context.setLineDash([]);
+      context.fillStyle = color;
+      context.font = `bold ${11 / viewScale}px Arial, sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "bottom";
+      context.fillText(object.label ?? object.type, 0, -object.size.height / 2 - 4 / viewScale);
+      context.restore();
+    };
+
+    detectedObjects.forEach((object) => {
+      if (object.category === "opening") drawOpeningObject(object);
+      else drawBoxObject(object);
+    });
+
     const drawCandidate = (candidate: FloorPlanCandidate, layer: "opening" | "fixture") => {
       const position = candidate.position ?? { x: 0, y: 0 };
       const color =
@@ -685,6 +932,7 @@ export default function RoomlogFloorPlanEditor() {
     backgroundOpacity,
     cachedBackgroundImage,
     currentPoint,
+    detectedObjects,
     eraseAreaEnd,
     eraseAreaStart,
     hoveredWall,
@@ -692,11 +940,13 @@ export default function RoomlogFloorPlanEditor() {
     isDrawing,
     isSelectingEraseArea,
     fixtureCandidates,
+    objectGraphWallThicknessPx,
     openingCandidates,
     partialEraserSelectedWall,
     pixelToMmRatio,
     scaleWall,
     selectedWall,
+    selectedObjectId,
     startPoint,
     tool,
     uploadedImage,
@@ -778,6 +1028,32 @@ export default function RoomlogFloorPlanEditor() {
     ).candidate;
   }
 
+  function objectEditBounds() {
+    return extractionMeta.mainPlanBounds ?? { height: CANVAS_HEIGHT, width: CANVAS_WIDTH, x: -CANVAS_WIDTH / 2, y: -CANVAS_HEIGHT / 2 };
+  }
+
+  function setObjectStatus(objectId: string, status: CandidateStatus) {
+    setDetectedObjects((currentObjects) => updateObjectStatus(currentObjects, objectId, status));
+    setUploadStatus(`감지 객체 ${objectId} ${status}`);
+  }
+
+  function rotateSelectedObject() {
+    if (!selectedObjectId) return;
+    setDetectedObjects((currentObjects) => rotateObjectQuarterTurn(currentObjects, selectedObjectId));
+    setUploadStatus(`감지 객체 ${selectedObjectId} 90도 회전`);
+  }
+
+  function removeSelectedObject() {
+    if (!selectedObjectId) return;
+    removeObjectById(selectedObjectId);
+  }
+
+  function removeObjectById(objectId: string) {
+    setDetectedObjects((currentObjects) => removeObject(currentObjects, objectId));
+    setUploadStatus(`감지 객체 ${objectId} 삭제`);
+    setSelectedObjectId(null);
+  }
+
   function removeWallById(wallId: string | number) {
     setWalls((currentWalls) => currentWalls.filter((wall) => String(wall.id) !== String(wallId)));
     setHiddenWallIds((currentHidden) => {
@@ -821,6 +1097,7 @@ export default function RoomlogFloorPlanEditor() {
 
     if (tool === "select" || tool === "wall" || tool === "none") {
       setSelectedWall((currentWall) => (String(currentWall?.id ?? "") === String(wallId) ? null : wall ?? null));
+      setSelectedObjectId(null);
       setUploadStatus(`벽 ${wallId} 선택`);
       return;
     }
@@ -848,6 +1125,7 @@ export default function RoomlogFloorPlanEditor() {
     setPendingFurniture(previewFurniture);
     setSelectedFurnitureId(null);
     setSelectedWall(null);
+    setSelectedObjectId(null);
     setTool("furniture");
     setViewMode("3d");
     setUploadStatus(`${item.name} 배치 위치를 3D 바닥에서 클릭`);
@@ -903,6 +1181,7 @@ export default function RoomlogFloorPlanEditor() {
 
     setSelectedFurnitureId(furniture.id);
     setSelectedWall(null);
+    setSelectedObjectId(null);
     setPendingFurniture(null);
     setTool("furniture");
     setUploadStatus(
@@ -959,15 +1238,27 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     if (tool === "select") {
+      const closestObject = findObjectAtPoint(detectedObjects, coords, 8 / viewScale);
+      if (closestObject) {
+        setSelectedObjectId(closestObject.id);
+        setSelectedWall(null);
+        setSelectedFurnitureId(null);
+        setObjectDragOperation({ objectId: closestObject.id, originPoint: coords });
+        setUploadStatus(`감지 객체 ${closestObject.label ?? closestObject.type} 선택`);
+        return;
+      }
+
       const closestWall = findClosestWall(coords, 30);
       if (!closestWall) {
         setSelectedWall(null);
+        setSelectedObjectId(null);
         setWallDragOperation(null);
         return;
       }
 
       const mode = getWallDragMode(closestWall, coords);
       setSelectedWall(closestWall);
+      setSelectedObjectId(null);
       setWallDragOperation({ mode, originPoint: coords, originalWall: closestWall, wallId: closestWall.id });
       setUploadStatus(mode === "move" ? `벽 ${closestWall.id} 이동` : `벽 ${closestWall.id} 길이 조절`);
       return;
@@ -1035,6 +1326,17 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
+    if (objectDragOperation) {
+      setDetectedObjects((currentObjects) =>
+        moveObject(currentObjects, objectDragOperation.objectId, {
+          x: coords.x - objectDragOperation.originPoint.x,
+          y: coords.y - objectDragOperation.originPoint.y
+        }, objectEditBounds())
+      );
+      setObjectDragOperation({ ...objectDragOperation, originPoint: coords });
+      return;
+    }
+
     if (isDrawing && startPoint && (tool === "wall" || tool === "scale")) {
       setCurrentPoint(snapCanvasPoint(snapToOrthogonal(startPoint, coords)));
       return;
@@ -1063,6 +1365,11 @@ export default function RoomlogFloorPlanEditor() {
     if (wallDragOperation) {
       updateDraggedWall(wallDragOperation, getCanvasCoordinates(event));
       setWallDragOperation(null);
+      return;
+    }
+
+    if (objectDragOperation) {
+      setObjectDragOperation(null);
       return;
     }
 
@@ -1099,6 +1406,7 @@ export default function RoomlogFloorPlanEditor() {
       stopCanvasPan();
     }
     setWallDragOperation(null);
+    setObjectDragOperation(null);
   }
 
   function handleWheel(event: React.WheelEvent<HTMLCanvasElement>) {
@@ -1119,6 +1427,8 @@ export default function RoomlogFloorPlanEditor() {
     const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
       body: JSON.stringify({
         analysisMode: request.analysisMode,
+        imageHeight: request.imageHeight,
+        imageWidth: request.imageWidth,
         imageDataUrl: request.sourceAttachmentId ? undefined : request.imageDataUrl,
         model: request.model,
         sourceAttachmentId: request.sourceAttachmentId,
@@ -1198,6 +1508,67 @@ export default function RoomlogFloorPlanEditor() {
     }));
   }
 
+  function applyObjectGraphResult(result: FloorPlanAiAnalysisResult, imageSize: { height: number; width: number }) {
+    const normalized = normalizeObjectGraph(result, { imageHeight: imageSize.height, imageWidth: imageSize.width });
+    const transform = imageToEditorTransform(imageSize.width, imageSize.height);
+    const imageToEditorScale = transform.bounds.width / imageSize.width;
+    const nextWalls = normalized.walls.map((wall) => ({
+      ...wall,
+      end: transform.point(wall.end),
+      start: transform.point(wall.start)
+    }));
+    const nextObjects = normalized.objects.map((object: FloorPlanObject) => ({
+      ...object,
+      center: transform.point(object.center),
+      size: transform.size(object.size),
+      ...(object.spanOnWall
+        ? { spanOnWall: { end: transform.point(object.spanOnWall.end), start: transform.point(object.spanOnWall.start) } }
+        : {}),
+      ...(object.swing ? { swing: { ...object.swing, opensTowards: transform.point(object.swing.opensTowards) } } : {})
+    })) as FloorPlanObject[];
+    const scaleCandidates = (result.scaleCandidates ?? []).map((candidate) => ({
+      confidence: candidate.confidence,
+      pixelLength: (candidate.pixelLength ?? 0) * imageToEditorScale,
+      pixelToMmRatio: (candidate.pixelToMmRatio ?? 0) / imageToEditorScale,
+      realLengthMm: candidate.realLengthMm,
+      source: candidate.source
+    })).filter((candidate) => candidate.pixelLength > 0 && candidate.pixelToMmRatio > 0);
+    const bestScaleCandidate = scaleCandidates[0];
+
+    setWalls(nextWalls);
+    setDetectedObjects(nextObjects);
+    setObjectGraphWallThicknessPx(normalized.medianWallThicknessPx * (transform.bounds.width / imageSize.width));
+    setHiddenWallIds(new Set());
+    setSelectedWall(null);
+    setSelectedObjectId(null);
+    setPendingFurniture(null);
+    setSelectedFurnitureId(null);
+    setOpeningCandidates([]);
+    setFixtureCandidates([]);
+    setLastAiAnalysis(result);
+    setLastRoomStructureAnalysis(null);
+    setAiReviewedWallCandidates([]);
+    setExtractionMeta({
+      aiModel: result.model,
+      aiObjectCount: nextObjects.length,
+      aiObjectGraphStatus: result.status,
+      aiRawText: result.rawText,
+      aiSummary: result.summary,
+      detectedWallCount: nextWalls.length,
+      mainPlanBounds: transform.bounds,
+      needsReview: true,
+      ocrStatus: bestScaleCandidate ? "ready" : "manual-scale-required",
+      removedNoiseCount: 0,
+      scaleCandidates,
+      scaleConfirmed: false
+    });
+    setIsScaleSet(false);
+    if (bestScaleCandidate) setPixelToMmRatio(bestScaleCandidate.pixelToMmRatio);
+    setAiAnalysisStatus(`${result.summary} 객체 ${nextObjects.length}개 감지${normalized.warnings.length ? ` / 경고 ${normalized.warnings.length}개` : ""}`);
+
+    return { objects: nextObjects, walls: nextWalls };
+  }
+
   async function loadImageDataFromUrl(imageUrl: string) {
     const image = await loadImage(imageUrl);
     const canvas = document.createElement("canvas");
@@ -1253,8 +1624,37 @@ export default function RoomlogFloorPlanEditor() {
     try {
       const sourceUploadPromise = uploadFloorPlanSource(file);
       const aiImageDataUrlPromise = fileToCompressedDataUrl(file);
+      const imageSizePromise = getImageNaturalSize(file);
       const sourceUpload = await sourceUploadPromise;
       const aiImageDataUrl = await aiImageDataUrlPromise;
+      const imageSize = await imageSizePromise;
+      const objectGraphImageSize = sourceUpload?.attachmentId ? imageSize : compressedImageSizeForAi(imageSize);
+      if (selectedAiModel === "openai/floor-plan-vision") {
+        try {
+          setAiAnalysisStatus("OpenAI object-graph 분석중");
+          const objectGraphResult = await requestFloorPlanAiAnalysis({
+            analysisMode: "object-graph",
+            imageDataUrl: sourceUpload?.attachmentId ? undefined : aiImageDataUrl,
+            imageHeight: objectGraphImageSize.height,
+            imageWidth: objectGraphImageSize.width,
+            model: "openai/floor-plan-vision",
+            sourceAttachmentId: sourceUpload?.attachmentId
+          });
+          if (objectGraphResult.status === "ready" && (objectGraphResult.walls?.length ?? 0) >= 1) {
+            const applied = applyObjectGraphResult(objectGraphResult, objectGraphImageSize);
+            setUploadedImage(sourceUpload?.imageUrl ?? aiImageDataUrl);
+            setUploadedAiImageDataUrl(aiImageDataUrl);
+            setUploadedFloorPlanSource(sourceUpload ?? { imageUrl: aiImageDataUrl });
+            setFloorPlanDraftId(null);
+            setLastExtractionMs(null);
+            setUploadStatus(`${file.name} 객체 그래프 벽 ${applied.walls.length}개 / 객체 ${applied.objects.length}개 감지`);
+            return;
+          }
+          setAiAnalysisStatus(`${objectGraphResult.summary} - OpenCV 추출로 전환`);
+        } catch {
+          setAiAnalysisStatus("OpenAI object-graph 분석 실패 - OpenCV 추출로 전환");
+        }
+      }
       let roomStructureResult: FloorPlanAiAnalysisResult | null = null;
       if (selectedAiModel === "openai/floor-plan-vision") {
         try {
@@ -1308,6 +1708,9 @@ export default function RoomlogFloorPlanEditor() {
       setSelectedFurnitureId(null);
       setOpeningCandidates(nextOpeningCandidates);
       setFixtureCandidates(nextFixtureCandidates);
+      setDetectedObjects([]);
+      setSelectedObjectId(null);
+      setObjectGraphWallThicknessPx(12);
       setUploadedImage(result.imageUrl);
       setUploadedAiImageDataUrl(aiImageDataUrl);
       setUploadedFloorPlanSource(sourceUpload ?? { imageUrl: result.imageUrl });
@@ -1758,6 +2161,7 @@ export default function RoomlogFloorPlanEditor() {
       hiddenWallCount,
       hiddenWallIds: Array.from(hiddenWallIds),
       landlordFurnitures: landlordOptionFurnitures,
+      objects: detectedObjects,
       openingCandidates,
       pixelToMmRatio,
       scaleConfirmed: isScaleSet,
@@ -1806,6 +2210,7 @@ export default function RoomlogFloorPlanEditor() {
         fixtureCandidates,
         hiddenWallIds: Array.from(hiddenWallIds),
         landlordFurnitures: landlordOptionFurnitures,
+        objects: detectedObjects,
         openingCandidates,
         pixelToMmRatio,
         timestamp: Date.now(),
@@ -1823,6 +2228,7 @@ export default function RoomlogFloorPlanEditor() {
       floorPlanDraftId,
       hiddenWallIds: Array.from(hiddenWallIds),
       landlordOptionFurnitures,
+      objects: detectedObjects,
       openingCandidates,
       pixelToMmRatio,
       residentDesignFurnitures,
@@ -1962,6 +2368,7 @@ export default function RoomlogFloorPlanEditor() {
         ) : (
           <RoomlogThreeFloorPlanView
             furnitureData={placedFurnitures}
+            objectsData={roomObjects3D}
             onFloorPointerDown={handle3DFloorPointerDown}
             onFurniturePointerDown={handleFurniturePointerDown}
             onWallPointerDown={handle3DWallPointerDown}
@@ -1979,8 +2386,10 @@ export default function RoomlogFloorPlanEditor() {
               setWalls([]);
               setHiddenWallIds(new Set());
               setPlacedFurnitures([]);
+              setDetectedObjects([]);
               setPendingFurniture(null);
               setSelectedWall(null);
+              setSelectedObjectId(null);
               setSelectedFurnitureId(null);
               setUploadStatus("벽 전체 삭제");
             }}
@@ -1994,8 +2403,10 @@ export default function RoomlogFloorPlanEditor() {
               setWalls(getStarterWalls());
               setHiddenWallIds(new Set());
               setPlacedFurnitures([]);
+              setDetectedObjects([]);
               setPendingFurniture(null);
               setSelectedWall(null);
+              setSelectedObjectId(null);
               setSelectedFurnitureId(null);
               setUploadStatus("샘플 도면 복원");
             }}
@@ -2084,6 +2495,10 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{fixtureCandidates.length}개</dd>
           </div>
           <div>
+            <dt>감지 객체</dt>
+            <dd>{confirmedObjectCount}/{detectedObjects.length}개</dd>
+          </div>
+          <div>
             <dt>배율 조절</dt>
             <dd>{Math.round(viewScale * 100)}%</dd>
           </div>
@@ -2114,7 +2529,7 @@ export default function RoomlogFloorPlanEditor() {
             <div className="floor-plan-sim-preview">
               <span>후보 레이어</span>
               <code>
-                벽 {summary.wallCount} / 문창문 {openingCandidates.length} / 고정설비 {fixtureCandidates.length}
+                벽 {summary.wallCount} / 문창문 {openingCandidates.length} / 고정설비 {fixtureCandidates.length} / 객체 {detectedObjects.length}
               </code>
               <code>일반 클릭 확정, Shift 클릭 거절</code>
             </div>
@@ -2236,6 +2651,29 @@ export default function RoomlogFloorPlanEditor() {
               </div>
             ) : null}
 
+            {detectedObjects.length ? (
+              <div className="floor-plan-sim-preview">
+                <span>감지 객체</span>
+                <code>
+                  확정 {confirmedObjectCount} / 후보 {detectedObjects.filter((object) => object.status === "CANDIDATE").length} / 제외{" "}
+                  {detectedObjects.filter((object) => object.status === "REJECTED").length}
+                </code>
+                {selectedObject ? (
+                  <code>
+                    선택 {selectedObject.label ?? selectedObject.type} / {selectedObject.status}
+                  </code>
+                ) : null}
+                <div className="floor-plan-furniture-actions">
+                  <button className="floor-plan-secondary" disabled={!selectedObjectId} onClick={rotateSelectedObject} type="button">
+                    90도 회전
+                  </button>
+                  <button className="floor-plan-secondary" disabled={!selectedObjectId} onClick={removeSelectedObject} type="button">
+                    삭제
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             {[...openingCandidates.map((candidate) => ["opening", candidate] as const), ...fixtureCandidates.map((candidate) => ["fixture", candidate] as const)]
               .slice(0, 6)
               .map(([layer, candidate]) => (
@@ -2257,6 +2695,43 @@ export default function RoomlogFloorPlanEditor() {
                   </div>
                 </div>
               ))}
+            {detectedObjects.slice(0, 10).map((object) => (
+              <div className="floor-plan-sim-preview" key={object.id}>
+                <span>{object.label ?? object.type}</span>
+                <code>
+                  {object.category} / {object.status} / {Math.round((object.confidence ?? 0) * 100)}%
+                </code>
+                <div className="floor-plan-furniture-actions">
+                  <button
+                    className="floor-plan-secondary"
+                    onClick={() => {
+                      setSelectedObjectId(object.id);
+                      setObjectStatus(object.id, "CONFIRMED");
+                    }}
+                    type="button"
+                  >
+                    확정
+                  </button>
+                  <button
+                    className="floor-plan-secondary"
+                    onClick={() => {
+                      setSelectedObjectId(object.id);
+                      setObjectStatus(object.id, "REJECTED");
+                    }}
+                    type="button"
+                  >
+                    거부
+                  </button>
+                  <button
+                    className="floor-plan-secondary"
+                    onClick={() => removeObjectById(object.id)}
+                    type="button"
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            ))}
           </>
         ) : null}
 

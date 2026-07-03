@@ -61,6 +61,17 @@ export type WheretoputWall3D = {
   wall_id: string | number;
 };
 
+export type FloorPlanObject3D = {
+  id: string;
+  type: string;
+  category: "opening" | "fixture" | "structure";
+  label?: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  size: { width: number; height: number; depth: number };
+  color?: string;
+};
+
 export type RegisteredPlanMetadata = {
   name?: string;
   width?: number;

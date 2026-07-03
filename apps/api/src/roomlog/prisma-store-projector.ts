@@ -280,7 +280,10 @@ export class PrismaStoreProjector implements StoreProjector {
         sizeBytes: attachment.sizeBytes,
         createdAt: asIso(attachment.createdAt) ?? new Date().toISOString()
       })),
-      floorPlans: floorPlans.map((floorPlan) => ({
+      floorPlans: floorPlans.map((floorPlan) => {
+        const floorPlanRow = floorPlan as typeof floorPlan & { objects?: unknown };
+
+        return {
         id: floorPlan.id,
         ownerId: floorPlan.ownerId,
         sourceAttachmentId: optional(floorPlan.sourceAttachmentId),
@@ -292,12 +295,14 @@ export class PrismaStoreProjector implements StoreProjector {
         furnitures: floorPlan.furnitures as any,
         room3d: floorPlan.room3d as any,
         extractionMeta: (floorPlan.extractionMeta as any) ?? { scaleConfirmed: false },
+        objects: (floorPlanRow.objects as any) ?? [],
         openings: (floorPlan.openings as any) ?? [],
         fixtures: (floorPlan.fixtures as any) ?? [],
         roomId: optional(floorPlan.roomId),
         createdAt: asIso(floorPlan.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(floorPlan.updatedAt) ?? new Date().toISOString()
-      })),
+        };
+      }),
       moveInChecklist: moveInChecklist.map((item) => ({
         id: item.id,
         tenantId: item.tenantId,
@@ -884,11 +889,12 @@ export class PrismaStoreProjector implements StoreProjector {
             furnitures: asJson(floorPlan.furnitures),
             room3d: asJson(floorPlan.room3d),
             extractionMeta: asJson(floorPlan.extractionMeta),
+            objects: asJson(floorPlan.objects),
             openings: asJson(floorPlan.openings),
             fixtures: asJson(floorPlan.fixtures),
             createdAt: asDate(floorPlan.createdAt),
             updatedAt: asDate(floorPlan.updatedAt)
-          },
+          } as any,
           update: {
             ownerId: floorPlan.ownerId,
             roomId: floorPlan.roomId,
@@ -901,10 +907,11 @@ export class PrismaStoreProjector implements StoreProjector {
             furnitures: asJson(floorPlan.furnitures),
             room3d: asJson(floorPlan.room3d),
             extractionMeta: asJson(floorPlan.extractionMeta),
+            objects: asJson(floorPlan.objects),
             openings: asJson(floorPlan.openings),
             fixtures: asJson(floorPlan.fixtures),
             updatedAt: asDate(floorPlan.updatedAt)
-          }
+          } as any
         });
       }
 

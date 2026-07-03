@@ -459,6 +459,7 @@ model FloorPlan {
   furnitures         Json
   room3d             Json
   extractionMeta     Json?
+  objects            Json?
   openings           Json?
   fixtures           Json?
   createdAt          DateTime        @default(now())

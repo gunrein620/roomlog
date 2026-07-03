@@ -1,0 +1,734 @@
+{
+  "model": "gpt-5.5",
+  "elapsedMs": 69703,
+  "sourceImage": "/Users/kimyong/Desktop/스크린샷 2026-07-02 오후 10.24.13.png",
+  "label": "image5-technical",
+  "summary": "Approximate wall centerlines extracted from the floor plan. No numeric printed dimensions or scale text are visible; Korean room labels are not treated as dimension texts. Coordinates are in the original 1158x934 pixel image coordinate system.",
+  "imageSize": {
+    "width": 1158,
+    "height": 934
+  },
+  "walls": [
+    {
+      "id": "W001",
+      "role": "outer",
+      "start": {
+        "x": 349,
+        "y": 107
+      },
+      "end": {
+        "x": 918,
+        "y": 107
+      },
+      "confidence": 0.93,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Upper exterior wall centerline, continuous through window/opening symbols."
+    },
+    {
+      "id": "W002",
+      "role": "outer",
+      "start": {
+        "x": 918,
+        "y": 107
+      },
+      "end": {
+        "x": 918,
+        "y": 802
+      },
+      "confidence": 0.93,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right exterior wall centerline."
+    },
+    {
+      "id": "W003",
+      "role": "outer",
+      "start": {
+        "x": 158,
+        "y": 802
+      },
+      "end": {
+        "x": 918,
+        "y": 802
+      },
+      "confidence": 0.93,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom exterior wall centerline, continuous through window/opening symbols."
+    },
+    {
+      "id": "W004",
+      "role": "outer",
+      "start": {
+        "x": 158,
+        "y": 359
+      },
+      "end": {
+        "x": 158,
+        "y": 802
+      },
+      "confidence": 0.93,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left lower exterior wall centerline."
+    },
+    {
+      "id": "W005",
+      "role": "outer",
+      "start": {
+        "x": 158,
+        "y": 359
+      },
+      "end": {
+        "x": 349,
+        "y": 359
+      },
+      "confidence": 0.91,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Stepped exterior wall at balcony/top of lower-left block."
+    },
+    {
+      "id": "W006",
+      "role": "outer",
+      "start": {
+        "x": 349,
+        "y": 107
+      },
+      "end": {
+        "x": 349,
+        "y": 359
+      },
+      "confidence": 0.92,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left exterior wall of upper block."
+    },
+    {
+      "id": "W007",
+      "role": "inner",
+      "start": {
+        "x": 349,
+        "y": 318
+      },
+      "end": {
+        "x": 650,
+        "y": 318
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between upper-left bedroom and stair/hall zone."
+    },
+    {
+      "id": "W008",
+      "role": "inner",
+      "start": {
+        "x": 550,
+        "y": 126
+      },
+      "end": {
+        "x": 550,
+        "y": 250
+      },
+      "confidence": 0.75,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Approximate right partition of upper-left bedroom/closet area."
+    },
+    {
+      "id": "W009",
+      "role": "inner",
+      "start": {
+        "x": 485,
+        "y": 250
+      },
+      "end": {
+        "x": 550,
+        "y": 250
+      },
+      "confidence": 0.7,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short partition near bedroom door; approximate due to door swing overlap."
+    },
+    {
+      "id": "W010",
+      "role": "wet-area",
+      "start": {
+        "x": 552,
+        "y": 126
+      },
+      "end": {
+        "x": 552,
+        "y": 195
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left wall of small upper wet/service room."
+    },
+    {
+      "id": "W011",
+      "role": "wet-area",
+      "start": {
+        "x": 552,
+        "y": 195
+      },
+      "end": {
+        "x": 601,
+        "y": 195
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom wall of small upper wet/service room."
+    },
+    {
+      "id": "W012",
+      "role": "inner",
+      "start": {
+        "x": 601,
+        "y": 126
+      },
+      "end": {
+        "x": 601,
+        "y": 195
+      },
+      "confidence": 0.68,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short internal partition within upper service zone; low confidence."
+    },
+    {
+      "id": "W013",
+      "role": "inner",
+      "start": {
+        "x": 681,
+        "y": 126
+      },
+      "end": {
+        "x": 681,
+        "y": 195
+      },
+      "confidence": 0.74,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right partition of upper service/hall zone."
+    },
+    {
+      "id": "W014",
+      "role": "inner",
+      "start": {
+        "x": 681,
+        "y": 195
+      },
+      "end": {
+        "x": 710,
+        "y": 195
+      },
+      "confidence": 0.73,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short horizontal wall segment beside upper service zone."
+    },
+    {
+      "id": "W015",
+      "role": "inner",
+      "start": {
+        "x": 704,
+        "y": 126
+      },
+      "end": {
+        "x": 704,
+        "y": 195
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left partition at upper-right kitchen/service area."
+    },
+    {
+      "id": "W016",
+      "role": "inner",
+      "start": {
+        "x": 755,
+        "y": 324
+      },
+      "end": {
+        "x": 918,
+        "y": 324
+      },
+      "confidence": 0.87,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition separating upper kitchen from right bathroom zone."
+    },
+    {
+      "id": "W017",
+      "role": "wet-area",
+      "start": {
+        "x": 755,
+        "y": 324
+      },
+      "end": {
+        "x": 755,
+        "y": 369
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left wall segment of right-side bathroom; interrupted by door opening below."
+    },
+    {
+      "id": "W018",
+      "role": "wet-area",
+      "start": {
+        "x": 755,
+        "y": 416
+      },
+      "end": {
+        "x": 918,
+        "y": 416
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom wall of right-side bathroom / top wall of right living room."
+    },
+    {
+      "id": "W019",
+      "role": "inner",
+      "start": {
+        "x": 755,
+        "y": 416
+      },
+      "end": {
+        "x": 755,
+        "y": 615
+      },
+      "confidence": 0.87,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left wall of right living room."
+    },
+    {
+      "id": "W020",
+      "role": "inner",
+      "start": {
+        "x": 675,
+        "y": 615
+      },
+      "end": {
+        "x": 918,
+        "y": 615
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between right living room/hall and lower bedrooms; door openings approximated as continuous centerline."
+    },
+    {
+      "id": "W021",
+      "role": "inner",
+      "start": {
+        "x": 725,
+        "y": 615
+      },
+      "end": {
+        "x": 725,
+        "y": 802
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between lower middle bedroom and lower right bedroom."
+    },
+    {
+      "id": "W022",
+      "role": "inner",
+      "start": {
+        "x": 528,
+        "y": 610
+      },
+      "end": {
+        "x": 528,
+        "y": 802
+      },
+      "confidence": 0.87,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between central living/kitchen zone and lower middle bedroom."
+    },
+    {
+      "id": "W023",
+      "role": "inner",
+      "start": {
+        "x": 528,
+        "y": 615
+      },
+      "end": {
+        "x": 675,
+        "y": 615
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top wall of lower middle bedroom; partly affected by door opening."
+    },
+    {
+      "id": "W024",
+      "role": "inner",
+      "start": {
+        "x": 342,
+        "y": 610
+      },
+      "end": {
+        "x": 342,
+        "y": 802
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between lower-left bedroom and central living zone."
+    },
+    {
+      "id": "W025",
+      "role": "inner",
+      "start": {
+        "x": 158,
+        "y": 610
+      },
+      "end": {
+        "x": 282,
+        "y": 610
+      },
+      "confidence": 0.84,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top wall of lower-left bedroom, ending near door opening."
+    },
+    {
+      "id": "W026",
+      "role": "wet-area",
+      "start": {
+        "x": 158,
+        "y": 452
+      },
+      "end": {
+        "x": 250,
+        "y": 452
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top wall of lower-left bathroom."
+    },
+    {
+      "id": "W027",
+      "role": "wet-area",
+      "start": {
+        "x": 250,
+        "y": 452
+      },
+      "end": {
+        "x": 250,
+        "y": 610
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right wall of lower-left bathroom / left bedroom service wall."
+    },
+    {
+      "id": "W028",
+      "role": "wet-area",
+      "start": {
+        "x": 158,
+        "y": 610
+      },
+      "end": {
+        "x": 250,
+        "y": 610
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom wall of lower-left bathroom."
+    },
+    {
+      "id": "W029",
+      "role": "balcony",
+      "start": {
+        "x": 158,
+        "y": 452
+      },
+      "end": {
+        "x": 349,
+        "y": 452
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom boundary of lower-left balcony/utility area; openings/window symbols ignored."
+    },
+    {
+      "id": "W030",
+      "role": "balcony",
+      "start": {
+        "x": 349,
+        "y": 359
+      },
+      "end": {
+        "x": 349,
+        "y": 452
+      },
+      "confidence": 0.84,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right side of lower-left balcony/utility area."
+    },
+    {
+      "id": "W031",
+      "role": "inner",
+      "start": {
+        "x": 349,
+        "y": 472
+      },
+      "end": {
+        "x": 582,
+        "y": 472
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom wall of stair enclosure / top of lower kitchen zone."
+    },
+    {
+      "id": "W032",
+      "role": "inner",
+      "start": {
+        "x": 349,
+        "y": 318
+      },
+      "end": {
+        "x": 349,
+        "y": 452
+      },
+      "confidence": 0.77,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left wall of stair enclosure; partly coincident with stepped upper/lower block boundary."
+    },
+    {
+      "id": "W033",
+      "role": "inner",
+      "start": {
+        "x": 582,
+        "y": 318
+      },
+      "end": {
+        "x": 582,
+        "y": 472
+      },
+      "confidence": 0.76,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right/bottom stair enclosure partition, approximate due to openings and stair graphics."
+    },
+    {
+      "id": "W034",
+      "role": "inner",
+      "start": {
+        "x": 650,
+        "y": 306
+      },
+      "end": {
+        "x": 650,
+        "y": 459
+      },
+      "confidence": 0.8,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Vertical hall partition to right of stair, approximate."
+    },
+    {
+      "id": "W035",
+      "role": "inner",
+      "start": {
+        "x": 650,
+        "y": 306
+      },
+      "end": {
+        "x": 704,
+        "y": 306
+      },
+      "confidence": 0.75,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short horizontal hall wall above stair/hall junction."
+    },
+    {
+      "id": "W036",
+      "role": "inner",
+      "start": {
+        "x": 635,
+        "y": 459
+      },
+      "end": {
+        "x": 680,
+        "y": 459
+      },
+      "confidence": 0.76,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short wall segment at hall/entry jog."
+    },
+    {
+      "id": "W037",
+      "role": "inner",
+      "start": {
+        "x": 680,
+        "y": 459
+      },
+      "end": {
+        "x": 680,
+        "y": 615
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Vertical partition separating lower hall/entry from right-side spaces."
+    },
+    {
+      "id": "W038",
+      "role": "inner",
+      "start": {
+        "x": 590,
+        "y": 610
+      },
+      "end": {
+        "x": 725,
+        "y": 610
+      },
+      "confidence": 0.74,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Upper boundary near lower bedroom/hall junction; door opening makes exact extent uncertain."
+    },
+    {
+      "id": "W039",
+      "role": "inner",
+      "start": {
+        "x": 704,
+        "y": 306
+      },
+      "end": {
+        "x": 704,
+        "y": 369
+      },
+      "confidence": 0.65,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Small vertical partition in central-right hall area; low confidence."
+    },
+    {
+      "id": "W040",
+      "role": "inner",
+      "start": {
+        "x": 704,
+        "y": 306
+      },
+      "end": {
+        "x": 755,
+        "y": 306
+      },
+      "confidence": 0.68,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short horizontal partition connecting hall to bathroom/kitchen area; approximate."
+    },
+    {
+      "id": "W041",
+      "role": "inner",
+      "start": {
+        "x": 250,
+        "y": 452
+      },
+      "end": {
+        "x": 342,
+        "y": 452
+      },
+      "confidence": 0.73,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between balcony/bath area and kitchen; partly obscured by door/window symbols."
+    },
+    {
+      "id": "W042",
+      "role": "inner",
+      "start": {
+        "x": 342,
+        "y": 452
+      },
+      "end": {
+        "x": 342,
+        "y": 558
+      },
+      "confidence": 0.72,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short vertical wall at lower-left bedroom/kitchen entry; interrupted by door opening."
+    }
+  ],
+  "dimensionTexts": [],
+  "scaleCandidates": [],
+  "warnings": [
+    "No numeric dimension annotations or scale bar were visible in the supplied image; all lengthMm fields are null.",
+    "Wall centerlines are approximate because the source is a raster floor plan with thick/double wall graphics, door openings, windows, and room labels.",
+    "Door openings were not modeled as walls, but several long partition centerlines are left continuous where the exact opening extents are unclear."
+  ]
+}

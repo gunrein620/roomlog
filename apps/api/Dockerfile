@@ -40,6 +40,7 @@ RUN pnpm install --filter api --prod --frozen-lockfile
 RUN pnpm --filter api exec prisma generate --schema ../../prisma/schema.prisma
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY apps/api/assets ./apps/api/assets
 
 EXPOSE 4000
 

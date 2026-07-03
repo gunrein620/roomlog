@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="엘리베이터">
+  <rect width="120" height="120" fill="white"/>
+  <rect x="22" y="18" width="76" height="84" fill="none" stroke="#111" stroke-width="6"/>
+  <path d="M60 18 V102" stroke="#111" stroke-width="3"/>
+  <path d="M34 78 L52 58 L34 38 M86 78 L68 58 L86 38" fill="none" stroke="#111" stroke-width="3"/>
+</svg>
+

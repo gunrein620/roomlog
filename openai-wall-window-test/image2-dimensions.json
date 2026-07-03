@@ -1,0 +1,361 @@
+{
+  "model": "gpt-5.5",
+  "elapsedMs": 68655,
+  "sourceImage": "/Users/kimyong/Downloads/평면설명.png",
+  "label": "image2-dimensions",
+  "summary": "Extracted structural wall centerlines from the floor plan. Windows are bridged as continuous wall; visible door openings at the right exterior entrance and bathroom partition are left open. Furniture, fixtures, door swings, dimension graphics, and text are excluded.",
+  "imageSize": {
+    "width": 800,
+    "height": 761
+  },
+  "walls": [
+    {
+      "id": "W1",
+      "role": "outer",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 153,
+        "y": 128
+      },
+      "end": {
+        "x": 384,
+        "y": 128
+      },
+      "confidence": 0.91,
+      "lengthMm": 2600,
+      "lengthText": "2.60 m",
+      "dimensionEvidence": "Top horizontal dimension above the left room span.",
+      "notes": "Top-left exterior wall centerline, continued through the window symbol."
+    },
+    {
+      "id": "W2",
+      "role": "outer",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 384,
+        "y": 128
+      },
+      "end": {
+        "x": 607,
+        "y": 128
+      },
+      "confidence": 0.91,
+      "lengthMm": 2690,
+      "lengthText": "2.69 m",
+      "dimensionEvidence": "Top horizontal dimension above the right room span.",
+      "notes": "Top-right exterior wall centerline, continued through the window symbol; split at central T-junction."
+    },
+    {
+      "id": "W3",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 153,
+        "y": 128
+      },
+      "end": {
+        "x": 153,
+        "y": 437
+      },
+      "confidence": 0.93,
+      "lengthMm": 3770,
+      "lengthText": "3.77 m",
+      "dimensionEvidence": "Left vertical dimension marking the upper-left wall/span.",
+      "notes": "Left exterior wall upper segment, split at interior wet-area wall junction."
+    },
+    {
+      "id": "W4",
+      "role": "outer",
+      "sourceEvidence": "window-bridged-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 153,
+        "y": 437
+      },
+      "end": {
+        "x": 153,
+        "y": 554
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left exterior lower segment; continued through the narrow window/opening symbol near the wet area."
+    },
+    {
+      "id": "W5",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 607,
+        "y": 128
+      },
+      "end": {
+        "x": 607,
+        "y": 443
+      },
+      "confidence": 0.92,
+      "lengthMm": 3840,
+      "lengthText": "3.84 m",
+      "dimensionEvidence": "Right-side vertical dimension adjacent to the upper exterior wall segment.",
+      "notes": "Right exterior wall upper segment; stops at visible entrance door opening."
+    },
+    {
+      "id": "W6",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 607,
+        "y": 516
+      },
+      "end": {
+        "x": 607,
+        "y": 554
+      },
+      "confidence": 0.88,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short right exterior wall segment below the entrance door opening."
+    },
+    {
+      "id": "W7",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 153,
+        "y": 554
+      },
+      "end": {
+        "x": 280,
+        "y": 554
+      },
+      "confidence": 0.92,
+      "lengthMm": 1450,
+      "lengthText": "1.45 m",
+      "dimensionEvidence": "Bottom-left horizontal dimension under the wet-area span.",
+      "notes": "Bottom exterior wall segment split at wet-area partition T-junction."
+    },
+    {
+      "id": "W8",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 280,
+        "y": 554
+      },
+      "end": {
+        "x": 607,
+        "y": 554
+      },
+      "confidence": 0.92,
+      "lengthMm": 4030,
+      "lengthText": "4.03 m",
+      "dimensionEvidence": "Bottom horizontal dimension from the wet-area partition to the right exterior side.",
+      "notes": "Bottom exterior wall segment; cabinetry/fixture graphics along this edge ignored."
+    },
+    {
+      "id": "W9",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 384,
+        "y": 128
+      },
+      "end": {
+        "x": 384,
+        "y": 443
+      },
+      "confidence": 0.93,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Central partition wall between the two upper rooms."
+    },
+    {
+      "id": "W10",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 384,
+        "y": 443
+      },
+      "end": {
+        "x": 607,
+        "y": 443
+      },
+      "confidence": 0.92,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Horizontal interior partition forming the lower boundary of the right upper room; ends at entrance-door opening."
+    },
+    {
+      "id": "W11",
+      "role": "wet-area",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 153,
+        "y": 437
+      },
+      "end": {
+        "x": 280,
+        "y": 437
+      },
+      "confidence": 0.9,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top wall of the lower-left wet area."
+    },
+    {
+      "id": "W12",
+      "role": "wet-area",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 280,
+        "y": 489
+      },
+      "end": {
+        "x": 280,
+        "y": 554
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right wall of wet area below the bathroom door opening; door leaf and swing arc ignored."
+    }
+  ],
+  "dimensionTexts": [
+    {
+      "text": "2.60 m",
+      "valueMm": 2600,
+      "appliesTo": "top-left room horizontal span",
+      "confidence": 0.86
+    },
+    {
+      "text": "2.69 m",
+      "valueMm": 2690,
+      "appliesTo": "top-right room horizontal span",
+      "confidence": 0.86
+    },
+    {
+      "text": "3.77 m",
+      "valueMm": 3770,
+      "appliesTo": "left upper vertical span",
+      "confidence": 0.84
+    },
+    {
+      "text": "3.84 m",
+      "valueMm": 3840,
+      "appliesTo": "right upper vertical span",
+      "confidence": 0.84
+    },
+    {
+      "text": "5.53 m",
+      "valueMm": 5530,
+      "appliesTo": "overall right-side vertical exterior span",
+      "confidence": 0.82
+    },
+    {
+      "text": "1.45 m",
+      "valueMm": 1450,
+      "appliesTo": "bottom-left wet-area width span",
+      "confidence": 0.84
+    },
+    {
+      "text": "4.03 m",
+      "valueMm": 4030,
+      "appliesTo": "bottom central/right horizontal span",
+      "confidence": 0.85
+    },
+    {
+      "text": "5.86 m",
+      "valueMm": 5860,
+      "appliesTo": "overall bottom horizontal exterior span",
+      "confidence": 0.86
+    }
+  ],
+  "scaleCandidates": [
+    {
+      "sourceText": "5.86 m",
+      "pixelLength": 461,
+      "realLengthMm": 5860,
+      "pixelToMmRatio": 12.71,
+      "confidence": 0.8
+    },
+    {
+      "sourceText": "5.53 m",
+      "pixelLength": 435,
+      "realLengthMm": 5530,
+      "pixelToMmRatio": 12.71,
+      "confidence": 0.8
+    },
+    {
+      "sourceText": "4.03 m",
+      "pixelLength": 323,
+      "realLengthMm": 4030,
+      "pixelToMmRatio": 12.48,
+      "confidence": 0.76
+    },
+    {
+      "sourceText": "3.84 m",
+      "pixelLength": 301,
+      "realLengthMm": 3840,
+      "pixelToMmRatio": 12.76,
+      "confidence": 0.76
+    },
+    {
+      "sourceText": "3.77 m",
+      "pixelLength": 292,
+      "realLengthMm": 3770,
+      "pixelToMmRatio": 12.91,
+      "confidence": 0.74
+    },
+    {
+      "sourceText": "2.60 m",
+      "pixelLength": 206,
+      "realLengthMm": 2600,
+      "pixelToMmRatio": 12.62,
+      "confidence": 0.72
+    },
+    {
+      "sourceText": "2.69 m",
+      "pixelLength": 218,
+      "realLengthMm": 2690,
+      "pixelToMmRatio": 12.34,
+      "confidence": 0.72
+    },
+    {
+      "sourceText": "1.45 m",
+      "pixelLength": 117,
+      "realLengthMm": 1450,
+      "pixelToMmRatio": 12.39,
+      "confidence": 0.72
+    }
+  ],
+  "rejectionSummary": {
+    "doorSymbols": 2,
+    "windowFrameOnly": 3,
+    "furnitureOrFixtures": 8,
+    "dimensionOrText": 8,
+    "textureOrHatching": 0,
+    "uiChrome": 0
+  },
+  "warnings": [
+    "Coordinates are approximate visual centerlines from the raster image.",
+    "Printed dimensions appear to indicate room or span measurements; attached wall lengths are based on the closest clear corresponding wall/span and may not be exact wall-centerline lengths."
+  ]
+}

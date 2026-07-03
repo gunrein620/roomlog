@@ -591,6 +591,7 @@ export type FloorPlanDraft = {
   furnitures: unknown[];
   room3d: Record<string, unknown>;
   extractionMeta: FloorPlanExtractionMeta;
+  objects: FloorPlanCandidate[];
   openings: FloorPlanCandidate[];
   fixtures: FloorPlanCandidate[];
   createdAt: string;
@@ -612,7 +613,9 @@ export type FloorPlanAiModel = {
 };
 
 export type FloorPlanAiAnalysisInput = {
-  analysisMode?: "dimension" | "candidate-review" | "room-structure";
+  analysisMode?: "dimension" | "candidate-review" | "room-structure" | "object-graph";
+  imageHeight?: number;
+  imageWidth?: number;
   imageDataUrl?: string;
   model?: FloorPlanAiModelId;
   prompt?: string;
@@ -682,20 +685,93 @@ export type FloorPlanAiRoomStructureNoiseFlags = {
   watermark: boolean;
 };
 
+export type FloorPlanAiObjectGraphPoint = {
+  x: number;
+  y: number;
+};
+
+export type FloorPlanAiObjectGraphRegion = {
+  kind: "home" | "excluded";
+  polygon: FloorPlanAiObjectGraphPoint[];
+};
+
+export type FloorPlanAiObjectGraphWall = {
+  confidence: number;
+  end: FloorPlanAiObjectGraphPoint;
+  id: string;
+  role: "outer" | "inner" | "balcony" | "wet-area" | "unknown";
+  start: FloorPlanAiObjectGraphPoint;
+  thicknessPx: number | null;
+};
+
+export type FloorPlanAiObjectGraphObjectType =
+  | "swingDoor"
+  | "doubleSwingDoor"
+  | "slidingDoor"
+  | "pocketDoor"
+  | "window"
+  | "balconyWindow"
+  | "toilet"
+  | "sink"
+  | "bathtub"
+  | "showerBooth"
+  | "floorDrain"
+  | "kitchenSink"
+  | "gasRange"
+  | "refrigerator"
+  | "stairs"
+  | "elevator"
+  | "column";
+
+export type FloorPlanAiObjectGraphObject = {
+  attachedWallId: string | null;
+  center: FloorPlanAiObjectGraphPoint;
+  confidence: number;
+  evidence: string;
+  id: string;
+  rotationDeg: number;
+  size: { height: number; width: number };
+  spanOnWall: { end: FloorPlanAiObjectGraphPoint; start: FloorPlanAiObjectGraphPoint } | null;
+  swing: { hinge: "start" | "end"; opensTowards: FloorPlanAiObjectGraphPoint } | null;
+  type: FloorPlanAiObjectGraphObjectType;
+};
+
+export type FloorPlanAiObjectGraphDimensionText = {
+  appliesTo: string;
+  confidence: number;
+  text: string;
+  valueMm: number | null;
+};
+
+export type FloorPlanAiObjectGraphRejectionSummary = {
+  dimensionOrText: number;
+  doorSymbols: number;
+  furnitureOrFixtures: number;
+  textureOrHatching: number;
+  uiChrome: number;
+  windowFrameOnly: number;
+};
+
 export type FloorPlanAiAnalysisResult = {
   model: FloorPlanAiModelId;
   mode: FloorPlanAiModelMode;
   status: "ready" | "config-required" | "failed";
   summary: string;
-  analysisMode?: "dimension" | "candidate-review" | "room-structure";
+  analysisMode?: "dimension" | "candidate-review" | "room-structure" | "object-graph";
   candidateReviews?: FloorPlanAiCandidateReview[];
+  dimensionTexts?: FloorPlanAiObjectGraphDimensionText[];
+  homeRegions?: FloorPlanAiObjectGraphRegion[];
   missingWallHints?: FloorPlanAiMissingWallHint[];
   noiseFlags?: FloorPlanAiRoomStructureNoiseFlags;
+  objects?: FloorPlanAiObjectGraphObject[];
   planStyle?: FloorPlanAiRoomStructurePlanStyle;
+  rejectionSummary?: FloorPlanAiObjectGraphRejectionSummary;
   rooms?: FloorPlanAiRoomStructure[];
   textDetections: FloorPlanAiTextDetection[];
   scaleCandidates: FloorPlanAiScaleCandidate[];
+  walls?: FloorPlanAiObjectGraphWall[];
   rawText?: string;
+  warnings?: string[];
 };
 
 export type IntakeSessionStatus = "ACTIVE" | "FINALIZED" | "CANCELLED";
@@ -944,6 +1020,7 @@ export type SaveFloorPlanDraftInput = {
   furnitures?: unknown[];
   room3d?: Record<string, unknown>;
   extractionMeta?: FloorPlanExtractionMeta;
+  objects?: FloorPlanCandidate[];
   openings?: FloorPlanCandidate[];
   fixtures?: FloorPlanCandidate[];
 };

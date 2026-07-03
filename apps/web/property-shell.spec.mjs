@@ -2119,6 +2119,7 @@ test("floor plan editor model builds normalized floor plan draft payload", async
   assert.equal(payload.sourceImageUrl, "https://img");
   assert.equal(payload.room3d.wallCount, 1);
   assert.equal(payload.room3d.hiddenWallCount, 1);
+  assert.deepEqual(payload.room3d.objects, []);
   assert.deepEqual(payload.room3d.fixtures, [confirmed]);
   assert.deepEqual(payload.room3d.openings, []);
 });
@@ -2143,7 +2144,7 @@ test("floor plan editor model builds resident design and local snapshot payloads
   assert.equal(resident.sourceFloorPlanDraftId, "draft-9");
   assert.equal(resident.lockedFurnitures[0].id, "f1");
   assert.equal(resident.furnitures[0].id, "f2");
-  assert.deepEqual(resident.room3d, { walls: walls3D });
+  assert.deepEqual(resident.room3d, { objects: [], walls: walls3D });
 
   const snapshot = payloadModel.buildFloorPlanLocalSnapshot({
     extractionMeta: { detectedLineCount: 4 },
@@ -2160,6 +2161,7 @@ test("floor plan editor model builds resident design and local snapshot payloads
   assert.equal(snapshot.timestamp, 5678);
   assert.equal(snapshot.extractionMeta.scaleConfirmed, undefined);
   assert.equal(snapshot.room3d.fixtures.length, 1);
+  assert.deepEqual(snapshot.room3d.objects, []);
   assert.deepEqual(snapshot.room3d.openings, []);
   assert.equal(snapshot.room3d.wallCount, undefined);
 });

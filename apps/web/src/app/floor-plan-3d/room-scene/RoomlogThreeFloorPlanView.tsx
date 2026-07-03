@@ -9,7 +9,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { FURNITURE_CATALOG, getFurnitureDimensions } from "../furniture-placement";
-import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
+import type { FloorPlanObject3D, PlacedFurniture, WheretoputWall3D } from "../room-model/types";
 
 Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
   (modelUrl) => useGLTF.preload(modelUrl)
@@ -211,6 +211,18 @@ function WallMesh({
   );
 }
 
+function FloorPlanObjectMesh({ object }: { object: FloorPlanObject3D }) {
+  const color = object.color ?? (object.category === "opening" ? "#b08968" : object.category === "structure" ? "#4a4a52" : "#9aa3b2");
+  const isWindow = object.type === "window" || object.type === "balconyWindow";
+
+  return (
+    <mesh position={object.position} rotation={object.rotation}>
+      <boxGeometry args={[object.size.width, object.size.height, object.size.depth]} />
+      <meshLambertMaterial color={color} opacity={isWindow ? 0.5 : 0.78} transparent={isWindow} />
+    </mesh>
+  );
+}
+
 function RoomOrbitControls() {
   const invalidate = useThree((state) => state.invalidate);
 
@@ -230,6 +242,7 @@ function RoomOrbitControls() {
 
 export function RoomlogThreeFloorPlanView({
   furnitureData,
+  objectsData = [],
   onFloorPointerDown,
   onFurniturePointerDown,
   onWallPointerDown,
@@ -239,6 +252,7 @@ export function RoomlogThreeFloorPlanView({
   wallsData
 }: {
   furnitureData: PlacedFurniture[];
+  objectsData?: FloorPlanObject3D[];
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
@@ -269,6 +283,9 @@ export function RoomlogThreeFloorPlanView({
             key={furniture.id}
             onPointerDown={onFurniturePointerDown}
           />
+        ))}
+        {objectsData.map((object) => (
+          <FloorPlanObjectMesh key={object.id} object={object} />
         ))}
         {pendingFurniture ? (
           <FurnitureMesh furniture={pendingFurniture} isPending isSelected={false} onPointerDown={onFurniturePointerDown} />

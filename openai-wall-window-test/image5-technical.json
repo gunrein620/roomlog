@@ -1,0 +1,864 @@
+{
+  "model": "gpt-5.5",
+  "elapsedMs": 105897,
+  "sourceImage": "/Users/kimyong/Desktop/스크린샷 2026-07-02 오후 10.24.13.png",
+  "label": "image5-technical",
+  "summary": "Extracted approximate structural wall centerlines from the floor-plan image. Window symbols are bridged as wall continuity; visible door openings are split or omitted. Coordinates are in the original 1158x934 pixel image coordinate system.",
+  "imageSize": {
+    "width": 1158,
+    "height": 934
+  },
+  "walls": [
+    {
+      "id": "W001",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 354,
+        "y": 111
+      },
+      "end": {
+        "x": 909,
+        "y": 111
+      },
+      "confidence": 0.92,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Main upper exterior wall; window symbols along this run treated as wall continuity."
+    },
+    {
+      "id": "W002",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 909,
+        "y": 111
+      },
+      "end": {
+        "x": 909,
+        "y": 798
+      },
+      "confidence": 0.93,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right exterior wall; several window segments bridged."
+    },
+    {
+      "id": "W003",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 909,
+        "y": 798
+      },
+      "end": {
+        "x": 159,
+        "y": 798
+      },
+      "confidence": 0.93,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom exterior wall; window segments bridged."
+    },
+    {
+      "id": "W004",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 159,
+        "y": 798
+      },
+      "end": {
+        "x": 159,
+        "y": 365
+      },
+      "confidence": 0.92,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left exterior wall of lower wing; window segments bridged."
+    },
+    {
+      "id": "W005",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 159,
+        "y": 365
+      },
+      "end": {
+        "x": 354,
+        "y": 365
+      },
+      "confidence": 0.89,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top exterior wall of lower-left wing; includes bridged window/door-like glazing marks where structural wall continues."
+    },
+    {
+      "id": "W006",
+      "role": "outer",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "window-bridged",
+      "start": {
+        "x": 354,
+        "y": 365
+      },
+      "end": {
+        "x": 354,
+        "y": 111
+      },
+      "confidence": 0.9,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left exterior wall of upper block, continuing past the lower-wing junction."
+    },
+    {
+      "id": "W007",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 354,
+        "y": 306
+      },
+      "end": {
+        "x": 485,
+        "y": 306
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Lower boundary of upper-left bedroom, split at door opening."
+    },
+    {
+      "id": "W008",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 541,
+        "y": 306
+      },
+      "end": {
+        "x": 650,
+        "y": 306
+      },
+      "confidence": 0.8,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Continuation of upper-left bedroom lower wall after door opening."
+    },
+    {
+      "id": "W009",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 541,
+        "y": 126
+      },
+      "end": {
+        "x": 541,
+        "y": 250
+      },
+      "confidence": 0.73,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right-side partition of upper-left bedroom / service core; approximate due to nearby fixture symbols."
+    },
+    {
+      "id": "W010",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 552,
+        "y": 126
+      },
+      "end": {
+        "x": 552,
+        "y": 197
+      },
+      "confidence": 0.68,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Small upper service/wet-area partition; extracted only from stronger room-boundary line."
+    },
+    {
+      "id": "W011",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 552,
+        "y": 197
+      },
+      "end": {
+        "x": 600,
+        "y": 197
+      },
+      "confidence": 0.66,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom wall of small upper service room."
+    },
+    {
+      "id": "W012",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 600,
+        "y": 126
+      },
+      "end": {
+        "x": 600,
+        "y": 197
+      },
+      "confidence": 0.63,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short internal wet-area partition, approximate."
+    },
+    {
+      "id": "W013",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 704,
+        "y": 126
+      },
+      "end": {
+        "x": 704,
+        "y": 197
+      },
+      "confidence": 0.7,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between upper service area and kitchen zone."
+    },
+    {
+      "id": "W014",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 641,
+        "y": 197
+      },
+      "end": {
+        "x": 704,
+        "y": 197
+      },
+      "confidence": 0.68,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Lower boundary of small upper service area."
+    },
+    {
+      "id": "W015",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 354,
+        "y": 319
+      },
+      "end": {
+        "x": 650,
+        "y": 319
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Major wall above stair/core area; partly coincident with bedroom boundary."
+    },
+    {
+      "id": "W016",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 354,
+        "y": 319
+      },
+      "end": {
+        "x": 354,
+        "y": 470
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left boundary of central stair/core area."
+    },
+    {
+      "id": "W017",
+      "role": "inner",
+      "sourceEvidence": "thick-wall",
+      "openingPolicy": "none",
+      "start": {
+        "x": 354,
+        "y": 470
+      },
+      "end": {
+        "x": 584,
+        "y": 470
+      },
+      "confidence": 0.83,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Lower wall of central stair/core area."
+    },
+    {
+      "id": "W018",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 584,
+        "y": 319
+      },
+      "end": {
+        "x": 584,
+        "y": 470
+      },
+      "confidence": 0.66,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right boundary of stair/core; nearby door swing and railing graphics ignored."
+    },
+    {
+      "id": "W019",
+      "role": "balcony",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 159,
+        "y": 452
+      },
+      "end": {
+        "x": 357,
+        "y": 452
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Horizontal partition below lower-left balcony/service space."
+    },
+    {
+      "id": "W020",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 249,
+        "y": 365
+      },
+      "end": {
+        "x": 249,
+        "y": 452
+      },
+      "confidence": 0.7,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short partition in lower-left service/balcony area."
+    },
+    {
+      "id": "W021",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 249,
+        "y": 452
+      },
+      "end": {
+        "x": 249,
+        "y": 513
+      },
+      "confidence": 0.77,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bathroom/bedroom partition, upper part split at door opening."
+    },
+    {
+      "id": "W022",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 249,
+        "y": 557
+      },
+      "end": {
+        "x": 249,
+        "y": 610
+      },
+      "confidence": 0.76,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bathroom/bedroom partition, lower part after door opening."
+    },
+    {
+      "id": "W023",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 159,
+        "y": 610
+      },
+      "end": {
+        "x": 282,
+        "y": 610
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom wall of lower-left bathroom / top wall of lower-left bedroom, stopped before visible door opening."
+    },
+    {
+      "id": "W024",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 340,
+        "y": 610
+      },
+      "end": {
+        "x": 340,
+        "y": 798
+      },
+      "confidence": 0.83,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between lower-left bedroom and central living zone."
+    },
+    {
+      "id": "W025",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 357,
+        "y": 365
+      },
+      "end": {
+        "x": 357,
+        "y": 470
+      },
+      "confidence": 0.72,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right edge of lower-left balcony/service area and left edge of central core."
+    },
+    {
+      "id": "W026",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 530,
+        "y": 610
+      },
+      "end": {
+        "x": 530,
+        "y": 798
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between central living area and lower middle bedroom."
+    },
+    {
+      "id": "W027",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 590,
+        "y": 610
+      },
+      "end": {
+        "x": 672,
+        "y": 610
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top wall of lower middle bedroom after door opening."
+    },
+    {
+      "id": "W028",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 672,
+        "y": 426
+      },
+      "end": {
+        "x": 672,
+        "y": 610
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Vertical partition between hallway/living zones and lower middle bedroom area."
+    },
+    {
+      "id": "W029",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 635,
+        "y": 426
+      },
+      "end": {
+        "x": 672,
+        "y": 426
+      },
+      "confidence": 0.65,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short horizontal hallway partition; approximate."
+    },
+    {
+      "id": "W030",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 635,
+        "y": 426
+      },
+      "end": {
+        "x": 635,
+        "y": 535
+      },
+      "confidence": 0.67,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short vertical hallway/entry partition, extracted from room boundary."
+    },
+    {
+      "id": "W031",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 568,
+        "y": 535
+      },
+      "end": {
+        "x": 635,
+        "y": 535
+      },
+      "confidence": 0.63,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Small horizontal partition near central hall; low confidence but appears structural."
+    },
+    {
+      "id": "W032",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 568,
+        "y": 470
+      },
+      "end": {
+        "x": 568,
+        "y": 535
+      },
+      "confidence": 0.62,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short central partition adjacent to hall/entry; approximate."
+    },
+    {
+      "id": "W033",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 754,
+        "y": 319
+      },
+      "end": {
+        "x": 909,
+        "y": 319
+      },
+      "confidence": 0.84,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top boundary of upper-right bathroom / lower kitchen wall."
+    },
+    {
+      "id": "W034",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 754,
+        "y": 319
+      },
+      "end": {
+        "x": 754,
+        "y": 368
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Left boundary of upper-right bathroom, split at door opening."
+    },
+    {
+      "id": "W035",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 754,
+        "y": 414
+      },
+      "end": {
+        "x": 754,
+        "y": 421
+      },
+      "confidence": 0.55,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Very short wall remnant below upper-right bathroom door opening."
+    },
+    {
+      "id": "W036",
+      "role": "wet-area",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 754,
+        "y": 421
+      },
+      "end": {
+        "x": 909,
+        "y": 421
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Bottom boundary of upper-right bathroom / top boundary of right living room."
+    },
+    {
+      "id": "W037",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 672,
+        "y": 610
+      },
+      "end": {
+        "x": 724,
+        "y": 610
+      },
+      "confidence": 0.78,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Horizontal partition between right living area and bedrooms, split at door opening."
+    },
+    {
+      "id": "W038",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "door-gap-split",
+      "start": {
+        "x": 760,
+        "y": 610
+      },
+      "end": {
+        "x": 909,
+        "y": 610
+      },
+      "confidence": 0.82,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Continuation of right bedroom top wall after visible door opening."
+    },
+    {
+      "id": "W039",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 724,
+        "y": 610
+      },
+      "end": {
+        "x": 724,
+        "y": 798
+      },
+      "confidence": 0.86,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Partition between lower middle bedroom and lower-right bedroom."
+    },
+    {
+      "id": "W040",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 650,
+        "y": 306
+      },
+      "end": {
+        "x": 754,
+        "y": 306
+      },
+      "confidence": 0.75,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Top wall of central entry/hall zone, below kitchen area."
+    },
+    {
+      "id": "W041",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 704,
+        "y": 306
+      },
+      "end": {
+        "x": 704,
+        "y": 396
+      },
+      "confidence": 0.69,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Right side of central entry/hall zone; approximate around door symbols."
+    },
+    {
+      "id": "W042",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 650,
+        "y": 306
+      },
+      "end": {
+        "x": 650,
+        "y": 470
+      },
+      "confidence": 0.72,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Central vertical partition between stair/core and entry/hall."
+    },
+    {
+      "id": "W043",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 704,
+        "y": 396
+      },
+      "end": {
+        "x": 754,
+        "y": 396
+      },
+      "confidence": 0.58,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Short hall/bath transition wall; low confidence due to adjacent door swing."
+    },
+    {
+      "id": "W044",
+      "role": "inner",
+      "sourceEvidence": "room-boundary",
+      "openingPolicy": "none",
+      "start": {
+        "x": 672,
+        "y": 306
+      },
+      "end": {
+        "x": 672,
+        "y": 421
+      },
+      "confidence": 0.64,
+      "lengthMm": null,
+      "lengthText": null,
+      "dimensionEvidence": null,
+      "notes": "Interior vertical room-boundary line near entry/kitchen, approximate."
+    }
+  ],
+  "dimensionTexts": [],
+  "scaleCandidates": [],
+  "rejectionSummary": {
+    "doorSymbols": 9,
+    "windowFrameOnly": 14,
+    "furnitureOrFixtures": 24,
+    "dimensionOrText": 0,
+    "textureOrHatching": 18,
+    "uiChrome": 0
+  },
+  "warnings": [
+    "No clear printed dimensions were visible, so lengthMm and lengthText are null for all wall segments.",
+    "Several interior partitions around the central hallway, stair, and wet areas are approximate because door arcs, fixtures, and stair graphics overlap nearby wall lines.",
+    "Window symbols on exterior walls were intentionally bridged and not emitted as separate frame wall segments."
+  ]
+}

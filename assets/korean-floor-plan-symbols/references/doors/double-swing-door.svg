@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-label="양개 여닫이문">
+  <rect width="160" height="120" fill="white"/>
+  <path d="M15 90 H145" stroke="#111" stroke-width="10" stroke-linecap="square"/>
+  <path d="M80 90 V35" stroke="#111" stroke-width="4"/>
+  <path d="M80 90 L35 45" stroke="#111" stroke-width="5" stroke-linecap="square"/>
+  <path d="M80 90 L125 45" stroke="#111" stroke-width="5" stroke-linecap="square"/>
+  <path d="M35 45 A64 64 0 0 1 80 90" fill="none" stroke="#111" stroke-width="3"/>
+  <path d="M125 45 A64 64 0 0 0 80 90" fill="none" stroke="#111" stroke-width="3"/>
+</svg>
+

@@ -75,6 +75,12 @@ import {
   FloorPlanAiCandidateReview,
   FloorPlanAiMissingWallHint,
   FloorPlanAiNormalizedLine,
+  FloorPlanAiObjectGraphDimensionText,
+  FloorPlanAiObjectGraphObject,
+  FloorPlanAiObjectGraphObjectType,
+  FloorPlanAiObjectGraphRegion,
+  FloorPlanAiObjectGraphRejectionSummary,
+  FloorPlanAiObjectGraphWall,
   FloorPlanAiRoomStructure,
   FloorPlanAiRoomStructureNoiseFlags,
   FloorPlanAiRoomStructurePlanStyle,
@@ -275,6 +281,239 @@ const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
     summary: { type: "string" }
   },
   required: ["summary", "planStyle", "noiseFlags", "rooms"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_PROMPT = `You extract a structured object graph from a Korean residential floor-plan image (apartment/villa/officetel) for a 2D/3D room modeling pipeline.
+Return JSON only, following the provided schema exactly.
+
+The original image size is {width}x{height} pixels. All coordinates use this original pixel coordinate system: origin at top-left, x to the right, y down.
+
+A second image may be provided: a reference sheet of Korean floor-plan symbols. Use it only to learn what each symbol looks like. Never copy geometry or coordinates from the reference sheet.
+
+## Region policy
+- Use floor color/texture ONLY to separate the home unit interior from non-home areas (common corridor, stairwell, elevator core, neighboring unit, background, app UI chrome).
+- homeRegions: output one "home" polygon covering the unit interior including balconies, and "excluded" polygons for adjacent non-home structures that could be mistaken for the unit.
+- Do not segment individual rooms by floor color.
+
+## Wall policy
+- Output structural wall centerlines. Merge double parallel lines and filled wall masses into ONE centerline at the visual center of the wall mass.
+- Prefer orthogonal horizontal/vertical segments. Split only at corners, T-junctions, and room-boundary turns.
+- Vertical walls must have identical x at both endpoints; horizontal walls identical y. Before emitting each wall, verify start/end are not accidentally collapsed (x equal to y by copy mistake). Diagonal walls are rare in Korean floor plans — only output one when the drawing clearly shows a slanted wall.
+- DO NOT split walls at door openings. Keep each wall centerline continuous through both doors and windows; report openings separately in objects. The client cuts door gaps later using your objects.
+- thicknessPx: wall mass thickness in pixels, or null if unclear.
+- Only include walls of the home unit. Never output walls that belong to excluded regions (neighbor unit, common core).
+- Never create walls from: door leaves, swing arcs, window frame/sash lines, furniture outlines, fixtures, stair treads, hatching/tile/wood textures, dimension lines, arrows, extension lines, text, watermarks, UI chrome.
+
+## Object policy
+Detect these symbol classes (type ids are fixed):
+- swingDoor: straight door leaf + quarter-circle swing arc at a wall opening (방문, 현관문).
+- doubleSwingDoor: two mirrored leaves with two arcs.
+- slidingDoor: overlapping thin parallel panels in an opening, no swing arc (미닫이문, 중문, 슬라이딩도어).
+- pocketDoor: a leaf that slides into a wall pocket, no arc.
+- window: thin double/triple frame lines drawn inside/on a wall band, no arc.
+- balconyWindow: long multi-track window frame on an exterior or balcony wall (샷시).
+- toilet: bowl ellipse + tank rectangle near a bathroom wall.
+- sink: small wash-basin rectangle/half-round on a bathroom wall.
+- bathtub: long rounded rectangle along a bathroom wall.
+- showerBooth: small partitioned corner with diagonal or drain mark.
+- floorDrain: small circle/square with cross or grid mark on wet-area floor.
+- kitchenSink: sink bowl rectangle on a counter line.
+- gasRange: rectangle containing 2-4 burner circles on a counter.
+- refrigerator: large appliance box in kitchen/utility area.
+- stairs: repeated parallel treads, may carry UP/DN text — only when inside the home unit.
+- elevator: shaft square with X — usually in excluded region; output only if inside the home unit.
+- column: small solid structural rectangle, attached to or separate from walls.
+
+For every object:
+- center and size: the axis-aligned bounding box in pixels (size measured before rotation).
+- rotationDeg: 0, 90, 180 or 270 — the rotation that maps the canonical upright symbol onto the drawing.
+- attachedWallId: id of the wall the object sits on or in, else null. Every door and window MUST reference a wall id when one exists; if you truly cannot match a wall, keep the object with attachedWallId null and lower confidence.
+- spanOnWall: doors/windows only — the exact segment of the wall centerline covered by the opening, both endpoints lying on that wall. null for non-openings.
+- swing: swingDoor/doubleSwingDoor only — hinge: which spanOnWall endpoint ("start" or "end") carries the hinge; opensTowards: a point roughly at the middle of the swept arc area, on the side the door opens into. null otherwise.
+- confidence 0..1 and a short evidence string (e.g. "leaf+arc at bathroom entry").
+
+Reject and count in rejectionSummary:
+- freestanding furniture (bed, sofa, table, wardrobe) unless clearly built-in
+- text labels, room-name text, area text
+- dimension lines, arrows, extension lines
+- hatching and floor textures
+- watermarks and screenshot UI
+
+## Dimension policy
+- dimensionTexts: printed dimension labels (e.g. "2051mm"), with valueMm parsed when clear and appliesTo describing the measured span.
+- scaleCandidates: when a printed dimension clearly matches a pixel span, output pixelLength, realLengthMm, pixelToMmRatio, confidence, sourceText.
+
+## Quality
+- Prefer missing a doubtful fixture over inventing one. Prefer missing a short wall over creating false geometry.
+- Wall endpoints that visually meet must share nearly identical coordinates (within a few pixels) so corners close cleanly.
+- When unsure, lower confidence and mention it in warnings.`;
+
+const FLOOR_PLAN_OBJECT_TYPES = [
+  "swingDoor",
+  "doubleSwingDoor",
+  "slidingDoor",
+  "pocketDoor",
+  "window",
+  "balconyWindow",
+  "toilet",
+  "sink",
+  "bathtub",
+  "showerBooth",
+  "floorDrain",
+  "kitchenSink",
+  "gasRange",
+  "refrigerator",
+  "stairs",
+  "elevator",
+  "column"
+] as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x: { type: "number" },
+    y: { type: "number" }
+  },
+  required: ["x", "y"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    dimensionTexts: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          appliesTo: { type: "string" },
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          text: { type: "string" },
+          valueMm: { type: ["number", "null"] }
+        },
+        required: ["text", "valueMm", "appliesTo", "confidence"],
+        type: "object"
+      },
+      maxItems: 40,
+      type: "array"
+    },
+    homeRegions: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          kind: { enum: ["home", "excluded"], type: "string" },
+          polygon: {
+            items: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+            maxItems: 40,
+            minItems: 3,
+            type: "array"
+          }
+        },
+        required: ["kind", "polygon"],
+        type: "object"
+      },
+      maxItems: 8,
+      type: "array"
+    },
+    objects: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          attachedWallId: { type: ["string", "null"] },
+          center: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          evidence: { type: "string" },
+          id: { type: "string" },
+          rotationDeg: { enum: [0, 90, 180, 270], type: "number" },
+          size: {
+            additionalProperties: false,
+            properties: {
+              height: { minimum: 0, type: "number" },
+              width: { minimum: 0, type: "number" }
+            },
+            required: ["width", "height"],
+            type: "object"
+          },
+          spanOnWall: {
+            additionalProperties: false,
+            properties: {
+              end: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+              start: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA
+            },
+            required: ["start", "end"],
+            type: ["object", "null"]
+          },
+          swing: {
+            additionalProperties: false,
+            properties: {
+              hinge: { enum: ["start", "end"], type: "string" },
+              opensTowards: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA
+            },
+            required: ["hinge", "opensTowards"],
+            type: ["object", "null"]
+          },
+          type: { enum: FLOOR_PLAN_OBJECT_TYPES, type: "string" }
+        },
+        required: ["id", "type", "center", "size", "rotationDeg", "attachedWallId", "spanOnWall", "swing", "confidence", "evidence"],
+        type: "object"
+      },
+      maxItems: 60,
+      type: "array"
+    },
+    rejectionSummary: {
+      additionalProperties: false,
+      properties: {
+        dimensionOrText: { minimum: 0, type: "integer" },
+        doorSymbols: { minimum: 0, type: "integer" },
+        furnitureOrFixtures: { minimum: 0, type: "integer" },
+        textureOrHatching: { minimum: 0, type: "integer" },
+        uiChrome: { minimum: 0, type: "integer" },
+        windowFrameOnly: { minimum: 0, type: "integer" }
+      },
+      required: ["doorSymbols", "windowFrameOnly", "furnitureOrFixtures", "dimensionOrText", "textureOrHatching", "uiChrome"],
+      type: "object"
+    },
+    scaleCandidates: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          pixelLength: { minimum: 0, type: "number" },
+          pixelToMmRatio: { minimum: 0, type: "number" },
+          realLengthMm: { minimum: 0, type: "number" },
+          sourceText: { type: "string" }
+        },
+        required: ["pixelLength", "realLengthMm", "pixelToMmRatio", "confidence", "sourceText"],
+        type: "object"
+      },
+      maxItems: 30,
+      type: "array"
+    },
+    summary: { type: "string" },
+    walls: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          end: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          id: { type: "string" },
+          role: { enum: ["outer", "inner", "balcony", "wet-area", "unknown"], type: "string" },
+          start: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          thicknessPx: { type: ["number", "null"] }
+        },
+        required: ["id", "start", "end", "thicknessPx", "role", "confidence"],
+        type: "object"
+      },
+      maxItems: 90,
+      type: "array"
+    },
+    warnings: {
+      items: { type: "string" },
+      maxItems: 20,
+      type: "array"
+    }
+  },
+  required: ["summary", "warnings", "homeRegions", "walls", "objects", "dimensionTexts", "scaleCandidates", "rejectionSummary"],
   type: "object"
 } as const;
 
@@ -2587,6 +2826,7 @@ export class RoomlogService {
       furnitures: [],
       room3d: this.validJsonObject(input.room3d),
       extractionMeta: this.validExtractionMeta(input.extractionMeta),
+      objects: this.validFloorPlanCandidates(input.objects),
       openings: this.validFloorPlanCandidates(input.openings),
       fixtures: this.validFloorPlanCandidates(input.fixtures),
       createdAt,
@@ -2645,6 +2885,9 @@ export class RoomlogService {
     if (input.extractionMeta !== undefined) {
       draft.extractionMeta = this.validExtractionMeta(input.extractionMeta);
     }
+    if (input.objects !== undefined) {
+      draft.objects = this.validFloorPlanCandidates(input.objects);
+    }
     if (input.openings !== undefined) {
       draft.openings = this.validFloorPlanCandidates(input.openings);
     }
@@ -2696,6 +2939,10 @@ export class RoomlogService {
 
       if (input.analysisMode === "room-structure") {
         return this.analyzeFloorPlanRoomStructureWithOpenAi(model, imageDataUrl, input.prompt);
+      }
+
+      if (input.analysisMode === "object-graph") {
+        return this.analyzeFloorPlanObjectGraphWithOpenAi(model, imageDataUrl, input);
       }
 
       return this.analyzeFloorPlanWithOpenAiVision(model, imageDataUrl, input.prompt);
@@ -3105,6 +3352,134 @@ export class RoomlogService {
     }
   }
 
+  private async analyzeFloorPlanObjectGraphWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    input: FloorPlanAiAnalysisInput
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const imageWidth = Number(input.imageWidth);
+    const imageHeight = Number(input.imageHeight);
+    if (!Number.isFinite(imageWidth) || imageWidth <= 0 || !Number.isFinite(imageHeight) || imageHeight <= 0) {
+      return {
+        analysisMode: "object-graph",
+        dimensionTexts: [],
+        homeRegions: [],
+        model,
+        mode: "vision-reasoning",
+        objects: [],
+        rejectionSummary: this.emptyAiObjectGraphRejectionSummary(),
+        scaleCandidates: [],
+        status: "failed",
+        summary: "imageWidth/imageHeight가 필요합니다",
+        textDetections: [],
+        walls: [],
+        warnings: ["imageWidth/imageHeight가 필요합니다"]
+      };
+    }
+
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_OBJECT_MODEL || process.env.OPENAI_FLOOR_PLAN_MODEL || "gpt-5.5";
+    const referenceSheet = this.floorPlanSymbolReferenceSheetDataUrl();
+    const referenceWarnings = referenceSheet.warning ? [referenceSheet.warning] : [];
+    const promptText = (input.prompt?.trim() || FLOOR_PLAN_OBJECT_GRAPH_PROMPT)
+      .replaceAll("{width}", String(Math.round(imageWidth)))
+      .replaceAll("{height}", String(Math.round(imageHeight)));
+    const content = [
+      { type: "input_text", text: promptText },
+      { type: "input_image", image_url: imageDataUrl, detail: "high" },
+      ...(referenceSheet.dataUrl ? [{ type: "input_image", image_url: referenceSheet.dataUrl, detail: "high" }] : [])
+    ];
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-object-graph", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          input: [
+            {
+              role: "user",
+              content
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_object_graph",
+              schema: FLOOR_PLAN_OBJECT_GRAPH_SCHEMA,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan object graph failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+      const warnings = [
+        ...referenceWarnings,
+        ...this.validAiObjectGraphWarnings(parsed.warnings)
+      ];
+
+      return {
+        analysisMode: "object-graph",
+        dimensionTexts: this.validAiObjectGraphDimensionTexts(parsed.dimensionTexts),
+        homeRegions: this.validAiObjectGraphRegions(parsed.homeRegions),
+        model,
+        mode: "vision-reasoning",
+        objects: this.validAiObjectGraphObjects(parsed.objects),
+        rejectionSummary: this.validAiObjectGraphRejectionSummary(parsed.rejectionSummary),
+        scaleCandidates: this.validAiObjectGraphScaleCandidates(parsed.scaleCandidates),
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 도면 객체 그래프를 분석했습니다.",
+        textDetections: [],
+        walls: this.validAiObjectGraphWalls(parsed.walls),
+        rawText,
+        warnings
+      };
+    } catch {
+      return {
+        analysisMode: "object-graph",
+        dimensionTexts: [],
+        homeRegions: [],
+        model,
+        mode: "vision-reasoning",
+        objects: [],
+        rejectionSummary: this.emptyAiObjectGraphRejectionSummary(),
+        scaleCandidates: [],
+        status: "failed",
+        summary: "OpenAI 도면 객체 그래프 분석에 실패했습니다. OpenCV 추출 결과를 사용하세요.",
+        textDetections: [],
+        walls: [],
+        warnings: referenceWarnings
+      };
+    }
+  }
+
+  private floorPlanSymbolReferenceSheetDataUrl() {
+    const relativePath = join("assets", "korean-floor-plan-symbols", "reference-sheet.png");
+    const candidates = [
+      join(process.cwd(), relativePath),
+      join(process.cwd(), "apps", "api", relativePath)
+    ];
+    const filePath = candidates.find((candidate) => existsSync(candidate));
+
+    if (!filePath) {
+      return { warning: "한국 도면 기호 참조 시트를 찾지 못해 도면 이미지만 분석했습니다." };
+    }
+
+    try {
+      return { dataUrl: `data:image/png;base64,${readFileSync(filePath).toString("base64")}` };
+    } catch {
+      return { warning: "한국 도면 기호 참조 시트를 읽지 못해 도면 이미지만 분석했습니다." };
+    }
+  }
+
   private extractOpenAiResponseText(payload: Record<string, unknown>) {
     if (typeof payload.output_text === "string") return payload.output_text;
 
@@ -3134,6 +3509,12 @@ export class RoomlogService {
     planStyle?: unknown;
     rooms?: unknown;
     summary?: string;
+    warnings?: unknown;
+    homeRegions?: unknown;
+    walls?: unknown;
+    objects?: unknown;
+    dimensionTexts?: unknown;
+    rejectionSummary?: unknown;
     textDetections?: unknown;
     scaleCandidates?: unknown;
   } {
@@ -3147,9 +3528,15 @@ export class RoomlogService {
         candidateReviews: parsed.candidateReviews,
         missingWallHints: parsed.missingWallHints,
         noiseFlags: parsed.noiseFlags,
+        objects: parsed.objects,
         planStyle: parsed.planStyle,
+        rejectionSummary: parsed.rejectionSummary,
         rooms: parsed.rooms,
         summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+        warnings: parsed.warnings,
+        homeRegions: parsed.homeRegions,
+        walls: parsed.walls,
+        dimensionTexts: parsed.dimensionTexts,
         textDetections: parsed.textDetections,
         scaleCandidates: parsed.scaleCandidates
       };
@@ -3202,6 +3589,205 @@ export class RoomlogService {
         }
       ];
     });
+  }
+
+  private validAiObjectGraphWarnings(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const text = typeof item === "string" ? item.trim() : "";
+      return text ? [text.slice(0, 220)] : [];
+    });
+  }
+
+  private validAiObjectGraphRegions(value: unknown): FloorPlanAiObjectGraphRegion[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 8).flatMap((item) => {
+      const kind = item?.kind;
+      const polygon = this.validAiObjectGraphPolygon(item?.polygon, 40);
+      if ((kind !== "home" && kind !== "excluded") || !polygon) return [];
+
+      return [{ kind, polygon }];
+    });
+  }
+
+  private validAiObjectGraphWalls(value: unknown): FloorPlanAiObjectGraphWall[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 90).flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim().slice(0, 40) : "";
+      const start = this.validAiObjectGraphPoint(item?.start);
+      const end = this.validAiObjectGraphPoint(item?.end);
+      const role = item?.role;
+      const confidence = Number(item?.confidence);
+      const thicknessPx = Number(item?.thicknessPx);
+      if (!id || !start || !end) return [];
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          end,
+          id,
+          role: role === "outer" || role === "inner" || role === "balcony" || role === "wet-area" || role === "unknown" ? role : "unknown",
+          start,
+          thicknessPx: Number.isFinite(thicknessPx) && thicknessPx >= 0 ? thicknessPx : null
+        }
+      ];
+    });
+  }
+
+  private validAiObjectGraphObjects(value: unknown): FloorPlanAiObjectGraphObject[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 60).flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim().slice(0, 40) : "";
+      const type = item?.type;
+      const center = this.validAiObjectGraphPoint(item?.center);
+      const size = item?.size as { height?: unknown; width?: unknown } | undefined;
+      const width = Number(size?.width);
+      const height = Number(size?.height);
+      const rotationDeg = Number(item?.rotationDeg);
+      const confidence = Number(item?.confidence);
+      if (!id || !this.isFloorPlanObjectGraphType(type) || !center || !Number.isFinite(width) || width < 0 || !Number.isFinite(height) || height < 0) {
+        return [];
+      }
+
+      const attachedWallId = typeof item?.attachedWallId === "string" && item.attachedWallId.trim()
+        ? item.attachedWallId.trim().slice(0, 40)
+        : null;
+      const spanOnWall = this.validAiObjectGraphSpan(item?.spanOnWall);
+      const swing = this.validAiObjectGraphSwing(item?.swing);
+
+      return [
+        {
+          attachedWallId,
+          center,
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          evidence: typeof item?.evidence === "string" ? item.evidence.trim().slice(0, 160) : "",
+          id,
+          rotationDeg: rotationDeg === 90 || rotationDeg === 180 || rotationDeg === 270 ? rotationDeg : 0,
+          size: { height, width },
+          spanOnWall,
+          swing,
+          type
+        }
+      ];
+    });
+  }
+
+  private validAiObjectGraphDimensionTexts(value: unknown): FloorPlanAiObjectGraphDimensionText[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 40).flatMap((item) => {
+      const text = typeof item?.text === "string" ? item.text.trim().slice(0, 80) : "";
+      const appliesTo = typeof item?.appliesTo === "string" ? item.appliesTo.trim().slice(0, 160) : "";
+      const valueMm = Number(item?.valueMm);
+      const confidence = Number(item?.confidence);
+      if (!text) return [];
+
+      return [
+        {
+          appliesTo,
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          text,
+          valueMm: Number.isFinite(valueMm) && valueMm > 0 ? valueMm : null
+        }
+      ];
+    });
+  }
+
+  private validAiObjectGraphScaleCandidates(value: unknown): FloorPlanAiScaleCandidate[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 30).flatMap((item) => {
+      const realLengthMm = Number(item?.realLengthMm);
+      const pixelLength = Number(item?.pixelLength);
+      const pixelToMmRatio = Number(item?.pixelToMmRatio);
+      const confidence = Number(item?.confidence);
+      if (!Number.isFinite(realLengthMm) || realLengthMm <= 0 || !Number.isFinite(pixelLength) || pixelLength <= 0) return [];
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          pixelLength,
+          pixelToMmRatio: Number.isFinite(pixelToMmRatio) && pixelToMmRatio > 0 ? pixelToMmRatio : realLengthMm / pixelLength,
+          realLengthMm,
+          source: typeof item?.sourceText === "string" ? item.sourceText : typeof item?.source === "string" ? item.source : "openai-object-graph"
+        }
+      ];
+    });
+  }
+
+  private validAiObjectGraphRejectionSummary(value: unknown): FloorPlanAiObjectGraphRejectionSummary {
+    const item = value as Partial<Record<keyof FloorPlanAiObjectGraphRejectionSummary, unknown>> | undefined;
+
+    return {
+      dimensionOrText: this.validAiObjectGraphCount(item?.dimensionOrText),
+      doorSymbols: this.validAiObjectGraphCount(item?.doorSymbols),
+      furnitureOrFixtures: this.validAiObjectGraphCount(item?.furnitureOrFixtures),
+      textureOrHatching: this.validAiObjectGraphCount(item?.textureOrHatching),
+      uiChrome: this.validAiObjectGraphCount(item?.uiChrome),
+      windowFrameOnly: this.validAiObjectGraphCount(item?.windowFrameOnly)
+    };
+  }
+
+  private emptyAiObjectGraphRejectionSummary(): FloorPlanAiObjectGraphRejectionSummary {
+    return {
+      dimensionOrText: 0,
+      doorSymbols: 0,
+      furnitureOrFixtures: 0,
+      textureOrHatching: 0,
+      uiChrome: 0,
+      windowFrameOnly: 0
+    };
+  }
+
+  private validAiObjectGraphPoint(value: unknown) {
+    const item = value as { x?: unknown; y?: unknown } | undefined;
+    const x = Number(item?.x);
+    const y = Number(item?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+
+    return { x, y };
+  }
+
+  private validAiObjectGraphPolygon(value: unknown, maxItems: number) {
+    if (!Array.isArray(value) || value.length < 3 || value.length > maxItems) return undefined;
+    const points = value.flatMap((point) => {
+      const validPoint = this.validAiObjectGraphPoint(point);
+      return validPoint ? [validPoint] : [];
+    });
+
+    return points.length === value.length ? points : undefined;
+  }
+
+  private validAiObjectGraphSpan(value: unknown) {
+    if (value === null || value === undefined) return null;
+    const item = value as { end?: unknown; start?: unknown };
+    const start = this.validAiObjectGraphPoint(item.start);
+    const end = this.validAiObjectGraphPoint(item.end);
+
+    return start && end ? { end, start } : null;
+  }
+
+  private validAiObjectGraphSwing(value: unknown): { hinge: "start" | "end"; opensTowards: { x: number; y: number } } | null {
+    if (value === null || value === undefined) return null;
+    const item = value as { hinge?: unknown; opensTowards?: unknown };
+    const opensTowards = this.validAiObjectGraphPoint(item.opensTowards);
+    if ((item.hinge !== "start" && item.hinge !== "end") || !opensTowards) return null;
+
+    return { hinge: item.hinge, opensTowards };
+  }
+
+  private validAiObjectGraphCount(value: unknown) {
+    const count = Number(value);
+
+    return Number.isFinite(count) && count > 0 ? Math.round(count) : 0;
+  }
+
+  private isFloorPlanObjectGraphType(value: unknown): value is FloorPlanAiObjectGraphObjectType {
+    return typeof value === "string" && FLOOR_PLAN_OBJECT_TYPES.includes(value as FloorPlanAiObjectGraphObjectType);
   }
 
   private validAiCandidateReviews(value: unknown): FloorPlanAiCandidateReview[] {
@@ -3581,6 +4167,7 @@ export class RoomlogService {
         ...floorPlan,
         roomId: floorPlan.roomId,
         extractionMeta: floorPlan.extractionMeta ?? { scaleConfirmed: false },
+        objects: floorPlan.objects ?? [],
         openings: floorPlan.openings ?? [],
         fixtures: floorPlan.fixtures ?? [],
         furnitures: []

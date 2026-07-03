@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="샤워부스">
+  <rect width="120" height="120" fill="white"/>
+  <rect x="24" y="24" width="72" height="72" fill="none" stroke="#111" stroke-width="5"/>
+  <path d="M24 96 L96 24" stroke="#111" stroke-width="3"/>
+  <circle cx="44" cy="44" r="8" fill="none" stroke="#111" stroke-width="3"/>
+  <path d="M52 44 H76 M76 44 Q86 44 86 54" fill="none" stroke="#111" stroke-width="3"/>
+</svg>
+

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80" role="img" aria-label="발코니 창호">
+  <rect width="220" height="80" fill="white"/>
+  <path d="M10 16 H210" stroke="#111" stroke-width="9" stroke-linecap="square"/>
+  <path d="M10 64 H210" stroke="#111" stroke-width="9" stroke-linecap="square"/>
+  <path d="M28 30 H192" stroke="#111" stroke-width="3"/>
+  <path d="M28 40 H192" stroke="#111" stroke-width="2"/>
+  <path d="M28 50 H192" stroke="#111" stroke-width="3"/>
+  <path d="M70 28 V52 M110 28 V52 M150 28 V52" stroke="#111" stroke-width="2"/>
+</svg>
+

@@ -30,6 +30,44 @@ export type FloorPlanCandidate = {
   widthMm?: number;
 };
 
+export type FloorPlanObjectCategory = "opening" | "fixture" | "structure";
+export type FloorPlanObjectType =
+  | "swingDoor"
+  | "doubleSwingDoor"
+  | "slidingDoor"
+  | "pocketDoor"
+  | "window"
+  | "balconyWindow"
+  | "toilet"
+  | "sink"
+  | "bathtub"
+  | "showerBooth"
+  | "floorDrain"
+  | "kitchenSink"
+  | "gasRange"
+  | "refrigerator"
+  | "stairs"
+  | "elevator"
+  | "column";
+
+export type FloorPlanObject = {
+  attachedWallId?: string;
+  category: FloorPlanObjectCategory;
+  center: Point;
+  confidence?: number;
+  evidence?: string;
+  id: string;
+  label?: string;
+  rotationDeg: number;
+  size: { height: number; width: number };
+  sizeMm?: { depth: number; width: number };
+  source: string;
+  spanOnWall?: { end: Point; start: Point };
+  status: CandidateStatus;
+  swing?: { hinge: "start" | "end"; opensTowards: Point };
+  type: FloorPlanObjectType;
+};
+
 export type ScaleCandidate = {
   confidence: number;
   line?: DetectedLine;
@@ -45,6 +83,8 @@ export type ExtractionMeta = {
   dimensionCandidateCount?: number;
   aiCandidateReviewCount?: number;
   aiGeneratedWallCount?: number;
+  aiObjectCount?: number;
+  aiObjectGraphStatus?: string;
   aiModel?: string;
   aiNoiseFlags?: { decorativeHatching: boolean; watermark: boolean };
   aiPhase1Status?: string;
