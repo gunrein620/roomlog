@@ -293,11 +293,6 @@ const savedComparisonItems = [
   { label: "방문 후보", value: "오늘 3시", caption: "2개 매물 가능" }
 ];
 
-const inquiryTimelineItems = [
-  { time: "방금", title: "문자문의 작성 가능", body: "매물 상세에서 바로 문의를 보낼 수 있습니다." },
-  { time: "5분 전", title: "중개사 평균 응답 8분", body: "답변이 오면 문의센터에서 상태를 확인합니다." }
-];
-
 const homeWebSummaryItems = [
   { label: "중개사 응답", value: "평균 8분" },
   { label: "오늘 확인", value: "39개" },
@@ -623,6 +618,34 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
+type InquiryStatus = "답변 대기" | "답변 완료";
+
+type InquiryItem = {
+  id: number;
+  listingTitle: string;
+  broker: string;
+  message: string;
+  visitTime: string;
+  status: InquiryStatus;
+  reply?: string;
+  time: string;
+};
+
+const initialInquiries: InquiryItem[] = [
+  {
+    id: 1,
+    listingTitle: "방배 루미에르 402호",
+    broker: "내방역 푸른공인중개사",
+    message: "아직 거래 가능한가요?",
+    visitTime: "오늘 3시",
+    status: "답변 완료",
+    reply: "네, 아직 거래 가능합니다. 오늘 3시 방문도 가능해요.",
+    time: "10분 전"
+  }
+];
+
+const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
+
 const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as const;
 
 function LoginScreen({
@@ -792,7 +815,18 @@ function LoginScreen({
   );
 }
 
-function LandlordMyPage() {
+function MyPageRoleBar({ roleLabel, onSwitchRole }: { roleLabel: string; onSwitchRole: () => void }) {
+  return (
+    <div className="mypage-role-bar">
+      <span>
+        현재 <b>{roleLabel}</b> 모드로 보는 중
+      </span>
+      <button type="button" onClick={onSwitchRole}>역할 전환</button>
+    </div>
+  );
+}
+
+function LandlordMyPage({ onSwitchRole }: { onSwitchRole: () => void }) {
   const [ownerForm, setOwnerForm] = useState({
     title: "방배 루미에르 402호",
     address: "서울특별시 서초구 방배동",
@@ -808,12 +842,31 @@ function LandlordMyPage() {
   const [photoCount, setPhotoCount] = useState(0);
   const [has3DRoom, setHas3DRoom] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState("작성 중");
+  const [myListings, setMyListings] = useState([
+    { id: 1, title: "방배 루미에르 302호", price: "월세 1000/125", status: "노출중", caption: "조회 128 · 문의 6건" }
+  ]);
+  const [ownerToast, setOwnerToast] = useState("");
   const updateOwnerForm = (key: keyof typeof ownerForm, value: string) => {
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
   const submitOwnerListing = () => {
+    const id = Date.now();
+
     setRegistrationStatus("검수 대기");
+    setMyListings((current) => [
+      { id, title: ownerForm.title, price: ownerPriceLabel, status: "검수 대기", caption: "실매물 확인 후 노출됩니다" },
+      ...current
+    ]);
+    setOwnerToast("검수 요청이 접수됐습니다. 확인이 끝나면 매물이 노출됩니다.");
+    window.setTimeout(() => {
+      setRegistrationStatus("노출중");
+      setMyListings((current) =>
+        current.map((item) => (item.id === id ? { ...item, status: "노출중", caption: "방금 노출 시작 · 문의 대기" } : item))
+      );
+      setOwnerToast("실매물 확인이 끝나 매물 노출이 시작됐습니다.");
+    }, 6000);
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
   const continueOwnerRegistration = () => {
     const scrollToOwnerForm = () => {
@@ -842,11 +895,15 @@ function LandlordMyPage() {
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
+      <MyPageRoleBar roleLabel="집주인" onSwitchRole={onSwitchRole} />
+
       <div className="owner-hero">
         <p className="brand-kicker">매물 관리</p>
         <h2 id="owner-title">집주인 마이페이지</h2>
         <p>사진, 가격, 3D 방 자료를 한 번에 정리해 매물 등록을 진행합니다.</p>
       </div>
+
+      {ownerToast ? <p className="mypage-toast" role="status">{ownerToast}</p> : null}
 
       <section className="owner-status-board" aria-label="등록 매물 현황">
         <article>
@@ -856,9 +913,31 @@ function LandlordMyPage() {
         </article>
         <article>
           <span>검수 상태</span>
-          <strong>{registrationStatus === "검수 대기" ? "실매물 확인 요청" : "실매물 확인 전"}</strong>
+          <strong>
+            {registrationStatus === "검수 대기"
+              ? "실매물 확인 요청"
+              : registrationStatus === "노출중"
+                ? "확인 완료 · 노출중"
+                : "실매물 확인 전"}
+          </strong>
           <p>{ownerForm.address} · {ownerPriceLabel}</p>
         </article>
+      </section>
+
+      <section className="owner-my-listings" aria-label="내 등록 매물">
+        <div className="owner-my-listings-head">
+          <strong>내 매물 {myListings.length}개</strong>
+          <span>검수 통과 시 자동 노출</span>
+        </div>
+        {myListings.map((item) => (
+          <article key={item.id}>
+            <div>
+              <strong>{item.title}</strong>
+              <small>{item.price} · {item.caption}</small>
+            </div>
+            <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+          </article>
+        ))}
       </section>
 
       <section className="owner-preview-card" aria-label="등록 매물 미리보기">
@@ -1215,12 +1294,14 @@ function ListingDetailView({
   listing,
   isSaved,
   onBack,
-  onToggleSaved
+  onToggleSaved,
+  onSubmitInquiry
 }: {
   listing: Listing;
   isSaved: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
+  onSubmitInquiry: (payload: { listingTitle: string; broker: string; message: string; visitTime: string }) => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
   const [isInquirySheetOpen, setIsInquirySheetOpen] = useState(false);
@@ -1849,12 +1930,28 @@ function ListingDetailView({
 
             <div className="inquiry-sheet-actions">
               <button type="button" onClick={() => setIsInquirySheetOpen(false)}>닫기</button>
-              <button type="button" onClick={() => setInquirySent(true)}>문의 보내기</button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!inquirySent) {
+                    onSubmitInquiry({
+                      listingTitle: listing.title,
+                      broker: listing.broker,
+                      message: selectedInquiryMessage,
+                      visitTime: selectedVisitTime
+                    });
+                  }
+
+                  setInquirySent(true);
+                }}
+              >
+                문의 보내기
+              </button>
             </div>
 
             {inquirySent ? (
               <p className="inquiry-submit-feedback" role="status">
-                문의가 접수됐습니다. 중개사가 평균 8분 안에 문자로 답변합니다.
+                문의가 접수됐습니다. 답변이 오면 문의센터와 마이페이지에서 확인할 수 있어요.
               </p>
             ) : null}
           </section>
@@ -1924,30 +2021,48 @@ function SavedListingsSection({
   );
 }
 
-function InquiryHubSection() {
-  const [inquiryNotice, setInquiryNotice] = useState("최근 문의 상태가 여기에 표시됩니다.");
+function InquiryHubSection({
+  inquiries,
+  onBrowseListings
+}: {
+  inquiries: InquiryItem[];
+  onBrowseListings: () => void;
+}) {
+  const pendingCount = inquiries.filter((item) => item.status === "답변 대기").length;
 
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
       <div className="section-title no-margin">
         <div>
           <h2 id="inquiry-title">문의센터</h2>
-          <p>방문 전 문자문의와 전화 상담 흐름을 바로 확인합니다.</p>
+          <p>보낸 문의 {inquiries.length}건 · 답변 대기 {pendingCount}건</p>
         </div>
-        <button type="button" onClick={() => setInquiryNotice("새 문의는 매물 상세에서 바로 보낼 수 있습니다.")}>새 문의</button>
+        <button type="button" onClick={onBrowseListings}>새 문의</button>
       </div>
 
-      <div className="inquiry-status-card">
-        <span>진행중 문의</span>
-        <strong>방배 루미에르 402호</strong>
-        <p>중개사가 평균 8분 안에 응답합니다. 로그인하지 않아도 문자문의가 가능합니다.</p>
-        <div>
-          <button type="button" onClick={() => setInquiryNotice("전화문의 대상: 대표 공인중개사 김하늘")}>전화문의</button>
-          <button type="button" onClick={() => setInquiryNotice("문자문의 대상: 방배 루미에르 402호")}>문자문의</button>
-        </div>
+      <div className="inquiry-history-list" aria-label="보낸 문의 목록">
+        {inquiries.map((item) => (
+          <article className="inquiry-history-card" key={item.id}>
+            <div className="inquiry-history-head">
+              <strong>{item.listingTitle}</strong>
+              <em className={item.status === "답변 완료" ? "done" : ""}>{item.status}</em>
+            </div>
+            <p>{item.message} · {item.visitTime} 방문 희망</p>
+            <small>{item.broker} · {item.time}</small>
+            {item.reply ? (
+              <div className="inquiry-reply-bubble">
+                <span>중개사 답변</span>
+                <p>{item.reply}</p>
+              </div>
+            ) : (
+              <div className="inquiry-reply-bubble waiting">
+                <span>답변 대기</span>
+                <p>중개사가 평균 8분 안에 문자로 답변합니다.</p>
+              </div>
+            )}
+          </article>
+        ))}
       </div>
-
-      <p className="inquiry-notice" role="status">{inquiryNotice}</p>
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
         <div className="inquiry-channel-head">
@@ -1963,22 +2078,6 @@ function InquiryHubSection() {
             </article>
           ))}
         </div>
-      </section>
-
-      <section className="inquiry-timeline-card" aria-label="문의 타임라인">
-        <div className="inquiry-timeline-head">
-          <span>문의 타임라인</span>
-          <strong>최근 문의 흐름</strong>
-        </div>
-        {inquiryTimelineItems.map((item) => (
-          <article key={item.title}>
-            <span>{item.time}</span>
-            <div>
-              <strong>{item.title}</strong>
-              <p>{item.body}</p>
-            </div>
-          </article>
-        ))}
       </section>
 
       <div className="inquiry-mini-grid">
@@ -1999,9 +2098,38 @@ function InquiryHubSection() {
   );
 }
 
-function UserMyPage({ roleLabel }: { roleLabel?: string }) {
+function UserMyPage({
+  roleLabel,
+  savedCount,
+  viewedListings,
+  inquiries,
+  onGoSaved,
+  onGoInquiry,
+  onOpenListing,
+  onOpenFilter,
+  onOpenNotifications,
+  onApplyCondition,
+  onSwitchRole
+}: {
+  roleLabel: string;
+  savedCount: number;
+  viewedListings: Listing[];
+  inquiries: InquiryItem[];
+  onGoSaved: () => void;
+  onGoInquiry: () => void;
+  onOpenListing: (listing: Listing) => void;
+  onOpenFilter: () => void;
+  onOpenNotifications: () => void;
+  onApplyCondition: (condition: (typeof savedConditions)[number]) => void;
+  onSwitchRole: () => void;
+}) {
+  const latestInquiry = inquiries[0];
+  const latestViewed = viewedListings[0];
+
   return (
     <section className="screen profile-screen" id="my-page" aria-labelledby="profile-title">
+      <MyPageRoleBar roleLabel={roleLabel} onSwitchRole={onSwitchRole} />
+
       <header className="profile-account-card">
         <div className="profile-avatar" aria-hidden="true">
           <UserRound size={26} strokeWidth={2.4} />
@@ -2014,28 +2142,33 @@ function UserMyPage({ roleLabel }: { roleLabel?: string }) {
       </header>
 
       <section className="profile-activity-grid" aria-label="내 활동 요약">
-        <article>
+        <article role="button" tabIndex={0} onClick={onGoSaved} onKeyDown={(event) => event.key === "Enter" && onGoSaved()}>
           <Heart size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>찜한 매물</span>
-          <strong>2개</strong>
+          <strong>{savedCount}개</strong>
         </article>
-        <article>
+        <article role="button" tabIndex={0} onClick={onGoInquiry} onKeyDown={(event) => event.key === "Enter" && onGoInquiry()}>
           <MessageCircle size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>문의 진행</span>
-          <strong>1건</strong>
+          <strong>{inquiries.length}건</strong>
         </article>
-        <article>
+        <article
+          role="button"
+          tabIndex={0}
+          onClick={() => (latestViewed ? onOpenListing(latestViewed) : onGoSaved())}
+          onKeyDown={(event) => event.key === "Enter" && (latestViewed ? onOpenListing(latestViewed) : onGoSaved())}
+        >
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
-          <span>저장 지역</span>
-          <strong>3곳</strong>
+          <span>최근 본 방</span>
+          <strong>{viewedListings.length}개</strong>
         </article>
       </section>
 
       <div className="profile-summary-list">
-        <article>
+        <article role="button" tabIndex={0} onClick={() => onApplyCondition(savedConditions[0])} onKeyDown={(event) => event.key === "Enter" && onApplyCondition(savedConditions[0])}>
           <span>저장 조건</span>
-          <strong>방배동 월세 1000/130 이하</strong>
-          <p>새 매물이 올라오면 홈에서 바로 확인합니다.</p>
+          <strong>{savedConditions[0].label}</strong>
+          <p>누르면 지도에서 이 조건으로 바로 확인합니다.</p>
         </article>
         <article>
           <span>입주 체크</span>
@@ -2047,22 +2180,47 @@ function UserMyPage({ roleLabel }: { roleLabel?: string }) {
       <section className="profile-inquiry-card" aria-label="최근 문의">
         <div>
           <span>최근 문의</span>
-          <strong>방배 루미에르 402호</strong>
-          <p>문자문의 가능 · 평균 응답 8분 · 오늘 3시 방문 후보</p>
+          <strong>{latestInquiry ? latestInquiry.listingTitle : "보낸 문의 없음"}</strong>
+          <p>
+            {latestInquiry
+              ? `${latestInquiry.message} · ${latestInquiry.status}`
+              : "매물 상세에서 문자문의를 보내면 여기에 표시됩니다."}
+          </p>
         </div>
-        <button type="button">문의 확인</button>
+        <button type="button" onClick={onGoInquiry}>문의 확인</button>
       </section>
+
+      {viewedListings.length > 0 ? (
+        <section className="recent-viewed-card" aria-label="최근 본 방">
+          <div className="recent-viewed-head">
+            <strong>최근 본 방</strong>
+            <span>{viewedListings.length}개</span>
+          </div>
+          {viewedListings.slice(0, 3).map((listing) => (
+            <button type="button" key={listing.listingNo} onClick={() => onOpenListing(listing)}>
+              <b>{listing.price}</b>
+              <span>{listing.title}</span>
+              <small>{listing.location}</small>
+            </button>
+          ))}
+        </section>
+      ) : null}
 
       <section className="profile-menu-card" aria-label="마이페이지 메뉴">
         {[
-          { label: "알림 설정", value: "새 매물 · 답변 알림", Icon: Bell },
-          { label: "검색 조건 관리", value: "예산, 지역, 옵션", Icon: SlidersHorizontal },
-          { label: "최근 본 방", value: "3개 매물 비교", Icon: MapPinned }
+          { label: "알림 설정", value: "새 매물 · 답변 알림", Icon: Bell, action: onOpenNotifications },
+          { label: "검색 조건 관리", value: "예산, 지역, 옵션", Icon: SlidersHorizontal, action: onOpenFilter },
+          {
+            label: "최근 본 방",
+            value: latestViewed ? `${latestViewed.title} 다시 보기` : "아직 본 방이 없어요",
+            Icon: MapPinned,
+            action: () => (latestViewed ? onOpenListing(latestViewed) : onGoSaved())
+          }
         ].map((item) => {
           const MenuIcon = item.Icon;
 
           return (
-            <button type="button" key={item.label}>
+            <button type="button" key={item.label} onClick={item.action}>
               <span aria-hidden="true">
                 <MenuIcon size={18} strokeWidth={2.4} />
               </span>
@@ -2078,14 +2236,46 @@ function UserMyPage({ roleLabel }: { roleLabel?: string }) {
   );
 }
 
-function TenantMyPage() {
+function TenantMyPage({ onSwitchRole, onGoInquiry }: { onSwitchRole: () => void; onGoInquiry: () => void }) {
+  const [repairRequests, setRepairRequests] = useState([
+    { id: 1, title: "창문 누수", status: "업체 배정" },
+    { id: 2, title: "욕실 타일 보수", status: "접수됨" }
+  ]);
+  const [selectedIssue, setSelectedIssue] = useState(tenantIssuePresets[0]);
+  const [maintenancePaid, setMaintenancePaid] = useState(false);
+  const [visitConfirmed, setVisitConfirmed] = useState(false);
+  const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
+  const [tenantToast, setTenantToast] = useState("");
+
+  const showToast = (message: string) => {
+    setTenantToast(message);
+    window.setTimeout(() => setTenantToast(""), 2400);
+  };
+  const addRepairRequest = () => {
+    setRepairRequests((current) => [{ id: Date.now(), title: selectedIssue, status: "접수됨" }, ...current]);
+    showToast("수리요청이 접수됐습니다. 관리인이 확인 후 업체를 배정합니다.");
+  };
+
+  const contractRows = [
+    ["임대인", "김우주"],
+    ["계약 기간", "2025-11-04 ~ 2027-11-03"],
+    ["보증금", "1,000만원"],
+    ["월세", "130만원"],
+    ["관리비", "12만 4,000원"],
+    ["특약", "재계약 시 월세 인상률 5% 이내"]
+  ];
+
   return (
     <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
+      <MyPageRoleBar roleLabel="세입자" onSwitchRole={onSwitchRole} />
+
       <div className="owner-hero compact-profile tenant-hero">
         <p className="brand-kicker">입주 생활</p>
         <h2 id="tenant-title">세입자 마이페이지</h2>
         <p>계약, 관리비, 수리요청, 방문 일정을 한 화면에서 확인합니다.</p>
       </div>
+
+      {tenantToast ? <p className="mypage-toast" role="status">{tenantToast}</p> : null}
 
       <section className="tenant-contract-card" aria-label="계약 상태">
         <div>
@@ -2093,33 +2283,140 @@ function TenantMyPage() {
           <strong>D-124 재계약 예정</strong>
           <p>방배 루미에르 402호 · 보증금 1,000만원 · 월세 130만원</p>
         </div>
-        <button type="button">계약서 보기</button>
+        <button type="button" onClick={() => setIsContractSheetOpen(true)}>계약서 보기</button>
       </section>
 
       <div className="tenant-task-grid" aria-label="세입자 할 일">
         <article>
           <span>수리요청</span>
-          <strong>02건</strong>
-          <p>창문 누수 · 욕실 타일</p>
+          <strong>{String(repairRequests.length).padStart(2, "0")}건</strong>
+          <p>{repairRequests.slice(0, 2).map((item) => item.title).join(" · ")}</p>
         </article>
         <article>
           <span>관리비</span>
-          <strong>124,000원</strong>
-          <p>이번 달 납부 예정</p>
+          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
+          <p>{maintenancePaid ? "7월분 납부 확인" : "이번 달 납부 예정"}</p>
         </article>
         <article>
           <span>방문 일정</span>
-          <strong>오늘 2:30</strong>
+          <strong>{visitConfirmed ? "확인 완료" : "오늘 2:30"}</strong>
           <p>에어컨 필터 점검</p>
         </article>
       </div>
 
+      <section className="tenant-contract-card" aria-label="관리비 납부">
+        <div>
+          <span>이번 달 관리비</span>
+          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
+          <p>{maintenancePaid ? "7월 관리비 납부가 확인됐습니다." : "수도·인터넷 포함 · 7월 25일까지"}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (maintenancePaid) {
+              showToast("영수증이 문자로 발송됐습니다.");
+              return;
+            }
+
+            setMaintenancePaid(true);
+            showToast("관리비 124,000원 납부가 완료됐습니다.");
+          }}
+        >
+          {maintenancePaid ? "영수증 보기" : "납부하기"}
+        </button>
+      </section>
+
+      <section className="tenant-repair-card" aria-label="수리요청">
+        <div className="tenant-repair-head">
+          <div>
+            <span>수리요청</span>
+            <strong>진행 중 {repairRequests.length}건</strong>
+          </div>
+          <button type="button" onClick={onGoInquiry}>관리인 문의</button>
+        </div>
+        <div className="tenant-repair-list">
+          {repairRequests.map((item) => (
+            <article key={item.id}>
+              <strong>{item.title}</strong>
+              <em className={item.status === "업체 배정" ? "assigned" : ""}>{item.status}</em>
+            </article>
+          ))}
+        </div>
+        <div className="tenant-repair-new">
+          <strong>새 수리요청</strong>
+          <div className="repair-issue-chips">
+            {tenantIssuePresets.map((issue) => (
+              <button
+                className={selectedIssue === issue ? "active" : ""}
+                type="button"
+                key={issue}
+                onClick={() => setSelectedIssue(issue)}
+              >
+                {issue}
+              </button>
+            ))}
+          </div>
+          <button className="repair-submit" type="button" onClick={addRepairRequest}>
+            {selectedIssue} 접수하기
+          </button>
+        </div>
+      </section>
+
       <section className="maintenance-card" aria-label="긴급 점검 일정">
         <span>오늘 방문 일정</span>
         <h3>에어컨 필터 교체 방문</h3>
-        <p>관리 기사가 오늘 오후 2시 30분 방문합니다. 현관과 설비실 접근만 확인해주세요.</p>
-        <button type="button">방문 확인</button>
+        <p>
+          {visitConfirmed
+            ? "방문 확인이 완료됐습니다. 기사에게 방문 예정 알림이 전달됐어요."
+            : "관리 기사가 오늘 오후 2시 30분 방문합니다. 현관과 설비실 접근만 확인해주세요."}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (!visitConfirmed) {
+              setVisitConfirmed(true);
+              showToast("방문 일정을 확인했습니다.");
+            }
+          }}
+        >
+          {visitConfirmed ? "확인 완료" : "방문 확인"}
+        </button>
       </section>
+
+      {isContractSheetOpen ? (
+        <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsContractSheetOpen(false)}>
+          <section
+            className="notification-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contract-sheet-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>전자 계약서</span>
+                <h2 id="contract-sheet-title">방배 루미에르 402호</h2>
+                <p>2025-11-04 체결 · 임대차 표준계약서</p>
+              </div>
+              <button type="button" onClick={() => setIsContractSheetOpen(false)} aria-label="계약서 닫기">×</button>
+            </header>
+
+            <dl className="detail-info-table contract-sheet-table">
+              {contractRows.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            <button className="notification-action" type="button" onClick={() => setIsContractSheetOpen(false)}>
+              확인
+            </button>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2599,6 +2896,8 @@ export default function Home() {
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
   const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
   const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
+  const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
+  const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
@@ -2682,9 +2981,29 @@ export default function Home() {
     });
   const selectedMapListing = visibleMapListings.find((listing) => listing.listingIndex === selectedMapListingIndex) ?? visibleMapListings[0];
 
+  const viewedListings = viewedListingNos
+    .map((listingNo) => listings.find((listing) => listing.listingNo === listingNo))
+    .filter((listing): listing is Listing => Boolean(listing));
+
   const openListing = (listing: Listing) => {
     setSelectedListing(listing);
+    setViewedListingNos((current) => [listing.listingNo, ...current.filter((no) => no !== listing.listingNo)].slice(0, 4));
     resetWindowScrollSoon();
+  };
+
+  const submitInquiry = (payload: { listingTitle: string; broker: string; message: string; visitTime: string }) => {
+    const id = Date.now();
+
+    setInquiries((current) => [{ id, ...payload, status: "답변 대기" as InquiryStatus, time: "방금" }, ...current]);
+    window.setTimeout(() => {
+      setInquiries((current) =>
+        current.map((item) =>
+          item.id === id
+            ? { ...item, status: "답변 완료" as InquiryStatus, reply: `네, 거래 가능합니다. ${payload.visitTime} 방문 괜찮습니다.` }
+            : item
+        )
+      );
+    }, 6000);
   };
 
   const activateTab = (tab: AppTab) => {
@@ -2877,6 +3196,7 @@ export default function Home() {
             isSaved={savedListingNos.includes(selectedListing.listingNo)}
             onBack={() => setSelectedListing(null)}
             onToggleSaved={toggleSavedListing}
+            onSubmitInquiry={submitInquiry}
           />
         </div>
       </main>
@@ -3480,10 +3800,30 @@ export default function Home() {
           onToggleSaved={toggleSavedListing}
         />
         ) : null}
-        {activeTab === "inquiry" ? <InquiryHubSection /> : null}
-        {activeTab === "mypage" && activeRole === "landlord" ? <LandlordMyPage /> : null}
-        {activeTab === "mypage" && activeRole === "tenant" ? <TenantMyPage /> : null}
-        {activeTab === "mypage" && activeRole === "seeker" ? <UserMyPage roleLabel={activeRoleLabel} /> : null}
+        {activeTab === "inquiry" ? (
+          <InquiryHubSection inquiries={inquiries} onBrowseListings={() => activateTab("home")} />
+        ) : null}
+        {activeTab === "mypage" && activeRole === "landlord" ? (
+          <LandlordMyPage onSwitchRole={() => openAuthScreen("login")} />
+        ) : null}
+        {activeTab === "mypage" && activeRole === "tenant" ? (
+          <TenantMyPage onSwitchRole={() => openAuthScreen("login")} onGoInquiry={() => activateTab("inquiry")} />
+        ) : null}
+        {activeTab === "mypage" && activeRole === "seeker" ? (
+          <UserMyPage
+            roleLabel={activeRoleLabel}
+            savedCount={savedListingNos.length}
+            viewedListings={viewedListings}
+            inquiries={inquiries}
+            onGoSaved={() => activateTab("saved")}
+            onGoInquiry={() => activateTab("inquiry")}
+            onOpenListing={openListing}
+            onOpenFilter={() => setIsFilterSheetOpen(true)}
+            onOpenNotifications={() => setIsNotificationSheetOpen(true)}
+            onApplyCondition={applySavedCondition}
+            onSwitchRole={() => openAuthScreen("login")}
+          />
+        ) : null}
 
         <nav className="bottom-tabs" aria-label="앱 하단 메뉴">
           {bottomTabs.map((item) => (

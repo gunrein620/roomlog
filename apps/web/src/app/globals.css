@@ -7717,3 +7717,355 @@ p {
     opacity: 1;
   }
 }
+
+/* ── 마이페이지 데모 플로우 (역할 바, 문의 내역, 세입자/집주인 상호작용) ── */
+.mypage-role-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--blue-soft);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mypage-role-bar b {
+  color: var(--blue-dark);
+}
+
+.mypage-role-bar button {
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mypage-toast {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.profile-activity-grid article[role="button"],
+.profile-summary-list article[role="button"] {
+  cursor: pointer;
+}
+
+.inquiry-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.inquiry-history-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 7px;
+}
+
+.inquiry-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inquiry-history-head strong {
+  font-size: 15px;
+}
+
+.inquiry-history-head em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b25e09;
+}
+
+.inquiry-history-head em.done {
+  background: #e7f8f0;
+  color: #067a4b;
+}
+
+.inquiry-history-card > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.inquiry-history-card > small {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.inquiry-reply-bubble {
+  margin-top: 4px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--blue-soft);
+  display: grid;
+  gap: 3px;
+}
+
+.inquiry-reply-bubble.waiting {
+  background: var(--canvas);
+}
+
+.inquiry-reply-bubble span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue-dark);
+}
+
+.inquiry-reply-bubble.waiting span {
+  color: var(--subtle);
+}
+
+.inquiry-reply-bubble p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.recent-viewed-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 10px;
+}
+
+.recent-viewed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recent-viewed-head strong {
+  font-size: 15px;
+}
+
+.recent-viewed-head span {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.recent-viewed-card > button {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--canvas);
+  border: 1px solid transparent;
+}
+
+.recent-viewed-card > button:hover {
+  border-color: var(--blue);
+}
+
+.recent-viewed-card > button b {
+  font-size: 14px;
+  color: var(--blue-dark);
+}
+
+.recent-viewed-card > button span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recent-viewed-card > button small {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.owner-my-listings {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 10px;
+}
+
+.owner-my-listings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.owner-my-listings-head strong {
+  font-size: 15px;
+}
+
+.owner-my-listings-head span {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.owner-my-listings article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.owner-my-listings article strong {
+  display: block;
+  font-size: 13.5px;
+}
+
+.owner-my-listings article small {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.owner-my-listings article em {
+  flex-shrink: 0;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b25e09;
+}
+
+.owner-my-listings article em.live {
+  background: #e7f8f0;
+  color: #067a4b;
+}
+
+.tenant-repair-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 12px;
+}
+
+.tenant-repair-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tenant-repair-head span {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.tenant-repair-head strong {
+  display: block;
+  font-size: 15px;
+}
+
+.tenant-repair-head button {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tenant-repair-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tenant-repair-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.tenant-repair-list article strong {
+  font-size: 13.5px;
+}
+
+.tenant-repair-list article em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b25e09;
+}
+
+.tenant-repair-list article em.assigned {
+  background: #e7f8f0;
+  color: #067a4b;
+}
+
+.tenant-repair-new {
+  display: grid;
+  gap: 9px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.tenant-repair-new > strong {
+  font-size: 13px;
+}
+
+.repair-issue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.repair-issue-chips button {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.repair-issue-chips button.active {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+  color: var(--blue-dark);
+  font-weight: 700;
+}
+
+.repair-submit {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.contract-sheet-table {
+  margin: 4px 0 14px;
+}
