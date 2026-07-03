@@ -30,6 +30,7 @@ import {
   tokenSecret,
   verifyPassword
 } from "./roomlog-support";
+import { RoomlogAuthDomain } from "./services/roomlog-auth.domain";
 import {
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
@@ -105,7 +106,7 @@ import {
   UserRole
 } from "./roomlog.types";
 
-type SignupInput = {
+export type SignupInput = {
   email: string;
   password: string;
   passwordConfirm?: string;
@@ -136,7 +137,7 @@ type CreateTenantInviteInput = {
   moveInDate?: string;
 };
 
-type LoginInput = {
+export type LoginInput = {
   email: string;
   password: string;
 };
@@ -201,7 +202,7 @@ export type RoomlogServiceOptions = {
   storeProjector?: StoreProjector;
 };
 
-type AuthResult = {
+export type AuthResult = {
   userId: string;
   role: UserRole;
   accessToken: string;
@@ -578,6 +579,7 @@ export class RoomlogService {
   private readonly storeProjector?: StoreProjector;
   private pendingPersistence = Promise.resolve();
   private persistenceError: unknown;
+  private readonly auth: RoomlogAuthDomain;
 
   constructor(
     @Optional()
@@ -600,6 +602,11 @@ export class RoomlogService {
     this.store = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
+    this.auth = new RoomlogAuthDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId)
+    );
   }
 
   async flushPersistence() {
@@ -611,146 +618,19 @@ export class RoomlogService {
   }
 
   signup(input: SignupInput): AuthResult {
-    const normalizedInput = this.normalizeSignupInput(input);
-    this.validateSignupInput(normalizedInput);
-    const vendorInvite =
-      normalizedInput.role === "VENDOR"
-        ? this.resolvePendingVendorInvite(normalizedInput)
-        : undefined;
-    const tenantInvite =
-      normalizedInput.role === "TENANT" && normalizedInput.inviteToken
-        ? this.resolvePendingTenantInvite(normalizedInput)
-        : undefined;
-
-    if (this.store.users.some((user) => user.email === normalizedInput.email)) {
-      throw new ConflictException("이미 가입된 이메일입니다.");
-    }
-
-    if (
-      normalizedInput.phone &&
-      this.store.users.some((user) => user.phone === normalizedInput.phone)
-    ) {
-      throw new ConflictException("이미 가입된 휴대폰 번호입니다.");
-    }
-
-    const user: UserAccount = {
-      id: id("usr"),
-      email: normalizedInput.email,
-      passwordHash: hashPassword(normalizedInput.password),
-      name: normalizedInput.name,
-      phone: normalizedInput.phone,
-      role: normalizedInput.role,
-      status: "ACTIVE",
-      createdAt: now()
-    };
-
-    this.store.users.push(user);
-
-    if (user.role === "TENANT") {
-      this.store.tenantRooms[user.id] =
-        tenantInvite?.roomId ??
-        this.findOrCreateRoomForSignup(normalizedInput, this.seededLandlordId());
-
-      if (tenantInvite) {
-        tenantInvite.status = "ACCEPTED";
-        tenantInvite.acceptedAt = now();
-        tenantInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    if (user.role === "LANDLORD") {
-      this.findOrCreateRoomForSignup(normalizedInput, user.id);
-    }
-
-    if (user.role === "VENDOR") {
-      this.store.vendors.push({
-        id: id("vnd"),
-        userId: user.id,
-        businessName:
-          vendorInvite?.businessName ?? normalizedInput.businessName ?? `${user.name} 협력업체`,
-        contactPerson: vendorInvite?.contactPerson ?? user.name,
-        phone: user.phone ?? vendorInvite?.phone ?? "",
-        serviceArea: vendorInvite?.serviceArea ?? normalizedInput.serviceArea ?? "서울",
-        activeJobs: 0
-      });
-
-      if (vendorInvite) {
-        vendorInvite.status = "ACCEPTED";
-        vendorInvite.acceptedAt = now();
-        vendorInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    this.persistStore();
-    return this.authResult(user);
+    return this.auth.signup(input);
   }
 
   login(input: LoginInput): AuthResult {
-    const user = this.store.users.find((account) => account.email === input.email);
-
-    if (!user || !verifyPassword(input.password, user.passwordHash)) {
-      throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
-    }
-
-    return this.authResult(user);
+    return this.auth.login(input);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
-    const token = authorization?.replace(/^Bearer\s+/i, "");
-
-    if (!token) {
-      throw new UnauthorizedException("인증 토큰이 필요합니다.");
-    }
-
-    const [payload, signature] = token.split(".");
-
-    if (!payload || !signature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const expectedSignature = createHmac("sha256", tokenSecret)
-      .update(payload)
-      .digest("base64url");
-
-    if (signature !== expectedSignature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      sub?: string;
-    };
-    const userId = decoded.sub;
-    const user = this.store.users.find((account) => account.id === userId);
-
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    return user;
+    return this.auth.getUserFromToken(authorization);
   }
 
   getMe(authorization?: string) {
-    const user = this.getUserFromToken(authorization);
-    const roomId = this.store.tenantRooms[user.id];
-    const room = roomId ? this.store.rooms.find((item) => item.id === roomId) : undefined;
-    const vendor = this.store.vendors.find((item) => item.userId === user.id);
-    const managedRooms =
-      user.role === "LANDLORD"
-        ? this.store.rooms.filter((item) => item.landlordId === user.id).map((item) => ({ ...item }))
-        : undefined;
-
-    return {
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      phone: user.phone,
-      role: user.role,
-      roomId,
-      room: room ? { ...room } : undefined,
-      managedRooms,
-      vendorId: vendor?.id,
-      vendor: vendor ? { ...vendor } : undefined
-    };
+    return this.auth.getMe(authorization);
   }
 
   getDemoState() {
@@ -2453,70 +2333,7 @@ export class RoomlogService {
   }
 
   getSignupInvitePreview(role: UserRole, inviteToken: string) {
-    const token = inviteToken?.trim();
-
-    if (!token) {
-      throw new BadRequestException("초대 토큰이 필요합니다.");
-    }
-
-    if (role === "TENANT") {
-      const invite = this.store.tenantInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-      }
-
-      this.assertPendingTenantInvite(invite);
-
-      const room = this.findRoom(invite.roomId);
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.tenantName,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        moveInDate: invite.moveInDate,
-        targetLabel: [room.buildingName, room.roomNo].filter(Boolean).join(" "),
-        room: { ...room },
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    if (role === "VENDOR") {
-      const invite = this.store.vendorInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-      }
-
-      this.assertPendingVendorInvite(invite);
-
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.contactPerson,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        businessName: invite.businessName,
-        serviceArea: invite.serviceArea,
-        targetLabel: invite.businessName,
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    throw new BadRequestException("초대 역할이 올바르지 않습니다.");
+    return this.auth.getSignupInvitePreview(role, inviteToken);
   }
 
   listVendorRepairs(vendorUserOrProfileId: string) {
@@ -3447,117 +3264,6 @@ export class RoomlogService {
     };
 
     return fallback[mimeType] ?? ".img";
-  }
-
-  private normalizeSignupInput(input: SignupInput): SignupInput {
-    return {
-      ...input,
-      email: input.email?.trim().toLowerCase(),
-      name: input.name?.trim(),
-      phone: normalizePhoneNumber(input.phone),
-      inviteToken: input.inviteToken?.trim(),
-      buildingName: input.buildingName?.trim(),
-      roomNo: input.roomNo?.trim(),
-      address: input.address?.trim(),
-      businessName: input.businessName?.trim(),
-      serviceArea: input.serviceArea?.trim()
-    };
-  }
-
-  private validateSignupInput(input: SignupInput) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email || "")) {
-      throw new BadRequestException("이메일 형식이 올바르지 않습니다.");
-    }
-
-    if (!input.password || input.password.length < 8) {
-      throw new BadRequestException("비밀번호는 8자 이상이어야 합니다.");
-    }
-
-    if (!hasRequiredPasswordMix(input.password)) {
-      throw new BadRequestException("비밀번호는 영문과 숫자를 포함해야 합니다.");
-    }
-
-    if (input.passwordConfirm !== undefined && input.password !== input.passwordConfirm) {
-      throw new BadRequestException("비밀번호 확인이 일치하지 않습니다.");
-    }
-
-    if (!input.name?.trim()) {
-      throw new BadRequestException("이름을 입력해주세요.");
-    }
-
-    if (!input.phone?.trim()) {
-      throw new BadRequestException("휴대폰 번호를 입력해주세요.");
-    }
-
-    if (!isValidPhoneNumber(input.phone)) {
-      throw new BadRequestException("휴대폰 번호는 숫자 10~11자리여야 합니다.");
-    }
-
-    if (!["TENANT", "LANDLORD", "VENDOR"].includes(input.role)) {
-      throw new BadRequestException("가입 역할이 올바르지 않습니다.");
-    }
-
-    if ((input.role === "TENANT" && !input.inviteToken) || input.role === "LANDLORD") {
-      if (!input.buildingName?.trim()) {
-        throw new BadRequestException("건물명을 입력해주세요.");
-      }
-
-      if (!input.roomNo?.trim()) {
-        throw new BadRequestException("호실을 입력해주세요.");
-      }
-
-      if (!input.address?.trim()) {
-        throw new BadRequestException("건물 주소를 입력해주세요.");
-      }
-    }
-
-    if (input.role === "VENDOR") {
-      if (!input.inviteToken?.trim()) {
-        throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-      }
-    }
-  }
-
-  private findOrCreateRoomForSignup(input: SignupInput, landlordId?: string) {
-    const buildingName = input.buildingName?.trim();
-    const roomNo = input.roomNo?.trim();
-    const address = input.address?.trim();
-
-    if (!buildingName || !roomNo || !address) {
-      throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
-    }
-
-    const existingRoom = this.store.rooms.find(
-      (room) =>
-        room.buildingName === buildingName &&
-        room.roomNo === roomNo &&
-        room.address === address
-    );
-
-    if (existingRoom) {
-      if (landlordId && !existingRoom.landlordId) {
-        existingRoom.landlordId = landlordId;
-      }
-
-      return existingRoom.id;
-    }
-
-    const room: Room = {
-      id: id("room"),
-      buildingName,
-      roomNo,
-      address,
-      landlordId
-    };
-    this.store.rooms.push(room);
-
-    return room.id;
-  }
-
-  private seededLandlordId() {
-    return this.store.users.some((user) => user.id === "landlord-demo")
-      ? "landlord-demo"
-      : undefined;
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
@@ -5500,15 +5206,6 @@ export class RoomlogService {
     ticket.priority = Math.min(ticket.priority, analysis.priority);
   }
 
-  private authResult(user: UserAccount): AuthResult {
-    return {
-      userId: user.id,
-      role: user.role,
-      accessToken: tokenFor(user),
-      name: user.name
-    };
-  }
-
   private analyzeComplaint(input: CreateComplaintInput): AiAnalysis {
     const text = `${input.title} ${input.description} ${input.location}`;
     const lower = text.toLowerCase();
@@ -7190,90 +6887,6 @@ export class RoomlogService {
 
   private assertManagerCanAccessTicket(managerId: string, ticket: Ticket) {
     this.assertManagerCanAccessRoom(managerId, ticket.roomId);
-  }
-
-  private resolvePendingVendorInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.vendorInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-    }
-
-    this.assertPendingVendorInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingVendorInvite(invite: VendorInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 협력업체 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 협력업체 초대입니다.");
-    }
-  }
-
-  private resolvePendingTenantInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("임차인 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.tenantInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-    }
-
-    this.assertPendingTenantInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    if (invite.phone && input.phone && invite.phone !== input.phone) {
-      throw new BadRequestException("초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingTenantInvite(invite: TenantInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 임차인 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 임차인 초대입니다.");
-    }
   }
 
   private findIntakeSession(tenantId: string, sessionId: string) {
