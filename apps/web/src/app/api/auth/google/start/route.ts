@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   );
 
   if (!clientId) {
-    return redirectToPathWithError(request.url, errorRedirectTo, "google_config");
+    return redirectToPathWithError(request, errorRedirectTo, "google_config");
   }
 
   const redirectTo = safeRedirectPath(
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   );
   const inviteToken = request.nextUrl.searchParams.get("inviteToken")?.trim() || undefined;
   const state = crypto.randomUUID();
-  const redirectUri = googleCallbackUrl(request.url);
+  const redirectUri = googleCallbackUrl(request);
   const cookieStore = await cookies();
 
   cookieStore.set(GOOGLE_OAUTH_STATE_COOKIE, state, googleOauthCookieOptions);
