@@ -53,7 +53,6 @@ export function sourceHref(source: ReportSource): string {
 }
 
 export function actionHref(action: ReportNextAction | ChatDraftSuggestion): string {
-  if (action.targetScreenId === "M-BILL-05") return "/manager/billing/dunning/bill-2026-07-401";
-  if (action.targetScreenId === "M-MSG-00") return "/manager/messaging/00";
-  return MANAGER_REPORT_ROUTES["M-RPT-00"];
+  void action;
+  return "/manager/messaging/00";
 }
