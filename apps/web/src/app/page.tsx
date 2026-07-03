@@ -581,14 +581,15 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
             </svg>
           </div>
           <div className="brand-word">우주</div>
-          <p className="brand-tagline">방 보러 가기 전에, 3D로 먼저 둘러보기</p>
+          <p className="brand-tagline">우주 | 3D공간 시뮬레이션</p>
         </div>
 
         <div className="login-panel">
-          <p className="brand-kicker">우주 · WOOZU</p>
-          <h1>방 보러 가기 전에 먼저 걸어보세요</h1>
+          <p className="brand-kicker">|집우집주|  입주부터 관리까지 우주에서</p>
+          <h1>우주에서 방을 구해보세요!</h1>
+          <h1></h1>
           <p>
-            지도에서 조건에 맞는 방을 찾고, 방문 전 3D 투어와 안심 정보를 먼저 확인하세요.
+            조건에 맞는 방을 찾고, 3D 투어와 정보확인은 우주에서.
           </p>
 
           <div className="login-trust-row" aria-label="서비스 핵심 정보">
