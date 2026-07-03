@@ -651,11 +651,13 @@ const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as cons
 function LoginScreen({
   mode,
   setActiveRole,
-  onAuthenticated
+  onAuthenticated,
+  onGoHome
 }: {
   mode: AuthMode;
   setActiveRole: (role: AppRole) => void;
   onAuthenticated: (viewer: ViewerProfile) => void;
+  onGoHome: () => void;
 }) {
   const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
   const [serviceEmail, setServiceEmail] = useState("");
@@ -699,6 +701,20 @@ function LoginScreen({
   return (
     <main className="app-canvas login-canvas">
       <section className="login-phone" aria-label="집우집주 로그인">
+        <div className="login-topbar">
+          <button type="button" className="login-home-link" onClick={onGoHome} aria-label="홈으로 이동">
+            <span className="login-home-icon" aria-hidden="true">
+              <svg className="login-home-roof" viewBox="0 0 140 68" fill="none">
+                <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+                <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              </svg>
+            </span>
+            집우집주<span>WOOZU</span>
+          </button>
+        </div>
         <div className="login-brandmark">
           <div className="brand-mark-icon">
             <div className="brand-orbit">
@@ -2929,6 +2945,7 @@ export default function Home() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isRouteReady, setIsRouteReady] = useState(false);
   const [isDevRolePreview, setIsDevRolePreview] = useState(false);
+  const isAuthHistoryPushedRef = useRef(false);
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
@@ -3038,6 +3055,22 @@ export default function Home() {
   const openAuthScreen = (mode: AuthMode) => {
     setAuthMode(mode);
     setSelectedListing(null);
+    if (!isAuthHistoryPushedRef.current) {
+      window.history.pushState({ roomlogAuthScreen: true }, "", window.location.href);
+      isAuthHistoryPushedRef.current = true;
+    }
+    resetWindowScrollSoon();
+  };
+
+  // 로그인 화면의 "집우집주" 로고를 눌렀을 때: 뒤로가기와 동일하게 동작하도록
+  // pushState로 쌓아둔 히스토리를 그대로 소비한다(중복 엔트리 방지).
+  const closeAuthScreen = () => {
+    if (isAuthHistoryPushedRef.current) {
+      isAuthHistoryPushedRef.current = false;
+      window.history.back();
+      return;
+    }
+    setAuthMode(null);
     resetWindowScrollSoon();
   };
 
@@ -3133,6 +3166,17 @@ export default function Home() {
     setIsRouteReady(true);
   }, []);
 
+  // 로그인 화면이 열려 있는 동안 브라우저 뒤로가기를 누르면 홈으로 돌아가도록 처리.
+  useEffect(() => {
+    function handlePopState() {
+      isAuthHistoryPushedRef.current = false;
+      setAuthMode((current) => (current ? null : current));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   useEffect(() => {
     let isAlive = true;
 
@@ -3196,7 +3240,14 @@ export default function Home() {
   };
 
   if (authMode) {
-    return <LoginScreen mode={authMode} setActiveRole={startRoleSession} onAuthenticated={completeServiceAuth} />;
+    return (
+      <LoginScreen
+        mode={authMode}
+        setActiveRole={startRoleSession}
+        onAuthenticated={completeServiceAuth}
+        onGoHome={closeAuthScreen}
+      />
+    );
   }
 
   if (isProtectedRolePage && (!isAuthChecked || !canAccessProtectedRolePage)) {
