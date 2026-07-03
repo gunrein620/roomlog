@@ -2,6 +2,7 @@ import { Card } from "@roomlog/ui";
 import { getDisclosureSetting } from "@/lib/cost-api";
 import { MANAGER_COST_ROUTES } from "@/lib/cost-nav";
 import {
+  actionRowStyle,
   DisclosurePreview,
   LinkButton,
   PageStack,
@@ -12,6 +13,8 @@ import {
   rowStyle,
   won,
 } from "../_components";
+
+export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const setting = await getDisclosureSetting();
@@ -58,7 +61,7 @@ export default async function Page() {
         </Card>
       </Section>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
+      <div style={actionRowStyle}>
         <LinkButton href={MANAGER_COST_ROUTES["M-COST-04"]} variant="secondary">미리보기</LinkButton>
         <LinkButton href={MANAGER_COST_ROUTES["M-COST-00"]}>공개 설정 저장</LinkButton>
       </div>

@@ -8,10 +8,14 @@ import {
   ReceiptList,
   ScreenHeader,
   Section,
+  actionRowStyle,
   grid3Style,
+  grid2Style,
   mutedSmallStyle,
   rowStyle,
 } from "../_components";
+
+export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const receipts = await listReceipts();
@@ -43,7 +47,7 @@ export default async function Page() {
       </Section>
 
       <Section title="독립 업로드 보조 정보">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>
+        <div style={grid2Style}>
           <Input aria-label="관련 호실" placeholder="관련 호실 선택(선택)" readOnly />
           <Input aria-label="온라인 영수증" placeholder="온라인 영수증 URL 또는 파일명" readOnly />
         </div>
@@ -53,7 +57,7 @@ export default async function Page() {
         <ReceiptList receipts={receipts} />
       </Section>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
+      <div style={actionRowStyle}>
         <DisabledButton>파일 선택</DisabledButton>
         <LinkButton href={MANAGER_COST_ROUTES["M-COST-02"]}>OCR 분석 시작</LinkButton>
       </div>

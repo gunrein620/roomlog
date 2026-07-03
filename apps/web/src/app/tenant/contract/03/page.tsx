@@ -8,6 +8,8 @@ import { HelpCards } from "./HelpCards";
 // 알아두면 좋은 조항을 중립 톤으로 안내. 확정·책임 판단 아님(상단 고지).
 // primary = 관리자에게 물어보기 (불안 → 행동 가능 출구). 뒤로 → 02.
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const extraction = await getExtraction(DEMO_CONTRACT_ID);
 

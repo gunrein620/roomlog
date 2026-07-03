@@ -2,6 +2,7 @@ import { Badge, Card } from "@roomlog/ui";
 import { getCost } from "@/lib/cost-api";
 import { MANAGER_COST_ROUTES } from "@/lib/cost-nav";
 import {
+  actionRowStyle,
   DisabledButton,
   LinkButton,
   PageStack,
@@ -18,6 +19,8 @@ import {
 } from "../_components";
 
 type SearchParams = Promise<{ id?: string }>;
+
+export const dynamic = "force-dynamic";
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
@@ -99,7 +102,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </Card>
       </Section>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
+      <div style={actionRowStyle}>
         <LinkButton href={primaryHref}>{primary}</LinkButton>
         <LinkButton href={MANAGER_COST_ROUTES["M-COST-02"]} variant="secondary">정정</LinkButton>
         <DisabledButton>무효(void)</DisabledButton>

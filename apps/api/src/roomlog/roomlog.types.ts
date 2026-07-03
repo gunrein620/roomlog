@@ -37,6 +37,213 @@ export type RepairStatus =
 
 export type RepairCostBearer = "LANDLORD" | "TENANT" | "PENDING";
 
+export type CostType = "repair" | "maintenance" | "common" | "other";
+export type CostStatus = "draft" | "confirmed" | "amended" | "void";
+export type CostAttributionScope = "unit" | "building";
+export type DisclosureState = "public" | "private";
+export type RepairPaymentState = "already_paid" | "unpaid";
+export type CostReviewReason =
+  | "ocr_low_confidence"
+  | "classification_unclear"
+  | "unit_unmatched";
+export type ReceiptSource = "camera" | "file" | "online" | "manual";
+
+export type Cost = {
+  id: string;
+  managerId?: string;
+  date: string;
+  item: string;
+  amount: number;
+  type: CostType;
+  scope: CostAttributionScope;
+  unitId?: string;
+  status: CostStatus;
+  verified: boolean;
+  reviewReason?: CostReviewReason;
+  disclosure?: DisclosureState;
+  repairPayment?: RepairPaymentState;
+  paymentRef?: string;
+  receiptId?: string;
+  supersedesId?: string;
+  voidReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReceiptLineItem = {
+  label: string;
+  amount: number;
+  suggestedType?: CostType;
+};
+
+export type Receipt = {
+  id: string;
+  managerId?: string;
+  source: ReceiptSource;
+  imageUrl?: string;
+  hasEvidence: boolean;
+  uploadedAt: string;
+  duplicateOfId?: string;
+};
+
+export type OcrField<T = string> = {
+  value: T;
+  confidence: number;
+  needsReview: boolean;
+};
+
+export type ReceiptOcr = {
+  id: string;
+  receiptId: string;
+  costId?: string;
+  fields: {
+    item: OcrField;
+    date: OcrField;
+    amount: OcrField<number>;
+    unitId?: OcrField;
+  };
+  suggestedType?: CostType;
+  typeConfidence?: number;
+  lineItems: ReceiptLineItem[];
+  createdAt: string;
+};
+
+export type ContractLifecycle =
+  | "unregistered"
+  | "analyzing"
+  | "active"
+  | "expiring_soon"
+  | "expired";
+export type ContractReview = "pending" | "info_requested" | "confirmed";
+export type DeletionState = "none" | "requested" | "completed" | "limited" | "denied";
+export type ContractValueSource = "confirmed" | "manual" | "unverified";
+export type ExtractionGroup = "money" | "term" | "responsibility";
+export type ContractDocumentOrigin = "tenant_upload" | "manager_upload" | "manual";
+
+export type Contract = {
+  id: string;
+  roomId: string;
+  tenantId?: string;
+  managerId?: string;
+  unitId: string;
+  landlordName: string;
+  lifecycle: ContractLifecycle;
+  review: ContractReview;
+  deletion: DeletionState;
+  valueSource: ContractValueSource;
+  monthlyRent?: number;
+  maintenanceFee?: number;
+  paymentDay?: number;
+  startDate?: string;
+  endDate?: string;
+  createdAt: string;
+  updatedAt: string;
+  extractionId?: string;
+  documentId?: string;
+  confirmedAt?: string;
+  confirmedByManagerId?: string;
+};
+
+export type ContractDocument = {
+  id: string;
+  contractId: string;
+  uploadedByUserId?: string;
+  origin: ContractDocumentOrigin;
+  fileName?: string;
+  fileUrl?: string;
+  uploadedAt: string;
+};
+
+export type ExtractionItem = {
+  label: string;
+  value: string;
+  group: ExtractionGroup;
+  needsCheck: boolean;
+  evidence?: string;
+  masked?: boolean;
+};
+
+export type ContractHelpNote = {
+  clause: string;
+  plain: string;
+  source?: string;
+};
+
+export type ContractExtraction = {
+  id: string;
+  contractId: string;
+  confirmed: boolean;
+  highlights: string[];
+  items: ExtractionItem[];
+  helpNotes: ContractHelpNote[];
+  createdAt: string;
+};
+
+export type RetentionItem = {
+  label: string;
+  reason: string;
+  until: string;
+};
+
+export type ContractPrivacy = {
+  contractId: string;
+  maskingEnabled: boolean;
+  retention: RetentionItem[];
+  forwardingConsent: boolean;
+  deletion: DeletionState;
+  deletionSlaHours?: number;
+  deletable: boolean;
+};
+
+export type ContractInvite = {
+  id: string;
+  contractId: string;
+  roomId: string;
+  inviteToken: string;
+  invitedByManagerId: string;
+  tenantName: string;
+  email?: string;
+  phone?: string;
+  state: "waiting" | "connected" | "disputed";
+  signupUrl: string;
+  audit: string;
+  createdAt: string;
+  acceptedAt?: string;
+  acceptedByUserId?: string;
+};
+
+export type CostReviewQueueSummary = {
+  ocrLowConfidence: number;
+  classificationUnclear: number;
+  unitUnmatched: number;
+  unverifiedConfirmed: number;
+  total: number;
+};
+
+export type MonthlyCostSummary = {
+  month: string;
+  totalAmount: number;
+  byType: Record<CostType, number>;
+  confirmedCount: number;
+};
+
+export type DisclosureEntry = {
+  costId: string;
+  item: string;
+  amount: number;
+  disclosure: DisclosureState;
+  privateReason?: string;
+};
+
+export type DisclosureSetting = {
+  month: string;
+  scope: CostAttributionScope;
+  unitId?: string;
+  entries: DisclosureEntry[];
+  hiddenCount: number;
+  updatedAt: string;
+};
+
 export type AttachmentCategory =
   | "COMPLAINT_PHOTO"
   | "ADDITIONAL_PHOTO"

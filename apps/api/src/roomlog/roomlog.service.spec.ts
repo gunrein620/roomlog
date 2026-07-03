@@ -2737,6 +2737,190 @@ describe("RoomlogService", () => {
     assert.equal(service.getComplaint(completed.complaintId)?.status, "COMPLETED");
   });
 
+  it("projects manager vendor management data from completed repairs with sample guards", () => {
+    const service = new RoomlogService();
+    const { ticket } = service.createComplaint("tenant-demo", {
+      title: "욕실 누수 점검 요청",
+      description: "욕실 천장 모서리에서 물이 떨어져 배관 점검이 필요합니다.",
+      location: "욕실 천장",
+      occurredAt: "2026-06-29T08:30:00.000Z",
+      availableTimes: "평일 오전"
+    });
+
+    const repair = service.assignVendor("landlord-demo", ticket.id, {
+      vendorId: "vendor-demo",
+      requestNote: "누수 부위 확인 후 현장 사진을 남겨주세요."
+    });
+    service.submitEstimate("vendor-demo", repair.id, {
+      estimateAmount: 120000,
+      estimateDescription: "욕실 배관 누수 점검 및 실리콘 보수"
+    });
+    service.approveRepairEstimate("landlord-demo", repair.id, {
+      costBearer: "LANDLORD",
+      note: "기본 배관 문제로 임대인 부담 승인"
+    });
+    service.scheduleRepair("vendor-demo", repair.id, {
+      scheduledAt: "2026-06-30T10:00:00.000Z"
+    });
+    service.reportCompletion("vendor-demo", repair.id, {
+      completionNote: "배관 연결부 보수 후 누수 테스트 완료",
+      completionPhotoUrls: ["/uploads/vendor-complete.jpg"]
+    });
+    service.approveCompletion("landlord-demo", ticket.id, "완료 확인");
+
+    const vendors = service.listManagerVendorMgmtVendors("landlord-demo", {
+      q: "빠른",
+      trade: "plumbing",
+      sort: "trade_recent"
+    });
+    assert.equal(vendors.length, 1);
+    assert.equal(vendors[0].id, "vendor-demo");
+    assert.equal(vendors[0].name, "빠른누수 설비");
+    assert.equal(vendors[0].source, "auto");
+    assert.equal(vendors[0].dealCount, 1);
+    assert.deepEqual(vendors[0].trades.includes("plumbing"), true);
+
+    const detail = service.getManagerVendorMgmtDetail("landlord-demo", "vendor-demo");
+    assert.equal(detail.jobs.length, 1);
+    assert.equal(detail.jobs[0].ticketId, ticket.id);
+    assert.equal(detail.jobs[0].vendorJobId, repair.id);
+    assert.equal(detail.jobs[0].unitId, "301");
+    assert.equal(detail.jobs[0].rated, false);
+    assert.equal(detail.perf.completedCount, 1);
+    assert.equal(detail.perf.ratedCount, 0);
+    assert.equal(detail.perf.ratingVisible, false);
+    assert.equal(detail.perf.aiCommentEnabled, false);
+    assert.equal(detail.perf.satisfactionAvg, undefined);
+    assert.match(detail.perf.mirrorNotice, /V-JOB/);
+
+    const noMatch = service.listManagerVendorMgmtVendors("landlord-demo", { trade: "electrical" });
+    assert.equal(noMatch.length, 0);
+  });
+
+  it("projects manager cost ledger from landlord repair costs and excludes non-spend states", () => {
+    const service = new RoomlogService();
+    const completeRepair = (
+      title: string,
+      costBearer: "LANDLORD" | "TENANT" | "PENDING",
+      estimateAmount: number
+    ) => {
+      const { ticket } = service.createComplaint("tenant-demo", {
+        title,
+        description: "욕실 천장 누수 보수 요청입니다.",
+        location: "욕실 천장",
+        occurredAt: "2026-07-01T08:30:00.000Z",
+        availableTimes: "평일 오전"
+      });
+      const repair = service.assignVendor("landlord-demo", ticket.id, {
+        vendorId: "vendor-demo",
+        requestNote: "현장 확인 후 견적을 남겨주세요."
+      });
+
+      service.submitEstimate("vendor-demo", repair.id, {
+        estimateAmount,
+        estimateDescription: "누수 점검 및 실리콘 보수"
+      });
+      service.approveRepairEstimate("landlord-demo", repair.id, {
+        costBearer,
+        note: "비용 주체 확인"
+      });
+      service.scheduleRepair("vendor-demo", repair.id, {
+        scheduledAt: "2026-07-02T10:00:00.000Z"
+      });
+      service.reportCompletion("vendor-demo", repair.id, {
+        completionNote: "보수 완료"
+      });
+      service.approveCompletion("landlord-demo", ticket.id, "완료 확인");
+
+      return repair;
+    };
+
+    const landlordRepair = completeRepair("임대인 부담 누수 보수", "LANDLORD", 120000);
+    const tenantRepair = completeRepair("임차인 부담 소모품 교체", "TENANT", 80000);
+    const projectedCost = service
+      .listManagerCosts("landlord-demo")
+      .find((cost) => cost.paymentRef === landlordRepair.id);
+    assert.ok(projectedCost);
+
+    const store = (service as unknown as { store: { costs: any[]; rooms: any[] } }).store;
+    store.rooms.push({
+      id: "room-other-manager-101",
+      buildingName: "다른 관리동",
+      roomNo: "101호",
+      address: "서울시 테스트구 1",
+      landlordId: "landlord-other"
+    });
+    store.costs.push(
+      {
+        id: "cost_review_draft",
+        managerId: "landlord-demo",
+        date: projectedCost.date,
+        item: "복도 조명 교체",
+        amount: 48000,
+        type: "common",
+        scope: "building",
+        status: "draft",
+        verified: false,
+        reviewReason: "ocr_low_confidence",
+        createdAt: projectedCost.createdAt,
+        updatedAt: projectedCost.updatedAt
+      },
+      {
+        id: "cost_private_maintenance",
+        managerId: "landlord-demo",
+        date: projectedCost.date,
+        item: "공용 관리비 정산",
+        amount: 30000,
+        type: "maintenance",
+        scope: "building",
+        status: "confirmed",
+        verified: false,
+        disclosure: "private",
+        createdAt: projectedCost.createdAt,
+        updatedAt: projectedCost.updatedAt
+      },
+      {
+        id: "cost_void_duplicate",
+        date: projectedCost.date,
+        item: "중복 등록 출장비",
+        amount: 50000,
+        type: "repair",
+        scope: "unit",
+        unitId: "301",
+        status: "void",
+        verified: true,
+        voidReason: "중복 등록",
+        createdAt: projectedCost.createdAt,
+        updatedAt: projectedCost.updatedAt
+      }
+    );
+
+    const costs = service.listManagerCosts("landlord-demo");
+    assert.ok(costs.some((cost) => cost.paymentRef === landlordRepair.id));
+    assert.equal(costs.some((cost) => cost.paymentRef === tenantRepair.id), false);
+    assert.equal(
+      service.listManagerCosts("landlord-other").some((cost) => cost.id === "cost_private_maintenance"),
+      false
+    );
+
+    const queue = service.getManagerCostReviewQueueSummary("landlord-demo");
+    assert.equal(queue.ocrLowConfidence, 1);
+    assert.equal(queue.total, 1);
+    assert.equal(queue.unverifiedConfirmed, 1);
+
+    const month = projectedCost.date.slice(0, 7);
+    const summary = service.getManagerMonthlyCostSummary("landlord-demo", month);
+    assert.equal(summary.totalAmount, 150000);
+    assert.equal(summary.byType.repair, 120000);
+    assert.equal(summary.byType.maintenance, 30000);
+    assert.equal(summary.byType.common, 0);
+    assert.equal(summary.confirmedCount, 2);
+
+    const disclosure = service.getManagerDisclosureSetting("landlord-demo", month);
+    assert.equal(disclosure.hiddenCount, 1);
+    assert.equal(disclosure.entries[0].costId, "cost_private_maintenance");
+  });
+
   it("lets tenants confirm completion or reopen unresolved repairs after vendor completion reports", () => {
     const service = new RoomlogService();
     const createReportedRepair = (title: string) => {
@@ -2984,6 +3168,61 @@ describe("RoomlogService", () => {
           estimateDescription: "완료 후 재견적"
         }),
       /상태/
+    );
+  });
+
+  it("wires contract document APIs with tenant/manager scope and server confirmation gates", () => {
+    const service = new RoomlogService();
+
+    const contracts = service.listTenantContracts("tenant-demo");
+    assert.equal(contracts.length, 1);
+    assert.equal(contracts[0].id, "ct_0001");
+
+    const tenantContract = service.getTenantContract("tenant-demo", "ct_0001");
+    const tenantExtraction = service.getTenantContractExtraction("tenant-demo", tenantContract.id);
+    const tenantPrivacy = service.getTenantContractPrivacy("tenant-demo", tenantContract.id);
+
+    assert.equal(tenantContract.review, "pending");
+    assert.equal(tenantExtraction.confirmed, false);
+    assert.equal(tenantPrivacy.maskingEnabled, true);
+    assert.equal(
+      service.getManagerContractDashboard("landlord-demo").counts.needsCheck,
+      tenantExtraction.items.filter((item) => item.needsCheck).length
+    );
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", tenantContract.id),
+      /확인 필요/
+    );
+    assert.equal(service.getManagerContractDashboard("tenant-demo").rows.length, 0);
+    assert.throws(
+      () =>
+        service.confirmManagerContractReview("tenant-demo", tenantContract.id, {
+          confirmNeedsCheck: true
+        }),
+      /관리 가능한 계약서/
+    );
+
+    const confirmed = service.confirmManagerContractReview("landlord-demo", tenantContract.id, {
+      confirmNeedsCheck: true
+    });
+
+    assert.equal(confirmed.row.contract.review, "confirmed");
+    assert.equal(confirmed.row.contract.valueSource, "confirmed");
+    assert.equal(service.getTenantContract("tenant-demo", tenantContract.id).review, "confirmed");
+    assert.equal(service.getTenantContractExtraction("tenant-demo", tenantContract.id).confirmed, true);
+
+    const deletion = service.decideManagerContractDeletion(
+      "landlord-demo",
+      tenantContract.id,
+      "limited",
+      "정산 예외 확인"
+    );
+
+    assert.equal(deletion.privacy.deletion, "limited");
+    assert.equal(
+      service.getTenantContractPrivacy("tenant-demo", tenantContract.id).deletion,
+      "limited"
     );
   });
 });

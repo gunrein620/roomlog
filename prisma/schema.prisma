@@ -74,6 +74,82 @@ enum RepairCostBearer {
   PENDING
 }
 
+enum CostType {
+  REPAIR
+  MAINTENANCE
+  COMMON
+  OTHER
+}
+
+enum CostStatus {
+  DRAFT
+  CONFIRMED
+  AMENDED
+  VOID
+}
+
+enum CostAttributionScope {
+  UNIT
+  BUILDING
+}
+
+enum DisclosureState {
+  PUBLIC
+  PRIVATE
+}
+
+enum RepairPaymentState {
+  ALREADY_PAID
+  UNPAID
+}
+
+enum CostReviewReason {
+  OCR_LOW_CONFIDENCE
+  CLASSIFICATION_UNCLEAR
+  UNIT_UNMATCHED
+}
+
+enum ReceiptSource {
+  CAMERA
+  FILE
+  ONLINE
+  MANUAL
+}
+
+enum ContractLifecycle {
+  UNREGISTERED
+  ANALYZING
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+}
+
+enum ContractReview {
+  PENDING
+  INFO_REQUESTED
+  CONFIRMED
+}
+
+enum ContractDeletionState {
+  NONE
+  REQUESTED
+  COMPLETED
+  LIMITED
+  DENIED
+}
+
+enum ContractValueSource {
+  CONFIRMED
+  MANUAL
+  UNVERIFIED
+}
+
+enum ContractDocumentOrigin {
+  TENANT_UPLOAD
+  MANAGER_UPLOAD
+  MANUAL
+}
+
 enum AttachmentCategory {
   COMPLAINT_PHOTO
   ADDITIONAL_PHOTO
@@ -161,6 +237,7 @@ model Room {
   updatedAt    DateTime @updatedAt
 
   tenants              TenantRoom[]
+  contracts            Contract[]
   complaints           Complaint[]
   tickets              Ticket[]
   intakeSessions       IntakeSession[]
@@ -230,6 +307,106 @@ model TenantInvite {
   acceptedByUserId   String?
 
   @@index([invitedByManagerId, status])
+  @@index([roomId])
+}
+
+model Contract {
+  id                   String                @id
+  roomId               String
+  tenantId             String?
+  managerId            String?
+  unitId               String
+  landlordName         String
+  lifecycle            ContractLifecycle     @default(ACTIVE)
+  review               ContractReview        @default(PENDING)
+  deletion             ContractDeletionState @default(NONE)
+  valueSource          ContractValueSource   @default(UNVERIFIED)
+  monthlyRent          Int?
+  maintenanceFee       Int?
+  paymentDay           Int?
+  startDate            DateTime?
+  endDate              DateTime?
+  extractionId         String?               @unique
+  documentId           String?
+  confirmedAt          DateTime?
+  confirmedByManagerId String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  room       Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  documents  ContractDocument[]
+  extraction ContractExtraction?
+  privacy    ContractPrivacy?
+  invites    ContractInvite[]
+
+  @@index([roomId])
+  @@index([tenantId, updatedAt])
+  @@index([managerId, review])
+  @@index([deletion, updatedAt])
+}
+
+model ContractDocument {
+  id               String                 @id
+  contractId       String
+  uploadedByUserId String?
+  origin           ContractDocumentOrigin
+  fileName         String?
+  fileUrl          String?
+  uploadedAt       DateTime               @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, uploadedAt])
+  @@index([uploadedByUserId])
+}
+
+model ContractExtraction {
+  id         String   @id
+  contractId String   @unique
+  confirmed  Boolean  @default(false)
+  highlights String[]
+  items      Json
+  helpNotes  Json
+  createdAt  DateTime @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+model ContractPrivacy {
+  contractId        String                @id
+  maskingEnabled    Boolean               @default(true)
+  retention         Json
+  forwardingConsent Boolean               @default(false)
+  deletion          ContractDeletionState @default(NONE)
+  deletionSlaHours  Int?
+  deletable         Boolean               @default(false)
+  updatedAt         DateTime              @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([deletion])
+}
+
+model ContractInvite {
+  id                 String   @id
+  contractId         String
+  roomId             String
+  inviteToken        String   @unique
+  invitedByManagerId String
+  tenantName         String
+  email              String?
+  phone              String?
+  state              String
+  signupUrl          String
+  audit              String
+  createdAt          DateTime @default(now())
+  acceptedAt         DateTime?
+  acceptedByUserId   String?
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([invitedByManagerId, state])
   @@index([roomId])
 }
 
@@ -471,6 +648,86 @@ model RepairRequest {
 
   @@index([vendorId, status])
   @@index([ticketId, status])
+}
+
+model Receipt {
+  id            String        @id
+  managerId     String?
+  source        ReceiptSource
+  imageUrl      String?
+  hasEvidence   Boolean
+  uploadedAt    DateTime      @default(now())
+  duplicateOfId String?
+
+  duplicateOf Receipt?     @relation("ReceiptDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates  Receipt[]    @relation("ReceiptDuplicates")
+  costs       Cost[]
+  ocrs        ReceiptOcr[]
+
+  @@index([uploadedAt])
+  @@index([managerId])
+  @@index([duplicateOfId])
+}
+
+model Cost {
+  id            String                 @id
+  managerId     String?
+  date          DateTime
+  item          String
+  amount        Int
+  type          CostType
+  scope         CostAttributionScope
+  unitId        String?
+  status        CostStatus             @default(DRAFT)
+  verified      Boolean                @default(false)
+  reviewReason  CostReviewReason?
+  disclosure    DisclosureState?
+  repairPayment RepairPaymentState?
+  paymentRef    String?
+  receiptId     String?
+  supersedesId  String?
+  voidReason    String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  receipt   Receipt?     @relation(fields: [receiptId], references: [id])
+  supersedes Cost?       @relation("CostAmendments", fields: [supersedesId], references: [id])
+  amendments Cost[]      @relation("CostAmendments")
+  ocrs      ReceiptOcr[]
+
+  @@index([managerId])
+  @@index([status, date])
+  @@index([type, date])
+  @@index([receiptId])
+  @@index([supersedesId])
+}
+
+model ReceiptOcr {
+  id                String    @id
+  receiptId         String
+  costId            String?
+  itemValue         String
+  itemConfidence    Float
+  itemNeedsReview   Boolean
+  dateValue         String
+  dateConfidence    Float
+  dateNeedsReview   Boolean
+  amountValue       Int
+  amountConfidence  Float
+  amountNeedsReview Boolean
+  unitIdValue       String?
+  unitIdConfidence  Float?
+  unitIdNeedsReview Boolean?
+  suggestedType     CostType?
+  typeConfidence    Float?
+  lineItems         Json
+  createdAt         DateTime  @default(now())
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  cost    Cost?   @relation(fields: [costId], references: [id])
+
+  @@index([receiptId])
+  @@index([costId])
 }
 
 model TicketMessage {

@@ -1781,6 +1781,9 @@ p {
   position: absolute;
   inset: 0;
   z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
   background: #eef1f4;
 }
 
@@ -1981,7 +1984,7 @@ p {
 .map-selected-card {
   position: absolute;
   right: 16px;
-  bottom: 232px;
+  bottom: 236px;
   left: 16px;
   z-index: 4;
   display: grid;
@@ -7158,6 +7161,10 @@ p {
     margin-top: 0;
     border: 1px solid var(--line);
     border-radius: 20px;
+  }
+
+  .map-selected-card {
+    bottom: 16px;
   }
 
   .result-sheet {

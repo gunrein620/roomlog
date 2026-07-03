@@ -16,6 +16,8 @@ import {
   linkReset,
 } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const dashboard = await getManagerContractDashboard();
   const sortedRows = [...dashboard.rows].sort((a, b) => {

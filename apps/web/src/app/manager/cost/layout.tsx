@@ -22,7 +22,7 @@ export default function CostLayout({ children }: { children: ReactNode }) {
 
 function CostNav() {
   return (
-    <nav style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+    <nav aria-label="관리인 비용 화면" style={{ display: "grid", gap: "var(--space-sm)" }}>
       {navItems.map(([id, label]) => (
         <Link
           key={id}
@@ -30,15 +30,18 @@ function CostNav() {
           style={{
             color: "var(--on-surface)",
             textDecoration: "none",
-            padding: "var(--space-sm) var(--space-md)",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border)",
+            minHeight: 40,
+            display: "flex",
+            alignItems: "center",
+            padding: "0 var(--space-md)",
+            borderRadius: "var(--radius)",
             background: "var(--surface-container-lowest)",
+            border: "1px solid var(--border)",
             fontSize: "var(--fs-caption)",
-            fontWeight: 700,
+            fontWeight: 800,
           }}
         >
-          {id} · {label}
+          {label}
         </Link>
       ))}
       <div
@@ -46,7 +49,8 @@ function CostNav() {
           marginTop: "var(--space-md)",
           padding: "var(--space-md)",
           border: "1px solid var(--border)",
-          borderRadius: "var(--radius-md)",
+          borderRadius: "var(--radius)",
+          background: "var(--surface-container-lowest)",
           color: "var(--on-surface-variant)",
           fontSize: "var(--fs-caption)",
           lineHeight: "var(--lh-body)",

@@ -16,6 +16,8 @@ const sectionLabel = {
   marginBottom: 7,
 } as const;
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const [contract, extraction] = await Promise.all([
     getContract(DEMO_CONTRACT_ID),
