@@ -3508,6 +3508,64 @@ describe("RoomlogService", () => {
     assert.equal(noMatch.length, 0);
   });
 
+  it("creates and updates manager-owned vendor profiles without leaking between managers", () => {
+    const service = new RoomlogService();
+    const store = (service as unknown as { store: { users: any[] } }).store;
+    store.users.push({
+      id: "landlord-second",
+      email: "landlord-second@roomlog.test",
+      passwordHash: "hash",
+      name: "Second Manager",
+      role: "LANDLORD",
+      status: "ACTIVE",
+      createdAt: "2026-07-01T00:00:00.000Z"
+    });
+
+    const created = service.createManagerVendorProfile("landlord-demo", {
+      businessName: "Seocho Electric",
+      contactPerson: "Kim",
+      phone: "010-1111-2222",
+      serviceArea: "Seocho-gu"
+    });
+
+    assert.equal(created.vendor.name, "Seocho Electric");
+    assert.equal(created.vendor.source, "manual");
+    assert.equal(created.vendor.dealCount, 0);
+    assert.equal(
+      service
+        .listManagerVendorMgmtVendors("landlord-demo", { q: "seocho" })
+        .some((vendor) => vendor.id === created.vendor.id),
+      true
+    );
+    assert.equal(
+      service
+        .listManagerVendorMgmtVendors("landlord-second", { q: "seocho" })
+        .some((vendor) => vendor.id === created.vendor.id),
+      false
+    );
+
+    const updated = service.updateManagerVendorProfile("landlord-demo", created.vendor.id, {
+      businessName: "Seocho Electric Plus",
+      contactPerson: "Lee",
+      phone: "010-3333-4444",
+      serviceArea: "Seocho-gu, Gangnam-gu"
+    });
+
+    assert.equal(updated.vendor.name, "Seocho Electric Plus");
+    assert.equal(updated.vendor.contactPerson, "Lee");
+    assert.equal(updated.vendor.phone, "01033334444");
+    assert.throws(
+      () =>
+        service.updateManagerVendorProfile("landlord-second", created.vendor.id, {
+          businessName: "Leaked Vendor",
+          contactPerson: "Other",
+          phone: "010-5555-6666",
+          serviceArea: "Other Area"
+        }),
+      /업체|Vendor/
+    );
+  });
+
   it("projects manager cost ledger from landlord repair costs and excludes non-spend states", () => {
     const service = new RoomlogService();
     const completeRepair = (
@@ -3630,6 +3688,62 @@ describe("RoomlogService", () => {
     const disclosure = service.getManagerDisclosureSetting("landlord-demo", month);
     assert.equal(disclosure.hiddenCount, 1);
     assert.equal(disclosure.entries[0].costId, "cost_private_maintenance");
+  });
+
+  it("persists manager cost OCR decisions, disclosure changes, and void audit state", () => {
+    const service = new RoomlogService();
+    const store = (service as unknown as { store: { costs: any[]; receipts: any[]; receiptOcrs: any[] } }).store;
+    const createdAt = "2026-12-01T00:00:00.000Z";
+
+    store.receipts.push({
+      id: "receipt_real_1",
+      managerId: "landlord-demo",
+      source: "file",
+      hasEvidence: true,
+      uploadedAt: createdAt
+    });
+    store.receiptOcrs.push({
+      id: "ocr_real_1",
+      receiptId: "receipt_real_1",
+      fields: {
+        item: { value: "December maintenance lighting", confidence: 0.96, needsReview: false },
+        date: { value: createdAt, confidence: 0.95, needsReview: false },
+        amount: { value: 41000, confidence: 0.54, needsReview: true }
+      },
+      suggestedType: "maintenance",
+      typeConfidence: 0.72,
+      lineItems: [{ label: "lighting", amount: 41000, suggestedType: "maintenance" }],
+      createdAt
+    });
+
+    const confirmed = service.confirmManagerReceiptOcr("landlord-demo", "ocr_real_1");
+    assert.equal(confirmed.status, "confirmed");
+    assert.equal(confirmed.verified, false);
+    assert.equal(confirmed.disclosure, "public");
+    assert.equal(
+      store.receiptOcrs.find((ocr) => ocr.id === "ocr_real_1")?.costId,
+      confirmed.id
+    );
+    assert.equal(service.getManagerMonthlyCostSummary("landlord-demo", "2026-12").totalAmount, 41000);
+
+    const privateSetting = service.updateManagerCostDisclosure(
+      "landlord-demo",
+      confirmed.id,
+      "private"
+    );
+    assert.equal(privateSetting.hiddenCount, 1);
+
+    const publicSetting = service.updateManagerCostDisclosure(
+      "landlord-demo",
+      confirmed.id,
+      "public"
+    );
+    assert.equal(publicSetting.hiddenCount, 0);
+
+    const voided = service.voidManagerCost("landlord-demo", confirmed.id, "duplicate receipt");
+    assert.equal(voided.status, "void");
+    assert.equal(voided.voidReason, "duplicate receipt");
+    assert.equal(service.getManagerMonthlyCostSummary("landlord-demo", "2026-12").totalAmount, 0);
   });
 
   it("lets tenants confirm completion or reopen unresolved repairs after vendor completion reports", () => {

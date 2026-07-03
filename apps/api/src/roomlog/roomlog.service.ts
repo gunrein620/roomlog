@@ -179,6 +179,13 @@ export type CreateTenantInviteInput = {
   moveInDate?: string;
 };
 
+export type ManagerVendorProfileInput = {
+  businessName?: string;
+  contactPerson?: string;
+  phone?: string;
+  serviceArea?: string;
+};
+
 export type LoginInput = {
   email: string;
   password: string;
@@ -254,6 +261,7 @@ export type VendorSummary = {
   phone: string;
   serviceArea: string;
   activeJobs: number;
+  createdByManagerId?: string;
 };
 
 export type VendorInvite = {
@@ -797,6 +805,7 @@ export class RoomlogService {
     );
     this.cost = new RoomlogCostDomain(
       this.store,
+      () => this.persistStore(),
       (iso) => this.timeOf(iso),
       (ticketId) => this.findTicket(ticketId),
       (roomId) => this.findRoom(roomId),
@@ -2231,6 +2240,26 @@ export class RoomlogService {
     return this.cost.getManagerCost(managerId, costId);
   }
 
+  confirmManagerCost(managerId: string, costId: string) {
+    return this.cost.confirmManagerCost(managerId, costId);
+  }
+
+  confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+    return this.cost.confirmManagerReceiptOcr(managerId, ocrId);
+  }
+
+  voidManagerCost(managerId: string, costId: string, reason?: string) {
+    return this.cost.voidManagerCost(managerId, costId, reason);
+  }
+
+  updateManagerCostDisclosure(
+    managerId: string,
+    costId: string,
+    disclosure: "public" | "private"
+  ) {
+    return this.cost.updateManagerCostDisclosure(managerId, costId, disclosure);
+  }
+
   getManagerCostReviewQueueSummary(managerId: string): CostReviewQueueSummary {
     return this.cost.getManagerCostReviewQueueSummary(managerId);
   }
@@ -2269,6 +2298,18 @@ export class RoomlogService {
 
   listManagerVendorDuplicateCandidates(managerId: string) {
     return this.vendorMgmt.listManagerVendorDuplicateCandidates(managerId);
+  }
+
+  createManagerVendorProfile(managerId: string, input: ManagerVendorProfileInput) {
+    return this.vendorMgmt.createManagerVendorProfile(managerId, input);
+  }
+
+  updateManagerVendorProfile(
+    managerId: string,
+    vendorId: string,
+    input: ManagerVendorProfileInput
+  ) {
+    return this.vendorMgmt.updateManagerVendorProfile(managerId, vendorId, input);
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {

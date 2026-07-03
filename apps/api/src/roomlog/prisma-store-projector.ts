@@ -232,7 +232,8 @@ export class PrismaStoreProjector implements StoreProjector {
         contactPerson: vendor.contactPerson,
         phone: vendor.phone,
         serviceArea: vendor.serviceArea,
-        activeJobs: vendor.activeJobs
+        activeJobs: vendor.activeJobs,
+        createdByManagerId: optional(vendor.createdByManagerId)
       })),
       vendorInvites: vendorInvites.map((invite) => ({
         id: invite.id,
@@ -940,7 +941,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           },
           update: {
             userId: vendor.userId,
@@ -948,7 +950,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           }
         });
       }

@@ -1,12 +1,13 @@
 // 비용(cost)·영수증 도메인 협력 클래스 — roomlog.service.ts에서 추출(동작 불변).
 // 읽기 전용(mutation 없음 → persist 불필요). 공유 헬퍼는 동명 필드로 주입해 본문 verbatim 유지.
 // cloneReceiptOcr는 store 하이드레이션도 쓰므로 RoomlogService에 잔류·주입.
-import { NotFoundException } from "@nestjs/common";
-import { now } from "../roomlog-support";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { id, now } from "../roomlog-support";
 import type {
   Cost,
   CostReviewQueueSummary,
   CostType,
+  DisclosureState,
   DisclosureSetting,
   ReceiptOcr,
   RepairRequest,
@@ -18,6 +19,7 @@ import type { Store } from "../roomlog.service";
 export class RoomlogCostDomain {
   constructor(
     private readonly store: Store,
+    private readonly persistStore: () => void,
     private readonly timeOf: (iso?: string) => number,
     private readonly findTicket: (ticketId: string) => Ticket,
     private readonly findRoom: (roomId: string) => Room,
@@ -38,6 +40,95 @@ export class RoomlogCostDomain {
     }
 
     return cost;
+  }
+
+  confirmManagerCost(managerId: string, costId: string) {
+    const cost = this.findStoredManagerCost(managerId, costId);
+    const updatedAt = now();
+
+    cost.status = "confirmed";
+    cost.reviewReason = undefined;
+    cost.verified = cost.verified || !this.costNeedsReview(cost);
+    cost.updatedAt = updatedAt;
+    this.persistStore();
+
+    return this.getManagerCost(managerId, cost.id);
+  }
+
+  confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+    const ocr = this.store.receiptOcrs.find((item) => item.id === ocrId);
+
+    if (!ocr || !this.canManagerAccessReceiptOcr(managerId, ocr)) {
+      throw new NotFoundException("관리 가능한 영수증 OCR을 찾을 수 없습니다.");
+    }
+
+    if (ocr.costId) {
+      return this.confirmManagerCost(managerId, ocr.costId);
+    }
+
+    const receipt = this.store.receipts.find((item) => item.id === ocr.receiptId);
+    const createdAt = now();
+    const cost: Cost = {
+      id: id("cost"),
+      managerId: receipt?.managerId ?? managerId,
+      date: this.toIsoDate(ocr.fields.date.value),
+      item: ocr.fields.item.value.trim() || "영수증 비용",
+      amount: ocr.fields.amount.value,
+      type: ocr.suggestedType ?? "other",
+      scope: ocr.fields.unitId?.value ? "unit" : "building",
+      unitId: ocr.fields.unitId?.value,
+      status: "confirmed",
+      verified: !this.ocrNeedsReview(ocr),
+      reviewReason: undefined,
+      disclosure: ocr.suggestedType === "maintenance" ? "public" : undefined,
+      receiptId: ocr.receiptId,
+      createdAt,
+      updatedAt: createdAt
+    };
+
+    this.store.costs.unshift(cost);
+    ocr.costId = cost.id;
+    this.persistStore();
+
+    return this.getManagerCost(managerId, cost.id);
+  }
+
+  voidManagerCost(managerId: string, costId: string, reason?: string) {
+    const cost = this.findStoredManagerCost(managerId, costId);
+
+    if (cost.status === "void") {
+      return this.getManagerCost(managerId, cost.id);
+    }
+
+    const normalizedReason = reason?.trim();
+    cost.status = "void";
+    cost.voidReason = normalizedReason || "관리자 무효 처리";
+    cost.updatedAt = now();
+    this.persistStore();
+
+    return this.getManagerCost(managerId, cost.id);
+  }
+
+  updateManagerCostDisclosure(
+    managerId: string,
+    costId: string,
+    disclosure: DisclosureState
+  ) {
+    if (disclosure !== "public" && disclosure !== "private") {
+      throw new BadRequestException("공개 설정 값이 올바르지 않습니다.");
+    }
+
+    const cost = this.findStoredManagerCost(managerId, costId);
+
+    if (cost.type !== "maintenance") {
+      throw new BadRequestException("관리비 비용만 공개 설정을 변경할 수 있습니다.");
+    }
+
+    cost.disclosure = disclosure;
+    cost.updatedAt = now();
+    this.persistStore();
+
+    return this.getManagerDisclosureSetting(managerId, cost.date.slice(0, 7));
   }
 
   getManagerCostReviewQueueSummary(managerId: string): CostReviewQueueSummary {
@@ -136,6 +227,16 @@ export class RoomlogCostDomain {
     );
   }
 
+  private findStoredManagerCost(managerId: string, costId: string) {
+    const cost = this.store.costs.find((item) => item.id === costId);
+
+    if (!cost || !this.canManagerAccessCost(managerId, cost)) {
+      throw new NotFoundException("관리 가능한 비용을 찾을 수 없습니다.");
+    }
+
+    return cost;
+  }
+
   private projectRepairCost(managerId: string, repair: RepairRequest): Cost | undefined {
     if (
       repair.status !== "COMPLETED" ||
@@ -198,6 +299,19 @@ export class RoomlogCostDomain {
     }
 
     return this.listManagerReceipts(managerId).some((receipt) => receipt.id === ocr.receiptId);
+  }
+
+  private costNeedsReview(cost: Cost) {
+    return Boolean(cost.reviewReason) || !cost.verified;
+  }
+
+  private ocrNeedsReview(ocr: ReceiptOcr) {
+    return Object.values(ocr.fields).some((field) => Boolean(field?.needsReview));
+  }
+
+  private toIsoDate(value: string) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? now() : parsed.toISOString();
   }
 
   private activeManagerCostsForSummary(managerId: string) {
