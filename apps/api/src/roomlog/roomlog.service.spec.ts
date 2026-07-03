@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
@@ -4082,6 +4082,73 @@ describe("RoomlogService", () => {
     assert.equal(result.thread.contextRef, "mo-a");
     assert.equal(managerThreads.some((thread: any) => thread.id === result.thread.id), true);
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
+  });
+
+  it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
+    const service = new RoomlogService({ seedDemoData: true } as any) as any;
+
+    const tenantMoveouts = service.listTenantMoveouts("tenant-demo");
+    const managerRows = service.listManagerMoveoutRows("landlord-demo");
+    const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+    assert.equal(tenantMoveouts.some((moveout: any) => moveout.id === "mo_0001"), true);
+    assert.equal(managerRows.some((row: any) => row.summaryId === "mo_0001"), true);
+    assert.equal(settlement.settlement.deductions.length, 4);
+    assert.equal(settlement.disputes.length, 1);
+  });
+
+  it("backfills the KAN-134 moveout demo flow when a local demo snapshot already exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-moveout-seed-"));
+    const storeFilePath = join(dir, "roomlog-store.json");
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveouts = [];
+    legacyDemoSnapshot.moveoutRecords = [];
+    legacyDemoSnapshot.moveoutChecklist = [];
+    legacyDemoSnapshot.moveoutSettlements = [];
+    legacyDemoSnapshot.moveoutDeductions = [];
+    legacyDemoSnapshot.moveoutDisputes = [];
+    legacyDemoSnapshot.moveoutReportAudits = [];
+
+    try {
+      writeFileSync(storeFilePath, JSON.stringify(legacyDemoSnapshot));
+
+      const service = new RoomlogService({ seedDemoData: true, storeFilePath } as any) as any;
+      const tenantMoveouts = service.listTenantMoveouts("tenant-demo");
+      const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+      assert.equal(tenantMoveouts.some((moveout: any) => moveout.id === "mo_0001"), true);
+      assert.deepEqual(settlement.gate.blockingReasons, ["unresolved_dispute"]);
+      assert.equal(settlement.gate.overrideAvailable, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("backfills the KAN-134 moveout demo flow when a persisted database snapshot is loaded", () => {
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveouts = [];
+    legacyDemoSnapshot.moveoutRecords = [];
+    legacyDemoSnapshot.moveoutChecklist = [];
+    legacyDemoSnapshot.moveoutSettlements = [];
+    legacyDemoSnapshot.moveoutDeductions = [];
+    legacyDemoSnapshot.moveoutDisputes = [];
+    legacyDemoSnapshot.moveoutReportAudits = [];
+
+    const service = new RoomlogService({
+      seedDemoData: true,
+      initialStore: legacyDemoSnapshot
+    } as any) as any;
+    const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+    assert.equal(service.listTenantMoveouts("tenant-demo").some((moveout: any) => moveout.id === "mo_0001"), true);
+    assert.deepEqual(settlement.gate.blockingReasons, ["unresolved_dispute"]);
+    assert.equal(settlement.gate.overrideAvailable, true);
   });
 
   it("lets a manager read only reports for rooms they manage", () => {
