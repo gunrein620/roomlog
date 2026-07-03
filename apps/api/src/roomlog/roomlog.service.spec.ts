@@ -4084,6 +4084,19 @@ describe("RoomlogService", () => {
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
   });
 
+  it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
+    const service = new RoomlogService({ seedDemoData: true } as any) as any;
+
+    const tenantMoveouts = service.listTenantMoveouts("tenant-demo");
+    const managerRows = service.listManagerMoveoutRows("landlord-demo");
+    const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+    assert.equal(tenantMoveouts.some((moveout: any) => moveout.id === "mo_0001"), true);
+    assert.equal(managerRows.some((row: any) => row.summaryId === "mo_0001"), true);
+    assert.equal(settlement.settlement.deductions.length, 4);
+    assert.equal(settlement.disputes.length, 1);
+  });
+
   it("lets a manager read only reports for rooms they manage", () => {
     const service = createReportTestService() as any;
 
