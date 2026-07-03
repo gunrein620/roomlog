@@ -215,6 +215,126 @@ export type GoogleSocialLoginInput = {
   flow?: "login" | "signup";
 };
 
+const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
+  {
+    id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    label: "Nemotron Omni",
+    mode: "vision-reasoning",
+    description: "NVIDIA vision reasoning model for reading dimensions and structural hints from floor-plan images."
+  },
+  {
+    id: "nvidia/cosmos3-nano-reasoner",
+    label: "Cosmos3 Reasoner",
+    mode: "vision-reasoning",
+    description: "NVIDIA reasoning model for fast floor-plan dimension analysis."
+  },
+  {
+    id: "openai/floor-plan-vision",
+    label: "OpenAI Vision",
+    mode: "vision-reasoning",
+    description: "OpenAI vision model for dimension, candidate, room-structure, and object-graph analysis."
+  }
+];
+
+const FLOOR_PLAN_NORMALIZED_LINE_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x1: { maximum: 1000, minimum: 0, type: "number" },
+    x2: { maximum: 1000, minimum: 0, type: "number" },
+    y1: { maximum: 1000, minimum: 0, type: "number" },
+    y2: { maximum: 1000, minimum: 0, type: "number" }
+  },
+  required: ["x1", "y1", "x2", "y2"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    candidateReviews: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          id: { type: "string" },
+          reason: { type: "string" },
+          verdict: { enum: ["keep", "reject", "review"], type: "string" }
+        },
+        required: ["id", "verdict", "confidence", "reason"],
+        type: "object"
+      },
+      maxItems: 80,
+      type: "array"
+    },
+    missingWallHints: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          description: { type: "string" },
+          line: FLOOR_PLAN_NORMALIZED_LINE_SCHEMA,
+          orientation: { enum: ["horizontal", "vertical"], type: "string" }
+        },
+        required: ["description", "confidence", "orientation", "line"],
+        type: "object"
+      },
+      maxItems: 30,
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "candidateReviews", "missingWallHints"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_ROOM_POINT_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x: { maximum: 1000, minimum: 0, type: "number" },
+    y: { maximum: 1000, minimum: 0, type: "number" }
+  },
+  required: ["x", "y"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    noiseFlags: {
+      additionalProperties: false,
+      properties: {
+        decorativeHatching: { type: "boolean" },
+        watermark: { type: "boolean" }
+      },
+      required: ["decorativeHatching", "watermark"],
+      type: "object"
+    },
+    planStyle: { enum: ["solid-filled", "double-line-hollow", "hatched", "gray-fill"], type: "string" },
+    rooms: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          label: { type: "string" },
+          polygon: {
+            items: FLOOR_PLAN_ROOM_POINT_SCHEMA,
+            maxItems: 12,
+            minItems: 4,
+            type: "array"
+          }
+        },
+        required: ["label", "polygon", "confidence"],
+        type: "object"
+      },
+      maxItems: 40,
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "planStyle", "noiseFlags", "rooms"],
+  type: "object"
+} as const;
+
 const FLOOR_PLAN_OBJECT_GRAPH_PROMPT = `You extract a structured object graph from a Korean residential floor-plan image (apartment/villa/officetel) for a 2D/3D room modeling pipeline.
 Return JSON only, following the provided schema exactly.
 

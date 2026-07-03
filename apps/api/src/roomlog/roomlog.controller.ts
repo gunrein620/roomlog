@@ -34,6 +34,8 @@ import {
   DeletionState,
   FinalizeIntakeInput,
   AskManagerReportChatInput,
+  CreateRoomInput,
+  FloorPlanAiAnalysisInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
   MessagingThreadContext,
