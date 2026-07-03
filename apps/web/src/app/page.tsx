@@ -2626,6 +2626,15 @@ export default function Home() {
         <header className="web-topbar" aria-label="웹 상단 메뉴">
           <div className="web-topbar-inner">
             <button className="web-logo" type="button" onClick={() => activateTab("home")}>
+              <span className="web-logo-icon" aria-hidden="true">
+                <svg className="web-logo-roof" viewBox="0 0 140 68" fill="none">
+                  <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+                  <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                </svg>
+              </span>
               집우집주<span>WOOZU</span>
             </button>
             <nav className="web-nav" aria-label="주요 메뉴">
@@ -2656,8 +2665,8 @@ export default function Home() {
           </header>
 
           <div className="web-hero-head" aria-hidden="true">
-            <h1>방 구할 땐, 집우집주</h1>
-            <p>전월세부터 매매까지 · 방문 전 3D로 먼저 둘러보기</p>
+            <h1>방 구할 땐, 우주에서</h1>
+            <p className="web-hero-sub">전월세부터 매매까지 | 방문 전 3D로 먼저 둘러보세요</p>
           </div>
 
           <label className="search-box">
