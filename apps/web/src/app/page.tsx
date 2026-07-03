@@ -826,7 +826,7 @@ function MyPageRoleBar({ roleLabel, onSwitchRole }: { roleLabel: string; onSwitc
   );
 }
 
-function LandlordMyPage({ onSwitchRole }: { onSwitchRole: () => void }) {
+function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; onGoHome: () => void }) {
   const [ownerForm, setOwnerForm] = useState({
     title: "방배 루미에르 402호",
     address: "서울특별시 서초구 방배동",
@@ -898,9 +898,14 @@ function LandlordMyPage({ onSwitchRole }: { onSwitchRole: () => void }) {
       <MyPageRoleBar roleLabel="집주인" onSwitchRole={onSwitchRole} />
 
       <div className="owner-hero">
-        <p className="brand-kicker">매물 관리</p>
-        <h2 id="owner-title">집주인 마이페이지</h2>
-        <p>사진, 가격, 3D 방 자료를 한 번에 정리해 매물 등록을 진행합니다.</p>
+        <div>
+          <p className="brand-kicker">매물 관리</p>
+          <h2 id="owner-title">집주인 마이페이지</h2>
+          <p>사진, 가격, 3D 방 자료를 한 번에 정리해 매물 등록을 진행합니다.</p>
+        </div>
+        <button className="mypage-main-button" type="button" onClick={onGoHome}>
+          메인으로
+        </button>
       </div>
 
       {ownerToast ? <p className="mypage-toast" role="status">{ownerToast}</p> : null}
@@ -2109,7 +2114,8 @@ function UserMyPage({
   onOpenFilter,
   onOpenNotifications,
   onApplyCondition,
-  onSwitchRole
+  onSwitchRole,
+  onGoHome
 }: {
   roleLabel: string;
   savedCount: number;
@@ -2122,6 +2128,7 @@ function UserMyPage({
   onOpenNotifications: () => void;
   onApplyCondition: (condition: (typeof savedConditions)[number]) => void;
   onSwitchRole: () => void;
+  onGoHome: () => void;
 }) {
   const latestInquiry = inquiries[0];
   const latestViewed = viewedListings[0];
@@ -2139,6 +2146,9 @@ function UserMyPage({
           <h2 id="profile-title">마이페이지</h2>
           <p>{roleLabel} 활동에 맞춘 검색 조건과 문의 내역을 정리합니다.</p>
         </div>
+        <button className="mypage-main-button profile-main-button" type="button" onClick={onGoHome}>
+          메인으로
+        </button>
       </header>
 
       <section className="profile-activity-grid" aria-label="내 활동 요약">
@@ -2236,7 +2246,15 @@ function UserMyPage({
   );
 }
 
-function TenantMyPage({ onSwitchRole, onGoInquiry }: { onSwitchRole: () => void; onGoInquiry: () => void }) {
+function TenantMyPage({
+  onSwitchRole,
+  onGoInquiry,
+  onGoHome
+}: {
+  onSwitchRole: () => void;
+  onGoInquiry: () => void;
+  onGoHome: () => void;
+}) {
   const [repairRequests, setRepairRequests] = useState([
     { id: 1, title: "창문 누수", status: "업체 배정" },
     { id: 2, title: "욕실 타일 보수", status: "접수됨" }
@@ -2270,9 +2288,14 @@ function TenantMyPage({ onSwitchRole, onGoInquiry }: { onSwitchRole: () => void;
       <MyPageRoleBar roleLabel="세입자" onSwitchRole={onSwitchRole} />
 
       <div className="owner-hero compact-profile tenant-hero">
-        <p className="brand-kicker">입주 생활</p>
-        <h2 id="tenant-title">세입자 마이페이지</h2>
-        <p>계약, 관리비, 수리요청, 방문 일정을 한 화면에서 확인합니다.</p>
+        <div>
+          <p className="brand-kicker">입주 생활</p>
+          <h2 id="tenant-title">세입자 마이페이지</h2>
+          <p>계약, 관리비, 수리요청, 방문 일정을 한 화면에서 확인합니다.</p>
+        </div>
+        <button className="mypage-main-button" type="button" onClick={onGoHome}>
+          메인으로
+        </button>
       </div>
 
       {tenantToast ? <p className="mypage-toast" role="status">{tenantToast}</p> : null}
@@ -3804,10 +3827,14 @@ export default function Home() {
           <InquiryHubSection inquiries={inquiries} onBrowseListings={() => activateTab("home")} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
-          <LandlordMyPage onSwitchRole={() => openAuthScreen("login")} />
+          <LandlordMyPage onSwitchRole={() => openAuthScreen("login")} onGoHome={() => activateTab("home")} />
         ) : null}
         {activeTab === "mypage" && activeRole === "tenant" ? (
-          <TenantMyPage onSwitchRole={() => openAuthScreen("login")} onGoInquiry={() => activateTab("inquiry")} />
+          <TenantMyPage
+            onSwitchRole={() => openAuthScreen("login")}
+            onGoInquiry={() => activateTab("inquiry")}
+            onGoHome={() => activateTab("home")}
+          />
         ) : null}
         {activeTab === "mypage" && activeRole === "seeker" ? (
           <UserMyPage
@@ -3822,6 +3849,7 @@ export default function Home() {
             onOpenNotifications={() => setIsNotificationSheetOpen(true)}
             onApplyCondition={applySavedCondition}
             onSwitchRole={() => openAuthScreen("login")}
+            onGoHome={() => activateTab("home")}
           />
         ) : null}
 

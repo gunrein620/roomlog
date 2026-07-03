@@ -4637,6 +4637,10 @@ p {
 }
 
 .owner-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 22px;
@@ -4644,6 +4648,10 @@ p {
     linear-gradient(135deg, rgba(47, 85, 255, 0.1), rgba(0, 191, 114, 0.08)),
     #ffffff;
   box-shadow: 0 10px 22px rgba(18, 24, 40, 0.06);
+}
+
+.owner-hero > div {
+  min-width: 0;
 }
 
 .owner-hero h2 {
@@ -4657,6 +4665,27 @@ p {
   font-size: 0.9rem;
   font-weight: 800;
   line-height: 1.55;
+}
+
+.mypage-main-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(47, 85, 255, 0.22);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--blue);
+  font-size: 0.92rem;
+  font-weight: 900;
+  box-shadow: 0 10px 22px rgba(47, 85, 255, 0.12);
+}
+
+.mypage-main-button:hover {
+  border-color: rgba(47, 85, 255, 0.42);
+  background: rgba(47, 85, 255, 0.06);
 }
 
 .owner-form {
@@ -5174,10 +5203,14 @@ p {
 
 .profile-account-card {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-columns: 54px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 16px;
+}
+
+.profile-main-button {
+  justify-self: end;
 }
 
 .profile-avatar {
@@ -5686,6 +5719,25 @@ p {
   background:
     linear-gradient(135deg, rgba(47, 85, 255, 0.12), rgba(255, 255, 255, 0.86)),
     #ffffff;
+}
+
+@media (max-width: 540px) {
+  .owner-hero {
+    flex-direction: column;
+  }
+
+  .mypage-main-button {
+    width: 100%;
+  }
+
+  .profile-account-card {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .profile-main-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
 }
 
 .tenant-contract-card,
