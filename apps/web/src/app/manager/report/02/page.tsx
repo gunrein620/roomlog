@@ -3,6 +3,8 @@ import { MANAGER_REPORT_ROUTES, sourceHref } from "@/lib/report-nav";
 import { Card } from "@roomlog/ui";
 import { KpiRow, LinkButton, NextActionList, PageStack, ScreenHeader, Section, SourceLink, TrustNotice, formatDateTime, scopeText } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const report = await getReport();
 
@@ -56,4 +58,3 @@ export default async function Page() {
 const detailsStyle = { border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "var(--surface-container-lowest)" } as const;
 const summaryStyle = { display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center", padding: "var(--space-md)", cursor: "pointer", fontWeight: 850 } as const;
 const basisLinkStyle = { color: "var(--primary)", textDecoration: "none", fontSize: "var(--fs-caption)", fontWeight: 800 } as const;
-
