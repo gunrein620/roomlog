@@ -7,6 +7,7 @@ datasource db {
 }
 
 enum UserRole {
+  SEEKER
   TENANT
   LANDLORD
   VENDOR

@@ -101,13 +101,21 @@ const googleLogoSvg = (
   </svg>
 );
 
-const socialProviders: Array<{ label: string; className: string; mark: ReactNode; href?: string }> = [
+const defaultAuthRedirectPath = "/";
+
+const googleAuthHrefForMode = (mode: AuthMode) => {
+  const flow = mode === "signup" ? "signup" : "login";
+  const errorRedirectTo = mode === "signup" ? "/?auth=signup" : "/";
+  return `/api/auth/google/start?role=SEEKER&flow=${flow}&redirectTo=${encodeURIComponent(defaultAuthRedirectPath)}&errorRedirectTo=${encodeURIComponent(errorRedirectTo)}`;
+};
+
+const socialProvidersForMode = (mode: AuthMode): Array<{ label: string; className: string; mark: ReactNode; href?: string }> => [
   { label: "네이버로 계속하기", className: "naver", mark: <span aria-hidden="true">N</span> },
   {
     label: "Google로 계속하기",
     className: "google",
     mark: <span className="google-logo-icon" aria-hidden="true">{googleLogoSvg}</span>,
-    href: "/api/auth/google/start?role=TENANT&flow=login&redirectTo=%2F%3Frole%3Dtenant%26tab%3Dmypage&errorRedirectTo=%2F"
+    href: googleAuthHrefForMode(mode)
   }
 ];
 
@@ -162,6 +170,17 @@ const normalizeAppTab = (value: string | null): AppTab | null => {
     return value;
   }
   return null;
+};
+
+const normalizeAuthMode = (value: string | null): AuthMode | null => {
+  if (value === "login" || value === "signup" || value === "broker") return value;
+  return null;
+};
+
+const appRoleForViewer = (viewer: ViewerProfile): AppRole => {
+  if (viewer.role === "TENANT") return "tenant";
+  if (viewer.role === "LANDLORD") return "landlord";
+  return "seeker";
 };
 
 const categories = [
@@ -606,8 +625,53 @@ const trustItems = [
 
 const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as const;
 
-function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void }) {
+function LoginScreen({
+  mode,
+  setActiveRole,
+  onAuthenticated
+}: {
+  mode: AuthMode;
+  setActiveRole: (role: AppRole) => void;
+  onAuthenticated: (viewer: ViewerProfile) => void;
+}) {
   const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
+  const [serviceEmail, setServiceEmail] = useState("");
+  const [servicePassword, setServicePassword] = useState("");
+  const [serviceLoginError, setServiceLoginError] = useState("");
+  const [isServiceLoginPending, setIsServiceLoginPending] = useState(false);
+  const socialProviders = socialProvidersForMode(mode);
+
+  async function submitServiceLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsServiceLoginPending(true);
+    setServiceLoginError("");
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: serviceEmail, password: servicePassword, expectedRole: "SEEKER" })
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => undefined);
+        setServiceLoginError(body?.message ?? "로그인에 실패했습니다.");
+        return;
+      }
+
+      const meResponse = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!meResponse.ok) {
+        setServiceLoginError("로그인 상태를 확인하지 못했습니다.");
+        return;
+      }
+
+      onAuthenticated((await meResponse.json()) as ViewerProfile);
+    } catch {
+      setServiceLoginError("네트워크 오류로 로그인하지 못했습니다.");
+    } finally {
+      setIsServiceLoginPending(false);
+    }
+  }
 
   return (
     <main className="app-canvas login-canvas">
@@ -672,6 +736,41 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
           </div>
 
           <p className="social-login-notice" role="status">{socialLoginNotice}</p>
+
+          <div className="service-login-panel" aria-label="서비스 로그인">
+            <div>
+              <strong>서비스 로그인</strong>
+            </div>
+            <form className="service-login-form" onSubmit={submitServiceLogin}>
+              <label>
+                이메일
+                <input
+                  type="email"
+                  value={serviceEmail}
+                  onChange={(event) => setServiceEmail(event.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label>
+                비밀번호
+                <input
+                  type="password"
+                  value={servicePassword}
+                  onChange={(event) => setServicePassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              {serviceLoginError ? (
+                <p className="service-auth-error" role="alert">{serviceLoginError}</p>
+              ) : null}
+              <button className="service-login-submit" type="submit" disabled={isServiceLoginPending}>
+                {isServiceLoginPending ? "로그인 중" : "로그인"}
+              </button>
+            </form>
+            <a className="service-signup-link" href="/signup">일반 회원가입</a>
+          </div>
 
           <div className="dev-login-panel" aria-label="개발용 로그인">
             <div>
@@ -2507,6 +2606,7 @@ export default function Home() {
   const [viewer, setViewer] = useState<ViewerProfile | null>(null);
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isRouteReady, setIsRouteReady] = useState(false);
+  const [isDevRolePreview, setIsDevRolePreview] = useState(false);
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
@@ -2601,8 +2701,20 @@ export default function Home() {
 
   const startRoleSession = (role: AppRole) => {
     setAuthMode(null);
+    setIsDevRolePreview(true);
     setActiveRole(role);
     setActiveTab(role === "seeker" ? "home" : "mypage");
+    resetWindowScrollSoon();
+  };
+
+  const completeServiceAuth = (profile: ViewerProfile) => {
+    const nextRole = appRoleForViewer(profile);
+    setViewer(profile);
+    setAuthMode(null);
+    setIsDevRolePreview(false);
+    setActiveRole(nextRole);
+    setActiveTab(nextRole === "seeker" ? "home" : "mypage");
+    setSelectedListing(null);
     resetWindowScrollSoon();
   };
 
@@ -2654,14 +2766,21 @@ export default function Home() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const auth = normalizeAuthMode(params.get("auth"));
     const role = normalizeAppRole(params.get("role"));
     const tab = normalizeAppTab(params.get("tab"));
 
-    if (role) {
+    if (auth) {
+      setAuthMode(auth);
+      setSelectedListing(null);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (role) {
       setActiveRole(role);
       setActiveTab(tab ?? (role === "seeker" ? "home" : "mypage"));
       setSelectedListing(null);
       setAuthMode(null);
+      setIsDevRolePreview(false);
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
     } else if (tab) {
@@ -2705,7 +2824,7 @@ export default function Home() {
       : null;
   const isProtectedRolePage = Boolean(protectedConfig);
   const canAccessProtectedRolePage =
-    !protectedConfig || (viewer?.role === protectedConfig.sessionRole);
+    !protectedConfig || isDevRolePreview || (viewer?.role === protectedConfig.sessionRole);
 
   useEffect(() => {
     if (!isRouteReady || !isAuthChecked || !protectedConfig || canAccessProtectedRolePage) return;
@@ -2720,19 +2839,22 @@ export default function Home() {
     setActiveTab("home");
     setSelectedListing(null);
     setAuthMode(null);
+    setIsDevRolePreview(false);
   };
 
   const navigateRoleHome = (role: AppRole) => {
     const target = roleSwitchOptions.find((item) => item.id === role);
     if (!target) return;
 
+    setIsDevRolePreview(true);
     setActiveRole(role);
     setActiveTab(role === "seeker" ? "home" : "mypage");
-    window.location.href = target.href;
+    window.history.pushState(null, "", target.href);
+    resetWindowScrollSoon();
   };
 
   if (authMode) {
-    return <LoginScreen setActiveRole={startRoleSession} />;
+    return <LoginScreen mode={authMode} setActiveRole={startRoleSession} onAuthenticated={completeServiceAuth} />;
   }
 
   if (isProtectedRolePage && (!isAuthChecked || !canAccessProtectedRolePage)) {
@@ -2804,7 +2926,7 @@ export default function Home() {
               ) : (
                 <>
                   <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
-                  <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup/social"; }}>회원가입</button>
+                  <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup"; }}>회원가입</button>
                   <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
                 </>
               )}

@@ -396,9 +396,9 @@ export class RoomlogAuthDomain {
   }
 
   private normalizeSocialRole(role?: UserRole): UserRole {
-    const normalizedRole = role ?? "TENANT";
+    const normalizedRole = role ?? "SEEKER";
 
-    if (!["TENANT", "LANDLORD", "VENDOR"].includes(normalizedRole)) {
+    if (!["SEEKER", "TENANT", "LANDLORD", "VENDOR"].includes(normalizedRole)) {
       throw new BadRequestException("Invalid social login role.");
     }
 
@@ -585,15 +585,15 @@ export class RoomlogAuthDomain {
       throw new BadRequestException("이름을 입력해주세요.");
     }
 
-    if (!input.phone?.trim()) {
+    if (input.role !== "SEEKER" && !input.phone?.trim()) {
       throw new BadRequestException("휴대폰 번호를 입력해주세요.");
     }
 
-    if (!isValidPhoneNumber(input.phone)) {
+    if (input.phone && !isValidPhoneNumber(input.phone)) {
       throw new BadRequestException("휴대폰 번호는 숫자 10~11자리여야 합니다.");
     }
 
-    if (!["TENANT", "LANDLORD", "VENDOR"].includes(input.role)) {
+    if (!["SEEKER", "TENANT", "LANDLORD", "VENDOR"].includes(input.role)) {
       throw new BadRequestException("가입 역할이 올바르지 않습니다.");
     }
 

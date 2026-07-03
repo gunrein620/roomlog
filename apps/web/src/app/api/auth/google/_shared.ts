@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const GOOGLE_OAUTH_STATE_COOKIE = "roomlog_google_oauth_state";
 export const GOOGLE_OAUTH_CONTEXT_COOKIE = "roomlog_google_oauth_context";
 
-export type GoogleOauthRole = "TENANT" | "LANDLORD" | "VENDOR";
+export type GoogleOauthRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
 export type GoogleOauthFlow = "login" | "signup";
 
 export const SOCIAL_SIGNUP_REQUIRED = "SOCIAL_SIGNUP_REQUIRED";
@@ -66,18 +66,20 @@ export async function runtimeEnv(key: string) {
 export function defaultRedirectForRole(role: GoogleOauthRole) {
   if (role === "LANDLORD") return "/?role=landlord&tab=mypage";
   if (role === "VENDOR") return "/vendor/job/00";
-  return "/?role=tenant&tab=mypage";
+  if (role === "TENANT") return "/?role=tenant&tab=mypage";
+  return "/";
 }
 
 export function loginPathForRole(role: GoogleOauthRole) {
   if (role === "LANDLORD") return "/manager/login";
   if (role === "VENDOR") return "/vendor/login";
-  return "/tenant/login";
+  if (role === "TENANT") return "/tenant/login";
+  return "/?auth=login";
 }
 
 export function normalizeGoogleOauthRole(value: string | null): GoogleOauthRole {
-  if (value === "LANDLORD" || value === "VENDOR" || value === "TENANT") return value;
-  return "TENANT";
+  if (value === "SEEKER" || value === "LANDLORD" || value === "VENDOR" || value === "TENANT") return value;
+  return "SEEKER";
 }
 
 export function normalizeGoogleOauthFlow(value: string | null): GoogleOauthFlow {
@@ -90,7 +92,7 @@ export function safeRedirectPath(value: string | null, fallback: string) {
 }
 
 export function socialSignupPath(role: GoogleOauthRole, redirectTo: string) {
-  const url = new URL("http://roomlog.local/signup/social");
+  const url = new URL("http://roomlog.local/signup");
   url.searchParams.set("provider", "google");
   url.searchParams.set("role", role);
   url.searchParams.set("redirectTo", safeRedirectPath(redirectTo, "/"));

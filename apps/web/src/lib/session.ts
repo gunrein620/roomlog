@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { serverFetch, ApiError } from "./server-api";
 
-export type UserRole = "TENANT" | "LANDLORD" | "VENDOR";
+export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
 
 // GET /auth/me 응답 shape (roomlog.service.getMe). 백엔드 불변이므로 이 shape에 맞춘다.
 export interface SessionUser {
