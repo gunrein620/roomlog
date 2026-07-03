@@ -99,12 +99,50 @@ export function socialSignupPath(role: GoogleOauthRole, redirectTo: string) {
   return `${url.pathname}${url.search}`;
 }
 
-export function googleCallbackUrl(requestUrl: string) {
+type OriginSource = string | Pick<Request, "url" | "headers">;
+
+function firstHeaderValue(value: string | null) {
+  return value?.split(",")[0]?.trim() || "";
+}
+
+function cleanOrigin(value: string | undefined) {
+  const trimmed = value?.trim().replace(/\/+$/, "") ?? "";
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
+  } catch {
+    return "";
+  }
+
+  return "";
+}
+
+export function publicOrigin(source: OriginSource) {
+  const configured = cleanOrigin(process.env.ROOMLOG_PUBLIC_ORIGIN);
+  if (configured) return configured;
+
+  const requestUrl = typeof source === "string" ? source : source.url;
+  const headers = typeof source === "string" ? undefined : source.headers;
+  const forwardedHost = firstHeaderValue(headers?.get("x-forwarded-host") ?? null);
+  const host = forwardedHost || firstHeaderValue(headers?.get("host") ?? null);
+
+  if (host && !/^localhost(?::\d+)?$/i.test(host)) {
+    const proto =
+      firstHeaderValue(headers?.get("x-forwarded-proto") ?? null) ||
+      new URL(requestUrl).protocol.replace(":", "");
+    return `${proto}://${host}`;
+  }
+
+  return new URL(requestUrl).origin;
+}
+
+export function googleCallbackUrl(source: OriginSource) {
   const configured = process.env.GOOGLE_LOGIN_CALLBACK_URL?.trim();
   if (configured) return configured;
 
-  const origin = new URL(requestUrl).origin;
-  return `${origin}/api/auth/google/callback`;
+  return `${publicOrigin(source)}/api/auth/google/callback`;
 }
 
 export function encodeGoogleOauthContext(context: GoogleOauthContext) {
@@ -133,12 +171,16 @@ export function decodeGoogleOauthContext(value: string | undefined): GoogleOauth
   }
 }
 
-export function redirectToPathWithError(requestUrl: string, path: string, error: string) {
-  const url = new URL(safeRedirectPath(path, "/"), requestUrl);
+export function publicUrl(source: OriginSource, path: string) {
+  return new URL(safeRedirectPath(path, "/"), publicOrigin(source));
+}
+
+export function redirectToPathWithError(source: OriginSource, path: string, error: string) {
+  const url = publicUrl(source, path);
   url.searchParams.set("error", error);
   return NextResponse.redirect(url);
 }
 
-export function redirectToLoginWithError(requestUrl: string, role: GoogleOauthRole, error: string) {
-  return redirectToPathWithError(requestUrl, loginPathForRole(role), error);
+export function redirectToLoginWithError(source: OriginSource, role: GoogleOauthRole, error: string) {
+  return redirectToPathWithError(source, loginPathForRole(role), error);
 }

@@ -10,6 +10,7 @@ import {
   SOCIAL_SIGNUP_REQUIRED,
   googleCallbackUrl,
   loginPathForRole,
+  publicUrl,
   redirectToPathWithError,
   socialSignupPath
 } from "../_shared";
@@ -33,11 +34,11 @@ export async function GET(request: NextRequest) {
   cookieStore.delete(GOOGLE_OAUTH_CONTEXT_COOKIE);
 
   if (error) {
-    return redirectToPathWithError(request.url, errorRedirectTo, `google_${error}`);
+    return redirectToPathWithError(request, errorRedirectTo, `google_${error}`);
   }
 
   if (!code || !state || !savedState || state !== savedState || !context) {
-    return redirectToPathWithError(request.url, errorRedirectTo, "google_state");
+    return redirectToPathWithError(request, errorRedirectTo, "google_state");
   }
 
   const upstream = await fetch(apiUrl("/auth/social/google/callback", { requestUrl: request.url }), {
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
       code,
-      redirectUri: googleCallbackUrl(request.url),
+      redirectUri: googleCallbackUrl(request),
       role: context.role,
       inviteToken: context.inviteToken,
       flow: context.flow
@@ -56,14 +57,14 @@ export async function GET(request: NextRequest) {
   if (!upstream.ok || !data.accessToken) {
     const message = Array.isArray(data.message) ? data.message.join(", ") : data.message;
     if (message === SOCIAL_SIGNUP_REQUIRED) {
-      return NextResponse.redirect(new URL(socialSignupPath(context.role, context.redirectTo), request.url));
+      return NextResponse.redirect(publicUrl(request, socialSignupPath(context.role, context.redirectTo)));
     }
 
-    const url = new URL(errorRedirectTo, request.url);
+    const url = publicUrl(request, errorRedirectTo);
     url.searchParams.set("error", message || "google_login");
     return NextResponse.redirect(url);
   }
 
   cookieStore.set(AUTH_COOKIE, data.accessToken, authCookieOptions);
-  return NextResponse.redirect(new URL(context.redirectTo || defaultRedirectForRole(role), request.url));
+  return NextResponse.redirect(publicUrl(request, context.redirectTo || defaultRedirectForRole(role)));
 }

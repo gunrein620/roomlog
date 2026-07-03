@@ -44,6 +44,10 @@ jobs:
           DATABASE_URL: "${{ secrets.DATABASE_URL }}"
           NEXT_PUBLIC_API_URL: "${{ secrets.NEXT_PUBLIC_API_URL }}"
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: "${{ secrets.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID }}"
+          ROOMLOG_PUBLIC_ORIGIN: "${{ secrets.ROOMLOG_PUBLIC_ORIGIN }}"
+          GOOGLE_LOGIN_CLIENT_ID: "${{ secrets.GOOGLE_LOGIN_CLIENT_ID }}"
+          GOOGLE_LOGIN_CLIENT_SECRET: "${{ secrets.GOOGLE_LOGIN_CLIENT_SECRET }}"
+          GOOGLE_LOGIN_CALLBACK_URL: "${{ secrets.GOOGLE_LOGIN_CALLBACK_URL }}"
           PORT: "${{ secrets.PORT }}"
           AWS_REGION: "${{ secrets.AWS_REGION }}"
           S3_BUCKET_NAME: "${{ secrets.S3_BUCKET_NAME }}"
@@ -54,19 +58,45 @@ jobs:
 
           NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api}"
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID="${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}"
+
+          read_prod_env_key() {
+            key="$1"
+            printf '%s\n' "${PROD_ENV:-}" \
+              | awk -v key="$key" 'BEGIN { FS = "=" } $1 == key { sub(/^[^=]*=/, ""); print; exit }'
+          }
+
           if [ -z "$NEXT_PUBLIC_NAVER_MAP_CLIENT_ID" ] && [ -n "${PROD_ENV:-}" ]; then
-            NEXT_PUBLIC_NAVER_MAP_CLIENT_ID="$(
-              printf '%s\n' "$PROD_ENV" \
-                | awk 'BEGIN { FS = "=" } $1 == "NEXT_PUBLIC_NAVER_MAP_CLIENT_ID" { sub(/^[^=]*=/, ""); print; exit }'
-            )"
+            NEXT_PUBLIC_NAVER_MAP_CLIENT_ID="$(read_prod_env_key NEXT_PUBLIC_NAVER_MAP_CLIENT_ID)"
           fi
+
+          ROOMLOG_PUBLIC_ORIGIN="${ROOMLOG_PUBLIC_ORIGIN:-}"
+          if [ -z "$ROOMLOG_PUBLIC_ORIGIN" ] && [ -n "${PROD_ENV:-}" ]; then
+            ROOMLOG_PUBLIC_ORIGIN="$(read_prod_env_key ROOMLOG_PUBLIC_ORIGIN)"
+          fi
+          ROOMLOG_PUBLIC_ORIGIN="${ROOMLOG_PUBLIC_ORIGIN:-https://www.woo-zu.com}"
+
+          GOOGLE_LOGIN_CLIENT_ID="${GOOGLE_LOGIN_CLIENT_ID:-}"
+          if [ -z "$GOOGLE_LOGIN_CLIENT_ID" ] && [ -n "${PROD_ENV:-}" ]; then
+            GOOGLE_LOGIN_CLIENT_ID="$(read_prod_env_key GOOGLE_LOGIN_CLIENT_ID)"
+          fi
+
+          GOOGLE_LOGIN_CLIENT_SECRET="${GOOGLE_LOGIN_CLIENT_SECRET:-}"
+          if [ -z "$GOOGLE_LOGIN_CLIENT_SECRET" ] && [ -n "${PROD_ENV:-}" ]; then
+            GOOGLE_LOGIN_CLIENT_SECRET="$(read_prod_env_key GOOGLE_LOGIN_CLIENT_SECRET)"
+          fi
+
+          GOOGLE_LOGIN_CALLBACK_URL="${GOOGLE_LOGIN_CALLBACK_URL:-}"
+          if [ -z "$GOOGLE_LOGIN_CALLBACK_URL" ] && [ -n "${PROD_ENV:-}" ]; then
+            GOOGLE_LOGIN_CALLBACK_URL="$(read_prod_env_key GOOGLE_LOGIN_CALLBACK_URL)"
+          fi
+
           PORT="${PORT:-4000}"
           AWS_REGION="${AWS_REGION:-ap-northeast-2}"
           S3_BUCKET_NAME="${S3_BUCKET_NAME:-roomlog-files}"
 
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -76,6 +106,10 @@ jobs:
           DATABASE_URL=${DATABASE_URL}
           NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}
+          ROOMLOG_PUBLIC_ORIGIN=${ROOMLOG_PUBLIC_ORIGIN}
+          GOOGLE_LOGIN_CLIENT_ID=${GOOGLE_LOGIN_CLIENT_ID}
+          GOOGLE_LOGIN_CLIENT_SECRET=${GOOGLE_LOGIN_CLIENT_SECRET}
+          GOOGLE_LOGIN_CALLBACK_URL=${GOOGLE_LOGIN_CALLBACK_URL}
           PORT=${PORT}
           AWS_REGION=${AWS_REGION}
           S3_BUCKET_NAME=${S3_BUCKET_NAME}
