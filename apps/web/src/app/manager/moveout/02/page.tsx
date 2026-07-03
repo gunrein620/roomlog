@@ -1,6 +1,11 @@
 import { redirect } from "next/navigation";
 import { Card } from "@roomlog/ui";
-import { completeReview, getManagerSettlement, getMoveout } from "@/lib/moveout-manager-api";
+import {
+  completeReview,
+  getManagerSettlement,
+  getMoveout,
+  getReportAudit,
+} from "@/lib/moveout-manager-api";
 import { DEMO_MOVEOUT_ID } from "@/lib/demo-moveout";
 import { MANAGER_MOVEOUT_ROUTES } from "@/lib/moveout-manager-nav";
 import {
@@ -44,9 +49,14 @@ async function completeReviewAction(formData: FormData) {
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
   const moveoutId = id ?? DEMO_MOVEOUT_ID;
-  const [moveout, review] = await Promise.all([getMoveout(moveoutId), getManagerSettlement(moveoutId)]);
+  const [moveout, review, audit] = await Promise.all([
+    getMoveout(moveoutId),
+    getManagerSettlement(moveoutId),
+    getReportAudit(moveoutId),
+  ]);
   const { settlement, gate } = review;
   const contractBlocked = !moveout.contractConfirmed;
+  const latestAudit = audit[0];
 
   return (
     <PageStack>
@@ -100,6 +110,42 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </div>
         </Card>
       </Section>
+
+      {gate.overrideAvailable && !contractBlocked ? (
+        <Section title="SLA override 통지·감사로그">
+          <div style={grid2Style}>
+            <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <div style={{ fontWeight: 850 }}>임차인 통지</div>
+              <div style={mutedSmallStyle}>
+                SLA override로 검토 완료를 진행하면 사유, 예상안 상태, 이의 미해소 사실을 임차인 알림과 메시징 기록에 남긴다는 전제로만 진행합니다.
+              </div>
+              <div style={rowStyle}>
+                <span>통지 상태</span>
+                <strong>필수</strong>
+              </div>
+            </Card>
+            <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <div style={{ fontWeight: 850 }}>감사로그</div>
+              {latestAudit ? (
+                <>
+                  <div style={mutedSmallStyle}>
+                    {latestAudit.at.slice(0, 16).replace("T", " ")} · {latestAudit.managerName}
+                  </div>
+                  <div style={mutedSmallStyle}>{latestAudit.evidenceNote}</div>
+                  <div style={rowStyle}>
+                    <span>임차인 통지 기록</span>
+                    <strong>{latestAudit.tenantNotified ? "있음" : "없음"}</strong>
+                  </div>
+                </>
+              ) : (
+                <div style={mutedSmallStyle}>
+                  아직 기록된 감사로그가 없습니다. override 실행 시 사유와 통지 여부를 감사로그에 남겨야 합니다.
+                </div>
+              )}
+            </Card>
+          </div>
+        </Section>
+      ) : null}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", flexWrap: "wrap" }}>
         <LinkButton href={`${MANAGER_MOVEOUT_ROUTES["M-OUT-01"]}?id=${moveoutId}`} variant="ghost">리포트 근거 보기</LinkButton>
