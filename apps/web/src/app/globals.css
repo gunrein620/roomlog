@@ -74,6 +74,27 @@ img {
   box-shadow: none;
 }
 
+.auth-check-screen {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  padding: 32px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.auth-check-screen strong {
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.auth-check-screen span {
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
 .login-phone,
 .service-frame {
   width: min(100%, 430px);
@@ -7058,6 +7079,70 @@ p {
     border-radius: 10px;
     background: var(--blue);
     color: #ffffff;
+    font-weight: 800;
+  }
+
+  .web-role-select {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid #dfe5ef;
+    border-radius: 10px;
+    background: #ffffff;
+  }
+
+  .web-role-select span {
+    color: #7a8190;
+    font-size: 0.78rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .web-role-select select {
+    min-width: 104px;
+    border: none;
+    background: transparent;
+    color: #2b3140;
+    font: inherit;
+    font-weight: 900;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .web-profile-menu {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .web-profile-avatar {
+    display: inline-grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border-radius: 50%;
+    background: #eef1fb;
+    color: var(--blue);
+    font-size: 0.95rem;
+    font-weight: 900;
+  }
+
+  .web-profile-name {
+    max-width: 120px;
+    overflow: hidden;
+    color: #2b3140;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .web-logout {
+    padding: 9px 14px;
+    border-radius: 10px;
+    background: #f2f4f8;
+    color: #5b6270;
     font-weight: 800;
   }
 

@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+const DEFAULT_REDIRECT = "/?role=landlord&tab=mypage";
+
+function safeRedirectPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return DEFAULT_REDIRECT;
+  return value;
+}
 
 // 관리인 로그인 — 자격을 /api/auth/login(BFF)에 보내고, 그쪽이 httpOnly 쿠키를 심는다.
 // 토큰은 클라이언트에 노출되지 않는다. 성공 시 티켓 대시로.
@@ -11,6 +18,19 @@ export default function ManagerLoginPage() {
   const [password, setPassword] = useState("password123!");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [redirectTo, setRedirectTo] = useState(DEFAULT_REDIRECT);
+  const googleLoginUrl = `/api/auth/google/start?role=LANDLORD&flow=login&redirectTo=${encodeURIComponent(redirectTo)}&errorRedirectTo=${encodeURIComponent(`/manager/login?redirectTo=${encodeURIComponent(redirectTo)}`)}`;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextRedirect = safeRedirectPath(params.get("redirectTo"));
+    setRedirectTo(nextRedirect);
+
+    const googleError = params.get("error");
+    if (googleError) {
+      setError(googleError);
+    }
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -27,7 +47,7 @@ export default function ManagerLoginPage() {
         setError(body?.message ?? "로그인에 실패했습니다.");
         return;
       }
-      router.push("/manager/ticket/dash/00");
+      router.push(redirectTo);
       router.refresh();
     } catch {
       setError("네트워크 오류로 로그인하지 못했습니다.");
@@ -66,6 +86,12 @@ export default function ManagerLoginPage() {
             티켓 처리 콘솔 로그인
           </div>
         </div>
+        <a
+          href={googleLoginUrl}
+          style={{ height: 44, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)", borderRadius: "var(--radius-btn)", background: "#fff", color: "#1f1f1f", fontWeight: 800, textDecoration: "none" }}
+        >
+          Google로 계속하기
+        </a>
         <label style={{ fontSize: 12, fontWeight: 700, color: "var(--on-surface-variant)" }}>
           이메일
           <input

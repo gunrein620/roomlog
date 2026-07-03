@@ -60,6 +60,7 @@ export class PrismaStoreProjector implements StoreProjector {
   async load(): Promise<Store | undefined> {
     const [
       users,
+      socialAccounts,
       rooms,
       tenantRooms,
       vendors,
@@ -86,6 +87,7 @@ export class PrismaStoreProjector implements StoreProjector {
       analyses
     ] = await Promise.all([
       this.prisma.userAccount.findMany(),
+      this.prisma.socialAccount.findMany(),
       this.prisma.room.findMany(),
       this.prisma.tenantRoom.findMany(),
       this.prisma.vendorProfile.findMany(),
@@ -138,6 +140,17 @@ export class PrismaStoreProjector implements StoreProjector {
         role: user.role,
         status: user.status,
         createdAt: asIso(user.createdAt) ?? new Date().toISOString()
+      })),
+      socialAccounts: socialAccounts.map((account) => ({
+        id: account.id,
+        provider: account.provider,
+        providerUserId: account.providerUserId,
+        userId: account.userId,
+        email: optional(account.email),
+        name: optional(account.name),
+        avatarUrl: optional(account.avatarUrl),
+        createdAt: asIso(account.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(account.updatedAt) ?? new Date().toISOString()
       })),
       rooms: rooms.map((room) => ({
         id: room.id,
@@ -518,6 +531,35 @@ export class PrismaStoreProjector implements StoreProjector {
             phone: user.phone,
             role: user.role,
             status: user.status
+          }
+        });
+      }
+
+      for (const account of store.socialAccounts ?? []) {
+        await tx.socialAccount.upsert({
+          where: {
+            provider_providerUserId: {
+              provider: account.provider,
+              providerUserId: account.providerUserId
+            }
+          },
+          create: {
+            id: account.id,
+            provider: account.provider,
+            providerUserId: account.providerUserId,
+            userId: account.userId,
+            email: account.email,
+            name: account.name,
+            avatarUrl: account.avatarUrl,
+            createdAt: asDate(account.createdAt),
+            updatedAt: asDate(account.updatedAt)
+          },
+          update: {
+            userId: account.userId,
+            email: account.email,
+            name: account.name,
+            avatarUrl: account.avatarUrl,
+            updatedAt: asDate(account.updatedAt)
           }
         });
       }

@@ -252,6 +252,20 @@ export type AttachmentCategory =
   | "INTAKE_PHOTO"
   | "FLOOR_PLAN_SOURCE";
 
+export type SocialProvider = "GOOGLE" | "NAVER";
+
+export type SocialAccount = {
+  id: string;
+  provider: SocialProvider;
+  providerUserId: string;
+  userId: string;
+  email?: string;
+  name?: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type UserAccount = {
   id: string;
   email: string;

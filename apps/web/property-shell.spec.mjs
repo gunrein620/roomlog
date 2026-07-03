@@ -53,12 +53,12 @@ test("api image trusts the Amazon RDS certificate bundle for TLS database connec
   assert.match(apiDockerfileSource, /NODE_EXTRA_CA_CERTS=\/usr\/local\/share\/ca-certificates\/aws-rds-global-bundle\.pem/);
 });
 
-test("keeps tenant, manager, and vendor entry routes available (redirect to domain screens)", () => {
+test("keeps tenant, manager, and vendor entry routes available", () => {
   // KAN-130 1-E: 거대 단일-page 뷰 셸은 은퇴하고, 역할 진입 인덱스는 App Router
   // 도메인 첫 화면으로 리다이렉트한다(화면 = app/<role>/<domain>/<screen>).
   const redirectTargets = {
-    tenant: "/tenant/defect/00",
-    manager: "/manager/home/00",
+    tenant: "/?role=tenant&tab=mypage",
+    manager: "/?role=landlord&tab=mypage",
     vendor: "/vendor/job/00"
   };
   for (const route of ["tenant", "manager", "vendor"]) {
@@ -131,7 +131,8 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
 test("opens the social signup screen from the topbar signup actions", () => {
   assert.match(pageSource, /const \[authMode, setAuthMode\]/);
   assert.match(pageSource, /openAuthScreen/);
-  assert.match(pageSource, /className="web-signup"[^>]*onClick=\{\(\) => openAuthScreen\("signup"\)\}/);
+  assert.match(pageSource, /className="web-signup"[^\n]*onClick=\{\(\) => \{ window\.location\.href = "\/signup\/social"; \}\}/);
+  assert.equal(existsSync(new URL("./src/app/signup/social/page.tsx", import.meta.url)), true);
   assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
   assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
   assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);
@@ -690,7 +691,10 @@ test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /\.web-hero-head\s*{[^}]*display:\s*block/s);
   assert.match(pageSource, /web-topbar/);
   assert.match(pageSource, /web-hero-head/);
-  assert.match(pageSource, /방 구할 땐, 집우집주/);
+  assert.match(pageSource, /web-logo-roof/);
+  assert.match(pageSource, /방 구할 땐, 우주에서/);
+  assert.match(pageSource, /web-hero-sub/);
+  assert.match(cssSource, /web-hero-sub-shine/);
   // 카테고리 = 큰 카드 한 줄, 매물 = 넓은 3열 그리드
   assert.match(cssSource, /\.home-screen > \.category-strip\s*{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/s);
   assert.match(cssSource, /\.home-screen > \.listing-feed\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
