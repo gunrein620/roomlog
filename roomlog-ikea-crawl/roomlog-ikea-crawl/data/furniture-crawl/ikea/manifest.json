@@ -1,0 +1,22 @@
+{
+  "crawledAt": "2026-07-02T07:23:01.451Z",
+  "kinds": [
+    "bed",
+    "dining-table",
+    "chair",
+    "sofa",
+    "desk",
+    "drawer",
+    "wardrobe"
+  ],
+  "limit": 100,
+  "sources": [
+    "ikea-bed",
+    "ikea-dining-table",
+    "ikea-chair",
+    "ikea-sofa",
+    "ikea-desk",
+    "ikea-drawer",
+    "ikea-wardrobe"
+  ]
+}

@@ -8,7 +8,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
-import { FURNITURE_CATALOG, getFurnitureDimensions } from "../room-model/furniture-model";
+import { FURNITURE_CATALOG, getFurnitureDimensions } from "../furniture-placement";
 import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
 
 Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
