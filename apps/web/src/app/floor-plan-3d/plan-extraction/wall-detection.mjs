@@ -1606,6 +1606,278 @@ function annotateLinesWithFillSupport(lines, imageData) {
   }));
 }
 
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizedPointToPixel(point, imageData) {
+  const width = Math.max(1, Number(imageData?.width) || 1);
+  const height = Math.max(1, Number(imageData?.height) || 1);
+
+  return {
+    x: (clampNumber(Number(point?.x) || 0, 0, 1000) / 1000) * (width - 1),
+    y: (clampNumber(Number(point?.y) || 0, 0, 1000) / 1000) * (height - 1)
+  };
+}
+
+function normalizedLineToPixel(line, imageData) {
+  const start = normalizedPointToPixel({ x: line?.x1, y: line?.y1 }, imageData);
+  const end = normalizedPointToPixel({ x: line?.x2, y: line?.y2 }, imageData);
+  const orientation = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y) ? "horizontal" : "vertical";
+
+  if (orientation === "horizontal") {
+    const y = Math.round((start.y + end.y) / 2);
+    return {
+      orientation,
+      x1: Math.round(Math.min(start.x, end.x)),
+      x2: Math.round(Math.max(start.x, end.x)),
+      y1: y,
+      y2: y
+    };
+  }
+
+  const x = Math.round((start.x + end.x) / 2);
+  return {
+    orientation,
+    x1: x,
+    x2: x,
+    y1: Math.round(Math.min(start.y, end.y)),
+    y2: Math.round(Math.max(start.y, end.y))
+  };
+}
+
+function pixelLineToNormalized(line, imageData) {
+  const width = Math.max(1, Number(imageData?.width) || 1);
+  const height = Math.max(1, Number(imageData?.height) || 1);
+
+  return {
+    x1: (line.x1 / Math.max(1, width - 1)) * 1000,
+    x2: (line.x2 / Math.max(1, width - 1)) * 1000,
+    y1: (line.y1 / Math.max(1, height - 1)) * 1000,
+    y2: (line.y2 / Math.max(1, height - 1)) * 1000
+  };
+}
+
+function imagePixelLuminance(imageData, x, y) {
+  const width = imageData?.width ?? 0;
+  const height = imageData?.height ?? 0;
+  const data = imageData?.data;
+  const roundedX = Math.round(x);
+  const roundedY = Math.round(y);
+  if (!data || roundedX < 0 || roundedY < 0 || roundedX >= width || roundedY >= height) return 255;
+
+  const offset = (roundedY * width + roundedX) * 4;
+  const red = data[offset] ?? 255;
+  const green = data[offset + 1] ?? 255;
+  const blue = data[offset + 2] ?? 255;
+
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+}
+
+function scoreDarkAxis(line, imageData, axis, darkThreshold) {
+  const orientation = lineOrientation(line);
+  const length = Math.max(1, lineLength(line));
+  const sampleCount = Math.max(12, Math.min(240, Math.round(length)));
+  let dark = 0;
+
+  for (let index = 0; index <= sampleCount; index += 1) {
+    const ratio = index / sampleCount;
+    const x = orientation === "horizontal" ? line.x1 + (line.x2 - line.x1) * ratio : axis;
+    const y = orientation === "horizontal" ? axis : line.y1 + (line.y2 - line.y1) * ratio;
+    if (imagePixelLuminance(imageData, x, y) <= darkThreshold) dark += 1;
+  }
+
+  return dark / (sampleCount + 1);
+}
+
+export function snapNormalizedLineToWallEvidence(line, imageData, options = {}) {
+  if (!imageData?.data || !imageData.width || !imageData.height) return null;
+
+  const pixelLine = normalizedLineToPixel(line, imageData);
+  const orientation = lineOrientation(pixelLine);
+  const minDimension = Math.max(1, Math.min(imageData.width, imageData.height));
+  const searchRadius = Math.max(2, Math.round(Number(options.searchRadiusPx) || minDimension * 0.03));
+  const darkThreshold = Number(options.darkThreshold) || estimateWallLuminanceThreshold(imageData);
+  const minConfidence = Number(options.minConfidence) || 0.18;
+  const baseAxis = orientation === "horizontal" ? pixelLine.y1 : pixelLine.x1;
+  let bestAxis = baseAxis;
+  let bestScore = 0;
+
+  for (let offset = -searchRadius; offset <= searchRadius; offset += 1) {
+    const axis = Math.round(baseAxis + offset);
+    if (axis < 0 || axis >= (orientation === "horizontal" ? imageData.height : imageData.width)) continue;
+    const score = scoreDarkAxis(pixelLine, imageData, axis, darkThreshold);
+    if (score > bestScore) {
+      bestAxis = axis;
+      bestScore = score;
+    }
+  }
+
+  if (bestScore < minConfidence) return null;
+
+  let minAxis = bestAxis;
+  let maxAxis = bestAxis;
+  const thicknessThreshold = Math.max(0.08, bestScore * 0.45);
+  for (let axis = bestAxis - 1; axis >= bestAxis - searchRadius; axis -= 1) {
+    if (axis < 0 || scoreDarkAxis(pixelLine, imageData, axis, darkThreshold) < thicknessThreshold) break;
+    minAxis = axis;
+  }
+  const axisLimit = orientation === "horizontal" ? imageData.height : imageData.width;
+  for (let axis = bestAxis + 1; axis <= bestAxis + searchRadius; axis += 1) {
+    if (axis >= axisLimit || scoreDarkAxis(pixelLine, imageData, axis, darkThreshold) < thicknessThreshold) break;
+    maxAxis = axis;
+  }
+  const snappedAxis = Math.round((minAxis + maxAxis) / 2);
+
+  const snappedLine =
+    orientation === "horizontal"
+      ? {
+          confidence: Math.min(0.98, bestScore),
+          markers: ["ai-wall-evidence"],
+          orientation,
+          thickness: Math.max(1, maxAxis - minAxis + 1),
+          x1: clampNumber(pixelLine.x1, 0, imageData.width - 1),
+          x2: clampNumber(pixelLine.x2, 0, imageData.width - 1),
+          y1: snappedAxis,
+          y2: snappedAxis
+        }
+      : {
+          confidence: Math.min(0.98, bestScore),
+          markers: ["ai-wall-evidence"],
+          orientation,
+          thickness: Math.max(1, maxAxis - minAxis + 1),
+          x1: snappedAxis,
+          x2: snappedAxis,
+          y1: clampNumber(pixelLine.y1, 0, imageData.height - 1),
+          y2: clampNumber(pixelLine.y2, 0, imageData.height - 1)
+        };
+
+  return snappedLine;
+}
+
+function roomPolygonEdgesToPixelLines(rooms = [], imageData) {
+  return rooms.flatMap((room, roomIndex) => {
+    const polygon = Array.isArray(room?.polygon) ? room.polygon : [];
+    if (polygon.length < 4) return [];
+    const points = polygon.map((point) => normalizedPointToPixel(point, imageData));
+
+    return points.flatMap((point, index) => {
+      const next = points[(index + 1) % points.length];
+      const dx = Math.abs(next.x - point.x);
+      const dy = Math.abs(next.y - point.y);
+      if (dx < 1 && dy < 1) return [];
+      const orientation = dx >= dy ? "horizontal" : "vertical";
+      if (orientation === "horizontal") {
+        const y = Math.round((point.y + next.y) / 2);
+        return [
+          {
+            confidence: Number(room?.confidence) || 0.5,
+            markers: ["ai-room-edge"],
+            orientation,
+            roomIndex,
+            x1: Math.round(Math.min(point.x, next.x)),
+            x2: Math.round(Math.max(point.x, next.x)),
+            y1: y,
+            y2: y
+          }
+        ];
+      }
+
+      const x = Math.round((point.x + next.x) / 2);
+      return [
+        {
+          confidence: Number(room?.confidence) || 0.5,
+          markers: ["ai-room-edge"],
+          orientation,
+          roomIndex,
+          x1: x,
+          x2: x,
+          y1: Math.round(Math.min(point.y, next.y)),
+          y2: Math.round(Math.max(point.y, next.y))
+        }
+      ];
+    });
+  });
+}
+
+function mergeCollinearPixelLines(lines, options = {}) {
+  const axisTolerance = options.axisTolerance ?? 4;
+  const overlapTolerance = options.overlapTolerance ?? 8;
+  const merged = [];
+
+  for (const line of [...lines].sort((lineA, lineB) => lineOrientation(lineA).localeCompare(lineOrientation(lineB)) || lineLength(lineB) - lineLength(lineA))) {
+    const orientation = lineOrientation(line);
+    const bounds = lineBounds(line);
+    const match = merged.find((candidate) => {
+      if (lineOrientation(candidate) !== orientation) return false;
+      const candidateBounds = lineBounds(candidate);
+      if (orientation === "horizontal") {
+        if (Math.abs(candidate.y1 - line.y1) > axisTolerance) return false;
+        return bounds.minX <= candidateBounds.maxX + overlapTolerance && bounds.maxX >= candidateBounds.minX - overlapTolerance;
+      }
+
+      if (Math.abs(candidate.x1 - line.x1) > axisTolerance) return false;
+      return bounds.minY <= candidateBounds.maxY + overlapTolerance && bounds.maxY >= candidateBounds.minY - overlapTolerance;
+    });
+
+    if (!match) {
+      merged.push({ ...line });
+      continue;
+    }
+
+    const matchBounds = lineBounds(match);
+    if (orientation === "horizontal") {
+      const y = Math.round((match.y1 + line.y1) / 2);
+      match.x1 = Math.min(matchBounds.minX, bounds.minX);
+      match.x2 = Math.max(matchBounds.maxX, bounds.maxX);
+      match.y1 = y;
+      match.y2 = y;
+    } else {
+      const x = Math.round((match.x1 + line.x1) / 2);
+      match.x1 = x;
+      match.x2 = x;
+      match.y1 = Math.min(matchBounds.minY, bounds.minY);
+      match.y2 = Math.max(matchBounds.maxY, bounds.maxY);
+    }
+    match.confidence = Math.max(Number(match.confidence) || 0, Number(line.confidence) || 0);
+  }
+
+  return merged;
+}
+
+export function createWallCandidatesFromRoomPolygons(rooms = [], imageData, options = {}) {
+  if (!imageData?.width || !imageData.height) return [];
+
+  const minLength = options.minLength ?? Math.max(8, Math.min(imageData.width, imageData.height) * 0.04);
+  const mergedLines = mergeCollinearPixelLines(roomPolygonEdgesToPixelLines(rooms, imageData), options).filter((line) => lineLength(line) >= minLength);
+
+  return mergedLines
+    .map((line) => {
+      const snappedLine = imageData?.data
+        ? snapNormalizedLineToWallEvidence(pixelLineToNormalized(line, imageData), imageData, {
+            darkThreshold: options.darkThreshold,
+            minConfidence: options.minEvidenceConfidence,
+            searchRadiusPx: options.searchRadiusPx
+          })
+        : null;
+      const nextLine = snappedLine
+        ? {
+            ...snappedLine,
+            confidence: Math.max(Number(line.confidence) || 0.5, Number(snappedLine.confidence) || 0),
+            markers: ["ai-room-edge", ...(snappedLine.markers ?? [])]
+          }
+        : {
+            ...line,
+            confidence: Math.max(0.35, Math.min(0.95, Number(line.confidence) || 0.5)),
+            markers: ["ai-room-edge"],
+            thickness: Number(line.thickness) || 1
+          };
+
+      return nextLine;
+    })
+    .filter((line) => lineLength(line) >= minLength);
+}
+
 export function createWallsFromDetectedLines(lines, plan = {}) {
   const imageWidth = Math.max(1, Number(plan.width) || 960);
   const imageHeight = Math.max(1, Number(plan.height) || 620);

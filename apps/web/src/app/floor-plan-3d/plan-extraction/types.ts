@@ -43,7 +43,18 @@ export type ExtractionMeta = {
   annotationCandidateCount?: number;
   detectedWallCount: number;
   dimensionCandidateCount?: number;
+  aiCandidateReviewCount?: number;
+  aiGeneratedWallCount?: number;
+  aiModel?: string;
+  aiNoiseFlags?: { decorativeHatching: boolean; watermark: boolean };
+  aiPhase1Status?: string;
+  aiPhase2Status?: string;
+  aiPhaseRoomStructureStatus?: string;
+  aiPlanStyle?: string;
   aiRawText?: string;
+  aiRejectedWallCandidateCount?: number;
+  aiRoomCount?: number;
+  aiRoomStructureSummary?: string;
   aiSummary?: string;
   aiTextDetections?: Array<{ confidence?: number; text: string }>;
   mainPlanBounds?: { height: number; width: number; x: number; y: number };

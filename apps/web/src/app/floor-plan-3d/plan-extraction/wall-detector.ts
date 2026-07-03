@@ -13,13 +13,15 @@ export const OPENCV_URL = "https://docs.opencv.org/4.10.0/opencv.js";
 export const TESSERACT_OCR_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js";
 export const MAX_EXTRACTION_DIMENSION = 1600;
 
+type WallDetectorOptions = { doubleLineClosing?: boolean };
+
 export class WallDetector {
   constructor(private readonly worker: Worker | null = null) {}
 
-  async detectWalls(file: File) {
+  async detectWalls(file: File, options: WallDetectorOptions = {}) {
     if (this.worker) {
       try {
-        return await detectWallsWithWorker(this.worker, file);
+        return await detectWallsWithWorker(this.worker, file, options);
       } catch {
         return fallbackCanvasWallExtraction(file);
       }
@@ -96,7 +98,7 @@ export function normalizeMainPlanBounds(bounds: DetectedWallResult["mainPlanBoun
   };
 }
 
-function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWallResult> {
+function detectWallsWithWorker(worker: Worker, file: File, options: WallDetectorOptions = {}): Promise<DetectedWallResult> {
   return new Promise((resolve, reject) => {
     const imageUrl = URL.createObjectURL(file);
 
@@ -155,6 +157,7 @@ function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWall
         worker.addEventListener("error", handleError, { once: true });
         worker.postMessage(
           {
+            doubleLineClosing: options.doubleLineClosing,
             imageData: context.getImageData(0, 0, width, height),
             maxDimension: MAX_EXTRACTION_DIMENSION,
             opencvUrl: OPENCV_URL,

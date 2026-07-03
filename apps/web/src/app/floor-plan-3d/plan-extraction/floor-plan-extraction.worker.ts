@@ -13,7 +13,7 @@ type DetectedLine = {
 };
 type WorkerRequest =
   | { type: "preload"; opencvUrl: string }
-  | { type: "extract"; imageData: ImageData; opencvUrl: string; maxDimension: number };
+  | { type: "extract"; doubleLineClosing?: boolean; imageData: ImageData; opencvUrl: string; maxDimension: number };
 
 let opencvReadyPromise: Promise<boolean> | null = null;
 
@@ -337,6 +337,66 @@ function createStrictLineMask(imageData: ImageData) {
   return createDarkWallMask(imageData, 128);
 }
 
+function dilateMask(mask: boolean[], width: number, height: number, radius: number) {
+  const next = Array.from({ length: width * height }, () => false);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!mask[y * width + x]) continue;
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+          next[ny * width + nx] = true;
+        }
+      }
+    }
+  }
+
+  return next;
+}
+
+function erodeMask(mask: boolean[], width: number, height: number, radius: number) {
+  const next = Array.from({ length: width * height }, () => false);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let keep = true;
+      for (let dy = -radius; keep && dy <= radius; dy += 1) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) {
+          keep = false;
+          break;
+        }
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width || !mask[ny * width + nx]) {
+            keep = false;
+            break;
+          }
+        }
+      }
+      next[y * width + x] = keep;
+    }
+  }
+
+  return next;
+}
+
+function estimateDoubleLineClosingRadius(width: number, height: number) {
+  const estimatedGap = Math.max(2, Math.min(10, Math.round(Math.min(width, height) * 0.012)));
+
+  return Math.max(1, Math.ceil(estimatedGap / 2));
+}
+
+function closeDoubleLineMask(mask: boolean[], width: number, height: number) {
+  const radius = estimateDoubleLineClosingRadius(width, height);
+
+  return erodeMask(dilateMask(mask, width, height, radius), width, height, radius);
+}
+
 // 어두운 픽셀 분포를 둘로 나눠(Otsu) 순흑 벽과 진회색 가구 채움(싱크대 상판 등)을
 // 분리할 수 있으면 벽 쪽 임계값을 돌려준다. 분리가 불확실하면 baseThreshold 유지.
 function estimateWallLuminanceThreshold(imageData: ImageData, baseThreshold = 128) {
@@ -390,23 +450,36 @@ function estimateWallLuminanceThreshold(imageData: ImageData, baseThreshold = 12
   return Math.max(32, Math.min(baseThreshold, Math.round((bestSplit.meanDarker + bestSplit.meanLighter) / 2)));
 }
 
-function extractAdaptiveBandLines(imageData: ImageData) {
+function extractAdaptiveBandLines(imageData: ImageData, options: { doubleLineClosing?: boolean } = {}) {
   const baseThreshold = 128;
   const wallThreshold = estimateWallLuminanceThreshold(imageData, baseThreshold);
-  const bandLines = extractWallBandLinesFromMask(createDarkWallMask(imageData, wallThreshold), imageData.width, imageData.height);
+  const wallMask = createDarkWallMask(imageData, wallThreshold);
+  const bandLines = extractWallBandLinesFromMask(wallMask, imageData.width, imageData.height);
   if (wallThreshold >= baseThreshold || bandLines.length >= 3) return bandLines;
 
+  if (options.doubleLineClosing) {
+    const closedBandLines = extractWallBandLinesFromMask(closeDoubleLineMask(wallMask, imageData.width, imageData.height), imageData.width, imageData.height);
+    if (closedBandLines.length >= 3 || closedBandLines.length > bandLines.length) return closedBandLines;
+  }
+
   // 적응 임계값이 벽까지 지워버린 경우(밴드 부족) 원래 임계값으로 되돌린다.
-  return extractWallBandLinesFromMask(createStrictLineMask(imageData), imageData.width, imageData.height);
+  const strictMask = createStrictLineMask(imageData);
+  const strictBandLines = extractWallBandLinesFromMask(strictMask, imageData.width, imageData.height);
+  if (!options.doubleLineClosing || strictBandLines.length >= 3) return strictBandLines;
+
+  const closedStrictBandLines = extractWallBandLinesFromMask(closeDoubleLineMask(strictMask, imageData.width, imageData.height), imageData.width, imageData.height);
+
+  return closedStrictBandLines.length > strictBandLines.length ? closedStrictBandLines : strictBandLines;
 }
 
-function fallbackExtract(imageData: ImageData) {
+function fallbackExtract(imageData: ImageData, options: { doubleLineClosing?: boolean } = {}) {
   const { height, width } = imageData;
-  const bandLines = extractAdaptiveBandLines(imageData);
+  const bandLines = extractAdaptiveBandLines(imageData, options);
   if (bandLines.length >= 3) {
     return annotateFillSupport(mergeLines(bandLines), imageData);
   }
-  const mask = createStrictLineMask(imageData);
+  const strictMask = createStrictLineMask(imageData);
+  const mask = options.doubleLineClosing ? closeDoubleLineMask(strictMask, width, height) : strictMask;
   const lines: DetectedLine[] = [];
   const minRunLength = Math.max(28, Math.round(Math.min(width, height) * 0.06));
 
@@ -524,7 +597,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
   const startedAt = Date.now();
   const ready = await loadOpenCv(request.opencvUrl);
-  const lines = ready ? extractWithOpenCv(request.imageData) : fallbackExtract(request.imageData);
+  const lines = ready ? extractWithOpenCv(request.imageData) : fallbackExtract(request.imageData, { doubleLineClosing: request.doubleLineClosing });
   post({
     imageHeight: request.imageData.height,
     imageWidth: request.imageData.width,

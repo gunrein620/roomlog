@@ -405,7 +405,7 @@ export type FloorPlanAiModel = {
 };
 
 export type FloorPlanAiAnalysisInput = {
-  analysisMode?: "dimension" | "candidate-review";
+  analysisMode?: "dimension" | "candidate-review" | "room-structure";
   imageDataUrl?: string;
   model?: FloorPlanAiModelId;
   prompt?: string;
@@ -443,9 +443,36 @@ export type FloorPlanAiCandidateReview = {
   verdict: "keep" | "reject" | "review";
 };
 
+export type FloorPlanAiNormalizedLine = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
+
 export type FloorPlanAiMissingWallHint = {
   confidence?: number;
   description: string;
+  line?: FloorPlanAiNormalizedLine;
+  orientation?: "horizontal" | "vertical";
+};
+
+export type FloorPlanAiRoomStructurePlanStyle = "solid-filled" | "double-line-hollow" | "hatched" | "gray-fill";
+
+export type FloorPlanAiRoomPolygonPoint = {
+  x: number;
+  y: number;
+};
+
+export type FloorPlanAiRoomStructure = {
+  confidence: number;
+  label: string;
+  polygon: FloorPlanAiRoomPolygonPoint[];
+};
+
+export type FloorPlanAiRoomStructureNoiseFlags = {
+  decorativeHatching: boolean;
+  watermark: boolean;
 };
 
 export type FloorPlanAiAnalysisResult = {
@@ -453,9 +480,12 @@ export type FloorPlanAiAnalysisResult = {
   mode: FloorPlanAiModelMode;
   status: "ready" | "config-required" | "failed";
   summary: string;
-  analysisMode?: "dimension" | "candidate-review";
+  analysisMode?: "dimension" | "candidate-review" | "room-structure";
   candidateReviews?: FloorPlanAiCandidateReview[];
   missingWallHints?: FloorPlanAiMissingWallHint[];
+  noiseFlags?: FloorPlanAiRoomStructureNoiseFlags;
+  planStyle?: FloorPlanAiRoomStructurePlanStyle;
+  rooms?: FloorPlanAiRoomStructure[];
   textDetections: FloorPlanAiTextDetection[];
   scaleCandidates: FloorPlanAiScaleCandidate[];
   rawText?: string;

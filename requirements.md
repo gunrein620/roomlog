@@ -32,6 +32,13 @@ NVIDIA_API_KEY=...
 NVIDIA_INTEGRATE_API_URL=https://integrate.api.nvidia.com/v1
 ```
 
+Required for OpenAI vision-first floor plan analysis:
+
+```bash
+OPENAI_API_KEY=...
+OPENAI_FLOOR_PLAN_MODEL=gpt-5.4-mini
+```
+
 Optional local/demo values:
 
 ```bash
@@ -59,6 +66,7 @@ and keeps the model input aligned with the original drawing.
 
 Currently supported hosted model IDs:
 
+- `openai/floor-plan-vision`
 - `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`
 - `nvidia/cosmos3-nano-reasoner`
 

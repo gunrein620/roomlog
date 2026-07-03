@@ -924,10 +924,30 @@ test("offers floor plan AI model selection for precise dimension reading", () =>
     "단위 없는 3-5자리 치수는 mm로 처리",
     "runAiDimensionAnalysis",
     "runAiCandidateReview",
+    "runVisionFirstExtractionPhases",
+    "OpenAI Vision 1단계",
+    "OpenAI Vision 2단계",
+    "room-structure",
+    "lastRoomStructureAnalysis",
+    "createAiGeneratedWallsFromRoomStructure",
+    "createWallCandidatesFromRoomPolygons",
+    "snapNormalizedLineToWallEvidence",
+    "double-line-hollow",
+    "doubleLineClosing",
+    "ai-room-edge",
+    "ai-missing-wall-hint",
+    "requestFloorPlanAiAnalysis",
+    "applyAiDimensionAnalysisResult",
+    "applyAiCandidateReviewResult",
     "buildAiWallCandidatePayload",
     "createAiCandidateOverlayDataUrl",
     "candidateOverlayDataUrl",
+    "candidateToOverlayPoint",
+    "editorToImagePoint",
     "aiReviewedWallCandidates",
+    "aiPhase1Status",
+    "aiPhase2Status",
+    "aiCandidateReviewCount",
     "removeRejectedAiWallCandidates",
     "normalizeWallLengths",
     "snapWallToLengthBounds",
@@ -1909,6 +1929,91 @@ test("floor plan editor model estimates scale from outside dimensions", async ()
   assert.equal(candidate.pixelLength, 320);
   assert.equal(Number(candidate.pixelToMmRatio.toFixed(2)), 18.31);
   assert.equal(candidate.source, "outside-dimension-ocr");
+});
+
+test("floor plan editor model snaps normalized AI missing wall hints to dark image evidence", async () => {
+  const model = floorPlanModel;
+  const width = 120;
+  const height = 80;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 38; y <= 42; y += 1) {
+    for (let x = 15; x <= 105; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 20;
+      data[offset + 1] = 20;
+      data[offset + 2] = 20;
+    }
+  }
+
+  const snapped = model.snapNormalizedLineToWallEvidence(
+    { x1: 120, y1: 465, x2: 900, y2: 465 },
+    { data, height, width },
+    { darkThreshold: 80, searchRadiusPx: 8 }
+  );
+
+  assert.equal(snapped.orientation, "horizontal");
+  assert.equal(snapped.y1, 40);
+  assert.equal(snapped.thickness >= 4, true);
+  assert.equal(snapped.confidence > 0.7, true);
+});
+
+test("floor plan editor model creates wall candidates from AI room polygons and merges shared room edges", async () => {
+  const model = floorPlanModel;
+  const width = 200;
+  const height = 120;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 20; y <= 100; y += 1) {
+    for (let x = 99; x <= 101; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 10;
+      data[offset + 1] = 10;
+      data[offset + 2] = 10;
+    }
+  }
+
+  const lines = model.createWallCandidatesFromRoomPolygons(
+    [
+      {
+        confidence: 0.82,
+        label: "거실",
+        polygon: [
+          { x: 100, y: 150 },
+          { x: 500, y: 150 },
+          { x: 500, y: 850 },
+          { x: 100, y: 850 }
+        ]
+      },
+      {
+        confidence: 0.8,
+        label: "침실",
+        polygon: [
+          { x: 500, y: 150 },
+          { x: 900, y: 150 },
+          { x: 900, y: 850 },
+          { x: 500, y: 850 }
+        ]
+      }
+    ],
+    { data, height, width },
+    { darkThreshold: 80, minLength: 20, searchRadiusPx: 8 }
+  );
+  const sharedWalls = lines.filter((line) => line.orientation === "vertical" && line.x1 >= 98 && line.x1 <= 102);
+
+  assert.equal(sharedWalls.length, 1);
+  assert.equal(sharedWalls[0].markers.includes("ai-room-edge"), true);
+  assert.equal(sharedWalls[0].thickness >= 2, true);
 });
 
 test("floor plan editor model creates opening candidates as editable layers", async () => {

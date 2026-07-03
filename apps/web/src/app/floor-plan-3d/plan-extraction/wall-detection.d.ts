@@ -1,6 +1,14 @@
 import type { RegisteredPlanMetadata, Wall } from "../room-model/types";
 import type { DetectedLine, FloorPlanCandidate, ScaleCandidate } from "./types";
 
+type FloorPlanImageDataLike = ImageData | { width: number; height: number; data: Uint8ClampedArray };
+type NormalizedLine = { x1: number; y1: number; x2: number; y2: number };
+type NormalizedRoomPolygon = {
+  confidence?: number;
+  label?: string;
+  polygon: Array<{ x: number; y: number }>;
+};
+
 export function detectWallLinesFromMask(
   mask: boolean[],
   options?: {
@@ -132,6 +140,27 @@ export function detectFixtureCandidates(input?: {
   shapes?: Array<{ kind?: string; x: number; y: number; width?: number; height?: number }>;
   pixelToMmRatio?: number;
 }): FloorPlanCandidate[];
+export function snapNormalizedLineToWallEvidence(
+  line: NormalizedLine,
+  imageData: FloorPlanImageDataLike,
+  options?: {
+    darkThreshold?: number;
+    minConfidence?: number;
+    searchRadiusPx?: number;
+  }
+): DetectedLine | null;
+export function createWallCandidatesFromRoomPolygons(
+  rooms: NormalizedRoomPolygon[],
+  imageData: FloorPlanImageDataLike,
+  options?: {
+    axisTolerance?: number;
+    darkThreshold?: number;
+    minEvidenceConfidence?: number;
+    minLength?: number;
+    overlapTolerance?: number;
+    searchRadiusPx?: number;
+  }
+): DetectedLine[];
 export function createWallsFromDetectedLines(
   lines: DetectedLine[],
   plan?: RegisteredPlanMetadata & {
