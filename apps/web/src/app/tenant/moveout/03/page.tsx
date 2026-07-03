@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { DeductionKind, SettlementStatus } from "@roomlog/types";
-import { Badge, Button, Card } from "@roomlog/ui";
-import { DEMO_MOVEOUT_ID, getMoveout, getSettlement } from "@/lib/moveout-api";
+import { Badge, Button, Card, Input } from "@roomlog/ui";
+import { DEMO_MOVEOUT_ID, createMoveoutInquiry, getMoveout, getSettlement } from "@/lib/moveout-api";
+import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+
+export const dynamic = "force-dynamic";
 
 const labelStyle = {
   fontSize: "var(--fs-caption)",
@@ -34,6 +38,18 @@ function moneyRange(min: number, max: number) {
   return `약 ${Math.round(min / 10000).toLocaleString("ko-KR")}만~${Math.round(
     max / 10000,
   ).toLocaleString("ko-KR")}만원`;
+}
+
+async function createInquiryAction(formData: FormData) {
+  "use server";
+
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) {
+    redirect(MOVEOUT_ROUTES["T-OUT-03"]);
+  }
+
+  const result = await createMoveoutInquiry(DEMO_MOVEOUT_ID, { body });
+  redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(result.thread.id)}`);
 }
 
 export default async function Page() {
@@ -187,18 +203,22 @@ export default async function Page() {
             이의·정정 요청
           </Button>
         </Link>
-        <Button
-          fullWidth
-          variant="ghost"
-          disabled
+        <form
+          action={createInquiryAction}
           style={{
+            display: "grid",
+            gap: 8,
             background: "var(--surface-container-high)",
-            color: "var(--on-surface-variant)",
-            cursor: "not-allowed",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-md)",
+            padding: 10,
           }}
         >
-          관리자 문의
-        </Button>
+          <Input name="body" aria-label="관리자 문의 내용" placeholder="관리자에게 물어볼 내용을 입력하세요" />
+          <Button type="submit" fullWidth variant="ghost">
+            관리자 문의
+          </Button>
+        </form>
       </footer>
     </>
   );

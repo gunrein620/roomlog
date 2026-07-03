@@ -1,9 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
+import { requireUser } from "@/lib/session";
+
+export const dynamic = "force-dynamic";
 
 // 커뮤니케이션 슬라이스 공용 폰 크롬. 각 page.tsx는 프레임 내부 콘텐츠만 렌더한다.
-export default function MessagingLayout({ children }: { children: ReactNode }) {
+export default async function MessagingLayout({ children }: { children: ReactNode }) {
+  await requireUser("/tenant/login", "TENANT");
   return (
     <PhoneFrame
       label={

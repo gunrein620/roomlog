@@ -1,6 +1,6 @@
 import type { Ticket, Bill } from "@roomlog/types";
 import { listTickets } from "./defect-api";
-import { getUser } from "./session";
+import { getUser, type SessionUser } from "./session";
 import { CROSS_ROUTES } from "./home-nav";
 
 // 임차인 통합 홈 집계 — 하자(티켓)·호실은 팀 실 백엔드(serverFetch)로 연결(레퍼런스 패턴).
@@ -22,8 +22,11 @@ export interface HomeSummary {
 const isActiveTicket = (t: Ticket) => t.status !== "resolved";
 const stripHo = (s?: string) => (s ?? "").replace(/\s*호\s*$/, "");
 
-export async function getHomeSummary(): Promise<HomeSummary> {
-  const [user, tickets] = await Promise.all([getUser(), listTickets()]);
+export async function getHomeSummary(sessionUser?: SessionUser): Promise<HomeSummary> {
+  const [user, tickets] = await Promise.all([
+    sessionUser ? Promise.resolve(sessionUser) : getUser(),
+    listTickets()
+  ]);
   const active = tickets.filter(isActiveTicket);
 
   // 오늘 할 일: 실제 진행 하자에서만 도출(데모 미납 청구를 실제 업무처럼 제시하지 않는다).

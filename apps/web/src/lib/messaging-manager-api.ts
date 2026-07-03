@@ -4,11 +4,12 @@ import type {
   AnnouncementRecipient,
   AnnouncementResult,
   Thread,
+  ThreadContext,
 } from "@roomlog/types";
+import { serverFetch } from "./server-api";
 
 // 룸로그 API 클라이언트 (관리인 커뮤니케이션 M-MSG 슬라이스).
 // api가 안 떠 있어도 화면이 렌더되도록 데모 데이터로 폴백 → 빌드/프리렌더 안 막힘.
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 
 const now = "2026-07-02T10:00:00+09:00";
 
@@ -200,49 +201,97 @@ export const DEMO_MANAGER_DRAFT_ID = DEMO_MANAGER_DRAFTS[0].id;
 export const DEMO_MANAGER_RESULT_ID = DEMO_MANAGER_RESULTS[0].announcementId;
 export const DEMO_MANAGER_THREAD_ID = DEMO_MANAGER_THREADS[0].id;
 
-async function tryFetch<T>(path: string, fallback: T): Promise<T> {
+export const managerMessagingPaths = {
+  threads: (context?: ThreadContext) =>
+    context
+      ? `/manager/messaging/threads?context=${encodeURIComponent(context)}`
+      : "/manager/messaging/threads",
+  thread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
+  threadMessages: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}/messages`,
+  announcementDrafts: () => "/manager/messaging/announcement-drafts",
+  announcementDraft: (id: string) =>
+    `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}`,
+  announcementRecipients: (id: string) =>
+    `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}/recipients`,
+  sendAnnouncementDraft: (id: string) =>
+    `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}/send`,
+  announcementResults: () => "/manager/messaging/announcement-results",
+  announcementResult: (id: string) =>
+    `/manager/messaging/announcement-results/${encodeURIComponent(id)}`,
+};
+
+async function tryFetch<T>(path: string, fallback: T, label: string): Promise<T> {
   try {
-    const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
+    return await serverFetch<T>(path);
+  } catch (error) {
+    console.warn(`[messaging/manager-api] ${label} 실패 → 데모 폴백`, error);
     return fallback;
   }
 }
 
-export function listManagerThreads(unitId?: string): Promise<Thread[]> {
-  const fallback = unitId
-    ? DEMO_MANAGER_THREADS.filter((thread) => thread.unitId === unitId || thread.id === unitId)
+export function listManagerThreads(context?: ThreadContext): Promise<Thread[]> {
+  const fallback = context
+    ? DEMO_MANAGER_THREADS.filter((thread) => thread.context === context)
     : DEMO_MANAGER_THREADS;
-  const query = unitId ? `?unitId=${encodeURIComponent(unitId)}` : "";
-  return tryFetch(`/threads${query}`, fallback.length > 0 ? fallback : DEMO_MANAGER_THREADS);
+  return tryFetch(
+    managerMessagingPaths.threads(context),
+    fallback.length > 0 ? fallback : DEMO_MANAGER_THREADS,
+    "관리인 메시지 목록 조회",
+  );
 }
 
 export async function getManagerThread(id: string = DEMO_MANAGER_THREAD_ID): Promise<Thread> {
   const fallback =
     DEMO_MANAGER_THREADS.find((thread) => thread.id === id || thread.unitId === id) ??
     DEMO_MANAGER_THREADS[0];
-  const threads = await listManagerThreads(id);
-  return threads.find((thread) => thread.id === id || thread.unitId === id) ?? fallback;
+  return tryFetch(managerMessagingPaths.thread(id), fallback, "관리인 메시지 상세 조회");
+}
+
+export function addManagerThreadMessage(
+  id: string,
+  input: { body?: string; kind?: "text" | "photo_request" | "photo_response"; attachmentUrls?: string[] },
+): Promise<Thread> {
+  return serverFetch<Thread>(managerMessagingPaths.threadMessages(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function listAnnouncementDrafts(): Promise<AnnouncementDraft[]> {
-  return tryFetch("/announcement-drafts", DEMO_MANAGER_DRAFTS);
+  return tryFetch(
+    managerMessagingPaths.announcementDrafts(),
+    DEMO_MANAGER_DRAFTS,
+    "공지 초안 목록 조회",
+  );
 }
 
 export function getAnnouncementDraft(id: string = DEMO_MANAGER_DRAFT_ID): Promise<AnnouncementDraft> {
   const fallback = DEMO_MANAGER_DRAFTS.find((draft) => draft.id === id) ?? DEMO_MANAGER_DRAFTS[0];
-  return tryFetch(`/announcement-drafts/${id}`, fallback);
+  return tryFetch(managerMessagingPaths.announcementDraft(id), fallback, "공지 초안 상세 조회");
 }
 
 export function listAnnouncementRecipients(
   id: string = DEMO_MANAGER_DRAFT_ID,
 ): Promise<AnnouncementRecipient[]> {
-  return tryFetch(`/announcement-drafts/${id}/recipients`, DEMO_MANAGER_RECIPIENTS);
+  return tryFetch(
+    managerMessagingPaths.announcementRecipients(id),
+    DEMO_MANAGER_RECIPIENTS,
+    "공지 수신자 조회",
+  );
+}
+
+export function sendAnnouncementDraft(id: string): Promise<AnnouncementResult> {
+  return serverFetch<AnnouncementResult>(managerMessagingPaths.sendAnnouncementDraft(id), {
+    method: "POST",
+  });
 }
 
 export function listAnnouncementResults(): Promise<AnnouncementResult[]> {
-  return tryFetch("/announcement-results", DEMO_MANAGER_RESULTS);
+  return tryFetch(
+    managerMessagingPaths.announcementResults(),
+    DEMO_MANAGER_RESULTS,
+    "공지 결과 목록 조회",
+  );
 }
 
 export function getAnnouncementResult(
@@ -250,5 +299,5 @@ export function getAnnouncementResult(
 ): Promise<AnnouncementResult> {
   const fallback =
     DEMO_MANAGER_RESULTS.find((result) => result.announcementId === id) ?? DEMO_MANAGER_RESULTS[0];
-  return tryFetch(`/announcement-results/${id}`, fallback);
+  return tryFetch(managerMessagingPaths.announcementResult(id), fallback, "공지 결과 상세 조회");
 }

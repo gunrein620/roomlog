@@ -1,4 +1,11 @@
-import { DEMO_MANAGER_DRAFT_ID, getAnnouncementDraft, listAnnouncementRecipients } from "@/lib/messaging-manager-api";
+import { redirect } from "next/navigation";
+import { Button } from "@roomlog/ui";
+import {
+  DEMO_MANAGER_DRAFT_ID,
+  getAnnouncementDraft,
+  listAnnouncementRecipients,
+  sendAnnouncementDraft,
+} from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import {
   Badge,
@@ -14,14 +21,30 @@ import {
   sectionTitleStyle,
 } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = Promise<{ id?: string; resend?: string }>;
+
+async function sendAnnouncement(formData: FormData) {
+  "use server";
+
+  const draftId = String(formData.get("draftId") ?? "");
+
+  if (!draftId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  const result = await sendAnnouncementDraft(draftId);
+  redirect(
+    `${MANAGER_MESSAGING_ROUTES["M-MSG-03"]}?id=${encodeURIComponent(result.announcementId)}`,
+  );
+}
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id, resend } = await searchParams;
   const draft = await getAnnouncementDraft(id ?? DEMO_MANAGER_DRAFT_ID);
   const recipients = await listAnnouncementRecipients(draft.id);
   const isUrgent = draft.category === "urgent";
-  const resultHref = `${MANAGER_MESSAGING_ROUTES["M-MSG-03"]}?id=${resend ?? "an_urgent_water"}`;
 
   return (
     <>
@@ -103,7 +126,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             발송은 이 화면의 승인 이후에만 진행됩니다. 작성 화면에서 자동 발송하지 않습니다.
           </NoticeCard>
           <StaticButton>체크 완료</StaticButton>
-          <LinkButton href={resultHref}>승인하고 발송</LinkButton>
+          <form action={sendAnnouncement}>
+            <input type="hidden" name="draftId" value={draft.id} />
+            <Button type="submit" fullWidth>
+              승인하고 발송
+            </Button>
+          </form>
         </aside>
       </div>
     </>

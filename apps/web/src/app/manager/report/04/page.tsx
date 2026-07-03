@@ -3,6 +3,8 @@ import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
 import { Card, Input } from "@roomlog/ui";
 import { ChatTranscript, FaqButtons, LinkButton, PageStack, ScreenHeader, Section } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const { scopeLabel, messages, faq } = await getReportChat();
 
@@ -30,4 +32,3 @@ export default async function Page() {
     </PageStack>
   );
 }
-

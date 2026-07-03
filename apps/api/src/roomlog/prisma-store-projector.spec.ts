@@ -7,6 +7,29 @@ import { Store } from "./roomlog.service";
 
 const databaseUrl = process.env.ROOMLOG_TEST_DATABASE_URL;
 
+const emptyDomainCollections = (): Pick<
+  Store,
+  | "socialAccounts"
+  | "contracts"
+  | "contractDocuments"
+  | "contractExtractions"
+  | "contractPrivacies"
+  | "contractInvites"
+  | "costs"
+  | "receipts"
+  | "receiptOcrs"
+> => ({
+  socialAccounts: [],
+  contracts: [],
+  contractDocuments: [],
+  contractExtractions: [],
+  contractPrivacies: [],
+  contractInvites: [],
+  costs: [],
+  receipts: [],
+  receiptOcrs: []
+});
+
 describe("PrismaStoreProjector", () => {
   it(
     "projects signup and intake thread state into Postgres tables",
@@ -36,6 +59,7 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        ...emptyDomainCollections(),
         rooms: [
           {
             id: roomId,
@@ -51,6 +75,11 @@ describe("PrismaStoreProjector", () => {
         vendors: [],
         vendorInvites: [],
         tenantInvites: [],
+        contracts: [],
+        contractDocuments: [],
+        contractExtractions: [],
+        contractPrivacies: [],
+        contractInvites: [],
         attachments: [],
         floorPlans: [],
         moveInChecklist: [],
@@ -194,7 +223,26 @@ describe("PrismaStoreProjector", () => {
           }
         ],
         repairs: [],
+        costs: [],
+        receipts: [],
+        receiptOcrs: [],
         messages: [],
+        messagingThreads: [],
+        messagingMessages: [],
+        messagingAnnouncementDrafts: [],
+        messagingAnnouncements: [],
+        messagingAnnouncementDeliveries: [],
+        managerReports: [],
+        managerReportSourceReferences: [],
+        managerReportExternalShares: [],
+        managerReportAuditLogs: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: []
       };
 
@@ -264,6 +312,7 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        ...emptyDomainCollections(),
         rooms: [
           {
             id: roomId,
@@ -279,6 +328,11 @@ describe("PrismaStoreProjector", () => {
         vendors: [],
         vendorInvites: [],
         tenantInvites: [],
+        contracts: [],
+        contractDocuments: [],
+        contractExtractions: [],
+        contractPrivacies: [],
+        contractInvites: [],
         attachments: [],
         floorPlans: [],
         moveInChecklist: [],
@@ -392,7 +446,26 @@ describe("PrismaStoreProjector", () => {
           }
         ],
         repairs: [],
+        costs: [],
+        receipts: [],
+        receiptOcrs: [],
         messages: [],
+        messagingThreads: [],
+        messagingMessages: [],
+        messagingAnnouncementDrafts: [],
+        messagingAnnouncements: [],
+        messagingAnnouncementDeliveries: [],
+        managerReports: [],
+        managerReportSourceReferences: [],
+        managerReportExternalShares: [],
+        managerReportAuditLogs: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: []
       };
 
@@ -490,6 +563,7 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        ...emptyDomainCollections(),
         rooms: [
           {
             id: roomId,
@@ -544,6 +618,11 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        contracts: [],
+        contractDocuments: [],
+        contractExtractions: [],
+        contractPrivacies: [],
+        contractInvites: [],
         attachments: [
           {
             id: attachmentId,
@@ -646,6 +725,9 @@ describe("PrismaStoreProjector", () => {
             updatedAt: now
           }
         ],
+        costs: [],
+        receipts: [],
+        receiptOcrs: [],
         messages: [
           {
             id: messageId,
@@ -658,6 +740,22 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        messagingThreads: [],
+        messagingMessages: [],
+        messagingAnnouncementDrafts: [],
+        messagingAnnouncements: [],
+        messagingAnnouncementDeliveries: [],
+        managerReports: [],
+        managerReportSourceReferences: [],
+        managerReportExternalShares: [],
+        managerReportAuditLogs: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: [
           {
             id: historyId,
