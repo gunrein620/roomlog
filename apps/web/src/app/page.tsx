@@ -563,7 +563,7 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
   const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
 
   return (
-    <main className="app-canvas">
+    <main className="app-canvas login-canvas">
       <section className="login-phone" aria-label="집우집주 로그인">
         <div className="login-brandmark">
           <div className="brand-mark-icon">
