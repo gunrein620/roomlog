@@ -85,7 +85,8 @@ createFloorPlanDraft(a,b){ return this.floorPlans.createFloorPlanDraft(a,b); }  
 
 ## 현재 상태 (진행)
 - baseline green(61 tests + build) 유지. 매 추출 게이트 통과 후 커밋.
-- **완료(협력클래스 6개)**: support → auth → 도면(FloorPlan)+첨부 → 비용(Cost) → 체크리스트 → 계약(Contract). **독립 도메인 전부 추출.**
-- roomlog.service.ts **7,380 → 6,089줄 (−1,291)**. 신규: `roomlog-support.ts`, `services/roomlog-{auth,floor-plan,cost,checklist,contract}.domain.ts`.
-- **남음(감독 권장)**: 업체관리+초대(vendor-mgmt, 조율 후) / **코어(complaint·ticket·vendor-repair)** — 프리젠터 순환·`transitionTicket` 조인쓰기·`createComplaintRecord` 때문에 **RoomlogCommon(공유 프리젠터·find/transition/addMessageInternal) 선추출이 전제**. 무인 자동 비권장.
-- 검증된 함정: 일부 타입은 service 정의(export 후 `import type from ../roomlog.service`), 공유 헬퍼는 동명 필드로 주입(본문 verbatim), 반환형 `number|undefined`(elapsedHours) 등 시그니처 정확히.
+- **완료(협력클래스 8개)**: support → auth → 도면(FloorPlan)+첨부 → 비용(Cost) → 체크리스트 → 계약(Contract) → 업체관리+초대(vendor-mgmt) → 업체수리(vendor-repair). **분리 가능한 도메인 전부 추출.**
+- roomlog.service.ts **7,380 → 5,494줄 (−1,886, 25%)**. 신규: `roomlog-support.ts`, `services/roomlog-{auth,floor-plan,cost,checklist,contract,vendor-mgmt,vendor-repair}.domain.ts`.
+- vendor-repair가 코어 뮤테이터(`transitionTicket`/`addMessageInternal`/`pushHistory`/`assert*`)를 **주입**으로 소비 가능함을 입증 → RoomlogCommon 선추출 없이도 결합 도메인 추출 가능(공유 헬퍼는 RoomlogService 잔류·주입).
+- **남음 = 얽힌 코어(추가 분리는 아키텍처 개선 아님)**: complaint·intake·ticket-manager. 결합 증거: `createComplaint`가 intake 헬퍼(`createIntakeMessage`/`emptyDraft`/`presentIntakeSession`)로 응답을 세션 모양으로 반환 → **complaint↔intake 상호 얽힘**. 셋 다 `createComplaintRecord`·순환 프리젠터(`presentComplaint↔presentTicket`)·AI 헬퍼(`analyzeComplaint`/`aiFeedback*`) 공유. 여길 쪼개면 주입 15개+로 "코어에 얇은 래퍼" → RoomlogService를 **코어(finder·mutator·presenter·createComplaintRecord + ticket-manager)로 유지**하는 게 올바른 종착. 분리 가능 도메인은 소진됨.
+- 검증된 함정: 일부 타입은 service 정의(export 후 `import type from ../roomlog.service`), 공유 헬퍼는 동명 필드로 주입(본문 verbatim), 반환형 정확히(`elapsedHours`→`number|undefined`, `presentTicketMessage`→`TicketMessage`; **spec(ts-node)가 앱 빌드보다 엄격**해 `unknown` 누수 잡음).
