@@ -86,6 +86,11 @@ test("renders a mobile real-estate app shell with search, map list, and listing 
   }
 });
 
+test("opens the public website directly on the listing home instead of signup", () => {
+  assert.match(pageSource, /useState<AppRole>\("seeker"\)/);
+  assert.doesNotMatch(pageSource, /useState<AppRole \| null>\(null\)/);
+});
+
 test("promotes the future 3D room tour as a primary listing detail action", () => {
   assert.match(pageSource, /3D\s*(가상\s*)?투어/);
   assert.match(pageSource, /투어\s*예약/);
@@ -96,11 +101,9 @@ test("promotes the future 3D room tour as a primary listing detail action", () =
   assert.doesNotMatch(pageSource, /3D ENGINE SLOT|다른 팀의 3D 엔진|연결될 위치/);
 });
 
-test("offers social-only sign in with a developer shortcut for local entry", () => {
+test("offers a clean white social sign-in limited to Naver and Google with a developer shortcut", () => {
   for (const label of [
-    "카카오",
     "네이버",
-    "Apple",
     "Google",
     "개발용 로그인",
     "집우집주",
@@ -116,17 +119,32 @@ test("offers social-only sign in with a developer shortcut for local entry", () 
   assert.match(pageSource, /socialLoginNotice/);
   assert.match(pageSource, /setSocialLoginNotice/);
   assert.match(pageSource, /setActiveRole/);
-  assert.match(pageSource, /assets\/img\/image\.png/);
-  assert.match(pageSource, /loginHeroImage/);
-  assert.match(pageSource, /login-visual/);
-  assert.match(pageSource, /login-hero-image/);
-  assert.match(cssSource, /\.login-visual/);
-  assert.match(cssSource, /\.login-hero-image/);
-  assert.match(cssSource, /\.login-hero-image\s*{[^}]*object-fit:\s*contain/s);
+  assert.match(pageSource, /login-brandmark/);
+  assert.match(pageSource, /brand-mark-icon/);
+  assert.match(cssSource, /\.login-phone\s*{[^}]*background:\s*#ffffff/s);
   assert.match(cssSource, /\.login-trust-row/);
   assert.match(cssSource, /\.social-login-notice/);
+  assert.doesNotMatch(pageSource, /카카오로 계속하기/);
+  assert.doesNotMatch(pageSource, /Apple로 계속하기/);
+  assert.doesNotMatch(pageSource, /assets\/img\/image\.png/);
+  assert.doesNotMatch(pageSource, /loginHeroImage/);
+  assert.doesNotMatch(pageSource, /login-visual/);
+  assert.doesNotMatch(pageSource, /login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.login-visual/);
+  assert.doesNotMatch(cssSource, /\.login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.social-button\.kakao/);
+  assert.doesNotMatch(cssSource, /\.social-button\.apple/);
   assert.doesNotMatch(pageSource, /개발 중에는/);
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
+});
+
+test("opens the social signup screen from the topbar signup actions", () => {
+  assert.match(pageSource, /const \[authMode, setAuthMode\]/);
+  assert.match(pageSource, /openAuthScreen/);
+  assert.match(pageSource, /className="web-signup"[^>]*onClick=\{\(\) => openAuthScreen\("signup"\)\}/);
+  assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
+  assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
+  assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);
 });
 
 test("borrows mature Zigbang and Dabang product patterns for trust and map search", () => {
@@ -346,10 +364,10 @@ test("offers three developer login roles for seekers, tenants, and landlords", (
   assert.match(pageSource, /setActiveRole\(role\.id\)/);
   assert.match(pageSource, /startRoleSession/);
   assert.match(pageSource, /setActiveTab\(role === "seeker" \? "home" : "mypage"\)/);
-  assert.match(pageSource, /<LoginScreen setActiveRole=\{startRoleSession\}/);
+  assert.match(pageSource, /function LoginScreen/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
-  assert.match(pageSource, /\[activeRole, activeTab, selectedListing\]/);
+  assert.match(pageSource, /\[activeRole, activeTab, selectedListing, authMode\]/);
 });
 
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
@@ -671,15 +689,26 @@ test("keeps the bottom app tabs fixed to the viewport", () => {
   assert.match(cssSource, /\.map-card-tags/);
 });
 
-test("supports a responsive desktop web layout beyond the phone frame", () => {
+test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /@media \(min-width:\s*1080px\)/);
-  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*min\(calc\(100vw - 48px\), 1180px\)/s);
-  assert.match(cssSource, /\.home-screen\s*{[^}]*grid-template-columns:\s*minmax\(340px, 0\.86fr\) minmax\(500px, 1\.14fr\)/s);
+  // 데스크톱은 전체폭 포털 셸(모바일 카드 프레임 제거)
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*block/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*100%/s);
+  // 상단 가로 네비 + 히어로는 기본(모바일) 숨김, 데스크톱에서 노출
+  assert.match(cssSource, /\.web-topbar,\s*\.web-hero-head\s*{[^}]*display:\s*none/s);
+  assert.match(cssSource, /\.web-topbar\s*{[^}]*position:\s*sticky/s);
+  assert.match(cssSource, /\.web-hero-head\s*{[^}]*display:\s*block/s);
+  assert.match(pageSource, /web-topbar/);
+  assert.match(pageSource, /web-hero-head/);
+  assert.match(pageSource, /방 구할 땐, 집우집주/);
+  // 카테고리 = 큰 카드 한 줄, 매물 = 넓은 3열 그리드
+  assert.match(cssSource, /\.home-screen > \.category-strip\s*{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/s);
+  assert.match(cssSource, /\.home-screen > \.listing-feed\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
+  // 지도/상세 데스크톱 그리드는 유지
   assert.match(cssSource, /\.map-screen\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 390px/s);
   assert.match(cssSource, /\.listing-detail-screen\s*{[^}]*grid-template-columns:\s*minmax\(460px, 1fr\) 360px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*width:\s*min\(540px, calc\(100vw - 48px\)\)/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*border-radius:\s*999px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*backdrop-filter:\s*blur\(18px\)/s);
+  // 데스크톱에서는 하단 탭 숨김(상단 네비가 대체)
+  assert.match(cssSource, /@media \(min-width:\s*1080px\)[\s\S]*\.bottom-tabs\s*{\s*display:\s*none/);
 });
 
 test("is configured as an installable PWA shell", () => {
@@ -877,19 +906,75 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   }
 });
 
-test("offers NVIDIA floor plan AI model selection for precise dimension reading", () => {
+test("offers floor plan AI model selection for precise dimension reading", () => {
   for (const label of [
     "FLOOR_PLAN_AI_MODELS",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/cosmos3-nano-reasoner",
+    "openai/floor-plan-vision",
+    "OpenAI Vision",
     "selectedAiModel",
     "uploadedAiImageDataUrl",
     "fileToCompressedDataUrl",
     "canvas\\.toDataURL\\(\"image/jpeg\"",
+    "bareMillimeterMatch",
+    "parseDimensionTextsToMm",
+    "aiRawTextDetectionSources",
+    "lastAiAnalysis\\?\\.rawText",
+    "단위 없는 3-5자리 치수는 mm로 처리",
     "runAiDimensionAnalysis",
+    "runAiCandidateReview",
+    "runVisionFirstExtractionPhases",
+    "OpenAI Vision 1단계",
+    "OpenAI Vision 2단계",
+    "room-structure",
+    "lastRoomStructureAnalysis",
+    "createAiGeneratedWallsFromRoomStructure",
+    "createWallCandidatesFromRoomPolygons",
+    "snapNormalizedLineToWallEvidence",
+    "double-line-hollow",
+    "doubleLineClosing",
+    "ai-room-edge",
+    "ai-missing-wall-hint",
+    "requestFloorPlanAiAnalysis",
+    "applyAiDimensionAnalysisResult",
+    "applyAiCandidateReviewResult",
+    "buildAiWallCandidatePayload",
+    "createAiCandidateOverlayDataUrl",
+    "candidateOverlayDataUrl",
+    "candidateToOverlayPoint",
+    "editorToImagePoint",
+    "aiReviewedWallCandidates",
+    "aiPhase1Status",
+    "aiPhase2Status",
+    "aiCandidateReviewCount",
+    "removeRejectedAiWallCandidates",
+    "normalizeWallLengths",
+    "snapWallToLengthBounds",
+    "analysisMode",
+    "candidate-review",
+    "wallCandidates",
+    "candidateReviews",
+    "missingWallHints",
     "sourceAttachmentId",
     "uploadedFloorPlanSource\\?\\.attachmentId",
     "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
+    "applyAiDimensionToSelectedWall",
+    "applyManualAiScaleToSelectedWall",
+    "manualAiScaleRealLength",
+    "최대 가로/세로 치수",
+    "AI 분석 결과",
+    "선택 벽 실제 길이",
+    "mm 입력",
+    "선택 벽 축척 적용",
+    "AI 후보 검토",
+    "AI 제외 후보 삭제",
+    "벽 길이 자동 보정",
+    "유지",
+    "제외",
+    "누락 후보",
+    "m/cm/mm 단위 치수만 적용 가능",
+    "축척 적용",
     "AI 정밀 수치 읽기"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
@@ -983,8 +1068,10 @@ test("uses OCR only for scale candidate extraction and keeps manual scale fallba
   }
 });
 
-test("uses conservative uploaded floor plan extraction without starter wall fallback", () => {
-  assert.match(floorPlanEditorSource, /mode:\s*"conservative"/);
+test("uses wall-first uploaded floor plan extraction without starter wall fallback", () => {
+  assert.match(floorPlanEditorSource, /mode:\s*"wall-first"/);
+  assert.match(floorPlanEditorSource, /maxLines:\s*40/);
+  assert.match(floorPlanEditorSource, /\*\s*0\.06/);
   assert.doesNotMatch(floorPlanEditorSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
   assert.match(floorPlanEditorSource, /직접 그려주세요/);
 });
@@ -1030,16 +1117,30 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
 
   assert.equal(model.GRID_SIZE, 25);
   assert.equal(units.GRID_SIZE_PX, 25);
-  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 20);
-  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.02);
+  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 10);
+  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.01);
   assert.equal(model.findNearestWall([wall], { x: 48, y: 5 }, 18)?.id, "w1");
   assert.deepEqual(model.removeWall([wall], "w1"), []);
   assert.deepEqual(model.summarizeWalls([wall]), {
     wallCount: 1,
-    approximateMeters: 2.5,
+    approximateMeters: 1.3,
     status: "편집중"
   });
-  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 2.4);
+  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 1.2);
+});
+
+test("floor plan editor model moves and resizes selected walls without mutating originals", async () => {
+  const model = floorPlanModel;
+  const wall = { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } };
+
+  const moved = model.moveWall(wall, { x: 25, y: 50 });
+  const resizedEnd = model.resizeWall(wall, "end", { x: 360, y: 140 });
+  const resizedStart = model.resizeWall(wall, "start", { x: 80, y: 60 });
+
+  assert.deepEqual(moved, { id: "edit-wall", start: { x: 125, y: 150 }, end: { x: 325, y: 150 } });
+  assert.deepEqual(resizedEnd, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 360, y: 100 } });
+  assert.deepEqual(resizedStart, { id: "edit-wall", start: { x: 80, y: 100 }, end: { x: 300, y: 100 } });
+  assert.deepEqual(wall, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } });
 });
 
 test("floor plan editor model optimizes wall conversion with stable ids", async () => {
@@ -1245,6 +1346,38 @@ test("floor plan editor model merges nearby wall candidates and caps noisy outpu
   assert.equal(capped.length, 24);
 });
 
+test("floor plan editor model does not merge wall gaps marked by perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 286, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 286, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { axisTolerance: 4, gapTolerance: 50, maxLines: 10, respectPerpendicularGapMarkers: true }
+  );
+
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 420), false);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 315 && line.x2 === 420), true);
+});
+
+test("floor plan editor model does not merge distant same-axis walls when axis sorting differs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 602, y1: 144, x2: 743, y2: 144, orientation: "horizontal", thickness: 6 },
+      { x1: 151, y1: 148, x2: 475, y2: 148, orientation: "horizontal", thickness: 12 }
+    ],
+    { axisTolerance: 4, gapTolerance: 35, maxLines: 10 }
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged.some((line) => line.x1 === 151 && line.x2 === 475), true);
+  assert.equal(merged.some((line) => line.x1 === 602 && line.x2 === 743), true);
+});
+
 test("floor plan editor model preserves wall thickness and removes thin interior symbols", async () => {
   const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
@@ -1446,6 +1579,342 @@ test("floor plan editor model conservative mode drops all ambiguous thin wall ca
   assert.equal(result.needsReview, true);
 });
 
+test("floor plan editor model wall-first mode reconnects dark wall runs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 330, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 362, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 320, y1: 180, x2: 320, y2: 490, orientation: "vertical", thickness: 7 },
+      { x1: 120, y1: 92, x2: 620, y2: 92, orientation: "horizontal", thickness: 1, markers: ["arrow-start", "arrow-end"] },
+      { x1: 260, y1: 270, x2: 300, y2: 270, orientation: "horizontal", thickness: 2 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 140 && line.x1 === 120 && line.x2 === 620), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320), true);
+  assert.equal(result.dimensionCandidates.length, 1);
+  assert.equal(result.removedNoiseCount, 2);
+});
+
+test("floor plan editor model wall-first mode keeps door gaps open when gap has perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 288, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 288, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 <= 180 && line.x2 >= 420), false);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 315 && line.x2 === 420), true);
+});
+
+test("floor plan editor model wall-first mode does not bridge larger probable opening gaps by default", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 260, y2: 320, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 358, x2: 260, y2: 490, orientation: "vertical", thickness: 8 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 <= 180 && line.y2 >= 490), false);
+});
+
+test("floor plan editor model wall-first mode preserves short thick wall stubs connected to structure", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 140, x2: 260, y2: 198, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 === 140 && line.y2 === 198), true);
+});
+
+test("floor plan editor model wall-first mode preserves small thick rectangular wall loops", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 360, y1: 320, x2: 425, y2: 320, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 380, x2: 425, y2: 380, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 320, x2: 360, y2: 380, orientation: "vertical", thickness: 7 },
+      { x1: 425, y1: 320, x2: 425, y2: 380, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 320), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 360 && line.y1 === 320 && line.y2 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 425 && line.y1 === 320 && line.y2 === 380), true);
+});
+
+test("floor plan editor model wall-first mode infers missing outer edges and extends near walls", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 120, y1: 520, x2: 620, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 320, y1: 168, x2: 320, y2: 493, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 120 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.needsReview, true);
+});
+
+test("floor plan editor model wall-first mode skips inferred outer edges on complex multi-room plans", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 100, y1: 100, x2: 620, y2: 100, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 100, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 100, y1: 520, x2: 100, y2: 100, orientation: "vertical", thickness: 8 },
+      { x1: 220, y1: 100, x2: 220, y2: 260, orientation: "vertical", thickness: 7 },
+      { x1: 360, y1: 100, x2: 360, y2: 280, orientation: "vertical", thickness: 7 },
+      { x1: 480, y1: 280, x2: 480, y2: 520, orientation: "vertical", thickness: 7 },
+      { x1: 100, y1: 220, x2: 260, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 300, y1: 220, x2: 460, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 100, y1: 340, x2: 260, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 340, y1: 340, x2: 520, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 180, y1: 420, x2: 300, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 420, x2: 540, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 540, y1: 360, x2: 540, y2: 520, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.markers?.includes("wall-first-inferred-outer")), false);
+});
+
+test("floor plan editor model strict line mask ignores filled surfaces and small dark noise", async () => {
+  const model = floorPlanModel;
+  const width = 240;
+  const height = 180;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const paint = (x, y, color) => {
+    const offset = (y * width + x) * 4;
+    data[offset] = color;
+    data[offset + 1] = color;
+    data[offset + 2] = color;
+    data[offset + 3] = 255;
+  };
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) paint(x, y, color);
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 200, 35, 0);
+  fillRect(30, 140, 200, 145, 0);
+  fillRect(30, 30, 35, 145, 0);
+  fillRect(195, 30, 200, 145, 0);
+  fillRect(70, 65, 165, 110, 135);
+  fillRect(12, 12, 18, 18, 0);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+
+  assert.equal(lines.length, 4);
+  assert.equal(lines.every((line) => line.thickness <= 8), true);
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 65 && line.y1 <= 110), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 70 && line.x1 <= 165), false);
+});
+
+test("floor plan editor model separates dark furniture fill from black walls with adaptive luminance", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 상단 벽 안쪽에 붙은 진회색 싱크대 채움 — 벽으로 검출되면 안 된다.
+  fillRect(100, 38, 200, 80, 90);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 40, strictLineMask: true, width }
+  );
+
+  assert.equal(
+    lines.some((line) => line.orientation === "horizontal" && Math.abs(line.y1 - 33) <= 3 && line.x1 <= 34 && line.x2 >= 266),
+    true
+  );
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 40 && line.y1 <= 85), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 95 && line.x1 <= 205 && line.y2 <= 90), false);
+});
+
+test("floor plan editor model keeps wall bands separate from adjacent solid fill blocks", async () => {
+  const model = floorPlanModel;
+  const width = 220;
+  const height = 120;
+  const mask = Array.from({ length: width * height }, () => false);
+  const fillRect = (x1, y1, x2, y2) => {
+    for (let y = y1; y <= y2; y += 1) {
+      for (let x = x1; x <= x2; x += 1) mask[y * width + x] = true;
+    }
+  };
+
+  fillRect(10, 20, 209, 27);
+  // 벽 바로 아래 같은 색으로 붙은 채움 블록 — 벽 밴드를 흡수하면 안 된다.
+  fillRect(60, 28, 119, 70);
+
+  const lines = model.detectWallBandLinesFromMask(mask, { height, minRunLength: 40, width });
+  const wallBand = lines.find((line) => line.orientation === "horizontal" && line.y1 <= 28);
+
+  assert.equal(Boolean(wallBand), true);
+  assert.equal(wallBand.thickness <= 10, true);
+  assert.equal(wallBand.x1 <= 12 && wallBand.x2 >= 207, true);
+});
+
+test("floor plan editor model recovers short thick wall stubs below the primary run length", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  fillRect(146, 38, 153, 74, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const recoveredStub = lines.find(
+    (line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80
+  );
+
+  assert.equal(Boolean(recoveredStub), true);
+  assert.equal(recoveredStub.markers?.includes("short-wall-recovered"), true);
+
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  assert.equal(
+    filtered.walls.some((line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80),
+    true
+  );
+});
+
+test("floor plan editor model keeps small solid rectangular wall blocks as single walls", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 순흑으로 채운 24x32 덕트/샤프트 — 긴 축 방향 벽 하나로 남아야 한다.
+  fillRect(180, 120, 203, 151, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  const blockWalls = filtered.walls.filter(
+    (line) => line.x1 >= 172 && line.x2 <= 211 && line.y1 >= 112 && line.y2 <= 159
+  );
+
+  assert.equal(blockWalls.length, 1);
+  assert.equal(blockWalls[0].orientation, "vertical");
+});
+
+test("floor plan editor model classifies over-thick fill bands as furniture candidates", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 410, y2: 180, orientation: "horizontal", thickness: 60 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => Number(line.thickness ?? 1) >= 60), false);
+  assert.equal(result.annotationCandidates.some((candidate) => candidate.source === "furniture-fill-band"), true);
+});
+
 test("floor plan editor model estimates scale from outside dimensions", async () => {
   const model = floorPlanModel;
   const candidate = model.estimateScaleCandidateFromDimensions([
@@ -1460,6 +1929,91 @@ test("floor plan editor model estimates scale from outside dimensions", async ()
   assert.equal(candidate.pixelLength, 320);
   assert.equal(Number(candidate.pixelToMmRatio.toFixed(2)), 18.31);
   assert.equal(candidate.source, "outside-dimension-ocr");
+});
+
+test("floor plan editor model snaps normalized AI missing wall hints to dark image evidence", async () => {
+  const model = floorPlanModel;
+  const width = 120;
+  const height = 80;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 38; y <= 42; y += 1) {
+    for (let x = 15; x <= 105; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 20;
+      data[offset + 1] = 20;
+      data[offset + 2] = 20;
+    }
+  }
+
+  const snapped = model.snapNormalizedLineToWallEvidence(
+    { x1: 120, y1: 465, x2: 900, y2: 465 },
+    { data, height, width },
+    { darkThreshold: 80, searchRadiusPx: 8 }
+  );
+
+  assert.equal(snapped.orientation, "horizontal");
+  assert.equal(snapped.y1, 40);
+  assert.equal(snapped.thickness >= 4, true);
+  assert.equal(snapped.confidence > 0.7, true);
+});
+
+test("floor plan editor model creates wall candidates from AI room polygons and merges shared room edges", async () => {
+  const model = floorPlanModel;
+  const width = 200;
+  const height = 120;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 20; y <= 100; y += 1) {
+    for (let x = 99; x <= 101; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 10;
+      data[offset + 1] = 10;
+      data[offset + 2] = 10;
+    }
+  }
+
+  const lines = model.createWallCandidatesFromRoomPolygons(
+    [
+      {
+        confidence: 0.82,
+        label: "거실",
+        polygon: [
+          { x: 100, y: 150 },
+          { x: 500, y: 150 },
+          { x: 500, y: 850 },
+          { x: 100, y: 850 }
+        ]
+      },
+      {
+        confidence: 0.8,
+        label: "침실",
+        polygon: [
+          { x: 500, y: 150 },
+          { x: 900, y: 150 },
+          { x: 900, y: 850 },
+          { x: 500, y: 850 }
+        ]
+      }
+    ],
+    { data, height, width },
+    { darkThreshold: 80, minLength: 20, searchRadiusPx: 8 }
+  );
+  const sharedWalls = lines.filter((line) => line.orientation === "vertical" && line.x1 >= 98 && line.x1 <= 102);
+
+  assert.equal(sharedWalls.length, 1);
+  assert.equal(sharedWalls[0].markers.includes("ai-room-edge"), true);
+  assert.equal(sharedWalls[0].thickness >= 2, true);
 });
 
 test("floor plan editor model creates opening candidates as editable layers", async () => {

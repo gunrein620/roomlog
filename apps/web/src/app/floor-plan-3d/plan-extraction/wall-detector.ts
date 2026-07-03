@@ -13,13 +13,15 @@ export const OPENCV_URL = "https://docs.opencv.org/4.10.0/opencv.js";
 export const TESSERACT_OCR_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js";
 export const MAX_EXTRACTION_DIMENSION = 1600;
 
+type WallDetectorOptions = { doubleLineClosing?: boolean };
+
 export class WallDetector {
   constructor(private readonly worker: Worker | null = null) {}
 
-  async detectWalls(file: File) {
+  async detectWalls(file: File, options: WallDetectorOptions = {}) {
     if (this.worker) {
       try {
-        return await detectWallsWithWorker(this.worker, file);
+        return await detectWallsWithWorker(this.worker, file, options);
       } catch {
         return fallbackCanvasWallExtraction(file);
       }
@@ -46,10 +48,11 @@ async function fallbackCanvasWallExtraction(file: File): Promise<DetectedWallRes
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
     const lines = detectWallLinesFromImageData(imageData, {
       darkThreshold: 185,
-      maxLines: 24,
-      minRunLength: Math.max(32, Math.round(Math.min(canvas.width, canvas.height) * 0.08))
+      maxLines: 40,
+      minRunLength: Math.max(28, Math.round(Math.min(canvas.width, canvas.height) * 0.06)),
+      strictLineMask: true
     }) as DetectedLine[];
-    const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, mode: "conservative", width: canvas.width }) as {
+    const commercialCandidates = filterCommercialWallCandidates(lines, { height: canvas.height, mode: "wall-first", width: canvas.width }) as {
       annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;
       dimensionCandidates: Array<{ confidence: number; line: DetectedLine; source: string; text?: string }>;
       mainPlanBounds: DetectedWallResult["mainPlanBounds"];
@@ -95,7 +98,7 @@ export function normalizeMainPlanBounds(bounds: DetectedWallResult["mainPlanBoun
   };
 }
 
-function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWallResult> {
+function detectWallsWithWorker(worker: Worker, file: File, options: WallDetectorOptions = {}): Promise<DetectedWallResult> {
   return new Promise((resolve, reject) => {
     const imageUrl = URL.createObjectURL(file);
 
@@ -116,7 +119,7 @@ function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWall
           const rawLines = Array.isArray(event.data.lines) ? event.data.lines : [];
           const commercialCandidates = filterCommercialWallCandidates(rawLines, {
             height: Number(event.data.imageHeight) || height,
-            mode: "conservative",
+            mode: "wall-first",
             width: Number(event.data.imageWidth) || width
           }) as {
             annotationCandidates: Array<{ confidence: number; line: DetectedLine; source: string }>;
@@ -154,6 +157,7 @@ function detectWallsWithWorker(worker: Worker, file: File): Promise<DetectedWall
         worker.addEventListener("error", handleError, { once: true });
         worker.postMessage(
           {
+            doubleLineClosing: options.doubleLineClosing,
             imageData: context.getImageData(0, 0, width, height),
             maxDimension: MAX_EXTRACTION_DIMENSION,
             opencvUrl: OPENCV_URL,

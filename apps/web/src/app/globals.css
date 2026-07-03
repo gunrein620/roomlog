@@ -9,7 +9,6 @@
   --blue-dark: #173ad7;
   --blue-soft: #eef2ff;
   --green: #00bf72;
-  --yellow: #fee500;
   --naver: #03c75a;
   --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
   font-family:
@@ -76,43 +75,117 @@ img {
 .login-phone {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  background: #101632;
+  flex-direction: column;
+  background: #ffffff;
 }
 
-.login-visual {
+/* 우주 브랜드마크 + 공전하는 분홍 별 */
+.login-brandmark {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 52px 24px 6px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.brand-mark-icon {
+  position: relative;
+  display: grid;
+  width: 96px;
+  height: 96px;
+  place-items: center;
+}
+
+.brand-roof {
+  width: 72px;
+  height: auto;
+  color: var(--ink);
+}
+
+.brand-word {
+  margin-top: 10px;
+  font-size: 2.3rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.brand-tagline {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* 별이 로고 주위를 도는 공전 궤도 */
+.brand-orbit {
   position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: #101632;
+  top: 50%;
+  left: 50%;
+  width: 176px;
+  height: 176px;
+  margin: -88px 0 0 -88px;
+  pointer-events: none;
+  animation: brand-orbit 7s linear infinite;
 }
 
-.login-visual::before {
+.brand-star {
   position: absolute;
-  z-index: 1;
-  inset: 0;
-  background:
-    linear-gradient(180deg, rgba(16, 22, 50, 0) 0%, rgba(16, 22, 50, 0.08) 44%, rgba(232, 237, 244, 0.92) 100%);
-  content: "";
+  top: -6px;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  animation: brand-twinkle 2.4s ease-in-out infinite;
 }
 
-.login-hero-image {
+.brand-star svg {
   width: 100%;
-  height: min(50vh, 420px);
-  padding: 12px 0 104px;
-  object-fit: contain;
-  object-position: center;
+  height: 100%;
+  fill: #ec6a86;
+  filter: drop-shadow(0 0 12px rgba(236, 106, 134, 0.65));
+}
+
+@keyframes brand-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes brand-twinkle {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.62) rotate(45deg);
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-orbit {
+    animation: none;
+    transform: rotate(28deg);
+  }
+
+  .brand-star {
+    animation: none;
+  }
 }
 
 .login-panel {
   position: relative;
   z-index: 1;
   width: 100%;
-  margin-top: 240px;
-  padding: 30px 22px 28px;
-  border-radius: 28px 28px 0 0;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 -20px 50px rgba(18, 24, 40, 0.16);
+  padding: 18px 22px 28px;
+  background: #ffffff;
 }
 
 .brand-kicker {
@@ -198,18 +271,8 @@ p {
   font-size: 0.78rem;
 }
 
-.social-button.kakao {
-  background: var(--yellow);
-  color: #191600;
-}
-
 .social-button.naver {
   background: var(--naver);
-  color: #ffffff;
-}
-
-.social-button.apple {
-  background: #111111;
   color: #ffffff;
 }
 
@@ -6777,10 +6840,6 @@ p {
     border-radius: 24px;
   }
 
-  .login-panel {
-    border-radius: 28px 28px 24px 24px;
-  }
-
   .bottom-tabs {
     bottom: 32px;
     width: 430px;
@@ -6794,19 +6853,87 @@ p {
   }
 }
 
+.web-topbar,
+.web-hero-head {
+  display: none;
+}
+
 @media (min-width: 1080px) {
   .app-canvas {
-    padding: 24px;
+    padding: 0;
+    background: #f3f4f7;
   }
 
+  /* 데스크톱 = 다방식 전체폭 포털 (모바일 카드 프레임 제거) */
   .service-frame.with-bottom-tabs {
-    display: grid;
-    grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.1fr);
-    align-items: start;
-    width: min(calc(100vw - 48px), 1180px);
-    min-height: calc(100vh - 48px);
+    display: block;
+    width: 100%;
+    min-height: 100vh;
     padding-bottom: 0;
-    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: #f3f4f7;
+    overflow: visible;
+  }
+
+  /* 로그인 화면 = 데스크톱에서는 좌우 분할 웹 레이아웃, 모바일에서는 앱 카드 유지 */
+  .login-phone {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    width: 100%;
+    max-width: none;
+    min-height: 100vh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .login-brandmark {
+    flex: 1 1 45%;
+    justify-content: flex-start;
+    align-items: flex-start;
+    padding: 104px clamp(48px, 6vw, 120px) 0;
+    background: linear-gradient(165deg, #eef2ff 0%, #f6f7fb 55%, #ffffff 100%);
+    text-align: left;
+  }
+
+  .brand-mark-icon {
+    width: 116px;
+    height: 116px;
+  }
+
+  .brand-roof {
+    width: 84px;
+  }
+
+  .brand-word {
+    margin-top: 16px;
+    font-size: 3.2rem;
+  }
+
+  .brand-tagline {
+    max-width: 360px;
+    margin-top: 18px;
+    font-size: 1.05rem;
+  }
+
+  .brand-orbit {
+    width: 212px;
+    height: 212px;
+    margin: -106px 0 0 -106px;
+  }
+
+  .login-panel {
+    flex: 1 1 55%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 64px 40px 48px;
   }
 
   .service-frame:not(.with-bottom-tabs) {
@@ -6818,26 +6945,112 @@ p {
     overflow: visible;
   }
 
+  /* 상단 가로 네비게이션 */
+  .web-topbar {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 55;
+    background: #ffffff;
+    border-bottom: 1px solid #ecedf2;
+  }
+
+  .web-topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    width: min(100% - 64px, 1200px);
+    height: 68px;
+    margin: 0 auto;
+  }
+
+  .web-logo {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 0;
+    background: none;
+    color: var(--blue);
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+  }
+
+  .web-logo span {
+    color: #aab0bd;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+  }
+
+  .web-nav {
+    display: flex;
+    gap: 2px;
+  }
+
+  .web-nav button {
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: none;
+    color: #3d4351;
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  .web-nav button:hover {
+    background: #f2f4f8;
+    color: var(--blue);
+  }
+
+  .web-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  .web-topbar-actions .web-login {
+    padding: 9px 6px;
+    background: none;
+    color: #5b6270;
+    font-weight: 800;
+  }
+
+  .web-topbar-actions .web-signup {
+    padding: 9px 16px;
+    border-radius: 10px;
+    background: #eef1fb;
+    color: var(--blue);
+    font-weight: 800;
+  }
+
+  .web-topbar-actions .web-cta {
+    padding: 9px 16px;
+    border-radius: 10px;
+    background: var(--blue);
+    color: #ffffff;
+    font-weight: 800;
+  }
+
   .screen {
     padding: 24px 28px 104px;
   }
 
+  /* 홈: 다방식 세로 포털 흐름 */
   .home-screen {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(340px, 0.86fr) minmax(500px, 1.14fr);
-    gap: 16px 24px;
-    align-items: start;
-    max-height: calc(100vh - 48px);
-    overflow-y: auto;
+    display: block;
+    width: 100%;
+    max-height: none;
+    padding: 0 0 88px;
+    overflow: visible;
+    background: transparent;
     border-bottom: 0;
   }
 
+  /* 비-시세/부가 섹션은 데스크톱 홈에서 숨겨 다방식으로 정돈 */
   .home-screen > .app-header,
-  .home-screen > .search-box,
-  .home-screen > .category-strip,
-  .home-screen > .quick-filter-row,
   .home-screen > .filter-feedback,
+  .home-screen > .home-web-summary-card,
   .home-screen > .condition-summary-card,
   .home-screen > .ai-broker-card,
   .home-screen > .saved-condition-panel,
@@ -6848,25 +7061,137 @@ p {
   .home-screen > .neighborhood-strip,
   .home-screen > .resident-check-card,
   .home-screen > .neighborhood-rank-card {
-    grid-column: 1;
+    display: none;
+  }
+
+  /* 히어로 */
+  .web-hero-head {
+    display: block;
+    padding: 56px 24px 0;
+    text-align: center;
+  }
+
+  .web-hero-head h1 {
+    font-size: 2.3rem;
+    line-height: 1.14;
+    letter-spacing: -0.02em;
+  }
+
+  .web-hero-head p {
+    margin-top: 12px;
+    color: #6b7280;
+    font-size: 1.02rem;
+    font-weight: 700;
+  }
+
+  .home-screen > .search-box {
+    width: min(100% - 48px, 720px);
+    height: 62px;
+    margin: 24px auto 0;
+    border-radius: 16px;
+    box-shadow: 0 14px 30px rgba(18, 24, 40, 0.1);
+  }
+
+  /* 카테고리 = 큰 카드 한 줄 */
+  .home-screen > .category-strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 14px;
+    width: min(100% - 48px, 1180px);
+    margin: 36px auto 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .home-screen > .category-strip .category-card {
+    justify-items: start;
+    align-content: space-between;
+    gap: 14px;
+    min-width: 0;
+    min-height: 128px;
+    padding: 18px 15px;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(18, 24, 40, 0.05);
+    transition: transform 0.14s ease, box-shadow 0.14s ease;
+  }
+
+  .home-screen > .category-strip .category-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 30px rgba(18, 24, 40, 0.12);
+  }
+
+  .home-screen > .category-strip .category-card i {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+  }
+
+  .home-screen > .category-strip .category-card i svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .home-screen > .category-strip .category-card span {
+    font-size: 1.02rem;
+  }
+
+  .home-screen > .category-strip .category-card strong {
+    font-size: 0.82rem;
+  }
+
+  .home-screen > .category-strip .category-card.active {
+    border: 1.5px solid var(--blue);
+    color: var(--blue);
+    box-shadow: 0 12px 26px rgba(47, 85, 255, 0.16);
+  }
+
+  .home-screen > .category-strip .category-card.active strong {
+    color: var(--blue);
+  }
+
+  .home-screen > .category-strip .category-card.active i {
+    background: var(--blue);
+    color: #ffffff;
+  }
+
+  .home-screen > .quick-filter-row {
+    width: min(100% - 48px, 1180px);
+    margin: 20px auto 0;
+    padding: 0;
+    justify-content: center;
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   .home-screen > .section-title {
-    grid-column: 2;
-    grid-row: 1;
-    margin-top: 0;
+    width: min(100% - 48px, 1180px);
+    margin: 48px auto 0;
   }
 
+  /* 매물 = 넓은 3열 그리드 */
   .home-screen > .listing-feed {
-    grid-column: 2;
-    grid-row: 2 / span 10;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-content: start;
-    margin-top: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    width: min(100% - 48px, 1180px);
+    margin: 20px auto 0;
   }
 
   .listing-photo img {
-    height: 184px;
+    height: 190px;
+  }
+
+  /* 홈 외 화면은 중앙 정렬 */
+  .map-screen,
+  .saved-screen,
+  .inquiry-screen,
+  .owner-screen,
+  .tenant-screen,
+  .profile-screen {
+    width: min(100% - 48px, 1180px);
+    margin-right: auto;
+    margin-left: auto;
   }
 
   .map-screen {
@@ -7051,17 +7376,7 @@ p {
   }
 
   .bottom-tabs {
-    bottom: 24px;
-    width: min(540px, calc(100vw - 48px));
-    border: 1px solid rgba(18, 24, 40, 0.1);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.94);
-    backdrop-filter: blur(18px);
-  }
-
-  .bottom-tabs a {
-    min-height: 56px;
-    font-size: 0.68rem;
+    display: none;
   }
 
   .filter-sheet,

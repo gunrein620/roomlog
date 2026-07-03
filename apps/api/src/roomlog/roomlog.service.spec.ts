@@ -177,7 +177,7 @@ describe("RoomlogService", () => {
     assert.equal(service.loadSimulatorRoom(created.room.id).wallsData[0].dimensions.width, 3);
   });
 
-  it("exposes only hosted NVIDIA floor plan model choices", () => {
+  it("exposes hosted floor plan AI model choices including OpenAI vision", () => {
     const service = new RoomlogService();
     const models = service.listFloorPlanAiModels();
 
@@ -185,7 +185,8 @@ describe("RoomlogService", () => {
       models.map((model) => model.id),
       [
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-        "nvidia/cosmos3-nano-reasoner"
+        "nvidia/cosmos3-nano-reasoner",
+        "openai/floor-plan-vision"
       ]
     );
     assert.equal(models.every((model) => model.mode === "vision-reasoning"), true);
@@ -232,6 +233,168 @@ describe("RoomlogService", () => {
       globalThis.fetch = originalFetch;
       if (originalApiKey) process.env.NVIDIA_API_KEY = originalApiKey;
       else delete process.env.NVIDIA_API_KEY;
+    }
+  });
+
+  it("uses OpenAI Responses for the floor plan vision model", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedHeaders: Headers | undefined;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    delete process.env.OPENAI_CHAT_MODEL;
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedHeaders = new Headers(init?.headers);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"OpenAI가 도면 구조와 치수 후보를 검토했습니다.","textDetections":[{"text":"5860","confidence":0.84}],"scaleCandidates":[{"realLengthMm":5860,"pixelLength":293,"pixelToMmRatio":20,"confidence":0.78,"source":"openai/vision"}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      assert.equal(capturedUrl, "https://api.openai.com/v1/responses");
+      assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-test-roomlog");
+      assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.match(String(capturedBody?.instructions), /단위 없는 3-5자리 치수 숫자/);
+      assert.match(String(capturedBody?.instructions), /textDetections에 모든 보이는 치수 숫자/);
+      assert.equal(result.status, "ready");
+      assert.equal(result.model, "openai/floor-plan-vision");
+      assert.equal(result.scaleCandidates[0].source, "openai/vision");
+      assert.equal(result.scaleCandidates[0].pixelToMmRatio, 20);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+      if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      else delete process.env.OPENAI_CHAT_MODEL;
+    }
+  });
+
+  it("uses OpenAI Responses to review OpenCV floor plan wall candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"OpenCV 후보를 검토했습니다.","candidateReviews":[{"id":"W1","verdict":"keep","confidence":0.86,"reason":"외곽 벽과 일치"}],"missingWallHints":[{"description":"오른쪽 세로 외곽 벽이 약하게 누락됨","confidence":0.62,"orientation":"vertical","line":{"x1":860,"y1":120,"x2":860,"y2":910}}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        analysisMode: "candidate-review",
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision",
+        wallCandidates: [
+          {
+            end: { x: 120, y: 10 },
+            id: "W1",
+            lengthPx: 110,
+            orientation: "horizontal",
+            start: { x: 10, y: 10 }
+          }
+        ]
+      });
+
+      assert.match(String(capturedBody?.instructions), /OpenCV 도면 벽 후보 검토기/);
+      assert.match(String(capturedBody?.instructions), /0~1000 정규화 좌표/);
+      assert.match(String(capturedBody?.instructions), /candidateReviews/);
+      assert.equal((capturedBody?.text as any)?.format?.type, "json_schema");
+      assert.equal((capturedBody?.text as any)?.format?.strict, true);
+      assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.missingWallHints?.items?.properties?.line?.type, "object");
+      assert.match(JSON.stringify(capturedBody), /wallCandidates/);
+      assert.equal(result.analysisMode, "candidate-review");
+      assert.equal(result.status, "ready");
+      assert.equal(result.candidateReviews?.[0].id, "W1");
+      assert.equal(result.candidateReviews?.[0].verdict, "keep");
+      assert.equal(result.missingWallHints?.[0].description, "오른쪽 세로 외곽 벽이 약하게 누락됨");
+      assert.equal(result.missingWallHints?.[0].orientation, "vertical");
+      assert.equal(result.missingWallHints?.[0].line?.x1, 860);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("uses OpenAI structured outputs for floor plan room structure analysis", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"거실","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        analysisMode: "room-structure",
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      assert.match(String(capturedBody?.instructions), /방 구조 분석기/);
+      assert.match(String(capturedBody?.instructions), /0~1000 정규화 좌표/);
+      assert.equal((capturedBody?.text as any)?.format?.type, "json_schema");
+      assert.equal((capturedBody?.text as any)?.format?.strict, true);
+      assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.planStyle?.type, "string");
+      assert.match(JSON.stringify(capturedBody), /"detail":"high"/);
+      assert.equal(result.analysisMode, "room-structure");
+      assert.equal(result.status, "ready");
+      assert.equal(result.planStyle, "double-line-hollow");
+      assert.equal(result.noiseFlags?.decorativeHatching, true);
+      assert.equal(result.rooms?.[0].label, "거실");
+      assert.equal(result.rooms?.[0].polygon[2].x, 560);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
     }
   });
 

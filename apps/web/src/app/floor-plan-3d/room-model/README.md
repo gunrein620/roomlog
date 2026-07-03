@@ -7,7 +7,7 @@
 | 좌표계 | 단위 | 사용처 |
 |---|---|---|
 | 2D 캔버스 | px (그리드 `GRID_SIZE_PX`=25) | 편집기 캔버스의 `Wall.start/end` |
-| 실측 | mm | `pixelToMmRatio`(기본 20)로 px↔mm 변환, 치수 표기/저장 |
+| 실측 | mm | `pixelToMmRatio`(기본 10)로 px↔mm 변환, 치수 표기/저장 |
 | 3D 씬 | m | `convertWallsToWheretoputRoom3D`가 px → m 변환 + 중심 정렬. y-up, 2D의 y가 3D의 z |
 
 ## 파일

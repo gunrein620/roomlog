@@ -44,8 +44,15 @@ import {
   FloorPlanAiAnalysisResult,
   FloorPlanAiModel,
   FloorPlanAiModelId,
+  FloorPlanAiCandidateReview,
+  FloorPlanAiMissingWallHint,
+  FloorPlanAiNormalizedLine,
+  FloorPlanAiRoomStructure,
+  FloorPlanAiRoomStructureNoiseFlags,
+  FloorPlanAiRoomStructurePlanStyle,
   FloorPlanAiScaleCandidate,
   FloorPlanAiTextDetection,
+  FloorPlanAiWallCandidate,
   FloorPlanDraft,
   FloorPlanWall,
   IntakeDraft,
@@ -140,8 +147,106 @@ const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
     label: "Cosmos3 Nano Reasoner",
     mode: "vision-reasoning",
     description: "이미지 구조를 물리 공간 관점으로 검토해 치수 후보를 보조 검증합니다."
+  },
+  {
+    id: "openai/floor-plan-vision",
+    label: "OpenAI Vision",
+    mode: "vision-reasoning",
+    description: "도면 이미지를 1차로 해석해 치수 텍스트와 구조 후보를 OpenCV 검출 결과 보정에 활용합니다."
   }
 ];
+
+const FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    candidateReviews: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          id: { type: "string" },
+          reason: { type: "string" },
+          verdict: { enum: ["keep", "reject", "review"], type: "string" }
+        },
+        required: ["id", "verdict", "confidence", "reason"],
+        type: "object"
+      },
+      type: "array"
+    },
+    missingWallHints: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          description: { type: "string" },
+          line: {
+            additionalProperties: false,
+            properties: {
+              x1: { maximum: 1000, minimum: 0, type: "number" },
+              x2: { maximum: 1000, minimum: 0, type: "number" },
+              y1: { maximum: 1000, minimum: 0, type: "number" },
+              y2: { maximum: 1000, minimum: 0, type: "number" }
+            },
+            required: ["x1", "y1", "x2", "y2"],
+            type: "object"
+          },
+          orientation: { enum: ["horizontal", "vertical"], type: "string" }
+        },
+        required: ["description", "confidence", "orientation", "line"],
+        type: "object"
+      },
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "candidateReviews", "missingWallHints"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    noiseFlags: {
+      additionalProperties: false,
+      properties: {
+        decorativeHatching: { type: "boolean" },
+        watermark: { type: "boolean" }
+      },
+      required: ["decorativeHatching", "watermark"],
+      type: "object"
+    },
+    planStyle: { enum: ["solid-filled", "double-line-hollow", "hatched", "gray-fill"], type: "string" },
+    rooms: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          label: { type: "string" },
+          polygon: {
+            items: {
+              additionalProperties: false,
+              properties: {
+                x: { maximum: 1000, minimum: 0, type: "number" },
+                y: { maximum: 1000, minimum: 0, type: "number" }
+              },
+              required: ["x", "y"],
+              type: "object"
+            },
+            maxItems: 12,
+            minItems: 4,
+            type: "array"
+          }
+        },
+        required: ["label", "confidence", "polygon"],
+        type: "object"
+      },
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "planStyle", "noiseFlags", "rooms"],
+  type: "object"
+} as const;
 
 function normalizePhoneNumber(phone?: string) {
   const digits = phone?.replace(/\D+/g, "") ?? "";
@@ -2788,6 +2893,29 @@ export class RoomlogService {
       ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
       : this.validFloorPlanImageDataUrl(input.imageDataUrl);
 
+    if (model === "openai/floor-plan-vision") {
+      if (!process.env.OPENAI_API_KEY) {
+        return {
+          model,
+          mode: modelInfo.mode,
+          status: "config-required",
+          summary: "OPENAI_API_KEY가 설정되지 않아 OpenAI 도면 1차 분석을 실행하지 않았습니다.",
+          textDetections: [],
+          scaleCandidates: []
+        };
+      }
+
+      if (input.analysisMode === "candidate-review") {
+        return this.reviewFloorPlanCandidatesWithOpenAi(model, imageDataUrl, this.validFloorPlanAiWallCandidates(input.wallCandidates), input.prompt);
+      }
+
+      if (input.analysisMode === "room-structure") {
+        return this.analyzeFloorPlanRoomStructureWithOpenAi(model, imageDataUrl, input.prompt);
+      }
+
+      return this.analyzeFloorPlanWithOpenAiVision(model, imageDataUrl, input.prompt);
+    }
+
     if (!process.env.NVIDIA_API_KEY) {
       return {
         model,
@@ -2844,6 +2972,34 @@ export class RoomlogService {
     }
 
     return trimmed.replace(/^data:image\/jpg;/i, "data:image/jpeg;");
+  }
+
+  private validFloorPlanAiWallCandidates(value: unknown): FloorPlanAiWallCandidate[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 80).flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim().slice(0, 24) : "";
+      const start = item?.start as { x?: unknown; y?: unknown } | undefined;
+      const end = item?.end as { x?: unknown; y?: unknown } | undefined;
+      const startX = Number(start?.x);
+      const startY = Number(start?.y);
+      const endX = Number(end?.x);
+      const endY = Number(end?.y);
+      const lengthPx = Number(item?.lengthPx);
+      const orientation = item?.orientation;
+      if (!id || !Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) return [];
+
+      return [
+        {
+          end: { x: endX, y: endY },
+          id,
+          lengthPx: Number.isFinite(lengthPx) && lengthPx > 0 ? lengthPx : Math.hypot(endX - startX, endY - startY),
+          orientation: orientation === "horizontal" || orientation === "vertical" || orientation === "diagonal" ? orientation : "diagonal",
+          originalWallId: typeof item?.originalWallId === "string" ? item.originalWallId.slice(0, 80) : undefined,
+          start: { x: startX, y: startY }
+        }
+      ];
+    });
   }
 
   private async analyzeFloorPlanWithNvidiaVisionReasoning(
@@ -2911,6 +3067,265 @@ export class RoomlogService {
     }
   }
 
+  private async analyzeFloorPlanWithOpenAiVision(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 한국 부동산 도면 1차 분석기입니다.",
+      "도면 이미지에서 방 구조, 치수 텍스트, 치수선 관계, 문/창문/설비처럼 OpenCV 후처리에 도움이 되는 단서를 읽습니다.",
+      "픽셀 좌표나 길이를 확신하지 못하면 추측하지 말고 textDetections에 읽은 텍스트만 남깁니다.",
+      "도면에 2760, 5040처럼 단위 없는 3-5자리 치수 숫자가 보이면 mm 치수로 보고 각 숫자를 textDetections에 별도 항목으로 넣습니다.",
+      "summary에만 치수 숫자를 쓰지 말고, 사용자가 버튼으로 고를 수 있도록 textDetections에 모든 보이는 치수 숫자를 반복 없이 포함합니다.",
+      "벽 최종 좌표는 OpenCV와 사용자가 확정하므로, 이 응답은 후보 분석으로만 사용됩니다.",
+      "JSON schema: {\"summary\": string, \"textDetections\": [{\"text\": string, \"confidence\": number}], \"scaleCandidates\": [{\"realLengthMm\": number, \"pixelLength\": number, \"pixelToMmRatio\": number, \"confidence\": number, \"source\": string}]}"
+    ].join("\n");
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt?.trim() || "도면 이미지의 치수 텍스트와 축척 후보를 JSON으로 분석해줘."
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "auto" }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan vision failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+      const textDetections = this.validAiTextDetections(parsed.textDetections);
+      const scaleCandidates = this.validAiScaleCandidates(parsed.scaleCandidates);
+
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI 도면 1차 분석을 완료했습니다.",
+        textDetections,
+        scaleCandidates,
+        rawText
+      };
+    } catch {
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 도면 1차 분석에 실패했습니다. OpenCV 추출 결과를 검수하거나 수동 축척을 사용하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private async reviewFloorPlanCandidatesWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    wallCandidates: FloorPlanAiWallCandidate[],
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 OpenCV 도면 벽 후보 검토기입니다.",
+      "이미지에는 OpenCV가 뽑은 벽 후보가 파란 선과 W1, W2 같은 라벨로 표시되어 있습니다.",
+      "제공된 wallCandidates 목록의 id만 검토하고, 새 좌표나 새 후보 id를 만들지 마세요.",
+      "각 후보가 실제 방 외곽/내벽인지 keep, 치수선/가구/문자/노이즈면 reject, 애매하면 review로 판정합니다.",
+      "후보별 판정은 candidateReviews 배열에 id, verdict, confidence, reason으로 작성합니다.",
+      "OpenCV가 놓친 것으로 보이는 큰 외곽/내벽은 missingWallHints에 description, confidence, orientation, line을 적습니다.",
+      "missingWallHints.line 좌표계는 이미지 전체 기준 0~1000 정규화 좌표입니다. 좌상단 원점, x는 오른쪽, y는 아래입니다.",
+      "line은 누락 벽 중심선의 x1,y1,x2,y2이며, horizontal 또는 vertical 직교 선분만 사용합니다.",
+      "응답은 제공된 JSON schema를 엄격히 따릅니다."
+    ].join("\n");
+    const candidateSummary = JSON.stringify(
+      wallCandidates.map((candidate) => ({
+        end: candidate.end,
+        id: candidate.id,
+        lengthPx: Math.round(candidate.lengthPx),
+        orientation: candidate.orientation,
+        start: candidate.start
+      }))
+    );
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-candidate-review", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: [
+                    prompt?.trim() || "OpenCV 벽 후보를 원본 도면과 비교해서 후보별 판정을 JSON으로 반환해줘.",
+                    `wallCandidates: ${candidateSummary}`
+                  ].join("\n")
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_candidate_review",
+              schema: FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan candidate review failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: this.validAiCandidateReviews(parsed.candidateReviews),
+        missingWallHints: this.validAiMissingWallHints(parsed.missingWallHints),
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 OpenCV 벽 후보를 검토했습니다.",
+        textDetections: [],
+        scaleCandidates: [],
+        rawText
+      };
+    } catch {
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: [],
+        missingWallHints: [],
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 벽 후보 검토에 실패했습니다. OpenCV 추출 결과를 직접 검수하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private async analyzeFloorPlanRoomStructureWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 도면 방 구조 분석기입니다.",
+      "도면 스타일을 solid-filled, double-line-hollow, hatched, gray-fill 중 하나로 분류합니다.",
+      "장식 해칭과 워터마크 같은 구조 추출 방해 요소를 noiseFlags에 표시합니다.",
+      "각 방의 외곽 polygon을 0~1000 정규화 좌표로 반환합니다. 좌상단 원점, x는 오른쪽, y는 아래이며 이미지 너비/높이 기준입니다.",
+      "polygon은 직교 꼭짓점 4~12개만 사용하고, 가구/치수선/텍스트는 방 polygon으로 만들지 않습니다.",
+      "응답은 제공된 JSON schema를 엄격히 따릅니다."
+    ].join("\n");
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-room-structure", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt?.trim() || "도면의 방 구조 polygon과 도면 스타일을 JSON schema에 맞게 분석해줘."
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_room_structure",
+              schema: FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan room structure failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+
+      return {
+        analysisMode: "room-structure",
+        model,
+        mode: "vision-reasoning",
+        noiseFlags: this.validAiRoomStructureNoiseFlags(parsed.noiseFlags),
+        planStyle: this.validAiRoomStructurePlanStyle(parsed.planStyle),
+        rooms: this.validAiRoomStructures(parsed.rooms),
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 도면 방 구조를 분석했습니다.",
+        textDetections: [],
+        scaleCandidates: [],
+        rawText
+      };
+    } catch {
+      return {
+        analysisMode: "room-structure",
+        model,
+        mode: "vision-reasoning",
+        noiseFlags: { decorativeHatching: false, watermark: false },
+        planStyle: "solid-filled",
+        rooms: [],
+        status: "failed",
+        summary: "OpenAI 도면 방 구조 분석에 실패했습니다. OpenCV 추출 결과를 직접 검수하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private extractOpenAiResponseText(payload: Record<string, unknown>) {
+    if (typeof payload.output_text === "string") return payload.output_text;
+
+    return this.extractOutputText(payload.output) ?? "";
+  }
+
   private extractChatCompletionText(payload: Record<string, unknown>) {
     const choices = Array.isArray(payload.choices) ? payload.choices : [];
     const firstChoice = choices[0] as { message?: { content?: unknown } } | undefined;
@@ -2928,6 +3343,11 @@ export class RoomlogService {
   }
 
   private parseFloorPlanAiJson(rawText: string): {
+    candidateReviews?: unknown;
+    missingWallHints?: unknown;
+    noiseFlags?: unknown;
+    planStyle?: unknown;
+    rooms?: unknown;
     summary?: string;
     textDetections?: unknown;
     scaleCandidates?: unknown;
@@ -2939,6 +3359,11 @@ export class RoomlogService {
       const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
 
       return {
+        candidateReviews: parsed.candidateReviews,
+        missingWallHints: parsed.missingWallHints,
+        noiseFlags: parsed.noiseFlags,
+        planStyle: parsed.planStyle,
+        rooms: parsed.rooms,
         summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
         textDetections: parsed.textDetections,
         scaleCandidates: parsed.scaleCandidates
@@ -2992,6 +3417,112 @@ export class RoomlogService {
         }
       ];
     });
+  }
+
+  private validAiCandidateReviews(value: unknown): FloorPlanAiCandidateReview[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim() : "";
+      const verdict = item?.verdict;
+      if (!id || (verdict !== "keep" && verdict !== "reject" && verdict !== "review")) return [];
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          id,
+          reason: typeof item.reason === "string" ? item.reason.slice(0, 180) : undefined,
+          verdict
+        }
+      ];
+    });
+  }
+
+  private validAiMissingWallHints(value: unknown): FloorPlanAiMissingWallHint[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const description = typeof item?.description === "string" ? item.description.trim() : "";
+      if (!description) return [];
+      const confidence = Number(item.confidence);
+      const orientation = item?.orientation;
+      const line = this.validAiNormalizedLine(item?.line);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          description: description.slice(0, 220),
+          ...(line ? { line } : {}),
+          ...(orientation === "horizontal" || orientation === "vertical" ? { orientation } : {})
+        }
+      ];
+    });
+  }
+
+  private validAiNormalizedLine(value: unknown): FloorPlanAiNormalizedLine | undefined {
+    const item = value as { x1?: unknown; x2?: unknown; y1?: unknown; y2?: unknown } | undefined;
+    const x1 = Number(item?.x1);
+    const y1 = Number(item?.y1);
+    const x2 = Number(item?.x2);
+    const y2 = Number(item?.y2);
+    if (![x1, y1, x2, y2].every((coordinate) => Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 1000)) return undefined;
+
+    return { x1, y1, x2, y2 };
+  }
+
+  private validAiRoomStructurePlanStyle(value: unknown): FloorPlanAiRoomStructurePlanStyle {
+    return value === "solid-filled" || value === "double-line-hollow" || value === "hatched" || value === "gray-fill"
+      ? value
+      : "solid-filled";
+  }
+
+  private validAiRoomStructureNoiseFlags(value: unknown): FloorPlanAiRoomStructureNoiseFlags {
+    const item = value as { decorativeHatching?: unknown; watermark?: unknown } | undefined;
+
+    return {
+      decorativeHatching: item?.decorativeHatching === true,
+      watermark: item?.watermark === true
+    };
+  }
+
+  private validAiRoomStructures(value: unknown): FloorPlanAiRoomStructure[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 40).flatMap((item) => {
+      const label = typeof item?.label === "string" ? item.label.trim().slice(0, 80) : "";
+      const confidence = Number(item?.confidence);
+      const polygon = this.validAiRoomPolygon(item?.polygon);
+      if (!label || !polygon) return [];
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          label,
+          polygon
+        }
+      ];
+    });
+  }
+
+  private validAiRoomPolygon(value: unknown) {
+    if (!Array.isArray(value) || value.length < 4 || value.length > 12) return undefined;
+
+    const points = value.flatMap((point) => {
+      const x = Number(point?.x);
+      const y = Number(point?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1000 || y < 0 || y > 1000) return [];
+
+      return [{ x, y }];
+    });
+    if (points.length !== value.length) return undefined;
+
+    const orthogonal = points.every((point, index) => {
+      const next = points[(index + 1) % points.length];
+      return point.x === next.x || point.y === next.y;
+    });
+
+    return orthogonal ? points : undefined;
   }
 
   private assertFloorPlanOwner(ownerId: string) {

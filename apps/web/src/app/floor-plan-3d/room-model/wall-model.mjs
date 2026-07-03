@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PIXEL_TO_MM_RATIO,
   DEFAULT_PIXEL_TO_METER_RATIO,
   DEFAULT_WALL_DEPTH_PX,
   DEFAULT_WALL_HEIGHT_PX,
@@ -11,7 +12,7 @@ import { detectClosedLoops, mergeCollinearWalls } from "./wall-graph.ts";
 export const GRID_SIZE = GRID_SIZE_PX;
 export const DEFAULT_WALL_HEIGHT = DEFAULT_WALL_HEIGHT_PX;
 export const DEFAULT_WALL_DEPTH = DEFAULT_WALL_DEPTH_PX;
-export { DEFAULT_PIXEL_TO_METER_RATIO };
+export { DEFAULT_PIXEL_TO_METER_RATIO, DEFAULT_PIXEL_TO_MM_RATIO };
 export const WHERETOPUT_WALL_HEIGHT = WHERETOPUT_WALL_HEIGHT_M;
 export const WHERETOPUT_WALL_DEPTH = WHERETOPUT_WALL_DEPTH_M;
 
@@ -93,6 +94,30 @@ export function findNearestWall(walls, point, maxDistance = 18) {
 
 export function removeWall(walls, wallId) {
   return walls.filter((wall) => wall.id !== wallId);
+}
+
+export function moveWall(wall, delta) {
+  const dx = Number(delta?.x ?? 0);
+  const dy = Number(delta?.y ?? 0);
+
+  return {
+    ...wall,
+    end: { x: wall.end.x + dx, y: wall.end.y + dy },
+    start: { x: wall.start.x + dx, y: wall.start.y + dy }
+  };
+}
+
+export function resizeWall(wall, endpoint, point) {
+  const anchor = endpoint === "start" ? wall.end : wall.start;
+  const target = point ?? anchor;
+  const horizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+  const resizedPoint = horizontal ? { x: target.x, y: anchor.y } : { x: anchor.x, y: target.y };
+
+  if (endpoint === "start") {
+    return { ...wall, start: resizedPoint };
+  }
+
+  return { ...wall, end: resizedPoint };
 }
 
 export function summarizeWalls(walls) {
@@ -294,7 +319,7 @@ export function convertWallsToWheretoputSimulator(walls, options = {}) {
 }
 
 export function convertWallsToWheretoputRoom3D(walls, options = {}) {
-  const pixelToMmRatio = options.pixelToMmRatio ?? 20;
+  const pixelToMmRatio = options.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO;
   const height = options.height ?? WHERETOPUT_WALL_HEIGHT;
   const depth = options.depth ?? WHERETOPUT_WALL_DEPTH;
   const walls3D = walls.map((wall, index) => {
@@ -360,7 +385,7 @@ export function convertOptimizedWallsToWheretoputRoom3D(walls, options = {}) {
 }
 
 export function buildClosedLoopFloorPolygons(walls, options = {}) {
-  const pixelToMmRatio = options.pixelToMmRatio ?? 20;
+  const pixelToMmRatio = options.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO;
   const pixelToMeterRatio = pixelToMmRatio / 1000;
   const loops = detectClosedLoops(walls, options.tolerancePx ?? 1);
 

@@ -13,6 +13,7 @@ import type {
 export const GRID_SIZE: number;
 export const DEFAULT_WALL_HEIGHT: number;
 export const DEFAULT_WALL_DEPTH: number;
+export const DEFAULT_PIXEL_TO_MM_RATIO: number;
 export const DEFAULT_PIXEL_TO_METER_RATIO: number;
 export const WHERETOPUT_WALL_HEIGHT: number;
 export const WHERETOPUT_WALL_DEPTH: number;
@@ -24,6 +25,8 @@ export function wallLength(wall: Wall): number;
 export function distanceToWall(point: Point, wall: Wall): number;
 export function findNearestWall(walls: Wall[], point: Point, maxDistance?: number): Wall | null;
 export function removeWall(walls: Wall[], wallId: string): Wall[];
+export function moveWall(wall: Wall, delta: Partial<Point>): Wall;
+export function resizeWall(wall: Wall, endpoint: "start" | "end", point: Point): Wall;
 export function summarizeWalls(walls: Wall[]): WallSummary;
 export function normalizePlanName(name?: string): string;
 export function projectPointTo3D(

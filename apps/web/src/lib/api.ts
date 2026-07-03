@@ -97,3 +97,88 @@ export function getMarketTransactions(
   });
   return getJson<MarketTransaction[]>(`/api/market/transactions?${query.toString()}`, signal);
 }
+
+// --- 매물(가상 시드) ----------------------------------------------------------
+// 백엔드 apps/api/src/listings/listings.data.ts 의 Listing 스키마와 일치.
+
+export type TradeType = "월세" | "전세" | "매매";
+export type PropertyKind = "원룸" | "투룸" | "쓰리룸" | "오피스텔" | "아파트" | "빌라";
+
+export type Listing = {
+  id: string;
+  title: string;
+  headline: string;
+  registeredAt: string;
+  status: "거래중" | "거래완료";
+  viewCount: number;
+  tradeType: TradeType;
+  depositManwon: number;
+  monthlyRentManwon: number;
+  salePriceManwon: number;
+  maintenanceManwon: number;
+  maintenanceIncludes: string[];
+  loanManwon: number;
+  availableFrom: string;
+  contractMonths: number;
+  kind: PropertyKind;
+  areaExclusiveM2: number;
+  areaSupplyM2: number;
+  floor: number;
+  totalFloors: number;
+  rooms: number;
+  bathrooms: number;
+  direction: string;
+  buildYear: number;
+  parking: boolean;
+  elevator: boolean;
+  heating: string;
+  address: string;
+  jibunAddress: string;
+  dong: string;
+  lawdCd: string;
+  lat: number;
+  lng: number;
+  nearestStation: string;
+  walkMinutes: number;
+  options: string[];
+  petsAllowed: boolean;
+  tags: string[];
+  coverImage: string;
+  gallery: string[];
+  tourId: string | null;
+  registrantType: "집주인" | "중개사";
+  brokerName: string;
+  contactPhone: string;
+  responseMinutes: number;
+  verified: boolean;
+  reviewStatus: string;
+  safetyScore: number;
+};
+
+/** 거래 조건을 "월세 1000/130" / "전세 4.6억" 형태의 표시 문자열로 변환. */
+export function formatListingPrice(listing: Listing): string {
+  if (listing.tradeType === "월세") {
+    return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
+  }
+  if (listing.tradeType === "전세") {
+    return `전세 ${formatManwon(listing.depositManwon)}`;
+  }
+  return `매매 ${formatManwon(listing.salePriceManwon)}`;
+}
+
+export function getListings(
+  filters?: { kind?: PropertyKind; tradeType?: TradeType; lawdCd?: string; petsAllowed?: boolean },
+  signal?: AbortSignal
+): Promise<Listing[] | null> {
+  const query = new URLSearchParams();
+  if (filters?.kind) query.set("kind", filters.kind);
+  if (filters?.tradeType) query.set("tradeType", filters.tradeType);
+  if (filters?.lawdCd) query.set("lawdCd", filters.lawdCd);
+  if (filters?.petsAllowed) query.set("petsAllowed", "true");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return getJson<Listing[]>(`/api/listings${suffix}`, signal);
+}
+
+export function getListing(id: string, signal?: AbortSignal): Promise<Listing | null> {
+  return getJson<Listing>(`/api/listings/${id}`, signal);
+}
