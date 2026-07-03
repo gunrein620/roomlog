@@ -121,7 +121,7 @@ function DeliveryRow({ delivery, canOpen }: { delivery: AnnouncementDelivery; ca
   );
 
   return canOpen ? (
-    <a href={`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?unitId=${delivery.unitId}`} style={{ color: "inherit", textDecoration: "none" }}>
+    <a href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} style={{ color: "inherit", textDecoration: "none" }}>
       {body}
     </a>
   ) : (

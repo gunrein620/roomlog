@@ -172,7 +172,7 @@ const demoDetail: ManagerContractDetail = {
       kind: "채팅",
       title: "계약 조항 문의",
       detail: "자동연장 특약 확인 요청",
-      href: "/manager/messaging/04?id=th_mgr_302",
+      href: "/manager/messaging/00",
     },
     {
       at: "2026-06-28T09:10:00+09:00",

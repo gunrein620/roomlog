@@ -1,12 +1,9 @@
 import { redirect } from "next/navigation";
 import type { Message, Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
-import {
-  addManagerThreadMessage,
-  DEMO_MANAGER_THREAD_ID,
-  getManagerThread,
-} from "@/lib/messaging-manager-api";
+import { addManagerThreadMessage, getManagerThread } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
@@ -21,7 +18,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ id?: string; unitId?: string }>;
+type SearchParams = Promise<{ id?: string }>;
 
 async function sendManagerMessage(formData: FormData) {
   "use server";
@@ -29,20 +26,35 @@ async function sendManagerMessage(formData: FormData) {
   const threadId = String(formData.get("threadId") ?? "");
   const body = String(formData.get("body") ?? "").trim();
 
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
   if (threadId && body) {
     await addManagerThreadMessage(threadId, { body });
   }
 
-  redirect(
-    `${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(
-      threadId || DEMO_MANAGER_THREAD_ID,
-    )}`,
-  );
+  redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function getRequiredManagerThread(id: string): Promise<Thread> {
+  try {
+    return await getManagerThread(id);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id, unitId } = await searchParams;
-  const thread = await getManagerThread(id ?? unitId ?? DEMO_MANAGER_THREAD_ID);
+  const { id } = await searchParams;
+  if (!id) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  const thread = await getRequiredManagerThread(id);
   const messages = thread.messages ?? [];
   const isPayment = thread.context === "payment";
 

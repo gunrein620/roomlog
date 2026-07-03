@@ -240,11 +240,8 @@ export function listManagerThreads(context?: ThreadContext): Promise<Thread[]> {
   );
 }
 
-export async function getManagerThread(id: string = DEMO_MANAGER_THREAD_ID): Promise<Thread> {
-  const fallback =
-    DEMO_MANAGER_THREADS.find((thread) => thread.id === id || thread.unitId === id) ??
-    DEMO_MANAGER_THREADS[0];
-  return tryFetch(managerMessagingPaths.thread(id), fallback, "관리인 메시지 상세 조회");
+export async function getManagerThread(id: string): Promise<Thread> {
+  return serverFetch<Thread>(managerMessagingPaths.thread(id));
 }
 
 export function addManagerThreadMessage(
