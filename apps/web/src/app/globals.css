@@ -5823,6 +5823,10 @@ p {
 
 .tenant-contract-card button,
 .maintenance-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   min-height: 42px;
   padding: 0 13px;
   border-radius: 12px;
@@ -5830,6 +5834,38 @@ p {
   color: #ffffff;
   font-size: 0.78rem;
   font-weight: 900;
+}
+
+/* 즉시 상태 전환이 너무 즉각적이어서 가짜처럼 보이던 지점 — 짧은 처리중 스피너로 실제 요청처럼 체감되게 함 */
+.submit-listing,
+.repair-submit,
+.tenant-contract-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.submit-listing:disabled,
+.repair-submit:disabled,
+.tenant-contract-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: btn-spinner-spin 0.7s linear infinite;
+}
+
+@keyframes btn-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tenant-task-grid {
@@ -6676,6 +6712,7 @@ p {
 }
 
 .bottom-tabs a {
+  position: relative;
   display: grid;
   min-height: 62px;
   place-items: center;
@@ -6684,6 +6721,17 @@ p {
   color: #5f6775;
   font-size: 0.72rem;
   font-weight: 900;
+}
+
+.bottom-tabs .tab-dot {
+  position: absolute;
+  top: 9px;
+  right: 30%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5a5f;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.98);
 }
 
 .bottom-tabs svg {
@@ -7298,6 +7346,10 @@ p {
   }
 
   .web-nav button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 14px;
     border-radius: 10px;
     background: none;
@@ -7309,6 +7361,25 @@ p {
   .web-nav button:hover {
     background: #f2f4f8;
     color: var(--blue);
+  }
+
+  .web-nav button.active {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+
+  .web-nav .nav-badge {
+    display: inline-flex;
+    min-width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ff5a5f;
+    color: #ffffff;
+    font-size: 0.66rem;
+    font-weight: 900;
   }
 
   .web-topbar-actions {
@@ -7680,12 +7751,14 @@ p {
 
   .mypage-role-bar {
     grid-column: 1 / -1;
+    justify-content: flex-start;
     padding: 12px 20px;
     background: #ffffff;
   }
 
-  .mypage-toast {
-    grid-column: 1 / -1;
+  /* 데스크톱은 상단 "역할군" 셀렉트가 이미 같은 기능을 하므로 배너의 전환 버튼은 숨기고 상태 문구만 남긴다 */
+  .mypage-role-bar button {
+    display: none;
   }
 
   /* 집보는사람 마이페이지 */
@@ -7788,10 +7861,6 @@ p {
   .tenant-screen > .owner-hero {
     order: 2;
     grid-column: 1 / -1;
-  }
-
-  .tenant-screen > .mypage-toast {
-    order: 3;
   }
 
   .tenant-screen > .tenant-task-grid {
@@ -7969,6 +8038,7 @@ p {
   }
 
   .detail-info-section,
+  .detail-info-pair,
   .safety-analysis-card,
   .detail-report-card,
   .agent-summary-card,
@@ -7979,6 +8049,20 @@ p {
     grid-column: 1 / -1;
     margin-right: 24px;
     margin-left: 24px;
+  }
+
+  /* 옵션/건물 정보는 나란히 2열로 — 좁은 폭 기준 그대로 풀폭 전용이라 스크롤이 길어지던 지점 */
+  .detail-info-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 20px;
+  }
+
+  .detail-info-pair .detail-info-section {
+    grid-column: auto;
+    margin-right: 0;
+    margin-left: 0;
   }
 
   .detail-map-section {
@@ -8060,19 +8144,62 @@ p {
   color: var(--ink);
 }
 
+/* 화면 상단에 인라인으로 박혀 스크롤하면 안 보이던 토스트 → 뷰포트 하단 고정으로 변경 */
 .mypage-toast {
+  position: fixed;
+  right: 0;
+  bottom: 90px;
+  left: 50%;
+  z-index: 60;
+  width: min(calc(100% - 32px), 400px);
   margin: 0;
-  padding: 12px 16px;
+  padding: 13px 18px;
   border-radius: 14px;
   background: var(--ink);
   color: #fff;
   font-size: 13px;
   line-height: 1.5;
+  text-align: center;
+  transform: translateX(-50%);
+  box-shadow: 0 14px 32px rgba(18, 24, 40, 0.24);
+  animation: mypage-toast-in 0.22s ease;
+}
+
+@keyframes mypage-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (min-width: 760px) {
+  .mypage-toast {
+    bottom: 122px;
+  }
+}
+
+@media (min-width: 1080px) {
+  .mypage-toast {
+    bottom: 28px;
+  }
 }
 
 .profile-activity-grid article[role="button"],
 .profile-summary-list article[role="button"] {
+  position: relative;
   cursor: pointer;
+}
+
+/* 클릭 가능한 카드임을 알려주는 화살표 — role=button만으로는 어포던스가 약해서 추가 */
+.activity-card-chevron {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: var(--subtle);
 }
 
 .inquiry-history-list {
