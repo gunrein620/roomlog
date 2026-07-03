@@ -83,7 +83,9 @@ createFloorPlanDraft(a,b){ return this.floorPlans.createFloorPlanDraft(a,b); }  
 6. 기본인자 보존: `getManagerContractDetail(m, contractId="ct_0001")`, `getManagerMonthlyCostSummary(..., month=currentMonth())`, `getManagerDisclosureSetting(..., month=currentMonth())`, `decideManagerContractDeletion` 4인자 언팩 등.
 7. 데드코드 `presentRepair`(6643, 호출0) — 이동 제외/삭제 후보(별도 커밋).
 
-## 현재 상태
-- baseline green(61 tests + build). 재부팅 후 stale Prisma는 `prisma generate`로 복구(워킹트리 무영향).
-- 커밋: `f42a9f4`(support), `894e55c`(auth), 본 문서. roomlog.service.ts **7,380 → 6,961줄**.
-- 다음: FloorPlan(1순위). 코어(6~9)는 감독 하 진행.
+## 현재 상태 (진행)
+- baseline green(61 tests + build) 유지. 매 추출 게이트 통과 후 커밋.
+- **완료(협력클래스 6개)**: support → auth → 도면(FloorPlan)+첨부 → 비용(Cost) → 체크리스트 → 계약(Contract). **독립 도메인 전부 추출.**
+- roomlog.service.ts **7,380 → 6,089줄 (−1,291)**. 신규: `roomlog-support.ts`, `services/roomlog-{auth,floor-plan,cost,checklist,contract}.domain.ts`.
+- **남음(감독 권장)**: 업체관리+초대(vendor-mgmt, 조율 후) / **코어(complaint·ticket·vendor-repair)** — 프리젠터 순환·`transitionTicket` 조인쓰기·`createComplaintRecord` 때문에 **RoomlogCommon(공유 프리젠터·find/transition/addMessageInternal) 선추출이 전제**. 무인 자동 비권장.
+- 검증된 함정: 일부 타입은 service 정의(export 후 `import type from ../roomlog.service`), 공유 헬퍼는 동명 필드로 주입(본문 verbatim), 반환형 `number|undefined`(elapsedHours) 등 시그니처 정확히.
