@@ -28,6 +28,10 @@ const googleAuthSharedSource = readFileSync(new URL("./src/app/api/auth/google/_
 const signupPageSource = readFileSync(new URL("./src/app/signup/page.tsx", import.meta.url), "utf8");
 const signupRouteSource = readFileSync(new URL("./src/app/api/auth/signup/route.ts", import.meta.url), "utf8");
 const loginRouteSource = readFileSync(new URL("./src/app/api/auth/login/route.ts", import.meta.url), "utf8");
+const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
+const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
+const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
+const tenantMessagingApiSource = readFileSync(new URL("./src/lib/messaging-api.ts", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
@@ -106,6 +110,16 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
   assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
   assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);
+});
+
+test("opens tenant message compose only from real API thread ids", () => {
+  assert.doesNotMatch(tenantMessagingThreadSource, /DEMO_THREAD_ID/);
+  assert.doesNotMatch(tenantMessagingApiSource, /getThread\(id: string = DEMO_THREAD_ID/);
+  assert.match(tenantMessagingThreadSource, /if \(!id\)/);
+  assert.match(tenantMessagingThreadSource, /redirect\(MESSAGING_ROUTES\["T-MSG-00"\]\)/);
+  assert.match(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][\s\S]*\?id=\$\{thread\.id\}/);
+  assert.doesNotMatch(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][^?]*새 문의 시작/);
+  assert.doesNotMatch(tenantMessagingAnnouncementSource, /MESSAGING_ROUTES\["T-MSG-01"\][\s\S]*announcementId/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {

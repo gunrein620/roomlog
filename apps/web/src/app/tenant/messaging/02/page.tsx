@@ -171,7 +171,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </Button>
         </form>
         <Link
-          href={`${MESSAGING_ROUTES["T-MSG-01"]}?announcementId=${announcement.id}`}
+          href={MESSAGING_ROUTES["T-MSG-00"]}
           style={{
             display: "flex",
             width: "100%",

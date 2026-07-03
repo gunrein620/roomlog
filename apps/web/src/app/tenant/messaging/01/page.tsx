@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Message, Thread, ThreadContext } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
-import { addTenantThreadMessage, DEMO_THREAD_ID, getThread } from "@/lib/messaging-api";
+import { addTenantThreadMessage, getThread } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+import { ApiError } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -33,16 +34,35 @@ async function sendTenantMessage(formData: FormData) {
   const threadId = String(formData.get("threadId") ?? "");
   const body = String(formData.get("body") ?? "").trim();
 
+  if (!threadId) {
+    redirect(MESSAGING_ROUTES["T-MSG-00"]);
+  }
+
   if (threadId && body) {
     await addTenantThreadMessage(threadId, { body });
   }
 
-  redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(threadId || DEMO_THREAD_ID)}`);
+  redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function getRequiredThread(id: string): Promise<Thread> {
+  try {
+    return await getThread(id);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MESSAGING_ROUTES["T-MSG-00"]);
+    }
+    throw error;
+  }
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
-  const thread = await getThread(id ?? DEMO_THREAD_ID);
+  if (!id) {
+    redirect(MESSAGING_ROUTES["T-MSG-00"]);
+  }
+
+  const thread = await getRequiredThread(id);
   const messages = thread.messages ?? [];
   const pendingMessage = messages.find((message) => message.kind === "photo_request");
 
