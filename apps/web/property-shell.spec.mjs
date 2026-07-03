@@ -418,11 +418,28 @@ test("offers three developer login roles for seekers, tenants, and landlords", (
 });
 
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
-  for (const label of ["세입자 마이페이지", "계약 상태", "수리요청", "관리비", "방문 일정", "에어컨 필터 교체 방문", "124,000원"]) {
+  for (const label of [
+    "세입자 마이페이지",
+    "계약 상태",
+    "수리요청",
+    "관리비",
+    "방문 일정",
+    "에어컨 필터 교체 방문",
+    "124,000원",
+    "도메인 테스트",
+    "메시지 테스트",
+    "퇴실 테스트"
+  ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
   assert.match(pageSource, /activeRole === "tenant"/);
+  assert.match(pageSource, /href="\/tenant\/messaging\/00"/);
+  assert.match(pageSource, /href="\/tenant\/moveout\/00"/);
+  assert.match(pageSource, /tenant-domain-test-card/);
+  assert.match(cssSource, /\.domain-test-card/);
+  assert.match(cssSource, /\.domain-test-link-grid/);
+  assert.match(cssSource, /\.domain-test-link/);
   assert.match(cssSource, /\.tenant-contract-card/);
   assert.match(cssSource, /\.maintenance-card/);
   assert.doesNotMatch(pageSource, /HVAC|₩124,000|2:30 PM/);
@@ -456,11 +473,19 @@ test("shows a landlord my page with property registration fields and media actio
     "검수 요청 요약",
     "92%",
     "예상 검수",
-    "확인매물·3D 투어 배지"
+    "확인매물·3D 투어 배지",
+    "도메인 테스트",
+    "메시지 테스트",
+    "퇴실 테스트",
+    "리포트 테스트"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
+  assert.match(pageSource, /href="\/manager\/messaging\/00"/);
+  assert.match(pageSource, /href="\/manager\/moveout\/00"/);
+  assert.match(pageSource, /href="\/manager\/report\/00"/);
+  assert.match(pageSource, /landlord-domain-test-card/);
   assert.match(pageSource, /ownerReviewItems/);
   assert.match(pageSource, /ownerCompletionRate/);
   assert.match(pageSource, /ownerCompletionRate = photoCount >= 3 && has3DRoom \? 92 : 68/);

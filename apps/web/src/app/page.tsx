@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import Script from "next/script";
 import {
   ArrowLeft,
@@ -870,6 +871,24 @@ function LandlordMyPage() {
         <div className="owner-preview-actions">
           <strong>{ownerPriceLabel}</strong>
           <button type="button" onClick={continueOwnerRegistration}>입력 계속하기</button>
+        </div>
+      </section>
+
+      <section className="domain-test-card landlord-domain-test-card" aria-labelledby="landlord-domain-test-title">
+        <div className="domain-test-heading">
+          <span>실배선 확인</span>
+          <h3 id="landlord-domain-test-title">도메인 테스트</h3>
+        </div>
+        <div className="domain-test-link-grid">
+          <Link className="domain-test-link primary" href="/manager/messaging/00">
+            메시지 테스트
+          </Link>
+          <Link className="domain-test-link" href="/manager/moveout/00">
+            퇴실 테스트
+          </Link>
+          <Link className="domain-test-link" href="/manager/report/00">
+            리포트 테스트
+          </Link>
         </div>
       </section>
 
@@ -2113,6 +2132,21 @@ function TenantMyPage() {
           <p>에어컨 필터 점검</p>
         </article>
       </div>
+
+      <section className="domain-test-card tenant-domain-test-card" aria-labelledby="tenant-domain-test-title">
+        <div className="domain-test-heading">
+          <span>실배선 확인</span>
+          <h3 id="tenant-domain-test-title">도메인 테스트</h3>
+        </div>
+        <div className="domain-test-link-grid">
+          <Link className="domain-test-link primary" href="/tenant/messaging/00">
+            메시지 테스트
+          </Link>
+          <Link className="domain-test-link" href="/tenant/moveout/00">
+            퇴실 테스트
+          </Link>
+        </div>
+      </section>
 
       <section className="maintenance-card" aria-label="긴급 점검 일정">
         <span>오늘 방문 일정</span>
