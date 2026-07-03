@@ -7,6 +7,29 @@ import { Store } from "./roomlog.service";
 
 const databaseUrl = process.env.ROOMLOG_TEST_DATABASE_URL;
 
+const emptyDomainCollections = (): Pick<
+  Store,
+  | "socialAccounts"
+  | "contracts"
+  | "contractDocuments"
+  | "contractExtractions"
+  | "contractPrivacies"
+  | "contractInvites"
+  | "costs"
+  | "receipts"
+  | "receiptOcrs"
+> => ({
+  socialAccounts: [],
+  contracts: [],
+  contractDocuments: [],
+  contractExtractions: [],
+  contractPrivacies: [],
+  contractInvites: [],
+  costs: [],
+  receipts: [],
+  receiptOcrs: []
+});
+
 describe("PrismaStoreProjector", () => {
   it(
     "projects signup and intake thread state into Postgres tables",
@@ -36,6 +59,7 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        ...emptyDomainCollections(),
         rooms: [
           {
             id: roomId,
@@ -263,6 +287,7 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        ...emptyDomainCollections(),
         rooms: [
           {
             id: roomId,
@@ -488,6 +513,7 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        ...emptyDomainCollections(),
         rooms: [
           {
             id: roomId,

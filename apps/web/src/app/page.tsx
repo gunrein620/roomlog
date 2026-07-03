@@ -26,7 +26,7 @@ import {
   SlidersHorizontal,
   UserRound
 } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -40,6 +40,12 @@ type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
 type AuthMode = "login" | "signup" | "broker";
 type MapResultTab = "rooms" | "complexes" | "agents";
+type ViewerProfile = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+};
 
 type NaverLatLng = unknown;
 type NaverMap = unknown;
@@ -95,9 +101,14 @@ const googleLogoSvg = (
   </svg>
 );
 
-const socialProviders = [
+const socialProviders: Array<{ label: string; className: string; mark: ReactNode; href?: string }> = [
   { label: "네이버로 계속하기", className: "naver", mark: <span aria-hidden="true">N</span> },
-  { label: "Google로 계속하기", className: "google", mark: <span className="google-logo-icon" aria-hidden="true">{googleLogoSvg}</span> }
+  {
+    label: "Google로 계속하기",
+    className: "google",
+    mark: <span className="google-logo-icon" aria-hidden="true">{googleLogoSvg}</span>,
+    href: "/api/auth/google/start?role=TENANT&flow=login&redirectTo=%2F%3Frole%3Dtenant%26tab%3Dmypage&errorRedirectTo=%2F"
+  }
 ];
 
 const devRoles: Array<{
@@ -121,6 +132,37 @@ const devRoles: Array<{
     description: "마이페이지에서 내 집을 등록하는 임대인 모드"
   }
 ];
+
+const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
+  { id: "seeker", label: "일반 이용자", href: "/" },
+  { id: "tenant", label: "세입자", href: "/?role=tenant&tab=mypage" },
+  { id: "landlord", label: "임대인", href: "/?role=landlord&tab=mypage" }
+];
+
+const protectedRoleConfig = {
+  tenant: {
+    sessionRole: "TENANT",
+    loginPath: "/tenant/login",
+    redirectTo: "/?role=tenant&tab=mypage"
+  },
+  landlord: {
+    sessionRole: "LANDLORD",
+    loginPath: "/manager/login",
+    redirectTo: "/?role=landlord&tab=mypage"
+  }
+} as const;
+
+const normalizeAppRole = (value: string | null): AppRole | null => {
+  if (value === "seeker" || value === "tenant" || value === "landlord") return value;
+  return null;
+};
+
+const normalizeAppTab = (value: string | null): AppTab | null => {
+  if (value === "home" || value === "map" || value === "saved" || value === "inquiry" || value === "mypage") {
+    return value;
+  }
+  return null;
+};
 
 const categories = [
   { label: "전체", count: "1,287", Icon: Building },
@@ -615,7 +657,13 @@ function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void
                 className={`social-button ${provider.className}`}
                 type="button"
                 key={provider.label}
-                onClick={() => setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`)}
+                onClick={() => {
+                  if (provider.href) {
+                    window.location.href = provider.href;
+                    return;
+                  }
+                  setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`);
+                }}
               >
                 {provider.mark}
                 {provider.label}
@@ -2456,6 +2504,9 @@ export default function Home() {
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
   const [isNotificationSheetOpen, setIsNotificationSheetOpen] = useState(false);
+  const [viewer, setViewer] = useState<ViewerProfile | null>(null);
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const [isRouteReady, setIsRouteReady] = useState(false);
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
@@ -2601,8 +2652,98 @@ export default function Home() {
     }
   }, [selectedListing]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const role = normalizeAppRole(params.get("role"));
+    const tab = normalizeAppTab(params.get("tab"));
+
+    if (role) {
+      setActiveRole(role);
+      setActiveTab(tab ?? (role === "seeker" ? "home" : "mypage"));
+      setSelectedListing(null);
+      setAuthMode(null);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (tab) {
+      setActiveTab(tab);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    }
+    setIsRouteReady(true);
+  }, []);
+
+  useEffect(() => {
+    let isAlive = true;
+
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then(async (response) => {
+        if (!isAlive) return;
+        if (!response.ok) {
+          setViewer(null);
+          setIsAuthChecked(true);
+          return;
+        }
+
+        setViewer((await response.json()) as ViewerProfile);
+        setIsAuthChecked(true);
+      })
+      .catch(() => {
+        if (isAlive) {
+          setViewer(null);
+          setIsAuthChecked(true);
+        }
+      });
+
+    return () => {
+      isAlive = false;
+    };
+  }, []);
+
+  const protectedConfig =
+    activeTab === "mypage" && (activeRole === "tenant" || activeRole === "landlord")
+      ? protectedRoleConfig[activeRole]
+      : null;
+  const isProtectedRolePage = Boolean(protectedConfig);
+  const canAccessProtectedRolePage =
+    !protectedConfig || (viewer?.role === protectedConfig.sessionRole);
+
+  useEffect(() => {
+    if (!isRouteReady || !isAuthChecked || !protectedConfig || canAccessProtectedRolePage) return;
+
+    window.location.href = `${protectedConfig.loginPath}?redirectTo=${encodeURIComponent(protectedConfig.redirectTo)}`;
+  }, [canAccessProtectedRolePage, isAuthChecked, isRouteReady, protectedConfig]);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    setViewer(null);
+    setActiveRole("seeker");
+    setActiveTab("home");
+    setSelectedListing(null);
+    setAuthMode(null);
+  };
+
+  const navigateRoleHome = (role: AppRole) => {
+    const target = roleSwitchOptions.find((item) => item.id === role);
+    if (!target) return;
+
+    setActiveRole(role);
+    setActiveTab(role === "seeker" ? "home" : "mypage");
+    window.location.href = target.href;
+  };
+
   if (authMode) {
     return <LoginScreen setActiveRole={startRoleSession} />;
+  }
+
+  if (isProtectedRolePage && (!isAuthChecked || !canAccessProtectedRolePage)) {
+    return (
+      <main className="app-canvas">
+        <section className="auth-check-screen" aria-live="polite">
+          <strong>로그인 확인 중</strong>
+          <span>세입자/임대인 페이지는 로그인 후 접속할 수 있습니다.</span>
+        </section>
+      </main>
+    );
   }
 
   if (selectedListing) {
@@ -2644,9 +2785,29 @@ export default function Home() {
               <button type="button" onClick={() => activateTab("mypage")}>우리집</button>
             </nav>
             <div className="web-topbar-actions">
-              <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
-              <button className="web-signup" type="button" onClick={() => openAuthScreen("signup")}>회원가입</button>
-              <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
+              <label className="web-role-select">
+                <span>역할군</span>
+                <select value={activeRole} onChange={(event) => navigateRoleHome(event.target.value as AppRole)}>
+                  {roleSwitchOptions.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {viewer ? (
+                <div className="web-profile-menu" aria-label="로그인 사용자">
+                  <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
+                  <span className="web-profile-name">{viewer.name}</span>
+                  <button className="web-logout" type="button" onClick={logout}>로그아웃</button>
+                </div>
+              ) : (
+                <>
+                  <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
+                  <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup/social"; }}>회원가입</button>
+                  <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
+                </>
+              )}
             </div>
           </div>
         </header>

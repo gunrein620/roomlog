@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input, PhoneFrame } from "@roomlog/ui";
 
@@ -12,6 +12,14 @@ export default function VendorLoginPage() {
   const [password, setPassword] = useState("password123!");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const googleLoginUrl = "/api/auth/google/start?role=VENDOR&flow=login&redirectTo=%2F";
+
+  useEffect(() => {
+    const googleError = new URLSearchParams(window.location.search).get("error");
+    if (googleError) {
+      setError(googleError);
+    }
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -28,7 +36,7 @@ export default function VendorLoginPage() {
         setError(body?.message ?? "로그인에 실패했습니다.");
         return;
       }
-      router.push("/vendor/job/00");
+      router.push("/");
       router.refresh();
     } catch {
       setError("네트워크 오류로 로그인하지 못했습니다.");
@@ -57,6 +65,24 @@ export default function VendorLoginPage() {
         </div>
 
         <Card style={{ padding: 16 }}>
+          <a
+            href={googleLoginUrl}
+            style={{
+              height: 44,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 12,
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-btn)",
+              background: "#fff",
+              color: "#1f1f1f",
+              fontWeight: 800,
+              textDecoration: "none"
+            }}
+          >
+            Google로 계속하기
+          </a>
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: "var(--on-surface-variant)" }}>
               이메일

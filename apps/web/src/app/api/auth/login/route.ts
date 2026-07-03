@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "잘못된 요청입니다." }, { status: 400 });
   }
 
-  const upstream = await fetch(apiUrl("/auth/login"), {
+  const upstream = await fetch(apiUrl("/auth/login", { requestUrl: request.url }), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body)

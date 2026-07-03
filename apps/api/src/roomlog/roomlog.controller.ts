@@ -95,6 +95,20 @@ export class RoomlogController {
     return this.roomlogService.login(body);
   }
 
+  @Post("auth/social/google/callback")
+  loginWithGoogle(
+    @Body()
+    body: {
+      code: string;
+      redirectUri: string;
+      role?: UserRole;
+      inviteToken?: string;
+      flow?: "login" | "signup";
+    }
+  ) {
+    return this.roomlogService.loginWithGoogle(body);
+  }
+
   @Get("auth/me")
   getMe(@Headers("authorization") authorization?: string) {
     return this.roomlogService.getMe(authorization);
