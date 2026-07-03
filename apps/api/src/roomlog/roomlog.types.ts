@@ -263,6 +263,212 @@ export type MessagingAnnouncementResult = {
   }>;
 };
 
+export type MoveoutSettlementStatus = "estimate" | "reviewing" | "review_done" | "re_review";
+export type MoveoutRecordSource =
+  | "movein_photo"
+  | "defect"
+  | "repair"
+  | "payment"
+  | "chat"
+  | "contract";
+export type MoveoutWearVerdict = "aging_likely" | "damage_possible" | "unclear";
+export type MoveoutDeductionKind = "unpaid" | "repair" | "restoration" | "cleaning";
+export type MoveoutChecklistCondition = "normal" | "aging" | "damage_check";
+export type MoveoutDisputeStatus =
+  | "received"
+  | "reviewing"
+  | "answered"
+  | "confirmed"
+  | "re_disputed"
+  | "resolved";
+export type MoveoutWearAdjustmentAction = "keep" | "adjust" | "reinforce";
+export type MoveoutReviewGateBlockReason =
+  | "contract_unconfirmed"
+  | "unresolved_dispute"
+  | "needs_confirmation"
+  | "no_movein_evidence";
+export type MoveoutDisputeResponseKind = "accept" | "adjust" | "explain";
+export type MoveoutDisputeReflectTarget = "report" | "settlement" | "none";
+
+export type MoveoutSummary = {
+  id: string;
+  tenantId: string;
+  roomId: string;
+  contractId?: string;
+  unitId: string;
+  contractConfirmed: boolean;
+  leaseEndDate?: string;
+  daysRemaining?: number;
+  depositAmount?: number;
+  estimatedRefundMin?: number;
+  estimatedRefundMax?: number;
+  settlementStatus: MoveoutSettlementStatus;
+  prepProgress: number;
+  settlementId?: string;
+  messagingThreadId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MoveoutRecordItem = {
+  id: string;
+  summaryId: string;
+  source: MoveoutRecordSource;
+  title: string;
+  description: string;
+  occurredAt?: string;
+  wearVerdict?: MoveoutWearVerdict;
+  wearNote?: string;
+  moveinComparisonAvailable: boolean;
+};
+
+export type MoveoutChecklistItem = {
+  id: string;
+  summaryId: string;
+  label: string;
+  present: boolean;
+  condition: MoveoutChecklistCondition;
+  note?: string;
+};
+
+export type MoveoutDeductionCandidate = {
+  id: string;
+  summaryId: string;
+  kind: MoveoutDeductionKind;
+  label: string;
+  estimatedMin: number;
+  estimatedMax: number;
+  needsConfirmation: boolean;
+  evidenceNote: string;
+  source: MoveoutRecordSource;
+};
+
+export type MoveoutSettlementEstimate = {
+  id: string;
+  summaryId: string;
+  depositAmount: number;
+  deductions: MoveoutDeductionCandidate[];
+  refundMin: number;
+  refundMax: number;
+  status: MoveoutSettlementStatus;
+  disclaimer: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type MoveoutDisputeEvent = {
+  id?: string;
+  status: MoveoutDisputeStatus;
+  at: string;
+  note?: string;
+  actorUserId?: string;
+};
+
+export type MoveoutDispute = {
+  id: string;
+  summaryId: string;
+  targetItemId?: string;
+  targetLabel: string;
+  reason: string;
+  status: MoveoutDisputeStatus;
+  slaDeadline: string;
+  slaBreached: boolean;
+  managerResponse?: string;
+  messagingThreadId?: string;
+  history: MoveoutDisputeEvent[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MoveoutManagerRow = {
+  summaryId: string;
+  unitId: string;
+  tenantName: string;
+  contractConfirmed: boolean;
+  leaseEndDate?: string;
+  daysRemaining?: number;
+  settlementStatus: MoveoutSettlementStatus;
+  openDisputeCount: number;
+  slaBreached: boolean;
+  expiringSoon: boolean;
+};
+
+export type MoveoutDashboardSummary = {
+  expiringSoon: number;
+  disputesWaiting: number;
+  slaBreached: number;
+  reviewDone: number;
+};
+
+export type MoveoutReportAuditEntry = {
+  id: string;
+  summaryId: string;
+  recordItemId: string;
+  action: MoveoutWearAdjustmentAction;
+  fromVerdict?: MoveoutWearVerdict;
+  toVerdict?: MoveoutWearVerdict;
+  evidenceNote: string;
+  tenantNotified: boolean;
+  managerName: string;
+  managerId: string;
+  at: string;
+};
+
+export type MoveoutReviewCompletionGate = {
+  canComplete: boolean;
+  blockingReasons: MoveoutReviewGateBlockReason[];
+  slaBreached: boolean;
+  overrideAvailable: boolean;
+  message: string;
+};
+
+export type MoveoutManagerSettlementReview = {
+  settlement: MoveoutSettlementEstimate;
+  gate: MoveoutReviewCompletionGate;
+  disputes: MoveoutDispute[];
+  moveinEvidenceAvailable: boolean;
+};
+
+export type MoveoutAdjustWearVerdictInput = {
+  recordItemId: string;
+  action: MoveoutWearAdjustmentAction;
+  toVerdict?: MoveoutWearVerdict;
+  evidenceNote: string;
+  notifyTenant: boolean;
+};
+
+export type MoveoutAdjustDeductionInput = {
+  deductionId: string;
+  estimatedMin?: number;
+  estimatedMax?: number;
+  resolveConfirmation?: boolean;
+  note?: string;
+};
+
+export type MoveoutCompleteReviewInput = {
+  acknowledgeEvidence: boolean;
+  overrideSla?: boolean;
+  overrideReason?: string;
+};
+
+export type MoveoutRespondDisputeInput = {
+  disputeId: string;
+  kind: MoveoutDisputeResponseKind;
+  message: string;
+  reflect?: MoveoutDisputeReflectTarget;
+};
+
+export type CreateMoveoutDisputeInput = {
+  targetItemId?: string;
+  targetLabel: string;
+  reason: string;
+};
+
+export type CreateTenantMoveoutInquiryInput = {
+  body: string;
+  attachmentUrls?: string[];
+};
+
 export type ContractLifecycle =
   | "unregistered"
   | "analyzing"

@@ -20,6 +20,13 @@ import type {
   MessagingMessageKind as PrismaMessagingMessageKind,
   MessagingMessageSender as PrismaMessagingMessageSender,
   MessagingThreadContext as PrismaMessagingThreadContext,
+  MoveoutChecklistCondition as PrismaMoveoutChecklistCondition,
+  MoveoutDeductionKind as PrismaMoveoutDeductionKind,
+  MoveoutDisputeStatus as PrismaMoveoutDisputeStatus,
+  MoveoutRecordSource as PrismaMoveoutRecordSource,
+  MoveoutSettlementStatus as PrismaMoveoutSettlementStatus,
+  MoveoutWearAdjustmentAction as PrismaMoveoutWearAdjustmentAction,
+  MoveoutWearVerdict as PrismaMoveoutWearVerdict,
   ReceiptSource as PrismaReceiptSource,
   RepairPaymentState as PrismaRepairPaymentState
 } from "@prisma/client";
@@ -54,6 +61,10 @@ function asPhotoAnalysis(value: Prisma.JsonValue | null): PhotoAnalysis | undefi
 
 function actorRoleFor(store: Store, userId: string) {
   return store.users.find((user) => user.id === userId)?.role ?? "SYSTEM";
+}
+
+function stableMoveoutDisputeEventId(disputeId: string, status: string, at: string) {
+  return `${disputeId}_${status}_${at}`.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 180);
 }
 
 export class PrismaStoreProjector implements StoreProjector {
@@ -94,6 +105,13 @@ export class PrismaStoreProjector implements StoreProjector {
       messagingAnnouncementDrafts,
       messagingAnnouncements,
       messagingAnnouncementDeliveries,
+      moveouts,
+      moveoutRecords,
+      moveoutChecklist,
+      moveoutSettlements,
+      moveoutDeductions,
+      moveoutDisputes,
+      moveoutReportAudits,
       history,
       analyses
     ] = await Promise.all([
@@ -127,6 +145,15 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.messagingAnnouncementDraft.findMany(),
       this.prisma.messagingAnnouncement.findMany(),
       this.prisma.messagingAnnouncementDelivery.findMany(),
+      this.prisma.moveoutRequest.findMany(),
+      this.prisma.moveoutRecord.findMany(),
+      this.prisma.moveoutChecklistItem.findMany(),
+      this.prisma.moveoutSettlement.findMany(),
+      this.prisma.moveoutDeduction.findMany(),
+      this.prisma.moveoutDispute.findMany({
+        include: { history: { orderBy: { createdAt: "asc" } } }
+      }),
+      this.prisma.moveoutReportAuditEntry.findMany(),
       this.prisma.statusHistory.findMany(),
       this.prisma.aiAnalysis.findMany()
     ]);
@@ -142,7 +169,8 @@ export class PrismaStoreProjector implements StoreProjector {
       !costs.length &&
       !receipts.length &&
       !messagingThreads.length &&
-      !messagingAnnouncements.length
+      !messagingAnnouncements.length &&
+      !moveouts.length
     ) {
       return undefined;
     }
@@ -588,6 +616,129 @@ export class PrismaStoreProjector implements StoreProjector {
         readAt: asIso(delivery.readAt),
         confirmedAt: asIso(delivery.confirmedAt),
         failed: delivery.failed
+      })),
+      moveouts: moveouts.map((moveout) => ({
+        id: moveout.id,
+        tenantId: moveout.tenantId,
+        roomId: moveout.roomId,
+        contractId: optional(moveout.contractId),
+        unitId: moveout.unitId,
+        contractConfirmed:
+          Boolean(moveout.contractId) &&
+          contracts.some((contract) => contract.id === moveout.contractId && contract.review === "CONFIRMED"),
+        leaseEndDate: asIso(moveout.leaseEndDate),
+        daysRemaining: undefined,
+        depositAmount: optional(moveout.depositAmount),
+        estimatedRefundMin: optional(moveout.estimatedRefundMin),
+        estimatedRefundMax: optional(moveout.estimatedRefundMax),
+        settlementStatus:
+          toLowerEnum<Store["moveouts"][number]["settlementStatus"]>(moveout.settlementStatus) ??
+          "estimate",
+        prepProgress: moveout.prepProgress,
+        settlementId: optional(
+          moveoutSettlements.find((settlement) => settlement.moveoutId === moveout.id)?.id
+        ),
+        messagingThreadId: optional(moveout.messagingThreadId),
+        createdAt: asIso(moveout.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(moveout.updatedAt) ?? new Date().toISOString()
+      })),
+      moveoutRecords: moveoutRecords.map((record) => ({
+        id: record.id,
+        summaryId: record.moveoutId,
+        source:
+          toLowerEnum<Store["moveoutRecords"][number]["source"]>(record.source) ?? "chat",
+        title: record.title,
+        description: record.description,
+        occurredAt: asIso(record.occurredAt),
+        wearVerdict: toLowerEnum<NonNullable<Store["moveoutRecords"][number]["wearVerdict"]>>(
+          record.wearVerdict
+        ),
+        wearNote: optional(record.wearNote),
+        moveinComparisonAvailable: record.moveinComparisonAvailable
+      })),
+      moveoutChecklist: moveoutChecklist.map((item) => ({
+        id: item.id,
+        summaryId: item.moveoutId,
+        label: item.label,
+        present: item.present,
+        condition:
+          toLowerEnum<Store["moveoutChecklist"][number]["condition"]>(item.condition) ??
+          "normal",
+        note: optional(item.note)
+      })),
+      moveoutSettlements: moveoutSettlements.map((settlement) => ({
+        id: settlement.id,
+        summaryId: settlement.moveoutId,
+        depositAmount: settlement.depositAmount,
+        deductions: [],
+        refundMin: settlement.refundMin,
+        refundMax: settlement.refundMax,
+        status:
+          toLowerEnum<Store["moveoutSettlements"][number]["status"]>(settlement.status) ??
+          "estimate",
+        disclaimer: settlement.disclaimer,
+        createdAt: asIso(settlement.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(settlement.updatedAt)
+      })),
+      moveoutDeductions: moveoutDeductions.map((deduction) => ({
+        id: deduction.id,
+        summaryId: deduction.moveoutId,
+        kind:
+          toLowerEnum<Store["moveoutDeductions"][number]["kind"]>(deduction.kind) ??
+          "repair",
+        label: deduction.label,
+        estimatedMin: deduction.estimatedMin,
+        estimatedMax: deduction.estimatedMax,
+        needsConfirmation: deduction.needsConfirmation,
+        evidenceNote: deduction.evidenceNote,
+        source:
+          toLowerEnum<Store["moveoutDeductions"][number]["source"]>(deduction.source) ??
+          "repair"
+      })),
+      moveoutDisputes: moveoutDisputes.map((dispute) => ({
+        id: dispute.id,
+        summaryId: dispute.moveoutId,
+        targetItemId: optional(dispute.targetItemId),
+        targetLabel: dispute.targetLabel,
+        reason: dispute.reason,
+        status:
+          toLowerEnum<Store["moveoutDisputes"][number]["status"]>(dispute.status) ??
+          "received",
+        slaDeadline: asIso(dispute.slaDeadline) ?? new Date().toISOString(),
+        slaBreached: dispute.slaBreached,
+        managerResponse: optional(dispute.managerResponse),
+        messagingThreadId: optional(dispute.messagingThreadId),
+        history: dispute.history.map((event) => ({
+          id: event.id,
+          status:
+            toLowerEnum<Store["moveoutDisputes"][number]["history"][number]["status"]>(
+              event.status
+            ) ?? "received",
+          at: asIso(event.createdAt) ?? new Date().toISOString(),
+          note: optional(event.note),
+          actorUserId: optional(event.actorUserId)
+        })),
+        createdAt: asIso(dispute.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(dispute.updatedAt) ?? new Date().toISOString()
+      })),
+      moveoutReportAudits: moveoutReportAudits.map((audit) => ({
+        id: audit.id,
+        summaryId: audit.moveoutId,
+        recordItemId: audit.recordItemId,
+        action:
+          toLowerEnum<Store["moveoutReportAudits"][number]["action"]>(audit.action) ??
+          "keep",
+        fromVerdict: toLowerEnum<NonNullable<Store["moveoutReportAudits"][number]["fromVerdict"]>>(
+          audit.fromVerdict
+        ),
+        toVerdict: toLowerEnum<NonNullable<Store["moveoutReportAudits"][number]["toVerdict"]>>(
+          audit.toVerdict
+        ),
+        evidenceNote: audit.evidenceNote,
+        tenantNotified: audit.tenantNotified,
+        managerName: audit.managerName,
+        managerId: audit.managerId,
+        at: asIso(audit.createdAt) ?? new Date().toISOString()
       })),
       history: history.map((item) => ({
         id: item.id,
@@ -1497,6 +1648,235 @@ export class PrismaStoreProjector implements StoreProjector {
             readAt: asDate(delivery.readAt),
             confirmedAt: asDate(delivery.confirmedAt),
             failed: delivery.failed ?? false
+          }
+        });
+      }
+
+      for (const moveout of store.moveouts) {
+        await tx.moveoutRequest.upsert({
+          where: { id: moveout.id },
+          create: {
+            id: moveout.id,
+            tenantId: moveout.tenantId,
+            roomId: moveout.roomId,
+            contractId: moveout.contractId,
+            unitId: moveout.unitId,
+            leaseEndDate: asDate(moveout.leaseEndDate),
+            depositAmount: moveout.depositAmount,
+            estimatedRefundMin: moveout.estimatedRefundMin,
+            estimatedRefundMax: moveout.estimatedRefundMax,
+            settlementStatus:
+              toUpperEnum<PrismaMoveoutSettlementStatus>(moveout.settlementStatus) ?? "ESTIMATE",
+            prepProgress: moveout.prepProgress,
+            messagingThreadId: moveout.messagingThreadId,
+            createdAt: asDate(moveout.createdAt),
+            updatedAt: asDate(moveout.updatedAt)
+          },
+          update: {
+            tenantId: moveout.tenantId,
+            roomId: moveout.roomId,
+            contractId: moveout.contractId,
+            unitId: moveout.unitId,
+            leaseEndDate: asDate(moveout.leaseEndDate),
+            depositAmount: moveout.depositAmount,
+            estimatedRefundMin: moveout.estimatedRefundMin,
+            estimatedRefundMax: moveout.estimatedRefundMax,
+            settlementStatus:
+              toUpperEnum<PrismaMoveoutSettlementStatus>(moveout.settlementStatus) ?? "ESTIMATE",
+            prepProgress: moveout.prepProgress,
+            messagingThreadId: moveout.messagingThreadId,
+            updatedAt: asDate(moveout.updatedAt)
+          }
+        });
+      }
+
+      for (const record of store.moveoutRecords) {
+        await tx.moveoutRecord.upsert({
+          where: { id: record.id },
+          create: {
+            id: record.id,
+            moveoutId: record.summaryId,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(record.source) ?? "CHAT",
+            title: record.title,
+            description: record.description,
+            occurredAt: asDate(record.occurredAt),
+            wearVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(record.wearVerdict),
+            wearNote: record.wearNote,
+            moveinComparisonAvailable: record.moveinComparisonAvailable,
+            createdAt: asDate(record.occurredAt)
+          },
+          update: {
+            moveoutId: record.summaryId,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(record.source) ?? "CHAT",
+            title: record.title,
+            description: record.description,
+            occurredAt: asDate(record.occurredAt),
+            wearVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(record.wearVerdict),
+            wearNote: record.wearNote,
+            moveinComparisonAvailable: record.moveinComparisonAvailable
+          }
+        });
+      }
+
+      for (const item of store.moveoutChecklist) {
+        await tx.moveoutChecklistItem.upsert({
+          where: { id: item.id },
+          create: {
+            id: item.id,
+            moveoutId: item.summaryId,
+            label: item.label,
+            present: item.present,
+            condition: toUpperEnum<PrismaMoveoutChecklistCondition>(item.condition) ?? "NORMAL",
+            note: item.note,
+            updatedAt: new Date()
+          },
+          update: {
+            moveoutId: item.summaryId,
+            label: item.label,
+            present: item.present,
+            condition: toUpperEnum<PrismaMoveoutChecklistCondition>(item.condition) ?? "NORMAL",
+            note: item.note,
+            updatedAt: new Date()
+          }
+        });
+      }
+
+      for (const settlement of store.moveoutSettlements) {
+        await tx.moveoutSettlement.upsert({
+          where: { id: settlement.id },
+          create: {
+            id: settlement.id,
+            moveoutId: settlement.summaryId,
+            depositAmount: settlement.depositAmount,
+            refundMin: settlement.refundMin,
+            refundMax: settlement.refundMax,
+            status: toUpperEnum<PrismaMoveoutSettlementStatus>(settlement.status) ?? "ESTIMATE",
+            disclaimer: settlement.disclaimer,
+            createdAt: asDate(settlement.createdAt),
+            updatedAt: asDate(settlement.updatedAt ?? settlement.createdAt)
+          },
+          update: {
+            moveoutId: settlement.summaryId,
+            depositAmount: settlement.depositAmount,
+            refundMin: settlement.refundMin,
+            refundMax: settlement.refundMax,
+            status: toUpperEnum<PrismaMoveoutSettlementStatus>(settlement.status) ?? "ESTIMATE",
+            disclaimer: settlement.disclaimer,
+            updatedAt: asDate(settlement.updatedAt ?? settlement.createdAt)
+          }
+        });
+      }
+
+      for (const deduction of store.moveoutDeductions) {
+        await tx.moveoutDeduction.upsert({
+          where: { id: deduction.id },
+          create: {
+            id: deduction.id,
+            moveoutId: deduction.summaryId,
+            kind: toUpperEnum<PrismaMoveoutDeductionKind>(deduction.kind) ?? "REPAIR",
+            label: deduction.label,
+            estimatedMin: deduction.estimatedMin,
+            estimatedMax: deduction.estimatedMax,
+            needsConfirmation: deduction.needsConfirmation,
+            evidenceNote: deduction.evidenceNote,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(deduction.source) ?? "REPAIR",
+            updatedAt: new Date()
+          },
+          update: {
+            moveoutId: deduction.summaryId,
+            kind: toUpperEnum<PrismaMoveoutDeductionKind>(deduction.kind) ?? "REPAIR",
+            label: deduction.label,
+            estimatedMin: deduction.estimatedMin,
+            estimatedMax: deduction.estimatedMax,
+            needsConfirmation: deduction.needsConfirmation,
+            evidenceNote: deduction.evidenceNote,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(deduction.source) ?? "REPAIR",
+            updatedAt: new Date()
+          }
+        });
+      }
+
+      for (const dispute of store.moveoutDisputes) {
+        await tx.moveoutDispute.upsert({
+          where: { id: dispute.id },
+          create: {
+            id: dispute.id,
+            moveoutId: dispute.summaryId,
+            targetItemId: dispute.targetItemId,
+            targetLabel: dispute.targetLabel,
+            reason: dispute.reason,
+            status: toUpperEnum<PrismaMoveoutDisputeStatus>(dispute.status) ?? "RECEIVED",
+            slaDeadline: asDate(dispute.slaDeadline) ?? new Date(),
+            slaBreached: dispute.slaBreached,
+            managerResponse: dispute.managerResponse,
+            messagingThreadId: dispute.messagingThreadId,
+            createdAt: asDate(dispute.createdAt),
+            updatedAt: asDate(dispute.updatedAt)
+          },
+          update: {
+            moveoutId: dispute.summaryId,
+            targetItemId: dispute.targetItemId,
+            targetLabel: dispute.targetLabel,
+            reason: dispute.reason,
+            status: toUpperEnum<PrismaMoveoutDisputeStatus>(dispute.status) ?? "RECEIVED",
+            slaDeadline: asDate(dispute.slaDeadline) ?? new Date(),
+            slaBreached: dispute.slaBreached,
+            managerResponse: dispute.managerResponse,
+            messagingThreadId: dispute.messagingThreadId,
+            updatedAt: asDate(dispute.updatedAt)
+          }
+        });
+
+        for (const event of dispute.history) {
+          const eventId =
+            event.id ?? stableMoveoutDisputeEventId(dispute.id, event.status, event.at);
+
+          await tx.moveoutDisputeEvent.upsert({
+            where: { id: eventId },
+            create: {
+              id: eventId,
+              disputeId: dispute.id,
+              status: toUpperEnum<PrismaMoveoutDisputeStatus>(event.status) ?? "RECEIVED",
+              actorUserId: event.actorUserId,
+              note: event.note,
+              createdAt: asDate(event.at)
+            },
+            update: {
+              disputeId: dispute.id,
+              status: toUpperEnum<PrismaMoveoutDisputeStatus>(event.status) ?? "RECEIVED",
+              actorUserId: event.actorUserId,
+              note: event.note
+            }
+          });
+        }
+      }
+
+      for (const audit of store.moveoutReportAudits) {
+        await tx.moveoutReportAuditEntry.upsert({
+          where: { id: audit.id },
+          create: {
+            id: audit.id,
+            moveoutId: audit.summaryId,
+            recordItemId: audit.recordItemId,
+            action: toUpperEnum<PrismaMoveoutWearAdjustmentAction>(audit.action) ?? "KEEP",
+            fromVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.fromVerdict),
+            toVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.toVerdict),
+            evidenceNote: audit.evidenceNote,
+            tenantNotified: audit.tenantNotified,
+            managerName: audit.managerName,
+            managerId: audit.managerId,
+            createdAt: asDate(audit.at)
+          },
+          update: {
+            moveoutId: audit.summaryId,
+            recordItemId: audit.recordItemId,
+            action: toUpperEnum<PrismaMoveoutWearAdjustmentAction>(audit.action) ?? "KEEP",
+            fromVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.fromVerdict),
+            toVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.toVerdict),
+            evidenceNote: audit.evidenceNote,
+            tenantNotified: audit.tenantNotified,
+            managerName: audit.managerName,
+            managerId: audit.managerId
           }
         });
       }

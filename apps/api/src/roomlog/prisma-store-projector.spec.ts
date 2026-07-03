@@ -207,6 +207,13 @@ describe("PrismaStoreProjector", () => {
         messagingAnnouncementDrafts: [],
         messagingAnnouncements: [],
         messagingAnnouncementDeliveries: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: []
       };
 
@@ -417,6 +424,13 @@ describe("PrismaStoreProjector", () => {
         messagingAnnouncementDrafts: [],
         messagingAnnouncements: [],
         messagingAnnouncementDeliveries: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: []
       };
 
@@ -694,6 +708,13 @@ describe("PrismaStoreProjector", () => {
         messagingAnnouncementDrafts: [],
         messagingAnnouncements: [],
         messagingAnnouncementDeliveries: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: [
           {
             id: historyId,

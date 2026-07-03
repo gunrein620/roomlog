@@ -38,6 +38,7 @@ import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
 import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
 import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
 import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
+import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
 import {
   AddMessagingThreadMessageInput,
   AddTenantComplaintMessageInput,
@@ -67,7 +68,9 @@ import {
   CreateComplaintInput,
   CreateIntakeSessionInput,
   CreateMessagingThreadInput,
+  CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateTenantMoveoutInquiryInput,
   DisclosureSetting,
   DuplicateTicketCandidate,
   FinalizeIntakeInput,
@@ -94,6 +97,18 @@ import {
   ManagerReplyIntent,
   ManagerTicketReplyInput,
   MoveInChecklistItem,
+  MoveoutAdjustDeductionInput,
+  MoveoutAdjustWearVerdictInput,
+  MoveoutChecklistItem,
+  MoveoutCompleteReviewInput,
+  MoveoutDeductionCandidate,
+  MoveoutDispute,
+  MoveoutManagerSettlementReview,
+  MoveoutRecordItem,
+  MoveoutReportAuditEntry,
+  MoveoutRespondDisputeInput,
+  MoveoutSettlementEstimate,
+  MoveoutSummary,
   PhotoAnalysis,
   PhotoComparisonStatus,
   RealtimeClientSecretInput,
@@ -285,6 +300,13 @@ export type Store = {
   messagingAnnouncementDrafts: MessagingAnnouncementDraft[];
   messagingAnnouncements: MessagingAnnouncement[];
   messagingAnnouncementDeliveries: MessagingAnnouncementDelivery[];
+  moveouts: MoveoutSummary[];
+  moveoutRecords: MoveoutRecordItem[];
+  moveoutChecklist: MoveoutChecklistItem[];
+  moveoutSettlements: MoveoutSettlementEstimate[];
+  moveoutDeductions: MoveoutDeductionCandidate[];
+  moveoutDisputes: MoveoutDispute[];
+  moveoutReportAudits: MoveoutReportAuditEntry[];
   history: StatusHistory[];
 };
 
@@ -613,6 +635,13 @@ function createDemoStore(): Store {
         state: "unread"
       }
     ],
+    moveouts: [],
+    moveoutRecords: [],
+    moveoutChecklist: [],
+    moveoutSettlements: [],
+    moveoutDeductions: [],
+    moveoutDisputes: [],
+    moveoutReportAudits: [],
     history: []
   };
 }
@@ -648,6 +677,13 @@ function createEmptyStore(): Store {
     messagingAnnouncementDrafts: [],
     messagingAnnouncements: [],
     messagingAnnouncementDeliveries: [],
+    moveouts: [],
+    moveoutRecords: [],
+    moveoutChecklist: [],
+    moveoutSettlements: [],
+    moveoutDeductions: [],
+    moveoutDisputes: [],
+    moveoutReportAudits: [],
     history: []
   };
 }
@@ -692,6 +728,7 @@ export class RoomlogService {
   private readonly vendorMgmt: RoomlogVendorMgmtDomain;
   private readonly vendorRepair: RoomlogVendorRepairDomain;
   private readonly messaging: RoomlogMessagingDomain;
+  private readonly moveout: RoomlogMoveoutDomain;
 
   constructor(
     @Optional()
@@ -787,6 +824,20 @@ export class RoomlogService {
       (room) => this.displayUnitId(room),
       (iso) => this.timeOf(iso)
     );
+    this.moveout = new RoomlogMoveoutDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input),
+      (tenantId, threadId, input) =>
+        this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input),
+      (managerId, threadId, input) =>
+        this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input)
+    );
   }
 
   async flushPersistence() {
@@ -840,7 +891,14 @@ export class RoomlogService {
       messagingMessages: this.store.messagingMessages,
       messagingAnnouncementDrafts: this.store.messagingAnnouncementDrafts,
       messagingAnnouncements: this.store.messagingAnnouncements,
-      messagingAnnouncementDeliveries: this.store.messagingAnnouncementDeliveries
+      messagingAnnouncementDeliveries: this.store.messagingAnnouncementDeliveries,
+      moveouts: this.store.moveouts,
+      moveoutRecords: this.store.moveoutRecords,
+      moveoutChecklist: this.store.moveoutChecklist,
+      moveoutSettlements: this.store.moveoutSettlements,
+      moveoutDeductions: this.store.moveoutDeductions,
+      moveoutDisputes: this.store.moveoutDisputes,
+      moveoutReportAudits: this.store.moveoutReportAudits
     };
   }
 
@@ -2511,6 +2569,105 @@ export class RoomlogService {
     return this.findRoom(roomId);
   }
 
+  listTenantMoveouts(tenantId: string) {
+    return this.moveout.listTenantMoveouts(tenantId);
+  }
+
+  getTenantMoveout(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveout(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutRecords(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutRecords(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutChecklist(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutChecklist(tenantId, moveoutId);
+  }
+
+  getTenantMoveoutSettlement(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveoutSettlement(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutDisputes(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutDisputes(tenantId, moveoutId);
+  }
+
+  createTenantMoveoutInquiry(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateTenantMoveoutInquiryInput
+  ) {
+    return this.moveout.createTenantMoveoutInquiry(tenantId, moveoutId, input);
+  }
+
+  createTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateMoveoutDisputeInput
+  ) {
+    return this.moveout.createTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  getManagerMoveoutDashboard(managerId: string) {
+    return this.moveout.getManagerMoveoutDashboard(managerId);
+  }
+
+  listManagerMoveoutRows(managerId: string) {
+    return this.moveout.listManagerMoveoutRows(managerId);
+  }
+
+  getManagerMoveout(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveout(managerId, moveoutId);
+  }
+
+  getManagerMoveoutRecords(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveoutRecords(managerId, moveoutId);
+  }
+
+  getManagerReportAudit(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerReportAudit(managerId, moveoutId);
+  }
+
+  getManagerMoveoutSettlement(
+    managerId: string,
+    moveoutId: string
+  ): MoveoutManagerSettlementReview {
+    return this.moveout.getManagerMoveoutSettlement(managerId, moveoutId);
+  }
+
+  adjustManagerMoveoutWearVerdict(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustWearVerdictInput
+  ) {
+    return this.moveout.adjustManagerMoveoutWearVerdict(managerId, moveoutId, input);
+  }
+
+  adjustManagerMoveoutDeduction(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustDeductionInput
+  ) {
+    return this.moveout.adjustManagerMoveoutDeduction(managerId, moveoutId, input);
+  }
+
+  completeManagerMoveoutReview(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutCompleteReviewInput
+  ) {
+    return this.moveout.completeManagerMoveoutReview(managerId, moveoutId, input);
+  }
+
+  respondManagerMoveoutDispute(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutRespondDisputeInput
+  ) {
+    return this.moveout.respondManagerMoveoutDispute(managerId, moveoutId, input);
+  }
+
   createMessagingThread(managerId: string, input: CreateMessagingThreadInput) {
     return this.messaging.createMessagingThread(managerId, input);
   }
@@ -2669,7 +2826,20 @@ export class RoomlogService {
         translations: draft.translations ?? []
       })),
       messagingAnnouncements: parsed.messagingAnnouncements ?? [],
-      messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? []
+      messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? [],
+      moveouts: parsed.moveouts ?? [],
+      moveoutRecords: parsed.moveoutRecords ?? [],
+      moveoutChecklist: parsed.moveoutChecklist ?? [],
+      moveoutSettlements: (parsed.moveoutSettlements ?? []).map((settlement) => ({
+        ...settlement,
+        deductions: settlement.deductions ?? []
+      })),
+      moveoutDeductions: parsed.moveoutDeductions ?? [],
+      moveoutDisputes: (parsed.moveoutDisputes ?? []).map((dispute) => ({
+        ...dispute,
+        history: dispute.history ?? []
+      })),
+      moveoutReportAudits: parsed.moveoutReportAudits ?? []
     };
   }
 
@@ -2740,6 +2910,13 @@ export class RoomlogService {
           Array.isArray(snapshot.messagingAnnouncements)) &&
         (snapshot.messagingAnnouncementDeliveries === undefined ||
           Array.isArray(snapshot.messagingAnnouncementDeliveries)) &&
+        (snapshot.moveouts === undefined || Array.isArray(snapshot.moveouts)) &&
+        (snapshot.moveoutRecords === undefined || Array.isArray(snapshot.moveoutRecords)) &&
+        (snapshot.moveoutChecklist === undefined || Array.isArray(snapshot.moveoutChecklist)) &&
+        (snapshot.moveoutSettlements === undefined || Array.isArray(snapshot.moveoutSettlements)) &&
+        (snapshot.moveoutDeductions === undefined || Array.isArray(snapshot.moveoutDeductions)) &&
+        (snapshot.moveoutDisputes === undefined || Array.isArray(snapshot.moveoutDisputes)) &&
+        (snapshot.moveoutReportAudits === undefined || Array.isArray(snapshot.moveoutReportAudits)) &&
         Array.isArray(snapshot.messages) &&
         Array.isArray(snapshot.history)
     );
