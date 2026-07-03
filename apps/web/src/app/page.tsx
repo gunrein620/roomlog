@@ -325,6 +325,11 @@ const inquiryChannelItems = [
   { label: "방문예약", value: "오늘 3시 가능", caption: "3D 투어 먼저 확인" }
 ];
 
+const inquiryTimelineItems = [
+  { time: "방금", title: "문자문의 작성 가능", body: "매물 상세에서 바로 문의를 보낼 수 있습니다." },
+  { time: "5분 전", title: "중개사 평균 응답 8분", body: "답변이 오면 문의센터에서 상태를 확인합니다." }
+];
+
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
 
 const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
@@ -2033,6 +2038,7 @@ function InquiryHubSection({
   inquiries: InquiryItem[];
   onBrowseListings: () => void;
 }) {
+  const [inquiryNotice, setInquiryNotice] = useState("최근 문의 상태가 여기에 표시됩니다.");
   const pendingCount = inquiries.filter((item) => item.status === "답변 대기").length;
 
   return (
@@ -2044,6 +2050,18 @@ function InquiryHubSection({
         </div>
         <button type="button" onClick={onBrowseListings}>새 문의</button>
       </div>
+
+      <section className="inquiry-status-card" aria-label="문의 진행 상태">
+        <span>진행중 문의</span>
+        <strong>{pendingCount}건 답변 대기</strong>
+        <p>최근 문의 상태가 여기에 표시됩니다. 중개사가 평균 8분 안에 응답합니다.</p>
+        <div>
+          <button type="button" onClick={() => setInquiryNotice("문자문의 대상: 방배 루미에르 402호")}>문자문의</button>
+          <button type="button" onClick={() => setInquiryNotice("전화문의 대상: 대표 공인중개사 김하늘")}>전화문의</button>
+        </div>
+      </section>
+
+      <p className="inquiry-notice" role="status">{inquiryNotice}</p>
 
       <div className="inquiry-history-list" aria-label="보낸 문의 목록">
         {inquiries.map((item) => (
@@ -2068,6 +2086,20 @@ function InquiryHubSection({
           </article>
         ))}
       </div>
+
+      <section className="inquiry-timeline-card" aria-label="문의 타임라인">
+        <div className="inquiry-timeline-head">
+          <span>문의 타임라인</span>
+          <strong>최근 문의 흐름</strong>
+        </div>
+        {inquiryTimelineItems.map((item) => (
+          <article key={item.title}>
+            <span>{item.time}</span>
+            <strong>{item.title}</strong>
+            <p>{item.body}</p>
+          </article>
+        ))}
+      </section>
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
         <div className="inquiry-channel-head">
@@ -2179,6 +2211,11 @@ function UserMyPage({
           <span>저장 조건</span>
           <strong>{savedConditions[0].label}</strong>
           <p>누르면 지도에서 이 조건으로 바로 확인합니다.</p>
+        </article>
+        <article>
+          <span>저장 지역</span>
+          <strong>검색 조건 관리</strong>
+          <p>예산, 지역, 옵션을 저장해 지도와 매물 목록에 바로 적용합니다.</p>
         </article>
         <article>
           <span>입주 체크</span>
