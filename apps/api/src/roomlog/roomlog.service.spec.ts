@@ -2826,6 +2826,80 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("lets a real linked tenant start a messaging thread that the linked manager can reply to", () => {
+    const service = new RoomlogService();
+
+    const manager = service.signup({
+      email: "linked-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "연결 관리자",
+      phone: "010-7000-1001",
+      role: "LANDLORD",
+      buildingName: "연결 빌라",
+      roomNo: "910호",
+      address: "서울시 성동구 연결로 10"
+    } as any);
+
+    const tenant = service.signup({
+      email: "linked-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "연결 세입자",
+      phone: "010-7000-3001",
+      role: "TENANT",
+      buildingName: "연결 빌라",
+      roomNo: "910호",
+      address: "서울시 성동구 연결로 10"
+    } as any);
+
+    const tenantRoom = service.getTenantRoom(tenant.userId);
+    assert.equal(tenantRoom.landlordId, manager.userId);
+
+    const started = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      contextLabel: "일반 문의",
+      body: "공용 현관등이 깜빡입니다."
+    });
+
+    assert.equal(started.tenantId, tenant.userId);
+    assert.equal(started.unitId, "910");
+    assert.equal(started.messages?.length, 1);
+    assert.equal(started.messages?.[0]?.sender, "tenant");
+    assert.equal(started.messages?.[0]?.body, "공용 현관등이 깜빡입니다.");
+
+    const managerThreads = service.listManagerMessagingThreads(manager.userId);
+    assert.equal(managerThreads.some((thread) => thread.id === started.id), true);
+
+    const managerReply = service.addManagerMessagingThreadMessage(manager.userId, started.id, {
+      body: "오늘 점검하겠습니다."
+    });
+    const replyMessages = managerReply.messages ?? [];
+    assert.equal(replyMessages[replyMessages.length - 1]?.sender, "manager");
+    assert.equal(replyMessages[replyMessages.length - 1]?.body, "오늘 점검하겠습니다.");
+
+    const tenantView = service.getTenantMessagingThread(tenant.userId, started.id);
+    const tenantMessages = tenantView.messages ?? [];
+    assert.equal(tenantMessages[tenantMessages.length - 1]?.body, "오늘 점검하겠습니다.");
+
+    const otherManager = service.signup({
+      email: "unlinked-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "외부 관리자",
+      phone: "010-7000-1002",
+      role: "LANDLORD",
+      buildingName: "외부 빌라",
+      roomNo: "1호",
+      address: "서울시 성동구 외부로 1"
+    } as any);
+
+    assert.throws(
+      () => service.getManagerMessagingThread(otherManager.userId, started.id),
+      /메시지 스레드/
+    );
+  });
+
   it("scopes messaging threads and enforces server-side messaging gates", () => {
     const service = new RoomlogService();
     const otherManager = service.signup({

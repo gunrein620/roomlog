@@ -30,6 +30,7 @@ import {
   CreateMessagingThreadInput,
   CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
   DeletionState,
   FinalizeIntakeInput,
@@ -366,6 +367,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.submitTenantAiFeedback(user.id, complaintId, body);
+  }
+
+  @Post("tenant/messaging/threads")
+  createTenantMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateTenantMessagingThreadInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createTenantMessagingThread(user.id, body);
   }
 
   @Get("tenant/messaging/threads")

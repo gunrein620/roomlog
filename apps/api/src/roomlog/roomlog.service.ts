@@ -75,6 +75,7 @@ import {
   CreateMessagingThreadInput,
   CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
   DisclosureSetting,
   DuplicateTicketCandidate,
@@ -2726,6 +2727,10 @@ export class RoomlogService {
 
   createMessagingThread(managerId: string, input: CreateMessagingThreadInput) {
     return this.messaging.createMessagingThread(managerId, input);
+  }
+
+  createTenantMessagingThread(tenantId: string, input: CreateTenantMessagingThreadInput) {
+    return this.messaging.createTenantMessagingThread(tenantId, input);
   }
 
   listTenantMessagingThreads(tenantId: string) {

@@ -33,7 +33,8 @@ import type {
   MoveoutWearAdjustmentAction as PrismaMoveoutWearAdjustmentAction,
   MoveoutWearVerdict as PrismaMoveoutWearVerdict,
   ReceiptSource as PrismaReceiptSource,
-  RepairPaymentState as PrismaRepairPaymentState
+  RepairPaymentState as PrismaRepairPaymentState,
+  UserRole as PrismaUserRole
 } from "@prisma/client";
 
 function asDate(value?: string) {
@@ -58,6 +59,10 @@ function toLowerEnum<T extends string>(value: string | null | undefined) {
 
 function toUpperEnum<T extends string>(value: string | null | undefined) {
   return optional(value?.toUpperCase()) as T | undefined;
+}
+
+function toPrismaUserRole(value: Store["users"][number]["role"]) {
+  return value as unknown as PrismaUserRole;
 }
 
 function asPhotoAnalysis(value: Prisma.JsonValue | null): PhotoAnalysis | undefined {
@@ -859,7 +864,7 @@ export class PrismaStoreProjector implements StoreProjector {
             passwordHash: user.passwordHash,
             name: user.name,
             phone: user.phone,
-            role: user.role,
+            role: toPrismaUserRole(user.role),
             status: user.status,
             createdAt: asDate(user.createdAt)
           },
@@ -868,7 +873,7 @@ export class PrismaStoreProjector implements StoreProjector {
             passwordHash: user.passwordHash,
             name: user.name,
             phone: user.phone,
-            role: user.role,
+            role: toPrismaUserRole(user.role),
             status: user.status
           }
         });
