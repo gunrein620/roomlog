@@ -2,6 +2,20 @@ import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Store, StoreProjector } from "./roomlog.service";
 import { IntakeDraft, PhotoAnalysis, TicketMessage } from "./roomlog.types";
+import type {
+  ContractDeletionState as PrismaContractDeletionState,
+  ContractDocumentOrigin as PrismaContractDocumentOrigin,
+  ContractLifecycle as PrismaContractLifecycle,
+  ContractReview as PrismaContractReview,
+  ContractValueSource as PrismaContractValueSource,
+  CostAttributionScope as PrismaCostAttributionScope,
+  CostReviewReason as PrismaCostReviewReason,
+  CostStatus as PrismaCostStatus,
+  CostType as PrismaCostType,
+  DisclosureState as PrismaDisclosureState,
+  ReceiptSource as PrismaReceiptSource,
+  RepairPaymentState as PrismaRepairPaymentState
+} from "@prisma/client";
 
 function asDate(value?: string) {
   return value ? new Date(value) : undefined;
@@ -17,6 +31,14 @@ function asJson<T>(value: T) {
 
 function optional<T>(value: T | null | undefined) {
   return value ?? undefined;
+}
+
+function toLowerEnum<T extends string>(value: string | null | undefined) {
+  return optional(value?.toLowerCase()) as T | undefined;
+}
+
+function toUpperEnum<T extends string>(value: string | null | undefined) {
+  return optional(value?.toUpperCase()) as T | undefined;
 }
 
 function asPhotoAnalysis(value: Prisma.JsonValue | null): PhotoAnalysis | undefined {
@@ -44,6 +66,11 @@ export class PrismaStoreProjector implements StoreProjector {
       vendors,
       vendorInvites,
       tenantInvites,
+      contracts,
+      contractDocuments,
+      contractExtractions,
+      contractPrivacies,
+      contractInvites,
       attachments,
       floorPlans,
       moveInChecklist,
@@ -52,6 +79,9 @@ export class PrismaStoreProjector implements StoreProjector {
       tickets,
       feedback,
       repairs,
+      costs,
+      receipts,
+      receiptOcrs,
       messages,
       history,
       analyses
@@ -63,6 +93,11 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.vendorProfile.findMany(),
       this.prisma.vendorInvite.findMany(),
       this.prisma.tenantInvite.findMany(),
+      this.prisma.contract.findMany(),
+      this.prisma.contractDocument.findMany(),
+      this.prisma.contractExtraction.findMany(),
+      this.prisma.contractPrivacy.findMany(),
+      this.prisma.contractInvite.findMany(),
       this.prisma.attachment.findMany(),
       this.prisma.floorPlan.findMany(),
       this.prisma.moveInChecklistItem.findMany(),
@@ -73,6 +108,9 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.ticket.findMany(),
       this.prisma.aiFeedback.findMany(),
       this.prisma.repairRequest.findMany(),
+      this.prisma.cost.findMany(),
+      this.prisma.receipt.findMany(),
+      this.prisma.receiptOcr.findMany(),
       this.prisma.ticketMessage.findMany(),
       this.prisma.statusHistory.findMany(),
       this.prisma.aiAnalysis.findMany()
@@ -81,10 +119,13 @@ export class PrismaStoreProjector implements StoreProjector {
     if (
       !users.length &&
       !rooms.length &&
+      !contracts.length &&
       !floorPlans.length &&
       !intakeSessions.length &&
       !complaints.length &&
-      !tickets.length
+      !tickets.length &&
+      !costs.length &&
+      !receipts.length
     ) {
       return undefined;
     }
@@ -159,6 +200,72 @@ export class PrismaStoreProjector implements StoreProjector {
         moveInDate: asIso(invite.moveInDate),
         status: invite.status,
         signupUrl: invite.signupUrl,
+        createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
+        acceptedAt: asIso(invite.acceptedAt),
+        acceptedByUserId: optional(invite.acceptedByUserId)
+      })),
+      contracts: contracts.map((contract) => ({
+        id: contract.id,
+        roomId: contract.roomId,
+        tenantId: optional(contract.tenantId),
+        managerId: optional(contract.managerId),
+        unitId: contract.unitId,
+        landlordName: contract.landlordName,
+        lifecycle: toLowerEnum<Store["contracts"][number]["lifecycle"]>(contract.lifecycle) ?? "active",
+        review: toLowerEnum<Store["contracts"][number]["review"]>(contract.review) ?? "pending",
+        deletion: toLowerEnum<Store["contracts"][number]["deletion"]>(contract.deletion) ?? "none",
+        valueSource: toLowerEnum<Store["contracts"][number]["valueSource"]>(contract.valueSource) ?? "unverified",
+        monthlyRent: optional(contract.monthlyRent),
+        maintenanceFee: optional(contract.maintenanceFee),
+        paymentDay: optional(contract.paymentDay),
+        startDate: asIso(contract.startDate),
+        endDate: asIso(contract.endDate),
+        createdAt: asIso(contract.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(contract.updatedAt) ?? new Date().toISOString(),
+        extractionId: optional(contract.extractionId),
+        documentId: optional(contract.documentId),
+        confirmedAt: asIso(contract.confirmedAt),
+        confirmedByManagerId: optional(contract.confirmedByManagerId)
+      })),
+      contractDocuments: contractDocuments.map((document) => ({
+        id: document.id,
+        contractId: document.contractId,
+        uploadedByUserId: optional(document.uploadedByUserId),
+        origin: toLowerEnum<Store["contractDocuments"][number]["origin"]>(document.origin) ?? "manual",
+        fileName: optional(document.fileName),
+        fileUrl: optional(document.fileUrl),
+        uploadedAt: asIso(document.uploadedAt) ?? new Date().toISOString()
+      })),
+      contractExtractions: contractExtractions.map((extraction) => ({
+        id: extraction.id,
+        contractId: extraction.contractId,
+        confirmed: extraction.confirmed,
+        highlights: extraction.highlights,
+        items: (extraction.items as unknown as Store["contractExtractions"][number]["items"]) ?? [],
+        helpNotes: (extraction.helpNotes as unknown as Store["contractExtractions"][number]["helpNotes"]) ?? [],
+        createdAt: asIso(extraction.createdAt) ?? new Date().toISOString()
+      })),
+      contractPrivacies: contractPrivacies.map((privacy) => ({
+        contractId: privacy.contractId,
+        maskingEnabled: privacy.maskingEnabled,
+        retention: (privacy.retention as unknown as Store["contractPrivacies"][number]["retention"]) ?? [],
+        forwardingConsent: privacy.forwardingConsent,
+        deletion: toLowerEnum<Store["contractPrivacies"][number]["deletion"]>(privacy.deletion) ?? "none",
+        deletionSlaHours: optional(privacy.deletionSlaHours),
+        deletable: privacy.deletable
+      })),
+      contractInvites: contractInvites.map((invite) => ({
+        id: invite.id,
+        contractId: invite.contractId,
+        roomId: invite.roomId,
+        inviteToken: invite.inviteToken,
+        invitedByManagerId: invite.invitedByManagerId,
+        tenantName: invite.tenantName,
+        email: optional(invite.email),
+        phone: optional(invite.phone),
+        state: invite.state as Store["contractInvites"][number]["state"],
+        signupUrl: invite.signupUrl,
+        audit: invite.audit,
         createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
         acceptedAt: asIso(invite.acceptedAt),
         acceptedByUserId: optional(invite.acceptedByUserId)
@@ -311,6 +418,77 @@ export class PrismaStoreProjector implements StoreProjector {
         completionPhotoUrls: repair.completionPhotoUrls,
         createdAt: asIso(repair.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(repair.updatedAt) ?? new Date().toISOString()
+      })),
+      costs: costs.map((cost) => ({
+        id: cost.id,
+        managerId: optional(cost.managerId),
+        date: asIso(cost.date) ?? new Date().toISOString(),
+        item: cost.item,
+        amount: cost.amount,
+        type: toLowerEnum<Store["costs"][number]["type"]>(cost.type) ?? "other",
+        scope: toLowerEnum<Store["costs"][number]["scope"]>(cost.scope) ?? "building",
+        unitId: optional(cost.unitId),
+        status: toLowerEnum<Store["costs"][number]["status"]>(cost.status) ?? "draft",
+        verified: cost.verified,
+        reviewReason: toLowerEnum<NonNullable<Store["costs"][number]["reviewReason"]>>(
+          cost.reviewReason
+        ),
+        disclosure: toLowerEnum<NonNullable<Store["costs"][number]["disclosure"]>>(
+          cost.disclosure
+        ),
+        repairPayment: toLowerEnum<NonNullable<Store["costs"][number]["repairPayment"]>>(
+          cost.repairPayment
+        ),
+        paymentRef: optional(cost.paymentRef),
+        receiptId: optional(cost.receiptId),
+        supersedesId: optional(cost.supersedesId),
+        voidReason: optional(cost.voidReason),
+        createdAt: asIso(cost.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(cost.updatedAt) ?? new Date().toISOString()
+      })),
+      receipts: receipts.map((receipt) => ({
+        id: receipt.id,
+        managerId: optional(receipt.managerId),
+        source: toLowerEnum<Store["receipts"][number]["source"]>(receipt.source) ?? "manual",
+        imageUrl: optional(receipt.imageUrl),
+        hasEvidence: receipt.hasEvidence,
+        uploadedAt: asIso(receipt.uploadedAt) ?? new Date().toISOString(),
+        duplicateOfId: optional(receipt.duplicateOfId)
+      })),
+      receiptOcrs: receiptOcrs.map((ocr) => ({
+        id: ocr.id,
+        receiptId: ocr.receiptId,
+        costId: optional(ocr.costId),
+        fields: {
+          item: {
+            value: ocr.itemValue,
+            confidence: ocr.itemConfidence,
+            needsReview: ocr.itemNeedsReview
+          },
+          date: {
+            value: ocr.dateValue,
+            confidence: ocr.dateConfidence,
+            needsReview: ocr.dateNeedsReview
+          },
+          amount: {
+            value: ocr.amountValue,
+            confidence: ocr.amountConfidence,
+            needsReview: ocr.amountNeedsReview
+          },
+          unitId: ocr.unitIdValue
+            ? {
+                value: ocr.unitIdValue,
+                confidence: ocr.unitIdConfidence ?? 1,
+                needsReview: ocr.unitIdNeedsReview ?? false
+              }
+            : undefined
+        },
+        suggestedType: toLowerEnum<NonNullable<Store["receiptOcrs"][number]["suggestedType"]>>(
+          ocr.suggestedType
+        ),
+        typeConfidence: optional(ocr.typeConfidence),
+        lineItems: (ocr.lineItems as unknown as Store["receiptOcrs"][number]["lineItems"]) ?? [],
+        createdAt: asIso(ocr.createdAt) ?? new Date().toISOString()
       })),
       messages: messages.map((message) => ({
         id: message.id,
@@ -507,6 +685,159 @@ export class PrismaStoreProjector implements StoreProjector {
             moveInDate: asDate(invite.moveInDate),
             status: invite.status,
             signupUrl: invite.signupUrl,
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          }
+        });
+      }
+
+      for (const contract of store.contracts) {
+        await tx.contract.upsert({
+          where: { id: contract.id },
+          create: {
+            id: contract.id,
+            roomId: contract.roomId,
+            tenantId: contract.tenantId,
+            managerId: contract.managerId,
+            unitId: contract.unitId,
+            landlordName: contract.landlordName,
+            lifecycle: toUpperEnum<PrismaContractLifecycle>(contract.lifecycle) ?? "ACTIVE",
+            review: toUpperEnum<PrismaContractReview>(contract.review) ?? "PENDING",
+            deletion: toUpperEnum<PrismaContractDeletionState>(contract.deletion) ?? "NONE",
+            valueSource: toUpperEnum<PrismaContractValueSource>(contract.valueSource) ?? "UNVERIFIED",
+            monthlyRent: contract.monthlyRent,
+            maintenanceFee: contract.maintenanceFee,
+            paymentDay: contract.paymentDay,
+            startDate: asDate(contract.startDate),
+            endDate: asDate(contract.endDate),
+            extractionId: contract.extractionId,
+            documentId: contract.documentId,
+            confirmedAt: asDate(contract.confirmedAt),
+            confirmedByManagerId: contract.confirmedByManagerId,
+            createdAt: asDate(contract.createdAt),
+            updatedAt: asDate(contract.updatedAt)
+          },
+          update: {
+            roomId: contract.roomId,
+            tenantId: contract.tenantId,
+            managerId: contract.managerId,
+            unitId: contract.unitId,
+            landlordName: contract.landlordName,
+            lifecycle: toUpperEnum<PrismaContractLifecycle>(contract.lifecycle) ?? "ACTIVE",
+            review: toUpperEnum<PrismaContractReview>(contract.review) ?? "PENDING",
+            deletion: toUpperEnum<PrismaContractDeletionState>(contract.deletion) ?? "NONE",
+            valueSource: toUpperEnum<PrismaContractValueSource>(contract.valueSource) ?? "UNVERIFIED",
+            monthlyRent: contract.monthlyRent,
+            maintenanceFee: contract.maintenanceFee,
+            paymentDay: contract.paymentDay,
+            startDate: asDate(contract.startDate),
+            endDate: asDate(contract.endDate),
+            extractionId: contract.extractionId,
+            documentId: contract.documentId,
+            confirmedAt: asDate(contract.confirmedAt),
+            confirmedByManagerId: contract.confirmedByManagerId,
+            updatedAt: asDate(contract.updatedAt)
+          }
+        });
+      }
+
+      for (const document of store.contractDocuments) {
+        await tx.contractDocument.upsert({
+          where: { id: document.id },
+          create: {
+            id: document.id,
+            contractId: document.contractId,
+            uploadedByUserId: document.uploadedByUserId,
+            origin: toUpperEnum<PrismaContractDocumentOrigin>(document.origin) ?? "MANUAL",
+            fileName: document.fileName,
+            fileUrl: document.fileUrl,
+            uploadedAt: asDate(document.uploadedAt)
+          },
+          update: {
+            contractId: document.contractId,
+            uploadedByUserId: document.uploadedByUserId,
+            origin: toUpperEnum<PrismaContractDocumentOrigin>(document.origin) ?? "MANUAL",
+            fileName: document.fileName,
+            fileUrl: document.fileUrl,
+            uploadedAt: asDate(document.uploadedAt)
+          }
+        });
+      }
+
+      for (const extraction of store.contractExtractions) {
+        await tx.contractExtraction.upsert({
+          where: { id: extraction.id },
+          create: {
+            id: extraction.id,
+            contractId: extraction.contractId,
+            confirmed: extraction.confirmed,
+            highlights: extraction.highlights,
+            items: asJson(extraction.items),
+            helpNotes: asJson(extraction.helpNotes),
+            createdAt: asDate(extraction.createdAt)
+          },
+          update: {
+            contractId: extraction.contractId,
+            confirmed: extraction.confirmed,
+            highlights: extraction.highlights,
+            items: asJson(extraction.items),
+            helpNotes: asJson(extraction.helpNotes)
+          }
+        });
+      }
+
+      for (const privacy of store.contractPrivacies) {
+        await tx.contractPrivacy.upsert({
+          where: { contractId: privacy.contractId },
+          create: {
+            contractId: privacy.contractId,
+            maskingEnabled: privacy.maskingEnabled,
+            retention: asJson(privacy.retention),
+            forwardingConsent: privacy.forwardingConsent,
+            deletion: toUpperEnum<PrismaContractDeletionState>(privacy.deletion) ?? "NONE",
+            deletionSlaHours: privacy.deletionSlaHours,
+            deletable: privacy.deletable
+          },
+          update: {
+            maskingEnabled: privacy.maskingEnabled,
+            retention: asJson(privacy.retention),
+            forwardingConsent: privacy.forwardingConsent,
+            deletion: toUpperEnum<PrismaContractDeletionState>(privacy.deletion) ?? "NONE",
+            deletionSlaHours: privacy.deletionSlaHours,
+            deletable: privacy.deletable
+          }
+        });
+      }
+
+      for (const invite of store.contractInvites) {
+        await tx.contractInvite.upsert({
+          where: { id: invite.id },
+          create: {
+            id: invite.id,
+            contractId: invite.contractId,
+            roomId: invite.roomId,
+            inviteToken: invite.inviteToken,
+            invitedByManagerId: invite.invitedByManagerId,
+            tenantName: invite.tenantName,
+            email: invite.email,
+            phone: invite.phone,
+            state: invite.state,
+            signupUrl: invite.signupUrl,
+            audit: invite.audit,
+            createdAt: asDate(invite.createdAt),
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          },
+          update: {
+            contractId: invite.contractId,
+            roomId: invite.roomId,
+            invitedByManagerId: invite.invitedByManagerId,
+            tenantName: invite.tenantName,
+            email: invite.email,
+            phone: invite.phone,
+            state: invite.state,
+            signupUrl: invite.signupUrl,
+            audit: invite.audit,
             acceptedAt: asDate(invite.acceptedAt),
             acceptedByUserId: invite.acceptedByUserId
           }
@@ -811,6 +1142,121 @@ export class PrismaStoreProjector implements StoreProjector {
             completionNote: repair.completionNote,
             completionPhotoUrls: repair.completionPhotoUrls,
             updatedAt: asDate(repair.updatedAt)
+          }
+        });
+      }
+
+      for (const receipt of store.receipts) {
+        await tx.receipt.upsert({
+          where: { id: receipt.id },
+          create: {
+            id: receipt.id,
+            managerId: receipt.managerId,
+            source: toUpperEnum<PrismaReceiptSource>(receipt.source) ?? "MANUAL",
+            imageUrl: receipt.imageUrl,
+            hasEvidence: receipt.hasEvidence,
+            uploadedAt: asDate(receipt.uploadedAt),
+            duplicateOfId: receipt.duplicateOfId
+          },
+          update: {
+            managerId: receipt.managerId,
+            source: toUpperEnum<PrismaReceiptSource>(receipt.source) ?? "MANUAL",
+            imageUrl: receipt.imageUrl,
+            hasEvidence: receipt.hasEvidence,
+            uploadedAt: asDate(receipt.uploadedAt),
+            duplicateOfId: receipt.duplicateOfId
+          }
+        });
+      }
+
+      for (const cost of store.costs) {
+        await tx.cost.upsert({
+          where: { id: cost.id },
+          create: {
+            id: cost.id,
+            managerId: cost.managerId,
+            date: asDate(cost.date) ?? new Date(),
+            item: cost.item,
+            amount: cost.amount,
+            type: toUpperEnum<PrismaCostType>(cost.type) ?? "OTHER",
+            scope: toUpperEnum<PrismaCostAttributionScope>(cost.scope) ?? "BUILDING",
+            unitId: cost.unitId,
+            status: toUpperEnum<PrismaCostStatus>(cost.status) ?? "DRAFT",
+            verified: cost.verified,
+            reviewReason: toUpperEnum<PrismaCostReviewReason>(cost.reviewReason),
+            disclosure: toUpperEnum<PrismaDisclosureState>(cost.disclosure),
+            repairPayment: toUpperEnum<PrismaRepairPaymentState>(cost.repairPayment),
+            paymentRef: cost.paymentRef,
+            receiptId: cost.receiptId,
+            supersedesId: cost.supersedesId,
+            voidReason: cost.voidReason,
+            createdAt: asDate(cost.createdAt),
+            updatedAt: asDate(cost.updatedAt)
+          },
+          update: {
+            managerId: cost.managerId,
+            date: asDate(cost.date),
+            item: cost.item,
+            amount: cost.amount,
+            type: toUpperEnum<PrismaCostType>(cost.type) ?? "OTHER",
+            scope: toUpperEnum<PrismaCostAttributionScope>(cost.scope) ?? "BUILDING",
+            unitId: cost.unitId,
+            status: toUpperEnum<PrismaCostStatus>(cost.status) ?? "DRAFT",
+            verified: cost.verified,
+            reviewReason: toUpperEnum<PrismaCostReviewReason>(cost.reviewReason),
+            disclosure: toUpperEnum<PrismaDisclosureState>(cost.disclosure),
+            repairPayment: toUpperEnum<PrismaRepairPaymentState>(cost.repairPayment),
+            paymentRef: cost.paymentRef,
+            receiptId: cost.receiptId,
+            supersedesId: cost.supersedesId,
+            voidReason: cost.voidReason,
+            updatedAt: asDate(cost.updatedAt)
+          }
+        });
+      }
+
+      for (const ocr of store.receiptOcrs) {
+        await tx.receiptOcr.upsert({
+          where: { id: ocr.id },
+          create: {
+            id: ocr.id,
+            receiptId: ocr.receiptId,
+            costId: ocr.costId,
+            itemValue: ocr.fields.item.value,
+            itemConfidence: ocr.fields.item.confidence,
+            itemNeedsReview: ocr.fields.item.needsReview,
+            dateValue: ocr.fields.date.value,
+            dateConfidence: ocr.fields.date.confidence,
+            dateNeedsReview: ocr.fields.date.needsReview,
+            amountValue: ocr.fields.amount.value,
+            amountConfidence: ocr.fields.amount.confidence,
+            amountNeedsReview: ocr.fields.amount.needsReview,
+            unitIdValue: ocr.fields.unitId?.value,
+            unitIdConfidence: ocr.fields.unitId?.confidence,
+            unitIdNeedsReview: ocr.fields.unitId?.needsReview,
+            suggestedType: toUpperEnum<PrismaCostType>(ocr.suggestedType),
+            typeConfidence: ocr.typeConfidence,
+            lineItems: asJson(ocr.lineItems),
+            createdAt: asDate(ocr.createdAt)
+          },
+          update: {
+            receiptId: ocr.receiptId,
+            costId: ocr.costId,
+            itemValue: ocr.fields.item.value,
+            itemConfidence: ocr.fields.item.confidence,
+            itemNeedsReview: ocr.fields.item.needsReview,
+            dateValue: ocr.fields.date.value,
+            dateConfidence: ocr.fields.date.confidence,
+            dateNeedsReview: ocr.fields.date.needsReview,
+            amountValue: ocr.fields.amount.value,
+            amountConfidence: ocr.fields.amount.confidence,
+            amountNeedsReview: ocr.fields.amount.needsReview,
+            unitIdValue: ocr.fields.unitId?.value,
+            unitIdConfidence: ocr.fields.unitId?.confidence,
+            unitIdNeedsReview: ocr.fields.unitId?.needsReview,
+            suggestedType: toUpperEnum<PrismaCostType>(ocr.suggestedType),
+            typeConfidence: ocr.typeConfidence,
+            lineItems: asJson(ocr.lineItems)
           }
         });
       }

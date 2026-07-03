@@ -9,7 +9,7 @@ import {
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -17,8 +17,26 @@ import {
   renameSync,
   writeFileSync
 } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
+import {
+  hasRequiredPasswordMix,
+  hashPassword,
+  id,
+  isValidPhoneNumber,
+  normalizePhoneNumber,
+  now,
+  tokenFor,
+  tokenSecret,
+  verifyPassword
+} from "./roomlog-support";
+import { RoomlogAuthDomain } from "./services/roomlog-auth.domain";
+import { RoomlogFloorPlanDomain } from "./services/roomlog-floor-plan.domain";
+import { RoomlogCostDomain } from "./services/roomlog-cost.domain";
+import { RoomlogChecklistDomain } from "./services/roomlog-checklist.domain";
+import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
+import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
+import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
 import {
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
@@ -34,10 +52,20 @@ import {
   ComplaintStatus,
   ConfirmTenantCompletionInput,
   CreateRoomInput,
+  Contract,
+  ContractDocument,
+  ContractExtraction,
+  ContractInvite,
+  ContractPrivacy,
+  Cost,
+  CostReviewQueueSummary,
+  CostType,
+  DeletionState,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
   CreateMoveInChecklistItemInput,
+  DisclosureSetting,
   DuplicateTicketCandidate,
   FinalizeIntakeInput,
   FloorPlanAiAnalysisInput,
@@ -80,6 +108,8 @@ import {
   RepairStatus,
   ReviewTenantAiFeedbackInput,
   ReportCompletionInput,
+  Receipt,
+  ReceiptOcr,
   Room,
   RoomWall,
   RoomTimelineEntry,
@@ -99,7 +129,7 @@ import {
   UserRole
 } from "./roomlog.types";
 
-type SignupInput = {
+export type SignupInput = {
   email: string;
   password: string;
   passwordConfirm?: string;
@@ -114,7 +144,7 @@ type SignupInput = {
   serviceArea?: string;
 };
 
-type CreateVendorInviteInput = {
+export type CreateVendorInviteInput = {
   email?: string;
   businessName: string;
   contactPerson: string;
@@ -122,7 +152,7 @@ type CreateVendorInviteInput = {
   serviceArea: string;
 };
 
-type CreateTenantInviteInput = {
+export type CreateTenantInviteInput = {
   roomId: string;
   email?: string;
   tenantName: string;
@@ -130,7 +160,7 @@ type CreateTenantInviteInput = {
   moveInDate?: string;
 };
 
-type LoginInput = {
+export type LoginInput = {
   email: string;
   password: string;
 };
@@ -248,19 +278,42 @@ const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
   type: "object"
 } as const;
 
-function normalizePhoneNumber(phone?: string) {
-  const digits = phone?.replace(/\D+/g, "") ?? "";
+export type VendorMgmtTrade =
+  | "plumbing"
+  | "electrical"
+  | "hvac"
+  | "appliance"
+  | "locksmith"
+  | "waterproofing"
+  | "cleaning"
+  | "general"
+  | "other";
 
-  return digits || undefined;
-}
+export type VendorMgmtListFilters = {
+  q?: string;
+  trade?: string;
+  sort?: string;
+};
 
-function isValidPhoneNumber(phone: string) {
-  return /^\d{10,11}$/.test(phone);
-}
+export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
 
-function hasRequiredPasswordMix(password: string) {
-  return /[A-Za-z]/.test(password) && /\d/.test(password);
-}
+export type ManagerContractRow = {
+  contract: Contract;
+  tenantName: string;
+  buildingName: string;
+  origin: ManagerContractOrigin;
+  statusLabel: string;
+  slaOverdue: boolean;
+  needsCheckCount: number;
+  daysToExpire: number;
+  mobileQuickConfirm: boolean;
+};
+
+export type ConfirmContractInput = {
+  confirmNeedsCheck?: boolean;
+  note?: string;
+};
+
 
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
@@ -272,7 +325,7 @@ export type RoomlogServiceOptions = {
   storeProjector?: StoreProjector;
 };
 
-type AuthResult = {
+export type AuthResult = {
   userId: string;
   role: UserRole;
   accessToken: string;
@@ -329,6 +382,11 @@ export type Store = {
   vendors: VendorSummary[];
   vendorInvites: VendorInvite[];
   tenantInvites: TenantInvite[];
+  contracts: Contract[];
+  contractDocuments: ContractDocument[];
+  contractExtractions: ContractExtraction[];
+  contractPrivacies: ContractPrivacy[];
+  contractInvites: ContractInvite[];
   attachments: Attachment[];
   floorPlans: FloorPlanDraft[];
   moveInChecklist: MoveInChecklistItem[];
@@ -338,6 +396,9 @@ export type Store = {
   analyses: Record<string, AiAnalysis>;
   tickets: Ticket[];
   repairs: RepairRequest[];
+  costs: Cost[];
+  receipts: Receipt[];
+  receiptOcrs: ReceiptOcr[];
   messages: TicketMessage[];
   history: StatusHistory[];
 };
@@ -354,38 +415,9 @@ type GeneratedIntakeTurn = {
   source: "openai" | "fallback";
 };
 
-const now = () => new Date().toISOString();
 const ROOM_WALL_HEIGHT_M = 2.5;
 const ROOM_WALL_DEPTH_M = 0.15;
-
-function id(prefix: string) {
-  return `${prefix}_${randomBytes(5).toString("hex")}`;
-}
-
-function hashPassword(password: string, salt = randomBytes(12).toString("hex")) {
-  const key = scryptSync(password, salt, 32).toString("hex");
-  return `${salt}:${key}`;
-}
-
-function verifyPassword(password: string, storedHash: string) {
-  const [salt, key] = storedHash.split(":");
-  const actual = Buffer.from(hashPassword(password, salt).split(":")[1], "hex");
-  const expected = Buffer.from(key, "hex");
-
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-const tokenSecret = process.env.JWT_SECRET || "roomlog-local-dev-secret";
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
-
-function tokenFor(user: UserAccount) {
-  const payload = Buffer.from(
-    JSON.stringify({ sub: user.id, role: user.role, email: user.email })
-  ).toString("base64url");
-  const signature = createHmac("sha256", tokenSecret).update(payload).digest("base64url");
-
-  return `${payload}.${signature}`;
-}
 
 function priorityDueAt(priority: number) {
   const due = new Date();
@@ -456,6 +488,8 @@ function createDemoStore(): Store {
       createdAt
     }
   ];
+  const contractCreatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+  const contractUpdatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 10 * 60 * 1000).toISOString();
 
   return {
     users,
@@ -485,6 +519,114 @@ function createDemoStore(): Store {
     ],
     vendorInvites: [],
     tenantInvites: [],
+    contracts: [
+      {
+        id: "ct_0001",
+        roomId: "room-301",
+        tenantId: "tenant-demo",
+        managerId: "landlord-demo",
+        unitId: "301",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "pending",
+        deletion: "none",
+        valueSource: "unverified",
+        monthlyRent: 650000,
+        maintenanceFee: 70000,
+        paymentDay: 25,
+        startDate: "2026-03-01T00:00:00+09:00",
+        endDate: "2028-02-29T00:00:00+09:00",
+        createdAt: contractCreatedAt,
+        updatedAt: contractUpdatedAt,
+        extractionId: "cx_0001",
+        documentId: "cdoc_0001"
+      }
+    ],
+    contractDocuments: [
+      {
+        id: "cdoc_0001",
+        contractId: "ct_0001",
+        uploadedByUserId: "tenant-demo",
+        origin: "tenant_upload",
+        fileName: "contract-301.pdf",
+        fileUrl: "/uploads/contract-301.pdf",
+        uploadedAt: contractCreatedAt
+      }
+    ],
+    contractExtractions: [
+      {
+        id: "cx_0001",
+        contractId: "ct_0001",
+        confirmed: false,
+        highlights: [
+          "월세 65만원 · 매월 25일 납부",
+          "계약 기간 2026.03.01 ~ 2028.02.29 (2년)",
+          "묵시적 자동연장 특약 있음 — 확인 필요"
+        ],
+        items: [
+          { label: "보증금", value: "10,000,000원", group: "money", needsCheck: false, evidence: "제1조 보증금은 금 일천만원정(₩10,000,000)으로 한다." },
+          { label: "월세", value: "650,000원", group: "money", needsCheck: false, evidence: "차임은 월 금 육십오만원정으로 하며" },
+          { label: "관리비", value: "70,000원", group: "money", needsCheck: true, evidence: "관리비 별도(관리규약에 따름)" },
+          { label: "납부일", value: "매월 25일", group: "money", needsCheck: false, evidence: "매월 25일까지 임대인 계좌로 납부한다." },
+          { label: "임대인 계좌", value: "○○은행 ***-**-****21", group: "money", needsCheck: false, masked: true, evidence: "입금계좌: ○○은행 123-45-678921" },
+          { label: "계약 기간", value: "2026.03.01 ~ 2028.02.29", group: "term", needsCheck: false, evidence: "임대차 기간은 2026년 3월 1일부터 24개월로 한다." },
+          { label: "자동연장", value: "묵시적 갱신 특약", group: "term", needsCheck: true, evidence: "만료 1개월 전 통지 없을 시 동일 조건 자동연장" },
+          { label: "상세 주소", value: "서울시 ○○구 ***로 **길 **", group: "term", needsCheck: false, masked: true, evidence: "목적물: 서울시 ○○구 △△로 12길 34, 301호" },
+          { label: "원상복구", value: "퇴거 시 원상복구 의무", group: "responsibility", needsCheck: false, evidence: "임차인은 퇴거 시 목적물을 원상으로 회복하여 반환한다." },
+          { label: "수선 책임", value: "소모품·경미한 수선 임차인 부담", group: "responsibility", needsCheck: true, evidence: "경미한 수선 및 소모품 교체는 임차인 부담으로 한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "묵시적 자동연장",
+            plain: "만료 1개월 전에 아무도 연락하지 않으면 같은 조건으로 계약이 자동으로 연장돼요. 이사 계획이 있으면 미리 알려두면 좋아요.",
+            source: "만료 1개월 전 통지 없을 시 동일 조건 자동연장"
+          },
+          {
+            clause: "원상복구 의무",
+            plain: "퇴거할 때 처음 상태로 되돌려 놓아야 해요. 입주 전 사진을 남겨두면 나중에 도움이 돼요.",
+            source: "임차인은 퇴거 시 목적물을 원상으로 회복하여 반환한다."
+          },
+          {
+            clause: "경미한 수선 부담",
+            plain: "소모품 교체나 작은 수리는 임차인이 부담할 수 있어요. 큰 하자는 임대인 책임일 수 있으니 관리자에게 물어보세요.",
+            source: "경미한 수선 및 소모품 교체는 임차인 부담으로 한다."
+          }
+        ],
+        createdAt: contractUpdatedAt
+      }
+    ],
+    contractPrivacies: [
+      {
+        contractId: "ct_0001",
+        maskingEnabled: true,
+        retention: [
+          { label: "계약서 원본·추출값", reason: "정산·분쟁 대비", until: "계약 종료 후 5년" },
+          { label: "임대인 계좌·연락처", reason: "정산 완료 시 즉시 파기", until: "정산 완료 시" },
+          { label: "삭제 요청 이력", reason: "처리 감사로그", until: "3년" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      }
+    ],
+    contractInvites: [
+      {
+        id: "cinv_0001",
+        contractId: "ct_0001",
+        roomId: "room-301",
+        inviteToken: "contract-demo-token",
+        invitedByManagerId: "landlord-demo",
+        tenantName: "김민수",
+        phone: "010-1000-3001",
+        state: "connected",
+        signupUrl: "/tenant?inviteToken=contract-demo-token",
+        audit: "2026-03-01 임차인 확인 완료",
+        createdAt: "2026-03-01T10:00:00+09:00",
+        acceptedAt: "2026-03-01T10:30:00+09:00",
+        acceptedByUserId: "tenant-demo"
+      }
+    ],
     attachments: [],
     floorPlans: [],
     moveInChecklist: [],
@@ -494,6 +636,9 @@ function createDemoStore(): Store {
     analyses: {},
     tickets: [],
     repairs: [],
+    costs: [],
+    receipts: [],
+    receiptOcrs: [],
     messages: [],
     history: []
   };
@@ -508,6 +653,11 @@ function createEmptyStore(): Store {
     vendors: [],
     vendorInvites: [],
     tenantInvites: [],
+    contracts: [],
+    contractDocuments: [],
+    contractExtractions: [],
+    contractPrivacies: [],
+    contractInvites: [],
     attachments: [],
     floorPlans: [],
     moveInChecklist: [],
@@ -517,6 +667,9 @@ function createEmptyStore(): Store {
     analyses: {},
     tickets: [],
     repairs: [],
+    costs: [],
+    receipts: [],
+    receiptOcrs: [],
     messages: [],
     history: []
   };
@@ -554,6 +707,13 @@ export class RoomlogService {
   private readonly storeProjector?: StoreProjector;
   private pendingPersistence = Promise.resolve();
   private persistenceError: unknown;
+  private readonly auth: RoomlogAuthDomain;
+  private readonly floorPlan: RoomlogFloorPlanDomain;
+  private readonly cost: RoomlogCostDomain;
+  private readonly checklist: RoomlogChecklistDomain;
+  private readonly contract: RoomlogContractDomain;
+  private readonly vendorMgmt: RoomlogVendorMgmtDomain;
+  private readonly vendorRepair: RoomlogVendorRepairDomain;
 
   constructor(
     @Optional()
@@ -576,6 +736,70 @@ export class RoomlogService {
     this.store = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
+    this.auth = new RoomlogAuthDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId)
+    );
+    this.floorPlan = new RoomlogFloorPlanDomain(
+      this.store,
+      this.storageAdapter,
+      () => this.persistStore()
+    );
+    this.cost = new RoomlogCostDomain(
+      this.store,
+      (iso) => this.timeOf(iso),
+      (ticketId) => this.findTicket(ticketId),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (ocr) => this.cloneReceiptOcr(ocr)
+    );
+    this.checklist = new RoomlogChecklistDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId)
+    );
+    this.contract = new RoomlogContractDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (startIso, endIso) => this.elapsedHours(startIso, endIso)
+    );
+    this.vendorMgmt = new RoomlogVendorMgmtDomain(
+      this.store,
+      () => this.persistStore(),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (ticketId) => this.findTicket(ticketId),
+      (roomId) => this.findRoom(roomId),
+      (complaintId) => this.findComplaint(complaintId),
+      (iso) => this.timeOf(iso),
+      (startIso, endIso) => this.elapsedHours(startIso, endIso),
+      (values) => this.average(values),
+      (values) => this.median(values)
+    );
+    this.vendorRepair = new RoomlogVendorRepairDomain(
+      this.store,
+      () => this.persistStore(),
+      (ticketId) => this.findTicket(ticketId),
+      (complaintId) => this.findComplaint(complaintId),
+      (repairId) => this.findRepair(repairId),
+      (ticketId, toStatus, changedByUserId, note) =>
+        this.transitionTicket(ticketId, toStatus, changedByUserId, note),
+      (ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls) =>
+        this.addMessageInternal(ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls),
+      (ticketId, changedByUserId, fromStatus, toStatus, note) =>
+        this.pushHistory(ticketId, changedByUserId, fromStatus, toStatus, note),
+      (repair, allowed, action) => this.assertRepairStatus(repair, allowed, action),
+      (managerId, ticket) => this.assertManagerCanAccessTicket(managerId, ticket),
+      (message) => this.presentTicketMessage(message)
+    );
   }
 
   async flushPersistence() {
@@ -587,146 +811,19 @@ export class RoomlogService {
   }
 
   signup(input: SignupInput): AuthResult {
-    const normalizedInput = this.normalizeSignupInput(input);
-    this.validateSignupInput(normalizedInput);
-    const vendorInvite =
-      normalizedInput.role === "VENDOR"
-        ? this.resolvePendingVendorInvite(normalizedInput)
-        : undefined;
-    const tenantInvite =
-      normalizedInput.role === "TENANT" && normalizedInput.inviteToken
-        ? this.resolvePendingTenantInvite(normalizedInput)
-        : undefined;
-
-    if (this.store.users.some((user) => user.email === normalizedInput.email)) {
-      throw new ConflictException("이미 가입된 이메일입니다.");
-    }
-
-    if (
-      normalizedInput.phone &&
-      this.store.users.some((user) => user.phone === normalizedInput.phone)
-    ) {
-      throw new ConflictException("이미 가입된 휴대폰 번호입니다.");
-    }
-
-    const user: UserAccount = {
-      id: id("usr"),
-      email: normalizedInput.email,
-      passwordHash: hashPassword(normalizedInput.password),
-      name: normalizedInput.name,
-      phone: normalizedInput.phone,
-      role: normalizedInput.role,
-      status: "ACTIVE",
-      createdAt: now()
-    };
-
-    this.store.users.push(user);
-
-    if (user.role === "TENANT") {
-      this.store.tenantRooms[user.id] =
-        tenantInvite?.roomId ??
-        this.findOrCreateRoomForSignup(normalizedInput, this.seededLandlordId());
-
-      if (tenantInvite) {
-        tenantInvite.status = "ACCEPTED";
-        tenantInvite.acceptedAt = now();
-        tenantInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    if (user.role === "LANDLORD") {
-      this.findOrCreateRoomForSignup(normalizedInput, user.id);
-    }
-
-    if (user.role === "VENDOR") {
-      this.store.vendors.push({
-        id: id("vnd"),
-        userId: user.id,
-        businessName:
-          vendorInvite?.businessName ?? normalizedInput.businessName ?? `${user.name} 협력업체`,
-        contactPerson: vendorInvite?.contactPerson ?? user.name,
-        phone: user.phone ?? vendorInvite?.phone ?? "",
-        serviceArea: vendorInvite?.serviceArea ?? normalizedInput.serviceArea ?? "서울",
-        activeJobs: 0
-      });
-
-      if (vendorInvite) {
-        vendorInvite.status = "ACCEPTED";
-        vendorInvite.acceptedAt = now();
-        vendorInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    this.persistStore();
-    return this.authResult(user);
+    return this.auth.signup(input);
   }
 
   login(input: LoginInput): AuthResult {
-    const user = this.store.users.find((account) => account.email === input.email);
-
-    if (!user || !verifyPassword(input.password, user.passwordHash)) {
-      throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
-    }
-
-    return this.authResult(user);
+    return this.auth.login(input);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
-    const token = authorization?.replace(/^Bearer\s+/i, "");
-
-    if (!token) {
-      throw new UnauthorizedException("인증 토큰이 필요합니다.");
-    }
-
-    const [payload, signature] = token.split(".");
-
-    if (!payload || !signature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const expectedSignature = createHmac("sha256", tokenSecret)
-      .update(payload)
-      .digest("base64url");
-
-    if (signature !== expectedSignature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      sub?: string;
-    };
-    const userId = decoded.sub;
-    const user = this.store.users.find((account) => account.id === userId);
-
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    return user;
+    return this.auth.getUserFromToken(authorization);
   }
 
   getMe(authorization?: string) {
-    const user = this.getUserFromToken(authorization);
-    const roomId = this.store.tenantRooms[user.id];
-    const room = roomId ? this.store.rooms.find((item) => item.id === roomId) : undefined;
-    const vendor = this.store.vendors.find((item) => item.userId === user.id);
-    const managedRooms =
-      user.role === "LANDLORD"
-        ? this.store.rooms.filter((item) => item.landlordId === user.id).map((item) => ({ ...item }))
-        : undefined;
-
-    return {
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      phone: user.phone,
-      role: user.role,
-      roomId,
-      room: room ? { ...room } : undefined,
-      managedRooms,
-      vendorId: vendor?.id,
-      vendor: vendor ? { ...vendor } : undefined
-    };
+    return this.auth.getMe(authorization);
   }
 
   getDemoState() {
@@ -739,10 +836,18 @@ export class RoomlogService {
       rooms: this.store.rooms,
       vendors: this.listVendors(),
       tenantInvites: this.store.tenantInvites,
+      contracts: this.store.contracts,
+      contractDocuments: this.store.contractDocuments,
+      contractExtractions: this.store.contractExtractions,
+      contractPrivacies: this.store.contractPrivacies,
+      contractInvites: this.store.contractInvites,
       complaints: this.store.complaints,
       intakeSessions: this.store.intakeSessions,
       tickets: this.store.tickets,
       repairs: this.store.repairs,
+      costs: this.store.costs,
+      receipts: this.store.receipts,
+      receiptOcrs: this.store.receiptOcrs,
       messages: this.store.messages
     };
   }
@@ -753,6 +858,55 @@ export class RoomlogService {
         enabled: this.seedDemoData
       }
     };
+  }
+
+  listTenantContracts(tenantId: string): Contract[] {
+    return this.contract.listTenantContracts(tenantId);
+  }
+
+  getTenantContract(tenantId: string, contractId: string): Contract {
+    return this.contract.getTenantContract(tenantId, contractId);
+  }
+
+  getTenantContractExtraction(tenantId: string, contractId: string): ContractExtraction {
+    return this.contract.getTenantContractExtraction(tenantId, contractId);
+  }
+
+  getTenantContractPrivacy(tenantId: string, contractId: string): ContractPrivacy {
+    return this.contract.getTenantContractPrivacy(tenantId, contractId);
+  }
+
+  requestTenantContractDeletion(tenantId: string, contractId: string): ContractPrivacy {
+    return this.contract.requestTenantContractDeletion(tenantId, contractId);
+  }
+
+  getManagerContractDashboard(managerId: string) {
+    return this.contract.getManagerContractDashboard(managerId);
+  }
+
+  getManagerContractDetail(managerId: string, contractId = "ct_0001") {
+    return this.contract.getManagerContractDetail(managerId, contractId);
+  }
+
+  confirmManagerContractReview(
+    managerId: string,
+    contractId: string,
+    input: ConfirmContractInput = {}
+  ) {
+    return this.contract.confirmManagerContractReview(managerId, contractId, input);
+  }
+
+  requestManagerContractInfo(managerId: string, contractId: string) {
+    return this.contract.requestManagerContractInfo(managerId, contractId);
+  }
+
+  decideManagerContractDeletion(
+    managerId: string,
+    contractId: string,
+    state: DeletionState,
+    retentionNote?: string
+  ) {
+    return this.contract.decideManagerContractDeletion(managerId, contractId, state, retentionNote);
   }
 
   createComplaint(tenantId: string, input: CreateComplaintInput) {
@@ -1967,240 +2121,84 @@ export class RoomlogService {
     return repair;
   }
 
+  listManagerCosts(managerId: string) {
+    return this.cost.listManagerCosts(managerId);
+  }
+
+  getManagerCost(managerId: string, costId: string) {
+    return this.cost.getManagerCost(managerId, costId);
+  }
+
+  getManagerCostReviewQueueSummary(managerId: string): CostReviewQueueSummary {
+    return this.cost.getManagerCostReviewQueueSummary(managerId);
+  }
+
+  getManagerMonthlyCostSummary(managerId: string, month?: string) {
+    return this.cost.getManagerMonthlyCostSummary(managerId, month);
+  }
+
+  listManagerReceipts(managerId: string) {
+    return this.cost.listManagerReceipts(managerId);
+  }
+
+  getManagerReceiptOcr(managerId: string, ocrId: string) {
+    return this.cost.getManagerReceiptOcr(managerId, ocrId);
+  }
+
+  getManagerDisclosureSetting(managerId: string, month?: string): DisclosureSetting {
+    return this.cost.getManagerDisclosureSetting(managerId, month);
+  }
+
   listVendors() {
-    return this.store.vendors.map((vendor) => ({ ...vendor }));
+    return this.vendorMgmt.listVendors();
+  }
+
+  listManagerVendorMgmtVendors(managerId: string, filters: VendorMgmtListFilters = {}) {
+    return this.vendorMgmt.listManagerVendorMgmtVendors(managerId, filters);
+  }
+
+  getManagerVendorMgmtDetail(managerId: string, vendorId: string) {
+    return this.vendorMgmt.getManagerVendorMgmtDetail(managerId, vendorId);
+  }
+
+  getManagerVendorMgmtPerf(managerId: string, vendorId: string) {
+    return this.vendorMgmt.getManagerVendorMgmtPerf(managerId, vendorId);
+  }
+
+  listManagerVendorDuplicateCandidates(managerId: string) {
+    return this.vendorMgmt.listManagerVendorDuplicateCandidates(managerId);
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
-
-    if (!manager) {
-      throw new ForbiddenException("관리자만 협력업체를 초대할 수 있습니다.");
-    }
-
-    const businessName = input.businessName?.trim();
-    const contactPerson = input.contactPerson?.trim();
-    const phone = normalizePhoneNumber(input.phone);
-    const serviceArea = input.serviceArea?.trim();
-    const email = input.email?.trim().toLowerCase();
-
-    if (!businessName) {
-      throw new BadRequestException("업체명을 입력해주세요.");
-    }
-
-    if (!contactPerson) {
-      throw new BadRequestException("담당자명을 입력해주세요.");
-    }
-
-    if (!phone) {
-      throw new BadRequestException("업체 연락처를 입력해주세요.");
-    }
-
-    if (!serviceArea) {
-      throw new BadRequestException("서비스 가능 지역을 입력해주세요.");
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new BadRequestException("초대 이메일 형식이 올바르지 않습니다.");
-    }
-
-    const inviteToken = randomBytes(18).toString("base64url");
-    const createdAt = now();
-    const invite: VendorInvite = {
-      id: id("vinv"),
-      inviteToken,
-      invitedByManagerId: managerId,
-      email,
-      businessName,
-      contactPerson,
-      phone,
-      serviceArea,
-      status: "PENDING",
-      signupUrl: `/vendor?inviteToken=${inviteToken}`,
-      createdAt
-    };
-
-    this.store.vendorInvites.unshift(invite);
-    this.persistStore();
-
-    return this.presentVendorInvite(invite);
+    return this.vendorMgmt.createVendorInvite(managerId, input);
   }
 
   listVendorInvites(managerId: string) {
-    return this.store.vendorInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
-      .map((invite) => this.presentVendorInvite(invite));
+    return this.vendorMgmt.listVendorInvites(managerId);
   }
 
   createTenantInvite(managerId: string, input: CreateTenantInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
-
-    if (!manager) {
-      throw new ForbiddenException("관리자만 임차인을 초대할 수 있습니다.");
-    }
-
-    const roomId = input.roomId?.trim();
-    const tenantName = input.tenantName?.trim();
-    const phone = normalizePhoneNumber(input.phone);
-    const moveInDate = input.moveInDate?.trim();
-    const email = input.email?.trim().toLowerCase();
-
-    if (!roomId) {
-      throw new BadRequestException("초대할 호실을 선택해주세요.");
-    }
-
-    this.assertManagerCanAccessRoom(managerId, roomId);
-
-    if (!tenantName) {
-      throw new BadRequestException("임차인 이름을 입력해주세요.");
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new BadRequestException("초대 이메일 형식이 올바르지 않습니다.");
-    }
-
-    const inviteToken = randomBytes(18).toString("base64url");
-    const createdAt = now();
-    const invite: TenantInvite = {
-      id: id("tinv"),
-      inviteToken,
-      invitedByManagerId: managerId,
-      roomId,
-      email,
-      tenantName,
-      phone,
-      moveInDate,
-      status: "PENDING",
-      signupUrl: `/tenant?inviteToken=${inviteToken}`,
-      createdAt
-    };
-
-    this.store.tenantInvites.unshift(invite);
-    this.persistStore();
-
-    return this.presentTenantInvite(invite);
+    return this.vendorMgmt.createTenantInvite(managerId, input);
   }
 
   listTenantInvites(managerId: string) {
-    return this.store.tenantInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
-      .map((invite) => this.presentTenantInvite(invite));
+    return this.vendorMgmt.listTenantInvites(managerId);
   }
 
   getSignupInvitePreview(role: UserRole, inviteToken: string) {
-    const token = inviteToken?.trim();
-
-    if (!token) {
-      throw new BadRequestException("초대 토큰이 필요합니다.");
-    }
-
-    if (role === "TENANT") {
-      const invite = this.store.tenantInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-      }
-
-      this.assertPendingTenantInvite(invite);
-
-      const room = this.findRoom(invite.roomId);
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.tenantName,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        moveInDate: invite.moveInDate,
-        targetLabel: [room.buildingName, room.roomNo].filter(Boolean).join(" "),
-        room: { ...room },
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    if (role === "VENDOR") {
-      const invite = this.store.vendorInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-      }
-
-      this.assertPendingVendorInvite(invite);
-
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.contactPerson,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        businessName: invite.businessName,
-        serviceArea: invite.serviceArea,
-        targetLabel: invite.businessName,
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    throw new BadRequestException("초대 역할이 올바르지 않습니다.");
+    return this.auth.getSignupInvitePreview(role, inviteToken);
   }
 
   listVendorRepairs(vendorUserOrProfileId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-
-    return this.store.repairs
-      .filter((repair) => repair.vendorId === vendor.id)
-      .map((repair) => this.presentRepair(repair));
+    return this.vendorRepair.listVendorRepairs(vendorUserOrProfileId);
   }
 
   getVendorRepair(vendorUserOrProfileId: string, repairId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const repair = this.store.repairs.find(
-      (item) => item.id === repairId && item.vendorId === vendor.id
-    );
-
-    if (!repair) {
-      throw new NotFoundException("수리 요청을 찾을 수 없습니다.");
-    }
-
-    return this.presentRepair(repair);
+    return this.vendorRepair.getVendorRepair(vendorUserOrProfileId, repairId);
   }
 
   submitEstimate(vendorUserOrProfileId: string, repairId: string, input: SubmitEstimateInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["REQUESTED", "ACCEPTED"], "견적 제출");
-    const estimateAmount = Number(input.estimateAmount);
-    const estimateDescription = input.estimateDescription?.trim();
-
-    if (!Number.isFinite(estimateAmount) || estimateAmount <= 0) {
-      throw new BadRequestException("견적 금액을 올바르게 입력해주세요.");
-    }
-
-    if (!estimateDescription) {
-      throw new BadRequestException("견적 설명을 입력해주세요.");
-    }
-
-    repair.estimateAmount = estimateAmount;
-    repair.estimateDescription = estimateDescription;
-    repair.status = "ESTIMATE_SUBMITTED";
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "ESTIMATE_REVIEW", repair.vendorId, "견적 제출");
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.submitEstimate(vendorUserOrProfileId, repairId, input);
   }
 
   approveRepairEstimate(
@@ -2208,92 +2206,15 @@ export class RoomlogService {
     repairId: string,
     input: ApproveRepairEstimateInput
   ) {
-    const repair = this.findRepair(repairId);
-    const ticket = this.findTicket(repair.ticketId);
-    this.assertManagerCanAccessTicket(managerId, ticket);
-    this.assertRepairStatus(repair, ["ESTIMATE_SUBMITTED"], "견적 승인");
-
-    if (!["LANDLORD", "TENANT", "PENDING"].includes(input.costBearer)) {
-      throw new BadRequestException("비용 주체를 선택해주세요.");
-    }
-
-    repair.status = "ESTIMATE_APPROVED";
-    repair.costBearer = input.costBearer;
-    repair.estimateApprovalNote = input.note?.trim() || this.costBearerLabel(input.costBearer);
-    repair.estimateApprovedAt = now();
-    repair.updatedAt = now();
-    ticket.updatedAt = now();
-    this.pushHistory(
-      ticket.id,
-      managerId,
-      ticket.status,
-      ticket.status,
-      `견적 승인: ${this.costBearerLabel(input.costBearer)}`
-    );
-    this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      managerId,
-      "LANDLORD",
-      [
-        `견적을 승인했습니다. 비용 주체: ${this.costBearerLabel(input.costBearer)}.`,
-        repair.estimateAmount ? `승인 금액: ${repair.estimateAmount.toLocaleString()}원.` : "",
-        repair.estimateApprovalNote ? `관리자 메모: ${repair.estimateApprovalNote}` : "",
-        "업체가 방문 일정을 확정하면 이 티켓에서 다시 안내드리겠습니다."
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.approveRepairEstimate(managerId, repairId, input);
   }
 
   scheduleRepair(vendorUserOrProfileId: string, repairId: string, input: ScheduleRepairInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["ESTIMATE_APPROVED"], "방문 일정 저장");
-    const scheduledAt = input.scheduledAt?.trim();
-
-    if (!scheduledAt) {
-      throw new BadRequestException("방문 일정을 입력해주세요.");
-    }
-
-    repair.scheduledAt = input.scheduledAt;
-    repair.status = "SCHEDULED";
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "REPAIR_IN_PROGRESS", repair.vendorId, "방문 일정 확정");
-    const ticket = this.findTicket(repair.ticketId);
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      vendor.userId,
-      "VENDOR",
-      [
-        `방문 일정이 확정되었습니다: ${scheduledAt}.`,
-        repair.costBearer ? `비용 주체: ${this.costBearerLabel(repair.costBearer)}.` : "",
-        "방문 전 문제 부위 주변을 정리해주시고, 추가로 보이는 증상이 있으면 이 티켓에 남겨주세요."
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.scheduleRepair(vendorUserOrProfileId, repairId, input);
   }
 
   reportCompletion(vendorUserOrProfileId: string, repairId: string, input: ReportCompletionInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["SCHEDULED", "IN_PROGRESS"], "완료 보고");
-    repair.status = "COMPLETION_REPORTED";
-    repair.completedAt = now();
-    repair.completionNote = input.completionNote;
-    repair.completionPhotoUrls = input.completionPhotoUrls ?? [];
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "COMPLETION_REPORTED", repair.vendorId, "완료 보고");
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.reportCompletion(vendorUserOrProfileId, repairId, input);
   }
 
   addVendorRepairMessage(
@@ -2301,33 +2222,7 @@ export class RoomlogService {
     repairId: string,
     input: AddVendorRepairMessageInput
   ) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const ticket = this.findTicket(repair.ticketId);
-    const messageText = input.messageText?.trim() ?? "";
-    const attachmentUrls = input.attachmentUrls ?? [];
-
-    if (!messageText && attachmentUrls.length === 0) {
-      throw new BadRequestException("업체 메시지 또는 사진이 필요합니다.");
-    }
-
-    const message = this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      vendor.userId,
-      "VENDOR",
-      messageText || "업체 사진을 첨부했습니다.",
-      attachmentUrls
-    );
-    ticket.updatedAt = now();
-    repair.updatedAt = now();
-    this.persistStore();
-
-    return {
-      message: this.presentTicketMessage(message),
-      repair: this.presentRepair(repair),
-      ticket: this.presentTicket(ticket)
-    };
+    return this.vendorRepair.addVendorRepairMessage(vendorUserOrProfileId, repairId, input);
   }
 
   approveCompletion(managerId: string, ticketId: string, note?: string) {
@@ -2587,68 +2482,15 @@ export class RoomlogService {
   }
 
   createMoveInChecklistItem(tenantId: string, input: CreateMoveInChecklistItemInput) {
-    const roomId = input.roomId?.trim() || this.store.tenantRooms[tenantId];
-
-    if (!roomId || this.store.tenantRooms[tenantId] !== roomId) {
-      throw new ForbiddenException("본인 호실의 체크리스트만 등록할 수 있습니다.");
-    }
-
-    const area = input.area?.trim();
-    const itemName = input.itemName?.trim();
-    const memo = input.memo?.trim();
-    const attachmentUrls = input.attachmentUrls?.map((url) => url.trim()).filter(Boolean) ?? [];
-
-    if (!area) {
-      throw new BadRequestException("공간명을 입력해주세요.");
-    }
-
-    if (!itemName) {
-      throw new BadRequestException("체크 항목명을 입력해주세요.");
-    }
-
-    if (attachmentUrls.length === 0) {
-      throw new BadRequestException("입주 전 기준 사진을 한 장 이상 첨부해주세요.");
-    }
-
-    this.findRoom(roomId);
-    const createdAt = now();
-    const item: MoveInChecklistItem = {
-      id: id("mchk"),
-      tenantId,
-      roomId,
-      area,
-      itemName,
-      memo,
-      guidance: this.moveInChecklistGuidance(area, itemName),
-      attachmentUrls,
-      createdAt,
-      updatedAt: createdAt
-    };
-
-    this.store.moveInChecklist.unshift(item);
-    this.persistStore();
-
-    return this.presentMoveInChecklistItem(item);
+    return this.checklist.createMoveInChecklistItem(tenantId, input);
   }
 
   listTenantMoveInChecklist(tenantId: string) {
-    const roomId = this.store.tenantRooms[tenantId];
-
-    if (!roomId) {
-      throw new NotFoundException("연결된 호실을 찾을 수 없습니다.");
-    }
-
-    return this.store.moveInChecklist
-      .filter((item) => item.tenantId === tenantId && item.roomId === roomId)
-      .map((item) => this.presentMoveInChecklistItem(item));
+    return this.checklist.listTenantMoveInChecklist(tenantId);
   }
 
   listManagerMoveInChecklist(managerId: string, roomId: string) {
-    this.assertManagerCanAccessRoom(managerId, roomId);
-
-    return this.store.moveInChecklist
-      .filter((item) => item.roomId === roomId)
-      .map((item) => this.presentMoveInChecklistItem(item));
+    return this.checklist.listManagerMoveInChecklist(managerId, roomId);
   }
 
   createRoom(ownerId: string, input: CreateRoomInput) {
@@ -2726,53 +2568,7 @@ export class RoomlogService {
   }
 
   async saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
-    const user = this.store.users.find((account) => account.id === uploadedByUserId);
-
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    if (!input.mimeType.startsWith("image/")) {
-      throw new BadRequestException("이미지 파일만 업로드할 수 있습니다.");
-    }
-
-    if (!input.buffer.length) {
-      throw new BadRequestException("업로드할 파일이 비어 있습니다.");
-    }
-
-    if (input.buffer.length > 10 * 1024 * 1024) {
-      throw new BadRequestException("이미지는 10MB 이하만 업로드할 수 있습니다.");
-    }
-
-    const attachmentId = id("att");
-    const safeBaseName =
-      basename(input.originalName, extname(input.originalName))
-        .replace(/[^a-zA-Z0-9가-힣_-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 48) || "upload";
-    const extension = this.extensionForMimeType(input.mimeType, input.originalName);
-    const fileName = `${attachmentId}-${safeBaseName}${extension}`;
-    const storedFile = await this.storageAdapter.save({
-      buffer: input.buffer,
-      fileName,
-      mimeType: input.mimeType
-    });
-    const createdAt = now();
-    const attachment: Attachment = {
-      id: attachmentId,
-      uploadedByUserId,
-      category: input.category,
-      fileName: storedFile.fileName,
-      fileUrl: storedFile.fileUrl,
-      mimeType: input.mimeType,
-      sizeBytes: input.buffer.length,
-      createdAt
-    };
-
-    this.store.attachments.unshift(attachment);
-    this.persistStore();
-
-    return { ...attachment };
+    return this.floorPlan.saveAttachment(uploadedByUserId, input);
   }
 
   createFloorPlanDraft(ownerId: string, input: SaveFloorPlanDraftInput) {
@@ -2804,18 +2600,7 @@ export class RoomlogService {
   }
 
   getFloorPlanDraft(ownerId: string, floorPlanId: string) {
-    this.assertFloorPlanOwner(ownerId);
-    const draft = this.store.floorPlans.find((floorPlan) => floorPlan.id === floorPlanId);
-
-    if (!draft) {
-      throw new NotFoundException("저장된 도면을 찾을 수 없습니다.");
-    }
-
-    if (draft.ownerId !== ownerId) {
-      throw new ForbiddenException("이 도면에 접근할 권한이 없습니다.");
-    }
-
-    return this.presentFloorPlanDraft(draft);
+    return this.floorPlan.getFloorPlanDraft(ownerId, floorPlanId);
   }
 
   updateFloorPlanDraft(ownerId: string, floorPlanId: string, input: SaveFloorPlanDraftInput) {
@@ -3786,6 +3571,11 @@ export class RoomlogService {
       ...parsed,
       vendorInvites: parsed.vendorInvites ?? [],
       tenantInvites: parsed.tenantInvites ?? [],
+      contracts: parsed.contracts ?? [],
+      contractDocuments: parsed.contractDocuments ?? [],
+      contractExtractions: parsed.contractExtractions ?? [],
+      contractPrivacies: parsed.contractPrivacies ?? [],
+      contractInvites: parsed.contractInvites ?? [],
       attachments: parsed.attachments ?? [],
       floorPlans: (parsed.floorPlans ?? []).map((floorPlan) => ({
         ...floorPlan,
@@ -3822,7 +3612,10 @@ export class RoomlogService {
       messages: parsed.messages.map((message) => ({
         ...message,
         attachmentUrls: message.attachmentUrls ?? []
-      }))
+      })),
+      costs: parsed.costs ?? [],
+      receipts: parsed.receipts ?? [],
+      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr))
     };
   }
 
@@ -3869,6 +3662,11 @@ export class RoomlogService {
         Array.isArray(snapshot.vendors) &&
         (snapshot.vendorInvites === undefined || Array.isArray(snapshot.vendorInvites)) &&
         (snapshot.tenantInvites === undefined || Array.isArray(snapshot.tenantInvites)) &&
+        (snapshot.contracts === undefined || Array.isArray(snapshot.contracts)) &&
+        (snapshot.contractDocuments === undefined || Array.isArray(snapshot.contractDocuments)) &&
+        (snapshot.contractExtractions === undefined || Array.isArray(snapshot.contractExtractions)) &&
+        (snapshot.contractPrivacies === undefined || Array.isArray(snapshot.contractPrivacies)) &&
+        (snapshot.contractInvites === undefined || Array.isArray(snapshot.contractInvites)) &&
         (snapshot.attachments === undefined || Array.isArray(snapshot.attachments)) &&
         (snapshot.floorPlans === undefined || Array.isArray(snapshot.floorPlans)) &&
         (snapshot.moveInChecklist === undefined || Array.isArray(snapshot.moveInChecklist)) &&
@@ -3878,139 +3676,12 @@ export class RoomlogService {
         snapshot.analyses &&
         Array.isArray(snapshot.tickets) &&
         Array.isArray(snapshot.repairs) &&
+        (snapshot.costs === undefined || Array.isArray(snapshot.costs)) &&
+        (snapshot.receipts === undefined || Array.isArray(snapshot.receipts)) &&
+        (snapshot.receiptOcrs === undefined || Array.isArray(snapshot.receiptOcrs)) &&
         Array.isArray(snapshot.messages) &&
         Array.isArray(snapshot.history)
     );
-  }
-
-  private extensionForMimeType(mimeType: string, originalName: string) {
-    const extension = extname(originalName).toLowerCase();
-    const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"];
-
-    if (allowedExtensions.includes(extension)) {
-      return extension;
-    }
-
-    const fallback: Record<string, string> = {
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/webp": ".webp",
-      "image/gif": ".gif",
-      "image/heic": ".heic"
-    };
-
-    return fallback[mimeType] ?? ".img";
-  }
-
-  private normalizeSignupInput(input: SignupInput): SignupInput {
-    return {
-      ...input,
-      email: input.email?.trim().toLowerCase(),
-      name: input.name?.trim(),
-      phone: normalizePhoneNumber(input.phone),
-      inviteToken: input.inviteToken?.trim(),
-      buildingName: input.buildingName?.trim(),
-      roomNo: input.roomNo?.trim(),
-      address: input.address?.trim(),
-      businessName: input.businessName?.trim(),
-      serviceArea: input.serviceArea?.trim()
-    };
-  }
-
-  private validateSignupInput(input: SignupInput) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email || "")) {
-      throw new BadRequestException("이메일 형식이 올바르지 않습니다.");
-    }
-
-    if (!input.password || input.password.length < 8) {
-      throw new BadRequestException("비밀번호는 8자 이상이어야 합니다.");
-    }
-
-    if (!hasRequiredPasswordMix(input.password)) {
-      throw new BadRequestException("비밀번호는 영문과 숫자를 포함해야 합니다.");
-    }
-
-    if (input.passwordConfirm !== undefined && input.password !== input.passwordConfirm) {
-      throw new BadRequestException("비밀번호 확인이 일치하지 않습니다.");
-    }
-
-    if (!input.name?.trim()) {
-      throw new BadRequestException("이름을 입력해주세요.");
-    }
-
-    if (!input.phone?.trim()) {
-      throw new BadRequestException("휴대폰 번호를 입력해주세요.");
-    }
-
-    if (!isValidPhoneNumber(input.phone)) {
-      throw new BadRequestException("휴대폰 번호는 숫자 10~11자리여야 합니다.");
-    }
-
-    if (!["TENANT", "LANDLORD", "VENDOR"].includes(input.role)) {
-      throw new BadRequestException("가입 역할이 올바르지 않습니다.");
-    }
-
-    if ((input.role === "TENANT" && !input.inviteToken) || input.role === "LANDLORD") {
-      if (!input.buildingName?.trim()) {
-        throw new BadRequestException("건물명을 입력해주세요.");
-      }
-
-      if (!input.roomNo?.trim()) {
-        throw new BadRequestException("호실을 입력해주세요.");
-      }
-
-      if (!input.address?.trim()) {
-        throw new BadRequestException("건물 주소를 입력해주세요.");
-      }
-    }
-
-    if (input.role === "VENDOR") {
-      if (!input.inviteToken?.trim()) {
-        throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-      }
-    }
-  }
-
-  private findOrCreateRoomForSignup(input: SignupInput, landlordId?: string) {
-    const buildingName = input.buildingName?.trim();
-    const roomNo = input.roomNo?.trim();
-    const address = input.address?.trim();
-
-    if (!buildingName || !roomNo || !address) {
-      throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
-    }
-
-    const existingRoom = this.store.rooms.find(
-      (room) =>
-        room.buildingName === buildingName &&
-        room.roomNo === roomNo &&
-        room.address === address
-    );
-
-    if (existingRoom) {
-      if (landlordId && !existingRoom.landlordId) {
-        existingRoom.landlordId = landlordId;
-      }
-
-      return existingRoom.id;
-    }
-
-    const room: Room = {
-      id: id("room"),
-      buildingName,
-      roomNo,
-      address,
-      landlordId
-    };
-    this.store.rooms.push(room);
-
-    return room.id;
-  }
-
-  private seededLandlordId() {
-    return this.store.users.some((user) => user.id === "landlord-demo")
-      ? "landlord-demo"
-      : undefined;
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
@@ -5953,15 +5624,6 @@ export class RoomlogService {
     ticket.priority = Math.min(ticket.priority, analysis.priority);
   }
 
-  private authResult(user: UserAccount): AuthResult {
-    return {
-      userId: user.id,
-      role: user.role,
-      accessToken: tokenFor(user),
-      name: user.name
-    };
-  }
-
   private analyzeComplaint(input: CreateComplaintInput): AiAnalysis {
     const text = `${input.title} ${input.description} ${input.location}`;
     const lower = text.toLowerCase();
@@ -6347,22 +6009,6 @@ export class RoomlogService {
     }
 
     return text.length > 86 ? `${text.slice(0, 83)}...` : text;
-  }
-
-  private presentMoveInChecklistItem(item: MoveInChecklistItem) {
-    return {
-      ...item,
-      attachmentUrls: [...item.attachmentUrls],
-      room: this.store.rooms.find((room) => room.id === item.roomId)
-    };
-  }
-
-  private moveInChecklistGuidance(area: string, itemName: string) {
-    return [
-      `${area} ${itemName}은 정면에서 전체가 보이게 촬영해주세요.`,
-      "같은 위치는 전체 사진 1장과 문제 부위가 보이는 근접 사진 1장을 남기면 이후 비교가 쉬워집니다.",
-      "퇴실 비교를 위해 문, 창문, 가전, 벽면처럼 기준점이 함께 보이게 촬영해주세요."
-    ].join(" ");
   }
 
   private inferManagerReplyIntent(ticket: Ticket): ManagerReplyIntent {
@@ -6826,6 +6472,47 @@ export class RoomlogService {
     };
   }
 
+  private cloneReceiptOcr(ocr: ReceiptOcr): ReceiptOcr {
+    return {
+      ...ocr,
+      fields: {
+        item: { ...ocr.fields.item },
+        date: { ...ocr.fields.date },
+        amount: { ...ocr.fields.amount },
+        unitId: ocr.fields.unitId ? { ...ocr.fields.unitId } : undefined
+      },
+      lineItems: ocr.lineItems.map((item) => ({ ...item }))
+    };
+  }
+
+  private displayUnitId(room: Room) {
+    return room.roomNo.replace(/호$/u, "");
+  }
+
+  private elapsedHours(startIso: string, endIso: string) {
+    const elapsed = this.timeOf(endIso) - this.timeOf(startIso);
+
+    return elapsed > 0 ? Math.round((elapsed / 3_600_000) * 10) / 10 : undefined;
+  }
+
+  private median(values: number[]) {
+    if (values.length === 0) return undefined;
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+
+    return sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  }
+
+  private average(values: number[]) {
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+
+  private timeOf(iso?: string) {
+    return iso ? new Date(iso).getTime() || 0 : 0;
+  }
+
   private displayStatus(status: TicketStatus) {
     const map: Record<TicketStatus, string> = {
       RECEIVED: "접수됨",
@@ -6963,90 +6650,6 @@ export class RoomlogService {
     this.assertManagerCanAccessRoom(managerId, ticket.roomId);
   }
 
-  private resolvePendingVendorInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.vendorInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-    }
-
-    this.assertPendingVendorInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingVendorInvite(invite: VendorInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 협력업체 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 협력업체 초대입니다.");
-    }
-  }
-
-  private resolvePendingTenantInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("임차인 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.tenantInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-    }
-
-    this.assertPendingTenantInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    if (invite.phone && input.phone && invite.phone !== input.phone) {
-      throw new BadRequestException("초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingTenantInvite(invite: TenantInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 임차인 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 임차인 초대입니다.");
-    }
-  }
-
   private findIntakeSession(tenantId: string, sessionId: string) {
     const session = this.store.intakeSessions.find(
       (item) => item.id === sessionId && item.tenantId === tenantId
@@ -7059,44 +6662,6 @@ export class RoomlogService {
     return session;
   }
 
-  private presentVendorInvite(invite: VendorInvite) {
-    return { ...invite };
-  }
-
-  private presentTenantInvite(invite: TenantInvite) {
-    const room = this.store.rooms.find((item) => item.id === invite.roomId);
-
-    return {
-      ...invite,
-      room: room ? { ...room } : undefined
-    };
-  }
-
-  private resolveVendor(vendorUserOrProfileId: string) {
-    const vendor = this.store.vendors.find(
-      (item) => item.id === vendorUserOrProfileId || item.userId === vendorUserOrProfileId
-    );
-
-    if (!vendor) {
-      throw new NotFoundException("협력업체를 찾을 수 없습니다.");
-    }
-
-    return vendor;
-  }
-
-  private findVendorRepair(vendorUserOrProfileId: string, repairId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const repair = this.store.repairs.find(
-      (item) => item.id === repairId && item.vendorId === vendor.id
-    );
-
-    if (!repair) {
-      throw new NotFoundException("수리 요청을 찾을 수 없습니다.");
-    }
-
-    return repair;
-  }
-
   private findRepair(repairId: string) {
     const repair = this.store.repairs.find((item) => item.id === repairId);
 
@@ -7107,13 +6672,4 @@ export class RoomlogService {
     return repair;
   }
 
-  private costBearerLabel(costBearer: "LANDLORD" | "TENANT" | "PENDING") {
-    const labels = {
-      LANDLORD: "임대인 부담",
-      TENANT: "임차인 부담 가능성",
-      PENDING: "비용 주체 판단 대기"
-    };
-
-    return labels[costBearer];
-  }
 }

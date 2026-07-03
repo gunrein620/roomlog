@@ -6,6 +6,7 @@ node_modules/
 !.env.example
 
 .next/
+next-env.d.ts
 dist/
 coverage/
 uploads/

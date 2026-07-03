@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import "@roomlog/ui/tokens.css";
 import "./globals.css";
 import { PwaRegister } from "./pwa-register";
 
