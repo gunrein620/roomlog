@@ -110,7 +110,7 @@ export interface ReportChatData {
 
 export async function getReportHub(): Promise<ReportHubData> {
   return apiOrFallback(async () => {
-    const reports = await fetchOrCreateReports();
+    const reports = await fetchReports();
 
     return {
       reports,
@@ -126,7 +126,8 @@ export async function getReportHub(): Promise<ReportHubData> {
 
 export async function getReportCreateData(): Promise<ReportCreateData> {
   return apiOrFallback(async () => {
-    const recentReport = await getCurrentReport();
+    const reports = await fetchReports();
+    const recentReport = reports[0] ? await getReportDetail(reports[0].id) : DEMO_REPORTS[0];
 
     return {
       recipients: recipientsFor(recentReport),
@@ -199,14 +200,15 @@ export function getReportFaq(): Promise<FaqQuestion[]> {
   return Promise.resolve(DEMO_FAQ);
 }
 
-async function fetchOrCreateReports(): Promise<Report[]> {
-  const reports = await serverFetch<Report[]>(reportPaths.reports());
+export function createManagerReport(input: CreateManagerReportInput = defaultReportInput): Promise<Report> {
+  return serverFetch<Report>(reportPaths.reports(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
 
-  if (reports.length > 0) {
-    return reports;
-  }
-
-  return [await createDefaultReport()];
+async function fetchReports(): Promise<Report[]> {
+  return serverFetch<Report[]>(reportPaths.reports());
 }
 
 async function getCurrentReport(reportId?: string): Promise<Report> {
@@ -214,8 +216,12 @@ async function getCurrentReport(reportId?: string): Promise<Report> {
     return getReportDetail(reportId);
   }
 
-  const reports = await fetchOrCreateReports();
+  const reports = await fetchReports();
   const report = reports[0];
+
+  if (!report) {
+    throw new Error("No manager report is available.");
+  }
 
   return getReportDetail(report.id);
 }
@@ -228,14 +234,6 @@ async function getReportDetail(reportId: string): Promise<Report> {
 
   return report;
 }
-
-function createDefaultReport(): Promise<Report> {
-  return serverFetch<Report>(reportPaths.reports(), {
-    method: "POST",
-    body: JSON.stringify(defaultReportInput),
-  });
-}
-
 function recipientsFor(report?: Report): ReportRecipient[] {
   if (!report?.recipient) {
     return DEMO_RECIPIENTS;
