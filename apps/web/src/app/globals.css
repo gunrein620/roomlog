@@ -7092,12 +7092,20 @@ p {
   box-shadow: 0 0 0 2px rgba(47, 85, 255, 0.12);
 }
 
-.floor-plan-furniture-grid i {
+.floor-plan-furniture-thumb {
   grid-row: 1 / 4;
   width: 30px;
   height: 30px;
   border-radius: 8px;
+  overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(18, 24, 40, 0.08);
+}
+
+.floor-plan-furniture-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .floor-plan-furniture-grid strong,
