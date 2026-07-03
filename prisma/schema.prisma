@@ -116,6 +116,40 @@ enum ReceiptSource {
   MANUAL
 }
 
+enum ContractLifecycle {
+  UNREGISTERED
+  ANALYZING
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+}
+
+enum ContractReview {
+  PENDING
+  INFO_REQUESTED
+  CONFIRMED
+}
+
+enum ContractDeletionState {
+  NONE
+  REQUESTED
+  COMPLETED
+  LIMITED
+  DENIED
+}
+
+enum ContractValueSource {
+  CONFIRMED
+  MANUAL
+  UNVERIFIED
+}
+
+enum ContractDocumentOrigin {
+  TENANT_UPLOAD
+  MANAGER_UPLOAD
+  MANUAL
+}
+
 enum AttachmentCategory {
   COMPLAINT_PHOTO
   ADDITIONAL_PHOTO
@@ -203,6 +237,7 @@ model Room {
   updatedAt    DateTime @updatedAt
 
   tenants              TenantRoom[]
+  contracts            Contract[]
   complaints           Complaint[]
   tickets              Ticket[]
   intakeSessions       IntakeSession[]
@@ -272,6 +307,106 @@ model TenantInvite {
   acceptedByUserId   String?
 
   @@index([invitedByManagerId, status])
+  @@index([roomId])
+}
+
+model Contract {
+  id                   String                @id
+  roomId               String
+  tenantId             String?
+  managerId            String?
+  unitId               String
+  landlordName         String
+  lifecycle            ContractLifecycle     @default(ACTIVE)
+  review               ContractReview        @default(PENDING)
+  deletion             ContractDeletionState @default(NONE)
+  valueSource          ContractValueSource   @default(UNVERIFIED)
+  monthlyRent          Int?
+  maintenanceFee       Int?
+  paymentDay           Int?
+  startDate            DateTime?
+  endDate              DateTime?
+  extractionId         String?               @unique
+  documentId           String?
+  confirmedAt          DateTime?
+  confirmedByManagerId String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  room       Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  documents  ContractDocument[]
+  extraction ContractExtraction?
+  privacy    ContractPrivacy?
+  invites    ContractInvite[]
+
+  @@index([roomId])
+  @@index([tenantId, updatedAt])
+  @@index([managerId, review])
+  @@index([deletion, updatedAt])
+}
+
+model ContractDocument {
+  id               String                 @id
+  contractId       String
+  uploadedByUserId String?
+  origin           ContractDocumentOrigin
+  fileName         String?
+  fileUrl          String?
+  uploadedAt       DateTime               @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, uploadedAt])
+  @@index([uploadedByUserId])
+}
+
+model ContractExtraction {
+  id         String   @id
+  contractId String   @unique
+  confirmed  Boolean  @default(false)
+  highlights String[]
+  items      Json
+  helpNotes  Json
+  createdAt  DateTime @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+model ContractPrivacy {
+  contractId        String                @id
+  maskingEnabled    Boolean               @default(true)
+  retention         Json
+  forwardingConsent Boolean               @default(false)
+  deletion          ContractDeletionState @default(NONE)
+  deletionSlaHours  Int?
+  deletable         Boolean               @default(false)
+  updatedAt         DateTime              @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([deletion])
+}
+
+model ContractInvite {
+  id                 String   @id
+  contractId         String
+  roomId             String
+  inviteToken        String   @unique
+  invitedByManagerId String
+  tenantName         String
+  email              String?
+  phone              String?
+  state              String
+  signupUrl          String
+  audit              String
+  createdAt          DateTime @default(now())
+  acceptedAt         DateTime?
+  acceptedByUserId   String?
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([invitedByManagerId, state])
   @@index([roomId])
 }
 

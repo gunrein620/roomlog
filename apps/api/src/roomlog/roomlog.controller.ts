@@ -23,6 +23,7 @@ import {
   CreateComplaintFromCallInput,
   CreateIntakeSessionInput,
   CreateMoveInChecklistItemInput,
+  DeletionState,
   FinalizeIntakeInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
@@ -337,6 +338,107 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.submitTenantAiFeedback(user.id, complaintId, body);
+  }
+
+  @Get("contracts/manager")
+  getManagerContractDashboard(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerContractDashboard(user.id);
+  }
+
+  @Get("contracts/manager/:contractId")
+  getManagerContractDetail(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerContractDetail(user.id, contractId);
+  }
+
+  @Post("contracts/manager/:contractId/confirm")
+  confirmManagerContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string,
+    @Body() body: { confirmNeedsCheck?: boolean; note?: string }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.confirmManagerContractReview(user.id, contractId, body);
+  }
+
+  @Post("contracts/manager/:contractId/request-info")
+  requestManagerContractInfo(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.requestManagerContractInfo(user.id, contractId);
+  }
+
+  @Post("contracts/manager/:contractId/deletion-decision")
+  decideManagerContractDeletion(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string,
+    @Body() body: { state: DeletionState; retentionNote?: string }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.decideManagerContractDeletion(
+      user.id,
+      contractId,
+      body.state,
+      body.retentionNote
+    );
+  }
+
+  @Get("contracts")
+  listTenantContracts(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantContracts(user.id);
+  }
+
+  @Get("contracts/:contractId")
+  getTenantContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantContract(user.id, contractId);
+  }
+
+  @Get("contracts/:contractId/extraction")
+  getTenantContractExtraction(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantContractExtraction(user.id, contractId);
+  }
+
+  @Get("contracts/:contractId/privacy")
+  getTenantContractPrivacy(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantContractPrivacy(user.id, contractId);
+  }
+
+  @Post("contracts/:contractId/deletion-request")
+  requestTenantContractDeletion(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.requestTenantContractDeletion(user.id, contractId);
   }
 
   @Get("manager/tickets")

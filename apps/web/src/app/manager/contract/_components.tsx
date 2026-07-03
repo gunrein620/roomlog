@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ButtonHTMLAttributes } from "react";
 import type { ContractExtraction, DeletionState, ExtractionGroup } from "@roomlog/types";
 import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
 import { MANAGER_CONTRACT_ROUTES, type ManagerContractRoute } from "@/lib/contract-manager-nav";
@@ -174,11 +175,12 @@ export function LinkButton({
 export function StaticButton({
   children,
   variant = "primary",
+  ...props
 }: {
   children: React.ReactNode;
   variant?: "primary" | "secondary" | "ghost";
-}) {
-  return <Button variant={variant}>{children}</Button>;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <Button variant={variant} {...props}>{children}</Button>;
 }
 
 export function BackLink({ href = MANAGER_CONTRACT_ROUTES["M-DOC-00"] }: { href?: ManagerContractRoute }) {

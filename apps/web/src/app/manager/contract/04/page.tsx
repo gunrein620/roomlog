@@ -13,6 +13,8 @@ import {
   StaticButton,
 } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const detail = await getManagerContractDetail();
 

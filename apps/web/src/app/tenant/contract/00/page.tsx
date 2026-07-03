@@ -16,6 +16,8 @@ const labelStyle = {
   marginBottom: 8,
 } as const;
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
   const contract = await getContract(DEMO_CONTRACT_ID);
   const registered = contract.lifecycle !== "unregistered";

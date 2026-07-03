@@ -108,6 +108,110 @@ export type ReceiptOcr = {
   createdAt: string;
 };
 
+export type ContractLifecycle =
+  | "unregistered"
+  | "analyzing"
+  | "active"
+  | "expiring_soon"
+  | "expired";
+export type ContractReview = "pending" | "info_requested" | "confirmed";
+export type DeletionState = "none" | "requested" | "completed" | "limited" | "denied";
+export type ContractValueSource = "confirmed" | "manual" | "unverified";
+export type ExtractionGroup = "money" | "term" | "responsibility";
+export type ContractDocumentOrigin = "tenant_upload" | "manager_upload" | "manual";
+
+export type Contract = {
+  id: string;
+  roomId: string;
+  tenantId?: string;
+  managerId?: string;
+  unitId: string;
+  landlordName: string;
+  lifecycle: ContractLifecycle;
+  review: ContractReview;
+  deletion: DeletionState;
+  valueSource: ContractValueSource;
+  monthlyRent?: number;
+  maintenanceFee?: number;
+  paymentDay?: number;
+  startDate?: string;
+  endDate?: string;
+  createdAt: string;
+  updatedAt: string;
+  extractionId?: string;
+  documentId?: string;
+  confirmedAt?: string;
+  confirmedByManagerId?: string;
+};
+
+export type ContractDocument = {
+  id: string;
+  contractId: string;
+  uploadedByUserId?: string;
+  origin: ContractDocumentOrigin;
+  fileName?: string;
+  fileUrl?: string;
+  uploadedAt: string;
+};
+
+export type ExtractionItem = {
+  label: string;
+  value: string;
+  group: ExtractionGroup;
+  needsCheck: boolean;
+  evidence?: string;
+  masked?: boolean;
+};
+
+export type ContractHelpNote = {
+  clause: string;
+  plain: string;
+  source?: string;
+};
+
+export type ContractExtraction = {
+  id: string;
+  contractId: string;
+  confirmed: boolean;
+  highlights: string[];
+  items: ExtractionItem[];
+  helpNotes: ContractHelpNote[];
+  createdAt: string;
+};
+
+export type RetentionItem = {
+  label: string;
+  reason: string;
+  until: string;
+};
+
+export type ContractPrivacy = {
+  contractId: string;
+  maskingEnabled: boolean;
+  retention: RetentionItem[];
+  forwardingConsent: boolean;
+  deletion: DeletionState;
+  deletionSlaHours?: number;
+  deletable: boolean;
+};
+
+export type ContractInvite = {
+  id: string;
+  contractId: string;
+  roomId: string;
+  inviteToken: string;
+  invitedByManagerId: string;
+  tenantName: string;
+  email?: string;
+  phone?: string;
+  state: "waiting" | "connected" | "disputed";
+  signupUrl: string;
+  audit: string;
+  createdAt: string;
+  acceptedAt?: string;
+  acceptedByUserId?: string;
+};
+
 export type CostReviewQueueSummary = {
   ocrLowConfidence: number;
   classificationUnclear: number;

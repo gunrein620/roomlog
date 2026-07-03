@@ -23,7 +23,13 @@ const sectionLabel = {
   marginBottom: 8,
 } as const;
 
-export function PrivacyPanel({ privacy }: { privacy: ContractPrivacy }) {
+export function PrivacyPanel({
+  privacy,
+  requestDeletionAction,
+}: {
+  privacy: ContractPrivacy;
+  requestDeletionAction?: (formData: FormData) => Promise<void>;
+}) {
   const [masking, setMasking] = useState(privacy.maskingEnabled);
   const [forwarding, setForwarding] = useState(privacy.forwardingConsent);
   const [deletion, setDeletion] = useState<DeletionState>(privacy.deletion);
@@ -122,9 +128,11 @@ export function PrivacyPanel({ privacy }: { privacy: ContractPrivacy }) {
                   제한 보관 / 불가 중 하나로 정직하게 안내되며,{" "}
                   {privacy.deletionSlaHours ?? 72}시간 내 처리해요.
                 </div>
-                <Button fullWidth onClick={() => setDeletion("requested")}>
-                  삭제 요청 제출
-                </Button>
+                <form action={requestDeletionAction}>
+                  <Button fullWidth type="submit" onClick={() => setDeletion("requested")}>
+                    삭제 요청 제출
+                  </Button>
+                </form>
                 <button
                   type="button"
                   onClick={() => setGateOpen(false)}

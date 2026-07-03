@@ -3,6 +3,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Store, StoreProjector } from "./roomlog.service";
 import { IntakeDraft, PhotoAnalysis, TicketMessage } from "./roomlog.types";
 import type {
+  ContractDeletionState as PrismaContractDeletionState,
+  ContractDocumentOrigin as PrismaContractDocumentOrigin,
+  ContractLifecycle as PrismaContractLifecycle,
+  ContractReview as PrismaContractReview,
+  ContractValueSource as PrismaContractValueSource,
   CostAttributionScope as PrismaCostAttributionScope,
   CostReviewReason as PrismaCostReviewReason,
   CostStatus as PrismaCostStatus,
@@ -60,6 +65,11 @@ export class PrismaStoreProjector implements StoreProjector {
       vendors,
       vendorInvites,
       tenantInvites,
+      contracts,
+      contractDocuments,
+      contractExtractions,
+      contractPrivacies,
+      contractInvites,
       attachments,
       floorPlans,
       moveInChecklist,
@@ -81,6 +91,11 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.vendorProfile.findMany(),
       this.prisma.vendorInvite.findMany(),
       this.prisma.tenantInvite.findMany(),
+      this.prisma.contract.findMany(),
+      this.prisma.contractDocument.findMany(),
+      this.prisma.contractExtraction.findMany(),
+      this.prisma.contractPrivacy.findMany(),
+      this.prisma.contractInvite.findMany(),
       this.prisma.attachment.findMany(),
       this.prisma.floorPlan.findMany(),
       this.prisma.moveInChecklistItem.findMany(),
@@ -102,6 +117,7 @@ export class PrismaStoreProjector implements StoreProjector {
     if (
       !users.length &&
       !rooms.length &&
+      !contracts.length &&
       !floorPlans.length &&
       !intakeSessions.length &&
       !complaints.length &&
@@ -168,6 +184,72 @@ export class PrismaStoreProjector implements StoreProjector {
         moveInDate: asIso(invite.moveInDate),
         status: invite.status,
         signupUrl: invite.signupUrl,
+        createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
+        acceptedAt: asIso(invite.acceptedAt),
+        acceptedByUserId: optional(invite.acceptedByUserId)
+      })),
+      contracts: contracts.map((contract) => ({
+        id: contract.id,
+        roomId: contract.roomId,
+        tenantId: optional(contract.tenantId),
+        managerId: optional(contract.managerId),
+        unitId: contract.unitId,
+        landlordName: contract.landlordName,
+        lifecycle: toLowerEnum<Store["contracts"][number]["lifecycle"]>(contract.lifecycle) ?? "active",
+        review: toLowerEnum<Store["contracts"][number]["review"]>(contract.review) ?? "pending",
+        deletion: toLowerEnum<Store["contracts"][number]["deletion"]>(contract.deletion) ?? "none",
+        valueSource: toLowerEnum<Store["contracts"][number]["valueSource"]>(contract.valueSource) ?? "unverified",
+        monthlyRent: optional(contract.monthlyRent),
+        maintenanceFee: optional(contract.maintenanceFee),
+        paymentDay: optional(contract.paymentDay),
+        startDate: asIso(contract.startDate),
+        endDate: asIso(contract.endDate),
+        createdAt: asIso(contract.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(contract.updatedAt) ?? new Date().toISOString(),
+        extractionId: optional(contract.extractionId),
+        documentId: optional(contract.documentId),
+        confirmedAt: asIso(contract.confirmedAt),
+        confirmedByManagerId: optional(contract.confirmedByManagerId)
+      })),
+      contractDocuments: contractDocuments.map((document) => ({
+        id: document.id,
+        contractId: document.contractId,
+        uploadedByUserId: optional(document.uploadedByUserId),
+        origin: toLowerEnum<Store["contractDocuments"][number]["origin"]>(document.origin) ?? "manual",
+        fileName: optional(document.fileName),
+        fileUrl: optional(document.fileUrl),
+        uploadedAt: asIso(document.uploadedAt) ?? new Date().toISOString()
+      })),
+      contractExtractions: contractExtractions.map((extraction) => ({
+        id: extraction.id,
+        contractId: extraction.contractId,
+        confirmed: extraction.confirmed,
+        highlights: extraction.highlights,
+        items: (extraction.items as unknown as Store["contractExtractions"][number]["items"]) ?? [],
+        helpNotes: (extraction.helpNotes as unknown as Store["contractExtractions"][number]["helpNotes"]) ?? [],
+        createdAt: asIso(extraction.createdAt) ?? new Date().toISOString()
+      })),
+      contractPrivacies: contractPrivacies.map((privacy) => ({
+        contractId: privacy.contractId,
+        maskingEnabled: privacy.maskingEnabled,
+        retention: (privacy.retention as unknown as Store["contractPrivacies"][number]["retention"]) ?? [],
+        forwardingConsent: privacy.forwardingConsent,
+        deletion: toLowerEnum<Store["contractPrivacies"][number]["deletion"]>(privacy.deletion) ?? "none",
+        deletionSlaHours: optional(privacy.deletionSlaHours),
+        deletable: privacy.deletable
+      })),
+      contractInvites: contractInvites.map((invite) => ({
+        id: invite.id,
+        contractId: invite.contractId,
+        roomId: invite.roomId,
+        inviteToken: invite.inviteToken,
+        invitedByManagerId: invite.invitedByManagerId,
+        tenantName: invite.tenantName,
+        email: optional(invite.email),
+        phone: optional(invite.phone),
+        state: invite.state as Store["contractInvites"][number]["state"],
+        signupUrl: invite.signupUrl,
+        audit: invite.audit,
         createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
         acceptedAt: asIso(invite.acceptedAt),
         acceptedByUserId: optional(invite.acceptedByUserId)
@@ -550,6 +632,159 @@ export class PrismaStoreProjector implements StoreProjector {
             moveInDate: asDate(invite.moveInDate),
             status: invite.status,
             signupUrl: invite.signupUrl,
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          }
+        });
+      }
+
+      for (const contract of store.contracts) {
+        await tx.contract.upsert({
+          where: { id: contract.id },
+          create: {
+            id: contract.id,
+            roomId: contract.roomId,
+            tenantId: contract.tenantId,
+            managerId: contract.managerId,
+            unitId: contract.unitId,
+            landlordName: contract.landlordName,
+            lifecycle: toUpperEnum<PrismaContractLifecycle>(contract.lifecycle) ?? "ACTIVE",
+            review: toUpperEnum<PrismaContractReview>(contract.review) ?? "PENDING",
+            deletion: toUpperEnum<PrismaContractDeletionState>(contract.deletion) ?? "NONE",
+            valueSource: toUpperEnum<PrismaContractValueSource>(contract.valueSource) ?? "UNVERIFIED",
+            monthlyRent: contract.monthlyRent,
+            maintenanceFee: contract.maintenanceFee,
+            paymentDay: contract.paymentDay,
+            startDate: asDate(contract.startDate),
+            endDate: asDate(contract.endDate),
+            extractionId: contract.extractionId,
+            documentId: contract.documentId,
+            confirmedAt: asDate(contract.confirmedAt),
+            confirmedByManagerId: contract.confirmedByManagerId,
+            createdAt: asDate(contract.createdAt),
+            updatedAt: asDate(contract.updatedAt)
+          },
+          update: {
+            roomId: contract.roomId,
+            tenantId: contract.tenantId,
+            managerId: contract.managerId,
+            unitId: contract.unitId,
+            landlordName: contract.landlordName,
+            lifecycle: toUpperEnum<PrismaContractLifecycle>(contract.lifecycle) ?? "ACTIVE",
+            review: toUpperEnum<PrismaContractReview>(contract.review) ?? "PENDING",
+            deletion: toUpperEnum<PrismaContractDeletionState>(contract.deletion) ?? "NONE",
+            valueSource: toUpperEnum<PrismaContractValueSource>(contract.valueSource) ?? "UNVERIFIED",
+            monthlyRent: contract.monthlyRent,
+            maintenanceFee: contract.maintenanceFee,
+            paymentDay: contract.paymentDay,
+            startDate: asDate(contract.startDate),
+            endDate: asDate(contract.endDate),
+            extractionId: contract.extractionId,
+            documentId: contract.documentId,
+            confirmedAt: asDate(contract.confirmedAt),
+            confirmedByManagerId: contract.confirmedByManagerId,
+            updatedAt: asDate(contract.updatedAt)
+          }
+        });
+      }
+
+      for (const document of store.contractDocuments) {
+        await tx.contractDocument.upsert({
+          where: { id: document.id },
+          create: {
+            id: document.id,
+            contractId: document.contractId,
+            uploadedByUserId: document.uploadedByUserId,
+            origin: toUpperEnum<PrismaContractDocumentOrigin>(document.origin) ?? "MANUAL",
+            fileName: document.fileName,
+            fileUrl: document.fileUrl,
+            uploadedAt: asDate(document.uploadedAt)
+          },
+          update: {
+            contractId: document.contractId,
+            uploadedByUserId: document.uploadedByUserId,
+            origin: toUpperEnum<PrismaContractDocumentOrigin>(document.origin) ?? "MANUAL",
+            fileName: document.fileName,
+            fileUrl: document.fileUrl,
+            uploadedAt: asDate(document.uploadedAt)
+          }
+        });
+      }
+
+      for (const extraction of store.contractExtractions) {
+        await tx.contractExtraction.upsert({
+          where: { id: extraction.id },
+          create: {
+            id: extraction.id,
+            contractId: extraction.contractId,
+            confirmed: extraction.confirmed,
+            highlights: extraction.highlights,
+            items: asJson(extraction.items),
+            helpNotes: asJson(extraction.helpNotes),
+            createdAt: asDate(extraction.createdAt)
+          },
+          update: {
+            contractId: extraction.contractId,
+            confirmed: extraction.confirmed,
+            highlights: extraction.highlights,
+            items: asJson(extraction.items),
+            helpNotes: asJson(extraction.helpNotes)
+          }
+        });
+      }
+
+      for (const privacy of store.contractPrivacies) {
+        await tx.contractPrivacy.upsert({
+          where: { contractId: privacy.contractId },
+          create: {
+            contractId: privacy.contractId,
+            maskingEnabled: privacy.maskingEnabled,
+            retention: asJson(privacy.retention),
+            forwardingConsent: privacy.forwardingConsent,
+            deletion: toUpperEnum<PrismaContractDeletionState>(privacy.deletion) ?? "NONE",
+            deletionSlaHours: privacy.deletionSlaHours,
+            deletable: privacy.deletable
+          },
+          update: {
+            maskingEnabled: privacy.maskingEnabled,
+            retention: asJson(privacy.retention),
+            forwardingConsent: privacy.forwardingConsent,
+            deletion: toUpperEnum<PrismaContractDeletionState>(privacy.deletion) ?? "NONE",
+            deletionSlaHours: privacy.deletionSlaHours,
+            deletable: privacy.deletable
+          }
+        });
+      }
+
+      for (const invite of store.contractInvites) {
+        await tx.contractInvite.upsert({
+          where: { id: invite.id },
+          create: {
+            id: invite.id,
+            contractId: invite.contractId,
+            roomId: invite.roomId,
+            inviteToken: invite.inviteToken,
+            invitedByManagerId: invite.invitedByManagerId,
+            tenantName: invite.tenantName,
+            email: invite.email,
+            phone: invite.phone,
+            state: invite.state,
+            signupUrl: invite.signupUrl,
+            audit: invite.audit,
+            createdAt: asDate(invite.createdAt),
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          },
+          update: {
+            contractId: invite.contractId,
+            roomId: invite.roomId,
+            invitedByManagerId: invite.invitedByManagerId,
+            tenantName: invite.tenantName,
+            email: invite.email,
+            phone: invite.phone,
+            state: invite.state,
+            signupUrl: invite.signupUrl,
+            audit: invite.audit,
             acceptedAt: asDate(invite.acceptedAt),
             acceptedByUserId: invite.acceptedByUserId
           }

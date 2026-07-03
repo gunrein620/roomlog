@@ -3170,4 +3170,59 @@ describe("RoomlogService", () => {
       /상태/
     );
   });
+
+  it("wires contract document APIs with tenant/manager scope and server confirmation gates", () => {
+    const service = new RoomlogService();
+
+    const contracts = service.listTenantContracts("tenant-demo");
+    assert.equal(contracts.length, 1);
+    assert.equal(contracts[0].id, "ct_0001");
+
+    const tenantContract = service.getTenantContract("tenant-demo", "ct_0001");
+    const tenantExtraction = service.getTenantContractExtraction("tenant-demo", tenantContract.id);
+    const tenantPrivacy = service.getTenantContractPrivacy("tenant-demo", tenantContract.id);
+
+    assert.equal(tenantContract.review, "pending");
+    assert.equal(tenantExtraction.confirmed, false);
+    assert.equal(tenantPrivacy.maskingEnabled, true);
+    assert.equal(
+      service.getManagerContractDashboard("landlord-demo").counts.needsCheck,
+      tenantExtraction.items.filter((item) => item.needsCheck).length
+    );
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", tenantContract.id),
+      /확인 필요/
+    );
+    assert.equal(service.getManagerContractDashboard("tenant-demo").rows.length, 0);
+    assert.throws(
+      () =>
+        service.confirmManagerContractReview("tenant-demo", tenantContract.id, {
+          confirmNeedsCheck: true
+        }),
+      /관리 가능한 계약서/
+    );
+
+    const confirmed = service.confirmManagerContractReview("landlord-demo", tenantContract.id, {
+      confirmNeedsCheck: true
+    });
+
+    assert.equal(confirmed.row.contract.review, "confirmed");
+    assert.equal(confirmed.row.contract.valueSource, "confirmed");
+    assert.equal(service.getTenantContract("tenant-demo", tenantContract.id).review, "confirmed");
+    assert.equal(service.getTenantContractExtraction("tenant-demo", tenantContract.id).confirmed, true);
+
+    const deletion = service.decideManagerContractDeletion(
+      "landlord-demo",
+      tenantContract.id,
+      "limited",
+      "정산 예외 확인"
+    );
+
+    assert.equal(deletion.privacy.deletion, "limited");
+    assert.equal(
+      service.getTenantContractPrivacy("tenant-demo", tenantContract.id).deletion,
+      "limited"
+    );
+  });
 });

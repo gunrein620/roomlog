@@ -1,4 +1,6 @@
-import { getManagerContractDetail } from "@/lib/contract-manager-api";
+import type { DeletionState } from "@roomlog/types";
+import { redirect } from "next/navigation";
+import { decideManagerContractDeletion, getManagerContractDetail } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
   BackLink,
@@ -13,6 +15,18 @@ import {
   deletionLabel,
   formatDateTime,
 } from "../_components";
+
+export const dynamic = "force-dynamic";
+
+async function decideDeletionAction(formData: FormData) {
+  "use server";
+
+  const contractId = String(formData.get("contractId") ?? "");
+  const state = String(formData.get("state") ?? "") as Extract<DeletionState, "completed" | "limited" | "denied">;
+  const retentionNote = String(formData.get("retentionNote") ?? "");
+  await decideManagerContractDeletion(contractId, state, retentionNote);
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-05"]);
+}
 
 export default async function Page() {
   const detail = await getManagerContractDetail();
@@ -32,7 +46,7 @@ export default async function Page() {
               삭제 3상태와 보관 사유를 정직하게 처리
             </h1>
           </div>
-          <StaticButton>삭제 요청 처리</StaticButton>
+          <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-00"]}>대시보드 확인</LinkButton>
         </Card>
 
         <Section title="삭제 요청 큐">
@@ -50,7 +64,26 @@ export default async function Page() {
                     요청 {formatDateTime(request.requestedAt)} · {request.retentionNote}
                   </div>
                 </div>
-                <StaticButton variant="secondary">처리 결과 기록</StaticButton>
+                <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <form action={decideDeletionAction}>
+                    <input type="hidden" name="contractId" value={request.contractId} />
+                    <input type="hidden" name="state" value="completed" />
+                    <input type="hidden" name="retentionNote" value="삭제 완료 처리" />
+                    <StaticButton type="submit" variant="secondary">완료</StaticButton>
+                  </form>
+                  <form action={decideDeletionAction}>
+                    <input type="hidden" name="contractId" value={request.contractId} />
+                    <input type="hidden" name="state" value="limited" />
+                    <input type="hidden" name="retentionNote" value="정산·분쟁 대비 제한 보관" />
+                    <StaticButton type="submit" variant="secondary">제한 보관</StaticButton>
+                  </form>
+                  <form action={decideDeletionAction}>
+                    <input type="hidden" name="contractId" value={request.contractId} />
+                    <input type="hidden" name="state" value="denied" />
+                    <input type="hidden" name="retentionNote" value="법정 보관 사유로 삭제 불가" />
+                    <StaticButton type="submit" variant="secondary">삭제 불가</StaticButton>
+                  </form>
+                </div>
               </Card>
             ))}
           </div>

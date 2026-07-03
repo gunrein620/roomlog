@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { getManagerContractDetail } from "@/lib/contract-manager-api";
+import { redirect } from "next/navigation";
+import {
+  confirmManagerContract,
+  getManagerContractDetail,
+  requestManagerContractInfo,
+} from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
   BackLink,
@@ -17,6 +22,24 @@ import {
 } from "../_components";
 
 type SearchParams = Promise<{ id?: string }>;
+
+export const dynamic = "force-dynamic";
+
+async function confirmContractAction(formData: FormData) {
+  "use server";
+
+  const contractId = String(formData.get("contractId") ?? "");
+  await confirmManagerContract(contractId);
+  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`);
+}
+
+async function requestInfoAction(formData: FormData) {
+  "use server";
+
+  const contractId = String(formData.get("contractId") ?? "");
+  await requestManagerContractInfo(contractId);
+  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`);
+}
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
@@ -43,8 +66,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             </p>
           </div>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <StaticButton>검토 확정</StaticButton>
-            <StaticButton variant="secondary">임차인에게 보완 요청</StaticButton>
+            <form action={confirmContractAction}>
+              <input type="hidden" name="contractId" value={detail.row.contract.id} />
+              <StaticButton type="submit">검토 확정</StaticButton>
+            </form>
+            <form action={requestInfoAction}>
+              <input type="hidden" name="contractId" value={detail.row.contract.id} />
+              <StaticButton type="submit" variant="secondary">임차인에게 보완 요청</StaticButton>
+            </form>
           </div>
         </Card>
 

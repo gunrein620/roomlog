@@ -1,7 +1,6 @@
 import type { Contract, ContractExtraction, ContractPrivacy, DeletionState } from "@roomlog/types";
 import { DEMO_CONTRACT, DEMO_EXTRACTION, DEMO_PRIVACY } from "./demo-contract";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+import { serverFetch } from "./server-api";
 
 export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
 
@@ -71,6 +70,7 @@ export interface ManagerContractAuditLog {
 
 export interface ManagerDeletionRequest {
   id: string;
+  contractId: string;
   unitId: string;
   tenantName: string;
   requestedAt: string;
@@ -216,6 +216,7 @@ const demoDetail: ManagerContractDetail = {
   deletionRequests: [
     {
       id: "del_302",
+      contractId: "ct_0001",
       unitId: "302",
       tenantName: "Alex Kim",
       requestedAt: "2026-07-01T09:00:00+09:00",
@@ -225,6 +226,7 @@ const demoDetail: ManagerContractDetail = {
     },
     {
       id: "del_201",
+      contractId: "ct_0002",
       unitId: "201",
       tenantName: "김민지",
       requestedAt: "2026-06-30T12:00:00+09:00",
@@ -272,12 +274,11 @@ const demoDetail: ManagerContractDetail = {
   ],
 };
 
-async function tryFetch<T>(path: string, fallback: T): Promise<T> {
+async function tryFetch<T>(path: string, fallback: T, init: RequestInit = {}): Promise<T> {
   try {
-    const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
+    return await serverFetch<T>(path, init);
+  } catch (error) {
+    console.warn(`[contract/manager-api] ${path} 실패 → 데모 폴백`, error);
     return fallback;
   }
 }
@@ -300,10 +301,34 @@ export function getManagerContractDetail(
   id: string = DEMO_MANAGER_CONTRACT_ID,
 ): Promise<ManagerContractDetail> {
   const row = demoRows.find((item) => item.contract.id === id || item.contract.unitId === id) ?? demoRows[0];
-  return tryFetch(`/contracts/manager/${id}`, {
+  return tryFetch(`/contracts/manager/${encodeURIComponent(id)}`, {
     ...demoDetail,
     row,
     extraction: { ...DEMO_EXTRACTION, contractId: row.contract.id },
     privacy: { ...demoDetail.privacy, contractId: row.contract.id },
+  });
+}
+
+export function confirmManagerContract(id = DEMO_MANAGER_CONTRACT_ID): Promise<ManagerContractDetail> {
+  return serverFetch<ManagerContractDetail>(`/contracts/manager/${encodeURIComponent(id)}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ confirmNeedsCheck: true }),
+  });
+}
+
+export function requestManagerContractInfo(id = DEMO_MANAGER_CONTRACT_ID): Promise<ManagerContractDetail> {
+  return serverFetch<ManagerContractDetail>(`/contracts/manager/${encodeURIComponent(id)}/request-info`, {
+    method: "POST",
+  });
+}
+
+export function decideManagerContractDeletion(
+  id: string,
+  state: Extract<DeletionState, "completed" | "limited" | "denied">,
+  retentionNote?: string,
+): Promise<ManagerContractDetail> {
+  return serverFetch<ManagerContractDetail>(`/contracts/manager/${encodeURIComponent(id)}/deletion-decision`, {
+    method: "POST",
+    body: JSON.stringify({ state, retentionNote }),
   });
 }
