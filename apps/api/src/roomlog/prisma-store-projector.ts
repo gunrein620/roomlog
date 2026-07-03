@@ -20,6 +20,11 @@ import type {
   MessagingMessageKind as PrismaMessagingMessageKind,
   MessagingMessageSender as PrismaMessagingMessageSender,
   MessagingThreadContext as PrismaMessagingThreadContext,
+  ManagerReportAuditAction as PrismaManagerReportAuditAction,
+  ManagerReportPeriod as PrismaManagerReportPeriod,
+  ManagerReportShareStatus as PrismaManagerReportShareStatus,
+  ManagerReportSourceKind as PrismaManagerReportSourceKind,
+  ManagerReportStatus as PrismaManagerReportStatus,
   MoveoutChecklistCondition as PrismaMoveoutChecklistCondition,
   MoveoutDeductionKind as PrismaMoveoutDeductionKind,
   MoveoutDisputeStatus as PrismaMoveoutDisputeStatus,
@@ -105,6 +110,10 @@ export class PrismaStoreProjector implements StoreProjector {
       messagingAnnouncementDrafts,
       messagingAnnouncements,
       messagingAnnouncementDeliveries,
+      managerReports,
+      managerReportSourceReferences,
+      managerReportExternalShares,
+      managerReportAuditLogs,
       moveouts,
       moveoutRecords,
       moveoutChecklist,
@@ -145,6 +154,10 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.messagingAnnouncementDraft.findMany(),
       this.prisma.messagingAnnouncement.findMany(),
       this.prisma.messagingAnnouncementDelivery.findMany(),
+      this.prisma.managerReport.findMany(),
+      this.prisma.managerReportSourceReference.findMany(),
+      this.prisma.managerReportExternalShare.findMany(),
+      this.prisma.managerReportAuditLogEntry.findMany(),
       this.prisma.moveoutRequest.findMany(),
       this.prisma.moveoutRecord.findMany(),
       this.prisma.moveoutChecklistItem.findMany(),
@@ -170,6 +183,7 @@ export class PrismaStoreProjector implements StoreProjector {
       !receipts.length &&
       !messagingThreads.length &&
       !messagingAnnouncements.length &&
+      !managerReports.length &&
       !moveouts.length
     ) {
       return undefined;
@@ -616,6 +630,73 @@ export class PrismaStoreProjector implements StoreProjector {
         readAt: asIso(delivery.readAt),
         confirmedAt: asIso(delivery.confirmedAt),
         failed: delivery.failed
+      })),
+      managerReports: managerReports.map((report) => ({
+        id: report.id,
+        managerId: report.managerId,
+        period: toLowerEnum<Store["managerReports"][number]["period"]>(report.period) ?? "month",
+        periodLabel: report.periodLabel,
+        periodStart: asIso(report.periodStart) ?? new Date().toISOString(),
+        periodEnd: asIso(report.periodEnd) ?? new Date().toISOString(),
+        scope: report.scope as unknown as Store["managerReports"][number]["scope"],
+        status: toLowerEnum<Store["managerReports"][number]["status"]>(report.status) ?? "draft",
+        snapshotAt: asIso(report.snapshotAt) ?? new Date().toISOString(),
+        recipient: (report.recipient as unknown as Store["managerReports"][number]["recipient"]) ?? undefined,
+        disclaimer: report.disclaimer,
+        summary: report.summary,
+        nextActions:
+          (report.nextActions as unknown as Store["managerReports"][number]["nextActions"]) ?? [],
+        sections: (report.sections as unknown as Store["managerReports"][number]["sections"]) ?? [],
+        linkedFollowUps:
+          (report.linkedFollowUps as unknown as Store["managerReports"][number]["linkedFollowUps"]) ??
+          [],
+        createdAt: asIso(report.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(report.updatedAt) ?? new Date().toISOString(),
+        deliveredAt: asIso(report.deliveredAt)
+      })),
+      managerReportSourceReferences: managerReportSourceReferences.map((reference) => ({
+        id: reference.id,
+        reportId: reference.reportId,
+        sectionKey: reference.sectionKey,
+        sourceKind:
+          toLowerEnum<Store["managerReportSourceReferences"][number]["sourceKind"]>(
+            reference.sourceKind
+          ) ?? "metric",
+        entityType: reference.entityType,
+        entityId: reference.entityId,
+        roomId: optional(reference.roomId),
+        tenantId: optional(reference.tenantId),
+        label: reference.label,
+        drilldownScreenId: reference.drilldownScreenId,
+        basis: reference.basis,
+        snapshotAt: asIso(reference.snapshotAt) ?? new Date().toISOString(),
+        createdAt: asIso(reference.createdAt) ?? new Date().toISOString()
+      })),
+      managerReportExternalShares: managerReportExternalShares.map((share) => ({
+        id: share.id,
+        reportId: share.reportId,
+        token: share.token,
+        recipientName: share.recipientName,
+        masked: share.masked,
+        status:
+          toLowerEnum<Store["managerReportExternalShares"][number]["status"]>(
+            share.status
+          ) ?? "active",
+        createdByManagerId: share.createdByManagerId,
+        createdAt: asIso(share.createdAt) ?? new Date().toISOString(),
+        revokedAt: asIso(share.revokedAt)
+      })),
+      managerReportAuditLogs: managerReportAuditLogs.map((audit) => ({
+        id: audit.id,
+        reportId: audit.reportId,
+        shareId: optional(audit.shareId),
+        action:
+          toLowerEnum<Store["managerReportAuditLogs"][number]["action"]>(audit.action) ??
+          "external_share_viewed",
+        actorId: optional(audit.actorId),
+        actorLabel: audit.actorLabel,
+        at: asIso(audit.createdAt) ?? new Date().toISOString(),
+        detail: optional(audit.detail)
       })),
       moveouts: moveouts.map((moveout) => ({
         id: moveout.id,
@@ -1648,6 +1729,140 @@ export class PrismaStoreProjector implements StoreProjector {
             readAt: asDate(delivery.readAt),
             confirmedAt: asDate(delivery.confirmedAt),
             failed: delivery.failed ?? false
+          }
+        });
+      }
+
+      for (const report of store.managerReports) {
+        await tx.managerReport.upsert({
+          where: { id: report.id },
+          create: {
+            id: report.id,
+            managerId: report.managerId,
+            period: toUpperEnum<PrismaManagerReportPeriod>(report.period) ?? "MONTH",
+            periodLabel: report.periodLabel,
+            periodStart: asDate(report.periodStart) ?? new Date(),
+            periodEnd: asDate(report.periodEnd) ?? new Date(),
+            scope: asJson(report.scope),
+            status: toUpperEnum<PrismaManagerReportStatus>(report.status) ?? "DRAFT",
+            snapshotAt: asDate(report.snapshotAt) ?? new Date(),
+            recipient: report.recipient ? asJson(report.recipient) : undefined,
+            disclaimer: report.disclaimer,
+            summary: report.summary,
+            nextActions: asJson(report.nextActions),
+            sections: asJson(report.sections),
+            linkedFollowUps: asJson(report.linkedFollowUps),
+            createdAt: asDate(report.createdAt),
+            updatedAt: asDate(report.updatedAt),
+            deliveredAt: asDate(report.deliveredAt)
+          },
+          update: {
+            managerId: report.managerId,
+            period: toUpperEnum<PrismaManagerReportPeriod>(report.period) ?? "MONTH",
+            periodLabel: report.periodLabel,
+            periodStart: asDate(report.periodStart) ?? new Date(),
+            periodEnd: asDate(report.periodEnd) ?? new Date(),
+            scope: asJson(report.scope),
+            status: toUpperEnum<PrismaManagerReportStatus>(report.status) ?? "DRAFT",
+            snapshotAt: asDate(report.snapshotAt) ?? new Date(),
+            recipient: report.recipient ? asJson(report.recipient) : undefined,
+            disclaimer: report.disclaimer,
+            summary: report.summary,
+            nextActions: asJson(report.nextActions),
+            sections: asJson(report.sections),
+            linkedFollowUps: asJson(report.linkedFollowUps),
+            updatedAt: asDate(report.updatedAt),
+            deliveredAt: asDate(report.deliveredAt)
+          }
+        });
+      }
+
+      for (const reference of store.managerReportSourceReferences) {
+        await tx.managerReportSourceReference.upsert({
+          where: { id: reference.id },
+          create: {
+            id: reference.id,
+            reportId: reference.reportId,
+            sectionKey: reference.sectionKey,
+            sourceKind:
+              toUpperEnum<PrismaManagerReportSourceKind>(reference.sourceKind) ?? "METRIC",
+            entityType: reference.entityType,
+            entityId: reference.entityId,
+            roomId: reference.roomId,
+            tenantId: reference.tenantId,
+            label: reference.label,
+            drilldownScreenId: reference.drilldownScreenId,
+            basis: reference.basis,
+            snapshotAt: asDate(reference.snapshotAt) ?? new Date(),
+            createdAt: asDate(reference.createdAt)
+          },
+          update: {
+            reportId: reference.reportId,
+            sectionKey: reference.sectionKey,
+            sourceKind:
+              toUpperEnum<PrismaManagerReportSourceKind>(reference.sourceKind) ?? "METRIC",
+            entityType: reference.entityType,
+            entityId: reference.entityId,
+            roomId: reference.roomId,
+            tenantId: reference.tenantId,
+            label: reference.label,
+            drilldownScreenId: reference.drilldownScreenId,
+            basis: reference.basis,
+            snapshotAt: asDate(reference.snapshotAt) ?? new Date()
+          }
+        });
+      }
+
+      for (const share of store.managerReportExternalShares) {
+        await tx.managerReportExternalShare.upsert({
+          where: { id: share.id },
+          create: {
+            id: share.id,
+            reportId: share.reportId,
+            token: share.token,
+            recipientName: share.recipientName,
+            masked: share.masked,
+            status: toUpperEnum<PrismaManagerReportShareStatus>(share.status) ?? "ACTIVE",
+            createdByManagerId: share.createdByManagerId,
+            createdAt: asDate(share.createdAt),
+            revokedAt: asDate(share.revokedAt)
+          },
+          update: {
+            reportId: share.reportId,
+            token: share.token,
+            recipientName: share.recipientName,
+            masked: share.masked,
+            status: toUpperEnum<PrismaManagerReportShareStatus>(share.status) ?? "ACTIVE",
+            createdByManagerId: share.createdByManagerId,
+            revokedAt: asDate(share.revokedAt)
+          }
+        });
+      }
+
+      for (const audit of store.managerReportAuditLogs) {
+        await tx.managerReportAuditLogEntry.upsert({
+          where: { id: audit.id },
+          create: {
+            id: audit.id,
+            reportId: audit.reportId,
+            shareId: audit.shareId,
+            action:
+              toUpperEnum<PrismaManagerReportAuditAction>(audit.action) ??
+              "EXTERNAL_SHARE_VIEWED",
+            actorId: audit.actorId,
+            actorLabel: audit.actorLabel,
+            detail: audit.detail,
+            createdAt: asDate(audit.at)
+          },
+          update: {
+            reportId: audit.reportId,
+            shareId: audit.shareId,
+            action:
+              toUpperEnum<PrismaManagerReportAuditAction>(audit.action) ??
+              "EXTERNAL_SHARE_VIEWED",
+            actorId: audit.actorId,
+            actorLabel: audit.actorLabel,
+            detail: audit.detail
           }
         });
       }

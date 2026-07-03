@@ -21,6 +21,9 @@ import {
   ApproveRepairEstimateInput,
   ConfirmTenantCompletionInput,
   CreateAnnouncementDraftInput,
+  CreateManagerReportExternalShareInput,
+  CreateManagerReportFollowUpInput,
+  CreateManagerReportInput,
   CreateComplaintInput,
   CreateComplaintFromCallInput,
   CreateIntakeSessionInput,
@@ -30,6 +33,7 @@ import {
   CreateTenantMoveoutInquiryInput,
   DeletionState,
   FinalizeIntakeInput,
+  AskManagerReportChatInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
   MessagingThreadContext,
@@ -793,6 +797,102 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.getManagerAnnouncementResult(user.id, announcementId);
+  }
+
+  @Get("manager/reports")
+  listManagerReports(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerReports(user.id);
+  }
+
+  @Post("manager/reports")
+  createManagerReport(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateManagerReportInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerReport(user.id, body);
+  }
+
+  @Get("manager/reports/:reportId")
+  getManagerReport(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerReport(user.id, reportId);
+  }
+
+  @Get("manager/reports/:reportId/source-references")
+  listManagerReportSourceReferences(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerReportSourceReferences(user.id, reportId);
+  }
+
+  @Post("manager/reports/:reportId/chat")
+  askManagerReportChat(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Body() body: AskManagerReportChatInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.askManagerReportChat(user.id, reportId, body);
+  }
+
+  @Post("manager/reports/:reportId/external-shares")
+  createManagerReportExternalShare(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Body() body: CreateManagerReportExternalShareInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerReportExternalShare(user.id, reportId, body);
+  }
+
+  @Post("manager/reports/:reportId/external-shares/:shareId/revoke")
+  revokeManagerReportExternalShare(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Param("shareId") shareId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.revokeManagerReportExternalShare(user.id, reportId, shareId);
+  }
+
+  @Get("manager/reports/:reportId/audit-log")
+  listManagerReportAuditLog(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerReportAuditLog(user.id, reportId);
+  }
+
+  @Post("manager/reports/:reportId/follow-ups")
+  createManagerReportFollowUp(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Body() body: CreateManagerReportFollowUpInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerReportFollowUp(user.id, reportId, body);
+  }
+
+  @Get("reports/external/:shareToken")
+  getExternalReportShare(@Param("shareToken") shareToken: string) {
+    return this.roomlogService.getExternalReportShare(shareToken);
   }
 
   @Get("manager/tickets/:ticketId")

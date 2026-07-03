@@ -263,6 +263,200 @@ export type MessagingAnnouncementResult = {
   }>;
 };
 
+export type ManagerReportPeriod = "week" | "month" | "quarter";
+export type ManagerReportStatus = "draft" | "delivered";
+export type ManagerReportSourceKind =
+  | "billing"
+  | "complaint"
+  | "cost"
+  | "unit"
+  | "metric"
+  | "contract"
+  | "moveout"
+  | "messaging";
+export type ManagerReportFollowUpActionType = "dunning" | "notice";
+export type ManagerReportFollowUpChannel = "announcement" | "thread";
+export type ManagerReportShareStatus = "active" | "revoked";
+export type ManagerReportAuditAction =
+  | "external_share_created"
+  | "external_share_viewed"
+  | "external_share_revoked";
+
+export type ManagerReportScope = {
+  buildingId: string;
+  buildingName: string;
+  roomIds?: string[];
+  unitIds?: string[];
+};
+
+export type ManagerReportRecipient = {
+  id: string;
+  name: string;
+  role: "landlord";
+  delivery: "account" | "external";
+};
+
+export type ManagerReportSource = {
+  kind: ManagerReportSourceKind;
+  label: string;
+  drilldownScreenId: string;
+  basis: string;
+};
+
+export type ManagerReportKpi = {
+  label: string;
+  value: string;
+  unit?: string;
+  formulaSource: ManagerReportSourceKind;
+};
+
+export type ManagerReportSection = {
+  key: string;
+  title: string;
+  summary: string;
+  source: ManagerReportSource;
+  kpis?: ManagerReportKpi[];
+};
+
+export type ManagerReportNextAction = {
+  label: string;
+  actionType: ManagerReportFollowUpActionType;
+  targetScreenId: "M-BILL-05" | "M-MSG-00";
+  payload: {
+    unitIds?: string[];
+    billIds?: string[];
+    periodLabel?: string;
+    note?: string;
+  };
+};
+
+export type ManagerReportSourceReference = {
+  id: string;
+  reportId: string;
+  sectionKey: string;
+  sourceKind: ManagerReportSourceKind;
+  entityType: string;
+  entityId: string;
+  roomId?: string;
+  tenantId?: string;
+  label: string;
+  drilldownScreenId: string;
+  basis: string;
+  snapshotAt: string;
+  createdAt: string;
+};
+
+export type ManagerReportLinkedFollowUp = {
+  id: string;
+  channel: ManagerReportFollowUpChannel;
+  actionType: ManagerReportFollowUpActionType;
+  announcementDraftId?: string;
+  threadId?: string;
+  createdAt: string;
+};
+
+export type ManagerReport = {
+  id: string;
+  managerId: string;
+  period: ManagerReportPeriod;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  scope: ManagerReportScope;
+  status: ManagerReportStatus;
+  snapshotAt: string;
+  recipient?: ManagerReportRecipient;
+  disclaimer: string;
+  summary: string;
+  nextActions: ManagerReportNextAction[];
+  sections: ManagerReportSection[];
+  sourceReferences?: ManagerReportSourceReference[];
+  linkedFollowUps: ManagerReportLinkedFollowUp[];
+  createdAt: string;
+  updatedAt: string;
+  deliveredAt?: string;
+};
+
+export type CreateManagerReportInput = {
+  period: ManagerReportPeriod;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  scope: ManagerReportScope;
+  recipient?: ManagerReportRecipient;
+};
+
+export type AskManagerReportChatInput = {
+  question: string;
+};
+
+export type ManagerReportChatAnswer = {
+  id: string;
+  interpretedQuery: string;
+  basis: "realtime_billing" | "stored_analysis";
+  answer: string;
+  sources: ManagerReportSource[];
+  draft?: {
+    type: ManagerReportFollowUpActionType;
+    targetScreenId: "M-BILL-05" | "M-MSG-00";
+    payload: {
+      unitIds?: string[];
+      billIds?: string[];
+      periodLabel?: string;
+      note?: string;
+    };
+  };
+  execution: "draft_only";
+  createdAt: string;
+};
+
+export type CreateManagerReportExternalShareInput = {
+  recipientName: string;
+};
+
+export type ManagerReportExternalShare = {
+  id: string;
+  reportId: string;
+  token: string;
+  recipientName: string;
+  masked: boolean;
+  status: ManagerReportShareStatus;
+  createdByManagerId: string;
+  createdAt: string;
+  revokedAt?: string;
+};
+
+export type ManagerReportAuditLogEntry = {
+  id: string;
+  reportId: string;
+  shareId?: string;
+  action: ManagerReportAuditAction;
+  actorId?: string;
+  actorLabel: string;
+  at: string;
+  detail?: string;
+};
+
+export type CreateManagerReportFollowUpInput = {
+  channel: ManagerReportFollowUpChannel;
+  actionType: ManagerReportFollowUpActionType;
+  title?: string;
+  body: string;
+  targetRoomIds?: string[];
+  roomId?: string;
+  tenantId?: string;
+  translations?: MessagingAnnouncementTranslation[];
+  confirmRequired?: boolean;
+};
+
+export type ManagerReportFollowUpResult = {
+  kind: "announcement_draft" | "thread";
+  reportId: string;
+  followUpId: string;
+  announcementDraftId?: string;
+  threadId?: string;
+};
+
 export type MoveoutSettlementStatus = "estimate" | "reviewing" | "review_done" | "re_review";
 export type MoveoutRecordSource =
   | "movein_photo"
