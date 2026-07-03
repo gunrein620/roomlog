@@ -134,7 +134,7 @@ img {
   letter-spacing: 0.01em;
 }
 
-/* 별이 로고 주위를 도는 공전 궤도 */
+/* 별이 로고 주위를 타원 궤도로 슉 돌면서 제자리에서도 빙글빙글 도는 연출 */
 .brand-orbit {
   position: absolute;
   top: 50%;
@@ -143,17 +143,31 @@ img {
   height: 176px;
   margin: -88px 0 0 -88px;
   pointer-events: none;
-  animation: brand-orbit 7s linear infinite;
+  transform: rotate(-14deg) scaleY(0.56);
 }
 
-.brand-star {
+.brand-orbit-spin {
+  position: absolute;
+  inset: 0;
+  animation: brand-orbit-rotate 5.2s linear infinite;
+}
+
+.brand-star-fix {
   position: absolute;
   top: -6px;
   left: 50%;
   width: 32px;
   height: 32px;
   margin-left: -16px;
-  animation: brand-twinkle 2.4s ease-in-out infinite;
+  transform: scaleY(1.786);
+}
+
+.brand-star {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  animation: brand-star-live 1.6s linear infinite;
 }
 
 .brand-star svg {
@@ -163,26 +177,29 @@ img {
   filter: drop-shadow(0 0 12px rgba(236, 106, 134, 0.65));
 }
 
-@keyframes brand-orbit {
+@keyframes brand-orbit-rotate {
   to {
     transform: rotate(360deg);
   }
 }
 
-@keyframes brand-twinkle {
-  0%,
-  100% {
-    transform: scale(1) rotate(0deg);
+@keyframes brand-star-live {
+  0% {
+    transform: rotate(0deg) scale(1);
     opacity: 1;
   }
   50% {
-    transform: scale(0.62) rotate(45deg);
-    opacity: 0.72;
+    transform: rotate(450deg) scale(0.6);
+    opacity: 0.7;
+  }
+  100% {
+    transform: rotate(900deg) scale(1);
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-orbit {
+  .brand-orbit-spin {
     animation: none;
     transform: rotate(28deg);
   }
@@ -228,31 +245,98 @@ p {
   line-height: 1.55;
 }
 
-.login-trust-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 16px;
+.login-feature-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-top: 18px;
+  padding: 10px 0;
+  overflow: hidden;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #f4f6fb 0%, #f8f5fa 52%, #f4faf8 100%);
+  box-shadow: inset 0 0 0 1.5px rgba(108, 118, 158, 0.1);
 }
 
-.login-trust-row span {
-  display: grid;
-  min-height: 58px;
-  align-content: center;
-  gap: 4px;
-  padding: 9px;
-  border: 1px solid #dfe5ef;
-  border-radius: 13px;
-  background: #f8fbff;
-  color: #5e6778;
-  font-size: 0.64rem;
-  font-weight: 850;
-  line-height: 1.2;
+.login-feature-bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(115deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+  animation: login-feature-sweep 3.6s ease-in-out infinite;
+  pointer-events: none;
 }
 
-.login-trust-row b {
-  color: var(--blue);
-  font-size: 0.72rem;
+.login-feature-pill {
+  position: relative;
+  padding: 8px 32px;
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  background-image: linear-gradient(100deg, #173ad7 0%, #4c6ffb 35%, #8fa4ff 65%, #173ad7 100%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: login-feature-shine 6s ease-in-out infinite;
+}
+
+.login-feature-pill--0 {
+  animation-delay: 0s;
+}
+
+.login-feature-pill--1 {
+  animation-delay: 0.5s;
+}
+
+.login-feature-pill--2 {
+  animation-delay: 1s;
+}
+
+.login-feature-sep {
+  align-self: stretch;
+  width: 1.5px;
+  background: #dde1ec;
+  font-size: 0;
+  user-select: none;
+}
+
+@keyframes login-feature-shine {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes login-feature-sweep {
+  0% {
+    left: -60%;
+  }
+  60% {
+    left: 120%;
+  }
+  100% {
+    left: 120%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-feature-bar::after {
+    display: none;
+  }
+
+  .login-feature-pill {
+    animation: none;
+  }
 }
 
 .social-stack {
@@ -289,9 +373,31 @@ p {
 }
 
 .social-button.google {
-  border: 1px solid var(--line);
+  border: 1px solid #dadce0;
   background: #ffffff;
-  color: var(--ink);
+  color: #3c4043;
+  font-family: "Google Sans", Arial, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.social-button.google:hover {
+  background: #f8faff;
+  border-color: #d2e3fc;
+  box-shadow: 0 1px 3px rgba(66, 133, 244, 0.15);
+}
+
+.google-logo-icon {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  background: none;
+  border-radius: 0;
+}
+
+.google-logo-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .social-login-notice {
