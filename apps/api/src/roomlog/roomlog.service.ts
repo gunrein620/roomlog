@@ -2128,12 +2128,16 @@ export class RoomlogService {
   addMessage(senderUserId: string, ticketId: string, messageText: string) {
     const ticket = this.findTicket(ticketId);
     const user = this.store.users.find((account) => account.id === senderUserId);
+    const senderRole =
+      user?.role === "TENANT" || user?.role === "LANDLORD" || user?.role === "VENDOR"
+        ? user.role
+        : "TENANT";
 
     const message = this.addMessageInternal(
       ticket.id,
       ticket.complaintId,
       senderUserId,
-      user?.role ?? "TENANT",
+      senderRole,
       messageText
     );
     this.persistStore();

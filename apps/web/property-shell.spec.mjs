@@ -24,6 +24,10 @@ const prodComposeSource = readFileSync(new URL("../../docker-compose.prod.yml", 
 const deployWorkflowSource = readFileSync(new URL("../../.github/workflows/deploy.yml", import.meta.url), "utf8");
 const apiDockerfileSource = readFileSync(new URL("../api/Dockerfile", import.meta.url), "utf8");
 const webDockerfileSource = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
+const googleAuthSharedSource = readFileSync(new URL("./src/app/api/auth/google/_shared.ts", import.meta.url), "utf8");
+const signupPageSource = readFileSync(new URL("./src/app/signup/page.tsx", import.meta.url), "utf8");
+const signupRouteSource = readFileSync(new URL("./src/app/api/auth/signup/route.ts", import.meta.url), "utf8");
+const loginRouteSource = readFileSync(new URL("./src/app/api/auth/login/route.ts", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
@@ -108,6 +112,13 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
 
   assert.match(pageSource, /socialLoginNotice/);
   assert.match(pageSource, /setSocialLoginNotice/);
+  assert.match(pageSource, /service-login-panel/);
+  assert.match(pageSource, /submitServiceLogin/);
+  assert.match(pageSource, /\/api\/auth\/login/);
+  assert.match(pageSource, /expectedRole: "SEEKER"/);
+  assert.match(loginRouteSource, /expectedRole/);
+  assert.match(loginRouteSource, /profile\.role !== expectedRole/);
+  assert.match(pageSource, /\/api\/auth\/me/);
   assert.match(pageSource, /setActiveRole/);
   assert.match(pageSource, /login-brandmark/);
   assert.match(pageSource, /brand-mark-icon/);
@@ -128,11 +139,23 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
 });
 
-test("opens the social signup screen from the topbar signup actions", () => {
+test("opens the dedicated signup page from signup actions and social fallback", () => {
   assert.match(pageSource, /const \[authMode, setAuthMode\]/);
   assert.match(pageSource, /openAuthScreen/);
-  assert.match(pageSource, /className="web-signup"[^\n]*onClick=\{\(\) => \{ window\.location\.href = "\/signup\/social"; \}\}/);
+  assert.match(pageSource, /normalizeAuthMode/);
+  assert.match(pageSource, /socialProvidersForMode/);
+  assert.match(pageSource, /flow=\$\{flow\}/);
+  assert.match(pageSource, /role=SEEKER/);
+  assert.match(pageSource, /className="web-signup"/);
+  assert.match(pageSource, /window\.location\.href = "\/signup"/);
+  assert.equal(existsSync(new URL("./src/app/signup/page.tsx", import.meta.url)), true);
   assert.equal(existsSync(new URL("./src/app/signup/social/page.tsx", import.meta.url)), true);
+  assert.match(googleAuthSharedSource, /roomlog\.local\/signup/);
+  assert.doesNotMatch(googleAuthSharedSource, /roomlog\.local\/signup\/social/);
+  assert.match(signupPageSource, /role: "SEEKER"/);
+  assert.match(signupPageSource, /Google로 회원가입/);
+  assert.match(signupRouteSource, /apiUrl\("\/auth\/signup"/);
+  assert.match(signupRouteSource, /AUTH_COOKIE/);
   assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
   assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
   assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);

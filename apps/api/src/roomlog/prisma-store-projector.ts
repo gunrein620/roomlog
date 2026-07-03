@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Store, StoreProjector } from "./roomlog.service";
-import { IntakeDraft, PhotoAnalysis, TicketMessage } from "./roomlog.types";
+import { IntakeDraft, MessageSenderRole, PhotoAnalysis, TicketMessage } from "./roomlog.types";
 import type {
   ContractDeletionState as PrismaContractDeletionState,
   ContractDocumentOrigin as PrismaContractDocumentOrigin,
@@ -45,8 +45,10 @@ function asPhotoAnalysis(value: Prisma.JsonValue | null): PhotoAnalysis | undefi
   return value ? (value as unknown as PhotoAnalysis) : undefined;
 }
 
-function actorRoleFor(store: Store, userId: string) {
-  return store.users.find((user) => user.id === userId)?.role ?? "SYSTEM";
+function actorRoleFor(store: Store, userId: string): MessageSenderRole {
+  const role = store.users.find((user) => user.id === userId)?.role;
+  if (role === "TENANT" || role === "LANDLORD" || role === "VENDOR") return role;
+  return "SYSTEM";
 }
 
 export class PrismaStoreProjector implements StoreProjector {

@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const error = request.nextUrl.searchParams.get("error");
   const savedState = cookieStore.get(GOOGLE_OAUTH_STATE_COOKIE)?.value;
   const context = decodeGoogleOauthContext(cookieStore.get(GOOGLE_OAUTH_CONTEXT_COOKIE)?.value);
-  const role = context?.role ?? "TENANT";
+  const role = context?.role ?? "SEEKER";
   const errorRedirectTo = context?.errorRedirectTo ?? loginPathForRole(role);
 
   cookieStore.delete(GOOGLE_OAUTH_STATE_COOKIE);

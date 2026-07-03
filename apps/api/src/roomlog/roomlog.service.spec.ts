@@ -198,6 +198,23 @@ describe("RoomlogService", () => {
     assert.throws(() => service.getDemoState(), /데모/);
   });
 
+  it("creates a public seeker account without room credentials", () => {
+    const service = new RoomlogService({ seedDemoData: false } as any);
+    const auth = service.signup({
+      email: "public-seeker@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "Public Seeker",
+      role: "SEEKER"
+    });
+
+    assert.equal(auth.role, "SEEKER");
+    const me = service.getMe(`Bearer ${auth.accessToken}`);
+    assert.equal(me.role, "SEEKER");
+    assert.equal(me.roomId, undefined);
+    assert.equal(me.managedRooms, undefined);
+  });
+
   it("logs in and links a verified Google account through the social auth flow", async () => {
     const originalFetch = globalThis.fetch;
     const originalClientId = process.env.GOOGLE_LOGIN_CLIENT_ID;
