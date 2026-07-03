@@ -52,6 +52,10 @@ test("production deploy removes stale role containers before rebinding port 3000
   assert.match(deployWorkflowSource, /docker ps -a --filter "name=roomlog"/);
 });
 
+test("production web container can reach the API over the Docker network for auth BFF routes", () => {
+  assert.match(prodComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
+});
+
 test("api image trusts the Amazon RDS certificate bundle for TLS database connections", () => {
   assert.match(apiDockerfileSource, /truststore\.pki\.rds\.amazonaws\.com\/global\/global-bundle\.pem/);
   assert.match(apiDockerfileSource, /NODE_EXTRA_CA_CERTS=\/usr\/local\/share\/ca-certificates\/aws-rds-global-bundle\.pem/);
