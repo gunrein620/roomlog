@@ -3,13 +3,17 @@
 // room-model이 계산한 3D 벽/가구 데이터를 React Three Fiber로 렌더링하고,
 // 클릭 등 인터랙션 이벤트를 props 콜백으로 컨테이너에 돌려준다.
 
-import { OrbitControls, useGLTF } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { ContactShadows, OrbitControls, useGLTF } from "@react-three/drei";
+import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { FURNITURE_CATALOG, getFurnitureDimensions } from "../room-model/furniture-model";
 import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
+
+Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
+  (modelUrl) => useGLTF.preload(modelUrl)
+);
 
 function RoomFloor({
   onFloorPointerDown,
@@ -51,9 +55,9 @@ function RoomFloor({
   }, [wallsData]);
 
   return (
-    <mesh onPointerDown={onFloorPointerDown} position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh onPointerDown={onFloorPointerDown} position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[bounds.width, bounds.height]} />
-      <meshBasicMaterial color="#f3d9a0" />
+      <meshLambertMaterial color="#f3d9a0" />
     </mesh>
   );
 }
@@ -72,15 +76,9 @@ function FurnitureBoxMesh({
   const dimensions = getFurnitureDimensions(furniture);
 
   return (
-    <mesh
-      onPointerDown={(event) => onPointerDown(furniture, event)}
-      position={furniture.position}
-      rotation={furniture.rotation}
-      receiveShadow
-      castShadow
-    >
+    <mesh onPointerDown={(event) => onPointerDown(furniture, event)} position={furniture.position} rotation={furniture.rotation}>
       <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
-      <meshBasicMaterial
+      <meshLambertMaterial
         color={isSelected ? "#2f55ff" : furniture.color}
         opacity={isPending ? 0.42 : isSelected ? 0.96 : 0.86}
         transparent
@@ -100,36 +98,37 @@ function FurnitureGlbMesh({
   isSelected: boolean;
   onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
 }) {
-  const gltf = useGLTF(furniture.modelUrl ?? FURNITURE_CATALOG[0].modelUrl ?? "");
+  const modelUrl = furniture.modelUrl ?? FURNITURE_CATALOG[0].modelUrl ?? "";
+  const gltf = useGLTF(modelUrl);
+  const invalidate = useThree((state) => state.invalidate);
   const dimensions = getFurnitureDimensions(furniture);
-  const { modelOffsetY, scene, scale } = useMemo(() => {
+  const { modelMinY, modelSize, scene } = useMemo(() => {
     const clonedScene = gltf.scene.clone(true);
+
     clonedScene.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
-
-      child.castShadow = true;
-      child.receiveShadow = true;
 
       if (Array.isArray(child.material)) {
         child.material = child.material.map((material) => material.clone());
       } else if (child.material) {
         child.material = child.material.clone();
       }
-
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      materials.forEach((material) => {
-        if (!material) return;
-        material.transparent = isPending;
-        material.opacity = isPending ? 0.48 : 1;
-        material.needsUpdate = true;
-      });
     });
 
     const box = new THREE.Box3().setFromObject(clonedScene);
     const size = box.getSize(new THREE.Vector3());
-    const actualWidth = Math.max(size.x, 0.001);
-    const actualHeight = Math.max(size.y, 0.001);
-    const actualDepth = Math.max(size.z, 0.001);
+
+    return {
+      modelMinY: box.min.y,
+      modelSize: size,
+      scene: clonedScene
+    };
+  }, [gltf.scene, modelUrl]);
+
+  const { modelOffsetY, scale } = useMemo(() => {
+    const actualWidth = Math.max(modelSize.x, 0.001);
+    const actualHeight = Math.max(modelSize.y, 0.001);
+    const actualDepth = Math.max(modelSize.z, 0.001);
     const targetLongSide = Math.max(dimensions.width, dimensions.depth);
     const targetShortSide = Math.min(dimensions.width, dimensions.depth);
     const [targetWidth, targetDepth] =
@@ -141,11 +140,25 @@ function FurnitureGlbMesh({
     ];
 
     return {
-      modelOffsetY: -box.min.y * modelScale[1],
-      scale: modelScale,
-      scene: clonedScene
+      modelOffsetY: -modelMinY * modelScale[1],
+      scale: modelScale
     };
-  }, [dimensions.depth, dimensions.height, dimensions.width, furniture.modelUrl, gltf.scene, isPending]);
+  }, [dimensions.depth, dimensions.height, dimensions.width, modelMinY, modelSize.x, modelSize.y, modelSize.z]);
+
+  useEffect(() => {
+    scene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        if (!material) return;
+        material.transparent = isPending;
+        material.opacity = isPending ? 0.48 : 1;
+        material.needsUpdate = true;
+      });
+    });
+    invalidate();
+  }, [invalidate, isPending, scene]);
 
   return (
     <group
@@ -157,7 +170,7 @@ function FurnitureGlbMesh({
       {isSelected ? (
         <mesh position={[0, dimensions.height / 2, 0]}>
           <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
-          <meshBasicMaterial color="#2f55ff" opacity={0.4} transparent wireframe />
+          <meshLambertMaterial color="#2f55ff" opacity={0.4} transparent wireframe />
         </mesh>
       ) : null}
     </group>
@@ -191,16 +204,27 @@ function WallMesh({
   wall: WheretoputWall3D;
 }) {
   return (
-    <mesh
-      onPointerDown={(event) => onPointerDown(wall, event)}
-      position={wall.position}
-      rotation={wall.rotation}
-      receiveShadow
-      castShadow
-    >
+    <mesh onPointerDown={(event) => onPointerDown(wall, event)} position={wall.position} rotation={wall.rotation}>
       <boxGeometry args={[wall.dimensions.width, wall.dimensions.height, wall.dimensions.depth]} />
-      <meshBasicMaterial color={isSelected ? "#2f55ff" : "#eeeeec"} opacity={isSelected ? 0.92 : 0.78} transparent />
+      <meshLambertMaterial color={isSelected ? "#2f55ff" : "#eeeeec"} />
     </mesh>
+  );
+}
+
+function RoomOrbitControls() {
+  const invalidate = useThree((state) => state.invalidate);
+
+  return (
+    <OrbitControls
+      enableDamping
+      makeDefault
+      maxDistance={42}
+      maxPolarAngle={Math.PI / 2.05}
+      minDistance={5}
+      minPolarAngle={0.2}
+      onChange={() => invalidate()}
+      target={[0, 0, 0]}
+    />
   );
 }
 
@@ -225,10 +249,10 @@ export function RoomlogThreeFloorPlanView({
 }) {
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
-      <Canvas camera={{ fov: 50, position: [14, 12, 18] }} shadows>
+      <Canvas camera={{ fov: 50, position: [14, 12, 18] }} dpr={[1, 2]} frameloop="demand">
         <color attach="background" args={["#626260"]} />
         <ambientLight intensity={0.72} />
-        <directionalLight castShadow intensity={1.4} position={[6, 12, 8]} />
+        <directionalLight intensity={1.4} position={[6, 12, 8]} />
         <RoomFloor onFloorPointerDown={onFloorPointerDown} wallsData={wallsData} />
         {wallsData.map((wall) => (
           <WallMesh
@@ -249,15 +273,8 @@ export function RoomlogThreeFloorPlanView({
         {pendingFurniture ? (
           <FurnitureMesh furniture={pendingFurniture} isPending isSelected={false} onPointerDown={onFurniturePointerDown} />
         ) : null}
-        <OrbitControls
-          enableDamping
-          makeDefault
-          maxDistance={42}
-          maxPolarAngle={Math.PI / 2.05}
-          minDistance={5}
-          minPolarAngle={0.2}
-          target={[0, 0, 0]}
-        />
+        <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18} />
+        <RoomOrbitControls />
       </Canvas>
       <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>
     </div>
