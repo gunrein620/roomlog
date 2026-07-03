@@ -20,6 +20,7 @@ interface SplatTuning {
   scaleMultiplier: number;
   rotationXDegrees: number;
   centerY: number;
+  fitMode: "auto" | "native";
   overrides: {
     scaleMultiplier: boolean;
     rotationXDegrees: boolean;
@@ -29,7 +30,7 @@ interface SplatTuning {
 
 interface SplatFitInfo {
   scale: number;
-  scaleReason: "bbox" | "min-guard" | "max-guard" | "fallback";
+  scaleReason: "bbox" | "min-guard" | "max-guard" | "fallback" | "native";
   rawScale: number | null;
   maxDimension: number | null;
   size: [number, number, number] | null;
@@ -72,19 +73,22 @@ export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => vo
 
         const tuning = readSplatTuningFromLocation();
         const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
-        console.info("[splat-tour] applied splat transform", {
-          src,
-          rotationXDegrees: tuning.rotationXDegrees,
-          scaleMultiplier: tuning.scaleMultiplier,
-          centerY: tuning.centerY,
-          scale: fitInfo.scale,
-          scaleReason: fitInfo.scaleReason,
-          rawScale: fitInfo.rawScale,
-          maxDimension: fitInfo.maxDimension,
-          size: fitInfo.size,
-          center: fitInfo.center,
-          overrides: tuning.overrides
-        });
+        console.info(
+          "[splat-tour] applied splat transform " +
+            JSON.stringify({
+              src,
+              rotationXDegrees: tuning.rotationXDegrees,
+              scaleMultiplier: tuning.scaleMultiplier,
+              centerY: tuning.centerY,
+              scale: fitInfo.scale,
+              scaleReason: fitInfo.scaleReason,
+              rawScale: fitInfo.rawScale,
+              maxDimension: fitInfo.maxDimension,
+              size: fitInfo.size,
+              center: fitInfo.center,
+              overrides: tuning.overrides
+            })
+        );
         setSparkRenderer(nextSparkRenderer);
         setSplatMesh(nextSplatMesh);
         invalidate();
@@ -132,6 +136,25 @@ function fitSplatToDemoRoom(splatMesh: SplatMeshObject, tuning: SplatTuning): Sp
   splatMesh.scale.setScalar(1);
   applySplatRotationX(splatMesh, tuning.rotationXDegrees);
   splatMesh.updateMatrixWorld(true);
+
+  // native: 캡처 앱(ARKit/ARCore IMU)이 넣어준 미터 스케일·원점(촬영 시작 지점)을 신뢰하고
+  // bbox 기반 fit을 건너뛴다. floater가 bbox를 부풀리는 스캔에서 auto fit은 방을 오배치한다.
+  if (tuning.fitMode === "native") {
+    const nativeScale = tuning.scaleMultiplier;
+    const nativeY = tuning.overrides.centerY ? tuning.centerY : 0;
+    splatMesh.scale.setScalar(nativeScale);
+    splatMesh.position.set(0, nativeY, 0);
+    splatMesh.updateMatrixWorld(true);
+
+    return {
+      scale: nativeScale,
+      scaleReason: "native",
+      rawScale: null,
+      maxDimension: null,
+      size: null,
+      center: null
+    };
+  }
 
   const box = splatMesh.getBoundingBox(true).clone().applyMatrix4(splatMesh.matrixWorld);
   const size = box.getSize(new Vector3());
@@ -209,6 +232,7 @@ function readSplatTuningFromLocation(): SplatTuning {
     scaleMultiplier: DEFAULT_SPLAT_SCALE_MULTIPLIER,
     rotationXDegrees: SPZ_Y_DOWN_TO_Y_UP_ROTATION_X_DEGREES,
     centerY: DEFAULT_SPLAT_CENTER.y,
+    fitMode: "auto",
     overrides: {
       scaleMultiplier: false,
       rotationXDegrees: false,
@@ -224,11 +248,13 @@ function readSplatTuningFromLocation(): SplatTuning {
   const scaleMultiplier = readNumberParam(params, "splatScale", { minExclusive: 0 });
   const rotationXDegrees = readNumberParam(params, "splatRotX");
   const centerY = readNumberParam(params, "splatY");
+  const fitMode = params.get("splatFit") === "native" ? "native" : "auto";
 
   return {
     scaleMultiplier: scaleMultiplier ?? defaultTuning.scaleMultiplier,
     rotationXDegrees: rotationXDegrees ?? defaultTuning.rotationXDegrees,
     centerY: centerY ?? defaultTuning.centerY,
+    fitMode,
     overrides: {
       scaleMultiplier: scaleMultiplier !== undefined,
       rotationXDegrees: rotationXDegrees !== undefined,
