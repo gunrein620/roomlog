@@ -7,11 +7,12 @@ import { apiUrl } from "@/lib/api-url";
 // 토큰이 아닌 프로필만 클라이언트에 반환. 토큰은 브라우저 JS에 절대 노출되지 않는다.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
+  const expectedRole = typeof body?.expectedRole === "string" ? body.expectedRole : undefined;
   if (!body) {
     return NextResponse.json({ message: "잘못된 요청입니다." }, { status: 400 });
   }
 
-  const upstream = await fetch(apiUrl("/auth/login"), {
+  const upstream = await fetch(apiUrl("/auth/login", { requestUrl: request.url }), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body)
@@ -28,6 +29,13 @@ export async function POST(request: Request) {
   }
 
   const { accessToken, ...profile } = data as { accessToken: string; [k: string]: unknown };
+  if (expectedRole && profile.role !== expectedRole) {
+    return NextResponse.json(
+      { message: "해당 로그인은 일반 이용자 계정만 사용할 수 있습니다." },
+      { status: 403 }
+    );
+  }
+
   (await cookies()).set(AUTH_COOKIE, accessToken, authCookieOptions);
 
   return NextResponse.json(profile);

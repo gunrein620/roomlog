@@ -63,8 +63,8 @@ const secondaryLinkStyle: CSSProperties = {
 
 export default async function Page() {
   // [레퍼런스 가드] 통합홈은 임차인 전용(온보딩/인증 화면은 홈의 다른 세그먼트).
-  await requireUser("/tenant/login", "TENANT");
-  const summary = await getHomeSummary();
+  const user = await requireUser("/tenant/login", "TENANT");
+  const summary = await getHomeSummary(user);
   const hasRoom = summary.unitId !== "—";
   const unreadCount = summary.unreadThreads + summary.unreadAnnouncements;
 

@@ -1,5 +1,5 @@
-export type UserRole = "TENANT" | "LANDLORD" | "VENDOR";
-export type MessageSenderRole = UserRole | "AI_ASSISTANT" | "SYSTEM";
+export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
+export type MessageSenderRole = Exclude<UserRole, "SEEKER"> | "AI_ASSISTANT" | "SYSTEM";
 export type ComplaintSourceChannel = "DIRECT_FORM" | "REALTIME_CHAT" | "VOICE_CHAT" | "CALLBOT";
 
 export type ComplaintStatus =
@@ -106,6 +106,561 @@ export type ReceiptOcr = {
   typeConfidence?: number;
   lineItems: ReceiptLineItem[];
   createdAt: string;
+};
+
+export type MessagingThreadContext =
+  | "defect"
+  | "payment"
+  | "contract"
+  | "moveout"
+  | "announcement"
+  | "general";
+
+export type MessagingMessageSender = "tenant" | "manager";
+export type MessagingMessageKind = "text" | "photo_request" | "photo_response";
+export type MessagingAnnouncementCategory = "urgent" | "life" | "event";
+export type MessagingAnnouncementScope = "all" | "building" | "unit";
+export type MessagingAnnouncementReadState = "unread" | "read" | "confirmed";
+export type MessagingAnnouncementDraftStatus = "draft" | "sent";
+
+export type MessagingMessage = {
+  id: string;
+  threadId: string;
+  senderUserId: string;
+  sender: MessagingMessageSender;
+  kind: MessagingMessageKind;
+  body: string;
+  originalBody?: string;
+  attachmentUrls: string[];
+  createdAt: string;
+};
+
+export type MessagingThread = {
+  id: string;
+  roomId: string;
+  unitId: string;
+  tenantId: string;
+  context: MessagingThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  lastMessage: string;
+  unreadCount: number;
+  pendingRequest: boolean;
+  archivedNotice: boolean;
+  createdAt: string;
+  updatedAt: string;
+  messages?: MessagingMessage[];
+};
+
+export type CreateMessagingThreadInput = {
+  roomId: string;
+  tenantId: string;
+  context: MessagingThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  initialMessage?: {
+    sender: MessagingMessageSender;
+    body: string;
+    kind?: MessagingMessageKind;
+    attachmentUrls?: string[];
+  };
+};
+
+export type AddMessagingThreadMessageInput = {
+  body?: string;
+  kind?: MessagingMessageKind;
+  attachmentUrls?: string[];
+};
+
+export type MessagingAnnouncementTranslation = {
+  lang: string;
+  langLabel?: string;
+  title: string;
+  body: string;
+  reviewed: boolean;
+};
+
+export type MessagingAnnouncementDraft = {
+  id: string;
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  targetRoomIds: string[];
+  title: string;
+  body: string;
+  translations: MessagingAnnouncementTranslation[];
+  confirmRequired: boolean;
+  status: MessagingAnnouncementDraftStatus;
+  createdByManagerId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateAnnouncementDraftInput = {
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  targetRoomIds?: string[];
+  title: string;
+  body: string;
+  translations?: MessagingAnnouncementTranslation[];
+  confirmRequired?: boolean;
+};
+
+export type MessagingAnnouncement = {
+  id: string;
+  draftId?: string;
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  title: string;
+  body: string;
+  originalBody?: string;
+  sender: string;
+  senderId: string;
+  sentAt: string;
+  confirmRequired: boolean;
+  safetyCta?: string;
+  state?: MessagingAnnouncementReadState;
+};
+
+export type MessagingAnnouncementDelivery = {
+  id: string;
+  announcementId: string;
+  tenantId: string;
+  roomId: string;
+  unitId: string;
+  tenantName: string;
+  preferredLang: string;
+  state: MessagingAnnouncementReadState;
+  readAt?: string;
+  confirmedAt?: string;
+  failed?: boolean;
+};
+
+export type MessagingAnnouncementResult = {
+  announcementId: string;
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  title: string;
+  sentAt: string;
+  version: number;
+  confirmRequired: boolean;
+  counts: {
+    total: number;
+    read: number;
+    confirmed: number;
+    unconfirmed: number;
+    failed: number;
+  };
+  deliveries: Array<{
+    unitId: string;
+    tenantName: string;
+    state: MessagingAnnouncementReadState;
+    readAt?: string;
+    confirmedAt?: string;
+    failed?: boolean;
+  }>;
+};
+
+export type ManagerReportPeriod = "week" | "month" | "quarter";
+export type ManagerReportStatus = "draft" | "delivered";
+export type ManagerReportSourceKind =
+  | "billing"
+  | "complaint"
+  | "cost"
+  | "unit"
+  | "metric"
+  | "contract"
+  | "moveout"
+  | "messaging";
+export type ManagerReportFollowUpActionType = "dunning" | "notice";
+export type ManagerReportFollowUpChannel = "announcement" | "thread";
+export type ManagerReportShareStatus = "active" | "revoked";
+export type ManagerReportAuditAction =
+  | "external_share_created"
+  | "external_share_viewed"
+  | "external_share_revoked";
+
+export type ManagerReportScope = {
+  buildingId: string;
+  buildingName: string;
+  roomIds?: string[];
+  unitIds?: string[];
+};
+
+export type ManagerReportRecipient = {
+  id: string;
+  name: string;
+  role: "landlord";
+  delivery: "account" | "external";
+};
+
+export type ManagerReportSource = {
+  kind: ManagerReportSourceKind;
+  label: string;
+  drilldownScreenId: string;
+  basis: string;
+};
+
+export type ManagerReportKpi = {
+  label: string;
+  value: string;
+  unit?: string;
+  formulaSource: ManagerReportSourceKind;
+};
+
+export type ManagerReportSection = {
+  key: string;
+  title: string;
+  summary: string;
+  source: ManagerReportSource;
+  kpis?: ManagerReportKpi[];
+};
+
+export type ManagerReportNextAction = {
+  label: string;
+  actionType: ManagerReportFollowUpActionType;
+  targetScreenId: "M-BILL-05" | "M-MSG-00";
+  payload: {
+    unitIds?: string[];
+    billIds?: string[];
+    periodLabel?: string;
+    note?: string;
+  };
+};
+
+export type ManagerReportSourceReference = {
+  id: string;
+  reportId: string;
+  sectionKey: string;
+  sourceKind: ManagerReportSourceKind;
+  entityType: string;
+  entityId: string;
+  roomId?: string;
+  tenantId?: string;
+  label: string;
+  drilldownScreenId: string;
+  basis: string;
+  snapshotAt: string;
+  createdAt: string;
+};
+
+export type ManagerReportLinkedFollowUp = {
+  id: string;
+  channel: ManagerReportFollowUpChannel;
+  actionType: ManagerReportFollowUpActionType;
+  announcementDraftId?: string;
+  threadId?: string;
+  createdAt: string;
+};
+
+export type ManagerReport = {
+  id: string;
+  managerId: string;
+  period: ManagerReportPeriod;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  scope: ManagerReportScope;
+  status: ManagerReportStatus;
+  snapshotAt: string;
+  recipient?: ManagerReportRecipient;
+  disclaimer: string;
+  summary: string;
+  nextActions: ManagerReportNextAction[];
+  sections: ManagerReportSection[];
+  sourceReferences?: ManagerReportSourceReference[];
+  linkedFollowUps: ManagerReportLinkedFollowUp[];
+  createdAt: string;
+  updatedAt: string;
+  deliveredAt?: string;
+};
+
+export type CreateManagerReportInput = {
+  period: ManagerReportPeriod;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  scope: ManagerReportScope;
+  recipient?: ManagerReportRecipient;
+};
+
+export type AskManagerReportChatInput = {
+  question: string;
+};
+
+export type ManagerReportChatAnswer = {
+  id: string;
+  interpretedQuery: string;
+  basis: "realtime_billing" | "stored_analysis";
+  answer: string;
+  sources: ManagerReportSource[];
+  draft?: {
+    type: ManagerReportFollowUpActionType;
+    targetScreenId: "M-BILL-05" | "M-MSG-00";
+    payload: {
+      unitIds?: string[];
+      billIds?: string[];
+      periodLabel?: string;
+      note?: string;
+    };
+  };
+  execution: "draft_only";
+  createdAt: string;
+};
+
+export type CreateManagerReportExternalShareInput = {
+  recipientName: string;
+};
+
+export type ManagerReportExternalShare = {
+  id: string;
+  reportId: string;
+  token: string;
+  recipientName: string;
+  masked: boolean;
+  status: ManagerReportShareStatus;
+  createdByManagerId: string;
+  createdAt: string;
+  revokedAt?: string;
+};
+
+export type ManagerReportAuditLogEntry = {
+  id: string;
+  reportId: string;
+  shareId?: string;
+  action: ManagerReportAuditAction;
+  actorId?: string;
+  actorLabel: string;
+  at: string;
+  detail?: string;
+};
+
+export type CreateManagerReportFollowUpInput = {
+  channel: ManagerReportFollowUpChannel;
+  actionType: ManagerReportFollowUpActionType;
+  title?: string;
+  body: string;
+  targetRoomIds?: string[];
+  roomId?: string;
+  tenantId?: string;
+  translations?: MessagingAnnouncementTranslation[];
+  confirmRequired?: boolean;
+};
+
+export type ManagerReportFollowUpResult = {
+  kind: "announcement_draft" | "thread";
+  reportId: string;
+  followUpId: string;
+  announcementDraftId?: string;
+  threadId?: string;
+};
+
+export type MoveoutSettlementStatus = "estimate" | "reviewing" | "review_done" | "re_review";
+export type MoveoutRecordSource =
+  | "movein_photo"
+  | "defect"
+  | "repair"
+  | "payment"
+  | "chat"
+  | "contract";
+export type MoveoutWearVerdict = "aging_likely" | "damage_possible" | "unclear";
+export type MoveoutDeductionKind = "unpaid" | "repair" | "restoration" | "cleaning";
+export type MoveoutChecklistCondition = "normal" | "aging" | "damage_check";
+export type MoveoutDisputeStatus =
+  | "received"
+  | "reviewing"
+  | "answered"
+  | "confirmed"
+  | "re_disputed"
+  | "resolved";
+export type MoveoutWearAdjustmentAction = "keep" | "adjust" | "reinforce";
+export type MoveoutReviewGateBlockReason =
+  | "contract_unconfirmed"
+  | "unresolved_dispute"
+  | "needs_confirmation"
+  | "no_movein_evidence";
+export type MoveoutDisputeResponseKind = "accept" | "adjust" | "explain";
+export type MoveoutDisputeReflectTarget = "report" | "settlement" | "none";
+
+export type MoveoutSummary = {
+  id: string;
+  tenantId: string;
+  roomId: string;
+  contractId?: string;
+  unitId: string;
+  contractConfirmed: boolean;
+  leaseEndDate?: string;
+  daysRemaining?: number;
+  depositAmount?: number;
+  estimatedRefundMin?: number;
+  estimatedRefundMax?: number;
+  settlementStatus: MoveoutSettlementStatus;
+  prepProgress: number;
+  settlementId?: string;
+  messagingThreadId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MoveoutRecordItem = {
+  id: string;
+  summaryId: string;
+  source: MoveoutRecordSource;
+  title: string;
+  description: string;
+  occurredAt?: string;
+  wearVerdict?: MoveoutWearVerdict;
+  wearNote?: string;
+  moveinComparisonAvailable: boolean;
+};
+
+export type MoveoutChecklistItem = {
+  id: string;
+  summaryId: string;
+  label: string;
+  present: boolean;
+  condition: MoveoutChecklistCondition;
+  note?: string;
+};
+
+export type MoveoutDeductionCandidate = {
+  id: string;
+  summaryId: string;
+  kind: MoveoutDeductionKind;
+  label: string;
+  estimatedMin: number;
+  estimatedMax: number;
+  needsConfirmation: boolean;
+  evidenceNote: string;
+  source: MoveoutRecordSource;
+};
+
+export type MoveoutSettlementEstimate = {
+  id: string;
+  summaryId: string;
+  depositAmount: number;
+  deductions: MoveoutDeductionCandidate[];
+  refundMin: number;
+  refundMax: number;
+  status: MoveoutSettlementStatus;
+  disclaimer: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type MoveoutDisputeEvent = {
+  id?: string;
+  status: MoveoutDisputeStatus;
+  at: string;
+  note?: string;
+  actorUserId?: string;
+};
+
+export type MoveoutDispute = {
+  id: string;
+  summaryId: string;
+  targetItemId?: string;
+  targetLabel: string;
+  reason: string;
+  status: MoveoutDisputeStatus;
+  slaDeadline: string;
+  slaBreached: boolean;
+  managerResponse?: string;
+  messagingThreadId?: string;
+  history: MoveoutDisputeEvent[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MoveoutManagerRow = {
+  summaryId: string;
+  unitId: string;
+  tenantName: string;
+  contractConfirmed: boolean;
+  leaseEndDate?: string;
+  daysRemaining?: number;
+  settlementStatus: MoveoutSettlementStatus;
+  openDisputeCount: number;
+  slaBreached: boolean;
+  expiringSoon: boolean;
+};
+
+export type MoveoutDashboardSummary = {
+  expiringSoon: number;
+  disputesWaiting: number;
+  slaBreached: number;
+  reviewDone: number;
+};
+
+export type MoveoutReportAuditEntry = {
+  id: string;
+  summaryId: string;
+  recordItemId: string;
+  action: MoveoutWearAdjustmentAction;
+  fromVerdict?: MoveoutWearVerdict;
+  toVerdict?: MoveoutWearVerdict;
+  evidenceNote: string;
+  tenantNotified: boolean;
+  managerName: string;
+  managerId: string;
+  at: string;
+};
+
+export type MoveoutReviewCompletionGate = {
+  canComplete: boolean;
+  blockingReasons: MoveoutReviewGateBlockReason[];
+  slaBreached: boolean;
+  overrideAvailable: boolean;
+  message: string;
+};
+
+export type MoveoutManagerSettlementReview = {
+  settlement: MoveoutSettlementEstimate;
+  gate: MoveoutReviewCompletionGate;
+  disputes: MoveoutDispute[];
+  moveinEvidenceAvailable: boolean;
+};
+
+export type MoveoutAdjustWearVerdictInput = {
+  recordItemId: string;
+  action: MoveoutWearAdjustmentAction;
+  toVerdict?: MoveoutWearVerdict;
+  evidenceNote: string;
+  notifyTenant: boolean;
+};
+
+export type MoveoutAdjustDeductionInput = {
+  deductionId: string;
+  estimatedMin?: number;
+  estimatedMax?: number;
+  resolveConfirmation?: boolean;
+  note?: string;
+};
+
+export type MoveoutCompleteReviewInput = {
+  acknowledgeEvidence: boolean;
+  overrideSla?: boolean;
+  overrideReason?: string;
+};
+
+export type MoveoutRespondDisputeInput = {
+  disputeId: string;
+  kind: MoveoutDisputeResponseKind;
+  message: string;
+  reflect?: MoveoutDisputeReflectTarget;
+};
+
+export type CreateMoveoutDisputeInput = {
+  targetItemId?: string;
+  targetLabel: string;
+  reason: string;
+};
+
+export type CreateTenantMoveoutInquiryInput = {
+  body: string;
+  attachmentUrls?: string[];
 };
 
 export type ContractLifecycle =
@@ -251,6 +806,20 @@ export type AttachmentCategory =
   | "COMPLETION_PHOTO"
   | "INTAKE_PHOTO"
   | "FLOOR_PLAN_SOURCE";
+
+export type SocialProvider = "GOOGLE" | "NAVER";
+
+export type SocialAccount = {
+  id: string;
+  provider: SocialProvider;
+  providerUserId: string;
+  userId: string;
+  email?: string;
+  name?: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type UserAccount = {
   id: string;

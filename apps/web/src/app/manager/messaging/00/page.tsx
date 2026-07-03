@@ -15,6 +15,8 @@ import {
   sectionTitleStyle,
 } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = Promise<{ tab?: string }>;
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {

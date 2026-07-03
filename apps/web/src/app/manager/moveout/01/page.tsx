@@ -15,11 +15,17 @@ import {
   MetricCard,
 } from "../_components";
 
-export default async function Page() {
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const moveoutId = id ?? DEMO_MOVEOUT_ID;
   const [moveout, records, audit] = await Promise.all([
-    getMoveout(DEMO_MOVEOUT_ID),
-    getRecords(DEMO_MOVEOUT_ID),
-    getReportAudit(DEMO_MOVEOUT_ID),
+    getMoveout(moveoutId),
+    getRecords(moveoutId),
+    getReportAudit(moveoutId),
   ]);
   const comparisons = records.filter((record) => record.moveinComparisonAvailable).length;
   const triageCount = records.filter((record) => record.wearVerdict).length;

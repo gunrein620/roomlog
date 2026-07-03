@@ -37,9 +37,14 @@ import { RoomlogChecklistDomain } from "./services/roomlog-checklist.domain";
 import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
 import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
 import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
+import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
+import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
+import { RoomlogReportDomain } from "./services/roomlog-report.domain";
 import {
+  AddMessagingThreadMessageInput,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
+  AskManagerReportChatInput,
   AiFeedback,
   AiFeedbackTarget,
   AiAnalysis,
@@ -60,11 +65,18 @@ import {
   Cost,
   CostReviewQueueSummary,
   CostType,
+  CreateAnnouncementDraftInput,
+  CreateManagerReportExternalShareInput,
+  CreateManagerReportFollowUpInput,
+  CreateManagerReportInput,
   DeletionState,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
+  CreateMessagingThreadInput,
+  CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateTenantMoveoutInquiryInput,
   DisclosureSetting,
   DuplicateTicketCandidate,
   FinalizeIntakeInput,
@@ -89,14 +101,37 @@ import {
   IntakeSlot,
   IntakeSlotKey,
   IntakeThreadSummary,
+  MessagingAnnouncement,
+  MessagingAnnouncementDelivery,
+  MessagingAnnouncementDraft,
+  MessagingAnnouncementResult,
+  MessagingMessage,
+  MessagingThread,
+  MessagingThreadContext,
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
+  ManagerReport,
+  ManagerReportAuditLogEntry,
+  ManagerReportExternalShare,
+  ManagerReportSourceReference,
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerReplyIntent,
   ManagerTicketReplyInput,
   MoveInChecklistItem,
+  MoveoutAdjustDeductionInput,
+  MoveoutAdjustWearVerdictInput,
+  MoveoutChecklistItem,
+  MoveoutCompleteReviewInput,
+  MoveoutDeductionCandidate,
+  MoveoutDispute,
+  MoveoutManagerSettlementReview,
+  MoveoutRecordItem,
+  MoveoutReportAuditEntry,
+  MoveoutRespondDisputeInput,
+  MoveoutSettlementEstimate,
+  MoveoutSummary,
   PhotoAnalysis,
   PhotoComparisonStatus,
   RealtimeClientSecretInput,
@@ -125,6 +160,7 @@ import {
   Ticket,
   TicketMessage,
   TicketStatus,
+  SocialAccount,
   UserAccount,
   UserRole
 } from "./roomlog.types";
@@ -165,118 +201,13 @@ export type LoginInput = {
   password: string;
 };
 
-const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
-  {
-    id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    label: "Nemotron 3 Nano Omni",
-    mode: "vision-reasoning",
-    description: "도면 이미지와 치수선을 함께 보고 축척 후보를 추론합니다."
-  },
-  {
-    id: "nvidia/cosmos3-nano-reasoner",
-    label: "Cosmos3 Nano Reasoner",
-    mode: "vision-reasoning",
-    description: "이미지 구조를 물리 공간 관점으로 검토해 치수 후보를 보조 검증합니다."
-  },
-  {
-    id: "openai/floor-plan-vision",
-    label: "OpenAI Vision",
-    mode: "vision-reasoning",
-    description: "도면 이미지를 1차로 해석해 치수 텍스트와 구조 후보를 OpenCV 검출 결과 보정에 활용합니다."
-  }
-];
-
-const FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA = {
-  additionalProperties: false,
-  properties: {
-    candidateReviews: {
-      items: {
-        additionalProperties: false,
-        properties: {
-          confidence: { maximum: 1, minimum: 0, type: "number" },
-          id: { type: "string" },
-          reason: { type: "string" },
-          verdict: { enum: ["keep", "reject", "review"], type: "string" }
-        },
-        required: ["id", "verdict", "confidence", "reason"],
-        type: "object"
-      },
-      type: "array"
-    },
-    missingWallHints: {
-      items: {
-        additionalProperties: false,
-        properties: {
-          confidence: { maximum: 1, minimum: 0, type: "number" },
-          description: { type: "string" },
-          line: {
-            additionalProperties: false,
-            properties: {
-              x1: { maximum: 1000, minimum: 0, type: "number" },
-              x2: { maximum: 1000, minimum: 0, type: "number" },
-              y1: { maximum: 1000, minimum: 0, type: "number" },
-              y2: { maximum: 1000, minimum: 0, type: "number" }
-            },
-            required: ["x1", "y1", "x2", "y2"],
-            type: "object"
-          },
-          orientation: { enum: ["horizontal", "vertical"], type: "string" }
-        },
-        required: ["description", "confidence", "orientation", "line"],
-        type: "object"
-      },
-      type: "array"
-    },
-    summary: { type: "string" }
-  },
-  required: ["summary", "candidateReviews", "missingWallHints"],
-  type: "object"
-} as const;
-
-const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
-  additionalProperties: false,
-  properties: {
-    noiseFlags: {
-      additionalProperties: false,
-      properties: {
-        decorativeHatching: { type: "boolean" },
-        watermark: { type: "boolean" }
-      },
-      required: ["decorativeHatching", "watermark"],
-      type: "object"
-    },
-    planStyle: { enum: ["solid-filled", "double-line-hollow", "hatched", "gray-fill"], type: "string" },
-    rooms: {
-      items: {
-        additionalProperties: false,
-        properties: {
-          confidence: { maximum: 1, minimum: 0, type: "number" },
-          label: { type: "string" },
-          polygon: {
-            items: {
-              additionalProperties: false,
-              properties: {
-                x: { maximum: 1000, minimum: 0, type: "number" },
-                y: { maximum: 1000, minimum: 0, type: "number" }
-              },
-              required: ["x", "y"],
-              type: "object"
-            },
-            maxItems: 12,
-            minItems: 4,
-            type: "array"
-          }
-        },
-        required: ["label", "confidence", "polygon"],
-        type: "object"
-      },
-      type: "array"
-    },
-    summary: { type: "string" }
-  },
-  required: ["summary", "planStyle", "noiseFlags", "rooms"],
-  type: "object"
-} as const;
+export type GoogleSocialLoginInput = {
+  code: string;
+  redirectUri: string;
+  role?: UserRole;
+  inviteToken?: string;
+  flow?: "login" | "signup";
+};
 
 export type VendorMgmtTrade =
   | "plumbing"
@@ -376,6 +307,7 @@ export type TenantInvite = {
 
 export type Store = {
   users: UserAccount[];
+  socialAccounts: SocialAccount[];
   rooms: Room[];
   roomWalls: RoomWall[];
   tenantRooms: Record<string, string>;
@@ -400,6 +332,22 @@ export type Store = {
   receipts: Receipt[];
   receiptOcrs: ReceiptOcr[];
   messages: TicketMessage[];
+  messagingThreads: MessagingThread[];
+  messagingMessages: MessagingMessage[];
+  messagingAnnouncementDrafts: MessagingAnnouncementDraft[];
+  messagingAnnouncements: MessagingAnnouncement[];
+  messagingAnnouncementDeliveries: MessagingAnnouncementDelivery[];
+  managerReports: ManagerReport[];
+  managerReportSourceReferences: ManagerReportSourceReference[];
+  managerReportExternalShares: ManagerReportExternalShare[];
+  managerReportAuditLogs: ManagerReportAuditLogEntry[];
+  moveouts: MoveoutSummary[];
+  moveoutRecords: MoveoutRecordItem[];
+  moveoutChecklist: MoveoutChecklistItem[];
+  moveoutSettlements: MoveoutSettlementEstimate[];
+  moveoutDeductions: MoveoutDeductionCandidate[];
+  moveoutDisputes: MoveoutDispute[];
+  moveoutReportAudits: MoveoutReportAuditEntry[];
   history: StatusHistory[];
 };
 
@@ -493,6 +441,7 @@ function createDemoStore(): Store {
 
   return {
     users,
+    socialAccounts: [],
     rooms: [
       {
         id: "room-301",
@@ -640,6 +589,108 @@ function createDemoStore(): Store {
     receipts: [],
     receiptOcrs: [],
     messages: [],
+    messagingThreads: [
+      {
+        id: "mth_demo_general",
+        roomId: "room-301",
+        unitId: "301",
+        tenantId: "tenant-demo",
+        context: "general",
+        contextLabel: "생활 문의",
+        lastMessage: "확인 후 오늘 안으로 답변드리겠습니다.",
+        unreadCount: 1,
+        pendingRequest: false,
+        archivedNotice: true,
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingMessages: [
+      {
+        id: "msg_demo_general_1",
+        threadId: "mth_demo_general",
+        senderUserId: "tenant-demo",
+        sender: "tenant",
+        kind: "text",
+        body: "공용 현관 등이 깜빡입니다.",
+        attachmentUrls: [],
+        createdAt
+      },
+      {
+        id: "msg_demo_general_2",
+        threadId: "mth_demo_general",
+        senderUserId: "landlord-demo",
+        sender: "manager",
+        kind: "text",
+        body: "확인 후 오늘 안으로 답변드리겠습니다.",
+        attachmentUrls: [],
+        createdAt
+      }
+    ],
+    messagingAnnouncementDrafts: [
+      {
+        id: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        targetRoomIds: ["room-301"],
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        translations: [
+          {
+            lang: "en",
+            langLabel: "English",
+            title: "Emergency water outage",
+            body: "There will be a 30-minute emergency water outage from 18:00 today.",
+            reviewed: true
+          }
+        ],
+        confirmRequired: true,
+        status: "sent",
+        createdByManagerId: "landlord-demo",
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingAnnouncements: [
+      {
+        id: "mann_demo_urgent",
+        draftId: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        sender: "박관리",
+        senderId: "landlord-demo",
+        sentAt: createdAt,
+        confirmRequired: true,
+        safetyCta: "안전 확인"
+      }
+    ],
+    messagingAnnouncementDeliveries: [
+      {
+        id: "mdl_demo_urgent_tenant",
+        announcementId: "mann_demo_urgent",
+        tenantId: "tenant-demo",
+        roomId: "room-301",
+        unitId: "301",
+        tenantName: "김민수",
+        preferredLang: "ko",
+        state: "unread"
+      }
+    ],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
+    moveouts: [],
+    moveoutRecords: [],
+    moveoutChecklist: [],
+    moveoutSettlements: [],
+    moveoutDeductions: [],
+    moveoutDisputes: [],
+    moveoutReportAudits: [],
     history: []
   };
 }
@@ -647,6 +698,7 @@ function createDemoStore(): Store {
 function createEmptyStore(): Store {
   return {
     users: [],
+    socialAccounts: [],
     rooms: [],
     roomWalls: [],
     tenantRooms: {},
@@ -671,6 +723,22 @@ function createEmptyStore(): Store {
     receipts: [],
     receiptOcrs: [],
     messages: [],
+    messagingThreads: [],
+    messagingMessages: [],
+    messagingAnnouncementDrafts: [],
+    messagingAnnouncements: [],
+    messagingAnnouncementDeliveries: [],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
+    moveouts: [],
+    moveoutRecords: [],
+    moveoutChecklist: [],
+    moveoutSettlements: [],
+    moveoutDeductions: [],
+    moveoutDisputes: [],
+    moveoutReportAudits: [],
     history: []
   };
 }
@@ -714,6 +782,9 @@ export class RoomlogService {
   private readonly contract: RoomlogContractDomain;
   private readonly vendorMgmt: RoomlogVendorMgmtDomain;
   private readonly vendorRepair: RoomlogVendorRepairDomain;
+  private readonly messaging: RoomlogMessagingDomain;
+  private readonly moveout: RoomlogMoveoutDomain;
+  private readonly report: RoomlogReportDomain;
 
   constructor(
     @Optional()
@@ -800,6 +871,39 @@ export class RoomlogService {
       (managerId, ticket) => this.assertManagerCanAccessTicket(managerId, ticket),
       (message) => this.presentTicketMessage(message)
     );
+    this.messaging = new RoomlogMessagingDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso)
+    );
+    this.report = new RoomlogReportDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createManagerAnnouncementDraft(managerId, input),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input)
+    );
+    this.moveout = new RoomlogMoveoutDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input),
+      (tenantId, threadId, input) =>
+        this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input),
+      (managerId, threadId, input) =>
+        this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input)
+    );
   }
 
   async flushPersistence() {
@@ -816,6 +920,10 @@ export class RoomlogService {
 
   login(input: LoginInput): AuthResult {
     return this.auth.login(input);
+  }
+
+  async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
+    return await this.auth.loginWithGoogle(input);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
@@ -848,7 +956,23 @@ export class RoomlogService {
       costs: this.store.costs,
       receipts: this.store.receipts,
       receiptOcrs: this.store.receiptOcrs,
-      messages: this.store.messages
+      messages: this.store.messages,
+      messagingThreads: this.store.messagingThreads,
+      messagingMessages: this.store.messagingMessages,
+      messagingAnnouncementDrafts: this.store.messagingAnnouncementDrafts,
+      messagingAnnouncements: this.store.messagingAnnouncements,
+      messagingAnnouncementDeliveries: this.store.messagingAnnouncementDeliveries,
+      managerReports: this.store.managerReports,
+      managerReportSourceReferences: this.store.managerReportSourceReferences,
+      managerReportExternalShares: this.store.managerReportExternalShares,
+      managerReportAuditLogs: this.store.managerReportAuditLogs,
+      moveouts: this.store.moveouts,
+      moveoutRecords: this.store.moveoutRecords,
+      moveoutChecklist: this.store.moveoutChecklist,
+      moveoutSettlements: this.store.moveoutSettlements,
+      moveoutDeductions: this.store.moveoutDeductions,
+      moveoutDisputes: this.store.moveoutDisputes,
+      moveoutReportAudits: this.store.moveoutReportAudits
     };
   }
 
@@ -2247,12 +2371,16 @@ export class RoomlogService {
   addMessage(senderUserId: string, ticketId: string, messageText: string) {
     const ticket = this.findTicket(ticketId);
     const user = this.store.users.find((account) => account.id === senderUserId);
+    const senderRole =
+      user?.role === "TENANT" || user?.role === "LANDLORD" || user?.role === "VENDOR"
+        ? user.role
+        : "TENANT";
 
     const message = this.addMessageInternal(
       ticket.id,
       ticket.complaintId,
       senderUserId,
-      user?.role ?? "TENANT",
+      senderRole,
       messageText
     );
     this.persistStore();
@@ -3552,6 +3680,247 @@ export class RoomlogService {
     return JSON.parse(JSON.stringify(draft)) as FloorPlanDraft;
   }
 
+  getTenantRoom(tenantId: string) {
+    const roomId = this.store.tenantRooms[tenantId];
+
+    if (!roomId) {
+      throw new NotFoundException("임차인 호실을 찾을 수 없습니다.");
+    }
+
+    return this.findRoom(roomId);
+  }
+
+  listTenantMoveouts(tenantId: string) {
+    return this.moveout.listTenantMoveouts(tenantId);
+  }
+
+  getTenantMoveout(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveout(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutRecords(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutRecords(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutChecklist(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutChecklist(tenantId, moveoutId);
+  }
+
+  getTenantMoveoutSettlement(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveoutSettlement(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutDisputes(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutDisputes(tenantId, moveoutId);
+  }
+
+  createTenantMoveoutInquiry(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateTenantMoveoutInquiryInput
+  ) {
+    return this.moveout.createTenantMoveoutInquiry(tenantId, moveoutId, input);
+  }
+
+  createTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateMoveoutDisputeInput
+  ) {
+    return this.moveout.createTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  getManagerMoveoutDashboard(managerId: string) {
+    return this.moveout.getManagerMoveoutDashboard(managerId);
+  }
+
+  listManagerMoveoutRows(managerId: string) {
+    return this.moveout.listManagerMoveoutRows(managerId);
+  }
+
+  getManagerMoveout(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveout(managerId, moveoutId);
+  }
+
+  getManagerMoveoutRecords(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveoutRecords(managerId, moveoutId);
+  }
+
+  getManagerReportAudit(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerReportAudit(managerId, moveoutId);
+  }
+
+  getManagerMoveoutSettlement(
+    managerId: string,
+    moveoutId: string
+  ): MoveoutManagerSettlementReview {
+    return this.moveout.getManagerMoveoutSettlement(managerId, moveoutId);
+  }
+
+  adjustManagerMoveoutWearVerdict(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustWearVerdictInput
+  ) {
+    return this.moveout.adjustManagerMoveoutWearVerdict(managerId, moveoutId, input);
+  }
+
+  adjustManagerMoveoutDeduction(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustDeductionInput
+  ) {
+    return this.moveout.adjustManagerMoveoutDeduction(managerId, moveoutId, input);
+  }
+
+  completeManagerMoveoutReview(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutCompleteReviewInput
+  ) {
+    return this.moveout.completeManagerMoveoutReview(managerId, moveoutId, input);
+  }
+
+  respondManagerMoveoutDispute(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutRespondDisputeInput
+  ) {
+    return this.moveout.respondManagerMoveoutDispute(managerId, moveoutId, input);
+  }
+
+  createMessagingThread(managerId: string, input: CreateMessagingThreadInput) {
+    return this.messaging.createMessagingThread(managerId, input);
+  }
+
+  listTenantMessagingThreads(tenantId: string) {
+    return this.messaging.listTenantMessagingThreads(tenantId);
+  }
+
+  getTenantMessagingThread(tenantId: string, threadId: string) {
+    return this.messaging.getTenantMessagingThread(tenantId, threadId);
+  }
+
+  addTenantMessagingThreadMessage(
+    tenantId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input);
+  }
+
+  listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext) {
+    return this.messaging.listManagerMessagingThreads(managerId, context);
+  }
+
+  getManagerMessagingThread(managerId: string, threadId: string) {
+    return this.messaging.getManagerMessagingThread(managerId, threadId);
+  }
+
+  addManagerMessagingThreadMessage(
+    managerId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input);
+  }
+
+  createManagerAnnouncementDraft(managerId: string, input: CreateAnnouncementDraftInput) {
+    return this.messaging.createManagerAnnouncementDraft(managerId, input);
+  }
+
+  listManagerAnnouncementDrafts(managerId: string) {
+    return this.messaging.listManagerAnnouncementDrafts(managerId);
+  }
+
+  getManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.getManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listManagerAnnouncementRecipients(managerId: string, draftId: string) {
+    return this.messaging.listManagerAnnouncementRecipients(managerId, draftId);
+  }
+
+  sendManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.sendManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listTenantMessagingAnnouncements(tenantId: string) {
+    return this.messaging.listTenantMessagingAnnouncements(tenantId);
+  }
+
+  getTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.getTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  markTenantMessagingAnnouncementRead(tenantId: string, announcementId: string) {
+    return this.messaging.markTenantMessagingAnnouncementRead(tenantId, announcementId);
+  }
+
+  confirmTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.confirmTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  listManagerAnnouncementResults(managerId: string) {
+    return this.messaging.listManagerAnnouncementResults(managerId);
+  }
+
+  getManagerAnnouncementResult(managerId: string, announcementId: string) {
+    return this.messaging.getManagerAnnouncementResult(managerId, announcementId);
+  }
+
+  listManagerReports(managerId: string) {
+    return this.report.listManagerReports(managerId);
+  }
+
+  createManagerReport(managerId: string, input: CreateManagerReportInput) {
+    return this.report.createManagerReport(managerId, input);
+  }
+
+  getManagerReport(managerId: string, reportId: string) {
+    return this.report.getManagerReport(managerId, reportId);
+  }
+
+  listManagerReportSourceReferences(managerId: string, reportId: string) {
+    return this.report.listManagerReportSourceReferences(managerId, reportId);
+  }
+
+  askManagerReportChat(
+    managerId: string,
+    reportId: string,
+    input: AskManagerReportChatInput
+  ) {
+    return this.report.askManagerReportChat(managerId, reportId, input);
+  }
+
+  createManagerReportExternalShare(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportExternalShareInput
+  ) {
+    return this.report.createManagerReportExternalShare(managerId, reportId, input);
+  }
+
+  getExternalReportShare(token: string) {
+    return this.report.getExternalReportShare(token);
+  }
+
+  revokeManagerReportExternalShare(managerId: string, reportId: string, shareId: string) {
+    return this.report.revokeManagerReportExternalShare(managerId, reportId, shareId);
+  }
+
+  listManagerReportAuditLog(managerId: string, reportId: string) {
+    return this.report.listManagerReportAuditLog(managerId, reportId);
+  }
+
+  createManagerReportFollowUp(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportFollowUpInput
+  ) {
+    return this.report.createManagerReportFollowUp(managerId, reportId, input);
+  }
+
   private loadStore(): Store {
     if (!this.storeFilePath || !existsSync(this.storeFilePath)) {
       return this.seedDemoData ? createDemoStore() : createEmptyStore();
@@ -3569,6 +3938,7 @@ export class RoomlogService {
   private normalizeStoreSnapshot(parsed: Store): Store {
     return {
       ...parsed,
+      socialAccounts: parsed.socialAccounts ?? [],
       vendorInvites: parsed.vendorInvites ?? [],
       tenantInvites: parsed.tenantInvites ?? [],
       contracts: parsed.contracts ?? [],
@@ -3615,7 +3985,51 @@ export class RoomlogService {
       })),
       costs: parsed.costs ?? [],
       receipts: parsed.receipts ?? [],
-      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr))
+      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr)),
+      messagingThreads: (parsed.messagingThreads ?? []).map((thread) => ({
+        ...thread,
+        archivedNotice: thread.archivedNotice ?? true,
+        pendingRequest: thread.pendingRequest ?? false,
+        unreadCount: thread.unreadCount ?? 0
+      })),
+      messagingMessages: (parsed.messagingMessages ?? []).map((message) => ({
+        ...message,
+        attachmentUrls: message.attachmentUrls ?? []
+      })),
+      messagingAnnouncementDrafts: (parsed.messagingAnnouncementDrafts ?? []).map((draft) => ({
+        ...draft,
+        targetRoomIds: draft.targetRoomIds ?? [],
+        translations: draft.translations ?? []
+      })),
+      messagingAnnouncements: parsed.messagingAnnouncements ?? [],
+      messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? [],
+      managerReports: (parsed.managerReports ?? []).map((report) => ({
+        ...report,
+        scope: {
+          ...report.scope,
+          roomIds: report.scope.roomIds ?? [],
+          unitIds: report.scope.unitIds ?? []
+        },
+        nextActions: report.nextActions ?? [],
+        sections: report.sections ?? [],
+        linkedFollowUps: report.linkedFollowUps ?? []
+      })),
+      managerReportSourceReferences: parsed.managerReportSourceReferences ?? [],
+      managerReportExternalShares: parsed.managerReportExternalShares ?? [],
+      managerReportAuditLogs: parsed.managerReportAuditLogs ?? [],
+      moveouts: parsed.moveouts ?? [],
+      moveoutRecords: parsed.moveoutRecords ?? [],
+      moveoutChecklist: parsed.moveoutChecklist ?? [],
+      moveoutSettlements: (parsed.moveoutSettlements ?? []).map((settlement) => ({
+        ...settlement,
+        deductions: settlement.deductions ?? []
+      })),
+      moveoutDeductions: parsed.moveoutDeductions ?? [],
+      moveoutDisputes: (parsed.moveoutDisputes ?? []).map((dispute) => ({
+        ...dispute,
+        history: dispute.history ?? []
+      })),
+      moveoutReportAudits: parsed.moveoutReportAudits ?? []
     };
   }
 
@@ -3656,6 +4070,7 @@ export class RoomlogService {
     return Boolean(
       snapshot &&
         Array.isArray(snapshot.users) &&
+        (snapshot.socialAccounts === undefined || Array.isArray(snapshot.socialAccounts)) &&
         Array.isArray(snapshot.rooms) &&
         (snapshot.roomWalls === undefined || Array.isArray(snapshot.roomWalls)) &&
         snapshot.tenantRooms &&
@@ -3679,6 +4094,28 @@ export class RoomlogService {
         (snapshot.costs === undefined || Array.isArray(snapshot.costs)) &&
         (snapshot.receipts === undefined || Array.isArray(snapshot.receipts)) &&
         (snapshot.receiptOcrs === undefined || Array.isArray(snapshot.receiptOcrs)) &&
+        (snapshot.messagingThreads === undefined || Array.isArray(snapshot.messagingThreads)) &&
+        (snapshot.messagingMessages === undefined || Array.isArray(snapshot.messagingMessages)) &&
+        (snapshot.messagingAnnouncementDrafts === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDrafts)) &&
+        (snapshot.messagingAnnouncements === undefined ||
+          Array.isArray(snapshot.messagingAnnouncements)) &&
+        (snapshot.messagingAnnouncementDeliveries === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDeliveries)) &&
+        (snapshot.managerReports === undefined || Array.isArray(snapshot.managerReports)) &&
+        (snapshot.managerReportSourceReferences === undefined ||
+          Array.isArray(snapshot.managerReportSourceReferences)) &&
+        (snapshot.managerReportExternalShares === undefined ||
+          Array.isArray(snapshot.managerReportExternalShares)) &&
+        (snapshot.managerReportAuditLogs === undefined ||
+          Array.isArray(snapshot.managerReportAuditLogs)) &&
+        (snapshot.moveouts === undefined || Array.isArray(snapshot.moveouts)) &&
+        (snapshot.moveoutRecords === undefined || Array.isArray(snapshot.moveoutRecords)) &&
+        (snapshot.moveoutChecklist === undefined || Array.isArray(snapshot.moveoutChecklist)) &&
+        (snapshot.moveoutSettlements === undefined || Array.isArray(snapshot.moveoutSettlements)) &&
+        (snapshot.moveoutDeductions === undefined || Array.isArray(snapshot.moveoutDeductions)) &&
+        (snapshot.moveoutDisputes === undefined || Array.isArray(snapshot.moveoutDisputes)) &&
+        (snapshot.moveoutReportAudits === undefined || Array.isArray(snapshot.moveoutReportAudits)) &&
         Array.isArray(snapshot.messages) &&
         Array.isArray(snapshot.history)
     );

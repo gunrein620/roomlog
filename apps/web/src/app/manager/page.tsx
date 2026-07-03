@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
+import { requireUser } from "@/lib/session";
 
-// 관리인 진입 인덱스 → 관리인 홈으로. 거대 뷰 셸은 은퇴(1-E).
-export default function ManagerIndex() {
-  redirect("/manager/home/00");
+export const dynamic = "force-dynamic";
+
+// 관리인 진입 인덱스 → 로그인된 임대인만 루트 임대인 마이페이지로 보낸다.
+export default async function ManagerIndex() {
+  await requireUser("/manager/login?redirectTo=%2F%3Frole%3Dlandlord%26tab%3Dmypage", "LANDLORD");
+  redirect("/?role=landlord&tab=mypage");
 }

@@ -1,23 +1,45 @@
 import type {
+  AdjustDeductionDto,
+  AdjustWearVerdictDto,
   Dispute,
+  MoveoutRecordItem,
+  MoveoutSummary,
+  CompleteReviewDto,
   ManagerSettlementReview,
   MoveoutDashboardSummary,
   MoveoutManagerRow,
   ReportAuditEntry,
+  RespondDisputeDto,
 } from "@roomlog/types";
-import { DEMO_MOVEOUT, DEMO_MOVEOUT_DISPUTES, DEMO_MOVEOUT_ID, DEMO_MOVEOUT_SETTLEMENT } from "./demo-moveout";
-export { getDisputes, getMoveout, getRecords } from "./moveout-api";
+import {
+  DEMO_MOVEOUT,
+  DEMO_MOVEOUT_DISPUTES,
+  DEMO_MOVEOUT_ID,
+  DEMO_MOVEOUT_RECORDS,
+  DEMO_MOVEOUT_SETTLEMENT,
+} from "./demo-moveout";
+import { serverFetch } from "./server-api";
 
 // 룸로그 API 클라이언트 (관리인 퇴실·정산 검토 M-OUT 슬라이스).
 // api가 안 떠 있어도 화면이 렌더되도록 데모 데이터로 폴백한다.
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+export const managerMoveoutPaths = {
+  dashboard: () => "/moveouts/manager/dashboard",
+  rows: () => "/moveouts/manager/rows",
+  moveout: (id: string) => `/moveouts/${encodeURIComponent(id)}/manager`,
+  records: (id: string) => `/moveouts/${encodeURIComponent(id)}/manager-records`,
+  settlement: (id: string) => `/moveouts/${encodeURIComponent(id)}/manager-settlement`,
+  reportAudit: (id: string) => `/moveouts/${encodeURIComponent(id)}/report-audit`,
+  adjustWearVerdict: (id: string) => `/moveouts/${encodeURIComponent(id)}/records/wear-verdict`,
+  adjustDeduction: (id: string) => `/moveouts/${encodeURIComponent(id)}/deductions`,
+  completeReview: (id: string) => `/moveouts/${encodeURIComponent(id)}/complete-review`,
+  respondDispute: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes/respond`,
+};
 
-async function tryFetch<T>(path: string, fallback: T): Promise<T> {
+async function tryFetch<T>(path: string, fallback: T, label: string): Promise<T> {
   try {
-    const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
+    return await serverFetch<T>(path);
+  } catch (error) {
+    console.warn(`[moveout/manager-api] ${label} 실패 → 데모 폴백`, error);
     return fallback;
   }
 }
@@ -127,17 +149,59 @@ export const DEMO_MANAGER_SETTLEMENT_REVIEW: ManagerSettlementReview = {
 };
 
 export function getManagerDashboard(): Promise<MoveoutDashboardSummary> {
-  return tryFetch("/moveouts/manager/dashboard", DEMO_MANAGER_DASHBOARD);
+  return tryFetch(managerMoveoutPaths.dashboard(), DEMO_MANAGER_DASHBOARD, "관리인 퇴실 대시보드 조회");
 }
 
 export function listManagerRows(): Promise<MoveoutManagerRow[]> {
-  return tryFetch("/moveouts/manager/rows", DEMO_MANAGER_MOVEOUT_ROWS);
+  return tryFetch(managerMoveoutPaths.rows(), DEMO_MANAGER_MOVEOUT_ROWS, "관리인 퇴실 행 조회");
+}
+
+export function getMoveout(id = DEMO_MOVEOUT_ID): Promise<MoveoutSummary> {
+  return tryFetch(managerMoveoutPaths.moveout(id), DEMO_MOVEOUT, "관리인 퇴실 요약 조회");
+}
+
+export function getRecords(id = DEMO_MOVEOUT_ID): Promise<MoveoutRecordItem[]> {
+  return tryFetch(managerMoveoutPaths.records(id), DEMO_MOVEOUT_RECORDS, "관리인 퇴실 기록 조회");
 }
 
 export function getManagerSettlement(id = DEMO_MOVEOUT_ID): Promise<ManagerSettlementReview> {
-  return tryFetch(`/moveouts/${encodeURIComponent(id)}/manager-settlement`, DEMO_MANAGER_SETTLEMENT_REVIEW);
+  return tryFetch(managerMoveoutPaths.settlement(id), DEMO_MANAGER_SETTLEMENT_REVIEW, "관리인 퇴실 정산 조회");
 }
 
 export function getReportAudit(id = DEMO_MOVEOUT_ID): Promise<ReportAuditEntry[]> {
-  return tryFetch(`/moveouts/${encodeURIComponent(id)}/report-audit`, DEMO_REPORT_AUDIT);
+  return tryFetch(managerMoveoutPaths.reportAudit(id), DEMO_REPORT_AUDIT, "관리인 퇴실 리포트 감사로그 조회");
+}
+
+export function adjustWearVerdict(
+  id: string,
+  input: AdjustWearVerdictDto,
+): Promise<{ record: MoveoutRecordItem; audit: ReportAuditEntry }> {
+  return serverFetch<{ record: MoveoutRecordItem; audit: ReportAuditEntry }>(
+    managerMoveoutPaths.adjustWearVerdict(id),
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function adjustDeduction(id: string, input: AdjustDeductionDto): Promise<ManagerSettlementReview["settlement"]> {
+  return serverFetch<ManagerSettlementReview["settlement"]>(managerMoveoutPaths.adjustDeduction(id), {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function completeReview(id: string, input: CompleteReviewDto): Promise<ManagerSettlementReview> {
+  return serverFetch<ManagerSettlementReview>(managerMoveoutPaths.completeReview(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function respondDispute(id: string, input: RespondDisputeDto): Promise<Dispute> {
+  return serverFetch<Dispute>(managerMoveoutPaths.respondDispute(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

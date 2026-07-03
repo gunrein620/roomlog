@@ -227,6 +227,7 @@ export interface ReviewCompletionGate {
 export interface CompleteReviewDto {
   acknowledgeEvidence: boolean; // 근거 확인
   overrideSla?: boolean; // SLA 초과 시 알림 동반 강행
+  overrideReason?: string; // SLA override 사유
 }
 
 /** 관리인 검토 정산안 뷰(M-OUT-02) — 예상 정산 + 게이트 + 이의 enum 표시. */
@@ -252,4 +253,17 @@ export interface RespondDisputeDto {
   kind: DisputeResponseKind;
   message: string; // 회신 본문
   reflect?: DisputeReflectTarget; // 리포트/정산 반영 여부
+}
+
+/** 임차인 이의 생성 DTO(T-OUT-04). */
+export interface CreateMoveoutDisputeDto {
+  targetItemId?: string;
+  targetLabel: string;
+  reason: string;
+}
+
+/** 임차인 퇴실 문의 DTO(T-OUT-03 → M-MSG thread). */
+export interface CreateMoveoutInquiryDto {
+  body: string;
+  attachmentUrls?: string[];
 }

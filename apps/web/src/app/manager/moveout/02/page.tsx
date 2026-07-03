@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation";
 import { Card } from "@roomlog/ui";
-import { getManagerSettlement, getMoveout } from "@/lib/moveout-manager-api";
+import { completeReview, getManagerSettlement, getMoveout } from "@/lib/moveout-manager-api";
 import { DEMO_MOVEOUT_ID } from "@/lib/demo-moveout";
 import { MANAGER_MOVEOUT_ROUTES } from "@/lib/moveout-manager-nav";
 import {
@@ -21,8 +22,29 @@ import {
   wonRange,
 } from "../_components";
 
-export default async function Page() {
-  const [moveout, review] = await Promise.all([getMoveout(DEMO_MOVEOUT_ID), getManagerSettlement(DEMO_MOVEOUT_ID)]);
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ id?: string }>;
+
+async function completeReviewAction(formData: FormData) {
+  "use server";
+
+  const moveoutId = String(formData.get("moveoutId") ?? DEMO_MOVEOUT_ID);
+  const overrideReason = String(formData.get("overrideReason") ?? "").trim();
+  const overrideSla = formData.get("overrideSla") === "true";
+
+  await completeReview(moveoutId, {
+    acknowledgeEvidence: true,
+    overrideSla,
+    overrideReason: overrideReason || undefined,
+  });
+  redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}`);
+}
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const moveoutId = id ?? DEMO_MOVEOUT_ID;
+  const [moveout, review] = await Promise.all([getMoveout(moveoutId), getManagerSettlement(moveoutId)]);
   const { settlement, gate } = review;
   const contractBlocked = !moveout.contractConfirmed;
 
@@ -80,9 +102,64 @@ export default async function Page() {
       </Section>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-        <LinkButton href={MANAGER_MOVEOUT_ROUTES["M-OUT-01"]} variant="ghost">리포트 근거 보기</LinkButton>
-        <LinkButton href={MANAGER_MOVEOUT_ROUTES["M-OUT-03"]} variant="secondary">이의 처리</LinkButton>
-        <DisabledButton>정산안 저장</DisabledButton>
+        <LinkButton href={`${MANAGER_MOVEOUT_ROUTES["M-OUT-01"]}?id=${moveoutId}`} variant="ghost">리포트 근거 보기</LinkButton>
+        <LinkButton href={`${MANAGER_MOVEOUT_ROUTES["M-OUT-03"]}?id=${moveoutId}`} variant="secondary">이의 처리</LinkButton>
+        {gate.canComplete && !contractBlocked ? (
+          <form action={completeReviewAction}>
+            <input type="hidden" name="moveoutId" value={moveoutId} />
+            <button
+              type="submit"
+              style={{
+                minHeight: "var(--touch-target)",
+                padding: "0 16px",
+                borderRadius: "var(--radius-btn)",
+                border: "none",
+                background: "var(--primary)",
+                color: "var(--on-primary)",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              검토 완료
+            </button>
+          </form>
+        ) : gate.overrideAvailable && !contractBlocked ? (
+          <form
+            action={completeReviewAction}
+            style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap", alignItems: "center" }}
+          >
+            <input type="hidden" name="moveoutId" value={moveoutId} />
+            <input type="hidden" name="overrideSla" value="true" />
+            <input
+              name="overrideReason"
+              aria-label="SLA override 사유"
+              placeholder="SLA override 사유"
+              style={{
+                minHeight: "var(--touch-target)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-btn)",
+                padding: "0 12px",
+              }}
+            />
+            <button
+              type="submit"
+              style={{
+                minHeight: "var(--touch-target)",
+                padding: "0 16px",
+                borderRadius: "var(--radius-btn)",
+                border: "1.5px solid var(--primary)",
+                background: "transparent",
+                color: "var(--primary)",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              SLA override로 검토 완료
+            </button>
+          </form>
+        ) : (
+          <DisabledButton>검토 완료 차단</DisabledButton>
+        )}
         <DisabledButton>임차인에게 전달</DisabledButton>
       </div>
     </PageStack>

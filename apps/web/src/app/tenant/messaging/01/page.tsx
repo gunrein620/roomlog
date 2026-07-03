@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Message, Thread, ThreadContext } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
-import { DEMO_THREAD_ID, getThread } from "@/lib/messaging-api";
+import { addTenantThreadMessage, DEMO_THREAD_ID, getThread } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -22,6 +25,19 @@ function formatTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
+}
+
+async function sendTenantMessage(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (threadId && body) {
+    await addTenantThreadMessage(threadId, { body });
+  }
+
+  redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(threadId || DEMO_THREAD_ID)}`);
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
@@ -116,7 +132,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         )}
       </div>
 
-      <footer
+      <form
+        action={sendTenantMessage}
         style={{
           flex: "none",
           padding: "12px 14px",
@@ -127,9 +144,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           alignItems: "center",
         }}
       >
-        <Input aria-label="메시지 입력" placeholder="메시지를 입력하세요" readOnly />
-        <Button>보내기</Button>
-      </footer>
+        <input type="hidden" name="threadId" value={thread.id} />
+        <Input name="body" aria-label="메시지 입력" placeholder="메시지를 입력하세요" />
+        <Button type="submit">보내기</Button>
+      </form>
     </>
   );
 }
