@@ -3,6 +3,8 @@ import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
 import { Badge, Card } from "@roomlog/ui";
 import { Grid, LinkButton, PageStack, ScreenHeader, Section, formatDateTime } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 const sections = ["납부 현황", "민원·처리", "지출·수리비", "호실·공실", "실시간 지표", "계약 변동", "장기 리스크", "임대인 메모", "다음 조치"];
 
 export default async function Page() {
@@ -70,4 +72,3 @@ export default async function Page() {
 const cardTitleStyle = { margin: 0, fontSize: "var(--fs-subtitle)", fontWeight: 850 } as const;
 const mutedStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: "var(--lh-body)" } as const;
 const rowStyle = { display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center", padding: "var(--space-sm) 0", borderBottom: "1px solid var(--border)" } as const;
-

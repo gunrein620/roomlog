@@ -21,16 +21,26 @@ import {
   ApproveRepairEstimateInput,
   ConfirmTenantCompletionInput,
   CreateAnnouncementDraftInput,
+  CreateManagerReportExternalShareInput,
+  CreateManagerReportFollowUpInput,
+  CreateManagerReportInput,
   CreateComplaintInput,
   CreateComplaintFromCallInput,
   CreateIntakeSessionInput,
   CreateMessagingThreadInput,
+  CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateTenantMoveoutInquiryInput,
   DeletionState,
   FinalizeIntakeInput,
+  AskManagerReportChatInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
   MessagingThreadContext,
+  MoveoutAdjustDeductionInput,
+  MoveoutAdjustWearVerdictInput,
+  MoveoutCompleteReviewInput,
+  MoveoutRespondDisputeInput,
   ManagerTicketReplyInput,
   RealtimeClientSecretInput,
   RecordRealtimeTurnInput,
@@ -510,6 +520,183 @@ export class RoomlogController {
     return this.roomlogService.requestTenantContractDeletion(user.id, contractId);
   }
 
+  @Get("moveouts/manager/dashboard")
+  getManagerMoveoutDashboard(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMoveoutDashboard(user.id);
+  }
+
+  @Get("moveouts/manager/rows")
+  listManagerMoveoutRows(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerMoveoutRows(user.id);
+  }
+
+  @Get("moveouts/:moveoutId/manager")
+  getManagerMoveout(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMoveout(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/manager-records")
+  listManagerMoveoutRecords(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMoveoutRecords(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/manager-settlement")
+  getManagerMoveoutSettlement(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMoveoutSettlement(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/report-audit")
+  getManagerMoveoutReportAudit(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerReportAudit(user.id, moveoutId);
+  }
+
+  @Patch("moveouts/:moveoutId/records/wear-verdict")
+  adjustManagerMoveoutWearVerdict(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: MoveoutAdjustWearVerdictInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.adjustManagerMoveoutWearVerdict(user.id, moveoutId, body);
+  }
+
+  @Patch("moveouts/:moveoutId/deductions")
+  adjustManagerMoveoutDeduction(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: MoveoutAdjustDeductionInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.adjustManagerMoveoutDeduction(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/complete-review")
+  completeManagerMoveoutReview(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: MoveoutCompleteReviewInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.completeManagerMoveoutReview(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/disputes/respond")
+  respondManagerMoveoutDispute(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: MoveoutRespondDisputeInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.respondManagerMoveoutDispute(user.id, moveoutId, body);
+  }
+
+  @Get("moveouts")
+  listTenantMoveouts(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantMoveouts(user.id);
+  }
+
+  @Get("moveouts/:moveoutId")
+  getTenantMoveout(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantMoveout(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/records")
+  listTenantMoveoutRecords(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantMoveoutRecords(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/checklist")
+  listTenantMoveoutChecklist(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantMoveoutChecklist(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/settlement")
+  getTenantMoveoutSettlement(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantMoveoutSettlement(user.id, moveoutId);
+  }
+
+  @Get("moveouts/:moveoutId/disputes")
+  listTenantMoveoutDisputes(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantMoveoutDisputes(user.id, moveoutId);
+  }
+
+  @Post("moveouts/:moveoutId/disputes")
+  createTenantMoveoutDispute(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: CreateMoveoutDisputeInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createTenantMoveoutDispute(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/inquiries")
+  createTenantMoveoutInquiry(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: CreateTenantMoveoutInquiryInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createTenantMoveoutInquiry(user.id, moveoutId, body);
+  }
+
   @Get("manager/tickets")
   listManagerTickets(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
@@ -630,6 +817,102 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.getManagerAnnouncementResult(user.id, announcementId);
+  }
+
+  @Get("manager/reports")
+  listManagerReports(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerReports(user.id);
+  }
+
+  @Post("manager/reports")
+  createManagerReport(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateManagerReportInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerReport(user.id, body);
+  }
+
+  @Get("manager/reports/:reportId")
+  getManagerReport(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerReport(user.id, reportId);
+  }
+
+  @Get("manager/reports/:reportId/source-references")
+  listManagerReportSourceReferences(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerReportSourceReferences(user.id, reportId);
+  }
+
+  @Post("manager/reports/:reportId/chat")
+  askManagerReportChat(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Body() body: AskManagerReportChatInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.askManagerReportChat(user.id, reportId, body);
+  }
+
+  @Post("manager/reports/:reportId/external-shares")
+  createManagerReportExternalShare(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Body() body: CreateManagerReportExternalShareInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerReportExternalShare(user.id, reportId, body);
+  }
+
+  @Post("manager/reports/:reportId/external-shares/:shareId/revoke")
+  revokeManagerReportExternalShare(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Param("shareId") shareId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.revokeManagerReportExternalShare(user.id, reportId, shareId);
+  }
+
+  @Get("manager/reports/:reportId/audit-log")
+  listManagerReportAuditLog(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerReportAuditLog(user.id, reportId);
+  }
+
+  @Post("manager/reports/:reportId/follow-ups")
+  createManagerReportFollowUp(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("reportId") reportId: string,
+    @Body() body: CreateManagerReportFollowUpInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerReportFollowUp(user.id, reportId, body);
+  }
+
+  @Get("reports/external/:shareToken")
+  getExternalReportShare(@Param("shareToken") shareToken: string) {
+    return this.roomlogService.getExternalReportShare(shareToken);
   }
 
   @Get("manager/tickets/:ticketId")

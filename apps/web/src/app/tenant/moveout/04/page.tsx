@@ -1,13 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { DisputeStatus } from "@roomlog/types";
-import { Badge, Button, Card } from "@roomlog/ui";
+import { Badge, Button, Card, Input } from "@roomlog/ui";
 import {
   DEMO_MOVEOUT_ID,
+  createMoveoutDispute,
   getDisputes,
   getRecords,
   getSettlement,
 } from "@/lib/moveout-api";
 import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+
+export const dynamic = "force-dynamic";
 
 const labelStyle = {
   fontSize: "var(--fs-caption)",
@@ -34,6 +38,25 @@ const STATUS_FLOW: DisputeStatus[] = [
   "re_disputed",
   "resolved",
 ];
+
+async function createDisputeAction(formData: FormData) {
+  "use server";
+
+  const targetItemId = String(formData.get("targetItemId") ?? "").trim();
+  const targetLabel = String(formData.get("targetLabel") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!targetLabel || !reason) {
+    redirect(MOVEOUT_ROUTES["T-OUT-04"]);
+  }
+
+  await createMoveoutDispute(DEMO_MOVEOUT_ID, {
+    targetItemId: targetItemId || undefined,
+    targetLabel,
+    reason,
+  });
+  redirect(MOVEOUT_ROUTES["T-OUT-04"]);
+}
 
 export default async function Page() {
   const [records, settlement, disputes] = await Promise.all([
@@ -211,17 +234,27 @@ export default async function Page() {
         </section>
       </div>
 
-      <footer
+      <form
+        action={createDisputeAction}
         style={{
           flex: "none",
           padding: "12px 14px",
           borderTop: "1px solid var(--border)",
+          display: "grid",
+          gap: 8,
         }}
       >
-        <Link href={MOVEOUT_ROUTES["T-OUT-00"]} style={{ textDecoration: "none", display: "block" }}>
-          <Button fullWidth>이의 제출</Button>
-        </Link>
-      </footer>
+        <input
+          type="hidden"
+          name="targetItemId"
+          value={settlement.deductions.find((deduction) => deduction.label === selectedTarget)?.id ?? ""}
+        />
+        <input type="hidden" name="targetLabel" value={selectedTarget} />
+        <Input name="reason" aria-label="이의 사유" placeholder="정정이 필요한 근거를 입력하세요" />
+        <Button type="submit" fullWidth>
+          이의 제출
+        </Button>
+      </form>
     </>
   );
 }

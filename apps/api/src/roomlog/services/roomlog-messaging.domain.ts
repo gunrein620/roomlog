@@ -41,6 +41,10 @@ export class RoomlogMessagingDomain {
     }
 
     const createdAt = now();
+    if (input.initialMessage?.sender === "manager") {
+      this.assertNoPaymentDunning(input.context, input.initialMessage.body);
+    }
+
     const thread: MessagingThread = {
       id: id("mth"),
       roomId: room.id,

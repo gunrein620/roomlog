@@ -207,6 +207,17 @@ describe("PrismaStoreProjector", () => {
         messagingAnnouncementDrafts: [],
         messagingAnnouncements: [],
         messagingAnnouncementDeliveries: [],
+        managerReports: [],
+        managerReportSourceReferences: [],
+        managerReportExternalShares: [],
+        managerReportAuditLogs: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: []
       };
 
@@ -417,6 +428,17 @@ describe("PrismaStoreProjector", () => {
         messagingAnnouncementDrafts: [],
         messagingAnnouncements: [],
         messagingAnnouncementDeliveries: [],
+        managerReports: [],
+        managerReportSourceReferences: [],
+        managerReportExternalShares: [],
+        managerReportAuditLogs: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: []
       };
 
@@ -694,6 +716,17 @@ describe("PrismaStoreProjector", () => {
         messagingAnnouncementDrafts: [],
         messagingAnnouncements: [],
         messagingAnnouncementDeliveries: [],
+        managerReports: [],
+        managerReportSourceReferences: [],
+        managerReportExternalShares: [],
+        managerReportAuditLogs: [],
+        moveouts: [],
+        moveoutRecords: [],
+        moveoutChecklist: [],
+        moveoutSettlements: [],
+        moveoutDeductions: [],
+        moveoutDisputes: [],
+        moveoutReportAudits: [],
         history: [
           {
             id: historyId,
