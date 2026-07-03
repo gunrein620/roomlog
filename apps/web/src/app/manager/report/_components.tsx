@@ -294,7 +294,10 @@ const sourceKindLabel = {
   cost: "M-COST",
   unit: "호실 원장",
   metric: "M-HOME",
-} as const;
+  contract: "M-DOC",
+  moveout: "M-OUT",
+  messaging: "M-MSG",
+} satisfies Record<ReportKpi["formulaSource"], string>;
 
 const navLinkStyle = {
   minHeight: 42,
@@ -319,4 +322,3 @@ const tdStyle = { padding: "14px", borderBottom: "1px solid var(--border)", font
 const inlineLinkStyle = { color: "var(--primary)", textDecoration: "none", fontWeight: 800 } as const;
 const sourceLinkStyle = { display: "inline-flex", alignItems: "center", gap: "var(--space-xs)", color: "var(--primary)", textDecoration: "none", fontSize: "var(--fs-caption)", fontWeight: 800 } as const;
 const userBubbleStyle = { maxWidth: 560, padding: "12px 16px", borderRadius: "var(--radius-md)", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 750 } as const;
-

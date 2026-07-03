@@ -39,10 +39,12 @@ import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
 import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
 import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
 import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
+import { RoomlogReportDomain } from "./services/roomlog-report.domain";
 import {
   AddMessagingThreadMessageInput,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
+  AskManagerReportChatInput,
   AiFeedback,
   AiFeedbackTarget,
   AiAnalysis,
@@ -63,6 +65,9 @@ import {
   CostReviewQueueSummary,
   CostType,
   CreateAnnouncementDraftInput,
+  CreateManagerReportExternalShareInput,
+  CreateManagerReportFollowUpInput,
+  CreateManagerReportInput,
   DeletionState,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
@@ -92,6 +97,10 @@ import {
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
+  ManagerReport,
+  ManagerReportAuditLogEntry,
+  ManagerReportExternalShare,
+  ManagerReportSourceReference,
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerReplyIntent,
@@ -300,6 +309,10 @@ export type Store = {
   messagingAnnouncementDrafts: MessagingAnnouncementDraft[];
   messagingAnnouncements: MessagingAnnouncement[];
   messagingAnnouncementDeliveries: MessagingAnnouncementDelivery[];
+  managerReports: ManagerReport[];
+  managerReportSourceReferences: ManagerReportSourceReference[];
+  managerReportExternalShares: ManagerReportExternalShare[];
+  managerReportAuditLogs: ManagerReportAuditLogEntry[];
   moveouts: MoveoutSummary[];
   moveoutRecords: MoveoutRecordItem[];
   moveoutChecklist: MoveoutChecklistItem[];
@@ -635,6 +648,10 @@ function createDemoStore(): Store {
         state: "unread"
       }
     ],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
     moveouts: [],
     moveoutRecords: [],
     moveoutChecklist: [],
@@ -677,6 +694,10 @@ function createEmptyStore(): Store {
     messagingAnnouncementDrafts: [],
     messagingAnnouncements: [],
     messagingAnnouncementDeliveries: [],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
     moveouts: [],
     moveoutRecords: [],
     moveoutChecklist: [],
@@ -729,6 +750,7 @@ export class RoomlogService {
   private readonly vendorRepair: RoomlogVendorRepairDomain;
   private readonly messaging: RoomlogMessagingDomain;
   private readonly moveout: RoomlogMoveoutDomain;
+  private readonly report: RoomlogReportDomain;
 
   constructor(
     @Optional()
@@ -824,6 +846,16 @@ export class RoomlogService {
       (room) => this.displayUnitId(room),
       (iso) => this.timeOf(iso)
     );
+    this.report = new RoomlogReportDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createManagerAnnouncementDraft(managerId, input),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input)
+    );
     this.moveout = new RoomlogMoveoutDomain(
       this.store,
       () => this.persistStore(),
@@ -892,6 +924,10 @@ export class RoomlogService {
       messagingAnnouncementDrafts: this.store.messagingAnnouncementDrafts,
       messagingAnnouncements: this.store.messagingAnnouncements,
       messagingAnnouncementDeliveries: this.store.messagingAnnouncementDeliveries,
+      managerReports: this.store.managerReports,
+      managerReportSourceReferences: this.store.managerReportSourceReferences,
+      managerReportExternalShares: this.store.managerReportExternalShares,
+      managerReportAuditLogs: this.store.managerReportAuditLogs,
       moveouts: this.store.moveouts,
       moveoutRecords: this.store.moveoutRecords,
       moveoutChecklist: this.store.moveoutChecklist,
@@ -2748,6 +2784,58 @@ export class RoomlogService {
     return this.messaging.getManagerAnnouncementResult(managerId, announcementId);
   }
 
+  listManagerReports(managerId: string) {
+    return this.report.listManagerReports(managerId);
+  }
+
+  createManagerReport(managerId: string, input: CreateManagerReportInput) {
+    return this.report.createManagerReport(managerId, input);
+  }
+
+  getManagerReport(managerId: string, reportId: string) {
+    return this.report.getManagerReport(managerId, reportId);
+  }
+
+  listManagerReportSourceReferences(managerId: string, reportId: string) {
+    return this.report.listManagerReportSourceReferences(managerId, reportId);
+  }
+
+  askManagerReportChat(
+    managerId: string,
+    reportId: string,
+    input: AskManagerReportChatInput
+  ) {
+    return this.report.askManagerReportChat(managerId, reportId, input);
+  }
+
+  createManagerReportExternalShare(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportExternalShareInput
+  ) {
+    return this.report.createManagerReportExternalShare(managerId, reportId, input);
+  }
+
+  getExternalReportShare(token: string) {
+    return this.report.getExternalReportShare(token);
+  }
+
+  revokeManagerReportExternalShare(managerId: string, reportId: string, shareId: string) {
+    return this.report.revokeManagerReportExternalShare(managerId, reportId, shareId);
+  }
+
+  listManagerReportAuditLog(managerId: string, reportId: string) {
+    return this.report.listManagerReportAuditLog(managerId, reportId);
+  }
+
+  createManagerReportFollowUp(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportFollowUpInput
+  ) {
+    return this.report.createManagerReportFollowUp(managerId, reportId, input);
+  }
+
   private loadStore(): Store {
     if (!this.storeFilePath || !existsSync(this.storeFilePath)) {
       return this.seedDemoData ? createDemoStore() : createEmptyStore();
@@ -2827,6 +2915,20 @@ export class RoomlogService {
       })),
       messagingAnnouncements: parsed.messagingAnnouncements ?? [],
       messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? [],
+      managerReports: (parsed.managerReports ?? []).map((report) => ({
+        ...report,
+        scope: {
+          ...report.scope,
+          roomIds: report.scope.roomIds ?? [],
+          unitIds: report.scope.unitIds ?? []
+        },
+        nextActions: report.nextActions ?? [],
+        sections: report.sections ?? [],
+        linkedFollowUps: report.linkedFollowUps ?? []
+      })),
+      managerReportSourceReferences: parsed.managerReportSourceReferences ?? [],
+      managerReportExternalShares: parsed.managerReportExternalShares ?? [],
+      managerReportAuditLogs: parsed.managerReportAuditLogs ?? [],
       moveouts: parsed.moveouts ?? [],
       moveoutRecords: parsed.moveoutRecords ?? [],
       moveoutChecklist: parsed.moveoutChecklist ?? [],
@@ -2910,6 +3012,13 @@ export class RoomlogService {
           Array.isArray(snapshot.messagingAnnouncements)) &&
         (snapshot.messagingAnnouncementDeliveries === undefined ||
           Array.isArray(snapshot.messagingAnnouncementDeliveries)) &&
+        (snapshot.managerReports === undefined || Array.isArray(snapshot.managerReports)) &&
+        (snapshot.managerReportSourceReferences === undefined ||
+          Array.isArray(snapshot.managerReportSourceReferences)) &&
+        (snapshot.managerReportExternalShares === undefined ||
+          Array.isArray(snapshot.managerReportExternalShares)) &&
+        (snapshot.managerReportAuditLogs === undefined ||
+          Array.isArray(snapshot.managerReportAuditLogs)) &&
         (snapshot.moveouts === undefined || Array.isArray(snapshot.moveouts)) &&
         (snapshot.moveoutRecords === undefined || Array.isArray(snapshot.moveoutRecords)) &&
         (snapshot.moveoutChecklist === undefined || Array.isArray(snapshot.moveoutChecklist)) &&

@@ -216,6 +216,39 @@ enum MessagingAnnouncementDraftStatus {
   SENT
 }
 
+enum ManagerReportPeriod {
+  WEEK
+  MONTH
+  QUARTER
+}
+
+enum ManagerReportStatus {
+  DRAFT
+  DELIVERED
+}
+
+enum ManagerReportSourceKind {
+  BILLING
+  COMPLAINT
+  COST
+  UNIT
+  METRIC
+  CONTRACT
+  MOVEOUT
+  MESSAGING
+}
+
+enum ManagerReportShareStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum ManagerReportAuditAction {
+  EXTERNAL_SHARE_CREATED
+  EXTERNAL_SHARE_VIEWED
+  EXTERNAL_SHARE_REVOKED
+}
+
 enum MoveoutSettlementStatus {
   ESTIMATE
   REVIEWING
@@ -936,6 +969,90 @@ model MessagingAnnouncementDelivery {
 
   @@index([tenantId, state])
   @@index([announcementId, state])
+}
+
+model ManagerReport {
+  id              String              @id
+  managerId       String
+  period          ManagerReportPeriod
+  periodLabel     String
+  periodStart     DateTime
+  periodEnd       DateTime
+  scope           Json
+  status          ManagerReportStatus @default(DRAFT)
+  snapshotAt      DateTime
+  recipient       Json?
+  disclaimer      String
+  summary         String
+  nextActions     Json
+  sections        Json
+  linkedFollowUps Json
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  deliveredAt     DateTime?
+
+  sources ManagerReportSourceReference[]
+  shares  ManagerReportExternalShare[]
+  audits  ManagerReportAuditLogEntry[]
+
+  @@index([managerId, snapshotAt])
+  @@index([status, snapshotAt])
+}
+
+model ManagerReportSourceReference {
+  id                String                  @id
+  reportId          String
+  sectionKey        String
+  sourceKind        ManagerReportSourceKind
+  entityType        String
+  entityId          String
+  roomId            String?
+  tenantId          String?
+  label             String
+  drilldownScreenId String
+  basis             String
+  snapshotAt        DateTime
+  createdAt         DateTime                @default(now())
+
+  report ManagerReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, sectionKey])
+  @@index([sourceKind, entityType, entityId])
+  @@index([roomId])
+  @@index([tenantId])
+}
+
+model ManagerReportExternalShare {
+  id                 String                   @id
+  reportId           String
+  token              String                   @unique
+  recipientName      String
+  masked             Boolean                  @default(true)
+  status             ManagerReportShareStatus @default(ACTIVE)
+  createdByManagerId String
+  createdAt          DateTime                 @default(now())
+  revokedAt          DateTime?
+
+  report ManagerReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, status])
+  @@index([createdByManagerId, createdAt])
+}
+
+model ManagerReportAuditLogEntry {
+  id         String                   @id
+  reportId   String
+  shareId    String?
+  action     ManagerReportAuditAction
+  actorId    String?
+  actorLabel String
+  detail     String?
+  createdAt  DateTime                 @default(now())
+
+  report ManagerReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, createdAt])
+  @@index([shareId, createdAt])
 }
 
 model MoveoutRequest {

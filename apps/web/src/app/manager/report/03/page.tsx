@@ -3,8 +3,11 @@ import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
 import { Badge, Card } from "@roomlog/ui";
 import { Grid, LinkButton, PageStack, ScreenHeader, Section, formatDateTime } from "../_components";
 
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
-  const [report, delivery] = await Promise.all([getReport(), getReportDelivery()]);
+  const report = await getReport();
+  const delivery = await getReportDelivery(report.id);
 
   return (
     <PageStack>
@@ -65,4 +68,3 @@ export default async function Page() {
 
 const cardTitleStyle = { margin: 0, fontSize: "var(--fs-subtitle)", fontWeight: 850 } as const;
 const mutedStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: "var(--lh-body)" } as const;
-

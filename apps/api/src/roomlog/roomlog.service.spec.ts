@@ -286,6 +286,205 @@ function createMoveoutTestService() {
   } as any);
 }
 
+function createReportTestService() {
+  const createdAt = "2026-06-15T00:00:00.000Z";
+
+  return new RoomlogService({
+    seedDemoData: false,
+    initialStore: {
+      users: [
+        {
+          id: "tenant-report-a",
+          email: "tenant-report-a@roomlog.test",
+          passwordHash: "hash",
+          name: "김민수",
+          phone: "010-1111-2222",
+          role: "TENANT",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "tenant-report-b",
+          email: "tenant-report-b@roomlog.test",
+          passwordHash: "hash",
+          name: "이민지",
+          phone: "010-3333-4444",
+          role: "TENANT",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "manager-report-a",
+          email: "manager-report-a@roomlog.test",
+          passwordHash: "hash",
+          name: "관리인A",
+          role: "LANDLORD",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "manager-report-b",
+          email: "manager-report-b@roomlog.test",
+          passwordHash: "hash",
+          name: "관리인B",
+          role: "LANDLORD",
+          status: "ACTIVE",
+          createdAt
+        }
+      ],
+      rooms: [
+        {
+          id: "room-report-a",
+          buildingName: "정글빌라",
+          roomNo: "301호",
+          address: "서울시 성동구 리포트로 1",
+          landlordId: "manager-report-a"
+        },
+        {
+          id: "room-report-b",
+          buildingName: "바깥빌라",
+          roomNo: "401호",
+          address: "서울시 성동구 리포트로 2",
+          landlordId: "manager-report-b"
+        }
+      ],
+      tenantRooms: {
+        "tenant-report-a": "room-report-a",
+        "tenant-report-b": "room-report-b"
+      },
+      vendors: [],
+      vendorInvites: [],
+      tenantInvites: [],
+      contracts: [
+        {
+          id: "contract-report-a",
+          roomId: "room-report-a",
+          tenantId: "tenant-report-a",
+          managerId: "manager-report-a",
+          unitId: "301",
+          landlordName: "관리인A",
+          lifecycle: "active",
+          review: "confirmed",
+          deletion: "none",
+          valueSource: "confirmed",
+          monthlyRent: 700000,
+          maintenanceFee: 70000,
+          paymentDay: 25,
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2027-01-01T00:00:00.000Z",
+          createdAt,
+          updatedAt: createdAt,
+          confirmedAt: createdAt,
+          confirmedByManagerId: "manager-report-a"
+        }
+      ],
+      contractDocuments: [],
+      contractExtractions: [],
+      contractPrivacies: [],
+      contractInvites: [],
+      attachments: [],
+      floorPlans: [],
+      moveInChecklist: [],
+      aiFeedback: [],
+      intakeSessions: [],
+      complaints: [
+        {
+          id: "complaint-report-a",
+          tenantId: "tenant-report-a",
+          roomId: "room-report-a",
+          ticketId: "ticket-report-a",
+          sourceChannel: "DIRECT_FORM",
+          title: "욕실 누수 민원",
+          description: "민감메모: 세입자 연락처 010-1111-2222로만 연락 요청",
+          location: "욕실",
+          status: "REVIEWING",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      analyses: {
+        "ticket-report-a": {
+          summary: "욕실 누수 검토 필요",
+          category: "하자",
+          priority: 2,
+          responsibilityHint: "판단 어려움",
+          confidenceScore: 0.62,
+          reasons: ["반복 누수 가능성"],
+          recommendedAction: "관리인 확인"
+        }
+      },
+      tickets: [
+        {
+          id: "ticket-report-a",
+          complaintId: "complaint-report-a",
+          tenantId: "tenant-report-a",
+          roomId: "room-report-a",
+          sourceChannel: "DIRECT_FORM",
+          category: "하자",
+          priority: 2,
+          status: "REVIEWING",
+          responsibilityHint: "판단 어려움",
+          aiSummary: "욕실 누수 검토 필요",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      repairs: [],
+      costs: [
+        {
+          id: "cost-report-a",
+          managerId: "manager-report-a",
+          date: "2026-06-20T00:00:00.000Z",
+          item: "욕실 누수 점검비",
+          amount: 120000,
+          type: "repair",
+          scope: "unit",
+          unitId: "301",
+          status: "confirmed",
+          verified: true,
+          disclosure: "private",
+          repairPayment: "unpaid",
+          paymentRef: "invoice-report-a",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      receipts: [],
+      receiptOcrs: [],
+      messages: [],
+      messagingThreads: [],
+      messagingMessages: [],
+      messagingAnnouncementDrafts: [],
+      messagingAnnouncements: [],
+      messagingAnnouncementDeliveries: [],
+      history: [],
+      moveouts: [
+        {
+          id: "moveout-report-a",
+          tenantId: "tenant-report-a",
+          roomId: "room-report-a",
+          contractId: "contract-report-a",
+          unitId: "301",
+          contractConfirmed: true,
+          leaseEndDate: "2026-12-31T00:00:00.000Z",
+          daysRemaining: 183,
+          depositAmount: 10000000,
+          settlementStatus: "estimate",
+          prepProgress: 0.3,
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      moveoutRecords: [],
+      moveoutChecklist: [],
+      moveoutSettlements: [],
+      moveoutDeductions: [],
+      moveoutDisputes: [],
+      moveoutReportAudits: []
+    } as any
+  } as any);
+}
+
 describe("RoomlogService", () => {
   it("stores uploaded image files locally and rejects non-image files", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-upload-"));
@@ -3704,5 +3903,233 @@ describe("RoomlogService", () => {
     assert.equal(result.thread.contextRef, "mo-a");
     assert.equal(managerThreads.some((thread: any) => thread.id === result.thread.id), true);
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
+  });
+
+  it("lets a manager read only reports for rooms they manage", () => {
+    const service = createReportTestService() as any;
+
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    assert.equal(service.getManagerReport("manager-report-a", report.id).id, report.id);
+    assert.throws(
+      () => service.getManagerReport("manager-report-b", report.id),
+      /리포트|담당|찾을 수/
+    );
+  });
+
+  it("stores the report snapshot timestamp and returns it in report responses", () => {
+    const service = createReportTestService() as any;
+
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    assert.match(report.snapshotAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(service.getManagerReport("manager-report-a", report.id).snapshotAt, report.snapshotAt);
+  });
+
+  it("does not create or return aggregate report sections without source references", () => {
+    const service = createReportTestService() as any;
+
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+    const references = service.listManagerReportSourceReferences("manager-report-a", report.id);
+
+    assert.equal(report.sections.length > 0, true);
+    for (const section of report.sections) {
+      assert.ok(section.source);
+      assert.equal(
+        references.some(
+          (reference: any) =>
+            reference.sectionKey === section.key &&
+            reference.sourceKind === section.source.kind &&
+            reference.entityType &&
+            reference.entityId
+        ),
+        true
+      );
+    }
+  });
+
+  it("keeps chatbot report actions as draft suggestions instead of executing them", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    const beforeDrafts = service.listManagerAnnouncementDrafts("manager-report-a").length;
+    const beforeThreads = service.listManagerMessagingThreads("manager-report-a").length;
+    const answer = service.askManagerReportChat("manager-report-a", report.id, {
+      question: "301호 미납 독촉문을 보내줘"
+    });
+
+    assert.equal(answer.draft?.type, "dunning");
+    assert.equal(answer.execution, "draft_only");
+    assert.equal(service.listManagerAnnouncementDrafts("manager-report-a").length, beforeDrafts);
+    assert.equal(service.listManagerMessagingThreads("manager-report-a").length, beforeThreads);
+  });
+
+  it("masks personal data, contact details, and sensitive notes in external report shares", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+    const internalPayload = JSON.stringify(
+      service.listManagerReportSourceReferences("manager-report-a", report.id)
+    );
+
+    const share = service.createManagerReportExternalShare("manager-report-a", report.id, {
+      recipientName: "외부 임대인"
+    });
+    const shared = service.getExternalReportShare(share.token);
+    const externalPayload = JSON.stringify(shared);
+
+    assert.match(internalPayload, /010-1111-2222/);
+    assert.match(internalPayload, /민감메모/);
+    assert.equal(shared.delivery.masked, true);
+    assert.doesNotMatch(externalPayload, /010-1111-2222/);
+    assert.doesNotMatch(externalPayload, /민감메모/);
+    assert.doesNotMatch(externalPayload, /tenant-report-a@roomlog\.test/);
+  });
+
+  it("writes audit logs when external report shares are created, viewed, and revoked", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    const share = service.createManagerReportExternalShare("manager-report-a", report.id, {
+      recipientName: "외부 임대인"
+    });
+    service.getExternalReportShare(share.token);
+    service.revokeManagerReportExternalShare("manager-report-a", report.id, share.id);
+
+    const auditActions = service
+      .listManagerReportAuditLog("manager-report-a", report.id)
+      .map((entry: any) => entry.action);
+
+    assert.deepEqual(auditActions.sort(), [
+      "external_share_created",
+      "external_share_revoked",
+      "external_share_viewed"
+    ]);
+  });
+
+  it("creates report follow-up actions by linking to M-MSG announcement drafts", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    const followUp = service.createManagerReportFollowUp("manager-report-a", report.id, {
+      channel: "announcement",
+      actionType: "notice",
+      title: "누수 점검 안내",
+      body: "301호 누수 점검 일정 안내입니다.",
+      targetRoomIds: ["room-report-a"]
+    });
+    const draft = service.getManagerAnnouncementDraft(
+      "manager-report-a",
+      followUp.announcementDraftId
+    );
+
+    assert.equal(followUp.kind, "announcement_draft");
+    assert.equal(draft.title, "누수 점검 안내");
+    assert.equal(draft.status, "draft");
+  });
+
+  it("blocks payment or settlement dunning when report follow-up tries to use a 1:1 thread", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    assert.throws(
+      () =>
+        service.createManagerReportFollowUp("manager-report-a", report.id, {
+          channel: "thread",
+          actionType: "dunning",
+          roomId: "room-report-a",
+          tenantId: "tenant-report-a",
+          body: "미납 관리비 독촉 안내입니다."
+        }),
+      /독촉|청구|납부/
+    );
+    assert.equal(service.listManagerMessagingThreads("manager-report-a", "payment").length, 0);
   });
 });
