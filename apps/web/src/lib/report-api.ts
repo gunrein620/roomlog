@@ -64,11 +64,27 @@ async function apiOrFallback<T>(read: () => Promise<T>, fallback: T): Promise<T>
   try {
     return await read();
   } catch (error) {
+    if (!shouldUseReportDemoFallback()) {
+      throw error;
+    }
+
     if (process.env.NODE_ENV !== "test") {
       console.warn(`[report-api] using demo fallback: ${errorMessage(error)}`);
     }
     return fallback;
   }
+}
+
+function shouldUseReportDemoFallback(): boolean {
+  if (process.env.ROOMLOG_REPORT_DEMO_FALLBACK === "true") {
+    return true;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  return true;
 }
 
 function errorMessage(error: unknown): string {

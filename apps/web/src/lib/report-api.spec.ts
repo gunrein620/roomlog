@@ -16,3 +16,9 @@ test("report API is wired to authenticated manager report backend endpoints", ()
   assert.match(source, /reports\/external/);
   assert.match(source, /serverFetch<Report\[\]>\(reportPaths\.reports\(\)\)/);
 });
+
+test("report demo fallback is disabled in production unless explicitly enabled", () => {
+  assert.match(source, /ROOMLOG_REPORT_DEMO_FALLBACK/);
+  assert.match(source, /process\.env\.NODE_ENV === "production"/);
+  assert.match(source, /throw error/);
+});
