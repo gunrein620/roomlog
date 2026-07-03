@@ -42,6 +42,7 @@ jobs:
         env:
           PROD_ENV: "${{ secrets.PROD_ENV }}"
           DATABASE_URL: "${{ secrets.DATABASE_URL }}"
+          API_INTERNAL_URL: "${{ secrets.API_INTERNAL_URL }}"
           NEXT_PUBLIC_API_URL: "${{ secrets.NEXT_PUBLIC_API_URL }}"
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: "${{ secrets.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID }}"
           PORT: "${{ secrets.PORT }}"
@@ -52,6 +53,13 @@ jobs:
 
           : "${DATABASE_URL:?DATABASE_URL secret is required}"
 
+          if [ -z "${API_INTERNAL_URL:-}" ] && [ -n "${PROD_ENV:-}" ]; then
+            API_INTERNAL_URL="$(
+              printf '%s\n' "$PROD_ENV" \
+                | awk 'BEGIN { FS = "=" } $1 == "API_INTERNAL_URL" { sub(/^[^=]*=/, ""); print; exit }'
+            )"
+          fi
+          API_INTERNAL_URL="${API_INTERNAL_URL:-http://api:4000}"
           NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api}"
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID="${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}"
           if [ -z "$NEXT_PUBLIC_NAVER_MAP_CLIENT_ID" ] && [ -n "${PROD_ENV:-}" ]; then
@@ -66,7 +74,7 @@ jobs:
 
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -74,6 +82,7 @@ jobs:
 
           cat >> .env.production <<EOF
           DATABASE_URL=${DATABASE_URL}
+          API_INTERNAL_URL=${API_INTERNAL_URL}
           NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}
           PORT=${PORT}

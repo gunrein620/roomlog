@@ -9,6 +9,7 @@ services:
     container_name: roomlog-web
     restart: unless-stopped
     environment:
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
       NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: ${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}
     depends_on:
