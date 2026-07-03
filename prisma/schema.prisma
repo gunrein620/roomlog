@@ -173,6 +173,49 @@ enum MessageSenderRole {
   SYSTEM
 }
 
+enum MessagingThreadContext {
+  DEFECT
+  PAYMENT
+  CONTRACT
+  MOVEOUT
+  ANNOUNCEMENT
+  GENERAL
+}
+
+enum MessagingMessageSender {
+  TENANT
+  MANAGER
+}
+
+enum MessagingMessageKind {
+  TEXT
+  PHOTO_REQUEST
+  PHOTO_RESPONSE
+}
+
+enum MessagingAnnouncementCategory {
+  URGENT
+  LIFE
+  EVENT
+}
+
+enum MessagingAnnouncementScope {
+  ALL
+  BUILDING
+  UNIT
+}
+
+enum MessagingAnnouncementReadState {
+  UNREAD
+  READ
+  CONFIRMED
+}
+
+enum MessagingAnnouncementDraftStatus {
+  DRAFT
+  SENT
+}
+
 enum IntakeSessionStatus {
   ACTIVE
   FINALIZED
@@ -746,6 +789,100 @@ model TicketMessage {
 
   @@index([ticketId, createdAt])
   @@index([repairId, createdAt])
+}
+
+model MessagingThread {
+  id             String                 @id
+  roomId         String
+  unitId         String
+  tenantId       String
+  context        MessagingThreadContext
+  contextRef     String?
+  contextLabel   String?
+  lastMessage    String
+  unreadCount    Int                    @default(0)
+  pendingRequest Boolean                @default(false)
+  archivedNotice Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  messages MessagingMessage[]
+
+  @@index([tenantId, updatedAt])
+  @@index([roomId, context])
+}
+
+model MessagingMessage {
+  id             String                 @id
+  threadId       String
+  senderUserId   String
+  sender         MessagingMessageSender
+  kind           MessagingMessageKind
+  body           String
+  originalBody   String?
+  attachmentUrls String[]
+  createdAt      DateTime               @default(now())
+
+  thread MessagingThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+model MessagingAnnouncementDraft {
+  id                 String                          @id
+  category           MessagingAnnouncementCategory
+  scope              MessagingAnnouncementScope
+  targetLabel        String
+  targetRoomIds      String[]
+  title              String
+  body               String
+  translations       Json
+  confirmRequired    Boolean                         @default(false)
+  status             MessagingAnnouncementDraftStatus @default(DRAFT)
+  createdByManagerId String
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+
+  @@index([createdByManagerId, updatedAt])
+}
+
+model MessagingAnnouncement {
+  id              String                        @id
+  draftId         String?
+  category        MessagingAnnouncementCategory
+  scope           MessagingAnnouncementScope
+  targetLabel     String
+  title           String
+  body            String
+  originalBody    String?
+  sender          String
+  senderId        String
+  sentAt          DateTime
+  confirmRequired Boolean                       @default(false)
+  safetyCta       String?
+
+  deliveries MessagingAnnouncementDelivery[]
+
+  @@index([senderId, sentAt])
+}
+
+model MessagingAnnouncementDelivery {
+  id             String                         @id
+  announcementId String
+  tenantId       String
+  roomId         String
+  unitId         String
+  tenantName     String
+  preferredLang  String
+  state          MessagingAnnouncementReadState @default(UNREAD)
+  readAt         DateTime?
+  confirmedAt    DateTime?
+  failed         Boolean                        @default(false)
+
+  announcement MessagingAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, state])
+  @@index([announcementId, state])
 }
 
 model StatusHistory {

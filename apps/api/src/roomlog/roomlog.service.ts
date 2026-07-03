@@ -37,7 +37,9 @@ import { RoomlogChecklistDomain } from "./services/roomlog-checklist.domain";
 import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
 import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
 import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
+import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
 import {
+  AddMessagingThreadMessageInput,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
   AiFeedback,
@@ -59,10 +61,12 @@ import {
   Cost,
   CostReviewQueueSummary,
   CostType,
+  CreateAnnouncementDraftInput,
   DeletionState,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
+  CreateMessagingThreadInput,
   CreateMoveInChecklistItemInput,
   DisclosureSetting,
   DuplicateTicketCandidate,
@@ -75,6 +79,13 @@ import {
   IntakeSlot,
   IntakeSlotKey,
   IntakeThreadSummary,
+  MessagingAnnouncement,
+  MessagingAnnouncementDelivery,
+  MessagingAnnouncementDraft,
+  MessagingAnnouncementResult,
+  MessagingMessage,
+  MessagingThread,
+  MessagingThreadContext,
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
@@ -269,6 +280,11 @@ export type Store = {
   receipts: Receipt[];
   receiptOcrs: ReceiptOcr[];
   messages: TicketMessage[];
+  messagingThreads: MessagingThread[];
+  messagingMessages: MessagingMessage[];
+  messagingAnnouncementDrafts: MessagingAnnouncementDraft[];
+  messagingAnnouncements: MessagingAnnouncement[];
+  messagingAnnouncementDeliveries: MessagingAnnouncementDelivery[];
   history: StatusHistory[];
 };
 
@@ -506,6 +522,97 @@ function createDemoStore(): Store {
     receipts: [],
     receiptOcrs: [],
     messages: [],
+    messagingThreads: [
+      {
+        id: "mth_demo_general",
+        roomId: "room-301",
+        unitId: "301",
+        tenantId: "tenant-demo",
+        context: "general",
+        contextLabel: "생활 문의",
+        lastMessage: "확인 후 오늘 안으로 답변드리겠습니다.",
+        unreadCount: 1,
+        pendingRequest: false,
+        archivedNotice: true,
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingMessages: [
+      {
+        id: "msg_demo_general_1",
+        threadId: "mth_demo_general",
+        senderUserId: "tenant-demo",
+        sender: "tenant",
+        kind: "text",
+        body: "공용 현관 등이 깜빡입니다.",
+        attachmentUrls: [],
+        createdAt
+      },
+      {
+        id: "msg_demo_general_2",
+        threadId: "mth_demo_general",
+        senderUserId: "landlord-demo",
+        sender: "manager",
+        kind: "text",
+        body: "확인 후 오늘 안으로 답변드리겠습니다.",
+        attachmentUrls: [],
+        createdAt
+      }
+    ],
+    messagingAnnouncementDrafts: [
+      {
+        id: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        targetRoomIds: ["room-301"],
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        translations: [
+          {
+            lang: "en",
+            langLabel: "English",
+            title: "Emergency water outage",
+            body: "There will be a 30-minute emergency water outage from 18:00 today.",
+            reviewed: true
+          }
+        ],
+        confirmRequired: true,
+        status: "sent",
+        createdByManagerId: "landlord-demo",
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingAnnouncements: [
+      {
+        id: "mann_demo_urgent",
+        draftId: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        sender: "박관리",
+        senderId: "landlord-demo",
+        sentAt: createdAt,
+        confirmRequired: true,
+        safetyCta: "안전 확인"
+      }
+    ],
+    messagingAnnouncementDeliveries: [
+      {
+        id: "mdl_demo_urgent_tenant",
+        announcementId: "mann_demo_urgent",
+        tenantId: "tenant-demo",
+        roomId: "room-301",
+        unitId: "301",
+        tenantName: "김민수",
+        preferredLang: "ko",
+        state: "unread"
+      }
+    ],
     history: []
   };
 }
@@ -536,6 +643,11 @@ function createEmptyStore(): Store {
     receipts: [],
     receiptOcrs: [],
     messages: [],
+    messagingThreads: [],
+    messagingMessages: [],
+    messagingAnnouncementDrafts: [],
+    messagingAnnouncements: [],
+    messagingAnnouncementDeliveries: [],
     history: []
   };
 }
@@ -579,6 +691,7 @@ export class RoomlogService {
   private readonly contract: RoomlogContractDomain;
   private readonly vendorMgmt: RoomlogVendorMgmtDomain;
   private readonly vendorRepair: RoomlogVendorRepairDomain;
+  private readonly messaging: RoomlogMessagingDomain;
 
   constructor(
     @Optional()
@@ -665,6 +778,15 @@ export class RoomlogService {
       (managerId, ticket) => this.assertManagerCanAccessTicket(managerId, ticket),
       (message) => this.presentTicketMessage(message)
     );
+    this.messaging = new RoomlogMessagingDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso)
+    );
   }
 
   async flushPersistence() {
@@ -713,7 +835,12 @@ export class RoomlogService {
       costs: this.store.costs,
       receipts: this.store.receipts,
       receiptOcrs: this.store.receiptOcrs,
-      messages: this.store.messages
+      messages: this.store.messages,
+      messagingThreads: this.store.messagingThreads,
+      messagingMessages: this.store.messagingMessages,
+      messagingAnnouncementDrafts: this.store.messagingAnnouncementDrafts,
+      messagingAnnouncements: this.store.messagingAnnouncements,
+      messagingAnnouncementDeliveries: this.store.messagingAnnouncementDeliveries
     };
   }
 
@@ -2374,6 +2501,96 @@ export class RoomlogService {
     return this.floorPlan.updateFloorPlanDraft(ownerId, floorPlanId, input);
   }
 
+  getTenantRoom(tenantId: string) {
+    const roomId = this.store.tenantRooms[tenantId];
+
+    if (!roomId) {
+      throw new NotFoundException("임차인 호실을 찾을 수 없습니다.");
+    }
+
+    return this.findRoom(roomId);
+  }
+
+  createMessagingThread(managerId: string, input: CreateMessagingThreadInput) {
+    return this.messaging.createMessagingThread(managerId, input);
+  }
+
+  listTenantMessagingThreads(tenantId: string) {
+    return this.messaging.listTenantMessagingThreads(tenantId);
+  }
+
+  getTenantMessagingThread(tenantId: string, threadId: string) {
+    return this.messaging.getTenantMessagingThread(tenantId, threadId);
+  }
+
+  addTenantMessagingThreadMessage(
+    tenantId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input);
+  }
+
+  listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext) {
+    return this.messaging.listManagerMessagingThreads(managerId, context);
+  }
+
+  getManagerMessagingThread(managerId: string, threadId: string) {
+    return this.messaging.getManagerMessagingThread(managerId, threadId);
+  }
+
+  addManagerMessagingThreadMessage(
+    managerId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input);
+  }
+
+  createManagerAnnouncementDraft(managerId: string, input: CreateAnnouncementDraftInput) {
+    return this.messaging.createManagerAnnouncementDraft(managerId, input);
+  }
+
+  listManagerAnnouncementDrafts(managerId: string) {
+    return this.messaging.listManagerAnnouncementDrafts(managerId);
+  }
+
+  getManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.getManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listManagerAnnouncementRecipients(managerId: string, draftId: string) {
+    return this.messaging.listManagerAnnouncementRecipients(managerId, draftId);
+  }
+
+  sendManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.sendManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listTenantMessagingAnnouncements(tenantId: string) {
+    return this.messaging.listTenantMessagingAnnouncements(tenantId);
+  }
+
+  getTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.getTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  markTenantMessagingAnnouncementRead(tenantId: string, announcementId: string) {
+    return this.messaging.markTenantMessagingAnnouncementRead(tenantId, announcementId);
+  }
+
+  confirmTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.confirmTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  listManagerAnnouncementResults(managerId: string) {
+    return this.messaging.listManagerAnnouncementResults(managerId);
+  }
+
+  getManagerAnnouncementResult(managerId: string, announcementId: string) {
+    return this.messaging.getManagerAnnouncementResult(managerId, announcementId);
+  }
+
   private loadStore(): Store {
     if (!this.storeFilePath || !existsSync(this.storeFilePath)) {
       return this.seedDemoData ? createDemoStore() : createEmptyStore();
@@ -2435,7 +2652,24 @@ export class RoomlogService {
       })),
       costs: parsed.costs ?? [],
       receipts: parsed.receipts ?? [],
-      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr))
+      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr)),
+      messagingThreads: (parsed.messagingThreads ?? []).map((thread) => ({
+        ...thread,
+        archivedNotice: thread.archivedNotice ?? true,
+        pendingRequest: thread.pendingRequest ?? false,
+        unreadCount: thread.unreadCount ?? 0
+      })),
+      messagingMessages: (parsed.messagingMessages ?? []).map((message) => ({
+        ...message,
+        attachmentUrls: message.attachmentUrls ?? []
+      })),
+      messagingAnnouncementDrafts: (parsed.messagingAnnouncementDrafts ?? []).map((draft) => ({
+        ...draft,
+        targetRoomIds: draft.targetRoomIds ?? [],
+        translations: draft.translations ?? []
+      })),
+      messagingAnnouncements: parsed.messagingAnnouncements ?? [],
+      messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? []
     };
   }
 
@@ -2498,6 +2732,14 @@ export class RoomlogService {
         (snapshot.costs === undefined || Array.isArray(snapshot.costs)) &&
         (snapshot.receipts === undefined || Array.isArray(snapshot.receipts)) &&
         (snapshot.receiptOcrs === undefined || Array.isArray(snapshot.receiptOcrs)) &&
+        (snapshot.messagingThreads === undefined || Array.isArray(snapshot.messagingThreads)) &&
+        (snapshot.messagingMessages === undefined || Array.isArray(snapshot.messagingMessages)) &&
+        (snapshot.messagingAnnouncementDrafts === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDrafts)) &&
+        (snapshot.messagingAnnouncements === undefined ||
+          Array.isArray(snapshot.messagingAnnouncements)) &&
+        (snapshot.messagingAnnouncementDeliveries === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDeliveries)) &&
         Array.isArray(snapshot.messages) &&
         Array.isArray(snapshot.history)
     );

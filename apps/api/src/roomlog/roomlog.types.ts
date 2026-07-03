@@ -108,6 +108,161 @@ export type ReceiptOcr = {
   createdAt: string;
 };
 
+export type MessagingThreadContext =
+  | "defect"
+  | "payment"
+  | "contract"
+  | "moveout"
+  | "announcement"
+  | "general";
+
+export type MessagingMessageSender = "tenant" | "manager";
+export type MessagingMessageKind = "text" | "photo_request" | "photo_response";
+export type MessagingAnnouncementCategory = "urgent" | "life" | "event";
+export type MessagingAnnouncementScope = "all" | "building" | "unit";
+export type MessagingAnnouncementReadState = "unread" | "read" | "confirmed";
+export type MessagingAnnouncementDraftStatus = "draft" | "sent";
+
+export type MessagingMessage = {
+  id: string;
+  threadId: string;
+  senderUserId: string;
+  sender: MessagingMessageSender;
+  kind: MessagingMessageKind;
+  body: string;
+  originalBody?: string;
+  attachmentUrls: string[];
+  createdAt: string;
+};
+
+export type MessagingThread = {
+  id: string;
+  roomId: string;
+  unitId: string;
+  tenantId: string;
+  context: MessagingThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  lastMessage: string;
+  unreadCount: number;
+  pendingRequest: boolean;
+  archivedNotice: boolean;
+  createdAt: string;
+  updatedAt: string;
+  messages?: MessagingMessage[];
+};
+
+export type CreateMessagingThreadInput = {
+  roomId: string;
+  tenantId: string;
+  context: MessagingThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  initialMessage?: {
+    sender: MessagingMessageSender;
+    body: string;
+    kind?: MessagingMessageKind;
+    attachmentUrls?: string[];
+  };
+};
+
+export type AddMessagingThreadMessageInput = {
+  body?: string;
+  kind?: MessagingMessageKind;
+  attachmentUrls?: string[];
+};
+
+export type MessagingAnnouncementTranslation = {
+  lang: string;
+  langLabel?: string;
+  title: string;
+  body: string;
+  reviewed: boolean;
+};
+
+export type MessagingAnnouncementDraft = {
+  id: string;
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  targetRoomIds: string[];
+  title: string;
+  body: string;
+  translations: MessagingAnnouncementTranslation[];
+  confirmRequired: boolean;
+  status: MessagingAnnouncementDraftStatus;
+  createdByManagerId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateAnnouncementDraftInput = {
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  targetRoomIds?: string[];
+  title: string;
+  body: string;
+  translations?: MessagingAnnouncementTranslation[];
+  confirmRequired?: boolean;
+};
+
+export type MessagingAnnouncement = {
+  id: string;
+  draftId?: string;
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  title: string;
+  body: string;
+  originalBody?: string;
+  sender: string;
+  senderId: string;
+  sentAt: string;
+  confirmRequired: boolean;
+  safetyCta?: string;
+  state?: MessagingAnnouncementReadState;
+};
+
+export type MessagingAnnouncementDelivery = {
+  id: string;
+  announcementId: string;
+  tenantId: string;
+  roomId: string;
+  unitId: string;
+  tenantName: string;
+  preferredLang: string;
+  state: MessagingAnnouncementReadState;
+  readAt?: string;
+  confirmedAt?: string;
+  failed?: boolean;
+};
+
+export type MessagingAnnouncementResult = {
+  announcementId: string;
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  title: string;
+  sentAt: string;
+  version: number;
+  confirmRequired: boolean;
+  counts: {
+    total: number;
+    read: number;
+    confirmed: number;
+    unconfirmed: number;
+    failed: number;
+  };
+  deliveries: Array<{
+    unitId: string;
+    tenantName: string;
+    state: MessagingAnnouncementReadState;
+    readAt?: string;
+    confirmedAt?: string;
+    failed?: boolean;
+  }>;
+};
+
 export type ContractLifecycle =
   | "unregistered"
   | "analyzing"

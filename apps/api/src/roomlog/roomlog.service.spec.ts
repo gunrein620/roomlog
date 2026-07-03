@@ -2241,6 +2241,132 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("scopes messaging threads and enforces server-side messaging gates", () => {
+    const service = new RoomlogService();
+    const otherManager = service.signup({
+      email: "message-other-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "메시지 외부 관리자",
+      phone: "010-6622-1001",
+      role: "LANDLORD",
+      buildingName: "메시지 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 외부로 8"
+    } as any);
+    const otherTenant = service.signup({
+      email: "message-other-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "메시지 외부 세입자",
+      phone: "010-6622-3001",
+      role: "TENANT",
+      buildingName: "메시지 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 외부로 8"
+    } as any);
+
+    const ownThread = service.createMessagingThread("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "tenant-demo",
+      context: "payment",
+      contextLabel: "7월 관리비 문의",
+      initialMessage: {
+        sender: "tenant",
+        body: "7월 관리비 산정 기준을 확인하고 싶습니다."
+      }
+    });
+    const otherThread = service.createMessagingThread(otherManager.userId, {
+      roomId: service.getTenantRoom(otherTenant.userId).id,
+      tenantId: otherTenant.userId,
+      context: "general",
+      contextLabel: "외부 세대 문의",
+      initialMessage: {
+        sender: "tenant",
+        body: "외부 세대 문의입니다."
+      }
+    });
+
+    const tenantThreads = service.listTenantMessagingThreads("tenant-demo");
+    const managerThreads = service.listManagerMessagingThreads("landlord-demo");
+
+    assert.equal(tenantThreads.some((thread) => thread.id === ownThread.id), true);
+    assert.equal(tenantThreads.some((thread) => thread.id === otherThread.id), false);
+    assert.equal(managerThreads.some((thread) => thread.id === ownThread.id), true);
+    assert.equal(managerThreads.some((thread) => thread.id === otherThread.id), false);
+    assert.throws(
+      () =>
+        service.addManagerMessagingThreadMessage("landlord-demo", ownThread.id, {
+          body: "미납 상태라 오늘 바로 납부하세요."
+        }),
+      /독촉|납부|청구/
+    );
+  });
+
+  it("requires reviewed urgent announcement translations before send and separates read from confirmation", () => {
+    const service = new RoomlogService();
+
+    const unsafeDraft = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "building",
+      targetLabel: "정글빌라 전체",
+      title: "긴급 단수 안내",
+      body: "오늘 18시부터 긴급 단수가 있습니다.",
+      confirmRequired: true,
+      translations: [
+        {
+          lang: "en",
+          title: "Emergency water outage",
+          body: "Emergency water outage starts at 18:00.",
+          reviewed: false
+        }
+      ]
+    });
+
+    assert.throws(
+      () => service.sendManagerAnnouncementDraft("landlord-demo", unsafeDraft.id),
+      /검수|번역/
+    );
+
+    const reviewedDraft = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "building",
+      targetLabel: "정글빌라 전체",
+      title: "긴급 단수 안내",
+      body: "오늘 18시부터 긴급 단수가 있습니다.",
+      confirmRequired: true,
+      translations: [
+        {
+          lang: "en",
+          title: "Emergency water outage",
+          body: "Emergency water outage starts at 18:00.",
+          reviewed: true
+        }
+      ]
+    });
+    const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
+
+    let tenantAnnouncement = service.getTenantMessagingAnnouncement(
+      "tenant-demo",
+      sent.announcementId
+    );
+    assert.equal(tenantAnnouncement.state, "unread");
+    assert.equal(tenantAnnouncement.confirmRequired, true);
+
+    tenantAnnouncement = service.markTenantMessagingAnnouncementRead(
+      "tenant-demo",
+      sent.announcementId
+    );
+    assert.equal(tenantAnnouncement.state, "read");
+
+    tenantAnnouncement = service.confirmTenantMessagingAnnouncement(
+      "tenant-demo",
+      sent.announcementId
+    );
+    assert.equal(tenantAnnouncement.state, "confirmed");
+    assert.equal(service.listManagerAnnouncementResults("landlord-demo")[0].counts.confirmed, 1);
+  });
+
   it("answers manager natural-language ticket queries from scoped operational data", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

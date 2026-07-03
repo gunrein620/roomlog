@@ -50,6 +50,11 @@ describe("PrismaStoreProjector", () => {
         vendors: [],
         vendorInvites: [],
         tenantInvites: [],
+        contracts: [],
+        contractDocuments: [],
+        contractExtractions: [],
+        contractPrivacies: [],
+        contractInvites: [],
         attachments: [],
         floorPlans: [],
         moveInChecklist: [],
@@ -193,7 +198,15 @@ describe("PrismaStoreProjector", () => {
           }
         ],
         repairs: [],
+        costs: [],
+        receipts: [],
+        receiptOcrs: [],
         messages: [],
+        messagingThreads: [],
+        messagingMessages: [],
+        messagingAnnouncementDrafts: [],
+        messagingAnnouncements: [],
+        messagingAnnouncementDeliveries: [],
         history: []
       };
 
@@ -277,6 +290,11 @@ describe("PrismaStoreProjector", () => {
         vendors: [],
         vendorInvites: [],
         tenantInvites: [],
+        contracts: [],
+        contractDocuments: [],
+        contractExtractions: [],
+        contractPrivacies: [],
+        contractInvites: [],
         attachments: [],
         floorPlans: [],
         moveInChecklist: [],
@@ -390,7 +408,15 @@ describe("PrismaStoreProjector", () => {
           }
         ],
         repairs: [],
+        costs: [],
+        receipts: [],
+        receiptOcrs: [],
         messages: [],
+        messagingThreads: [],
+        messagingMessages: [],
+        messagingAnnouncementDrafts: [],
+        messagingAnnouncements: [],
+        messagingAnnouncementDeliveries: [],
         history: []
       };
 
@@ -541,6 +567,11 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        contracts: [],
+        contractDocuments: [],
+        contractExtractions: [],
+        contractPrivacies: [],
+        contractInvites: [],
         attachments: [
           {
             id: attachmentId,
@@ -643,6 +674,9 @@ describe("PrismaStoreProjector", () => {
             updatedAt: now
           }
         ],
+        costs: [],
+        receipts: [],
+        receiptOcrs: [],
         messages: [
           {
             id: messageId,
@@ -655,6 +689,11 @@ describe("PrismaStoreProjector", () => {
             createdAt: now
           }
         ],
+        messagingThreads: [],
+        messagingMessages: [],
+        messagingAnnouncementDrafts: [],
+        messagingAnnouncements: [],
+        messagingAnnouncementDeliveries: [],
         history: [
           {
             id: historyId,

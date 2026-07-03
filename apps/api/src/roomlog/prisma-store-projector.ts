@@ -13,6 +13,13 @@ import type {
   CostStatus as PrismaCostStatus,
   CostType as PrismaCostType,
   DisclosureState as PrismaDisclosureState,
+  MessagingAnnouncementCategory as PrismaMessagingAnnouncementCategory,
+  MessagingAnnouncementDraftStatus as PrismaMessagingAnnouncementDraftStatus,
+  MessagingAnnouncementReadState as PrismaMessagingAnnouncementReadState,
+  MessagingAnnouncementScope as PrismaMessagingAnnouncementScope,
+  MessagingMessageKind as PrismaMessagingMessageKind,
+  MessagingMessageSender as PrismaMessagingMessageSender,
+  MessagingThreadContext as PrismaMessagingThreadContext,
   ReceiptSource as PrismaReceiptSource,
   RepairPaymentState as PrismaRepairPaymentState
 } from "@prisma/client";
@@ -82,6 +89,11 @@ export class PrismaStoreProjector implements StoreProjector {
       receipts,
       receiptOcrs,
       messages,
+      messagingThreads,
+      messagingMessages,
+      messagingAnnouncementDrafts,
+      messagingAnnouncements,
+      messagingAnnouncementDeliveries,
       history,
       analyses
     ] = await Promise.all([
@@ -110,6 +122,11 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.receipt.findMany(),
       this.prisma.receiptOcr.findMany(),
       this.prisma.ticketMessage.findMany(),
+      this.prisma.messagingThread.findMany(),
+      this.prisma.messagingMessage.findMany(),
+      this.prisma.messagingAnnouncementDraft.findMany(),
+      this.prisma.messagingAnnouncement.findMany(),
+      this.prisma.messagingAnnouncementDelivery.findMany(),
       this.prisma.statusHistory.findMany(),
       this.prisma.aiAnalysis.findMany()
     ]);
@@ -123,7 +140,9 @@ export class PrismaStoreProjector implements StoreProjector {
       !complaints.length &&
       !tickets.length &&
       !costs.length &&
-      !receipts.length
+      !receipts.length &&
+      !messagingThreads.length &&
+      !messagingAnnouncements.length
     ) {
       return undefined;
     }
@@ -484,6 +503,92 @@ export class PrismaStoreProjector implements StoreProjector {
         attachmentUrls: message.attachmentUrls,
         createdAt: asIso(message.createdAt) ?? new Date().toISOString()
       }) as TicketMessage & { repairId?: string }),
+      messagingThreads: messagingThreads.map((thread) => ({
+        id: thread.id,
+        roomId: thread.roomId,
+        unitId: thread.unitId,
+        tenantId: thread.tenantId,
+        context:
+          toLowerEnum<Store["messagingThreads"][number]["context"]>(thread.context) ?? "general",
+        contextRef: optional(thread.contextRef),
+        contextLabel: optional(thread.contextLabel),
+        lastMessage: thread.lastMessage,
+        unreadCount: thread.unreadCount,
+        pendingRequest: thread.pendingRequest,
+        archivedNotice: thread.archivedNotice,
+        createdAt: asIso(thread.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(thread.updatedAt) ?? new Date().toISOString()
+      })),
+      messagingMessages: messagingMessages.map((message) => ({
+        id: message.id,
+        threadId: message.threadId,
+        senderUserId: message.senderUserId,
+        sender: toLowerEnum<Store["messagingMessages"][number]["sender"]>(message.sender) ?? "tenant",
+        kind: toLowerEnum<Store["messagingMessages"][number]["kind"]>(message.kind) ?? "text",
+        body: message.body,
+        originalBody: optional(message.originalBody),
+        attachmentUrls: message.attachmentUrls,
+        createdAt: asIso(message.createdAt) ?? new Date().toISOString()
+      })),
+      messagingAnnouncementDrafts: messagingAnnouncementDrafts.map((draft) => ({
+        id: draft.id,
+        category:
+          toLowerEnum<Store["messagingAnnouncementDrafts"][number]["category"]>(draft.category) ??
+          "life",
+        scope:
+          toLowerEnum<Store["messagingAnnouncementDrafts"][number]["scope"]>(draft.scope) ??
+          "building",
+        targetLabel: draft.targetLabel,
+        targetRoomIds: draft.targetRoomIds,
+        title: draft.title,
+        body: draft.body,
+        translations:
+          (draft.translations as unknown as Store["messagingAnnouncementDrafts"][number]["translations"]) ??
+          [],
+        confirmRequired: draft.confirmRequired,
+        status:
+          toLowerEnum<Store["messagingAnnouncementDrafts"][number]["status"]>(draft.status) ??
+          "draft",
+        createdByManagerId: draft.createdByManagerId,
+        createdAt: asIso(draft.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(draft.updatedAt) ?? new Date().toISOString()
+      })),
+      messagingAnnouncements: messagingAnnouncements.map((announcement) => ({
+        id: announcement.id,
+        draftId: optional(announcement.draftId),
+        category:
+          toLowerEnum<Store["messagingAnnouncements"][number]["category"]>(
+            announcement.category
+          ) ?? "life",
+        scope:
+          toLowerEnum<Store["messagingAnnouncements"][number]["scope"]>(announcement.scope) ??
+          "building",
+        targetLabel: announcement.targetLabel,
+        title: announcement.title,
+        body: announcement.body,
+        originalBody: optional(announcement.originalBody),
+        sender: announcement.sender,
+        senderId: announcement.senderId,
+        sentAt: asIso(announcement.sentAt) ?? new Date().toISOString(),
+        confirmRequired: announcement.confirmRequired,
+        safetyCta: optional(announcement.safetyCta)
+      })),
+      messagingAnnouncementDeliveries: messagingAnnouncementDeliveries.map((delivery) => ({
+        id: delivery.id,
+        announcementId: delivery.announcementId,
+        tenantId: delivery.tenantId,
+        roomId: delivery.roomId,
+        unitId: delivery.unitId,
+        tenantName: delivery.tenantName,
+        preferredLang: delivery.preferredLang,
+        state:
+          toLowerEnum<Store["messagingAnnouncementDeliveries"][number]["state"]>(
+            delivery.state
+          ) ?? "unread",
+        readAt: asIso(delivery.readAt),
+        confirmedAt: asIso(delivery.confirmedAt),
+        failed: delivery.failed
+      })),
       history: history.map((item) => ({
         id: item.id,
         ticketId: item.ticketId,
@@ -1230,6 +1335,168 @@ export class PrismaStoreProjector implements StoreProjector {
             senderRole: message.senderRole,
             messageText: message.messageText,
             attachmentUrls: message.attachmentUrls
+          }
+        });
+      }
+
+      for (const thread of store.messagingThreads) {
+        await tx.messagingThread.upsert({
+          where: { id: thread.id },
+          create: {
+            id: thread.id,
+            roomId: thread.roomId,
+            unitId: thread.unitId,
+            tenantId: thread.tenantId,
+            context: toUpperEnum<PrismaMessagingThreadContext>(thread.context) ?? "GENERAL",
+            contextRef: thread.contextRef,
+            contextLabel: thread.contextLabel,
+            lastMessage: thread.lastMessage,
+            unreadCount: thread.unreadCount,
+            pendingRequest: thread.pendingRequest,
+            archivedNotice: thread.archivedNotice,
+            createdAt: asDate(thread.createdAt),
+            updatedAt: asDate(thread.updatedAt)
+          },
+          update: {
+            roomId: thread.roomId,
+            unitId: thread.unitId,
+            tenantId: thread.tenantId,
+            context: toUpperEnum<PrismaMessagingThreadContext>(thread.context) ?? "GENERAL",
+            contextRef: thread.contextRef,
+            contextLabel: thread.contextLabel,
+            lastMessage: thread.lastMessage,
+            unreadCount: thread.unreadCount,
+            pendingRequest: thread.pendingRequest,
+            archivedNotice: thread.archivedNotice,
+            updatedAt: asDate(thread.updatedAt)
+          }
+        });
+      }
+
+      for (const message of store.messagingMessages) {
+        await tx.messagingMessage.upsert({
+          where: { id: message.id },
+          create: {
+            id: message.id,
+            threadId: message.threadId,
+            senderUserId: message.senderUserId,
+            sender: toUpperEnum<PrismaMessagingMessageSender>(message.sender) ?? "TENANT",
+            kind: toUpperEnum<PrismaMessagingMessageKind>(message.kind) ?? "TEXT",
+            body: message.body,
+            originalBody: message.originalBody,
+            attachmentUrls: message.attachmentUrls,
+            createdAt: asDate(message.createdAt)
+          },
+          update: {
+            threadId: message.threadId,
+            senderUserId: message.senderUserId,
+            sender: toUpperEnum<PrismaMessagingMessageSender>(message.sender) ?? "TENANT",
+            kind: toUpperEnum<PrismaMessagingMessageKind>(message.kind) ?? "TEXT",
+            body: message.body,
+            originalBody: message.originalBody,
+            attachmentUrls: message.attachmentUrls
+          }
+        });
+      }
+
+      for (const draft of store.messagingAnnouncementDrafts) {
+        await tx.messagingAnnouncementDraft.upsert({
+          where: { id: draft.id },
+          create: {
+            id: draft.id,
+            category: toUpperEnum<PrismaMessagingAnnouncementCategory>(draft.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(draft.scope) ?? "BUILDING",
+            targetLabel: draft.targetLabel,
+            targetRoomIds: draft.targetRoomIds,
+            title: draft.title,
+            body: draft.body,
+            translations: asJson(draft.translations),
+            confirmRequired: draft.confirmRequired,
+            status: toUpperEnum<PrismaMessagingAnnouncementDraftStatus>(draft.status) ?? "DRAFT",
+            createdByManagerId: draft.createdByManagerId,
+            createdAt: asDate(draft.createdAt),
+            updatedAt: asDate(draft.updatedAt)
+          },
+          update: {
+            category: toUpperEnum<PrismaMessagingAnnouncementCategory>(draft.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(draft.scope) ?? "BUILDING",
+            targetLabel: draft.targetLabel,
+            targetRoomIds: draft.targetRoomIds,
+            title: draft.title,
+            body: draft.body,
+            translations: asJson(draft.translations),
+            confirmRequired: draft.confirmRequired,
+            status: toUpperEnum<PrismaMessagingAnnouncementDraftStatus>(draft.status) ?? "DRAFT",
+            createdByManagerId: draft.createdByManagerId,
+            updatedAt: asDate(draft.updatedAt)
+          }
+        });
+      }
+
+      for (const announcement of store.messagingAnnouncements) {
+        await tx.messagingAnnouncement.upsert({
+          where: { id: announcement.id },
+          create: {
+            id: announcement.id,
+            draftId: announcement.draftId,
+            category:
+              toUpperEnum<PrismaMessagingAnnouncementCategory>(announcement.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(announcement.scope) ?? "BUILDING",
+            targetLabel: announcement.targetLabel,
+            title: announcement.title,
+            body: announcement.body,
+            originalBody: announcement.originalBody,
+            sender: announcement.sender,
+            senderId: announcement.senderId,
+            sentAt: asDate(announcement.sentAt) ?? new Date(),
+            confirmRequired: announcement.confirmRequired,
+            safetyCta: announcement.safetyCta
+          },
+          update: {
+            draftId: announcement.draftId,
+            category:
+              toUpperEnum<PrismaMessagingAnnouncementCategory>(announcement.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(announcement.scope) ?? "BUILDING",
+            targetLabel: announcement.targetLabel,
+            title: announcement.title,
+            body: announcement.body,
+            originalBody: announcement.originalBody,
+            sender: announcement.sender,
+            senderId: announcement.senderId,
+            sentAt: asDate(announcement.sentAt) ?? new Date(),
+            confirmRequired: announcement.confirmRequired,
+            safetyCta: announcement.safetyCta
+          }
+        });
+      }
+
+      for (const delivery of store.messagingAnnouncementDeliveries) {
+        await tx.messagingAnnouncementDelivery.upsert({
+          where: { id: delivery.id },
+          create: {
+            id: delivery.id,
+            announcementId: delivery.announcementId,
+            tenantId: delivery.tenantId,
+            roomId: delivery.roomId,
+            unitId: delivery.unitId,
+            tenantName: delivery.tenantName,
+            preferredLang: delivery.preferredLang,
+            state: toUpperEnum<PrismaMessagingAnnouncementReadState>(delivery.state) ?? "UNREAD",
+            readAt: asDate(delivery.readAt),
+            confirmedAt: asDate(delivery.confirmedAt),
+            failed: delivery.failed ?? false
+          },
+          update: {
+            announcementId: delivery.announcementId,
+            tenantId: delivery.tenantId,
+            roomId: delivery.roomId,
+            unitId: delivery.unitId,
+            tenantName: delivery.tenantName,
+            preferredLang: delivery.preferredLang,
+            state: toUpperEnum<PrismaMessagingAnnouncementReadState>(delivery.state) ?? "UNREAD",
+            readAt: asDate(delivery.readAt),
+            confirmedAt: asDate(delivery.confirmedAt),
+            failed: delivery.failed ?? false
           }
         });
       }

@@ -14,19 +14,23 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
+  AddMessagingThreadMessageInput,
   AttachmentCategory,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
   ApproveRepairEstimateInput,
   ConfirmTenantCompletionInput,
+  CreateAnnouncementDraftInput,
   CreateComplaintInput,
   CreateComplaintFromCallInput,
   CreateIntakeSessionInput,
+  CreateMessagingThreadInput,
   CreateMoveInChecklistItemInput,
   DeletionState,
   FinalizeIntakeInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
+  MessagingThreadContext,
   ManagerTicketReplyInput,
   RealtimeClientSecretInput,
   RecordRealtimeTurnInput,
@@ -340,6 +344,71 @@ export class RoomlogController {
     return this.roomlogService.submitTenantAiFeedback(user.id, complaintId, body);
   }
 
+  @Get("tenant/messaging/threads")
+  listTenantMessagingThreads(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantMessagingThreads(user.id);
+  }
+
+  @Get("tenant/messaging/threads/:threadId")
+  getTenantMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantMessagingThread(user.id, threadId);
+  }
+
+  @Post("tenant/messaging/threads/:threadId/messages")
+  addTenantMessagingThreadMessage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string,
+    @Body() body: AddMessagingThreadMessageInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.addTenantMessagingThreadMessage(user.id, threadId, body);
+  }
+
+  @Get("tenant/messaging/announcements")
+  listTenantMessagingAnnouncements(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantMessagingAnnouncements(user.id);
+  }
+
+  @Get("tenant/messaging/announcements/:announcementId")
+  getTenantMessagingAnnouncement(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("announcementId") announcementId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantMessagingAnnouncement(user.id, announcementId);
+  }
+
+  @Post("tenant/messaging/announcements/:announcementId/read")
+  markTenantMessagingAnnouncementRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("announcementId") announcementId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.markTenantMessagingAnnouncementRead(user.id, announcementId);
+  }
+
+  @Post("tenant/messaging/announcements/:announcementId/confirm")
+  confirmTenantMessagingAnnouncement(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("announcementId") announcementId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.confirmTenantMessagingAnnouncement(user.id, announcementId);
+  }
+
   @Get("contracts/manager")
   getManagerContractDashboard(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
@@ -456,6 +525,111 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.queryManagerAssistant(user.id, body);
+  }
+
+  @Get("manager/messaging/threads")
+  listManagerMessagingThreads(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("context") context?: MessagingThreadContext
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerMessagingThreads(user.id, context);
+  }
+
+  @Post("manager/messaging/threads")
+  createMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateMessagingThreadInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createMessagingThread(user.id, body);
+  }
+
+  @Get("manager/messaging/threads/:threadId")
+  getManagerMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerMessagingThread(user.id, threadId);
+  }
+
+  @Post("manager/messaging/threads/:threadId/messages")
+  addManagerMessagingThreadMessage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string,
+    @Body() body: AddMessagingThreadMessageInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.addManagerMessagingThreadMessage(user.id, threadId, body);
+  }
+
+  @Get("manager/messaging/announcement-drafts")
+  listManagerAnnouncementDrafts(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerAnnouncementDrafts(user.id);
+  }
+
+  @Post("manager/messaging/announcement-drafts")
+  createManagerAnnouncementDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateAnnouncementDraftInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerAnnouncementDraft(user.id, body);
+  }
+
+  @Get("manager/messaging/announcement-drafts/:draftId")
+  getManagerAnnouncementDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("draftId") draftId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerAnnouncementDraft(user.id, draftId);
+  }
+
+  @Get("manager/messaging/announcement-drafts/:draftId/recipients")
+  listManagerAnnouncementRecipients(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("draftId") draftId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerAnnouncementRecipients(user.id, draftId);
+  }
+
+  @Post("manager/messaging/announcement-drafts/:draftId/send")
+  sendManagerAnnouncementDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("draftId") draftId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.sendManagerAnnouncementDraft(user.id, draftId);
+  }
+
+  @Get("manager/messaging/announcement-results")
+  listManagerAnnouncementResults(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerAnnouncementResults(user.id);
+  }
+
+  @Get("manager/messaging/announcement-results/:announcementId")
+  getManagerAnnouncementResult(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("announcementId") announcementId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerAnnouncementResult(user.id, announcementId);
   }
 
   @Get("manager/tickets/:ticketId")
