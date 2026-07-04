@@ -9057,3 +9057,153 @@ p {
 .contract-sheet-table {
   margin: 4px 0 14px;
 }
+
+/* ── 내 룸로그: 주거 프로세스 흐름 바 + 관계 카드 ── */
+.my-flow-bar {
+  flex-wrap: wrap;
+}
+
+.my-flow-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 데스크톱에서 .mypage-role-bar button을 숨기는 규칙보다 구체적으로 지정해 흐름 칩은 항상 노출 */
+.my-flow-bar .my-flow-chips button {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.my-flow-bar .my-flow-chips button.active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.my-roomlog-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.my-roomlog-heading {
+  display: grid;
+  gap: 5px;
+}
+
+.my-roomlog-heading span {
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.my-roomlog-heading h3 {
+  color: var(--ink);
+  font-size: 1.04rem;
+}
+
+.my-roomlog-heading p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.my-roomlog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.my-roomlog-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--canvas);
+}
+
+.my-roomlog-card.is-active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.my-roomlog-card header {
+  display: grid;
+  gap: 2px;
+}
+
+.my-roomlog-card em {
+  color: var(--blue);
+  font-size: 0.7rem;
+  font-weight: 900;
+  font-style: normal;
+}
+
+.my-roomlog-card strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.my-roomlog-card > p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.my-roomlog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.my-roomlog-actions button,
+.my-roomlog-actions a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--blue-dark);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.my-roomlog-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.domain-test-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+/* 데스크톱 6열 그리드(.profile-screen)에서 내 룸로그 섹션은 전체 폭 사용 */
+.profile-screen > .my-roomlog-section {
+  grid-column: 1 / -1;
+}
+
+/* 세입자 마이페이지 데스크톱 그리드에서 룸로그 진입 카드가 전체 폭·자연스러운 순서를 갖도록 */
+.tenant-screen > .tenant-domain-test-card {
+  order: 6;
+  grid-column: 1 / -1;
+}

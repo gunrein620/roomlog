@@ -157,9 +157,20 @@ const devRoles: Array<{
 ];
 
 const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
-  { id: "seeker", label: "일반 이용자", href: "/" },
-  { id: "tenant", label: "세입자", href: "/?role=tenant&tab=mypage" },
-  { id: "landlord", label: "임대인", href: "/?role=landlord&tab=mypage" }
+  { id: "seeker", label: "방 찾는 중", href: "/" },
+  { id: "tenant", label: "내가 사는 집", href: "/?role=tenant&tab=mypage" },
+  { id: "landlord", label: "내가 내놓은 집", href: "/?role=landlord&tab=mypage" }
+];
+
+// 내 주거 프로세스: 한 계정이 상황에 따라 갖는 집과의 관계(흐름) 단위.
+// "역할 전환"이 아니라 같은 계정에서 여러 흐름을 오간다는 관점으로 표현한다.
+type MyFlow = "seeking" | "listing" | "living" | "managing";
+
+const myFlowItems: Array<{ id: MyFlow; label: string }> = [
+  { id: "seeking", label: "방 찾는 중" },
+  { id: "listing", label: "내놓은 집" },
+  { id: "living", label: "사는 집" },
+  { id: "managing", label: "관리 중인 집" }
 ];
 
 const protectedRoleConfig = {
@@ -899,18 +910,30 @@ function LoginScreen({
   );
 }
 
-function MyPageRoleBar({ roleLabel, onSwitchRole }: { roleLabel: string; onSwitchRole: () => void }) {
+function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectFlow: (flow: MyFlow) => void }) {
   return (
-    <div className="mypage-role-bar">
+    <div className="mypage-role-bar my-flow-bar">
       <span>
-        현재 <b>{roleLabel}</b> 모드로 보는 중
+        내 주거 프로세스 — 한 계정으로 <b>여러 집과 관계</b>를 이어갑니다
       </span>
-      <button type="button" onClick={onSwitchRole}>역할 전환</button>
+      <div className="my-flow-chips" aria-label="연결된 흐름">
+        {myFlowItems.map((flow) => (
+          <button
+            key={flow.id}
+            type="button"
+            className={flow.id === activeFlow ? "active" : ""}
+            aria-current={flow.id === activeFlow ? "true" : undefined}
+            onClick={() => onSelectFlow(flow.id)}
+          >
+            {flow.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; onGoHome: () => void }) {
+function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlow) => void; onGoHome: () => void }) {
   const [ownerForm, setOwnerForm] = useState({
     title: "방배 루미에르 402호",
     address: "서울특별시 서초구 방배동",
@@ -1047,7 +1070,7 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
-      <MyPageRoleBar roleLabel="집주인" onSwitchRole={onSwitchRole} />
+      <MyFlowBar activeFlow="listing" onSelectFlow={onSelectFlow} />
 
       <div className="owner-dashboard-layout">
         <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
@@ -1127,22 +1150,33 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
         </div>
       </section>
 
-      <section className="domain-test-card landlord-domain-test-card" aria-labelledby="landlord-domain-test-title">
+      <section className="domain-test-card landlord-domain-test-card" aria-labelledby="landlord-roomlog-title">
         <div className="domain-test-heading">
-          <span>실배선 확인</span>
-          <h3 id="landlord-domain-test-title">도메인 테스트</h3>
+          <span>내 룸로그</span>
+          <h3 id="landlord-roomlog-title">이 집을 룸로그로 관리하기</h3>
+          <p>세입자가 연결되면 같은 계정에서 계약·비용·메시지·하자를 관리 콘솔로 이어서 처리합니다.</p>
         </div>
         <div className="domain-test-link-grid">
-          <Link className="domain-test-link primary" href="/manager/messaging/00">
-            메시지 테스트
+          <Link className="domain-test-link primary" href="/manager/home/00">
+            관리 콘솔 홈
+          </Link>
+          <Link className="domain-test-link" href="/manager/contract/00">
+            계약 관리
+          </Link>
+          <Link className="domain-test-link" href="/manager/ticket/dash/00">
+            하자·티켓
+          </Link>
+          <Link className="domain-test-link" href="/manager/cost/00">
+            비용 정산
+          </Link>
+          <Link className="domain-test-link" href="/manager/messaging/00">
+            메시지
           </Link>
           <Link className="domain-test-link" href="/manager/moveout/00">
-            퇴실 테스트
-          </Link>
-          <Link className="domain-test-link" href="/manager/report/00">
-            리포트 테스트
+            퇴실 관리
           </Link>
         </div>
+        <small className="domain-test-note">관리 콘솔은 관리인 로그인 후 이어집니다.</small>
       </section>
 
       <section className="owner-exposure-card" aria-label="집 내놓기 전달 범위">
@@ -2623,7 +2657,7 @@ function UserMyPage({
   onOpenFilter,
   onOpenNotifications,
   onApplyCondition,
-  onSwitchRole,
+  onSelectFlow,
   onGoHome
 }: {
   roleLabel: string;
@@ -2636,7 +2670,7 @@ function UserMyPage({
   onOpenFilter: () => void;
   onOpenNotifications: () => void;
   onApplyCondition: (condition: (typeof savedConditions)[number]) => void;
-  onSwitchRole: () => void;
+  onSelectFlow: (flow: MyFlow) => void;
   onGoHome: () => void;
 }) {
   const latestInquiry = inquiries[0];
@@ -2644,7 +2678,7 @@ function UserMyPage({
 
   return (
     <section className="screen profile-screen" id="my-page" aria-labelledby="profile-title">
-      <MyPageRoleBar roleLabel={roleLabel} onSwitchRole={onSwitchRole} />
+      <MyFlowBar activeFlow="seeking" onSelectFlow={onSelectFlow} />
 
       <header className="profile-account-card">
         <div className="profile-avatar" aria-hidden="true">
@@ -2659,6 +2693,71 @@ function UserMyPage({
           메인으로
         </button>
       </header>
+
+      <section className="my-roomlog-section" aria-labelledby="my-roomlog-title">
+        <div className="my-roomlog-heading">
+          <span>내 룸로그</span>
+          <h3 id="my-roomlog-title">내 주거 프로세스</h3>
+          <p>방을 찾고, 집을 내놓고, 계약된 집은 같은 계정에서 룸로그로 이어서 관리합니다.</p>
+        </div>
+        <div className="my-roomlog-grid">
+          <article className="my-roomlog-card is-active">
+            <header>
+              <em>계약 전 · 탐색</em>
+              <strong>방 찾는 중</strong>
+            </header>
+            <p>찜 {savedCount}개 · 문의 {inquiries.length}건 · 최근 본 방 {viewedListings.length}개</p>
+            <div className="my-roomlog-actions">
+              <button type="button" onClick={onGoSaved}>찜한 매물</button>
+              <button type="button" onClick={onGoInquiry}>문의한 매물</button>
+              <button type="button" onClick={onGoHome}>방 더 보기</button>
+            </div>
+          </article>
+
+          <article className="my-roomlog-card">
+            <header>
+              <em>임대인 관계 · 데모</em>
+              <strong>내가 내놓은 집</strong>
+            </header>
+            <p>방배 루미에르 302호 · 노출중 · 조회 128 · 문의 6건</p>
+            <div className="my-roomlog-actions">
+              <button type="button" onClick={() => onSelectFlow("listing")}>등록·문의 현황</button>
+              <button type="button" onClick={() => onSelectFlow("listing")}>새 집 내놓기</button>
+            </div>
+            <small>계약이 연결되면 집주인으로 관리가 시작됩니다.</small>
+          </article>
+
+          <article className="my-roomlog-card">
+            <header>
+              <em>세입자 관계 · 데모</em>
+              <strong>내가 사는 집</strong>
+            </header>
+            <p>방배 루미에르 402호 · 계약 중 · D-124 재계약 예정</p>
+            <div className="my-roomlog-actions">
+              <button type="button" onClick={() => onSelectFlow("living")}>사는 집 현황</button>
+              <Link href="/tenant/home/00">룸로그 홈</Link>
+              <Link href="/tenant/defect/00">하자 접수</Link>
+              <Link href="/tenant/payment/00">관리비</Link>
+            </div>
+            <small>룸로그 화면은 세입자 로그인 후 이어집니다.</small>
+          </article>
+
+          <article className="my-roomlog-card">
+            <header>
+              <em>관리자 관계 · 연결 예정</em>
+              <strong>관리 중인 집</strong>
+            </header>
+            <p>연남 스테이 외 2개 동 · 진행 티켓 3건 · 검토 대기 2건</p>
+            <div className="my-roomlog-actions">
+              <Link href="/manager/home/00">관리 콘솔</Link>
+              <Link href="/manager/ticket/dash/00">하자·티켓</Link>
+              <Link href="/manager/cost/00">비용 정산</Link>
+              <Link href="/manager/messaging/00">메시지</Link>
+            </div>
+            <small>관리 콘솔은 관리인 로그인 후 이어집니다.</small>
+          </article>
+        </div>
+      </section>
 
       <section className="profile-activity-grid" aria-label="내 활동 요약">
         <article role="button" tabIndex={0} onClick={onGoSaved} onKeyDown={(event) => handleActivateKey(event, onGoSaved)}>
@@ -2765,11 +2864,11 @@ function UserMyPage({
 }
 
 function TenantMyPage({
-  onSwitchRole,
+  onSelectFlow,
   onGoInquiry,
   onGoHome
 }: {
-  onSwitchRole: () => void;
+  onSelectFlow: (flow: MyFlow) => void;
   onGoInquiry: () => void;
   onGoHome: () => void;
 }) {
@@ -2818,7 +2917,7 @@ function TenantMyPage({
 
   return (
     <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
-      <MyPageRoleBar roleLabel="세입자" onSwitchRole={onSwitchRole} />
+      <MyFlowBar activeFlow="living" onSelectFlow={onSelectFlow} />
 
       <div className="owner-hero compact-profile tenant-hero">
         <div>
@@ -2946,19 +3045,36 @@ function TenantMyPage({
         </div>
       </section>
 
-      <section className="domain-test-card tenant-domain-test-card" aria-labelledby="tenant-domain-test-title">
+      <section className="domain-test-card tenant-domain-test-card" aria-labelledby="tenant-roomlog-title">
         <div className="domain-test-heading">
-          <span>실배선 확인</span>
-          <h3 id="tenant-domain-test-title">도메인 테스트</h3>
+          <span>내 룸로그</span>
+          <h3 id="tenant-roomlog-title">이 집의 관리 프로세스</h3>
+          <p>계약된 집은 입주부터 퇴실까지 같은 계정의 룸로그에서 이어집니다.</p>
         </div>
         <div className="domain-test-link-grid">
-          <Link className="domain-test-link primary" href="/tenant/messaging/00">
-            메시지 테스트
+          <Link className="domain-test-link primary" href="/tenant/home/00">
+            룸로그 홈
+          </Link>
+          <Link className="domain-test-link" href="/tenant/movein/00">
+            입주 점검
+          </Link>
+          <Link className="domain-test-link" href="/tenant/contract/00">
+            계약
+          </Link>
+          <Link className="domain-test-link" href="/tenant/defect/00">
+            하자 접수
+          </Link>
+          <Link className="domain-test-link" href="/tenant/payment/00">
+            관리비·납부
+          </Link>
+          <Link className="domain-test-link" href="/tenant/messaging/00">
+            메시지
           </Link>
           <Link className="domain-test-link" href="/tenant/moveout/00">
-            퇴실 테스트
+            퇴실 정산
           </Link>
         </div>
+        <small className="domain-test-note">룸로그 화면은 세입자 로그인 후 이어집니다.</small>
       </section>
 
       <section className="maintenance-card" aria-label="긴급 점검 일정">
@@ -3813,6 +3929,20 @@ export default function Home() {
     resetWindowScrollSoon();
   };
 
+  // 내 룸로그 흐름 전환: 한 계정에서 탐색·임대인·세입자 마이페이지를 오가고,
+  // 관리자 흐름은 기존 관리 콘솔 화면으로 이어준다. (데모 미리보기 — 로그인 강제 없음)
+  const openMyFlow = (flow: MyFlow) => {
+    if (flow === "managing") {
+      window.location.href = "/manager/home/00";
+      return;
+    }
+
+    setIsDevRolePreview(true);
+    setActiveRole(flow === "listing" ? "landlord" : flow === "living" ? "tenant" : "seeker");
+    setActiveTab("mypage");
+    resetWindowScrollSoon();
+  };
+
   if (authMode) {
     return (
       <LoginScreen
@@ -3879,7 +4009,7 @@ export default function Home() {
             </nav>
             <div className="web-topbar-actions">
               <label className="web-role-select">
-                <span>역할군</span>
+                <span>내 흐름</span>
                 <select value={activeRole} onChange={(event) => navigateRoleHome(event.target.value as AppRole)}>
                   {roleSwitchOptions.map((role) => (
                     <option key={role.id} value={role.id}>
@@ -4455,11 +4585,11 @@ export default function Home() {
           <InquiryHubSection inquiries={inquiries} onBrowseListings={() => activateTab("home")} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
-          <LandlordMyPage onSwitchRole={() => openAuthScreen("login")} onGoHome={() => activateTab("home")} />
+          <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
         ) : null}
         {activeTab === "mypage" && activeRole === "tenant" ? (
           <TenantMyPage
-            onSwitchRole={() => openAuthScreen("login")}
+            onSelectFlow={openMyFlow}
             onGoInquiry={() => activateTab("inquiry")}
             onGoHome={() => activateTab("home")}
           />
@@ -4476,7 +4606,7 @@ export default function Home() {
             onOpenFilter={() => setIsFilterSheetOpen(true)}
             onOpenNotifications={() => setIsNotificationSheetOpen(true)}
             onApplyCondition={applySavedCondition}
-            onSwitchRole={() => openAuthScreen("login")}
+            onSelectFlow={openMyFlow}
             onGoHome={() => activateTab("home")}
           />
         ) : null}
