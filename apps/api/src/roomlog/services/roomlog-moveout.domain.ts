@@ -16,6 +16,7 @@ import type {
   MoveoutDisputeStatus,
   MoveoutManagerRow,
   MoveoutManagerSettlementReview,
+  MoveoutPublishSettlementInput,
   MoveoutRecordItem,
   MoveoutReportAuditEntry,
   MoveoutRespondDisputeInput,
@@ -531,6 +532,40 @@ export class RoomlogMoveoutDomain {
       managerId,
       at: reviewedAt
     });
+    this.persistStore();
+
+    return this.getManagerMoveoutSettlement(managerId, moveout.id);
+  }
+
+  publishManagerMoveoutSettlement(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutPublishSettlementInput
+  ): MoveoutManagerSettlementReview {
+    const moveout = this.findManagerMoveout(managerId, moveoutId);
+    const settlement = this.findSettlement(moveout);
+
+    if (settlement.status !== "review_done") {
+      throw new BadRequestException("검토 완료 후 임차인에게 예상 정산안을 전달할 수 있습니다.");
+    }
+
+    const publishedAt = now();
+    const defaultMessage = `${moveout.unitId}호 퇴실 예상 정산안 검토가 완료되어 전달드립니다. 이 금액은 최종 송금 확정이 아니라 근거 확인용 예상안입니다.`;
+    const message = input.message?.trim() || defaultMessage;
+    this.ensureMoveoutThread(moveout, managerId, "manager", message);
+    this.store.moveoutReportAudits.unshift({
+      id: id("maud"),
+      summaryId: moveout.id,
+      recordItemId: "settlement",
+      action: "reinforce",
+      evidenceNote: `임차인 전달: ${message}`,
+      tenantNotified: true,
+      managerName: this.findUser(managerId).name,
+      managerId,
+      at: publishedAt
+    });
+    moveout.updatedAt = publishedAt;
+    settlement.updatedAt = publishedAt;
     this.persistStore();
 
     return this.getManagerMoveoutSettlement(managerId, moveout.id);

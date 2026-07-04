@@ -8,6 +8,7 @@ import type {
   ManagerSettlementReview,
   MoveoutDashboardSummary,
   MoveoutManagerRow,
+  PublishSettlementDto,
   ReportAuditEntry,
   RespondDisputeDto,
 } from "@roomlog/types";
@@ -32,6 +33,7 @@ export const managerMoveoutPaths = {
   adjustWearVerdict: (id: string) => `/moveouts/${encodeURIComponent(id)}/records/wear-verdict`,
   adjustDeduction: (id: string) => `/moveouts/${encodeURIComponent(id)}/deductions`,
   completeReview: (id: string) => `/moveouts/${encodeURIComponent(id)}/complete-review`,
+  publishSettlement: (id: string) => `/moveouts/${encodeURIComponent(id)}/settlement/publish`,
   respondDispute: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes/respond`,
 };
 
@@ -274,6 +276,24 @@ export function completeReview(id: string, input: CompleteReviewDto): Promise<Ma
       },
     },
     "관리인 검토 완료",
+  );
+}
+
+export function publishSettlement(id: string, input: PublishSettlementDto): Promise<ManagerSettlementReview> {
+  return tryMutation(
+    () =>
+      serverFetch<ManagerSettlementReview>(managerMoveoutPaths.publishSettlement(id), {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    {
+      ...DEMO_MANAGER_SETTLEMENT_REVIEW,
+      settlement: {
+        ...DEMO_MANAGER_SETTLEMENT_REVIEW.settlement,
+        status: "review_done",
+      },
+    },
+    "관리인 예상 정산안 임차인 전달",
   );
 }
 

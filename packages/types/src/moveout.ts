@@ -297,6 +297,11 @@ export interface CompleteReviewDto {
   overrideReason?: string; // SLA override 사유
 }
 
+/** 예상 정산안 임차인 전달 DTO(M-OUT-02) — 메시징·감사로그에 연결. */
+export interface PublishSettlementDto {
+  message?: string;
+}
+
 /** 관리인 검토 정산안 뷰(M-OUT-02) — 예상 정산 + 게이트 + 이의 enum 표시. */
 export interface ManagerSettlementReview {
   settlement: SettlementEstimate;

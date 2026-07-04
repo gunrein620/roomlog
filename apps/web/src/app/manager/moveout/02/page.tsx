@@ -6,6 +6,7 @@ import {
   getManagerSettlement,
   getMoveout,
   getReportAudit,
+  publishSettlement,
 } from "@/lib/moveout-manager-api";
 import { DEMO_MOVEOUT_ID } from "@/lib/demo-moveout";
 import { MANAGER_MOVEOUT_ROUTES } from "@/lib/moveout-manager-nav";
@@ -29,7 +30,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ id?: string }>;
+type SearchParams = Promise<{ id?: string; adjusted?: string; completed?: string; published?: string; error?: string }>;
 
 async function completeReviewAction(formData: FormData) {
   "use server";
@@ -43,7 +44,7 @@ async function completeReviewAction(formData: FormData) {
     overrideSla,
     overrideReason: overrideReason || undefined,
   });
-  redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}`);
+  redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}&completed=1`);
 }
 
 function optionalAmount(value: FormDataEntryValue | null) {
@@ -76,8 +77,20 @@ async function adjustDeductionAction(formData: FormData) {
   redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}&adjusted=1`);
 }
 
+async function publishSettlementAction(formData: FormData) {
+  "use server";
+
+  const moveoutId = String(formData.get("moveoutId") ?? DEMO_MOVEOUT_ID);
+  const message = String(formData.get("message") ?? "").trim();
+
+  await publishSettlement(moveoutId, {
+    message: message || undefined,
+  });
+  redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}&published=1`);
+}
+
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id } = await searchParams;
+  const { id, adjusted, completed, published, error } = await searchParams;
   const moveoutId = id ?? DEMO_MOVEOUT_ID;
   const [moveout, review, audit] = await Promise.all([
     getMoveout(moveoutId),
@@ -87,6 +100,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const { settlement, gate } = review;
   const contractBlocked = !moveout.contractConfirmed;
   const latestAudit = audit[0];
+  const canPublishSettlement = !contractBlocked && (settlement.status === "review_done" || completed === "1");
 
   return (
     <PageStack>
@@ -98,6 +112,24 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       />
 
       <NoticeBanner />
+
+      {(adjusted || completed || published || error) ? (
+        <Card
+          style={{
+            border: "1.5px solid var(--primary)",
+            background: "var(--surface-container-high)",
+            fontWeight: 800,
+          }}
+        >
+          {error
+            ? "필수 항목을 확인해주세요."
+            : published
+              ? "예상 정산안을 임차인 메시징으로 전달했습니다."
+              : completed
+                ? "검토 완료 상태로 전환했습니다. 이제 임차인에게 예상안을 전달할 수 있습니다."
+                : "차감 후보 조정을 저장했습니다."}
+        </Card>
+      ) : null}
 
       <section style={grid2Style}>
         <MetricCard label="보증금" value={won(settlement.depositAmount)} note={moveout.contractConfirmed ? "계약서 확정값 기준" : "계약 미확정 · 검토 차단"} />
@@ -313,7 +345,21 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         ) : (
           <DisabledButton>검토 완료 차단</DisabledButton>
         )}
-        <DisabledButton>임차인에게 전달</DisabledButton>
+        {canPublishSettlement ? (
+          <form action={publishSettlementAction}>
+            <input type="hidden" name="moveoutId" value={moveoutId} />
+            <input
+              type="hidden"
+              name="message"
+              value={`${moveout.unitId}호 퇴실 예상 정산안 검토가 완료되어 전달드립니다. 최종 송금 확정 전 근거 확인용 예상안입니다.`}
+            />
+            <button type="submit" style={primaryActionStyle}>
+              임차인에게 전달
+            </button>
+          </form>
+        ) : (
+          <DisabledButton>검토 완료 후 전달</DisabledButton>
+        )}
       </div>
     </PageStack>
   );
@@ -335,6 +381,17 @@ const secondaryActionStyle = {
   border: "1.5px solid var(--primary)",
   background: "transparent",
   color: "var(--primary)",
+  fontWeight: 800,
+  cursor: "pointer",
+} as const;
+
+const primaryActionStyle = {
+  minHeight: "var(--touch-target)",
+  padding: "0 16px",
+  borderRadius: "var(--radius-btn)",
+  border: "none",
+  background: "var(--primary)",
+  color: "var(--on-primary)",
   fontWeight: 800,
   cursor: "pointer",
 } as const;

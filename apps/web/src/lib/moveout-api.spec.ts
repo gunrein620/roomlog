@@ -10,6 +10,7 @@ import {
   adjustWearVerdict,
   completeReview,
   managerMoveoutPaths,
+  publishSettlement,
 } from "./moveout-manager-api";
 import { MANAGER_MOVEOUT_ROUTES, withManagerMoveoutId } from "./moveout-manager-nav";
 import {
@@ -41,6 +42,7 @@ describe("moveout api path contracts", () => {
     assert.equal(managerMoveoutPaths.adjustWearVerdict("mo 1"), "/moveouts/mo%201/records/wear-verdict");
     assert.equal(managerMoveoutPaths.adjustDeduction("mo 1"), "/moveouts/mo%201/deductions");
     assert.equal(managerMoveoutPaths.completeReview("mo 1"), "/moveouts/mo%201/complete-review");
+    assert.equal(managerMoveoutPaths.publishSettlement("mo 1"), "/moveouts/mo%201/settlement/publish");
     assert.equal(managerMoveoutPaths.respondDispute("mo 1"), "/moveouts/mo%201/disputes/respond");
   });
 
@@ -152,11 +154,15 @@ describe("moveout api path contracts", () => {
         overrideSla: true,
         overrideReason: "데모 검토 완료",
       });
+      const publishResult = await publishSettlement("mo_0001", {
+        message: "데모 정산안 전달",
+      });
 
       assert.equal(wearResult.record.id, "rec_0003");
       assert.equal(wearResult.audit.evidenceNote, "데모 근거 보강");
       assert.equal(deductionResult.id, DEMO_MOVEOUT_SETTLEMENT.id);
       assert.equal(reviewResult.settlement.id, DEMO_MANAGER_SETTLEMENT_REVIEW.settlement.id);
+      assert.equal(publishResult.settlement.status, "review_done");
     } finally {
       console.warn = warn;
     }

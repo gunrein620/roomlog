@@ -717,6 +717,10 @@ export type MoveoutCompleteReviewInput = {
   overrideReason?: string;
 };
 
+export type MoveoutPublishSettlementInput = {
+  message?: string;
+};
+
 export type MoveoutRespondDisputeInput = {
   disputeId: string;
   kind: MoveoutDisputeResponseKind;

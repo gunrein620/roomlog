@@ -4341,6 +4341,29 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("publishes a reviewed moveout settlement to tenant messaging and audit log", () => {
+    const service = createMoveoutTestService() as any;
+
+    service.completeManagerMoveoutReview("manager-a", "mo-a", {
+      acknowledgeEvidence: true,
+      overrideSla: true,
+      overrideReason: "SLA 경과로 예상 정산안을 먼저 전달합니다."
+    });
+    const review = service.publishManagerMoveoutSettlement("manager-a", "mo-a", {
+      message: "검토한 예상 정산안을 임차인에게 전달합니다."
+    });
+    const tenantThreads = service.listTenantMessagingThreads("tenant-a");
+    const threadSummary = tenantThreads.find((thread: any) => thread.contextRef === "mo-a");
+    const thread = service.getTenantMessagingThread("tenant-a", threadSummary.id);
+    const audit = service.getManagerReportAudit("manager-a", "mo-a");
+
+    assert.equal(review.settlement.status, "review_done");
+    assert.match(thread.messages.at(-1).body, /예상 정산안/);
+    assert.equal(audit[0].recordItemId, "settlement");
+    assert.equal(audit[0].tenantNotified, true);
+    assert.match(audit[0].evidenceNote, /임차인 전달/);
+  });
+
   it("creates and links a manager-visible messaging thread for tenant moveout inquiries", () => {
     const service = createMoveoutTestService() as any;
 

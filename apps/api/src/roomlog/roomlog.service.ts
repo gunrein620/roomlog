@@ -126,6 +126,7 @@ import {
   MoveoutDeductionCandidate,
   MoveoutDispute,
   MoveoutManagerSettlementReview,
+  MoveoutPublishSettlementInput,
   MoveoutRecordItem,
   MoveoutReportAuditEntry,
   MoveoutRespondDisputeInput,
@@ -3760,6 +3761,14 @@ export class RoomlogService {
     input: MoveoutCompleteReviewInput
   ) {
     return this.moveout.completeManagerMoveoutReview(managerId, moveoutId, input);
+  }
+
+  publishManagerMoveoutSettlement(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutPublishSettlementInput
+  ) {
+    return this.moveout.publishManagerMoveoutSettlement(managerId, moveoutId, input);
   }
 
   respondManagerMoveoutDispute(
