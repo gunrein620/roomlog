@@ -716,6 +716,152 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("detects floor plan openings via Roboflow and maps them to normalized candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    const originalModel = process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+
+    process.env.ROBOFLOW_API_KEY = "rf-test-key";
+    process.env.ROBOFLOW_FLOOR_PLAN_MODEL = "cubicasa5k-2-qpmsa/1";
+    globalThis.fetch = (async (input) => {
+      capturedUrl = String(input);
+
+      return new Response(
+        JSON.stringify({
+          image: { width: 1000, height: 500 },
+          predictions: [
+            { class: "window", confidence: 0.81, x: 450, y: 40, width: 180, height: 36 },
+            { class: "door", confidence: 0.28, x: 500, y: 420, width: 20, height: 140 },
+            // 같은 자리 중복 판정(겹침 큼) — 신뢰도 낮은 쪽이 제거되어야 함
+            { class: "window", confidence: 0.31, x: 500, y: 421, width: 22, height: 138 },
+            // wall 클래스는 openings가 아니라 walls로 분리
+            { class: "wall", confidence: 0.7, x: 500, y: 250, width: 900, height: 20 },
+            // 하한 미달 창문(30% 미만)은 제외
+            { class: "window", confidence: 0.17, x: 900, y: 480, width: 30, height: 30 }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.match(capturedUrl, /detect\.roboflow\.com\/cubicasa5k-2-qpmsa\/1/);
+      assert.match(capturedUrl, /api_key=rf-test-key/);
+      assert.match(capturedUrl, /confidence=50/);
+      assert.equal(result.status, "ready");
+      assert.equal(result.openings.length, 1);
+      const window = result.openings.find((item) => item.type === "WINDOW");
+      const door = result.openings.find((item) => item.type === "DOOR");
+      assert.equal(window?.confidence, 0.81);
+      // 중심 (450,40) 크기 180x36, 이미지 1000x500 → 좌상단 (360,44) 크기 (180,72) [0-1000 정규화]
+      assert.equal(window?.boundingBox.x, 360);
+      assert.equal(window?.boundingBox.y, 44);
+      assert.equal(window?.boundingBox.width, 180);
+      assert.equal(window?.boundingBox.height, 72);
+      // 겹침 중복은 신뢰도 높은 window(0.31)가 door(0.28)를 이긴다
+      assert.equal(door, undefined);
+      assert.equal(result.openings.filter((item) => item.boundingBox.y > 500).length, 0);
+      // wall 클래스는 walls 배열로 분리: 중심 (500,250) 크기 900x20, 이미지 1000x500 → 좌상단 (50,480) 크기 (900,40)
+      assert.equal(result.walls.length, 1);
+      assert.equal(result.walls[0].confidence, 0.7);
+      assert.equal(result.walls[0].boundingBox.x, 50);
+      assert.equal(result.walls[0].boundingBox.y, 480);
+      assert.equal(result.walls[0].boundingBox.width, 900);
+      assert.equal(result.walls[0].boundingBox.height, 40);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+      else delete process.env.ROBOFLOW_API_KEY;
+      if (originalModel) process.env.ROBOFLOW_FLOOR_PLAN_MODEL = originalModel;
+      else delete process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("uses the current Roboflow Universe model version by default", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    const originalModel = process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+
+    process.env.ROBOFLOW_API_KEY = "rf-test-key";
+    delete process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    globalThis.fetch = (async (input) => {
+      capturedUrl = String(input);
+
+      return new Response(JSON.stringify({ image: { width: 1000, height: 500 }, predictions: [] }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      });
+    }) as typeof fetch;
+
+    try {
+      await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.match(capturedUrl, /detect\.roboflow\.com\/cubicasa5k-2-qpmsa\/6/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+      else delete process.env.ROBOFLOW_API_KEY;
+      if (originalModel) process.env.ROBOFLOW_FLOOR_PLAN_MODEL = originalModel;
+      else delete process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("deduplicates nested Roboflow door and wall boxes before returning candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    const originalFetch = globalThis.fetch;
+
+    process.env.ROBOFLOW_API_KEY = "rf-test-key";
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          image: { width: 1000, height: 500 },
+          predictions: [
+            { class: "door", confidence: 0.6, x: 500, y: 180, width: 360, height: 80 },
+            { class: "door", confidence: 0.16, x: 500, y: 180, width: 280, height: 40 },
+            { class: "wall", confidence: 0.54, x: 820, y: 230, width: 80, height: 320 },
+            { class: "wall", confidence: 0.35, x: 830, y: 235, width: 70, height: 300 }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      )) as typeof fetch;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.equal(result.openings.length, 1);
+      assert.equal(result.openings[0].type, "DOOR");
+      assert.equal(result.openings[0].confidence, 0.6);
+      assert.equal(result.walls.length, 1);
+      assert.equal(result.walls[0].confidence, 0.54);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+      else delete process.env.ROBOFLOW_API_KEY;
+    }
+  });
+
+  it("returns config-required for opening detection when ROBOFLOW_API_KEY is missing", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    delete process.env.ROBOFLOW_API_KEY;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.equal(result.status, "config-required");
+      assert.equal(result.openings.length, 0);
+    } finally {
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+    }
+  });
+
   it("uses OpenAI Responses for the floor plan vision model", async () => {
     const service = new RoomlogService();
     const originalApiKey = process.env.OPENAI_API_KEY;

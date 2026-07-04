@@ -3,7 +3,19 @@
 
 export type Point = { x: number; y: number };
 
-export type Wall = { id: string | number; start: Point; end: Point };
+export type Wall = {
+  confidence?: number;
+  depthPx?: number;
+  id: string | number;
+  lengthMm?: number;
+  lengthPx?: number;
+  orientation?: "horizontal" | "vertical" | "diagonal";
+  source?: "roboflow-postprocessed" | "ai-missing-wall-hint" | "ai-room-edge" | string;
+  start: Point;
+  end: Point;
+  thicknessMm?: number;
+  thicknessPx?: number;
+};
 
 export type WallSummary = { wallCount: number; approximateMeters: number; status: "초안" | "편집중" };
 
