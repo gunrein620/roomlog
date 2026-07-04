@@ -1613,6 +1613,81 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
+  async function runOpeningDetection() {
+    const attachmentId = uploadedFloorPlanSource?.attachmentId;
+    if (!attachmentId && !uploadedAiImageDataUrl) {
+      setAiAnalysisStatus("먼저 도면을 업로드하세요");
+      return;
+    }
+
+    setIsProcessing(true);
+    setAiAnalysisStatus("문/창문 후보 탐지중");
+    try {
+      const token = await getFloorPlanAccessToken();
+      const response = await fetch(apiUrl("/floor-plans/opening-detection"), {
+        body: JSON.stringify({
+          imageDataUrl: attachmentId ? undefined : uploadedAiImageDataUrl,
+          sourceAttachmentId: attachmentId
+        }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      if (!response.ok) throw new Error(`Opening detection failed: ${response.status}`);
+
+      const result = (await response.json()) as {
+        status: "ready" | "config-required" | "failed";
+        summary: string;
+        imageWidth?: number;
+        imageHeight?: number;
+        openings: Array<{
+          id: string;
+          type: "DOOR" | "WINDOW";
+          confidence: number;
+          source: string;
+          boundingBox: { x: number; y: number; width: number; height: number };
+        }>;
+      };
+      if (result.status !== "ready") {
+        setAiAnalysisStatus(result.summary);
+        return;
+      }
+
+      // 0-1000 정규화 박스 중심을 에디터 좌표로 변환 (이미지는 캔버스 중앙에 0.8 배율로 배치됨)
+      const imageAspect = Math.max(1e-6, (result.imageWidth || 1) / (result.imageHeight || 1));
+      const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
+      let drawWidth = CANVAS_WIDTH * 0.8;
+      let drawHeight = drawWidth / imageAspect;
+      if (imageAspect <= canvasAspect) {
+        drawHeight = CANVAS_HEIGHT * 0.8;
+        drawWidth = drawHeight * imageAspect;
+      }
+      const detected = result.openings.map(
+        (opening): FloorPlanCandidate => ({
+          confidence: opening.confidence,
+          id: `rf-${opening.id}`,
+          label: `${opening.type === "DOOR" ? "문" : "창문"} 후보 ${Math.round(opening.confidence * 100)}%`,
+          movable: true,
+          position: {
+            x: -drawWidth / 2 + ((opening.boundingBox.x + opening.boundingBox.width / 2) / 1000) * drawWidth,
+            y: -drawHeight / 2 + ((opening.boundingBox.y + opening.boundingBox.height / 2) / 1000) * drawHeight
+          },
+          source: opening.source,
+          status: "CANDIDATE",
+          type: opening.type
+        })
+      );
+      setOpeningCandidates((current) => [...current.filter((candidate) => !String(candidate.id).startsWith("rf-")), ...detected]);
+      setAiAnalysisStatus(`${result.summary} 목록에서 확정/거부로 검수하세요`);
+    } catch {
+      setAiAnalysisStatus("문/창문 탐지 실패");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   function removeRejectedAiWallCandidates() {
     const rejectedIds = new Set((lastAiAnalysis?.candidateReviews ?? []).filter((review) => review.verdict === "reject").map((review) => review.id));
     const rejectedWallIds = new Set(
@@ -1934,6 +2009,14 @@ export default function RoomlogFloorPlanEditor() {
               </button>
               <button className="floor-plan-secondary" disabled={isProcessing || !uploadedImage || !walls.length} onClick={runAiCandidateReview} type="button">
                 AI 후보 검토
+              </button>
+              <button
+                className="floor-plan-secondary"
+                disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
+                onClick={runOpeningDetection}
+                type="button"
+              >
+                문/창문 탐지
               </button>
             </>
           ) : (

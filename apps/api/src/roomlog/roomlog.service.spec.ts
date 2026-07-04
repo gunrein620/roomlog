@@ -716,6 +716,78 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("detects floor plan openings via Roboflow and maps them to normalized candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    const originalModel = process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+
+    process.env.ROBOFLOW_API_KEY = "rf-test-key";
+    process.env.ROBOFLOW_FLOOR_PLAN_MODEL = "cubicasa5k-2-qpmsa/1";
+    globalThis.fetch = (async (input) => {
+      capturedUrl = String(input);
+
+      return new Response(
+        JSON.stringify({
+          image: { width: 1000, height: 500 },
+          predictions: [
+            { class: "window", confidence: 0.81, x: 450, y: 40, width: 180, height: 36 },
+            { class: "door", confidence: 0.28, x: 500, y: 420, width: 20, height: 140 },
+            // 같은 자리 중복 판정(겹침 큼) — 신뢰도 낮은 쪽이 제거되어야 함
+            { class: "window", confidence: 0.31, x: 500, y: 421, width: 22, height: 138 },
+            // wall 클래스는 무시
+            { class: "wall", confidence: 0.7, x: 500, y: 250, width: 900, height: 20 },
+            // 하한 미달 창문(30% 미만)은 제외
+            { class: "window", confidence: 0.17, x: 900, y: 480, width: 30, height: 30 }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.match(capturedUrl, /detect\.roboflow\.com\/cubicasa5k-2-qpmsa\/1/);
+      assert.match(capturedUrl, /api_key=rf-test-key/);
+      assert.equal(result.status, "ready");
+      assert.equal(result.openings.length, 2);
+      const window = result.openings.find((item) => item.type === "WINDOW");
+      const door = result.openings.find((item) => item.type === "DOOR");
+      assert.equal(window?.confidence, 0.81);
+      // 중심 (450,40) 크기 180x36, 이미지 1000x500 → 좌상단 (360,44) 크기 (180,72) [0-1000 정규화]
+      assert.equal(window?.boundingBox.x, 360);
+      assert.equal(window?.boundingBox.y, 44);
+      assert.equal(window?.boundingBox.width, 180);
+      assert.equal(window?.boundingBox.height, 72);
+      // 겹침 중복은 신뢰도 높은 window(0.31)가 door(0.28)를 이긴다
+      assert.equal(door, undefined);
+      assert.equal(result.openings.filter((item) => item.boundingBox.y > 500).length, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+      else delete process.env.ROBOFLOW_API_KEY;
+      if (originalModel) process.env.ROBOFLOW_FLOOR_PLAN_MODEL = originalModel;
+      else delete process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("returns config-required for opening detection when ROBOFLOW_API_KEY is missing", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    delete process.env.ROBOFLOW_API_KEY;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.equal(result.status, "config-required");
+      assert.equal(result.openings.length, 0);
+    } finally {
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+    }
+  });
+
   it("uses OpenAI Responses for the floor plan vision model", async () => {
     const service = new RoomlogService();
     const originalApiKey = process.env.OPENAI_API_KEY;

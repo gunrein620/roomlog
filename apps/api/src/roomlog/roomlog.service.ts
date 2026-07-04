@@ -94,6 +94,9 @@ import {
   FloorPlanAiTextDetection,
   FloorPlanAiWallCandidate,
   FloorPlanDraft,
+  FloorPlanOpeningCandidate,
+  FloorPlanOpeningDetectionInput,
+  FloorPlanOpeningDetectionResult,
   FloorPlanWall,
   IntakeDraft,
   IntakeMessage,
@@ -2841,6 +2844,121 @@ export class RoomlogService {
     }
 
     return this.analyzeFloorPlanWithNvidiaVisionReasoning(model, imageDataUrl, input.prompt);
+  }
+
+  async detectFloorPlanOpenings(input: FloorPlanOpeningDetectionInput, ownerId?: string): Promise<FloorPlanOpeningDetectionResult> {
+    const model = process.env.ROBOFLOW_FLOOR_PLAN_MODEL || "cubicasa5k-2-qpmsa/1";
+
+    if (!process.env.ROBOFLOW_API_KEY) {
+      return {
+        model,
+        openings: [],
+        status: "config-required",
+        summary: "ROBOFLOW_API_KEY가 설정되지 않아 문/창문 탐지를 실행하지 않았습니다.",
+        warnings: []
+      };
+    }
+
+    const imageDataUrl = input.sourceAttachmentId
+      ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
+      : this.validFloorPlanImageDataUrl(input.imageDataUrl);
+    const base64 = imageDataUrl.slice(imageDataUrl.indexOf(",") + 1);
+
+    try {
+      const endpoint = `https://detect.roboflow.com/${model}?api_key=${process.env.ROBOFLOW_API_KEY}&confidence=15`;
+      const response = await fetch(endpoint, {
+        body: base64,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        method: "POST"
+      });
+      if (!response.ok) throw new Error(`Roboflow opening detection failed with ${response.status}`);
+
+      const payload = (await response.json()) as {
+        image?: { width?: number; height?: number };
+        predictions?: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>;
+      };
+      const imageWidth = Math.max(1, Number(payload.image?.width) || 1);
+      const imageHeight = Math.max(1, Number(payload.image?.height) || 1);
+      const openings = this.mapRoboflowPredictionsToOpenings(payload.predictions ?? [], imageWidth, imageHeight, model);
+
+      return {
+        imageHeight,
+        imageWidth,
+        model,
+        openings,
+        status: "ready",
+        summary: `문 ${openings.filter((item) => item.type === "DOOR").length}개, 창문 ${openings.filter((item) => item.type === "WINDOW").length}개 후보를 탐지했습니다.`,
+        warnings: openings.some((item) => item.confidence < 0.4)
+          ? ["신뢰도 40% 미만 후보가 포함되어 있습니다. 후보 검수 후 확정하세요."]
+          : []
+      };
+    } catch {
+      return {
+        model,
+        openings: [],
+        status: "failed",
+        summary: "문/창문 탐지에 실패했습니다. 후보 없이 진행하거나 다시 시도하세요.",
+        warnings: []
+      };
+    }
+  }
+
+  private mapRoboflowPredictionsToOpenings(
+    predictions: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>,
+    imageWidth: number,
+    imageHeight: number,
+    model: string
+  ): FloorPlanOpeningCandidate[] {
+    // 클래스별 신뢰도 하한: 문은 실도면에서 15~30%로 낮게 잡혀 후보로는 살리고, 창문은 30% 미만이면 노이즈가 많다.
+    const minConfidenceByType: Record<"DOOR" | "WINDOW", number> = { DOOR: 0.15, WINDOW: 0.3 };
+    const mapped = predictions.flatMap((prediction) => {
+      const type: "DOOR" | "WINDOW" | null =
+        prediction.class === "door" ? "DOOR" : prediction.class === "window" ? "WINDOW" : null;
+      const confidence = Number(prediction.confidence) || 0;
+      const centerX = Number(prediction.x);
+      const centerY = Number(prediction.y);
+      const width = Number(prediction.width);
+      const height = Number(prediction.height);
+      if (!type || confidence < minConfidenceByType[type]) return [];
+      if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(width > 0) || !(height > 0)) return [];
+
+      return [
+        {
+          boundingBox: {
+            height: Math.round((height / imageHeight) * 1000),
+            width: Math.round((width / imageWidth) * 1000),
+            x: Math.round(((centerX - width / 2) / imageWidth) * 1000),
+            y: Math.round(((centerY - height / 2) / imageHeight) * 1000)
+          },
+          confidence,
+          source: `roboflow/${model}`,
+          status: "CANDIDATE" as const,
+          type
+        }
+      ];
+    });
+
+    // 같은 자리를 door/window로 중복 판정하는 경우가 있어 겹침이 크면 신뢰도 높은 쪽만 남긴다.
+    const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
+    const kept: typeof sorted = [];
+    for (const candidate of sorted) {
+      const overlapsKept = kept.some((existing) => {
+        const ax2 = existing.boundingBox.x + existing.boundingBox.width;
+        const ay2 = existing.boundingBox.y + existing.boundingBox.height;
+        const bx2 = candidate.boundingBox.x + candidate.boundingBox.width;
+        const by2 = candidate.boundingBox.y + candidate.boundingBox.height;
+        const interW = Math.max(0, Math.min(ax2, bx2) - Math.max(existing.boundingBox.x, candidate.boundingBox.x));
+        const interH = Math.max(0, Math.min(ay2, by2) - Math.max(existing.boundingBox.y, candidate.boundingBox.y));
+        const inter = interW * interH;
+        const areaA = existing.boundingBox.width * existing.boundingBox.height;
+        const areaB = candidate.boundingBox.width * candidate.boundingBox.height;
+        const union = Math.max(1, areaA + areaB - inter);
+        return inter / union > 0.5;
+      });
+      if (!overlapsKept) kept.push(candidate);
+    }
+
+    return kept.map((candidate, index) => ({ ...candidate, id: `opening-${index + 1}` }));
   }
 
   private floorPlanAttachmentDataUrl(attachmentId: string, ownerId?: string) {

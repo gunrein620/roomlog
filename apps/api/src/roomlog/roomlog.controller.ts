@@ -33,6 +33,7 @@ import {
   CreateTenantMoveoutInquiryInput,
   DeletionState,
   FinalizeIntakeInput,
+  FloorPlanOpeningDetectionInput,
   AskManagerReportChatInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
@@ -175,6 +176,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.analyzeFloorPlanWithAi(body, user.id);
+  }
+
+  @Post("floor-plans/opening-detection")
+  detectFloorPlanOpenings(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: FloorPlanOpeningDetectionInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.detectFloorPlanOpenings(body, user.id);
   }
 
   @Get("floor-plans/:floorPlanId")

@@ -1189,6 +1189,40 @@ export type FloorPlanAiAnalysisInput = {
   wallCandidates?: FloorPlanAiWallCandidate[];
 };
 
+export type FloorPlanOpeningDetectionInput = {
+  imageDataUrl?: string;
+  sourceAttachmentId?: string;
+};
+
+export type FloorPlanOpeningType = "DOOR" | "WINDOW";
+
+export type FloorPlanOpeningCandidateBox = {
+  /** 0-1000 정규화 좌표, 좌상단 원점. x/y는 박스 좌상단. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type FloorPlanOpeningCandidate = {
+  id: string;
+  type: FloorPlanOpeningType;
+  status: "CANDIDATE";
+  confidence: number;
+  source: string;
+  boundingBox: FloorPlanOpeningCandidateBox;
+};
+
+export type FloorPlanOpeningDetectionResult = {
+  status: "ready" | "config-required" | "failed";
+  summary: string;
+  model: string;
+  openings: FloorPlanOpeningCandidate[];
+  imageWidth?: number;
+  imageHeight?: number;
+  warnings: string[];
+};
+
 export type FloorPlanAiTextDetection = {
   text: string;
   confidence?: number;
