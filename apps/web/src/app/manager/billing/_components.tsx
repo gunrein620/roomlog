@@ -8,8 +8,8 @@ export const routes = {
   collection: "/manager/billing/collection",
   matching: "/manager/billing/matching",
   overdue: "/manager/billing/overdue",
-  dunning: (billId: string) => `/manager/billing/dunning/${billId}`,
-  bill: (billId: string) => `/manager/billing/${billId}`,
+  dunning: (billId: string) => withId(`/manager/billing/dunning/${encodeURIComponent(billId)}`, billId),
+  bill: (billId: string) => withId(`/manager/billing/${encodeURIComponent(billId)}`, billId),
 };
 
 const navItems = [
@@ -18,6 +18,10 @@ const navItems = [
   ["입금 매칭", routes.matching],
   ["연체 관리", routes.overdue],
 ] as const;
+
+function withId(path: string, id: string) {
+  return `${path}?id=${encodeURIComponent(id)}`;
+}
 
 export function BillingShell({
   title,
@@ -153,7 +157,15 @@ export function DisabledAction({ children }: { children: ReactNode }) {
   );
 }
 
-export function BillTable({ bills }: { bills: ManagerBillRow[] }) {
+export function BillTable<T extends ManagerBillRow>({
+  bills,
+  renderAction,
+}: {
+  bills: T[];
+  renderAction?: (bill: T) => ReactNode;
+}) {
+  if (bills.length === 0) return <EmptyBox>표시할 청구서가 없습니다.</EmptyBox>;
+
   return (
     <div style={tableWrapStyle}>
       <table style={tableStyle}>
@@ -179,9 +191,13 @@ export function BillTable({ bills }: { bills: ManagerBillRow[] }) {
               </td>
               <td style={tdStyle}>{bill.dueDate}</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>
-                <Link href={routes.bill(bill.billId)} style={linkStyle}>
-                  상세
-                </Link>
+                {renderAction ? (
+                  renderAction(bill)
+                ) : (
+                  <Link href={routes.bill(bill.billId)} style={linkStyle}>
+                    상세
+                  </Link>
+                )}
               </td>
             </tr>
           ))}
@@ -191,17 +207,29 @@ export function BillTable({ bills }: { bills: ManagerBillRow[] }) {
   );
 }
 
-export function DepositTable({ deposits, emptyText }: { deposits: Deposit[]; emptyText: string }) {
+export function DepositTable({
+  deposits,
+  emptyText,
+  renderAction,
+}: {
+  deposits: Deposit[];
+  emptyText: string;
+  renderAction?: (deposit: Deposit) => ReactNode;
+}) {
   if (deposits.length === 0) {
     return <EmptyBox>{emptyText}</EmptyBox>;
   }
+
+  const heads = renderAction
+    ? ["입금자", "금액", "입금일시", "상태", "후보", "액션"]
+    : ["입금자", "금액", "입금일시", "상태", "후보"];
 
   return (
     <div style={tableWrapStyle}>
       <table style={tableStyle}>
         <thead>
           <tr>
-            {["입금자", "금액", "입금일시", "상태", "후보"].map((head) => (
+            {heads.map((head) => (
               <th key={head} style={thStyle}>
                 {head}
               </th>
@@ -218,6 +246,7 @@ export function DepositTable({ deposits, emptyText }: { deposits: Deposit[]; emp
                 <Badge emphasis={deposit.matchStatus !== "matched"}>{depositStatusLabel[deposit.matchStatus]}</Badge>
               </td>
               <td style={tdStyle}>{deposit.matchedBillId ?? deposit.guessedUnitId ?? "수동 확인"}</td>
+              {renderAction ? <td style={{ ...tdStyle, textAlign: "right" }}>{renderAction(deposit)}</td> : null}
             </tr>
           ))}
         </tbody>
@@ -328,6 +357,17 @@ export function won(n: number): string {
 export function percent(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
+
+export const formFieldStyle: CSSProperties = {
+  minHeight: "var(--touch-target)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)",
+  color: "var(--on-surface)",
+  padding: "0 12px",
+  fontFamily: "var(--font-sans)",
+  fontSize: "var(--fs-body)",
+};
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("ko-KR", {
