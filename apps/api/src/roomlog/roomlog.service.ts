@@ -1395,6 +1395,29 @@ function mergeMissingById<T extends { id: string }>(current: T[], demo: T[]): T[
   return mergeMissingByKey(current, demo, (item) => item.id);
 }
 
+function mergeDemoMoveoutRecords(
+  current: MoveoutRecordItem[],
+  demo: MoveoutRecordItem[]
+): MoveoutRecordItem[] {
+  const demoById = new Map(demo.map((record) => [record.id, record]));
+  const hydrated = current.map((record) => {
+    const demoRecord = demoById.get(record.id);
+
+    if (!demoRecord) {
+      return record;
+    }
+
+    return {
+      ...record,
+      evidenceUrls: record.evidenceUrls?.length ? record.evidenceUrls : demoRecord.evidenceUrls,
+      detailSections: record.detailSections?.length ? record.detailSections : demoRecord.detailSections,
+      detail: record.detail ?? demoRecord.detail
+    };
+  });
+
+  return mergeMissingById(hydrated, demo);
+}
+
 function mergeMissingByKey<T>(current: T[], demo: T[], keyOf: (item: T) => string): T[] {
   const currentKeys = new Set(current.map((item) => keyOf(item)));
   const missingDemoItems = demo.filter((item) => !currentKeys.has(keyOf(item)));
@@ -4494,7 +4517,7 @@ export class RoomlogService {
       ),
       managerReportAuditLogs: mergeMissingById(snapshot.managerReportAuditLogs, demo.managerReportAuditLogs),
       moveouts: mergeMissingById(snapshot.moveouts, demo.moveouts),
-      moveoutRecords: mergeMissingById(snapshot.moveoutRecords, demo.moveoutRecords),
+      moveoutRecords: mergeDemoMoveoutRecords(snapshot.moveoutRecords, demo.moveoutRecords),
       moveoutChecklist: mergeMissingById(snapshot.moveoutChecklist, demo.moveoutChecklist),
       moveoutSettlements: mergeMissingById(snapshot.moveoutSettlements, demo.moveoutSettlements),
       moveoutDeductions: mergeMissingById(snapshot.moveoutDeductions, demo.moveoutDeductions),

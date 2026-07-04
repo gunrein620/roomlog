@@ -4563,6 +4563,30 @@ describe("RoomlogService", () => {
     assert.equal(settlement.gate.overrideAvailable, true);
   });
 
+  it("hydrates existing KAN-134 moveout records with expandable detail data", () => {
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveoutRecords = legacyDemoSnapshot.moveoutRecords.map((record: any) => {
+      const { detailSections, detail, evidenceUrls, ...legacyRecord } = record;
+      return legacyRecord;
+    });
+
+    const service = new RoomlogService({
+      seedDemoData: true,
+      initialStore: legacyDemoSnapshot
+    } as any) as any;
+    const records = service.getManagerMoveoutRecords("landlord-demo", "mo_0001");
+    const moveinPhoto = records.find((record: any) => record.id === "rec_0001");
+    const chat = records.find((record: any) => record.id === "rec_0006");
+
+    assert.ok(moveinPhoto?.detailSections?.length > 0);
+    assert.ok(moveinPhoto?.detail?.media?.some((item: any) => item.url.includes("bathroom-before")));
+    assert.ok(chat?.detailSections?.length > 0);
+    assert.ok(chat?.detail?.chatMessages?.length >= 2);
+  });
+
   it("lets a manager read only reports for rooms they manage", () => {
     const service = createReportTestService() as any;
 
