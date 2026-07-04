@@ -46,7 +46,11 @@ const WEAR_LABEL: Record<WearVerdict, string> = {
 };
 
 function disputeHrefFor(record: MoveoutRecordItem, moveoutId: string) {
-  return `${MOVEOUT_ROUTES["T-OUT-04"]}?id=${encodeURIComponent(moveoutId)}&targetItemId=${record.id}`;
+  return `${MOVEOUT_ROUTES["T-OUT-04"]}?id=${encodeURIComponent(moveoutId)}&targetItemId=${record.id}&from=records`;
+}
+
+function disputeIndexHref(moveoutId: string) {
+  return `${withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveoutId)}&from=records`;
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
@@ -60,7 +64,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const reviewItems = records.filter((record) => record.wearVerdict);
   const primaryDisputeHref = reviewItems[0]
     ? disputeHrefFor(reviewItems[0], moveout.id)
-    : withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id);
+    : disputeIndexHref(moveout.id);
 
   return (
     <>
