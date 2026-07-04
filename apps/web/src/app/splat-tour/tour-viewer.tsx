@@ -4,8 +4,10 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useState } from "react";
+import { ChevronDown, UploadCloud } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
+import { SplatDropzone } from "./splat-dropzone";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
@@ -13,12 +15,29 @@ import { DEMO_PRESETS } from "./tour-presets";
 const SPLAT_SRC = "/samples/room.spz";
 
 export default function TourViewer() {
+  const objectUrlRef = useRef<string | null>(null);
+  const [src, setSrc] = useState(SPLAT_SRC);
+  const [acceptedFileName, setAcceptedFileName] = useState("");
   const [activeId, setActiveId] = useState(DEMO_PRESETS[0]?.id ?? "");
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoadingVisible, setIsLoadingVisible] = useState(true);
   const [showHint, setShowHint] = useState(true);
+  const [isDropzoneOpen, setIsDropzoneOpen] = useState(false);
 
   const initialCamera: [number, number, number] = DEMO_PRESETS[0]?.camera.position ?? [0, 1.5, 3];
+
+  const handleAcceptSplat = useCallback((url: string, fileName: string) => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+    }
+
+    objectUrlRef.current = url;
+    setSrc(url);
+    setAcceptedFileName(fileName);
+    setIsLoaded(false);
+    setIsLoadingVisible(true);
+    setShowHint(true);
+  }, []);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -31,6 +50,14 @@ export default function TourViewer() {
       window.clearTimeout(hintTimer);
     };
   }, [isLoaded]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="tour-viewer-shell">
@@ -197,6 +224,75 @@ export default function TourViewer() {
             color: var(--paper);
           }
 
+          .tour-dropzone-dock {
+            position: absolute;
+            z-index: 5;
+            right: 16px;
+            bottom: 76px;
+            display: grid;
+            justify-items: end;
+            gap: 8px;
+            max-width: calc(100% - 32px);
+          }
+
+          .tour-dropzone-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 38px;
+            max-width: min(280px, calc(100vw - 32px));
+            padding: 9px 12px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--paper) 90%, transparent);
+            box-shadow: var(--shadow);
+            color: var(--ink);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1;
+            backdrop-filter: blur(12px);
+            transition:
+              background 160ms ease,
+              border-color 160ms ease,
+              color 160ms ease,
+              transform 160ms ease;
+          }
+
+          .tour-dropzone-toggle:hover {
+            border-color: var(--blue);
+            background: var(--blue-soft);
+            color: var(--blue);
+          }
+
+          .tour-dropzone-toggle:focus-visible {
+            outline: 2px solid var(--blue);
+            outline-offset: 2px;
+          }
+
+          .tour-dropzone-toggle span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .tour-dropzone-toggle svg:last-child {
+            transition: transform 160ms ease;
+          }
+
+          .tour-dropzone-toggle.is-open svg:last-child {
+            transform: rotate(180deg);
+          }
+
+          .tour-dropzone-panel {
+            padding: 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--paper) 88%, transparent);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+          }
+
           @keyframes tour-spin {
             to {
               transform: rotate(360deg);
@@ -235,14 +331,24 @@ export default function TourViewer() {
               padding: 8px 12px;
               font-size: 13px;
             }
+
+            .tour-dropzone-dock {
+              right: 10px;
+              bottom: 66px;
+              max-width: calc(100% - 20px);
+            }
+
+            .tour-dropzone-toggle {
+              max-width: min(260px, calc(100vw - 20px));
+              font-size: 12px;
+            }
           }
         `}
       </style>
       <Canvas camera={{ fov: 60, position: initialCamera }} shadows>
-        <color args={["#1c1e24"]} attach="background" />
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
-        <SplatScene onLoaded={() => setIsLoaded(true)} src={SPLAT_SRC} />
+        <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} />
         <TourCamera activeId={activeId} onArrive={setActiveId} presets={DEMO_PRESETS} />
       </Canvas>
 
@@ -264,6 +370,24 @@ export default function TourViewer() {
 
       <div className="tour-minimap-dock">
         <TourMinimap activeId={activeId} onSelect={setActiveId} presets={DEMO_PRESETS} />
+      </div>
+
+      <div className="tour-dropzone-dock">
+        <button
+          aria-expanded={isDropzoneOpen}
+          className={`tour-dropzone-toggle${isDropzoneOpen ? " is-open" : ""}`}
+          onClick={() => setIsDropzoneOpen((current) => !current)}
+          type="button"
+        >
+          <UploadCloud aria-hidden size={16} strokeWidth={2.4} />
+          <span>{acceptedFileName || "내 스캔 검사·미리보기"}</span>
+          <ChevronDown aria-hidden size={15} strokeWidth={2.6} />
+        </button>
+        {isDropzoneOpen ? (
+          <div className="tour-dropzone-panel">
+            <SplatDropzone onAccept={handleAcceptSplat} />
+          </div>
+        ) : null}
       </div>
 
       <div
