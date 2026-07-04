@@ -79,4 +79,22 @@ describe("moveout api path contracts", () => {
     assert.deepEqual(DEMO_MANAGER_SETTLEMENT_REVIEW.gate.blockingReasons, ["unresolved_dispute"]);
     assert.equal(DEMO_MANAGER_SETTLEMENT_REVIEW.gate.overrideAvailable, true);
   });
+
+  it("provides detailed fallback sections for every moveout record card", () => {
+    const recordsWithDetails = DEMO_MOVEOUT_RECORDS.filter(
+      (record) => Array.isArray((record as any).detailSections) && (record as any).detailSections.length > 0,
+    );
+    const bathroomRepair = DEMO_MOVEOUT_RECORDS.find((record) => record.id === "rec_0003") as any;
+
+    assert.equal(recordsWithDetails.length, DEMO_MOVEOUT_RECORDS.length);
+    assert.deepEqual(
+      bathroomRepair.detailSections.map((section: any) => section.label),
+      ["원천 기록", "정산 영향", "다음 행동"],
+    );
+    assert.ok(
+      bathroomRepair.detailSections.some((section: any) =>
+        section.items.some((item: any) => item.value.includes("최종 차감 확정 아님")),
+      ),
+    );
+  });
 });

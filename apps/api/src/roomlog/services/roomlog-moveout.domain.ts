@@ -653,7 +653,11 @@ export class RoomlogMoveoutDomain {
       .filter((record) => record.summaryId === summaryId)
       .map((record) => ({
         ...record,
-        evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined
+        evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined,
+        detailSections: record.detailSections?.map((section) => ({
+          ...section,
+          items: section.items.map((item) => ({ ...item }))
+        }))
       }));
   }
 

@@ -849,6 +849,29 @@ function createDemoStore(): Store {
         description: "입주 시점 욕실 타일과 수전 사진이 있어 현재 상태와 비교할 수 있습니다.",
         occurredAt: "2024-08-01T10:10:00+09:00",
         evidenceUrls: ["/api/files/moveout/bathroom-before.jpg"],
+        detailSections: [
+          {
+            label: "원천 기록",
+            items: [
+              { label: "촬영 시점", value: "2024-08-01 입주 체크 중 촬영" },
+              { label: "연결 근거", value: "욕실 타일과 수전 기준 사진 1건" }
+            ]
+          },
+          {
+            label: "정산 영향",
+            items: [
+              { label: "역할", value: "현재 상태와 비교하는 기준 근거입니다." },
+              { label: "차감 여부", value: "이 기록 자체는 차감 후보가 아닙니다." }
+            ]
+          },
+          {
+            label: "다음 행동",
+            items: [
+              { label: "관리인", value: "퇴실 사진과 나란히 비교해 추가 확인이 필요한지 봅니다." },
+              { label: "임차인", value: "사진 설명이 다르면 이의·정정에서 보충할 수 있습니다." }
+            ]
+          }
+        ],
         moveinComparisonAvailable: true
       },
       {
@@ -860,6 +883,29 @@ function createDemoStore(): Store {
         occurredAt: "2026-02-11T14:20:00+09:00",
         wearVerdict: "aging_likely",
         wearNote: "소모품 노후 가능성이 높아 임차인 책임으로 단정하지 않습니다.",
+        detailSections: [
+          {
+            label: "원천 기록",
+            items: [
+              { label: "접수 유형", value: "하자 문의 · 현관 센서등 깜빡임" },
+              { label: "처리 상태", value: "소모품 점검 후 수리 완료 이력과 연결" }
+            ]
+          },
+          {
+            label: "정산 영향",
+            items: [
+              { label: "판정", value: "노후·마모 가능성이 높아 임차인 책임으로 단정하지 않습니다." },
+              { label: "차감 후보", value: "현재 예상 정산안 차감 후보에는 포함하지 않았습니다." }
+            ]
+          },
+          {
+            label: "다음 행동",
+            items: [
+              { label: "관리인", value: "소모품 교체 내역을 확인하고 필요 시 근거를 보강합니다." },
+              { label: "임차인", value: "수리 이후 같은 증상이 반복됐는지 메모를 남길 수 있습니다." }
+            ]
+          }
+        ],
         moveinComparisonAvailable: false
       },
       {
@@ -872,6 +918,29 @@ function createDemoStore(): Store {
         wearVerdict: "unclear",
         wearNote: "노후와 사용 중 훼손 가능성이 함께 있어 관리인 확인이 필요합니다.",
         evidenceUrls: ["/api/files/moveout/bathroom-repair-after.jpg"],
+        detailSections: [
+          {
+            label: "원천 기록",
+            items: [
+              { label: "작업 이력", value: "2026-05-12 욕실 실리콘 보수 완료" },
+              { label: "첨부", value: "보수 완료 사진 1건과 입주 전 욕실 사진을 함께 비교" }
+            ]
+          },
+          {
+            label: "정산 영향",
+            items: [
+              { label: "예상 후보", value: "욕실 실리콘 보수 후보 30,000~80,000원" },
+              { label: "주의", value: "관리인 검토 전 참고자료이며 최종 차감 확정 아님" }
+            ]
+          },
+          {
+            label: "다음 행동",
+            items: [
+              { label: "관리인", value: "노후와 사용 중 훼손 가능성을 분리해 triage 근거를 남깁니다." },
+              { label: "임차인", value: "입주 전부터 있던 변색이면 이의·정정으로 설명을 보탭니다." }
+            ]
+          }
+        ],
         moveinComparisonAvailable: true
       },
       {
@@ -881,6 +950,29 @@ function createDemoStore(): Store {
         title: "7월 관리비 정산",
         description: "관리비 일부 미납 후보가 예상 정산안에 반영되었습니다.",
         occurredAt: "2026-07-01T09:00:00+09:00",
+        detailSections: [
+          {
+            label: "원천 기록",
+            items: [
+              { label: "청구 월", value: "2026년 7월 관리비" },
+              { label: "연결 상태", value: "납부 확인 전 잔액 후보로 표시" }
+            ]
+          },
+          {
+            label: "정산 영향",
+            items: [
+              { label: "예상 후보", value: "7월 관리비 미납 후보 70,000원" },
+              { label: "주의", value: "입금 확인 또는 orphan 해소 전 확정 수납액으로 보지 않습니다." }
+            ]
+          },
+          {
+            label: "다음 행동",
+            items: [
+              { label: "관리인", value: "입금 확인중·미연결 입금이 있는지 먼저 확인합니다." },
+              { label: "임차인", value: "입금했다면 납부 확인 요청에서 증빙을 올릴 수 있습니다." }
+            ]
+          }
+        ],
         moveinComparisonAvailable: false
       },
       {
@@ -890,6 +982,29 @@ function createDemoStore(): Store {
         title: "원상복구 특약",
         description: "계약서 원상복구 조항은 참고 근거이며 최종 차감 확정이 아닙니다.",
         occurredAt: "2024-08-01T10:00:00+09:00",
+        detailSections: [
+          {
+            label: "원천 기록",
+            items: [
+              { label: "문서", value: "302호 계약서 원상복구·청소 조항" },
+              { label: "확정 상태", value: "계약 확정값 기준으로만 정산 후보에 연결" }
+            ]
+          },
+          {
+            label: "정산 영향",
+            items: [
+              { label: "적용 범위", value: "붙박이장 손잡이 원상복구와 퇴실 청소 후보의 참고 근거" },
+              { label: "주의", value: "조항 존재만으로 차감 확정하지 않습니다." }
+            ]
+          },
+          {
+            label: "다음 행동",
+            items: [
+              { label: "관리인", value: "실제 상태 확인과 항목별 근거를 함께 남깁니다." },
+              { label: "임차인", value: "계약 조항 해석이 다르면 정정 요청을 남길 수 있습니다." }
+            ]
+          }
+        ],
         moveinComparisonAvailable: false
       },
       {
@@ -899,6 +1014,29 @@ function createDemoStore(): Store {
         title: "퇴실 일정 문의",
         description: "임차인이 퇴실 일정과 정산 예상 범위 안내를 요청했습니다.",
         occurredAt: "2026-06-30T13:30:00+09:00",
+        detailSections: [
+          {
+            label: "원천 기록",
+            items: [
+              { label: "대화 유형", value: "퇴실 일정과 예상 정산 범위 문의" },
+              { label: "연결 채널", value: "임차인-관리인 공식 문의 스레드" }
+            ]
+          },
+          {
+            label: "정산 영향",
+            items: [
+              { label: "역할", value: "정산 금액 근거가 아니라 안내 이력입니다." },
+              { label: "주의", value: "대화 내용만으로 차감 후보를 확정하지 않습니다." }
+            ]
+          },
+          {
+            label: "다음 행동",
+            items: [
+              { label: "관리인", value: "정산안 변경 시 같은 채널로 근거와 함께 안내합니다." },
+              { label: "임차인", value: "추가 질문은 관리자 문의로 이어서 남길 수 있습니다." }
+            ]
+          }
+        ],
         moveinComparisonAvailable: false
       }
     ],

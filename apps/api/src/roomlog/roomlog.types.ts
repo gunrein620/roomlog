@@ -523,7 +523,18 @@ export type MoveoutRecordItem = {
   wearVerdict?: MoveoutWearVerdict;
   wearNote?: string;
   evidenceUrls?: string[];
+  detailSections?: MoveoutRecordDetailSection[];
   moveinComparisonAvailable: boolean;
+};
+
+export type MoveoutRecordDetailItem = {
+  label: string;
+  value: string;
+};
+
+export type MoveoutRecordDetailSection = {
+  label: string;
+  items: MoveoutRecordDetailItem[];
 };
 
 export type MoveoutChecklistItem = {
