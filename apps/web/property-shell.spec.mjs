@@ -37,6 +37,7 @@ const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
   ? readFileSync(messageAutoRefreshPath, "utf8")
   : "";
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
+const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
@@ -193,6 +194,19 @@ test("auto-refreshes open messaging thread details without infrastructure change
   assert.match(messageAutoRefreshSource, /document\.visibilityState/);
   assert.match(tenantMessagingThreadSource, /<MessageAutoRefresh /);
   assert.match(managerMessagingThreadSource, /<MessageAutoRefresh /);
+});
+
+test("manager announcement compose creates editable drafts before review", () => {
+  assert.match(managerMessagingComposeSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingComposeSource, /action=\{createDraftAction\}/);
+  assert.match(managerMessagingComposeSource, /name="title"/);
+  assert.match(managerMessagingComposeSource, /name="body"/);
+  assert.match(managerMessagingComposeSource, /name="category"/);
+  assert.match(managerMessagingComposeSource, /name="scope"/);
+  assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingApiSource, /method: "POST"/);
+  assert.doesNotMatch(managerMessagingComposeSource, /value=\{draft\.title\} readOnly/);
+  assert.doesNotMatch(managerMessagingComposeSource, /<StaticButton>임시 저장<\/StaticButton>/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {

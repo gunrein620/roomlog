@@ -262,6 +262,20 @@ export function listAnnouncementDrafts(): Promise<AnnouncementDraft[]> {
   );
 }
 
+export function createAnnouncementDraft(input: {
+  category: AnnouncementDraft["category"];
+  scope: AnnouncementDraft["scope"];
+  targetLabel: string;
+  title: string;
+  body: string;
+  confirmRequired?: boolean;
+}): Promise<AnnouncementDraft> {
+  return serverFetch<AnnouncementDraft>(managerMessagingPaths.announcementDrafts(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function getAnnouncementDraft(id: string = DEMO_MANAGER_DRAFT_ID): Promise<AnnouncementDraft> {
   const fallback = DEMO_MANAGER_DRAFTS.find((draft) => draft.id === id) ?? DEMO_MANAGER_DRAFTS[0];
   return tryFetch(managerMessagingPaths.announcementDraft(id), fallback, "공지 초안 상세 조회");
