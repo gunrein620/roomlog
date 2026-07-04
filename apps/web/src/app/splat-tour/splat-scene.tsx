@@ -4,9 +4,15 @@ import { useThree } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import type { SparkRenderer as SparkRendererObject, SplatMesh as SplatMeshObject } from "@sparkjsdev/spark";
 import { Quaternion, Vector3 } from "three";
+import {
+  DEFAULT_SPLAT_CLIP_MARGIN_METERS,
+  SPLAT_CLIP_ROOM,
+  createRoomClipBox,
+  isInsideClipBox
+} from "./splat-clip";
 
 // 약 3m(가로) × 4m(세로), 층고 2.4m 원룸. 바닥 중앙이 원점.
-const ROOM = { width: 3, depth: 4, height: 2.4, thickness: 0.06 };
+const ROOM = { ...SPLAT_CLIP_ROOM, thickness: 0.06 };
 const SPLAT_TARGET_MAX_DIMENSION_METERS = 2.7;
 const SPLAT_MIN_VISIBLE_SIZE_METERS = 1.5;
 const SPLAT_MIN_AUTO_SCALE = SPLAT_MIN_VISIBLE_SIZE_METERS / SPLAT_TARGET_MAX_DIMENSION_METERS;
@@ -29,6 +35,8 @@ interface SplatTuning {
   offsetY: number;
   offsetZ: number;
   fitMode: SplatFitMode;
+  clip: boolean;
+  clipMargin: number;
   sources: {
     scaleMultiplier: SplatTuningSource;
     rotationXDegrees: SplatTuningSource;
@@ -37,6 +45,8 @@ interface SplatTuning {
     offsetY: SplatTuningSource;
     offsetZ: SplatTuningSource;
     fitMode: SplatTuningSource;
+    clip: SplatTuningSource;
+    clipMargin: SplatTuningSource;
   };
   overrides: {
     scaleMultiplier: boolean;
@@ -46,6 +56,8 @@ interface SplatTuning {
     offsetY: boolean;
     offsetZ: boolean;
     fitMode: boolean;
+    clip: boolean;
+    clipMargin: boolean;
   };
 }
 
@@ -57,6 +69,8 @@ interface SplatTuningProfile {
   offsetY?: number;
   offsetZ?: number;
   fitMode?: SplatFitMode;
+  clip?: boolean;
+  clipMargin?: number;
 }
 
 interface SplatFitInfo {
@@ -66,6 +80,19 @@ interface SplatFitInfo {
   maxDimension: number | null;
   size: [number, number, number] | null;
   center: [number, number, number] | null;
+}
+
+interface SplatClipInfo {
+  enabled: boolean;
+  margin: number;
+  method: "disabled" | "packed-opacity-mask" | "packed-splats-unavailable";
+  totalSplats: number | null;
+  removedSplats: number;
+  remainingSplats: number | null;
+  box: {
+    min: [number, number, number];
+    max: [number, number, number];
+  } | null;
 }
 
 export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => void }) {
@@ -108,11 +135,13 @@ export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => vo
 
         const tuning = readSplatTuningFromLocation(profile);
         const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
+        const clipInfo = applySplatClip(nextSplatMesh, tuning);
         console.info(
           "[splat-tour] applied splat transform " +
             JSON.stringify({
               src,
               fitMode: tuning.fitMode,
+              clip: clipInfo,
               rotationXDegrees: tuning.rotationXDegrees,
               rotationYDegrees: tuning.rotationYDegrees,
               scaleMultiplier: tuning.scaleMultiplier,
@@ -132,7 +161,9 @@ export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => vo
                 scale: tuning.sources.scaleMultiplier,
                 x: tuning.sources.offsetX,
                 y: tuning.sources.offsetY,
-                z: tuning.sources.offsetZ
+                z: tuning.sources.offsetZ,
+                clip: tuning.sources.clip,
+                clipMargin: tuning.sources.clipMargin
               },
               overrides: tuning.overrides
             })
@@ -250,6 +281,77 @@ function fitSplatToDemoRoom(splatMesh: SplatMeshObject, tuning: SplatTuning): Sp
   };
 }
 
+function applySplatClip(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatClipInfo {
+  const box = createRoomClipBox(tuning.clipMargin);
+  const totalSplats = getSplatCount(splatMesh);
+
+  if (!tuning.clip) {
+    return {
+      enabled: false,
+      margin: box.margin,
+      method: "disabled",
+      totalSplats,
+      removedSplats: 0,
+      remainingSplats: totalSplats,
+      box: null
+    };
+  }
+
+  const packedSplats = splatMesh.packedSplats;
+  if (!packedSplats) {
+    return {
+      enabled: true,
+      margin: box.margin,
+      method: "packed-splats-unavailable",
+      totalSplats,
+      removedSplats: 0,
+      remainingSplats: totalSplats,
+      box: serializeClipBox(box)
+    };
+  }
+
+  let total = 0;
+  let removed = 0;
+  const worldCenter = new Vector3();
+
+  packedSplats.forEachSplat((index, center, scales, quaternion, opacity, color) => {
+    total += 1;
+    worldCenter.copy(center).applyMatrix4(splatMesh.matrixWorld);
+
+    if (isInsideClipBox(worldCenter, box)) {
+      return;
+    }
+
+    removed += 1;
+    if (opacity !== 0) {
+      packedSplats.setSplat(index, center, scales, quaternion, 0, color);
+    }
+  });
+
+  if (removed > 0) {
+    packedSplats.needsUpdate = true;
+    splatMesh.needsUpdate = true;
+  }
+
+  return {
+    enabled: true,
+    margin: box.margin,
+    method: "packed-opacity-mask",
+    totalSplats: total,
+    removedSplats: removed,
+    remainingSplats: total - removed,
+    box: serializeClipBox(box)
+  };
+}
+
+function getSplatCount(splatMesh: SplatMeshObject): number | null {
+  if (Number.isFinite(splatMesh.numSplats)) {
+    return splatMesh.numSplats;
+  }
+
+  return null;
+}
+
 function applySplatRotation(splatMesh: SplatMeshObject, rotationXDegrees: number, rotationYDegrees: number) {
   const rotationX = new Quaternion().setFromAxisAngle(
     SPLAT_ROTATION_X_AXIS,
@@ -335,6 +437,8 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   const offsetY = readNumberValue(rawValue.y);
   const offsetZ = readNumberValue(rawValue.z);
   const fitMode = readFitModeValue(rawValue.fit);
+  const clip = readBooleanValue(rawValue.clip);
+  const clipMargin = readNumberValue(rawValue.clipMargin, { minInclusive: 0 });
 
   if (scaleMultiplier !== undefined) profile.scaleMultiplier = scaleMultiplier;
   if (rotationXDegrees !== undefined) profile.rotationXDegrees = rotationXDegrees;
@@ -343,6 +447,8 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   if (offsetY !== undefined) profile.offsetY = offsetY;
   if (offsetZ !== undefined) profile.offsetZ = offsetZ;
   if (fitMode !== undefined) profile.fitMode = fitMode;
+  if (clip !== undefined) profile.clip = clip;
+  if (clipMargin !== undefined) profile.clipMargin = clipMargin;
 
   return profile;
 }
@@ -356,6 +462,8 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
     offsetY: 0,
     offsetZ: 0,
     fitMode: "auto",
+    clip: false,
+    clipMargin: DEFAULT_SPLAT_CLIP_MARGIN_METERS,
     sources: {
       scaleMultiplier: "default",
       rotationXDegrees: "default",
@@ -363,7 +471,9 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
       offsetX: "default",
       offsetY: "default",
       offsetZ: "default",
-      fitMode: "default"
+      fitMode: "default",
+      clip: "default",
+      clipMargin: "default"
     },
     overrides: {
       scaleMultiplier: false,
@@ -372,7 +482,9 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
       offsetX: false,
       offsetY: false,
       offsetZ: false,
-      fitMode: false
+      fitMode: false,
+      clip: false,
+      clipMargin: false
     }
   };
   const tuning = applyProfileTuning(defaultTuning, profile);
@@ -389,6 +501,8 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
   const offsetY = readNumberParam(params, "splatY");
   const offsetZ = readNumberParam(params, "splatZ");
   const fitMode = readFitModeValue(params.get("splatFit"));
+  const clip = readBooleanParam(params, "splatClip");
+  const clipMargin = readNumberParam(params, "splatClipMargin", { minInclusive: 0 });
 
   if (scaleMultiplier !== undefined) {
     tuning.scaleMultiplier = scaleMultiplier;
@@ -425,6 +539,16 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
     tuning.sources.fitMode = "url";
     tuning.overrides.fitMode = true;
   }
+  if (clip !== undefined) {
+    tuning.clip = clip;
+    tuning.sources.clip = "url";
+    tuning.overrides.clip = true;
+  }
+  if (clipMargin !== undefined) {
+    tuning.clipMargin = clipMargin;
+    tuning.sources.clipMargin = "url";
+    tuning.overrides.clipMargin = true;
+  }
 
   return tuning;
 }
@@ -460,6 +584,14 @@ function applyProfileTuning(tuning: SplatTuning, profile: SplatTuningProfile | n
     tuning.fitMode = profile.fitMode;
     tuning.sources.fitMode = "profile";
   }
+  if (profile.clip !== undefined) {
+    tuning.clip = profile.clip;
+    tuning.sources.clip = "profile";
+  }
+  if (profile.clipMargin !== undefined) {
+    tuning.clipMargin = profile.clipMargin;
+    tuning.sources.clipMargin = "profile";
+  }
 
   return tuning;
 }
@@ -467,7 +599,7 @@ function applyProfileTuning(tuning: SplatTuning, profile: SplatTuningProfile | n
 function readNumberParam(
   params: URLSearchParams,
   key: string,
-  options: { minExclusive?: number } = {}
+  options: { minExclusive?: number; minInclusive?: number } = {}
 ): number | undefined {
   const rawValue = params.get(key);
   if (rawValue === null) return undefined;
@@ -475,19 +607,38 @@ function readNumberParam(
   const value = Number(rawValue);
   if (!Number.isFinite(value)) return undefined;
   if (options.minExclusive !== undefined && value <= options.minExclusive) return undefined;
+  if (options.minInclusive !== undefined && value < options.minInclusive) return undefined;
 
   return value;
 }
 
 function readNumberValue(
   rawValue: unknown,
-  options: { minExclusive?: number } = {}
+  options: { minExclusive?: number; minInclusive?: number } = {}
 ): number | undefined {
   if (typeof rawValue !== "number") return undefined;
   if (!Number.isFinite(rawValue)) return undefined;
   if (options.minExclusive !== undefined && rawValue <= options.minExclusive) return undefined;
+  if (options.minInclusive !== undefined && rawValue < options.minInclusive) return undefined;
 
   return rawValue;
+}
+
+function readBooleanParam(params: URLSearchParams, key: string): boolean | undefined {
+  const rawValue = params.get(key);
+  if (rawValue === null) return undefined;
+
+  const value = rawValue.trim().toLowerCase();
+  if (value === "1" || value === "true" || value === "yes" || value === "on") return true;
+  if (value === "0" || value === "false" || value === "no" || value === "off") return false;
+
+  return undefined;
+}
+
+function readBooleanValue(rawValue: unknown): boolean | undefined {
+  if (typeof rawValue === "boolean") return rawValue;
+
+  return undefined;
 }
 
 function readFitModeValue(rawValue: unknown): SplatFitMode | undefined {
@@ -506,6 +657,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function vectorToTuple(vector: Vector3): [number, number, number] {
   return [vector.x, vector.y, vector.z];
+}
+
+function serializeClipBox(box: ReturnType<typeof createRoomClipBox>): SplatClipInfo["box"] {
+  return {
+    min: [box.min.x, box.min.y, box.min.z],
+    max: [box.max.x, box.max.y, box.max.z]
+  };
 }
 
 function FallbackRoom() {

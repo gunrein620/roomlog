@@ -1,1 +1,1 @@
-{ "fit": "auto", "rotX": 180 }
+{ "fit": "auto", "rotX": 180, "clip": false }
