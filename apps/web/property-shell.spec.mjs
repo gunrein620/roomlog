@@ -56,6 +56,10 @@ test("production web container can reach the API over the Docker network for aut
   assert.match(prodComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
 });
 
+test("local Docker web container can reach the API over the Docker network for auth BFF routes", () => {
+  assert.match(dockerComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
+});
+
 test("production web container receives Google OAuth runtime configuration", () => {
   assert.match(prodComposeSource, /ROOMLOG_PUBLIC_ORIGIN:\s*\$\{ROOMLOG_PUBLIC_ORIGIN:-https:\/\/www\.woo-zu\.com\}/);
   assert.match(prodComposeSource, /GOOGLE_LOGIN_CLIENT_ID:\s*\$\{GOOGLE_LOGIN_CLIENT_ID:-\}/);
