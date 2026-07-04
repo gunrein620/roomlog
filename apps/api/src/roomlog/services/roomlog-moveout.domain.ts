@@ -5,6 +5,7 @@ import type {
   CreateMoveoutDisputeInput,
   CreateTenantMoveoutInquiryInput,
   EscalateMoveoutDisputeInput,
+  MoveoutRecordDetailChatMessage,
   MessagingThread,
   MoveoutAdjustDeductionInput,
   MoveoutAdjustWearVerdictInput,
@@ -685,12 +686,17 @@ export class RoomlogMoveoutDomain {
   }
 
   private recordsFor(summaryId: string) {
+    const threadMessages = this.moveoutThreadMessages(summaryId);
+
     return this.store.moveoutRecords
       .filter((record) => record.summaryId === summaryId)
-      .map((record) => this.presentRecord(record));
+      .map((record) => this.presentRecord(record, threadMessages));
   }
 
-  private presentRecord(record: MoveoutRecordItem): MoveoutRecordItem {
+  private presentRecord(
+    record: MoveoutRecordItem,
+    threadMessages: MoveoutRecordDetailChatMessage[] = []
+  ): MoveoutRecordItem {
     const presented: MoveoutRecordItem = {
       ...record,
       evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined,
@@ -714,10 +720,13 @@ export class RoomlogMoveoutDomain {
       } : undefined
     };
 
-    return this.withChatRecordDetail(presented);
+    return this.withChatRecordDetail(presented, threadMessages);
   }
 
-  private withChatRecordDetail(record: MoveoutRecordItem): MoveoutRecordItem {
+  private withChatRecordDetail(
+    record: MoveoutRecordItem,
+    threadMessages: MoveoutRecordDetailChatMessage[] = []
+  ): MoveoutRecordItem {
     if (record.source !== "chat") {
       return record;
     }
@@ -755,9 +764,14 @@ export class RoomlogMoveoutDomain {
         attachmentUrls
       }
     ];
+    const chatMessages = threadMessages.length
+      ? threadMessages
+      : record.detail?.chatMessages?.length
+        ? record.detail.chatMessages
+        : fallbackChatMessages;
     const fallbackDetail = {
       summary: "공식 퇴실 문의 채팅 기록입니다.",
-      chatMessages: fallbackChatMessages
+      chatMessages
     };
 
     return {
@@ -767,10 +781,34 @@ export class RoomlogMoveoutDomain {
         ? {
             ...fallbackDetail,
             ...record.detail,
-            chatMessages: record.detail.chatMessages?.length ? record.detail.chatMessages : fallbackChatMessages
+            chatMessages
           }
         : fallbackDetail
     };
+  }
+
+  private moveoutThreadMessages(summaryId: string): MoveoutRecordDetailChatMessage[] {
+    const moveout = this.store.moveouts.find((item) => item.id === summaryId);
+    const thread = this.store.messagingThreads.find((item) =>
+      moveout?.messagingThreadId
+        ? item.id === moveout.messagingThreadId
+        : item.context === "moveout" && item.contextRef === summaryId
+    );
+
+    if (!thread) {
+      return [];
+    }
+
+    return this.store.messagingMessages
+      .filter((message) => message.threadId === thread.id)
+      .sort((a, b) => this.timeOf(a.createdAt) - this.timeOf(b.createdAt))
+      .map((message) => ({
+        sender: message.sender,
+        senderLabel: message.sender === "manager" ? "관리인" : "임차인",
+        body: message.body,
+        at: message.createdAt,
+        attachmentUrls: this.nonEmptyStrings(message.attachmentUrls)
+      }));
   }
 
   private checklistFor(summaryId: string) {

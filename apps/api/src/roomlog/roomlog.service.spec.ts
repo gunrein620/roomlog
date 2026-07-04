@@ -4384,15 +4384,27 @@ describe("RoomlogService", () => {
   it("returns expandable chat details for tenant-created moveout inquiry records", () => {
     const service = createMoveoutTestService() as any;
 
-    service.createTenantMoveoutInquiry("tenant-a", "mo-a", {
+    const result = service.createTenantMoveoutInquiry("tenant-a", "mo-a", {
       body: "KAN-134 문의 연결 확인 1783090107112",
       attachmentUrls: ["/api/files/moveout-question.jpg"]
+    });
+    service.addManagerMessagingThreadMessage("manager-a", result.thread.id, {
+      body: "관리인 답변: 해당 문의를 확인했습니다."
+    });
+    service.addTenantMessagingThreadMessage("tenant-a", result.thread.id, {
+      body: "추가 문의: 채팅 내역 전체가 필요합니다."
     });
     const records = service.listTenantMoveoutRecords("tenant-a", "mo-a");
     const inquiryRecord = records.find((record: any) => record.source === "chat" && /KAN-134/.test(record.description));
 
     assert.ok(inquiryRecord?.detailSections?.length > 0);
     assert.ok(inquiryRecord?.detail?.chatMessages?.some((message: any) => /KAN-134/.test(message.body)));
+    assert.ok(inquiryRecord?.detail?.chatMessages?.some((message: any) => /관리인 답변/.test(message.body)));
+    assert.ok(inquiryRecord?.detail?.chatMessages?.some((message: any) => /추가 문의/.test(message.body)));
+    assert.deepEqual(
+      inquiryRecord?.detail?.chatMessages?.map((message: any) => message.senderLabel),
+      ["임차인", "관리인", "임차인"]
+    );
     assert.deepEqual(inquiryRecord?.detail?.chatMessages?.[0]?.attachmentUrls, ["/api/files/moveout-question.jpg"]);
   });
 
