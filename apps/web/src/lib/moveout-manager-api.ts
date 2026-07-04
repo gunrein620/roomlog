@@ -18,7 +18,7 @@ import {
   DEMO_MOVEOUT_RECORDS,
   DEMO_MOVEOUT_SETTLEMENT,
 } from "./demo-moveout";
-import { serverFetch } from "./server-api";
+import { ApiError, serverFetch } from "./server-api";
 
 // 룸로그 API 클라이언트 (관리인 퇴실·정산 검토 M-OUT 슬라이스).
 // api가 안 떠 있어도 화면이 렌더되도록 데모 데이터로 폴백한다.
@@ -42,6 +42,31 @@ async function tryFetch<T>(path: string, fallback: T, label: string): Promise<T>
     console.warn(`[moveout/manager-api] ${label} 실패 → 데모 폴백`, error);
     return fallback;
   }
+}
+
+async function tryMutation<T>(request: () => Promise<T>, fallback: T, label: string): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (!shouldUseDemoMutationFallback(error)) {
+      throw error;
+    }
+
+    console.warn(`[moveout/manager-api] ${label} 실패 → 데모 결과 폴백`, error);
+    return fallback;
+  }
+}
+
+function shouldUseDemoMutationFallback(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.status === 401 || error.status === 403 || error.status === 404;
+  }
+
+  if (error instanceof Error) {
+    return error.message.includes("outside a request scope") || error.message.includes("fetch failed");
+  }
+
+  return false;
 }
 
 export const DEMO_MANAGER_MOVEOUT_ROWS: MoveoutManagerRow[] = [
@@ -133,6 +158,48 @@ export const DEMO_MANAGER_SETTLEMENT_REVIEW: ManagerSettlementReview = {
   moveinEvidenceAvailable: true,
 };
 
+function demoAdjustWearVerdict(input: AdjustWearVerdictDto): { record: MoveoutRecordItem; audit: ReportAuditEntry } {
+  const record = DEMO_MOVEOUT_RECORDS.find((item) => item.id === input.recordItemId) ?? DEMO_MOVEOUT_RECORDS[0];
+  const audit: ReportAuditEntry = {
+    id: "maud_demo_action",
+    summaryId: record.summaryId,
+    recordItemId: record.id,
+    action: input.action,
+    fromVerdict: record.wearVerdict,
+    toVerdict: input.toVerdict ?? record.wearVerdict,
+    evidenceNote: input.evidenceNote || "데모 모드에서 근거를 보강했습니다.",
+    tenantNotified: input.notifyTenant,
+    managerName: "데모 관리자",
+    at: new Date().toISOString(),
+  };
+
+  return {
+    record: {
+      ...record,
+      wearVerdict: input.toVerdict ?? record.wearVerdict,
+      wearNote: audit.evidenceNote,
+    },
+    audit,
+  };
+}
+
+function demoAdjustDeduction(input: AdjustDeductionDto): ManagerSettlementReview["settlement"] {
+  return {
+    ...DEMO_MANAGER_SETTLEMENT_REVIEW.settlement,
+    deductions: DEMO_MANAGER_SETTLEMENT_REVIEW.settlement.deductions.map((deduction) =>
+      deduction.id === input.deductionId
+        ? {
+            ...deduction,
+            estimatedMin: input.estimatedMin ?? deduction.estimatedMin,
+            estimatedMax: input.estimatedMax ?? deduction.estimatedMax,
+            needsConfirmation: input.resolveConfirmation ? false : deduction.needsConfirmation,
+            evidenceNote: input.note || deduction.evidenceNote,
+          }
+        : deduction,
+    ),
+  };
+}
+
 export function getManagerDashboard(): Promise<MoveoutDashboardSummary> {
   return tryFetch(managerMoveoutPaths.dashboard(), DEMO_MANAGER_DASHBOARD, "관리인 퇴실 대시보드 조회");
 }
@@ -161,32 +228,70 @@ export function adjustWearVerdict(
   id: string,
   input: AdjustWearVerdictDto,
 ): Promise<{ record: MoveoutRecordItem; audit: ReportAuditEntry }> {
-  return serverFetch<{ record: MoveoutRecordItem; audit: ReportAuditEntry }>(
-    managerMoveoutPaths.adjustWearVerdict(id),
-    {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    },
+  return tryMutation(
+    () =>
+      serverFetch<{ record: MoveoutRecordItem; audit: ReportAuditEntry }>(
+        managerMoveoutPaths.adjustWearVerdict(id),
+        {
+          method: "PATCH",
+          body: JSON.stringify(input),
+        },
+      ),
+    demoAdjustWearVerdict(input),
+    "관리인 훼손 추정 triage 저장",
   );
 }
 
 export function adjustDeduction(id: string, input: AdjustDeductionDto): Promise<ManagerSettlementReview["settlement"]> {
-  return serverFetch<ManagerSettlementReview["settlement"]>(managerMoveoutPaths.adjustDeduction(id), {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+  return tryMutation(
+    () =>
+      serverFetch<ManagerSettlementReview["settlement"]>(managerMoveoutPaths.adjustDeduction(id), {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    demoAdjustDeduction(input),
+    "관리인 차감 후보 조정",
+  );
 }
 
 export function completeReview(id: string, input: CompleteReviewDto): Promise<ManagerSettlementReview> {
-  return serverFetch<ManagerSettlementReview>(managerMoveoutPaths.completeReview(id), {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return tryMutation(
+    () =>
+      serverFetch<ManagerSettlementReview>(managerMoveoutPaths.completeReview(id), {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    {
+      ...DEMO_MANAGER_SETTLEMENT_REVIEW,
+      settlement: {
+        ...DEMO_MANAGER_SETTLEMENT_REVIEW.settlement,
+        status: "review_done",
+      },
+      gate: {
+        ...DEMO_MANAGER_SETTLEMENT_REVIEW.gate,
+        canComplete: true,
+        message: input.overrideReason || DEMO_MANAGER_SETTLEMENT_REVIEW.gate.message,
+      },
+    },
+    "관리인 검토 완료",
+  );
 }
 
 export function respondDispute(id: string, input: RespondDisputeDto): Promise<Dispute> {
-  return serverFetch<Dispute>(managerMoveoutPaths.respondDispute(id), {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  const fallback = DEMO_MANAGER_DISPUTES.find((dispute) => dispute.id === input.disputeId) ?? DEMO_MANAGER_DISPUTES[0];
+
+  return tryMutation(
+    () =>
+      serverFetch<Dispute>(managerMoveoutPaths.respondDispute(id), {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    {
+      ...fallback,
+      status: "answered",
+      managerResponse: input.message,
+      updatedAt: new Date().toISOString(),
+    },
+    "관리인 이의 응답",
+  );
 }

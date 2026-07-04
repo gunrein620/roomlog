@@ -36,7 +36,7 @@ export const DEMO_MOVEOUT_RECORDS: MoveoutRecordItem[] = [
     title: "입주 전 욕실 사진",
     description: "입주 시점 욕실 타일과 수전 사진이 있어 현재 상태와 비교할 수 있습니다.",
     occurredAt: "2024-08-01T10:10:00+09:00",
-    evidenceUrls: ["/api/files/moveout/bathroom-before.jpg"],
+    evidenceUrls: ["/demo/moveout/bathroom-before.svg"],
     detailSections: [
       {
         label: "원천 기록",
@@ -105,7 +105,7 @@ export const DEMO_MOVEOUT_RECORDS: MoveoutRecordItem[] = [
     occurredAt: "2026-05-12T16:00:00+09:00",
     wearVerdict: "unclear",
     wearNote: "노후와 사용 중 훼손 가능성이 함께 있어 관리인 확인이 필요합니다.",
-    evidenceUrls: ["/api/files/moveout/bathroom-repair-after.jpg"],
+    evidenceUrls: ["/demo/moveout/bathroom-repair-after.svg"],
     detailSections: [
       {
         label: "원천 기록",

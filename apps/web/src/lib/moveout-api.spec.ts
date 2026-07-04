@@ -1,9 +1,14 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { tenantMoveoutPaths } from "./moveout-api";
 import {
   DEMO_MANAGER_MOVEOUT_ROWS,
   DEMO_MANAGER_SETTLEMENT_REVIEW,
+  adjustDeduction,
+  adjustWearVerdict,
+  completeReview,
   managerMoveoutPaths,
 } from "./moveout-manager-api";
 import { MANAGER_MOVEOUT_ROUTES, withManagerMoveoutId } from "./moveout-manager-nav";
@@ -96,5 +101,48 @@ describe("moveout api path contracts", () => {
         section.items.some((item: any) => item.value.includes("최종 차감 확정 아님")),
       ),
     );
+  });
+
+  it("uses public demo files for moveout evidence links", () => {
+    const evidenceUrls = DEMO_MOVEOUT_RECORDS.flatMap((record) => record.evidenceUrls ?? []);
+
+    assert.ok(evidenceUrls.length > 0);
+    for (const url of evidenceUrls) {
+      assert.match(url, /^\/demo\/moveout\/.+\.svg$/);
+      assert.equal(existsSync(join(process.cwd(), "public", url)), true);
+    }
+  });
+
+  it("falls back to demo manager mutation results when the API is unavailable", async () => {
+    const warn = console.warn;
+    console.warn = () => {};
+
+    try {
+      const wearResult = await adjustWearVerdict("mo_0001", {
+        recordItemId: "rec_0003",
+        action: "reinforce",
+        evidenceNote: "데모 근거 보강",
+        notifyTenant: true,
+      });
+      const deductionResult = await adjustDeduction("mo_0001", {
+        deductionId: "de_0002",
+        estimatedMin: 30_000,
+        estimatedMax: 80_000,
+        resolveConfirmation: true,
+        note: "데모 금액 조정",
+      });
+      const reviewResult = await completeReview("mo_0001", {
+        acknowledgeEvidence: true,
+        overrideSla: true,
+        overrideReason: "데모 검토 완료",
+      });
+
+      assert.equal(wearResult.record.id, "rec_0003");
+      assert.equal(wearResult.audit.evidenceNote, "데모 근거 보강");
+      assert.equal(deductionResult.id, DEMO_MOVEOUT_SETTLEMENT.id);
+      assert.equal(reviewResult.settlement.id, DEMO_MANAGER_SETTLEMENT_REVIEW.settlement.id);
+    } finally {
+      console.warn = warn;
+    }
   });
 });
