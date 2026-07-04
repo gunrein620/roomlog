@@ -1094,12 +1094,12 @@ test("keeps the 2D floor plan canvas scrollable inside its editor shell", () => 
     "overscroll-behavior",
     "scrollbar-gutter",
     "worldBeforeZoom",
-    "Ctrl/Cmd/Alt 휠로 확대"
+    "handleWheel",
+    "onWheel"
   ]) {
     assert.ok(`${floorPlanEditorSource}\n${globalsCssSource}`.includes(label));
   }
 });
-
 test("switches between landlord authoring and resident furniture placement modes", () => {
   for (const label of [
     "experienceMode",
@@ -1153,82 +1153,33 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   }
 });
 
-test("offers floor plan AI model selection for precise dimension reading", () => {
+test("removes legacy floor plan OpenAI analysis controls", () => {
   for (const label of [
     "FLOOR_PLAN_AI_MODELS",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    "nvidia/cosmos3-nano-reasoner",
-    "openai/floor-plan-vision",
     "OpenAI Vision",
     "selectedAiModel",
-    "uploadedAiImageDataUrl",
-    "fileToCompressedDataUrl",
-    "canvas\\.toDataURL\\(\"image/jpeg\"",
-    "bareMillimeterMatch",
-    "parseDimensionTextsToMm",
-    "aiRawTextDetectionSources",
-    "lastAiAnalysis\\?\\.rawText",
-    "단위 없는 3-5자리 치수는 mm로 처리",
     "runAiDimensionAnalysis",
     "runAiCandidateReview",
-    "runVisionFirstExtractionPhases",
-    "OpenAI Vision 1단계",
-    "OpenAI Vision 2단계",
-    "room-structure",
-    "lastRoomStructureAnalysis",
-    "createAiGeneratedWallsFromRoomStructure",
-    "createWallCandidatesFromRoomPolygons",
-    "snapNormalizedLineToWallEvidence",
-    "double-line-hollow",
-    "doubleLineClosing",
-    "ai-room-edge",
-    "ai-missing-wall-hint",
     "requestFloorPlanAiAnalysis",
     "applyAiDimensionAnalysisResult",
     "applyAiCandidateReviewResult",
-    "buildAiWallCandidatePayload",
-    "createAiCandidateOverlayDataUrl",
-    "candidateOverlayDataUrl",
-    "candidateToOverlayPoint",
-    "editorToImagePoint",
-    "aiReviewedWallCandidates",
-    "aiPhase1Status",
-    "aiPhase2Status",
-    "aiCandidateReviewCount",
-    "removeRejectedAiWallCandidates",
-    "normalizeWallLengths",
-    "snapWallToLengthBounds",
-    "analysisMode",
-    "candidate-review",
-    "wallCandidates",
-    "candidateReviews",
-    "missingWallHints",
-    "sourceAttachmentId",
-    "uploadedFloorPlanSource\\?\\.attachmentId",
-    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
-    "applyAiDimensionToSelectedWall",
-    "applyManualAiScaleToSelectedWall",
     "manualAiScaleRealLength",
-    "최대 가로/세로 치수",
-    "AI 분석 결과",
-    "선택 벽 실제 길이",
-    "mm 입력",
-    "선택 벽 축척 적용",
     "AI 후보 검토",
-    "AI 제외 후보 삭제",
-    "벽 길이 자동 보정",
-    "유지",
-    "제외",
-    "누락 후보",
-    "m/cm/mm 단위 치수만 적용 가능",
-    "축척 적용",
-    "AI 정밀 수치 읽기"
+    "AI 정밀 수치 읽기",
+    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)"
+  ]) {
+    assert.doesNotMatch(floorPlanEditorSource, new RegExp(label));
+  }
+
+  for (const label of [
+    "runOpeningDetection",
+    "applyRoboflowWallPostProcessing",
+    "apiUrl\\(\"/floor-plans/opening-detection\"\\)",
+    "fileToCompressedDataUrl"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
-  assert.doesNotMatch(floorPlanEditorSource, /nvidia\/nemotron-ocr-v2/);
 });
-
 test("stores extraction metadata, openings, and fixtures through the floor plan API", () => {
   for (const label of [
     "extractionMeta",
@@ -1261,48 +1212,43 @@ test("renders 3D conversion with the wheretoput React Three Fiber stack", () => 
   }
 });
 
-test("imports wheretoput-style upload, extraction, and rotatable 3D simulator controls", () => {
+test("imports wheretoput-style upload and Roboflow 3D conversion controls", () => {
   for (const label of [
     "도면 등록",
-    "벽 자동 추출",
-    "화면 드래그 회전",
+    "문/창문 탐지",
+    "벽 후처리 적용",
     "배율 조절",
     "handleImageUpload",
-    "WallDetector",
+    "runOpeningDetection",
+    "applyRoboflowWallPostProcessing",
     "convertWallsToWheretoputSimulator",
     "convertWallsToWheretoputRoom3D"
   ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
+    assert.match(floorPlanContainerSource, new RegExp(label));
   }
+
+  assert.doesNotMatch(floorPlanContainerSource, /벽 자동 추출/);
+  assert.doesNotMatch(floorPlanContainerSource, /WallDetector/);
 });
 
-test("extracts uploaded image walls through a wheretoput-style pixel line pipeline", () => {
-  for (const label of [
-    "getImageData",
-    "detectWallLinesFromImageData",
-    "createWallsFromDetectedLines",
-    "WallDetector",
-    "이미지 벽"
-  ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
-  }
+test("keeps uploaded floor plan registration separate from local pixel wall extraction", () => {
+  assert.match(floorPlanContainerSource, /uploadFloorPlanSource/);
+  assert.match(floorPlanContainerSource, /fileToCompressedDataUrl/);
+  assert.match(floorPlanContainerSource, /setWalls\(\[\]\)/);
+  assert.match(floorPlanContainerSource, /setRoboflowDetections\(null\)/);
+  assert.match(floorPlanContainerSource, /setDetectionBoxes\(\[\]\)/);
+  assert.match(floorPlanContainerSource, /도면 등록 완료/);
+  assert.doesNotMatch(floorPlanContainerSource, /detectWallLinesFromImageData/);
+  assert.doesNotMatch(floorPlanContainerSource, /createWallsFromDetectedLines/);
+  assert.doesNotMatch(floorPlanContainerSource, /WallDetector/);
 });
 
-test("preloads OpenCV wall extraction in a worker and falls back to canvas extraction", () => {
-  for (const label of [
-    "floor-plan-extraction.worker",
-    "preloadOpenCvWorker",
-    "추출 엔진 준비중",
-    "도면 분석중",
-    "검수 후 저장",
-    "opencvReady",
-    "fallbackCanvasWallExtraction",
-    "processingMs"
-  ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
-  }
+test("keeps upload flow free of wall-first local extraction fallback", () => {
+  assert.doesNotMatch(floorPlanContainerSource, /mode:\s*"wall-first"/);
+  assert.doesNotMatch(floorPlanContainerSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
+  assert.match(floorPlanContainerSource, /runOpeningDetection/);
+  assert.match(floorPlanContainerSource, /applyRoboflowWallPostProcessing/);
 });
-
 test("uses OCR only for scale candidate extraction and keeps manual scale fallback", () => {
   for (const label of [
     "TESSERACT_OCR_URL",
@@ -1314,15 +1260,6 @@ test("uses OCR only for scale candidate extraction and keeps manual scale fallba
     assert.match(`${floorPlanEditorSource}\n${floorPlanWorkerSource}`, new RegExp(label));
   }
 });
-
-test("uses wall-first uploaded floor plan extraction without starter wall fallback", () => {
-  assert.match(floorPlanEditorSource, /mode:\s*"wall-first"/);
-  assert.match(floorPlanEditorSource, /maxLines:\s*40/);
-  assert.match(floorPlanEditorSource, /\*\s*0\.06/);
-  assert.doesNotMatch(floorPlanEditorSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
-  assert.match(floorPlanEditorSource, /직접 그려주세요/);
-});
-
 test("saves floor plan drafts through the API while keeping a local fallback", () => {
   for (const label of [
     "apiUrl\\(\"/floor-plans\"\\)",

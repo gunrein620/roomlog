@@ -4,18 +4,12 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CandidateStatus,
-  DetectedWallResult,
   ExtractionMeta,
   FloorPlanCandidate,
   UploadedFloorPlanSource
 } from "./plan-extraction/types";
 import {
-  createWallCandidatesFromRoomPolygons,
-  createWallsFromDetectedLines,
-  detectFixtureCandidates,
-  detectOpeningCandidates,
   moveCandidate,
-  snapNormalizedLineToWallEvidence,
   updateCandidateStatus
 } from "./plan-extraction/wall-detection.mjs";
 import type {
@@ -35,7 +29,7 @@ import {
   snapOpeningBoxEdgesToNearbyWallBreaks,
   trimWallBoxCornerOverlaps
 } from "./plan-extraction/roboflow-post-processing";
-import { loadImage, normalizeMainPlanBounds, OPENCV_URL, WallDetector } from "./plan-extraction/wall-detector";
+import { loadImage } from "./plan-extraction/wall-detector";
 import {
   catalogKind,
   createFurnitureModel,
@@ -89,78 +83,12 @@ type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "op
 type ViewMode = "2d" | "3d";
 type WallDragMode = "move" | "resize-start" | "resize-end";
 type WallDragOperation = { mode: WallDragMode; originPoint: Point; originalWall: Wall; wallId: Wall["id"] };
-type FloorPlanAiModelId =
-  | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
-  | "nvidia/cosmos3-nano-reasoner"
-  | "openai/floor-plan-vision";
-
-type FloorPlanAiAnalysisResult = {
-  analysisMode?: "dimension" | "candidate-review" | "room-structure";
-  candidateReviews?: Array<{
-    confidence?: number;
-    id: string;
-    reason?: string;
-    verdict: "keep" | "reject" | "review";
-  }>;
-  missingWallHints?: Array<{
-    confidence?: number;
-    description: string;
-    line?: { x1: number; y1: number; x2: number; y2: number };
-    orientation?: "horizontal" | "vertical";
-  }>;
-  model: FloorPlanAiModelId;
-  noiseFlags?: { decorativeHatching: boolean; watermark: boolean };
-  planStyle?: "solid-filled" | "double-line-hollow" | "hatched" | "gray-fill";
-  rawText?: string;
-  rooms?: Array<{
-    confidence: number;
-    label: string;
-    polygon: Array<{ x: number; y: number }>;
-  }>;
-  scaleCandidates?: Array<{
-    confidence: number;
-    pixelLength?: number;
-    pixelToMmRatio?: number;
-    realLengthMm: number;
-    source: string;
-  }>;
-  status: "ready" | "config-required" | "failed";
-  summary: string;
-  textDetections?: Array<{ confidence?: number; text: string }>;
-};
-type AiDimensionDetection = { confidence?: number; realLengthMm: number; text: string };
-type AiGeneratedWall = Wall & { markers?: string[]; source?: "ai-missing-wall-hint" | "ai-room-edge" };
-type AiWallCandidatePayload = {
-  end: Point;
-  id: string;
-  lengthPx: number;
-  orientation: "horizontal" | "vertical" | "diagonal";
-  originalWallId: string;
-  start: Point;
-};
-type FloorPlanAiRequest = {
-  analysisMode?: "dimension" | "candidate-review" | "room-structure";
-  imageDataUrl?: string | null;
-  model: FloorPlanAiModelId;
-  sourceAttachmentId?: string;
-  wallCandidates?: AiWallCandidatePayload[];
-};
-type AiCandidateOverlaySource = {
-  imageHeight?: number;
-  imageUrl?: string | null;
-  imageWidth?: number;
-};
+type AiGeneratedWall = Wall & { markers?: string[]; source?: string };
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
 const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
-const AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH = 90_000;
-const FLOOR_PLAN_AI_MODELS: Array<{ id: FloorPlanAiModelId; label: string }> = [
-  { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", label: "Nemotron Omni" },
-  { id: "nvidia/cosmos3-nano-reasoner", label: "Cosmos3 Reasoner" },
-  { id: "openai/floor-plan-vision", label: "OpenAI Vision" }
-];
 const FURNITURE_KIND_FILTERS = ["전체", "침대", "식탁", "의자", "소파", "책상", "서랍", "옷장", "기타"] as const;
 type FurnitureKindFilter = (typeof FURNITURE_KIND_FILTERS)[number];
 
@@ -229,91 +157,10 @@ async function fileToCompressedDataUrl(file: File) {
   }
 }
 
-function convertDimensionToMm(valueText: string, unit: string) {
-  const value = Number(valueText.replace(",", "."));
-  if (!Number.isFinite(value) || value <= 0) return null;
-
-  const normalizedUnit = unit.toLowerCase();
-  if (normalizedUnit === "mm" || normalizedUnit === "밀리미터") return Math.round(value);
-  if (normalizedUnit === "cm" || normalizedUnit === "센티미터") return Math.round(value * 10);
-
-  return Math.round(value * 1000);
-}
-
-function parseDimensionTextsToMm(text: string) {
-  const trimmedText = text.trim();
-  const values: number[] = [];
-
-  for (const match of trimmedText.matchAll(/(\d+(?:[.,]\d+)?)\s*(mm|밀리미터|cm|센티미터|m|미터)/gi)) {
-    const realLengthMm = convertDimensionToMm(match[1], match[2]);
-    if (realLengthMm && realLengthMm >= 1000) values.push(realLengthMm);
-  }
-
-  if (values.length) return values;
-
-  const bareMillimeterMatch = trimmedText.matchAll(/\b(\d{3,5})\b/g);
-  // ?⑥쐞 ?녿뒗 3-5?먮━ 移섏닔??mm濡?泥섎━?쒕떎. 援?궡 ?됰㈃??移섏닔?좎? 蹂댄넻 2760, 5040泥섎읆 mm 媛믩쭔 ?곹엺??
-  for (const match of bareMillimeterMatch) {
-    const realLengthMm = Number(match[1]);
-    if (realLengthMm >= 1000 && realLengthMm <= 30000) values.push(realLengthMm);
-  }
-
-  return values;
-}
-
-function parseDimensionTextToMm(text: string) {
-  return parseDimensionTextsToMm(text)[0] ?? null;
-}
-
-function snapWallToLengthBounds(wall: Wall, bounds: { maxX: number; maxY: number; minX: number; minY: number }, tolerancePx = GRID_SIZE_PX * 2) {
-  const dx = wall.end.x - wall.start.x;
-  const dy = wall.end.y - wall.start.y;
-  const isHorizontal = Math.abs(dx) >= Math.abs(dy);
-  const width = Math.max(1, bounds.maxX - bounds.minX);
-  const height = Math.max(1, bounds.maxY - bounds.minY);
-
-  if (isHorizontal) {
-    const y = Math.round((wall.start.y + wall.end.y) / 2);
-    let startX = Math.min(wall.start.x, wall.end.x);
-    let endX = Math.max(wall.start.x, wall.end.x);
-    const length = endX - startX;
-
-    if (length >= width * 0.55) {
-      startX = bounds.minX;
-      endX = bounds.maxX;
-    } else {
-      if (Math.abs(startX - bounds.minX) <= tolerancePx) startX = bounds.minX;
-      if (Math.abs(startX - bounds.maxX) <= tolerancePx) startX = bounds.maxX;
-      if (Math.abs(endX - bounds.minX) <= tolerancePx) endX = bounds.minX;
-      if (Math.abs(endX - bounds.maxX) <= tolerancePx) endX = bounds.maxX;
-    }
-
-    return { ...wall, end: { x: endX, y }, start: { x: startX, y } };
-  }
-
-  const x = Math.round((wall.start.x + wall.end.x) / 2);
-  let startY = Math.min(wall.start.y, wall.end.y);
-  let endY = Math.max(wall.start.y, wall.end.y);
-  const length = endY - startY;
-
-  if (length >= height * 0.55) {
-    startY = bounds.minY;
-    endY = bounds.maxY;
-  } else {
-    if (Math.abs(startY - bounds.minY) <= tolerancePx) startY = bounds.minY;
-    if (Math.abs(startY - bounds.maxY) <= tolerancePx) startY = bounds.maxY;
-    if (Math.abs(endY - bounds.minY) <= tolerancePx) endY = bounds.minY;
-    if (Math.abs(endY - bounds.maxY) <= tolerancePx) endY = bounds.maxY;
-  }
-
-  return { ...wall, end: { x, y: endY }, start: { x, y: startY } };
-}
-
 export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const extractionWorkerRef = useRef<Worker | null>(null);
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("landlord");
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
@@ -352,20 +199,13 @@ export default function RoomlogFloorPlanEditor() {
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState("?섑뵆 ?꾨㈃?쇰줈 ?쒖옉");
-  const [selectedAiModel, setSelectedAiModel] = useState<FloorPlanAiModelId>("openai/floor-plan-vision");
-  const [aiAnalysisStatus, setAiAnalysisStatus] = useState("AI 정밀 수치 읽기 대기");
-  const [lastAiAnalysis, setLastAiAnalysis] = useState<FloorPlanAiAnalysisResult | null>(null);
-  const [lastRoomStructureAnalysis, setLastRoomStructureAnalysis] = useState<FloorPlanAiAnalysisResult | null>(null);
-  const [aiReviewedWallCandidates, setAiReviewedWallCandidates] = useState<AiWallCandidatePayload[]>([]);
-  const [opencvReady, setOpenCvReady] = useState(false);
-  const [lastExtractionMs, setLastExtractionMs] = useState<number | null>(null);
+  const [uploadStatus, setUploadStatus] = useState("도면을 등록하세요");
+  const [aiAnalysisStatus, setAiAnalysisStatus] = useState("문/창문 탐지 대기");
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
   const [pixelToMmRatio, setPixelToMmRatio] = useState(DEFAULT_PIXEL_TO_MM_RATIO);
   const [isScaleSet, setIsScaleSet] = useState(false);
   const [scaleWall, setScaleWall] = useState<Wall | null>(null);
   const [scaleRealLength, setScaleRealLength] = useState("");
-  const [manualAiScaleRealLength, setManualAiScaleRealLength] = useState("");
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -382,66 +222,6 @@ export default function RoomlogFloorPlanEditor() {
     () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
     [pixelToMmRatio, visibleWalls]
   );
-  const aiTextDetections = useMemo(() => {
-    const seen = new Set<string>();
-    const aiRawTextDetectionSources = [lastAiAnalysis?.rawText, lastAiAnalysis?.summary, extractionMeta.aiRawText, extractionMeta.aiSummary].flatMap((text) =>
-      text ? [{ confidence: 0.35, text }] : []
-    );
-
-    return [...(lastAiAnalysis?.textDetections ?? []), ...(extractionMeta.aiTextDetections ?? []), ...aiRawTextDetectionSources].filter((detection) => {
-      const key = `${detection.text}:${detection.confidence ?? ""}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-
-      return true;
-    });
-  }, [
-    extractionMeta.aiRawText,
-    extractionMeta.aiSummary,
-    extractionMeta.aiTextDetections,
-    lastAiAnalysis?.rawText,
-    lastAiAnalysis?.summary,
-    lastAiAnalysis?.textDetections
-  ]);
-  const aiDimensionDetections = useMemo<AiDimensionDetection[]>(() => {
-    const seen = new Set<string>();
-
-    return aiTextDetections.flatMap((detection) => {
-      return parseDimensionTextsToMm(detection.text).flatMap((realLengthMm) => {
-        const key = String(realLengthMm);
-        if (seen.has(key)) return [];
-        seen.add(key);
-
-        return [{ confidence: detection.confidence, realLengthMm, text: `${realLengthMm}mm` }];
-      });
-    });
-  }, [aiTextDetections]);
-  const visibleAiDimensionDetections = useMemo(
-    () => {
-      const seen = new Set<number>();
-
-      return aiDimensionDetections
-        .filter((dimension) => dimension.realLengthMm >= 1000)
-        .sort((a, b) => b.realLengthMm - a.realLengthMm)
-        .filter((dimension) => {
-          if (seen.has(dimension.realLengthMm)) return false;
-          seen.add(dimension.realLengthMm);
-
-          return true;
-        })
-        .slice(0, 2);
-    },
-    [aiDimensionDetections]
-  );
-  const aiCandidateReviewSummary = useMemo(() => {
-    const reviews = lastAiAnalysis?.candidateReviews ?? [];
-
-    return {
-      keep: reviews.filter((review) => review.verdict === "keep").length,
-      reject: reviews.filter((review) => review.verdict === "reject").length,
-      review: reviews.filter((review) => review.verdict === "review").length
-    };
-  }, [lastAiAnalysis?.candidateReviews]);
   const hiddenWallCount = hiddenWallIds.size;
   const selectedFurniture = useMemo(
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
@@ -515,38 +295,6 @@ export default function RoomlogFloorPlanEditor() {
       setSelectedWall(null);
     }
   }, [experienceMode, tool]);
-  const getExtractionWorker = useCallback(() => {
-    if (!extractionWorkerRef.current) {
-      extractionWorkerRef.current = new Worker(new URL("./plan-extraction/floor-plan-extraction.worker.ts", import.meta.url));
-    }
-
-    return extractionWorkerRef.current;
-  }, []);
-
-  const preloadOpenCvWorker = useCallback(() => {
-    const worker = getExtractionWorker();
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type !== "ready") return;
-      setOpenCvReady(Boolean(event.data.ready));
-      worker.removeEventListener("message", handleMessage);
-    };
-
-    worker.addEventListener("message", handleMessage);
-    worker.postMessage({ opencvUrl: OPENCV_URL, type: "preload" });
-  }, [getExtractionWorker]);
-
-  useEffect(() => {
-    const scheduleIdle = window.requestIdleCallback ?? ((callback: IdleRequestCallback) => window.setTimeout(callback, 250));
-    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout;
-    const idleId = scheduleIdle(() => preloadOpenCvWorker());
-
-    return () => {
-      cancelIdle(idleId as never);
-      extractionWorkerRef.current?.terminate();
-      extractionWorkerRef.current = null;
-    };
-  }, [preloadOpenCvWorker]);
-
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1310,90 +1058,6 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
-  async function requestFloorPlanAiAnalysis(request: FloorPlanAiRequest) {
-    const token = await getFloorPlanAccessToken();
-    const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
-      body: JSON.stringify({
-        analysisMode: request.analysisMode,
-        imageDataUrl: request.sourceAttachmentId ? undefined : request.imageDataUrl,
-        model: request.model,
-        sourceAttachmentId: request.sourceAttachmentId,
-        wallCandidates: request.wallCandidates
-      }),
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      method: "POST"
-    });
-    if (!response.ok) throw new Error(`AI floor plan analysis failed: ${response.status}`);
-
-    return (await response.json()) as FloorPlanAiAnalysisResult;
-  }
-
-  function applyAiDimensionAnalysisResult(result: FloorPlanAiAnalysisResult) {
-    const scaleCandidates = (result.scaleCandidates ?? []).map((candidate) => ({
-      confidence: candidate.confidence,
-      pixelLength: candidate.pixelLength ?? 0,
-      pixelToMmRatio: candidate.pixelToMmRatio ?? 0,
-      realLengthMm: candidate.realLengthMm,
-      source: candidate.source
-    }));
-    const usableScaleCandidates = scaleCandidates.filter((candidate) => candidate.pixelLength > 0 && candidate.pixelToMmRatio > 0);
-    const bestScaleCandidate = usableScaleCandidates[0];
-
-    setLastAiAnalysis(result);
-    setExtractionMeta((currentMeta) => ({
-      ...currentMeta,
-      aiModel: result.model,
-      aiPhase1Status: result.status,
-      aiRawText: result.rawText,
-      aiSummary: result.summary,
-      aiTextDetections: result.textDetections ?? [],
-      ocrStatus: result.status === "ready" ? "ready" : currentMeta.ocrStatus,
-      scaleCandidates: [...usableScaleCandidates, ...currentMeta.scaleCandidates]
-    }));
-    if (bestScaleCandidate) {
-      setPixelToMmRatio(bestScaleCandidate.pixelToMmRatio);
-      setIsScaleSet(false);
-    }
-
-    return { bestScaleCandidate, usableScaleCandidates };
-  }
-
-  function applyAiCandidateReviewResult(result: FloorPlanAiAnalysisResult, wallCandidates: AiWallCandidatePayload[]) {
-    const reviewCount = result.candidateReviews?.length ?? 0;
-    const rejectCount = result.candidateReviews?.filter((review) => review.verdict === "reject").length ?? 0;
-
-    setAiReviewedWallCandidates(wallCandidates);
-    setLastAiAnalysis(result);
-    setExtractionMeta((currentMeta) => ({
-      ...currentMeta,
-      aiCandidateReviewCount: reviewCount,
-      aiModel: result.model,
-      aiPhase2Status: result.status,
-      aiRawText: result.rawText,
-      aiRejectedWallCandidateCount: rejectCount,
-      aiSummary: result.summary,
-      needsReview: result.status === "ready" ? true : currentMeta.needsReview,
-      ocrStatus: result.status === "ready" ? "ready" : currentMeta.ocrStatus
-    }));
-  }
-
-  function applyAiRoomStructureResult(result: FloorPlanAiAnalysisResult) {
-    setLastRoomStructureAnalysis(result);
-    setExtractionMeta((currentMeta) => ({
-      ...currentMeta,
-      aiModel: result.model,
-      aiNoiseFlags: result.noiseFlags,
-      aiPhaseRoomStructureStatus: result.status,
-      aiPlanStyle: result.planStyle,
-      aiRoomCount: result.rooms?.length ?? 0,
-      aiRoomStructureSummary: result.summary,
-      needsReview: result.status === "ready" ? true : currentMeta.needsReview
-    }));
-  }
-
   async function loadImageDataFromUrl(imageUrl: string) {
     const image = await loadImage(imageUrl);
     const canvas = document.createElement("canvas");
@@ -1407,408 +1071,59 @@ export default function RoomlogFloorPlanEditor() {
     return context.getImageData(0, 0, canvas.width, canvas.height);
   }
 
-  function createAiGeneratedWallsFromRoomStructure(
-    result: FloorPlanAiAnalysisResult | null,
-    imageData: ImageData | null,
-    plan: { height: number; name: string; width: number }
-  ) {
-    if (!result || result.status !== "ready" || !imageData) return [];
-
-    const roomEdgeLines = createWallCandidatesFromRoomPolygons(result.rooms ?? [], imageData, {
-      minEvidenceConfidence: 0.12,
-      minLength: Math.max(16, Math.min(imageData.width, imageData.height) * 0.035)
-    });
-    const missingHintLines = (result.missingWallHints ?? []).flatMap((hint) => {
-      if (!hint.line) return [];
-      const snappedLine = snapNormalizedLineToWallEvidence(hint.line, imageData, { minConfidence: 0.12 });
-
-      return snappedLine ? [{ ...snappedLine, markers: ["ai-missing-wall-hint", ...(snappedLine.markers ?? [])] }] : [];
-    });
-    const roomWalls = createWallsFromDetectedLines(roomEdgeLines, {
-      height: plan.height,
-      maxWalls: 48,
-      name: `${plan.name}-ai-room`,
-      width: plan.width
-    }).map((wall: Wall, index: number) => ({ ...wall, id: `ai-room-wall-${index + 1}`, markers: ["ai-room-edge"], source: "ai-room-edge" }));
-    const missingWalls = createWallsFromDetectedLines(missingHintLines, {
-      height: plan.height,
-      maxWalls: 16,
-      name: `${plan.name}-ai-missing`,
-      width: plan.width
-    }).map((wall: Wall, index: number) => ({ ...wall, id: `ai-missing-wall-${index + 1}`, markers: ["ai-missing-wall-hint"], source: "ai-missing-wall-hint" }));
-
-    return [...roomWalls, ...missingWalls] as AiGeneratedWall[];
-  }
-
   async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsProcessing(true);
-    setUploadStatus(opencvReady ? `${file.name} 도면 분석중` : `${file.name} 추출 엔진 준비중 - fallback 가능`);
+    setUploadStatus(`${file.name} 도면 등록중`);
     try {
       const sourceUploadPromise = uploadFloorPlanSource(file);
       const aiImageDataUrlPromise = fileToCompressedDataUrl(file);
       const sourceUpload = await sourceUploadPromise;
       const aiImageDataUrl = await aiImageDataUrlPromise;
-      let roomStructureResult: FloorPlanAiAnalysisResult | null = null;
-      if (selectedAiModel === "openai/floor-plan-vision") {
-        try {
-          setAiAnalysisStatus("OpenAI room-structure 분석중");
-          roomStructureResult = await requestFloorPlanAiAnalysis({
-            analysisMode: "room-structure",
-            imageDataUrl: sourceUpload?.attachmentId ? undefined : aiImageDataUrl,
-            model: "openai/floor-plan-vision",
-            sourceAttachmentId: sourceUpload?.attachmentId
-          });
-          applyAiRoomStructureResult(roomStructureResult);
-        } catch {
-          setAiAnalysisStatus("OpenAI room-structure 분석 실패 - OpenCV 추출만 진행");
-        }
-      }
-      const detector = new WallDetector(getExtractionWorker());
-      const result = await detector.detectWalls(file, { doubleLineClosing: roomStructureResult?.planStyle === "double-line-hollow" });
-      const detectedWalls = createWallsFromDetectedLines(result.lines, {
-        height: result.imageHeight,
-        name: file.name,
-        width: result.imageWidth
-      }) as Wall[];
-      const aiStructureImageData = roomStructureResult?.status === "ready" ? await loadImageDataFromUrl(aiImageDataUrl).catch(() => null) : null;
-      const aiGeneratedWalls = createAiGeneratedWallsFromRoomStructure(roomStructureResult, aiStructureImageData, {
-        height: result.imageHeight,
-        name: file.name,
-        width: result.imageWidth
-      });
-      const nextWalls = [...detectedWalls, ...aiGeneratedWalls] as Wall[];
-      if (process.env.NODE_ENV !== "production") {
-        (window as typeof window & {
-          __roomlogFloorPlanDebug?: { aiGeneratedWalls: Wall[]; detectedWalls: Wall[]; extractionResult: DetectedWallResult; roomStructureResult: FloorPlanAiAnalysisResult | null };
-        }).__roomlogFloorPlanDebug = { aiGeneratedWalls, detectedWalls, extractionResult: result, roomStructureResult };
-      }
-      const scaleCandidates = result.scaleCandidates ?? [];
-      const bestScaleCandidate = scaleCandidates[0];
-      const nextOpeningCandidates = detectOpeningCandidates({
-        gaps: result.lines,
-        pixelToMmRatio: bestScaleCandidate?.pixelToMmRatio ?? pixelToMmRatio
-      }) as FloorPlanCandidate[];
-      const nextFixtureCandidates = detectFixtureCandidates({
-        labels: [],
-        pixelToMmRatio: bestScaleCandidate?.pixelToMmRatio ?? pixelToMmRatio,
-        shapes: []
-      }) as FloorPlanCandidate[];
+      const imageUrl = URL.createObjectURL(file);
 
-      setWalls(nextWalls);
+      setWalls([]);
       setHiddenWallIds(new Set());
       setSelectedWall(null);
+      setScaleWall(null);
+      setHoveredWall(null);
       setPendingFurniture(null);
       setSelectedFurnitureId(null);
-      setOpeningCandidates(nextOpeningCandidates);
-      setFixtureCandidates(nextFixtureCandidates);
+      setOpeningCandidates([]);
+      setFixtureCandidates([]);
       setDetectionBoxes([]);
       setRoboflowDetections(null);
       setRoboflowWallPostProcessSourceWalls([]);
-      setUploadedImage(result.imageUrl);
+      setUploadedImage(imageUrl);
       setUploadedAiImageDataUrl(aiImageDataUrl);
-      setUploadedFloorPlanSource(sourceUpload ?? { imageUrl: result.imageUrl });
-      setLastAiAnalysis(null);
-      setAiReviewedWallCandidates([]);
-      if (!roomStructureResult) setLastRoomStructureAnalysis(null);
-      setAiAnalysisStatus("AI 정밀 수치 읽기 대기");
+      setUploadedFloorPlanSource(sourceUpload ?? { imageUrl });
+      setAiAnalysisStatus("도면 등록 완료. 문/창문 탐지 버튼으로 Roboflow 탐지를 실행하세요.");
       setFloorPlanDraftId(null);
-      setLastExtractionMs(result.processingMs ?? null);
       setExtractionMeta({
-        annotationCandidateCount: result.annotationCandidates?.length ?? 0,
-        aiGeneratedWallCount: aiGeneratedWalls.length,
-        aiNoiseFlags: roomStructureResult?.noiseFlags,
-        aiPlanStyle: roomStructureResult?.planStyle,
-        aiRoomCount: roomStructureResult?.rooms?.length ?? 0,
-        detectedWallCount: nextWalls.length,
-        dimensionCandidateCount: result.dimensionCandidates?.length ?? 0,
-        mainPlanBounds: normalizeMainPlanBounds(result.mainPlanBounds),
-        needsReview: result.needsReview ?? false,
-        ocrStatus: bestScaleCandidate ? "ready" : "manual-scale-required",
-        processingMs: result.processingMs,
-        removedNoiseCount: result.removedNoiseCount ?? 0,
-        scaleCandidates,
+        annotationCandidateCount: 0,
+        aiGeneratedWallCount: 0,
+        aiNoiseFlags: undefined,
+        aiPlanStyle: undefined,
+        aiRoomCount: 0,
+        detectedWallCount: 0,
+        dimensionCandidateCount: 0,
+        mainPlanBounds: undefined,
+        needsReview: false,
+        ocrStatus: "manual-scale-required",
+        processingMs: undefined,
+        removedNoiseCount: 0,
+        scaleCandidates: [],
         scaleConfirmed: false
       });
       setIsScaleSet(false);
-      if (bestScaleCandidate) {
-        setPixelToMmRatio(bestScaleCandidate.pixelToMmRatio);
-      }
-      const opencvStatus = `${file.name} 확실한 벽 후보 ${detectedWalls.length}개 추출, 누락된 벽은 직접 그려주세요. ${
-        bestScaleCandidate ? "축척 확인 필요" : "수동 축척 필요"
-      }, AI 구조 후보 ${aiGeneratedWalls.length}개 병합, ${result.needsReview ? "정밀 검토 필요" : "검토 대기"}${result.processingMs ? ` (${result.processingMs}ms)` : ""}`;
-      setUploadStatus(opencvStatus);
-
-      if (selectedAiModel === "openai/floor-plan-vision") {
-        try {
-          await runVisionFirstExtractionPhases({
-            imageDataUrl: sourceUpload?.attachmentId ? undefined : aiImageDataUrl,
-            imageHeight: result.imageHeight,
-            imageUrl: aiImageDataUrl || result.imageUrl,
-            imageWidth: result.imageWidth,
-            sourceAttachmentId: sourceUpload?.attachmentId,
-            walls: nextWalls
-          });
-        } catch {
-          setAiAnalysisStatus("OpenAI Vision 1?④퀎/2?④퀎 遺꾩꽍 ?ㅽ뙣 - OpenCV 異붿텧 寃곌낵瑜?寃?섑븯?몄슂");
-        }
-      }
+      setUploadStatus(`${file.name} 도면 등록 완료`);
     } catch {
-      setUploadStatus("?대?吏 踰?異붿텧 ?ㅽ뙣");
+      setUploadStatus("도면 등록 실패");
     } finally {
       setIsProcessing(false);
       event.target.value = "";
-    }
-  }
-
-  async function runAiDimensionAnalysis() {
-    const sourceAttachmentId = uploadedFloorPlanSource?.attachmentId;
-    if (!sourceAttachmentId && !uploadedAiImageDataUrl) {
-      setAiAnalysisStatus("먼저 도면 이미지를 업로드하세요");
-      return;
-    }
-
-    setIsProcessing(true);
-    setAiAnalysisStatus(`${FLOOR_PLAN_AI_MODELS.find((model) => model.id === selectedAiModel)?.label ?? "NVIDIA"} 분석중`);
-    try {
-      const result = await requestFloorPlanAiAnalysis({
-        imageDataUrl: uploadedAiImageDataUrl,
-        model: selectedAiModel,
-        sourceAttachmentId
-      });
-      const { usableScaleCandidates } = applyAiDimensionAnalysisResult(result);
-      setAiAnalysisStatus(
-        result.status === "ready"
-          ? `${result.summary} ${usableScaleCandidates.length ? "축척 후보 확인 필요" : "치수 텍스트를 참고해 수동 축척 필요"}`
-          : result.summary
-      );
-    } catch {
-      setAiAnalysisStatus("AI 정밀 수치 읽기 실패");
-    } finally {
-      setIsProcessing(false);
-    }
-  }
-
-  function buildAiWallCandidatePayload(sourceWalls: Wall[] = walls) {
-    return sourceWalls.slice(0, 80).map((wall, index): AiWallCandidatePayload => {
-      const dx = wall.end.x - wall.start.x;
-      const dy = wall.end.y - wall.start.y;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-      const orientation = absDx > absDy * 2 ? "horizontal" : absDy > absDx * 2 ? "vertical" : "diagonal";
-
-      return {
-        end: wall.end,
-        id: `W${index + 1}`,
-        lengthPx: Math.hypot(dx, dy),
-        orientation,
-        originalWallId: String(wall.id),
-        start: wall.start
-      };
-    });
-  }
-
-  async function createAiCandidateOverlayDataUrl(candidates: AiWallCandidatePayload[], source?: AiCandidateOverlaySource) {
-    const sourceCanvas = canvasRef.current;
-    const sourceImageUrl = source?.imageUrl ?? uploadedAiImageDataUrl;
-    const sourceImage = sourceImageUrl ? await loadImage(sourceImageUrl).catch(() => null) : null;
-    if (!sourceCanvas && !sourceImage) return uploadedAiImageDataUrl;
-
-    const sizes = [
-      { fontSize: 18, height: 720, labelHeight: 26, labelWidth: 42, width: 960 },
-      { fontSize: 16, height: 600, labelHeight: 24, labelWidth: 38, width: 800 },
-      { fontSize: 14, height: 480, labelHeight: 22, labelWidth: 34, width: 640 }
-    ];
-    const qualities = [0.68, 0.54, 0.42, 0.32];
-    let fallbackDataUrl = uploadedAiImageDataUrl;
-
-    for (const size of sizes) {
-      const overlayCanvas = document.createElement("canvas");
-      overlayCanvas.width = size.width;
-      overlayCanvas.height = size.height;
-      const context = overlayCanvas.getContext("2d");
-      if (!context) return fallbackDataUrl;
-
-      const imageWidth = Math.max(1, source?.imageWidth ?? sourceImage?.naturalWidth ?? sourceImage?.width ?? 0);
-      const imageHeight = Math.max(1, source?.imageHeight ?? sourceImage?.naturalHeight ?? sourceImage?.height ?? 0);
-      const useImageSource = Boolean(sourceImage && source?.imageUrl);
-      const scaleX = size.width / (useImageSource ? imageWidth : CANVAS_WIDTH);
-      const scaleY = size.height / (useImageSource ? imageHeight : CANVAS_HEIGHT);
-      if (useImageSource && sourceImage) {
-        context.drawImage(sourceImage, 0, 0, size.width, size.height);
-      } else if (sourceCanvas) {
-        context.drawImage(sourceCanvas, 0, 0, size.width, size.height);
-      }
-      context.save();
-      context.font = `bold ${size.fontSize}px Arial, sans-serif`;
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-
-      const imageAspect = imageWidth / imageHeight;
-      const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
-      let drawWidth = CANVAS_WIDTH * 0.8;
-      let drawHeight = drawWidth / imageAspect;
-      if (imageAspect <= canvasAspect) {
-        drawHeight = CANVAS_HEIGHT * 0.8;
-        drawWidth = drawHeight * imageAspect;
-      }
-      const editorToImagePoint = (point: Point) => {
-        const imageScale = drawWidth / imageWidth;
-
-        return {
-          x: (point.x + drawWidth / 2) / imageScale,
-          y: (point.y + drawHeight / 2) / imageScale
-        };
-      };
-      const candidateToOverlayPoint = (point: Point) => {
-        if (useImageSource) {
-          const imagePoint = editorToImagePoint(point);
-
-          return { x: imagePoint.x * scaleX, y: imagePoint.y * scaleY };
-        }
-
-        return {
-          x: (CANVAS_WIDTH / 2 + (point.x + viewOffset.x) * viewScale) * scaleX,
-          y: (CANVAS_HEIGHT / 2 + (point.y + viewOffset.y) * viewScale) * scaleY
-        };
-      };
-
-      context.strokeStyle = "rgba(0, 102, 255, 0.92)";
-      context.lineCap = "round";
-      context.lineWidth = Math.max(2, Math.round(size.width / 320));
-      candidates.forEach((candidate) => {
-        const start = candidateToOverlayPoint(candidate.start);
-        const end = candidateToOverlayPoint(candidate.end);
-        if (
-          (start.x < 0 && end.x < 0) ||
-          (start.x > size.width && end.x > size.width) ||
-          (start.y < 0 && end.y < 0) ||
-          (start.y > size.height && end.y > size.height)
-        ) {
-          return;
-        }
-        context.beginPath();
-        context.moveTo(start.x, start.y);
-        context.lineTo(end.x, end.y);
-        context.stroke();
-      });
-
-      candidates.forEach((candidate) => {
-        const midPoint = { x: (candidate.start.x + candidate.end.x) / 2, y: (candidate.start.y + candidate.end.y) / 2 };
-        const { x: screenX, y: screenY } = candidateToOverlayPoint(midPoint);
-        if (screenX < 0 || screenX > size.width || screenY < 0 || screenY > size.height) return;
-
-        context.fillStyle = "rgba(0, 102, 255, 0.92)";
-        context.fillRect(screenX - size.labelWidth / 2, screenY - size.labelHeight / 2, size.labelWidth, size.labelHeight);
-        context.strokeStyle = "#ffffff";
-        context.lineWidth = 2;
-        context.strokeRect(screenX - size.labelWidth / 2, screenY - size.labelHeight / 2, size.labelWidth, size.labelHeight);
-        context.fillStyle = "#ffffff";
-        context.fillText(candidate.id, screenX, screenY + 1);
-      });
-
-      context.restore();
-
-      for (const quality of qualities) {
-        const dataUrl = overlayCanvas.toDataURL("image/jpeg", quality);
-        fallbackDataUrl = dataUrl;
-        if (dataUrl.length <= AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH) return dataUrl;
-      }
-    }
-
-    return fallbackDataUrl;
-  }
-
-  async function runVisionFirstExtractionPhases(input: {
-    imageDataUrl?: string | null;
-    imageHeight: number;
-    imageUrl: string;
-    imageWidth: number;
-    sourceAttachmentId?: string;
-    walls: Wall[];
-  }) {
-    setAiAnalysisStatus("OpenAI Vision 1단계: 도면 치수와 구조 단서 분석중");
-    const phase1 = await requestFloorPlanAiAnalysis({
-      imageDataUrl: input.imageDataUrl,
-      model: "openai/floor-plan-vision",
-      sourceAttachmentId: input.sourceAttachmentId
-    });
-    const { usableScaleCandidates } = applyAiDimensionAnalysisResult(phase1);
-    if (phase1.status !== "ready") {
-      setAiAnalysisStatus(phase1.summary);
-      return;
-    }
-
-    const wallCandidates = buildAiWallCandidatePayload(input.walls);
-    if (!wallCandidates.length) {
-      setAiAnalysisStatus(`${phase1.summary} OpenCV 벽 후보가 없어 2단계 검토는 건너뜀`);
-      return;
-    }
-
-    setAiAnalysisStatus("OpenAI Vision 2단계: OpenCV 벽 후보 검토중");
-    const candidateOverlayDataUrl = await createAiCandidateOverlayDataUrl(wallCandidates, {
-      imageHeight: input.imageHeight,
-      imageUrl: input.imageUrl,
-      imageWidth: input.imageWidth
-    });
-    if (!candidateOverlayDataUrl) {
-      setAiAnalysisStatus(`${phase1.summary} 후보 검토 이미지를 만들 수 없어 2단계 검토는 건너뜀`);
-      return;
-    }
-    if (candidateOverlayDataUrl.length > AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH) {
-      setAiAnalysisStatus(`${phase1.summary} 후보 검토 이미지가 커서 2단계 검토는 건너뜀`);
-      return;
-    }
-
-    const phase2 = await requestFloorPlanAiAnalysis({
-      analysisMode: "candidate-review",
-      imageDataUrl: candidateOverlayDataUrl,
-      model: "openai/floor-plan-vision",
-      wallCandidates
-    });
-    applyAiCandidateReviewResult(phase2, wallCandidates);
-    setAiAnalysisStatus(
-      phase2.status === "ready"
-        ? `${phase1.summary} ${usableScaleCandidates.length ? "축척 후보 확인 필요." : "치수 텍스트 확인 필요."} ${phase2.summary} 후보별 판정 확인`
-        : phase2.summary
-    );
-  }
-
-  async function runAiCandidateReview() {
-    if (!uploadedImage || !walls.length) {
-      setAiAnalysisStatus("먼저 도면을 업로드하고 벽 후보를 추출하세요");
-      return;
-    }
-
-    const wallCandidates = buildAiWallCandidatePayload();
-    setAiReviewedWallCandidates(wallCandidates);
-    const candidateOverlayDataUrl = await createAiCandidateOverlayDataUrl(wallCandidates);
-    if (!candidateOverlayDataUrl) {
-      setAiAnalysisStatus("후보 검토 이미지를 만들 수 없습니다");
-      return;
-    }
-    if (candidateOverlayDataUrl.length > AI_CANDIDATE_REVIEW_MAX_DATA_URL_LENGTH) {
-      setAiAnalysisStatus("후보 검토 이미지가 커서 전송하지 않습니다. 화면을 확대하지 않은 상태에서 다시 시도하세요.");
-      return;
-    }
-
-    setIsProcessing(true);
-    setAiAnalysisStatus("OpenAI가 OpenCV 벽 후보 검토중");
-    try {
-      const result = await requestFloorPlanAiAnalysis({
-        analysisMode: "candidate-review",
-        imageDataUrl: candidateOverlayDataUrl,
-        model: "openai/floor-plan-vision",
-        wallCandidates
-      });
-      applyAiCandidateReviewResult(result, wallCandidates);
-      setAiAnalysisStatus(result.status === "ready" ? `${result.summary} ?꾨낫蹂??먯젙 ?뺤씤` : result.summary);
-    } catch {
-      setAiAnalysisStatus("AI 踰??꾨낫 寃???ㅽ뙣");
-    } finally {
-      setIsProcessing(false);
     }
   }
 
@@ -1863,6 +1178,7 @@ export default function RoomlogFloorPlanEditor() {
         setAiAnalysisStatus(result.summary);
         return;
       }
+
       const imageAspect = Math.max(1e-6, (result.imageWidth || 1) / (result.imageHeight || 1));
       const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
       let drawWidth = CANVAS_WIDTH * 0.8;
@@ -1919,7 +1235,6 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
-  // 후처리된 벽을 도면 이미지의 어두운 벽 띠에 스냅 — 탐지 박스의 수 px 오차를 픽셀 증거로 미세 보정.
   function snapWallsToImageEvidence(wallsToSnap: Wall[], imageData: ImageData, options?: { darkThreshold?: number; searchRadiusPx?: number }) {
     const imageWidth = imageData.width;
     const imageHeight = imageData.height;
@@ -2002,7 +1317,7 @@ export default function RoomlogFloorPlanEditor() {
       currentWalls: fusionSourceWalls,
       imageHeight: roboflowDetections.imageHeight,
       imageWidth: roboflowDetections.imageWidth,
-      minConfidence: 0.3, // API가 내려준 박스(30%~)를 버리지 않는다 — 기본 50% 컷이면 중간 벽들이 사라짐
+      minConfidence: 0.3,
       minGeneratedWallCount: 1,
       openingBoxes: roboflowDetections.openings.filter((opening) => opening.type === "DOOR").map((opening) => opening.boundingBox),
       pixelToMmRatio,
@@ -2014,7 +1329,6 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
-    // 마지막 단계: 도면 이미지의 실제 벽 픽셀에 스냅해 탐지 박스의 미세 오차를 보정한다.
     let snappedWalls = detectionWallResult.walls;
     let snappedWallBoxes: RoboflowDetectionOverlayBox[] = detectionWallResult.generatedWallBoxes;
     if (uploadedImage) {
@@ -2066,65 +1380,9 @@ export default function RoomlogFloorPlanEditor() {
     );
     const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines(cornerTrimmedWallBoxes, fittedOpeningBoxes);
     const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners(openingLineAlignedWallBoxes);
-    // Keep Roboflow's original wall boxes as the base, then stretch/merge them into cleaned purple wall bands.
     setDetectionBoxes([...cornerAlignedWallBoxes, ...fittedOpeningBoxes]);
-    setAiAnalysisStatus(
-      `${roboflowDetections.summary} 후처리 완료: 원본 벽 ${roboflowDetections.walls.length}개 -> 3D 변환용 벽 ${detectionWallResult.generatedWallCount}개`
-    );
+    setAiAnalysisStatus(`${roboflowDetections.summary} 후처리 완료: 원본 벽 ${roboflowDetections.walls.length}개 -> 3D 변환용 벽 ${detectionWallResult.generatedWallCount}개`);
     setUploadStatus(`Roboflow 벽 후처리 ${detectionWallResult.generatedWallCount}개 적용`);
-  }
-
-  function removeRejectedAiWallCandidates() {
-    const rejectedIds = new Set((lastAiAnalysis?.candidateReviews ?? []).filter((review) => review.verdict === "reject").map((review) => review.id));
-    const rejectedWallIds = new Set(
-      aiReviewedWallCandidates.filter((candidate) => rejectedIds.has(candidate.id)).map((candidate) => candidate.originalWallId)
-    );
-    if (!rejectedWallIds.size) {
-      setUploadStatus("AI媛 ?쒖쇅濡??먯젙??踰??꾨낫媛 ?놁뒿?덈떎");
-      return;
-    }
-
-    const nextWalls = walls.filter((wall) => !rejectedWallIds.has(String(wall.id)));
-    const nextHiddenWallIds = new Set([...hiddenWallIds].filter((wallId) => !rejectedWallIds.has(String(wallId))));
-    setWalls(nextWalls);
-    setHiddenWallIds(nextHiddenWallIds);
-    setSelectedWall((currentWall) => (currentWall && rejectedWallIds.has(String(currentWall.id)) ? null : currentWall));
-    setScaleWall((currentWall) => (currentWall && rejectedWallIds.has(String(currentWall.id)) ? null : currentWall));
-    setHoveredWall((currentWall) => (currentWall && rejectedWallIds.has(String(currentWall.id)) ? null : currentWall));
-    setExtractionMeta((currentMeta) => ({ ...currentMeta, detectedWallCount: nextWalls.length, needsReview: true }));
-    setUploadStatus(`AI ?쒖쇅 ?꾨낫 ${walls.length - nextWalls.length}媛???젣`);
-  }
-
-  function normalizeWallLengths() {
-    if (walls.length < 2) {
-      setUploadStatus("湲몄씠瑜?留욎텧 踰쎌씠 遺議깊빀?덈떎");
-      return;
-    }
-
-    const points = walls.flatMap((wall) => [wall.start, wall.end]);
-    const bounds = {
-      maxX: Math.max(...points.map((point) => point.x)),
-      maxY: Math.max(...points.map((point) => point.y)),
-      minX: Math.min(...points.map((point) => point.x)),
-      minY: Math.min(...points.map((point) => point.y))
-    };
-    const nextWalls = walls.map((wall) => snapWallToLengthBounds(wall, bounds));
-    const changedCount = nextWalls.filter((wall, index) => {
-      const previous = walls[index];
-      return (
-        previous.start.x !== wall.start.x ||
-        previous.start.y !== wall.start.y ||
-        previous.end.x !== wall.end.x ||
-        previous.end.y !== wall.end.y
-      );
-    }).length;
-
-    setWalls(nextWalls);
-    setSelectedWall((currentWall) => (currentWall ? nextWalls.find((wall) => wall.id === currentWall.id) ?? null : null));
-    setScaleWall((currentWall) => (currentWall ? nextWalls.find((wall) => wall.id === currentWall.id) ?? null : null));
-    setHoveredWall((currentWall) => (currentWall ? nextWalls.find((wall) => wall.id === currentWall.id) ?? null : null));
-    setExtractionMeta((currentMeta) => ({ ...currentMeta, detectedWallCount: nextWalls.length, needsReview: true }));
-    setUploadStatus(changedCount ? `벽 길이 ${changedCount}개 보정` : "보정할 길이 차이가 없습니다");
   }
 
   function applyScale() {
@@ -2146,54 +1404,6 @@ export default function RoomlogFloorPlanEditor() {
     setIsScaleSet(true);
     setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
     setUploadStatus(`축척 확인 완료: 1px = ${pixelToMmRatio.toFixed(2)}mm`);
-  }
-
-  function applyAiDimensionToSelectedWall(dimension: AiDimensionDetection) {
-    if (!selectedWall) {
-      setTool("select");
-      setUploadStatus("치수를 적용할 벽을 먼저 선택하세요");
-      return;
-    }
-
-    const pixelDistance = Math.hypot(selectedWall.end.x - selectedWall.start.x, selectedWall.end.y - selectedWall.start.y);
-    if (!pixelDistance) {
-      setUploadStatus("선택한 벽 길이를 계산할 수 없습니다");
-      return;
-    }
-
-    const nextPixelToMmRatio = dimension.realLengthMm / pixelDistance;
-    setPixelToMmRatio(nextPixelToMmRatio);
-    setIsScaleSet(true);
-    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
-    setScaleWall(null);
-    setScaleRealLength("");
-    setTool("select");
-    setUploadStatus(`AI 치수 ${dimension.text} 적용됨: 1px = ${nextPixelToMmRatio.toFixed(2)}mm`);
-  }
-
-  function applyManualAiScaleToSelectedWall() {
-    if (!selectedWall) {
-      setTool("select");
-      setUploadStatus("축척을 적용할 벽을 먼저 선택하세요");
-      return;
-    }
-
-    const pixelDistance = Math.hypot(selectedWall.end.x - selectedWall.start.x, selectedWall.end.y - selectedWall.start.y);
-    const realLengthMm = Number(manualAiScaleRealLength);
-    if (!pixelDistance || !Number.isFinite(realLengthMm) || realLengthMm <= 0) {
-      setUploadStatus("선택 벽 실제 길이를 mm로 입력하세요");
-      return;
-    }
-
-    const nextPixelToMmRatio = realLengthMm / pixelDistance;
-    setPixelToMmRatio(nextPixelToMmRatio);
-    setIsScaleSet(true);
-    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
-    setScaleWall(null);
-    setScaleRealLength("");
-    setManualAiScaleRealLength("");
-    setTool("select");
-    setUploadStatus(`선택 벽 축척 적용됨: 1px = ${nextPixelToMmRatio.toFixed(2)}mm`);
   }
 
   function toggleCandidateStatus(layer: "opening" | "fixture", candidateId: string, status: CandidateStatus) {
@@ -2296,9 +1506,9 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   return (
-    <section className="floor-plan-editor wheretoput-floor-plan-editor" aria-label="Roomlog 3D 도면 편집기">
-      <aside className="floor-plan-toolbar wheretoput-floor-plan-toolbar" aria-label="도면 도구">
-        <div className="floor-plan-mode-switch" aria-label="사용 모드">
+    <section className="floor-plan-editor wheretoput-floor-plan-editor" aria-label="도면 캔버스">
+      <aside className="floor-plan-toolbar wheretoput-floor-plan-toolbar" aria-label="도면 캔버스">
+        <div className="floor-plan-mode-switch" aria-label="도면 캔버스">
           <button
             className={experienceMode === "landlord" ? "active" : ""}
             onClick={() => setExperienceMode("landlord")}
@@ -2366,35 +1576,8 @@ export default function RoomlogFloorPlanEditor() {
               <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
                 도면 등록
               </button>
-              <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
-                벽 자동 추출
-              </button>
               <button className="floor-plan-secondary" onClick={() => setTool("scale")} type="button">
                 축척
-              </button>
-              <select
-                aria-label="NVIDIA 도면 AI 모델"
-                className="floor-plan-ai-model-select"
-                disabled={isProcessing}
-                onChange={(event) => setSelectedAiModel(event.target.value as FloorPlanAiModelId)}
-                value={selectedAiModel}
-              >
-                {FLOOR_PLAN_AI_MODELS.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="floor-plan-secondary"
-                disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
-                onClick={runAiDimensionAnalysis}
-                type="button"
-              >
-                AI 정밀 수치 읽기
-              </button>
-              <button className="floor-plan-secondary" disabled={isProcessing || !uploadedImage || !walls.length} onClick={runAiCandidateReview} type="button">
-                AI 후보 검토
               </button>
               <button
                 className="floor-plan-secondary"
@@ -2419,7 +1602,7 @@ export default function RoomlogFloorPlanEditor() {
             </button>
           )}
           <span>{uploadStatus}</span>
-          {uploadedImage || lastAiAnalysis ? <span>{aiAnalysisStatus}</span> : null}
+          {uploadedImage ? <span>{aiAnalysisStatus}</span> : null}
         </div>
 
         {viewMode === "2d" ? (
@@ -2526,7 +1709,7 @@ export default function RoomlogFloorPlanEditor() {
         </div>
       </section>
 
-      <aside className="floor-plan-sidepanel" aria-label="도면 정보">
+      <aside className="floor-plan-sidepanel" aria-label="도면 캔버스">
         <div>
           <span>wheretoput simulator model</span>
           <strong>방배 루미에르 402호</strong>
@@ -2569,14 +1752,6 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "1px=10mm"}</dd>
           </div>
           <div>
-            <dt>OpenCV</dt>
-            <dd>{opencvReady ? "준비됨" : "추출 엔진 준비중"}</dd>
-          </div>
-          <div>
-            <dt>추출 시간</dt>
-            <dd>{lastExtractionMs ? `${lastExtractionMs}ms` : "대기"}</dd>
-          </div>
-          <div>
             <dt>저장 ID</dt>
             <dd>{floorPlanDraftId ?? "로컬 초안"}</dd>
           </div>
@@ -2612,8 +1787,7 @@ export default function RoomlogFloorPlanEditor() {
                 {scaleWall ? (
                   <>
                     <input
-                      aria-label="실제 길이 mm"
-                      onChange={(event) => setScaleRealLength(event.target.value)}
+                      aria-label="실제 길이" onChange={(event) => setScaleRealLength(event.target.value)}
                       placeholder="실제 길이 mm"
                       type="number"
                       value={scaleRealLength}
@@ -2625,91 +1799,6 @@ export default function RoomlogFloorPlanEditor() {
                 ) : (
                   <code>기준 벽을 그려주세요</code>
                 )}
-              </div>
-            ) : null}
-
-            {uploadedImage || lastAiAnalysis || aiTextDetections.length ? (
-              <div className="floor-plan-sim-preview">
-                <span>AI 분석 결과</span>
-                <code>
-                  {lastAiAnalysis
-                    ? lastAiAnalysis.summary
-                    : uploadedImage
-                      ? "OpenAI Vision 분석 대기"
-                      : "분석 결과 없음"}
-                </code>
-                <span>선택 벽 실제 길이</span>
-                <input
-                  onChange={(event) => setManualAiScaleRealLength(event.target.value)}
-                  placeholder="mm 입력"
-                  type="number"
-                  value={manualAiScaleRealLength}
-                />
-                <button
-                  className="floor-plan-primary"
-                  disabled={!manualAiScaleRealLength}
-                  onClick={applyManualAiScaleToSelectedWall}
-                  type="button"
-                >
-                  선택 벽 축척 적용
-                </button>
-                {visibleAiDimensionDetections.length ? (
-                  <>
-                    <span>최대 가로/세로 치수</span>
-                    <code>{selectedWall ? `선택 벽 ${selectedWall.id}에 적용` : "벽을 선택한 뒤 치수 적용"}</code>
-                    <div className="floor-plan-furniture-actions">
-                      {visibleAiDimensionDetections.map((dimension) => (
-                        <button
-                          className="floor-plan-secondary"
-                          key={`${dimension.text}-${dimension.realLengthMm}`}
-                          onClick={() => applyAiDimensionToSelectedWall(dimension)}
-                          type="button"
-                        >
-                          {dimension.text} 축척 적용
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <code>{aiTextDetections.length ? "m/cm/mm 단위 치수만 적용 가능" : "아직 읽은 치수가 없습니다"}</code>
-                )}
-                {lastAiAnalysis?.candidateReviews?.length ? (
-                  <>
-                    <span>AI 후보 검토</span>
-                    <code>
-                      유지 {aiCandidateReviewSummary.keep} / 제외 {aiCandidateReviewSummary.reject} / 검토 {aiCandidateReviewSummary.review}
-                    </code>
-                    <div className="floor-plan-furniture-actions">
-                      <button
-                        className="floor-plan-secondary"
-                        disabled={!aiCandidateReviewSummary.reject}
-                        onClick={removeRejectedAiWallCandidates}
-                        type="button"
-                      >
-                        AI 제외 후보 삭제
-                      </button>
-                      <button className="floor-plan-secondary" disabled={walls.length < 2} onClick={normalizeWallLengths} type="button">
-                        벽 길이 자동 보정
-                      </button>
-                      {lastAiAnalysis.candidateReviews.slice(0, 8).map((review) => (
-                        <code key={`${review.id}-${review.verdict}`}>
-                          {review.id} {review.verdict} {review.confidence ? `${Math.round(review.confidence * 100)}%` : ""} {review.reason ?? ""}
-                        </code>
-                      ))}
-                    </div>
-                    {lastAiAnalysis.missingWallHints?.length ? (
-                      <code>누락 후보: {lastAiAnalysis.missingWallHints.map((hint) => hint.description).join(" / ")}</code>
-                    ) : null}
-                  </>
-                ) : null}
-                {lastRoomStructureAnalysis?.analysisMode === "room-structure" ? (
-                  <>
-                    <span>AI 방 구조</span>
-                    <code>
-                      {lastRoomStructureAnalysis.planStyle ?? "style-unknown"} / rooms {lastRoomStructureAnalysis.rooms?.length ?? 0}
-                    </code>
-                  </>
-                ) : null}
               </div>
             ) : null}
 
@@ -2747,14 +1836,13 @@ export default function RoomlogFloorPlanEditor() {
               </code>
               <div className="floor-plan-furniture-search">
                 <input
-                  aria-label="가구 검색"
-                  onChange={(event) => setFurnitureSearchQuery(event.target.value)}
+                  aria-label="가구 검색" onChange={(event) => setFurnitureSearchQuery(event.target.value)}
                   placeholder="가구명, 브랜드, 카테고리 검색"
                   type="search"
                   value={furnitureSearchQuery}
                 />
               </div>
-              <div className="floor-plan-furniture-kind-tabs" role="tablist" aria-label="가구 카테고리">
+              <div className="floor-plan-furniture-kind-tabs" role="tablist" aria-label="도면 캔버스">
                 {FURNITURE_KIND_FILTERS.map((kind) => (
                   <button
                     aria-selected={furnitureKindFilter === kind}
