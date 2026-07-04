@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Message, Thread, ThreadContext } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
+import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
 import { addTenantThreadMessage, getThread } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { ApiError } from "@/lib/server-api";
@@ -71,6 +72,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   return (
     <>
+      <MessageAutoRefresh intervalMs={3000} />
       <header
         style={{
           flex: "none",

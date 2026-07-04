@@ -32,6 +32,10 @@ const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messagi
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
 const tenantMessagingApiSource = readFileSync(new URL("./src/lib/messaging-api.ts", import.meta.url), "utf8");
+const messageAutoRefreshPath = new URL("./src/app/_components/MessageAutoRefresh.tsx", import.meta.url);
+const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
+  ? readFileSync(messageAutoRefreshPath, "utf8")
+  : "";
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
@@ -178,6 +182,17 @@ test("redirects messaging detail auth failures instead of rendering a Next error
     assert.match(source, /error\.status === 401 \|\| error\.status === 403/);
     assert.match(source, new RegExp(`redirect\\("${loginPath}"\\)`));
   }
+});
+
+test("auto-refreshes open messaging thread details without infrastructure changes", () => {
+  assert.equal(existsSync(messageAutoRefreshPath), true);
+  assert.match(messageAutoRefreshSource, /"use client"/);
+  assert.match(messageAutoRefreshSource, /useRouter/);
+  assert.match(messageAutoRefreshSource, /router\.refresh\(\)/);
+  assert.match(messageAutoRefreshSource, /setInterval/);
+  assert.match(messageAutoRefreshSource, /document\.visibilityState/);
+  assert.match(tenantMessagingThreadSource, /<MessageAutoRefresh /);
+  assert.match(managerMessagingThreadSource, /<MessageAutoRefresh /);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {

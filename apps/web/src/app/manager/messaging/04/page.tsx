@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Message, Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
+import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
 import { addManagerThreadMessage, getManagerThread } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { ApiError } from "@/lib/server-api";
@@ -63,6 +64,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   return (
     <>
+      <MessageAutoRefresh intervalMs={3000} />
       <ScreenHeader
         eyebrow="M-MSG-04"
         title={`${thread.unitId}호 채팅 스레드`}
