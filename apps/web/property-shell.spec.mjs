@@ -143,6 +143,12 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
   assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
+  assert.match(tenantDisputeSource, /updateTenantMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{updateDisputeAction\}/);
+  assert.match(tenantDisputeSource, /escalateMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{escalateDisputeAction\}/);
+  assert.match(tenantDisputeSource, /name="targetItemId"/);
+  assert.match(tenantDisputeSource, /attachmentUrlsFrom/);
   assert.match(tenantChecklistSource, /updateMoveoutChecklist/);
   assert.match(tenantChecklistSource, /action=\{saveChecklistAction\}/);
   assert.match(managerReviewSource, /completeReview/);
@@ -152,6 +158,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
 
   assert.doesNotMatch(tenantSettlementSource, /disabled[\s\S]*관리자 문의/);
   assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
+  assert.doesNotMatch(tenantDisputeSource, /disabled=\{!dispute\.slaBreached\}/);
   assert.doesNotMatch(tenantChecklistSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*체크 저장/);
   assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
   assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);

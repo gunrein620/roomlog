@@ -37,6 +37,7 @@ import {
   CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
   DeletionState,
+  EscalateMoveoutDisputeInput,
   FinalizeIntakeInput,
   AskManagerReportChatInput,
   ManagerAssistantQueryInput,
@@ -46,6 +47,7 @@ import {
   MoveoutAdjustWearVerdictInput,
   MoveoutCompleteReviewInput,
   MoveoutRespondDisputeInput,
+  UpdateTenantMoveoutDisputeInput,
   UpdateMoveoutChecklistInput,
   ManagerTicketReplyInput,
   RealtimeClientSecretInput,
@@ -814,6 +816,28 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.createTenantMoveoutDispute(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/disputes/action")
+  updateTenantMoveoutDispute(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: UpdateTenantMoveoutDisputeInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.updateTenantMoveoutDispute(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/disputes/escalate")
+  escalateTenantMoveoutDispute(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: EscalateMoveoutDisputeInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.escalateTenantMoveoutDispute(user.id, moveoutId, body);
   }
 
   @Post("moveouts/:moveoutId/inquiries")

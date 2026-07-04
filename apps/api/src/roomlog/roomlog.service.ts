@@ -71,6 +71,7 @@ import {
   CreateManagerReportFollowUpInput,
   CreateManagerReportInput,
   DeletionState,
+  EscalateMoveoutDisputeInput,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
@@ -122,6 +123,7 @@ import {
   MoveoutRespondDisputeInput,
   MoveoutSettlementEstimate,
   MoveoutSummary,
+  UpdateTenantMoveoutDisputeInput,
   UpdateMoveoutChecklistInput,
   PhotoAnalysis,
   PhotoComparisonStatus,
@@ -3018,6 +3020,22 @@ export class RoomlogService {
     input: CreateMoveoutDisputeInput
   ) {
     return this.moveout.createTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  updateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateTenantMoveoutDisputeInput
+  ) {
+    return this.moveout.updateTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  escalateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: EscalateMoveoutDisputeInput
+  ) {
+    return this.moveout.escalateTenantMoveoutDispute(tenantId, moveoutId, input);
   }
 
   getManagerMoveoutDashboard(managerId: string) {

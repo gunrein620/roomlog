@@ -22,6 +22,8 @@ describe("moveout api path contracts", () => {
     assert.equal(tenantMoveoutPaths.updateChecklist("mo 1"), "/moveouts/mo%201/checklist");
     assert.equal(tenantMoveoutPaths.settlement("mo 1"), "/moveouts/mo%201/settlement");
     assert.equal(tenantMoveoutPaths.disputes("mo 1"), "/moveouts/mo%201/disputes");
+    assert.equal(tenantMoveoutPaths.disputeAction("mo 1"), "/moveouts/mo%201/disputes/action");
+    assert.equal(tenantMoveoutPaths.disputeEscalation("mo 1"), "/moveouts/mo%201/disputes/escalate");
     assert.equal(tenantMoveoutPaths.inquiries("mo 1"), "/moveouts/mo%201/inquiries");
   });
 

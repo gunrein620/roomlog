@@ -1,12 +1,14 @@
 import type {
   CreateMoveoutDisputeDto,
   CreateMoveoutInquiryDto,
+  EscalateMoveoutDisputeDto,
   MoveoutChecklistItem,
   Dispute,
   MoveoutRecordItem,
   MoveoutSummary,
   SettlementEstimate,
   Thread,
+  UpdateTenantMoveoutDisputeDto,
   UpdateMoveoutChecklistDto,
 } from "@roomlog/types";
 import {
@@ -29,6 +31,8 @@ export const tenantMoveoutPaths = {
   updateChecklist: (id: string) => `/moveouts/${encodeURIComponent(id)}/checklist`,
   settlement: (id: string) => `/moveouts/${encodeURIComponent(id)}/settlement`,
   disputes: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes`,
+  disputeAction: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes/action`,
+  disputeEscalation: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes/escalate`,
   inquiries: (id: string) => `/moveouts/${encodeURIComponent(id)}/inquiries`,
 };
 
@@ -82,6 +86,26 @@ export function getDisputes(id: string): Promise<Dispute[]> {
 
 export function createMoveoutDispute(id: string, input: CreateMoveoutDisputeDto): Promise<Dispute> {
   return serverFetch<Dispute>(tenantMoveoutPaths.disputes(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateTenantMoveoutDispute(
+  id: string,
+  input: UpdateTenantMoveoutDisputeDto,
+): Promise<Dispute> {
+  return serverFetch<Dispute>(tenantMoveoutPaths.disputeAction(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function escalateMoveoutDispute(
+  id: string,
+  input: EscalateMoveoutDisputeDto,
+): Promise<Dispute> {
+  return serverFetch<Dispute>(tenantMoveoutPaths.disputeEscalation(id), {
     method: "POST",
     body: JSON.stringify(input),
   });

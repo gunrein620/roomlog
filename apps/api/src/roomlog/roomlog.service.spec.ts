@@ -4330,6 +4330,62 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("stores tenant moveout dispute evidence and sends it to the manager thread", () => {
+    const service = createMoveoutTestService() as any;
+
+    const dispute = service.createTenantMoveoutDispute("tenant-a", "mo-a", {
+      targetItemId: "de-a",
+      targetLabel: "욕실 수리비 후보",
+      reason: "입주 전 사진과 같은 흔적입니다.",
+      attachmentUrls: ["/api/files/bath-before.jpg", "/api/files/bath-before.jpg", ""]
+    });
+    const managerThreads = service.listManagerMessagingThreads("manager-a", "moveout");
+    const threadSummary = managerThreads.find((candidate: any) => candidate.id === dispute.messagingThreadId);
+    const thread = service.getManagerMessagingThread("manager-a", threadSummary.id);
+
+    assert.deepEqual(dispute.attachmentUrls, ["/api/files/bath-before.jpg"]);
+    assert.equal(thread.messages.at(-1).attachmentUrls.includes("/api/files/bath-before.jpg"), true);
+  });
+
+  it("lets a tenant confirm, re-dispute, resolve, and escalate moveout disputes", () => {
+    const service = createMoveoutTestService() as any;
+
+    const answered = service.respondManagerMoveoutDispute("manager-a", "mo-a", {
+      disputeId: "dp-sla",
+      kind: "explain",
+      message: "입주 전 사진과 수리 이력을 다시 확인했습니다.",
+      reflect: "none"
+    });
+    const confirmed = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "confirm"
+    });
+    const redisputed = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "re_dispute",
+      reason: "사진의 위치가 다릅니다.",
+      attachmentUrls: ["/api/files/tenant-redispute.jpg"]
+    });
+    const escalated = service.escalateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      reason: "응답 후에도 기한이 경과했습니다."
+    });
+    const resolved = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "resolve"
+    });
+
+    assert.equal(confirmed.status, "confirmed");
+    assert.equal(redisputed.status, "re_disputed");
+    assert.deepEqual(redisputed.attachmentUrls, ["/api/files/tenant-redispute.jpg"]);
+    assert.equal(escalated.status, "reviewing");
+    assert.equal(resolved.status, "resolved");
+    assert.equal(
+      resolved.history.some((event: any) => event.note?.includes("에스컬레이션")),
+      true
+    );
+  });
+
   it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
     const service = new RoomlogService({ seedDemoData: true } as any) as any;
 

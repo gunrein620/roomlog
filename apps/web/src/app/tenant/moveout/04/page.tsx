@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { DisputeStatus } from "@roomlog/types";
+import type { DisputeStatus, TenantMoveoutDisputeAction } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
 import {
   DEMO_MOVEOUT_ID,
   createMoveoutDispute,
+  escalateMoveoutDispute,
   getDisputes,
   getRecords,
   getSettlement,
+  updateTenantMoveoutDispute,
 } from "@/lib/moveout-api";
 import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
 
@@ -39,36 +41,117 @@ const STATUS_FLOW: DisputeStatus[] = [
   "resolved",
 ];
 
+const inputStyle = {
+  height: "var(--touch-target)",
+  border: "1px solid var(--input-border)",
+  borderRadius: "var(--radius-md)",
+  padding: "0 12px",
+  fontFamily: "var(--font-sans)",
+  fontSize: "var(--fs-body)",
+  color: "var(--input-text)",
+  background: "var(--surface-container-lowest)",
+  width: "100%",
+  boxSizing: "border-box",
+} as const;
+
+type SearchParams = Promise<{
+  targetItemId?: string;
+  submitted?: string;
+  updated?: string;
+  escalated?: string;
+  error?: string;
+}>;
+
+function attachmentUrlsFrom(value: FormDataEntryValue | null) {
+  return String(value ?? "")
+    .split(/[\n,]/)
+    .map((url) => url.trim())
+    .filter(Boolean);
+}
+
 async function createDisputeAction(formData: FormData) {
   "use server";
 
   const targetItemId = String(formData.get("targetItemId") ?? "").trim();
-  const targetLabel = String(formData.get("targetLabel") ?? "").trim();
+  const targetLabel = String(formData.get(`targetLabel-${targetItemId}`) ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
+  const attachmentUrls = attachmentUrlsFrom(formData.get("attachmentUrls"));
 
   if (!targetLabel || !reason) {
-    redirect(MOVEOUT_ROUTES["T-OUT-04"]);
+    redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?error=missing`);
   }
 
   await createMoveoutDispute(DEMO_MOVEOUT_ID, {
     targetItemId: targetItemId || undefined,
     targetLabel,
     reason,
+    attachmentUrls,
   });
-  redirect(MOVEOUT_ROUTES["T-OUT-04"]);
+  redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?submitted=1`);
 }
 
-export default async function Page() {
+async function updateDisputeAction(formData: FormData) {
+  "use server";
+
+  const disputeId = String(formData.get("disputeId") ?? "").trim();
+  const action = String(formData.get("action") ?? "").trim() as TenantMoveoutDisputeAction;
+  const reason = String(formData.get("reason") ?? "").trim();
+  const attachmentUrls = attachmentUrlsFrom(formData.get("attachmentUrls"));
+
+  if (!disputeId || !action) {
+    redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?error=missing`);
+  }
+
+  await updateTenantMoveoutDispute(DEMO_MOVEOUT_ID, {
+    disputeId,
+    action,
+    reason: reason || undefined,
+    attachmentUrls,
+  });
+  redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?updated=1`);
+}
+
+async function escalateDisputeAction(formData: FormData) {
+  "use server";
+
+  const disputeId = String(formData.get("disputeId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!disputeId) {
+    redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?error=missing`);
+  }
+
+  await escalateMoveoutDispute(DEMO_MOVEOUT_ID, {
+    disputeId,
+    reason: reason || undefined,
+  });
+  redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?escalated=1`);
+}
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
   const [records, settlement, disputes] = await Promise.all([
     getRecords(DEMO_MOVEOUT_ID),
     getSettlement(DEMO_MOVEOUT_ID),
     getDisputes(DEMO_MOVEOUT_ID),
   ]);
+  const targetOptions = [
+    ...settlement.deductions.map((deduction) => ({
+      id: deduction.id,
+      label: deduction.label,
+      meta: "예상 정산",
+    })),
+    ...records
+      .filter((record) => record.wearVerdict)
+      .map((record) => ({
+        id: record.id,
+        label: record.title,
+        meta: "퇴실 기록",
+      })),
+  ];
   const selectedTarget =
-    disputes[0]?.targetLabel ??
-    settlement.deductions.find((deduction) => deduction.needsConfirmation)?.label ??
-    records.find((record) => record.wearVerdict)?.title ??
-    "확인이 필요한 항목";
+    targetOptions.find((option) => option.id === params.targetItemId) ??
+    targetOptions[0] ?? { id: "", label: "확인이 필요한 항목", meta: "직접 입력" };
 
   return (
     <>
@@ -102,12 +185,33 @@ export default async function Page() {
           gap: 14,
         }}
       >
+        {(params.submitted || params.updated || params.escalated || params.error) && (
+          <Card
+            style={{
+              border: "1.5px solid var(--primary)",
+              background: "var(--surface-container-high)",
+              fontSize: 12,
+              fontWeight: 700,
+              lineHeight: 1.5,
+            }}
+          >
+            {params.error
+              ? "필수 항목을 입력해주세요."
+              : params.escalated
+                ? "에스컬레이션 요청을 보냈습니다."
+                : params.updated
+                  ? "이의 상태를 갱신했습니다."
+                  : "이의·정정 요청을 제출했습니다."}
+          </Card>
+        )}
+
         <section>
           <div style={labelStyle}>대상 항목</div>
           <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 14, fontWeight: 800 }}>{selectedTarget}</div>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{selectedTarget.label}</div>
             <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-              리포트나 예상 정산에서 확인이 필요한 항목을 선택해 정정 요청할 수 있어요.
+              리포트나 예상 정산에서 확인이 필요한 항목을 선택해 정정 요청할 수 있어요. 현재 선택은
+              {` ${selectedTarget.meta}`} 항목입니다.
             </div>
           </Card>
         </section>
@@ -166,6 +270,18 @@ export default async function Page() {
                     <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
                       {dispute.reason}
                     </div>
+                    {dispute.managerResponse && (
+                      <div style={{ fontSize: 12, color: "var(--on-surface)", lineHeight: 1.5 }}>
+                        관리자 응답 · {dispute.managerResponse}
+                      </div>
+                    )}
+                    {(dispute.attachmentUrls ?? []).length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {dispute.attachmentUrls?.map((url) => (
+                          <Badge key={`${dispute.id}-${url}`}>증빙 {url.split("/").at(-1)}</Badge>
+                        ))}
+                      </div>
+                    )}
                     {dispute.history.map((event) => (
                       <div
                         key={`${dispute.id}-${event.status}-${event.at}`}
@@ -175,6 +291,39 @@ export default async function Page() {
                         {event.note ? ` · ${event.note}` : ""}
                       </div>
                     ))}
+                    {dispute.status === "answered" && (
+                      <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                        <input type="hidden" name="disputeId" value={dispute.id} />
+                        <input type="hidden" name="action" value="confirm" />
+                        <Button type="submit" fullWidth variant="secondary">
+                          관리자 응답 확인
+                        </Button>
+                      </form>
+                    )}
+                    {["answered", "confirmed", "reviewing"].includes(dispute.status) && (
+                      <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                        <input type="hidden" name="disputeId" value={dispute.id} />
+                        <input type="hidden" name="action" value="re_dispute" />
+                        <Input name="reason" aria-label="재이의 사유" placeholder="재이의 사유" />
+                        <Input
+                          name="attachmentUrls"
+                          aria-label="재이의 증빙 URL"
+                          placeholder="증빙 URL(선택, 쉼표로 구분)"
+                        />
+                        <Button type="submit" fullWidth variant="ghost">
+                          재이의 제출
+                        </Button>
+                      </form>
+                    )}
+                    {["answered", "confirmed", "re_disputed", "reviewing"].includes(dispute.status) && (
+                      <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                        <input type="hidden" name="disputeId" value={dispute.id} />
+                        <input type="hidden" name="action" value="resolve" />
+                        <Button type="submit" fullWidth variant="secondary">
+                          해소 처리
+                        </Button>
+                      </form>
+                    )}
                   </div>
                 ))}
               </div>
@@ -212,23 +361,17 @@ export default async function Page() {
                 관리자 응답 기한 {dispute.slaDeadline.slice(0, 16).replace("T", " ")}. 무응답이면 상위
                 알림·채팅으로 에스컬레이션할 수 있어요.
               </div>
-              <Button
-                fullWidth
-                variant="secondary"
-                disabled={!dispute.slaBreached}
-                style={
-                  dispute.slaBreached
-                    ? undefined
-                    : {
-                        background: "var(--surface-container-high)",
-                        color: "var(--on-surface-variant)",
-                        border: "1px solid var(--outline-variant)",
-                        cursor: "not-allowed",
-                      }
-                }
-              >
-                에스컬레이션 요청
-              </Button>
+              {dispute.slaBreached ? (
+                <form action={escalateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                  <input type="hidden" name="disputeId" value={dispute.id} />
+                  <Input name="reason" aria-label="에스컬레이션 사유" placeholder="에스컬레이션 사유(선택)" />
+                  <Button type="submit" fullWidth variant="secondary">
+                    에스컬레이션 요청
+                  </Button>
+                </form>
+              ) : (
+                <Badge>기한 전</Badge>
+              )}
             </Card>
           ))}
         </section>
@@ -244,13 +387,18 @@ export default async function Page() {
           gap: 8,
         }}
       >
-        <input
-          type="hidden"
-          name="targetItemId"
-          value={settlement.deductions.find((deduction) => deduction.label === selectedTarget)?.id ?? ""}
-        />
-        <input type="hidden" name="targetLabel" value={selectedTarget} />
+        <select name="targetItemId" aria-label="이의 대상 항목" defaultValue={selectedTarget.id} style={inputStyle}>
+          {targetOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label} · {option.meta}
+            </option>
+          ))}
+        </select>
+        {targetOptions.map((option) => (
+          <input key={option.id} type="hidden" name={`targetLabel-${option.id}`} value={option.label} />
+        ))}
         <Input name="reason" aria-label="이의 사유" placeholder="정정이 필요한 근거를 입력하세요" />
+        <Input name="attachmentUrls" aria-label="증빙 URL" placeholder="증빙 URL(선택, 쉼표로 구분)" />
         <Button type="submit" fullWidth>
           이의 제출
         </Button>

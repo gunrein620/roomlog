@@ -574,6 +574,7 @@ export type MoveoutDispute = {
   targetItemId?: string;
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
   status: MoveoutDisputeStatus;
   slaDeadline: string;
   slaBreached: boolean;
@@ -666,6 +667,7 @@ export type CreateMoveoutDisputeInput = {
   targetItemId?: string;
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
 };
 
 export type CreateTenantMoveoutInquiryInput = {
@@ -684,6 +686,20 @@ export type UpdateMoveoutChecklistItemInput = {
 
 export type UpdateMoveoutChecklistInput = {
   items: UpdateMoveoutChecklistItemInput[];
+};
+
+export type TenantMoveoutDisputeAction = "confirm" | "re_dispute" | "resolve";
+
+export type UpdateTenantMoveoutDisputeInput = {
+  disputeId: string;
+  action: TenantMoveoutDisputeAction;
+  reason?: string;
+  attachmentUrls?: string[];
+};
+
+export type EscalateMoveoutDisputeInput = {
+  disputeId: string;
+  reason?: string;
 };
 
 export type ContractLifecycle =

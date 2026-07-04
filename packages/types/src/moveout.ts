@@ -131,6 +131,7 @@ export interface Dispute {
   targetItemId?: string; // 대상 항목(리포트/정산에서 선택 진입)
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
   status: DisputeStatus;
   slaDeadline: string; // 무응답 SLA 기준 ISO
   slaBreached: boolean; // SLA 초과 → 에스컬레이션 출구 노출
@@ -261,6 +262,7 @@ export interface CreateMoveoutDisputeDto {
   targetItemId?: string;
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
 }
 
 /** 임차인 퇴실 문의 DTO(T-OUT-03 → M-MSG thread). */
@@ -281,4 +283,18 @@ export interface UpdateMoveoutChecklistItemDto {
 
 export interface UpdateMoveoutChecklistDto {
   items: UpdateMoveoutChecklistItemDto[];
+}
+
+export type TenantMoveoutDisputeAction = "confirm" | "re_dispute" | "resolve";
+
+export interface UpdateTenantMoveoutDisputeDto {
+  disputeId: string;
+  action: TenantMoveoutDisputeAction;
+  reason?: string;
+  attachmentUrls?: string[];
+}
+
+export interface EscalateMoveoutDisputeDto {
+  disputeId: string;
+  reason?: string;
 }
