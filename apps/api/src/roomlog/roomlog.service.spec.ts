@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
@@ -849,13 +849,15 @@ describe("RoomlogService", () => {
 
     assert.equal(hydratedAuth.userId, auth.userId);
     assert.equal(hydratedService.getMe(`Bearer ${hydratedAuth.accessToken}`).room?.roomNo, "801호");
-    assert.throws(
-      () =>
-        hydratedService.login({
-          email: "tenant@roomlog.test",
-          password: "password123!"
-        }),
-      /올바르지/
+    const demoAuth = hydratedService.login({
+      email: "tenant@roomlog.test",
+      password: "password123!"
+    });
+
+    assert.equal(demoAuth.userId, "tenant-demo");
+    assert.equal(
+      hydratedService.listTenantMoveouts("tenant-demo").some((moveout: any) => moveout.id === "mo_0001"),
+      true
     );
   });
 
@@ -2826,6 +2828,80 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("lets a real linked tenant start a messaging thread that the linked manager can reply to", () => {
+    const service = new RoomlogService();
+
+    const manager = service.signup({
+      email: "linked-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "연결 관리자",
+      phone: "010-7000-1001",
+      role: "LANDLORD",
+      buildingName: "연결 빌라",
+      roomNo: "910호",
+      address: "서울시 성동구 연결로 10"
+    } as any);
+
+    const tenant = service.signup({
+      email: "linked-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "연결 세입자",
+      phone: "010-7000-3001",
+      role: "TENANT",
+      buildingName: "연결 빌라",
+      roomNo: "910호",
+      address: "서울시 성동구 연결로 10"
+    } as any);
+
+    const tenantRoom = service.getTenantRoom(tenant.userId);
+    assert.equal(tenantRoom.landlordId, manager.userId);
+
+    const started = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      contextLabel: "일반 문의",
+      body: "공용 현관등이 깜빡입니다."
+    });
+
+    assert.equal(started.tenantId, tenant.userId);
+    assert.equal(started.unitId, "910");
+    assert.equal(started.messages?.length, 1);
+    assert.equal(started.messages?.[0]?.sender, "tenant");
+    assert.equal(started.messages?.[0]?.body, "공용 현관등이 깜빡입니다.");
+
+    const managerThreads = service.listManagerMessagingThreads(manager.userId);
+    assert.equal(managerThreads.some((thread) => thread.id === started.id), true);
+
+    const managerReply = service.addManagerMessagingThreadMessage(manager.userId, started.id, {
+      body: "오늘 점검하겠습니다."
+    });
+    const replyMessages = managerReply.messages ?? [];
+    assert.equal(replyMessages[replyMessages.length - 1]?.sender, "manager");
+    assert.equal(replyMessages[replyMessages.length - 1]?.body, "오늘 점검하겠습니다.");
+
+    const tenantView = service.getTenantMessagingThread(tenant.userId, started.id);
+    const tenantMessages = tenantView.messages ?? [];
+    assert.equal(tenantMessages[tenantMessages.length - 1]?.body, "오늘 점검하겠습니다.");
+
+    const otherManager = service.signup({
+      email: "unlinked-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "외부 관리자",
+      phone: "010-7000-1002",
+      role: "LANDLORD",
+      buildingName: "외부 빌라",
+      roomNo: "1호",
+      address: "서울시 성동구 외부로 1"
+    } as any);
+
+    assert.throws(
+      () => service.getManagerMessagingThread(otherManager.userId, started.id),
+      /메시지 스레드/
+    );
+  });
+
   it("scopes messaging threads and enforces server-side messaging gates", () => {
     const service = new RoomlogService();
     const otherManager = service.signup({
@@ -4000,8 +4076,8 @@ describe("RoomlogService", () => {
     const service = new RoomlogService();
 
     const contracts = service.listTenantContracts("tenant-demo");
-    assert.equal(contracts.length, 1);
-    assert.equal(contracts[0].id, "ct_0001");
+    assert.equal(contracts.some((contract) => contract.id === "ct_0001"), true);
+    assert.equal(contracts.some((contract) => contract.id === "ct_moveout_0001"), true);
 
     const tenantContract = service.getTenantContract("tenant-demo", "ct_0001");
     const tenantExtraction = service.getTenantContractExtraction("tenant-demo", tenantContract.id);
@@ -4122,6 +4198,73 @@ describe("RoomlogService", () => {
     assert.equal(result.thread.contextRef, "mo-a");
     assert.equal(managerThreads.some((thread: any) => thread.id === result.thread.id), true);
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
+  });
+
+  it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
+    const service = new RoomlogService({ seedDemoData: true } as any) as any;
+
+    const tenantMoveouts = service.listTenantMoveouts("tenant-demo");
+    const managerRows = service.listManagerMoveoutRows("landlord-demo");
+    const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+    assert.equal(tenantMoveouts.some((moveout: any) => moveout.id === "mo_0001"), true);
+    assert.equal(managerRows.some((row: any) => row.summaryId === "mo_0001"), true);
+    assert.equal(settlement.settlement.deductions.length, 4);
+    assert.equal(settlement.disputes.length, 1);
+  });
+
+  it("backfills the KAN-134 moveout demo flow when a local demo snapshot already exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-moveout-seed-"));
+    const storeFilePath = join(dir, "roomlog-store.json");
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveouts = [];
+    legacyDemoSnapshot.moveoutRecords = [];
+    legacyDemoSnapshot.moveoutChecklist = [];
+    legacyDemoSnapshot.moveoutSettlements = [];
+    legacyDemoSnapshot.moveoutDeductions = [];
+    legacyDemoSnapshot.moveoutDisputes = [];
+    legacyDemoSnapshot.moveoutReportAudits = [];
+
+    try {
+      writeFileSync(storeFilePath, JSON.stringify(legacyDemoSnapshot));
+
+      const service = new RoomlogService({ seedDemoData: true, storeFilePath } as any) as any;
+      const tenantMoveouts = service.listTenantMoveouts("tenant-demo");
+      const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+      assert.equal(tenantMoveouts.some((moveout: any) => moveout.id === "mo_0001"), true);
+      assert.deepEqual(settlement.gate.blockingReasons, ["unresolved_dispute"]);
+      assert.equal(settlement.gate.overrideAvailable, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("backfills the KAN-134 moveout demo flow when a persisted database snapshot is loaded", () => {
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveouts = [];
+    legacyDemoSnapshot.moveoutRecords = [];
+    legacyDemoSnapshot.moveoutChecklist = [];
+    legacyDemoSnapshot.moveoutSettlements = [];
+    legacyDemoSnapshot.moveoutDeductions = [];
+    legacyDemoSnapshot.moveoutDisputes = [];
+    legacyDemoSnapshot.moveoutReportAudits = [];
+
+    const service = new RoomlogService({
+      seedDemoData: true,
+      initialStore: legacyDemoSnapshot
+    } as any) as any;
+    const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+    assert.equal(service.listTenantMoveouts("tenant-demo").some((moveout: any) => moveout.id === "mo_0001"), true);
+    assert.deepEqual(settlement.gate.blockingReasons, ["unresolved_dispute"]);
+    assert.equal(settlement.gate.overrideAvailable, true);
   });
 
   it("lets a manager read only reports for rooms they manage", () => {

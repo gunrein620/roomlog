@@ -166,6 +166,15 @@ export type CreateMessagingThreadInput = {
   };
 };
 
+export type CreateTenantMessagingThreadInput = {
+  context?: MessagingThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  body: string;
+  kind?: MessagingMessageKind;
+  attachmentUrls?: string[];
+};
+
 export type AddMessagingThreadMessageInput = {
   body?: string;
   kind?: MessagingMessageKind;
