@@ -849,13 +849,15 @@ describe("RoomlogService", () => {
 
     assert.equal(hydratedAuth.userId, auth.userId);
     assert.equal(hydratedService.getMe(`Bearer ${hydratedAuth.accessToken}`).room?.roomNo, "801호");
-    assert.throws(
-      () =>
-        hydratedService.login({
-          email: "tenant@roomlog.test",
-          password: "password123!"
-        }),
-      /올바르지/
+    const demoAuth = hydratedService.login({
+      email: "tenant@roomlog.test",
+      password: "password123!"
+    });
+
+    assert.equal(demoAuth.userId, "tenant-demo");
+    assert.equal(
+      hydratedService.listTenantMoveouts("tenant-demo").some((moveout: any) => moveout.id === "mo_0001"),
+      true
     );
   });
 
@@ -3960,8 +3962,8 @@ describe("RoomlogService", () => {
     const service = new RoomlogService();
 
     const contracts = service.listTenantContracts("tenant-demo");
-    assert.equal(contracts.length, 1);
-    assert.equal(contracts[0].id, "ct_0001");
+    assert.equal(contracts.some((contract) => contract.id === "ct_0001"), true);
+    assert.equal(contracts.some((contract) => contract.id === "ct_moveout_0001"), true);
 
     const tenantContract = service.getTenantContract("tenant-demo", "ct_0001");
     const tenantExtraction = service.getTenantContractExtraction("tenant-demo", tenantContract.id);
