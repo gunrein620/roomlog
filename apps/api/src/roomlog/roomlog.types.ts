@@ -524,6 +524,7 @@ export type MoveoutRecordItem = {
   wearNote?: string;
   evidenceUrls?: string[];
   detailSections?: MoveoutRecordDetailSection[];
+  detail?: MoveoutRecordSourceDetail;
   moveinComparisonAvailable: boolean;
 };
 
@@ -535,6 +536,54 @@ export type MoveoutRecordDetailItem = {
 export type MoveoutRecordDetailSection = {
   label: string;
   items: MoveoutRecordDetailItem[];
+};
+
+export type MoveoutRecordDetailMedia = {
+  kind: "photo" | "document";
+  label: string;
+  url: string;
+  caption?: string;
+  capturedAt?: string;
+};
+
+export type MoveoutRecordDetailChatMessage = {
+  sender: "tenant" | "manager" | "system";
+  senderLabel: string;
+  body: string;
+  at: string;
+  attachmentUrls?: string[];
+};
+
+export type MoveoutRecordDetailEvent = {
+  label: string;
+  at: string;
+  status?: string;
+  note?: string;
+  evidenceUrls?: string[];
+};
+
+export type MoveoutRecordDetailAmount = {
+  label: string;
+  amount?: number;
+  min?: number;
+  max?: number;
+  status?: string;
+  note?: string;
+};
+
+export type MoveoutRecordDetailClause = {
+  title: string;
+  body: string;
+  note?: string;
+};
+
+export type MoveoutRecordSourceDetail = {
+  summary?: string;
+  media?: MoveoutRecordDetailMedia[];
+  chatMessages?: MoveoutRecordDetailChatMessage[];
+  events?: MoveoutRecordDetailEvent[];
+  amounts?: MoveoutRecordDetailAmount[];
+  clauses?: MoveoutRecordDetailClause[];
 };
 
 export type MoveoutChecklistItem = {

@@ -11,3 +11,13 @@ test("manager moveout record rows expose detail sections behind a button", () =>
   assert.match(componentsSource, /record\.detailSections/);
   assert.match(componentsSource, /section\.items\.map/);
 });
+
+test("manager moveout record detail expansion renders source-specific evidence", () => {
+  assert.match(componentsSource, /function RecordSourceDetail/);
+  assert.match(componentsSource, /record\.detail/);
+  assert.match(componentsSource, /record\.detail\?\.chatMessages/);
+  assert.match(componentsSource, /record\.detail\?\.media/);
+  assert.match(componentsSource, /record\.detail\?\.events/);
+  assert.match(componentsSource, /record\.detail\?\.amounts/);
+  assert.match(componentsSource, /record\.detail\?\.clauses/);
+});

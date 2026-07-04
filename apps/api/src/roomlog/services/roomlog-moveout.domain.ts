@@ -657,7 +657,21 @@ export class RoomlogMoveoutDomain {
         detailSections: record.detailSections?.map((section) => ({
           ...section,
           items: section.items.map((item) => ({ ...item }))
-        }))
+        })),
+        detail: record.detail ? {
+          ...record.detail,
+          media: record.detail.media?.map((item) => ({ ...item })),
+          chatMessages: record.detail.chatMessages?.map((item) => ({
+            ...item,
+            attachmentUrls: item.attachmentUrls ? this.nonEmptyStrings(item.attachmentUrls) : undefined
+          })),
+          events: record.detail.events?.map((item) => ({
+            ...item,
+            evidenceUrls: item.evidenceUrls ? this.nonEmptyStrings(item.evidenceUrls) : undefined
+          })),
+          amounts: record.detail.amounts?.map((item) => ({ ...item })),
+          clauses: record.detail.clauses?.map((item) => ({ ...item }))
+        } : undefined
       }));
   }
 

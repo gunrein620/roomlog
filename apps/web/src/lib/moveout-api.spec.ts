@@ -103,6 +103,22 @@ describe("moveout api path contracts", () => {
     );
   });
 
+  it("provides source-specific expandable detail payloads for every moveout record", () => {
+    const recordsWithSourceDetails = DEMO_MOVEOUT_RECORDS.filter((record) => Boolean((record as any).detail));
+    const moveinPhoto = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "movein_photo") as any;
+    const chat = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "chat") as any;
+    const repair = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "repair") as any;
+    const payment = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "payment") as any;
+    const contract = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "contract") as any;
+
+    assert.equal(recordsWithSourceDetails.length, DEMO_MOVEOUT_RECORDS.length);
+    assert.ok(moveinPhoto.detail.media.some((item: any) => item.kind === "photo" && item.url.includes("bathroom-before")));
+    assert.ok(chat.detail.chatMessages.length >= 2);
+    assert.ok(repair.detail.events.length >= 2);
+    assert.ok(payment.detail.amounts.some((item: any) => item.label.includes("미납")));
+    assert.ok(contract.detail.clauses.some((item: any) => item.title.includes("원상복구")));
+  });
+
   it("uses public demo files for moveout evidence links", () => {
     const evidenceUrls = DEMO_MOVEOUT_RECORDS.flatMap((record) => record.evidenceUrls ?? []);
 
