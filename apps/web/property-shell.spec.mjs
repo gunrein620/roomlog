@@ -145,6 +145,10 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
     "utf8",
   );
+  const managerReportSource = readFileSync(
+    new URL("./src/app/manager/moveout/01/page.tsx", import.meta.url),
+    "utf8",
+  );
   const managerDisputeSource = readFileSync(
     new URL("./src/app/manager/moveout/03/page.tsx", import.meta.url),
     "utf8",
@@ -199,6 +203,11 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(managerReviewSource, /name=\{`estimatedMin-\$\{deduction\.id\}`\}/);
   assert.match(managerReviewSource, /name=\{`estimatedMax-\$\{deduction\.id\}`\}/);
   assert.match(managerReviewSource, /name=\{`resolveConfirmation-\$\{deduction\.id\}`\}/);
+  assert.match(managerReportSource, /adjustWearVerdict/);
+  assert.match(managerReportSource, /action=\{adjustWearVerdictAction\}/);
+  assert.match(managerReportSource, /name="recordItemId"/);
+  assert.match(managerReportSource, /name=\{`evidenceNote-\$\{record\.id\}`\}/);
+  assert.match(managerReportSource, /name=\{`notifyTenant-\$\{record\.id\}`\}/);
   assert.match(managerDisputeSource, /respondDispute/);
   assert.match(managerDisputeSource, /action=\{respondDisputeAction\}/);
 
