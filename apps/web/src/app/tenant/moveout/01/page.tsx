@@ -229,7 +229,7 @@ function RecordCard({ record, moveoutId }: { record: MoveoutRecordItem; moveoutI
 }
 
 function RecordDetailSections({ record }: { record: MoveoutRecordItem }) {
-  if (!record.detailSections?.length && !(record.evidenceUrls ?? []).length) {
+  if (!record.detailSections?.length && !record.detail && !(record.evidenceUrls ?? []).length) {
     return null;
   }
 
@@ -237,6 +237,7 @@ function RecordDetailSections({ record }: { record: MoveoutRecordItem }) {
     <details>
       <summary style={detailSummaryStyle}>상세정보 보기</summary>
       <div style={detailPanelStyle}>
+        <RecordSourceDetail record={record} />
         {record.detailSections?.map((section) => (
           <div key={section.label} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <div style={detailSectionLabelStyle}>{section.label}</div>
@@ -263,6 +264,131 @@ function RecordDetailSections({ record }: { record: MoveoutRecordItem }) {
       </div>
     </details>
   );
+}
+
+function RecordSourceDetail({ record }: { record: MoveoutRecordItem }) {
+  if (!record.detail) {
+    return null;
+  }
+
+  return (
+    <div style={sourceDetailStyle}>
+      {record.detail.summary ? <div>{record.detail.summary}</div> : null}
+
+      {record.detail?.media?.length ? (
+        <div style={detailSubsectionStyle}>
+          <div style={detailSectionLabelStyle}>사진·문서</div>
+          <div style={mediaGridStyle}>
+            {record.detail.media.map((item) => (
+              <a key={`${item.label}-${item.url}`} href={item.url} style={mediaCardStyle}>
+                <img src={item.url} alt={item.label} style={mediaImageStyle} />
+                <span style={{ fontWeight: 800, color: "var(--on-surface)" }}>{item.label}</span>
+                {item.caption ? <span>{item.caption}</span> : null}
+                {item.capturedAt ? <span>{formatDate(item.capturedAt)}</span> : null}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {record.detail?.chatMessages?.length ? (
+        <div style={detailSubsectionStyle}>
+          <div style={detailSectionLabelStyle}>채팅 내역</div>
+          {record.detail.chatMessages.map((message) => (
+            <div key={`${message.at}-${message.senderLabel}`} style={chatMessageStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 800, color: "var(--on-surface)" }}>{message.senderLabel}</span>
+                <span>{formatDate(message.at)}</span>
+              </div>
+              <div>{message.body}</div>
+              {message.attachmentUrls?.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {message.attachmentUrls.map((url, index) => (
+                    <Link key={`${message.at}-${url}`} href={url} style={{ color: "var(--primary)", fontWeight: 800 }}>
+                      첨부 {index + 1}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {record.detail?.events?.length ? (
+        <div style={detailSubsectionStyle}>
+          <div style={detailSectionLabelStyle}>처리 이력</div>
+          {record.detail.events.map((event) => (
+            <div key={`${event.at}-${event.label}`} style={eventRowStyle}>
+              <div>
+                <div style={{ fontWeight: 800, color: "var(--on-surface)" }}>{event.label}</div>
+                {event.note ? <div>{event.note}</div> : null}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                {event.status ? <Badge>{event.status}</Badge> : null}
+                <span>{formatDate(event.at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {record.detail?.amounts?.length ? (
+        <div style={detailSubsectionStyle}>
+          <div style={detailSectionLabelStyle}>금액 연결</div>
+          {record.detail.amounts.map((amount) => (
+            <div key={amount.label} style={detailItemStyle}>
+              <span style={{ fontWeight: 800, color: "var(--on-surface)" }}>{amount.label}</span>
+              <span>
+                <span style={{ fontWeight: 800, color: "var(--on-surface)" }}>{formatDetailAmount(amount)}</span>
+                {amount.status ? ` · ${amount.status}` : ""}
+              </span>
+              {amount.note ? <span>{amount.note}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {record.detail?.clauses?.length ? (
+        <div style={detailSubsectionStyle}>
+          <div style={detailSectionLabelStyle}>계약 조항</div>
+          {record.detail.clauses.map((clause) => (
+            <div key={clause.title} style={clauseStyle}>
+              <div style={{ fontWeight: 800, color: "var(--on-surface)" }}>{clause.title}</div>
+              <div>{clause.body}</div>
+              {clause.note ? <div>{clause.note}</div> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type RecordDetailAmount = NonNullable<NonNullable<MoveoutRecordItem["detail"]>["amounts"]>[number];
+
+function formatDetailAmount(amount: RecordDetailAmount) {
+  if (typeof amount.amount === "number") {
+    return won(amount.amount);
+  }
+
+  if (typeof amount.min === "number" && typeof amount.max === "number") {
+    return `${wonShort(amount.min)}~${wonShort(amount.max)}`;
+  }
+
+  return "금액 확인 전";
+}
+
+function formatDate(value: string) {
+  return value.slice(0, 16).replace("T", " ");
+}
+
+function won(value: number) {
+  return `${value.toLocaleString("ko-KR")}원`;
+}
+
+function wonShort(value: number) {
+  return `약 ${Math.round(value / 10_000).toLocaleString("ko-KR")}만원`;
 }
 
 const detailSummaryStyle = {
@@ -304,4 +430,73 @@ const detailItemStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 2,
+} as const;
+
+const sourceDetailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+} as const;
+
+const detailSubsectionStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+} as const;
+
+const mediaGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 8,
+} as const;
+
+const mediaCardStyle = {
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  padding: 8,
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  color: "var(--on-surface-variant)",
+  textDecoration: "none",
+  background: "var(--surface-container-low)",
+} as const;
+
+const mediaImageStyle = {
+  width: "100%",
+  aspectRatio: "4 / 3",
+  objectFit: "cover",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  background: "var(--surface-container-lowest)",
+} as const;
+
+const chatMessageStyle = {
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  padding: 8,
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+  background: "var(--surface-container-low)",
+} as const;
+
+const eventRowStyle = {
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  padding: 8,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 8,
+  background: "var(--surface-container-low)",
+} as const;
+
+const clauseStyle = {
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  padding: 8,
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+  background: "var(--surface-container-low)",
 } as const;

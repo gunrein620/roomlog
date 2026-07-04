@@ -11,3 +11,13 @@ test("tenant moveout timeline exposes record detail sections behind a button", (
   assert.match(pageSource, /record\.detailSections/);
   assert.match(pageSource, /section\.items\.map/);
 });
+
+test("tenant moveout timeline expands source-specific record details", () => {
+  assert.match(pageSource, /function RecordSourceDetail/);
+  assert.match(pageSource, /record\.detail/);
+  assert.match(pageSource, /record\.detail\?\.chatMessages/);
+  assert.match(pageSource, /record\.detail\?\.media/);
+  assert.match(pageSource, /record\.detail\?\.events/);
+  assert.match(pageSource, /record\.detail\?\.amounts/);
+  assert.match(pageSource, /record\.detail\?\.clauses/);
+});
