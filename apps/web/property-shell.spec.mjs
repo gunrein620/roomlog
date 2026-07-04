@@ -32,6 +32,7 @@ const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messagi
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
 const tenantMessagingApiSource = readFileSync(new URL("./src/lib/messaging-api.ts", import.meta.url), "utf8");
+const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
@@ -163,6 +164,20 @@ test("opens manager message compose only from real API thread ids", () => {
   assert.doesNotMatch(managerContractPageSource, /th_mgr_302/);
   assert.doesNotMatch(managerContractApiSource, /th_mgr_302/);
   assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
+});
+
+test("redirects messaging detail auth failures instead of rendering a Next error boundary", () => {
+  for (const [source, loginPath] of [
+    [tenantMessagingThreadSource, "/tenant/login"],
+    [tenantMessagingAnnouncementSource, "/tenant/login"],
+    [managerMessagingReviewSource, "/manager/login"],
+    [managerMessagingThreadSource, "/manager/login"],
+    [managerMessagingResultSource, "/manager/login"]
+  ]) {
+    assert.match(source, /error instanceof ApiError/);
+    assert.match(source, /error\.status === 401 \|\| error\.status === 403/);
+    assert.match(source, new RegExp(`redirect\\("${loginPath}"\\)`));
+  }
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {

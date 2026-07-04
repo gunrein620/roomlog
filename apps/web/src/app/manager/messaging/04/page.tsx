@@ -41,6 +41,9 @@ async function getRequiredManagerThread(id: string): Promise<Thread> {
   try {
     return await getManagerThread(id);
   } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
     if (error instanceof ApiError && error.status === 404) {
       redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
     }

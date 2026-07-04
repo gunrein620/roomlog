@@ -7,6 +7,7 @@ import {
   sendAnnouncementDraft,
 } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
@@ -34,7 +35,15 @@ async function sendAnnouncement(formData: FormData) {
     redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
   }
 
-  const result = await sendAnnouncementDraft(draftId);
+  let result;
+  try {
+    result = await sendAnnouncementDraft(draftId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    throw error;
+  }
   redirect(
     `${MANAGER_MESSAGING_ROUTES["M-MSG-03"]}?id=${encodeURIComponent(result.announcementId)}`,
   );
@@ -42,8 +51,17 @@ async function sendAnnouncement(formData: FormData) {
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id, resend } = await searchParams;
-  const draft = await getAnnouncementDraft(id ?? DEMO_MANAGER_DRAFT_ID);
-  const recipients = await listAnnouncementRecipients(draft.id);
+  let draft;
+  let recipients;
+  try {
+    draft = await getAnnouncementDraft(id ?? DEMO_MANAGER_DRAFT_ID);
+    recipients = await listAnnouncementRecipients(draft.id);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    throw error;
+  }
   const isUrgent = draft.category === "urgent";
 
   return (

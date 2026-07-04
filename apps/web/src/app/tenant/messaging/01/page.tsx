@@ -49,6 +49,9 @@ async function getRequiredThread(id: string): Promise<Thread> {
   try {
     return await getThread(id);
   } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
     if (error instanceof ApiError && error.status === 404) {
       redirect(MESSAGING_ROUTES["T-MSG-00"]);
     }

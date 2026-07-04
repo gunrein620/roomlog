@@ -1,6 +1,8 @@
+import { redirect } from "next/navigation";
 import type { AnnouncementDelivery } from "@roomlog/types";
 import { DEMO_MANAGER_RESULT_ID, getAnnouncementResult } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
@@ -21,7 +23,15 @@ type SearchParams = Promise<{ id?: string }>;
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
-  const result = await getAnnouncementResult(id ?? DEMO_MANAGER_RESULT_ID);
+  let result;
+  try {
+    result = await getAnnouncementResult(id ?? DEMO_MANAGER_RESULT_ID);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    throw error;
+  }
   const isUrgent = result.category === "urgent";
   const unconfirmed = result.deliveries.filter((delivery) => delivery.state !== "confirmed" || delivery.failed);
 
