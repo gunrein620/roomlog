@@ -1,10 +1,15 @@
 import { getReport } from "@/lib/report-api";
-import { MANAGER_REPORT_ROUTES, sourceHref } from "@/lib/report-nav";
+import { reportHref, sourceHref } from "@/lib/report-nav";
 import { Card } from "@roomlog/ui";
 import { KpiRow, LinkButton, NextActionList, PageStack, ScreenHeader, Section, SourceLink, TrustNotice, formatDateTime, scopeText } from "../_components";
 
-export default async function Page() {
-  const report = await getReport();
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const report = await getReport(id);
 
   return (
     <PageStack>
@@ -14,8 +19,8 @@ export default async function Page() {
         subtitle={`${scopeText(report)} · 기준시점 ${formatDateTime(report.snapshotAt)} 스냅샷`}
         actions={
           <>
-            <LinkButton href={MANAGER_REPORT_ROUTES["M-RPT-04"]} variant="secondary">챗봇으로 묻기</LinkButton>
-            <LinkButton href={MANAGER_REPORT_ROUTES["M-RPT-03"]}>임대인 보고로</LinkButton>
+            <LinkButton href={reportHref("M-RPT-04", report.id)} variant="secondary">챗봇으로 묻기</LinkButton>
+            <LinkButton href={reportHref("M-RPT-03", report.id)}>임대인 보고로</LinkButton>
           </>
         }
       />
@@ -56,4 +61,3 @@ export default async function Page() {
 const detailsStyle = { border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "var(--surface-container-lowest)" } as const;
 const summaryStyle = { display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center", padding: "var(--space-md)", cursor: "pointer", fontWeight: 850 } as const;
 const basisLinkStyle = { color: "var(--primary)", textDecoration: "none", fontSize: "var(--fs-caption)", fontWeight: 800 } as const;
-

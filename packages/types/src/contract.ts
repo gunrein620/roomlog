@@ -45,6 +45,7 @@ export interface Contract {
   monthlyRent?: number; // 월세 (원)
   maintenanceFee?: number; // 관리비 (원)
   paymentDay?: number; // 납부일 (매월 n일)
+  optionInventory?: string[]; // 호실 옵션 인벤토리(M-DOC-03)
   // 기간 (만료 D-day 계산)
   startDate?: string; // ISO
   endDate?: string; // ISO

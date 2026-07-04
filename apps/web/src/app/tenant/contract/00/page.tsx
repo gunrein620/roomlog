@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Badge, Card } from "@roomlog/ui";
 import { CONTRACT_ROUTES } from "@/lib/contract-nav";
-import { getContract, DEMO_CONTRACT_ID } from "@/lib/contract-api";
+import { listContracts } from "@/lib/contract-api";
+import type { Contract } from "@roomlog/types";
 import { priorityBadge, daysUntil, won } from "../status";
 
 // T-DOC-00 · 내 계약서 홈 (center)
@@ -19,7 +20,7 @@ const labelStyle = {
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const contract = await getContract(DEMO_CONTRACT_ID);
+  const contract = (await listContracts())[0] ?? emptyContract();
   const registered = contract.lifecycle !== "unregistered";
   const badge = priorityBadge(contract);
   const dday = daysUntil(contract.endDate);
@@ -251,4 +252,20 @@ function fmt(iso?: string): string {
   if (!iso) return "미확인";
   const d = new Date(iso);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function emptyContract(): Contract {
+  const now = new Date().toISOString();
+
+  return {
+    id: "unregistered",
+    unitId: "-",
+    landlordName: "미등록",
+    lifecycle: "unregistered",
+    review: "pending",
+    deletion: "none",
+    valueSource: "unverified",
+    createdAt: now,
+    updatedAt: now,
+  };
 }

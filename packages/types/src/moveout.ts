@@ -78,6 +78,7 @@ export interface MoveoutRecordItem {
   occurredAt?: string; // ISO
   wearVerdict?: WearVerdict; // 있으면 '확인이 필요할 수 있는 항목' 보조 표기 + 이의 인접
   wearNote?: string; // 비적대 설명(노후/마모일 수도, 확인 필요)
+  evidenceUrls?: string[]; // 사진·문서 근거 URL(원천 상세 연결 전까지는 URL 계약)
   moveinComparisonAvailable: boolean; // 입주전 사진 비교 가능 여부(공백 ≠ 책임)
 }
 
@@ -89,6 +90,7 @@ export interface MoveoutChecklistItem {
   present: boolean; // 존재 여부
   condition: ChecklistCondition; // 정상/노후·마모/훼손 확인
   note?: string;
+  attachmentUrls?: string[]; // 사진 증빙 URL(업로드 슬라이스 연결 전까지는 URL 계약)
 }
 
 /** 차감 후보(T-OUT-03) — 각 항목 예상 범위·확인 필요·근거(관리인과 동일 열람). */
@@ -130,6 +132,7 @@ export interface Dispute {
   targetItemId?: string; // 대상 항목(리포트/정산에서 선택 진입)
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
   status: DisputeStatus;
   slaDeadline: string; // 무응답 SLA 기준 ISO
   slaBreached: boolean; // SLA 초과 → 에스컬레이션 출구 노출
@@ -227,6 +230,7 @@ export interface ReviewCompletionGate {
 export interface CompleteReviewDto {
   acknowledgeEvidence: boolean; // 근거 확인
   overrideSla?: boolean; // SLA 초과 시 알림 동반 강행
+  overrideReason?: string; // SLA override 사유
 }
 
 /** 관리인 검토 정산안 뷰(M-OUT-02) — 예상 정산 + 게이트 + 이의 enum 표시. */
@@ -252,4 +256,46 @@ export interface RespondDisputeDto {
   kind: DisputeResponseKind;
   message: string; // 회신 본문
   reflect?: DisputeReflectTarget; // 리포트/정산 반영 여부
+}
+
+/** 임차인 이의 생성 DTO(T-OUT-04). */
+export interface CreateMoveoutDisputeDto {
+  targetItemId?: string;
+  targetLabel: string;
+  reason: string;
+  attachmentUrls?: string[];
+}
+
+/** 임차인 퇴실 문의 DTO(T-OUT-03 → M-MSG thread). */
+export interface CreateMoveoutInquiryDto {
+  body: string;
+  attachmentUrls?: string[];
+}
+
+/** 임차인 퇴실 체크리스트 저장 DTO(T-OUT-02). 전체 스냅샷으로 저장해 진행률을 재계산한다. */
+export interface UpdateMoveoutChecklistItemDto {
+  id?: string;
+  label: string;
+  present: boolean;
+  condition: ChecklistCondition;
+  note?: string;
+  attachmentUrls?: string[];
+}
+
+export interface UpdateMoveoutChecklistDto {
+  items: UpdateMoveoutChecklistItemDto[];
+}
+
+export type TenantMoveoutDisputeAction = "confirm" | "re_dispute" | "resolve";
+
+export interface UpdateTenantMoveoutDisputeDto {
+  disputeId: string;
+  action: TenantMoveoutDisputeAction;
+  reason?: string;
+  attachmentUrls?: string[];
+}
+
+export interface EscalateMoveoutDisputeDto {
+  disputeId: string;
+  reason?: string;
 }

@@ -20,8 +20,31 @@ import {
 import { basename, dirname, extname, join } from "node:path";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
+  hasRequiredPasswordMix,
+  hashPassword,
+  id,
+  isValidPhoneNumber,
+  normalizePhoneNumber,
+  now,
+  tokenFor,
+  tokenSecret,
+  verifyPassword
+} from "./roomlog-support";
+import { RoomlogAuthDomain } from "./services/roomlog-auth.domain";
+import { RoomlogFloorPlanDomain } from "./services/roomlog-floor-plan.domain";
+import { RoomlogCostDomain } from "./services/roomlog-cost.domain";
+import { RoomlogChecklistDomain } from "./services/roomlog-checklist.domain";
+import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
+import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
+import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
+import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
+import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
+import { RoomlogReportDomain } from "./services/roomlog-report.domain";
+import {
+  AddMessagingThreadMessageInput,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
+  AskManagerReportChatInput,
   AiFeedback,
   AiFeedbackTarget,
   AiAnalysis,
@@ -43,12 +66,24 @@ import {
   Cost,
   CostReviewQueueSummary,
   CostType,
+  CreateManagerContractInput,
+  CreateManagerContractInviteInput,
+  CreateAnnouncementDraftInput,
+  CreateManagerReportExternalShareInput,
+  CreateManagerReportFollowUpInput,
+  CreateManagerReportInput,
   DeletionState,
+  EscalateMoveoutDisputeInput,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
+  CreateMessagingThreadInput,
+  CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
   CreatePaymentReportInput,
+  CreateTenantContractInput,
+  CreateTenantMessagingThreadInput,
+  CreateTenantMoveoutInquiryInput,
   DisclosureSetting,
   Deposit,
   DuplicateTicketCandidate,
@@ -61,9 +96,20 @@ import {
   IntakeSlot,
   IntakeSlotKey,
   IntakeThreadSummary,
+  MessagingAnnouncement,
+  MessagingAnnouncementDelivery,
+  MessagingAnnouncementDraft,
+  MessagingAnnouncementResult,
+  MessagingMessage,
+  MessagingThread,
+  MessagingThreadContext,
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
+  ManagerReport,
+  ManagerReportAuditLogEntry,
+  ManagerReportExternalShare,
+  ManagerReportSourceReference,
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerReplyIntent,
@@ -73,6 +119,20 @@ import {
   MoveInChecklistItem,
   PaymentBadge,
   PaymentReport,
+  MoveoutAdjustDeductionInput,
+  MoveoutAdjustWearVerdictInput,
+  MoveoutChecklistItem,
+  MoveoutCompleteReviewInput,
+  MoveoutDeductionCandidate,
+  MoveoutDispute,
+  MoveoutManagerSettlementReview,
+  MoveoutRecordItem,
+  MoveoutReportAuditEntry,
+  MoveoutRespondDisputeInput,
+  MoveoutSettlementEstimate,
+  MoveoutSummary,
+  UpdateTenantMoveoutDisputeInput,
+  UpdateMoveoutChecklistInput,
   PhotoAnalysis,
   PhotoComparisonStatus,
   RealtimeClientSecretInput,
@@ -108,11 +168,16 @@ import {
   Ticket,
   TicketMessage,
   TicketStatus,
+  SocialAccount,
+  UpdateManagerContractInventoryInput,
+  UpdateManagerContractInviteInput,
+  UpdateManagerContractManualValuesInput,
+  UpdateManagerContractPrivacyInput,
   UserAccount,
   UserRole
 } from "./roomlog.types";
 
-type SignupInput = {
+export type SignupInput = {
   email: string;
   password: string;
   passwordConfirm?: string;
@@ -127,7 +192,7 @@ type SignupInput = {
   serviceArea?: string;
 };
 
-type CreateVendorInviteInput = {
+export type CreateVendorInviteInput = {
   email?: string;
   businessName: string;
   contactPerson: string;
@@ -135,7 +200,7 @@ type CreateVendorInviteInput = {
   serviceArea: string;
 };
 
-type CreateTenantInviteInput = {
+export type CreateTenantInviteInput = {
   roomId: string;
   email?: string;
   tenantName: string;
@@ -143,12 +208,27 @@ type CreateTenantInviteInput = {
   moveInDate?: string;
 };
 
-type LoginInput = {
+export type ManagerVendorProfileInput = {
+  businessName?: string;
+  contactPerson?: string;
+  phone?: string;
+  serviceArea?: string;
+};
+
+export type LoginInput = {
   email: string;
   password: string;
 };
 
-type VendorMgmtTrade =
+export type GoogleSocialLoginInput = {
+  code: string;
+  redirectUri: string;
+  role?: UserRole;
+  inviteToken?: string;
+  flow?: "login" | "signup";
+};
+
+export type VendorMgmtTrade =
   | "plumbing"
   | "electrical"
   | "hvac"
@@ -159,15 +239,15 @@ type VendorMgmtTrade =
   | "general"
   | "other";
 
-type VendorMgmtListFilters = {
+export type VendorMgmtListFilters = {
   q?: string;
   trade?: string;
   sort?: string;
 };
 
-type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
+export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
 
-type ManagerContractRow = {
+export type ManagerContractRow = {
   contract: Contract;
   tenantName: string;
   buildingName: string;
@@ -179,38 +259,11 @@ type ManagerContractRow = {
   mobileQuickConfirm: boolean;
 };
 
-type ConfirmContractInput = {
+export type ConfirmContractInput = {
   confirmNeedsCheck?: boolean;
   note?: string;
 };
 
-const VENDOR_PERF_MIN_N = 5;
-const VENDOR_MIRROR_NOTICE = "이 업체는 V-JOB에서 본인 성과를 보고 이의할 수 있어요.";
-const VENDOR_MGMT_TRADES: VendorMgmtTrade[] = [
-  "plumbing",
-  "electrical",
-  "hvac",
-  "appliance",
-  "locksmith",
-  "waterproofing",
-  "cleaning",
-  "general",
-  "other"
-];
-
-function normalizePhoneNumber(phone?: string) {
-  const digits = phone?.replace(/\D+/g, "") ?? "";
-
-  return digits || undefined;
-}
-
-function isValidPhoneNumber(phone: string) {
-  return /^\d{10,11}$/.test(phone);
-}
-
-function hasRequiredPasswordMix(password: string) {
-  return /[A-Za-z]/.test(password) && /\d/.test(password);
-}
 
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
@@ -222,7 +275,7 @@ export type RoomlogServiceOptions = {
   storeProjector?: StoreProjector;
 };
 
-type AuthResult = {
+export type AuthResult = {
   userId: string;
   role: UserRole;
   accessToken: string;
@@ -237,6 +290,7 @@ export type VendorSummary = {
   phone: string;
   serviceArea: string;
   activeJobs: number;
+  createdByManagerId?: string;
 };
 
 export type VendorInvite = {
@@ -273,6 +327,7 @@ export type TenantInvite = {
 
 export type Store = {
   users: UserAccount[];
+  socialAccounts: SocialAccount[];
   rooms: Room[];
   tenantRooms: Record<string, string>;
   vendors: VendorSummary[];
@@ -300,6 +355,22 @@ export type Store = {
   receipts: Receipt[];
   receiptOcrs: ReceiptOcr[];
   messages: TicketMessage[];
+  messagingThreads: MessagingThread[];
+  messagingMessages: MessagingMessage[];
+  messagingAnnouncementDrafts: MessagingAnnouncementDraft[];
+  messagingAnnouncements: MessagingAnnouncement[];
+  messagingAnnouncementDeliveries: MessagingAnnouncementDelivery[];
+  managerReports: ManagerReport[];
+  managerReportSourceReferences: ManagerReportSourceReference[];
+  managerReportExternalShares: ManagerReportExternalShare[];
+  managerReportAuditLogs: ManagerReportAuditLogEntry[];
+  moveouts: MoveoutSummary[];
+  moveoutRecords: MoveoutRecordItem[];
+  moveoutChecklist: MoveoutChecklistItem[];
+  moveoutSettlements: MoveoutSettlementEstimate[];
+  moveoutDeductions: MoveoutDeductionCandidate[];
+  moveoutDisputes: MoveoutDispute[];
+  moveoutReportAudits: MoveoutReportAuditEntry[];
   history: StatusHistory[];
 };
 
@@ -315,36 +386,7 @@ type GeneratedIntakeTurn = {
   source: "openai" | "fallback";
 };
 
-const now = () => new Date().toISOString();
-
-function id(prefix: string) {
-  return `${prefix}_${randomBytes(5).toString("hex")}`;
-}
-
-function hashPassword(password: string, salt = randomBytes(12).toString("hex")) {
-  const key = scryptSync(password, salt, 32).toString("hex");
-  return `${salt}:${key}`;
-}
-
-function verifyPassword(password: string, storedHash: string) {
-  const [salt, key] = storedHash.split(":");
-  const actual = Buffer.from(hashPassword(password, salt).split(":")[1], "hex");
-  const expected = Buffer.from(key, "hex");
-
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-const tokenSecret = process.env.JWT_SECRET || "roomlog-local-dev-secret";
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
-
-function tokenFor(user: UserAccount) {
-  const payload = Buffer.from(
-    JSON.stringify({ sub: user.id, role: user.role, email: user.email })
-  ).toString("base64url");
-  const signature = createHmac("sha256", tokenSecret).update(payload).digest("base64url");
-
-  return `${payload}.${signature}`;
-}
 
 function priorityDueAt(priority: number) {
   const due = new Date();
@@ -383,6 +425,10 @@ function complaintStatusFor(ticketStatus: TicketStatus): ComplaintStatus {
 
 function createDemoStore(): Store {
   const createdAt = now();
+  const moveoutCreatedAt = "2026-07-01T09:00:00+09:00";
+  const moveoutUpdatedAt = "2026-07-02T09:00:00+09:00";
+  const moveoutDisputeCreatedAt = "2026-06-28T09:00:00+09:00";
+  const moveoutDisputeDeadline = "2026-07-01T09:00:00+09:00";
   const users: UserAccount[] = [
     {
       id: "tenant-demo",
@@ -431,6 +477,7 @@ function createDemoStore(): Store {
 
   return {
     users,
+    socialAccounts: [],
     rooms: [
       {
         id: "room-301",
@@ -458,6 +505,27 @@ function createDemoStore(): Store {
     tenantInvites: [],
     contracts: [
       {
+        id: "ct_moveout_0001",
+        roomId: "room-301",
+        tenantId: "tenant-demo",
+        managerId: "landlord-demo",
+        unitId: "302",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "confirmed",
+        deletion: "none",
+        valueSource: "confirmed",
+        monthlyRent: 650000,
+        maintenanceFee: 70000,
+        paymentDay: 25,
+        startDate: "2024-08-01T00:00:00+09:00",
+        endDate: "2026-07-31T00:00:00+09:00",
+        createdAt: "2024-08-01T10:00:00+09:00",
+        updatedAt: "2026-06-20T10:00:00+09:00",
+        confirmedAt: "2026-06-20T10:00:00+09:00",
+        confirmedByManagerId: "landlord-demo"
+      },
+      {
         id: "ct_0001",
         roomId: "room-301",
         tenantId: "tenant-demo",
@@ -471,6 +539,7 @@ function createDemoStore(): Store {
         monthlyRent: 650000,
         maintenanceFee: 70000,
         paymentDay: 25,
+        optionInventory: ["에어컨", "세탁기", "냉장고", "인덕션", "블라인드"],
         startDate: "2026-03-01T00:00:00+09:00",
         endDate: "2028-02-29T00:00:00+09:00",
         createdAt: contractCreatedAt,
@@ -656,6 +725,321 @@ function createDemoStore(): Store {
     receipts: [],
     receiptOcrs: [],
     messages: [],
+    messagingThreads: [
+      {
+        id: "mth_demo_general",
+        roomId: "room-301",
+        unitId: "301",
+        tenantId: "tenant-demo",
+        context: "general",
+        contextLabel: "생활 문의",
+        lastMessage: "확인 후 오늘 안으로 답변드리겠습니다.",
+        unreadCount: 1,
+        pendingRequest: false,
+        archivedNotice: true,
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingMessages: [
+      {
+        id: "msg_demo_general_1",
+        threadId: "mth_demo_general",
+        senderUserId: "tenant-demo",
+        sender: "tenant",
+        kind: "text",
+        body: "공용 현관 등이 깜빡입니다.",
+        attachmentUrls: [],
+        createdAt
+      },
+      {
+        id: "msg_demo_general_2",
+        threadId: "mth_demo_general",
+        senderUserId: "landlord-demo",
+        sender: "manager",
+        kind: "text",
+        body: "확인 후 오늘 안으로 답변드리겠습니다.",
+        attachmentUrls: [],
+        createdAt
+      }
+    ],
+    messagingAnnouncementDrafts: [
+      {
+        id: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        targetRoomIds: ["room-301"],
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        translations: [
+          {
+            lang: "en",
+            langLabel: "English",
+            title: "Emergency water outage",
+            body: "There will be a 30-minute emergency water outage from 18:00 today.",
+            reviewed: true
+          }
+        ],
+        confirmRequired: true,
+        status: "sent",
+        createdByManagerId: "landlord-demo",
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingAnnouncements: [
+      {
+        id: "mann_demo_urgent",
+        draftId: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        sender: "박관리",
+        senderId: "landlord-demo",
+        sentAt: createdAt,
+        confirmRequired: true,
+        safetyCta: "안전 확인"
+      }
+    ],
+    messagingAnnouncementDeliveries: [
+      {
+        id: "mdl_demo_urgent_tenant",
+        announcementId: "mann_demo_urgent",
+        tenantId: "tenant-demo",
+        roomId: "room-301",
+        unitId: "301",
+        tenantName: "김민수",
+        preferredLang: "ko",
+        state: "unread"
+      }
+    ],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
+    moveouts: [
+      {
+        id: "mo_0001",
+        tenantId: "tenant-demo",
+        roomId: "room-301",
+        contractId: "ct_moveout_0001",
+        unitId: "302",
+        contractConfirmed: true,
+        leaseEndDate: "2026-07-31T00:00:00+09:00",
+        daysRemaining: 30,
+        depositAmount: 10000000,
+        estimatedRefundMin: 9740000,
+        estimatedRefundMax: 9850000,
+        settlementStatus: "reviewing",
+        prepProgress: 0.72,
+        settlementId: "st_0001",
+        createdAt: moveoutCreatedAt,
+        updatedAt: moveoutUpdatedAt
+      }
+    ],
+    moveoutRecords: [
+      {
+        id: "rec_0001",
+        summaryId: "mo_0001",
+        source: "movein_photo",
+        title: "입주 전 욕실 사진",
+        description: "입주 시점 욕실 타일과 수전 사진이 있어 현재 상태와 비교할 수 있습니다.",
+        occurredAt: "2024-08-01T10:10:00+09:00",
+        evidenceUrls: ["/api/files/moveout/bathroom-before.jpg"],
+        moveinComparisonAvailable: true
+      },
+      {
+        id: "rec_0002",
+        summaryId: "mo_0001",
+        source: "defect",
+        title: "현관 센서등 깜빡임",
+        description: "입주 중 접수된 공용 설비 문의이며 수리 완료 이력이 연결되어 있습니다.",
+        occurredAt: "2026-02-11T14:20:00+09:00",
+        wearVerdict: "aging_likely",
+        wearNote: "소모품 노후 가능성이 높아 임차인 책임으로 단정하지 않습니다.",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0003",
+        summaryId: "mo_0001",
+        source: "repair",
+        title: "욕실 실리콘 보수",
+        description: "보수 완료 후 사진이 첨부되어 있어 차감 후보 산정 근거로만 사용됩니다.",
+        occurredAt: "2026-05-12T16:00:00+09:00",
+        wearVerdict: "unclear",
+        wearNote: "노후와 사용 중 훼손 가능성이 함께 있어 관리인 확인이 필요합니다.",
+        evidenceUrls: ["/api/files/moveout/bathroom-repair-after.jpg"],
+        moveinComparisonAvailable: true
+      },
+      {
+        id: "rec_0004",
+        summaryId: "mo_0001",
+        source: "payment",
+        title: "7월 관리비 정산",
+        description: "관리비 일부 미납 후보가 예상 정산안에 반영되었습니다.",
+        occurredAt: "2026-07-01T09:00:00+09:00",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0005",
+        summaryId: "mo_0001",
+        source: "contract",
+        title: "원상복구 특약",
+        description: "계약서 원상복구 조항은 참고 근거이며 최종 차감 확정이 아닙니다.",
+        occurredAt: "2024-08-01T10:00:00+09:00",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0006",
+        summaryId: "mo_0001",
+        source: "chat",
+        title: "퇴실 일정 문의",
+        description: "임차인이 퇴실 일정과 정산 예상 범위 안내를 요청했습니다.",
+        occurredAt: "2026-06-30T13:30:00+09:00",
+        moveinComparisonAvailable: false
+      }
+    ],
+    moveoutChecklist: [
+      {
+        id: "ck_0001",
+        summaryId: "mo_0001",
+        label: "현관 카드키 2개",
+        present: true,
+        condition: "normal",
+        note: "반납 예정"
+      },
+      {
+        id: "ck_0002",
+        summaryId: "mo_0001",
+        label: "에어컨 리모컨",
+        present: true,
+        condition: "normal"
+      },
+      {
+        id: "ck_0003",
+        summaryId: "mo_0001",
+        label: "욕실 환풍기",
+        present: true,
+        condition: "aging",
+        note: "소음이 있으나 노후로 보입니다."
+      },
+      {
+        id: "ck_0004",
+        summaryId: "mo_0001",
+        label: "붙박이장 손잡이",
+        present: true,
+        condition: "damage_check",
+        note: "헐거움 확인 필요"
+      },
+      {
+        id: "ck_0005",
+        summaryId: "mo_0001",
+        label: "우편함 열쇠",
+        present: false,
+        condition: "damage_check",
+        note: "분실 여부 확인 중"
+      }
+    ],
+    moveoutSettlements: [
+      {
+        id: "st_0001",
+        summaryId: "mo_0001",
+        depositAmount: 10000000,
+        deductions: [],
+        refundMin: 9740000,
+        refundMax: 9850000,
+        status: "reviewing",
+        disclaimer: "참고자료이며 최종 정산은 관리자 확인 후 확정됩니다.",
+        createdAt: moveoutCreatedAt,
+        updatedAt: moveoutUpdatedAt
+      }
+    ],
+    moveoutDeductions: [
+      {
+        id: "de_0001",
+        summaryId: "mo_0001",
+        kind: "unpaid",
+        label: "7월 관리비 미납 후보",
+        estimatedMin: 70000,
+        estimatedMax: 70000,
+        needsConfirmation: false,
+        evidenceNote: "납부 내역 기준 7월 관리비 잔액 후보입니다.",
+        source: "payment"
+      },
+      {
+        id: "de_0002",
+        summaryId: "mo_0001",
+        kind: "repair",
+        label: "욕실 실리콘 보수 후보",
+        estimatedMin: 30000,
+        estimatedMax: 80000,
+        needsConfirmation: false,
+        evidenceNote: "입주 전 사진과 2026년 보수 이력을 함께 비교합니다.",
+        source: "repair"
+      },
+      {
+        id: "de_0003",
+        summaryId: "mo_0001",
+        kind: "restoration",
+        label: "붙박이장 손잡이 원상복구 후보",
+        estimatedMin: 30000,
+        estimatedMax: 70000,
+        needsConfirmation: false,
+        evidenceNote: "체크리스트 손잡이 헐거움과 계약서 원상복구 조항을 참고합니다.",
+        source: "contract"
+      },
+      {
+        id: "de_0004",
+        summaryId: "mo_0001",
+        kind: "cleaning",
+        label: "퇴실 기본 청소 후보",
+        estimatedMin: 20000,
+        estimatedMax: 40000,
+        needsConfirmation: false,
+        evidenceNote: "퇴실 청소 조항 기준 예상 후보이며 실제 상태 확인 전 확정하지 않습니다.",
+        source: "contract"
+      }
+    ],
+    moveoutDisputes: [
+      {
+        id: "dp_0001",
+        summaryId: "mo_0001",
+        targetItemId: "de_0002",
+        targetLabel: "욕실 실리콘 보수 후보",
+        reason: "입주 전부터 있던 변색이라 차감 대상이 아니라고 봅니다.",
+        status: "received",
+        slaDeadline: moveoutDisputeDeadline,
+        slaBreached: true,
+        history: [
+          {
+            status: "received",
+            at: moveoutDisputeCreatedAt,
+            actorUserId: "tenant-demo",
+            note: "입주 전부터 있던 변색입니다."
+          }
+        ],
+        createdAt: moveoutDisputeCreatedAt,
+        updatedAt: moveoutDisputeCreatedAt
+      }
+    ],
+    moveoutReportAudits: [
+      {
+        id: "maud_0001",
+        summaryId: "mo_0001",
+        recordItemId: "rec_0003",
+        action: "reinforce",
+        fromVerdict: "unclear",
+        toVerdict: "unclear",
+        evidenceNote: "입주 전 욕실 사진과 보수 완료 사진을 같은 근거로 묶었습니다.",
+        tenantNotified: true,
+        managerName: "박관리",
+        managerId: "landlord-demo",
+        at: "2026-07-02T09:00:00+09:00"
+      }
+    ],
     history: []
   };
 }
@@ -663,6 +1047,7 @@ function createDemoStore(): Store {
 function createEmptyStore(): Store {
   return {
     users: [],
+    socialAccounts: [],
     rooms: [],
     tenantRooms: {},
     vendors: [],
@@ -690,8 +1075,35 @@ function createEmptyStore(): Store {
     receipts: [],
     receiptOcrs: [],
     messages: [],
+    messagingThreads: [],
+    messagingMessages: [],
+    messagingAnnouncementDrafts: [],
+    messagingAnnouncements: [],
+    messagingAnnouncementDeliveries: [],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
+    moveouts: [],
+    moveoutRecords: [],
+    moveoutChecklist: [],
+    moveoutSettlements: [],
+    moveoutDeductions: [],
+    moveoutDisputes: [],
+    moveoutReportAudits: [],
     history: []
   };
+}
+
+function mergeMissingById<T extends { id: string }>(current: T[], demo: T[]): T[] {
+  return mergeMissingByKey(current, demo, (item) => item.id);
+}
+
+function mergeMissingByKey<T>(current: T[], demo: T[], keyOf: (item: T) => string): T[] {
+  const currentKeys = new Set(current.map((item) => keyOf(item)));
+  const missingDemoItems = demo.filter((item) => !currentKeys.has(keyOf(item)));
+
+  return missingDemoItems.length ? [...current, ...missingDemoItems] : current;
 }
 
 function envFlag(value: string | undefined) {
@@ -726,6 +1138,16 @@ export class RoomlogService {
   private readonly storeProjector?: StoreProjector;
   private pendingPersistence = Promise.resolve();
   private persistenceError: unknown;
+  private readonly auth: RoomlogAuthDomain;
+  private readonly floorPlan: RoomlogFloorPlanDomain;
+  private readonly cost: RoomlogCostDomain;
+  private readonly checklist: RoomlogChecklistDomain;
+  private readonly contract: RoomlogContractDomain;
+  private readonly vendorMgmt: RoomlogVendorMgmtDomain;
+  private readonly vendorRepair: RoomlogVendorRepairDomain;
+  private readonly messaging: RoomlogMessagingDomain;
+  private readonly moveout: RoomlogMoveoutDomain;
+  private readonly report: RoomlogReportDomain;
 
   constructor(
     @Optional()
@@ -745,9 +1167,108 @@ export class RoomlogService {
     this.storageAdapter =
       options.storageAdapter ??
       createFileStorageAdapter(process.env, this.uploadDir, this.publicUploadBaseUrl);
-    this.store = options.initialStore
+    const loadedStore = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
+    this.store = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
+    this.auth = new RoomlogAuthDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId)
+    );
+    this.floorPlan = new RoomlogFloorPlanDomain(
+      this.store,
+      this.storageAdapter,
+      () => this.persistStore()
+    );
+    this.cost = new RoomlogCostDomain(
+      this.store,
+      () => this.persistStore(),
+      (iso) => this.timeOf(iso),
+      (ticketId) => this.findTicket(ticketId),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (ocr) => this.cloneReceiptOcr(ocr)
+    );
+    this.checklist = new RoomlogChecklistDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId)
+    );
+    this.contract = new RoomlogContractDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (startIso, endIso) => this.elapsedHours(startIso, endIso)
+    );
+    this.vendorMgmt = new RoomlogVendorMgmtDomain(
+      this.store,
+      () => this.persistStore(),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (ticketId) => this.findTicket(ticketId),
+      (roomId) => this.findRoom(roomId),
+      (complaintId) => this.findComplaint(complaintId),
+      (iso) => this.timeOf(iso),
+      (startIso, endIso) => this.elapsedHours(startIso, endIso),
+      (values) => this.average(values),
+      (values) => this.median(values)
+    );
+    this.vendorRepair = new RoomlogVendorRepairDomain(
+      this.store,
+      () => this.persistStore(),
+      (ticketId) => this.findTicket(ticketId),
+      (complaintId) => this.findComplaint(complaintId),
+      (repairId) => this.findRepair(repairId),
+      (ticketId, toStatus, changedByUserId, note) =>
+        this.transitionTicket(ticketId, toStatus, changedByUserId, note),
+      (ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls) =>
+        this.addMessageInternal(ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls),
+      (ticketId, changedByUserId, fromStatus, toStatus, note) =>
+        this.pushHistory(ticketId, changedByUserId, fromStatus, toStatus, note),
+      (repair, allowed, action) => this.assertRepairStatus(repair, allowed, action),
+      (managerId, ticket) => this.assertManagerCanAccessTicket(managerId, ticket),
+      (message) => this.presentTicketMessage(message)
+    );
+    this.messaging = new RoomlogMessagingDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso)
+    );
+    this.report = new RoomlogReportDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createManagerAnnouncementDraft(managerId, input),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input)
+    );
+    this.moveout = new RoomlogMoveoutDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input),
+      (tenantId, threadId, input) =>
+        this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input),
+      (managerId, threadId, input) =>
+        this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input)
+    );
   }
 
   async flushPersistence() {
@@ -759,146 +1280,23 @@ export class RoomlogService {
   }
 
   signup(input: SignupInput): AuthResult {
-    const normalizedInput = this.normalizeSignupInput(input);
-    this.validateSignupInput(normalizedInput);
-    const vendorInvite =
-      normalizedInput.role === "VENDOR"
-        ? this.resolvePendingVendorInvite(normalizedInput)
-        : undefined;
-    const tenantInvite =
-      normalizedInput.role === "TENANT" && normalizedInput.inviteToken
-        ? this.resolvePendingTenantInvite(normalizedInput)
-        : undefined;
-
-    if (this.store.users.some((user) => user.email === normalizedInput.email)) {
-      throw new ConflictException("이미 가입된 이메일입니다.");
-    }
-
-    if (
-      normalizedInput.phone &&
-      this.store.users.some((user) => user.phone === normalizedInput.phone)
-    ) {
-      throw new ConflictException("이미 가입된 휴대폰 번호입니다.");
-    }
-
-    const user: UserAccount = {
-      id: id("usr"),
-      email: normalizedInput.email,
-      passwordHash: hashPassword(normalizedInput.password),
-      name: normalizedInput.name,
-      phone: normalizedInput.phone,
-      role: normalizedInput.role,
-      status: "ACTIVE",
-      createdAt: now()
-    };
-
-    this.store.users.push(user);
-
-    if (user.role === "TENANT") {
-      this.store.tenantRooms[user.id] =
-        tenantInvite?.roomId ??
-        this.findOrCreateRoomForSignup(normalizedInput, this.seededLandlordId());
-
-      if (tenantInvite) {
-        tenantInvite.status = "ACCEPTED";
-        tenantInvite.acceptedAt = now();
-        tenantInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    if (user.role === "LANDLORD") {
-      this.findOrCreateRoomForSignup(normalizedInput, user.id);
-    }
-
-    if (user.role === "VENDOR") {
-      this.store.vendors.push({
-        id: id("vnd"),
-        userId: user.id,
-        businessName:
-          vendorInvite?.businessName ?? normalizedInput.businessName ?? `${user.name} 협력업체`,
-        contactPerson: vendorInvite?.contactPerson ?? user.name,
-        phone: user.phone ?? vendorInvite?.phone ?? "",
-        serviceArea: vendorInvite?.serviceArea ?? normalizedInput.serviceArea ?? "서울",
-        activeJobs: 0
-      });
-
-      if (vendorInvite) {
-        vendorInvite.status = "ACCEPTED";
-        vendorInvite.acceptedAt = now();
-        vendorInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    this.persistStore();
-    return this.authResult(user);
+    return this.auth.signup(input);
   }
 
   login(input: LoginInput): AuthResult {
-    const user = this.store.users.find((account) => account.email === input.email);
+    return this.auth.login(input);
+  }
 
-    if (!user || !verifyPassword(input.password, user.passwordHash)) {
-      throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
-    }
-
-    return this.authResult(user);
+  async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
+    return await this.auth.loginWithGoogle(input);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
-    const token = authorization?.replace(/^Bearer\s+/i, "");
-
-    if (!token) {
-      throw new UnauthorizedException("인증 토큰이 필요합니다.");
-    }
-
-    const [payload, signature] = token.split(".");
-
-    if (!payload || !signature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const expectedSignature = createHmac("sha256", tokenSecret)
-      .update(payload)
-      .digest("base64url");
-
-    if (signature !== expectedSignature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      sub?: string;
-    };
-    const userId = decoded.sub;
-    const user = this.store.users.find((account) => account.id === userId);
-
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    return user;
+    return this.auth.getUserFromToken(authorization);
   }
 
   getMe(authorization?: string) {
-    const user = this.getUserFromToken(authorization);
-    const roomId = this.store.tenantRooms[user.id];
-    const room = roomId ? this.store.rooms.find((item) => item.id === roomId) : undefined;
-    const vendor = this.store.vendors.find((item) => item.userId === user.id);
-    const managedRooms =
-      user.role === "LANDLORD"
-        ? this.store.rooms.filter((item) => item.landlordId === user.id).map((item) => ({ ...item }))
-        : undefined;
-
-    return {
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      phone: user.phone,
-      role: user.role,
-      roomId,
-      room: room ? { ...room } : undefined,
-      managedRooms,
-      vendorId: vendor?.id,
-      vendor: vendor ? { ...vendor } : undefined
-    };
+    return this.auth.getMe(authorization);
   }
 
   getDemoState() {
@@ -927,7 +1325,23 @@ export class RoomlogService {
       costs: this.store.costs,
       receipts: this.store.receipts,
       receiptOcrs: this.store.receiptOcrs,
-      messages: this.store.messages
+      messages: this.store.messages,
+      messagingThreads: this.store.messagingThreads,
+      messagingMessages: this.store.messagingMessages,
+      messagingAnnouncementDrafts: this.store.messagingAnnouncementDrafts,
+      messagingAnnouncements: this.store.messagingAnnouncements,
+      messagingAnnouncementDeliveries: this.store.messagingAnnouncementDeliveries,
+      managerReports: this.store.managerReports,
+      managerReportSourceReferences: this.store.managerReportSourceReferences,
+      managerReportExternalShares: this.store.managerReportExternalShares,
+      managerReportAuditLogs: this.store.managerReportAuditLogs,
+      moveouts: this.store.moveouts,
+      moveoutRecords: this.store.moveoutRecords,
+      moveoutChecklist: this.store.moveoutChecklist,
+      moveoutSettlements: this.store.moveoutSettlements,
+      moveoutDeductions: this.store.moveoutDeductions,
+      moveoutDisputes: this.store.moveoutDisputes,
+      moveoutReportAudits: this.store.moveoutReportAudits
     };
   }
 
@@ -1196,116 +1610,35 @@ export class RoomlogService {
   }
 
   listTenantContracts(tenantId: string): Contract[] {
-    return this.tenantContracts(tenantId).map((contract) => this.presentContract(contract));
+    return this.contract.listTenantContracts(tenantId);
   }
 
   getTenantContract(tenantId: string, contractId: string): Contract {
-    return this.presentContract(this.findTenantContract(tenantId, contractId));
+    return this.contract.getTenantContract(tenantId, contractId);
   }
 
   getTenantContractExtraction(tenantId: string, contractId: string): ContractExtraction {
-    const contract = this.findTenantContract(tenantId, contractId);
-
-    return this.presentContractExtraction(this.findContractExtraction(contract));
+    return this.contract.getTenantContractExtraction(tenantId, contractId);
   }
 
   getTenantContractPrivacy(tenantId: string, contractId: string): ContractPrivacy {
-    const contract = this.findTenantContract(tenantId, contractId);
-
-    return this.presentContractPrivacy(this.findContractPrivacy(contract));
+    return this.contract.getTenantContractPrivacy(tenantId, contractId);
   }
 
   requestTenantContractDeletion(tenantId: string, contractId: string): ContractPrivacy {
-    const contract = this.findTenantContract(tenantId, contractId);
-    const privacy = this.findContractPrivacy(contract);
+    return this.contract.requestTenantContractDeletion(tenantId, contractId);
+  }
 
-    if (!privacy.deletable) {
-      throw new BadRequestException("계약 종료 후에만 삭제 요청을 접수할 수 있습니다.");
-    }
-
-    contract.deletion = "requested";
-    contract.updatedAt = now();
-    privacy.deletion = "requested";
-    this.persistStore();
-
-    return this.presentContractPrivacy(privacy);
+  createTenantContract(tenantId: string, input: CreateTenantContractInput) {
+    return this.contract.createTenantContract(tenantId, input);
   }
 
   getManagerContractDashboard(managerId: string) {
-    const rows = this.managerContracts(managerId).map((contract) =>
-      this.buildManagerContractRow(managerId, contract)
-    );
-    const managedRoomIds = new Set(
-      this.store.rooms.filter((room) => room.landlordId === managerId).map((room) => room.id)
-    );
-    const contractedRoomIds = new Set(rows.map((row) => row.contract.roomId));
-
-    return {
-      counts: {
-        pending: rows.filter((row) => row.contract.review === "pending").length,
-        needsCheck: rows.reduce((sum, row) => sum + row.needsCheckCount, 0),
-        slaOverdue: rows.filter((row) => row.slaOverdue).length,
-        expiringSoon: rows.filter((row) => row.daysToExpire <= 30).length,
-        unregistered: Array.from(managedRoomIds).filter((roomId) => !contractedRoomIds.has(roomId)).length,
-        deletionRequests: rows.filter((row) => row.contract.deletion === "requested").length
-      },
-      rows
-    };
+    return this.contract.getManagerContractDashboard(managerId);
   }
 
   getManagerContractDetail(managerId: string, contractId = "ct_0001") {
-    const contract = this.findManagerContract(managerId, contractId);
-    const row = this.buildManagerContractRow(managerId, contract);
-    const extraction = this.findContractExtraction(contract);
-    const privacy = this.findContractPrivacy(contract);
-    const room = this.findRoom(contract.roomId);
-    const tenant = this.contractTenant(contract);
-    const tenantName = tenant?.name ?? row.tenantName;
-    const deletionRequests = this.managerContracts(managerId)
-      .filter((item) => item.deletion === "requested")
-      .map((item) => {
-        const itemPrivacy = this.findContractPrivacy(item);
-
-        return {
-          id: `del_${item.id}`,
-          contractId: item.id,
-          unitId: item.unitId,
-          tenantName: this.contractTenant(item)?.name ?? "미연결 임차인",
-          requestedAt: item.updatedAt,
-          slaHours: itemPrivacy.deletionSlaHours ?? 72,
-          state: itemPrivacy.deletion,
-          retentionNote: itemPrivacy.deletable
-            ? "계약 종료 후 삭제 요청입니다. 제한 보관 예외 항목을 확인하세요."
-            : "계약 유효 중이라 정산·분쟁 예외 항목을 먼저 확인해야 합니다."
-        };
-      });
-
-    return {
-      row,
-      extraction: this.presentContractExtraction(extraction),
-      privacy: this.presentContractPrivacy(privacy),
-      tenant: {
-        name: tenantName,
-        phone: tenant?.phone ?? "010-****-0000",
-        moveInDate: contract.startDate?.slice(0, 10) ?? "미등록",
-        residentState: contract.lifecycle === "expired" ? "퇴실" : "거주 중"
-      },
-      manualValues: {
-        deposit: this.extractionValue(extraction, "보증금") ?? "관리자 수동값 없음",
-        rent: contract.monthlyRent ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "관리자 수동값 없음",
-        maintenanceFee: contract.maintenanceFee
-          ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
-          : "관리자 수동값 없음",
-        paymentDay: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "관리자 수동값 없음",
-        account: this.extractionValue(extraction, "임대인 계좌") ?? "관리자 수동값 없음"
-      },
-      inventory: ["에어컨", "세탁기", "냉장고", "인덕션", "블라인드"],
-      timeline: this.contractTimeline(contract, room),
-      auditLogs: this.contractAuditLogs(contract, extraction),
-      deletionRequests,
-      inviteLinks: this.contractInviteLinks(managerId),
-      conflictCandidates: this.contractConflictCandidates(contract)
-    };
+    return this.contract.getManagerContractDetail(managerId, contractId);
   }
 
   confirmManagerContractReview(
@@ -1313,33 +1646,55 @@ export class RoomlogService {
     contractId: string,
     input: ConfirmContractInput = {}
   ) {
-    const contract = this.findManagerContract(managerId, contractId);
-    const extraction = this.findContractExtraction(contract);
-    const needsCheck = extraction.items.filter((item) => item.needsCheck);
-
-    if (needsCheck.length > 0 && !input.confirmNeedsCheck) {
-      throw new BadRequestException("확인 필요 항목을 원문과 대조했다는 확인이 필요합니다.");
-    }
-
-    contract.review = "confirmed";
-    contract.valueSource = "confirmed";
-    contract.confirmedAt = now();
-    contract.confirmedByManagerId = managerId;
-    contract.updatedAt = contract.confirmedAt;
-    extraction.confirmed = true;
-    this.persistStore();
-
-    return this.getManagerContractDetail(managerId, contract.id);
+    return this.contract.confirmManagerContractReview(managerId, contractId, input);
   }
 
   requestManagerContractInfo(managerId: string, contractId: string) {
-    const contract = this.findManagerContract(managerId, contractId);
+    return this.contract.requestManagerContractInfo(managerId, contractId);
+  }
 
-    contract.review = "info_requested";
-    contract.updatedAt = now();
-    this.persistStore();
+  createManagerContract(managerId: string, input: CreateManagerContractInput) {
+    return this.contract.createManagerContract(managerId, input);
+  }
 
-    return this.getManagerContractDetail(managerId, contract.id);
+  updateManagerContractManualValues(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractManualValuesInput
+  ) {
+    return this.contract.updateManagerContractManualValues(managerId, contractId, input);
+  }
+
+  updateManagerContractInventory(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractInventoryInput
+  ) {
+    return this.contract.updateManagerContractInventory(managerId, contractId, input);
+  }
+
+  createManagerContractInvite(
+    managerId: string,
+    contractId: string,
+    input: CreateManagerContractInviteInput
+  ) {
+    return this.contract.createManagerContractInvite(managerId, contractId, input);
+  }
+
+  updateManagerContractInvite(
+    managerId: string,
+    inviteId: string,
+    input: UpdateManagerContractInviteInput
+  ) {
+    return this.contract.updateManagerContractInvite(managerId, inviteId, input);
+  }
+
+  updateManagerContractPrivacy(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractPrivacyInput
+  ) {
+    return this.contract.updateManagerContractPrivacy(managerId, contractId, input);
   }
 
   decideManagerContractDeletion(
@@ -1348,31 +1703,7 @@ export class RoomlogService {
     state: DeletionState,
     retentionNote?: string
   ) {
-    if (!["completed", "limited", "denied"].includes(state)) {
-      throw new BadRequestException("삭제 처리 결과는 완료, 제한 보관, 삭제 불가 중 하나여야 합니다.");
-    }
-
-    const contract = this.findManagerContract(managerId, contractId);
-    const privacy = this.findContractPrivacy(contract);
-
-    contract.deletion = state;
-    contract.updatedAt = now();
-    privacy.deletion = state;
-
-    if (retentionNote?.trim()) {
-      privacy.retention = [
-        ...privacy.retention,
-        {
-          label: "관리자 처리 메모",
-          reason: retentionNote.trim(),
-          until: state === "completed" ? "삭제 완료 시점" : "예외 보관 만료 시"
-        }
-      ];
-    }
-
-    this.persistStore();
-
-    return this.getManagerContractDetail(managerId, contract.id);
+    return this.contract.decideManagerContractDeletion(managerId, contractId, state, retentionNote);
   }
 
   createComplaint(tenantId: string, input: CreateComplaintInput) {
@@ -2588,388 +2919,115 @@ export class RoomlogService {
   }
 
   listManagerCosts(managerId: string) {
-    return this.managerCosts(managerId);
+    return this.cost.listManagerCosts(managerId);
   }
 
   getManagerCost(managerId: string, costId: string) {
-    const cost = this.managerCosts(managerId).find((item) => item.id === costId);
+    return this.cost.getManagerCost(managerId, costId);
+  }
 
-    if (!cost) {
-      throw new NotFoundException("관리 가능한 비용을 찾을 수 없습니다.");
-    }
+  confirmManagerCost(managerId: string, costId: string) {
+    return this.cost.confirmManagerCost(managerId, costId);
+  }
 
-    return cost;
+  confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+    return this.cost.confirmManagerReceiptOcr(managerId, ocrId);
+  }
+
+  voidManagerCost(managerId: string, costId: string, reason?: string) {
+    return this.cost.voidManagerCost(managerId, costId, reason);
+  }
+
+  updateManagerCostDisclosure(
+    managerId: string,
+    costId: string,
+    disclosure: "public" | "private"
+  ) {
+    return this.cost.updateManagerCostDisclosure(managerId, costId, disclosure);
   }
 
   getManagerCostReviewQueueSummary(managerId: string): CostReviewQueueSummary {
-    const costs = this.managerCosts(managerId);
-    const queued = costs.filter((cost) => cost.status === "draft" && cost.reviewReason);
-
-    return {
-      ocrLowConfidence: queued.filter((cost) => cost.reviewReason === "ocr_low_confidence").length,
-      classificationUnclear: queued.filter((cost) => cost.reviewReason === "classification_unclear").length,
-      unitUnmatched: queued.filter((cost) => cost.reviewReason === "unit_unmatched").length,
-      unverifiedConfirmed: costs.filter(
-        (cost) => (cost.status === "confirmed" || cost.status === "amended") && !cost.verified
-      ).length,
-      total: queued.length
-    };
+    return this.cost.getManagerCostReviewQueueSummary(managerId);
   }
 
-  getManagerMonthlyCostSummary(managerId: string, month = this.currentMonth()) {
-    const activeCosts = this.activeManagerCostsForSummary(managerId).filter((cost) =>
-      cost.date.startsWith(month)
-    );
-    const byType = this.emptyCostTypeAmounts();
-
-    for (const cost of activeCosts) {
-      byType[cost.type] += cost.amount;
-    }
-
-    return {
-      month,
-      totalAmount: activeCosts.reduce((sum, cost) => sum + cost.amount, 0),
-      byType,
-      confirmedCount: activeCosts.length
-    };
+  getManagerMonthlyCostSummary(managerId: string, month?: string) {
+    return this.cost.getManagerMonthlyCostSummary(managerId, month);
   }
 
   listManagerReceipts(managerId: string) {
-    const accessibleReceiptIds = new Set(
-      this.managerCosts(managerId)
-        .map((cost) => cost.receiptId)
-        .filter((receiptId): receiptId is string => Boolean(receiptId))
-    );
-
-    return this.store.receipts
-      .filter((receipt) => receipt.managerId === managerId || accessibleReceiptIds.has(receipt.id))
-      .map((receipt) => ({ ...receipt }))
-      .sort((a, b) => this.timeOf(b.uploadedAt) - this.timeOf(a.uploadedAt));
+    return this.cost.listManagerReceipts(managerId);
   }
 
   getManagerReceiptOcr(managerId: string, ocrId: string) {
-    const ocr = this.store.receiptOcrs.find((item) => item.id === ocrId);
-
-    if (!ocr || !this.canManagerAccessReceiptOcr(managerId, ocr)) {
-      throw new NotFoundException("관리 가능한 영수증 OCR을 찾을 수 없습니다.");
-    }
-
-    return this.cloneReceiptOcr(ocr);
+    return this.cost.getManagerReceiptOcr(managerId, ocrId);
   }
 
-  getManagerDisclosureSetting(managerId: string, month = this.currentMonth()): DisclosureSetting {
-    const maintenanceCosts = this.activeManagerCostsForSummary(managerId).filter(
-      (cost) => cost.type === "maintenance" && cost.date.startsWith(month)
-    );
-    const entries = maintenanceCosts.map((cost) => ({
-      costId: cost.id,
-      item: cost.item,
-      amount: cost.amount,
-      disclosure: cost.disclosure ?? "public",
-      privateReason: (cost.disclosure ?? "public") === "private" ? "관리자 비공개 예외" : undefined
-    }));
-
-    return {
-      month,
-      scope: "building",
-      entries,
-      hiddenCount: entries.filter((entry) => entry.disclosure === "private").length,
-      updatedAt:
-        maintenanceCosts.sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt))[0]
-          ?.updatedAt ?? now()
-    };
+  getManagerDisclosureSetting(managerId: string, month?: string): DisclosureSetting {
+    return this.cost.getManagerDisclosureSetting(managerId, month);
   }
 
   listVendors() {
-    return this.store.vendors.map((vendor) => ({ ...vendor }));
+    return this.vendorMgmt.listVendors();
   }
 
   listManagerVendorMgmtVendors(managerId: string, filters: VendorMgmtListFilters = {}) {
-    return this.filteredManagerVendorProfiles(managerId, filters);
+    return this.vendorMgmt.listManagerVendorMgmtVendors(managerId, filters);
   }
 
   getManagerVendorMgmtDetail(managerId: string, vendorId: string) {
-    const vendor = this.findManagerVendorProfile(managerId, vendorId);
-    const jobs = this.managerVendorJobRecords(managerId, vendor.id);
-
-    return {
-      vendor,
-      jobs,
-      perf: this.managerVendorPerf(managerId, vendor.id, jobs)
-    };
+    return this.vendorMgmt.getManagerVendorMgmtDetail(managerId, vendorId);
   }
 
   getManagerVendorMgmtPerf(managerId: string, vendorId: string) {
-    const detail = this.getManagerVendorMgmtDetail(managerId, vendorId);
-
-    return {
-      vendor: detail.vendor,
-      jobs: detail.jobs,
-      perf: detail.perf
-    };
+    return this.vendorMgmt.getManagerVendorMgmtPerf(managerId, vendorId);
   }
 
   listManagerVendorDuplicateCandidates(managerId: string) {
-    const vendors = this.filteredManagerVendorProfiles(managerId);
-    const candidates: { vendorId: string; name: string; reason: "same_phone" | "same_name" }[] = [];
+    return this.vendorMgmt.listManagerVendorDuplicateCandidates(managerId);
+  }
 
-    for (const vendor of vendors) {
-      const normalizedPhone = normalizePhoneNumber(vendor.phone);
-      if (
-        normalizedPhone &&
-        vendors.some(
-          (candidate) =>
-            candidate.id !== vendor.id && normalizePhoneNumber(candidate.phone) === normalizedPhone
-        )
-      ) {
-        candidates.push({ vendorId: vendor.id, name: vendor.name, reason: "same_phone" });
-        continue;
-      }
+  createManagerVendorProfile(managerId: string, input: ManagerVendorProfileInput) {
+    return this.vendorMgmt.createManagerVendorProfile(managerId, input);
+  }
 
-      if (
-        vendors.some(
-          (candidate) =>
-            candidate.id !== vendor.id &&
-            candidate.name.trim().toLowerCase() === vendor.name.trim().toLowerCase()
-        )
-      ) {
-        candidates.push({ vendorId: vendor.id, name: vendor.name, reason: "same_name" });
-      }
-    }
-
-    return candidates;
+  updateManagerVendorProfile(
+    managerId: string,
+    vendorId: string,
+    input: ManagerVendorProfileInput
+  ) {
+    return this.vendorMgmt.updateManagerVendorProfile(managerId, vendorId, input);
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
-
-    if (!manager) {
-      throw new ForbiddenException("관리자만 협력업체를 초대할 수 있습니다.");
-    }
-
-    const businessName = input.businessName?.trim();
-    const contactPerson = input.contactPerson?.trim();
-    const phone = normalizePhoneNumber(input.phone);
-    const serviceArea = input.serviceArea?.trim();
-    const email = input.email?.trim().toLowerCase();
-
-    if (!businessName) {
-      throw new BadRequestException("업체명을 입력해주세요.");
-    }
-
-    if (!contactPerson) {
-      throw new BadRequestException("담당자명을 입력해주세요.");
-    }
-
-    if (!phone) {
-      throw new BadRequestException("업체 연락처를 입력해주세요.");
-    }
-
-    if (!serviceArea) {
-      throw new BadRequestException("서비스 가능 지역을 입력해주세요.");
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new BadRequestException("초대 이메일 형식이 올바르지 않습니다.");
-    }
-
-    const inviteToken = randomBytes(18).toString("base64url");
-    const createdAt = now();
-    const invite: VendorInvite = {
-      id: id("vinv"),
-      inviteToken,
-      invitedByManagerId: managerId,
-      email,
-      businessName,
-      contactPerson,
-      phone,
-      serviceArea,
-      status: "PENDING",
-      signupUrl: `/vendor?inviteToken=${inviteToken}`,
-      createdAt
-    };
-
-    this.store.vendorInvites.unshift(invite);
-    this.persistStore();
-
-    return this.presentVendorInvite(invite);
+    return this.vendorMgmt.createVendorInvite(managerId, input);
   }
 
   listVendorInvites(managerId: string) {
-    return this.store.vendorInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
-      .map((invite) => this.presentVendorInvite(invite));
+    return this.vendorMgmt.listVendorInvites(managerId);
   }
 
   createTenantInvite(managerId: string, input: CreateTenantInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
-
-    if (!manager) {
-      throw new ForbiddenException("관리자만 임차인을 초대할 수 있습니다.");
-    }
-
-    const roomId = input.roomId?.trim();
-    const tenantName = input.tenantName?.trim();
-    const phone = normalizePhoneNumber(input.phone);
-    const moveInDate = input.moveInDate?.trim();
-    const email = input.email?.trim().toLowerCase();
-
-    if (!roomId) {
-      throw new BadRequestException("초대할 호실을 선택해주세요.");
-    }
-
-    this.assertManagerCanAccessRoom(managerId, roomId);
-
-    if (!tenantName) {
-      throw new BadRequestException("임차인 이름을 입력해주세요.");
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new BadRequestException("초대 이메일 형식이 올바르지 않습니다.");
-    }
-
-    const inviteToken = randomBytes(18).toString("base64url");
-    const createdAt = now();
-    const invite: TenantInvite = {
-      id: id("tinv"),
-      inviteToken,
-      invitedByManagerId: managerId,
-      roomId,
-      email,
-      tenantName,
-      phone,
-      moveInDate,
-      status: "PENDING",
-      signupUrl: `/tenant?inviteToken=${inviteToken}`,
-      createdAt
-    };
-
-    this.store.tenantInvites.unshift(invite);
-    this.persistStore();
-
-    return this.presentTenantInvite(invite);
+    return this.vendorMgmt.createTenantInvite(managerId, input);
   }
 
   listTenantInvites(managerId: string) {
-    return this.store.tenantInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
-      .map((invite) => this.presentTenantInvite(invite));
+    return this.vendorMgmt.listTenantInvites(managerId);
   }
 
   getSignupInvitePreview(role: UserRole, inviteToken: string) {
-    const token = inviteToken?.trim();
-
-    if (!token) {
-      throw new BadRequestException("초대 토큰이 필요합니다.");
-    }
-
-    if (role === "TENANT") {
-      const invite = this.store.tenantInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-      }
-
-      this.assertPendingTenantInvite(invite);
-
-      const room = this.findRoom(invite.roomId);
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.tenantName,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        moveInDate: invite.moveInDate,
-        targetLabel: [room.buildingName, room.roomNo].filter(Boolean).join(" "),
-        room: { ...room },
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    if (role === "VENDOR") {
-      const invite = this.store.vendorInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-      }
-
-      this.assertPendingVendorInvite(invite);
-
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.contactPerson,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        businessName: invite.businessName,
-        serviceArea: invite.serviceArea,
-        targetLabel: invite.businessName,
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    throw new BadRequestException("초대 역할이 올바르지 않습니다.");
+    return this.auth.getSignupInvitePreview(role, inviteToken);
   }
 
   listVendorRepairs(vendorUserOrProfileId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-
-    return this.store.repairs
-      .filter((repair) => repair.vendorId === vendor.id)
-      .map((repair) => this.presentRepairForVendor(repair));
+    return this.vendorRepair.listVendorRepairs(vendorUserOrProfileId);
   }
 
   getVendorRepair(vendorUserOrProfileId: string, repairId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const repair = this.store.repairs.find(
-      (item) => item.id === repairId && item.vendorId === vendor.id
-    );
-
-    if (!repair) {
-      throw new NotFoundException("수리 요청을 찾을 수 없습니다.");
-    }
-
-    return this.presentRepairForVendor(repair);
+    return this.vendorRepair.getVendorRepair(vendorUserOrProfileId, repairId);
   }
 
   submitEstimate(vendorUserOrProfileId: string, repairId: string, input: SubmitEstimateInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["REQUESTED", "ACCEPTED"], "견적 제출");
-    const estimateAmount = Number(input.estimateAmount);
-    const estimateDescription = input.estimateDescription?.trim();
-
-    if (!Number.isFinite(estimateAmount) || estimateAmount <= 0) {
-      throw new BadRequestException("견적 금액을 올바르게 입력해주세요.");
-    }
-
-    if (!estimateDescription) {
-      throw new BadRequestException("견적 설명을 입력해주세요.");
-    }
-
-    repair.estimateAmount = estimateAmount;
-    repair.estimateDescription = estimateDescription;
-    repair.status = "ESTIMATE_SUBMITTED";
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "ESTIMATE_REVIEW", repair.vendorId, "견적 제출");
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.submitEstimate(vendorUserOrProfileId, repairId, input);
   }
 
   approveRepairEstimate(
@@ -2977,92 +3035,15 @@ export class RoomlogService {
     repairId: string,
     input: ApproveRepairEstimateInput
   ) {
-    const repair = this.findRepair(repairId);
-    const ticket = this.findTicket(repair.ticketId);
-    this.assertManagerCanAccessTicket(managerId, ticket);
-    this.assertRepairStatus(repair, ["ESTIMATE_SUBMITTED"], "견적 승인");
-
-    if (!["LANDLORD", "TENANT", "PENDING"].includes(input.costBearer)) {
-      throw new BadRequestException("비용 주체를 선택해주세요.");
-    }
-
-    repair.status = "ESTIMATE_APPROVED";
-    repair.costBearer = input.costBearer;
-    repair.estimateApprovalNote = input.note?.trim() || this.costBearerLabel(input.costBearer);
-    repair.estimateApprovedAt = now();
-    repair.updatedAt = now();
-    ticket.updatedAt = now();
-    this.pushHistory(
-      ticket.id,
-      managerId,
-      ticket.status,
-      ticket.status,
-      `견적 승인: ${this.costBearerLabel(input.costBearer)}`
-    );
-    this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      managerId,
-      "LANDLORD",
-      [
-        `견적을 승인했습니다. 비용 주체: ${this.costBearerLabel(input.costBearer)}.`,
-        repair.estimateAmount ? `승인 금액: ${repair.estimateAmount.toLocaleString()}원.` : "",
-        repair.estimateApprovalNote ? `관리자 메모: ${repair.estimateApprovalNote}` : "",
-        "업체가 방문 일정을 확정하면 이 티켓에서 다시 안내드리겠습니다."
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.approveRepairEstimate(managerId, repairId, input);
   }
 
   scheduleRepair(vendorUserOrProfileId: string, repairId: string, input: ScheduleRepairInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["ESTIMATE_APPROVED"], "방문 일정 저장");
-    const scheduledAt = input.scheduledAt?.trim();
-
-    if (!scheduledAt) {
-      throw new BadRequestException("방문 일정을 입력해주세요.");
-    }
-
-    repair.scheduledAt = input.scheduledAt;
-    repair.status = "SCHEDULED";
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "REPAIR_IN_PROGRESS", repair.vendorId, "방문 일정 확정");
-    const ticket = this.findTicket(repair.ticketId);
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      vendor.userId,
-      "VENDOR",
-      [
-        `방문 일정이 확정되었습니다: ${scheduledAt}.`,
-        repair.costBearer ? `비용 주체: ${this.costBearerLabel(repair.costBearer)}.` : "",
-        "방문 전 문제 부위 주변을 정리해주시고, 추가로 보이는 증상이 있으면 이 티켓에 남겨주세요."
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.scheduleRepair(vendorUserOrProfileId, repairId, input);
   }
 
   reportCompletion(vendorUserOrProfileId: string, repairId: string, input: ReportCompletionInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["SCHEDULED", "IN_PROGRESS"], "완료 보고");
-    repair.status = "COMPLETION_REPORTED";
-    repair.completedAt = now();
-    repair.completionNote = input.completionNote;
-    repair.completionPhotoUrls = input.completionPhotoUrls ?? [];
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "COMPLETION_REPORTED", repair.vendorId, "완료 보고");
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.reportCompletion(vendorUserOrProfileId, repairId, input);
   }
 
   addVendorRepairMessage(
@@ -3070,33 +3051,7 @@ export class RoomlogService {
     repairId: string,
     input: AddVendorRepairMessageInput
   ) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const ticket = this.findTicket(repair.ticketId);
-    const messageText = input.messageText?.trim() ?? "";
-    const attachmentUrls = input.attachmentUrls ?? [];
-
-    if (!messageText && attachmentUrls.length === 0) {
-      throw new BadRequestException("업체 메시지 또는 사진이 필요합니다.");
-    }
-
-    const message = this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      vendor.userId,
-      "VENDOR",
-      messageText || "업체 사진을 첨부했습니다.",
-      attachmentUrls
-    );
-    ticket.updatedAt = now();
-    repair.updatedAt = now();
-    this.persistStore();
-
-    return {
-      message: this.presentTicketMessage(message),
-      repair: this.presentRepairForVendor(repair),
-      ticket: this.presentTicketForVendor(ticket, repair)
-    };
+    return this.vendorRepair.addVendorRepairMessage(vendorUserOrProfileId, repairId, input);
   }
 
   approveCompletion(managerId: string, ticketId: string, note?: string) {
@@ -3121,12 +3076,16 @@ export class RoomlogService {
   addMessage(senderUserId: string, ticketId: string, messageText: string) {
     const ticket = this.findTicket(ticketId);
     const user = this.store.users.find((account) => account.id === senderUserId);
+    const senderRole =
+      user?.role === "TENANT" || user?.role === "LANDLORD" || user?.role === "VENDOR"
+        ? user.role
+        : "TENANT";
 
     const message = this.addMessageInternal(
       ticket.id,
       ticket.complaintId,
       senderUserId,
-      user?.role ?? "TENANT",
+      senderRole,
       messageText
     );
     this.persistStore();
@@ -3356,357 +3315,308 @@ export class RoomlogService {
   }
 
   createMoveInChecklistItem(tenantId: string, input: CreateMoveInChecklistItemInput) {
-    const roomId = input.roomId?.trim() || this.store.tenantRooms[tenantId];
-
-    if (!roomId || this.store.tenantRooms[tenantId] !== roomId) {
-      throw new ForbiddenException("본인 호실의 체크리스트만 등록할 수 있습니다.");
-    }
-
-    const area = input.area?.trim();
-    const itemName = input.itemName?.trim();
-    const memo = input.memo?.trim();
-    const attachmentUrls = input.attachmentUrls?.map((url) => url.trim()).filter(Boolean) ?? [];
-
-    if (!area) {
-      throw new BadRequestException("공간명을 입력해주세요.");
-    }
-
-    if (!itemName) {
-      throw new BadRequestException("체크 항목명을 입력해주세요.");
-    }
-
-    if (attachmentUrls.length === 0) {
-      throw new BadRequestException("입주 전 기준 사진을 한 장 이상 첨부해주세요.");
-    }
-
-    this.findRoom(roomId);
-    const createdAt = now();
-    const item: MoveInChecklistItem = {
-      id: id("mchk"),
-      tenantId,
-      roomId,
-      area,
-      itemName,
-      memo,
-      guidance: this.moveInChecklistGuidance(area, itemName),
-      attachmentUrls,
-      createdAt,
-      updatedAt: createdAt
-    };
-
-    this.store.moveInChecklist.unshift(item);
-    this.persistStore();
-
-    return this.presentMoveInChecklistItem(item);
+    return this.checklist.createMoveInChecklistItem(tenantId, input);
   }
 
   listTenantMoveInChecklist(tenantId: string) {
-    const roomId = this.store.tenantRooms[tenantId];
-
-    if (!roomId) {
-      throw new NotFoundException("연결된 호실을 찾을 수 없습니다.");
-    }
-
-    return this.store.moveInChecklist
-      .filter((item) => item.tenantId === tenantId && item.roomId === roomId)
-      .map((item) => this.presentMoveInChecklistItem(item));
+    return this.checklist.listTenantMoveInChecklist(tenantId);
   }
 
   listManagerMoveInChecklist(managerId: string, roomId: string) {
-    this.assertManagerCanAccessRoom(managerId, roomId);
-
-    return this.store.moveInChecklist
-      .filter((item) => item.roomId === roomId)
-      .map((item) => this.presentMoveInChecklistItem(item));
+    return this.checklist.listManagerMoveInChecklist(managerId, roomId);
   }
 
-  async saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
-    const user = this.store.users.find((account) => account.id === uploadedByUserId);
-
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    if (!input.mimeType.startsWith("image/")) {
-      throw new BadRequestException("이미지 파일만 업로드할 수 있습니다.");
-    }
-
-    if (!input.buffer.length) {
-      throw new BadRequestException("업로드할 파일이 비어 있습니다.");
-    }
-
-    if (input.buffer.length > 10 * 1024 * 1024) {
-      throw new BadRequestException("이미지는 10MB 이하만 업로드할 수 있습니다.");
-    }
-
-    const attachmentId = id("att");
-    const safeBaseName =
-      basename(input.originalName, extname(input.originalName))
-        .replace(/[^a-zA-Z0-9가-힣_-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 48) || "upload";
-    const extension = this.extensionForMimeType(input.mimeType, input.originalName);
-    const fileName = `${attachmentId}-${safeBaseName}${extension}`;
-    const storedFile = await this.storageAdapter.save({
-      buffer: input.buffer,
-      fileName,
-      mimeType: input.mimeType
-    });
-    const createdAt = now();
-    const attachment: Attachment = {
-      id: attachmentId,
-      uploadedByUserId,
-      category: input.category,
-      fileName: storedFile.fileName,
-      fileUrl: storedFile.fileUrl,
-      mimeType: input.mimeType,
-      sizeBytes: input.buffer.length,
-      createdAt
-    };
-
-    this.store.attachments.unshift(attachment);
-    this.persistStore();
-
-    return { ...attachment };
+  saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
+    return this.floorPlan.saveAttachment(uploadedByUserId, input);
   }
 
   createFloorPlanDraft(ownerId: string, input: SaveFloorPlanDraftInput) {
-    this.assertFloorPlanOwner(ownerId);
-    const createdAt = now();
-    const draft: FloorPlanDraft = {
-      id: id("plan"),
-      ownerId,
-      sourceAttachmentId: this.optionalAttachmentId(ownerId, input.sourceAttachmentId),
-      sourceImageUrl: this.optionalUrl(input.sourceImageUrl),
-      status: "DRAFT",
-      pixelToMmRatio: this.validPixelToMmRatio(input.pixelToMmRatio),
-      walls: this.validFloorPlanWalls(input.walls),
-      hiddenWallIds: this.validStringArray(input.hiddenWallIds),
-      furnitures: [],
-      room3d: this.validJsonObject(input.room3d),
-      extractionMeta: this.validExtractionMeta(input.extractionMeta),
-      openings: this.validFloorPlanCandidates(input.openings),
-      fixtures: this.validFloorPlanCandidates(input.fixtures),
-      createdAt,
-      updatedAt: createdAt
-    };
-
-    this.store.floorPlans.unshift(draft);
-    this.persistStore();
-
-    return this.presentFloorPlanDraft(draft);
+    return this.floorPlan.createFloorPlanDraft(ownerId, input);
   }
 
   getFloorPlanDraft(ownerId: string, floorPlanId: string) {
-    this.assertFloorPlanOwner(ownerId);
-    const draft = this.store.floorPlans.find((floorPlan) => floorPlan.id === floorPlanId);
-
-    if (!draft) {
-      throw new NotFoundException("저장된 도면을 찾을 수 없습니다.");
-    }
-
-    if (draft.ownerId !== ownerId) {
-      throw new ForbiddenException("이 도면에 접근할 권한이 없습니다.");
-    }
-
-    return this.presentFloorPlanDraft(draft);
+    return this.floorPlan.getFloorPlanDraft(ownerId, floorPlanId);
   }
 
   updateFloorPlanDraft(ownerId: string, floorPlanId: string, input: SaveFloorPlanDraftInput) {
-    this.assertFloorPlanOwner(ownerId);
-    const draft = this.store.floorPlans.find((floorPlan) => floorPlan.id === floorPlanId);
-
-    if (!draft) {
-      throw new NotFoundException("저장된 도면을 찾을 수 없습니다.");
-    }
-
-    if (draft.ownerId !== ownerId) {
-      throw new ForbiddenException("이 도면을 수정할 권한이 없습니다.");
-    }
-
-    if (input.sourceAttachmentId !== undefined) {
-      draft.sourceAttachmentId = this.optionalAttachmentId(ownerId, input.sourceAttachmentId);
-    }
-    if (input.sourceImageUrl !== undefined) {
-      draft.sourceImageUrl = this.optionalUrl(input.sourceImageUrl);
-    }
-    if (input.status !== undefined) {
-      draft.status = this.validFloorPlanStatus(input.status);
-    }
-    if (input.pixelToMmRatio !== undefined) {
-      draft.pixelToMmRatio = this.validPixelToMmRatio(input.pixelToMmRatio);
-    }
-    if (input.walls !== undefined) {
-      draft.walls = this.validFloorPlanWalls(input.walls);
-    }
-    if (input.hiddenWallIds !== undefined) {
-      draft.hiddenWallIds = this.validStringArray(input.hiddenWallIds);
-    }
-    if (input.furnitures !== undefined) {
-      draft.furnitures = [];
-    }
-    if (input.room3d !== undefined) {
-      draft.room3d = this.validJsonObject(input.room3d);
-    }
-    if (input.extractionMeta !== undefined) {
-      draft.extractionMeta = this.validExtractionMeta(input.extractionMeta);
-    }
-    if (input.openings !== undefined) {
-      draft.openings = this.validFloorPlanCandidates(input.openings);
-    }
-    if (input.fixtures !== undefined) {
-      draft.fixtures = this.validFloorPlanCandidates(input.fixtures);
-    }
-    if (draft.status === "PUBLISHED") {
-      this.assertPublishableFloorPlan(draft);
-    }
-
-    draft.updatedAt = now();
-    this.persistStore();
-
-    return this.presentFloorPlanDraft(draft);
+    return this.floorPlan.updateFloorPlanDraft(ownerId, floorPlanId, input);
   }
 
-  private assertFloorPlanOwner(ownerId: string) {
-    const user = this.store.users.find((account) => account.id === ownerId);
+  getTenantRoom(tenantId: string) {
+    const roomId = this.store.tenantRooms[tenantId];
 
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
+    if (!roomId) {
+      throw new NotFoundException("임차인 호실을 찾을 수 없습니다.");
     }
 
-    if (user.role !== "LANDLORD") {
-      throw new ForbiddenException("도면은 집주인 계정으로 저장할 수 있습니다.");
-    }
+    return this.findRoom(roomId);
   }
 
-  private optionalAttachmentId(ownerId: string, attachmentId?: string) {
-    if (!attachmentId) return undefined;
-
-    const attachment = this.store.attachments.find((item) => item.id === attachmentId);
-    if (!attachment) {
-      throw new NotFoundException("도면 이미지 첨부를 찾을 수 없습니다.");
-    }
-    if (attachment.uploadedByUserId !== ownerId) {
-      throw new ForbiddenException("이 첨부 파일을 사용할 권한이 없습니다.");
-    }
-
-    return attachment.id;
+  listTenantMoveouts(tenantId: string) {
+    return this.moveout.listTenantMoveouts(tenantId);
   }
 
-  private optionalUrl(value?: string) {
-    const trimmed = value?.trim();
-
-    return trimmed || undefined;
+  getTenantMoveout(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveout(tenantId, moveoutId);
   }
 
-  private validPixelToMmRatio(value?: number) {
-    const ratio = Number(value ?? 20);
-
-    if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1000) {
-      throw new BadRequestException("축척 값이 올바르지 않습니다.");
-    }
-
-    return ratio;
+  listTenantMoveoutRecords(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutRecords(tenantId, moveoutId);
   }
 
-  private validFloorPlanWalls(value?: FloorPlanWall[]) {
-    if (!Array.isArray(value)) return [];
-
-    return value
-      .filter((wall) => wall && wall.start && wall.end)
-      .map((wall, index) => {
-        const normalized = {
-          id: String(wall.id ?? `wall-${index + 1}`),
-          start: {
-            x: Number(wall.start.x),
-            y: Number(wall.start.y)
-          },
-          end: {
-            x: Number(wall.end.x),
-            y: Number(wall.end.y)
-          }
-        };
-
-        if (
-          !Number.isFinite(normalized.start.x) ||
-          !Number.isFinite(normalized.start.y) ||
-          !Number.isFinite(normalized.end.x) ||
-          !Number.isFinite(normalized.end.y)
-        ) {
-          throw new BadRequestException("벽 좌표가 올바르지 않습니다.");
-        }
-
-        return normalized;
-      });
+  listTenantMoveoutChecklist(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutChecklist(tenantId, moveoutId);
   }
 
-  private validStringArray(value?: string[]) {
-    return Array.isArray(value)
-      ? value.map((item) => String(item)).filter((item) => item.trim().length > 0)
-      : [];
+  updateTenantMoveoutChecklist(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateMoveoutChecklistInput
+  ) {
+    return this.moveout.updateTenantMoveoutChecklist(tenantId, moveoutId, input);
   }
 
-  private validFloorPlanStatus(value: string) {
-    if (value === "DRAFT" || value === "PUBLISHED" || value === "ARCHIVED") return value;
-
-    throw new BadRequestException("도면 상태가 올바르지 않습니다.");
+  getTenantMoveoutSettlement(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveoutSettlement(tenantId, moveoutId);
   }
 
-  private validJsonObject(value?: Record<string, unknown>) {
-    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  listTenantMoveoutDisputes(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutDisputes(tenantId, moveoutId);
   }
 
-  private validExtractionMeta(value?: Record<string, unknown>) {
-    const meta = this.validJsonObject(value);
-
-    return {
-      ...meta,
-      scaleConfirmed: Boolean(meta.scaleConfirmed)
-    };
+  createTenantMoveoutInquiry(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateTenantMoveoutInquiryInput
+  ) {
+    return this.moveout.createTenantMoveoutInquiry(tenantId, moveoutId, input);
   }
 
-  private validFloorPlanCandidates(value?: Array<Record<string, unknown>>) {
-    if (!Array.isArray(value)) return [];
-
-    return value.map((candidate, index) => {
-      const rawStatus = String(candidate.status ?? "CANDIDATE");
-      if (!["CANDIDATE", "CONFIRMED", "REJECTED"].includes(rawStatus)) {
-        throw new BadRequestException("도면 후보 상태가 올바르지 않습니다.");
-      }
-      const status = rawStatus as "CANDIDATE" | "CONFIRMED" | "REJECTED";
-
-      const confidence = candidate.confidence === undefined ? undefined : Number(candidate.confidence);
-      if (confidence !== undefined && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)) {
-        throw new BadRequestException("도면 후보 신뢰도가 올바르지 않습니다.");
-      }
-
-      return {
-        ...candidate,
-        id: String(candidate.id ?? `candidate-${index + 1}`),
-        source: String(candidate.source ?? "manual"),
-        status,
-        type: String(candidate.type ?? "UNKNOWN"),
-        ...(confidence === undefined ? {} : { confidence })
-      };
-    });
+  createTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateMoveoutDisputeInput
+  ) {
+    return this.moveout.createTenantMoveoutDispute(tenantId, moveoutId, input);
   }
 
-  private assertPublishableFloorPlan(draft: FloorPlanDraft) {
-    const roomWalls = Array.isArray((draft.room3d as { walls?: unknown[] }).walls)
-      ? (draft.room3d as { walls?: unknown[] }).walls ?? []
-      : [];
-
-    if (draft.walls.length === 0 || roomWalls.length === 0) {
-      throw new BadRequestException("3D 도면 발행에는 벽과 3D 변환 데이터가 필요합니다.");
-    }
-
-    if (!draft.extractionMeta.scaleConfirmed || !Number.isFinite(draft.pixelToMmRatio) || draft.pixelToMmRatio <= 0) {
-      throw new BadRequestException("도면 발행 전 축척 확인이 필요합니다.");
-    }
+  updateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateTenantMoveoutDisputeInput
+  ) {
+    return this.moveout.updateTenantMoveoutDispute(tenantId, moveoutId, input);
   }
 
-  private presentFloorPlanDraft(draft: FloorPlanDraft): FloorPlanDraft {
-    return JSON.parse(JSON.stringify(draft)) as FloorPlanDraft;
+  escalateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: EscalateMoveoutDisputeInput
+  ) {
+    return this.moveout.escalateTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  getManagerMoveoutDashboard(managerId: string) {
+    return this.moveout.getManagerMoveoutDashboard(managerId);
+  }
+
+  listManagerMoveoutRows(managerId: string) {
+    return this.moveout.listManagerMoveoutRows(managerId);
+  }
+
+  getManagerMoveout(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveout(managerId, moveoutId);
+  }
+
+  getManagerMoveoutRecords(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveoutRecords(managerId, moveoutId);
+  }
+
+  getManagerReportAudit(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerReportAudit(managerId, moveoutId);
+  }
+
+  getManagerMoveoutSettlement(
+    managerId: string,
+    moveoutId: string
+  ): MoveoutManagerSettlementReview {
+    return this.moveout.getManagerMoveoutSettlement(managerId, moveoutId);
+  }
+
+  adjustManagerMoveoutWearVerdict(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustWearVerdictInput
+  ) {
+    return this.moveout.adjustManagerMoveoutWearVerdict(managerId, moveoutId, input);
+  }
+
+  adjustManagerMoveoutDeduction(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustDeductionInput
+  ) {
+    return this.moveout.adjustManagerMoveoutDeduction(managerId, moveoutId, input);
+  }
+
+  completeManagerMoveoutReview(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutCompleteReviewInput
+  ) {
+    return this.moveout.completeManagerMoveoutReview(managerId, moveoutId, input);
+  }
+
+  respondManagerMoveoutDispute(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutRespondDisputeInput
+  ) {
+    return this.moveout.respondManagerMoveoutDispute(managerId, moveoutId, input);
+  }
+
+  createMessagingThread(managerId: string, input: CreateMessagingThreadInput) {
+    return this.messaging.createMessagingThread(managerId, input);
+  }
+
+  createTenantMessagingThread(tenantId: string, input: CreateTenantMessagingThreadInput) {
+    return this.messaging.createTenantMessagingThread(tenantId, input);
+  }
+
+  listTenantMessagingThreads(tenantId: string) {
+    return this.messaging.listTenantMessagingThreads(tenantId);
+  }
+
+  getTenantMessagingThread(tenantId: string, threadId: string) {
+    return this.messaging.getTenantMessagingThread(tenantId, threadId);
+  }
+
+  addTenantMessagingThreadMessage(
+    tenantId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input);
+  }
+
+  deleteTenantMessagingThread(tenantId: string, threadId: string) {
+    return this.messaging.deleteTenantMessagingThread(tenantId, threadId);
+  }
+
+  listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext) {
+    return this.messaging.listManagerMessagingThreads(managerId, context);
+  }
+
+  getManagerMessagingThread(managerId: string, threadId: string) {
+    return this.messaging.getManagerMessagingThread(managerId, threadId);
+  }
+
+  addManagerMessagingThreadMessage(
+    managerId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input);
+  }
+
+  deleteManagerMessagingThread(managerId: string, threadId: string) {
+    return this.messaging.deleteManagerMessagingThread(managerId, threadId);
+  }
+
+  createManagerAnnouncementDraft(managerId: string, input: CreateAnnouncementDraftInput) {
+    return this.messaging.createManagerAnnouncementDraft(managerId, input);
+  }
+
+  listManagerAnnouncementDrafts(managerId: string) {
+    return this.messaging.listManagerAnnouncementDrafts(managerId);
+  }
+
+  getManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.getManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listManagerAnnouncementRecipients(managerId: string, draftId: string) {
+    return this.messaging.listManagerAnnouncementRecipients(managerId, draftId);
+  }
+
+  sendManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.sendManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listTenantMessagingAnnouncements(tenantId: string) {
+    return this.messaging.listTenantMessagingAnnouncements(tenantId);
+  }
+
+  getTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.getTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  markTenantMessagingAnnouncementRead(tenantId: string, announcementId: string) {
+    return this.messaging.markTenantMessagingAnnouncementRead(tenantId, announcementId);
+  }
+
+  confirmTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.confirmTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  listManagerAnnouncementResults(managerId: string) {
+    return this.messaging.listManagerAnnouncementResults(managerId);
+  }
+
+  getManagerAnnouncementResult(managerId: string, announcementId: string) {
+    return this.messaging.getManagerAnnouncementResult(managerId, announcementId);
+  }
+
+  listManagerReports(managerId: string) {
+    return this.report.listManagerReports(managerId);
+  }
+
+  createManagerReport(managerId: string, input: CreateManagerReportInput) {
+    return this.report.createManagerReport(managerId, input);
+  }
+
+  getManagerReport(managerId: string, reportId: string) {
+    return this.report.getManagerReport(managerId, reportId);
+  }
+
+  listManagerReportSourceReferences(managerId: string, reportId: string) {
+    return this.report.listManagerReportSourceReferences(managerId, reportId);
+  }
+
+  askManagerReportChat(
+    managerId: string,
+    reportId: string,
+    input: AskManagerReportChatInput
+  ) {
+    return this.report.askManagerReportChat(managerId, reportId, input);
+  }
+
+  createManagerReportExternalShare(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportExternalShareInput
+  ) {
+    return this.report.createManagerReportExternalShare(managerId, reportId, input);
+  }
+
+  getExternalReportShare(token: string) {
+    return this.report.getExternalReportShare(token);
+  }
+
+  revokeManagerReportExternalShare(managerId: string, reportId: string, shareId: string) {
+    return this.report.revokeManagerReportExternalShare(managerId, reportId, shareId);
+  }
+
+  listManagerReportAuditLog(managerId: string, reportId: string) {
+    return this.report.listManagerReportAuditLog(managerId, reportId);
+  }
+
+  createManagerReportFollowUp(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportFollowUpInput
+  ) {
+    return this.report.createManagerReportFollowUp(managerId, reportId, input);
   }
 
   private tenantBills(tenantId: string) {
@@ -4113,6 +4023,7 @@ export class RoomlogService {
   private normalizeStoreSnapshot(parsed: Store): Store {
     return {
       ...parsed,
+      socialAccounts: parsed.socialAccounts ?? [],
       vendorInvites: parsed.vendorInvites ?? [],
       tenantInvites: parsed.tenantInvites ?? [],
       contracts: parsed.contracts ?? [],
@@ -4169,7 +4080,123 @@ export class RoomlogService {
       })),
       costs: parsed.costs ?? [],
       receipts: parsed.receipts ?? [],
-      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr))
+      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr)),
+      messagingThreads: (parsed.messagingThreads ?? []).map((thread) => ({
+        ...thread,
+        archivedNotice: thread.archivedNotice ?? true,
+        pendingRequest: thread.pendingRequest ?? false,
+        unreadCount: thread.unreadCount ?? 0
+      })),
+      messagingMessages: (parsed.messagingMessages ?? []).map((message) => ({
+        ...message,
+        attachmentUrls: message.attachmentUrls ?? []
+      })),
+      messagingAnnouncementDrafts: (parsed.messagingAnnouncementDrafts ?? []).map((draft) => ({
+        ...draft,
+        targetRoomIds: draft.targetRoomIds ?? [],
+        translations: draft.translations ?? []
+      })),
+      messagingAnnouncements: parsed.messagingAnnouncements ?? [],
+      messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? [],
+      managerReports: (parsed.managerReports ?? []).map((report) => ({
+        ...report,
+        scope: {
+          ...report.scope,
+          roomIds: report.scope.roomIds ?? [],
+          unitIds: report.scope.unitIds ?? []
+        },
+        nextActions: report.nextActions ?? [],
+        sections: report.sections ?? [],
+        linkedFollowUps: report.linkedFollowUps ?? []
+      })),
+      managerReportSourceReferences: parsed.managerReportSourceReferences ?? [],
+      managerReportExternalShares: parsed.managerReportExternalShares ?? [],
+      managerReportAuditLogs: parsed.managerReportAuditLogs ?? [],
+      moveouts: parsed.moveouts ?? [],
+      moveoutRecords: parsed.moveoutRecords ?? [],
+      moveoutChecklist: parsed.moveoutChecklist ?? [],
+      moveoutSettlements: (parsed.moveoutSettlements ?? []).map((settlement) => ({
+        ...settlement,
+        deductions: settlement.deductions ?? []
+      })),
+      moveoutDeductions: parsed.moveoutDeductions ?? [],
+      moveoutDisputes: (parsed.moveoutDisputes ?? []).map((dispute) => ({
+        ...dispute,
+        history: dispute.history ?? []
+      })),
+      moveoutReportAudits: parsed.moveoutReportAudits ?? []
+    };
+  }
+
+  private backfillDemoStoreSnapshot(snapshot: Store): Store {
+    const demo = createDemoStore();
+
+    return {
+      ...snapshot,
+      tenantRooms: {
+        ...demo.tenantRooms,
+        ...snapshot.tenantRooms
+      },
+      analyses: {
+        ...demo.analyses,
+        ...snapshot.analyses
+      },
+      users: mergeMissingById(snapshot.users, demo.users),
+      socialAccounts: mergeMissingById(snapshot.socialAccounts, demo.socialAccounts),
+      rooms: mergeMissingById(snapshot.rooms, demo.rooms),
+      vendors: mergeMissingById(snapshot.vendors, demo.vendors),
+      vendorInvites: mergeMissingById(snapshot.vendorInvites, demo.vendorInvites),
+      tenantInvites: mergeMissingById(snapshot.tenantInvites, demo.tenantInvites),
+      contracts: mergeMissingById(snapshot.contracts, demo.contracts),
+      contractDocuments: mergeMissingById(snapshot.contractDocuments, demo.contractDocuments),
+      contractExtractions: mergeMissingById(snapshot.contractExtractions, demo.contractExtractions),
+      contractPrivacies: mergeMissingByKey(
+        snapshot.contractPrivacies,
+        demo.contractPrivacies,
+        (privacy) => privacy.contractId
+      ),
+      contractInvites: mergeMissingById(snapshot.contractInvites, demo.contractInvites),
+      attachments: mergeMissingById(snapshot.attachments, demo.attachments),
+      floorPlans: mergeMissingById(snapshot.floorPlans, demo.floorPlans),
+      moveInChecklist: mergeMissingById(snapshot.moveInChecklist, demo.moveInChecklist),
+      aiFeedback: mergeMissingById(snapshot.aiFeedback, demo.aiFeedback),
+      intakeSessions: mergeMissingById(snapshot.intakeSessions, demo.intakeSessions),
+      complaints: mergeMissingById(snapshot.complaints, demo.complaints),
+      tickets: mergeMissingById(snapshot.tickets, demo.tickets),
+      repairs: mergeMissingById(snapshot.repairs, demo.repairs),
+      costs: mergeMissingById(snapshot.costs, demo.costs),
+      receipts: mergeMissingById(snapshot.receipts, demo.receipts),
+      receiptOcrs: mergeMissingById(snapshot.receiptOcrs, demo.receiptOcrs),
+      messages: mergeMissingById(snapshot.messages, demo.messages),
+      messagingThreads: mergeMissingById(snapshot.messagingThreads, demo.messagingThreads),
+      messagingMessages: mergeMissingById(snapshot.messagingMessages, demo.messagingMessages),
+      messagingAnnouncementDrafts: mergeMissingById(
+        snapshot.messagingAnnouncementDrafts,
+        demo.messagingAnnouncementDrafts
+      ),
+      messagingAnnouncements: mergeMissingById(snapshot.messagingAnnouncements, demo.messagingAnnouncements),
+      messagingAnnouncementDeliveries: mergeMissingById(
+        snapshot.messagingAnnouncementDeliveries,
+        demo.messagingAnnouncementDeliveries
+      ),
+      managerReports: mergeMissingById(snapshot.managerReports, demo.managerReports),
+      managerReportSourceReferences: mergeMissingById(
+        snapshot.managerReportSourceReferences,
+        demo.managerReportSourceReferences
+      ),
+      managerReportExternalShares: mergeMissingById(
+        snapshot.managerReportExternalShares,
+        demo.managerReportExternalShares
+      ),
+      managerReportAuditLogs: mergeMissingById(snapshot.managerReportAuditLogs, demo.managerReportAuditLogs),
+      moveouts: mergeMissingById(snapshot.moveouts, demo.moveouts),
+      moveoutRecords: mergeMissingById(snapshot.moveoutRecords, demo.moveoutRecords),
+      moveoutChecklist: mergeMissingById(snapshot.moveoutChecklist, demo.moveoutChecklist),
+      moveoutSettlements: mergeMissingById(snapshot.moveoutSettlements, demo.moveoutSettlements),
+      moveoutDeductions: mergeMissingById(snapshot.moveoutDeductions, demo.moveoutDeductions),
+      moveoutDisputes: mergeMissingById(snapshot.moveoutDisputes, demo.moveoutDisputes),
+      moveoutReportAudits: mergeMissingById(snapshot.moveoutReportAudits, demo.moveoutReportAudits),
+      history: mergeMissingById(snapshot.history, demo.history)
     };
   }
 
@@ -4210,6 +4237,7 @@ export class RoomlogService {
     return Boolean(
       snapshot &&
         Array.isArray(snapshot.users) &&
+        (snapshot.socialAccounts === undefined || Array.isArray(snapshot.socialAccounts)) &&
         Array.isArray(snapshot.rooms) &&
         snapshot.tenantRooms &&
         Array.isArray(snapshot.vendors) &&
@@ -4236,139 +4264,31 @@ export class RoomlogService {
         (snapshot.costs === undefined || Array.isArray(snapshot.costs)) &&
         (snapshot.receipts === undefined || Array.isArray(snapshot.receipts)) &&
         (snapshot.receiptOcrs === undefined || Array.isArray(snapshot.receiptOcrs)) &&
+        (snapshot.messagingThreads === undefined || Array.isArray(snapshot.messagingThreads)) &&
+        (snapshot.messagingMessages === undefined || Array.isArray(snapshot.messagingMessages)) &&
+        (snapshot.messagingAnnouncementDrafts === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDrafts)) &&
+        (snapshot.messagingAnnouncements === undefined ||
+          Array.isArray(snapshot.messagingAnnouncements)) &&
+        (snapshot.messagingAnnouncementDeliveries === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDeliveries)) &&
+        (snapshot.managerReports === undefined || Array.isArray(snapshot.managerReports)) &&
+        (snapshot.managerReportSourceReferences === undefined ||
+          Array.isArray(snapshot.managerReportSourceReferences)) &&
+        (snapshot.managerReportExternalShares === undefined ||
+          Array.isArray(snapshot.managerReportExternalShares)) &&
+        (snapshot.managerReportAuditLogs === undefined ||
+          Array.isArray(snapshot.managerReportAuditLogs)) &&
+        (snapshot.moveouts === undefined || Array.isArray(snapshot.moveouts)) &&
+        (snapshot.moveoutRecords === undefined || Array.isArray(snapshot.moveoutRecords)) &&
+        (snapshot.moveoutChecklist === undefined || Array.isArray(snapshot.moveoutChecklist)) &&
+        (snapshot.moveoutSettlements === undefined || Array.isArray(snapshot.moveoutSettlements)) &&
+        (snapshot.moveoutDeductions === undefined || Array.isArray(snapshot.moveoutDeductions)) &&
+        (snapshot.moveoutDisputes === undefined || Array.isArray(snapshot.moveoutDisputes)) &&
+        (snapshot.moveoutReportAudits === undefined || Array.isArray(snapshot.moveoutReportAudits)) &&
         Array.isArray(snapshot.messages) &&
         Array.isArray(snapshot.history)
     );
-  }
-
-  private extensionForMimeType(mimeType: string, originalName: string) {
-    const extension = extname(originalName).toLowerCase();
-    const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"];
-
-    if (allowedExtensions.includes(extension)) {
-      return extension;
-    }
-
-    const fallback: Record<string, string> = {
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/webp": ".webp",
-      "image/gif": ".gif",
-      "image/heic": ".heic"
-    };
-
-    return fallback[mimeType] ?? ".img";
-  }
-
-  private normalizeSignupInput(input: SignupInput): SignupInput {
-    return {
-      ...input,
-      email: input.email?.trim().toLowerCase(),
-      name: input.name?.trim(),
-      phone: normalizePhoneNumber(input.phone),
-      inviteToken: input.inviteToken?.trim(),
-      buildingName: input.buildingName?.trim(),
-      roomNo: input.roomNo?.trim(),
-      address: input.address?.trim(),
-      businessName: input.businessName?.trim(),
-      serviceArea: input.serviceArea?.trim()
-    };
-  }
-
-  private validateSignupInput(input: SignupInput) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email || "")) {
-      throw new BadRequestException("이메일 형식이 올바르지 않습니다.");
-    }
-
-    if (!input.password || input.password.length < 8) {
-      throw new BadRequestException("비밀번호는 8자 이상이어야 합니다.");
-    }
-
-    if (!hasRequiredPasswordMix(input.password)) {
-      throw new BadRequestException("비밀번호는 영문과 숫자를 포함해야 합니다.");
-    }
-
-    if (input.passwordConfirm !== undefined && input.password !== input.passwordConfirm) {
-      throw new BadRequestException("비밀번호 확인이 일치하지 않습니다.");
-    }
-
-    if (!input.name?.trim()) {
-      throw new BadRequestException("이름을 입력해주세요.");
-    }
-
-    if (!input.phone?.trim()) {
-      throw new BadRequestException("휴대폰 번호를 입력해주세요.");
-    }
-
-    if (!isValidPhoneNumber(input.phone)) {
-      throw new BadRequestException("휴대폰 번호는 숫자 10~11자리여야 합니다.");
-    }
-
-    if (!["TENANT", "LANDLORD", "VENDOR"].includes(input.role)) {
-      throw new BadRequestException("가입 역할이 올바르지 않습니다.");
-    }
-
-    if ((input.role === "TENANT" && !input.inviteToken) || input.role === "LANDLORD") {
-      if (!input.buildingName?.trim()) {
-        throw new BadRequestException("건물명을 입력해주세요.");
-      }
-
-      if (!input.roomNo?.trim()) {
-        throw new BadRequestException("호실을 입력해주세요.");
-      }
-
-      if (!input.address?.trim()) {
-        throw new BadRequestException("건물 주소를 입력해주세요.");
-      }
-    }
-
-    if (input.role === "VENDOR") {
-      if (!input.inviteToken?.trim()) {
-        throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-      }
-    }
-  }
-
-  private findOrCreateRoomForSignup(input: SignupInput, landlordId?: string) {
-    const buildingName = input.buildingName?.trim();
-    const roomNo = input.roomNo?.trim();
-    const address = input.address?.trim();
-
-    if (!buildingName || !roomNo || !address) {
-      throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
-    }
-
-    const existingRoom = this.store.rooms.find(
-      (room) =>
-        room.buildingName === buildingName &&
-        room.roomNo === roomNo &&
-        room.address === address
-    );
-
-    if (existingRoom) {
-      if (landlordId && !existingRoom.landlordId) {
-        existingRoom.landlordId = landlordId;
-      }
-
-      return existingRoom.id;
-    }
-
-    const room: Room = {
-      id: id("room"),
-      buildingName,
-      roomNo,
-      address,
-      landlordId
-    };
-    this.store.rooms.push(room);
-
-    return room.id;
-  }
-
-  private seededLandlordId() {
-    return this.store.users.some((user) => user.id === "landlord-demo")
-      ? "landlord-demo"
-      : undefined;
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
@@ -6311,15 +6231,6 @@ export class RoomlogService {
     ticket.priority = Math.min(ticket.priority, analysis.priority);
   }
 
-  private authResult(user: UserAccount): AuthResult {
-    return {
-      userId: user.id,
-      role: user.role,
-      accessToken: tokenFor(user),
-      name: user.name
-    };
-  }
-
   private analyzeComplaint(input: CreateComplaintInput): AiAnalysis {
     const text = `${input.title} ${input.description} ${input.location}`;
     const lower = text.toLowerCase();
@@ -6705,22 +6616,6 @@ export class RoomlogService {
     }
 
     return text.length > 86 ? `${text.slice(0, 83)}...` : text;
-  }
-
-  private presentMoveInChecklistItem(item: MoveInChecklistItem) {
-    return {
-      ...item,
-      attachmentUrls: [...item.attachmentUrls],
-      room: this.store.rooms.find((room) => room.id === item.roomId)
-    };
-  }
-
-  private moveInChecklistGuidance(area: string, itemName: string) {
-    return [
-      `${area} ${itemName}은 정면에서 전체가 보이게 촬영해주세요.`,
-      "같은 위치는 전체 사진 1장과 문제 부위가 보이는 근접 사진 1장을 남기면 이후 비교가 쉬워집니다.",
-      "퇴실 비교를 위해 문, 창문, 가전, 벽면처럼 기준점이 함께 보이게 촬영해주세요."
-    ].join(" ");
   }
 
   private inferManagerReplyIntent(ticket: Ticket): ManagerReplyIntent {
@@ -7175,250 +7070,6 @@ export class RoomlogService {
     };
   }
 
-  private tenantContracts(tenantId: string) {
-    const roomId = this.store.tenantRooms[tenantId];
-
-    return this.store.contracts
-      .filter((contract) => contract.tenantId === tenantId || contract.roomId === roomId)
-      .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt));
-  }
-
-  private managerContracts(managerId: string) {
-    return this.store.contracts
-      .filter((contract) => this.canManagerAccessRoom(managerId, contract.roomId))
-      .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt));
-  }
-
-  private findTenantContract(tenantId: string, contractId: string) {
-    const contract = this.tenantContracts(tenantId).find(
-      (item) => item.id === contractId || item.unitId === contractId
-    );
-
-    if (!contract) {
-      throw new NotFoundException("조회 가능한 계약서를 찾을 수 없습니다.");
-    }
-
-    return contract;
-  }
-
-  private findManagerContract(managerId: string, contractId: string) {
-    const contract = this.managerContracts(managerId).find(
-      (item) => item.id === contractId || item.unitId === contractId
-    );
-
-    if (!contract) {
-      throw new NotFoundException("관리 가능한 계약서를 찾을 수 없습니다.");
-    }
-
-    return contract;
-  }
-
-  private findContractExtraction(contract: Contract): ContractExtraction {
-    const extraction = this.store.contractExtractions.find(
-      (item) => item.id === contract.extractionId || item.contractId === contract.id
-    );
-
-    if (!extraction) {
-      return {
-        id: `cx_${contract.id}`,
-        contractId: contract.id,
-        confirmed: contract.review === "confirmed",
-        highlights: ["계약서 추출 결과가 아직 없습니다."],
-        items: [],
-        helpNotes: [],
-        createdAt: contract.updatedAt
-      };
-    }
-
-    return extraction;
-  }
-
-  private findContractPrivacy(contract: Contract): ContractPrivacy {
-    const privacy = this.store.contractPrivacies.find((item) => item.contractId === contract.id);
-
-    if (!privacy) {
-      return {
-        contractId: contract.id,
-        maskingEnabled: true,
-        retention: [
-          { label: "계약서 원본·추출값", reason: "정산·분쟁 대비", until: "계약 종료 후 5년" }
-        ],
-        forwardingConsent: false,
-        deletion: contract.deletion,
-        deletionSlaHours: 72,
-        deletable: contract.lifecycle === "expired"
-      };
-    }
-
-    return privacy;
-  }
-
-  private buildManagerContractRow(managerId: string, contract: Contract): ManagerContractRow {
-    this.assertManagerCanAccessRoom(managerId, contract.roomId);
-    const room = this.findRoom(contract.roomId);
-    const extraction = this.findContractExtraction(contract);
-    const needsCheckCount = extraction.items.filter((item) => item.needsCheck).length;
-    const origin = this.contractOrigin(contract);
-
-    return {
-      contract: this.presentContract(contract),
-      tenantName: this.contractTenant(contract)?.name ?? "미연결 임차인",
-      buildingName: room.buildingName,
-      origin,
-      statusLabel: this.contractStatusLabel(contract, needsCheckCount),
-      slaOverdue: this.isContractReviewSlaOverdue(contract),
-      needsCheckCount,
-      daysToExpire: this.contractDaysToExpire(contract),
-      mobileQuickConfirm: needsCheckCount === 0 && contract.review !== "confirmed"
-    };
-  }
-
-  private contractOrigin(contract: Contract): ManagerContractOrigin {
-    const document = this.store.contractDocuments.find(
-      (item) => item.id === contract.documentId || item.contractId === contract.id
-    );
-
-    return document?.origin ?? (contract.valueSource === "manual" ? "manual" : "tenant_upload");
-  }
-
-  private contractStatusLabel(contract: Contract, needsCheckCount: number) {
-    if (contract.deletion === "requested") return "삭제 요청";
-    if (contract.review === "confirmed") return "확정됨";
-    if (contract.review === "info_requested") return "보완 요청";
-    if (contract.lifecycle === "unregistered") return "미등록 호실";
-    if (needsCheckCount > 0) return "확인 필요";
-
-    return "검토 전 참고본";
-  }
-
-  private isContractReviewSlaOverdue(contract: Contract) {
-    return contract.review !== "confirmed" && (this.elapsedHours(contract.createdAt, now()) ?? 0) >= 72;
-  }
-
-  private contractDaysToExpire(contract: Contract) {
-    if (!contract.endDate) return 9999;
-
-    return Math.max(0, Math.ceil((this.timeOf(contract.endDate) - Date.now()) / (24 * 60 * 60 * 1000)));
-  }
-
-  private contractTenant(contract: Contract) {
-    return contract.tenantId
-      ? this.store.users.find((user) => user.id === contract.tenantId)
-      : Object.entries(this.store.tenantRooms)
-          .filter(([, roomId]) => roomId === contract.roomId)
-          .map(([tenantId]) => this.store.users.find((user) => user.id === tenantId))
-          .find((user): user is UserAccount => Boolean(user));
-  }
-
-  private contractTimeline(contract: Contract, room: Room) {
-    return [
-      {
-        at: contract.updatedAt,
-        kind: "계약서",
-        title: contract.review === "confirmed" ? "관리자 검토 확정" : "OCR 분석 및 검토 대기",
-        detail: `${room.buildingName} ${room.roomNo} 계약 레코드`,
-      },
-      {
-        at: contract.createdAt,
-        kind: "계약서",
-        title: "계약서 업로드",
-        detail: "원본 보존, OCR 추출, 개인정보 마스킹 정책 연결"
-      },
-      {
-        at: contract.startDate ?? contract.createdAt,
-        kind: "입주",
-        title: "계약 시작일",
-        detail: contract.startDate ? contract.startDate.slice(0, 10) : "계약 시작일 미등록"
-      }
-    ];
-  }
-
-  private contractAuditLogs(contract: Contract, extraction: ContractExtraction) {
-    const manager = contract.confirmedByManagerId
-      ? this.store.users.find((user) => user.id === contract.confirmedByManagerId)
-      : undefined;
-
-    return [
-      contract.confirmedAt
-        ? {
-            at: contract.confirmedAt,
-            actor: manager?.name ?? "관리자",
-            action: "계약값 확정",
-            detail: "관리자 검토를 거쳐 확정본으로 전환"
-          }
-        : {
-            at: extraction.createdAt,
-            actor: "AI OCR",
-            action: "확인 필요 표시",
-            detail: `${extraction.items.filter((item) => item.needsCheck).length}개 항목 관리자 대조 필요`
-          },
-      {
-        at: contract.createdAt,
-        actor: this.contractTenant(contract)?.name ?? "임차인",
-        action: "계약서 업로드",
-        detail: "OCR 분석 및 DB 저장 동의"
-      }
-    ];
-  }
-
-  private contractInviteLinks(managerId: string) {
-    return this.store.contractInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
-      .map((invite) => ({
-        unitId: this.displayUnitId(this.findRoom(invite.roomId)),
-        tenantName: invite.tenantName,
-        state: invite.state,
-        link: invite.signupUrl,
-        audit: invite.audit
-      }));
-  }
-
-  private contractConflictCandidates(contract: Contract) {
-    const documents = this.store.contractDocuments.filter((document) => document.contractId === contract.id);
-
-    if (documents.length <= 1) {
-      return [
-        {
-          source: this.contractOrigin(contract) === "manager_upload" ? "manager" : "tenant",
-          uploadedAt: documents[0]?.uploadedAt ?? contract.createdAt,
-          summary: "단일 계약 원본 · 충돌 없음",
-          decision: "원본 보존, 관리자 검토 후 확정"
-        }
-      ];
-    }
-
-    return documents.map((document) => ({
-      source: document.origin === "manager_upload" ? "manager" : "tenant",
-      uploadedAt: document.uploadedAt,
-      summary: `${document.fileName ?? "계약서 원본"} · ${document.origin === "manual" ? "수동 등록" : "업로드본"}`,
-      decision: "채택 시 사유와 임차인 알림 기록"
-    }));
-  }
-
-  private extractionValue(extraction: ContractExtraction, label: string) {
-    return extraction.items.find((item) => item.label === label)?.value;
-  }
-
-  private presentContract(contract: Contract): Contract {
-    return { ...contract };
-  }
-
-  private presentContractExtraction(extraction: ContractExtraction): ContractExtraction {
-    return {
-      ...extraction,
-      highlights: [...extraction.highlights],
-      items: extraction.items.map((item) => ({ ...item })),
-      helpNotes: extraction.helpNotes.map((note) => ({ ...note }))
-    };
-  }
-
-  private presentContractPrivacy(privacy: ContractPrivacy): ContractPrivacy {
-    return {
-      ...privacy,
-      retention: privacy.retention.map((item) => ({ ...item }))
-    };
-  }
-
   private presentRepair(repair: RepairRequest) {
     const ticket = this.findTicket(repair.ticketId);
 
@@ -7426,208 +7077,6 @@ export class RoomlogService {
       ...repair,
       ticket: this.presentTicket(ticket)
     };
-  }
-
-  private presentRepairForVendor(repair: RepairRequest) {
-    const ticket = this.findTicket(repair.ticketId);
-    const complaint = this.findComplaint(ticket.complaintId);
-
-    return {
-      ...repair,
-      managerRequestText: repair.description,
-      visitMemo: complaint.availableTimes,
-      ticket: this.presentTicketForVendor(ticket, repair)
-    };
-  }
-
-  private presentTicketForVendor(ticket: Ticket, repair: RepairRequest) {
-    const complaint = this.findComplaint(ticket.complaintId);
-    const room = this.store.rooms.find((item) => item.id === ticket.roomId);
-    const analysis = this.store.analyses[ticket.id];
-    const attachmentUrls = this.vendorComplaintAttachmentUrls(ticket, analysis);
-
-    if (!analysis) {
-      throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
-    }
-
-    return {
-      id: ticket.id,
-      complaintId: ticket.complaintId,
-      status: ticket.status,
-      category: ticket.category,
-      priority: ticket.priority,
-      responsibilityHint: ticket.responsibilityHint,
-      dueAt: ticket.dueAt,
-      createdAt: ticket.createdAt,
-      updatedAt: ticket.updatedAt,
-      managerRequestText: repair.description,
-      visitMemo: complaint.availableTimes,
-      attachmentUrls,
-      complaint: {
-        id: complaint.id,
-        ticketId: complaint.ticketId,
-        sourceChannel: complaint.sourceChannel,
-        title: complaint.title,
-        description: complaint.description,
-        category: ticket.category,
-        location: complaint.location,
-        occurredAt: complaint.occurredAt,
-        availableTimes: complaint.availableTimes,
-        status: complaint.status,
-        createdAt: complaint.createdAt,
-        updatedAt: complaint.updatedAt,
-        attachmentUrls,
-        visitMemo: complaint.availableTimes
-      },
-      room: room
-        ? {
-            buildingName: room.buildingName,
-            roomNo: room.roomNo
-          }
-        : undefined,
-      analysis: this.presentAnalysisForVendor(analysis),
-      assignedVendor: this.presentAssignedVendorForVendor(ticket.assignedVendorId),
-      repairs: [{ ...repair, completionPhotoUrls: [...repair.completionPhotoUrls] }]
-    };
-  }
-
-  private presentAnalysisForVendor(analysis: AiAnalysis) {
-    return {
-      category: analysis.category,
-      detailCategory: analysis.detailCategory,
-      priority: analysis.priority,
-      responsibilityHint: analysis.responsibilityHint,
-      confidenceScore: analysis.confidenceScore,
-      photoAnalysis: analysis.photoAnalysis
-        ? {
-            attachmentUrls: [...analysis.photoAnalysis.attachmentUrls],
-            candidates: [...analysis.photoAnalysis.candidates],
-            comparisonStatus: analysis.photoAnalysis.comparisonStatus,
-            summary: analysis.photoAnalysis.summary,
-            evidence: [...analysis.photoAnalysis.evidence],
-            recommendedRetake: analysis.photoAnalysis.recommendedRetake
-          }
-        : undefined
-    };
-  }
-
-  private presentAssignedVendorForVendor(vendorId?: string) {
-    const vendor = vendorId
-      ? this.store.vendors.find((item) => item.id === vendorId)
-      : undefined;
-
-    return vendor
-      ? {
-          businessName: vendor.businessName
-        }
-      : undefined;
-  }
-
-  private vendorComplaintAttachmentUrls(ticket: Ticket, analysis?: AiAnalysis) {
-    return Array.from(
-      new Set([
-        ...(analysis?.photoAnalysis?.attachmentUrls ?? []),
-        ...this.store.messages
-          .filter((message) => message.ticketId === ticket.id && message.senderRole === "TENANT")
-          .flatMap((message) => message.attachmentUrls)
-      ])
-    );
-  }
-
-  private managerCosts(managerId: string) {
-    const stored = this.store.costs.filter((cost) => this.canManagerAccessCost(managerId, cost));
-    const storedRepairPaymentRefs = new Set(
-      stored
-        .map((cost) => cost.paymentRef)
-        .filter((paymentRef): paymentRef is string => Boolean(paymentRef))
-    );
-    const projected = this.store.repairs
-      .filter((repair) => !storedRepairPaymentRefs.has(repair.id))
-      .map((repair) => this.projectRepairCost(managerId, repair))
-      .filter((cost): cost is Cost => Boolean(cost));
-
-    return [...stored.map((cost) => ({ ...cost })), ...projected].sort(
-      (a, b) => this.timeOf(b.date) - this.timeOf(a.date)
-    );
-  }
-
-  private projectRepairCost(managerId: string, repair: RepairRequest): Cost | undefined {
-    if (
-      repair.status !== "COMPLETED" ||
-      repair.costBearer !== "LANDLORD" ||
-      !repair.estimateAmount ||
-      repair.estimateAmount <= 0
-    ) {
-      return undefined;
-    }
-
-    const ticket = this.findTicket(repair.ticketId);
-    if (!this.canManagerAccessRoom(managerId, ticket.roomId)) {
-      return undefined;
-    }
-
-    const room = this.findRoom(ticket.roomId);
-    const costAt = repair.completedAt ?? repair.updatedAt;
-
-    return {
-      id: `cost_repair_${repair.id}`,
-      managerId,
-      date: costAt,
-      item: `${this.displayUnitId(room)} ${repair.title}`,
-      amount: repair.estimateAmount,
-      type: "repair",
-      scope: "unit",
-      unitId: this.displayUnitId(room),
-      status: "confirmed",
-      verified: true,
-      repairPayment: "unpaid",
-      paymentRef: repair.id,
-      createdAt: repair.createdAt,
-      updatedAt: repair.updatedAt
-    };
-  }
-
-  private canManagerAccessCost(managerId: string, cost: Cost) {
-    if (cost.managerId && cost.managerId !== managerId) {
-      return false;
-    }
-
-    if (cost.scope === "building") {
-      return cost.managerId === managerId;
-    }
-
-    if (!cost.unitId) {
-      return false;
-    }
-
-    return this.store.rooms.some(
-      (room) =>
-        this.canManagerAccessRoom(managerId, room.id) &&
-        this.displayUnitId(room) === cost.unitId
-    );
-  }
-
-  private canManagerAccessReceiptOcr(managerId: string, ocr: ReceiptOcr) {
-    if (ocr.costId) {
-      return this.managerCosts(managerId).some((cost) => cost.id === ocr.costId);
-    }
-
-    return this.listManagerReceipts(managerId).some((receipt) => receipt.id === ocr.receiptId);
-  }
-
-  private activeManagerCostsForSummary(managerId: string) {
-    const costs = this.managerCosts(managerId);
-    const supersededIds = new Set(
-      costs
-        .filter((cost) => cost.status === "amended" && cost.supersedesId)
-        .map((cost) => cost.supersedesId as string)
-    );
-
-    return costs.filter(
-      (cost) =>
-        (cost.status === "confirmed" || cost.status === "amended") &&
-        !supersededIds.has(cost.id)
-    );
   }
 
   private cloneReceiptOcr(ocr: ReceiptOcr): ReceiptOcr {
@@ -7643,203 +7092,8 @@ export class RoomlogService {
     };
   }
 
-  private emptyCostTypeAmounts(): Record<CostType, number> {
-    return {
-      repair: 0,
-      maintenance: 0,
-      common: 0,
-      other: 0
-    };
-  }
-
-  private currentMonth() {
-    return now().slice(0, 7);
-  }
-
   private displayUnitId(room: Room) {
     return room.roomNo.replace(/호$/u, "");
-  }
-
-  private filteredManagerVendorProfiles(managerId: string, filters: VendorMgmtListFilters = {}) {
-    const normalizedQuery = filters.q?.trim().toLowerCase();
-    const trade = this.isVendorMgmtTrade(filters.trade) ? filters.trade : undefined;
-
-    return this.store.vendors
-      .map((vendor) => this.presentManagerVendorProfile(managerId, vendor))
-      .filter((vendor) => {
-        const matchesQuery =
-          !normalizedQuery ||
-          vendor.name.toLowerCase().includes(normalizedQuery) ||
-          vendor.phone?.toLowerCase().includes(normalizedQuery) ||
-          vendor.contactPerson?.toLowerCase().includes(normalizedQuery);
-        const matchesTrade = !trade || vendor.trades.includes(trade);
-
-        return matchesQuery && matchesTrade;
-      })
-      .sort((a, b) => {
-        if (filters.sort === "recent") {
-          return this.timeOf(b.lastUsedAt) - this.timeOf(a.lastUsedAt);
-        }
-
-        const aTrade = trade && a.trades.includes(trade) ? 1 : 0;
-        const bTrade = trade && b.trades.includes(trade) ? 1 : 0;
-
-        if (aTrade !== bTrade) return bTrade - aTrade;
-        return this.timeOf(b.lastUsedAt) - this.timeOf(a.lastUsedAt);
-      });
-  }
-
-  private findManagerVendorProfile(managerId: string, vendorId: string) {
-    const vendor = this.filteredManagerVendorProfiles(managerId).find((item) => item.id === vendorId);
-
-    if (!vendor) {
-      throw new NotFoundException("관리 가능한 업체를 찾을 수 없습니다.");
-    }
-
-    return vendor;
-  }
-
-  private presentManagerVendorProfile(managerId: string, vendor: VendorSummary) {
-    const jobs = this.managerVendorJobRecords(managerId, vendor.id);
-    const user = this.store.users.find((account) => account.id === vendor.userId);
-    const lastUsedAt = jobs[0]?.completedAt;
-    const createdAt = user?.createdAt ?? jobs[jobs.length - 1]?.completedAt ?? now();
-
-    return {
-      id: vendor.id,
-      name: vendor.businessName,
-      trades: this.inferVendorTrades(vendor, jobs),
-      status: this.inferVendorStatus(vendor),
-      source: jobs.length > 0 ? "auto" : "manual",
-      dealCount: jobs.length,
-      lastUsedAt,
-      isNew: jobs.length <= 1,
-      phone: vendor.phone,
-      contactPerson: vendor.contactPerson,
-      address: vendor.serviceArea,
-      memo:
-        jobs.length > 0
-          ? "완료 수리에서 자동 누적된 업체입니다."
-          : "아직 완료 수리 이력이 없는 업체입니다.",
-      createdAt,
-      updatedAt: lastUsedAt ?? createdAt
-    };
-  }
-
-  private managerVendorJobRecords(managerId: string, vendorId: string) {
-    return this.store.repairs
-      .filter((repair) => repair.vendorId === vendorId && repair.status === "COMPLETED")
-      .filter((repair) => this.canManagerAccessRoom(managerId, this.findTicket(repair.ticketId).roomId))
-      .map((repair) => this.presentManagerVendorJobRecord(repair))
-      .sort((a, b) => this.timeOf(b.completedAt) - this.timeOf(a.completedAt));
-  }
-
-  private presentManagerVendorJobRecord(repair: RepairRequest) {
-    const ticket = this.findTicket(repair.ticketId);
-    const room = this.findRoom(ticket.roomId);
-
-    return {
-      id: `vjr_${repair.id}`,
-      vendorId: repair.vendorId,
-      ticketId: ticket.id,
-      vendorJobId: repair.id,
-      completedAt: repair.completedAt ?? repair.updatedAt,
-      unitId: room.roomNo.replace(/호$/u, ""),
-      unitMasked: false,
-      quoteAmount: repair.estimateAmount,
-      responseHours: repair.estimateApprovedAt
-        ? this.elapsedHours(repair.createdAt, repair.estimateApprovedAt)
-        : undefined,
-      rated: false,
-      satisfaction: undefined,
-      ratedAt: undefined
-    };
-  }
-
-  private managerVendorPerf(managerId: string, vendorId: string, jobs = this.managerVendorJobRecords(managerId, vendorId)) {
-    const ratedJobs = jobs.filter((job) => job.rated && typeof job.satisfaction === "number");
-    const completedCount = jobs.length;
-    const ratedCount = ratedJobs.length;
-    const coverageRatio = completedCount === 0 ? 0 : ratedCount / completedCount;
-    const coverageLow = completedCount > 0 && coverageRatio < 0.5;
-    const ratingVisible = ratedCount >= VENDOR_PERF_MIN_N && !coverageLow;
-    const satisfactionAvg =
-      ratingVisible && ratedJobs.length > 0
-        ? ratedJobs.reduce((sum, job) => sum + (job.satisfaction ?? 0), 0) / ratedJobs.length
-        : undefined;
-    const responseHours = jobs
-      .map((job) => job.responseHours)
-      .filter((value): value is number => typeof value === "number");
-    const allQuoteAmounts = this.store.repairs
-      .filter((repair) => repair.status === "COMPLETED")
-      .filter((repair) => this.canManagerAccessRoom(managerId, this.findTicket(repair.ticketId).roomId))
-      .map((repair) => repair.estimateAmount)
-      .filter((value): value is number => typeof value === "number" && value > 0);
-    const quoteAmounts = jobs
-      .map((job) => job.quoteAmount)
-      .filter((value): value is number => typeof value === "number" && value > 0);
-    const quoteVsAvgPct =
-      allQuoteAmounts.length > 0 && quoteAmounts.length > 0
-        ? Math.round((this.average(quoteAmounts) / this.average(allQuoteAmounts)) * 100)
-        : undefined;
-
-    return {
-      vendorId,
-      sampleN: ratedCount,
-      minN: VENDOR_PERF_MIN_N,
-      completedCount,
-      ratedCount,
-      coverageRatio,
-      coverageLow,
-      responseMedianHours: this.median(responseHours),
-      quoteVsAvgPct,
-      satisfactionAvg,
-      ratingVisible,
-      aiCommentEnabled: ratingVisible,
-      aiComment: ratingVisible
-        ? {
-            summary: `완료 ${completedCount}건 기준으로 산출한 참고용 성과입니다.`,
-            basisJobIds: jobs.slice(0, 5).map((job) => job.vendorJobId),
-            label: "참고용"
-          }
-        : undefined,
-      mirrorNotice: VENDOR_MIRROR_NOTICE,
-      updatedAt: jobs[0]?.completedAt ?? now()
-    };
-  }
-
-  private inferVendorTrades(vendor: VendorSummary, jobs: { ticketId: string }[]): VendorMgmtTrade[] {
-    const text = [
-      vendor.businessName,
-      vendor.serviceArea,
-      ...jobs.map((job) => {
-        const ticket = this.findTicket(job.ticketId);
-        const complaint = this.findComplaint(ticket.complaintId);
-        return `${ticket.category} ${complaint.title} ${complaint.description}`;
-      })
-    ]
-      .join(" ")
-      .toLowerCase();
-    const trades = new Set<VendorMgmtTrade>();
-
-    if (/누수|배관|수도|하수|욕실|싱크|배수/u.test(text)) trades.add("plumbing");
-    if (/방수|물샘|누수/u.test(text)) trades.add("waterproofing");
-    if (/전기|조명|콘센트|차단기|배선/u.test(text)) trades.add("electrical");
-    if (/에어컨|냉난방|보일러|난방|온수/u.test(text)) trades.add("hvac");
-    if (/가전|냉장고|세탁기|전자레인지|인덕션/u.test(text)) trades.add("appliance");
-    if (/도어락|열쇠|잠금|문이 안/u.test(text)) trades.add("locksmith");
-    if (/청소|소독|폐기/u.test(text)) trades.add("cleaning");
-
-    if (trades.size === 0) trades.add("general");
-    return Array.from(trades);
-  }
-
-  private inferVendorStatus(vendor: VendorSummary) {
-    return /폐업|중단|closed/i.test(vendor.businessName) ? "closed" : "active";
-  }
-
-  private isVendorMgmtTrade(value?: string): value is VendorMgmtTrade {
-    return Boolean(value && VENDOR_MGMT_TRADES.includes(value as VendorMgmtTrade));
   }
 
   private elapsedHours(startIso: string, endIso: string) {
@@ -8003,90 +7257,6 @@ export class RoomlogService {
     this.assertManagerCanAccessRoom(managerId, ticket.roomId);
   }
 
-  private resolvePendingVendorInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.vendorInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-    }
-
-    this.assertPendingVendorInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingVendorInvite(invite: VendorInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 협력업체 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 협력업체 초대입니다.");
-    }
-  }
-
-  private resolvePendingTenantInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("임차인 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.tenantInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-    }
-
-    this.assertPendingTenantInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    if (invite.phone && input.phone && invite.phone !== input.phone) {
-      throw new BadRequestException("초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingTenantInvite(invite: TenantInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 임차인 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 임차인 초대입니다.");
-    }
-  }
-
   private findIntakeSession(tenantId: string, sessionId: string) {
     const session = this.store.intakeSessions.find(
       (item) => item.id === sessionId && item.tenantId === tenantId
@@ -8099,44 +7269,6 @@ export class RoomlogService {
     return session;
   }
 
-  private presentVendorInvite(invite: VendorInvite) {
-    return { ...invite };
-  }
-
-  private presentTenantInvite(invite: TenantInvite) {
-    const room = this.store.rooms.find((item) => item.id === invite.roomId);
-
-    return {
-      ...invite,
-      room: room ? { ...room } : undefined
-    };
-  }
-
-  private resolveVendor(vendorUserOrProfileId: string) {
-    const vendor = this.store.vendors.find(
-      (item) => item.id === vendorUserOrProfileId || item.userId === vendorUserOrProfileId
-    );
-
-    if (!vendor) {
-      throw new NotFoundException("협력업체를 찾을 수 없습니다.");
-    }
-
-    return vendor;
-  }
-
-  private findVendorRepair(vendorUserOrProfileId: string, repairId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const repair = this.store.repairs.find(
-      (item) => item.id === repairId && item.vendorId === vendor.id
-    );
-
-    if (!repair) {
-      throw new NotFoundException("수리 요청을 찾을 수 없습니다.");
-    }
-
-    return repair;
-  }
-
   private findRepair(repairId: string) {
     const repair = this.store.repairs.find((item) => item.id === repairId);
 
@@ -8147,13 +7279,4 @@ export class RoomlogService {
     return repair;
   }
 
-  private costBearerLabel(costBearer: "LANDLORD" | "TENANT" | "PENDING") {
-    const labels = {
-      LANDLORD: "임대인 부담",
-      TENANT: "임차인 부담 가능성",
-      PENDING: "비용 주체 판단 대기"
-    };
-
-    return labels[costBearer];
-  }
 }

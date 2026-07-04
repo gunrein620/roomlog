@@ -1,5 +1,6 @@
 import { Input } from "@roomlog/ui";
-import { getManagerContractDetail } from "@/lib/contract-manager-api";
+import { redirect } from "next/navigation";
+import { createManagerContract, getManagerContractDetail } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
   BackLink,
@@ -14,6 +15,19 @@ import {
 } from "../_components";
 
 export const dynamic = "force-dynamic";
+
+async function createContractAction(formData: FormData) {
+  "use server";
+
+  const file = formData.get("contractFile");
+  const fileName = file instanceof File && file.name ? file.name : "manager-contract.pdf";
+  const detail = await createManagerContract({
+    unitId: String(formData.get("unitId") ?? ""),
+    tenantName: String(formData.get("tenantName") ?? ""),
+    fileName,
+  });
+  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(detail.row.contract.id)}`);
+}
 
 export default async function Page() {
   const detail = await getManagerContractDetail();
@@ -33,12 +47,12 @@ export default async function Page() {
           </h1>
         </Card>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-lg)", alignItems: "start" }}>
+        <form action={createContractAction} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-lg)", alignItems: "start" }}>
           <Section title="호실·임차인 선택">
             <Card style={{ display: "grid", gap: "var(--space-md)" }}>
               <Input aria-label="건물" value="연남 스테이" readOnly />
-              <Input aria-label="호실" value="302" readOnly />
-              <Input aria-label="임차인" value={detail.row.tenantName} readOnly />
+              <input name="unitId" aria-label="호실" defaultValue={detail.row.contract.unitId} style={fieldStyle} />
+              <input name="tenantName" aria-label="임차인" defaultValue={detail.row.tenantName} style={fieldStyle} />
               <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-04"]} variant="secondary">미연결 호실 초대 안내</LinkButton>
             </Card>
           </Section>
@@ -59,10 +73,19 @@ export default async function Page() {
               >
                 PDF 또는 사진 여러 장 미리보기 영역
               </div>
-              <StaticButton variant="secondary">파일 선택</StaticButton>
+              <input name="contractFile" type="file" accept="application/pdf,image/*" style={fieldStyle} />
             </Card>
           </Section>
-        </div>
+          <Card style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center" }}>
+            <div style={{ color: "var(--on-surface-variant)" }}>
+              병합·채택 시 사유와 출처를 감사로그에 남기고 임차인에게 알립니다.
+            </div>
+            <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+              <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-00"]} variant="secondary">취소</LinkButton>
+              <StaticButton type="submit">업로드하고 검토로</StaticButton>
+            </div>
+          </Card>
+        </form>
 
         <Section title="중복·상충 검사">
           <div style={{ display: "grid", gap: "var(--space-sm)" }}>
@@ -81,16 +104,16 @@ export default async function Page() {
           </div>
         </Section>
 
-        <Card style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center" }}>
-          <div style={{ color: "var(--on-surface-variant)" }}>
-            병합·채택 시 사유와 출처를 감사로그에 남기고 임차인에게 알립니다.
-          </div>
-          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-00"]} variant="secondary">취소</LinkButton>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-01"]}>업로드하고 검토로</LinkButton>
-          </div>
-        </Card>
       </PageStack>
     </ContractShell>
   );
 }
+
+const fieldStyle = {
+  minHeight: 46,
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  padding: "0 var(--space-md)",
+  font: "inherit",
+  background: "var(--surface-container-lowest)",
+} as const;

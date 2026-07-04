@@ -1,8 +1,18 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Announcement, AnnouncementCategory, AnnouncementScope } from "@roomlog/types";
-import { Badge, Card } from "@roomlog/ui";
-import { DEMO_ANNOUNCEMENT_ID, getAnnouncement } from "@/lib/messaging-api";
+import { Badge, Button, Card } from "@roomlog/ui";
+import {
+  confirmAnnouncement,
+  createTenantThread,
+  DEMO_ANNOUNCEMENT_ID,
+  getAnnouncement,
+  markAnnouncementRead,
+} from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+import { ApiError } from "@/lib/server-api";
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -28,9 +38,75 @@ function formatTime(iso: string): string {
   }).format(new Date(iso));
 }
 
+async function updateAnnouncementState(formData: FormData) {
+  "use server";
+
+  const announcementId = String(formData.get("announcementId") ?? "");
+  const intent = String(formData.get("intent") ?? "");
+
+  if (announcementId) {
+    try {
+      if (intent === "confirm") {
+        await confirmAnnouncement(announcementId);
+      } else {
+        await markAnnouncementRead(announcementId);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        redirect("/tenant/login");
+      }
+      throw error;
+    }
+  }
+
+  redirect(
+    `${MESSAGING_ROUTES["T-MSG-02"]}?id=${encodeURIComponent(
+      announcementId || DEMO_ANNOUNCEMENT_ID,
+    )}`,
+  );
+}
+
+async function createAnnouncementInquiryAction(formData: FormData) {
+  "use server";
+
+  const announcementId = String(formData.get("announcementId") ?? "");
+  const announcementTitle = String(formData.get("announcementTitle") ?? "").trim();
+  const contextLabel = announcementTitle ? `공지 문의 · ${announcementTitle}` : "공지 문의";
+
+  if (!announcementId) {
+    redirect(`${MESSAGING_ROUTES["T-MSG-00"]}?tab=announcements`);
+  }
+
+  try {
+    const thread = await createTenantThread({
+      context: "announcement",
+      contextRef: announcementId,
+      contextLabel,
+      body: announcementTitle
+        ? `[${announcementTitle}] 공지에 대해 문의합니다.`
+        : "이 공지에 대해 문의합니다.",
+    });
+
+    redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(thread.id)}`);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    throw error;
+  }
+}
+
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
-  const announcement = await getAnnouncement(id ?? DEMO_ANNOUNCEMENT_ID);
+  let announcement: Announcement;
+  try {
+    announcement = await getAnnouncement(id ?? DEMO_ANNOUNCEMENT_ID);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    throw error;
+  }
   const isUrgent = announcement.category === "urgent" || announcement.confirmRequired;
 
   return (
@@ -134,53 +210,21 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           gap: 8,
         }}
       >
-        <StaticAction emphasis>{isUrgent ? "확인" : "읽음"}</StaticAction>
-        <Link
-          href={`${MESSAGING_ROUTES["T-MSG-01"]}?announcementId=${announcement.id}`}
-          style={{
-            display: "flex",
-            width: "100%",
-            boxSizing: "border-box",
-            height: "var(--touch-target)",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "1.5px solid var(--primary)",
-            background: "transparent",
-            color: "var(--primary)",
-            borderRadius: "var(--radius-btn)",
-            fontSize: "var(--fs-body)",
-            fontWeight: 700,
-            textDecoration: "none",
-          }}
-        >
-          이 공지 문의
-        </Link>
+        <form action={updateAnnouncementState}>
+          <input type="hidden" name="announcementId" value={announcement.id} />
+          <input type="hidden" name="intent" value={isUrgent ? "confirm" : "read"} />
+          <Button type="submit" fullWidth>
+            {isUrgent ? "확인" : "읽음"}
+          </Button>
+        </form>
+        <form action={createAnnouncementInquiryAction}>
+          <input type="hidden" name="announcementId" value={announcement.id} />
+          <input type="hidden" name="announcementTitle" value={announcement.title} />
+          <Button type="submit" variant="secondary" fullWidth>
+            이 공지 문의
+          </Button>
+        </form>
       </footer>
     </>
-  );
-}
-
-function StaticAction({ children, emphasis }: { children: React.ReactNode; emphasis?: boolean }) {
-  return (
-    <div
-      role="button"
-      aria-disabled="true"
-      style={{
-        display: "flex",
-        width: "100%",
-        boxSizing: "border-box",
-        height: "var(--touch-target)",
-        alignItems: "center",
-        justifyContent: "center",
-        border: "none",
-        background: emphasis ? "var(--primary)" : "var(--surface-container)",
-        color: emphasis ? "var(--on-primary)" : "var(--on-surface)",
-        borderRadius: "var(--radius-btn)",
-        fontSize: "var(--fs-body)",
-        fontWeight: 700,
-      }}
-    >
-      {children}
-    </div>
   );
 }

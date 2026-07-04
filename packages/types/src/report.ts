@@ -25,7 +25,10 @@ export type ReportSourceKind =
   | "complaint" // 민원·처리율 — M-DASH
   | "cost" // 지출·수리비 — M-COST
   | "unit" // 호실 원장·공실 — M-OUT·M-DOC (#2)
-  | "metric"; // 실시간 지표 — M-HOME
+  | "metric" // 실시간 지표 — M-HOME
+  | "contract" // 계약 — M-DOC
+  | "moveout" // 퇴실 — M-OUT
+  | "messaging"; // 공지·스레드 — M-MSG
 
 /**
  * 담당 스코프 (#17 서버 강제) — 조회·목록·드릴다운·내보내기가 담당 건물로 제한된다(문구 아님).

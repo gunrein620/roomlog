@@ -1,9 +1,490 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
+
+function createMoveoutTestService() {
+  const createdAt = "2026-07-01T00:00:00.000Z";
+
+  return new RoomlogService({
+    seedDemoData: false,
+    initialStore: {
+      users: [
+        {
+          id: "tenant-a",
+          email: "tenant-a@roomlog.test",
+          passwordHash: "hash",
+          name: "임차인A",
+          role: "TENANT",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "tenant-b",
+          email: "tenant-b@roomlog.test",
+          passwordHash: "hash",
+          name: "임차인B",
+          role: "TENANT",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "manager-a",
+          email: "manager-a@roomlog.test",
+          passwordHash: "hash",
+          name: "관리인A",
+          role: "LANDLORD",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "manager-b",
+          email: "manager-b@roomlog.test",
+          passwordHash: "hash",
+          name: "관리인B",
+          role: "LANDLORD",
+          status: "ACTIVE",
+          createdAt
+        }
+      ],
+      rooms: [
+        {
+          id: "room-a",
+          buildingName: "정글빌라",
+          roomNo: "301호",
+          address: "서울시 성동구 테스트로 1",
+          landlordId: "manager-a"
+        },
+        {
+          id: "room-b",
+          buildingName: "정글빌라",
+          roomNo: "401호",
+          address: "서울시 성동구 테스트로 2",
+          landlordId: "manager-b"
+        }
+      ],
+      tenantRooms: {
+        "tenant-a": "room-a",
+        "tenant-b": "room-b"
+      },
+      vendors: [],
+      vendorInvites: [],
+      tenantInvites: [],
+      contracts: [
+        {
+          id: "contract-a",
+          roomId: "room-a",
+          tenantId: "tenant-a",
+          managerId: "manager-a",
+          unitId: "301",
+          landlordName: "관리인A",
+          lifecycle: "active",
+          review: "confirmed",
+          deletion: "none",
+          valueSource: "confirmed",
+          monthlyRent: 700000,
+          maintenanceFee: 70000,
+          paymentDay: 25,
+          startDate: "2025-08-01T00:00:00.000Z",
+          endDate: "2026-07-31T00:00:00.000Z",
+          createdAt,
+          updatedAt: createdAt,
+          confirmedAt: createdAt,
+          confirmedByManagerId: "manager-a"
+        },
+        {
+          id: "contract-unconfirmed",
+          roomId: "room-a",
+          tenantId: "tenant-a",
+          managerId: "manager-a",
+          unitId: "301",
+          landlordName: "관리인A",
+          lifecycle: "active",
+          review: "pending",
+          deletion: "none",
+          valueSource: "unverified",
+          monthlyRent: 700000,
+          maintenanceFee: 70000,
+          paymentDay: 25,
+          startDate: "2025-08-01T00:00:00.000Z",
+          endDate: "2026-07-31T00:00:00.000Z",
+          createdAt,
+          updatedAt: createdAt
+        },
+        {
+          id: "contract-b",
+          roomId: "room-b",
+          tenantId: "tenant-b",
+          managerId: "manager-b",
+          unitId: "401",
+          landlordName: "관리인B",
+          lifecycle: "active",
+          review: "confirmed",
+          deletion: "none",
+          valueSource: "confirmed",
+          monthlyRent: 800000,
+          maintenanceFee: 80000,
+          paymentDay: 25,
+          startDate: "2025-08-01T00:00:00.000Z",
+          endDate: "2026-08-31T00:00:00.000Z",
+          createdAt,
+          updatedAt: createdAt,
+          confirmedAt: createdAt,
+          confirmedByManagerId: "manager-b"
+        }
+      ],
+      contractDocuments: [],
+      contractExtractions: [],
+      contractPrivacies: [],
+      contractInvites: [],
+      attachments: [],
+      floorPlans: [],
+      moveInChecklist: [],
+      aiFeedback: [],
+      intakeSessions: [],
+      complaints: [],
+      analyses: {},
+      tickets: [],
+      repairs: [],
+      costs: [],
+      receipts: [],
+      receiptOcrs: [],
+      messages: [],
+      messagingThreads: [],
+      messagingMessages: [],
+      messagingAnnouncementDrafts: [],
+      messagingAnnouncements: [],
+      messagingAnnouncementDeliveries: [],
+      history: [],
+      moveouts: [
+        {
+          id: "mo-a",
+          tenantId: "tenant-a",
+          roomId: "room-a",
+          contractId: "contract-a",
+          unitId: "301",
+          contractConfirmed: true,
+          leaseEndDate: "2026-07-31T00:00:00.000Z",
+          daysRemaining: 30,
+          depositAmount: 10000000,
+          estimatedRefundMin: 9800000,
+          estimatedRefundMax: 9900000,
+          settlementStatus: "estimate",
+          prepProgress: 0.5,
+          settlementId: "st-a",
+          createdAt,
+          updatedAt: createdAt
+        },
+        {
+          id: "mo-unconfirmed",
+          tenantId: "tenant-a",
+          roomId: "room-a",
+          contractId: "contract-unconfirmed",
+          unitId: "301",
+          contractConfirmed: false,
+          depositAmount: 10000000,
+          settlementStatus: "estimate",
+          prepProgress: 0.2,
+          settlementId: "st-unconfirmed",
+          createdAt,
+          updatedAt: createdAt
+        },
+        {
+          id: "mo-b",
+          tenantId: "tenant-b",
+          roomId: "room-b",
+          contractId: "contract-b",
+          unitId: "401",
+          contractConfirmed: true,
+          leaseEndDate: "2026-08-31T00:00:00.000Z",
+          daysRemaining: 61,
+          depositAmount: 12000000,
+          estimatedRefundMin: 12000000,
+          estimatedRefundMax: 12000000,
+          settlementStatus: "estimate",
+          prepProgress: 0.4,
+          settlementId: "st-b",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      moveoutRecords: [
+        {
+          id: "rec-a",
+          summaryId: "mo-a",
+          source: "movein_photo",
+          title: "입주 전 욕실 사진",
+          description: "입주 시점 사진이 있어 비교 가능합니다.",
+          occurredAt: "2025-08-01T00:00:00.000Z",
+          evidenceUrls: ["/api/files/moveout-before.jpg"],
+          moveinComparisonAvailable: true
+        },
+        {
+          id: "rec-blank",
+          summaryId: "mo-a",
+          source: "movein_photo",
+          title: "입주 전 벽면 사진 공백",
+          description: "입주 전 사진이 남아 있지 않은 벽면입니다.",
+          occurredAt: "2025-08-01T00:00:00.000Z",
+          moveinComparisonAvailable: false
+        }
+      ],
+      moveoutChecklist: [],
+      moveoutSettlements: [
+        {
+          id: "st-a",
+          summaryId: "mo-a",
+          depositAmount: 10000000,
+          refundMin: 9800000,
+          refundMax: 9900000,
+          status: "estimate",
+          disclaimer: "참고자료이며 최종 정산은 관리자 확인 후 확정됩니다.",
+          createdAt
+        },
+        {
+          id: "st-unconfirmed",
+          summaryId: "mo-unconfirmed",
+          depositAmount: 10000000,
+          refundMin: 10000000,
+          refundMax: 10000000,
+          status: "estimate",
+          disclaimer: "계약 미확정 상태에서는 정산을 확정할 수 없습니다.",
+          createdAt
+        }
+      ],
+      moveoutDeductions: [
+        {
+          id: "de-a",
+          kind: "repair",
+          summaryId: "mo-a",
+          label: "욕실 수리비 후보",
+          estimatedMin: 0,
+          estimatedMax: 100000,
+          needsConfirmation: false,
+          evidenceNote: "입주 전 사진과 수리 이력 비교",
+          source: "repair"
+        }
+      ],
+      moveoutDisputes: [
+        {
+          id: "dp-sla",
+          summaryId: "mo-a",
+          targetItemId: "de-a",
+          targetLabel: "욕실 수리비 후보",
+          reason: "기존 하자입니다.",
+          status: "received",
+          slaDeadline: "2026-07-02T00:00:00.000Z",
+          slaBreached: true,
+          history: [{ status: "received", at: "2026-07-01T00:00:00.000Z" }],
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      moveoutReportAudits: []
+    } as any
+  } as any);
+}
+
+function createReportTestService() {
+  const createdAt = "2026-06-15T00:00:00.000Z";
+
+  return new RoomlogService({
+    seedDemoData: false,
+    initialStore: {
+      users: [
+        {
+          id: "tenant-report-a",
+          email: "tenant-report-a@roomlog.test",
+          passwordHash: "hash",
+          name: "김민수",
+          phone: "010-1111-2222",
+          role: "TENANT",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "tenant-report-b",
+          email: "tenant-report-b@roomlog.test",
+          passwordHash: "hash",
+          name: "이민지",
+          phone: "010-3333-4444",
+          role: "TENANT",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "manager-report-a",
+          email: "manager-report-a@roomlog.test",
+          passwordHash: "hash",
+          name: "관리인A",
+          role: "LANDLORD",
+          status: "ACTIVE",
+          createdAt
+        },
+        {
+          id: "manager-report-b",
+          email: "manager-report-b@roomlog.test",
+          passwordHash: "hash",
+          name: "관리인B",
+          role: "LANDLORD",
+          status: "ACTIVE",
+          createdAt
+        }
+      ],
+      rooms: [
+        {
+          id: "room-report-a",
+          buildingName: "정글빌라",
+          roomNo: "301호",
+          address: "서울시 성동구 리포트로 1",
+          landlordId: "manager-report-a"
+        },
+        {
+          id: "room-report-b",
+          buildingName: "바깥빌라",
+          roomNo: "401호",
+          address: "서울시 성동구 리포트로 2",
+          landlordId: "manager-report-b"
+        }
+      ],
+      tenantRooms: {
+        "tenant-report-a": "room-report-a",
+        "tenant-report-b": "room-report-b"
+      },
+      vendors: [],
+      vendorInvites: [],
+      tenantInvites: [],
+      contracts: [
+        {
+          id: "contract-report-a",
+          roomId: "room-report-a",
+          tenantId: "tenant-report-a",
+          managerId: "manager-report-a",
+          unitId: "301",
+          landlordName: "관리인A",
+          lifecycle: "active",
+          review: "confirmed",
+          deletion: "none",
+          valueSource: "confirmed",
+          monthlyRent: 700000,
+          maintenanceFee: 70000,
+          paymentDay: 25,
+          startDate: "2026-01-01T00:00:00.000Z",
+          endDate: "2027-01-01T00:00:00.000Z",
+          createdAt,
+          updatedAt: createdAt,
+          confirmedAt: createdAt,
+          confirmedByManagerId: "manager-report-a"
+        }
+      ],
+      contractDocuments: [],
+      contractExtractions: [],
+      contractPrivacies: [],
+      contractInvites: [],
+      attachments: [],
+      floorPlans: [],
+      moveInChecklist: [],
+      aiFeedback: [],
+      intakeSessions: [],
+      complaints: [
+        {
+          id: "complaint-report-a",
+          tenantId: "tenant-report-a",
+          roomId: "room-report-a",
+          ticketId: "ticket-report-a",
+          sourceChannel: "DIRECT_FORM",
+          title: "욕실 누수 민원",
+          description: "민감메모: 세입자 연락처 010-1111-2222로만 연락 요청",
+          location: "욕실",
+          status: "REVIEWING",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      analyses: {
+        "ticket-report-a": {
+          summary: "욕실 누수 검토 필요",
+          category: "하자",
+          priority: 2,
+          responsibilityHint: "판단 어려움",
+          confidenceScore: 0.62,
+          reasons: ["반복 누수 가능성"],
+          recommendedAction: "관리인 확인"
+        }
+      },
+      tickets: [
+        {
+          id: "ticket-report-a",
+          complaintId: "complaint-report-a",
+          tenantId: "tenant-report-a",
+          roomId: "room-report-a",
+          sourceChannel: "DIRECT_FORM",
+          category: "하자",
+          priority: 2,
+          status: "REVIEWING",
+          responsibilityHint: "판단 어려움",
+          aiSummary: "욕실 누수 검토 필요",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      repairs: [],
+      costs: [
+        {
+          id: "cost-report-a",
+          managerId: "manager-report-a",
+          date: "2026-06-20T00:00:00.000Z",
+          item: "욕실 누수 점검비",
+          amount: 120000,
+          type: "repair",
+          scope: "unit",
+          unitId: "301",
+          status: "confirmed",
+          verified: true,
+          disclosure: "private",
+          repairPayment: "unpaid",
+          paymentRef: "invoice-report-a",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      receipts: [],
+      receiptOcrs: [],
+      messages: [],
+      messagingThreads: [],
+      messagingMessages: [],
+      messagingAnnouncementDrafts: [],
+      messagingAnnouncements: [],
+      messagingAnnouncementDeliveries: [],
+      history: [],
+      moveouts: [
+        {
+          id: "moveout-report-a",
+          tenantId: "tenant-report-a",
+          roomId: "room-report-a",
+          contractId: "contract-report-a",
+          unitId: "301",
+          contractConfirmed: true,
+          leaseEndDate: "2026-12-31T00:00:00.000Z",
+          daysRemaining: 183,
+          depositAmount: 10000000,
+          settlementStatus: "estimate",
+          prepProgress: 0.3,
+          createdAt,
+          updatedAt: createdAt
+        }
+      ],
+      moveoutRecords: [],
+      moveoutChecklist: [],
+      moveoutSettlements: [],
+      moveoutDeductions: [],
+      moveoutDisputes: [],
+      moveoutReportAudits: []
+    } as any
+  } as any);
+}
 
 describe("RoomlogService", () => {
   it("stores uploaded image files locally and rejects non-image files", async () => {
@@ -198,6 +679,111 @@ describe("RoomlogService", () => {
     assert.throws(() => service.getDemoState(), /데모/);
   });
 
+  it("creates a public seeker account without room credentials", () => {
+    const service = new RoomlogService({ seedDemoData: false } as any);
+    const auth = service.signup({
+      email: "public-seeker@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "Public Seeker",
+      role: "SEEKER"
+    });
+
+    assert.equal(auth.role, "SEEKER");
+    const me = service.getMe(`Bearer ${auth.accessToken}`);
+    assert.equal(me.role, "SEEKER");
+    assert.equal(me.roomId, undefined);
+    assert.equal(me.managedRooms, undefined);
+  });
+
+  it("logs in and links a verified Google account through the social auth flow", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalClientId = process.env.GOOGLE_LOGIN_CLIENT_ID;
+    const originalClientSecret = process.env.GOOGLE_LOGIN_CLIENT_SECRET;
+    const requests: string[] = [];
+
+    process.env.GOOGLE_LOGIN_CLIENT_ID = "google-client-id";
+    process.env.GOOGLE_LOGIN_CLIENT_SECRET = "google-client-secret";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      requests.push(url);
+
+      if (url === "https://oauth2.googleapis.com/token") {
+        const body = String(init?.body);
+        assert.match(body, /client_id=google-client-id/);
+        assert.match(body, /redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fgoogle%2Fcallback/);
+
+        return new Response(JSON.stringify({ access_token: "google-access-token" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      if (url === "https://openidconnect.googleapis.com/v1/userinfo") {
+        assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer google-access-token");
+
+        return new Response(
+          JSON.stringify({
+            sub: "google-user-001",
+            email: "GoogleUser@Roomlog.Test",
+            email_verified: true,
+            name: "Google User",
+            picture: "https://example.test/avatar.png"
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const service = new RoomlogService({ seedDemoData: false } as any);
+
+      await assert.rejects(
+        () =>
+          service.loginWithGoogle({
+            code: "google-code-before-signup",
+            redirectUri: "http://localhost:3000/api/auth/google/callback",
+            role: "TENANT"
+          }),
+        /SOCIAL_SIGNUP_REQUIRED/
+      );
+      assert.equal((service as any).store.users.length, 0);
+      assert.equal((service as any).store.socialAccounts.length, 0);
+
+      const auth = await service.loginWithGoogle({
+        code: "google-code",
+        redirectUri: "http://localhost:3000/api/auth/google/callback",
+        role: "TENANT",
+        flow: "signup"
+      });
+
+      assert.equal(auth.role, "TENANT");
+      assert.equal(auth.name, "Google User");
+      assert.equal(service.getMe(`Bearer ${auth.accessToken}`).email, "googleuser@roomlog.test");
+      assert.equal((service as any).store.socialAccounts.length, 1);
+      assert.equal((service as any).store.socialAccounts[0].provider, "GOOGLE");
+
+      const linked = await service.loginWithGoogle({
+        code: "google-code-again",
+        redirectUri: "http://localhost:3000/api/auth/google/callback",
+        role: "TENANT"
+      });
+
+      assert.equal(linked.userId, auth.userId);
+      assert.equal((service as any).store.users.length, 1);
+      assert.equal((service as any).store.socialAccounts.length, 1);
+      assert.equal(requests.filter((url) => url === "https://oauth2.googleapis.com/token").length, 3);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalClientId === undefined) delete process.env.GOOGLE_LOGIN_CLIENT_ID;
+      else process.env.GOOGLE_LOGIN_CLIENT_ID = originalClientId;
+      if (originalClientSecret === undefined) delete process.env.GOOGLE_LOGIN_CLIENT_SECRET;
+      else process.env.GOOGLE_LOGIN_CLIENT_SECRET = originalClientSecret;
+    }
+  });
+
   it("projects signup state to configured persistence", async () => {
     const projectedStores: any[] = [];
     const service = new RoomlogService({
@@ -264,13 +850,15 @@ describe("RoomlogService", () => {
 
     assert.equal(hydratedAuth.userId, auth.userId);
     assert.equal(hydratedService.getMe(`Bearer ${hydratedAuth.accessToken}`).room?.roomNo, "801호");
-    assert.throws(
-      () =>
-        hydratedService.login({
-          email: "tenant@roomlog.test",
-          password: "password123!"
-        }),
-      /올바르지/
+    const demoAuth = hydratedService.login({
+      email: "tenant@roomlog.test",
+      password: "password123!"
+    });
+
+    assert.equal(demoAuth.userId, "tenant-demo");
+    assert.equal(
+      hydratedService.listTenantMoveouts("tenant-demo").some((moveout: any) => moveout.id === "mo_0001"),
+      true
     );
   });
 
@@ -2241,6 +2829,296 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("lets a real linked tenant start a messaging thread that the linked manager can reply to", () => {
+    const service = new RoomlogService();
+
+    const manager = service.signup({
+      email: "linked-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "연결 관리자",
+      phone: "010-7000-1001",
+      role: "LANDLORD",
+      buildingName: "연결 빌라",
+      roomNo: "910호",
+      address: "서울시 성동구 연결로 10"
+    } as any);
+
+    const tenant = service.signup({
+      email: "linked-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "연결 세입자",
+      phone: "010-7000-3001",
+      role: "TENANT",
+      buildingName: "연결 빌라",
+      roomNo: "910호",
+      address: "서울시 성동구 연결로 10"
+    } as any);
+
+    const tenantRoom = service.getTenantRoom(tenant.userId);
+    assert.equal(tenantRoom.landlordId, manager.userId);
+
+    const started = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      contextLabel: "일반 문의",
+      body: "공용 현관등이 깜빡입니다."
+    });
+
+    assert.equal(started.tenantId, tenant.userId);
+    assert.equal(started.unitId, "910");
+    assert.equal(started.messages?.length, 1);
+    assert.equal(started.messages?.[0]?.sender, "tenant");
+    assert.equal(started.messages?.[0]?.body, "공용 현관등이 깜빡입니다.");
+
+    const managerThreads = service.listManagerMessagingThreads(manager.userId);
+    assert.equal(managerThreads.some((thread) => thread.id === started.id), true);
+
+    const managerReply = service.addManagerMessagingThreadMessage(manager.userId, started.id, {
+      body: "오늘 점검하겠습니다."
+    });
+    const replyMessages = managerReply.messages ?? [];
+    assert.equal(replyMessages[replyMessages.length - 1]?.sender, "manager");
+    assert.equal(replyMessages[replyMessages.length - 1]?.body, "오늘 점검하겠습니다.");
+
+    const tenantView = service.getTenantMessagingThread(tenant.userId, started.id);
+    const tenantMessages = tenantView.messages ?? [];
+    assert.equal(tenantMessages[tenantMessages.length - 1]?.body, "오늘 점검하겠습니다.");
+
+    const otherManager = service.signup({
+      email: "unlinked-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "외부 관리자",
+      phone: "010-7000-1002",
+      role: "LANDLORD",
+      buildingName: "외부 빌라",
+      roomNo: "1호",
+      address: "서울시 성동구 외부로 1"
+    } as any);
+
+    assert.throws(
+      () => service.getManagerMessagingThread(otherManager.userId, started.id),
+      /메시지 스레드/
+    );
+  });
+
+  it("lets tenants and managers delete only scoped messaging threads", () => {
+    const service = new RoomlogService();
+
+    const otherManager = service.signup({
+      email: "delete-other-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "삭제 외부 관리자",
+      phone: "010-7622-1001",
+      role: "LANDLORD",
+      buildingName: "삭제 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 삭제로 8"
+    } as any);
+    const otherTenant = service.signup({
+      email: "delete-other-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "삭제 외부 세입자",
+      phone: "010-7622-3001",
+      role: "TENANT",
+      buildingName: "삭제 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 삭제로 8"
+    } as any);
+
+    const tenantThread = service.createTenantMessagingThread("tenant-demo", {
+      context: "general",
+      contextLabel: "삭제 테스트",
+      body: "임차인이 삭제할 스레드입니다."
+    });
+    service.addManagerMessagingThreadMessage("landlord-demo", tenantThread.id, {
+      body: "삭제 전에 달린 관리자 답장입니다."
+    });
+
+    assert.equal(
+      service.getDemoState().messagingMessages.some((message) => message.threadId === tenantThread.id),
+      true
+    );
+    assert.throws(
+      () => service.deleteTenantMessagingThread(otherTenant.userId, tenantThread.id),
+      /메시지 스레드/
+    );
+
+    const tenantDeleted = service.deleteTenantMessagingThread("tenant-demo", tenantThread.id);
+    assert.equal(tenantDeleted.deleted, true);
+    assert.equal(
+      service.listTenantMessagingThreads("tenant-demo").some((thread) => thread.id === tenantThread.id),
+      false
+    );
+    assert.equal(
+      service.listManagerMessagingThreads("landlord-demo").some((thread) => thread.id === tenantThread.id),
+      false
+    );
+    assert.equal(
+      service.getDemoState().messagingMessages.some((message) => message.threadId === tenantThread.id),
+      false
+    );
+    assert.throws(
+      () => service.getTenantMessagingThread("tenant-demo", tenantThread.id),
+      /메시지 스레드/
+    );
+
+    const managerThread = service.createMessagingThread("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "tenant-demo",
+      context: "general",
+      contextLabel: "관리인 삭제 테스트",
+      initialMessage: {
+        sender: "tenant",
+        body: "관리인이 삭제할 스레드입니다."
+      }
+    });
+    assert.throws(
+      () => service.deleteManagerMessagingThread(otherManager.userId, managerThread.id),
+      /메시지 스레드/
+    );
+
+    const managerDeleted = service.deleteManagerMessagingThread("landlord-demo", managerThread.id);
+    assert.equal(managerDeleted.threadId, managerThread.id);
+    assert.equal(
+      service.listManagerMessagingThreads("landlord-demo").some((thread) => thread.id === managerThread.id),
+      false
+    );
+    assert.equal(
+      service.listTenantMessagingThreads("tenant-demo").some((thread) => thread.id === managerThread.id),
+      false
+    );
+  });
+
+  it("scopes messaging threads and enforces server-side messaging gates", () => {
+    const service = new RoomlogService();
+    const otherManager = service.signup({
+      email: "message-other-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "메시지 외부 관리자",
+      phone: "010-6622-1001",
+      role: "LANDLORD",
+      buildingName: "메시지 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 외부로 8"
+    } as any);
+    const otherTenant = service.signup({
+      email: "message-other-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "메시지 외부 세입자",
+      phone: "010-6622-3001",
+      role: "TENANT",
+      buildingName: "메시지 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 외부로 8"
+    } as any);
+
+    const ownThread = service.createMessagingThread("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "tenant-demo",
+      context: "payment",
+      contextLabel: "7월 관리비 문의",
+      initialMessage: {
+        sender: "tenant",
+        body: "7월 관리비 산정 기준을 확인하고 싶습니다."
+      }
+    });
+    const otherThread = service.createMessagingThread(otherManager.userId, {
+      roomId: service.getTenantRoom(otherTenant.userId).id,
+      tenantId: otherTenant.userId,
+      context: "general",
+      contextLabel: "외부 세대 문의",
+      initialMessage: {
+        sender: "tenant",
+        body: "외부 세대 문의입니다."
+      }
+    });
+
+    const tenantThreads = service.listTenantMessagingThreads("tenant-demo");
+    const managerThreads = service.listManagerMessagingThreads("landlord-demo");
+
+    assert.equal(tenantThreads.some((thread) => thread.id === ownThread.id), true);
+    assert.equal(tenantThreads.some((thread) => thread.id === otherThread.id), false);
+    assert.equal(managerThreads.some((thread) => thread.id === ownThread.id), true);
+    assert.equal(managerThreads.some((thread) => thread.id === otherThread.id), false);
+    assert.throws(
+      () =>
+        service.addManagerMessagingThreadMessage("landlord-demo", ownThread.id, {
+          body: "미납 상태라 오늘 바로 납부하세요."
+        }),
+      /독촉|납부|청구/
+    );
+  });
+
+  it("requires reviewed urgent announcement translations before send and separates read from confirmation", () => {
+    const service = new RoomlogService();
+
+    const unsafeDraft = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "building",
+      targetLabel: "정글빌라 전체",
+      title: "긴급 단수 안내",
+      body: "오늘 18시부터 긴급 단수가 있습니다.",
+      confirmRequired: true,
+      translations: [
+        {
+          lang: "en",
+          title: "Emergency water outage",
+          body: "Emergency water outage starts at 18:00.",
+          reviewed: false
+        }
+      ]
+    });
+
+    assert.throws(
+      () => service.sendManagerAnnouncementDraft("landlord-demo", unsafeDraft.id),
+      /검수|번역/
+    );
+
+    const reviewedDraft = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "building",
+      targetLabel: "정글빌라 전체",
+      title: "긴급 단수 안내",
+      body: "오늘 18시부터 긴급 단수가 있습니다.",
+      confirmRequired: true,
+      translations: [
+        {
+          lang: "en",
+          title: "Emergency water outage",
+          body: "Emergency water outage starts at 18:00.",
+          reviewed: true
+        }
+      ]
+    });
+    const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
+
+    let tenantAnnouncement = service.getTenantMessagingAnnouncement(
+      "tenant-demo",
+      sent.announcementId
+    );
+    assert.equal(tenantAnnouncement.state, "unread");
+    assert.equal(tenantAnnouncement.confirmRequired, true);
+
+    tenantAnnouncement = service.markTenantMessagingAnnouncementRead(
+      "tenant-demo",
+      sent.announcementId
+    );
+    assert.equal(tenantAnnouncement.state, "read");
+
+    tenantAnnouncement = service.confirmTenantMessagingAnnouncement(
+      "tenant-demo",
+      sent.announcementId
+    );
+    assert.equal(tenantAnnouncement.state, "confirmed");
+    assert.equal(service.listManagerAnnouncementResults("landlord-demo")[0].counts.confirmed, 1);
+  });
+
   it("answers manager natural-language ticket queries from scoped operational data", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -2797,6 +3675,64 @@ describe("RoomlogService", () => {
     assert.equal(noMatch.length, 0);
   });
 
+  it("creates and updates manager-owned vendor profiles without leaking between managers", () => {
+    const service = new RoomlogService();
+    const store = (service as unknown as { store: { users: any[] } }).store;
+    store.users.push({
+      id: "landlord-second",
+      email: "landlord-second@roomlog.test",
+      passwordHash: "hash",
+      name: "Second Manager",
+      role: "LANDLORD",
+      status: "ACTIVE",
+      createdAt: "2026-07-01T00:00:00.000Z"
+    });
+
+    const created = service.createManagerVendorProfile("landlord-demo", {
+      businessName: "Seocho Electric",
+      contactPerson: "Kim",
+      phone: "010-1111-2222",
+      serviceArea: "Seocho-gu"
+    });
+
+    assert.equal(created.vendor.name, "Seocho Electric");
+    assert.equal(created.vendor.source, "manual");
+    assert.equal(created.vendor.dealCount, 0);
+    assert.equal(
+      service
+        .listManagerVendorMgmtVendors("landlord-demo", { q: "seocho" })
+        .some((vendor) => vendor.id === created.vendor.id),
+      true
+    );
+    assert.equal(
+      service
+        .listManagerVendorMgmtVendors("landlord-second", { q: "seocho" })
+        .some((vendor) => vendor.id === created.vendor.id),
+      false
+    );
+
+    const updated = service.updateManagerVendorProfile("landlord-demo", created.vendor.id, {
+      businessName: "Seocho Electric Plus",
+      contactPerson: "Lee",
+      phone: "010-3333-4444",
+      serviceArea: "Seocho-gu, Gangnam-gu"
+    });
+
+    assert.equal(updated.vendor.name, "Seocho Electric Plus");
+    assert.equal(updated.vendor.contactPerson, "Lee");
+    assert.equal(updated.vendor.phone, "01033334444");
+    assert.throws(
+      () =>
+        service.updateManagerVendorProfile("landlord-second", created.vendor.id, {
+          businessName: "Leaked Vendor",
+          contactPerson: "Other",
+          phone: "010-5555-6666",
+          serviceArea: "Other Area"
+        }),
+      /업체|Vendor/
+    );
+  });
+
   it("projects manager cost ledger from landlord repair costs and excludes non-spend states", () => {
     const service = new RoomlogService();
     const completeRepair = (
@@ -2919,6 +3855,62 @@ describe("RoomlogService", () => {
     const disclosure = service.getManagerDisclosureSetting("landlord-demo", month);
     assert.equal(disclosure.hiddenCount, 1);
     assert.equal(disclosure.entries[0].costId, "cost_private_maintenance");
+  });
+
+  it("persists manager cost OCR decisions, disclosure changes, and void audit state", () => {
+    const service = new RoomlogService();
+    const store = (service as unknown as { store: { costs: any[]; receipts: any[]; receiptOcrs: any[] } }).store;
+    const createdAt = "2026-12-01T00:00:00.000Z";
+
+    store.receipts.push({
+      id: "receipt_real_1",
+      managerId: "landlord-demo",
+      source: "file",
+      hasEvidence: true,
+      uploadedAt: createdAt
+    });
+    store.receiptOcrs.push({
+      id: "ocr_real_1",
+      receiptId: "receipt_real_1",
+      fields: {
+        item: { value: "December maintenance lighting", confidence: 0.96, needsReview: false },
+        date: { value: createdAt, confidence: 0.95, needsReview: false },
+        amount: { value: 41000, confidence: 0.54, needsReview: true }
+      },
+      suggestedType: "maintenance",
+      typeConfidence: 0.72,
+      lineItems: [{ label: "lighting", amount: 41000, suggestedType: "maintenance" }],
+      createdAt
+    });
+
+    const confirmed = service.confirmManagerReceiptOcr("landlord-demo", "ocr_real_1");
+    assert.equal(confirmed.status, "confirmed");
+    assert.equal(confirmed.verified, false);
+    assert.equal(confirmed.disclosure, "public");
+    assert.equal(
+      store.receiptOcrs.find((ocr) => ocr.id === "ocr_real_1")?.costId,
+      confirmed.id
+    );
+    assert.equal(service.getManagerMonthlyCostSummary("landlord-demo", "2026-12").totalAmount, 41000);
+
+    const privateSetting = service.updateManagerCostDisclosure(
+      "landlord-demo",
+      confirmed.id,
+      "private"
+    );
+    assert.equal(privateSetting.hiddenCount, 1);
+
+    const publicSetting = service.updateManagerCostDisclosure(
+      "landlord-demo",
+      confirmed.id,
+      "public"
+    );
+    assert.equal(publicSetting.hiddenCount, 0);
+
+    const voided = service.voidManagerCost("landlord-demo", confirmed.id, "duplicate receipt");
+    assert.equal(voided.status, "void");
+    assert.equal(voided.voidReason, "duplicate receipt");
+    assert.equal(service.getManagerMonthlyCostSummary("landlord-demo", "2026-12").totalAmount, 0);
   });
 
   it("lets tenants confirm completion or reopen unresolved repairs after vendor completion reports", () => {
@@ -3175,8 +4167,8 @@ describe("RoomlogService", () => {
     const service = new RoomlogService();
 
     const contracts = service.listTenantContracts("tenant-demo");
-    assert.equal(contracts.length, 1);
-    assert.equal(contracts[0].id, "ct_0001");
+    assert.equal(contracts.some((contract) => contract.id === "ct_0001"), true);
+    assert.equal(contracts.some((contract) => contract.id === "ct_moveout_0001"), true);
 
     const tenantContract = service.getTenantContract("tenant-demo", "ct_0001");
     const tenantExtraction = service.getTenantContractExtraction("tenant-demo", tenantContract.id);
@@ -3224,5 +4216,555 @@ describe("RoomlogService", () => {
       service.getTenantContractPrivacy("tenant-demo", tenantContract.id).deletion,
       "limited"
     );
+  });
+
+  it("lets a tenant read only their own moveout request", () => {
+    const service = createMoveoutTestService() as any;
+
+    assert.equal(service.getTenantMoveout("tenant-a", "mo-a").id, "mo-a");
+    assert.throws(() => service.getTenantMoveout("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutRecords("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutChecklist("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.getTenantMoveoutSettlement("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutDisputes("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+  });
+
+  it("returns moveout record evidence without exposing mutable store arrays", () => {
+    const service = createMoveoutTestService() as any;
+
+    const records = service.listTenantMoveoutRecords("tenant-a", "mo-a");
+    const record = records.find((item: any) => item.id === "rec-a");
+
+    assert.deepEqual(record.evidenceUrls, ["/api/files/moveout-before.jpg"]);
+    record.evidenceUrls.push("/api/files/mutated.jpg");
+    assert.deepEqual(
+      service.listTenantMoveoutRecords("tenant-a", "mo-a").find((item: any) => item.id === "rec-a").evidenceUrls,
+      ["/api/files/moveout-before.jpg"]
+    );
+  });
+
+  it("lets a manager read only moveouts for rooms they manage", () => {
+    const service = createMoveoutTestService() as any;
+    const managerARows = service.listManagerMoveoutRows("manager-a");
+    const managerBRows = service.listManagerMoveoutRows("manager-b");
+
+    assert.equal(managerARows.some((row: any) => row.summaryId === "mo-a"), true);
+    assert.equal(managerARows.some((row: any) => row.summaryId === "mo-b"), false);
+    assert.equal(managerBRows.some((row: any) => row.summaryId === "mo-b"), true);
+    assert.equal(managerBRows.some((row: any) => row.summaryId === "mo-a"), false);
+    assert.equal(service.getManagerMoveoutSettlement("manager-a", "mo-a").settlement.id, "st-a");
+    assert.throws(
+      () => service.getManagerMoveoutSettlement("manager-b", "mo-a"),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(() => service.getManagerMoveoutRecords("manager-b", "mo-a"), /담당 호실|퇴실|찾을 수/);
+    assert.throws(() => service.getManagerReportAudit("manager-b", "mo-a"), /담당 호실|퇴실|찾을 수/);
+    assert.throws(
+      () =>
+        service.adjustManagerMoveoutDeduction("manager-b", "mo-a", {
+          deductionId: "de-a",
+          estimatedMin: 0,
+          estimatedMax: 0,
+          resolveConfirmation: true
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.adjustManagerMoveoutWearVerdict("manager-b", "mo-a", {
+          recordItemId: "rec-a",
+          action: "reinforce",
+          evidenceNote: "타 호실 접근 시도",
+          notifyTenant: true
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.completeManagerMoveoutReview("manager-b", "mo-a", {
+          acknowledgeEvidence: true,
+          overrideSla: true,
+          overrideReason: "타 호실 접근 시도"
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.respondManagerMoveoutDispute("manager-b", "mo-a", {
+          disputeId: "dp-sla",
+          kind: "explain",
+          message: "타 호실 접근 시도",
+          reflect: "none"
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+  });
+
+  it("blocks moveout review completion while the contract is unconfirmed", () => {
+    const service = createMoveoutTestService() as any;
+
+    assert.throws(
+      () =>
+        service.completeManagerMoveoutReview("manager-a", "mo-unconfirmed", {
+          acknowledgeEvidence: true
+        }),
+      /계약/
+    );
+  });
+
+  it("does not allow blank move-in evidence to establish tenant responsibility", () => {
+    const service = createMoveoutTestService() as any;
+
+    assert.throws(
+      () =>
+        service.adjustManagerMoveoutWearVerdict("manager-a", "mo-a", {
+          recordItemId: "rec-blank",
+          action: "adjust",
+          toVerdict: "damage_possible",
+          evidenceNote: "입주 전 사진이 없어 임차인 책임으로 봅니다.",
+          notifyTenant: true
+        }),
+      /공백|책임/
+    );
+  });
+
+  it("requires a manager reason before using moveout SLA override", () => {
+    const service = createMoveoutTestService() as any;
+
+    assert.throws(
+      () =>
+        service.completeManagerMoveoutReview("manager-a", "mo-a", {
+          acknowledgeEvidence: true,
+          overrideSla: true
+        }),
+      /사유/
+    );
+  });
+
+  it("creates and links a manager-visible messaging thread for tenant moveout inquiries", () => {
+    const service = createMoveoutTestService() as any;
+
+    const result = service.createTenantMoveoutInquiry("tenant-a", "mo-a", {
+      body: "퇴실 일정과 예상 정산 문의드립니다.",
+      attachmentUrls: ["/api/files/moveout-question.jpg", ""]
+    });
+    const managerThreads = service.listManagerMessagingThreads("manager-a", "moveout");
+    const tenantThread = service.getTenantMessagingThread("tenant-a", result.thread.id);
+
+    assert.equal(result.thread.context, "moveout");
+    assert.equal(result.thread.contextRef, "mo-a");
+    assert.equal(managerThreads.some((thread: any) => thread.id === result.thread.id), true);
+    assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
+    assert.deepEqual(tenantThread.messages.at(-1).attachmentUrls, ["/api/files/moveout-question.jpg"]);
+  });
+
+  it("lets a tenant save moveout checklist item state and recalculates preparation progress", () => {
+    const service = createMoveoutTestService() as any;
+
+    const result = service.updateTenantMoveoutChecklist("tenant-a", "mo-a", {
+      items: [
+        {
+          id: "ck-cardkey",
+          label: "현관 카드키 2개",
+          present: true,
+          condition: "normal",
+          note: "반납 준비 완료",
+          attachmentUrls: ["/api/files/key-before.jpg", "/api/files/key-before.jpg", ""]
+        },
+        {
+          id: "ck-mailbox",
+          label: "우편함 열쇠",
+          present: false,
+          condition: "damage_check",
+          note: "분실 여부 확인 중"
+        }
+      ]
+    });
+    const saved = service.listTenantMoveoutChecklist("tenant-a", "mo-a");
+    const summary = service.getTenantMoveout("tenant-a", "mo-a");
+
+    assert.equal(result.length, 2);
+    assert.equal(saved[0].summaryId, "mo-a");
+    assert.equal(saved[0].note, "반납 준비 완료");
+    assert.deepEqual(saved[0].attachmentUrls, ["/api/files/key-before.jpg"]);
+    assert.equal(saved[1].condition, "damage_check");
+    assert.equal(summary.prepProgress, 0.5);
+    assert.throws(
+      () =>
+        service.updateTenantMoveoutChecklist("tenant-b", "mo-a", {
+          items: [{ label: "침대 프레임", present: true, condition: "normal" }]
+        }),
+      /퇴실|찾을 수|접근/
+    );
+  });
+
+  it("stores tenant moveout dispute evidence and sends it to the manager thread", () => {
+    const service = createMoveoutTestService() as any;
+
+    const dispute = service.createTenantMoveoutDispute("tenant-a", "mo-a", {
+      targetItemId: "de-a",
+      targetLabel: "욕실 수리비 후보",
+      reason: "입주 전 사진과 같은 흔적입니다.",
+      attachmentUrls: ["/api/files/bath-before.jpg", "/api/files/bath-before.jpg", ""]
+    });
+    const managerThreads = service.listManagerMessagingThreads("manager-a", "moveout");
+    const threadSummary = managerThreads.find((candidate: any) => candidate.id === dispute.messagingThreadId);
+    const thread = service.getManagerMessagingThread("manager-a", threadSummary.id);
+
+    assert.deepEqual(dispute.attachmentUrls, ["/api/files/bath-before.jpg"]);
+    assert.equal(thread.messages.at(-1).attachmentUrls.includes("/api/files/bath-before.jpg"), true);
+  });
+
+  it("lets a tenant confirm, re-dispute, resolve, and escalate moveout disputes", () => {
+    const service = createMoveoutTestService() as any;
+
+    const answered = service.respondManagerMoveoutDispute("manager-a", "mo-a", {
+      disputeId: "dp-sla",
+      kind: "explain",
+      message: "입주 전 사진과 수리 이력을 다시 확인했습니다.",
+      reflect: "none"
+    });
+    const confirmed = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "confirm"
+    });
+    const redisputed = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "re_dispute",
+      reason: "사진의 위치가 다릅니다.",
+      attachmentUrls: ["/api/files/tenant-redispute.jpg"]
+    });
+    const escalated = service.escalateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      reason: "응답 후에도 기한이 경과했습니다."
+    });
+    const resolved = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "resolve"
+    });
+
+    assert.equal(confirmed.status, "confirmed");
+    assert.equal(redisputed.status, "re_disputed");
+    assert.deepEqual(redisputed.attachmentUrls, ["/api/files/tenant-redispute.jpg"]);
+    assert.equal(escalated.status, "reviewing");
+    assert.equal(resolved.status, "resolved");
+    assert.equal(
+      resolved.history.some((event: any) => event.note?.includes("에스컬레이션")),
+      true
+    );
+  });
+
+  it("reflects accepted moveout disputes into settlement deductions", () => {
+    const service = createMoveoutTestService() as any;
+
+    service.respondManagerMoveoutDispute("manager-a", "mo-a", {
+      disputeId: "dp-sla",
+      kind: "accept",
+      message: "입주 전부터 있던 하자로 인정해 차감 후보에서 제외합니다.",
+      reflect: "settlement"
+    });
+    const review = service.getManagerMoveoutSettlement("manager-a", "mo-a");
+    const deduction = review.settlement.deductions.find((item: any) => item.id === "de-a");
+
+    assert.equal(deduction.estimatedMin, 0);
+    assert.equal(deduction.estimatedMax, 0);
+    assert.equal(deduction.needsConfirmation, false);
+    assert.equal(review.settlement.refundMin, 10000000);
+    assert.equal(review.settlement.refundMax, 10000000);
+  });
+
+  it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
+    const service = new RoomlogService({ seedDemoData: true } as any) as any;
+
+    const tenantMoveouts = service.listTenantMoveouts("tenant-demo");
+    const managerRows = service.listManagerMoveoutRows("landlord-demo");
+    const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+    assert.equal(tenantMoveouts.some((moveout: any) => moveout.id === "mo_0001"), true);
+    assert.equal(managerRows.some((row: any) => row.summaryId === "mo_0001"), true);
+    assert.equal(settlement.settlement.deductions.length, 4);
+    assert.equal(settlement.disputes.length, 1);
+  });
+
+  it("backfills the KAN-134 moveout demo flow when a local demo snapshot already exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-moveout-seed-"));
+    const storeFilePath = join(dir, "roomlog-store.json");
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveouts = [];
+    legacyDemoSnapshot.moveoutRecords = [];
+    legacyDemoSnapshot.moveoutChecklist = [];
+    legacyDemoSnapshot.moveoutSettlements = [];
+    legacyDemoSnapshot.moveoutDeductions = [];
+    legacyDemoSnapshot.moveoutDisputes = [];
+    legacyDemoSnapshot.moveoutReportAudits = [];
+
+    try {
+      writeFileSync(storeFilePath, JSON.stringify(legacyDemoSnapshot));
+
+      const service = new RoomlogService({ seedDemoData: true, storeFilePath } as any) as any;
+      const tenantMoveouts = service.listTenantMoveouts("tenant-demo");
+      const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+      assert.equal(tenantMoveouts.some((moveout: any) => moveout.id === "mo_0001"), true);
+      assert.deepEqual(settlement.gate.blockingReasons, ["unresolved_dispute"]);
+      assert.equal(settlement.gate.overrideAvailable, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("backfills the KAN-134 moveout demo flow when a persisted database snapshot is loaded", () => {
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveouts = [];
+    legacyDemoSnapshot.moveoutRecords = [];
+    legacyDemoSnapshot.moveoutChecklist = [];
+    legacyDemoSnapshot.moveoutSettlements = [];
+    legacyDemoSnapshot.moveoutDeductions = [];
+    legacyDemoSnapshot.moveoutDisputes = [];
+    legacyDemoSnapshot.moveoutReportAudits = [];
+
+    const service = new RoomlogService({
+      seedDemoData: true,
+      initialStore: legacyDemoSnapshot
+    } as any) as any;
+    const settlement = service.getManagerMoveoutSettlement("landlord-demo", "mo_0001");
+
+    assert.equal(service.listTenantMoveouts("tenant-demo").some((moveout: any) => moveout.id === "mo_0001"), true);
+    assert.deepEqual(settlement.gate.blockingReasons, ["unresolved_dispute"]);
+    assert.equal(settlement.gate.overrideAvailable, true);
+  });
+
+  it("lets a manager read only reports for rooms they manage", () => {
+    const service = createReportTestService() as any;
+
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    assert.equal(service.getManagerReport("manager-report-a", report.id).id, report.id);
+    assert.throws(
+      () => service.getManagerReport("manager-report-b", report.id),
+      /리포트|담당|찾을 수/
+    );
+  });
+
+  it("stores the report snapshot timestamp and returns it in report responses", () => {
+    const service = createReportTestService() as any;
+
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    assert.match(report.snapshotAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(service.getManagerReport("manager-report-a", report.id).snapshotAt, report.snapshotAt);
+  });
+
+  it("does not create or return aggregate report sections without source references", () => {
+    const service = createReportTestService() as any;
+
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+    const references = service.listManagerReportSourceReferences("manager-report-a", report.id);
+
+    assert.equal(report.sections.length > 0, true);
+    for (const section of report.sections) {
+      assert.ok(section.source);
+      assert.equal(
+        references.some(
+          (reference: any) =>
+            reference.sectionKey === section.key &&
+            reference.sourceKind === section.source.kind &&
+            reference.entityType &&
+            reference.entityId
+        ),
+        true
+      );
+    }
+  });
+
+  it("keeps chatbot report actions as draft suggestions instead of executing them", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    const beforeDrafts = service.listManagerAnnouncementDrafts("manager-report-a").length;
+    const beforeThreads = service.listManagerMessagingThreads("manager-report-a").length;
+    const answer = service.askManagerReportChat("manager-report-a", report.id, {
+      question: "301호 미납 독촉문을 보내줘"
+    });
+
+    assert.equal(answer.draft?.type, "dunning");
+    assert.equal(answer.execution, "draft_only");
+    assert.equal(service.listManagerAnnouncementDrafts("manager-report-a").length, beforeDrafts);
+    assert.equal(service.listManagerMessagingThreads("manager-report-a").length, beforeThreads);
+  });
+
+  it("masks personal data, contact details, and sensitive notes in external report shares", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+    const internalPayload = JSON.stringify(
+      service.listManagerReportSourceReferences("manager-report-a", report.id)
+    );
+
+    const share = service.createManagerReportExternalShare("manager-report-a", report.id, {
+      recipientName: "외부 임대인"
+    });
+    const shared = service.getExternalReportShare(share.token);
+    const externalPayload = JSON.stringify(shared);
+
+    assert.match(internalPayload, /010-1111-2222/);
+    assert.match(internalPayload, /민감메모/);
+    assert.equal(shared.delivery.masked, true);
+    assert.doesNotMatch(externalPayload, /010-1111-2222/);
+    assert.doesNotMatch(externalPayload, /민감메모/);
+    assert.doesNotMatch(externalPayload, /tenant-report-a@roomlog\.test/);
+  });
+
+  it("writes audit logs when external report shares are created, viewed, and revoked", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    const share = service.createManagerReportExternalShare("manager-report-a", report.id, {
+      recipientName: "외부 임대인"
+    });
+    service.getExternalReportShare(share.token);
+    service.revokeManagerReportExternalShare("manager-report-a", report.id, share.id);
+
+    const auditActions = service
+      .listManagerReportAuditLog("manager-report-a", report.id)
+      .map((entry: any) => entry.action);
+
+    assert.deepEqual(auditActions.sort(), [
+      "external_share_created",
+      "external_share_revoked",
+      "external_share_viewed"
+    ]);
+  });
+
+  it("creates report follow-up actions by linking to M-MSG announcement drafts", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    const followUp = service.createManagerReportFollowUp("manager-report-a", report.id, {
+      channel: "announcement",
+      actionType: "notice",
+      title: "누수 점검 안내",
+      body: "301호 누수 점검 일정 안내입니다.",
+      targetRoomIds: ["room-report-a"]
+    });
+    const draft = service.getManagerAnnouncementDraft(
+      "manager-report-a",
+      followUp.announcementDraftId
+    );
+
+    assert.equal(followUp.kind, "announcement_draft");
+    assert.equal(draft.title, "누수 점검 안내");
+    assert.equal(draft.status, "draft");
+  });
+
+  it("blocks payment or settlement dunning when report follow-up tries to use a 1:1 thread", () => {
+    const service = createReportTestService() as any;
+    const report = service.createManagerReport("manager-report-a", {
+      period: "month",
+      periodLabel: "2026년 6월",
+      periodStart: "2026-06-01T00:00:00.000Z",
+      periodEnd: "2026-06-30T23:59:59.999Z",
+      scope: {
+        buildingId: "building-jungle",
+        buildingName: "정글빌라",
+        roomIds: ["room-report-a"],
+        unitIds: ["301"]
+      }
+    });
+
+    assert.throws(
+      () =>
+        service.createManagerReportFollowUp("manager-report-a", report.id, {
+          channel: "thread",
+          actionType: "dunning",
+          roomId: "room-report-a",
+          tenantId: "tenant-report-a",
+          body: "미납 관리비 독촉 안내입니다."
+        }),
+      /독촉|청구|납부/
+    );
+    assert.equal(service.listManagerMessagingThreads("manager-report-a", "payment").length, 0);
   });
 });

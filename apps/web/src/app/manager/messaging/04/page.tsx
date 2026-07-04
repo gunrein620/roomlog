@@ -1,7 +1,10 @@
+import { redirect } from "next/navigation";
 import type { Message, Thread } from "@roomlog/types";
-import { Input } from "@roomlog/ui";
-import { DEMO_MANAGER_THREAD_ID, getManagerThread } from "@/lib/messaging-manager-api";
+import { Button, Input } from "@roomlog/ui";
+import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
+import { addManagerThreadMessage, deleteManagerThread, getManagerThread } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
@@ -14,20 +17,96 @@ import {
   sectionTitleStyle,
 } from "../_components";
 
-type SearchParams = Promise<{ id?: string; unitId?: string }>;
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ id?: string }>;
+
+async function sendManagerMessage(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  if (threadId && body) {
+    await addManagerThreadMessage(threadId, { body });
+  }
+
+  redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function deleteManagerThreadAction(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  try {
+    await deleteManagerThread(threadId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+}
+
+async function getRequiredManagerThread(id: string): Promise<Thread> {
+  try {
+    return await getManagerThread(id);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
+}
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id, unitId } = await searchParams;
-  const thread = await getManagerThread(id ?? unitId ?? DEMO_MANAGER_THREAD_ID);
+  const { id } = await searchParams;
+  if (!id) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  const thread = await getRequiredManagerThread(id);
   const messages = thread.messages ?? [];
   const isPayment = thread.context === "payment";
 
   return (
     <>
+      <MessageAutoRefresh intervalMs={3000} />
       <ScreenHeader
         eyebrow="M-MSG-04"
         title={`${thread.unitId}호 채팅 스레드`}
-        actions={<LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>}
+        actions={
+          <>
+            <LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>
+            <form action={deleteManagerThreadAction}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Button
+                type="submit"
+                variant="ghost"
+                aria-label={`${thread.unitId}호 ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+              >
+                삭제
+              </Button>
+            </form>
+          </>
+        }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: "var(--space-lg)", alignItems: "start" }}>
@@ -41,9 +120,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             ))}
           </Card>
 
-          <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-sm)", alignItems: "center" }}>
-            <Input aria-label="답장 입력" placeholder="답장을 입력하세요" readOnly />
-            <StaticButton>답장 보내기</StaticButton>
+          <Card>
+            <form
+              action={sendManagerMessage}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: "var(--space-sm)",
+                alignItems: "center",
+              }}
+            >
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Input name="body" aria-label="답장 입력" placeholder="답장을 입력하세요" />
+              <Button type="submit">답장 보내기</Button>
+            </form>
           </Card>
         </div>
 

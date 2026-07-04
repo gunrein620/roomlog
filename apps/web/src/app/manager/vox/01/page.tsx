@@ -26,14 +26,13 @@ export default function Page() {
   useEffect(() => {
     let mounted = true;
 
-    // server-only 집계 BFF는 라우트 핸들러를 거쳐 가져온다(클라이언트에서 직접 import 불가).
-    fetch("/api/manager/home-summary")
-      .then((res) => res.json() as Promise<ManagerHomeSummary>)
-      .then((nextSummary) => {
-        if (mounted) setSummary(nextSummary);
+    fetch("/api/manager/home-summary", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((nextSummary: ManagerHomeSummary | null) => {
+        if (mounted && nextSummary) setSummary(nextSummary);
       })
-      .catch(() => {
-        /* 셸 단계: 집계 실패는 조용히 무시(홈은 0/빈 큐로 렌더) */
+      .catch((error) => {
+        console.error("[manager/vox] home summary 조회 실패:", error);
       });
 
     return () => {

@@ -1,7 +1,9 @@
+# 서버 실행 명령어
 docker compose up -d 서버실행
 docker compose down 서버끄기
 docker compose up -d --build 코드반영후 서버재실행
-
+docker compose down --volumes 데이터 삭제후 서버재실행
+docker compose up -d --build api 코드반영후 api서버재실행
 
 # Roomlog
 

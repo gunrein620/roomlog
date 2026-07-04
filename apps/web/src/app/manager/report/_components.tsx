@@ -11,7 +11,7 @@ import type {
   ReportStatus,
 } from "@roomlog/types";
 import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
-import { actionHref, MANAGER_REPORT_ROUTES, sourceHref } from "@/lib/report-nav";
+import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
 
 const navItems = [
   ["허브", MANAGER_REPORT_ROUTES["M-RPT-00"]],
@@ -156,7 +156,7 @@ export function ReportTable({ reports }: { reports: Report[] }) {
               <td style={tdStyle}><StatusBadge status={report.status} /></td>
               <td style={tdStyle}>{report.recipient?.name ?? "미지정"}</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>
-                <Link href={MANAGER_REPORT_ROUTES["M-RPT-02"]} style={inlineLinkStyle}>상세</Link>
+                <Link href={reportHref("M-RPT-02", report.id)} style={inlineLinkStyle}>상세</Link>
               </td>
             </tr>
           ))}
@@ -207,7 +207,7 @@ export function NextActionList({ actions }: { actions: ReportNextAction[] }) {
           <div>
             <div style={{ fontWeight: 850 }}>{action.label}</div>
             <div style={mutedSmallStyle}>
-              {action.targetScreenId}로 대상·기간을 넘기고, 발송 전 원본 행을 대조합니다.
+              메시징 초안으로 연결하고, 발송 전 원본 행을 대조합니다.
             </div>
           </div>
           <LinkButton href={actionHref(action)} variant="secondary">초안 열기</LinkButton>
@@ -294,7 +294,10 @@ const sourceKindLabel = {
   cost: "M-COST",
   unit: "호실 원장",
   metric: "M-HOME",
-} as const;
+  contract: "M-DOC",
+  moveout: "M-OUT",
+  messaging: "M-MSG",
+} satisfies Record<ReportKpi["formulaSource"], string>;
 
 const navLinkStyle = {
   minHeight: 42,
@@ -319,4 +322,3 @@ const tdStyle = { padding: "14px", borderBottom: "1px solid var(--border)", font
 const inlineLinkStyle = { color: "var(--primary)", textDecoration: "none", fontWeight: 800 } as const;
 const sourceLinkStyle = { display: "inline-flex", alignItems: "center", gap: "var(--space-xs)", color: "var(--primary)", textDecoration: "none", fontSize: "var(--fs-caption)", fontWeight: 800 } as const;
 const userBubbleStyle = { maxWidth: 560, padding: "12px 16px", borderRadius: "var(--radius-md)", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 750 } as const;
-

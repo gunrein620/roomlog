@@ -7,6 +7,7 @@ datasource db {
 }
 
 enum UserRole {
+  SEEKER
   TENANT
   LANDLORD
   VENDOR
@@ -16,6 +17,11 @@ enum UserStatus {
   ACTIVE
   INVITED
   DISABLED
+}
+
+enum SocialProvider {
+  GOOGLE
+  NAVER
 }
 
 enum InviteStatus {
@@ -203,6 +209,132 @@ enum MessageSenderRole {
   SYSTEM
 }
 
+enum MessagingThreadContext {
+  DEFECT
+  PAYMENT
+  CONTRACT
+  MOVEOUT
+  ANNOUNCEMENT
+  GENERAL
+}
+
+enum MessagingMessageSender {
+  TENANT
+  MANAGER
+}
+
+enum MessagingMessageKind {
+  TEXT
+  PHOTO_REQUEST
+  PHOTO_RESPONSE
+}
+
+enum MessagingAnnouncementCategory {
+  URGENT
+  LIFE
+  EVENT
+}
+
+enum MessagingAnnouncementScope {
+  ALL
+  BUILDING
+  UNIT
+}
+
+enum MessagingAnnouncementReadState {
+  UNREAD
+  READ
+  CONFIRMED
+}
+
+enum MessagingAnnouncementDraftStatus {
+  DRAFT
+  SENT
+}
+
+enum ManagerReportPeriod {
+  WEEK
+  MONTH
+  QUARTER
+}
+
+enum ManagerReportStatus {
+  DRAFT
+  DELIVERED
+}
+
+enum ManagerReportSourceKind {
+  BILLING
+  COMPLAINT
+  COST
+  UNIT
+  METRIC
+  CONTRACT
+  MOVEOUT
+  MESSAGING
+}
+
+enum ManagerReportShareStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum ManagerReportAuditAction {
+  EXTERNAL_SHARE_CREATED
+  EXTERNAL_SHARE_VIEWED
+  EXTERNAL_SHARE_REVOKED
+}
+
+enum MoveoutSettlementStatus {
+  ESTIMATE
+  REVIEWING
+  REVIEW_DONE
+  RE_REVIEW
+}
+
+enum MoveoutRecordSource {
+  MOVEIN_PHOTO
+  DEFECT
+  REPAIR
+  PAYMENT
+  CHAT
+  CONTRACT
+}
+
+enum MoveoutWearVerdict {
+  AGING_LIKELY
+  DAMAGE_POSSIBLE
+  UNCLEAR
+}
+
+enum MoveoutDeductionKind {
+  UNPAID
+  REPAIR
+  RESTORATION
+  CLEANING
+}
+
+enum MoveoutChecklistCondition {
+  NORMAL
+  AGING
+  DAMAGE_CHECK
+}
+
+enum MoveoutDisputeStatus {
+  RECEIVED
+  REVIEWING
+  ANSWERED
+  CONFIRMED
+  RE_DISPUTED
+  RESOLVED
+}
+
+enum MoveoutWearAdjustmentAction {
+  KEEP
+  ADJUST
+  REINFORCE
+}
+
 enum IntakeSessionStatus {
   ACTIVE
   FINALIZED
@@ -252,9 +384,28 @@ model UserAccount {
   intakeSessions       IntakeSession[]     @relation("TenantIntakeSessions")
   complaints           Complaint[]         @relation("TenantComplaints")
   tickets              Ticket[]            @relation("TenantTickets")
+  moveoutRequests      MoveoutRequest[]    @relation("TenantMoveouts")
   moveInChecklistItems MoveInChecklistItem[]
+  socialAccounts       SocialAccount[]
 
   @@index([role, status])
+}
+
+model SocialAccount {
+  id             String         @id
+  provider       SocialProvider
+  providerUserId String
+  userId         String
+  email          String?
+  name           String?
+  avatarUrl      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
 }
 
 model Room {
@@ -270,6 +421,7 @@ model Room {
   contracts            Contract[]
   complaints           Complaint[]
   tickets              Ticket[]
+  moveoutRequests      MoveoutRequest[]
   intakeSessions       IntakeSession[]
   moveInChecklistItems MoveInChecklistItem[]
 
@@ -379,17 +531,20 @@ model MaintenanceFeeItem {
 }
 
 model VendorProfile {
-  id            String   @id
-  userId        String   @unique
-  businessName  String
-  contactPerson String
-  phone         String
-  serviceArea   String
-  activeJobs    Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                 String   @id
+  userId             String   @unique
+  businessName       String
+  contactPerson      String
+  phone              String
+  serviceArea        String
+  activeJobs         Int      @default(0)
+  createdByManagerId String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   repairs RepairRequest[]
+
+  @@index([createdByManagerId])
 }
 
 model VendorInvite {
@@ -443,6 +598,7 @@ model Contract {
   monthlyRent          Int?
   maintenanceFee       Int?
   paymentDay           Int?
+  optionInventory      String[]              @default([])
   startDate            DateTime?
   endDate              DateTime?
   extractionId         String?               @unique
@@ -457,6 +613,7 @@ model Contract {
   extraction ContractExtraction?
   privacy    ContractPrivacy?
   invites    ContractInvite[]
+  moveoutRequests MoveoutRequest[]
 
   @@index([roomId])
   @@index([tenantId, updatedAt])
@@ -865,6 +1022,332 @@ model TicketMessage {
 
   @@index([ticketId, createdAt])
   @@index([repairId, createdAt])
+}
+
+model MessagingThread {
+  id             String                 @id
+  roomId         String
+  unitId         String
+  tenantId       String
+  context        MessagingThreadContext
+  contextRef     String?
+  contextLabel   String?
+  lastMessage    String
+  unreadCount    Int                    @default(0)
+  pendingRequest Boolean                @default(false)
+  archivedNotice Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  messages MessagingMessage[]
+
+  @@index([tenantId, updatedAt])
+  @@index([roomId, context])
+}
+
+model MessagingMessage {
+  id             String                 @id
+  threadId       String
+  senderUserId   String
+  sender         MessagingMessageSender
+  kind           MessagingMessageKind
+  body           String
+  originalBody   String?
+  attachmentUrls String[]
+  createdAt      DateTime               @default(now())
+
+  thread MessagingThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+model MessagingAnnouncementDraft {
+  id                 String                          @id
+  category           MessagingAnnouncementCategory
+  scope              MessagingAnnouncementScope
+  targetLabel        String
+  targetRoomIds      String[]
+  title              String
+  body               String
+  translations       Json
+  confirmRequired    Boolean                         @default(false)
+  status             MessagingAnnouncementDraftStatus @default(DRAFT)
+  createdByManagerId String
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+
+  @@index([createdByManagerId, updatedAt])
+}
+
+model MessagingAnnouncement {
+  id              String                        @id
+  draftId         String?
+  category        MessagingAnnouncementCategory
+  scope           MessagingAnnouncementScope
+  targetLabel     String
+  title           String
+  body            String
+  originalBody    String?
+  sender          String
+  senderId        String
+  sentAt          DateTime
+  confirmRequired Boolean                       @default(false)
+  safetyCta       String?
+
+  deliveries MessagingAnnouncementDelivery[]
+
+  @@index([senderId, sentAt])
+}
+
+model MessagingAnnouncementDelivery {
+  id             String                         @id
+  announcementId String
+  tenantId       String
+  roomId         String
+  unitId         String
+  tenantName     String
+  preferredLang  String
+  state          MessagingAnnouncementReadState @default(UNREAD)
+  readAt         DateTime?
+  confirmedAt    DateTime?
+  failed         Boolean                        @default(false)
+
+  announcement MessagingAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, state])
+  @@index([announcementId, state])
+}
+
+model ManagerReport {
+  id              String              @id
+  managerId       String
+  period          ManagerReportPeriod
+  periodLabel     String
+  periodStart     DateTime
+  periodEnd       DateTime
+  scope           Json
+  status          ManagerReportStatus @default(DRAFT)
+  snapshotAt      DateTime
+  recipient       Json?
+  disclaimer      String
+  summary         String
+  nextActions     Json
+  sections        Json
+  linkedFollowUps Json
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  deliveredAt     DateTime?
+
+  sources ManagerReportSourceReference[]
+  shares  ManagerReportExternalShare[]
+  audits  ManagerReportAuditLogEntry[]
+
+  @@index([managerId, snapshotAt])
+  @@index([status, snapshotAt])
+}
+
+model ManagerReportSourceReference {
+  id                String                  @id
+  reportId          String
+  sectionKey        String
+  sourceKind        ManagerReportSourceKind
+  entityType        String
+  entityId          String
+  roomId            String?
+  tenantId          String?
+  label             String
+  drilldownScreenId String
+  basis             String
+  snapshotAt        DateTime
+  createdAt         DateTime                @default(now())
+
+  report ManagerReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, sectionKey])
+  @@index([sourceKind, entityType, entityId])
+  @@index([roomId])
+  @@index([tenantId])
+}
+
+model ManagerReportExternalShare {
+  id                 String                   @id
+  reportId           String
+  token              String                   @unique
+  recipientName      String
+  masked             Boolean                  @default(true)
+  status             ManagerReportShareStatus @default(ACTIVE)
+  createdByManagerId String
+  createdAt          DateTime                 @default(now())
+  revokedAt          DateTime?
+
+  report ManagerReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, status])
+  @@index([createdByManagerId, createdAt])
+}
+
+model ManagerReportAuditLogEntry {
+  id         String                   @id
+  reportId   String
+  shareId    String?
+  action     ManagerReportAuditAction
+  actorId    String?
+  actorLabel String
+  detail     String?
+  createdAt  DateTime                 @default(now())
+
+  report ManagerReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, createdAt])
+  @@index([shareId, createdAt])
+}
+
+model MoveoutRequest {
+  id                 String                  @id
+  tenantId           String
+  roomId             String
+  contractId         String?
+  unitId             String
+  leaseEndDate       DateTime?
+  depositAmount      Int?
+  estimatedRefundMin Int?
+  estimatedRefundMax Int?
+  settlementStatus   MoveoutSettlementStatus @default(ESTIMATE)
+  prepProgress       Float                   @default(0)
+  messagingThreadId  String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  tenant     UserAccount        @relation("TenantMoveouts", fields: [tenantId], references: [id], onDelete: Cascade)
+  room       Room               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  contract   Contract?          @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  records    MoveoutRecord[]
+  checklist  MoveoutChecklistItem[]
+  settlement MoveoutSettlement?
+  deductions MoveoutDeduction[]
+  disputes   MoveoutDispute[]
+  audits     MoveoutReportAuditEntry[]
+
+  @@index([tenantId, updatedAt])
+  @@index([roomId, settlementStatus])
+  @@index([contractId])
+}
+
+model MoveoutRecord {
+  id                         String              @id
+  moveoutId                  String
+  source                     MoveoutRecordSource
+  title                      String
+  description                String
+  occurredAt                 DateTime?
+  wearVerdict                MoveoutWearVerdict?
+  wearNote                   String?
+  moveinComparisonAvailable  Boolean             @default(false)
+  createdAt                  DateTime            @default(now())
+
+  moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
+
+  @@index([moveoutId, source])
+}
+
+model MoveoutChecklistItem {
+  id        String                    @id
+  moveoutId String
+  label     String
+  present   Boolean                   @default(true)
+  condition MoveoutChecklistCondition
+  note      String?
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
+
+  moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
+
+  @@index([moveoutId])
+}
+
+model MoveoutSettlement {
+  id            String                  @id
+  moveoutId     String                  @unique
+  depositAmount Int
+  refundMin     Int
+  refundMax     Int
+  status        MoveoutSettlementStatus @default(ESTIMATE)
+  disclaimer    String
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
+}
+
+model MoveoutDeduction {
+  id                String               @id
+  moveoutId         String
+  kind              MoveoutDeductionKind
+  label             String
+  estimatedMin      Int
+  estimatedMax      Int
+  needsConfirmation Boolean              @default(true)
+  evidenceNote      String
+  source            MoveoutRecordSource
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
+
+  @@index([moveoutId, needsConfirmation])
+}
+
+model MoveoutDispute {
+  id                String               @id
+  moveoutId         String
+  targetItemId      String?
+  targetLabel       String
+  reason            String
+  status            MoveoutDisputeStatus @default(RECEIVED)
+  slaDeadline       DateTime
+  slaBreached       Boolean              @default(false)
+  managerResponse   String?
+  messagingThreadId String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  moveout MoveoutRequest        @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
+  history MoveoutDisputeEvent[]
+
+  @@index([moveoutId, status])
+  @@index([slaBreached, slaDeadline])
+}
+
+model MoveoutDisputeEvent {
+  id          String               @id
+  disputeId   String
+  status      MoveoutDisputeStatus
+  actorUserId String?
+  note        String?
+  createdAt   DateTime             @default(now())
+
+  dispute MoveoutDispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId, createdAt])
+}
+
+model MoveoutReportAuditEntry {
+  id             String                       @id
+  moveoutId      String
+  recordItemId   String
+  action         MoveoutWearAdjustmentAction
+  fromVerdict    MoveoutWearVerdict?
+  toVerdict      MoveoutWearVerdict?
+  evidenceNote   String
+  tenantNotified Boolean                      @default(false)
+  managerName    String
+  managerId      String
+  createdAt      DateTime                     @default(now())
+
+  moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
+
+  @@index([moveoutId, createdAt])
+  @@index([managerId, createdAt])
 }
 
 model StatusHistory {

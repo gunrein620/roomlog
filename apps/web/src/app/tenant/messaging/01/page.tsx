@@ -1,8 +1,13 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Message, Thread, ThreadContext } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
-import { DEMO_THREAD_ID, getThread } from "@/lib/messaging-api";
+import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
+import { addTenantThreadMessage, deleteTenantThread, getThread } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+import { ApiError } from "@/lib/server-api";
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -24,14 +29,74 @@ function formatTime(iso: string): string {
   }).format(new Date(iso));
 }
 
+async function sendTenantMessage(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!threadId) {
+    redirect(MESSAGING_ROUTES["T-MSG-00"]);
+  }
+
+  if (threadId && body) {
+    await addTenantThreadMessage(threadId, { body });
+  }
+
+  redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function deleteTenantThreadAction(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MESSAGING_ROUTES["T-MSG-00"]);
+  }
+
+  try {
+    await deleteTenantThread(threadId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MESSAGING_ROUTES["T-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(MESSAGING_ROUTES["T-MSG-00"]);
+}
+
+async function getRequiredThread(id: string): Promise<Thread> {
+  try {
+    return await getThread(id);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MESSAGING_ROUTES["T-MSG-00"]);
+    }
+    throw error;
+  }
+}
+
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
-  const thread = await getThread(id ?? DEMO_THREAD_ID);
+  if (!id) {
+    redirect(MESSAGING_ROUTES["T-MSG-00"]);
+  }
+
+  const thread = await getRequiredThread(id);
   const messages = thread.messages ?? [];
   const pendingMessage = messages.find((message) => message.kind === "photo_request");
 
   return (
     <>
+      <MessageAutoRefresh intervalMs={3000} />
       <header
         style={{
           flex: "none",
@@ -58,7 +123,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             </div>
           </div>
         </div>
-        <Badge>원문 보기</Badge>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <Badge>원문 보기</Badge>
+          <form action={deleteTenantThreadAction}>
+            <input type="hidden" name="threadId" value={thread.id} />
+            <Button
+              type="submit"
+              variant="ghost"
+              aria-label={`${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+              style={{ height: 36, padding: "0 12px" }}
+            >
+              삭제
+            </Button>
+          </form>
+        </div>
       </header>
 
       <div
@@ -116,7 +194,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         )}
       </div>
 
-      <footer
+      <form
+        action={sendTenantMessage}
         style={{
           flex: "none",
           padding: "12px 14px",
@@ -127,9 +206,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           alignItems: "center",
         }}
       >
-        <Input aria-label="메시지 입력" placeholder="메시지를 입력하세요" readOnly />
-        <Button>보내기</Button>
-      </footer>
+        <input type="hidden" name="threadId" value={thread.id} />
+        <Input name="body" aria-label="메시지 입력" placeholder="메시지를 입력하세요" />
+        <Button type="submit">보내기</Button>
+      </form>
     </>
   );
 }
