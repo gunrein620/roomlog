@@ -264,7 +264,12 @@ export default async function Page() {
                 <div style={{ fontSize: 12, color: "var(--on-surface-variant)" }}>
                   종료일과 보증금 정보가 확정되면 예상 정산을 볼 수 있어요.
                 </div>
-                <Badge style={{ alignSelf: "flex-start" }}>관리자 문의 필요</Badge>
+                <Link
+                  href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveout.id)}
+                  style={{ alignSelf: "flex-start", textDecoration: "none" }}
+                >
+                  <Badge>관리자 문의 필요</Badge>
+                </Link>
               </>
             )}
           </Card>

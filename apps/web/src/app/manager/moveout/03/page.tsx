@@ -3,8 +3,8 @@ import { Card } from "@roomlog/ui";
 import { getManagerSettlement, respondDispute } from "@/lib/moveout-manager-api";
 import { DEMO_MOVEOUT_ID } from "@/lib/demo-moveout";
 import { MANAGER_MOVEOUT_ROUTES } from "@/lib/moveout-manager-nav";
+import { DisputeSelectionList } from "../_dispute-selection";
 import {
-  DisputeQueue,
   InputLike,
   LinkButton,
   MetricCard,
@@ -93,42 +93,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       ) : null}
 
       <Section title="이의 큐">
-        <div style={{ display: "grid", gap: "var(--space-sm)" }}>
-          <form>
-            <input type="hidden" name="id" value={moveoutId} />
-            <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
-              <label style={fieldLabelStyle}>
-                처리 대상 선택
-                <select
-                  name="selectedDisputeId"
-                  defaultValue={selected?.id ?? ""}
-                  disabled={review.disputes.length === 0}
-                  style={selectStyle}
-                >
-                  {review.disputes.map((dispute) => (
-                    <option key={dispute.id} value={dispute.id}>
-                      {dispute.targetLabel} · {dispute.slaBreached ? "SLA 경과" : "SLA 정상"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit" disabled={review.disputes.length === 0} style={secondaryActionStyle}>
-                원본 대조 열기
-              </button>
-            </Card>
-          </form>
-          <DisputeQueue disputes={review.disputes} />
-        </div>
+        <DisputeSelectionList disputes={review.disputes} moveoutId={moveoutId} selectedDisputeId={selected?.id ?? ""} />
       </Section>
 
       <Section title="원본 대조">
         <div style={grid2Style}>
           <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
             <div style={{ fontWeight: 850 }}>대상 항목</div>
-            <div style={rowStyle}>
-              <span>{selected?.targetLabel ?? "미해소 이의 없음"}</span>
-              <span>{selected ? (selected.slaBreached ? "SLA 경과" : "SLA 정상") : "—"}</span>
-            </div>
+            <label style={comparisonCheckboxStyle}>
+              <input type="checkbox" checked={Boolean(selected)} readOnly style={readonlyCheckboxStyle} />
+              <span style={{ fontWeight: 850 }}>{selected?.targetLabel ?? "미해소 이의 없음"}</span>
+              <span style={{ marginLeft: "auto", color: "var(--on-surface-variant)" }}>
+                {selected ? (selected.slaBreached ? "SLA 경과" : "SLA 정상") : "-"}
+              </span>
+            </label>
             <div style={mutedSmallStyle}>{selected?.reason ?? "현재 대조할 미해소 이의가 없습니다."}</div>
           </Card>
           <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
@@ -243,16 +221,19 @@ const primaryActionStyle = {
   cursor: "pointer",
 } as const;
 
-const secondaryActionStyle = {
+const comparisonCheckboxStyle = {
   minHeight: "var(--touch-target)",
-  display: "inline-flex",
+  display: "flex",
   alignItems: "center",
-  justifyContent: "center",
-  padding: "0 16px",
+  gap: "var(--space-sm)",
+  border: "1px solid var(--border)",
   borderRadius: "var(--radius-btn)",
-  border: "1.5px solid var(--primary)",
-  background: "transparent",
-  color: "var(--primary)",
-  fontWeight: 800,
-  cursor: "pointer",
+  padding: "0 12px",
+  background: "var(--surface-container-lowest)",
+} as const;
+
+const readonlyCheckboxStyle = {
+  width: 22,
+  height: 22,
+  accentColor: "var(--primary)",
 } as const;

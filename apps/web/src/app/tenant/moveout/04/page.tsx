@@ -57,11 +57,14 @@ const inputStyle = {
 type SearchParams = Promise<{
   id?: string;
   targetItemId?: string;
+  from?: string;
   submitted?: string;
   updated?: string;
   escalated?: string;
   error?: string;
 }>;
+
+type DisputeReturnFrom = "records" | "settlement";
 
 function attachmentUrlsFrom(value: FormDataEntryValue | null) {
   return String(value ?? "")
@@ -74,21 +77,30 @@ function moveoutIdFrom(formData: FormData) {
   return String(formData.get("moveoutId") ?? DEMO_MOVEOUT_ID).trim() || DEMO_MOVEOUT_ID;
 }
 
-function disputeRedirect(moveoutId: string, flag: "submitted" | "updated" | "escalated" | "error") {
-  return `${withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveoutId)}&${flag}=1`;
+function normalizeReturnFrom(value?: string): DisputeReturnFrom {
+  return value === "settlement" ? "settlement" : "records";
+}
+
+function disputeRedirect(
+  moveoutId: string,
+  flag: "submitted" | "updated" | "escalated" | "error",
+  returnFrom: DisputeReturnFrom,
+) {
+  return `${withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveoutId)}&from=${returnFrom}&${flag}=1`;
 }
 
 async function createDisputeAction(formData: FormData) {
   "use server";
 
   const moveoutId = moveoutIdFrom(formData);
+  const returnFrom = normalizeReturnFrom(String(formData.get("returnFrom") ?? ""));
   const targetItemId = String(formData.get("targetItemId") ?? "").trim();
   const targetLabel = String(formData.get(`targetLabel-${targetItemId}`) ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
   const attachmentUrls = attachmentUrlsFrom(formData.get("attachmentUrls"));
 
   if (!targetLabel || !reason) {
-    redirect(disputeRedirect(moveoutId, "error"));
+    redirect(disputeRedirect(moveoutId, "error", returnFrom));
   }
 
   await createMoveoutDispute(moveoutId, {
@@ -97,20 +109,21 @@ async function createDisputeAction(formData: FormData) {
     reason,
     attachmentUrls,
   });
-  redirect(disputeRedirect(moveoutId, "submitted"));
+  redirect(disputeRedirect(moveoutId, "submitted", returnFrom));
 }
 
 async function updateDisputeAction(formData: FormData) {
   "use server";
 
   const moveoutId = moveoutIdFrom(formData);
+  const returnFrom = normalizeReturnFrom(String(formData.get("returnFrom") ?? ""));
   const disputeId = String(formData.get("disputeId") ?? "").trim();
   const action = String(formData.get("action") ?? "").trim() as TenantMoveoutDisputeAction;
   const reason = String(formData.get("reason") ?? "").trim();
   const attachmentUrls = attachmentUrlsFrom(formData.get("attachmentUrls"));
 
   if (!disputeId || !action) {
-    redirect(disputeRedirect(moveoutId, "error"));
+    redirect(disputeRedirect(moveoutId, "error", returnFrom));
   }
 
   await updateTenantMoveoutDispute(moveoutId, {
@@ -119,30 +132,36 @@ async function updateDisputeAction(formData: FormData) {
     reason: reason || undefined,
     attachmentUrls,
   });
-  redirect(disputeRedirect(moveoutId, "updated"));
+  redirect(disputeRedirect(moveoutId, "updated", returnFrom));
 }
 
 async function escalateDisputeAction(formData: FormData) {
   "use server";
 
   const moveoutId = moveoutIdFrom(formData);
+  const returnFrom = normalizeReturnFrom(String(formData.get("returnFrom") ?? ""));
   const disputeId = String(formData.get("disputeId") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
 
   if (!disputeId) {
-    redirect(disputeRedirect(moveoutId, "error"));
+    redirect(disputeRedirect(moveoutId, "error", returnFrom));
   }
 
   await escalateMoveoutDispute(moveoutId, {
     disputeId,
     reason: reason || undefined,
   });
-  redirect(disputeRedirect(moveoutId, "escalated"));
+  redirect(disputeRedirect(moveoutId, "escalated", returnFrom));
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const moveoutId = params.id?.trim() || DEMO_MOVEOUT_ID;
+  const returnFrom = normalizeReturnFrom(params.from);
+  const backHref = withMoveoutId(
+    returnFrom === "settlement" ? MOVEOUT_ROUTES["T-OUT-03"] : MOVEOUT_ROUTES["T-OUT-01"],
+    moveoutId,
+  );
   const [records, settlement, disputes] = await Promise.all([
     getRecords(moveoutId),
     getSettlement(moveoutId),
@@ -179,7 +198,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         }}
       >
         <Link
-          href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-01"], moveoutId)}
+          href={backHref}
           style={{ fontSize: 13, color: "var(--on-surface-variant)", textDecoration: "none" }}
         >
           ‹ 뒤로
@@ -307,6 +326,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     {dispute.status === "answered" && (
                       <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
                         <input type="hidden" name="moveoutId" value={moveoutId} />
+                        <input type="hidden" name="returnFrom" value={returnFrom} />
                         <input type="hidden" name="disputeId" value={dispute.id} />
                         <input type="hidden" name="action" value="confirm" />
                         <Button type="submit" fullWidth variant="secondary">
@@ -317,6 +337,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     {["answered", "confirmed", "reviewing"].includes(dispute.status) && (
                       <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
                         <input type="hidden" name="moveoutId" value={moveoutId} />
+                        <input type="hidden" name="returnFrom" value={returnFrom} />
                         <input type="hidden" name="disputeId" value={dispute.id} />
                         <input type="hidden" name="action" value="re_dispute" />
                         <Input name="reason" aria-label="재이의 사유" placeholder="재이의 사유" />
@@ -333,6 +354,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     {["answered", "confirmed", "re_disputed", "reviewing"].includes(dispute.status) && (
                       <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
                         <input type="hidden" name="moveoutId" value={moveoutId} />
+                        <input type="hidden" name="returnFrom" value={returnFrom} />
                         <input type="hidden" name="disputeId" value={dispute.id} />
                         <input type="hidden" name="action" value="resolve" />
                         <Button type="submit" fullWidth variant="secondary">
@@ -385,6 +407,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 {dispute.slaBreached ? (
                   <form action={escalateDisputeAction} style={{ display: "grid", gap: 6 }}>
                     <input type="hidden" name="moveoutId" value={moveoutId} />
+                    <input type="hidden" name="returnFrom" value={returnFrom} />
                     <input type="hidden" name="disputeId" value={dispute.id} />
                     <Input name="reason" aria-label="에스컬레이션 사유" placeholder="에스컬레이션 사유(선택)" />
                     <Button type="submit" fullWidth variant="secondary">
@@ -411,6 +434,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         }}
       >
         <input type="hidden" name="moveoutId" value={moveoutId} />
+        <input type="hidden" name="returnFrom" value={returnFrom} />
         <select name="targetItemId" aria-label="이의 대상 항목" defaultValue={selectedTarget.id} style={inputStyle}>
           {targetOptions.map((option) => (
             <option key={option.id} value={option.id}>

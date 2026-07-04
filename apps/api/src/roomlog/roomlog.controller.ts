@@ -47,6 +47,7 @@ import {
   MoveoutAdjustDeductionInput,
   MoveoutAdjustWearVerdictInput,
   MoveoutCompleteReviewInput,
+  MoveoutPublishSettlementInput,
   MoveoutRespondDisputeInput,
   UpdateTenantMoveoutDisputeInput,
   UpdateMoveoutChecklistInput,
@@ -780,6 +781,17 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.completeManagerMoveoutReview(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/settlement/publish")
+  publishManagerMoveoutSettlement(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: MoveoutPublishSettlementInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.publishManagerMoveoutSettlement(user.id, moveoutId, body);
   }
 
   @Post("moveouts/:moveoutId/disputes/respond")

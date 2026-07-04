@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">입주 전 욕실 사진 더미</title>
+  <desc id="desc">퇴실 기록 리포트 클릭투어에서 첨부 근거 흐름을 확인하기 위한 더미 이미지</desc>
+  <rect width="960" height="540" fill="#f7fafc"/>
+  <rect x="48" y="48" width="864" height="444" rx="20" fill="#ffffff" stroke="#c7d7ea" stroke-width="4"/>
+  <rect x="92" y="96" width="340" height="300" rx="18" fill="#e9f2fb" stroke="#9fb9d8" stroke-width="3"/>
+  <rect x="480" y="112" width="330" height="58" rx="12" fill="#d8e7f6"/>
+  <rect x="480" y="194" width="330" height="58" rx="12" fill="#d8e7f6"/>
+  <rect x="480" y="276" width="330" height="58" rx="12" fill="#d8e7f6"/>
+  <circle cx="260" cy="230" r="92" fill="#ffffff" stroke="#9fb9d8" stroke-width="6"/>
+  <path d="M214 230h92M260 184v92" stroke="#7b96b6" stroke-width="10" stroke-linecap="round"/>
+  <text x="92" y="438" fill="#0b3558" font-family="Arial, sans-serif" font-size="30" font-weight="700">입주 전 욕실 기준 사진</text>
+  <text x="480" y="402" fill="#3b556f" font-family="Arial, sans-serif" font-size="22">타일, 수전, 실리콘 상태 비교용 더미 근거</text>
+</svg>

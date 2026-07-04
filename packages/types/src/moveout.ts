@@ -23,6 +23,68 @@ export type MoveoutRecordSource =
   | "chat" // 채팅
   | "contract"; // 계약서(원상복구·청소 조항)
 
+/** '내 기록' 상세 정보 행 — 버튼으로 펼쳐 보여줄 원천/영향/행동 설명. */
+export interface MoveoutRecordDetailItem {
+  label: string;
+  value: string;
+}
+
+/** '내 기록' 상세 정보 섹션 — 항목별 상세 패널의 그룹. */
+export interface MoveoutRecordDetailSection {
+  label: string;
+  items: MoveoutRecordDetailItem[];
+}
+
+export type MoveoutRecordDetailMediaKind = "photo" | "document";
+
+export interface MoveoutRecordDetailMedia {
+  kind: MoveoutRecordDetailMediaKind;
+  label: string;
+  url: string;
+  caption?: string;
+  capturedAt?: string;
+}
+
+export interface MoveoutRecordDetailChatMessage {
+  sender: "tenant" | "manager" | "system";
+  senderLabel: string;
+  body: string;
+  at: string;
+  attachmentUrls?: string[];
+}
+
+export interface MoveoutRecordDetailEvent {
+  label: string;
+  at: string;
+  status?: string;
+  note?: string;
+  evidenceUrls?: string[];
+}
+
+export interface MoveoutRecordDetailAmount {
+  label: string;
+  amount?: number;
+  min?: number;
+  max?: number;
+  status?: string;
+  note?: string;
+}
+
+export interface MoveoutRecordDetailClause {
+  title: string;
+  body: string;
+  note?: string;
+}
+
+export interface MoveoutRecordSourceDetail {
+  summary?: string;
+  media?: MoveoutRecordDetailMedia[];
+  chatMessages?: MoveoutRecordDetailChatMessage[];
+  events?: MoveoutRecordDetailEvent[];
+  amounts?: MoveoutRecordDetailAmount[];
+  clauses?: MoveoutRecordDetailClause[];
+}
+
 /** 훼손 추정 판정 — 확정 금지, 비적대 프레임. 하자 ResponsibilityVerdict와 동형. */
 export type WearVerdict =
   | "aging_likely" // 노후/마모 가능성(임차인 책임 아님 지향)
@@ -79,6 +141,8 @@ export interface MoveoutRecordItem {
   wearVerdict?: WearVerdict; // 있으면 '확인이 필요할 수 있는 항목' 보조 표기 + 이의 인접
   wearNote?: string; // 비적대 설명(노후/마모일 수도, 확인 필요)
   evidenceUrls?: string[]; // 사진·문서 근거 URL(원천 상세 연결 전까지는 URL 계약)
+  detailSections?: MoveoutRecordDetailSection[]; // 상세정보 버튼으로 펼치는 원천·정산 영향·다음 행동
+  detail?: MoveoutRecordSourceDetail; // 상세정보 확장 시 원천별 실제 채팅·사진·이력·금액·조항 표시
   moveinComparisonAvailable: boolean; // 입주전 사진 비교 가능 여부(공백 ≠ 책임)
 }
 
@@ -231,6 +295,11 @@ export interface CompleteReviewDto {
   acknowledgeEvidence: boolean; // 근거 확인
   overrideSla?: boolean; // SLA 초과 시 알림 동반 강행
   overrideReason?: string; // SLA override 사유
+}
+
+/** 예상 정산안 임차인 전달 DTO(M-OUT-02) — 메시징·감사로그에 연결. */
+export interface PublishSettlementDto {
+  message?: string;
 }
 
 /** 관리인 검토 정산안 뷰(M-OUT-02) — 예상 정산 + 게이트 + 이의 enum 표시. */

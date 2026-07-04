@@ -5,6 +5,7 @@ import type {
   CreateMoveoutDisputeInput,
   CreateTenantMoveoutInquiryInput,
   EscalateMoveoutDisputeInput,
+  MoveoutRecordDetailChatMessage,
   MessagingThread,
   MoveoutAdjustDeductionInput,
   MoveoutAdjustWearVerdictInput,
@@ -16,6 +17,7 @@ import type {
   MoveoutDisputeStatus,
   MoveoutManagerRow,
   MoveoutManagerSettlementReview,
+  MoveoutPublishSettlementInput,
   MoveoutRecordItem,
   MoveoutReportAuditEntry,
   MoveoutRespondDisputeInput,
@@ -169,6 +171,7 @@ export class RoomlogMoveoutDomain {
       title: "퇴실 문의",
       description: body,
       occurredAt: createdAt,
+      evidenceUrls: attachmentUrls,
       moveinComparisonAvailable: false
     });
     moveout.updatedAt = createdAt;
@@ -536,6 +539,40 @@ export class RoomlogMoveoutDomain {
     return this.getManagerMoveoutSettlement(managerId, moveout.id);
   }
 
+  publishManagerMoveoutSettlement(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutPublishSettlementInput
+  ): MoveoutManagerSettlementReview {
+    const moveout = this.findManagerMoveout(managerId, moveoutId);
+    const settlement = this.findSettlement(moveout);
+
+    if (settlement.status !== "review_done") {
+      throw new BadRequestException("검토 완료 후 임차인에게 예상 정산안을 전달할 수 있습니다.");
+    }
+
+    const publishedAt = now();
+    const defaultMessage = `${moveout.unitId}호 퇴실 예상 정산안 검토가 완료되어 전달드립니다. 이 금액은 최종 송금 확정이 아니라 근거 확인용 예상안입니다.`;
+    const message = input.message?.trim() || defaultMessage;
+    this.ensureMoveoutThread(moveout, managerId, "manager", message);
+    this.store.moveoutReportAudits.unshift({
+      id: id("maud"),
+      summaryId: moveout.id,
+      recordItemId: "settlement",
+      action: "reinforce",
+      evidenceNote: `임차인 전달: ${message}`,
+      tenantNotified: true,
+      managerName: this.findUser(managerId).name,
+      managerId,
+      at: publishedAt
+    });
+    moveout.updatedAt = publishedAt;
+    settlement.updatedAt = publishedAt;
+    this.persistStore();
+
+    return this.getManagerMoveoutSettlement(managerId, moveout.id);
+  }
+
   respondManagerMoveoutDispute(
     managerId: string,
     moveoutId: string,
@@ -649,11 +686,128 @@ export class RoomlogMoveoutDomain {
   }
 
   private recordsFor(summaryId: string) {
+    const threadMessages = this.moveoutThreadMessages(summaryId);
+
     return this.store.moveoutRecords
       .filter((record) => record.summaryId === summaryId)
-      .map((record) => ({
-        ...record,
-        evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined
+      .map((record) => this.presentRecord(record, threadMessages));
+  }
+
+  private presentRecord(
+    record: MoveoutRecordItem,
+    threadMessages: MoveoutRecordDetailChatMessage[] = []
+  ): MoveoutRecordItem {
+    const presented: MoveoutRecordItem = {
+      ...record,
+      evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined,
+      detailSections: record.detailSections?.map((section) => ({
+        ...section,
+        items: section.items.map((item) => ({ ...item }))
+      })),
+      detail: record.detail ? {
+        ...record.detail,
+        media: record.detail.media?.map((item) => ({ ...item })),
+        chatMessages: record.detail.chatMessages?.map((item) => ({
+          ...item,
+          attachmentUrls: item.attachmentUrls ? this.nonEmptyStrings(item.attachmentUrls) : undefined
+        })),
+        events: record.detail.events?.map((item) => ({
+          ...item,
+          evidenceUrls: item.evidenceUrls ? this.nonEmptyStrings(item.evidenceUrls) : undefined
+        })),
+        amounts: record.detail.amounts?.map((item) => ({ ...item })),
+        clauses: record.detail.clauses?.map((item) => ({ ...item }))
+      } : undefined
+    };
+
+    return this.withChatRecordDetail(presented, threadMessages);
+  }
+
+  private withChatRecordDetail(
+    record: MoveoutRecordItem,
+    threadMessages: MoveoutRecordDetailChatMessage[] = []
+  ): MoveoutRecordItem {
+    if (record.source !== "chat") {
+      return record;
+    }
+
+    const attachmentUrls = record.evidenceUrls?.length ? [...record.evidenceUrls] : undefined;
+    const fallbackDetailSections = [
+      {
+        label: "원천 기록",
+        items: [
+          { label: "대화 유형", value: record.title },
+          { label: "연결 채널", value: "임차인-관리인 공식 퇴실 문의 기록" }
+        ]
+      },
+      {
+        label: "정산 영향",
+        items: [
+          { label: "역할", value: "정산 금액 근거가 아니라 문의와 안내 이력입니다." },
+          { label: "주의", value: "대화 내용만으로 차감 후보를 확정하지 않습니다." }
+        ]
+      },
+      {
+        label: "다음 행동",
+        items: [
+          { label: "관리인", value: "정산안 변경 시 같은 채널로 근거와 함께 안내합니다." },
+          { label: "임차인", value: "추가 설명이나 첨부가 필요하면 이의·정정으로 보충할 수 있습니다." }
+        ]
+      }
+    ];
+    const fallbackChatMessages = [
+      {
+        sender: "tenant" as const,
+        senderLabel: "임차인",
+        body: record.description,
+        at: record.occurredAt ?? record.summaryId,
+        attachmentUrls
+      }
+    ];
+    const chatMessages = threadMessages.length
+      ? threadMessages
+      : record.detail?.chatMessages?.length
+        ? record.detail.chatMessages
+        : fallbackChatMessages;
+    const fallbackDetail = {
+      summary: "공식 퇴실 문의 채팅 기록입니다.",
+      chatMessages
+    };
+
+    return {
+      ...record,
+      detailSections: record.detailSections?.length ? record.detailSections : fallbackDetailSections,
+      detail: record.detail
+        ? {
+            ...fallbackDetail,
+            ...record.detail,
+            chatMessages
+          }
+        : fallbackDetail
+    };
+  }
+
+  private moveoutThreadMessages(summaryId: string): MoveoutRecordDetailChatMessage[] {
+    const moveout = this.store.moveouts.find((item) => item.id === summaryId);
+    const thread = this.store.messagingThreads.find((item) =>
+      moveout?.messagingThreadId
+        ? item.id === moveout.messagingThreadId
+        : item.context === "moveout" && item.contextRef === summaryId
+    );
+
+    if (!thread) {
+      return [];
+    }
+
+    return this.store.messagingMessages
+      .filter((message) => message.threadId === thread.id)
+      .sort((a, b) => this.timeOf(a.createdAt) - this.timeOf(b.createdAt))
+      .map((message) => ({
+        sender: message.sender,
+        senderLabel: message.sender === "manager" ? "관리인" : "임차인",
+        body: message.body,
+        at: message.createdAt,
+        attachmentUrls: this.nonEmptyStrings(message.attachmentUrls)
       }));
   }
 
