@@ -6,6 +6,7 @@ import {
   requestManagerContractInfo,
 } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
+import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import {
   BackLink,
   Badge,
@@ -113,8 +114,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 <MetaRow label="상태" value="의견접수 -> 보완요청 -> 재업로드 -> 해결" />
                 <MetaRow label="최근 의견" value="자동연장 특약 문구가 실제 계약서와 다른지 확인 요청" />
                 <MetaRow label="SLA" value="보완 요청 후 임차인 알림 및 무응답 출구 유지" />
-                <Link href="/manager/messaging/04?id=th_mgr_302" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>
-                  메시징 스레드 열기
+                <Link href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>
+                  메시징 허브 열기
                 </Link>
               </Card>
             </Section>

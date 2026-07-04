@@ -166,6 +166,15 @@ export type CreateMessagingThreadInput = {
   };
 };
 
+export type CreateTenantMessagingThreadInput = {
+  context?: MessagingThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  body: string;
+  kind?: MessagingMessageKind;
+  attachmentUrls?: string[];
+};
+
 export type AddMessagingThreadMessageInput = {
   body?: string;
   kind?: MessagingMessageKind;
@@ -689,6 +698,7 @@ export type Contract = {
   monthlyRent?: number;
   maintenanceFee?: number;
   paymentDay?: number;
+  optionInventory?: string[];
   startDate?: string;
   endDate?: string;
   createdAt: string;
@@ -765,6 +775,56 @@ export type ContractInvite = {
   createdAt: string;
   acceptedAt?: string;
   acceptedByUserId?: string;
+};
+
+export type CreateTenantContractInput = {
+  fileName?: string;
+  fileUrl?: string;
+  ocrConsent: boolean;
+  storageConsent: boolean;
+};
+
+export type CreateManagerContractInput = {
+  roomId?: string;
+  unitId?: string;
+  tenantId?: string;
+  tenantName?: string;
+  fileName?: string;
+  fileUrl?: string;
+  monthlyRent?: number;
+  maintenanceFee?: number;
+  paymentDay?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+export type UpdateManagerContractManualValuesInput = {
+  deposit?: string;
+  monthlyRent?: number;
+  maintenanceFee?: number;
+  paymentDay?: number;
+  account?: string;
+};
+
+export type UpdateManagerContractInventoryInput = {
+  items: string[];
+};
+
+export type CreateManagerContractInviteInput = {
+  tenantName: string;
+  email?: string;
+  phone?: string;
+};
+
+export type UpdateManagerContractInviteInput = {
+  state: "waiting" | "connected" | "disputed";
+  note?: string;
+};
+
+export type UpdateManagerContractPrivacyInput = {
+  maskingEnabled?: boolean;
+  forwardingConsent?: boolean;
+  retentionNote?: string;
 };
 
 export type CostReviewQueueSummary = {

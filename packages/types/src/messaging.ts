@@ -41,6 +41,15 @@ export interface Thread {
   messages?: Message[]; // 상세 조회 시 포함
 }
 
+export interface CreateTenantMessagingThreadInput {
+  context?: ThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  body: string;
+  kind?: MessageKind;
+  attachmentUrls?: string[];
+}
+
 /** 공지 카테고리 — 긴급만 확인 게이트 + 다국어 검수(D21) */
 export type AnnouncementCategory = "urgent" | "life" | "event";
 export type AnnouncementScope = "all" | "building" | "unit";

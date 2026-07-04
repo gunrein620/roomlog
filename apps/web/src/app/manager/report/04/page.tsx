@@ -1,12 +1,15 @@
 import { getReportChat } from "@/lib/report-api";
-import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
+import { MANAGER_REPORT_ROUTES, reportHref } from "@/lib/report-nav";
 import { Card, Input } from "@roomlog/ui";
 import { ChatTranscript, FaqButtons, LinkButton, PageStack, ScreenHeader, Section } from "../_components";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
-  const { scopeLabel, messages, faq } = await getReportChat();
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const { scopeLabel, messages, faq } = await getReportChat(id);
 
   return (
     <PageStack>
@@ -27,7 +30,7 @@ export default async function Page() {
 
       <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-sm)", alignItems: "center" }}>
         <Input aria-label="질의 입력" placeholder="예: 연남 스테이 6월 미납 세대 알려줘" />
-        <LinkButton href={MANAGER_REPORT_ROUTES["M-RPT-04"]}>질의 전송</LinkButton>
+        <LinkButton href={reportHref("M-RPT-04", id)}>질의 전송</LinkButton>
       </Card>
     </PageStack>
   );

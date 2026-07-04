@@ -69,6 +69,37 @@ export async function getReceiptOcr(id = DEMO_RECEIPT_OCR_ID): Promise<ReceiptOc
   );
 }
 
+export function confirmReceiptOcr(id: string): Promise<Cost> {
+  return serverFetch<Cost>(
+    `/manager/costs/receipt-ocrs/${encodeURIComponent(id)}/confirm`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
+export function confirmCost(id: string): Promise<Cost> {
+  return serverFetch<Cost>(
+    `/manager/costs/${encodeURIComponent(id)}/confirm`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
+export function voidCost(id: string, reason?: string): Promise<Cost> {
+  return serverFetch<Cost>(
+    `/manager/costs/${encodeURIComponent(id)}/void`,
+    { method: "POST", body: JSON.stringify({ reason }) }
+  );
+}
+
+export function updateCostDisclosure(
+  id: string,
+  disclosure: "public" | "private"
+): Promise<DisclosureSetting> {
+  return serverFetch<DisclosureSetting>(
+    `/manager/costs/${encodeURIComponent(id)}/disclosure`,
+    { method: "PATCH", body: JSON.stringify({ disclosure }) }
+  );
+}
+
 export function getDisclosureSetting(month = DEMO_DISCLOSURE_SETTING.month): Promise<DisclosureSetting> {
   return tryFetch(
     `/manager/costs/disclosure-settings?month=${encodeURIComponent(month)}`,

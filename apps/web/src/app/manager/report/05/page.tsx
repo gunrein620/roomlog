@@ -26,14 +26,13 @@ export default async function Page() {
         </div>
         <div style={{ lineHeight: "var(--lh-body)" }}>현재 미납은 3세대입니다. 302호는 34일 연체로 독촉 초안 검토 대상입니다.</div>
         <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: "var(--lh-body)" }}>
-          빠른 조회에서도 발송은 하지 않습니다. 독촉/공지 초안은 원천 화면에서 대상·기간·금액 대조 후 확정합니다.
+          빠른 조회에서도 발송은 하지 않습니다. 독촉/공지 초안은 메시징에서 대상·기간·금액 대조 후 확정합니다.
         </div>
         <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-          <LinkButton href="/manager/billing/dunning/bill-2026-07-401" variant="secondary">독촉 초안</LinkButton>
+          <LinkButton href="/manager/messaging/00" variant="secondary">메시징 초안</LinkButton>
           <LinkButton href={MANAGER_REPORT_ROUTES["M-RPT-04"]} variant="secondary">근거 자세히</LinkButton>
         </div>
       </Card>
     </PageStack>
   );
 }
-

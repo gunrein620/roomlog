@@ -33,11 +33,6 @@ type ManagerReportAuditLogEntry = {
   detail?: string;
 };
 
-type ExternalReportShareResponse = {
-  report: Report;
-  delivery: ReportDelivery;
-};
-
 export const reportPaths = {
   reports: () => "/manager/reports",
   report: (reportId: string) => `/manager/reports/${encodeURIComponent(reportId)}`,
@@ -64,11 +59,27 @@ async function apiOrFallback<T>(read: () => Promise<T>, fallback: T): Promise<T>
   try {
     return await read();
   } catch (error) {
+    if (!shouldUseReportDemoFallback()) {
+      throw error;
+    }
+
     if (process.env.NODE_ENV !== "test") {
       console.warn(`[report-api] using demo fallback: ${errorMessage(error)}`);
     }
     return fallback;
   }
+}
+
+function shouldUseReportDemoFallback(): boolean {
+  if (process.env.ROOMLOG_REPORT_DEMO_FALLBACK === "true") {
+    return true;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  return true;
 }
 
 function errorMessage(error: unknown): string {
@@ -94,7 +105,7 @@ export interface ReportChatData {
 
 export async function getReportHub(): Promise<ReportHubData> {
   return apiOrFallback(async () => {
-    const reports = await fetchOrCreateReports();
+    const reports = await fetchReports();
 
     return {
       reports,
@@ -110,7 +121,8 @@ export async function getReportHub(): Promise<ReportHubData> {
 
 export async function getReportCreateData(): Promise<ReportCreateData> {
   return apiOrFallback(async () => {
-    const recentReport = await getCurrentReport();
+    const reports = await fetchReports();
+    const recentReport = reports[0] ? await getReportDetail(reports[0].id) : DEMO_REPORTS[0];
 
     return {
       recipients: recipientsFor(recentReport),
@@ -130,25 +142,21 @@ export function getReport(id = DEMO_REPORT_ID): Promise<Report> {
 export function getReportDelivery(reportId = DEMO_REPORT_ID): Promise<ReportDelivery> {
   return apiOrFallback(async () => {
     const report = await getCurrentReport(reportId);
-    const share = await serverFetch<ManagerReportExternalShare>(reportPaths.externalShares(report.id), {
-      method: "POST",
-      body: JSON.stringify({
-        recipientName: report.recipient?.name ?? DEMO_RECIPIENTS[0].name,
-      }),
-    });
-    const shared = await serverFetch<ExternalReportShareResponse>(reportPaths.externalReport(share.token));
-    const auditLog = await fetchDeliveryAuditLog(report.id, shared.delivery.auditLog);
+    const auditLog = await fetchDeliveryAuditLog(report.id, []);
 
     return {
-      ...shared.delivery,
+      reportId: report.id,
+      format: "link",
+      masked: true,
+      recipient: report.recipient ?? DEMO_RECIPIENTS[0],
       auditLog,
     };
   }, DEMO_DELIVERY);
 }
 
-export function getReportChat(): Promise<ReportChatData> {
+export function getReportChat(reportId = DEMO_REPORT_ID): Promise<ReportChatData> {
   return apiOrFallback(async () => {
-    const report = await getCurrentReport();
+    const report = await getCurrentReport(reportId);
     const question = DEMO_FAQ[0]?.query ?? "이번 달 미납 세대 알려줘";
     const answer = await serverFetch<ChatAnswer>(reportPaths.chat(report.id), {
       method: "POST",
@@ -179,18 +187,29 @@ export function getReportChat(): Promise<ReportChatData> {
   });
 }
 
+export function createReportExternalShare(
+  reportId: string,
+  recipientName: string
+): Promise<ManagerReportExternalShare> {
+  return serverFetch<ManagerReportExternalShare>(reportPaths.externalShares(reportId), {
+    method: "POST",
+    body: JSON.stringify({ recipientName }),
+  });
+}
+
 export function getReportFaq(): Promise<FaqQuestion[]> {
   return Promise.resolve(DEMO_FAQ);
 }
 
-async function fetchOrCreateReports(): Promise<Report[]> {
-  const reports = await serverFetch<Report[]>(reportPaths.reports());
+export function createManagerReport(input: CreateManagerReportInput = defaultReportInput): Promise<Report> {
+  return serverFetch<Report>(reportPaths.reports(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
 
-  if (reports.length > 0) {
-    return reports;
-  }
-
-  return [await createDefaultReport()];
+async function fetchReports(): Promise<Report[]> {
+  return serverFetch<Report[]>(reportPaths.reports());
 }
 
 async function getCurrentReport(reportId?: string): Promise<Report> {
@@ -198,8 +217,12 @@ async function getCurrentReport(reportId?: string): Promise<Report> {
     return getReportDetail(reportId);
   }
 
-  const reports = await fetchOrCreateReports();
+  const reports = await fetchReports();
   const report = reports[0];
+
+  if (!report) {
+    throw new Error("No manager report is available.");
+  }
 
   return getReportDetail(report.id);
 }
@@ -212,14 +235,6 @@ async function getReportDetail(reportId: string): Promise<Report> {
 
   return report;
 }
-
-function createDefaultReport(): Promise<Report> {
-  return serverFetch<Report>(reportPaths.reports(), {
-    method: "POST",
-    body: JSON.stringify(defaultReportInput),
-  });
-}
-
 function recipientsFor(report?: Report): ReportRecipient[] {
   if (!report?.recipient) {
     return DEMO_RECIPIENTS;
