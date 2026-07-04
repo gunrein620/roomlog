@@ -122,6 +122,7 @@ import {
   MoveoutRespondDisputeInput,
   MoveoutSettlementEstimate,
   MoveoutSummary,
+  UpdateMoveoutChecklistInput,
   PhotoAnalysis,
   PhotoComparisonStatus,
   RealtimeClientSecretInput,
@@ -2985,6 +2986,14 @@ export class RoomlogService {
 
   listTenantMoveoutChecklist(tenantId: string, moveoutId: string) {
     return this.moveout.listTenantMoveoutChecklist(tenantId, moveoutId);
+  }
+
+  updateTenantMoveoutChecklist(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateMoveoutChecklistInput
+  ) {
+    return this.moveout.updateTenantMoveoutChecklist(tenantId, moveoutId, input);
   }
 
   getTenantMoveoutSettlement(tenantId: string, moveoutId: string) {

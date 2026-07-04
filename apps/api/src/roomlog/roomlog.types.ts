@@ -532,6 +532,7 @@ export type MoveoutChecklistItem = {
   present: boolean;
   condition: MoveoutChecklistCondition;
   note?: string;
+  attachmentUrls?: string[];
 };
 
 export type MoveoutDeductionCandidate = {
@@ -670,6 +671,19 @@ export type CreateMoveoutDisputeInput = {
 export type CreateTenantMoveoutInquiryInput = {
   body: string;
   attachmentUrls?: string[];
+};
+
+export type UpdateMoveoutChecklistItemInput = {
+  id?: string;
+  label: string;
+  present: boolean;
+  condition: MoveoutChecklistCondition;
+  note?: string;
+  attachmentUrls?: string[];
+};
+
+export type UpdateMoveoutChecklistInput = {
+  items: UpdateMoveoutChecklistItemInput[];
 };
 
 export type ContractLifecycle =

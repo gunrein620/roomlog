@@ -4290,6 +4290,46 @@ describe("RoomlogService", () => {
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
   });
 
+  it("lets a tenant save moveout checklist item state and recalculates preparation progress", () => {
+    const service = createMoveoutTestService() as any;
+
+    const result = service.updateTenantMoveoutChecklist("tenant-a", "mo-a", {
+      items: [
+        {
+          id: "ck-cardkey",
+          label: "현관 카드키 2개",
+          present: true,
+          condition: "normal",
+          note: "반납 준비 완료",
+          attachmentUrls: ["/api/files/key-before.jpg", "/api/files/key-before.jpg", ""]
+        },
+        {
+          id: "ck-mailbox",
+          label: "우편함 열쇠",
+          present: false,
+          condition: "damage_check",
+          note: "분실 여부 확인 중"
+        }
+      ]
+    });
+    const saved = service.listTenantMoveoutChecklist("tenant-a", "mo-a");
+    const summary = service.getTenantMoveout("tenant-a", "mo-a");
+
+    assert.equal(result.length, 2);
+    assert.equal(saved[0].summaryId, "mo-a");
+    assert.equal(saved[0].note, "반납 준비 완료");
+    assert.deepEqual(saved[0].attachmentUrls, ["/api/files/key-before.jpg"]);
+    assert.equal(saved[1].condition, "damage_check");
+    assert.equal(summary.prepProgress, 0.5);
+    assert.throws(
+      () =>
+        service.updateTenantMoveoutChecklist("tenant-b", "mo-a", {
+          items: [{ label: "침대 프레임", present: true, condition: "normal" }]
+        }),
+      /퇴실|찾을 수|접근/
+    );
+  });
+
   it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
     const service = new RoomlogService({ seedDemoData: true } as any) as any;
 

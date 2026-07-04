@@ -126,6 +126,10 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     new URL("./src/app/tenant/moveout/04/page.tsx", import.meta.url),
     "utf8",
   );
+  const tenantChecklistSource = readFileSync(
+    new URL("./src/app/tenant/moveout/02/page.tsx", import.meta.url),
+    "utf8",
+  );
   const managerReviewSource = readFileSync(
     new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
     "utf8",
@@ -139,6 +143,8 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
   assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
+  assert.match(tenantChecklistSource, /updateMoveoutChecklist/);
+  assert.match(tenantChecklistSource, /action=\{saveChecklistAction\}/);
   assert.match(managerReviewSource, /completeReview/);
   assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
   assert.match(managerDisputeSource, /respondDispute/);
@@ -146,6 +152,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
 
   assert.doesNotMatch(tenantSettlementSource, /disabled[\s\S]*관리자 문의/);
   assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
+  assert.doesNotMatch(tenantChecklistSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*체크 저장/);
   assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
   assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);
 });

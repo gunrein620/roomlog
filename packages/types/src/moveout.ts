@@ -89,6 +89,7 @@ export interface MoveoutChecklistItem {
   present: boolean; // 존재 여부
   condition: ChecklistCondition; // 정상/노후·마모/훼손 확인
   note?: string;
+  attachmentUrls?: string[]; // 사진 증빙 URL(업로드 슬라이스 연결 전까지는 URL 계약)
 }
 
 /** 차감 후보(T-OUT-03) — 각 항목 예상 범위·확인 필요·근거(관리인과 동일 열람). */
@@ -266,4 +267,18 @@ export interface CreateMoveoutDisputeDto {
 export interface CreateMoveoutInquiryDto {
   body: string;
   attachmentUrls?: string[];
+}
+
+/** 임차인 퇴실 체크리스트 저장 DTO(T-OUT-02). 전체 스냅샷으로 저장해 진행률을 재계산한다. */
+export interface UpdateMoveoutChecklistItemDto {
+  id?: string;
+  label: string;
+  present: boolean;
+  condition: ChecklistCondition;
+  note?: string;
+  attachmentUrls?: string[];
+}
+
+export interface UpdateMoveoutChecklistDto {
+  items: UpdateMoveoutChecklistItemDto[];
 }

@@ -46,6 +46,7 @@ import {
   MoveoutAdjustWearVerdictInput,
   MoveoutCompleteReviewInput,
   MoveoutRespondDisputeInput,
+  UpdateMoveoutChecklistInput,
   ManagerTicketReplyInput,
   RealtimeClientSecretInput,
   RecordRealtimeTurnInput,
@@ -771,6 +772,17 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.listTenantMoveoutChecklist(user.id, moveoutId);
+  }
+
+  @Patch("moveouts/:moveoutId/checklist")
+  updateTenantMoveoutChecklist(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: UpdateMoveoutChecklistInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.updateTenantMoveoutChecklist(user.id, moveoutId, body);
   }
 
   @Get("moveouts/:moveoutId/settlement")

@@ -22,7 +22,8 @@ import type {
   MoveoutReviewGateBlockReason,
   MoveoutSettlementEstimate,
   MoveoutSummary,
-  Room
+  Room,
+  UpdateMoveoutChecklistInput
 } from "../roomlog.types";
 import type { Store } from "../roomlog.service";
 
@@ -75,6 +76,60 @@ export class RoomlogMoveoutDomain {
     const moveout = this.findTenantMoveout(tenantId, moveoutId);
 
     return this.checklistFor(moveout.id);
+  }
+
+  updateTenantMoveoutChecklist(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateMoveoutChecklistInput
+  ): MoveoutChecklistItem[] {
+    const moveout = this.findTenantMoveout(tenantId, moveoutId);
+    const items = Array.isArray(input?.items) ? input.items : [];
+
+    if (items.length === 0) {
+      throw new BadRequestException("저장할 퇴실 체크리스트 항목이 필요합니다.");
+    }
+
+    const nextItems = items.map((item) => {
+      const label = item.label?.trim();
+      const itemId = item.id?.trim() || id("mchk");
+      const existing = this.store.moveoutChecklist.find((candidate) => candidate.id === itemId);
+
+      if (!label) {
+        throw new BadRequestException("퇴실 체크리스트 항목명을 입력해주세요.");
+      }
+
+      if (!["normal", "aging", "damage_check"].includes(item.condition)) {
+        throw new BadRequestException("퇴실 체크리스트 상태 값이 올바르지 않습니다.");
+      }
+
+      if (existing && existing.summaryId !== moveout.id) {
+        throw new ForbiddenException("다른 퇴실 요청의 체크리스트 항목은 수정할 수 없습니다.");
+      }
+
+      const note = item.note?.trim();
+      const attachmentUrls = this.nonEmptyStrings(item.attachmentUrls);
+
+      return {
+        id: itemId,
+        summaryId: moveout.id,
+        label,
+        present: Boolean(item.present),
+        condition: item.condition,
+        note: note || undefined,
+        attachmentUrls
+      };
+    });
+
+    this.store.moveoutChecklist = [
+      ...this.store.moveoutChecklist.filter((item) => item.summaryId !== moveout.id),
+      ...nextItems
+    ];
+    moveout.prepProgress = this.checklistProgress(nextItems);
+    moveout.updatedAt = now();
+    this.persistStore();
+
+    return nextItems.map((item) => ({ ...item, attachmentUrls: [...item.attachmentUrls] }));
   }
 
   getTenantMoveoutSettlement(tenantId: string, moveoutId: string): MoveoutSettlementEstimate {
@@ -478,7 +533,7 @@ export class RoomlogMoveoutDomain {
   private checklistFor(summaryId: string) {
     return this.store.moveoutChecklist
       .filter((item) => item.summaryId === summaryId)
-      .map((item) => ({ ...item }));
+      .map((item) => ({ ...item, attachmentUrls: [...(item.attachmentUrls ?? [])] }));
   }
 
   private disputesFor(summaryId: string) {
@@ -715,6 +770,21 @@ export class RoomlogMoveoutDomain {
 
   private addHoursIso(startIso: string, hours: number) {
     return new Date(this.timeOf(startIso) + hours * 60 * 60 * 1000).toISOString();
+  }
+
+  private checklistProgress(items: MoveoutChecklistItem[]) {
+    if (items.length === 0) {
+      return 0;
+    }
+
+    const readyCount = items.filter((item) => item.present && item.condition !== "damage_check").length;
+    return Number((readyCount / items.length).toFixed(2));
+  }
+
+  private nonEmptyStrings(values?: string[]) {
+    return Array.from(
+      new Set((Array.isArray(values) ? values : []).map((value) => value.trim()).filter(Boolean))
+    );
   }
 
   private findUser(userId: string) {
