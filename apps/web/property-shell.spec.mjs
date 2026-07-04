@@ -907,6 +907,172 @@ test("offers a 3D conversion mode for the floor plan editor", () => {
   }
 });
 
+test("post-processes Roboflow wall boxes before using them as 3D walls", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 50, width: 120, x: 430, y: 490 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [
+      { confidence: 0.83, height: 20, width: 400, x: 100, y: 500 },
+      { confidence: 0.76, height: 18, width: 360, x: 480, y: 503 },
+      { confidence: 0.18, height: 22, width: 400, x: 100, y: 700 }
+    ]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.equal(result.walls.every((wall) => wall.source === "roboflow-postprocessed"), true);
+  assert.equal(new Set(result.walls.map((wall) => wall.orientation)).size, 1);
+  assert.deepEqual(
+    result.walls.map((wall) => Math.round(wall.start.y)),
+    [1, 1].map(() => Math.round(result.walls[0].start.y))
+  );
+  assert.ok(result.walls[0].end.x <= -80, "opening should cut the left segment before the doorway");
+  assert.ok(result.walls[1].start.x >= 30, "opening should cut the right segment after the doorway");
+});
+
+test("cuts walls when Roboflow opening boxes are slightly offset from the wall axis", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 40, width: 240, x: 380, y: 545 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [{ confidence: 0.8, height: 20, width: 800, x: 100, y: 500 }]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.ok(result.walls.every((wall) => wall.source === "roboflow-postprocessed"));
+});
+
+test("keeps existing wall axes when Roboflow detects only a partial wall segment", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    currentWalls: [{ id: "existing-bottom", start: { x: -320, y: 0 }, end: { x: 320, y: 0 } }],
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 40, width: 140, x: 430, y: 500 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [{ confidence: 0.78, height: 20, width: 220, x: 100, y: 500 }]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.ok(result.walls[0].end.x < 0, "left segment should stop before the opening");
+  assert.ok(result.walls[1].start.x > 0, "right segment should remain after the opening");
+  assert.ok(result.walls[1].end.x >= 300, "right segment should keep the existing wall extent");
+});
+
+test("exposes Roboflow wall post-processing as a separate editor action", () => {
+  for (const label of ["roboflowDetections", "applyRoboflowWallPostProcessing", "벽 후처리 적용", "Roboflow 원본 박스 저장됨"]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
+test("extends and merges raw Roboflow wall boxes instead of dropping them from the cleaned overlay", () => {
+  assert.match(floorPlanEditorSource, /generatedWallBoxes/);
+  assert.match(floorPlanEditorSource, /variant: "postprocessed"/);
+  assert.match(floorPlanEditorSource, /buildAdjustedWallBoxesFromRawAndGenerated/);
+  assert.match(floorPlanEditorSource, /rawWallDisplayBoxes/);
+  assert.match(floorPlanEditorSource, /fitOpeningBoxesToPostProcessedWalls/);
+  assert.doesNotMatch(floorPlanEditorSource, /setLineDash\(\[8 \/ viewScale, 5 \/ viewScale\]\)/);
+});
+
+test("shows Roboflow post-processed walls as purple boxes instead of black center lines", () => {
+  assert.match(floorPlanEditorSource, /isRoboflowPostProcessedWall/);
+  assert.match(floorPlanEditorSource, /if \(isRoboflowPostProcessedWall\) return/);
+});
+
+test("preserves raw Roboflow wall boxes and a stable wall-axis source for post-processing", () => {
+  assert.match(floorPlanEditorSource, /roboflowWallPostProcessSourceWalls/);
+  assert.match(floorPlanEditorSource, /setRoboflowWallPostProcessSourceWalls/);
+  assert.match(floorPlanEditorSource, /variant: "raw"/);
+  assert.match(floorPlanEditorSource, /setDetectionBoxes\(\[\.\.\.cornerAlignedWallBoxes, \.\.\.fittedOpeningBoxes\]\)/);
+});
+
+test("keeps Roboflow windows over continuous walls and cuts wall boxes only at doors", () => {
+  assert.match(floorPlanEditorSource, /openingBoxes: roboflowDetections\.openings\.filter\(\(opening\) => opening\.type === "DOOR"\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /openingBoxes: roboflowDetections\.openings\.map\(\(opening\) => opening\.boundingBox\)/);
+});
+
+test("clips Roboflow opening overlays to wall bounds without increasing their length", () => {
+  assert.match(floorPlanEditorSource, /clipSegmentToRange/);
+  assert.doesNotMatch(floorPlanEditorSource, /minimumLength/);
+  assert.doesNotMatch(floorPlanEditorSource, /Math\.max\(sourceLength, minimumLength\)/);
+});
+
+test("uses a conservative wall gap fill so unrelated wall boxes are not stretched together", () => {
+  assert.match(floorPlanEditorSource, /const gapTolerance = Math\.max\(36, Math\.min\(72, thickness \* 2\.5\)\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /const gapTolerance = 180/);
+});
+
+test("trims perpendicular Roboflow wall overlay corners so box strokes do not leave small square overlaps", () => {
+  assert.match(floorPlanEditorSource, /trimWallBoxCornerOverlaps/);
+  assert.match(floorPlanEditorSource, /const cornerTolerance = 6/);
+  assert.match(floorPlanEditorSource, /const maxTrimOverlap = cornerTolerance \* 2/);
+  assert.match(floorPlanEditorSource, /if \(overlapX > maxTrimOverlap && overlapY > maxTrimOverlap\) continue/);
+  assert.match(floorPlanEditorSource, /const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+});
+
+test("micro-snaps Roboflow opening overlay edges to nearby original wall breaks", () => {
+  assert.match(floorPlanEditorSource, /snapOpeningBoxEdgesToNearbyWallBreaks/);
+  assert.match(floorPlanEditorSource, /const openingEdgeSnapTolerance = 14/);
+  assert.match(floorPlanEditorSource, /rawWallDisplayBoxes/);
+});
+
+test("aligns wall overlay thickness from already fitted Roboflow opening lines", () => {
+  assert.match(floorPlanEditorSource, /alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /const fittedOpeningLineTolerance = 12/);
+  assert.match(floorPlanEditorSource, /const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /setDetectionBoxes\(\[\.\.\.cornerAlignedWallBoxes, \.\.\.fittedOpeningBoxes\]\)/);
+  assert.match(floorPlanEditorSource, /fitOpeningBoxesToPostProcessedWalls\(rawOpeningDisplayBoxes, cornerTrimmedWallBoxes\)/);
+});
+
+test("keeps merged Roboflow wall rendering aligned to fitted opening lines after edge snapping", () => {
+  assert.match(floorPlanEditorSource, /const openingAlignedSnappedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /snappedWallBoxes\.map\(\(box\) => createPostProcessedWallOverlayBox\(box\)\)/);
+  assert.match(floorPlanEditorSource, /openingOverlayBoxes/);
+  assert.match(floorPlanEditorSource, /\.map\(\(overlayBox\) => overlayBox\.box\)/);
+});
+
+test("propagates fitted Roboflow wall lines across connected perpendicular corner boxes", () => {
+  assert.match(floorPlanEditorSource, /alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /const perpendicularCornerLineTolerance = 14/);
+  assert.match(floorPlanEditorSource, /const perpendicularCornerTouchTolerance = 24/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedSnappedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /verticalBox\.y1 = horizontalBox\.y1/);
+  assert.match(floorPlanEditorSource, /horizontalBox\.x2 = verticalBox\.x2/);
+});
+
+test("renders raw Roboflow walls as original boxes and merged post-processed walls", () => {
+  assert.match(floorPlanEditorSource, /drawRoboflowDetectionOverlays/);
+  assert.match(floorPlanEditorSource, /const wallOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(floorPlanEditorSource, /const openingOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(floorPlanEditorSource, /drawRawWallOverlayBox/);
+  assert.match(floorPlanEditorSource, /const hasPostProcessedWall = wallOverlayBoxes\.some/);
+  assert.match(floorPlanEditorSource, /if \(hasPostProcessedWall\) drawMergedWallOverlayBoxes\(\)/);
+  assert.match(floorPlanEditorSource, /else wallOverlayBoxes\.forEach\(drawRawWallOverlayBox\)/);
+  assert.match(floorPlanEditorSource, /drawMergedWallOverlayBoxes/);
+  assert.doesNotMatch(floorPlanEditorSource, /bridgeTouchingWallOverlayCorners/);
+  assert.doesNotMatch(floorPlanEditorSource, /cornerBridgeTolerance/);
+  assert.match(floorPlanEditorSource, /const edgeSnapTolerance = 24/);
+  assert.doesNotMatch(floorPlanEditorSource, /const edgeSnapTolerance = 14 \/ viewScale/);
+  assert.match(floorPlanEditorSource, /coveredWallCells/);
+  assert.match(floorPlanEditorSource, /context\.lineCap = "butt"/);
+  assert.doesNotMatch(floorPlanEditorSource, /context\.lineCap = "square"/);
+  assert.match(floorPlanEditorSource, /context\.stroke\(\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(fillWallOverlayBox\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(strokeVisibleWallEdges\)/);
+  assert.match(floorPlanEditorSource, /openingOverlayBoxes\.forEach\(drawOpeningOverlayBox\)/);
+});
+
 test("lets 3D floor plan walls be selected, erased, partially erased, and hidden", () => {
   for (const label of [
     "handle3DWallPointerDown",
@@ -927,7 +1093,7 @@ test("keeps the 2D floor plan canvas scrollable inside its editor shell", () => 
     "floor-plan-canvas-shell",
     "overscroll-behavior",
     "scrollbar-gutter",
-    "if (!(event.ctrlKey || event.metaKey || event.altKey)) return",
+    "worldBeforeZoom",
     "Ctrl/Cmd/Alt 휠로 확대"
   ]) {
     assert.ok(`${floorPlanEditorSource}\n${globalsCssSource}`.includes(label));
@@ -2121,6 +2287,55 @@ test("floor plan editor model creates fixed fixture candidates separately from m
   assert.equal(candidates[0].type, "SINK");
   assert.equal(candidates[0].status, "CANDIDATE");
   assert.equal(candidates[0].movable, false);
+});
+
+test("floor plan editor model recovers full structural bounds from a fragmented outline (real plan regression)", async () => {
+  // 실제 원룸 도면(창문/문 opening으로 외곽선이 조각난 케이스)의 fallback 추출 결과.
+  // 컴포넌트 기반 경계 추정이 국소 조각으로 붕괴해 벽 대부분을 잃던 회귀 케이스.
+  const model = floorPlanModel;
+  const rawLines = [
+    { x1: 541, y1: 233, x2: 635, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 905, y1: 233, x2: 1008, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 286, y1: 754, x2: 460, y2: 754, orientation: "horizontal", thickness: 6, markers: ["wall-band"] },
+    { x1: 668, y1: 767, x2: 1012, y2: 767, orientation: "horizontal", thickness: 12, markers: ["wall-band"] },
+    { x1: 285, y1: 957, x2: 461, y2: 957, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 497, y1: 958, x2: 1008, y2: 958, orientation: "horizontal", thickness: 18, markers: ["wall-band"] },
+    { x1: 269, y1: 253, x2: 269, y2: 737, orientation: "vertical", thickness: 19, markers: ["wall-band"] },
+    { x1: 463, y1: 774, x2: 463, y2: 935, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 495, y1: 774, x2: 495, y2: 935, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 660, y1: 252, x2: 660, y2: 737, orientation: "vertical", thickness: 5, markers: ["wall-band"] },
+    { x1: 1010, y1: 766, x2: 1010, y2: 940, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 1036, y1: 250, x2: 1036, y2: 739, orientation: "vertical", thickness: 15, markers: ["wall-band"] },
+    { x1: 1042, y1: 768, x2: 1042, y2: 950, orientation: "vertical", thickness: 4, markers: ["wall-band"] },
+    { x1: 285, y1: 232, x2: 346, y2: 232, orientation: "horizontal", thickness: 17, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 671, y1: 233, x2: 710, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 269, y1: 773, x2: 269, y2: 823, orientation: "vertical", thickness: 19, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 269, y1: 907, x2: 269, y2: 940, orientation: "vertical", thickness: 19, markers: ["wall-band", "short-wall-recovered"] }
+  ];
+
+  const result = floorPlanModel.filterCommercialWallCandidates(rawLines, { height: 1280, mode: "wall-first", width: 1382 });
+
+  // 경계가 건물 전체를 덮어야 한다 (국소 조각 아님).
+  assert.equal(result.mainPlanBounds.minX <= 270, true);
+  assert.equal(result.mainPlanBounds.maxX >= 1036, true);
+  assert.equal(result.mainPlanBounds.minY <= 233, true);
+  assert.equal(result.mainPlanBounds.maxY >= 957, true);
+
+  // 방 사이 얇은 내벽(x=660, thick=5)과 아래쪽 외벽이 살아남아야 한다.
+  assert.equal(
+    result.walls.some((line) => line.orientation === "vertical" && Math.abs((line.x1 + line.x2) / 2 - 660) <= 4),
+    true
+  );
+  assert.equal(
+    result.walls.some((line) => line.orientation === "horizontal" && Math.abs((line.y1 + line.y2) / 2 - 958) <= 4),
+    true
+  );
+
+  // 벽이 건물 경계 밖으로 생성되면 안 된다 (유령 벽 회귀 방지).
+  for (const line of result.walls) {
+    assert.equal(Math.max(line.y1, line.y2) <= result.mainPlanBounds.maxY + 12, true);
+    assert.equal(Math.max(line.x1, line.x2) <= result.mainPlanBounds.maxX + 12, true);
+  }
 });
 
 test("floor plan editor model scales detected image lines into editor walls", async () => {

@@ -28,6 +28,32 @@ export function removeWall(walls: Wall[], wallId: string): Wall[];
 export function moveWall(wall: Wall, delta: Partial<Point>): Wall;
 export function resizeWall(wall: Wall, endpoint: "start" | "end", point: Point): Wall;
 export function summarizeWalls(walls: Wall[]): WallSummary;
+export function buildWallsFromDetectionBoxes(input: {
+  canvasHeight?: number;
+  canvasWidth?: number;
+  cornerExtendTolerancePx?: number;
+  currentWalls?: Wall[];
+  axisSnapTolerancePx?: number;
+  imageHeight?: number;
+    imageWidth?: number;
+    maxDepthPx?: number;
+    minConfidence?: number;
+    minGeneratedWallCount?: number;
+    openingAxisTolerancePx?: number;
+    openingPaddingPx?: number;
+  openingBoxes?: Array<{ height: number; width: number; x: number; y: number }>;
+  pixelToMmRatio?: number;
+  segmentMergeGapPx?: number;
+  wallBoxes?: Array<{ confidence?: number; height: number; width: number; x: number; y: number }>;
+}): {
+  generatedWallBoxes: Array<{
+    box: { x1: number; x2: number; y1: number; y2: number };
+    confidence: number;
+    type: "WALL";
+  }>;
+  generatedWallCount: number;
+  walls: Wall[];
+};
 export function normalizePlanName(name?: string): string;
 export function projectPointTo3D(
   point: Point,
@@ -55,7 +81,7 @@ export function convertWallsToWheretoputSimulator(
   options?: { height?: number; depth?: number; pixelToMeterRatio?: number }
 ): WheretoputSimulatorWall[];
 export function convertWallsToWheretoputRoom3D(
-  walls: Wall[],
+  walls: Array<Wall & { depthPx?: number }>,
   options?: { height?: number; depth?: number; pixelToMmRatio?: number; stableIds?: boolean }
 ): Array<
   WheretoputSimulatorWall & {

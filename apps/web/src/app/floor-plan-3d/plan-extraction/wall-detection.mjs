@@ -98,7 +98,12 @@ function linesIntersectOrthogonally(lineA, lineB, tolerance = 6) {
   );
 }
 
-function inferStructuralBounds(lines, options = {}) {
+function inferStructuralBounds(allLines, options = {}) {
+  // 구조 경계는 두께 있는 선(실제 벽)만으로 추정한다. 얇은 치수선을 포함하면
+  // 경계가 치수선까지 부풀어서 "경계 바깥 치수선" 필터가 무력화된다.
+  const structuralMinThickness = options.structuralMinThickness ?? 3;
+  const thickLines = allLines.filter((line) => Number(line.thickness ?? 6) >= structuralMinThickness);
+  const lines = thickLines.length >= 3 ? thickLines : allLines;
   const adjacency = new Map();
   lines.forEach((_line, index) => adjacency.set(index, new Set()));
 
@@ -164,14 +169,24 @@ function inferStructuralBounds(lines, options = {}) {
     : lines;
   if (!sourceLines.length) return null;
 
-  const bounds = sourceLines.map(lineBounds);
-
-  return {
-    maxX: Math.max(...bounds.map((bound) => bound.maxX)),
-    maxY: Math.max(...bounds.map((bound) => bound.maxY)),
-    minX: Math.min(...bounds.map((bound) => bound.minX)),
-    minY: Math.min(...bounds.map((bound) => bound.minY))
+  const bboxOf = (boxLines) => {
+    const boxBounds = boxLines.map(lineBounds);
+    return {
+      maxX: Math.max(...boxBounds.map((bound) => bound.maxX)),
+      maxY: Math.max(...boxBounds.map((bound) => bound.maxY)),
+      minX: Math.min(...boxBounds.map((bound) => bound.minX)),
+      minY: Math.min(...boxBounds.map((bound) => bound.minY))
+    };
   };
+  const componentBounds = bboxOf(sourceLines);
+  const thickBounds = bboxOf(lines);
+  const areaOf = (box) => Math.max(1, box.maxX - box.minX) * Math.max(1, box.maxY - box.minY);
+
+  // 창문/문 opening으로 외곽선이 조각나면 컴포넌트끼리 서로 닿지 않아 경계가 국소 조각으로
+  // 붕괴한다. 컴포넌트 경계가 두꺼운 선 전체 범위 대비 지나치게 작으면 전체 bbox를 신뢰한다.
+  if (areaOf(componentBounds) < areaOf(thickBounds) * 0.5) return thickBounds;
+
+  return componentBounds;
 }
 
 function overlapLength(aStart, aEnd, bStart, bEnd) {
@@ -535,7 +550,9 @@ function isFurnitureFillBand(line, typicalThickness, structuralBounds, options =
 
 function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
   const thickness = Number(line.thickness ?? 1);
-  if (!Number.isFinite(thickness) || thickness < Math.max(3, threshold * 0.68)) return false;
+  // 내부 칸막이벽은 외벽(15~19px)보다 훨씬 얇게 그려지므로, 외벽 두께 기반
+  // 임계값을 그대로 쓰면 진짜 내벽이 잘린다. 게이트 상한을 5px로 둔다.
+  if (!Number.isFinite(thickness) || thickness < Math.max(3, Math.min(threshold * 0.68, 5))) return false;
 
   const minLength = Math.max(90, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.11));
   if (lineLength(line) < minLength) {

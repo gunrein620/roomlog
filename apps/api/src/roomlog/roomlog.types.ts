@@ -1213,11 +1213,18 @@ export type FloorPlanOpeningCandidate = {
   boundingBox: FloorPlanOpeningCandidateBox;
 };
 
+export type FloorPlanDetectedWallBox = {
+  id: string;
+  confidence: number;
+  boundingBox: FloorPlanOpeningCandidateBox;
+};
+
 export type FloorPlanOpeningDetectionResult = {
   status: "ready" | "config-required" | "failed";
   summary: string;
   model: string;
   openings: FloorPlanOpeningCandidate[];
+  walls: FloorPlanDetectedWallBox[];
   imageWidth?: number;
   imageHeight?: number;
   warnings: string[];

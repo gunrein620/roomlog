@@ -721,7 +721,27 @@ type GeneratedIntakeTurn = {
 
 const ROOM_WALL_HEIGHT_M = 2.5;
 const ROOM_WALL_DEPTH_M = 0.15;
+const DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE = 50;
+const DEFAULT_ROBOFLOW_DETECTION_OVERLAP = 30;
+const DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE = 0.5;
+const ROBOFLOW_BOX_IOU_DUPLICATE_THRESHOLD = 0.5;
+const ROBOFLOW_BOX_CONTAINMENT_DUPLICATE_THRESHOLD = 0.75;
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
+
+function envNumber(name: string, fallback: number, min: number, max: number) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+
+  return Math.max(min, Math.min(max, value));
+}
+
+function envConfidenceRatio(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  const ratio = value > 1 ? value / 100 : value;
+
+  return Math.max(0, Math.min(1, ratio));
+}
 
 function priorityDueAt(priority: number) {
   const due = new Date();
@@ -3200,7 +3220,7 @@ export class RoomlogService {
   }
 
   async detectFloorPlanOpenings(input: FloorPlanOpeningDetectionInput, ownerId?: string): Promise<FloorPlanOpeningDetectionResult> {
-    const model = process.env.ROBOFLOW_FLOOR_PLAN_MODEL || "cubicasa5k-2-qpmsa/1";
+    const model = process.env.ROBOFLOW_FLOOR_PLAN_MODEL || "cubicasa5k-2-qpmsa/6";
 
     if (!process.env.ROBOFLOW_API_KEY) {
       return {
@@ -3208,6 +3228,7 @@ export class RoomlogService {
         openings: [],
         status: "config-required",
         summary: "ROBOFLOW_API_KEY가 설정되지 않아 문/창문 탐지를 실행하지 않았습니다.",
+        walls: [],
         warnings: []
       };
     }
@@ -3218,7 +3239,14 @@ export class RoomlogService {
     const base64 = imageDataUrl.slice(imageDataUrl.indexOf(",") + 1);
 
     try {
-      const endpoint = `https://detect.roboflow.com/${model}?api_key=${process.env.ROBOFLOW_API_KEY}&confidence=15`;
+      const detectionConfidence = envNumber(
+        "ROBOFLOW_DETECTION_CONFIDENCE",
+        DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE,
+        1,
+        100
+      );
+      const detectionOverlap = envNumber("ROBOFLOW_DETECTION_OVERLAP", DEFAULT_ROBOFLOW_DETECTION_OVERLAP, 1, 100);
+      const endpoint = `https://detect.roboflow.com/${model}?api_key=${process.env.ROBOFLOW_API_KEY}&confidence=${detectionConfidence}&overlap=${detectionOverlap}`;
       const response = await fetch(endpoint, {
         body: base64,
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -3233,6 +3261,7 @@ export class RoomlogService {
       const imageWidth = Math.max(1, Number(payload.image?.width) || 1);
       const imageHeight = Math.max(1, Number(payload.image?.height) || 1);
       const openings = this.mapRoboflowPredictionsToOpenings(payload.predictions ?? [], imageWidth, imageHeight, model);
+      const walls = this.mapRoboflowPredictionsToWallBoxes(payload.predictions ?? [], imageWidth, imageHeight);
 
       return {
         imageHeight,
@@ -3240,7 +3269,8 @@ export class RoomlogService {
         model,
         openings,
         status: "ready",
-        summary: `문 ${openings.filter((item) => item.type === "DOOR").length}개, 창문 ${openings.filter((item) => item.type === "WINDOW").length}개 후보를 탐지했습니다.`,
+        summary: `벽 ${walls.length}개, 문 ${openings.filter((item) => item.type === "DOOR").length}개, 창문 ${openings.filter((item) => item.type === "WINDOW").length}개 후보를 탐지했습니다.`,
+        walls,
         warnings: openings.some((item) => item.confidence < 0.4)
           ? ["신뢰도 40% 미만 후보가 포함되어 있습니다. 후보 검수 후 확정하세요."]
           : []
@@ -3251,9 +3281,48 @@ export class RoomlogService {
         openings: [],
         status: "failed",
         summary: "문/창문 탐지에 실패했습니다. 후보 없이 진행하거나 다시 시도하세요.",
+        walls: [],
         warnings: []
       };
     }
+  }
+
+  private mapRoboflowPredictionsToWallBoxes(
+    predictions: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>,
+    imageWidth: number,
+    imageHeight: number
+  ) {
+    const minConfidence = envConfidenceRatio("ROBOFLOW_WALL_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE);
+    const mapped = predictions
+      .filter((prediction) => prediction.class === "wall" && (Number(prediction.confidence) || 0) >= minConfidence)
+      .flatMap((prediction, index) => {
+        const centerX = Number(prediction.x);
+        const centerY = Number(prediction.y);
+        const width = Number(prediction.width);
+        const height = Number(prediction.height);
+        if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(width > 0) || !(height > 0)) return [];
+
+        return [
+          {
+            boundingBox: {
+              height: Math.round((height / imageHeight) * 1000),
+              width: Math.round((width / imageWidth) * 1000),
+              x: Math.round(((centerX - width / 2) / imageWidth) * 1000),
+              y: Math.round(((centerY - height / 2) / imageHeight) * 1000)
+            },
+            confidence: Number(prediction.confidence) || 0,
+            id: `wall-box-${index + 1}`
+          }
+        ];
+      });
+    const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
+    const kept: typeof sorted = [];
+    for (const candidate of sorted) {
+      const overlapsKept = kept.some((existing) => this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox));
+      if (!overlapsKept) kept.push(candidate);
+    }
+
+    return kept.map((candidate, index) => ({ ...candidate, id: `wall-box-${index + 1}` }));
   }
 
   private mapRoboflowPredictionsToOpenings(
@@ -3263,7 +3332,10 @@ export class RoomlogService {
     model: string
   ): FloorPlanOpeningCandidate[] {
     // 클래스별 신뢰도 하한: 문은 실도면에서 15~30%로 낮게 잡혀 후보로는 살리고, 창문은 30% 미만이면 노이즈가 많다.
-    const minConfidenceByType: Record<"DOOR" | "WINDOW", number> = { DOOR: 0.15, WINDOW: 0.3 };
+    const minConfidenceByType: Record<"DOOR" | "WINDOW", number> = {
+      DOOR: envConfidenceRatio("ROBOFLOW_DOOR_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE),
+      WINDOW: envConfidenceRatio("ROBOFLOW_WINDOW_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE)
+    };
     const mapped = predictions.flatMap((prediction) => {
       const type: "DOOR" | "WINDOW" | null =
         prediction.class === "door" ? "DOOR" : prediction.class === "window" ? "WINDOW" : null;
@@ -3295,23 +3367,33 @@ export class RoomlogService {
     const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
     const kept: typeof sorted = [];
     for (const candidate of sorted) {
-      const overlapsKept = kept.some((existing) => {
-        const ax2 = existing.boundingBox.x + existing.boundingBox.width;
-        const ay2 = existing.boundingBox.y + existing.boundingBox.height;
-        const bx2 = candidate.boundingBox.x + candidate.boundingBox.width;
-        const by2 = candidate.boundingBox.y + candidate.boundingBox.height;
-        const interW = Math.max(0, Math.min(ax2, bx2) - Math.max(existing.boundingBox.x, candidate.boundingBox.x));
-        const interH = Math.max(0, Math.min(ay2, by2) - Math.max(existing.boundingBox.y, candidate.boundingBox.y));
-        const inter = interW * interH;
-        const areaA = existing.boundingBox.width * existing.boundingBox.height;
-        const areaB = candidate.boundingBox.width * candidate.boundingBox.height;
-        const union = Math.max(1, areaA + areaB - inter);
-        return inter / union > 0.5;
-      });
+      const overlapsKept = kept.some((existing) => this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox));
       if (!overlapsKept) kept.push(candidate);
     }
 
     return kept.map((candidate, index) => ({ ...candidate, id: `opening-${index + 1}` }));
+  }
+
+  private isDuplicateRoboflowBox(
+    existing: { height: number; width: number; x: number; y: number },
+    candidate: { height: number; width: number; x: number; y: number }
+  ) {
+    const ax2 = existing.x + existing.width;
+    const ay2 = existing.y + existing.height;
+    const bx2 = candidate.x + candidate.width;
+    const by2 = candidate.y + candidate.height;
+    const interW = Math.max(0, Math.min(ax2, bx2) - Math.max(existing.x, candidate.x));
+    const interH = Math.max(0, Math.min(ay2, by2) - Math.max(existing.y, candidate.y));
+    const inter = interW * interH;
+    const areaA = Math.max(1, existing.width * existing.height);
+    const areaB = Math.max(1, candidate.width * candidate.height);
+    const union = Math.max(1, areaA + areaB - inter);
+    const smallerArea = Math.max(1, Math.min(areaA, areaB));
+
+    return (
+      inter / union > ROBOFLOW_BOX_IOU_DUPLICATE_THRESHOLD ||
+      inter / smallerArea > ROBOFLOW_BOX_CONTAINMENT_DUPLICATE_THRESHOLD
+    );
   }
 
   private floorPlanAttachmentDataUrl(attachmentId: string, ownerId?: string) {
