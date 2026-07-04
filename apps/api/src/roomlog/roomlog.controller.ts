@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Headers,
@@ -412,6 +413,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.addTenantMessagingThreadMessage(user.id, threadId, body);
+  }
+
+  @Delete("tenant/messaging/threads/:threadId")
+  deleteTenantMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.deleteTenantMessagingThread(user.id, threadId);
   }
 
   @Get("tenant/messaging/announcements")
@@ -860,6 +871,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.addManagerMessagingThreadMessage(user.id, threadId, body);
+  }
+
+  @Delete("manager/messaging/threads/:threadId")
+  deleteManagerMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.deleteManagerMessagingThread(user.id, threadId);
   }
 
   @Get("manager/messaging/announcement-drafts")

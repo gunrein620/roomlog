@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import type { Message, Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
 import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
-import { addManagerThreadMessage, getManagerThread } from "@/lib/messaging-manager-api";
+import { addManagerThreadMessage, deleteManagerThread, getManagerThread } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { ApiError } from "@/lib/server-api";
 import {
@@ -38,6 +38,30 @@ async function sendManagerMessage(formData: FormData) {
   redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
 }
 
+async function deleteManagerThreadAction(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  try {
+    await deleteManagerThread(threadId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+}
+
 async function getRequiredManagerThread(id: string): Promise<Thread> {
   try {
     return await getManagerThread(id);
@@ -68,7 +92,21 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       <ScreenHeader
         eyebrow="M-MSG-04"
         title={`${thread.unitId}호 채팅 스레드`}
-        actions={<LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>}
+        actions={
+          <>
+            <LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>
+            <form action={deleteManagerThreadAction}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Button
+                type="submit"
+                variant="ghost"
+                aria-label={`${thread.unitId}호 ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+              >
+                삭제
+              </Button>
+            </form>
+          </>
+        }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: "var(--space-lg)", alignItems: "start" }}>

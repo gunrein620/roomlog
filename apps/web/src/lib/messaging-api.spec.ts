@@ -11,6 +11,10 @@ describe("messaging api path contracts", () => {
       tenantMessagingPaths.threadMessages("mth_1"),
       "/tenant/messaging/threads/mth_1/messages"
     );
+    assert.equal(
+      tenantMessagingPaths.deleteThread("mth_1"),
+      "/tenant/messaging/threads/mth_1"
+    );
     assert.equal(tenantMessagingPaths.announcements(), "/tenant/messaging/announcements");
     assert.equal(
       tenantMessagingPaths.announcement("ann_1"),
@@ -31,6 +35,10 @@ describe("messaging api path contracts", () => {
     assert.equal(
       managerMessagingPaths.threadMessages("mth_1"),
       "/manager/messaging/threads/mth_1/messages"
+    );
+    assert.equal(
+      managerMessagingPaths.deleteThread("mth_1"),
+      "/manager/messaging/threads/mth_1"
     );
     assert.equal(
       managerMessagingPaths.announcementDrafts(),

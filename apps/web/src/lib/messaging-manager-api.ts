@@ -207,6 +207,7 @@ export const managerMessagingPaths = {
       ? `/manager/messaging/threads?context=${encodeURIComponent(context)}`
       : "/manager/messaging/threads",
   thread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
+  deleteThread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
   threadMessages: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}/messages`,
   announcementDrafts: () => "/manager/messaging/announcement-drafts",
   announcementDraft: (id: string) =>
@@ -251,6 +252,12 @@ export function addManagerThreadMessage(
   return serverFetch<Thread>(managerMessagingPaths.threadMessages(id), {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteManagerThread(id: string): Promise<{ threadId: string; deleted: true }> {
+  return serverFetch(managerMessagingPaths.deleteThread(id), {
+    method: "DELETE",
   });
 }
 

@@ -4,6 +4,7 @@ import type { Announcement, AnnouncementCategory, AnnouncementScope } from "@roo
 import { Badge, Button, Card } from "@roomlog/ui";
 import {
   confirmAnnouncement,
+  createTenantThread,
   DEMO_ANNOUNCEMENT_ID,
   getAnnouncement,
   markAnnouncementRead,
@@ -63,6 +64,36 @@ async function updateAnnouncementState(formData: FormData) {
       announcementId || DEMO_ANNOUNCEMENT_ID,
     )}`,
   );
+}
+
+async function createAnnouncementInquiryAction(formData: FormData) {
+  "use server";
+
+  const announcementId = String(formData.get("announcementId") ?? "");
+  const announcementTitle = String(formData.get("announcementTitle") ?? "").trim();
+  const contextLabel = announcementTitle ? `공지 문의 · ${announcementTitle}` : "공지 문의";
+
+  if (!announcementId) {
+    redirect(`${MESSAGING_ROUTES["T-MSG-00"]}?tab=announcements`);
+  }
+
+  try {
+    const thread = await createTenantThread({
+      context: "announcement",
+      contextRef: announcementId,
+      contextLabel,
+      body: announcementTitle
+        ? `[${announcementTitle}] 공지에 대해 문의합니다.`
+        : "이 공지에 대해 문의합니다.",
+    });
+
+    redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(thread.id)}`);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    throw error;
+  }
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
@@ -186,26 +217,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             {isUrgent ? "확인" : "읽음"}
           </Button>
         </form>
-        <Link
-          href={MESSAGING_ROUTES["T-MSG-00"]}
-          style={{
-            display: "flex",
-            width: "100%",
-            boxSizing: "border-box",
-            height: "var(--touch-target)",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "1.5px solid var(--primary)",
-            background: "transparent",
-            color: "var(--primary)",
-            borderRadius: "var(--radius-btn)",
-            fontSize: "var(--fs-body)",
-            fontWeight: 700,
-            textDecoration: "none",
-          }}
-        >
-          이 공지 문의
-        </Link>
+        <form action={createAnnouncementInquiryAction}>
+          <input type="hidden" name="announcementId" value={announcement.id} />
+          <input type="hidden" name="announcementTitle" value={announcement.title} />
+          <Button type="submit" variant="secondary" fullWidth>
+            이 공지 문의
+          </Button>
+        </form>
       </footer>
     </>
   );

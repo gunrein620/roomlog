@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import type { Message, Thread, ThreadContext } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
 import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
-import { addTenantThreadMessage, getThread } from "@/lib/messaging-api";
+import { addTenantThreadMessage, deleteTenantThread, getThread } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { ApiError } from "@/lib/server-api";
 
@@ -44,6 +44,30 @@ async function sendTenantMessage(formData: FormData) {
   }
 
   redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function deleteTenantThreadAction(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MESSAGING_ROUTES["T-MSG-00"]);
+  }
+
+  try {
+    await deleteTenantThread(threadId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MESSAGING_ROUTES["T-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(MESSAGING_ROUTES["T-MSG-00"]);
 }
 
 async function getRequiredThread(id: string): Promise<Thread> {
@@ -99,7 +123,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             </div>
           </div>
         </div>
-        <Badge>원문 보기</Badge>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <Badge>원문 보기</Badge>
+          <form action={deleteTenantThreadAction}>
+            <input type="hidden" name="threadId" value={thread.id} />
+            <Button
+              type="submit"
+              variant="ghost"
+              aria-label={`${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+              style={{ height: 36, padding: "0 12px" }}
+            >
+              삭제
+            </Button>
+          </form>
+        </div>
       </header>
 
       <div

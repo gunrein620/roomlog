@@ -36,6 +36,7 @@ const messageAutoRefreshPath = new URL("./src/app/_components/MessageAutoRefresh
 const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
   ? readFileSync(messageAutoRefreshPath, "utf8")
   : "";
+const managerMessagingListSource = readFileSync(new URL("./src/app/manager/messaging/00/page.tsx", import.meta.url), "utf8");
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
 const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
@@ -152,20 +153,35 @@ test("wires moveout screens to backend mutations instead of static links", () =>
 test("opens tenant message compose only from real API thread ids", () => {
   assert.doesNotMatch(tenantMessagingThreadSource, /DEMO_THREAD_ID/);
   assert.doesNotMatch(tenantMessagingApiSource, /getThread\(id: string = DEMO_THREAD_ID/);
+  assert.match(tenantMessagingApiSource, /deleteTenantThread/);
   assert.match(tenantMessagingThreadSource, /if \(!id\)/);
   assert.match(tenantMessagingThreadSource, /redirect\(MESSAGING_ROUTES\["T-MSG-00"\]\)/);
   assert.match(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][\s\S]*\?id=\$\{thread\.id\}/);
+  assert.match(tenantMessagingListSource, /deleteTenantThreadAction/);
+  assert.match(tenantMessagingListSource, /action=\{deleteTenantThreadAction\}/);
+  assert.match(tenantMessagingThreadSource, /deleteTenantThreadAction/);
+  assert.match(tenantMessagingThreadSource, /action=\{deleteTenantThreadAction\}/);
+  assert.match(tenantMessagingAnnouncementSource, /createAnnouncementInquiryAction/);
+  assert.match(tenantMessagingAnnouncementSource, /createTenantThread/);
+  assert.match(tenantMessagingAnnouncementSource, /action=\{createAnnouncementInquiryAction\}/);
+  assert.match(tenantMessagingAnnouncementSource, /context:\s*"announcement"/);
+  assert.match(tenantMessagingAnnouncementSource, /redirect\(`\$\{MESSAGING_ROUTES\["T-MSG-01"\]\}\?id=\$\{encodeURIComponent\(thread\.id\)\}`\)/);
   assert.doesNotMatch(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][^?]*새 문의 시작/);
-  assert.doesNotMatch(tenantMessagingAnnouncementSource, /MESSAGING_ROUTES\["T-MSG-01"\][\s\S]*announcementId/);
+  assert.doesNotMatch(tenantMessagingAnnouncementSource, /MESSAGING_ROUTES\["T-MSG-01"\][^\n]*announcementId/);
 });
 
 test("opens manager message compose only from real API thread ids", () => {
   assert.doesNotMatch(managerMessagingThreadSource, /DEMO_MANAGER_THREAD_ID/);
   assert.doesNotMatch(managerMessagingApiSource, /getManagerThread\(id: string = DEMO_MANAGER_THREAD_ID/);
   assert.doesNotMatch(managerMessagingApiSource, /thread\.id === id \|\| thread\.unitId === id/);
+  assert.match(managerMessagingApiSource, /deleteManagerThread/);
   assert.match(managerMessagingThreadSource, /type SearchParams = Promise<\{ id\?: string \}>/);
   assert.match(managerMessagingThreadSource, /if \(!id\)/);
   assert.match(managerMessagingThreadSource, /redirect\(MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\)/);
+  assert.match(managerMessagingListSource, /deleteManagerThreadAction/);
+  assert.match(managerMessagingListSource, /action=\{deleteManagerThreadAction\}/);
+  assert.match(managerMessagingThreadSource, /deleteManagerThreadAction/);
+  assert.match(managerMessagingThreadSource, /action=\{deleteManagerThreadAction\}/);
   assert.doesNotMatch(managerContractPageSource, /th_mgr_302/);
   assert.doesNotMatch(managerContractApiSource, /th_mgr_302/);
   assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
