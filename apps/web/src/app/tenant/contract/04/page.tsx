@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CONTRACT_ROUTES } from "@/lib/contract-nav";
-import { getPrivacy, DEMO_CONTRACT_ID, requestContractDeletion } from "@/lib/contract-api";
+import { getCurrentContractId, getPrivacy, requestContractDeletion } from "@/lib/contract-api";
 import { PrivacyPanel } from "./PrivacyPanel";
 
 // T-DOC-04 · 개인정보·마스킹·보관·삭제
@@ -10,15 +10,27 @@ import { PrivacyPanel } from "./PrivacyPanel";
 
 export const dynamic = "force-dynamic";
 
-async function requestDeletionAction(_formData: FormData) {
+async function requestDeletionAction(formData: FormData) {
   "use server";
 
-  await requestContractDeletion(DEMO_CONTRACT_ID);
+  const contractId = String(formData.get("contractId") ?? "");
+  await requestContractDeletion(contractId);
   redirect(CONTRACT_ROUTES["T-DOC-04"]);
 }
 
 export default async function Page() {
-  const privacy = await getPrivacy(DEMO_CONTRACT_ID);
+  const contractId = await getCurrentContractId();
+  if (!contractId) {
+    return (
+      <div style={{ padding: 16, display: "grid", gap: 12 }}>
+        <div style={{ fontWeight: 800 }}>등록된 계약서가 없습니다.</div>
+        <Link href={CONTRACT_ROUTES["T-DOC-01"]} style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>
+          계약서 등록하기
+        </Link>
+      </div>
+    );
+  }
+  const privacy = await getPrivacy(contractId);
 
   return (
     <>
@@ -42,7 +54,7 @@ export default async function Page() {
         <div style={{ width: 34 }} />
       </header>
 
-      <PrivacyPanel privacy={privacy} requestDeletionAction={requestDeletionAction} />
+      <PrivacyPanel privacy={privacy} contractId={contractId} requestDeletionAction={requestDeletionAction} />
     </>
   );
 }

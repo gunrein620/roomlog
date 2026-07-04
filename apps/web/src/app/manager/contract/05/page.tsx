@@ -1,6 +1,10 @@
 import type { DeletionState } from "@roomlog/types";
 import { redirect } from "next/navigation";
-import { decideManagerContractDeletion, getManagerContractDetail } from "@/lib/contract-manager-api";
+import {
+  decideManagerContractDeletion,
+  getManagerContractDetail,
+  updateManagerContractPrivacy,
+} from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
   BackLink,
@@ -25,6 +29,15 @@ async function decideDeletionAction(formData: FormData) {
   const state = String(formData.get("state") ?? "") as Extract<DeletionState, "completed" | "limited" | "denied">;
   const retentionNote = String(formData.get("retentionNote") ?? "");
   await decideManagerContractDeletion(contractId, state, retentionNote);
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-05"]);
+}
+
+async function saveRetentionNoteAction(formData: FormData) {
+  "use server";
+
+  const contractId = String(formData.get("contractId") ?? "");
+  const retentionNote = String(formData.get("retentionNote") ?? "");
+  await updateManagerContractPrivacy(contractId, { retentionNote });
   redirect(MANAGER_CONTRACT_ROUTES["M-DOC-05"]);
 }
 
@@ -95,7 +108,11 @@ export default async function Page() {
               {detail.privacy.retention.map((item) => (
                 <MetaRow key={item.label} label={item.label} value={`${item.until} · ${item.reason}`} />
               ))}
-              <StaticButton variant="secondary">보관 사유 기록</StaticButton>
+              <form action={saveRetentionNoteAction} style={{ display: "grid", gap: "var(--space-sm)" }}>
+                <input type="hidden" name="contractId" value={detail.row.contract.id} />
+                <input name="retentionNote" placeholder="추가 보관 사유" style={fieldStyle} required />
+                <StaticButton type="submit" variant="secondary">보관 사유 기록</StaticButton>
+              </form>
             </Card>
           </Section>
 
@@ -133,3 +150,12 @@ export default async function Page() {
     </ContractShell>
   );
 }
+
+const fieldStyle = {
+  minHeight: 46,
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  padding: "0 var(--space-md)",
+  font: "inherit",
+  background: "var(--surface-container-lowest)",
+} as const;

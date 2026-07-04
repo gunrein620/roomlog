@@ -1,5 +1,10 @@
 import { Input } from "@roomlog/ui";
-import { getManagerContractDetail } from "@/lib/contract-manager-api";
+import { redirect } from "next/navigation";
+import {
+  createManagerContractInvite,
+  getManagerContractDetail,
+  updateManagerContractInvite,
+} from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
   BackLink,
@@ -15,8 +20,33 @@ import {
 
 export const dynamic = "force-dynamic";
 
+async function createInviteAction(formData: FormData) {
+  "use server";
+
+  const contractId = String(formData.get("contractId") ?? "");
+  await createManagerContractInvite(contractId, {
+    tenantName: String(formData.get("tenantName") ?? ""),
+    email: String(formData.get("email") ?? "") || undefined,
+    phone: String(formData.get("phone") ?? "") || undefined,
+  });
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-04"]);
+}
+
+async function updateInviteAction(formData: FormData) {
+  "use server";
+
+  const inviteId = String(formData.get("inviteId") ?? "");
+  const state = String(formData.get("state") ?? "") as "waiting" | "connected" | "disputed";
+  await updateManagerContractInvite(inviteId, {
+    state,
+    note: String(formData.get("note") ?? "") || undefined,
+  });
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-04"]);
+}
+
 export default async function Page() {
   const detail = await getManagerContractDetail();
+  const contract = detail.row.contract;
 
   return (
     <ContractShell id="M-DOC-04" title="임차인 초대·호실 연결">
@@ -35,8 +65,13 @@ export default async function Page() {
 
         <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: "var(--space-lg)", alignItems: "start" }}>
           <Section title="초대 링크/QR 생성">
+            <form action={createInviteAction}>
             <Card style={{ display: "grid", gap: "var(--space-md)" }}>
-              <Input aria-label="호실" value="302" readOnly />
+              <input type="hidden" name="contractId" value={contract.id} />
+              <Input aria-label="호실" value={contract.unitId} readOnly />
+              <input name="tenantName" aria-label="임차인 이름" placeholder="임차인 이름" required style={fieldStyle} defaultValue={detail.row.tenantName !== "미연결 임차인" ? detail.row.tenantName : ""} />
+              <input name="email" aria-label="이메일" placeholder="이메일" style={fieldStyle} />
+              <input name="phone" aria-label="연락처" placeholder="연락처" style={fieldStyle} />
               <Input aria-label="초대 링크" value={detail.inviteLinks[0]?.link ?? ""} readOnly />
               <div
                 style={{
@@ -52,8 +87,9 @@ export default async function Page() {
               >
                 QR
               </div>
-              <StaticButton>초대 링크/QR 생성</StaticButton>
+              <StaticButton type="submit">초대 링크/QR 생성</StaticButton>
             </Card>
+            </form>
           </Section>
 
           <Section title="연결 대기·완료 목록">
@@ -72,7 +108,20 @@ export default async function Page() {
                       {invite.audit}
                     </div>
                   </div>
-                  <StaticButton variant="secondary">{invite.state === "connected" ? "해제" : "연결 저장"}</StaticButton>
+                  <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <form action={updateInviteAction}>
+                      <input type="hidden" name="inviteId" value={invite.id} />
+                      <input type="hidden" name="state" value={invite.state === "connected" ? "waiting" : "connected"} />
+                      <input type="hidden" name="note" value={invite.state === "connected" ? "관리자 연결 해제" : "관리자 확인 후 연결 완료"} />
+                      <StaticButton type="submit" variant="secondary">{invite.state === "connected" ? "해제" : "연결 저장"}</StaticButton>
+                    </form>
+                    <form action={updateInviteAction}>
+                      <input type="hidden" name="inviteId" value={invite.id} />
+                      <input type="hidden" name="state" value="disputed" />
+                      <input type="hidden" name="note" value="임차인 이의 또는 정보 불일치로 보류" />
+                      <StaticButton type="submit" variant="secondary">보류</StaticButton>
+                    </form>
+                  </div>
                 </Card>
               ))}
             </div>
@@ -86,7 +135,16 @@ export default async function Page() {
               <MetaRow label="임차인 알림" value="연결 사실 고지, 이의 시 보류" />
               <MetaRow label="감사로그" value="연결·해제·이의 사유 모두 기록" />
             </div>
-            <StaticButton>기존 기록 연결</StaticButton>
+            {detail.inviteLinks[0] ? (
+              <form action={updateInviteAction}>
+                <input type="hidden" name="inviteId" value={detail.inviteLinks[0].id} />
+                <input type="hidden" name="state" value="connected" />
+                <input type="hidden" name="note" value="기존 임차인 등록 기록 대조 후 연결" />
+                <StaticButton type="submit">기존 기록 연결</StaticButton>
+              </form>
+            ) : (
+              <StaticButton disabled>초대 생성 후 연결</StaticButton>
+            )}
           </Card>
         </Section>
 
@@ -105,4 +163,13 @@ const stateLabel = {
   waiting: "연결 대기",
   connected: "연결 완료",
   disputed: "이의 보류",
+} as const;
+
+const fieldStyle = {
+  minHeight: 46,
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  padding: "0 var(--space-md)",
+  font: "inherit",
+  background: "var(--surface-container-lowest)",
 } as const;

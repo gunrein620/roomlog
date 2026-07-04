@@ -479,6 +479,7 @@ model Contract {
   monthlyRent          Int?
   maintenanceFee       Int?
   paymentDay           Int?
+  optionInventory      String[]              @default([])
   startDate            DateTime?
   endDate              DateTime?
   extractionId         String?               @unique
