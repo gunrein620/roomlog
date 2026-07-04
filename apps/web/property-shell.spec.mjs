@@ -118,6 +118,10 @@ test("keeps tenant, manager, and vendor entry routes available", () => {
 });
 
 test("wires moveout screens to backend mutations instead of static links", () => {
+  const tenantMoveoutHomeSource = readFileSync(
+    new URL("./src/app/tenant/moveout/00/page.tsx", import.meta.url),
+    "utf8",
+  );
   const tenantSettlementSource = readFileSync(
     new URL("./src/app/tenant/moveout/03/page.tsx", import.meta.url),
     "utf8",
@@ -139,6 +143,13 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     "utf8",
   );
 
+  assert.match(tenantMoveoutHomeSource, /listMoveouts/);
+  assert.match(tenantMoveoutHomeSource, /getChecklist/);
+  assert.match(tenantMoveoutHomeSource, /getDisputes/);
+  assert.match(tenantMoveoutHomeSource, /completionProgress/);
+  assert.match(tenantMoveoutHomeSource, /notificationItems/);
+  assert.doesNotMatch(tenantMoveoutHomeSource, /DEMO_MOVEOUT_ID/);
+  assert.doesNotMatch(tenantMoveoutHomeSource, /<span[\s\S]*>\s*1\s*<\/span>/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
   assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
   assert.match(tenantSettlementSource, /attachmentUrlsFrom/);

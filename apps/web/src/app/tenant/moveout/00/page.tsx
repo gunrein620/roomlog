@@ -1,6 +1,7 @@
 import Link from "next/link";
+import type { Dispute, MoveoutChecklistItem, MoveoutSummary, SettlementEstimate } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
-import { DEMO_MOVEOUT_ID, getMoveout, getSettlement } from "@/lib/moveout-api";
+import { getChecklist, getDisputes, getSettlement, listMoveouts } from "@/lib/moveout-api";
 import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +41,130 @@ function statusLabel(progress: number) {
   return "시작 전";
 }
 
+function selectActiveMoveout(moveouts: MoveoutSummary[]) {
+  return [...moveouts].sort((a, b) => activeRank(a) - activeRank(b))[0];
+}
+
+function activeRank(moveout: MoveoutSummary) {
+  if (moveout.contractConfirmed && typeof moveout.daysRemaining === "number") {
+    return moveout.daysRemaining;
+  }
+
+  return Number.MAX_SAFE_INTEGER - Date.parse(moveout.updatedAt);
+}
+
+function checklistProgress(checklist: MoveoutChecklistItem[]) {
+  if (checklist.length === 0) {
+    return 0;
+  }
+
+  const readyItems = checklist.filter((item) => item.present && item.condition !== "damage_check").length;
+  return readyItems / checklist.length;
+}
+
+function disputeProgress(disputes: Dispute[]) {
+  if (disputes.length === 0) {
+    return 1;
+  }
+
+  const closedCount = disputes.filter((dispute) => dispute.status === "resolved" || dispute.status === "confirmed").length;
+  return closedCount / disputes.length;
+}
+
+function settlementProgress(moveout: MoveoutSummary, settlement: SettlementEstimate) {
+  if (!moveout.contractConfirmed) {
+    return 0;
+  }
+
+  if (settlement.status === "review_done") {
+    return 1;
+  }
+
+  if (settlement.status === "reviewing" || settlement.status === "re_review") {
+    return 0.7;
+  }
+
+  return settlement.deductions.some((deduction) => deduction.needsConfirmation) ? 0.35 : 0.5;
+}
+
+function completionProgress(
+  moveout: MoveoutSummary,
+  checklist: MoveoutChecklistItem[],
+  disputes: Dispute[],
+  settlement: SettlementEstimate,
+) {
+  const progress =
+    checklistProgress(checklist) * 0.5 +
+    settlementProgress(moveout, settlement) * 0.3 +
+    disputeProgress(disputes) * 0.2;
+
+  return Math.min(1, Math.max(0, progress));
+}
+
+function notificationItems(
+  moveout: MoveoutSummary,
+  settlement: SettlementEstimate,
+  disputes: Dispute[],
+) {
+  const items: { label: string; href: string }[] = [];
+  const needsConfirmation = settlement.deductions.filter((deduction) => deduction.needsConfirmation).length;
+  const answeredDisputes = disputes.filter((dispute) => dispute.status === "answered").length;
+  const breachedDisputes = disputes.filter((dispute) => dispute.slaBreached && dispute.status !== "resolved").length;
+
+  if (!moveout.contractConfirmed) {
+    items.push({ label: "계약 정보 확인 필요", href: MOVEOUT_ROUTES["T-OUT-03"] });
+  }
+
+  if (needsConfirmation > 0) {
+    items.push({ label: `차감 후보 확인 ${needsConfirmation}건`, href: MOVEOUT_ROUTES["T-OUT-03"] });
+  }
+
+  if (answeredDisputes > 0) {
+    items.push({ label: `관리자 응답 ${answeredDisputes}건`, href: MOVEOUT_ROUTES["T-OUT-04"] });
+  }
+
+  if (breachedDisputes > 0) {
+    items.push({ label: `SLA 경과 ${breachedDisputes}건`, href: MOVEOUT_ROUTES["T-OUT-04"] });
+  }
+
+  return items;
+}
+
 export default async function Page() {
-  const [moveout, settlement] = await Promise.all([
-    getMoveout(DEMO_MOVEOUT_ID),
-    getSettlement(DEMO_MOVEOUT_ID),
+  const moveouts = await listMoveouts();
+  const moveout = selectActiveMoveout(moveouts);
+
+  if (!moveout) {
+    return (
+      <>
+        <header
+          style={{
+            flex: "none",
+            padding: "16px 14px",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <div style={{ fontSize: 15, fontWeight: 700 }}>퇴실 준비</div>
+        </header>
+        <div style={{ flex: 1, padding: "16px 14px" }}>
+          <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>진행 중인 퇴실이 없습니다</div>
+            <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+              퇴실 요청이 생성되면 이곳에서 기록, 체크리스트, 예상 정산을 확인할 수 있습니다.
+            </div>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  const [checklist, settlement, disputes] = await Promise.all([
+    getChecklist(moveout.id),
+    getSettlement(moveout.id),
+    getDisputes(moveout.id),
   ]);
+  const progress = completionProgress(moveout, checklist, disputes, settlement);
+  const notifications = notificationItems(moveout, settlement, disputes);
 
   return (
     <>
@@ -66,7 +186,7 @@ export default async function Page() {
           </div>
         </div>
         <Link
-          href={MOVEOUT_ROUTES["T-OUT-03"]}
+          href={notifications[0]?.href ?? MOVEOUT_ROUTES["T-OUT-03"]}
           aria-label="알림"
           style={{
             position: "relative",
@@ -83,27 +203,29 @@ export default async function Page() {
           }}
         >
           🔔
-          <span
-            style={{
-              position: "absolute",
-              top: -6,
-              right: -6,
-              minWidth: 18,
-              height: 18,
-              border: "1.5px solid var(--primary)",
-              borderRadius: "var(--radius-full)",
-              background: "var(--surface-container-lowest)",
-              color: "var(--on-surface)",
-              fontSize: 10,
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "0 3px",
-            }}
-          >
-            1
-          </span>
+          {notifications.length > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: -6,
+                right: -6,
+                minWidth: 18,
+                height: 18,
+                border: "1.5px solid var(--primary)",
+                borderRadius: "var(--radius-full)",
+                background: "var(--surface-container-lowest)",
+                color: "var(--on-surface)",
+                fontSize: 10,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 3px",
+              }}
+            >
+              {notifications.length}
+            </span>
+          )}
         </Link>
       </header>
 
@@ -154,10 +276,29 @@ export default async function Page() {
         <section>
           <div style={labelStyle}>준비 진행</div>
           <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <Badge emphasis>{statusLabel(moveout.prepProgress)}</Badge>
+            <Badge emphasis>{statusLabel(progress)}</Badge>
             <span style={{ fontSize: 12, color: "var(--on-surface-variant)" }}>
-              {Math.round(moveout.prepProgress * 100)}%
+              {Math.round(progress * 100)}%
             </span>
+          </Card>
+        </section>
+
+        <section>
+          <div style={labelStyle}>확인할 일</div>
+          <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {notifications.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--on-surface-variant)" }}>새로 확인할 항목이 없습니다.</div>
+            ) : (
+              notifications.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  style={{ color: "var(--primary)", fontSize: 13, fontWeight: 800, textDecoration: "none" }}
+                >
+                  {item.label}
+                </Link>
+              ))
+            )}
           </Card>
         </section>
 
@@ -195,6 +336,9 @@ export default async function Page() {
           </Link>
           <Link href={MOVEOUT_ROUTES["T-OUT-02"]} style={secondaryLinkStyle}>
             체크리스트
+          </Link>
+          <Link href={MOVEOUT_ROUTES["T-OUT-04"]} style={secondaryLinkStyle}>
+            이의·정정
           </Link>
         </div>
       </footer>
