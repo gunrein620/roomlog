@@ -30,6 +30,13 @@
 - **T-HOME-06 안심요약**·**M-HOME-01 계약/moveout 큐**·**D19 4번째 tier(계약/퇴실)**: 실제 상태 데이터 연동 필요(지금은 fabrication 회피 위해 미표시/미연동).
 - **리포트 크로스링크 payload**: 대상 세대/청구건이 하드코딩 1건으로만 연결(D24 pre-fill 미구현).
 
+## 이월 — 통합 인증 (계정 identity ≠ 룸로그 관계 authorization)
+단일 WOOZU 로그인(/login) + 파생 capability(roles) 전환은 완료. 남은 결선:
+- **signup 통합**: /signup은 SEEKER 전용으로 남았고, 역할별 가입 검증(validateSignupInput의 LANDLORD/무초대 TENANT 건물정보 강제)은 유지 중. 방향: 가입은 SEEKER 기본, 역할별 정보는 capability 연결 시 수집.
+- **LANDLORD capability 연결 경로**: /login의 "관리 중인 집 연결 필요" 안내는 마이페이지 집 내놓기로 보내지만, 집 내놓기 → Room.landlordId 실제 연결은 미배선(등록 흐름이 아직 데모 상태).
+- **D18 초대+연락처 OTP**: acceptInviteForUser는 이메일 일치(강한 식별자) + phone 상호 존재 시에만 대조하는 fail-safe. OTP 검증은 후속 — 외국인/특수 연락처 하드블록 금지 원칙 유지할 것.
+- **UserAccount.role 정리**: legacy 단일값은 backward compat으로 파생 roles에 항상 포함시킨다(관계 없어도). 관계 데이터가 충분히 쌓이면 이 폴백을 제거하고 관계만 믿는 방향.
+
 ## 이월 — 라우팅 정합 (경미)
 - T-OUT-04 뒤로 조건부(01/03), T-OUT-03 관리자문의→M-MSG, T-DOC-02 의견→M-DOC 큐: 진입맥락/메시징 연결 필요(T-DEF-02 뒤로와 같은 단일-DOM/맥락 클래스).
 

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CallLayout({ children }: { children: ReactNode }) {
   // dash와 동일하게 관리인(LANDLORD) 가드 — 미인증/타역할 접근 차단.
-  await requireUser("/manager/login", "LANDLORD");
+  await requireUser("LANDLORD");
   return (
     <PhoneFrame
       label={

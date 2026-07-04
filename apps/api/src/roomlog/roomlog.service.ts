@@ -278,6 +278,7 @@ export type RoomlogServiceOptions = {
 export type AuthResult = {
   userId: string;
   role: UserRole;
+  roles: UserRole[];
   accessToken: string;
   name: string;
 };
@@ -459,6 +460,18 @@ function createDemoStore(): Store {
       role: "VENDOR",
       status: "ACTIVE",
       createdAt
+    },
+    // multi-role 데모: 정글빌라 301호에 세들어 살면서(TENANT) 402호를 내놓은(LANDLORD) 겸직 계정.
+    // legacy role 단일값은 TENANT지만, 파생 capability로 LANDLORD 표면에도 진입할 수 있어야 한다.
+    {
+      id: "multi-demo",
+      email: "multi@roomlog.test",
+      passwordHash: hashPassword("password123!"),
+      name: "정겸직",
+      phone: "010-4000-0001",
+      role: "TENANT",
+      status: "ACTIVE",
+      createdAt
     }
   ];
   const contractCreatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
@@ -485,10 +498,18 @@ function createDemoStore(): Store {
         roomNo: "301호",
         address: "서울시 성동구 성수동",
         landlordId: "landlord-demo"
+      },
+      {
+        id: "room-402",
+        buildingName: "정글빌라",
+        roomNo: "402호",
+        address: "서울시 성동구 성수동",
+        landlordId: "multi-demo"
       }
     ],
     tenantRooms: {
-      "tenant-demo": "room-301"
+      "tenant-demo": "room-301",
+      "multi-demo": "room-301"
     },
     vendors: [
       {
@@ -1293,6 +1314,16 @@ export class RoomlogService {
 
   getUserFromToken(authorization?: string): UserAccount {
     return this.auth.getUserFromToken(authorization);
+  }
+
+  /** 관계 기반 파생 capability — requireRole 등 권한 판단은 user.role 단일값 대신 이걸 쓴다. */
+  rolesForUser(user: UserAccount): UserRole[] {
+    return this.auth.rolesFor(user);
+  }
+
+  /** 초대를 이미 로그인한 계정에 관계로 연결한다(새 계정 생성 없음). */
+  acceptInviteForUser(userId: string, role: UserRole, inviteToken: string) {
+    return this.auth.acceptInviteForUser(userId, role, inviteToken);
   }
 
   getMe(authorization?: string) {

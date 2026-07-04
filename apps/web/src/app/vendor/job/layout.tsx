@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function VendorLayout({ children }: { children: ReactNode }) {
   // [레퍼런스 가드] 수리업체(VENDOR) 전용.
-  await requireUser("/vendor/login", "VENDOR");
+  await requireUser("VENDOR");
   return (
     <PhoneFrame
       label={

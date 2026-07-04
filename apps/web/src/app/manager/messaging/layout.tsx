@@ -6,7 +6,7 @@ import { ManagerMessagingNav } from "./_components";
 export const dynamic = "force-dynamic";
 
 export default async function ManagerMessagingLayout({ children }: { children: ReactNode }) {
-  await requireUser("/manager/login", "LANDLORD");
+  await requireUser("LANDLORD");
   return (
     <ManagerShell title="소통" context="M-MSG · 관리인 데스크탑" nav={<ManagerMessagingNav />}>
       {children}

@@ -28,7 +28,7 @@ import {
   SlidersHorizontal,
   UserRound
 } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -50,17 +50,16 @@ import {
   DEMO_VENDOR_PERF,
   DEMO_VENDORS
 } from "../lib/demo-vendor-mgmt";
+import {
+  WoozuLoginScreen,
+  type AppRole,
+  type AuthMode,
+  type ViewerProfile
+} from "./_components/WoozuLoginScreen";
+import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
 
-type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
-type AuthMode = "login" | "signup" | "broker";
 type MapResultTab = "rooms" | "complexes" | "agents";
-type ViewerProfile = {
-  userId: string;
-  email: string;
-  name: string;
-  role: string;
-};
 
 type NaverLatLng = unknown;
 type NaverMap = unknown;
@@ -107,55 +106,6 @@ declare global {
 
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
-const googleLogoSvg = (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
-    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" fill="#EA4335" />
-  </svg>
-);
-
-const defaultAuthRedirectPath = "/";
-
-const googleAuthHrefForMode = (mode: AuthMode) => {
-  const flow = mode === "signup" ? "signup" : "login";
-  const errorRedirectTo = mode === "signup" ? "/?auth=signup" : "/";
-  return `/api/auth/google/start?role=SEEKER&flow=${flow}&redirectTo=${encodeURIComponent(defaultAuthRedirectPath)}&errorRedirectTo=${encodeURIComponent(errorRedirectTo)}`;
-};
-
-const socialProvidersForMode = (mode: AuthMode): Array<{ label: string; className: string; mark: ReactNode; href?: string }> => [
-  { label: "네이버로 계속하기", className: "naver", mark: <span aria-hidden="true">N</span> },
-  {
-    label: "Google로 계속하기",
-    className: "google",
-    mark: <span className="google-logo-icon" aria-hidden="true">{googleLogoSvg}</span>,
-    href: googleAuthHrefForMode(mode)
-  }
-];
-
-const devRoles: Array<{
-  id: AppRole;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "seeker",
-    label: "일반 집보는 사람",
-    description: "지도와 매물 상세를 둘러보는 기본 탐색 모드"
-  },
-  {
-    id: "tenant",
-    label: "세입자",
-    description: "관심 매물과 입주 예정 방을 확인하는 임차인 모드"
-  },
-  {
-    id: "landlord",
-    label: "집주인",
-    description: "마이페이지에서 내 집을 등록하는 임대인 모드"
-  }
-];
-
 const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
   { id: "seeker", label: "방 찾는 중", href: "/" },
   { id: "tenant", label: "내가 사는 집", href: "/?role=tenant&tab=mypage" },
@@ -176,12 +126,12 @@ const myFlowItems: Array<{ id: MyFlow; label: string }> = [
 const protectedRoleConfig = {
   tenant: {
     sessionRole: "TENANT",
-    loginPath: "/tenant/login",
+    intent: "tenant",
     redirectTo: "/?role=tenant&tab=mypage"
   },
   landlord: {
     sessionRole: "LANDLORD",
-    loginPath: "/manager/login",
+    intent: "landlord",
     redirectTo: "/?role=landlord&tab=mypage"
   }
 } as const;
@@ -725,191 +675,6 @@ const initialInquiries: InquiryItem[] = [
 
 const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
 
-const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as const;
-
-function LoginScreen({
-  mode,
-  setActiveRole,
-  onAuthenticated,
-  onGoHome
-}: {
-  mode: AuthMode;
-  setActiveRole: (role: AppRole) => void;
-  onAuthenticated: (viewer: ViewerProfile) => void;
-  onGoHome: () => void;
-}) {
-  const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
-  const [serviceEmail, setServiceEmail] = useState("");
-  const [servicePassword, setServicePassword] = useState("");
-  const [serviceLoginError, setServiceLoginError] = useState("");
-  const [isServiceLoginPending, setIsServiceLoginPending] = useState(false);
-  const socialProviders = socialProvidersForMode(mode);
-
-  async function submitServiceLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsServiceLoginPending(true);
-    setServiceLoginError("");
-
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: serviceEmail, password: servicePassword, expectedRole: "SEEKER" })
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => undefined);
-        setServiceLoginError(body?.message ?? "로그인에 실패했습니다.");
-        return;
-      }
-
-      const meResponse = await fetch("/api/auth/me", { cache: "no-store" });
-      if (!meResponse.ok) {
-        setServiceLoginError("로그인 상태를 확인하지 못했습니다.");
-        return;
-      }
-
-      onAuthenticated((await meResponse.json()) as ViewerProfile);
-    } catch {
-      setServiceLoginError("네트워크 오류로 로그인하지 못했습니다.");
-    } finally {
-      setIsServiceLoginPending(false);
-    }
-  }
-
-  return (
-    <main className="app-canvas login-canvas">
-      <section className="login-phone" aria-label="집우집주 로그인">
-        <div className="login-topbar">
-          <button type="button" className="login-home-link" onClick={onGoHome} aria-label="홈으로 이동">
-            <span className="login-home-icon" aria-hidden="true">
-              <svg className="login-home-roof" viewBox="0 0 140 68" fill="none">
-                <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-                <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              </svg>
-            </span>
-            집우집주<span>WOOZU</span>
-          </button>
-        </div>
-        <div className="login-brandmark">
-          <div className="brand-mark-icon">
-            <div className="brand-orbit">
-              <div className="brand-orbit-spin">
-                <span className="brand-star-fix">
-                  <span className="brand-star">
-                    <svg viewBox="0 0 24 24"><path d="M12 0c1.1 6.2 4.8 9.9 12 12-7.2 2.1-10.9 5.8-12 12-1.1-6.2-4.8-9.9-12-12 7.2-2.1 10.9-5.8 12-12Z" /></svg>
-                  </span>
-                </span>
-              </div>
-            </div>
-            <svg className="brand-roof" viewBox="0 0 140 68" fill="none">
-              <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-              <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-            </svg>
-          </div>
-          <div className="brand-word">우주</div>
-          <p className="brand-tagline">우주 | 3D공간 시뮬레이션</p>
-        </div>
-
-        <div className="login-panel">
-          <p className="brand-kicker">|집우집주|  입주부터 관리까지 우주에서</p>
-          <h1>우주에서 방을 구해보세요!</h1>
-          <p>
-            조건에 맞는 방을 찾고, 3D 투어와 정보확인은 우주에서
-          </p>
-
-          <div className="login-feature-bar" aria-label="서비스 핵심 기능">
-            {loginFeaturePills.map((label, index) => (
-              <Fragment key={label}>
-                {index > 0 ? <span className="login-feature-sep" aria-hidden="true" /> : null}
-                <span className={`login-feature-pill login-feature-pill--${index}`}>{label}</span>
-              </Fragment>
-            ))}
-          </div>
-
-          <div className="social-stack" aria-label="소셜 로그인">
-            {socialProviders.map((provider) => (
-              <button
-                className={`social-button ${provider.className}`}
-                type="button"
-                key={provider.label}
-                onClick={() => {
-                  if (provider.href) {
-                    window.location.href = provider.href;
-                    return;
-                  }
-                  setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`);
-                }}
-              >
-                {provider.mark}
-                {provider.label}
-              </button>
-            ))}
-          </div>
-
-          <p className="social-login-notice" role="status">{socialLoginNotice}</p>
-
-          <div className="service-login-panel" aria-label="서비스 로그인">
-            <div>
-              <strong>서비스 로그인</strong>
-            </div>
-            <form className="service-login-form" onSubmit={submitServiceLogin}>
-              <label>
-                이메일
-                <input
-                  type="email"
-                  value={serviceEmail}
-                  onChange={(event) => setServiceEmail(event.target.value)}
-                  autoComplete="username"
-                  required
-                />
-              </label>
-              <label>
-                비밀번호
-                <input
-                  type="password"
-                  value={servicePassword}
-                  onChange={(event) => setServicePassword(event.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-              {serviceLoginError ? (
-                <p className="service-auth-error" role="alert">{serviceLoginError}</p>
-              ) : null}
-              <button className="service-login-submit" type="submit" disabled={isServiceLoginPending}>
-                {isServiceLoginPending ? "로그인 중" : "로그인"}
-              </button>
-            </form>
-            <a className="service-signup-link" href="/signup">일반 회원가입</a>
-          </div>
-
-          <div className="dev-login-panel" aria-label="개발용 로그인">
-            <div>
-              <strong>개발용 로그인</strong>
-              <span>역할을 골라 바로 입장</span>
-            </div>
-            {devRoles.map((role) => (
-              <button className="dev-role-button" type="button" key={role.id} onClick={() => setActiveRole(role.id)}>
-                <strong>{role.label}</strong>
-                <span>{role.description}</span>
-              </button>
-            ))}
-          </div>
-
-          <small>일반 계정 로그인은 제공하지 않습니다.</small>
-        </div>
-      </section>
-    </main>
-  );
-}
-
 function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectFlow: (flow: MyFlow) => void }) {
   return (
     <div className="mypage-role-bar my-flow-bar">
@@ -1176,7 +941,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
             퇴실 관리
           </Link>
         </div>
-        <small className="domain-test-note">관리 콘솔은 관리인 로그인 후 이어집니다.</small>
+        <small className="domain-test-note">이 계정에 관리 중인 집이 연결되면 이어집니다.</small>
       </section>
 
       <section className="owner-exposure-card" aria-label="집 내놓기 전달 범위">
@@ -2739,7 +2504,7 @@ function UserMyPage({
               <Link href="/tenant/defect/00">하자 접수</Link>
               <Link href="/tenant/payment/00">관리비</Link>
             </div>
-            <small>룸로그 화면은 세입자 로그인 후 이어집니다.</small>
+            <small>이 계정에 사는 집이 연결되면 이어집니다.</small>
           </article>
 
           <article className="my-roomlog-card">
@@ -2754,7 +2519,7 @@ function UserMyPage({
               <Link href="/manager/cost/00">비용 정산</Link>
               <Link href="/manager/messaging/00">메시지</Link>
             </div>
-            <small>관리 콘솔은 관리인 로그인 후 이어집니다.</small>
+            <small>이 계정에 관리 중인 집이 연결되면 이어집니다.</small>
           </article>
         </div>
       </section>
@@ -3074,7 +2839,7 @@ function TenantMyPage({
             퇴실 정산
           </Link>
         </div>
-        <small className="domain-test-note">룸로그 화면은 세입자 로그인 후 이어집니다.</small>
+        <small className="domain-test-note">이 계정에 사는 집이 연결되면 이어집니다.</small>
       </section>
 
       <section className="maintenance-card" aria-label="긴급 점검 일정">
@@ -3900,12 +3665,14 @@ export default function Home() {
       : null;
   const isProtectedRolePage = Boolean(protectedConfig);
   const canAccessProtectedRolePage =
-    !protectedConfig || isDevRolePreview || (viewer?.role === protectedConfig.sessionRole);
+    !protectedConfig ||
+    isDevRolePreview ||
+    (viewer ? hasCapability(viewer, protectedConfig.sessionRole) : false);
 
   useEffect(() => {
     if (!isRouteReady || !isAuthChecked || !protectedConfig || canAccessProtectedRolePage) return;
 
-    window.location.href = `${protectedConfig.loginPath}?redirectTo=${encodeURIComponent(protectedConfig.redirectTo)}`;
+    window.location.href = unifiedLoginPath(protectedConfig.intent, protectedConfig.redirectTo);
   }, [canAccessProtectedRolePage, isAuthChecked, isRouteReady, protectedConfig]);
 
   const logout = async () => {
@@ -3945,7 +3712,7 @@ export default function Home() {
 
   if (authMode) {
     return (
-      <LoginScreen
+      <WoozuLoginScreen
         mode={authMode}
         setActiveRole={startRoleSession}
         onAuthenticated={completeServiceAuth}
@@ -3959,7 +3726,7 @@ export default function Home() {
       <main className="app-canvas">
         <section className="auth-check-screen" aria-live="polite">
           <strong>로그인 확인 중</strong>
-          <span>세입자/임대인 페이지는 로그인 후 접속할 수 있습니다.</span>
+          <span>WOOZU 계정 로그인 후, 계정에 연결된 집 정보로 이어집니다.</span>
         </section>
       </main>
     );

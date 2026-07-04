@@ -11,12 +11,14 @@ import { createHmac } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  deriveUserRoles,
   hasRequiredPasswordMix,
   hashPassword,
   id,
   isValidPhoneNumber,
   normalizePhoneNumber,
   now,
+  primaryUserRole,
   tokenFor,
   tokenSecret,
   verifyPassword
@@ -201,7 +203,9 @@ export class RoomlogAuthDomain {
     );
 
     if (existingSocialAccount) {
-      const user = this.findActiveSocialUser(existingSocialAccount.userId, role);
+      // 통합 계정: 같은 Google identity는 role/intent와 무관하게 같은 WOOZU 계정으로 로그인된다.
+      const user = this.findActiveSocialUser(existingSocialAccount.userId);
+      this.tryAcceptInviteOnLogin(user, role, input.inviteToken);
       this.updateSocialAccount(existingSocialAccount.id, user.id, profile);
       this.persistStore();
       return this.authResult(user);
@@ -213,11 +217,12 @@ export class RoomlogAuthDomain {
       throw new BadRequestException(SOCIAL_SIGNUP_REQUIRED);
     }
 
+    // role은 신규 가입 시 intent/초대 처리 용도로만 쓴다 — 기존 계정에는 매칭을 강제하지 않는다.
     const user = existingUser ?? this.createSocialUser(profile, role, input.inviteToken);
 
     if (existingUser) {
-      this.assertSocialRole(existingUser, role);
       this.assertActiveUser(existingUser);
+      this.tryAcceptInviteOnLogin(existingUser, role, input.inviteToken);
     }
 
     this.updateSocialAccount(undefined, user.id, profile);
@@ -259,14 +264,23 @@ export class RoomlogAuthDomain {
     return user;
   }
 
+  /** 계정의 capability 집합 — role 단일값 대신 관계(TenantRoom/Room.landlordId/VendorProfile)에서 파생. */
+  rolesFor(user: UserAccount): UserRole[] {
+    return deriveUserRoles(user, this.store);
+  }
+
   getMe(authorization?: string) {
     const user = this.getUserFromToken(authorization);
+    const roles = this.rolesFor(user);
     const roomId = this.store.tenantRooms[user.id];
     const room = roomId ? this.store.rooms.find((item) => item.id === roomId) : undefined;
     const vendor = this.store.vendors.find((item) => item.userId === user.id);
-    const managedRooms =
-      user.role === "LANDLORD"
-        ? this.store.rooms.filter((item) => item.landlordId === user.id).map((item) => ({ ...item }))
+    // legacy role이 아니라 파생 capability 기준 — TENANT 겸직 계정도 관리 중인 집을 본다.
+    const ownedRooms = this.store.rooms.filter((item) => item.landlordId === user.id);
+    const managedRooms = ownedRooms.length
+      ? ownedRooms.map((item) => ({ ...item }))
+      : user.role === "LANDLORD"
+        ? []
         : undefined;
 
     return {
@@ -274,7 +288,9 @@ export class RoomlogAuthDomain {
       email: user.email,
       name: user.name,
       phone: user.phone,
-      role: user.role,
+      role: primaryUserRole(user, roles),
+      roles,
+      primaryRole: primaryUserRole(user, roles),
       roomId,
       room: room ? { ...room } : undefined,
       managedRooms,
@@ -350,6 +366,132 @@ export class RoomlogAuthDomain {
     throw new BadRequestException("초대 역할이 올바르지 않습니다.");
   }
 
+  /**
+   * 초대를 "이미 로그인한 계정에 관계를 붙이는" 경로로 수락한다.
+   * 새 계정 생성 없이 TenantRoom/VendorProfile 연결만 시도하고, 성공하면 파생 roles를 돌려준다.
+   * 같은 계정이 같은 초대를 다시 열면 성공으로 처리(멱등) — 초대 링크 재방문이 에러가 되지 않게.
+   * D18: 연락처 검증은 초대에 phone이 있고 계정에도 phone이 있을 때만 대조한다 —
+   * 외국인/특수 연락처 계정을 하드블록하지 않는 fail-safe. (초대+연락처 OTP는 후속 범위)
+   */
+  acceptInviteForUser(userId: string, role: UserRole, inviteToken: string) {
+    const user = this.store.users.find((account) => account.id === userId);
+
+    if (!user) {
+      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
+    }
+
+    const token = inviteToken?.trim();
+
+    if (!token) {
+      throw new BadRequestException("초대 토큰이 필요합니다.");
+    }
+
+    if (role === "TENANT") {
+      const invite = this.store.tenantInvites.find((item) => item.inviteToken === token);
+
+      if (!invite) {
+        throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
+      }
+
+      if (invite.status === "ACCEPTED" && invite.acceptedByUserId === user.id) {
+        return this.inviteLinkResult(user, "TENANT", { roomId: invite.roomId });
+      }
+
+      this.assertPendingTenantInvite(invite);
+
+      if (invite.email && invite.email !== user.email) {
+        throw new BadRequestException("초대된 이메일과 로그인 계정 이메일이 일치하지 않습니다.");
+      }
+
+      if (invite.phone && user.phone && invite.phone !== user.phone) {
+        throw new BadRequestException("초대된 휴대폰 번호와 계정 휴대폰 번호가 일치하지 않습니다.");
+      }
+
+      this.store.tenantRooms[user.id] = invite.roomId;
+      invite.status = "ACCEPTED";
+      invite.acceptedAt = now();
+      invite.acceptedByUserId = user.id;
+      this.persistStore();
+
+      return this.inviteLinkResult(user, "TENANT", { roomId: invite.roomId });
+    }
+
+    if (role === "VENDOR") {
+      const invite = this.store.vendorInvites.find((item) => item.inviteToken === token);
+
+      if (!invite) {
+        throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
+      }
+
+      const existingVendor = this.store.vendors.find((item) => item.userId === user.id);
+
+      if (invite.status === "ACCEPTED" && invite.acceptedByUserId === user.id && existingVendor) {
+        return this.inviteLinkResult(user, "VENDOR", { vendorId: existingVendor.id });
+      }
+
+      this.assertPendingVendorInvite(invite);
+
+      if (invite.email && invite.email !== user.email) {
+        throw new BadRequestException("초대된 이메일과 로그인 계정 이메일이 일치하지 않습니다.");
+      }
+
+      const vendor =
+        existingVendor ??
+        (() => {
+          const created = {
+            id: id("vnd"),
+            userId: user.id,
+            businessName: invite.businessName,
+            contactPerson: invite.contactPerson || user.name,
+            phone: invite.phone || user.phone || "",
+            serviceArea: invite.serviceArea,
+            activeJobs: 0
+          };
+          this.store.vendors.push(created);
+          return created;
+        })();
+
+      invite.status = "ACCEPTED";
+      invite.acceptedAt = now();
+      invite.acceptedByUserId = user.id;
+      this.persistStore();
+
+      return this.inviteLinkResult(user, "VENDOR", { vendorId: vendor.id });
+    }
+
+    throw new BadRequestException("초대 역할이 올바르지 않습니다.");
+  }
+
+  // 로그인은 identity 확인이므로 초대 연결 실패가 로그인 자체를 막지 않는다(fail-safe).
+  // 연결이 안 되면 /login이 capability 부재를 감지해 "연결 필요" 안내 상태로 이어진다.
+  private tryAcceptInviteOnLogin(user: UserAccount, role: UserRole, inviteToken?: string) {
+    const token = inviteToken?.trim();
+
+    if (!token || (role !== "TENANT" && role !== "VENDOR")) return;
+
+    try {
+      this.acceptInviteForUser(user.id, role, token);
+    } catch {
+      // 무시 — 초대가 만료/불일치여도 로그인은 성공시킨다.
+    }
+  }
+
+  private inviteLinkResult(
+    user: UserAccount,
+    linked: UserRole,
+    extra: { roomId?: string; vendorId?: string }
+  ) {
+    const roles = this.rolesFor(user);
+
+    return {
+      userId: user.id,
+      linked,
+      roles,
+      primaryRole: primaryUserRole(user, roles),
+      ...extra
+    };
+  }
+
   private async fetchGoogleProfile(code: string, redirectUri: string): Promise<GoogleUserInfoResponse> {
     const clientId = runtimeEnv("GOOGLE_LOGIN_CLIENT_ID");
     const clientSecret = runtimeEnv("GOOGLE_LOGIN_CLIENT_SECRET");
@@ -409,22 +551,15 @@ export class RoomlogAuthDomain {
     return value === true || value === "true";
   }
 
-  private findActiveSocialUser(userId: string, role: UserRole) {
+  private findActiveSocialUser(userId: string) {
     const user = this.store.users.find((account) => account.id === userId);
 
     if (!user) {
       throw new UnauthorizedException("Linked Roomlog account was not found.");
     }
 
-    this.assertSocialRole(user, role);
     this.assertActiveUser(user);
     return user;
-  }
-
-  private assertSocialRole(user: UserAccount, role: UserRole) {
-    if (user.role !== role) {
-      throw new BadRequestException("Google account is linked to a different Roomlog role.");
-    }
   }
 
   private assertActiveUser(user: UserAccount) {
@@ -661,9 +796,12 @@ export class RoomlogAuthDomain {
   }
 
   private authResult(user: UserAccount): AuthResult {
+    const roles = this.rolesFor(user);
+
     return {
       userId: user.id,
-      role: user.role,
+      role: primaryUserRole(user, roles),
+      roles,
       accessToken: tokenFor(user),
       name: user.name
     };

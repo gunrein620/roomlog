@@ -740,12 +740,14 @@ export class RoomlogContractDomain {
     });
   }
 
+  // 통합 계정 모델: 초대는 "기존 로그인 계정에 관계를 붙이는 루트"이므로
+  // 이메일/휴대폰 같은 강한 식별자는 role과 무관하게 매칭한다.
+  // 이름 단독 일치는 약한 신호라 이미 임차 관계가 있는 계정으로 한정(오연결 방지).
   private findTenantForInvite(invite: ContractInvite) {
     return this.store.users.find((user) => {
-      if (user.role !== "TENANT") return false;
       if (invite.email && user.email === invite.email) return true;
       if (invite.phone && user.phone === invite.phone) return true;
-      return user.name === invite.tenantName;
+      return Boolean(this.store.tenantRooms[user.id]) && user.name === invite.tenantName;
     });
   }
 

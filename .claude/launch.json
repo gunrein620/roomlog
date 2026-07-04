@@ -2,6 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "set -a; [ -f ../../.env ] && . ../../.env; set +a; exec ./node_modules/.bin/nest start"],
+      "cwd": "apps/api",
+      "port": 4000,
+      "autoPort": false
+    },
+    {
       "name": "web",
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-lc", "set -a; [ -f ../../.env ] && . ../../.env; set +a; exec ./node_modules/.bin/next dev -p 3005"],

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 // 커뮤니케이션 슬라이스 공용 폰 크롬. 각 page.tsx는 프레임 내부 콘텐츠만 렌더한다.
 export default async function MessagingLayout({ children }: { children: ReactNode }) {
-  await requireUser("/tenant/login", "TENANT");
+  await requireUser("TENANT");
   return (
     <PhoneFrame
       label={

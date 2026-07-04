@@ -19,7 +19,7 @@ const navItems = [
 
 export default async function DashLayout({ children }: { children: ReactNode }) {
   // [레퍼런스 가드] 관리인(LANDLORD) 전용. 미인증/타역할이면 관리인 로그인으로.
-  await requireUser("/manager/login", "LANDLORD");
+  await requireUser("LANDLORD");
   return (
     <ManagerShell
       title="하자/민원 티켓 처리"

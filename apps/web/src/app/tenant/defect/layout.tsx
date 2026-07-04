@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // [레퍼런스 가드] 이 async 레이아웃이 /tenant/defect/* 전체를 인증 게이팅한다.
 // 미인증(쿠키 없음/만료)이면 requireUser가 /tenant/login으로 리다이렉트.
 export default async function DefectLayout({ children }: { children: ReactNode }) {
-  await requireUser("/tenant/login", "TENANT");
+  await requireUser("TENANT");
   return (
     <PhoneFrame
       label={

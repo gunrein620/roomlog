@@ -28,6 +28,9 @@ const googleAuthSharedSource = readFileSync(new URL("./src/app/api/auth/google/_
 const signupPageSource = readFileSync(new URL("./src/app/signup/page.tsx", import.meta.url), "utf8");
 const signupRouteSource = readFileSync(new URL("./src/app/api/auth/signup/route.ts", import.meta.url), "utf8");
 const loginRouteSource = readFileSync(new URL("./src/app/api/auth/login/route.ts", import.meta.url), "utf8");
+const loginScreenSource = readFileSync(new URL("./src/app/_components/WoozuLoginScreen.tsx", import.meta.url), "utf8");
+const unifiedLoginPageSource = readFileSync(new URL("./src/app/login/page.tsx", import.meta.url), "utf8");
+const sessionLibSource = readFileSync(new URL("./src/lib/session.ts", import.meta.url), "utf8");
 const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
@@ -352,40 +355,42 @@ test("promotes the future 3D room tour as a primary listing detail action", () =
 });
 
 test("offers a clean white social sign-in limited to Naver and Google with a developer shortcut", () => {
+  // 로그인 화면은 WoozuLoginScreen으로 추출되어 /?auth=login과 /login이 공유한다.
   for (const label of [
     "네이버",
     "Google",
     "개발용 로그인",
     "집우집주",
-    "소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다",
+    "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다",
     "3D투어",
     "입주관리AI",
     "업체연결"
   ]) {
-    assert.match(pageSource, new RegExp(label));
+    assert.match(loginScreenSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /socialLoginNotice/);
-  assert.match(pageSource, /setSocialLoginNotice/);
-  assert.match(pageSource, /service-login-panel/);
-  assert.match(pageSource, /submitServiceLogin/);
-  assert.match(pageSource, /\/api\/auth\/login/);
-  assert.match(pageSource, /expectedRole: "SEEKER"/);
-  assert.match(loginRouteSource, /expectedRole/);
-  assert.match(loginRouteSource, /profile\.role !== expectedRole/);
-  assert.match(pageSource, /\/api\/auth\/me/);
-  assert.match(pageSource, /setActiveRole/);
-  assert.match(pageSource, /login-brandmark/);
-  assert.match(pageSource, /brand-mark-icon/);
+  assert.match(loginScreenSource, /socialLoginNotice/);
+  assert.match(loginScreenSource, /setSocialLoginNotice/);
+  assert.match(loginScreenSource, /service-login-panel/);
+  assert.match(loginScreenSource, /submitServiceLogin/);
+  assert.match(loginScreenSource, /\/api\/auth\/login/);
+  // 통합 로그인: 로그인은 역할을 제한하지 않는다 — expectedRole 차단 로직은 제거됐다.
+  assert.doesNotMatch(loginScreenSource, /expectedRole/);
+  assert.doesNotMatch(loginRouteSource, /expectedRole/);
+  assert.match(loginScreenSource, /\/api\/auth\/me/);
+  assert.match(loginScreenSource, /setActiveRole/);
+  assert.match(loginScreenSource, /login-brandmark/);
+  assert.match(loginScreenSource, /brand-mark-icon/);
+  assert.match(pageSource, /WoozuLoginScreen/);
   assert.match(cssSource, /\.login-phone\s*{[^}]*background:\s*#ffffff/s);
   assert.match(cssSource, /\.login-feature-bar/);
   assert.match(cssSource, /\.social-login-notice/);
-  assert.doesNotMatch(pageSource, /카카오로 계속하기/);
-  assert.doesNotMatch(pageSource, /Apple로 계속하기/);
-  assert.doesNotMatch(pageSource, /assets\/img\/image\.png/);
-  assert.doesNotMatch(pageSource, /loginHeroImage/);
-  assert.doesNotMatch(pageSource, /login-visual/);
-  assert.doesNotMatch(pageSource, /login-hero-image/);
+  assert.doesNotMatch(loginScreenSource, /카카오로 계속하기/);
+  assert.doesNotMatch(loginScreenSource, /Apple로 계속하기/);
+  assert.doesNotMatch(loginScreenSource, /assets\/img\/image\.png/);
+  assert.doesNotMatch(loginScreenSource, /loginHeroImage/);
+  assert.doesNotMatch(loginScreenSource, /login-visual/);
+  assert.doesNotMatch(loginScreenSource, /login-hero-image/);
   assert.doesNotMatch(cssSource, /\.login-visual/);
   assert.doesNotMatch(cssSource, /\.login-hero-image/);
   assert.doesNotMatch(cssSource, /\.social-button\.kakao/);
@@ -394,13 +399,46 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
 });
 
+test("routes every roomlog entry through the unified WOOZU /login with capability continuation", () => {
+  assert.equal(existsSync(new URL("./src/app/login/page.tsx", import.meta.url)), true);
+  assert.match(unifiedLoginPageSource, /WoozuLoginScreen/);
+  assert.match(unifiedLoginPageSource, /resolvePostLoginDestination/);
+  // capability가 없으면 재로그인이 아니라 "연결 필요" 안내 상태로 이어진다.
+  assert.match(unifiedLoginPageSource, /link-required/);
+  assert.match(unifiedLoginPageSource, /다른 계정으로 로그인/);
+
+  // 기존 역할별 로그인 경로는 삭제하지 않고 /login?intent=... 호환 redirect로 남긴다.
+  for (const [dir, intent] of [
+    ["tenant", "tenant"],
+    ["manager", "landlord"],
+    ["vendor", "vendor"]
+  ]) {
+    const wrapperSource = readFileSync(
+      new URL(`./src/app/${dir}/login/page.tsx`, import.meta.url),
+      "utf8"
+    );
+    assert.match(wrapperSource, /legacyLoginRedirectTarget/);
+    assert.match(wrapperSource, new RegExp(`"${intent}"`));
+    assert.doesNotMatch(wrapperSource, /api\/auth\/login/);
+  }
+
+  // 서버 가드도 통합 로그인으로 보낸다 — 역할별 로그인 경로 하드코딩 금지.
+  assert.match(sessionLibSource, /unifiedLoginPath/);
+  assert.match(sessionLibSource, /hasCapability/);
+  assert.doesNotMatch(sessionLibSource, /\/tenant\/login|\/manager\/login|\/vendor\/login/);
+
+  // Google OAuth 실패 복귀 경로도 /login?intent=... 하나로 수렴한다.
+  assert.match(googleAuthSharedSource, /\/login\?intent=/);
+  assert.doesNotMatch(googleAuthSharedSource, /return "\/(tenant|manager|vendor)\/login"/);
+});
+
 test("opens the dedicated signup page from signup actions and social fallback", () => {
   assert.match(pageSource, /const \[authMode, setAuthMode\]/);
   assert.match(pageSource, /openAuthScreen/);
   assert.match(pageSource, /normalizeAuthMode/);
-  assert.match(pageSource, /socialProvidersForMode/);
-  assert.match(pageSource, /flow=\$\{flow\}/);
-  assert.match(pageSource, /role=SEEKER/);
+  assert.match(loginScreenSource, /socialProvidersForMode/);
+  assert.match(loginScreenSource, /flow=\$\{flow\}/);
+  assert.match(loginScreenSource, /role=SEEKER/);
   assert.match(pageSource, /className="web-signup"/);
   assert.match(pageSource, /window\.location\.href = "\/signup"/);
   assert.equal(existsSync(new URL("./src/app/signup/page.tsx", import.meta.url)), true);
@@ -623,17 +661,17 @@ test("makes filters and saved listings behave like interactive app state", () =>
 
 test("offers three developer login roles for seekers, tenants, and landlords", () => {
   for (const label of ["일반 집보는 사람", "세입자", "집주인"]) {
-    assert.match(pageSource, new RegExp(label));
+    assert.match(loginScreenSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /type AppRole/);
+  assert.match(loginScreenSource, /type AppRole/);
   assert.match(pageSource, /roleDisplayLabels/);
   assert.match(pageSource, /seeker:\s*"방 찾기"/);
   assert.match(pageSource, /roleLabel\} 활동에 맞춘 검색 조건/);
-  assert.match(pageSource, /setActiveRole\(role\.id\)/);
+  assert.match(loginScreenSource, /setActiveRole\(role\.id\)/);
   assert.match(pageSource, /startRoleSession/);
   assert.match(pageSource, /setActiveTab\(role === "seeker" \? "home" : "mypage"\)/);
-  assert.match(pageSource, /function LoginScreen/);
+  assert.match(loginScreenSource, /function WoozuLoginScreen/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
   assert.match(pageSource, /\[activeRole, activeTab, selectedListing, authMode\]/);
@@ -648,9 +686,9 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "방문 일정",
     "에어컨 필터 교체 방문",
     "124,000원",
-    "도메인 테스트",
-    "메시지 테스트",
-    "퇴실 테스트"
+    "내 룸로그",
+    "메시지",
+    "퇴실 정산"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
@@ -712,17 +750,15 @@ test("shows a landlord my page with property registration fields and media actio
     "중복 후보 확인",
     "소표본 업체는 별점 수치와 AI 코멘트를 숨깁니다.",
     "신규 업체는 격리하지 않고 배지만 표시합니다.",
-    "도메인 테스트",
-    "메시지 테스트",
-    "퇴실 테스트",
-    "리포트 테스트"
+    "내 룸로그",
+    "메시지",
+    "퇴실 관리"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
   assert.match(pageSource, /href="\/manager\/messaging\/00"/);
   assert.match(pageSource, /href="\/manager\/moveout\/00"/);
-  assert.match(pageSource, /href="\/manager\/report\/00"/);
   assert.match(pageSource, /landlord-domain-test-card/);
   assert.match(pageSource, /ownerReviewItems/);
   assert.match(pageSource, /DEMO_COSTS/);
@@ -1075,7 +1111,8 @@ test("is configured as an installable PWA shell", () => {
   assert.match(serviceWorkerSource, /\/apple-touch-icon\.png/);
   assert.match(serviceWorkerSource, /caches\.open/);
   assert.match(serviceWorkerSource, /fetch\(request\)/);
-  assert.doesNotMatch(pageSource, /ROOMLOG PWA|오프라인 캐시|Roomlog|ROOMLOG|룸로그/);
+  // "내 룸로그" 흐름이 홈에 들어오면서 룸로그 표기는 정식 제품 카피가 됐다 — PWA 목업 카피만 계속 금지.
+  assert.doesNotMatch(pageSource, /ROOMLOG PWA|오프라인 캐시/);
 });
 
 test("keeps local development free from stale service worker caches", () => {
@@ -1095,7 +1132,8 @@ test("keeps local development free from stale service worker caches", () => {
 
 test("removes obvious mockup copy from the visible product shell", () => {
   assert.doesNotMatch(pageSource, /프론트 셸/);
-  assert.doesNotMatch(pageSource, /연결 예정/);
+  // "관리자 관계 · 연결 예정"은 목업 카피가 아니라 내 룸로그의 관계 상태 표기다.
+  assert.doesNotMatch(pageSource, /데이터 연결 예정|화면 연결 예정/);
   assert.doesNotMatch(pageSource, /핵심 진입점/);
   assert.doesNotMatch(pageSource, /샘플/);
   assert.doesNotMatch(pageSource, /준비중/);

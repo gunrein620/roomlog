@@ -6,7 +6,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import { id, normalizePhoneNumber, now } from "../roomlog-support";
+import { deriveUserRoles, id, normalizePhoneNumber, now } from "../roomlog-support";
 import type { Complaint, RepairRequest, Room, Ticket } from "../roomlog.types";
 import type {
   CreateTenantInviteInput,
@@ -155,9 +155,7 @@ export class RoomlogVendorMgmtDomain {
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
+    const manager = this.findLandlord(managerId);
 
     if (!manager) {
       throw new ForbiddenException("관리자만 협력업체를 초대할 수 있습니다.");
@@ -218,9 +216,7 @@ export class RoomlogVendorMgmtDomain {
   }
 
   createTenantInvite(managerId: string, input: CreateTenantInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
+    const manager = this.findLandlord(managerId);
 
     if (!manager) {
       throw new ForbiddenException("관리자만 임차인을 초대할 수 있습니다.");
@@ -350,13 +346,18 @@ export class RoomlogVendorMgmtDomain {
   }
 
   private assertLandlord(managerId: string) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
-
-    if (!manager) {
+    if (!this.findLandlord(managerId)) {
       throw new ForbiddenException("관리인만 업체 주소록을 수정할 수 있습니다.");
     }
+  }
+
+  // capability 기준 관리인 조회 — legacy role이 TENANT인 겸직 계정도 소유한 집이 있으면 관리인이다.
+  private findLandlord(managerId: string) {
+    const user = this.store.users.find((account) => account.id === managerId);
+
+    if (!user) return undefined;
+
+    return deriveUserRoles(user, this.store).includes("LANDLORD") ? user : undefined;
   }
 
   private normalizeVendorProfileInput(input: ManagerVendorProfileInput) {
