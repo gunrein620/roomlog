@@ -198,44 +198,7 @@ function RecordCard({ record, moveoutId }: { record: MoveoutRecordItem; moveoutI
       <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
         {record.description}
       </div>
-      <details>
-        <summary
-          style={{
-            color: "var(--primary)",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          근거 상세
-        </summary>
-        <div
-          style={{
-            marginTop: 8,
-            borderTop: "1px dashed var(--border)",
-            paddingTop: 8,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            fontSize: 12,
-            color: "var(--on-surface-variant)",
-            lineHeight: 1.5,
-          }}
-        >
-          <div>{record.wearNote ?? "원천 기록과 발생 일자를 기준으로 정산 근거에 연결됩니다."}</div>
-          {(record.evidenceUrls ?? []).length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {record.evidenceUrls!.map((url, index) => (
-                <Link key={url} href={url} style={{ color: "var(--primary)", fontWeight: 700 }}>
-                  사진·문서 {index + 1}
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div>연결된 사진·문서 근거는 아직 없습니다.</div>
-          )}
-        </div>
-      </details>
+      <RecordDetailSections record={record} />
       {record.moveinComparisonAvailable && (
         <span style={{ fontSize: 11, color: "var(--on-surface-variant)" }}>
           입주 전 비교 가능 · 공백은 책임 인정이 아니에요
@@ -260,3 +223,81 @@ function RecordCard({ record, moveoutId }: { record: MoveoutRecordItem; moveoutI
     </Card>
   );
 }
+
+function RecordDetailSections({ record }: { record: MoveoutRecordItem }) {
+  if (!record.detailSections?.length && !(record.evidenceUrls ?? []).length) {
+    return null;
+  }
+
+  return (
+    <details>
+      <summary style={detailSummaryStyle}>상세정보 보기</summary>
+      <div style={detailPanelStyle}>
+        {record.detailSections?.map((section) => (
+          <div key={section.label} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={detailSectionLabelStyle}>{section.label}</div>
+            {section.items.map((item) => (
+              <div key={`${section.label}-${item.label}`} style={detailItemStyle}>
+                <span style={{ fontWeight: 800, color: "var(--on-surface)" }}>{item.label}</span>
+                <span>{item.value}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={detailSectionLabelStyle}>사진·문서</div>
+          {(record.evidenceUrls ?? []).length > 0 ? (
+            record.evidenceUrls!.map((url, index) => (
+              <Link key={url} href={url} style={{ color: "var(--primary)", fontWeight: 800, fontSize: 12 }}>
+                사진·문서 {index + 1}
+              </Link>
+            ))
+          ) : (
+            <span>연결된 사진·문서 근거는 아직 없습니다.</span>
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+const detailSummaryStyle = {
+  minHeight: 36,
+  width: "fit-content",
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0 12px",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-btn)",
+  color: "var(--primary)",
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer",
+  listStyle: "none",
+} as const;
+
+const detailPanelStyle = {
+  marginTop: 8,
+  border: "1px dashed var(--border)",
+  borderRadius: "var(--radius-md)",
+  padding: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  fontSize: 12,
+  color: "var(--on-surface-variant)",
+  lineHeight: 1.5,
+  background: "var(--surface-container-lowest)",
+} as const;
+
+const detailSectionLabelStyle = {
+  fontSize: 11,
+  color: "var(--on-surface-variant)",
+  fontWeight: 800,
+} as const;
+
+const detailItemStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
+} as const;
