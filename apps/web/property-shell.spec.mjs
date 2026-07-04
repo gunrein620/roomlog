@@ -122,6 +122,10 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     new URL("./src/app/tenant/moveout/00/page.tsx", import.meta.url),
     "utf8",
   );
+  const tenantRecordsSource = readFileSync(
+    new URL("./src/app/tenant/moveout/01/page.tsx", import.meta.url),
+    "utf8",
+  );
   const tenantSettlementSource = readFileSync(
     new URL("./src/app/tenant/moveout/03/page.tsx", import.meta.url),
     "utf8",
@@ -150,6 +154,11 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantMoveoutHomeSource, /notificationItems/);
   assert.doesNotMatch(tenantMoveoutHomeSource, /DEMO_MOVEOUT_ID/);
   assert.doesNotMatch(tenantMoveoutHomeSource, /<span[\s\S]*>\s*1\s*<\/span>/);
+  assert.match(tenantRecordsSource, /SOURCE_ROUTE/);
+  assert.match(tenantRecordsSource, /evidenceUrls/);
+  assert.match(tenantRecordsSource, /targetItemId=\$\{record\.id\}/);
+  assert.match(tenantRecordsSource, /근거 상세/);
+  assert.doesNotMatch(tenantRecordsSource, /href=\{MOVEOUT_ROUTES\["T-OUT-04"\]\}/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
   assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
   assert.match(tenantSettlementSource, /attachmentUrlsFrom/);

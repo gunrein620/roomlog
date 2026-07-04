@@ -638,7 +638,10 @@ export class RoomlogMoveoutDomain {
   private recordsFor(summaryId: string) {
     return this.store.moveoutRecords
       .filter((record) => record.summaryId === summaryId)
-      .map((record) => ({ ...record }));
+      .map((record) => ({
+        ...record,
+        evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined
+      }));
   }
 
   private checklistFor(summaryId: string) {

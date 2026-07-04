@@ -2,7 +2,12 @@ import Link from "next/link";
 import type { MoveoutRecordItem, MoveoutRecordSource, WearVerdict } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { DEMO_MOVEOUT_ID, getMoveout, getRecords, getSettlement } from "@/lib/moveout-api";
+import { CONTRACT_ROUTES } from "@/lib/contract-nav";
+import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+import { ROUTES as DEFECT_ROUTES } from "@/lib/nav";
+import { ROUTES as MOVEIN_ROUTES } from "@/lib/movein-nav";
 import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+import { PAYMENT_ROUTES } from "@/lib/payment-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +28,24 @@ const SOURCE_LABEL: Record<MoveoutRecordSource, string> = {
   contract: "계약서",
 };
 
+const SOURCE_ROUTE: Record<MoveoutRecordSource, string> = {
+  movein_photo: MOVEIN_ROUTES["T-IN-00"],
+  defect: DEFECT_ROUTES["T-DEF-00"],
+  repair: DEFECT_ROUTES["T-DEF-00"],
+  payment: PAYMENT_ROUTES["T-PAY-00"],
+  chat: MESSAGING_ROUTES["T-MSG-00"],
+  contract: CONTRACT_ROUTES["T-DOC-00"],
+};
+
 const WEAR_LABEL: Record<WearVerdict, string> = {
   aging_likely: "노후/마모 가능성",
   damage_possible: "확인 필요",
   unclear: "판단 어려움",
 };
+
+function disputeHrefFor(record: MoveoutRecordItem) {
+  return `${MOVEOUT_ROUTES["T-OUT-04"]}?targetItemId=${record.id}`;
+}
 
 export default async function Page() {
   const [moveout, records, settlement] = await Promise.all([
@@ -36,6 +54,7 @@ export default async function Page() {
     getSettlement(DEMO_MOVEOUT_ID),
   ]);
   const reviewItems = records.filter((record) => record.wearVerdict);
+  const primaryDisputeHref = reviewItems[0] ? disputeHrefFor(reviewItems[0]) : MOVEOUT_ROUTES["T-OUT-04"];
 
   return (
     <>
@@ -107,7 +126,7 @@ export default async function Page() {
                     {record.wearNote ?? "노후/마모일 수도 있어요. 확인이 필요한 항목입니다."}
                   </div>
                   <Link
-                    href={MOVEOUT_ROUTES["T-OUT-04"]}
+                    href={disputeHrefFor(record)}
                     style={{
                       alignSelf: "flex-start",
                       color: "var(--primary)",
@@ -150,7 +169,7 @@ export default async function Page() {
         <Link href={MOVEOUT_ROUTES["T-OUT-03"]} style={{ textDecoration: "none", display: "block" }}>
           <Button fullWidth>예상 정산 안내</Button>
         </Link>
-        <Link href={MOVEOUT_ROUTES["T-OUT-04"]} style={{ textDecoration: "none", display: "block" }}>
+        <Link href={primaryDisputeHref} style={{ textDecoration: "none", display: "block" }}>
           <Button fullWidth variant="secondary">
             이의·정정 요청
           </Button>
@@ -173,11 +192,62 @@ function RecordCard({ record }: { record: MoveoutRecordItem }) {
       <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
         {record.description}
       </div>
+      <details>
+        <summary
+          style={{
+            color: "var(--primary)",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          근거 상세
+        </summary>
+        <div
+          style={{
+            marginTop: 8,
+            borderTop: "1px dashed var(--border)",
+            paddingTop: 8,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            fontSize: 12,
+            color: "var(--on-surface-variant)",
+            lineHeight: 1.5,
+          }}
+        >
+          <div>{record.wearNote ?? "원천 기록과 발생 일자를 기준으로 정산 근거에 연결됩니다."}</div>
+          {(record.evidenceUrls ?? []).length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {record.evidenceUrls!.map((url, index) => (
+                <Link key={url} href={url} style={{ color: "var(--primary)", fontWeight: 700 }}>
+                  사진·문서 {index + 1}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div>연결된 사진·문서 근거는 아직 없습니다.</div>
+          )}
+        </div>
+      </details>
       {record.moveinComparisonAvailable && (
         <span style={{ fontSize: 11, color: "var(--on-surface-variant)" }}>
           입주 전 비교 가능 · 공백은 책임 인정이 아니에요
         </span>
       )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Link
+          href={SOURCE_ROUTE[record.source]}
+          style={{ color: "var(--on-surface-variant)", fontSize: 12, fontWeight: 800 }}
+        >
+          {SOURCE_LABEL[record.source]} 원천 보기
+        </Link>
+        {record.wearVerdict && (
+          <Link href={disputeHrefFor(record)} style={{ color: "var(--primary)", fontSize: 12, fontWeight: 800 }}>
+            이의·정정
+          </Link>
+        )}
+      </div>
     </Card>
   );
 }

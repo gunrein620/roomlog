@@ -218,6 +218,7 @@ function createMoveoutTestService() {
           title: "입주 전 욕실 사진",
           description: "입주 시점 사진이 있어 비교 가능합니다.",
           occurredAt: "2025-08-01T00:00:00.000Z",
+          evidenceUrls: ["/api/files/moveout-before.jpg"],
           moveinComparisonAvailable: true
         },
         {
@@ -4222,6 +4223,20 @@ describe("RoomlogService", () => {
 
     assert.equal(service.getTenantMoveout("tenant-a", "mo-a").id, "mo-a");
     assert.throws(() => service.getTenantMoveout("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+  });
+
+  it("returns moveout record evidence without exposing mutable store arrays", () => {
+    const service = createMoveoutTestService() as any;
+
+    const records = service.listTenantMoveoutRecords("tenant-a", "mo-a");
+    const record = records.find((item: any) => item.id === "rec-a");
+
+    assert.deepEqual(record.evidenceUrls, ["/api/files/moveout-before.jpg"]);
+    record.evidenceUrls.push("/api/files/mutated.jpg");
+    assert.deepEqual(
+      service.listTenantMoveoutRecords("tenant-a", "mo-a").find((item: any) => item.id === "rec-a").evidenceUrls,
+      ["/api/files/moveout-before.jpg"]
+    );
   });
 
   it("lets a manager read only moveouts for rooms they manage", () => {

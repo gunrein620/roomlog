@@ -78,6 +78,7 @@ export interface MoveoutRecordItem {
   occurredAt?: string; // ISO
   wearVerdict?: WearVerdict; // 있으면 '확인이 필요할 수 있는 항목' 보조 표기 + 이의 인접
   wearNote?: string; // 비적대 설명(노후/마모일 수도, 확인 필요)
+  evidenceUrls?: string[]; // 사진·문서 근거 URL(원천 상세 연결 전까지는 URL 계약)
   moveinComparisonAvailable: boolean; // 입주전 사진 비교 가능 여부(공백 ≠ 책임)
 }
 

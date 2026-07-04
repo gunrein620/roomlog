@@ -522,6 +522,7 @@ export type MoveoutRecordItem = {
   occurredAt?: string;
   wearVerdict?: MoveoutWearVerdict;
   wearNote?: string;
+  evidenceUrls?: string[];
   moveinComparisonAvailable: boolean;
 };
 
