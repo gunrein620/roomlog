@@ -158,7 +158,7 @@ jobs:
             echo "== roomlog containers =="
             docker ps -a --filter "name=roomlog" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || true
             echo "== listeners on roomlog ports =="
-            (sudo ss -ltnp 2>/dev/null || ss -ltnp) | grep -E ':(80|3000|3001|3002|3003|4000)\b' || true
+            (sudo ss -ltnp 2>/dev/null || ss -ltnp) | grep -E ':(3000|4000)\b' || true
           }
 
           on_exit() {
@@ -196,7 +196,7 @@ jobs:
           echo "Container state before deploy:"
           dump_docker_state
 
-          docker rm -f roomlog-nginx roomlog-tenant roomlog-manager roomlog-vendor 2>/dev/null || true
+          docker rm -f roomlog-web roomlog-api 2>/dev/null || true
 
           compose -f docker-compose.prod.yml up -d --build --remove-orphans
           docker image prune -f

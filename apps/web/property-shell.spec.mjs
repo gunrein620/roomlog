@@ -62,7 +62,7 @@ test("serves role frontends from the single web container on port 3000", () => {
 });
 
 test("production deploy removes stale role containers before rebinding port 3000", () => {
-  assert.match(deployWorkflowSource, /roomlog-nginx roomlog-tenant roomlog-manager roomlog-vendor/);
+  assert.match(deployWorkflowSource, /roomlog-web roomlog-api/);
   assert.match(deployWorkflowSource, /up -d --build --remove-orphans/);
   assert.match(deployWorkflowSource, /docker ps -a --filter "name=roomlog"/);
 });
