@@ -2,8 +2,19 @@
 // (레포의 서버/클라 경계 함정은 prototype/docs/DOMAIN-RECIPE.md '함정' 절 참고.)
 
 import TourViewerClient from "./tour-viewer-client";
+import TourTuningPanel from "./tour-tuning-panel";
 
-export default function SplatTourPage() {
+type SplatTourPageProps = {
+  searchParams?: Promise<{
+    tune?: string | string[];
+  }>;
+};
+
+export default async function SplatTourPage({ searchParams }: SplatTourPageProps) {
+  const params = await searchParams;
+  const tuneParam = params?.tune;
+  const shouldRenderTuningPanel = Array.isArray(tuneParam) ? tuneParam.includes("1") : tuneParam === "1";
+
   return (
     <main
       style={{
@@ -18,6 +29,7 @@ export default function SplatTourPage() {
         <h1 style={{ margin: "4px 0 0", fontSize: 22 }}>원격 매물 3D 투어</h1>
       </header>
       <TourViewerClient />
+      {shouldRenderTuningPanel ? <TourTuningPanel /> : null}
     </main>
   );
 }
