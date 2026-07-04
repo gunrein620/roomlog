@@ -112,6 +112,47 @@ img {
   background: #ffffff;
 }
 
+/* 로그인 화면 좌상단 홈 로고 — 누르면 홈페이지로 복귀 */
+.login-topbar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  padding: 16px 18px 0;
+}
+
+.login-home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  background: none;
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.login-home-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.login-home-roof {
+  width: 24px;
+  height: auto;
+  color: var(--ink);
+}
+
+.login-home-link span {
+  color: #aab0bd;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
 /* 우주 브랜드마크 + 공전하는 분홍 별 */
 .login-brandmark {
   position: relative;
@@ -4637,6 +4678,10 @@ p {
 }
 
 .owner-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 22px;
@@ -4644,6 +4689,10 @@ p {
     linear-gradient(135deg, rgba(47, 85, 255, 0.1), rgba(0, 191, 114, 0.08)),
     #ffffff;
   box-shadow: 0 10px 22px rgba(18, 24, 40, 0.06);
+}
+
+.owner-hero > div {
+  min-width: 0;
 }
 
 .owner-hero h2 {
@@ -4657,6 +4706,27 @@ p {
   font-size: 0.9rem;
   font-weight: 800;
   line-height: 1.55;
+}
+
+.mypage-main-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(47, 85, 255, 0.22);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--blue);
+  font-size: 0.92rem;
+  font-weight: 900;
+  box-shadow: 0 10px 22px rgba(47, 85, 255, 0.12);
+}
+
+.mypage-main-button:hover {
+  border-color: rgba(47, 85, 255, 0.42);
+  background: rgba(47, 85, 255, 0.06);
 }
 
 .owner-form {
@@ -5229,10 +5299,14 @@ p {
 
 .profile-account-card {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-columns: 54px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 16px;
+}
+
+.profile-main-button {
+  justify-self: end;
 }
 
 .profile-avatar {
@@ -5743,6 +5817,25 @@ p {
     #ffffff;
 }
 
+@media (max-width: 540px) {
+  .owner-hero {
+    flex-direction: column;
+  }
+
+  .mypage-main-button {
+    width: 100%;
+  }
+
+  .profile-account-card {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .profile-main-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+}
+
 .tenant-contract-card,
 .maintenance-card {
   display: grid;
@@ -5785,6 +5878,10 @@ p {
 
 .tenant-contract-card button,
 .maintenance-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   min-height: 42px;
   padding: 0 13px;
   border-radius: 12px;
@@ -5792,6 +5889,38 @@ p {
   color: #ffffff;
   font-size: 0.78rem;
   font-weight: 900;
+}
+
+/* 즉시 상태 전환이 너무 즉각적이어서 가짜처럼 보이던 지점 — 짧은 처리중 스피너로 실제 요청처럼 체감되게 함 */
+.submit-listing,
+.repair-submit,
+.tenant-contract-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.submit-listing:disabled,
+.repair-submit:disabled,
+.tenant-contract-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: btn-spinner-spin 0.7s linear infinite;
+}
+
+@keyframes btn-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tenant-task-grid {
@@ -6638,6 +6767,7 @@ p {
 }
 
 .bottom-tabs a {
+  position: relative;
   display: grid;
   min-height: 62px;
   place-items: center;
@@ -6646,6 +6776,17 @@ p {
   color: #5f6775;
   font-size: 0.72rem;
   font-weight: 900;
+}
+
+.bottom-tabs .tab-dot {
+  position: absolute;
+  top: 9px;
+  right: 30%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5a5f;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.98);
 }
 
 .bottom-tabs svg {
@@ -7260,6 +7401,10 @@ p {
   }
 
   .web-nav button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 14px;
     border-radius: 10px;
     background: none;
@@ -7271,6 +7416,25 @@ p {
   .web-nav button:hover {
     background: #f2f4f8;
     color: var(--blue);
+  }
+
+  .web-nav button.active {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+
+  .web-nav .nav-badge {
+    display: inline-flex;
+    min-width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ff5a5f;
+    color: #ffffff;
+    font-size: 0.66rem;
+    font-weight: 900;
   }
 
   .web-topbar-actions {
@@ -7605,6 +7769,7 @@ p {
     padding-right: 38px;
   }
 
+  /* ── 마이페이지·문의·찜: 6컬럼 명시 배치 (모바일 세로 흐름을 데스크톱 대시보드로) ── */
   .saved-screen,
   .inquiry-screen,
   .owner-screen,
@@ -7612,9 +7777,21 @@ p {
   .profile-screen {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+    padding-top: 28px;
     border-top: 1px solid var(--line);
+  }
+
+  /* 그리드에서는 gap이 간격을 담당 — 모바일용 세로 마진 제거 */
+  .saved-screen > *,
+  .inquiry-screen > *,
+  .owner-screen > *,
+  .tenant-screen > *,
+  .profile-screen > * {
+    margin-top: 0;
+    margin-bottom: 0;
   }
 
   .saved-screen > .section-title,
@@ -7627,10 +7804,216 @@ p {
     grid-column: 1 / -1;
   }
 
-  .saved-card-list,
-  .inquiry-list,
-  .owner-dashboard,
-  .tenant-task-grid {
+  .mypage-role-bar {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding: 12px 20px;
+    background: #ffffff;
+  }
+
+  /* 데스크톱은 상단 "역할군" 셀렉트가 이미 같은 기능을 하므로 배너의 전환 버튼은 숨기고 상태 문구만 남긴다 */
+  .mypage-role-bar button {
+    display: none;
+  }
+
+  /* 집보는사람 마이페이지 */
+  .profile-screen > .profile-account-card {
+    grid-column: 1 / -1;
+    padding: 26px 28px;
+  }
+
+  .profile-screen > .profile-activity-grid {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .profile-activity-grid article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    justify-items: start;
+    column-gap: 16px;
+    row-gap: 2px;
+    min-height: 0;
+    padding: 22px 24px;
+    text-align: left;
+    transition: transform 0.14s ease, box-shadow 0.14s ease;
+  }
+
+  .profile-activity-grid article svg {
+    grid-row: 1 / span 2;
+    width: 24px;
+    height: 24px;
+  }
+
+  .profile-activity-grid article span {
+    font-size: 0.82rem;
+  }
+
+  .profile-activity-grid article strong {
+    font-size: 1.35rem;
+  }
+
+  .profile-activity-grid article[role="button"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(18, 24, 40, 0.1);
+  }
+
+  .profile-screen > .profile-summary-list {
+    grid-column: span 3;
+    display: grid;
+    gap: 20px;
+  }
+
+  .profile-screen > .profile-inquiry-card {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .profile-screen > .recent-viewed-card {
+    grid-column: span 3;
+  }
+
+  .profile-screen > .profile-menu-card {
+    grid-column: span 3;
+  }
+
+  /* 최근 본 방 카드가 없으면 메뉴를 전체폭 3열 타일로 펼쳐 빈 공간 제거 */
+  .profile-screen:not(:has(> .recent-viewed-card)) > .profile-menu-card {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .profile-screen:not(:has(> .recent-viewed-card)) > .profile-menu-card button {
+    min-height: 76px;
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+  }
+
+  .profile-screen:not(:has(> .recent-viewed-card)) > .profile-menu-card button:last-child {
+    border-right: 0;
+  }
+
+  .profile-screen > .pwa-install-card {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 180px;
+    gap: 28px;
+    align-items: center;
+  }
+
+  .profile-screen > .pwa-install-card button {
+    margin-top: 0;
+  }
+
+  /* 세입자 마이페이지 */
+  .tenant-screen > .mypage-role-bar {
+    order: 1;
+  }
+
+  .tenant-screen > .owner-hero {
+    order: 2;
+    grid-column: 1 / -1;
+  }
+
+  .tenant-screen > .tenant-task-grid {
+    order: 4;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .tenant-screen > .tenant-contract-card {
+    order: 5;
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .tenant-screen > .tenant-repair-card {
+    order: 6;
+    grid-column: span 3;
+  }
+
+  .tenant-screen > .maintenance-card {
+    order: 7;
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  /* 집주인 마이페이지 */
+  .owner-screen > .owner-hero {
+    grid-column: 1 / -1;
+  }
+
+  .owner-screen > .owner-status-board {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .owner-screen > .owner-my-listings {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .owner-screen > .owner-preview-card {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .owner-screen > .owner-exposure-card {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .owner-screen > .owner-readiness-card {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .owner-screen > .owner-progress-card {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .owner-screen > .owner-form {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  .owner-form > .owner-submit-summary,
+  .owner-form > .submit-listing {
+    grid-column: 1 / -1;
+  }
+
+  /* 문의센터 */
+  .inquiry-screen > .inquiry-history-list {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  .inquiry-screen > .inquiry-channel-card {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  .inquiry-screen > .inquiry-mini-grid {
+    grid-column: span 3;
+    align-self: stretch;
+  }
+
+  /* 찜 목록 */
+  .saved-screen > .saved-compare-strip {
+    grid-column: 1 / -1;
+  }
+
+  .saved-card-list {
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7710,6 +8093,7 @@ p {
   }
 
   .detail-info-section,
+  .detail-info-pair,
   .safety-analysis-card,
   .detail-report-card,
   .agent-summary-card,
@@ -7720,6 +8104,20 @@ p {
     grid-column: 1 / -1;
     margin-right: 24px;
     margin-left: 24px;
+  }
+
+  /* 옵션/건물 정보는 나란히 2열로 — 좁은 폭 기준 그대로 풀폭 전용이라 스크롤이 길어지던 지점 */
+  .detail-info-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 20px;
+  }
+
+  .detail-info-pair .detail-info-section {
+    grid-column: auto;
+    margin-right: 0;
+    margin-left: 0;
   }
 
   .detail-map-section {
@@ -7771,4 +8169,399 @@ p {
   40% {
     opacity: 1;
   }
+}
+
+/* ── 마이페이지 데모 플로우 (역할 바, 문의 내역, 세입자/집주인 상호작용) ── */
+.mypage-role-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--blue-soft);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mypage-role-bar b {
+  color: var(--blue-dark);
+}
+
+.mypage-role-bar button {
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* 화면 상단에 인라인으로 박혀 스크롤하면 안 보이던 토스트 → 뷰포트 하단 고정으로 변경 */
+.mypage-toast {
+  position: fixed;
+  right: 0;
+  bottom: 90px;
+  left: 50%;
+  z-index: 60;
+  width: min(calc(100% - 32px), 400px);
+  margin: 0;
+  padding: 13px 18px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  transform: translateX(-50%);
+  box-shadow: 0 14px 32px rgba(18, 24, 40, 0.24);
+  animation: mypage-toast-in 0.22s ease;
+}
+
+@keyframes mypage-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (min-width: 760px) {
+  .mypage-toast {
+    bottom: 122px;
+  }
+}
+
+@media (min-width: 1080px) {
+  .mypage-toast {
+    bottom: 28px;
+  }
+}
+
+.profile-activity-grid article[role="button"],
+.profile-summary-list article[role="button"] {
+  position: relative;
+  cursor: pointer;
+}
+
+/* 클릭 가능한 카드임을 알려주는 화살표 — role=button만으로는 어포던스가 약해서 추가 */
+.activity-card-chevron {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: var(--subtle);
+}
+
+.inquiry-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.inquiry-history-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 7px;
+}
+
+.inquiry-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inquiry-history-head strong {
+  font-size: 15px;
+}
+
+.inquiry-history-head em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b25e09;
+}
+
+.inquiry-history-head em.done {
+  background: #e7f8f0;
+  color: #067a4b;
+}
+
+.inquiry-history-card > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.inquiry-history-card > small {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.inquiry-reply-bubble {
+  margin-top: 4px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--blue-soft);
+  display: grid;
+  gap: 3px;
+}
+
+.inquiry-reply-bubble.waiting {
+  background: var(--canvas);
+}
+
+.inquiry-reply-bubble span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue-dark);
+}
+
+.inquiry-reply-bubble.waiting span {
+  color: var(--subtle);
+}
+
+.inquiry-reply-bubble p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.recent-viewed-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 10px;
+}
+
+.recent-viewed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recent-viewed-head strong {
+  font-size: 15px;
+}
+
+.recent-viewed-head span {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.recent-viewed-card > button {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--canvas);
+  border: 1px solid transparent;
+}
+
+.recent-viewed-card > button:hover {
+  border-color: var(--blue);
+}
+
+.recent-viewed-card > button b {
+  font-size: 14px;
+  color: var(--blue-dark);
+}
+
+.recent-viewed-card > button span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recent-viewed-card > button small {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.owner-my-listings {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 10px;
+}
+
+.owner-my-listings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.owner-my-listings-head strong {
+  font-size: 15px;
+}
+
+.owner-my-listings-head span {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.owner-my-listings article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.owner-my-listings article strong {
+  display: block;
+  font-size: 13.5px;
+}
+
+.owner-my-listings article small {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.owner-my-listings article em {
+  flex-shrink: 0;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b25e09;
+}
+
+.owner-my-listings article em.live {
+  background: #e7f8f0;
+  color: #067a4b;
+}
+
+.tenant-repair-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  gap: 12px;
+}
+
+.tenant-repair-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tenant-repair-head span {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.tenant-repair-head strong {
+  display: block;
+  font-size: 15px;
+}
+
+.tenant-repair-head button {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tenant-repair-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tenant-repair-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.tenant-repair-list article strong {
+  font-size: 13.5px;
+}
+
+.tenant-repair-list article em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b25e09;
+}
+
+.tenant-repair-list article em.assigned {
+  background: #e7f8f0;
+  color: #067a4b;
+}
+
+.tenant-repair-new {
+  display: grid;
+  gap: 9px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.tenant-repair-new > strong {
+  font-size: 13px;
+}
+
+.repair-issue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.repair-issue-chips button {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.repair-issue-chips button.active {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+  color: var(--blue-dark);
+  font-weight: 700;
+}
+
+.repair-submit {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.contract-sheet-table {
+  margin: 4px 0 14px;
 }

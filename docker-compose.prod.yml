@@ -9,9 +9,12 @@ services:
     container_name: roomlog-web
     restart: unless-stopped
     environment:
-      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
       NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: ${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
+      ROOMLOG_PUBLIC_ORIGIN: ${ROOMLOG_PUBLIC_ORIGIN:-https://www.woo-zu.com}
+      GOOGLE_LOGIN_CLIENT_ID: ${GOOGLE_LOGIN_CLIENT_ID:-}
+      GOOGLE_LOGIN_CALLBACK_URL: ${GOOGLE_LOGIN_CALLBACK_URL:-}
     depends_on:
       - api
     ports:
