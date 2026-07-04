@@ -22,3 +22,15 @@ export type MoveoutRoute = (typeof MOVEOUT_ROUTES)[MoveoutScreenId];
 export function moveoutRouteFor(id: MoveoutScreenId): MoveoutRoute {
   return MOVEOUT_ROUTES[id];
 }
+
+/** 하위 퇴실 화면 전환 시 현재 moveout id를 query로 유지한다. */
+export function withMoveoutId(route: string, moveoutId?: string) {
+  const id = moveoutId?.trim();
+
+  if (!id) {
+    return route;
+  }
+
+  const separator = route.includes("?") ? "&" : "?";
+  return `${route}${separator}id=${encodeURIComponent(id)}`;
+}

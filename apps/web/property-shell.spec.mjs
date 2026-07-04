@@ -118,6 +118,17 @@ test("keeps tenant, manager, and vendor entry routes available", () => {
 });
 
 test("wires moveout screens to backend mutations instead of static links", () => {
+  const moveoutNavSource = readFileSync(new URL("./src/lib/moveout-nav.ts", import.meta.url), "utf8");
+  const moveoutLoadingExists = existsSync(new URL("./src/app/tenant/moveout/loading.tsx", import.meta.url));
+  const moveoutErrorExists = existsSync(new URL("./src/app/tenant/moveout/error.tsx", import.meta.url));
+  const tenantMoveoutHomeSource = readFileSync(
+    new URL("./src/app/tenant/moveout/00/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const tenantRecordsSource = readFileSync(
+    new URL("./src/app/tenant/moveout/01/page.tsx", import.meta.url),
+    "utf8",
+  );
   const tenantSettlementSource = readFileSync(
     new URL("./src/app/tenant/moveout/03/page.tsx", import.meta.url),
     "utf8",
@@ -126,8 +137,38 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     new URL("./src/app/tenant/moveout/04/page.tsx", import.meta.url),
     "utf8",
   );
+  const tenantChecklistSource = readFileSync(
+    new URL("./src/app/tenant/moveout/02/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutHomeSource = readFileSync(
+    new URL("./src/app/manager/moveout/00/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutNavSource = readFileSync(
+    new URL("./src/lib/moveout-manager-nav.ts", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutComponentsSource = readFileSync(
+    new URL("./src/app/manager/moveout/_components.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutLoadingPath = new URL("./src/app/manager/moveout/loading.tsx", import.meta.url);
+  const managerMoveoutErrorPath = new URL("./src/app/manager/moveout/error.tsx", import.meta.url);
+  const managerMoveoutLoadingExists = existsSync(managerMoveoutLoadingPath);
+  const managerMoveoutErrorExists = existsSync(managerMoveoutErrorPath);
+  const managerMoveoutLoadingSource = managerMoveoutLoadingExists
+    ? readFileSync(managerMoveoutLoadingPath, "utf8")
+    : "";
+  const managerMoveoutErrorSource = managerMoveoutErrorExists
+    ? readFileSync(managerMoveoutErrorPath, "utf8")
+    : "";
   const managerReviewSource = readFileSync(
     new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerReportSource = readFileSync(
+    new URL("./src/app/manager/moveout/01/page.tsx", import.meta.url),
     "utf8",
   );
   const managerDisputeSource = readFileSync(
@@ -135,17 +176,81 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     "utf8",
   );
 
+  assert.match(moveoutNavSource, /withMoveoutId/);
+  assert.equal(moveoutLoadingExists, true);
+  assert.equal(moveoutErrorExists, true);
+  assert.match(tenantMoveoutHomeSource, /listMoveouts/);
+  assert.match(tenantMoveoutHomeSource, /getChecklist/);
+  assert.match(tenantMoveoutHomeSource, /getDisputes/);
+  assert.match(tenantMoveoutHomeSource, /completionProgress/);
+  assert.match(tenantMoveoutHomeSource, /notificationItems/);
+  assert.match(tenantMoveoutHomeSource, /withMoveoutId/);
+  assert.doesNotMatch(tenantMoveoutHomeSource, /DEMO_MOVEOUT_ID/);
+  assert.doesNotMatch(tenantMoveoutHomeSource, /<span[\s\S]*>\s*1\s*<\/span>/);
+  assert.match(tenantRecordsSource, /SOURCE_ROUTE/);
+  assert.match(tenantRecordsSource, /evidenceUrls/);
+  assert.match(tenantRecordsSource, /targetItemId=\$\{record\.id\}/);
+  assert.match(tenantRecordsSource, /근거 상세/);
+  assert.match(tenantRecordsSource, /searchParams/);
+  assert.doesNotMatch(tenantRecordsSource, /href=\{MOVEOUT_ROUTES\["T-OUT-04"\]\}/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
   assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
+  assert.match(tenantSettlementSource, /name="moveoutId"/);
+  assert.match(tenantSettlementSource, /createMoveoutInquiry\(moveoutId/);
+  assert.match(tenantSettlementSource, /attachmentUrlsFrom/);
+  assert.match(tenantSettlementSource, /targetItemId=\$\{deduction\.id\}/);
+  assert.match(tenantSettlementSource, /SOURCE_ROUTE/);
+  assert.match(tenantSettlementSource, /계약 정보 확정 후 예상 정산 안내/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
   assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
+  assert.match(tenantDisputeSource, /name="moveoutId"/);
+  assert.match(tenantDisputeSource, /createMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /updateTenantMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /escalateMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /updateTenantMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{updateDisputeAction\}/);
+  assert.match(tenantDisputeSource, /escalateMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{escalateDisputeAction\}/);
+  assert.match(tenantDisputeSource, /name="targetItemId"/);
+  assert.match(tenantDisputeSource, /attachmentUrlsFrom/);
+  assert.match(tenantChecklistSource, /updateMoveoutChecklist/);
+  assert.match(tenantChecklistSource, /action=\{saveChecklistAction\}/);
+  assert.match(tenantChecklistSource, /name="moveoutId"/);
+  assert.match(tenantChecklistSource, /updateMoveoutChecklist\(moveoutId/);
+  assert.match(managerMoveoutNavSource, /withManagerMoveoutId/);
+  assert.match(managerMoveoutHomeSource, /selectedRow/);
+  assert.match(managerMoveoutHomeSource, /rows\.length === 0/);
+  assert.match(managerMoveoutHomeSource, /withManagerMoveoutId\(MANAGER_MOVEOUT_ROUTES\["M-OUT-03"\]/);
+  assert.match(managerMoveoutComponentsSource, /withManagerMoveoutId/);
+  assert.match(managerMoveoutComponentsSource, /MANAGER_MOVEOUT_ROUTES\["M-OUT-02"\]/);
+  assert.equal(managerMoveoutLoadingExists, true);
+  assert.equal(managerMoveoutErrorExists, true);
+  assert.match(managerMoveoutLoadingSource, /퇴실\/정산 정보를 불러오는 중/);
+  assert.match(managerMoveoutErrorSource, /reset/);
   assert.match(managerReviewSource, /completeReview/);
   assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
+  assert.match(managerReviewSource, /adjustDeduction/);
+  assert.match(managerReviewSource, /action=\{adjustDeductionAction\}/);
+  assert.match(managerReviewSource, /name="deductionId"/);
+  assert.match(managerReviewSource, /name=\{`estimatedMin-\$\{deduction\.id\}`\}/);
+  assert.match(managerReviewSource, /name=\{`estimatedMax-\$\{deduction\.id\}`\}/);
+  assert.match(managerReviewSource, /name=\{`resolveConfirmation-\$\{deduction\.id\}`\}/);
+  assert.match(managerReportSource, /adjustWearVerdict/);
+  assert.match(managerReportSource, /action=\{adjustWearVerdictAction\}/);
+  assert.match(managerReportSource, /name="recordItemId"/);
+  assert.match(managerReportSource, /name=\{`evidenceNote-\$\{record\.id\}`\}/);
+  assert.match(managerReportSource, /name=\{`notifyTenant-\$\{record\.id\}`\}/);
   assert.match(managerDisputeSource, /respondDispute/);
   assert.match(managerDisputeSource, /action=\{respondDisputeAction\}/);
+  assert.match(managerDisputeSource, /selectedDisputeId/);
+  assert.match(managerDisputeSource, /targetDisputeId/);
+  assert.match(managerDisputeSource, /name="selectedDisputeId"/);
+  assert.match(managerDisputeSource, /reflect === "settlement"/);
 
   assert.doesNotMatch(tenantSettlementSource, /disabled[\s\S]*관리자 문의/);
   assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
+  assert.doesNotMatch(tenantDisputeSource, /disabled=\{!dispute\.slaBreached\}/);
+  assert.doesNotMatch(tenantChecklistSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*체크 저장/);
   assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
   assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);
 });

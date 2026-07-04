@@ -522,6 +522,7 @@ export type MoveoutRecordItem = {
   occurredAt?: string;
   wearVerdict?: MoveoutWearVerdict;
   wearNote?: string;
+  evidenceUrls?: string[];
   moveinComparisonAvailable: boolean;
 };
 
@@ -532,6 +533,7 @@ export type MoveoutChecklistItem = {
   present: boolean;
   condition: MoveoutChecklistCondition;
   note?: string;
+  attachmentUrls?: string[];
 };
 
 export type MoveoutDeductionCandidate = {
@@ -573,6 +575,7 @@ export type MoveoutDispute = {
   targetItemId?: string;
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
   status: MoveoutDisputeStatus;
   slaDeadline: string;
   slaBreached: boolean;
@@ -665,11 +668,39 @@ export type CreateMoveoutDisputeInput = {
   targetItemId?: string;
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
 };
 
 export type CreateTenantMoveoutInquiryInput = {
   body: string;
   attachmentUrls?: string[];
+};
+
+export type UpdateMoveoutChecklistItemInput = {
+  id?: string;
+  label: string;
+  present: boolean;
+  condition: MoveoutChecklistCondition;
+  note?: string;
+  attachmentUrls?: string[];
+};
+
+export type UpdateMoveoutChecklistInput = {
+  items: UpdateMoveoutChecklistItemInput[];
+};
+
+export type TenantMoveoutDisputeAction = "confirm" | "re_dispute" | "resolve";
+
+export type UpdateTenantMoveoutDisputeInput = {
+  disputeId: string;
+  action: TenantMoveoutDisputeAction;
+  reason?: string;
+  attachmentUrls?: string[];
+};
+
+export type EscalateMoveoutDisputeInput = {
+  disputeId: string;
+  reason?: string;
 };
 
 export type ContractLifecycle =

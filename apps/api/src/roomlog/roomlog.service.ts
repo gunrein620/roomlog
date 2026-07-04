@@ -71,6 +71,7 @@ import {
   CreateManagerReportFollowUpInput,
   CreateManagerReportInput,
   DeletionState,
+  EscalateMoveoutDisputeInput,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
@@ -122,6 +123,8 @@ import {
   MoveoutRespondDisputeInput,
   MoveoutSettlementEstimate,
   MoveoutSummary,
+  UpdateTenantMoveoutDisputeInput,
+  UpdateMoveoutChecklistInput,
   PhotoAnalysis,
   PhotoComparisonStatus,
   RealtimeClientSecretInput,
@@ -733,6 +736,7 @@ function createDemoStore(): Store {
         title: "입주 전 욕실 사진",
         description: "입주 시점 욕실 타일과 수전 사진이 있어 현재 상태와 비교할 수 있습니다.",
         occurredAt: "2024-08-01T10:10:00+09:00",
+        evidenceUrls: ["/api/files/moveout/bathroom-before.jpg"],
         moveinComparisonAvailable: true
       },
       {
@@ -755,6 +759,7 @@ function createDemoStore(): Store {
         occurredAt: "2026-05-12T16:00:00+09:00",
         wearVerdict: "unclear",
         wearNote: "노후와 사용 중 훼손 가능성이 함께 있어 관리인 확인이 필요합니다.",
+        evidenceUrls: ["/api/files/moveout/bathroom-repair-after.jpg"],
         moveinComparisonAvailable: true
       },
       {
@@ -2987,6 +2992,14 @@ export class RoomlogService {
     return this.moveout.listTenantMoveoutChecklist(tenantId, moveoutId);
   }
 
+  updateTenantMoveoutChecklist(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateMoveoutChecklistInput
+  ) {
+    return this.moveout.updateTenantMoveoutChecklist(tenantId, moveoutId, input);
+  }
+
   getTenantMoveoutSettlement(tenantId: string, moveoutId: string) {
     return this.moveout.getTenantMoveoutSettlement(tenantId, moveoutId);
   }
@@ -3009,6 +3022,22 @@ export class RoomlogService {
     input: CreateMoveoutDisputeInput
   ) {
     return this.moveout.createTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  updateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateTenantMoveoutDisputeInput
+  ) {
+    return this.moveout.updateTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  escalateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: EscalateMoveoutDisputeInput
+  ) {
+    return this.moveout.escalateTenantMoveoutDispute(tenantId, moveoutId, input);
   }
 
   getManagerMoveoutDashboard(managerId: string) {

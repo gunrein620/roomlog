@@ -6,6 +6,7 @@ import {
   DEMO_MANAGER_SETTLEMENT_REVIEW,
   managerMoveoutPaths,
 } from "./moveout-manager-api";
+import { MANAGER_MOVEOUT_ROUTES, withManagerMoveoutId } from "./moveout-manager-nav";
 import {
   DEMO_MOVEOUT,
   DEMO_MOVEOUT_DISPUTES,
@@ -19,8 +20,11 @@ describe("moveout api path contracts", () => {
     assert.equal(tenantMoveoutPaths.moveout("mo 1"), "/moveouts/mo%201");
     assert.equal(tenantMoveoutPaths.records("mo 1"), "/moveouts/mo%201/records");
     assert.equal(tenantMoveoutPaths.checklist("mo 1"), "/moveouts/mo%201/checklist");
+    assert.equal(tenantMoveoutPaths.updateChecklist("mo 1"), "/moveouts/mo%201/checklist");
     assert.equal(tenantMoveoutPaths.settlement("mo 1"), "/moveouts/mo%201/settlement");
     assert.equal(tenantMoveoutPaths.disputes("mo 1"), "/moveouts/mo%201/disputes");
+    assert.equal(tenantMoveoutPaths.disputeAction("mo 1"), "/moveouts/mo%201/disputes/action");
+    assert.equal(tenantMoveoutPaths.disputeEscalation("mo 1"), "/moveouts/mo%201/disputes/escalate");
     assert.equal(tenantMoveoutPaths.inquiries("mo 1"), "/moveouts/mo%201/inquiries");
   });
 
@@ -33,6 +37,18 @@ describe("moveout api path contracts", () => {
     assert.equal(managerMoveoutPaths.adjustDeduction("mo 1"), "/moveouts/mo%201/deductions");
     assert.equal(managerMoveoutPaths.completeReview("mo 1"), "/moveouts/mo%201/complete-review");
     assert.equal(managerMoveoutPaths.respondDispute("mo 1"), "/moveouts/mo%201/disputes/respond");
+  });
+
+  it("keeps the selected manager moveout id across M-OUT tabs", () => {
+    assert.equal(
+      withManagerMoveoutId(MANAGER_MOVEOUT_ROUTES["M-OUT-02"], "mo 1"),
+      "/manager/moveout/02?id=mo%201",
+    );
+    assert.equal(
+      withManagerMoveoutId(`${MANAGER_MOVEOUT_ROUTES["M-OUT-03"]}?selectedDisputeId=dp-a`, "mo 1"),
+      "/manager/moveout/03?selectedDisputeId=dp-a&id=mo%201",
+    );
+    assert.equal(withManagerMoveoutId(MANAGER_MOVEOUT_ROUTES["M-OUT-01"]), MANAGER_MOVEOUT_ROUTES["M-OUT-01"]);
   });
 
   it("keeps the tenant and manager fallback data aligned with the KAN-134 demo seed", () => {

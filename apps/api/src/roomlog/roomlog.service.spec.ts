@@ -218,6 +218,7 @@ function createMoveoutTestService() {
           title: "입주 전 욕실 사진",
           description: "입주 시점 사진이 있어 비교 가능합니다.",
           occurredAt: "2025-08-01T00:00:00.000Z",
+          evidenceUrls: ["/api/files/moveout-before.jpg"],
           moveinComparisonAvailable: true
         },
         {
@@ -4222,14 +4223,79 @@ describe("RoomlogService", () => {
 
     assert.equal(service.getTenantMoveout("tenant-a", "mo-a").id, "mo-a");
     assert.throws(() => service.getTenantMoveout("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutRecords("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutChecklist("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.getTenantMoveoutSettlement("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutDisputes("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+  });
+
+  it("returns moveout record evidence without exposing mutable store arrays", () => {
+    const service = createMoveoutTestService() as any;
+
+    const records = service.listTenantMoveoutRecords("tenant-a", "mo-a");
+    const record = records.find((item: any) => item.id === "rec-a");
+
+    assert.deepEqual(record.evidenceUrls, ["/api/files/moveout-before.jpg"]);
+    record.evidenceUrls.push("/api/files/mutated.jpg");
+    assert.deepEqual(
+      service.listTenantMoveoutRecords("tenant-a", "mo-a").find((item: any) => item.id === "rec-a").evidenceUrls,
+      ["/api/files/moveout-before.jpg"]
+    );
   });
 
   it("lets a manager read only moveouts for rooms they manage", () => {
     const service = createMoveoutTestService() as any;
+    const managerARows = service.listManagerMoveoutRows("manager-a");
+    const managerBRows = service.listManagerMoveoutRows("manager-b");
 
+    assert.equal(managerARows.some((row: any) => row.summaryId === "mo-a"), true);
+    assert.equal(managerARows.some((row: any) => row.summaryId === "mo-b"), false);
+    assert.equal(managerBRows.some((row: any) => row.summaryId === "mo-b"), true);
+    assert.equal(managerBRows.some((row: any) => row.summaryId === "mo-a"), false);
     assert.equal(service.getManagerMoveoutSettlement("manager-a", "mo-a").settlement.id, "st-a");
     assert.throws(
       () => service.getManagerMoveoutSettlement("manager-b", "mo-a"),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(() => service.getManagerMoveoutRecords("manager-b", "mo-a"), /담당 호실|퇴실|찾을 수/);
+    assert.throws(() => service.getManagerReportAudit("manager-b", "mo-a"), /담당 호실|퇴실|찾을 수/);
+    assert.throws(
+      () =>
+        service.adjustManagerMoveoutDeduction("manager-b", "mo-a", {
+          deductionId: "de-a",
+          estimatedMin: 0,
+          estimatedMax: 0,
+          resolveConfirmation: true
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.adjustManagerMoveoutWearVerdict("manager-b", "mo-a", {
+          recordItemId: "rec-a",
+          action: "reinforce",
+          evidenceNote: "타 호실 접근 시도",
+          notifyTenant: true
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.completeManagerMoveoutReview("manager-b", "mo-a", {
+          acknowledgeEvidence: true,
+          overrideSla: true,
+          overrideReason: "타 호실 접근 시도"
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.respondManagerMoveoutDispute("manager-b", "mo-a", {
+          disputeId: "dp-sla",
+          kind: "explain",
+          message: "타 호실 접근 시도",
+          reflect: "none"
+        }),
       /담당 호실|퇴실|찾을 수/
     );
   });
@@ -4279,7 +4345,8 @@ describe("RoomlogService", () => {
     const service = createMoveoutTestService() as any;
 
     const result = service.createTenantMoveoutInquiry("tenant-a", "mo-a", {
-      body: "퇴실 일정과 예상 정산 문의드립니다."
+      body: "퇴실 일정과 예상 정산 문의드립니다.",
+      attachmentUrls: ["/api/files/moveout-question.jpg", ""]
     });
     const managerThreads = service.listManagerMessagingThreads("manager-a", "moveout");
     const tenantThread = service.getTenantMessagingThread("tenant-a", result.thread.id);
@@ -4288,6 +4355,122 @@ describe("RoomlogService", () => {
     assert.equal(result.thread.contextRef, "mo-a");
     assert.equal(managerThreads.some((thread: any) => thread.id === result.thread.id), true);
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
+    assert.deepEqual(tenantThread.messages.at(-1).attachmentUrls, ["/api/files/moveout-question.jpg"]);
+  });
+
+  it("lets a tenant save moveout checklist item state and recalculates preparation progress", () => {
+    const service = createMoveoutTestService() as any;
+
+    const result = service.updateTenantMoveoutChecklist("tenant-a", "mo-a", {
+      items: [
+        {
+          id: "ck-cardkey",
+          label: "현관 카드키 2개",
+          present: true,
+          condition: "normal",
+          note: "반납 준비 완료",
+          attachmentUrls: ["/api/files/key-before.jpg", "/api/files/key-before.jpg", ""]
+        },
+        {
+          id: "ck-mailbox",
+          label: "우편함 열쇠",
+          present: false,
+          condition: "damage_check",
+          note: "분실 여부 확인 중"
+        }
+      ]
+    });
+    const saved = service.listTenantMoveoutChecklist("tenant-a", "mo-a");
+    const summary = service.getTenantMoveout("tenant-a", "mo-a");
+
+    assert.equal(result.length, 2);
+    assert.equal(saved[0].summaryId, "mo-a");
+    assert.equal(saved[0].note, "반납 준비 완료");
+    assert.deepEqual(saved[0].attachmentUrls, ["/api/files/key-before.jpg"]);
+    assert.equal(saved[1].condition, "damage_check");
+    assert.equal(summary.prepProgress, 0.5);
+    assert.throws(
+      () =>
+        service.updateTenantMoveoutChecklist("tenant-b", "mo-a", {
+          items: [{ label: "침대 프레임", present: true, condition: "normal" }]
+        }),
+      /퇴실|찾을 수|접근/
+    );
+  });
+
+  it("stores tenant moveout dispute evidence and sends it to the manager thread", () => {
+    const service = createMoveoutTestService() as any;
+
+    const dispute = service.createTenantMoveoutDispute("tenant-a", "mo-a", {
+      targetItemId: "de-a",
+      targetLabel: "욕실 수리비 후보",
+      reason: "입주 전 사진과 같은 흔적입니다.",
+      attachmentUrls: ["/api/files/bath-before.jpg", "/api/files/bath-before.jpg", ""]
+    });
+    const managerThreads = service.listManagerMessagingThreads("manager-a", "moveout");
+    const threadSummary = managerThreads.find((candidate: any) => candidate.id === dispute.messagingThreadId);
+    const thread = service.getManagerMessagingThread("manager-a", threadSummary.id);
+
+    assert.deepEqual(dispute.attachmentUrls, ["/api/files/bath-before.jpg"]);
+    assert.equal(thread.messages.at(-1).attachmentUrls.includes("/api/files/bath-before.jpg"), true);
+  });
+
+  it("lets a tenant confirm, re-dispute, resolve, and escalate moveout disputes", () => {
+    const service = createMoveoutTestService() as any;
+
+    const answered = service.respondManagerMoveoutDispute("manager-a", "mo-a", {
+      disputeId: "dp-sla",
+      kind: "explain",
+      message: "입주 전 사진과 수리 이력을 다시 확인했습니다.",
+      reflect: "none"
+    });
+    const confirmed = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "confirm"
+    });
+    const redisputed = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "re_dispute",
+      reason: "사진의 위치가 다릅니다.",
+      attachmentUrls: ["/api/files/tenant-redispute.jpg"]
+    });
+    const escalated = service.escalateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      reason: "응답 후에도 기한이 경과했습니다."
+    });
+    const resolved = service.updateTenantMoveoutDispute("tenant-a", "mo-a", {
+      disputeId: answered.id,
+      action: "resolve"
+    });
+
+    assert.equal(confirmed.status, "confirmed");
+    assert.equal(redisputed.status, "re_disputed");
+    assert.deepEqual(redisputed.attachmentUrls, ["/api/files/tenant-redispute.jpg"]);
+    assert.equal(escalated.status, "reviewing");
+    assert.equal(resolved.status, "resolved");
+    assert.equal(
+      resolved.history.some((event: any) => event.note?.includes("에스컬레이션")),
+      true
+    );
+  });
+
+  it("reflects accepted moveout disputes into settlement deductions", () => {
+    const service = createMoveoutTestService() as any;
+
+    service.respondManagerMoveoutDispute("manager-a", "mo-a", {
+      disputeId: "dp-sla",
+      kind: "accept",
+      message: "입주 전부터 있던 하자로 인정해 차감 후보에서 제외합니다.",
+      reflect: "settlement"
+    });
+    const review = service.getManagerMoveoutSettlement("manager-a", "mo-a");
+    const deduction = review.settlement.deductions.find((item: any) => item.id === "de-a");
+
+    assert.equal(deduction.estimatedMin, 0);
+    assert.equal(deduction.estimatedMax, 0);
+    assert.equal(deduction.needsConfirmation, false);
+    assert.equal(review.settlement.refundMin, 10000000);
+    assert.equal(review.settlement.refundMax, 10000000);
   });
 
   it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
