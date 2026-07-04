@@ -1040,24 +1040,13 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     : `거래 ${selectedVendorPerf?.completedCount ?? selectedVendor?.dealCount ?? 0}건`;
   const ownerDashboardTabs = [
     { id: "dashboard", label: "대시보드", note: "현재 페이지" },
-    { id: "contract-dashboard", label: "검토 대시보드", note: "KAN-133" },
-    { id: "contract-ocr", label: "OCR 검토", note: "계약" },
-    { id: "contract-register", label: "계약서 등록", note: "계약" },
-    { id: "contract-timeline", label: "호실·타임라인", note: "계약" },
-    { id: "contract-invite", label: "임차인 초대", note: "계약" },
-    { id: "contract-storage", label: "보관·삭제", note: "계약" },
-    { id: "cost-ledger", label: "원장/큐", note: "KAN-135" },
-    { id: "cost-receipt", label: "영수증 첨부", note: "비용" },
-    { id: "cost-ocr", label: "OCR 검토", note: "비용" },
-    { id: "cost-detail", label: "비용 상세", note: "비용" },
-    { id: "cost-disclosure", label: "공개 관리", note: "비용" },
-    { id: "vendor-address", label: "주소록", note: "KAN-136" },
-    { id: "vendor-detail", label: "상세", note: "업체" },
-    { id: "vendor-performance", label: "성과", note: "업체" },
-    { id: "vendor-edit", label: "등록/편집", note: "업체" }
+    { id: "contract", label: "계약 관리", note: "KAN-133" },
+    { id: "cost", label: "비용·관리비", note: "KAN-135" },
+    { id: "vendor", label: "업체 관리", note: "KAN-136" },
+    { id: "repair", label: "수리 요청", note: "운영" }
   ];
   const activeOwnerTab = ownerDashboardTabs.find((tab) => tab.id === activeOwnerPanel) ?? ownerDashboardTabs[0];
-  const activeOwnerDomain = activeOwnerPanel.split("-")[0];
+  const activeOwnerDomain = activeOwnerPanel;
   const ownerContractStats = [
     { label: "검토 대기", value: "2건", note: "임차인·관리자 업로드 유입" },
     { label: "확인 필요", value: "3개", note: "OCR 원문 대조 필요" },
@@ -1154,29 +1143,23 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         <div className="domain-test-heading">
           <span>내 룸로그</span>
           <h3 id="landlord-roomlog-title">이 집을 룸로그로 관리하기</h3>
-          <p>세입자가 연결되면 같은 계정에서 계약·비용·메시지·하자를 관리 콘솔로 이어서 처리합니다.</p>
+          <p>세입자가 연결되면 같은 화면에서 계약·비용·업체·수리 요청을 이어서 처리합니다.</p>
         </div>
         <div className="domain-test-link-grid">
-          <Link className="domain-test-link primary" href="/manager/home/00">
-            관리 콘솔 홈
-          </Link>
-          <Link className="domain-test-link" href="/manager/contract/00">
+          <button className="domain-test-link primary" type="button" onClick={() => setActiveOwnerPanel("contract")}>
             계약 관리
-          </Link>
-          <Link className="domain-test-link" href="/manager/ticket/dash/00">
-            하자·티켓
-          </Link>
-          <Link className="domain-test-link" href="/manager/cost/00">
-            비용 정산
-          </Link>
-          <Link className="domain-test-link" href="/manager/messaging/00">
-            메시지
-          </Link>
-          <Link className="domain-test-link" href="/manager/moveout/00">
-            퇴실 관리
-          </Link>
+          </button>
+          <button className="domain-test-link" type="button" onClick={() => setActiveOwnerPanel("cost")}>
+            비용·관리비
+          </button>
+          <button className="domain-test-link" type="button" onClick={() => setActiveOwnerPanel("vendor")}>
+            업체 관리
+          </button>
+          <button className="domain-test-link" type="button" onClick={() => setActiveOwnerPanel("repair")}>
+            수리 요청
+          </button>
         </div>
-        <small className="domain-test-note">관리 콘솔은 관리인 로그인 후 이어집니다.</small>
+        <small className="domain-test-note">레거시 관리 콘솔로 빠지지 않고 집주인 마이페이지 안에서 확인합니다.</small>
       </section>
 
       <section className="owner-exposure-card" aria-label="집 내놓기 전달 범위">
@@ -1512,6 +1495,66 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
               }}
             >
               중복 후보 확인
+            </button>
+          </div>
+        </article>
+        ) : null}
+
+        {activeOwnerDomain === "repair" ? (
+        <article id="owner-repair-requests" className="owner-ops-card owner-repair-card">
+          <div className="owner-ops-head">
+            <div>
+              <span>운영 수리 요청</span>
+              <h3>세입자 하자 신고와 업체 배정</h3>
+            </div>
+            <strong>배정 대기 1건</strong>
+          </div>
+
+          <div className="owner-ops-metrics" aria-label="수리 요청 요약">
+            <article>
+              <span>접수 요청</span>
+              <strong>2건</strong>
+              <small>세입자 하자 신고 기준</small>
+            </article>
+            <article>
+              <span>업체 배정</span>
+              <strong>1건</strong>
+              <small>{selectedVendor?.name ?? "등록 업체"} 연결 가능</small>
+            </article>
+            <article>
+              <span>방문 조율</span>
+              <strong>오늘 2:30</strong>
+              <small>세입자 가능 시간 확인</small>
+            </article>
+          </div>
+
+          <div className="owner-contract-list" aria-label="수리 요청 목록">
+            <div>
+              <span>배정 대기</span>
+              <strong>욕실 타일 들뜸 · 방배 루미에르 402호</strong>
+              <small>방문 가능 시간: 오늘 오후 2시 이후 · 권장 업체: {selectedVendor?.name ?? "업체 선택 필요"}</small>
+            </div>
+            <div>
+              <span>진행 중</span>
+              <strong>에어컨 필터 점검 · 방배 루미에르 302호</strong>
+              <small>업체 방문 예정 · 세입자 확인 대기</small>
+            </div>
+          </div>
+
+          <div className="owner-disclosure-strip" aria-label="수리 요청 처리">
+            <div>
+              <span>처리 원칙</span>
+              <strong>요청 내용·방문 가능 시간 확인 후 업체 배정</strong>
+              <small>책임 판단 자동화와 AI 분석은 후속 범위로 두고, 지금은 요청 조회와 배정 흐름을 한 탭에 모읍니다.</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOwnerToast("수리 요청을 확인했습니다. 업체 배정은 업체 관리 탭의 등록 업체를 기준으로 진행합니다.");
+                setActiveOwnerPanel("vendor");
+              }}
+            >
+              업체 관리로 이동
             </button>
           </div>
         </article>
