@@ -4,7 +4,7 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { ChevronDown, UploadCloud } from "lucide-react";
+import { ChevronDown, Footprints, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
 import { SplatDropzone } from "./splat-dropzone";
@@ -23,6 +23,7 @@ export default function TourViewer() {
   const [isLoadingVisible, setIsLoadingVisible] = useState(true);
   const [showHint, setShowHint] = useState(true);
   const [isDropzoneOpen, setIsDropzoneOpen] = useState(false);
+  const [isWalkMode, setIsWalkMode] = useState(false);
 
   const initialCamera: [number, number, number] = DEMO_PRESETS[0]?.camera.position ?? [0, 1.5, 3];
 
@@ -224,6 +225,55 @@ export default function TourViewer() {
             color: var(--paper);
           }
 
+          .tour-preset-divider {
+            flex: 0 0 auto;
+            width: 1px;
+            min-height: 24px;
+            margin: 7px 2px;
+            background: var(--line);
+          }
+
+          .tour-walk-toggle {
+            display: inline-flex;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            min-height: 38px;
+            padding: 9px 15px;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            background: transparent;
+            color: var(--ink);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1;
+            white-space: nowrap;
+            transition:
+              background 160ms ease,
+              border-color 160ms ease,
+              color 160ms ease,
+              transform 160ms ease;
+          }
+
+          .tour-walk-toggle:hover {
+            background: var(--blue-soft);
+            color: var(--blue);
+          }
+
+          .tour-walk-toggle:focus-visible {
+            outline: 2px solid var(--blue);
+            outline-offset: 2px;
+          }
+
+          .tour-walk-toggle.is-active {
+            border-color: var(--blue);
+            background: var(--blue-soft);
+            color: var(--blue);
+            transform: translateY(-1px);
+          }
+
           .tour-dropzone-dock {
             position: absolute;
             z-index: 5;
@@ -332,6 +382,17 @@ export default function TourViewer() {
               font-size: 13px;
             }
 
+            .tour-preset-divider {
+              min-height: 22px;
+              margin: 7px 0;
+            }
+
+            .tour-walk-toggle {
+              min-height: 36px;
+              padding: 8px 11px;
+              font-size: 13px;
+            }
+
             .tour-dropzone-dock {
               right: 10px;
               bottom: 66px;
@@ -349,7 +410,7 @@ export default function TourViewer() {
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
         <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} />
-        <TourCamera activeId={activeId} onArrive={setActiveId} presets={DEMO_PRESETS} />
+        <TourCamera activeId={activeId} onArrive={setActiveId} presets={DEMO_PRESETS} walkMode={isWalkMode} />
       </Canvas>
 
       {isLoadingVisible ? (
@@ -409,6 +470,16 @@ export default function TourViewer() {
             </button>
           );
         })}
+        <span aria-hidden className="tour-preset-divider" />
+        <button
+          aria-pressed={isWalkMode}
+          className={`tour-walk-toggle${isWalkMode ? " is-active" : ""}`}
+          onClick={() => setIsWalkMode((current) => !current)}
+          type="button"
+        >
+          <Footprints aria-hidden size={16} strokeWidth={2.4} />
+          <span>걷기</span>
+        </button>
       </div>
     </div>
   );

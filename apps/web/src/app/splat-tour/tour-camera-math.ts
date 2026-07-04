@@ -1,3 +1,5 @@
+import type { SplatClipBox } from "./splat-clip";
+
 export type TourCameraVector3 = readonly [number, number, number];
 
 export interface TourCameraRigLimits {
@@ -68,6 +70,17 @@ export function calculateTourCameraRigLimits(
     minPolarAngle,
     maxPolarAngle
   };
+}
+
+export function clampTourCameraPositionToClipBox(
+  position: TourCameraVector3,
+  box: SplatClipBox
+): [number, number, number] {
+  return [
+    clamp(position[0], box.min.x, box.max.x),
+    clamp(position[1], box.min.y, box.max.y),
+    clamp(position[2], box.min.z, box.max.z)
+  ];
 }
 
 function clamp(value: number, min: number, max: number): number {
