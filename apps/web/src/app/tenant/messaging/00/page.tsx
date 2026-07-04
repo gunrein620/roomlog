@@ -134,7 +134,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       </div>
 
       <footer style={{ flex: "none", padding: "12px 14px", borderTop: "1px solid var(--border)" }}>
-        <PrimaryLink href={`${MESSAGING_ROUTES["T-MSG-01"]}`}>새 문의 시작</PrimaryLink>
+        <PrimaryLink href={MESSAGING_ROUTES["T-MSG-00"]}>대화 목록 보기</PrimaryLink>
       </footer>
     </>
   );

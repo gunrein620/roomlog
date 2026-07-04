@@ -9,6 +9,7 @@ import {
   markAnnouncementRead,
 } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+import { ApiError } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -43,10 +44,17 @@ async function updateAnnouncementState(formData: FormData) {
   const intent = String(formData.get("intent") ?? "");
 
   if (announcementId) {
-    if (intent === "confirm") {
-      await confirmAnnouncement(announcementId);
-    } else {
-      await markAnnouncementRead(announcementId);
+    try {
+      if (intent === "confirm") {
+        await confirmAnnouncement(announcementId);
+      } else {
+        await markAnnouncementRead(announcementId);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        redirect("/tenant/login");
+      }
+      throw error;
     }
   }
 
@@ -59,7 +67,15 @@ async function updateAnnouncementState(formData: FormData) {
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
-  const announcement = await getAnnouncement(id ?? DEMO_ANNOUNCEMENT_ID);
+  let announcement: Announcement;
+  try {
+    announcement = await getAnnouncement(id ?? DEMO_ANNOUNCEMENT_ID);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    throw error;
+  }
   const isUrgent = announcement.category === "urgent" || announcement.confirmRequired;
 
   return (
@@ -171,7 +187,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </Button>
         </form>
         <Link
-          href={`${MESSAGING_ROUTES["T-MSG-01"]}?announcementId=${announcement.id}`}
+          href={MESSAGING_ROUTES["T-MSG-00"]}
           style={{
             display: "flex",
             width: "100%",

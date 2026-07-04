@@ -5322,6 +5322,61 @@ p {
   white-space: nowrap;
 }
 
+.domain-test-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.domain-test-heading {
+  display: grid;
+  gap: 5px;
+}
+
+.domain-test-heading span {
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.domain-test-heading h3 {
+  color: var(--ink);
+  font-size: 1.04rem;
+}
+
+.domain-test-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.domain-test-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.domain-test-link.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--paper);
+}
+
 .owner-exposure-card {
   display: grid;
   gap: 12px;

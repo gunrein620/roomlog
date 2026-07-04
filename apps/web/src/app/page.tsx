@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import Script from "next/script";
 import {
   ArrowLeft,
@@ -345,6 +346,11 @@ const savedComparisonItems = [
   { label: "저장 조건", value: "월세 130 이하", caption: "방배동 · 내방역" },
   { label: "가격 변동", value: "변동 없음", caption: "최근 7일 기준" },
   { label: "방문 후보", value: "오늘 3시", caption: "2개 매물 가능" }
+];
+
+const inquiryTimelineItems = [
+  { time: "방금", title: "문자문의 작성 가능", body: "매물 상세에서 바로 문의를 보낼 수 있습니다." },
+  { time: "5분 전", title: "중개사 평균 응답 8분", body: "답변이 오면 문의센터에서 상태를 확인합니다." }
 ];
 
 const homeWebSummaryItems = [
@@ -1118,6 +1124,24 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
         <div className="owner-preview-actions">
           <strong>{ownerPriceLabel}</strong>
           <button type="button" onClick={continueOwnerRegistration}>입력 계속하기</button>
+        </div>
+      </section>
+
+      <section className="domain-test-card landlord-domain-test-card" aria-labelledby="landlord-domain-test-title">
+        <div className="domain-test-heading">
+          <span>실배선 확인</span>
+          <h3 id="landlord-domain-test-title">도메인 테스트</h3>
+        </div>
+        <div className="domain-test-link-grid">
+          <Link className="domain-test-link primary" href="/manager/messaging/00">
+            메시지 테스트
+          </Link>
+          <Link className="domain-test-link" href="/manager/moveout/00">
+            퇴실 테스트
+          </Link>
+          <Link className="domain-test-link" href="/manager/report/00">
+            리포트 테스트
+          </Link>
         </div>
       </section>
 
@@ -2492,15 +2516,24 @@ function InquiryHubSection({
   onBrowseListings: () => void;
 }) {
   const pendingCount = inquiries.filter((item) => item.status === "답변 대기").length;
+  const [inquiryNotice, setInquiryNotice] = useState("최근 문의 상태가 여기에 표시됩니다.");
 
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
       <div className="section-title no-margin">
         <div>
           <h2 id="inquiry-title">문의센터</h2>
-          <p>보낸 문의 {inquiries.length}건 · 답변 대기 {pendingCount}건</p>
+          <p>진행중 문의 {inquiries.length}건 · 답변 대기 {pendingCount}건</p>
         </div>
-        <button type="button" onClick={onBrowseListings}>새 문의</button>
+        <button
+          type="button"
+          onClick={() => {
+            setInquiryNotice("새 문의는 매물 상세에서 바로 보낼 수 있습니다.");
+            onBrowseListings();
+          }}
+        >
+          새 문의
+        </button>
       </div>
 
       <div className="inquiry-history-list" aria-label="보낸 문의 목록">
@@ -2527,6 +2560,8 @@ function InquiryHubSection({
         ))}
       </div>
 
+      <p className="inquiry-notice" role="status">{inquiryNotice}</p>
+
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
         <div className="inquiry-channel-head">
           <span>문의 채널</span>
@@ -2541,6 +2576,22 @@ function InquiryHubSection({
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="inquiry-timeline-card" aria-label="문의 타임라인">
+        <div className="inquiry-timeline-head">
+          <span>문의 타임라인</span>
+          <strong>최근 문의 흐름</strong>
+        </div>
+        {inquiryTimelineItems.map((item) => (
+          <article key={item.title}>
+            <span>{item.time}</span>
+            <div>
+              <strong>{item.title}</strong>
+              <p>{item.body}</p>
+            </div>
+          </article>
+        ))}
       </section>
 
       <div className="inquiry-mini-grid">
@@ -2644,7 +2695,7 @@ function UserMyPage({
         >
           <span>저장 조건</span>
           <strong>{savedConditions[0].label}</strong>
-          <p>누르면 지도에서 이 조건으로 바로 확인합니다.</p>
+          <p>저장 지역 조건은 누르면 지도에서 바로 확인합니다.</p>
           <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
         <article>
@@ -2892,6 +2943,21 @@ function TenantMyPage({
               `${selectedIssue} 접수하기`
             )}
           </button>
+        </div>
+      </section>
+
+      <section className="domain-test-card tenant-domain-test-card" aria-labelledby="tenant-domain-test-title">
+        <div className="domain-test-heading">
+          <span>실배선 확인</span>
+          <h3 id="tenant-domain-test-title">도메인 테스트</h3>
+        </div>
+        <div className="domain-test-link-grid">
+          <Link className="domain-test-link primary" href="/tenant/messaging/00">
+            메시지 테스트
+          </Link>
+          <Link className="domain-test-link" href="/tenant/moveout/00">
+            퇴실 테스트
+          </Link>
         </div>
       </section>
 

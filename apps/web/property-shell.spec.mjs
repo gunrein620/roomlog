@@ -28,6 +28,21 @@ const googleAuthSharedSource = readFileSync(new URL("./src/app/api/auth/google/_
 const signupPageSource = readFileSync(new URL("./src/app/signup/page.tsx", import.meta.url), "utf8");
 const signupRouteSource = readFileSync(new URL("./src/app/api/auth/signup/route.ts", import.meta.url), "utf8");
 const loginRouteSource = readFileSync(new URL("./src/app/api/auth/login/route.ts", import.meta.url), "utf8");
+const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
+const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
+const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
+const tenantMessagingApiSource = readFileSync(new URL("./src/lib/messaging-api.ts", import.meta.url), "utf8");
+const messageAutoRefreshPath = new URL("./src/app/_components/MessageAutoRefresh.tsx", import.meta.url);
+const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
+  ? readFileSync(messageAutoRefreshPath, "utf8")
+  : "";
+const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
+const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
+const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
+const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
+const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
+const managerContractApiSource = readFileSync(new URL("./src/lib/contract-manager-api.ts", import.meta.url), "utf8");
+const managerMessagingApiSource = readFileSync(new URL("./src/lib/messaging-manager-api.ts", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
@@ -52,8 +67,17 @@ test("production deploy removes stale role containers before rebinding port 3000
   assert.match(deployWorkflowSource, /docker ps -a --filter "name=roomlog"/);
 });
 
-test("web containers can reach the API over the Docker network for auth BFF routes", () => {
-  assert.match(dockerComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
+test("routes server-side web API calls to the api container in Docker", () => {
+  const internalApiPattern = /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/;
+
+  assert.match(dockerComposeSource, internalApiPattern);
+  assert.match(prodComposeSource, internalApiPattern);
+  assert.match(deployWorkflowSource, /API_INTERNAL_URL: "\$\{\{ secrets\.API_INTERNAL_URL \}\}"/);
+  assert.match(deployWorkflowSource, /API_INTERNAL_URL="\$\{API_INTERNAL_URL:-http:\/\/api:4000\}"/);
+  assert.match(deployWorkflowSource, /API_INTERNAL_URL=\$\{API_INTERNAL_URL\}/);
+});
+
+test("production web container can reach the API over the Docker network for auth BFF routes", () => {
   assert.match(prodComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
 });
 
@@ -123,6 +147,66 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
   assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
   assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);
+});
+
+test("opens tenant message compose only from real API thread ids", () => {
+  assert.doesNotMatch(tenantMessagingThreadSource, /DEMO_THREAD_ID/);
+  assert.doesNotMatch(tenantMessagingApiSource, /getThread\(id: string = DEMO_THREAD_ID/);
+  assert.match(tenantMessagingThreadSource, /if \(!id\)/);
+  assert.match(tenantMessagingThreadSource, /redirect\(MESSAGING_ROUTES\["T-MSG-00"\]\)/);
+  assert.match(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][\s\S]*\?id=\$\{thread\.id\}/);
+  assert.doesNotMatch(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][^?]*새 문의 시작/);
+  assert.doesNotMatch(tenantMessagingAnnouncementSource, /MESSAGING_ROUTES\["T-MSG-01"\][\s\S]*announcementId/);
+});
+
+test("opens manager message compose only from real API thread ids", () => {
+  assert.doesNotMatch(managerMessagingThreadSource, /DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /getManagerThread\(id: string = DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /thread\.id === id \|\| thread\.unitId === id/);
+  assert.match(managerMessagingThreadSource, /type SearchParams = Promise<\{ id\?: string \}>/);
+  assert.match(managerMessagingThreadSource, /if \(!id\)/);
+  assert.match(managerMessagingThreadSource, /redirect\(MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\)/);
+  assert.doesNotMatch(managerContractPageSource, /th_mgr_302/);
+  assert.doesNotMatch(managerContractApiSource, /th_mgr_302/);
+  assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
+});
+
+test("redirects messaging detail auth failures instead of rendering a Next error boundary", () => {
+  for (const [source, loginPath] of [
+    [tenantMessagingThreadSource, "/tenant/login"],
+    [tenantMessagingAnnouncementSource, "/tenant/login"],
+    [managerMessagingReviewSource, "/manager/login"],
+    [managerMessagingThreadSource, "/manager/login"],
+    [managerMessagingResultSource, "/manager/login"]
+  ]) {
+    assert.match(source, /error instanceof ApiError/);
+    assert.match(source, /error\.status === 401 \|\| error\.status === 403/);
+    assert.match(source, new RegExp(`redirect\\("${loginPath}"\\)`));
+  }
+});
+
+test("auto-refreshes open messaging thread details without infrastructure changes", () => {
+  assert.equal(existsSync(messageAutoRefreshPath), true);
+  assert.match(messageAutoRefreshSource, /"use client"/);
+  assert.match(messageAutoRefreshSource, /useRouter/);
+  assert.match(messageAutoRefreshSource, /router\.refresh\(\)/);
+  assert.match(messageAutoRefreshSource, /setInterval/);
+  assert.match(messageAutoRefreshSource, /document\.visibilityState/);
+  assert.match(tenantMessagingThreadSource, /<MessageAutoRefresh /);
+  assert.match(managerMessagingThreadSource, /<MessageAutoRefresh /);
+});
+
+test("manager announcement compose creates editable drafts before review", () => {
+  assert.match(managerMessagingComposeSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingComposeSource, /action=\{createDraftAction\}/);
+  assert.match(managerMessagingComposeSource, /name="title"/);
+  assert.match(managerMessagingComposeSource, /name="body"/);
+  assert.match(managerMessagingComposeSource, /name="category"/);
+  assert.match(managerMessagingComposeSource, /name="scope"/);
+  assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingApiSource, /method: "POST"/);
+  assert.doesNotMatch(managerMessagingComposeSource, /value=\{draft\.title\} readOnly/);
+  assert.doesNotMatch(managerMessagingComposeSource, /<StaticButton>임시 저장<\/StaticButton>/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
@@ -435,11 +519,28 @@ test("offers three developer login roles for seekers, tenants, and landlords", (
 });
 
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
-  for (const label of ["세입자 마이페이지", "계약 상태", "수리요청", "관리비", "방문 일정", "에어컨 필터 교체 방문", "124,000원"]) {
+  for (const label of [
+    "세입자 마이페이지",
+    "계약 상태",
+    "수리요청",
+    "관리비",
+    "방문 일정",
+    "에어컨 필터 교체 방문",
+    "124,000원",
+    "도메인 테스트",
+    "메시지 테스트",
+    "퇴실 테스트"
+  ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
   assert.match(pageSource, /activeRole === "tenant"/);
+  assert.match(pageSource, /href="\/tenant\/messaging\/00"/);
+  assert.match(pageSource, /href="\/tenant\/moveout\/00"/);
+  assert.match(pageSource, /tenant-domain-test-card/);
+  assert.match(cssSource, /\.domain-test-card/);
+  assert.match(cssSource, /\.domain-test-link-grid/);
+  assert.match(cssSource, /\.domain-test-link/);
   assert.match(cssSource, /\.tenant-contract-card/);
   assert.match(cssSource, /\.maintenance-card/);
   assert.doesNotMatch(pageSource, /HVAC|₩124,000|2:30 PM/);
@@ -489,11 +590,19 @@ test("shows a landlord my page with property registration fields and media actio
     "신규·중복 업체 게이트",
     "중복 후보 확인",
     "소표본 업체는 별점 수치와 AI 코멘트를 숨깁니다.",
-    "신규 업체는 격리하지 않고 배지만 표시합니다."
+    "신규 업체는 격리하지 않고 배지만 표시합니다.",
+    "도메인 테스트",
+    "메시지 테스트",
+    "퇴실 테스트",
+    "리포트 테스트"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
+  assert.match(pageSource, /href="\/manager\/messaging\/00"/);
+  assert.match(pageSource, /href="\/manager\/moveout\/00"/);
+  assert.match(pageSource, /href="\/manager\/report\/00"/);
+  assert.match(pageSource, /landlord-domain-test-card/);
   assert.match(pageSource, /ownerReviewItems/);
   assert.match(pageSource, /DEMO_COSTS/);
   assert.match(pageSource, /DEMO_MONTHLY_SUMMARY/);

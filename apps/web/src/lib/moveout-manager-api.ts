@@ -48,13 +48,13 @@ export const DEMO_MANAGER_MOVEOUT_ROWS: MoveoutManagerRow[] = [
   {
     summaryId: DEMO_MOVEOUT_ID,
     unitId: "302",
-    tenantName: "김하린",
+    tenantName: "김민수",
     contractConfirmed: true,
     leaseEndDate: DEMO_MOVEOUT.leaseEndDate,
     daysRemaining: DEMO_MOVEOUT.daysRemaining,
     settlementStatus: "reviewing",
     openDisputeCount: 1,
-    slaBreached: false,
+    slaBreached: true,
     expiringSoon: true,
   },
   {
@@ -102,35 +102,20 @@ export const DEMO_MANAGER_DASHBOARD: MoveoutDashboardSummary = {
 
 export const DEMO_REPORT_AUDIT: ReportAuditEntry[] = [
   {
-    id: "aud_0001",
+    id: "maud_0001",
     summaryId: DEMO_MOVEOUT_ID,
-    recordItemId: "rec_0006",
+    recordItemId: "rec_0003",
     action: "reinforce",
-    fromVerdict: "damage_possible",
-    toVerdict: "damage_possible",
-    evidenceNote: "입주전 거실 벽면 사진과 퇴실 전 사진을 함께 첨부. 공백은 책임 인정이 아님을 고지.",
+    fromVerdict: "unclear",
+    toVerdict: "unclear",
+    evidenceNote: "입주 전 욕실 사진과 보수 완료 사진을 같은 근거로 묶었습니다.",
     tenantNotified: true,
-    managerName: "관리자 한소라",
-    at: "2026-07-01T14:20:00+09:00",
+    managerName: "박관리",
+    at: "2026-07-02T09:00:00+09:00",
   },
 ];
 
-const DEMO_MANAGER_DISPUTES: Dispute[] = [
-  ...DEMO_MOVEOUT_DISPUTES,
-  {
-    id: "dp_0002",
-    summaryId: DEMO_MOVEOUT_ID,
-    targetItemId: "de_0003",
-    targetLabel: "벽면 못자국 원상복구",
-    reason: "입주 전 사진에도 같은 자국이 있어 차감 후보에서 제외 요청합니다.",
-    status: "received",
-    slaDeadline: "2026-07-02T18:00:00+09:00",
-    slaBreached: true,
-    history: [{ status: "received", at: "2026-06-29T13:00:00+09:00" }],
-    createdAt: "2026-06-29T13:00:00+09:00",
-    updatedAt: "2026-06-29T13:00:00+09:00",
-  },
-];
+const DEMO_MANAGER_DISPUTES: Dispute[] = [...DEMO_MOVEOUT_DISPUTES];
 
 export const DEMO_MANAGER_SETTLEMENT_REVIEW: ManagerSettlementReview = {
   settlement: {
@@ -139,10 +124,10 @@ export const DEMO_MANAGER_SETTLEMENT_REVIEW: ManagerSettlementReview = {
   },
   gate: {
     canComplete: false,
-    blockingReasons: ["unresolved_dispute", "needs_confirmation"],
+    blockingReasons: ["unresolved_dispute"],
     slaBreached: true,
     overrideAvailable: true,
-    message: "미해소 이의와 확인 필요 항목이 남아 있습니다. SLA 초과 건은 임차인 알림과 에스컬레이션 출구를 함께 표시합니다.",
+    message: "미해소 이의가 남아 있지만 SLA가 경과해 사유를 남기고 알림과 함께 진행할 수 있습니다.",
   },
   disputes: DEMO_MANAGER_DISPUTES,
   moveinEvidenceAvailable: true,
