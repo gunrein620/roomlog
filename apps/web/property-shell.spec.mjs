@@ -210,6 +210,10 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(managerReportSource, /name=\{`notifyTenant-\$\{record\.id\}`\}/);
   assert.match(managerDisputeSource, /respondDispute/);
   assert.match(managerDisputeSource, /action=\{respondDisputeAction\}/);
+  assert.match(managerDisputeSource, /selectedDisputeId/);
+  assert.match(managerDisputeSource, /targetDisputeId/);
+  assert.match(managerDisputeSource, /name="selectedDisputeId"/);
+  assert.match(managerDisputeSource, /reflect === "settlement"/);
 
   assert.doesNotMatch(tenantSettlementSource, /disabled[\s\S]*관리자 문의/);
   assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);

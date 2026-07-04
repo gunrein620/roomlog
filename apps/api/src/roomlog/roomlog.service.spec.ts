@@ -4407,6 +4407,25 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("reflects accepted moveout disputes into settlement deductions", () => {
+    const service = createMoveoutTestService() as any;
+
+    service.respondManagerMoveoutDispute("manager-a", "mo-a", {
+      disputeId: "dp-sla",
+      kind: "accept",
+      message: "입주 전부터 있던 하자로 인정해 차감 후보에서 제외합니다.",
+      reflect: "settlement"
+    });
+    const review = service.getManagerMoveoutSettlement("manager-a", "mo-a");
+    const deduction = review.settlement.deductions.find((item: any) => item.id === "de-a");
+
+    assert.equal(deduction.estimatedMin, 0);
+    assert.equal(deduction.estimatedMax, 0);
+    assert.equal(deduction.needsConfirmation, false);
+    assert.equal(review.settlement.refundMin, 10000000);
+    assert.equal(review.settlement.refundMax, 10000000);
+  });
+
   it("seeds the KAN-134 moveout demo flow for tenant and manager APIs", () => {
     const service = new RoomlogService({ seedDemoData: true } as any) as any;
 

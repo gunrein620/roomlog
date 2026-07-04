@@ -589,6 +589,19 @@ export class RoomlogMoveoutDomain {
         managerId,
         at: answeredAt
       });
+
+      if (input.reflect === "settlement" && input.kind === "accept" && dispute.targetItemId) {
+        const deduction = this.store.moveoutDeductions.find(
+          (item) => item.summaryId === moveout.id && item.id === dispute.targetItemId
+        );
+
+        if (deduction) {
+          deduction.estimatedMin = 0;
+          deduction.estimatedMax = 0;
+          deduction.needsConfirmation = false;
+          this.recalculateSettlementRange(moveout);
+        }
+      }
     }
 
     moveout.updatedAt = answeredAt;
