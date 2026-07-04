@@ -232,7 +232,8 @@ export class PrismaStoreProjector implements StoreProjector {
         contactPerson: vendor.contactPerson,
         phone: vendor.phone,
         serviceArea: vendor.serviceArea,
-        activeJobs: vendor.activeJobs
+        activeJobs: vendor.activeJobs,
+        createdByManagerId: optional(vendor.createdByManagerId)
       })),
       vendorInvites: vendorInvites.map((invite) => ({
         id: invite.id,
@@ -278,6 +279,7 @@ export class PrismaStoreProjector implements StoreProjector {
         monthlyRent: optional(contract.monthlyRent),
         maintenanceFee: optional(contract.maintenanceFee),
         paymentDay: optional(contract.paymentDay),
+        optionInventory: contract.optionInventory ?? [],
         startDate: asIso(contract.startDate),
         endDate: asIso(contract.endDate),
         createdAt: asIso(contract.createdAt) ?? new Date().toISOString(),
@@ -940,7 +942,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           },
           update: {
             userId: vendor.userId,
@@ -948,7 +951,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           }
         });
       }
@@ -1036,6 +1040,7 @@ export class PrismaStoreProjector implements StoreProjector {
             monthlyRent: contract.monthlyRent,
             maintenanceFee: contract.maintenanceFee,
             paymentDay: contract.paymentDay,
+            optionInventory: contract.optionInventory ?? [],
             startDate: asDate(contract.startDate),
             endDate: asDate(contract.endDate),
             extractionId: contract.extractionId,
@@ -1058,6 +1063,7 @@ export class PrismaStoreProjector implements StoreProjector {
             monthlyRent: contract.monthlyRent,
             maintenanceFee: contract.maintenanceFee,
             paymentDay: contract.paymentDay,
+            optionInventory: contract.optionInventory ?? [],
             startDate: asDate(contract.startDate),
             endDate: asDate(contract.endDate),
             extractionId: contract.extractionId,

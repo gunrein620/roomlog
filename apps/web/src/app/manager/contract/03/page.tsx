@@ -1,6 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Input } from "@roomlog/ui";
-import { getManagerContractDetail } from "@/lib/contract-manager-api";
+import {
+  getManagerContractDetail,
+  updateManagerContractInventory,
+  updateManagerContractManualValues,
+} from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
   BackLink,
@@ -13,12 +18,39 @@ import {
   PageStack,
   Section,
   StaticButton,
+  captionStyle,
   formatDate,
   formatDateTime,
   linkReset,
 } from "../_components";
 
 export const dynamic = "force-dynamic";
+
+async function saveManualValuesAction(formData: FormData) {
+  "use server";
+
+  const contractId = String(formData.get("contractId") ?? "");
+  await updateManagerContractManualValues(contractId, {
+    deposit: String(formData.get("deposit") ?? ""),
+    monthlyRent: numberValue(formData.get("monthlyRent")),
+    maintenanceFee: numberValue(formData.get("maintenanceFee")),
+    paymentDay: numberValue(formData.get("paymentDay")),
+    account: String(formData.get("account") ?? ""),
+  });
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-03"]);
+}
+
+async function saveInventoryAction(formData: FormData) {
+  "use server";
+
+  const contractId = String(formData.get("contractId") ?? "");
+  const items = String(formData.get("items") ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  await updateManagerContractInventory(contractId, items);
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-03"]);
+}
 
 export default async function Page() {
   const detail = await getManagerContractDetail();
@@ -60,10 +92,15 @@ export default async function Page() {
           </Card>
           <Card>
             <h2 style={{ margin: "0 0 var(--space-md)", fontSize: "var(--fs-subtitle)" }}>수동 계약값</h2>
-            {Object.entries(detail.manualValues).map(([key, value]) => (
-              <MetaRow key={key} label={manualLabel[key as keyof typeof detail.manualValues]} value={value} />
-            ))}
-            <StaticButton variant="secondary">수동값 저장</StaticButton>
+            <form action={saveManualValuesAction} style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <input type="hidden" name="contractId" value={contract.id} />
+              <Field name="deposit" label="보증금" defaultValue={detail.manualValues.deposit} />
+              <Field name="monthlyRent" label="월세" defaultValue={contract.monthlyRent ?? ""} inputMode="numeric" />
+              <Field name="maintenanceFee" label="관리비" defaultValue={contract.maintenanceFee ?? ""} inputMode="numeric" />
+              <Field name="paymentDay" label="납부일" defaultValue={contract.paymentDay ?? ""} inputMode="numeric" />
+              <Field name="account" label="계좌" defaultValue={detail.manualValues.account} />
+              <StaticButton type="submit" variant="secondary">수동값 저장</StaticButton>
+            </form>
           </Card>
         </Grid>
 
@@ -78,7 +115,11 @@ export default async function Page() {
                   <Badge key={item}>{item}</Badge>
                 ))}
               </div>
-              <StaticButton variant="secondary">옵션 편집</StaticButton>
+              <form action={saveInventoryAction} style={{ display: "grid", gap: "var(--space-sm)" }}>
+                <input type="hidden" name="contractId" value={contract.id} />
+                <input name="items" defaultValue={detail.inventory.join(", ")} style={fieldStyle} />
+                <StaticButton type="submit" variant="secondary">옵션 저장</StaticButton>
+              </form>
             </Card>
           </Section>
 
@@ -114,17 +155,43 @@ export default async function Page() {
             <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-04"]} variant="secondary">임차인 초대</LinkButton>
             <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-05"]} variant="secondary">보관·삭제 처리</LinkButton>
           </div>
-          <StaticButton variant="secondary">CSV 일괄 등록</StaticButton>
+          <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]} variant="secondary">계약서 추가 등록</LinkButton>
         </Card>
       </PageStack>
     </ContractShell>
   );
 }
 
-const manualLabel = {
-  deposit: "보증금",
-  rent: "월세",
-  maintenanceFee: "관리비",
-  paymentDay: "납부일",
-  account: "계좌",
+function Field({
+  name,
+  label,
+  defaultValue,
+  inputMode,
+}: {
+  name: string;
+  label: string;
+  defaultValue: string | number;
+  inputMode?: "numeric";
+}) {
+  return (
+    <label style={{ display: "grid", gap: 4 }}>
+      <span style={captionStyle}>{label}</span>
+      <input name={name} defaultValue={defaultValue} inputMode={inputMode} style={fieldStyle} />
+    </label>
+  );
+}
+
+function numberValue(value: FormDataEntryValue | null) {
+  const parsed = Number(String(value ?? "").replace(/[^\d]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+const fieldStyle = {
+  minHeight: 42,
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  padding: "0 var(--space-md)",
+  font: "inherit",
+  background: "var(--surface-container-lowest)",
 } as const;

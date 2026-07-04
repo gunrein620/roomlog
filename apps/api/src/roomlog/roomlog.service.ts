@@ -64,6 +64,8 @@ import {
   Cost,
   CostReviewQueueSummary,
   CostType,
+  CreateManagerContractInput,
+  CreateManagerContractInviteInput,
   CreateAnnouncementDraftInput,
   CreateManagerReportExternalShareInput,
   CreateManagerReportFollowUpInput,
@@ -75,6 +77,7 @@ import {
   CreateMessagingThreadInput,
   CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateTenantContractInput,
   CreateTenantMoveoutInquiryInput,
   DisclosureSetting,
   DuplicateTicketCandidate,
@@ -144,6 +147,10 @@ import {
   TicketMessage,
   TicketStatus,
   SocialAccount,
+  UpdateManagerContractInventoryInput,
+  UpdateManagerContractInviteInput,
+  UpdateManagerContractManualValuesInput,
+  UpdateManagerContractPrivacyInput,
   UserAccount,
   UserRole
 } from "./roomlog.types";
@@ -177,6 +184,13 @@ export type CreateTenantInviteInput = {
   tenantName: string;
   phone?: string;
   moveInDate?: string;
+};
+
+export type ManagerVendorProfileInput = {
+  businessName?: string;
+  contactPerson?: string;
+  phone?: string;
+  serviceArea?: string;
 };
 
 export type LoginInput = {
@@ -254,6 +268,7 @@ export type VendorSummary = {
   phone: string;
   serviceArea: string;
   activeJobs: number;
+  createdByManagerId?: string;
 };
 
 export type VendorInvite = {
@@ -462,6 +477,7 @@ function createDemoStore(): Store {
         monthlyRent: 650000,
         maintenanceFee: 70000,
         paymentDay: 25,
+        optionInventory: ["에어컨", "세탁기", "냉장고", "인덕션", "블라인드"],
         startDate: "2026-03-01T00:00:00+09:00",
         endDate: "2028-02-29T00:00:00+09:00",
         createdAt: contractCreatedAt,
@@ -797,6 +813,7 @@ export class RoomlogService {
     );
     this.cost = new RoomlogCostDomain(
       this.store,
+      () => this.persistStore(),
       (iso) => this.timeOf(iso),
       (ticketId) => this.findTicket(ticketId),
       (roomId) => this.findRoom(roomId),
@@ -982,6 +999,10 @@ export class RoomlogService {
     return this.contract.requestTenantContractDeletion(tenantId, contractId);
   }
 
+  createTenantContract(tenantId: string, input: CreateTenantContractInput) {
+    return this.contract.createTenantContract(tenantId, input);
+  }
+
   getManagerContractDashboard(managerId: string) {
     return this.contract.getManagerContractDashboard(managerId);
   }
@@ -1000,6 +1021,50 @@ export class RoomlogService {
 
   requestManagerContractInfo(managerId: string, contractId: string) {
     return this.contract.requestManagerContractInfo(managerId, contractId);
+  }
+
+  createManagerContract(managerId: string, input: CreateManagerContractInput) {
+    return this.contract.createManagerContract(managerId, input);
+  }
+
+  updateManagerContractManualValues(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractManualValuesInput
+  ) {
+    return this.contract.updateManagerContractManualValues(managerId, contractId, input);
+  }
+
+  updateManagerContractInventory(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractInventoryInput
+  ) {
+    return this.contract.updateManagerContractInventory(managerId, contractId, input);
+  }
+
+  createManagerContractInvite(
+    managerId: string,
+    contractId: string,
+    input: CreateManagerContractInviteInput
+  ) {
+    return this.contract.createManagerContractInvite(managerId, contractId, input);
+  }
+
+  updateManagerContractInvite(
+    managerId: string,
+    inviteId: string,
+    input: UpdateManagerContractInviteInput
+  ) {
+    return this.contract.updateManagerContractInvite(managerId, inviteId, input);
+  }
+
+  updateManagerContractPrivacy(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractPrivacyInput
+  ) {
+    return this.contract.updateManagerContractPrivacy(managerId, contractId, input);
   }
 
   decideManagerContractDeletion(
@@ -2231,6 +2296,26 @@ export class RoomlogService {
     return this.cost.getManagerCost(managerId, costId);
   }
 
+  confirmManagerCost(managerId: string, costId: string) {
+    return this.cost.confirmManagerCost(managerId, costId);
+  }
+
+  confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+    return this.cost.confirmManagerReceiptOcr(managerId, ocrId);
+  }
+
+  voidManagerCost(managerId: string, costId: string, reason?: string) {
+    return this.cost.voidManagerCost(managerId, costId, reason);
+  }
+
+  updateManagerCostDisclosure(
+    managerId: string,
+    costId: string,
+    disclosure: "public" | "private"
+  ) {
+    return this.cost.updateManagerCostDisclosure(managerId, costId, disclosure);
+  }
+
   getManagerCostReviewQueueSummary(managerId: string): CostReviewQueueSummary {
     return this.cost.getManagerCostReviewQueueSummary(managerId);
   }
@@ -2269,6 +2354,18 @@ export class RoomlogService {
 
   listManagerVendorDuplicateCandidates(managerId: string) {
     return this.vendorMgmt.listManagerVendorDuplicateCandidates(managerId);
+  }
+
+  createManagerVendorProfile(managerId: string, input: ManagerVendorProfileInput) {
+    return this.vendorMgmt.createManagerVendorProfile(managerId, input);
+  }
+
+  updateManagerVendorProfile(
+    managerId: string,
+    vendorId: string,
+    input: ManagerVendorProfileInput
+  ) {
+    return this.vendorMgmt.updateManagerVendorProfile(managerId, vendorId, input);
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button } from "@roomlog/ui";
 import { CONTRACT_ROUTES } from "@/lib/contract-nav";
-import { getExtraction, DEMO_CONTRACT_ID } from "@/lib/contract-api";
+import { getCurrentContractId, getExtraction } from "@/lib/contract-api";
 import { HelpCards } from "./HelpCards";
 
 // T-DOC-03 · 계약 내용 도움말 (비적대·참고)
@@ -11,7 +11,18 @@ import { HelpCards } from "./HelpCards";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const extraction = await getExtraction(DEMO_CONTRACT_ID);
+  const contractId = await getCurrentContractId();
+  if (!contractId) {
+    return (
+      <div style={{ padding: 16, display: "grid", gap: 12 }}>
+        <div style={{ fontWeight: 800 }}>등록된 계약서가 없습니다.</div>
+        <Link href={CONTRACT_ROUTES["T-DOC-01"]} style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>
+          계약서 등록하기
+        </Link>
+      </div>
+    );
+  }
+  const extraction = await getExtraction(contractId);
 
   return (
     <>
