@@ -104,6 +104,50 @@ splat이 도면 대비 추가로 주는 것: **도면은 구조, splat은 상태
 4. **모바일 대용량 로딩** — 완화: .spz/.sog 압축(방당 5~15MB).
 5. **라이브 데모는 반드시 사전 캡처·검증한 splat으로.**
 
+## 9. 상품 티어 구조 (2026-07-04 확정)
+
+각 티어는 아래 티어를 포함하며 쌓인다. 낮은 티어의 실패가 높은 티어를 막지 않는 계단식 리스크 격리.
+
+| 티어 | 내용 | 상태 |
+|---|---|---|
+| 0 파노라마 | 360 사진 노드 (Matterport 기본 방식과 동일 체급). 집주인 진입장벽 최소화용 옵션 | 미착수(선택) |
+| **기본** | splat 투어 = ②사전검증 + ③도면 정합 + ④최적화. 프리셋 카메라(캡처 경로 근처 고정) | 뷰어 완성, ②③ 진행 중 |
+| **프리미엄** | + GPU 재구성 내재화 + ArtiFixer 도면 유도 보정 → **자유 이동 투어**. 배치 처리(등록 후 수십 분) 성격 → 프리미엄 매물 상품과 부합 | 스파이크 대기 |
+
+- 프리미엄도 ③(정합)을 재사용한다 — 커버리지 갭 검출이 정합 위에서 동작. ③은 두 티어 공용 기반.
+- 참고: Matterport의 실제 구조는 파노라마 노드 + 보조 mesh. 우리 프리셋 UX는 같은 교훈("촬영 지점에선 완벽, 사이는 절충")의 splat 일반화 — 프리셋 = sweep 지점, 제한 궤도 = 지점 근처 유지.
+
+## 10. ArtiFixer 결합 — 도면 유도 보정 파이프라인 (프리미엄)
+
+[ArtiFixer](https://research.nvidia.com/labs/sil/projects/artifixer/) (NVIDIA, SIGGRAPH 2026): 3DGS의 미관찰 영역 아티팩트를 14B 비디오 확산 모델로 수정. **Apache 2.0**(상업 사용 가능), 코드·가중치 공개([GitHub](https://github.com/nv-tlabs/artifixer), HF `nvidia/ArtiFixer`). 입력은 COLMAP 장면(원본 프레임+포즈) — **spz가 아니라 원본 영상이 필요**하다. 자체 파이프라인: COLMAP → 3DGRUT 재구성 → ArtiFixer 추론 → 3D 재증류.
+
+```
+영상 업로드 → 키프레임(①) → COLMAP → 3DGRUT 재구성
+                                   ↓
+                     도면 정합(③) ← 기존 도면→3D 파이프라인
+                                   ↓
+   도면의 역할: (a) 커버리지 갭 검출 — 도면 폴리곤 × 카메라 경로
+              (b) 보정 궤적 생성 — 갭을 향한 가상 카메라 경로
+              (c) 클립 박스 — 벽 밖 floater 제거로 보정 입력 정화
+                                   ↓
+        ArtiFixer 추론 → 재증류 → .spz → 뷰어 (자유 이동 투어)
+```
+
+(a)(b)(c)는 모델 수정 없는 오케스트레이션 레이어 — 도면 자산이 있어야만 가능한 차별화. ArtiFixer는 장면 구조를 모르므로 "어디를 어떤 시점으로 고칠지"를 도면이 제공한다는 것이 핵심 기여. 확장(연구급, 범위 밖): 도면 3D 셸 depth를 확산 조건으로 주입하는 fine-tune.
+
+## 11. GPU 스파이크 런북 (G1 게이트)
+
+**목표**: 예제 씬 1개 end-to-end 실측 → VRAM 피크·단계별 시간·비용 → 프리미엄 go/no-go.
+
+- **인스턴스**: AWS `g6e.2xlarge` (L40S 48GB, 8 vCPU/64GB, 온디맨드 ~$2.2/h, us-east-1 권장). 근거: 14B bf16 가중치 ~28GB+activation → 24GB 탈락, 48GB가 단일 GPU 최소 안전선. L40S는 RT 코어 보유 → 3DGRUT의 OptiX 레이트레이싱 하드웨어 가속 (A100은 RT 코어 없음 — 상위 등급이 오히려 불리). AWS 사다리에서 "단일 GPU로 되는 가장 큰 것" = 중상급.
+- **선행**: Service Quotas "Running On-Demand G and VT instances" ≥16 vCPU 증설 (기본 0, 승인 수시간~수일 — **가장 먼저 신청**).
+- **셋업**: Deep Learning AMI(Ubuntu, Docker+NVIDIA 툴킷 포함) + EBS 200GB. `git clone --recurse-submodules https://github.com/nv-tlabs/ArtiFixer` → `docker build -f Dockerfile.cuda12` → HF에서 `artifixer-14b.pt` (~28GB).
+- **실행**: 레포 예제 COLMAP 씬으로 `prepare_colmap_artifixer_inputs` → `run_inference`. `nvidia-smi` 로그로 VRAM 피크 기록.
+- **기록 템플릿**: 단계별 시간(COLMAP/3DGRUT/추론/재증류), VRAM 피크, 인스턴스 시간×단가, 산출 splat 품질 스크린샷.
+- **플랜 B**: 48GB OOM → RunPod/Lambda 단일 H100 80GB(~$3–4/h, 크레딧 밖이지만 10케이스 ~$100)로 동일 Docker 이동. 그래도 불가 → 프리미엄을 "SuperSplat 수동 보정 + 클립 박스"로 강등, 기본 티어 쇼케이스는 무손실.
+- **예산**: 크레딧 $1000. 10케이스 × 4h × $2.2 ≈ $90, 실험 오버헤드 5배 잡아도 < $450.
+- **케이스 수**: 쇼케이스는 3케이스(실스캔 확보 1 + 팀원 1–2)로 충분. 케이스마다 영상 워크스루(ArtiFixer용) + Scaniverse Splat 스캔(기본 티어용) **둘 다** 촬영.
+
 ## 참고 자료
 
 - [Spark (sparkjs.dev)](https://sparkjs.dev/) · [sparkjsdev/spark](https://github.com/sparkjsdev/spark) — three.js 3DGS 렌더러
