@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Announcement, AnnouncementCategory, AnnouncementScope, Thread } from "@roomlog/types";
-import { Badge, Card, Input } from "@roomlog/ui";
-import { listAnnouncements, listThreads } from "@/lib/messaging-api";
+import { Badge, Button, Card, Input } from "@roomlog/ui";
+import { deleteTenantThread, listAnnouncements, listThreads } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
+import { ApiError } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,30 @@ function formatTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
+}
+
+async function deleteTenantThreadAction(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MESSAGING_ROUTES["T-MSG-00"]);
+  }
+
+  try {
+    await deleteTenantThread(threadId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/tenant/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MESSAGING_ROUTES["T-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(MESSAGING_ROUTES["T-MSG-00"]);
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
@@ -173,27 +199,52 @@ function TabLink({
 
 function ThreadRow({ thread }: { thread: Thread }) {
   return (
-    <Link
-      href={`${MESSAGING_ROUTES["T-MSG-01"]}?id=${thread.id}`}
-      style={{ color: "inherit", textDecoration: "none" }}
-    >
-      <Card style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Badge emphasis={thread.pendingRequest}>{thread.contextLabel ?? "일반 문의"}</Badge>
-            {thread.pendingRequest && <Badge>추가요청 대기</Badge>}
-          </div>
-          {thread.unreadCount > 0 && <Badge emphasis>{thread.unreadCount}</Badge>}
+    <Card style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Badge emphasis={thread.pendingRequest}>{thread.contextLabel ?? "일반 문의"}</Badge>
+          {thread.pendingRequest && <Badge>추가요청 대기</Badge>}
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>관리인 · {thread.unitId}호</div>
-        <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.45 }}>
-          {thread.lastMessage}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--on-surface-variant)" }}>
-          {formatTime(thread.updatedAt)}
-        </div>
-      </Card>
-    </Link>
+        {thread.unreadCount > 0 && <Badge emphasis>{thread.unreadCount}</Badge>}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700 }}>관리인 · {thread.unitId}호</div>
+      <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.45 }}>
+        {thread.lastMessage}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--on-surface-variant)" }}>
+        {formatTime(thread.updatedAt)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
+        <Link
+          href={`${MESSAGING_ROUTES["T-MSG-01"]}?id=${thread.id}`}
+          style={{
+            minHeight: 36,
+            borderRadius: "var(--radius-btn)",
+            background: "var(--surface-container-high)",
+            color: "var(--on-surface)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textDecoration: "none",
+            fontSize: 13,
+            fontWeight: 800,
+          }}
+        >
+          열기
+        </Link>
+        <form action={deleteTenantThreadAction}>
+          <input type="hidden" name="threadId" value={thread.id} />
+          <Button
+            type="submit"
+            variant="ghost"
+            aria-label={`${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+            style={{ height: 36, padding: "0 12px" }}
+          >
+            삭제
+          </Button>
+        </form>
+      </div>
+    </Card>
   );
 }
 

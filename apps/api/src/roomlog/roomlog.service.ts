@@ -3094,6 +3094,10 @@ export class RoomlogService {
     return this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input);
   }
 
+  deleteTenantMessagingThread(tenantId: string, threadId: string) {
+    return this.messaging.deleteTenantMessagingThread(tenantId, threadId);
+  }
+
   listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext) {
     return this.messaging.listManagerMessagingThreads(managerId, context);
   }
@@ -3108,6 +3112,10 @@ export class RoomlogService {
     input: AddMessagingThreadMessageInput
   ) {
     return this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input);
+  }
+
+  deleteManagerMessagingThread(managerId: string, threadId: string) {
+    return this.messaging.deleteManagerMessagingThread(managerId, threadId);
   }
 
   createManagerAnnouncementDraft(managerId: string, input: CreateAnnouncementDraftInput) {

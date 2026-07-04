@@ -2902,6 +2902,96 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("lets tenants and managers delete only scoped messaging threads", () => {
+    const service = new RoomlogService();
+
+    const otherManager = service.signup({
+      email: "delete-other-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "삭제 외부 관리자",
+      phone: "010-7622-1001",
+      role: "LANDLORD",
+      buildingName: "삭제 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 삭제로 8"
+    } as any);
+    const otherTenant = service.signup({
+      email: "delete-other-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "삭제 외부 세입자",
+      phone: "010-7622-3001",
+      role: "TENANT",
+      buildingName: "삭제 외부빌라",
+      roomNo: "801호",
+      address: "서울시 성동구 삭제로 8"
+    } as any);
+
+    const tenantThread = service.createTenantMessagingThread("tenant-demo", {
+      context: "general",
+      contextLabel: "삭제 테스트",
+      body: "임차인이 삭제할 스레드입니다."
+    });
+    service.addManagerMessagingThreadMessage("landlord-demo", tenantThread.id, {
+      body: "삭제 전에 달린 관리자 답장입니다."
+    });
+
+    assert.equal(
+      service.getDemoState().messagingMessages.some((message) => message.threadId === tenantThread.id),
+      true
+    );
+    assert.throws(
+      () => service.deleteTenantMessagingThread(otherTenant.userId, tenantThread.id),
+      /메시지 스레드/
+    );
+
+    const tenantDeleted = service.deleteTenantMessagingThread("tenant-demo", tenantThread.id);
+    assert.equal(tenantDeleted.deleted, true);
+    assert.equal(
+      service.listTenantMessagingThreads("tenant-demo").some((thread) => thread.id === tenantThread.id),
+      false
+    );
+    assert.equal(
+      service.listManagerMessagingThreads("landlord-demo").some((thread) => thread.id === tenantThread.id),
+      false
+    );
+    assert.equal(
+      service.getDemoState().messagingMessages.some((message) => message.threadId === tenantThread.id),
+      false
+    );
+    assert.throws(
+      () => service.getTenantMessagingThread("tenant-demo", tenantThread.id),
+      /메시지 스레드/
+    );
+
+    const managerThread = service.createMessagingThread("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "tenant-demo",
+      context: "general",
+      contextLabel: "관리인 삭제 테스트",
+      initialMessage: {
+        sender: "tenant",
+        body: "관리인이 삭제할 스레드입니다."
+      }
+    });
+    assert.throws(
+      () => service.deleteManagerMessagingThread(otherManager.userId, managerThread.id),
+      /메시지 스레드/
+    );
+
+    const managerDeleted = service.deleteManagerMessagingThread("landlord-demo", managerThread.id);
+    assert.equal(managerDeleted.threadId, managerThread.id);
+    assert.equal(
+      service.listManagerMessagingThreads("landlord-demo").some((thread) => thread.id === managerThread.id),
+      false
+    );
+    assert.equal(
+      service.listTenantMessagingThreads("tenant-demo").some((thread) => thread.id === managerThread.id),
+      false
+    );
+  });
+
   it("scopes messaging threads and enforces server-side messaging gates", () => {
     const service = new RoomlogService();
     const otherManager = service.signup({

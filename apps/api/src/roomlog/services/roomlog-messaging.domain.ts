@@ -162,6 +162,18 @@ export class RoomlogMessagingDomain {
     return this.presentThread(thread, true);
   }
 
+  deleteTenantMessagingThread(tenantId: string, threadId: string) {
+    const thread = this.store.messagingThreads.find(
+      (item) => item.id === threadId && item.tenantId === tenantId
+    );
+
+    if (!thread) {
+      throw new NotFoundException("메시지 스레드를 찾을 수 없습니다.");
+    }
+
+    return this.deleteMessagingThread(thread.id);
+  }
+
   listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext): MessagingThread[] {
     return this.store.messagingThreads
       .filter((thread) => this.canManagerAccessRoom(managerId, thread.roomId))
@@ -193,6 +205,12 @@ export class RoomlogMessagingDomain {
     this.persistStore();
 
     return this.presentThread(thread, true);
+  }
+
+  deleteManagerMessagingThread(managerId: string, threadId: string) {
+    const thread = this.findManagerThread(managerId, threadId);
+
+    return this.deleteMessagingThread(thread.id);
   }
 
   createManagerAnnouncementDraft(
@@ -412,6 +430,26 @@ export class RoomlogMessagingDomain {
     }
 
     return message;
+  }
+
+  private deleteMessagingThread(threadId: string) {
+    const threadIndex = this.store.messagingThreads.findIndex((thread) => thread.id === threadId);
+
+    if (threadIndex < 0) {
+      throw new NotFoundException("메시지 스레드를 찾을 수 없습니다.");
+    }
+
+    this.store.messagingThreads.splice(threadIndex, 1);
+
+    for (let index = this.store.messagingMessages.length - 1; index >= 0; index -= 1) {
+      if (this.store.messagingMessages[index].threadId === threadId) {
+        this.store.messagingMessages.splice(index, 1);
+      }
+    }
+
+    this.persistStore();
+
+    return { threadId, deleted: true as const };
   }
 
   private findManagerThread(managerId: string, threadId: string) {

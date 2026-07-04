@@ -1,4 +1,4 @@
-import type { Announcement, Thread } from "@roomlog/types";
+import type { Announcement, CreateTenantMessagingThreadInput, Thread } from "@roomlog/types";
 import { DEMO_ANNOUNCEMENTS, DEMO_THREAD_ID, DEMO_THREADS } from "./demo-messaging";
 import { serverFetch } from "./server-api";
 
@@ -9,6 +9,7 @@ const DEMO_ANNOUNCEMENT_ID = DEMO_ANNOUNCEMENTS[0].id;
 export const tenantMessagingPaths = {
   threads: () => "/tenant/messaging/threads",
   thread: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}`,
+  deleteThread: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}`,
   threadMessages: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}/messages`,
   announcements: () => "/tenant/messaging/announcements",
   announcement: (id: string) => `/tenant/messaging/announcements/${encodeURIComponent(id)}`,
@@ -35,6 +36,13 @@ export function getThread(id: string): Promise<Thread> {
   return serverFetch<Thread>(tenantMessagingPaths.thread(id));
 }
 
+export function createTenantThread(input: CreateTenantMessagingThreadInput): Promise<Thread> {
+  return serverFetch<Thread>(tenantMessagingPaths.threads(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function addTenantThreadMessage(
   id: string,
   input: { body?: string; kind?: "text" | "photo_request" | "photo_response"; attachmentUrls?: string[] },
@@ -42,6 +50,12 @@ export function addTenantThreadMessage(
   return serverFetch<Thread>(tenantMessagingPaths.threadMessages(id), {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteTenantThread(id: string): Promise<{ threadId: string; deleted: true }> {
+  return serverFetch(tenantMessagingPaths.deleteThread(id), {
+    method: "DELETE",
   });
 }
 

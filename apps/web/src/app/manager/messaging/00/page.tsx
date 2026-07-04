@@ -1,8 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { AnnouncementResult, Thread } from "@roomlog/types";
-import { Input } from "@roomlog/ui";
-import { listAnnouncementDrafts, listAnnouncementResults, listManagerThreads } from "@/lib/messaging-manager-api";
+import { Button, Input } from "@roomlog/ui";
+import {
+  deleteManagerThread,
+  listAnnouncementDrafts,
+  listAnnouncementResults,
+  listManagerThreads,
+} from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
@@ -18,6 +25,30 @@ import {
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ tab?: string }>;
+
+async function deleteManagerThreadAction(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  try {
+    await deleteManagerThread(threadId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+}
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const [{ tab }, threads, drafts, results] = await Promise.all([
@@ -130,32 +161,60 @@ function TabLink({ href, active, children }: { href: string; active: boolean; ch
 function ThreadCard({ thread }: { thread: Thread }) {
   const needsReply = thread.unreadCount > 0 || thread.pendingRequest;
   return (
-    <Link href={`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${thread.id}`} style={{ color: "inherit", textDecoration: "none" }}>
-      <Card
-        style={{
-          minHeight: 178,
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-sm)",
-          border: needsReply ? "1.5px solid var(--primary)" : "1px solid var(--border)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)" }}>
-          <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-            <Badge emphasis={needsReply}>{thread.unitId}호</Badge>
-            <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
-          </div>
-          {needsReply ? <Badge emphasis>답장 필요</Badge> : null}
+    <Card
+      style={{
+        minHeight: 206,
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-sm)",
+        border: needsReply ? "1.5px solid var(--primary)" : "1px solid var(--border)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)" }}>
+        <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+          <Badge emphasis={needsReply}>{thread.unitId}호</Badge>
+          <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
         </div>
-        <div style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>
-        <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: 1.5 }}>
-          {thread.lastMessage}
-        </div>
-        <div style={{ marginTop: "auto", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
-          미응답 {formatDateTime(thread.updatedAt)} · 미읽음 {thread.unreadCount}
-        </div>
-      </Card>
-    </Link>
+        {needsReply ? <Badge emphasis>답장 필요</Badge> : null}
+      </div>
+      <div style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>
+      <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: 1.5 }}>
+        {thread.lastMessage}
+      </div>
+      <div style={{ marginTop: "auto", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
+        미응답 {formatDateTime(thread.updatedAt)} · 미읽음 {thread.unreadCount}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-sm)", alignItems: "center" }}>
+        <Link
+          href={`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${thread.id}`}
+          style={{
+            minHeight: 40,
+            borderRadius: "var(--radius-btn)",
+            background: "var(--surface-container-high)",
+            color: "var(--on-surface)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textDecoration: "none",
+            fontSize: "var(--fs-caption)",
+            fontWeight: 800,
+          }}
+        >
+          열기
+        </Link>
+        <form action={deleteManagerThreadAction}>
+          <input type="hidden" name="threadId" value={thread.id} />
+          <Button
+            type="submit"
+            variant="ghost"
+            aria-label={`${thread.unitId}호 ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+            style={{ height: 40, padding: "0 var(--space-md)" }}
+          >
+            삭제
+          </Button>
+        </form>
+      </div>
+    </Card>
   );
 }
 
