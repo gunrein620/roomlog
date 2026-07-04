@@ -141,6 +141,18 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     new URL("./src/app/tenant/moveout/02/page.tsx", import.meta.url),
     "utf8",
   );
+  const managerMoveoutHomeSource = readFileSync(
+    new URL("./src/app/manager/moveout/00/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutNavSource = readFileSync(
+    new URL("./src/lib/moveout-manager-nav.ts", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutComponentsSource = readFileSync(
+    new URL("./src/app/manager/moveout/_components.tsx", import.meta.url),
+    "utf8",
+  );
   const managerReviewSource = readFileSync(
     new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
     "utf8",
@@ -195,6 +207,12 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantChecklistSource, /action=\{saveChecklistAction\}/);
   assert.match(tenantChecklistSource, /name="moveoutId"/);
   assert.match(tenantChecklistSource, /updateMoveoutChecklist\(moveoutId/);
+  assert.match(managerMoveoutNavSource, /withManagerMoveoutId/);
+  assert.match(managerMoveoutHomeSource, /selectedRow/);
+  assert.match(managerMoveoutHomeSource, /rows\.length === 0/);
+  assert.match(managerMoveoutHomeSource, /withManagerMoveoutId\(MANAGER_MOVEOUT_ROUTES\["M-OUT-03"\]/);
+  assert.match(managerMoveoutComponentsSource, /withManagerMoveoutId/);
+  assert.match(managerMoveoutComponentsSource, /MANAGER_MOVEOUT_ROUTES\["M-OUT-02"\]/);
   assert.match(managerReviewSource, /completeReview/);
   assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
   assert.match(managerReviewSource, /adjustDeduction/);
