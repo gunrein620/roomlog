@@ -118,6 +118,9 @@ test("keeps tenant, manager, and vendor entry routes available", () => {
 });
 
 test("wires moveout screens to backend mutations instead of static links", () => {
+  const moveoutNavSource = readFileSync(new URL("./src/lib/moveout-nav.ts", import.meta.url), "utf8");
+  const moveoutLoadingExists = existsSync(new URL("./src/app/tenant/moveout/loading.tsx", import.meta.url));
+  const moveoutErrorExists = existsSync(new URL("./src/app/tenant/moveout/error.tsx", import.meta.url));
   const tenantMoveoutHomeSource = readFileSync(
     new URL("./src/app/tenant/moveout/00/page.tsx", import.meta.url),
     "utf8",
@@ -147,26 +150,37 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     "utf8",
   );
 
+  assert.match(moveoutNavSource, /withMoveoutId/);
+  assert.equal(moveoutLoadingExists, true);
+  assert.equal(moveoutErrorExists, true);
   assert.match(tenantMoveoutHomeSource, /listMoveouts/);
   assert.match(tenantMoveoutHomeSource, /getChecklist/);
   assert.match(tenantMoveoutHomeSource, /getDisputes/);
   assert.match(tenantMoveoutHomeSource, /completionProgress/);
   assert.match(tenantMoveoutHomeSource, /notificationItems/);
+  assert.match(tenantMoveoutHomeSource, /withMoveoutId/);
   assert.doesNotMatch(tenantMoveoutHomeSource, /DEMO_MOVEOUT_ID/);
   assert.doesNotMatch(tenantMoveoutHomeSource, /<span[\s\S]*>\s*1\s*<\/span>/);
   assert.match(tenantRecordsSource, /SOURCE_ROUTE/);
   assert.match(tenantRecordsSource, /evidenceUrls/);
   assert.match(tenantRecordsSource, /targetItemId=\$\{record\.id\}/);
   assert.match(tenantRecordsSource, /근거 상세/);
+  assert.match(tenantRecordsSource, /searchParams/);
   assert.doesNotMatch(tenantRecordsSource, /href=\{MOVEOUT_ROUTES\["T-OUT-04"\]\}/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
   assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
+  assert.match(tenantSettlementSource, /name="moveoutId"/);
+  assert.match(tenantSettlementSource, /createMoveoutInquiry\(moveoutId/);
   assert.match(tenantSettlementSource, /attachmentUrlsFrom/);
   assert.match(tenantSettlementSource, /targetItemId=\$\{deduction\.id\}/);
   assert.match(tenantSettlementSource, /SOURCE_ROUTE/);
   assert.match(tenantSettlementSource, /계약 정보 확정 후 예상 정산 안내/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
   assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
+  assert.match(tenantDisputeSource, /name="moveoutId"/);
+  assert.match(tenantDisputeSource, /createMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /updateTenantMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /escalateMoveoutDispute\(moveoutId/);
   assert.match(tenantDisputeSource, /updateTenantMoveoutDispute/);
   assert.match(tenantDisputeSource, /action=\{updateDisputeAction\}/);
   assert.match(tenantDisputeSource, /escalateMoveoutDispute/);
@@ -175,6 +189,8 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantDisputeSource, /attachmentUrlsFrom/);
   assert.match(tenantChecklistSource, /updateMoveoutChecklist/);
   assert.match(tenantChecklistSource, /action=\{saveChecklistAction\}/);
+  assert.match(tenantChecklistSource, /name="moveoutId"/);
+  assert.match(tenantChecklistSource, /updateMoveoutChecklist\(moveoutId/);
   assert.match(managerReviewSource, /completeReview/);
   assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
   assert.match(managerDisputeSource, /respondDispute/);

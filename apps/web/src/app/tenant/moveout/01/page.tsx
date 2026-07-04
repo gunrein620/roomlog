@@ -6,10 +6,12 @@ import { CONTRACT_ROUTES } from "@/lib/contract-nav";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { ROUTES as DEFECT_ROUTES } from "@/lib/nav";
 import { ROUTES as MOVEIN_ROUTES } from "@/lib/movein-nav";
-import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+import { MOVEOUT_ROUTES, withMoveoutId } from "@/lib/moveout-nav";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ id?: string }>;
 
 const labelStyle = {
   fontSize: "var(--fs-caption)",
@@ -43,18 +45,22 @@ const WEAR_LABEL: Record<WearVerdict, string> = {
   unclear: "판단 어려움",
 };
 
-function disputeHrefFor(record: MoveoutRecordItem) {
-  return `${MOVEOUT_ROUTES["T-OUT-04"]}?targetItemId=${record.id}`;
+function disputeHrefFor(record: MoveoutRecordItem, moveoutId: string) {
+  return `${MOVEOUT_ROUTES["T-OUT-04"]}?id=${encodeURIComponent(moveoutId)}&targetItemId=${record.id}`;
 }
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const moveoutId = params.id?.trim() || DEMO_MOVEOUT_ID;
   const [moveout, records, settlement] = await Promise.all([
-    getMoveout(DEMO_MOVEOUT_ID),
-    getRecords(DEMO_MOVEOUT_ID),
-    getSettlement(DEMO_MOVEOUT_ID),
+    getMoveout(moveoutId),
+    getRecords(moveoutId),
+    getSettlement(moveoutId),
   ]);
   const reviewItems = records.filter((record) => record.wearVerdict);
-  const primaryDisputeHref = reviewItems[0] ? disputeHrefFor(reviewItems[0]) : MOVEOUT_ROUTES["T-OUT-04"];
+  const primaryDisputeHref = reviewItems[0]
+    ? disputeHrefFor(reviewItems[0], moveout.id)
+    : withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id);
 
   return (
     <>
@@ -70,7 +76,7 @@ export default async function Page() {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Link
-            href={MOVEOUT_ROUTES["T-OUT-00"]}
+            href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-00"], moveout.id)}
             style={{ fontSize: 13, color: "var(--on-surface-variant)", textDecoration: "none" }}
           >
             ‹ 뒤로
@@ -107,7 +113,7 @@ export default async function Page() {
           <div style={labelStyle}>내 기록 타임라인</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {records.map((record) => (
-              <RecordCard key={record.id} record={record} />
+              <RecordCard key={record.id} record={record} moveoutId={moveout.id} />
             ))}
           </div>
         </section>
@@ -126,7 +132,7 @@ export default async function Page() {
                     {record.wearNote ?? "노후/마모일 수도 있어요. 확인이 필요한 항목입니다."}
                   </div>
                   <Link
-                    href={disputeHrefFor(record)}
+                    href={disputeHrefFor(record, moveout.id)}
                     style={{
                       alignSelf: "flex-start",
                       color: "var(--primary)",
@@ -166,7 +172,7 @@ export default async function Page() {
           gap: 8,
         }}
       >
-        <Link href={MOVEOUT_ROUTES["T-OUT-03"]} style={{ textDecoration: "none", display: "block" }}>
+        <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveout.id)} style={{ textDecoration: "none", display: "block" }}>
           <Button fullWidth>예상 정산 안내</Button>
         </Link>
         <Link href={primaryDisputeHref} style={{ textDecoration: "none", display: "block" }}>
@@ -179,7 +185,7 @@ export default async function Page() {
   );
 }
 
-function RecordCard({ record }: { record: MoveoutRecordItem }) {
+function RecordCard({ record, moveoutId }: { record: MoveoutRecordItem; moveoutId: string }) {
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 7 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -243,7 +249,10 @@ function RecordCard({ record }: { record: MoveoutRecordItem }) {
           {SOURCE_LABEL[record.source]} 원천 보기
         </Link>
         {record.wearVerdict && (
-          <Link href={disputeHrefFor(record)} style={{ color: "var(--primary)", fontSize: 12, fontWeight: 800 }}>
+          <Link
+            href={disputeHrefFor(record, moveoutId)}
+            style={{ color: "var(--primary)", fontSize: 12, fontWeight: 800 }}
+          >
             이의·정정
           </Link>
         )}

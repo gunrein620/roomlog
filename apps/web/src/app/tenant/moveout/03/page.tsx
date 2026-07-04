@@ -7,10 +7,12 @@ import { CONTRACT_ROUTES } from "@/lib/contract-nav";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { ROUTES as DEFECT_ROUTES } from "@/lib/nav";
 import { ROUTES as MOVEIN_ROUTES } from "@/lib/movein-nav";
-import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+import { MOVEOUT_ROUTES, withMoveoutId } from "@/lib/moveout-nav";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ id?: string }>;
 
 const labelStyle = {
   fontSize: "var(--fs-caption)",
@@ -72,20 +74,23 @@ function attachmentUrlsFrom(value: FormDataEntryValue | null) {
 async function createInquiryAction(formData: FormData) {
   "use server";
 
+  const moveoutId = String(formData.get("moveoutId") ?? DEMO_MOVEOUT_ID).trim() || DEMO_MOVEOUT_ID;
   const body = String(formData.get("body") ?? "").trim();
   if (!body) {
-    redirect(MOVEOUT_ROUTES["T-OUT-03"]);
+    redirect(withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveoutId));
   }
 
   const attachmentUrls = attachmentUrlsFrom(formData.get("attachmentUrls"));
-  const result = await createMoveoutInquiry(DEMO_MOVEOUT_ID, { body, attachmentUrls });
+  const result = await createMoveoutInquiry(moveoutId, { body, attachmentUrls });
   redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(result.thread.id)}`);
 }
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const moveoutId = params.id?.trim() || DEMO_MOVEOUT_ID;
   const [moveout, settlement] = await Promise.all([
-    getMoveout(DEMO_MOVEOUT_ID),
-    getSettlement(DEMO_MOVEOUT_ID),
+    getMoveout(moveoutId),
+    getSettlement(moveoutId),
   ]);
 
   return (
@@ -102,7 +107,7 @@ export default async function Page() {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Link
-            href={MOVEOUT_ROUTES["T-OUT-00"]}
+            href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-00"], moveout.id)}
             style={{ fontSize: 13, color: "var(--on-surface-variant)", textDecoration: "none" }}
           >
             ‹ 뒤로
@@ -220,7 +225,7 @@ export default async function Page() {
                     </details>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <Link
-                        href={`${MOVEOUT_ROUTES["T-OUT-04"]}?targetItemId=${deduction.id}`}
+                        href={`${MOVEOUT_ROUTES["T-OUT-04"]}?id=${encodeURIComponent(moveout.id)}&targetItemId=${deduction.id}`}
                         style={{ color: "var(--primary)", fontSize: 12, fontWeight: 800 }}
                       >
                         이의 제기
@@ -269,7 +274,7 @@ export default async function Page() {
           gap: 8,
         }}
       >
-        <Link href={MOVEOUT_ROUTES["T-OUT-04"]} style={{ textDecoration: "none", display: "block" }}>
+        <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id)} style={{ textDecoration: "none", display: "block" }}>
           <Button fullWidth variant="secondary">
             이의·정정 요청
           </Button>
@@ -285,6 +290,7 @@ export default async function Page() {
             padding: 10,
           }}
         >
+          <input type="hidden" name="moveoutId" value={moveout.id} />
           <Input name="body" aria-label="관리자 문의 내용" placeholder="관리자에게 물어볼 내용을 입력하세요" />
           <Input name="attachmentUrls" aria-label="문의 증빙 URL" placeholder="증빙 URL(선택, 쉼표로 구분)" />
           <Button type="submit" fullWidth variant="ghost">

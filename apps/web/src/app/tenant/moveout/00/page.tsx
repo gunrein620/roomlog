@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Dispute, MoveoutChecklistItem, MoveoutSummary, SettlementEstimate } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { getChecklist, getDisputes, getSettlement, listMoveouts } from "@/lib/moveout-api";
-import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+import { MOVEOUT_ROUTES, withMoveoutId } from "@/lib/moveout-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -112,19 +112,28 @@ function notificationItems(
   const breachedDisputes = disputes.filter((dispute) => dispute.slaBreached && dispute.status !== "resolved").length;
 
   if (!moveout.contractConfirmed) {
-    items.push({ label: "계약 정보 확인 필요", href: MOVEOUT_ROUTES["T-OUT-03"] });
+    items.push({ label: "계약 정보 확인 필요", href: withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveout.id) });
   }
 
   if (needsConfirmation > 0) {
-    items.push({ label: `차감 후보 확인 ${needsConfirmation}건`, href: MOVEOUT_ROUTES["T-OUT-03"] });
+    items.push({
+      label: `차감 후보 확인 ${needsConfirmation}건`,
+      href: withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveout.id),
+    });
   }
 
   if (answeredDisputes > 0) {
-    items.push({ label: `관리자 응답 ${answeredDisputes}건`, href: MOVEOUT_ROUTES["T-OUT-04"] });
+    items.push({
+      label: `관리자 응답 ${answeredDisputes}건`,
+      href: withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id),
+    });
   }
 
   if (breachedDisputes > 0) {
-    items.push({ label: `SLA 경과 ${breachedDisputes}건`, href: MOVEOUT_ROUTES["T-OUT-04"] });
+    items.push({
+      label: `SLA 경과 ${breachedDisputes}건`,
+      href: withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id),
+    });
   }
 
   return items;
@@ -186,7 +195,7 @@ export default async function Page() {
           </div>
         </div>
         <Link
-          href={notifications[0]?.href ?? MOVEOUT_ROUTES["T-OUT-03"]}
+          href={notifications[0]?.href ?? withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveout.id)}
           aria-label="알림"
           style={{
             position: "relative",
@@ -327,17 +336,17 @@ export default async function Page() {
           gap: 8,
         }}
       >
-        <Link href={MOVEOUT_ROUTES["T-OUT-01"]} style={{ textDecoration: "none", display: "block" }}>
+        <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-01"], moveout.id)} style={{ textDecoration: "none", display: "block" }}>
           <Button fullWidth>내 퇴실 기록 보기</Button>
         </Link>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href={MOVEOUT_ROUTES["T-OUT-03"]} style={secondaryLinkStyle}>
+          <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveout.id)} style={secondaryLinkStyle}>
             예상 정산
           </Link>
-          <Link href={MOVEOUT_ROUTES["T-OUT-02"]} style={secondaryLinkStyle}>
+          <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-02"], moveout.id)} style={secondaryLinkStyle}>
             체크리스트
           </Link>
-          <Link href={MOVEOUT_ROUTES["T-OUT-04"]} style={secondaryLinkStyle}>
+          <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id)} style={secondaryLinkStyle}>
             이의·정정
           </Link>
         </div>

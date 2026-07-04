@@ -11,7 +11,7 @@ import {
   getSettlement,
   updateTenantMoveoutDispute,
 } from "@/lib/moveout-api";
-import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+import { MOVEOUT_ROUTES, withMoveoutId } from "@/lib/moveout-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +55,7 @@ const inputStyle = {
 } as const;
 
 type SearchParams = Promise<{
+  id?: string;
   targetItemId?: string;
   submitted?: string;
   updated?: string;
@@ -69,71 +70,83 @@ function attachmentUrlsFrom(value: FormDataEntryValue | null) {
     .filter(Boolean);
 }
 
+function moveoutIdFrom(formData: FormData) {
+  return String(formData.get("moveoutId") ?? DEMO_MOVEOUT_ID).trim() || DEMO_MOVEOUT_ID;
+}
+
+function disputeRedirect(moveoutId: string, flag: "submitted" | "updated" | "escalated" | "error") {
+  return `${withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveoutId)}&${flag}=1`;
+}
+
 async function createDisputeAction(formData: FormData) {
   "use server";
 
+  const moveoutId = moveoutIdFrom(formData);
   const targetItemId = String(formData.get("targetItemId") ?? "").trim();
   const targetLabel = String(formData.get(`targetLabel-${targetItemId}`) ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
   const attachmentUrls = attachmentUrlsFrom(formData.get("attachmentUrls"));
 
   if (!targetLabel || !reason) {
-    redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?error=missing`);
+    redirect(disputeRedirect(moveoutId, "error"));
   }
 
-  await createMoveoutDispute(DEMO_MOVEOUT_ID, {
+  await createMoveoutDispute(moveoutId, {
     targetItemId: targetItemId || undefined,
     targetLabel,
     reason,
     attachmentUrls,
   });
-  redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?submitted=1`);
+  redirect(disputeRedirect(moveoutId, "submitted"));
 }
 
 async function updateDisputeAction(formData: FormData) {
   "use server";
 
+  const moveoutId = moveoutIdFrom(formData);
   const disputeId = String(formData.get("disputeId") ?? "").trim();
   const action = String(formData.get("action") ?? "").trim() as TenantMoveoutDisputeAction;
   const reason = String(formData.get("reason") ?? "").trim();
   const attachmentUrls = attachmentUrlsFrom(formData.get("attachmentUrls"));
 
   if (!disputeId || !action) {
-    redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?error=missing`);
+    redirect(disputeRedirect(moveoutId, "error"));
   }
 
-  await updateTenantMoveoutDispute(DEMO_MOVEOUT_ID, {
+  await updateTenantMoveoutDispute(moveoutId, {
     disputeId,
     action,
     reason: reason || undefined,
     attachmentUrls,
   });
-  redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?updated=1`);
+  redirect(disputeRedirect(moveoutId, "updated"));
 }
 
 async function escalateDisputeAction(formData: FormData) {
   "use server";
 
+  const moveoutId = moveoutIdFrom(formData);
   const disputeId = String(formData.get("disputeId") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
 
   if (!disputeId) {
-    redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?error=missing`);
+    redirect(disputeRedirect(moveoutId, "error"));
   }
 
-  await escalateMoveoutDispute(DEMO_MOVEOUT_ID, {
+  await escalateMoveoutDispute(moveoutId, {
     disputeId,
     reason: reason || undefined,
   });
-  redirect(`${MOVEOUT_ROUTES["T-OUT-04"]}?escalated=1`);
+  redirect(disputeRedirect(moveoutId, "escalated"));
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
+  const moveoutId = params.id?.trim() || DEMO_MOVEOUT_ID;
   const [records, settlement, disputes] = await Promise.all([
-    getRecords(DEMO_MOVEOUT_ID),
-    getSettlement(DEMO_MOVEOUT_ID),
-    getDisputes(DEMO_MOVEOUT_ID),
+    getRecords(moveoutId),
+    getSettlement(moveoutId),
+    getDisputes(moveoutId),
   ]);
   const targetOptions = [
     ...settlement.deductions.map((deduction) => ({
@@ -166,7 +179,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         }}
       >
         <Link
-          href={MOVEOUT_ROUTES["T-OUT-01"]}
+          href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-01"], moveoutId)}
           style={{ fontSize: 13, color: "var(--on-surface-variant)", textDecoration: "none" }}
         >
           ‹ 뒤로
@@ -293,6 +306,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     ))}
                     {dispute.status === "answered" && (
                       <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                        <input type="hidden" name="moveoutId" value={moveoutId} />
                         <input type="hidden" name="disputeId" value={dispute.id} />
                         <input type="hidden" name="action" value="confirm" />
                         <Button type="submit" fullWidth variant="secondary">
@@ -302,6 +316,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     )}
                     {["answered", "confirmed", "reviewing"].includes(dispute.status) && (
                       <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                        <input type="hidden" name="moveoutId" value={moveoutId} />
                         <input type="hidden" name="disputeId" value={dispute.id} />
                         <input type="hidden" name="action" value="re_dispute" />
                         <Input name="reason" aria-label="재이의 사유" placeholder="재이의 사유" />
@@ -317,6 +332,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     )}
                     {["answered", "confirmed", "re_disputed", "reviewing"].includes(dispute.status) && (
                       <form action={updateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                        <input type="hidden" name="moveoutId" value={moveoutId} />
                         <input type="hidden" name="disputeId" value={dispute.id} />
                         <input type="hidden" name="action" value="resolve" />
                         <Button type="submit" fullWidth variant="secondary">
@@ -337,43 +353,50 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
         <section>
           <div style={labelStyle}>무응답 SLA</div>
-          {disputes.map((dispute) => (
-            <Card
-              key={`${dispute.id}-sla`}
-              style={{
-                border: dispute.slaBreached
-                  ? "1.5px solid var(--primary)"
-                  : "1px solid var(--border)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 7,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 800 }}>
-                  {dispute.slaBreached ? "SLA 경과" : "응답 대기"}
-                </span>
-                <Badge emphasis={dispute.slaBreached}>
-                  {dispute.slaBreached ? "에스컬레이션 가능" : "기한 내"}
-                </Badge>
-              </div>
-              <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-                관리자 응답 기한 {dispute.slaDeadline.slice(0, 16).replace("T", " ")}. 무응답이면 상위
-                알림·채팅으로 에스컬레이션할 수 있어요.
-              </div>
-              {dispute.slaBreached ? (
-                <form action={escalateDisputeAction} style={{ display: "grid", gap: 6 }}>
-                  <input type="hidden" name="disputeId" value={dispute.id} />
-                  <Input name="reason" aria-label="에스컬레이션 사유" placeholder="에스컬레이션 사유(선택)" />
-                  <Button type="submit" fullWidth variant="secondary">
-                    에스컬레이션 요청
-                  </Button>
-                </form>
-              ) : (
-                <Badge>기한 전</Badge>
-              )}
+          {disputes.length === 0 ? (
+            <Card style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+              제출된 이의가 생기면 관리자 응답 기한이 이곳에 표시됩니다.
             </Card>
-          ))}
+          ) : (
+            disputes.map((dispute) => (
+              <Card
+                key={`${dispute.id}-sla`}
+                style={{
+                  border: dispute.slaBreached
+                    ? "1.5px solid var(--primary)"
+                    : "1px solid var(--border)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 7,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800 }}>
+                    {dispute.slaBreached ? "SLA 경과" : "응답 대기"}
+                  </span>
+                  <Badge emphasis={dispute.slaBreached}>
+                    {dispute.slaBreached ? "에스컬레이션 가능" : "기한 내"}
+                  </Badge>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+                  관리자 응답 기한 {dispute.slaDeadline.slice(0, 16).replace("T", " ")}. 무응답이면 상위
+                  알림·채팅으로 에스컬레이션할 수 있어요.
+                </div>
+                {dispute.slaBreached ? (
+                  <form action={escalateDisputeAction} style={{ display: "grid", gap: 6 }}>
+                    <input type="hidden" name="moveoutId" value={moveoutId} />
+                    <input type="hidden" name="disputeId" value={dispute.id} />
+                    <Input name="reason" aria-label="에스컬레이션 사유" placeholder="에스컬레이션 사유(선택)" />
+                    <Button type="submit" fullWidth variant="secondary">
+                      에스컬레이션 요청
+                    </Button>
+                  </form>
+                ) : (
+                  <Badge>기한 전</Badge>
+                )}
+              </Card>
+            ))
+          )}
         </section>
       </div>
 
@@ -387,6 +410,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           gap: 8,
         }}
       >
+        <input type="hidden" name="moveoutId" value={moveoutId} />
         <select name="targetItemId" aria-label="이의 대상 항목" defaultValue={selectedTarget.id} style={inputStyle}>
           {targetOptions.map((option) => (
             <option key={option.id} value={option.id}>

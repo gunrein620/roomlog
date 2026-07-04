@@ -4223,6 +4223,10 @@ describe("RoomlogService", () => {
 
     assert.equal(service.getTenantMoveout("tenant-a", "mo-a").id, "mo-a");
     assert.throws(() => service.getTenantMoveout("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutRecords("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutChecklist("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.getTenantMoveoutSettlement("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
+    assert.throws(() => service.listTenantMoveoutDisputes("tenant-b", "mo-a"), /퇴실|찾을 수|접근/);
   });
 
   it("returns moveout record evidence without exposing mutable store arrays", () => {

@@ -3,9 +3,11 @@ import { redirect } from "next/navigation";
 import type { ChecklistCondition, UpdateMoveoutChecklistItemDto } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { DEMO_MOVEOUT_ID, getChecklist, getMoveout, updateMoveoutChecklist } from "@/lib/moveout-api";
-import { MOVEOUT_ROUTES } from "@/lib/moveout-nav";
+import { MOVEOUT_ROUTES, withMoveoutId } from "@/lib/moveout-nav";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ id?: string }>;
 
 const labelStyle = {
   fontSize: "var(--fs-caption)",
@@ -44,6 +46,7 @@ function attachmentUrlsFrom(value: FormDataEntryValue | null) {
 async function saveChecklistAction(formData: FormData) {
   "use server";
 
+  const moveoutId = String(formData.get("moveoutId") ?? DEMO_MOVEOUT_ID).trim() || DEMO_MOVEOUT_ID;
   const items = formData.getAll("itemId").map((rawId): UpdateMoveoutChecklistItemDto => {
     const id = String(rawId);
 
@@ -57,14 +60,16 @@ async function saveChecklistAction(formData: FormData) {
     };
   });
 
-  await updateMoveoutChecklist(DEMO_MOVEOUT_ID, { items });
-  redirect(MOVEOUT_ROUTES["T-OUT-00"]);
+  await updateMoveoutChecklist(moveoutId, { items });
+  redirect(withMoveoutId(MOVEOUT_ROUTES["T-OUT-00"], moveoutId));
 }
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const moveoutId = params.id?.trim() || DEMO_MOVEOUT_ID;
   const [moveout, checklist] = await Promise.all([
-    getMoveout(DEMO_MOVEOUT_ID),
-    getChecklist(DEMO_MOVEOUT_ID),
+    getMoveout(moveoutId),
+    getChecklist(moveoutId),
   ]);
 
   return (
@@ -80,7 +85,7 @@ export default async function Page() {
         }}
       >
         <Link
-          href={MOVEOUT_ROUTES["T-OUT-00"]}
+          href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-00"], moveout.id)}
           style={{ fontSize: 13, color: "var(--on-surface-variant)", textDecoration: "none" }}
         >
           ‹ 뒤로
@@ -90,6 +95,7 @@ export default async function Page() {
       </header>
 
       <form action={saveChecklistAction} style={{ display: "contents" }}>
+        <input type="hidden" name="moveoutId" value={moveout.id} />
         <div
           style={{
             flex: 1,
@@ -116,65 +122,71 @@ export default async function Page() {
 
           <section>
             <div style={labelStyle}>옵션 인벤토리 · {moveout.unitId}호</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {checklist.map((item) => (
-                <Card key={item.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <input type="hidden" name="itemId" value={item.id} />
-                  <input type="hidden" name={`label-${item.id}`} value={item.label} />
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800 }}>{item.label}</div>
-                    <Badge emphasis={item.condition === "damage_check"}>
-                      {CONDITION_LABEL[item.condition]}
-                    </Badge>
-                  </div>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontSize: 13,
-                      fontWeight: 700,
-                    }}
-                  >
+            {checklist.length === 0 ? (
+              <Card style={{ fontSize: 13, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+                아직 생성된 체크리스트 항목이 없습니다. 옵션 인벤토리가 연결되면 이곳에 표시됩니다.
+              </Card>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {checklist.map((item) => (
+                  <Card key={item.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <input type="hidden" name="itemId" value={item.id} />
+                    <input type="hidden" name={`label-${item.id}`} value={item.label} />
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontSize: 14, fontWeight: 800 }}>{item.label}</div>
+                      <Badge emphasis={item.condition === "damage_check"}>
+                        {CONDITION_LABEL[item.condition]}
+                      </Badge>
+                    </div>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        name={`present-${item.id}`}
+                        value="true"
+                        defaultChecked={item.present}
+                      />
+                      반납/확인 가능
+                    </label>
+                    <select
+                      name={`condition-${item.id}`}
+                      aria-label={`${item.label} 상태`}
+                      defaultValue={item.condition}
+                      style={selectStyle}
+                    >
+                      <option value="normal">정상</option>
+                      <option value="aging">노후/마모</option>
+                      <option value="damage_check">확인 필요</option>
+                    </select>
                     <input
-                      type="checkbox"
-                      name={`present-${item.id}`}
-                      value="true"
-                      defaultChecked={item.present}
+                      name={`note-${item.id}`}
+                      aria-label={`${item.label} 메모`}
+                      defaultValue={item.note ?? ""}
+                      placeholder="메모"
+                      style={selectStyle}
                     />
-                    반납/확인 가능
-                  </label>
-                  <select
-                    name={`condition-${item.id}`}
-                    aria-label={`${item.label} 상태`}
-                    defaultValue={item.condition}
-                    style={selectStyle}
-                  >
-                    <option value="normal">정상</option>
-                    <option value="aging">노후/마모</option>
-                    <option value="damage_check">확인 필요</option>
-                  </select>
-                  <input
-                    name={`note-${item.id}`}
-                    aria-label={`${item.label} 메모`}
-                    defaultValue={item.note ?? ""}
-                    placeholder="메모"
-                    style={selectStyle}
-                  />
-                  <input
-                    name={`attachmentUrls-${item.id}`}
-                    aria-label={`${item.label} 사진 URL`}
-                    defaultValue={(item.attachmentUrls ?? []).join(", ")}
-                    placeholder="사진 URL(선택, 쉼표로 구분)"
-                    style={selectStyle}
-                  />
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Badge>{item.present ? "존재" : "미확인"}</Badge>
-                    <Badge>{item.condition === "aging" ? "자연 소모 구분" : "상태 기록"}</Badge>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                    <input
+                      name={`attachmentUrls-${item.id}`}
+                      aria-label={`${item.label} 사진 URL`}
+                      defaultValue={(item.attachmentUrls ?? []).join(", ")}
+                      placeholder="사진 URL(선택, 쉼표로 구분)"
+                      style={selectStyle}
+                    />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Badge>{item.present ? "존재" : "미확인"}</Badge>
+                      <Badge>{item.condition === "aging" ? "자연 소모 구분" : "상태 기록"}</Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </section>
 
           <section>
@@ -197,7 +209,7 @@ export default async function Page() {
           }}
         >
           <Button type="submit" fullWidth>체크 저장</Button>
-          <Link href={MOVEOUT_ROUTES["T-OUT-01"]} style={{ textDecoration: "none", display: "block" }}>
+          <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-01"], moveout.id)} style={{ textDecoration: "none", display: "block" }}>
             <Button fullWidth variant="secondary">
               기록에서 확인
             </Button>
