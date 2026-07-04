@@ -11,12 +11,23 @@ type ObjectLike = {
   label?: string;
   rotationDeg: number;
   size: { height: number; width: number };
+  spanOnWall?: { end: Point; start: Point };
   status?: string;
   type: string;
 };
 
 function roundMetric(value: number) {
   return Math.round(value * 1000) / 1000;
+}
+
+function pointDistance(left: Point, right: Point) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function objectWidthPixels(object: ObjectLike) {
+  if (object.category === "opening" && object.spanOnWall) return pointDistance(object.spanOnWall.start, object.spanOnWall.end);
+
+  return object.size.width;
 }
 
 function wallCenterOffset(walls: readonly Wall[], pixelToMmRatio: number) {
@@ -74,7 +85,7 @@ export function convertFloorPlanObjectsTo3D(
     .filter((object) => object.status !== "REJECTED")
     .map((object) => {
       const height = objectHeightMeters(object);
-      const width = Math.max(0.08, (object.size.width * pixelToMmRatio) / 1000);
+      const width = Math.max(0.08, (objectWidthPixels(object) * pixelToMmRatio) / 1000);
       const depth = objectDepthMeters(object, pixelToMmRatio);
       const x = (object.center.x * pixelToMmRatio) / 1000 - offset.x;
       const z = (object.center.y * pixelToMmRatio) / 1000 - offset.z;

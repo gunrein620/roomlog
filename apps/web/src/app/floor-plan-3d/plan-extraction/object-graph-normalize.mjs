@@ -422,6 +422,19 @@ function spanWallOverlapRatio(span, wall) {
 }
 
 function findOpeningWall(object, walls, snapRadius) {
+  const attachedWall = object.attachedWallId ? walls.find((wall) => wall.id === object.attachedWallId) : null;
+  if (attachedWall) {
+    const span = inferredOpeningSpan(object);
+    const midpoint = {
+      x: (span.start.x + span.end.x) / 2,
+      y: (span.start.y + span.end.y) / 2
+    };
+    const maxAttachedDistance = Math.max(24, snapRadius * 2);
+    if (pointDistanceToWall(object.center, attachedWall) <= maxAttachedDistance || pointDistanceToWall(midpoint, attachedWall) <= maxAttachedDistance) {
+      return attachedWall;
+    }
+  }
+
   const span = inferredOpeningSpan(object);
   const midpoint = {
     x: (span.start.x + span.end.x) / 2,
@@ -444,19 +457,38 @@ function findOpeningWall(object, walls, snapRadius) {
 
 function openingSpanOnWall(object, wall) {
   const length = wallLength(wall);
+  const axis = wallAxis(wall);
+  const fallbackSpanLength = Math.max(1, axis === "horizontal" ? object.size.width : object.size.height);
+  const center = clamp(projectScalar(wall, object.center), 0, length);
+  const fallbackSpan = {
+    end: clamp(center + fallbackSpanLength / 2, 0, length),
+    start: clamp(center - fallbackSpanLength / 2, 0, length)
+  };
+
   if (object.spanOnWall) {
     const start = clamp(projectScalar(wall, object.spanOnWall.start), 0, length);
     const end = clamp(projectScalar(wall, object.spanOnWall.end), 0, length);
-    return { end: Math.max(start, end), start: Math.min(start, end) };
-  }
-  const center = clamp(projectScalar(wall, object.center), 0, length);
-  const axis = wallAxis(wall);
-  const spanLength = Math.max(1, axis === "horizontal" ? object.size.width : object.size.height);
+    const projectedSpan = { end: Math.max(start, end), start: Math.min(start, end) };
+    const projectedLength = projectedSpan.end - projectedSpan.start;
+    if (projectedLength >= 8) return projectedSpan;
 
-  return {
-    end: clamp(center + spanLength / 2, 0, length),
-    start: clamp(center - spanLength / 2, 0, length)
-  };
+    return fallbackSpan;
+  }
+
+  return fallbackSpan;
+}
+
+function normalizeOpeningObjectGeometry(object, wall, span, snapRadius) {
+  const axis = wallAxis(wall);
+  const spanLength = Math.max(1, span.end - span.start);
+  const maxThickness = Math.max(12, snapRadius * 2);
+  const perpendicularSize = axis === "horizontal"
+    ? clamp(object.size.height, 6, maxThickness)
+    : clamp(object.size.width, 6, maxThickness);
+  object.center = pointAt(wall, (span.start + span.end) / 2);
+  object.size = axis === "horizontal"
+    ? { width: spanLength, height: perpendicularSize }
+    : { width: perpendicularSize, height: spanLength };
 }
 
 function projectOpeningObjectsToWalls(walls, objects, snapRadius) {
@@ -474,6 +506,7 @@ function projectOpeningObjectsToWalls(walls, objects, snapRadius) {
     object.matchedWallId = wall.id;
     object.openingWallMatched = true;
     object.spanOnWall = { start: pointAt(wall, span.start), end: pointAt(wall, span.end) };
+    normalizeOpeningObjectGeometry(object, wall, span, snapRadius);
   }
 }
 

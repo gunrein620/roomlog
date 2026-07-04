@@ -381,6 +381,7 @@ For every object:
 - rotationDeg: 0, 90, 180 or 270 — the rotation that maps the canonical upright symbol onto the drawing.
 - attachedWallId: id of the wall the object sits on or in, else null. Every door and window MUST reference a wall id when one exists; if you truly cannot match a wall, keep the object with attachedWallId null and lower confidence.
 - spanOnWall: doors/windows only — the exact segment of the wall centerline covered by the opening, both endpoints lying on that wall. null for non-openings.
+- For swingDoor/doubleSwingDoor, spanOnWall is the straight wall-contact opening edge, not the door leaf, not the quarter-circle arc, and not the swept area outline. The hinge endpoint must be one end of this wall-contact edge.
 - swing: swingDoor/doubleSwingDoor only — hinge: which spanOnWall endpoint ("start" or "end") carries the hinge; opensTowards: a point roughly at the middle of the swept arc area, on the side the door opens into. null otherwise.
 - confidence 0..1 and a short evidence string (e.g. "leaf+arc at bathroom entry").
 

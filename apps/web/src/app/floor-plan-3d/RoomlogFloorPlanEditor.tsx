@@ -13,8 +13,13 @@ import type {
 import {
   findObjectAtPoint,
   moveObject,
+  type ObjectCornerHandle,
+  recutWallsForMovedOpening,
   removeObject,
+  resizeObject,
+  resizeOpeningSpan,
   rotateObjectQuarterTurn,
+  type OpeningSpanHandle,
   updateObjectStatus
 } from "./plan-extraction/object-editing";
 import { normalizeObjectGraph } from "./plan-extraction/object-graph-normalize.mjs";
@@ -46,6 +51,14 @@ import {
   buildFloorPlanLocalSnapshot,
   buildResidentDesignPayload
 } from "./room-model/room-payload";
+import {
+  type CanvasContentBounds,
+  centerCanvasScrollPosition,
+  createCanvasContentBounds,
+  createEmptyFloorPlanExtractionMeta,
+  createFreshFloorPlanCanvasSession,
+  fitCanvasContentView
+} from "./room-model/canvas-session";
 import { convertFloorPlanObjectsTo3D } from "./room-model/floor-plan-object-3d";
 import type {
   ExperienceMode,
@@ -81,7 +94,15 @@ type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "op
 type ViewMode = "2d" | "3d";
 type WallDragMode = "move" | "resize-start" | "resize-end";
 type WallDragOperation = { mode: WallDragMode; originPoint: Point; originalWall: Wall; wallId: Wall["id"] };
-type ObjectDragOperation = { objectId: string; originPoint: Point };
+type ObjectDragMode = "move" | "resize-box" | "resize-opening";
+type ObjectDragOperation = {
+  boxHandle?: ObjectCornerHandle;
+  mode: ObjectDragMode;
+  objectId: string;
+  openingDrag?: { originalObject: FloorPlanObject; originalWalls: Wall[] };
+  openingHandle?: OpeningSpanHandle;
+  originPoint: Point;
+};
 type FloorPlanAiModelId =
   | "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   | "nvidia/cosmos3-nano-reasoner"
@@ -386,16 +407,7 @@ export default function RoomlogFloorPlanEditor() {
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [objectDragOperation, setObjectDragOperation] = useState<ObjectDragOperation | null>(null);
   const [objectGraphWallThicknessPx, setObjectGraphWallThicknessPx] = useState(12);
-  const [extractionMeta, setExtractionMeta] = useState<ExtractionMeta>({
-    annotationCandidateCount: 0,
-    detectedWallCount: 0,
-    dimensionCandidateCount: 0,
-    needsReview: false,
-    ocrStatus: "manual-scale-required",
-    removedNoiseCount: 0,
-    scaleCandidates: [],
-    scaleConfirmed: false
-  });
+  const [extractionMeta, setExtractionMeta] = useState<ExtractionMeta>(() => createEmptyFloorPlanExtractionMeta());
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [uploadedAiImageDataUrl, setUploadedAiImageDataUrl] = useState<string | null>(null);
   const [uploadedFloorPlanSource, setUploadedFloorPlanSource] = useState<UploadedFloorPlanSource | null>(null);
@@ -418,6 +430,8 @@ export default function RoomlogFloorPlanEditor() {
   const [manualAiScaleRealLength, setManualAiScaleRealLength] = useState("");
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
+  const [canvasFocusBounds, setCanvasFocusBounds] = useState<CanvasContentBounds | null>(() => createCanvasContentBounds(getStarterWalls()));
+  const [canvasCenterRequest, setCanvasCenterRequest] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
   const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
@@ -536,6 +550,94 @@ export default function RoomlogFloorPlanEditor() {
       return matchesKind && matchesQuery;
     });
   }, [furnitureCatalog, furnitureKindFilter, furnitureSearchQuery]);
+  const requestCanvasCenter = useCallback(() => {
+    setCanvasCenterRequest((request) => request + 1);
+  }, []);
+  const resetCanvasViewport = useCallback((focusWalls?: Wall[]) => {
+    const freshSession = createFreshFloorPlanCanvasSession();
+    setCanvasFocusBounds(focusWalls ? createCanvasContentBounds(focusWalls) : null);
+    setViewScale(freshSession.viewScale);
+    setViewOffset(freshSession.viewOffset);
+    requestCanvasCenter();
+  }, [requestCanvasCenter]);
+  const resetFloorPlanCanvasSession = useCallback(
+    (options: { clearUploadedSource?: boolean; clearWalls?: boolean } = {}) => {
+      const freshSession = createFreshFloorPlanCanvasSession();
+      const shouldClearUploadedSource = options.clearUploadedSource ?? true;
+      const shouldClearWalls = options.clearWalls ?? true;
+
+      if (shouldClearWalls) setWalls(freshSession.walls);
+      setHiddenWallIds(freshSession.hiddenWallIds);
+      setPlacedFurnitures(freshSession.placedFurnitures);
+      setPendingFurniture(freshSession.pendingFurniture);
+      setSelectedFurnitureId(freshSession.selectedFurnitureId);
+      setOpeningCandidates(freshSession.openingCandidates);
+      setFixtureCandidates(freshSession.fixtureCandidates);
+      setDetectedObjects(freshSession.detectedObjects);
+      setSelectedObjectId(freshSession.selectedObjectId);
+      setObjectDragOperation(null);
+      setObjectGraphWallThicknessPx(freshSession.objectGraphWallThicknessPx);
+      setExtractionMeta(freshSession.extractionMeta);
+      setSelectedWall(freshSession.selectedWall);
+      setHoveredWall(null);
+      setIsDrawing(false);
+      setStartPoint(null);
+      setCurrentPoint(null);
+      setWallDragOperation(null);
+      setPartialEraserSelectedWall(null);
+      setIsSelectingEraseArea(false);
+      setEraseAreaStart(null);
+      setEraseAreaEnd(null);
+      setLastAiAnalysis(null);
+      setLastRoomStructureAnalysis(null);
+      setAiReviewedWallCandidates([]);
+      setLastExtractionMs(freshSession.lastExtractionMs);
+      setFloorPlanDraftId(freshSession.floorPlanDraftId);
+      setIsScaleSet(false);
+      setScaleWall(null);
+      setScaleRealLength("");
+      setManualAiScaleRealLength("");
+      setPixelToMmRatio(DEFAULT_PIXEL_TO_MM_RATIO);
+      setIsDragging(false);
+      setLastPanPoint(null);
+      if (shouldClearUploadedSource) {
+        setUploadedImage(freshSession.uploadedImage);
+        setUploadedAiImageDataUrl(freshSession.uploadedAiImageDataUrl);
+        setUploadedFloorPlanSource(freshSession.uploadedFloorPlanSource);
+        setCachedBackgroundImage(null);
+      }
+      setViewMode(freshSession.viewMode);
+      setViewScale(freshSession.viewScale);
+      setViewOffset(freshSession.viewOffset);
+      setCanvasFocusBounds(null);
+      requestCanvasCenter();
+    },
+    [requestCanvasCenter]
+  );
+
+  useEffect(() => {
+    if (viewMode !== "2d") return;
+    const frameId = window.requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      const nextView = fitCanvasContentView(canvasFocusBounds, {
+        height: container.clientHeight,
+        width: container.clientWidth
+      });
+      const position = centerCanvasScrollPosition({
+        clientHeight: container.clientHeight,
+        clientWidth: container.clientWidth,
+        scrollHeight: container.scrollHeight,
+        scrollWidth: container.scrollWidth
+      });
+      setViewScale(nextView.viewScale);
+      setViewOffset(nextView.viewOffset);
+      container.scrollLeft = position.left;
+      container.scrollTop = position.top;
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [canvasCenterRequest, canvasFocusBounds, viewMode]);
 
   useEffect(() => {
     let isActive = true;
@@ -587,20 +689,22 @@ export default function RoomlogFloorPlanEditor() {
         walls?: Wall[];
       };
       if (!Array.isArray(draft.walls) || draft.walls.length === 0) return;
+      resetFloorPlanCanvasSession({ clearWalls: false });
       setWalls(draft.walls);
       setDetectedObjects(Array.isArray(draft.objects) ? draft.objects : []);
       setOpeningCandidates(Array.isArray(draft.openings) ? draft.openings : []);
       setFixtureCandidates(Array.isArray(draft.fixtures) ? draft.fixtures : []);
       setHiddenWallIds(new Set((draft.hiddenWallIds ?? []).map(String)));
-      setExtractionMeta((currentMeta) => ({ ...currentMeta, ...(draft.extractionMeta ?? {}) }));
+      setExtractionMeta({ ...createEmptyFloorPlanExtractionMeta(), ...(draft.extractionMeta ?? {}) });
       if (draft.pixelToMmRatio && Number.isFinite(draft.pixelToMmRatio)) setPixelToMmRatio(draft.pixelToMmRatio);
       if (draft.id) setFloorPlanDraftId(draft.id);
       if (draft.sourceImageUrl) setUploadedImage(draft.sourceImageUrl);
       setUploadStatus("로컬 도면 초안 복원");
+      resetCanvasViewport(draft.walls);
     } catch {
       setUploadStatus("로컬 도면 초안 복원 실패");
     }
-  }, []);
+  }, [resetCanvasViewport, resetFloorPlanCanvasSession]);
 
   useEffect(() => {
     if (experienceMode === "resident" && (tool === "opening" || tool === "fixture" || tool === "scale")) {
@@ -888,10 +992,38 @@ export default function RoomlogFloorPlanEditor() {
       context.restore();
     };
 
+    const drawObjectEditHandles = (object: FloorPlanObject) => {
+      if (tool !== "select") return;
+      const radius = 5 / viewScale;
+      const drawHandle = (point: Point) => {
+        context.save();
+        context.fillStyle = "#ffffff";
+        context.strokeStyle = "#0066ff";
+        context.lineWidth = 2 / viewScale;
+        context.beginPath();
+        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        context.restore();
+      };
+
+      if (object.category === "opening" && object.spanOnWall) {
+        drawHandle(object.spanOnWall.start);
+        drawHandle(object.spanOnWall.end);
+        return;
+      }
+
+      if (object.category !== "opening") {
+        (["nw", "ne", "se", "sw"] as ObjectCornerHandle[]).forEach((handle) => drawHandle(objectCornerPoint(object, handle)));
+      }
+    };
+
     detectedObjects.forEach((object) => {
       if (object.category === "opening") drawOpeningObject(object);
       else drawBoxObject(object);
     });
+    const activeObject = detectedObjects.find((object) => object.id === selectedObjectId);
+    if (activeObject) drawObjectEditHandles(activeObject);
 
     const drawCandidate = (candidate: FloorPlanCandidate, layer: "opening" | "fixture") => {
       const position = candidate.position ?? { x: 0, y: 0 };
@@ -1002,6 +1134,36 @@ export default function RoomlogFloorPlanEditor() {
     if (endDistance <= handleRadius) return "resize-end";
 
     return "move";
+  }
+
+  function objectCornerPoint(object: FloorPlanObject, handle: ObjectCornerHandle) {
+    const localX = handle.includes("e") ? object.size.width / 2 : -object.size.width / 2;
+    const localY = handle.includes("s") ? object.size.height / 2 : -object.size.height / 2;
+    const angle = (object.rotationDeg * Math.PI) / 180;
+
+    return {
+      x: object.center.x + localX * Math.cos(angle) - localY * Math.sin(angle),
+      y: object.center.y + localX * Math.sin(angle) + localY * Math.cos(angle)
+    };
+  }
+
+  function getObjectDragHandle(object: FloorPlanObject, point: Point) {
+    const handleRadius = WALL_EDIT_HANDLE_RADIUS / viewScale;
+    if (object.category === "opening" && object.spanOnWall) {
+      const startDistance = Math.hypot(point.x - object.spanOnWall.start.x, point.y - object.spanOnWall.start.y);
+      const endDistance = Math.hypot(point.x - object.spanOnWall.end.x, point.y - object.spanOnWall.end.y);
+      if (startDistance <= handleRadius) return { mode: "resize-opening" as const, openingHandle: "start" as const };
+      if (endDistance <= handleRadius) return { mode: "resize-opening" as const, openingHandle: "end" as const };
+    }
+    if (object.category !== "opening") {
+      const handles: ObjectCornerHandle[] = ["nw", "ne", "se", "sw"];
+      for (const boxHandle of handles) {
+        const corner = objectCornerPoint(object, boxHandle);
+        if (Math.hypot(point.x - corner.x, point.y - corner.y) <= handleRadius) return { boxHandle, mode: "resize-box" as const };
+      }
+    }
+
+    return { mode: "move" as const };
   }
 
   function updateDraggedWall(operation: WallDragOperation, point: Point) {
@@ -1238,12 +1400,34 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     if (tool === "select") {
+      if (selectedObject) {
+        const objectHandle = getObjectDragHandle(selectedObject, coords);
+        if (objectHandle.mode !== "move") {
+          setSelectedWall(null);
+          setSelectedFurnitureId(null);
+          setObjectDragOperation({
+            ...objectHandle,
+            objectId: selectedObject.id,
+            openingDrag: objectHandle.mode === "resize-opening" && selectedObject.spanOnWall
+              ? { originalObject: selectedObject, originalWalls: walls }
+              : undefined,
+            originPoint: coords
+          });
+          setUploadStatus(`감지 객체 ${selectedObject.label ?? selectedObject.type} 크기 조절`);
+          return;
+        }
+      }
+
       const closestObject = findObjectAtPoint(detectedObjects, coords, 8 / viewScale);
       if (closestObject) {
         setSelectedObjectId(closestObject.id);
         setSelectedWall(null);
         setSelectedFurnitureId(null);
-        setObjectDragOperation({ objectId: closestObject.id, originPoint: coords });
+        setObjectDragOperation({
+          mode: "move",
+          objectId: closestObject.id,
+          originPoint: coords
+        });
         setUploadStatus(`감지 객체 ${closestObject.label ?? closestObject.type} 선택`);
         return;
       }
@@ -1327,12 +1511,38 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     if (objectDragOperation) {
-      setDetectedObjects((currentObjects) =>
-        moveObject(currentObjects, objectDragOperation.objectId, {
-          x: coords.x - objectDragOperation.originPoint.x,
-          y: coords.y - objectDragOperation.originPoint.y
-        }, objectEditBounds())
-      );
+      const rawDelta = {
+        x: coords.x - objectDragOperation.originPoint.x,
+        y: coords.y - objectDragOperation.originPoint.y
+      };
+      if (objectDragOperation.mode === "resize-opening" && objectDragOperation.openingHandle && objectDragOperation.openingDrag) {
+        setDetectedObjects((currentObjects) => {
+          const nextObjects = resizeOpeningSpan(currentObjects, objectDragOperation.objectId, objectDragOperation.openingHandle!, coords);
+          const movedObject = nextObjects.find((object) => object.id === objectDragOperation.objectId);
+          if (movedObject) {
+            setWalls(recutWallsForMovedOpening(
+              objectDragOperation.openingDrag!.originalWalls,
+              objectDragOperation.openingDrag!.originalObject,
+              movedObject
+            ));
+          }
+
+          return nextObjects;
+        });
+        setObjectDragOperation({ ...objectDragOperation, originPoint: coords });
+        return;
+      }
+      if (objectDragOperation.mode === "resize-box" && objectDragOperation.boxHandle) {
+        setDetectedObjects((currentObjects) => resizeObject(currentObjects, objectDragOperation.objectId, objectDragOperation.boxHandle!, coords));
+        setObjectDragOperation({ ...objectDragOperation, originPoint: coords });
+        return;
+      }
+      const delta = rawDelta;
+      setDetectedObjects((currentObjects) => {
+        const nextObjects = moveObject(currentObjects, objectDragOperation.objectId, delta, objectEditBounds());
+
+        return nextObjects;
+      });
       setObjectDragOperation({ ...objectDragOperation, originPoint: coords });
       return;
     }
@@ -1541,6 +1751,7 @@ export default function RoomlogFloorPlanEditor() {
     setHiddenWallIds(new Set());
     setSelectedWall(null);
     setSelectedObjectId(null);
+    setPlacedFurnitures([]);
     setPendingFurniture(null);
     setSelectedFurnitureId(null);
     setOpeningCandidates([]);
@@ -1619,6 +1830,7 @@ export default function RoomlogFloorPlanEditor() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    resetFloorPlanCanvasSession();
     setIsProcessing(true);
     setUploadStatus(opencvReady ? `${file.name} 도면 분석중` : `${file.name} 추출 엔진 준비중 - fallback 가능`);
     try {
@@ -1649,6 +1861,7 @@ export default function RoomlogFloorPlanEditor() {
             setFloorPlanDraftId(null);
             setLastExtractionMs(null);
             setUploadStatus(`${file.name} 객체 그래프 벽 ${applied.walls.length}개 / 객체 ${applied.objects.length}개 감지`);
+            resetCanvasViewport(applied.walls);
             return;
           }
           setAiAnalysisStatus(`${objectGraphResult.summary} - OpenCV 추출로 전환`);
@@ -1745,6 +1958,7 @@ export default function RoomlogFloorPlanEditor() {
         bestScaleCandidate ? "축척 확인 필요" : "수동 축척 필요"
       }, AI 구조 후보 ${aiGeneratedWalls.length}개 병합, ${result.needsReview ? "정밀 검수 필요" : "검수 후 저장"}${result.processingMs ? ` (${result.processingMs}ms)` : ""}`;
       setUploadStatus(opencvStatus);
+      resetCanvasViewport(nextWalls);
 
       if (selectedAiModel === "openai/floor-plan-vision") {
         try {
@@ -2384,14 +2598,7 @@ export default function RoomlogFloorPlanEditor() {
           <button
             className="floor-plan-secondary"
             onClick={() => {
-              setWalls([]);
-              setHiddenWallIds(new Set());
-              setPlacedFurnitures([]);
-              setDetectedObjects([]);
-              setPendingFurniture(null);
-              setSelectedWall(null);
-              setSelectedObjectId(null);
-              setSelectedFurnitureId(null);
+              resetFloorPlanCanvasSession();
               setUploadStatus("벽 전체 삭제");
             }}
             type="button"
@@ -2401,15 +2608,11 @@ export default function RoomlogFloorPlanEditor() {
           <button
             className="floor-plan-secondary"
             onClick={() => {
-              setWalls(getStarterWalls());
-              setHiddenWallIds(new Set());
-              setPlacedFurnitures([]);
-              setDetectedObjects([]);
-              setPendingFurniture(null);
-              setSelectedWall(null);
-              setSelectedObjectId(null);
-              setSelectedFurnitureId(null);
+              const starterWalls = getStarterWalls();
+              resetFloorPlanCanvasSession({ clearWalls: false });
+              setWalls(starterWalls);
               setUploadStatus("샘플 도면 복원");
+              resetCanvasViewport(starterWalls);
             }}
             type="button"
           >
@@ -2421,8 +2624,7 @@ export default function RoomlogFloorPlanEditor() {
           <button
             className="floor-plan-secondary"
             onClick={() => {
-              setViewOffset({ x: 0, y: 0 });
-              setViewScale(1);
+              resetCanvasViewport();
             }}
             type="button"
           >
