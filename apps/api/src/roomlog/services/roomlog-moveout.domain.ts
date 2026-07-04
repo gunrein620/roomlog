@@ -159,7 +159,8 @@ export class RoomlogMoveoutDomain {
     }
 
     const managerId = this.managerIdFor(moveout);
-    const thread = this.ensureMoveoutThread(moveout, managerId, "tenant", body, input.attachmentUrls);
+    const attachmentUrls = this.nonEmptyStrings(input.attachmentUrls);
+    const thread = this.ensureMoveoutThread(moveout, managerId, "tenant", body, attachmentUrls);
     const createdAt = now();
     this.store.moveoutRecords.unshift({
       id: id("mrec"),

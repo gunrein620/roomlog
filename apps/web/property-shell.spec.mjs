@@ -141,6 +141,10 @@ test("wires moveout screens to backend mutations instead of static links", () =>
 
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
   assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
+  assert.match(tenantSettlementSource, /attachmentUrlsFrom/);
+  assert.match(tenantSettlementSource, /targetItemId=\$\{deduction\.id\}/);
+  assert.match(tenantSettlementSource, /SOURCE_ROUTE/);
+  assert.match(tenantSettlementSource, /계약 정보 확정 후 예상 정산 안내/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
   assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
   assert.match(tenantDisputeSource, /updateTenantMoveoutDispute/);

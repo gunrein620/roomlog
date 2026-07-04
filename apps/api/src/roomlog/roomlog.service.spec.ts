@@ -4279,7 +4279,8 @@ describe("RoomlogService", () => {
     const service = createMoveoutTestService() as any;
 
     const result = service.createTenantMoveoutInquiry("tenant-a", "mo-a", {
-      body: "퇴실 일정과 예상 정산 문의드립니다."
+      body: "퇴실 일정과 예상 정산 문의드립니다.",
+      attachmentUrls: ["/api/files/moveout-question.jpg", ""]
     });
     const managerThreads = service.listManagerMessagingThreads("manager-a", "moveout");
     const tenantThread = service.getTenantMessagingThread("tenant-a", result.thread.id);
@@ -4288,6 +4289,7 @@ describe("RoomlogService", () => {
     assert.equal(result.thread.contextRef, "mo-a");
     assert.equal(managerThreads.some((thread: any) => thread.id === result.thread.id), true);
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
+    assert.deepEqual(tenantThread.messages.at(-1).attachmentUrls, ["/api/files/moveout-question.jpg"]);
   });
 
   it("lets a tenant save moveout checklist item state and recalculates preparation progress", () => {
