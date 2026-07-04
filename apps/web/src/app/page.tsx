@@ -11,6 +11,7 @@ import {
   Building,
   Building2,
   CalendarClock,
+  ChevronRight,
   Copy,
   DoorOpen,
   Heart,
@@ -326,6 +327,14 @@ const inquiryChannelItems = [
 ];
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
+
+// role="button" article를 키보드로도 조작할 수 있도록 Enter/Space를 실제 버튼처럼 처리
+const handleActivateKey = (event: React.KeyboardEvent, action: () => void) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    action();
+  }
+};
 
 const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
 
@@ -651,11 +660,13 @@ const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as cons
 function LoginScreen({
   mode,
   setActiveRole,
-  onAuthenticated
+  onAuthenticated,
+  onGoHome
 }: {
   mode: AuthMode;
   setActiveRole: (role: AppRole) => void;
   onAuthenticated: (viewer: ViewerProfile) => void;
+  onGoHome: () => void;
 }) {
   const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
   const [serviceEmail, setServiceEmail] = useState("");
@@ -699,6 +710,20 @@ function LoginScreen({
   return (
     <main className="app-canvas login-canvas">
       <section className="login-phone" aria-label="집우집주 로그인">
+        <div className="login-topbar">
+          <button type="button" className="login-home-link" onClick={onGoHome} aria-label="홈으로 이동">
+            <span className="login-home-icon" aria-hidden="true">
+              <svg className="login-home-roof" viewBox="0 0 140 68" fill="none">
+                <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+                <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              </svg>
+            </span>
+            집우집주<span>WOOZU</span>
+          </button>
+        </div>
         <div className="login-brandmark">
           <div className="brand-mark-icon">
             <div className="brand-orbit">
@@ -846,26 +871,44 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
     { id: 1, title: "방배 루미에르 302호", price: "월세 1000/125", status: "노출중", caption: "조회 128 · 문의 6건" }
   ]);
   const [ownerToast, setOwnerToast] = useState("");
+  const [isSubmittingListing, setIsSubmittingListing] = useState(false);
+  const isSubmittingListingRef = useRef(false);
   const updateOwnerForm = (key: keyof typeof ownerForm, value: string) => {
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
   const submitOwnerListing = () => {
-    const id = Date.now();
+    // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
+    if (isSubmittingListingRef.current) {
+      return;
+    }
 
-    setRegistrationStatus("검수 대기");
-    setMyListings((current) => [
-      { id, title: ownerForm.title, price: ownerPriceLabel, status: "검수 대기", caption: "실매물 확인 후 노출됩니다" },
-      ...current
-    ]);
-    setOwnerToast("검수 요청이 접수됐습니다. 확인이 끝나면 매물이 노출됩니다.");
+    if (!ownerForm.title.trim()) {
+      setOwnerToast("매물명을 입력해야 등록할 수 있습니다.");
+      return;
+    }
+
+    isSubmittingListingRef.current = true;
+    setIsSubmittingListing(true);
     window.setTimeout(() => {
-      setRegistrationStatus("노출중");
-      setMyListings((current) =>
-        current.map((item) => (item.id === id ? { ...item, status: "노출중", caption: "방금 노출 시작 · 문의 대기" } : item))
-      );
-      setOwnerToast("실매물 확인이 끝나 매물 노출이 시작됐습니다.");
-    }, 6000);
+      const id = Date.now();
+
+      setRegistrationStatus("검수 대기");
+      setMyListings((current) => [
+        { id, title: ownerForm.title, price: ownerPriceLabel, status: "검수 대기", caption: "실매물 확인 후 노출됩니다" },
+        ...current
+      ]);
+      setOwnerToast("검수 요청이 접수됐습니다. 확인이 끝나면 매물이 노출됩니다.");
+      isSubmittingListingRef.current = false;
+      setIsSubmittingListing(false);
+      window.setTimeout(() => {
+        setRegistrationStatus("노출중");
+        setMyListings((current) =>
+          current.map((item) => (item.id === id ? { ...item, status: "노출중", caption: "방금 노출 시작 · 문의 대기" } : item))
+        );
+        setOwnerToast("실매물 확인이 끝나 매물 노출이 시작됐습니다.");
+      }, 6000);
+    }, 700);
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
   const continueOwnerRegistration = () => {
@@ -1151,8 +1194,15 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
           <p>검수 요청 후 주변 중개사 12곳에 매물 정보가 전달되고, 확인매물 여부가 표시됩니다.</p>
         </section>
 
-        <button className="submit-listing" type="button" onClick={submitOwnerListing}>
-          매물 등록하기
+        <button className="submit-listing" type="button" onClick={submitOwnerListing} disabled={isSubmittingListing} aria-busy={isSubmittingListing}>
+          {isSubmittingListing ? (
+            <>
+              <span className="btn-spinner" aria-hidden="true" />
+              등록 처리 중…
+            </>
+          ) : (
+            "매물 등록하기"
+          )}
         </button>
       </form>
     </section>
@@ -1562,32 +1612,34 @@ function ListingDetailView({
         <button type="button" onClick={() => setIsInquirySheetOpen(true)}>간편문의</button>
       </section>
 
-      <section className="detail-info-section" aria-label="옵션 정보">
-        <div className="detail-section-heading">
-          <h2>옵션 정보</h2>
-          <span>현장 확인 필요</span>
-        </div>
-        <div className="option-chip-grid">
-          {optionItems.map((option) => (
-            <span key={option}>{option}</span>
-          ))}
-        </div>
-      </section>
+      <div className="detail-info-pair">
+        <section className="detail-info-section" aria-label="옵션 정보">
+          <div className="detail-section-heading">
+            <h2>옵션 정보</h2>
+            <span>현장 확인 필요</span>
+          </div>
+          <div className="option-chip-grid">
+            {optionItems.map((option) => (
+              <span key={option}>{option}</span>
+            ))}
+          </div>
+        </section>
 
-      <section className="detail-info-section" aria-label="건물 정보">
-        <div className="detail-section-heading">
-          <h2>건물 정보</h2>
-          <span>등기·현장 기준</span>
-        </div>
-        <dl className="detail-info-table">
-          {listingBuildingRows.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+        <section className="detail-info-section" aria-label="건물 정보">
+          <div className="detail-section-heading">
+            <h2>건물 정보</h2>
+            <span>등기·현장 기준</span>
+          </div>
+          <dl className="detail-info-table">
+            {listingBuildingRows.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </div>
 
       <section className="detail-neighborhood-card" aria-label="상세 주변 정보">
         <h2>주변 정보</h2>
@@ -2152,33 +2204,42 @@ function UserMyPage({
       </header>
 
       <section className="profile-activity-grid" aria-label="내 활동 요약">
-        <article role="button" tabIndex={0} onClick={onGoSaved} onKeyDown={(event) => event.key === "Enter" && onGoSaved()}>
+        <article role="button" tabIndex={0} onClick={onGoSaved} onKeyDown={(event) => handleActivateKey(event, onGoSaved)}>
           <Heart size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>찜한 매물</span>
           <strong>{savedCount}개</strong>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
-        <article role="button" tabIndex={0} onClick={onGoInquiry} onKeyDown={(event) => event.key === "Enter" && onGoInquiry()}>
+        <article role="button" tabIndex={0} onClick={onGoInquiry} onKeyDown={(event) => handleActivateKey(event, onGoInquiry)}>
           <MessageCircle size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>문의 진행</span>
           <strong>{inquiries.length}건</strong>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
         <article
           role="button"
           tabIndex={0}
-          onClick={() => (latestViewed ? onOpenListing(latestViewed) : onGoSaved())}
-          onKeyDown={(event) => event.key === "Enter" && (latestViewed ? onOpenListing(latestViewed) : onGoSaved())}
+          onClick={() => (latestViewed ? onOpenListing(latestViewed) : onGoHome())}
+          onKeyDown={(event) => handleActivateKey(event, () => (latestViewed ? onOpenListing(latestViewed) : onGoHome()))}
         >
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>최근 본 방</span>
           <strong>{viewedListings.length}개</strong>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
       </section>
 
       <div className="profile-summary-list">
-        <article role="button" tabIndex={0} onClick={() => onApplyCondition(savedConditions[0])} onKeyDown={(event) => event.key === "Enter" && onApplyCondition(savedConditions[0])}>
+        <article
+          role="button"
+          tabIndex={0}
+          onClick={() => onApplyCondition(savedConditions[0])}
+          onKeyDown={(event) => handleActivateKey(event, () => onApplyCondition(savedConditions[0]))}
+        >
           <span>저장 조건</span>
           <strong>{savedConditions[0].label}</strong>
           <p>누르면 지도에서 이 조건으로 바로 확인합니다.</p>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
         <article>
           <span>입주 체크</span>
@@ -2222,9 +2283,9 @@ function UserMyPage({
           { label: "검색 조건 관리", value: "예산, 지역, 옵션", Icon: SlidersHorizontal, action: onOpenFilter },
           {
             label: "최근 본 방",
-            value: latestViewed ? `${latestViewed.title} 다시 보기` : "아직 본 방이 없어요",
+            value: latestViewed ? `${latestViewed.title} 다시 보기` : "방 둘러보러 가기",
             Icon: MapPinned,
-            action: () => (latestViewed ? onOpenListing(latestViewed) : onGoSaved())
+            action: () => (latestViewed ? onOpenListing(latestViewed) : onGoHome())
           }
         ].map((item) => {
           const MenuIcon = item.Icon;
@@ -2264,14 +2325,29 @@ function TenantMyPage({
   const [visitConfirmed, setVisitConfirmed] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [tenantToast, setTenantToast] = useState("");
+  const [isPaying, setIsPaying] = useState(false);
+  const [isSubmittingRepair, setIsSubmittingRepair] = useState(false);
+  // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
+  const isPayingRef = useRef(false);
+  const isSubmittingRepairRef = useRef(false);
 
   const showToast = (message: string) => {
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
   };
   const addRepairRequest = () => {
-    setRepairRequests((current) => [{ id: Date.now(), title: selectedIssue, status: "접수됨" }, ...current]);
-    showToast("수리요청이 접수됐습니다. 관리인이 확인 후 업체를 배정합니다.");
+    if (isSubmittingRepairRef.current) {
+      return;
+    }
+
+    isSubmittingRepairRef.current = true;
+    setIsSubmittingRepair(true);
+    window.setTimeout(() => {
+      setRepairRequests((current) => [{ id: Date.now(), title: selectedIssue, status: "접수됨" }, ...current]);
+      showToast("수리요청이 접수됐습니다. 관리인이 확인 후 업체를 배정합니다.");
+      isSubmittingRepairRef.current = false;
+      setIsSubmittingRepair(false);
+    }, 600);
   };
 
   const contractRows = [
@@ -2335,17 +2411,38 @@ function TenantMyPage({
         </div>
         <button
           type="button"
+          disabled={isPaying}
+          aria-busy={isPaying}
           onClick={() => {
             if (maintenancePaid) {
               showToast("영수증이 문자로 발송됐습니다.");
               return;
             }
 
-            setMaintenancePaid(true);
-            showToast("관리비 124,000원 납부가 완료됐습니다.");
+            if (isPayingRef.current) {
+              return;
+            }
+
+            isPayingRef.current = true;
+            setIsPaying(true);
+            window.setTimeout(() => {
+              setMaintenancePaid(true);
+              isPayingRef.current = false;
+              setIsPaying(false);
+              showToast("관리비 124,000원 납부가 완료됐습니다.");
+            }, 700);
           }}
         >
-          {maintenancePaid ? "영수증 보기" : "납부하기"}
+          {isPaying ? (
+            <>
+              <span className="btn-spinner" aria-hidden="true" />
+              처리 중…
+            </>
+          ) : maintenancePaid ? (
+            "영수증 보기"
+          ) : (
+            "납부하기"
+          )}
         </button>
       </section>
 
@@ -2379,8 +2476,15 @@ function TenantMyPage({
               </button>
             ))}
           </div>
-          <button className="repair-submit" type="button" onClick={addRepairRequest}>
-            {selectedIssue} 접수하기
+          <button className="repair-submit" type="button" onClick={addRepairRequest} disabled={isSubmittingRepair} aria-busy={isSubmittingRepair}>
+            {isSubmittingRepair ? (
+              <>
+                <span className="btn-spinner" aria-hidden="true" />
+                접수 처리 중…
+              </>
+            ) : (
+              `${selectedIssue} 접수하기`
+            )}
           </button>
         </div>
       </section>
@@ -2920,6 +3024,7 @@ export default function Home() {
   const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
   const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
   const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
+  const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
   const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
@@ -2929,6 +3034,7 @@ export default function Home() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isRouteReady, setIsRouteReady] = useState(false);
   const [isDevRolePreview, setIsDevRolePreview] = useState(false);
+  const isAuthHistoryPushedRef = useRef(false);
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
@@ -3008,6 +3114,19 @@ export default function Home() {
     .map((listingNo) => listings.find((listing) => listing.listingNo === listingNo))
     .filter((listing): listing is Listing => Boolean(listing));
 
+  const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
+
+  // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
+  useEffect(() => {
+    if (activeTab !== "inquiry") return;
+
+    setSeenInquiryIds((current) => {
+      const repliedIds = inquiries.filter((item) => item.reply).map((item) => item.id);
+      const merged = Array.from(new Set([...current, ...repliedIds]));
+      return merged.length === current.length ? current : merged;
+    });
+  }, [activeTab, inquiries]);
+
   const openListing = (listing: Listing) => {
     setSelectedListing(listing);
     setViewedListingNos((current) => [listing.listingNo, ...current.filter((no) => no !== listing.listingNo)].slice(0, 4));
@@ -3038,6 +3157,22 @@ export default function Home() {
   const openAuthScreen = (mode: AuthMode) => {
     setAuthMode(mode);
     setSelectedListing(null);
+    if (!isAuthHistoryPushedRef.current) {
+      window.history.pushState({ roomlogAuthScreen: true }, "", window.location.href);
+      isAuthHistoryPushedRef.current = true;
+    }
+    resetWindowScrollSoon();
+  };
+
+  // 로그인 화면의 "집우집주" 로고를 눌렀을 때: 뒤로가기와 동일하게 동작하도록
+  // pushState로 쌓아둔 히스토리를 그대로 소비한다(중복 엔트리 방지).
+  const closeAuthScreen = () => {
+    if (isAuthHistoryPushedRef.current) {
+      isAuthHistoryPushedRef.current = false;
+      window.history.back();
+      return;
+    }
+    setAuthMode(null);
     resetWindowScrollSoon();
   };
 
@@ -3133,6 +3268,17 @@ export default function Home() {
     setIsRouteReady(true);
   }, []);
 
+  // 로그인 화면이 열려 있는 동안 브라우저 뒤로가기를 누르면 홈으로 돌아가도록 처리.
+  useEffect(() => {
+    function handlePopState() {
+      isAuthHistoryPushedRef.current = false;
+      setAuthMode((current) => (current ? null : current));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   useEffect(() => {
     let isAlive = true;
 
@@ -3196,7 +3342,14 @@ export default function Home() {
   };
 
   if (authMode) {
-    return <LoginScreen mode={authMode} setActiveRole={startRoleSession} onAuthenticated={completeServiceAuth} />;
+    return (
+      <LoginScreen
+        mode={authMode}
+        setActiveRole={startRoleSession}
+        onAuthenticated={completeServiceAuth}
+        onGoHome={closeAuthScreen}
+      />
+    );
   }
 
   if (isProtectedRolePage && (!isAuthChecked || !canAccessProtectedRolePage)) {
@@ -3244,10 +3397,13 @@ export default function Home() {
               집우집주<span>WOOZU</span>
             </button>
             <nav className="web-nav" aria-label="주요 메뉴">
-              <button type="button" onClick={() => activateTab("map")}>지도</button>
-              <button type="button" onClick={() => activateTab("map")}>분양</button>
-              <button type="button" onClick={() => activateTab("saved")}>관심목록</button>
-              <button type="button" onClick={() => activateTab("mypage")}>우리집</button>
+              <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
+              <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
+              <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
+                문의
+                {unseenReplyCount > 0 ? <span className="nav-badge">{unseenReplyCount}</span> : null}
+              </button>
+              <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>우리집</button>
             </nav>
             <div className="web-topbar-actions">
               <label className="web-role-select">
@@ -3866,6 +4022,7 @@ export default function Home() {
             >
               <item.Icon size={22} strokeWidth={2.3} aria-hidden="true" />
               {item.label}
+              {item.key === "inquiry" && unseenReplyCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 답변 ${unseenReplyCount}건`} /> : null}
             </a>
           ))}
         </nav>
