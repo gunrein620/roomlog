@@ -40,6 +40,13 @@ export interface VendorPerfBundle {
   perf: VendorPerf;
 }
 
+export interface SaveVendorProfileInput {
+  businessName: string;
+  contactPerson: string;
+  phone: string;
+  serviceArea: string;
+}
+
 async function tryFetch<T>(path: string, fallback: T, label: string): Promise<T> {
   try {
     return await serverFetch<T>(path);
@@ -93,6 +100,23 @@ export async function getVendorDetail(id = DEMO_MANAGER_VENDOR_ID): Promise<Vend
     `/manager/vendor-mgmt/vendors/${encodeURIComponent(id)}`,
     fallback,
     "업체 상세 조회"
+  );
+}
+
+export function createVendorProfile(input: SaveVendorProfileInput): Promise<VendorDetailBundle> {
+  return serverFetch<VendorDetailBundle>(
+    "/manager/vendor-mgmt/vendors",
+    { method: "POST", body: JSON.stringify(input) }
+  );
+}
+
+export function updateVendorProfile(
+  id: string,
+  input: SaveVendorProfileInput
+): Promise<VendorDetailBundle> {
+  return serverFetch<VendorDetailBundle>(
+    `/manager/vendor-mgmt/vendors/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) }
   );
 }
 

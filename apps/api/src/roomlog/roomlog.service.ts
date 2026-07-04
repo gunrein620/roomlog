@@ -64,6 +64,8 @@ import {
   Cost,
   CostReviewQueueSummary,
   CostType,
+  CreateManagerContractInput,
+  CreateManagerContractInviteInput,
   CreateAnnouncementDraftInput,
   CreateManagerReportExternalShareInput,
   CreateManagerReportFollowUpInput,
@@ -75,6 +77,8 @@ import {
   CreateMessagingThreadInput,
   CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateTenantContractInput,
+  CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
   DisclosureSetting,
   DuplicateTicketCandidate,
@@ -144,6 +148,10 @@ import {
   TicketMessage,
   TicketStatus,
   SocialAccount,
+  UpdateManagerContractInventoryInput,
+  UpdateManagerContractInviteInput,
+  UpdateManagerContractManualValuesInput,
+  UpdateManagerContractPrivacyInput,
   UserAccount,
   UserRole
 } from "./roomlog.types";
@@ -177,6 +185,13 @@ export type CreateTenantInviteInput = {
   tenantName: string;
   phone?: string;
   moveInDate?: string;
+};
+
+export type ManagerVendorProfileInput = {
+  businessName?: string;
+  contactPerson?: string;
+  phone?: string;
+  serviceArea?: string;
 };
 
 export type LoginInput = {
@@ -254,6 +269,7 @@ export type VendorSummary = {
   phone: string;
   serviceArea: string;
   activeJobs: number;
+  createdByManagerId?: string;
 };
 
 export type VendorInvite = {
@@ -384,6 +400,10 @@ function complaintStatusFor(ticketStatus: TicketStatus): ComplaintStatus {
 
 function createDemoStore(): Store {
   const createdAt = now();
+  const moveoutCreatedAt = "2026-07-01T09:00:00+09:00";
+  const moveoutUpdatedAt = "2026-07-02T09:00:00+09:00";
+  const moveoutDisputeCreatedAt = "2026-06-28T09:00:00+09:00";
+  const moveoutDisputeDeadline = "2026-07-01T09:00:00+09:00";
   const users: UserAccount[] = [
     {
       id: "tenant-demo",
@@ -449,6 +469,27 @@ function createDemoStore(): Store {
     tenantInvites: [],
     contracts: [
       {
+        id: "ct_moveout_0001",
+        roomId: "room-301",
+        tenantId: "tenant-demo",
+        managerId: "landlord-demo",
+        unitId: "302",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "confirmed",
+        deletion: "none",
+        valueSource: "confirmed",
+        monthlyRent: 650000,
+        maintenanceFee: 70000,
+        paymentDay: 25,
+        startDate: "2024-08-01T00:00:00+09:00",
+        endDate: "2026-07-31T00:00:00+09:00",
+        createdAt: "2024-08-01T10:00:00+09:00",
+        updatedAt: "2026-06-20T10:00:00+09:00",
+        confirmedAt: "2026-06-20T10:00:00+09:00",
+        confirmedByManagerId: "landlord-demo"
+      },
+      {
         id: "ct_0001",
         roomId: "room-301",
         tenantId: "tenant-demo",
@@ -462,6 +503,7 @@ function createDemoStore(): Store {
         monthlyRent: 650000,
         maintenanceFee: 70000,
         paymentDay: 25,
+        optionInventory: ["에어컨", "세탁기", "냉장고", "인덕션", "블라인드"],
         startDate: "2026-03-01T00:00:00+09:00",
         endDate: "2028-02-29T00:00:00+09:00",
         createdAt: contractCreatedAt,
@@ -663,13 +705,224 @@ function createDemoStore(): Store {
     managerReportSourceReferences: [],
     managerReportExternalShares: [],
     managerReportAuditLogs: [],
-    moveouts: [],
-    moveoutRecords: [],
-    moveoutChecklist: [],
-    moveoutSettlements: [],
-    moveoutDeductions: [],
-    moveoutDisputes: [],
-    moveoutReportAudits: [],
+    moveouts: [
+      {
+        id: "mo_0001",
+        tenantId: "tenant-demo",
+        roomId: "room-301",
+        contractId: "ct_moveout_0001",
+        unitId: "302",
+        contractConfirmed: true,
+        leaseEndDate: "2026-07-31T00:00:00+09:00",
+        daysRemaining: 30,
+        depositAmount: 10000000,
+        estimatedRefundMin: 9740000,
+        estimatedRefundMax: 9850000,
+        settlementStatus: "reviewing",
+        prepProgress: 0.72,
+        settlementId: "st_0001",
+        createdAt: moveoutCreatedAt,
+        updatedAt: moveoutUpdatedAt
+      }
+    ],
+    moveoutRecords: [
+      {
+        id: "rec_0001",
+        summaryId: "mo_0001",
+        source: "movein_photo",
+        title: "입주 전 욕실 사진",
+        description: "입주 시점 욕실 타일과 수전 사진이 있어 현재 상태와 비교할 수 있습니다.",
+        occurredAt: "2024-08-01T10:10:00+09:00",
+        moveinComparisonAvailable: true
+      },
+      {
+        id: "rec_0002",
+        summaryId: "mo_0001",
+        source: "defect",
+        title: "현관 센서등 깜빡임",
+        description: "입주 중 접수된 공용 설비 문의이며 수리 완료 이력이 연결되어 있습니다.",
+        occurredAt: "2026-02-11T14:20:00+09:00",
+        wearVerdict: "aging_likely",
+        wearNote: "소모품 노후 가능성이 높아 임차인 책임으로 단정하지 않습니다.",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0003",
+        summaryId: "mo_0001",
+        source: "repair",
+        title: "욕실 실리콘 보수",
+        description: "보수 완료 후 사진이 첨부되어 있어 차감 후보 산정 근거로만 사용됩니다.",
+        occurredAt: "2026-05-12T16:00:00+09:00",
+        wearVerdict: "unclear",
+        wearNote: "노후와 사용 중 훼손 가능성이 함께 있어 관리인 확인이 필요합니다.",
+        moveinComparisonAvailable: true
+      },
+      {
+        id: "rec_0004",
+        summaryId: "mo_0001",
+        source: "payment",
+        title: "7월 관리비 정산",
+        description: "관리비 일부 미납 후보가 예상 정산안에 반영되었습니다.",
+        occurredAt: "2026-07-01T09:00:00+09:00",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0005",
+        summaryId: "mo_0001",
+        source: "contract",
+        title: "원상복구 특약",
+        description: "계약서 원상복구 조항은 참고 근거이며 최종 차감 확정이 아닙니다.",
+        occurredAt: "2024-08-01T10:00:00+09:00",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0006",
+        summaryId: "mo_0001",
+        source: "chat",
+        title: "퇴실 일정 문의",
+        description: "임차인이 퇴실 일정과 정산 예상 범위 안내를 요청했습니다.",
+        occurredAt: "2026-06-30T13:30:00+09:00",
+        moveinComparisonAvailable: false
+      }
+    ],
+    moveoutChecklist: [
+      {
+        id: "ck_0001",
+        summaryId: "mo_0001",
+        label: "현관 카드키 2개",
+        present: true,
+        condition: "normal",
+        note: "반납 예정"
+      },
+      {
+        id: "ck_0002",
+        summaryId: "mo_0001",
+        label: "에어컨 리모컨",
+        present: true,
+        condition: "normal"
+      },
+      {
+        id: "ck_0003",
+        summaryId: "mo_0001",
+        label: "욕실 환풍기",
+        present: true,
+        condition: "aging",
+        note: "소음이 있으나 노후로 보입니다."
+      },
+      {
+        id: "ck_0004",
+        summaryId: "mo_0001",
+        label: "붙박이장 손잡이",
+        present: true,
+        condition: "damage_check",
+        note: "헐거움 확인 필요"
+      },
+      {
+        id: "ck_0005",
+        summaryId: "mo_0001",
+        label: "우편함 열쇠",
+        present: false,
+        condition: "damage_check",
+        note: "분실 여부 확인 중"
+      }
+    ],
+    moveoutSettlements: [
+      {
+        id: "st_0001",
+        summaryId: "mo_0001",
+        depositAmount: 10000000,
+        deductions: [],
+        refundMin: 9740000,
+        refundMax: 9850000,
+        status: "reviewing",
+        disclaimer: "참고자료이며 최종 정산은 관리자 확인 후 확정됩니다.",
+        createdAt: moveoutCreatedAt,
+        updatedAt: moveoutUpdatedAt
+      }
+    ],
+    moveoutDeductions: [
+      {
+        id: "de_0001",
+        summaryId: "mo_0001",
+        kind: "unpaid",
+        label: "7월 관리비 미납 후보",
+        estimatedMin: 70000,
+        estimatedMax: 70000,
+        needsConfirmation: false,
+        evidenceNote: "납부 내역 기준 7월 관리비 잔액 후보입니다.",
+        source: "payment"
+      },
+      {
+        id: "de_0002",
+        summaryId: "mo_0001",
+        kind: "repair",
+        label: "욕실 실리콘 보수 후보",
+        estimatedMin: 30000,
+        estimatedMax: 80000,
+        needsConfirmation: false,
+        evidenceNote: "입주 전 사진과 2026년 보수 이력을 함께 비교합니다.",
+        source: "repair"
+      },
+      {
+        id: "de_0003",
+        summaryId: "mo_0001",
+        kind: "restoration",
+        label: "붙박이장 손잡이 원상복구 후보",
+        estimatedMin: 30000,
+        estimatedMax: 70000,
+        needsConfirmation: false,
+        evidenceNote: "체크리스트 손잡이 헐거움과 계약서 원상복구 조항을 참고합니다.",
+        source: "contract"
+      },
+      {
+        id: "de_0004",
+        summaryId: "mo_0001",
+        kind: "cleaning",
+        label: "퇴실 기본 청소 후보",
+        estimatedMin: 20000,
+        estimatedMax: 40000,
+        needsConfirmation: false,
+        evidenceNote: "퇴실 청소 조항 기준 예상 후보이며 실제 상태 확인 전 확정하지 않습니다.",
+        source: "contract"
+      }
+    ],
+    moveoutDisputes: [
+      {
+        id: "dp_0001",
+        summaryId: "mo_0001",
+        targetItemId: "de_0002",
+        targetLabel: "욕실 실리콘 보수 후보",
+        reason: "입주 전부터 있던 변색이라 차감 대상이 아니라고 봅니다.",
+        status: "received",
+        slaDeadline: moveoutDisputeDeadline,
+        slaBreached: true,
+        history: [
+          {
+            status: "received",
+            at: moveoutDisputeCreatedAt,
+            actorUserId: "tenant-demo",
+            note: "입주 전부터 있던 변색입니다."
+          }
+        ],
+        createdAt: moveoutDisputeCreatedAt,
+        updatedAt: moveoutDisputeCreatedAt
+      }
+    ],
+    moveoutReportAudits: [
+      {
+        id: "maud_0001",
+        summaryId: "mo_0001",
+        recordItemId: "rec_0003",
+        action: "reinforce",
+        fromVerdict: "unclear",
+        toVerdict: "unclear",
+        evidenceNote: "입주 전 욕실 사진과 보수 완료 사진을 같은 근거로 묶었습니다.",
+        tenantNotified: true,
+        managerName: "박관리",
+        managerId: "landlord-demo",
+        at: "2026-07-02T09:00:00+09:00"
+      }
+    ],
     history: []
   };
 }
@@ -719,6 +972,17 @@ function createEmptyStore(): Store {
     moveoutReportAudits: [],
     history: []
   };
+}
+
+function mergeMissingById<T extends { id: string }>(current: T[], demo: T[]): T[] {
+  return mergeMissingByKey(current, demo, (item) => item.id);
+}
+
+function mergeMissingByKey<T>(current: T[], demo: T[], keyOf: (item: T) => string): T[] {
+  const currentKeys = new Set(current.map((item) => keyOf(item)));
+  const missingDemoItems = demo.filter((item) => !currentKeys.has(keyOf(item)));
+
+  return missingDemoItems.length ? [...current, ...missingDemoItems] : current;
 }
 
 function envFlag(value: string | undefined) {
@@ -782,9 +1046,10 @@ export class RoomlogService {
     this.storageAdapter =
       options.storageAdapter ??
       createFileStorageAdapter(process.env, this.uploadDir, this.publicUploadBaseUrl);
-    this.store = options.initialStore
+    const loadedStore = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
+    this.store = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
     this.auth = new RoomlogAuthDomain(
       this.store,
       () => this.persistStore(),
@@ -797,6 +1062,7 @@ export class RoomlogService {
     );
     this.cost = new RoomlogCostDomain(
       this.store,
+      () => this.persistStore(),
       (iso) => this.timeOf(iso),
       (ticketId) => this.findTicket(ticketId),
       (roomId) => this.findRoom(roomId),
@@ -982,6 +1248,10 @@ export class RoomlogService {
     return this.contract.requestTenantContractDeletion(tenantId, contractId);
   }
 
+  createTenantContract(tenantId: string, input: CreateTenantContractInput) {
+    return this.contract.createTenantContract(tenantId, input);
+  }
+
   getManagerContractDashboard(managerId: string) {
     return this.contract.getManagerContractDashboard(managerId);
   }
@@ -1000,6 +1270,50 @@ export class RoomlogService {
 
   requestManagerContractInfo(managerId: string, contractId: string) {
     return this.contract.requestManagerContractInfo(managerId, contractId);
+  }
+
+  createManagerContract(managerId: string, input: CreateManagerContractInput) {
+    return this.contract.createManagerContract(managerId, input);
+  }
+
+  updateManagerContractManualValues(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractManualValuesInput
+  ) {
+    return this.contract.updateManagerContractManualValues(managerId, contractId, input);
+  }
+
+  updateManagerContractInventory(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractInventoryInput
+  ) {
+    return this.contract.updateManagerContractInventory(managerId, contractId, input);
+  }
+
+  createManagerContractInvite(
+    managerId: string,
+    contractId: string,
+    input: CreateManagerContractInviteInput
+  ) {
+    return this.contract.createManagerContractInvite(managerId, contractId, input);
+  }
+
+  updateManagerContractInvite(
+    managerId: string,
+    inviteId: string,
+    input: UpdateManagerContractInviteInput
+  ) {
+    return this.contract.updateManagerContractInvite(managerId, inviteId, input);
+  }
+
+  updateManagerContractPrivacy(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractPrivacyInput
+  ) {
+    return this.contract.updateManagerContractPrivacy(managerId, contractId, input);
   }
 
   decideManagerContractDeletion(
@@ -2231,6 +2545,26 @@ export class RoomlogService {
     return this.cost.getManagerCost(managerId, costId);
   }
 
+  confirmManagerCost(managerId: string, costId: string) {
+    return this.cost.confirmManagerCost(managerId, costId);
+  }
+
+  confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+    return this.cost.confirmManagerReceiptOcr(managerId, ocrId);
+  }
+
+  voidManagerCost(managerId: string, costId: string, reason?: string) {
+    return this.cost.voidManagerCost(managerId, costId, reason);
+  }
+
+  updateManagerCostDisclosure(
+    managerId: string,
+    costId: string,
+    disclosure: "public" | "private"
+  ) {
+    return this.cost.updateManagerCostDisclosure(managerId, costId, disclosure);
+  }
+
   getManagerCostReviewQueueSummary(managerId: string): CostReviewQueueSummary {
     return this.cost.getManagerCostReviewQueueSummary(managerId);
   }
@@ -2269,6 +2603,18 @@ export class RoomlogService {
 
   listManagerVendorDuplicateCandidates(managerId: string) {
     return this.vendorMgmt.listManagerVendorDuplicateCandidates(managerId);
+  }
+
+  createManagerVendorProfile(managerId: string, input: ManagerVendorProfileInput) {
+    return this.vendorMgmt.createManagerVendorProfile(managerId, input);
+  }
+
+  updateManagerVendorProfile(
+    managerId: string,
+    vendorId: string,
+    input: ManagerVendorProfileInput
+  ) {
+    return this.vendorMgmt.updateManagerVendorProfile(managerId, vendorId, input);
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
@@ -2728,6 +3074,10 @@ export class RoomlogService {
     return this.messaging.createMessagingThread(managerId, input);
   }
 
+  createTenantMessagingThread(tenantId: string, input: CreateTenantMessagingThreadInput) {
+    return this.messaging.createTenantMessagingThread(tenantId, input);
+  }
+
   listTenantMessagingThreads(tenantId: string) {
     return this.messaging.listTenantMessagingThreads(tenantId);
   }
@@ -2963,6 +3313,78 @@ export class RoomlogService {
         history: dispute.history ?? []
       })),
       moveoutReportAudits: parsed.moveoutReportAudits ?? []
+    };
+  }
+
+  private backfillDemoStoreSnapshot(snapshot: Store): Store {
+    const demo = createDemoStore();
+
+    return {
+      ...snapshot,
+      tenantRooms: {
+        ...demo.tenantRooms,
+        ...snapshot.tenantRooms
+      },
+      analyses: {
+        ...demo.analyses,
+        ...snapshot.analyses
+      },
+      users: mergeMissingById(snapshot.users, demo.users),
+      socialAccounts: mergeMissingById(snapshot.socialAccounts, demo.socialAccounts),
+      rooms: mergeMissingById(snapshot.rooms, demo.rooms),
+      vendors: mergeMissingById(snapshot.vendors, demo.vendors),
+      vendorInvites: mergeMissingById(snapshot.vendorInvites, demo.vendorInvites),
+      tenantInvites: mergeMissingById(snapshot.tenantInvites, demo.tenantInvites),
+      contracts: mergeMissingById(snapshot.contracts, demo.contracts),
+      contractDocuments: mergeMissingById(snapshot.contractDocuments, demo.contractDocuments),
+      contractExtractions: mergeMissingById(snapshot.contractExtractions, demo.contractExtractions),
+      contractPrivacies: mergeMissingByKey(
+        snapshot.contractPrivacies,
+        demo.contractPrivacies,
+        (privacy) => privacy.contractId
+      ),
+      contractInvites: mergeMissingById(snapshot.contractInvites, demo.contractInvites),
+      attachments: mergeMissingById(snapshot.attachments, demo.attachments),
+      floorPlans: mergeMissingById(snapshot.floorPlans, demo.floorPlans),
+      moveInChecklist: mergeMissingById(snapshot.moveInChecklist, demo.moveInChecklist),
+      aiFeedback: mergeMissingById(snapshot.aiFeedback, demo.aiFeedback),
+      intakeSessions: mergeMissingById(snapshot.intakeSessions, demo.intakeSessions),
+      complaints: mergeMissingById(snapshot.complaints, demo.complaints),
+      tickets: mergeMissingById(snapshot.tickets, demo.tickets),
+      repairs: mergeMissingById(snapshot.repairs, demo.repairs),
+      costs: mergeMissingById(snapshot.costs, demo.costs),
+      receipts: mergeMissingById(snapshot.receipts, demo.receipts),
+      receiptOcrs: mergeMissingById(snapshot.receiptOcrs, demo.receiptOcrs),
+      messages: mergeMissingById(snapshot.messages, demo.messages),
+      messagingThreads: mergeMissingById(snapshot.messagingThreads, demo.messagingThreads),
+      messagingMessages: mergeMissingById(snapshot.messagingMessages, demo.messagingMessages),
+      messagingAnnouncementDrafts: mergeMissingById(
+        snapshot.messagingAnnouncementDrafts,
+        demo.messagingAnnouncementDrafts
+      ),
+      messagingAnnouncements: mergeMissingById(snapshot.messagingAnnouncements, demo.messagingAnnouncements),
+      messagingAnnouncementDeliveries: mergeMissingById(
+        snapshot.messagingAnnouncementDeliveries,
+        demo.messagingAnnouncementDeliveries
+      ),
+      managerReports: mergeMissingById(snapshot.managerReports, demo.managerReports),
+      managerReportSourceReferences: mergeMissingById(
+        snapshot.managerReportSourceReferences,
+        demo.managerReportSourceReferences
+      ),
+      managerReportExternalShares: mergeMissingById(
+        snapshot.managerReportExternalShares,
+        demo.managerReportExternalShares
+      ),
+      managerReportAuditLogs: mergeMissingById(snapshot.managerReportAuditLogs, demo.managerReportAuditLogs),
+      moveouts: mergeMissingById(snapshot.moveouts, demo.moveouts),
+      moveoutRecords: mergeMissingById(snapshot.moveoutRecords, demo.moveoutRecords),
+      moveoutChecklist: mergeMissingById(snapshot.moveoutChecklist, demo.moveoutChecklist),
+      moveoutSettlements: mergeMissingById(snapshot.moveoutSettlements, demo.moveoutSettlements),
+      moveoutDeductions: mergeMissingById(snapshot.moveoutDeductions, demo.moveoutDeductions),
+      moveoutDisputes: mergeMissingById(snapshot.moveoutDisputes, demo.moveoutDisputes),
+      moveoutReportAudits: mergeMissingById(snapshot.moveoutReportAudits, demo.moveoutReportAudits),
+      history: mergeMissingById(snapshot.history, demo.history)
     };
   }
 

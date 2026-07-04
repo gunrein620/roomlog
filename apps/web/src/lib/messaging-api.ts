@@ -31,9 +31,8 @@ export function listThreads(): Promise<Thread[]> {
   return tryFetch(tenantMessagingPaths.threads(), DEMO_THREADS, "임차인 메시지 목록 조회");
 }
 
-export function getThread(id: string = DEMO_THREAD_ID): Promise<Thread> {
-  const fallback = DEMO_THREADS.find((thread) => thread.id === id) ?? DEMO_THREADS[0];
-  return tryFetch(tenantMessagingPaths.thread(id), fallback, "임차인 메시지 상세 조회");
+export function getThread(id: string): Promise<Thread> {
+  return serverFetch<Thread>(tenantMessagingPaths.thread(id));
 }
 
 export function addTenantThreadMessage(

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Button } from "@roomlog/ui";
 import { CONTRACT_ROUTES } from "@/lib/contract-nav";
-import { getContract, getExtraction, DEMO_CONTRACT_ID } from "@/lib/contract-api";
+import { getContract, getCurrentContractId, getExtraction } from "@/lib/contract-api";
 import { ExtractionView } from "./ExtractionView";
 
 // T-DOC-02 · 계약 내용 (검토 전 참고본 / 확정본)
@@ -19,9 +19,12 @@ const sectionLabel = {
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
+  const contractId = await getCurrentContractId();
+  if (!contractId) return <NoContract />;
+
   const [contract, extraction] = await Promise.all([
-    getContract(DEMO_CONTRACT_ID),
-    getExtraction(DEMO_CONTRACT_ID),
+    getContract(contractId),
+    getExtraction(contractId),
   ]);
   const confirmed = extraction.confirmed;
 
@@ -164,5 +167,16 @@ export default async function Page() {
         </div>
       </footer>
     </>
+  );
+}
+
+function NoContract() {
+  return (
+    <div style={{ padding: 16, display: "grid", gap: 12 }}>
+      <div style={{ fontWeight: 800 }}>등록된 계약서가 없습니다.</div>
+      <Link href={CONTRACT_ROUTES["T-DOC-01"]} style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>
+        계약서 등록하기
+      </Link>
+    </div>
   );
 }

@@ -25,9 +25,11 @@ const sectionLabel = {
 
 export function PrivacyPanel({
   privacy,
+  contractId,
   requestDeletionAction,
 }: {
   privacy: ContractPrivacy;
+  contractId: string;
   requestDeletionAction?: (formData: FormData) => Promise<void>;
 }) {
   const [masking, setMasking] = useState(privacy.maskingEnabled);
@@ -129,6 +131,7 @@ export function PrivacyPanel({
                   {privacy.deletionSlaHours ?? 72}시간 내 처리해요.
                 </div>
                 <form action={requestDeletionAction}>
+                  <input type="hidden" name="contractId" value={contractId} />
                   <Button fullWidth type="submit" onClick={() => setDeletion("requested")}>
                     삭제 요청 제출
                   </Button>
