@@ -235,9 +235,37 @@ export function RecordRows({ records }: { records: MoveoutRecordItem[] }) {
             <Badge emphasis={record.moveinComparisonAvailable}>{record.moveinComparisonAvailable ? "입주전 비교 가능" : "비교 근거 없음"}</Badge>
           </div>
           <div style={mutedSmallStyle}>{record.description}</div>
+          <RecordDetailSections record={record} />
         </Card>
       ))}
     </div>
+  );
+}
+
+export function RecordDetailSections({ record }: { record: MoveoutRecordItem }) {
+  if (!record.detailSections?.length) {
+    return null;
+  }
+
+  return (
+    <details>
+      <summary style={summaryButtonStyle}>상세정보 보기</summary>
+      <div style={detailPanelStyle}>
+        {record.detailSections.map((section) => (
+          <div key={section.label} style={detailSectionStyle}>
+            <div style={captionStyle}>{section.label}</div>
+            <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+              {section.items.map((item) => (
+                <div key={`${section.label}-${item.label}`} style={detailRowStyle}>
+                  <span style={{ fontWeight: 850 }}>{item.label}</span>
+                  <span style={mutedSmallStyle}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -389,6 +417,43 @@ export const mutedSmallStyle: CSSProperties = {
   color: "var(--on-surface-variant)",
   fontSize: "var(--fs-caption)",
   lineHeight: "var(--lh-body)",
+};
+
+const summaryButtonStyle: CSSProperties = {
+  minHeight: "var(--touch-target)",
+  width: "fit-content",
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0 14px",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-btn)",
+  color: "var(--primary)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 850,
+  cursor: "pointer",
+  listStyle: "none",
+};
+
+const detailPanelStyle: CSSProperties = {
+  marginTop: "var(--space-sm)",
+  display: "grid",
+  gap: "var(--space-sm)",
+  padding: "var(--space-md)",
+  border: "1px dashed var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)",
+};
+
+const detailSectionStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-xs)",
+};
+
+const detailRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "120px minmax(0, 1fr)",
+  gap: "var(--space-sm)",
+  alignItems: "start",
 };
 
 export const rowStyle: CSSProperties = {
