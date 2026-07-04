@@ -193,6 +193,12 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantChecklistSource, /updateMoveoutChecklist\(moveoutId/);
   assert.match(managerReviewSource, /completeReview/);
   assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
+  assert.match(managerReviewSource, /adjustDeduction/);
+  assert.match(managerReviewSource, /action=\{adjustDeductionAction\}/);
+  assert.match(managerReviewSource, /name="deductionId"/);
+  assert.match(managerReviewSource, /name=\{`estimatedMin-\$\{deduction\.id\}`\}/);
+  assert.match(managerReviewSource, /name=\{`estimatedMax-\$\{deduction\.id\}`\}/);
+  assert.match(managerReviewSource, /name=\{`resolveConfirmation-\$\{deduction\.id\}`\}/);
   assert.match(managerDisputeSource, /respondDispute/);
   assert.match(managerDisputeSource, /action=\{respondDisputeAction\}/);
 

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Card } from "@roomlog/ui";
 import {
+  adjustDeduction,
   completeReview,
   getManagerSettlement,
   getMoveout,
@@ -9,7 +10,6 @@ import {
 import { DEMO_MOVEOUT_ID } from "@/lib/demo-moveout";
 import { MANAGER_MOVEOUT_ROUTES } from "@/lib/moveout-manager-nav";
 import {
-  DeductionRows,
   DisabledButton,
   DisputeQueue,
   LinkButton,
@@ -44,6 +44,36 @@ async function completeReviewAction(formData: FormData) {
     overrideReason: overrideReason || undefined,
   });
   redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}`);
+}
+
+function optionalAmount(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+
+  if (!text) {
+    return undefined;
+  }
+
+  return Number(text);
+}
+
+async function adjustDeductionAction(formData: FormData) {
+  "use server";
+
+  const moveoutId = String(formData.get("moveoutId") ?? DEMO_MOVEOUT_ID);
+  const deductionId = String(formData.get("deductionId") ?? "").trim();
+
+  if (!deductionId) {
+    redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}&error=missing-deduction`);
+  }
+
+  await adjustDeduction(moveoutId, {
+    deductionId,
+    estimatedMin: optionalAmount(formData.get(`estimatedMin-${deductionId}`)),
+    estimatedMax: optionalAmount(formData.get(`estimatedMax-${deductionId}`)),
+    resolveConfirmation: formData.get(`resolveConfirmation-${deductionId}`) === "true",
+    note: String(formData.get(`note-${deductionId}`) ?? "").trim() || undefined,
+  });
+  redirect(`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${encodeURIComponent(moveoutId)}&adjusted=1`);
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
@@ -84,7 +114,84 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       ) : null}
 
       <Section title="차감 후보와 금액 조정">
-        <DeductionRows deductions={settlement.deductions} />
+        <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+          {settlement.deductions.map((deduction) => (
+            <form key={deduction.id} action={adjustDeductionAction}>
+              <input type="hidden" name="moveoutId" value={moveoutId} />
+              <input type="hidden" name="deductionId" value={deduction.id} />
+              <Card style={{ display: "grid", gap: "var(--space-md)" }}>
+                <div style={rowStyle}>
+                  <div>
+                    <div style={{ fontWeight: 850 }}>{deduction.label}</div>
+                    <div style={mutedSmallStyle}>{deduction.evidenceNote}</div>
+                  </div>
+                  <StatusBadge status={deduction.needsConfirmation ? "reviewing" : settlement.status} />
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                    gap: "var(--space-sm)",
+                    alignItems: "end",
+                  }}
+                >
+                  <label style={{ display: "grid", gap: "var(--space-xs)", fontSize: "var(--fs-caption)", fontWeight: 800 }}>
+                    하한
+                    <input
+                      name={`estimatedMin-${deduction.id}`}
+                      type="number"
+                      min={0}
+                      defaultValue={deduction.estimatedMin}
+                      aria-label={`${deduction.label} 차감 하한`}
+                      style={inputStyle}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: "var(--space-xs)", fontSize: "var(--fs-caption)", fontWeight: 800 }}>
+                    상한
+                    <input
+                      name={`estimatedMax-${deduction.id}`}
+                      type="number"
+                      min={0}
+                      defaultValue={deduction.estimatedMax}
+                      aria-label={`${deduction.label} 차감 상한`}
+                      style={inputStyle}
+                    />
+                  </label>
+                  <label
+                    style={{
+                      minHeight: "var(--touch-target)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-xs)",
+                      fontSize: "var(--fs-caption)",
+                      fontWeight: 800,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      name={`resolveConfirmation-${deduction.id}`}
+                      value="true"
+                      defaultChecked={!deduction.needsConfirmation}
+                    />
+                    확인필요 해소
+                  </label>
+                  <button type="submit" style={secondaryActionStyle}>
+                    금액 조정 저장
+                  </button>
+                </div>
+                <input
+                  name={`note-${deduction.id}`}
+                  aria-label={`${deduction.label} 조정 메모`}
+                  placeholder="조정 사유 메모"
+                  style={inputStyle}
+                />
+                <div style={mutedSmallStyle}>
+                  현재 예상 범위 {wonRange(deduction.estimatedMin, deduction.estimatedMax)}. 저장 후 반환액 범위가 다시 계산됩니다.
+                </div>
+              </Card>
+            </form>
+          ))}
+        </div>
       </Section>
 
       <Section title="임차인 이의 enum">
@@ -211,3 +318,23 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     </PageStack>
   );
 }
+
+const inputStyle = {
+  minHeight: "var(--touch-target)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-btn)",
+  padding: "0 12px",
+  background: "var(--surface-container-lowest)",
+  font: "inherit",
+} as const;
+
+const secondaryActionStyle = {
+  minHeight: "var(--touch-target)",
+  padding: "0 16px",
+  borderRadius: "var(--radius-btn)",
+  border: "1.5px solid var(--primary)",
+  background: "transparent",
+  color: "var(--primary)",
+  fontWeight: 800,
+  cursor: "pointer",
+} as const;
