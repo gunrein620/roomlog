@@ -4381,6 +4381,21 @@ describe("RoomlogService", () => {
     assert.deepEqual(tenantThread.messages.at(-1).attachmentUrls, ["/api/files/moveout-question.jpg"]);
   });
 
+  it("returns expandable chat details for tenant-created moveout inquiry records", () => {
+    const service = createMoveoutTestService() as any;
+
+    service.createTenantMoveoutInquiry("tenant-a", "mo-a", {
+      body: "KAN-134 문의 연결 확인 1783090107112",
+      attachmentUrls: ["/api/files/moveout-question.jpg"]
+    });
+    const records = service.listTenantMoveoutRecords("tenant-a", "mo-a");
+    const inquiryRecord = records.find((record: any) => record.source === "chat" && /KAN-134/.test(record.description));
+
+    assert.ok(inquiryRecord?.detailSections?.length > 0);
+    assert.ok(inquiryRecord?.detail?.chatMessages?.some((message: any) => /KAN-134/.test(message.body)));
+    assert.deepEqual(inquiryRecord?.detail?.chatMessages?.[0]?.attachmentUrls, ["/api/files/moveout-question.jpg"]);
+  });
+
   it("lets a tenant save moveout checklist item state and recalculates preparation progress", () => {
     const service = createMoveoutTestService() as any;
 

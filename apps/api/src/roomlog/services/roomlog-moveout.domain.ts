@@ -170,6 +170,7 @@ export class RoomlogMoveoutDomain {
       title: "퇴실 문의",
       description: body,
       occurredAt: createdAt,
+      evidenceUrls: attachmentUrls,
       moveinComparisonAvailable: false
     });
     moveout.updatedAt = createdAt;
@@ -686,28 +687,90 @@ export class RoomlogMoveoutDomain {
   private recordsFor(summaryId: string) {
     return this.store.moveoutRecords
       .filter((record) => record.summaryId === summaryId)
-      .map((record) => ({
-        ...record,
-        evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined,
-        detailSections: record.detailSections?.map((section) => ({
-          ...section,
-          items: section.items.map((item) => ({ ...item }))
+      .map((record) => this.presentRecord(record));
+  }
+
+  private presentRecord(record: MoveoutRecordItem): MoveoutRecordItem {
+    const presented: MoveoutRecordItem = {
+      ...record,
+      evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined,
+      detailSections: record.detailSections?.map((section) => ({
+        ...section,
+        items: section.items.map((item) => ({ ...item }))
+      })),
+      detail: record.detail ? {
+        ...record.detail,
+        media: record.detail.media?.map((item) => ({ ...item })),
+        chatMessages: record.detail.chatMessages?.map((item) => ({
+          ...item,
+          attachmentUrls: item.attachmentUrls ? this.nonEmptyStrings(item.attachmentUrls) : undefined
         })),
-        detail: record.detail ? {
-          ...record.detail,
-          media: record.detail.media?.map((item) => ({ ...item })),
-          chatMessages: record.detail.chatMessages?.map((item) => ({
-            ...item,
-            attachmentUrls: item.attachmentUrls ? this.nonEmptyStrings(item.attachmentUrls) : undefined
-          })),
-          events: record.detail.events?.map((item) => ({
-            ...item,
-            evidenceUrls: item.evidenceUrls ? this.nonEmptyStrings(item.evidenceUrls) : undefined
-          })),
-          amounts: record.detail.amounts?.map((item) => ({ ...item })),
-          clauses: record.detail.clauses?.map((item) => ({ ...item }))
-        } : undefined
-      }));
+        events: record.detail.events?.map((item) => ({
+          ...item,
+          evidenceUrls: item.evidenceUrls ? this.nonEmptyStrings(item.evidenceUrls) : undefined
+        })),
+        amounts: record.detail.amounts?.map((item) => ({ ...item })),
+        clauses: record.detail.clauses?.map((item) => ({ ...item }))
+      } : undefined
+    };
+
+    return this.withChatRecordDetail(presented);
+  }
+
+  private withChatRecordDetail(record: MoveoutRecordItem): MoveoutRecordItem {
+    if (record.source !== "chat") {
+      return record;
+    }
+
+    const attachmentUrls = record.evidenceUrls?.length ? [...record.evidenceUrls] : undefined;
+    const fallbackDetailSections = [
+      {
+        label: "원천 기록",
+        items: [
+          { label: "대화 유형", value: record.title },
+          { label: "연결 채널", value: "임차인-관리인 공식 퇴실 문의 기록" }
+        ]
+      },
+      {
+        label: "정산 영향",
+        items: [
+          { label: "역할", value: "정산 금액 근거가 아니라 문의와 안내 이력입니다." },
+          { label: "주의", value: "대화 내용만으로 차감 후보를 확정하지 않습니다." }
+        ]
+      },
+      {
+        label: "다음 행동",
+        items: [
+          { label: "관리인", value: "정산안 변경 시 같은 채널로 근거와 함께 안내합니다." },
+          { label: "임차인", value: "추가 설명이나 첨부가 필요하면 이의·정정으로 보충할 수 있습니다." }
+        ]
+      }
+    ];
+    const fallbackChatMessages = [
+      {
+        sender: "tenant" as const,
+        senderLabel: "임차인",
+        body: record.description,
+        at: record.occurredAt ?? record.summaryId,
+        attachmentUrls
+      }
+    ];
+    const fallbackDetail = {
+      summary: "공식 퇴실 문의 채팅 기록입니다.",
+      chatMessages: fallbackChatMessages
+    };
+
+    return {
+      ...record,
+      detailSections: record.detailSections?.length ? record.detailSections : fallbackDetailSections,
+      detail: record.detail
+        ? {
+            ...fallbackDetail,
+            ...record.detail,
+            chatMessages: record.detail.chatMessages?.length ? record.detail.chatMessages : fallbackChatMessages
+          }
+        : fallbackDetail
+    };
   }
 
   private checklistFor(summaryId: string) {
