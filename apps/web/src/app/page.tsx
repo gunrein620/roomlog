@@ -36,6 +36,19 @@ import {
   regionForLocation,
   type MarketSummary
 } from "../lib/api";
+import {
+  DEMO_COST_QUEUE_SUMMARY,
+  DEMO_COSTS,
+  DEMO_DISCLOSURE_SETTING,
+  DEMO_MONTHLY_SUMMARY,
+  DEMO_RECEIPTS
+} from "../lib/demo-cost";
+import {
+  DEMO_VENDOR_DUPLICATE_CANDIDATES,
+  DEMO_VENDOR_JOBS,
+  DEMO_VENDOR_PERF,
+  DEMO_VENDORS
+} from "../lib/demo-vendor-mgmt";
 
 type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
@@ -287,6 +300,46 @@ const ownerReviewItems = [
   { label: "3D방", caption: "투어 자료 연결" },
   { label: "중개전달", caption: "반경 5km 우선" }
 ];
+
+const ownerCostTypeLabels: Record<string, string> = {
+  repair: "수리비",
+  maintenance: "관리비",
+  common: "공용비",
+  other: "기타"
+};
+
+const ownerCostStatusLabels: Record<string, string> = {
+  draft: "검토 대기",
+  confirmed: "확정",
+  amended: "정정",
+  void: "무효"
+};
+
+const ownerCostReviewLabels: Record<string, string> = {
+  ocr_low_confidence: "OCR 저신뢰",
+  classification_unclear: "분류 확인",
+  unit_unmatched: "호실 확인"
+};
+
+const ownerVendorTradeLabels: Record<string, string> = {
+  plumbing: "배관·누수",
+  electrical: "전기",
+  hvac: "냉난방",
+  appliance: "가전",
+  locksmith: "도어락",
+  waterproofing: "방수",
+  cleaning: "청소",
+  general: "종합",
+  other: "기타"
+};
+
+const ownerVendorStatusLabels: Record<string, string> = {
+  active: "활성",
+  inactive: "비활성",
+  closed: "폐업"
+};
+
+const formatWon = (amount: number) => `${amount.toLocaleString("ko-KR")}원`;
 
 const savedComparisonItems = [
   { label: "저장 조건", value: "월세 130 이하", caption: "방배동 · 내방역" },
@@ -873,6 +926,11 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
   const [ownerToast, setOwnerToast] = useState("");
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
+  const [activeOwnerPanel, setActiveOwnerPanel] = useState("dashboard");
+  const [isCostReviewCleared, setIsCostReviewCleared] = useState(false);
+  const [isDisclosureAcknowledged, setIsDisclosureAcknowledged] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState(DEMO_VENDORS[0]?.id ?? "");
+  const [isDuplicateResolved, setIsDuplicateResolved] = useState(false);
   const updateOwnerForm = (key: keyof typeof ownerForm, value: string) => {
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
@@ -935,12 +993,75 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
     ? `전세 ${ownerForm.jeonse || "0"}만원`
     : `${ownerForm.tradeType} ${ownerForm.deposit || "0"}/${ownerForm.monthly || "0"}`;
   const ownerCompletionRate = photoCount >= 3 && has3DRoom ? 92 : 68;
+  const confirmedOwnerCosts = DEMO_COSTS.filter((cost) => cost.status === "confirmed" || cost.status === "amended");
+  const ownerCostReviewItems = DEMO_COSTS.filter((cost) => cost.status === "draft" && cost.reviewReason);
+  const ownerPendingCostReviews = isCostReviewCleared ? 0 : DEMO_COST_QUEUE_SUMMARY.total;
+  const ownerPrivateDisclosureCount = isDisclosureAcknowledged ? 0 : DEMO_DISCLOSURE_SETTING.hiddenCount;
+  const ownerReceiptEvidenceCount = DEMO_RECEIPTS.filter((receipt) => receipt.hasEvidence).length;
+  const selectedVendor = DEMO_VENDORS.find((vendor) => vendor.id === selectedVendorId) ?? DEMO_VENDORS[0];
+  const selectedVendorPerf = selectedVendor
+    ? DEMO_VENDOR_PERF.find((perf) => perf.vendorId === selectedVendor.id)
+    : undefined;
+  const selectedVendorJobs = selectedVendor
+    ? DEMO_VENDOR_JOBS.filter((job) => job.vendorId === selectedVendor.id)
+    : [];
+  const ownerOpenDuplicateCount = isDuplicateResolved ? 0 : DEMO_VENDOR_DUPLICATE_CANDIDATES.length;
+  const ownerVendorRatingLabel = selectedVendorPerf?.ratingVisible && selectedVendorPerf.satisfactionAvg
+    ? `${selectedVendorPerf.satisfactionAvg.toFixed(1)}점`
+    : `거래 ${selectedVendorPerf?.completedCount ?? selectedVendor?.dealCount ?? 0}건`;
+  const ownerDashboardTabs = [
+    { id: "dashboard", label: "대시보드", note: "현재 페이지" },
+    { id: "contract-dashboard", label: "검토 대시보드", note: "KAN-133" },
+    { id: "contract-ocr", label: "OCR 검토", note: "계약" },
+    { id: "contract-register", label: "계약서 등록", note: "계약" },
+    { id: "contract-timeline", label: "호실·타임라인", note: "계약" },
+    { id: "contract-invite", label: "임차인 초대", note: "계약" },
+    { id: "contract-storage", label: "보관·삭제", note: "계약" },
+    { id: "cost-ledger", label: "원장/큐", note: "KAN-135" },
+    { id: "cost-receipt", label: "영수증 첨부", note: "비용" },
+    { id: "cost-ocr", label: "OCR 검토", note: "비용" },
+    { id: "cost-detail", label: "비용 상세", note: "비용" },
+    { id: "cost-disclosure", label: "공개 관리", note: "비용" },
+    { id: "vendor-address", label: "주소록", note: "KAN-136" },
+    { id: "vendor-detail", label: "상세", note: "업체" },
+    { id: "vendor-performance", label: "성과", note: "업체" },
+    { id: "vendor-edit", label: "등록/편집", note: "업체" }
+  ];
+  const activeOwnerTab = ownerDashboardTabs.find((tab) => tab.id === activeOwnerPanel) ?? ownerDashboardTabs[0];
+  const activeOwnerDomain = activeOwnerPanel.split("-")[0];
+  const ownerContractStats = [
+    { label: "검토 대기", value: "2건", note: "임차인·관리자 업로드 유입" },
+    { label: "확인 필요", value: "3개", note: "OCR 원문 대조 필요" },
+    { label: "SLA 초과", value: "1건", note: "장기 미확정 출구 표시" }
+  ];
+  const ownerContractRows = [
+    { status: "검토 전 참고문", title: "연남 스테이 302호 · Alex Kim", caption: "계약일 2026년 3월 1일 · 확인필요 3" },
+    { status: "미등록 호실", title: "성수 하우스 405호 · Linh Tran", caption: "관리자 수동값 · 확인필요 0" }
+  ];
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
       <MyPageRoleBar roleLabel="집주인" onSwitchRole={onSwitchRole} />
 
-      <div className="owner-hero">
+      <div className="owner-dashboard-layout">
+        <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
+          {ownerDashboardTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
+              onClick={() => setActiveOwnerPanel(tab.id)}
+            >
+              <span>{tab.note}</span>
+              <strong>{tab.label}</strong>
+            </button>
+          ))}
+        </nav>
+
+        <div className="owner-dashboard-content">
+          {activeOwnerPanel === "dashboard" ? (
+            <>
+      <div className="owner-hero" id="owner-dashboard-top">
         <div>
           <p className="brand-kicker">매물 관리</p>
           <h2 id="owner-title">집주인 마이페이지</h2>
@@ -1063,6 +1184,287 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
         </div>
       </section>
 
+            </>
+          ) : null}
+
+          {activeOwnerPanel !== "dashboard" ? (
+            <>
+              <div className="owner-panel-heading">
+                <span>{activeOwnerTab.note}</span>
+                <h2>{activeOwnerTab.label}</h2>
+                <p>집주인 대시보드 안에서 관리 기능을 확인합니다.</p>
+              </div>
+      <section className="owner-ops-grid" aria-label="집주인 운영 기능">
+        {activeOwnerDomain === "contract" ? (
+        <article id="kan-133-contract" className="owner-ops-card owner-contract-card">
+          <div className="owner-ops-head">
+            <div>
+              <span>KAN-133 계약 관리</span>
+              <h3>계약서 검토와 임차인 초대</h3>
+            </div>
+            <strong>관리 대기</strong>
+          </div>
+
+          <div className="owner-ops-metrics" aria-label="계약 관리 요약">
+            {ownerContractStats.map((stat) => (
+              <article key={stat.label}>
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
+                <small>{stat.note}</small>
+              </article>
+            ))}
+          </div>
+
+          <div className="owner-contract-list" aria-label="계약 검토 목록">
+            {ownerContractRows.map((row) => (
+              <div key={row.title}>
+                <span>{row.status}</span>
+                <strong>{row.title}</strong>
+                <small>{row.caption}</small>
+              </div>
+            ))}
+          </div>
+
+          <div className="owner-disclosure-strip" aria-label="계약 관리 원칙">
+            <div>
+              <span>원칙 게이트</span>
+              <strong>OCR 원문 대조 후 확정</strong>
+              <small>계약 확정·삭제·초대는 기록을 남기고 현재 대시보드에서 상태를 관리합니다.</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOwnerToast("계약 검토 항목을 확인했습니다. 실제 확정은 계약 원칙 게이트를 통과해야 합니다.")}
+            >
+              검토 확인
+            </button>
+          </div>
+        </article>
+        ) : null}
+
+        {activeOwnerDomain === "cost" ? (
+        <article id="kan-135-cost" className="owner-ops-card owner-cost-card">
+          <div className="owner-ops-head">
+            <div>
+              <span>KAN-135 비용 정산</span>
+              <h3>비용 원장과 영수증 검토</h3>
+            </div>
+            <strong>{DEMO_MONTHLY_SUMMARY.month}</strong>
+          </div>
+
+          <div className="owner-ops-metrics" aria-label="비용 정산 요약">
+            <article>
+              <span>이번 달 지출</span>
+              <strong>{formatWon(DEMO_MONTHLY_SUMMARY.totalAmount)}</strong>
+            </article>
+            <article>
+              <span>확정 비용</span>
+              <strong>{DEMO_MONTHLY_SUMMARY.confirmedCount}건</strong>
+            </article>
+            <article>
+              <span>검토 대기</span>
+              <strong>{ownerPendingCostReviews}건</strong>
+            </article>
+            <article>
+              <span>영수증 증빙</span>
+              <strong>{ownerReceiptEvidenceCount}건</strong>
+            </article>
+          </div>
+
+          <div className="owner-cost-breakdown" aria-label="비용 유형별 집계">
+            {Object.entries(DEMO_MONTHLY_SUMMARY.byType).map(([type, amount]) => (
+              <div key={type}>
+                <span>{ownerCostTypeLabels[type]}</span>
+                <strong>{formatWon(amount)}</strong>
+              </div>
+            ))}
+          </div>
+
+          <div className="owner-review-panel">
+            <div className="owner-panel-head">
+              <div>
+                <span>영수증 검토 큐</span>
+                <strong>{ownerPendingCostReviews > 0 ? "확인 필요" : "정리됨"}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCostReviewCleared(true);
+                  setOwnerToast("비용 검토 큐를 정리했습니다. 미검증 확정 항목은 원장에 꼬리표로 남습니다.");
+                }}
+              >
+                검토 완료 처리
+              </button>
+            </div>
+            <div className="owner-review-list">
+              {(ownerPendingCostReviews > 0 ? ownerCostReviewItems : []).map((cost) => (
+                <div key={cost.id}>
+                  <span>{ownerCostReviewLabels[cost.reviewReason ?? ""] ?? "검토"}</span>
+                  <strong>{cost.item}</strong>
+                  <small>{formatWon(cost.amount)} · {cost.scope === "unit" ? `${cost.unitId ?? "호실 미정"}호` : "건물"}</small>
+                </div>
+              ))}
+              {ownerPendingCostReviews === 0 ? (
+                <div className="owner-empty-row">
+                  <strong>대기 중인 영수증 검토가 없습니다.</strong>
+                  <small>새 영수증이나 OCR 저신뢰 항목이 생기면 여기에 표시됩니다.</small>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="owner-ledger-list" aria-label="비용 원장 최근 항목">
+            {confirmedOwnerCosts.slice(0, 4).map((cost) => (
+              <div key={cost.id}>
+                <div>
+                  <strong>{cost.item}</strong>
+                  <small>{ownerCostTypeLabels[cost.type]} · {cost.scope === "unit" ? `${cost.unitId ?? "호실 미정"}호` : "건물 기록"}</small>
+                </div>
+                <span>{formatWon(cost.amount)}</span>
+                <em>{ownerCostStatusLabels[cost.status]}</em>
+              </div>
+            ))}
+          </div>
+
+          <div className="owner-disclosure-strip" aria-label="관리비 공개 설정">
+            <div>
+              <span>관리비 공개 설정</span>
+              <strong>{ownerPrivateDisclosureCount > 0 ? `숨김 ${ownerPrivateDisclosureCount}건` : "공개 상태 확인"}</strong>
+              <small>비공개 항목은 임차인 화면에 숨김 건수로 표시됩니다.</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDisclosureAcknowledged(true);
+                setOwnerToast("관리비 공개 상태를 확인했습니다.");
+              }}
+            >
+              공개 상태 확인
+            </button>
+          </div>
+        </article>
+        ) : null}
+
+        {activeOwnerDomain === "vendor" ? (
+        <article id="kan-136-vendor" className="owner-ops-card owner-vendor-card">
+          <div className="owner-ops-head">
+            <div>
+              <span>KAN-136 업체 관리</span>
+              <h3>업체 주소록과 성과 게이트</h3>
+            </div>
+            <strong>{ownerOpenDuplicateCount > 0 ? `중복 ${ownerOpenDuplicateCount}` : "중복 없음"}</strong>
+          </div>
+
+          <div className="owner-ops-metrics" aria-label="업체 관리 요약">
+            <article>
+              <span>등록 업체</span>
+              <strong>{DEMO_VENDORS.length}곳</strong>
+            </article>
+            <article>
+              <span>신규 배지</span>
+              <strong>{DEMO_VENDORS.filter((vendor) => vendor.isNew).length}곳</strong>
+            </article>
+            <article>
+              <span>최근 완료</span>
+              <strong>{DEMO_VENDOR_JOBS.length}건</strong>
+            </article>
+            <article>
+              <span>성과 표시</span>
+              <strong>{ownerVendorRatingLabel}</strong>
+            </article>
+          </div>
+
+          <div className="owner-vendor-list" aria-label="업체 주소록">
+            {DEMO_VENDORS.slice(0, 4).map((vendor) => (
+              <button
+                className={selectedVendor?.id === vendor.id ? "active" : ""}
+                key={vendor.id}
+                type="button"
+                onClick={() => setSelectedVendorId(vendor.id)}
+              >
+                <span>
+                  <strong>{vendor.name}</strong>
+                  {vendor.isNew ? <em>신규</em> : null}
+                </span>
+                <small>{vendor.trades.map((trade) => ownerVendorTradeLabels[trade]).join(" · ")}</small>
+              </button>
+            ))}
+          </div>
+
+          {selectedVendor ? (
+            <div className="owner-vendor-detail" aria-label="선택 업체 상세">
+              <div className="owner-vendor-title-row">
+                <div>
+                  <span>{ownerVendorStatusLabels[selectedVendor.status]}</span>
+                  <strong>{selectedVendor.name}</strong>
+                  <small>{selectedVendor.contactPerson ?? "담당자 미등록"} · {selectedVendor.phone ?? "연락처 확인 필요"}</small>
+                </div>
+                <em>{selectedVendor.source === "auto" ? "자동 누적" : "직접 추가"}</em>
+              </div>
+
+              <div className="owner-perf-gate">
+                <div>
+                  <span>성과 게이트</span>
+                  <strong>
+                    {selectedVendorPerf?.ratingVisible
+                      ? `표본 ${selectedVendorPerf.sampleN}/${selectedVendorPerf.minN} 통과`
+                      : `표본 ${selectedVendorPerf?.sampleN ?? 0}/${selectedVendorPerf?.minN ?? 5} 미달`}
+                  </strong>
+                  <small>
+                    {selectedVendorPerf?.aiCommentEnabled
+                      ? selectedVendorPerf.aiComment?.summary
+                      : "소표본 업체는 별점 수치와 AI 코멘트를 숨깁니다."}
+                  </small>
+                </div>
+                <div>
+                  <span>응답 중앙값</span>
+                  <strong>{selectedVendorPerf?.responseMedianHours ? `${selectedVendorPerf.responseMedianHours}시간` : "참고 불가"}</strong>
+                  <small>커버리지 {Math.round((selectedVendorPerf?.coverageRatio ?? 0) * 100)}%</small>
+                </div>
+              </div>
+
+              <div className="owner-vendor-jobs" aria-label="최근 완료 수리">
+                {selectedVendorJobs.slice(0, 3).map((job) => (
+                  <div key={job.id}>
+                    <span>{job.unitMasked ? "***호" : `${job.unitId ?? "호실 미정"}호`}</span>
+                    <strong>{job.quoteAmount ? formatWon(job.quoteAmount) : "견적 없음"}</strong>
+                    <small>{new Date(job.completedAt).toLocaleDateString("ko-KR")} 완료</small>
+                  </div>
+                ))}
+                {selectedVendorJobs.length === 0 ? (
+                  <div className="owner-empty-row">
+                    <strong>완료 수리 이력이 아직 없습니다.</strong>
+                    <small>배정과 완료가 쌓이면 성과가 자동 계산됩니다.</small>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="owner-duplicate-strip" aria-label="업체 중복 후보">
+            <div>
+              <span>신규·중복 업체 게이트</span>
+              <strong>{ownerOpenDuplicateCount > 0 ? `${ownerOpenDuplicateCount}건 확인 필요` : "처리 완료"}</strong>
+              <small>신규 업체는 격리하지 않고 배지만 표시합니다.</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDuplicateResolved(true);
+                setOwnerToast("업체 중복 후보를 확인했습니다.");
+              }}
+            >
+              중복 후보 확인
+            </button>
+          </div>
+        </article>
+        ) : null}
+      </section>
+
+            </>
+          ) : null}
+
+          {activeOwnerPanel === "dashboard" ? (
+            <>
       <form className="owner-form" id="owner-registration-form">
         <section className="owner-card">
           <div className="form-heading">
@@ -1205,6 +1607,10 @@ function LandlordMyPage({ onSwitchRole, onGoHome }: { onSwitchRole: () => void; 
           )}
         </button>
       </form>
+            </>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }

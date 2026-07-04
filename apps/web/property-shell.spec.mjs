@@ -52,7 +52,8 @@ test("production deploy removes stale role containers before rebinding port 3000
   assert.match(deployWorkflowSource, /docker ps -a --filter "name=roomlog"/);
 });
 
-test("production web container can reach the API over the Docker network for auth BFF routes", () => {
+test("web containers can reach the API over the Docker network for auth BFF routes", () => {
+  assert.match(dockerComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
   assert.match(prodComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
 });
 
@@ -468,12 +469,39 @@ test("shows a landlord my page with property registration fields and media actio
     "검수 요청 요약",
     "92%",
     "예상 검수",
-    "확인매물·3D 투어 배지"
+    "확인매물·3D 투어 배지",
+    "KAN-135 비용 정산",
+    "비용 원장과 영수증 검토",
+    "이번 달 지출",
+    "영수증 검토 큐",
+    "검토 완료 처리",
+    "관리비 공개 설정",
+    "비공개 항목은 임차인 화면에 숨김 건수로 표시됩니다.",
+    "KAN-136 업체 관리",
+    "업체 주소록과 성과 게이트",
+    "등록 업체",
+    "신규 배지",
+    "성과 게이트",
+    "신규·중복 업체 게이트",
+    "중복 후보 확인",
+    "소표본 업체는 별점 수치와 AI 코멘트를 숨깁니다.",
+    "신규 업체는 격리하지 않고 배지만 표시합니다."
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
   assert.match(pageSource, /ownerReviewItems/);
+  assert.match(pageSource, /DEMO_COSTS/);
+  assert.match(pageSource, /DEMO_MONTHLY_SUMMARY/);
+  assert.match(pageSource, /DEMO_RECEIPTS/);
+  assert.match(pageSource, /DEMO_VENDORS/);
+  assert.match(pageSource, /DEMO_VENDOR_PERF/);
+  assert.match(pageSource, /DEMO_VENDOR_DUPLICATE_CANDIDATES/);
+  assert.match(pageSource, /id="kan-135-cost"/);
+  assert.match(pageSource, /id="kan-136-vendor"/);
+  assert.match(pageSource, /selectedVendorId/);
+  assert.match(pageSource, /ownerPendingCostReviews/);
+  assert.match(pageSource, /ownerOpenDuplicateCount/);
   assert.match(pageSource, /ownerCompletionRate/);
   assert.match(pageSource, /ownerCompletionRate = photoCount >= 3 && has3DRoom \? 92 : 68/);
   assert.match(pageSource, /owner-readiness-card/);
@@ -498,6 +526,15 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(cssSource, /\.owner-readiness-list/);
   assert.match(cssSource, /\.owner-submit-summary/);
   assert.match(cssSource, /\.owner-submit-grid/);
+  assert.match(cssSource, /\.owner-ops-grid/);
+  assert.match(cssSource, /\.owner-ops-card/);
+  assert.match(cssSource, /scroll-margin-top: 96px/);
+  assert.match(cssSource, /\.owner-cost-breakdown/);
+  assert.match(cssSource, /\.owner-review-panel/);
+  assert.match(cssSource, /\.owner-ledger-list/);
+  assert.match(cssSource, /\.owner-vendor-list/);
+  assert.match(cssSource, /\.owner-perf-gate/);
+  assert.match(cssSource, /\.owner-duplicate-strip/);
   assert.match(cssSource, /\.upload-3d-button\.active/);
 });
 
@@ -506,20 +543,17 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
     "찜한 매물",
     "문의센터",
     "마이페이지",
-    "진행중 문의",
     "저장 조건",
-    "최근 문의 상태가 여기에 표시됩니다",
+    "매물 상세에서 문자문의를 보내면 여기에 표시됩니다",
     "찜한 매물 비교 요약",
     "가격 변동",
     "방문 후보",
-    "문의 타임라인",
-    "최근 문의 흐름",
+    "문의 흐름",
     "문의 채널",
     "원하는 방식으로 바로 확인",
     "로그인 없이 가능",
     "방문예약",
     "문의 진행",
-    "저장 지역",
     "검색 조건 관리",
     "최근 본 방",
     "문의 확인"
@@ -549,7 +583,7 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   assert.doesNotMatch(pageSource, /onClick=\{\(event\) => \{[\s\S]*scrollIntoView[\s\S]*activateTab\(item\.key\)/);
   assert.match(pageSource, /href: "#saved-list"/);
   assert.match(pageSource, /href: "#inquiry"/);
-  assert.match(pageSource, /setInquiryNotice/);
+  assert.match(pageSource, /setInquiries/);
   assert.match(cssSource, /\.inquiry-notice/);
   assert.match(cssSource, /\.saved-compare-strip/);
   assert.match(cssSource, /\.inquiry-timeline-card/);
