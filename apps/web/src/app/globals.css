@@ -7658,11 +7658,12 @@ p {
     margin-left: auto;
   }
 
+  /* 행 구성: 1 검색바 · 2 필터 · 3 요약바 · 4 인사이트 스트립 · 5 지도+결과시트(늘어나는 행) */
   .map-screen {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: minmax(0, 1fr) 390px;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
     gap: 12px 16px;
     padding-right: 24px;
     padding-left: 24px;
@@ -7679,10 +7680,26 @@ p {
     padding-left: 0;
   }
 
-  .map-stage {
-    grid-column: 1;
+  /* 지도 자리를 차지하며 세로로 늘어나던 인사이트 카드 → 지도 위 슬림한 가로 스트립으로 */
+  .map-screen > .map-insight-strip {
+    grid-column: 1 / -1;
     grid-row: 4;
-    height: min(680px, calc(100vh - 220px));
+    align-self: start;
+    margin: 0;
+    overflow: visible;
+  }
+
+  /* 지도는 map-canvas-stack으로 감싸져 있으므로 그리드 배치는 stack에 준다 */
+  .map-canvas-stack {
+    grid-column: 1;
+    grid-row: 5;
+  }
+
+  /* [data-state] 셀렉터는 오류/키없음 상태에서 height 340px를 거는
+     .naver-map-shell[data-state=...] 규칙(0,2,0)보다 우선하기 위한 specificity 확보용 */
+  .map-stage,
+  .map-canvas-stack .map-stage[data-state] {
+    height: 100%;
     min-height: 520px;
     margin-top: 0;
     border: 1px solid var(--line);
@@ -7695,8 +7712,8 @@ p {
 
   .result-sheet {
     grid-column: 2;
-    grid-row: 4;
-    max-height: min(680px, calc(100vh - 220px));
+    grid-row: 5;
+    max-height: min(680px, calc(100vh - 280px));
     overflow-y: auto;
     margin-top: 0;
     padding: 12px;
