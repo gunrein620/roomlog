@@ -4245,10 +4245,57 @@ describe("RoomlogService", () => {
 
   it("lets a manager read only moveouts for rooms they manage", () => {
     const service = createMoveoutTestService() as any;
+    const managerARows = service.listManagerMoveoutRows("manager-a");
+    const managerBRows = service.listManagerMoveoutRows("manager-b");
 
+    assert.equal(managerARows.some((row: any) => row.summaryId === "mo-a"), true);
+    assert.equal(managerARows.some((row: any) => row.summaryId === "mo-b"), false);
+    assert.equal(managerBRows.some((row: any) => row.summaryId === "mo-b"), true);
+    assert.equal(managerBRows.some((row: any) => row.summaryId === "mo-a"), false);
     assert.equal(service.getManagerMoveoutSettlement("manager-a", "mo-a").settlement.id, "st-a");
     assert.throws(
       () => service.getManagerMoveoutSettlement("manager-b", "mo-a"),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(() => service.getManagerMoveoutRecords("manager-b", "mo-a"), /담당 호실|퇴실|찾을 수/);
+    assert.throws(() => service.getManagerReportAudit("manager-b", "mo-a"), /담당 호실|퇴실|찾을 수/);
+    assert.throws(
+      () =>
+        service.adjustManagerMoveoutDeduction("manager-b", "mo-a", {
+          deductionId: "de-a",
+          estimatedMin: 0,
+          estimatedMax: 0,
+          resolveConfirmation: true
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.adjustManagerMoveoutWearVerdict("manager-b", "mo-a", {
+          recordItemId: "rec-a",
+          action: "reinforce",
+          evidenceNote: "타 호실 접근 시도",
+          notifyTenant: true
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.completeManagerMoveoutReview("manager-b", "mo-a", {
+          acknowledgeEvidence: true,
+          overrideSla: true,
+          overrideReason: "타 호실 접근 시도"
+        }),
+      /담당 호실|퇴실|찾을 수/
+    );
+    assert.throws(
+      () =>
+        service.respondManagerMoveoutDispute("manager-b", "mo-a", {
+          disputeId: "dp-sla",
+          kind: "explain",
+          message: "타 호실 접근 시도",
+          reflect: "none"
+        }),
       /담당 호실|퇴실|찾을 수/
     );
   });

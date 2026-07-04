@@ -153,6 +153,16 @@ test("wires moveout screens to backend mutations instead of static links", () =>
     new URL("./src/app/manager/moveout/_components.tsx", import.meta.url),
     "utf8",
   );
+  const managerMoveoutLoadingPath = new URL("./src/app/manager/moveout/loading.tsx", import.meta.url);
+  const managerMoveoutErrorPath = new URL("./src/app/manager/moveout/error.tsx", import.meta.url);
+  const managerMoveoutLoadingExists = existsSync(managerMoveoutLoadingPath);
+  const managerMoveoutErrorExists = existsSync(managerMoveoutErrorPath);
+  const managerMoveoutLoadingSource = managerMoveoutLoadingExists
+    ? readFileSync(managerMoveoutLoadingPath, "utf8")
+    : "";
+  const managerMoveoutErrorSource = managerMoveoutErrorExists
+    ? readFileSync(managerMoveoutErrorPath, "utf8")
+    : "";
   const managerReviewSource = readFileSync(
     new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
     "utf8",
@@ -213,6 +223,10 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(managerMoveoutHomeSource, /withManagerMoveoutId\(MANAGER_MOVEOUT_ROUTES\["M-OUT-03"\]/);
   assert.match(managerMoveoutComponentsSource, /withManagerMoveoutId/);
   assert.match(managerMoveoutComponentsSource, /MANAGER_MOVEOUT_ROUTES\["M-OUT-02"\]/);
+  assert.equal(managerMoveoutLoadingExists, true);
+  assert.equal(managerMoveoutErrorExists, true);
+  assert.match(managerMoveoutLoadingSource, /퇴실\/정산 정보를 불러오는 중/);
+  assert.match(managerMoveoutErrorSource, /reset/);
   assert.match(managerReviewSource, /completeReview/);
   assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
   assert.match(managerReviewSource, /adjustDeduction/);
