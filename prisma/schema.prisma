@@ -129,6 +129,12 @@ enum AiFeedbackStatus {
   REVIEWED
 }
 
+enum SplatAssetStatus {
+  UPLOADED // 파일만 존재, 도면 정합 전
+  REGISTERED // 2점 정합 완료 — transform 존재, 하이브리드 기능 해금
+  FAILED
+}
+
 model UserAccount {
   id           String     @id
   email        String     @unique
@@ -163,6 +169,7 @@ model Room {
   tenants              TenantRoom[]
   roomWalls            RoomWall[]
   floorPlans           FloorPlan[]
+  splatAssets          SplatAsset[]
   complaints           Complaint[]
   tickets              Ticket[]
   intakeSessions       IntakeSession[]
@@ -287,8 +294,9 @@ model FloorPlan {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
-  owner UserAccount @relation("OwnedFloorPlans", fields: [ownerId], references: [id])
-  room  Room?       @relation(fields: [roomId], references: [id])
+  owner       UserAccount  @relation("OwnedFloorPlans", fields: [ownerId], references: [id])
+  room        Room?        @relation(fields: [roomId], references: [id])
+  splatAssets SplatAsset[]
 
   @@index([ownerId, updatedAt])
   @@index([roomId])
@@ -528,4 +536,27 @@ model StatusHistory {
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId, createdAt])
+}
+
+// 원격 3D 투어용 Gaussian Splat 자산. 문서: docs/remote-3d-tour.md §4.
+// 도면(FloorPlan)과 각각 선택적 자산 — 둘 다 있고 transform이 붙으면 하이브리드 해금(§5).
+model SplatAsset {
+  id          String           @id
+  roomId      String
+  floorPlanId String? // 정합 대상 도면. 있으면 미니맵/프리셋/클립 해금
+  fileUrl     String // .spz/.sog 경로
+  fileKind    String           @default("spz")
+  sizeBytes   Int?
+  status      SplatAssetStatus @default(UPLOADED)
+  transform   Json? // SplatTransform (tour-types.ts). null이면 미정합
+  registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용
+  capturedAt  DateTime? // 촬영 시각 메타 (§7 편향 표기용)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  room      Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  floorPlan FloorPlan? @relation(fields: [floorPlanId], references: [id])
+
+  @@index([roomId])
+  @@index([status])
 }
