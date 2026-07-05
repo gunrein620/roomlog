@@ -10,7 +10,7 @@ import type {
   ReportSource,
   ReportStatus,
 } from "@roomlog/types";
-import { Badge, Card, ManagerShell } from "@roomlog/ui";
+import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
 import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
 
 const navItems = [
@@ -207,7 +207,7 @@ export function NextActionList({ actions }: { actions: ReportNextAction[] }) {
           <div>
             <div style={{ fontWeight: 850 }}>{action.label}</div>
             <div style={mutedSmallStyle}>
-              대상·기간을 넘긴 검토 화면으로 연결하고, 발송 전 원본 행을 대조합니다.
+              메시징 초안으로 연결하고, 발송 전 원본 행을 대조합니다.
             </div>
           </div>
           <LinkButton href={actionHref(action)} variant="secondary">초안 열기</LinkButton>
@@ -263,13 +263,11 @@ export function AnswerCard({ answer }: { answer: ChatAnswer }) {
   );
 }
 
-export function FaqButtons({ faq, targetReportId }: { faq: FaqQuestion[]; targetReportId?: string }) {
+export function FaqButtons({ faq }: { faq: FaqQuestion[] }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-sm)" }}>
       {faq.map((item) => (
-        <LinkButton key={item.id} href={reportHref("M-RPT-04", targetReportId, item.query)} variant="secondary">
-          {item.label}
-        </LinkButton>
+        <Button key={item.id} variant="secondary" style={{ justifyContent: "flex-start" }}>{item.label}</Button>
       ))}
     </div>
   );

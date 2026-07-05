@@ -4,7 +4,6 @@
  */
 
 import type { ChatDraftSuggestion, ReportNextAction, ReportSource } from "@roomlog/types";
-import { MANAGER_MESSAGING_ROUTES } from "./messaging-manager-nav";
 
 export const MANAGER_REPORT_ROUTES = {
   "M-RPT-00": "/manager/report/00",
@@ -25,21 +24,10 @@ export function routeFor(id: ManagerReportScreenId): ManagerReportRoute {
   return MANAGER_REPORT_ROUTES[id];
 }
 
-export function reportHref(id: ManagerReportScreenId, reportId?: string, question?: string): string {
+export function reportHref(id: ManagerReportScreenId, reportId?: string): string {
   const route = routeFor(id);
-  const params = new URLSearchParams();
 
-  if (reportId) {
-    params.set("id", reportId);
-  }
-
-  if (question?.trim()) {
-    params.set("question", question.trim());
-  }
-
-  const query = params.toString();
-
-  return query ? `${route}?${query}` : route;
+  return reportId ? `${route}?id=${encodeURIComponent(reportId)}` : route;
 }
 
 export function sourceHref(source: ReportSource): string {
@@ -65,32 +53,6 @@ export function sourceHref(source: ReportSource): string {
 }
 
 export function actionHref(action: ReportNextAction | ChatDraftSuggestion): string {
-  const params = new URLSearchParams();
-  params.set("source", "report");
-
-  if ("actionType" in action) {
-    params.set("actionType", action.actionType);
-    params.set("title", action.label);
-  } else {
-    params.set("actionType", action.type);
-    params.set("title", action.type === "dunning" ? "납부 독촉 초안 검토" : "생활 공지 초안 만들기");
-  }
-
-  if (action.payload.unitIds?.length) {
-    params.set("unitIds", action.payload.unitIds.join(","));
-  }
-
-  if (action.payload.billIds?.length) {
-    params.set("billIds", action.payload.billIds.join(","));
-  }
-
-  if (action.payload.periodLabel) {
-    params.set("periodLabel", action.payload.periodLabel);
-  }
-
-  if (action.payload.note) {
-    params.set("note", action.payload.note);
-  }
-
-  return `${MANAGER_MESSAGING_ROUTES["M-MSG-01"]}?${params.toString()}`;
+  void action;
+  return "/manager/messaging/00";
 }
