@@ -10,8 +10,11 @@ const e0Source = readFileSync(join(__dirname, "e0/page.tsx"), "utf8");
 test("manager report has a client error boundary that links to M-RPT-E0 recovery", () => {
   assert.equal(existsSync(errorPath), true);
   assert.match(errorSource, /"use client"/);
+  assert.match(errorSource, /usePathname/);
+  assert.match(errorSource, /useSearchParams/);
+  assert.match(errorSource, /const recoveryHref = reportRecoveryHref\(pathname, searchParams\.toString\(\)\)/);
   assert.match(errorSource, /reset\(\)/);
-  assert.match(errorSource, /MANAGER_REPORT_ROUTES\["M-RPT-E0"\]/);
+  assert.match(errorSource, /href=\{recoveryHref\}/);
   assert.match(errorSource, /관리 리포트를 다시 불러오지 못했습니다/);
 });
 

@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Button, Card } from "@roomlog/ui";
 import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
 
 export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const recoveryHref = reportRecoveryHref(pathname, searchParams.toString());
+
   return (
     <Card style={{ display: "grid", gap: "var(--space-md)", maxWidth: 720 }}>
       <div>
@@ -22,10 +27,15 @@ export default function Error({ reset }: { error: Error & { digest?: string }; r
         <Button type="button" onClick={() => reset()}>
           다시 시도
         </Button>
-        <Link href={MANAGER_REPORT_ROUTES["M-RPT-E0"]} style={{ color: "var(--primary)", fontWeight: 800 }}>
+        <Link href={recoveryHref} style={{ color: "var(--primary)", fontWeight: 800 }}>
           복구 화면
         </Link>
       </div>
     </Card>
   );
+}
+
+function reportRecoveryHref(pathname: string, query: string) {
+  const from = query ? `${pathname}?${query}` : pathname;
+  return `${MANAGER_REPORT_ROUTES["M-RPT-E0"]}?from=${encodeURIComponent(from)}`;
 }

@@ -71,6 +71,10 @@ async function apiOrFallback<T>(read: () => Promise<T>, fallback: T): Promise<T>
 }
 
 function shouldUseReportDemoFallback(): boolean {
+  if (process.env.ROOMLOG_REPORT_DEMO_FALLBACK === "false") {
+    return false;
+  }
+
   if (process.env.ROOMLOG_REPORT_DEMO_FALLBACK === "true") {
     return true;
   }

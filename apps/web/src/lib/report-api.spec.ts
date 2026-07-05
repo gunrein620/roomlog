@@ -23,6 +23,11 @@ test("report demo fallback is disabled in production unless explicitly enabled",
   assert.match(source, /throw error/);
 });
 
+test("report demo fallback can be disabled explicitly outside production", () => {
+  assert.match(source, /process\.env\.ROOMLOG_REPORT_DEMO_FALLBACK === "false"/);
+  assert.match(source, /return false/);
+});
+
 test("report reads do not create reports as a hidden side effect", () => {
   assert.doesNotMatch(source, /fetchOrCreateReports/);
   assert.doesNotMatch(source, /createDefaultReport/);
