@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
 import { requireUser } from "@/lib/session";
@@ -10,14 +9,7 @@ export default async function ManagerVoxLayout({ children }: { children: ReactNo
   await requireUser("LANDLORD");
   return (
     <PhoneFrame
-      label={
-        <>
-          <Link href="/shell" style={{ color: "var(--primary)", textDecoration: "none" }}>
-            ← 셸 인덱스
-          </Link>
-          <span>M-VOX 통화비서 · 관리인 · 390×844</span>
-        </>
-      }
+      label={<span>관리 중인 집 · 통화비서</span>}
     >
       {children}
     </PhoneFrame>

@@ -50,7 +50,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const cancelHref = vendor ? vendorHref("M-VEND-01", vendor.id) : MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"];
 
   return (
-    <ManagerShell title="업체 등록/편집" context="M-VEND-03 · 보조 등록" nav={<ManagerVendorMgmtNav />}>
+    <ManagerShell title="업체 등록/편집" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-03"

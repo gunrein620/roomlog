@@ -147,7 +147,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </div>
 
           {isPayment ? (
-            <NoticeCard title="D20 청구 맥락 톤 가드" emphasis>
+            <NoticeCard title="청구 맥락 톤 가드" emphasis>
               이 채팅은 문의 해결용입니다. 관리인발 독촉 문구, 납부 압박, 미납 낙인 표현은 보낼 수 없습니다.
             </NoticeCard>
           ) : (
@@ -185,7 +185,7 @@ function ContextCard({ thread }: { thread: Thread }) {
       </div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>
       <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: 1.5 }}>
-        source {thread.contextRef ?? thread.id} · 같은 스레드의 임차인 투영은 T-MSG-01입니다.
+        연결된 업무: {thread.contextRef ?? thread.id} · 임차인에게도 같은 대화가 표시됩니다.
       </div>
     </Card>
   );

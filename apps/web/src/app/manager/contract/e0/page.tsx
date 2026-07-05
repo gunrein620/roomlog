@@ -1,6 +1,5 @@
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
-  Badge,
   Card,
   ContractShell,
   LinkButton,
@@ -13,7 +12,6 @@ export default function Page() {
     <ContractShell id="M-DOC-E0" title="로드 오류">
       <PageStack>
         <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
-          <Badge emphasis>M-DOC-E0</Badge>
           <h1 style={{ margin: 0, fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
             계약 정보를 불러오지 못했습니다
           </h1>

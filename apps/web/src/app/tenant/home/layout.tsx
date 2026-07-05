@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
 
@@ -7,14 +6,7 @@ import { PhoneFrame } from "@roomlog/ui";
 export default function HomeLayout({ children }: { children: ReactNode }) {
   return (
     <PhoneFrame
-      label={
-        <>
-          <Link href="/shell" style={{ color: "var(--primary)", textDecoration: "none" }}>
-            ← 셸 인덱스
-          </Link>
-          <span>T-HOME 통합 홈 · 임차인 · 390×844</span>
-        </>
-      }
+      label={<span>사는 집 · 홈</span>}
     >
       {children}
     </PhoneFrame>

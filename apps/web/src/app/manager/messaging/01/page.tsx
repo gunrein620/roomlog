@@ -93,8 +93,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               ))}
             </div>
             <Input name="targetLabel" aria-label="공지 타깃" defaultValue={draft.targetLabel} />
-            <NoticeCard title="D20 타깃 가드">
-              미납 세대 옵션은 없습니다. 연체·독촉은 M-BILL-05 단일 채널에서만 처리합니다.
+            <NoticeCard title="공지 타깃 가드">
+              미납 세대 옵션은 없습니다. 연체·독촉은 청구·수금의 독촉 채널에서만 처리합니다.
             </NoticeCard>
           </Card>
 

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
 import { requireUser } from "@/lib/session";
@@ -15,17 +14,7 @@ export default async function DefectLayout({ children }: { children: ReactNode }
   await requireUser("TENANT");
   return (
     <PhoneFrame
-      label={
-        <>
-          <Link
-            href="/shell"
-            style={{ color: "var(--primary)", textDecoration: "none" }}
-          >
-            ← 셸 인덱스
-          </Link>
-          <span>T-DEF 하자 · 임차인 · 390×844</span>
-        </>
-      }
+      label={<span>사는 집 · 하자 접수</span>}
     >
       {children}
     </PhoneFrame>

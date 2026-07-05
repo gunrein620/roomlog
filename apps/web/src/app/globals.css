@@ -4525,6 +4525,27 @@ p {
   color: #ffffff;
 }
 
+.inquiry-submit-feedback button {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.owner-draft-status {
+  display: block;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .fact-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

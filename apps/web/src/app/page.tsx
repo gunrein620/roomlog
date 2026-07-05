@@ -57,6 +57,21 @@ import {
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
+import {
+  pickInquiryTargetNo,
+  withInquiryReply,
+  withNewInquiry,
+  type InquiryItem,
+  type InquiryPayload
+} from "../lib/inquiry-flow";
+import {
+  OWNER_DRAFT_STORAGE_KEY,
+  emptyOwnerForm,
+  formatDraftSavedAt,
+  initialOwnerListings,
+  parseOwnerDraft,
+  serializeOwnerDraft
+} from "../lib/owner-draft";
 
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
 type MapResultTab = "rooms" | "complexes" | "agents";
@@ -647,19 +662,6 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-type InquiryStatus = "답변 대기" | "답변 완료";
-
-type InquiryItem = {
-  id: number;
-  listingTitle: string;
-  broker: string;
-  message: string;
-  visitTime: string;
-  status: InquiryStatus;
-  reply?: string;
-  time: string;
-};
-
 const initialInquiries: InquiryItem[] = [
   {
     id: 1,
@@ -699,24 +701,14 @@ function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectF
 }
 
 function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlow) => void; onGoHome: () => void }) {
-  const [ownerForm, setOwnerForm] = useState({
-    title: "방배 루미에르 402호",
-    address: "서울특별시 서초구 방배동",
-    tradeType: "월세",
-    moveIn: "즉시",
-    deposit: "1000",
-    monthly: "35",
-    jeonse: "0",
-    maintenance: "8",
-    area: "24.5",
-    floor: "4층 / 16층"
-  });
+  // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
+  const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
   const [has3DRoom, setHas3DRoom] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState("작성 중");
-  const [myListings, setMyListings] = useState([
-    { id: 1, title: "방배 루미에르 302호", price: "월세 1000/125", status: "노출중", caption: "조회 128 · 문의 6건" }
-  ]);
+  const [myListings, setMyListings] = useState(initialOwnerListings);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState("");
   const [ownerToast, setOwnerToast] = useState("");
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
@@ -729,6 +721,34 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
+
+  // 복원: 반드시 마운트 후에만 localStorage 접근 — SSR 초기 렌더와의 hydration 불일치 방지 (QA 8).
+  useEffect(() => {
+    const draft = parseOwnerDraft(window.localStorage.getItem(OWNER_DRAFT_STORAGE_KEY));
+
+    if (draft) {
+      setOwnerForm(draft.ownerForm);
+      setPhotoCount(draft.photoCount);
+      setHas3DRoom(draft.has3DRoom);
+      setRegistrationStatus(draft.registrationStatus);
+      setMyListings(draft.myListings);
+      setDraftSavedAt(draft.savedAt);
+    }
+
+    setIsDraftLoaded(true);
+  }, []);
+
+  // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
+  useEffect(() => {
+    if (!isDraftLoaded) return;
+
+    const savedAt = new Date().toISOString();
+    window.localStorage.setItem(
+      OWNER_DRAFT_STORAGE_KEY,
+      serializeOwnerDraft({ ownerForm, photoCount, has3DRoom, registrationStatus, myListings }, savedAt)
+    );
+    setDraftSavedAt(savedAt);
+  }, [isDraftLoaded, ownerForm, photoCount, has3DRoom, registrationStatus, myListings]);
   const submitOwnerListing = () => {
     // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
     if (isSubmittingListingRef.current) {
@@ -1298,6 +1318,12 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
             <strong>임대인 전용</strong>
           </div>
 
+          {draftSavedAt ? (
+            <small className="owner-draft-status" role="status">
+              임시저장됨 · {formatDraftSavedAt(draftSavedAt)} — 새로고침해도 작성 내용이 유지됩니다.
+            </small>
+          ) : null}
+
           <label>
             매물명
             <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
@@ -1399,8 +1425,11 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         <section className="owner-submit-summary" aria-label="검수 요청 요약">
           <div>
             <span>검수 요청 요약</span>
-            <h3>{ownerForm.title}</h3>
-            <p>{ownerPriceLabel} · 관리비 {ownerForm.maintenance}만원 · {ownerForm.area}m² · {ownerForm.floor}</p>
+            <h3>{ownerForm.title || "매물명을 입력해주세요"}</h3>
+            <p>
+              {ownerPriceLabel} · 관리비 {ownerForm.maintenance || "0"}만원 · {ownerForm.area || "-"}m² ·{" "}
+              {ownerForm.floor || "층수 미입력"}
+            </p>
           </div>
           <div className="owner-submit-grid">
             <span>
@@ -1579,13 +1608,15 @@ function ListingDetailView({
   isSaved,
   onBack,
   onToggleSaved,
-  onSubmitInquiry
+  onSubmitInquiry,
+  onViewInquiryCenter
 }: {
   listing: Listing;
   isSaved: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
-  onSubmitInquiry: (payload: { listingTitle: string; broker: string; message: string; visitTime: string }) => void;
+  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onViewInquiryCenter: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
   const [isInquirySheetOpen, setIsInquirySheetOpen] = useState(false);
@@ -1594,10 +1625,6 @@ function ListingDetailView({
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
-  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
-  const [inquiryMemo, setInquiryMemo] = useState("실매물 여부와 방문 가능한 시간을 확인하고 싶습니다.");
-  const [inquirySent, setInquirySent] = useState(false);
   const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
@@ -2130,120 +2157,153 @@ function ListingDetailView({
       ) : null}
 
       {isInquirySheetOpen ? (
-        <div className="inquiry-sheet-backdrop" role="presentation" onClick={() => setIsInquirySheetOpen(false)}>
-          <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
-            <div className="sheet-handle" aria-hidden="true" />
-            <header>
-              <div>
-                <span>문의하기</span>
-                <h2 id="inquiry-sheet-title">간편문의</h2>
-                <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
-              </div>
-              <button type="button" onClick={() => setIsInquirySheetOpen(false)} aria-label="문의 닫기">×</button>
-            </header>
-
-            <div className="inquiry-listing-summary">
-              <strong>{listing.price}</strong>
-              <span>{listing.title}</span>
-              <small>{listing.broker} · {listing.response}</small>
-            </div>
-
-            <div className="inquiry-message-group">
-              <strong>문의 내용 선택</strong>
-              <div className="inquiry-message-grid">
-                {[
-                  "아직 거래 가능한가요?",
-                  "오늘 방문 가능한가요?",
-                  "관리비 포함 내역 알려주세요",
-                  "3D 투어 먼저 보고 싶어요"
-                ].map((message) => (
-                  <button
-                    className={selectedInquiryMessage === message ? "active" : ""}
-                    type="button"
-                    key={message}
-                    onClick={() => {
-                      setSelectedInquiryMessage(message);
-                      setInquirySent(false);
-                    }}
-                  >
-                    {message}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="visit-time-group">
-              <strong>방문 희망 시간</strong>
-              <div>
-                {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
-                  <button
-                    className={selectedVisitTime === time ? "active" : ""}
-                    type="button"
-                    key={time}
-                    onClick={() => {
-                      setSelectedVisitTime(time);
-                      setInquirySent(false);
-                    }}
-                  >
-                    {time}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="inquiry-textarea">
-              <span>추가 메모</span>
-              <textarea value={inquiryMemo} onChange={(event) => {
-                setInquiryMemo(event.target.value);
-                setInquirySent(false);
-              }} />
-            </label>
-
-            <div className="inquiry-selected-summary" role="status">
-              <strong>선택한 문의</strong>
-              <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
-            </div>
-
-            <div className="inquiry-agent-row">
-              <span aria-hidden="true">✓</span>
-              <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
-            </div>
-
-            <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
-              <strong>허위매물 차단</strong>
-              <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
-            </div>
-
-            <div className="inquiry-sheet-actions">
-              <button type="button" onClick={() => setIsInquirySheetOpen(false)}>닫기</button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!inquirySent) {
-                    onSubmitInquiry({
-                      listingTitle: listing.title,
-                      broker: listing.broker,
-                      message: selectedInquiryMessage,
-                      visitTime: selectedVisitTime
-                    });
-                  }
-
-                  setInquirySent(true);
-                }}
-              >
-                문의 보내기
-              </button>
-            </div>
-
-            {inquirySent ? (
-              <p className="inquiry-submit-feedback" role="status">
-                문의가 접수됐습니다. 답변이 오면 문의센터와 마이페이지에서 확인할 수 있어요.
-              </p>
-            ) : null}
-          </section>
-        </div>
+        <InquirySheet
+          listing={listing}
+          onClose={() => setIsInquirySheetOpen(false)}
+          onSubmitInquiry={onSubmitInquiry}
+          onViewInquiryCenter={onViewInquiryCenter}
+        />
       ) : null}
     </section>
+  );
+}
+
+// 통합 문의 작성 sheet — 매물 상세 "문의하기", 홈 카드 "문자문의",
+// 문의 탭 "새 문의"가 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
+function InquirySheet({
+  listing,
+  onClose,
+  onSubmitInquiry,
+  onViewInquiryCenter
+}: {
+  listing: Listing;
+  onClose: () => void;
+  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onViewInquiryCenter: () => void;
+}) {
+  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
+  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
+  const [inquiryMemo, setInquiryMemo] = useState("");
+  const [inquirySent, setInquirySent] = useState(false);
+
+  return (
+    <div className="inquiry-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <span>문의하기</span>
+            <h2 id="inquiry-sheet-title">간편문의</h2>
+            <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="문의 닫기">×</button>
+        </header>
+
+        <div className="inquiry-listing-summary">
+          <strong>{listing.price}</strong>
+          <span>{listing.title}</span>
+          <small>{listing.broker} · {listing.response}</small>
+        </div>
+
+        <div className="inquiry-message-group">
+          <strong>문의 내용 선택</strong>
+          <div className="inquiry-message-grid">
+            {[
+              "아직 거래 가능한가요?",
+              "오늘 방문 가능한가요?",
+              "관리비 포함 내역 알려주세요",
+              "3D 투어 먼저 보고 싶어요"
+            ].map((message) => (
+              <button
+                className={selectedInquiryMessage === message ? "active" : ""}
+                type="button"
+                key={message}
+                onClick={() => {
+                  setSelectedInquiryMessage(message);
+                  setInquirySent(false);
+                }}
+              >
+                {message}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="visit-time-group">
+          <strong>방문 희망 시간</strong>
+          <div>
+            {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
+              <button
+                className={selectedVisitTime === time ? "active" : ""}
+                type="button"
+                key={time}
+                onClick={() => {
+                  setSelectedVisitTime(time);
+                  setInquirySent(false);
+                }}
+              >
+                {time}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="inquiry-textarea">
+          <span>추가 메모</span>
+          <textarea
+            value={inquiryMemo}
+            placeholder="예: 실매물 여부와 방문 가능한 시간을 확인하고 싶습니다."
+            onChange={(event) => {
+              setInquiryMemo(event.target.value);
+              setInquirySent(false);
+            }}
+          />
+        </label>
+
+        <div className="inquiry-selected-summary" role="status">
+          <strong>선택한 문의</strong>
+          <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
+        </div>
+
+        <div className="inquiry-agent-row">
+          <span aria-hidden="true">✓</span>
+          <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
+        </div>
+
+        <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
+          <strong>허위매물 차단</strong>
+          <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
+        </div>
+
+        <div className="inquiry-sheet-actions">
+          <button type="button" onClick={onClose}>닫기</button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!inquirySent) {
+                onSubmitInquiry({
+                  listingTitle: listing.title,
+                  broker: listing.broker,
+                  message: selectedInquiryMessage,
+                  visitTime: selectedVisitTime
+                });
+              }
+
+              setInquirySent(true);
+            }}
+          >
+            문의 보내기
+          </button>
+        </div>
+
+        {inquirySent ? (
+          <div className="inquiry-submit-feedback" role="status">
+            <p>문의가 접수됐습니다. 답변이 오면 문의센터와 마이페이지에서 확인할 수 있어요.</p>
+            <button type="button" onClick={onViewInquiryCenter}>문의센터 보기</button>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -2309,13 +2369,12 @@ function SavedListingsSection({
 
 function InquiryHubSection({
   inquiries,
-  onBrowseListings
+  onNewInquiry
 }: {
   inquiries: InquiryItem[];
-  onBrowseListings: () => void;
+  onNewInquiry: () => void;
 }) {
   const pendingCount = inquiries.filter((item) => item.status === "답변 대기").length;
-  const [inquiryNotice, setInquiryNotice] = useState("최근 문의 상태가 여기에 표시됩니다.");
 
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
@@ -2324,13 +2383,8 @@ function InquiryHubSection({
           <h2 id="inquiry-title">문의센터</h2>
           <p>진행중 문의 {inquiries.length}건 · 답변 대기 {pendingCount}건</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setInquiryNotice("새 문의는 매물 상세에서 바로 보낼 수 있습니다.");
-            onBrowseListings();
-          }}
-        >
+        {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
+        <button type="button" onClick={onNewInquiry}>
           새 문의
         </button>
       </div>
@@ -2359,7 +2413,6 @@ function InquiryHubSection({
         ))}
       </div>
 
-      <p className="inquiry-notice" role="status">{inquiryNotice}</p>
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
         <div className="inquiry-channel-head">
@@ -3377,6 +3430,8 @@ export default function Home() {
   const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
   const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
   const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
+  // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
+  const [inquiryComposeListingNo, setInquiryComposeListingNo] = useState<string | null>(null);
   const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
   const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -3387,6 +3442,9 @@ export default function Home() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isRouteReady, setIsRouteReady] = useState(false);
   const [isDevRolePreview, setIsDevRolePreview] = useState(false);
+  // 집 내놓기 시작 모드(/?flow=listing) — 관리 콘솔 보호와 분리된 비보호 등록 진입.
+  // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
+  const [isListingStartMode, setIsListingStartMode] = useState(false);
   const isAuthHistoryPushedRef = useRef(false);
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
@@ -3467,6 +3525,10 @@ export default function Home() {
     .map((listingNo) => listings.find((listing) => listing.listingNo === listingNo))
     .filter((listing): listing is Listing => Boolean(listing));
 
+  const inquiryComposeListing = inquiryComposeListingNo
+    ? listings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
+    : null;
+
   const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
 
   // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
@@ -3486,19 +3548,32 @@ export default function Home() {
     resetWindowScrollSoon();
   };
 
-  const submitInquiry = (payload: { listingTitle: string; broker: string; message: string; visitTime: string }) => {
+  const submitInquiry = (payload: InquiryPayload) => {
     const id = Date.now();
 
-    setInquiries((current) => [{ id, ...payload, status: "답변 대기" as InquiryStatus, time: "방금" }, ...current]);
+    // 새 문의는 문의센터 목록 맨 앞에 즉시 반영된다 (QA 7 회귀 방지 — lib/inquiry-flow 테스트로 고정).
+    setInquiries((current) => withNewInquiry(current, payload, id));
     window.setTimeout(() => {
       setInquiries((current) =>
-        current.map((item) =>
-          item.id === id
-            ? { ...item, status: "답변 완료" as InquiryStatus, reply: `네, 거래 가능합니다. ${payload.visitTime} 방문 괜찮습니다.` }
-            : item
-        )
+        withInquiryReply(current, id, `네, 거래 가능합니다. ${payload.visitTime} 방문 괜찮습니다.`)
       );
     }, 6000);
+  };
+
+  // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
+  // 홈 카드 "문자문의"와 문의 탭 "새 문의"가 모두 이 흐름을 쓴다 (QA 3·4·7).
+  const openInquiryComposer = (listing?: Listing) => {
+    if (listing) {
+      setInquiryComposeListingNo(listing.listingNo);
+      return;
+    }
+
+    const targetNo = pickInquiryTargetNo(
+      viewedListingNos,
+      visibleHomeListings.map((item) => item.listingNo)
+    ) ?? listings[0]?.listingNo;
+
+    if (targetNo) setInquiryComposeListingNo(targetNo);
   };
 
   const activateTab = (tab: AppTab) => {
@@ -3538,6 +3613,13 @@ export default function Home() {
   };
 
   const completeServiceAuth = (profile: ViewerProfile) => {
+    // 로그인 화면을 열 때 push한 히스토리 엔트리를 여기서도 소비한다 —
+    // 성공 후 뒤로가기가 로그인 화면으로 되돌아가지 않게 (closeAuthScreen과 동일 원칙, QA 5).
+    if (isAuthHistoryPushedRef.current) {
+      isAuthHistoryPushedRef.current = false;
+      window.history.back();
+    }
+
     const nextRole = appRoleForViewer(profile);
     setViewer(profile);
     setAuthMode(null);
@@ -3599,10 +3681,21 @@ export default function Home() {
     const auth = normalizeAuthMode(params.get("auth"));
     const role = normalizeAppRole(params.get("role"));
     const tab = normalizeAppTab(params.get("tab"));
+    const flow = params.get("flow");
 
     if (auth) {
       setAuthMode(auth);
       setSelectedListing(null);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (flow === "listing") {
+      // 집 내놓기 시작 — capability 가드를 타지 않는 등록 진입점.
+      // /login의 "관리 중인 집 연결 필요" CTA가 여기로 온다 (로그인 루프 방지, QA 2).
+      setActiveRole("landlord");
+      setActiveTab("mypage");
+      setIsListingStartMode(true);
+      setSelectedListing(null);
+      setAuthMode(null);
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
     } else if (role) {
@@ -3659,9 +3752,13 @@ export default function Home() {
     };
   }, []);
 
+  // 집 내놓기 시작 모드는 보호 대상에서 제외 — 등록 시작은 capability가 아니라
+  // 매물 등록 자체가 LANDLORD 관계를 만드는 진입점이다. 관리 콘솔(/manager/*)은 계속 서버 가드.
   const protectedConfig =
     activeTab === "mypage" && (activeRole === "tenant" || activeRole === "landlord")
-      ? protectedRoleConfig[activeRole]
+      ? activeRole === "landlord" && isListingStartMode
+        ? null
+        : protectedRoleConfig[activeRole]
       : null;
   const isProtectedRolePage = Boolean(protectedConfig);
   const canAccessProtectedRolePage =
@@ -3742,6 +3839,10 @@ export default function Home() {
             onBack={() => setSelectedListing(null)}
             onToggleSaved={toggleSavedListing}
             onSubmitInquiry={submitInquiry}
+            onViewInquiryCenter={() => {
+              setSelectedListing(null);
+              activateTab("inquiry");
+            }}
           />
         </div>
       </main>
@@ -3914,7 +4015,7 @@ export default function Home() {
                     </button>
                     <div className="listing-card-footer" aria-label={`${listing.title} 빠른 액션`}>
                       <button type="button" onClick={() => openListing(listing)}>상세 보기</button>
-                      <button type="button" onClick={() => activateTab("inquiry")}>문자문의</button>
+                      <button type="button" onClick={() => openInquiryComposer(listing)}>문자문의</button>
                       <button type="button" onClick={() => openListing(listing)}>3D 보기</button>
                     </div>
                     <button
@@ -4349,7 +4450,7 @@ export default function Home() {
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection inquiries={inquiries} onBrowseListings={() => activateTab("home")} />
+          <InquiryHubSection inquiries={inquiries} onNewInquiry={() => openInquiryComposer()} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
           <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
@@ -4427,6 +4528,17 @@ export default function Home() {
           isOpen={isNotificationSheetOpen}
           onClose={() => setIsNotificationSheetOpen(false)}
         />
+        {inquiryComposeListing ? (
+          <InquirySheet
+            listing={inquiryComposeListing}
+            onClose={() => setInquiryComposeListingNo(null)}
+            onSubmitInquiry={submitInquiry}
+            onViewInquiryCenter={() => {
+              setInquiryComposeListingNo(null);
+              activateTab("inquiry");
+            }}
+          />
+        ) : null}
       </div>
     </main>
   );

@@ -10,6 +10,7 @@ import type {
 import { VENDOR_PERF_MIN_N } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import { MANAGER_VENDOR_MGMT_ROUTES } from "@/lib/vendor-mgmt-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 export const tradeLabel: Record<VendorTrade, string> = {
   plumbing: "배관·누수",
@@ -75,7 +76,7 @@ export function ScreenHeader({
       }}
     >
       <div>
-        <Badge emphasis>{eyebrow}</Badge>
+        {stripScreenId(eyebrow) ? <Badge emphasis>{stripScreenId(eyebrow)}</Badge> : null}
         <h1 style={{ margin: "var(--space-sm) 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
           {title}
         </h1>
