@@ -24,6 +24,7 @@ const floorPlanModel = {
   ...(await import("./src/app/floor-plan-3d/room-model/wall-model.mjs")),
   ...(await import("./src/app/floor-plan-3d/plan-extraction/wall-detection.mjs"))
 };
+const dimensionLayout = await import("./src/app/floor-plan-3d/plan-extraction/dimension-layout.mjs");
 const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const webPackageSource = readFileSync(new URL("./package.json", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
@@ -1165,8 +1166,7 @@ test("removes legacy floor plan OpenAI analysis controls", () => {
     "applyAiCandidateReviewResult",
     "manualAiScaleRealLength",
     "AI 후보 검토",
-    "AI 정밀 수치 읽기",
-    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)"
+    "AI 정밀 수치 읽기"
   ]) {
     assert.doesNotMatch(floorPlanEditorSource, new RegExp(label));
   }
@@ -1180,6 +1180,171 @@ test("removes legacy floor plan OpenAI analysis controls", () => {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
 });
+test("offers printed dimension reading with detected dimension chips", () => {
+  for (const label of [
+    "runPrintedDimensionReading",
+    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
+    "analysisMode: \"dimension\"",
+    "openai/floor-plan-vision",
+    "parseDimensionTextsToMm",
+    "printedDimensionChips",
+    "drawPrintedDimensionOverlays",
+    "normalizeAiTextBoundingBox",
+    "normalizeAiTargetLine",
+    "drawDimensionTargetLine",
+    "boundingBox",
+    "targetLine",
+    "0~1000",
+    "floor-plan-visible-dimension-strip",
+    "치수 읽기",
+    "읽힌 치수"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+});
+
+test("classifies dimensions and uses only structural dimensions for scale and grid", () => {
+  for (const label of [
+    "aiDimensions",
+    "isStructuralDimensionKind",
+    "structuralDimensionChips",
+    "openingDimensionChips",
+    "furnitureDimensionChips",
+    "guardrailKind",
+    "outer_total",
+    "room_span",
+    "wall_span"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  // 축척·격자 계산은 구조 치수만 소비해야 한다 (전체 치수 배열이 아니라).
+  assert.match(floorPlanContainerSource, /estimateWallUnionScaleCandidate\(structuralDimensionChips/);
+  assert.match(floorPlanContainerSource, /const marginChips = structuralDimensionChips\.filter/);
+  // × 가구 표기와 ㎡ 면적은 하드 가드레일로 걸러진다.
+  assert.match(floorPlanContainerSource, /return "area"/);
+  assert.match(floorPlanContainerSource, /return kind === "fixture" \? "fixture" : "furniture"/);
+  // 중첩 치수줄은 줄 클러스터링 후 각 줄 안에서만 체인을 푼다.
+  assert.match(floorPlanContainerSource, /solveDimensionRowChains/);
+  assert.match(floorPlanContainerSource, /perpTolerance/);
+});
+
+test("consumes structural dimensions to correct Roboflow wall positions", () => {
+  // 구조 치수가 벽 위치 보정에 실제로 소비되는지(단순 표시 아님) 확인한다.
+  for (const label of [
+    "structuralWallBoundaries",
+    "structuralBoundaryOffsetsMm",
+    "snapWallsToStructuralBoundaries",
+    "applyStructuralDimensionWallCorrection",
+    "구조 치수로 벽 보정"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  // 경계는 구조 치수만으로 만든다(가구/opening/면적 제외).
+  assert.match(floorPlanContainerSource, /structuralDimensionChips\.filter\(\(chip\) => chip\.axis === axis/);
+  // 보정 결과가 실제 벽 상태에 반영된다.
+  assert.match(floorPlanContainerSource, /setWalls\(corrected\)/);
+});
+
+test("dimension-layout separates nested dimension rows and lays out each chain independently", () => {
+  const { clusterDimensionRows, solveDimensionRowChains } = dimensionLayout;
+  // 위쪽 여백에 전체줄 [10720]과 구간줄 [3040,1440,3120,3120]이 중첩된 케이스.
+  const chips = [
+    { id: "total", realLengthMm: 10720, perpCoord: 40, alongCoord: 500 },
+    { id: "s1", realLengthMm: 3040, perpCoord: 75, alongCoord: 140 },
+    { id: "s2", realLengthMm: 1440, perpCoord: 76, alongCoord: 340 },
+    { id: "s3", realLengthMm: 3120, perpCoord: 74, alongCoord: 560 },
+    { id: "s4", realLengthMm: 3120, perpCoord: 75, alongCoord: 820 }
+  ];
+  const rows = clusterDimensionRows(chips, 15);
+  assert.equal(rows.length, 2, "전체줄과 구간줄이 2개 줄로 분리되어야 한다");
+
+  const layout = solveDimensionRowChains(chips, 10720);
+  assert.deepEqual(layout.get("total"), { endMm: 10720, startMm: 0 });
+  assert.equal(layout.get("s1").startMm, 0);
+  assert.ok(Math.abs(layout.get("s1").endMm - 3040) < 5);
+  assert.ok(Math.abs(layout.get("s2").startMm - layout.get("s1").endMm) < 1, "구간이 끊김 없이 이어져야 한다");
+  assert.ok(Math.abs(layout.get("s4").endMm - 10720) < 1, "마지막 구간이 전체 폭에 정확히 맞물려야 한다");
+
+  // 합이 전체와 안 맞는 불완전한 줄은 배치하지 않는다(개별 앵커 폴백 대상).
+  const incomplete = [
+    { id: "x1", realLengthMm: 3040, perpCoord: 70, alongCoord: 140 },
+    { id: "x2", realLengthMm: 1440, perpCoord: 70, alongCoord: 340 }
+  ];
+  assert.equal(solveDimensionRowChains(incomplete, 10720).size, 0);
+});
+
+test("structural dimensions correct Roboflow wall positions to match printed dimensions", () => {
+  const { structuralBoundaryOffsetsMm, snapWallsToStructuralBoundaries } = dimensionLayout;
+  // high.png 가로 체인 [10720]+[3040,1440,3120,3120] → 경계 mm 0/3040/4480/7600/10720
+  const chips = [
+    { id: "total", realLengthMm: 10720, perpCoord: 29, alongCoord: 500 },
+    { id: "s1", realLengthMm: 3040, perpCoord: 63, alongCoord: 140 },
+    { id: "s2", realLengthMm: 1440, perpCoord: 63, alongCoord: 340 },
+    { id: "s3", realLengthMm: 3120, perpCoord: 63, alongCoord: 560 },
+    { id: "s4", realLengthMm: 3120, perpCoord: 63, alongCoord: 820 }
+  ];
+  const boundariesMm = structuralBoundaryOffsetsMm(chips, 10720);
+  assert.deepEqual(boundariesMm, [0, 3040, 4480, 7600, 10720]);
+
+  // mm 경계 → 캔버스 x (planMin=-500, ratio=13.6mm/px)
+  const planMin = -500;
+  const ratio = 13.6;
+  const verticalLineX = boundariesMm.map((mm) => planMin + mm / ratio);
+  // Roboflow 벽이 경계에서 어긋나 있는 상태
+  const walls = verticalLineX.map((x, i) => ({
+    id: `w${i}`,
+    start: { x: x + (i % 2 === 0 ? 12 : -14), y: -300 },
+    end: { x: x + (i % 2 === 0 ? 12 : -14), y: 300 }
+  }));
+  // 경계에서 먼 벽은 스냅되면 안 된다
+  walls.push({ id: "far", start: { x: verticalLineX[2] + 90, y: -300 }, end: { x: verticalLineX[2] + 90, y: 300 } });
+
+  const { walls: corrected, movedCount } = snapWallsToStructuralBoundaries(walls, { verticalLineX }, 30);
+  assert.equal(movedCount, 5, "경계 근처 벽 5개가 보정되어야 한다");
+  // 완료 기준: 보정 후 벽 간 거리 * ratio = 도면 구간 치수
+  const centers = corrected.slice(0, 5).map((w) => (w.start.x + w.end.x) / 2);
+  const segMm = [];
+  for (let i = 1; i < 5; i++) segMm.push(Math.round((centers[i] - centers[i - 1]) * ratio));
+  assert.deepEqual(segMm, [3040, 1440, 3120, 3120], "보정 후 벽 간 거리가 도면 치수와 일치해야 한다");
+  // far 벽은 그대로
+  assert.ok(Math.abs((corrected[5].start.x + corrected[5].end.x) / 2 - (verticalLineX[2] + 90)) < 0.01);
+});
+
+test("does not collapse complex floor-plan dimensions by value or an 8-item display cap", () => {
+  assert.match(floorPlanContainerSource, /MAX_VISIBLE_PRINTED_DIMENSIONS = 24/);
+  assert.match(floorPlanContainerSource, /printedDimensionKey/);
+  assert.doesNotMatch(floorPlanContainerSource, /const seen = new Set<number>\(\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /seen\.has\(realLengthMm\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /slice\(0, 8\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /new Map<number, DetectedDimensionLineSpan>/);
+});
+
+
+
+
+test("uses native label-based floor plan file selection", () => {
+  for (const label of [
+    "id=\"floor-plan-source-input\"",
+    "htmlFor=\"floor-plan-source-input\"",
+    "floor-plan-upload-label",
+    "type=\"file\"",
+    "accept=\"image/\\*\""
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  assert.doesNotMatch(floorPlanContainerSource, /fileInputRef\.current\?\.click\(\)/);
+});
+
+test("keeps unplaced printed dimensions out of the canvas overlay", () => {
+  assert.match(floorPlanContainerSource, /hasReliableDimensionPlacement/);
+  assert.match(floorPlanContainerSource, /locationStatus/);
+  assert.match(floorPlanContainerSource, /위치 미확인/);
+  assert.doesNotMatch(floorPlanContainerSource, /fallbackX/);
+  assert.doesNotMatch(floorPlanContainerSource, /fallbackY/);
+});
+
+
+
 test("stores extraction metadata, openings, and fixtures through the floor plan API", () => {
   for (const label of [
     "extractionMeta",
