@@ -40,7 +40,17 @@ async function sendTenantMessage(formData: FormData) {
   }
 
   if (threadId && body) {
-    await addTenantThreadMessage(threadId, { body });
+    try {
+      await addTenantThreadMessage(threadId, { body });
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        redirect("/tenant/login");
+      }
+      if (error instanceof ApiError && error.status === 404) {
+        redirect(MESSAGING_ROUTES["T-MSG-00"]);
+      }
+      throw error;
+    }
   }
 
   redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(threadId)}`);

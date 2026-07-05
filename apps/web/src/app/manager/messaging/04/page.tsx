@@ -32,7 +32,17 @@ async function sendManagerMessage(formData: FormData) {
   }
 
   if (threadId && body) {
-    await addManagerThreadMessage(threadId, { body });
+    try {
+      await addManagerThreadMessage(threadId, { body });
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        redirect("/manager/login");
+      }
+      if (error instanceof ApiError && error.status === 404) {
+        redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+      }
+      throw error;
+    }
   }
 
   redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);

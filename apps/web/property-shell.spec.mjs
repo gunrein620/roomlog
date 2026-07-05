@@ -309,6 +309,17 @@ test("redirects messaging detail auth failures instead of rendering a Next error
   }
 });
 
+test("redirects messaging send action auth and missing-thread failures", () => {
+  assert.match(
+    tenantMessagingThreadSource,
+    /async function sendTenantMessage[\s\S]*try \{[\s\S]*addTenantThreadMessage[\s\S]*error instanceof ApiError && \(error\.status === 401 \|\| error\.status === 403\)[\s\S]*redirect\("\/tenant\/login"\)[\s\S]*error instanceof ApiError && error\.status === 404[\s\S]*redirect\(MESSAGING_ROUTES\["T-MSG-00"\]\)/
+  );
+  assert.match(
+    managerMessagingThreadSource,
+    /async function sendManagerMessage[\s\S]*try \{[\s\S]*addManagerThreadMessage[\s\S]*error instanceof ApiError && \(error\.status === 401 \|\| error\.status === 403\)[\s\S]*redirect\("\/manager\/login"\)[\s\S]*error instanceof ApiError && error\.status === 404[\s\S]*redirect\(MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\)/
+  );
+});
+
 test("auto-refreshes open messaging thread details without infrastructure changes", () => {
   assert.equal(existsSync(messageAutoRefreshPath), true);
   assert.match(messageAutoRefreshSource, /"use client"/);
