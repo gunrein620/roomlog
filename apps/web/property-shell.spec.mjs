@@ -334,6 +334,14 @@ test("manager thread extra requests post through messaging mutations", () => {
   assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>설명 요청<\/StaticButton>/);
 });
 
+test("manager thread draft reply posts through messaging mutations", () => {
+  assert.match(managerMessagingThreadSource, /async function sendManagerDraftReply/);
+  assert.match(managerMessagingThreadSource, /MANAGER_DRAFT_REPLY_BODY/);
+  assert.match(managerMessagingThreadSource, /action=\{sendManagerDraftReply\}/);
+  assert.match(managerMessagingThreadSource, /addManagerThreadMessage\(threadId, \{ body: MANAGER_DRAFT_REPLY_BODY \}\)/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>초안 적용<\/StaticButton>/);
+});
+
 test("manager announcement resend keeps the source draft id", () => {
   assert.match(managerMessagingResultSource, /result\.draftId/);
   assert.match(managerMessagingResultSource, /encodeURIComponent\(result\.draftId\)/);

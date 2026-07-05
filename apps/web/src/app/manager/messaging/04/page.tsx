@@ -21,6 +21,9 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
 
+const MANAGER_DRAFT_REPLY_BODY =
+  "문의 내용을 확인했습니다. 처리 가능 시간과 필요한 추가 정보를 안내드리겠습니다.";
+
 async function sendManagerMessage(formData: FormData) {
   "use server";
 
@@ -43,6 +46,30 @@ async function sendManagerMessage(formData: FormData) {
       }
       throw error;
     }
+  }
+
+  redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function sendManagerDraftReply(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  try {
+    await addManagerThreadMessage(threadId, { body: MANAGER_DRAFT_REPLY_BODY });
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
   }
 
   redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
@@ -219,9 +246,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitleStyle}>AI 답장 초안</div>
             <div style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-              문의 내용을 확인했습니다. 처리 가능 시간과 필요한 추가 정보를 안내하는 해결지향 문구로 답장합니다.
+              {MANAGER_DRAFT_REPLY_BODY}
             </div>
-            <StaticButton>초안 적용</StaticButton>
+            <form action={sendManagerDraftReply}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Button type="submit" variant="secondary" fullWidth>
+                초안 적용
+              </Button>
+            </form>
           </Card>
 
           <NoticeCard title="음성 답장 확인 1스텝" emphasis>
