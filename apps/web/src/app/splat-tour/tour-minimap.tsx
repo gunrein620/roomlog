@@ -7,11 +7,14 @@ const labelPlacementFor = (y: number) => (y > 74 ? "top" : "bottom");
 export function TourMinimap({
   presets,
   activeId,
-  onSelect
+  onSelect,
+  livePosition
 }: {
   presets: TourPreset[];
   activeId: string;
   onSelect: (id: string) => void;
+  // 카메라 실시간 위치(정규화 0~100%). 정합된 splat 위 현재 시점을 도면에 점으로 표시(Matterport식).
+  livePosition?: { x: number; y: number } | null;
 }) {
   return (
     <div className="tour-minimap-card" aria-label="투어 미니맵">
@@ -133,6 +136,22 @@ export function TourMinimap({
             background: var(--blue);
             box-shadow: 0 0 0 5px var(--blue-soft);
           }
+
+          .tour-minimap-live {
+            position: absolute;
+            z-index: 2;
+            width: 10px;
+            height: 10px;
+            transform: translate(-50%, -50%);
+            border: 2px solid var(--paper);
+            border-radius: 999px;
+            background: var(--blue);
+            box-shadow: 0 0 0 3px var(--blue-soft);
+            pointer-events: none;
+            transition:
+              left 120ms linear,
+              top 120ms linear;
+          }
         `}
       </style>
       <div className="tour-minimap-title" aria-hidden>
@@ -212,6 +231,13 @@ export function TourMinimap({
             현관
           </text>
         </svg>
+        {livePosition ? (
+          <span
+            aria-hidden
+            className="tour-minimap-live"
+            style={{ left: `${livePosition.x}%`, top: `${livePosition.y}%` }}
+          />
+        ) : null}
         {presets.map((preset) => {
           const isActive = preset.id === activeId;
           const labelPlacement = labelPlacementFor(preset.minimap.y);

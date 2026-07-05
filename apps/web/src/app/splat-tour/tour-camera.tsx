@@ -25,12 +25,15 @@ export function TourCamera({
   presets,
   activeId,
   onArrive,
-  walkMode = false
+  walkMode = false,
+  onCameraMove
 }: {
   presets: TourPreset[];
   activeId: string;
   onArrive?: (id: string) => void;
   walkMode?: boolean;
+  // 미니맵 위치점용 — 카메라가 바닥평면에서 움직일 때(임계 초과) 월드 좌표를 보고한다.
+  onCameraMove?: (position: [number, number, number]) => void;
 }) {
   const controlsRef = useRef<ComponentRef<typeof CameraControls>>(null);
   const transitionTokenRef = useRef(0);
@@ -45,6 +48,8 @@ export function TourCamera({
   const frameRightRef = useRef(new Vector3());
   const frameMoveRef = useRef(new Vector3());
   const walkClipBox = useMemo(() => createRoomClipBox(), []);
+  const reportPositionRef = useRef(new Vector3());
+  const lastReportedRef = useRef<[number, number, number] | null>(null);
 
   useEffect(() => {
     walkModeRef.current = walkMode;
@@ -224,6 +229,22 @@ export function TourCamera({
     walkAnchorRef.current = nextAnchor;
     void applyLookAt(controls, nextLookAt, false);
     controls.update(0);
+  });
+
+  // 바닥평면 이동을 임계(2cm) 초과 시에만 보고 — 매 프레임 setState 리렌더 방지.
+  useFrame(() => {
+    const controls = controlsRef.current;
+    if (!controls || !onCameraMove) return;
+
+    const position = controls.getPosition(reportPositionRef.current, false);
+    const last = lastReportedRef.current;
+    if (last && Math.abs(last[0] - position.x) < 0.02 && Math.abs(last[2] - position.z) < 0.02) {
+      return;
+    }
+
+    const next: [number, number, number] = [position.x, position.y, position.z];
+    lastReportedRef.current = next;
+    onCameraMove(next);
   });
 
   return <CameraControls makeDefault ref={controlsRef} />;

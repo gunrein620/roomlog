@@ -11,8 +11,22 @@ import { SplatDropzone } from "./splat-dropzone";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
+import { SPLAT_CLIP_ROOM } from "./splat-clip";
 
 const SPLAT_SRC = "/samples/room.spz";
+
+function clamp01to100(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+// 월드(splat 배치) 바닥좌표 → 미니맵 정규화(%) 좌표. 데모는 방을 원점 중심으로 고정 배치하므로
+// 직접 선형 매핑한다. 실 FloorPlan+정합 모드에선 projectSplatToPlan으로 도면 좌표를 거쳐 매핑(후속).
+function worldToMinimapPercent(x: number, z: number): { x: number; y: number } {
+  return {
+    x: clamp01to100(((x + SPLAT_CLIP_ROOM.width / 2) / SPLAT_CLIP_ROOM.width) * 100),
+    y: clamp01to100(((z + SPLAT_CLIP_ROOM.depth / 2) / SPLAT_CLIP_ROOM.depth) * 100)
+  };
+}
 
 export default function TourViewer() {
   const objectUrlRef = useRef<string | null>(null);
@@ -24,6 +38,11 @@ export default function TourViewer() {
   const [showHint, setShowHint] = useState(true);
   const [isDropzoneOpen, setIsDropzoneOpen] = useState(false);
   const [isWalkMode, setIsWalkMode] = useState(false);
+  const [minimapPosition, setMinimapPosition] = useState<{ x: number; y: number } | null>(null);
+
+  const handleCameraMove = useCallback((position: [number, number, number]) => {
+    setMinimapPosition(worldToMinimapPercent(position[0], position[2]));
+  }, []);
 
   const initialCamera: [number, number, number] = DEMO_PRESETS[0]?.camera.position ?? [0, 1.5, 3];
 
@@ -410,7 +429,13 @@ export default function TourViewer() {
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
         <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} />
-        <TourCamera activeId={activeId} onArrive={setActiveId} presets={DEMO_PRESETS} walkMode={isWalkMode} />
+        <TourCamera
+          activeId={activeId}
+          onArrive={setActiveId}
+          onCameraMove={handleCameraMove}
+          presets={DEMO_PRESETS}
+          walkMode={isWalkMode}
+        />
       </Canvas>
 
       {isLoadingVisible ? (
@@ -430,7 +455,12 @@ export default function TourViewer() {
       </p>
 
       <div className="tour-minimap-dock">
-        <TourMinimap activeId={activeId} onSelect={setActiveId} presets={DEMO_PRESETS} />
+        <TourMinimap
+          activeId={activeId}
+          livePosition={minimapPosition}
+          onSelect={setActiveId}
+          presets={DEMO_PRESETS}
+        />
       </div>
 
       <div className="tour-dropzone-dock">
