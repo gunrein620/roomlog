@@ -10,6 +10,7 @@ import {
   createRoomClipBox,
   isInsideClipBox
 } from "./splat-clip";
+import type { SplatTransform } from "./tour-types";
 
 // 약 3m(가로) × 4m(세로), 층고 2.4m 원룸. 바닥 중앙이 원점.
 const ROOM = { ...SPLAT_CLIP_ROOM, thickness: 0.06 };
@@ -95,10 +96,21 @@ interface SplatClipInfo {
   } | null;
 }
 
-export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => void }) {
+export function SplatScene({
+  src,
+  transform,
+  onLoaded
+}: {
+  src: string;
+  // 영속화된 정합 결과. 있으면 URL/프로파일 튜닝 대신 이 절대 배치를 씬에 주입한다.
+  transform?: SplatTransform | null;
+  onLoaded?: () => void;
+}) {
   const gl = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
   const onLoadedRef = useRef(onLoaded);
+  // 객체 참조 불안정으로 인한 리로드를 막기 위해 값 기반 키로 effect 의존성을 건다.
+  const transformKey = transform ? JSON.stringify(transform) : null;
   const [sparkRenderer, setSparkRenderer] = useState<SparkRendererObject | null>(null);
   const [splatMesh, setSplatMesh] = useState<SplatMeshObject | null>(null);
   const [hasFailed, setHasFailed] = useState(false);
@@ -133,7 +145,9 @@ export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => vo
 
         if (isDisposed) return;
 
-        const tuning = readSplatTuningFromLocation(profile);
+        const tuning = transform
+          ? tuningFromTransform(transform, profile)
+          : readSplatTuningFromLocation(profile);
         const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
         const clipInfo = applySplatClip(nextSplatMesh, tuning);
         console.info(
@@ -192,7 +206,7 @@ export function SplatScene({ src, onLoaded }: { src: string; onLoaded?: () => vo
       nextSplatMesh?.dispose();
       nextSparkRenderer?.dispose();
     };
-  }, [gl, invalidate, src]);
+  }, [gl, invalidate, src, transformKey]);
 
   if (hasFailed) {
     return <FallbackRoom />;
@@ -453,8 +467,8 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   return profile;
 }
 
-function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatTuning {
-  const defaultTuning: SplatTuning = {
+function createDefaultSplatTuning(): SplatTuning {
+  return {
     scaleMultiplier: DEFAULT_SPLAT_SCALE_MULTIPLIER,
     rotationXDegrees: SPZ_Y_DOWN_TO_Y_UP_ROTATION_X_DEGREES,
     rotationYDegrees: 0,
@@ -487,7 +501,48 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
       clipMargin: false
     }
   };
-  const tuning = applyProfileTuning(defaultTuning, profile);
+}
+
+// 영속화된 정합 결과(SplatTransform)를 씬 튜닝으로 변환한다. 정합값은 도면 좌표계의
+// 절대 배치이므로 fitMode를 "native"로 고정해 bbox auto-fit을 건너뛴다. 클립 설정은
+// 프로파일/기본값을 유지 — 정합은 배치만 결정하고 클립(방 밖 floater 제거)은 별개 관심사.
+function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProfile | null): SplatTuning {
+  const base = applyProfileTuning(createDefaultSplatTuning(), profile);
+  const injected: SplatTuningSource = "profile"; // 영속 정합값을 profile 소스로 표기
+  return {
+    ...base,
+    scaleMultiplier: transform.scaleMultiplier,
+    rotationXDegrees: transform.rotationXDegrees,
+    rotationYDegrees: transform.rotationYDegrees,
+    offsetX: transform.offsetX,
+    offsetY: transform.offsetY,
+    offsetZ: transform.offsetZ,
+    fitMode: "native",
+    sources: {
+      ...base.sources,
+      scaleMultiplier: injected,
+      rotationXDegrees: injected,
+      rotationYDegrees: injected,
+      offsetX: injected,
+      offsetY: injected,
+      offsetZ: injected,
+      fitMode: injected
+    },
+    overrides: {
+      ...base.overrides,
+      scaleMultiplier: true,
+      rotationXDegrees: true,
+      rotationYDegrees: true,
+      offsetX: true,
+      offsetY: true,
+      offsetZ: true,
+      fitMode: true
+    }
+  };
+}
+
+function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatTuning {
+  const tuning = applyProfileTuning(createDefaultSplatTuning(), profile);
 
   if (typeof window === "undefined") {
     return tuning;
