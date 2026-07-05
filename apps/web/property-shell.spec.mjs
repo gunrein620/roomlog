@@ -193,7 +193,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantRecordsSource, /SOURCE_ROUTE/);
   assert.match(tenantRecordsSource, /evidenceUrls/);
   assert.match(tenantRecordsSource, /targetItemId=\$\{record\.id\}/);
-  assert.match(tenantRecordsSource, /근거 상세/);
+  assert.match(tenantRecordsSource, /상세정보 보기/);
   assert.match(tenantRecordsSource, /searchParams/);
   assert.doesNotMatch(tenantRecordsSource, /href=\{MOVEOUT_ROUTES\["T-OUT-04"\]\}/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
@@ -201,7 +201,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantSettlementSource, /name="moveoutId"/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry\(moveoutId/);
   assert.match(tenantSettlementSource, /attachmentUrlsFrom/);
-  assert.match(tenantSettlementSource, /targetItemId=\$\{deduction\.id\}/);
+  assert.match(tenantSettlementSource, /disputeHref\(moveout\.id, deduction\.id\)/);
   assert.match(tenantSettlementSource, /SOURCE_ROUTE/);
   assert.match(tenantSettlementSource, /계약 정보 확정 후 예상 정산 안내/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
