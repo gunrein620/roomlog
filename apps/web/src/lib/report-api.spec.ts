@@ -40,3 +40,10 @@ test("report delivery reads do not create or view external shares", () => {
   assert.match(deliverySource, /fetchDeliveryAuditLog/);
   assert.match(source, /export function createReportExternalShare/);
 });
+
+test("report chat posts the manager's actual question to the selected report", () => {
+  assert.match(source, /export function getReportChat\(reportId = DEMO_REPORT_ID, question\?: string\)/);
+  assert.match(source, /const selectedQuestion = question\?\.trim\(\) \|\| DEMO_FAQ\[0\]\?\.query/);
+  assert.match(source, /body: JSON\.stringify\(\{ question: selectedQuestion \}\)/);
+  assert.match(source, /text: selectedQuestion/);
+});

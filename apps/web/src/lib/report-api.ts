@@ -154,13 +154,13 @@ export function getReportDelivery(reportId = DEMO_REPORT_ID): Promise<ReportDeli
   }, DEMO_DELIVERY);
 }
 
-export function getReportChat(reportId = DEMO_REPORT_ID): Promise<ReportChatData> {
+export function getReportChat(reportId = DEMO_REPORT_ID, question?: string): Promise<ReportChatData> {
   return apiOrFallback(async () => {
     const report = await getCurrentReport(reportId);
-    const question = DEMO_FAQ[0]?.query ?? "이번 달 미납 세대 알려줘";
+    const selectedQuestion = question?.trim() || DEMO_FAQ[0]?.query || "이번 달 미납 세대 알려줘";
     const answer = await serverFetch<ChatAnswer>(reportPaths.chat(report.id), {
       method: "POST",
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question: selectedQuestion }),
     });
 
     return {
@@ -169,7 +169,7 @@ export function getReportChat(reportId = DEMO_REPORT_ID): Promise<ReportChatData
         {
           id: `${answer.id}-question`,
           role: "user",
-          text: question,
+          text: selectedQuestion,
         },
         {
           id: answer.id,

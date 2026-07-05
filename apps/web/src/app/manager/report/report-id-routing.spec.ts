@@ -6,6 +6,8 @@ import test from "node:test";
 const detailSource = readFileSync(join(__dirname, "02/page.tsx"), "utf8");
 const deliverySource = readFileSync(join(__dirname, "03/page.tsx"), "utf8");
 const chatSource = readFileSync(join(__dirname, "04/page.tsx"), "utf8");
+const quickLookupSource = readFileSync(join(__dirname, "05/page.tsx"), "utf8");
+const componentSource = readFileSync(join(__dirname, "_components.tsx"), "utf8");
 
 test("manager report detail page reads and propagates the selected report id", () => {
   assert.match(detailSource, /type SearchParams = Promise<\{ id\?: string \}>/);
@@ -24,7 +26,21 @@ test("manager report delivery page reads the selected report id before loading d
 });
 
 test("manager report chat page asks against the selected report snapshot", () => {
-  assert.match(chatSource, /type SearchParams = Promise<\{ id\?: string \}>/);
-  assert.match(chatSource, /const \{ id \} = await searchParams/);
-  assert.match(chatSource, /await getReportChat\(id\)/);
+  assert.match(chatSource, /type SearchParams = Promise<\{ id\?: string; question\?: string \}>/);
+  assert.match(chatSource, /const \{ id, question \} = await searchParams/);
+  assert.match(chatSource, /await getReportChat\(id, question\)/);
+});
+
+test("manager report chat page submits typed questions through a server action", () => {
+  assert.match(chatSource, /async function askReportQuestion\(formData: FormData\)/);
+  assert.match(chatSource, /const question = String\(formData\.get\("question"\)/);
+  assert.match(chatSource, /redirect\(reportHref\("M-RPT-04", reportId, question\)\)/);
+  assert.match(chatSource, /<form action=\{askReportQuestion\}/);
+  assert.match(chatSource, /name="question"/);
+});
+
+test("manager report quick lookup sends FAQ queries into the report chatbot", () => {
+  assert.match(componentSource, /export function FaqButtons\(\{ faq, targetReportId \}/);
+  assert.match(componentSource, /reportHref\("M-RPT-04", targetReportId, item\.query\)/);
+  assert.match(quickLookupSource, /targetReportId=\{DEMO_REPORT_ID\}/);
 });
