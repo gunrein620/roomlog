@@ -334,6 +334,12 @@ test("manager thread extra requests post through messaging mutations", () => {
   assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>설명 요청<\/StaticButton>/);
 });
 
+test("manager announcement resend keeps the source draft id", () => {
+  assert.match(managerMessagingResultSource, /result\.draftId/);
+  assert.match(managerMessagingResultSource, /encodeURIComponent\(result\.draftId\)/);
+  assert.doesNotMatch(managerMessagingResultSource, /id=draft_urgent_water/);
+});
+
 test("auto-refreshes open messaging thread details without infrastructure changes", () => {
   assert.equal(existsSync(messageAutoRefreshPath), true);
   assert.match(messageAutoRefreshSource, /"use client"/);

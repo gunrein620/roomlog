@@ -84,6 +84,7 @@ const deliveries: AnnouncementDelivery[] = [
 export const DEMO_MANAGER_RESULTS: AnnouncementResult[] = [
   {
     announcementId: "an_urgent_water",
+    draftId: "draft_urgent_water",
     category: "urgent",
     scope: "building",
     title: "[긴급] 오늘 14~16시 단수 안내",
@@ -95,6 +96,7 @@ export const DEMO_MANAGER_RESULTS: AnnouncementResult[] = [
   },
   {
     announcementId: "an_life_cleaning",
+    draftId: "draft_life_cleaning",
     category: "life",
     scope: "all",
     title: "공용 계단 청소 안내",
