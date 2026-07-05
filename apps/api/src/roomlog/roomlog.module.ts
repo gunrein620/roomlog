@@ -27,6 +27,8 @@ export async function createRoomlogServiceOptions(
       useFactory: async () => createRoomlogServiceOptions()
     },
     RoomlogService
-  ]
+  ],
+  // 거래(trade) 모듈이 같은 토큰 인증을 재사용한다.
+  exports: [RoomlogService]
 })
 export class RoomlogModule {}
