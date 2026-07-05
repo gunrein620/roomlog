@@ -207,7 +207,7 @@ export function NextActionList({ actions }: { actions: ReportNextAction[] }) {
           <div>
             <div style={{ fontWeight: 850 }}>{action.label}</div>
             <div style={mutedSmallStyle}>
-              메시징 초안으로 연결하고, 발송 전 원본 행을 대조합니다.
+              대상·기간을 넘긴 검토 화면으로 연결하고, 발송 전 원본 행을 대조합니다.
             </div>
           </div>
           <LinkButton href={actionHref(action)} variant="secondary">초안 열기</LinkButton>

@@ -18,7 +18,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ id?: string }>;
+type SearchParams = Promise<{ id?: string; source?: string; actionType?: "dunning" | "notice"; unitIds?: string; billIds?: string; periodLabel?: string; note?: string; title?: string }>;
+
+type ReportFollowUpPrefill = Awaited<SearchParams>;
 
 async function createDraftAction(formData: FormData) {
   "use server";
@@ -50,8 +52,9 @@ async function createDraftAction(formData: FormData) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id } = await searchParams;
+  const { id, source, actionType, unitIds, billIds, periodLabel, note, title } = await searchParams;
   const draft = await getAnnouncementDraft(id ?? DEMO_MANAGER_DRAFT_ID);
+  const visibleDraft = applyReportFollowUpPrefill(draft, { source, actionType, unitIds, billIds, periodLabel, note, title });
 
   return (
     <>
@@ -71,13 +74,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", alignItems: "center" }}>
               {(["urgent", "life", "event"] as const).map((category) => (
                 <label key={category} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)", cursor: "pointer" }}>
-                  <input type="radio" name="category" value={category} defaultChecked={draft.category === category} />
-                  <Badge emphasis={draft.category === category}>{CATEGORY_LABEL[category]}</Badge>
+                  <input type="radio" name="category" value={category} defaultChecked={visibleDraft.category === category} />
+                  <Badge emphasis={visibleDraft.category === category}>{CATEGORY_LABEL[category]}</Badge>
                 </label>
               ))}
             </div>
             <label style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--fs-caption)" }}>
-              <input type="checkbox" name="confirmRequired" defaultChecked={draft.confirmRequired} />
+              <input type="checkbox" name="confirmRequired" defaultChecked={visibleDraft.confirmRequired} />
               확인 게이트 필요
             </label>
           </Card>
@@ -87,12 +90,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", alignItems: "center" }}>
               {(["all", "building", "unit"] as const).map((scope) => (
                 <label key={scope} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)", cursor: "pointer" }}>
-                  <input type="radio" name="scope" value={scope} defaultChecked={draft.scope === scope} />
-                  <Badge emphasis={draft.scope === scope}>{SCOPE_LABEL[scope]}</Badge>
+                  <input type="radio" name="scope" value={scope} defaultChecked={visibleDraft.scope === scope} />
+                  <Badge emphasis={visibleDraft.scope === scope}>{SCOPE_LABEL[scope]}</Badge>
                 </label>
               ))}
             </div>
-            <Input name="targetLabel" aria-label="공지 타깃" defaultValue={draft.targetLabel} />
+            <Input name="targetLabel" aria-label="공지 타깃" defaultValue={visibleDraft.targetLabel} />
             <NoticeCard title="D20 타깃 가드">
               미납 세대 옵션은 없습니다. 연체·독촉은 M-BILL-05 단일 채널에서만 처리합니다.
             </NoticeCard>
@@ -100,11 +103,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
             <div style={sectionTitleStyle}>주제 → AI 초안</div>
-            <Input name="title" aria-label="공지 주제" defaultValue={draft.title} required />
+            <Input name="title" aria-label="공지 주제" defaultValue={visibleDraft.title} required />
             <textarea
               name="body"
               aria-label="공지 본문"
-              defaultValue={draft.body}
+              defaultValue={visibleDraft.body}
               required
               style={{
                 minHeight: 190,
@@ -128,11 +131,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <NoticeCard title="발송은 다음 화면에서만" emphasis>
             이 화면은 작성과 저장까지만 담당합니다. 자동 발송 없이 검토 게이트를 거칩니다.
           </NoticeCard>
-          {draft.category === "urgent" ? (
+          {visibleDraft.category === "urgent" ? (
             <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
               <div style={sectionTitleStyle}>긴급 다국어 검수 템플릿</div>
               <div style={gridStyle}>
-                {(draft.translations ?? []).map((translation) => (
+                {(visibleDraft.translations ?? []).map((translation) => (
                   <Card key={translation.lang} style={{ background: "var(--surface-container)" }}>
                     <Badge emphasis={translation.reviewed}>{translation.langLabel} 검수</Badge>
                     <div style={{ marginTop: "var(--space-sm)", fontWeight: 800 }}>{translation.title}</div>
@@ -156,4 +159,46 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       </form>
     </>
   );
+}
+
+function applyReportFollowUpPrefill(
+  draft: Awaited<ReturnType<typeof getAnnouncementDraft>>,
+  prefill: ReportFollowUpPrefill
+) {
+  if (prefill.source !== "report") {
+    return draft;
+  }
+
+  const units = splitQueryList(prefill.unitIds);
+  const bills = splitQueryList(prefill.billIds);
+
+  return {
+    ...draft,
+    category: "life" as const,
+    scope: units.length ? "unit" as const : "building" as const,
+    targetLabel: units.length ? units.map((unit) => `${unit}호`).join(", ") : draft.targetLabel,
+    title: prefill.title?.trim() || `${prefill.periodLabel?.trim() || "리포트"} 후속 조치`,
+    body: reportFollowUpBody(prefill, units, bills),
+    confirmRequired: true,
+  };
+}
+
+function reportFollowUpBody(prefill: ReportFollowUpPrefill, units: string[], bills: string[]) {
+  return [
+    `${prefill.periodLabel?.trim() || "리포트"} 기준 리포트 후속 조치입니다.`,
+    units.length ? `대상 호실: ${units.join(", ")}` : undefined,
+    bills.length ? `청구건: ${bills.join(", ")}` : undefined,
+    prefill.note?.trim(),
+    "발송 전 원본 행을 다시 대조하세요.",
+    prefill.actionType === "dunning" ? "납부/독촉 실행은 M-BILL 원본 행 대조 후 단일 채널에서 확정하세요." : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function splitQueryList(value?: string) {
+  return String(value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
