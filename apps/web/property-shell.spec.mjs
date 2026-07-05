@@ -320,6 +320,20 @@ test("redirects messaging send action auth and missing-thread failures", () => {
   );
 });
 
+test("manager thread extra requests post through messaging mutations", () => {
+  assert.match(managerMessagingThreadSource, /async function sendManagerRequestMessage/);
+  assert.match(managerMessagingThreadSource, /const requestType = String\(formData\.get\("requestType"\) \?\? ""\)/);
+  assert.match(managerMessagingThreadSource, /requestType === "photo"/);
+  assert.match(managerMessagingThreadSource, /kind: "photo_request"/);
+  assert.match(managerMessagingThreadSource, /requestType === "description"/);
+  assert.match(managerMessagingThreadSource, /kind: "text"/);
+  assert.match(managerMessagingThreadSource, /action=\{sendManagerRequestMessage\}/);
+  assert.match(managerMessagingThreadSource, /name="requestType" value="photo"/);
+  assert.match(managerMessagingThreadSource, /name="requestType" value="description"/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>사진 요청<\/StaticButton>/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>설명 요청<\/StaticButton>/);
+});
+
 test("auto-refreshes open messaging thread details without infrastructure changes", () => {
   assert.equal(existsSync(messageAutoRefreshPath), true);
   assert.match(messageAutoRefreshSource, /"use client"/);

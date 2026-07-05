@@ -48,6 +48,48 @@ async function sendManagerMessage(formData: FormData) {
   redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
 }
 
+async function sendManagerRequestMessage(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+  const requestType = String(formData.get("requestType") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  const message =
+    requestType === "photo"
+      ? {
+          kind: "photo_request" as const,
+          body: "사진을 추가로 보내주세요. 문제 위치와 주변이 함께 보이게 촬영해 주세요.",
+        }
+      : requestType === "description"
+        ? {
+            kind: "text" as const,
+            body: "상황을 더 자세히 설명해 주세요. 발생 시각과 반복 여부를 함께 알려주세요.",
+          }
+        : null;
+
+  if (!message) {
+    redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+  }
+
+  try {
+    await addManagerThreadMessage(threadId, message);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+}
+
 async function deleteManagerThreadAction(formData: FormData) {
   "use server";
 
@@ -152,8 +194,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             사진 또는 설명 요청은 임차인 T-MSG-01 상단에 고정되고, 하자 맥락이면 T-DEF-11에도 반영됩니다.
           </NoticeCard>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-            <StaticButton>사진 요청</StaticButton>
-            <StaticButton>설명 요청</StaticButton>
+            <form action={sendManagerRequestMessage}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <input type="hidden" name="requestType" value="photo" />
+              <Button type="submit" variant="secondary">사진 요청</Button>
+            </form>
+            <form action={sendManagerRequestMessage}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <input type="hidden" name="requestType" value="description" />
+              <Button type="submit" variant="secondary">설명 요청</Button>
+            </form>
           </div>
 
           {isPayment ? (
