@@ -15,6 +15,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { MANAGER_MOVEOUT_ROUTES, withManagerMoveoutId } from "@/lib/moveout-manager-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 export const DISCLAIMER = "참고자료이며 최종 정산은 관리자 확인 후 확정됩니다";
 
@@ -76,7 +77,7 @@ export function ScreenHeader({
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", marginBottom: "var(--space-lg)" }}>
       <div>
-        <Badge emphasis>{eyebrow}</Badge>
+        {stripScreenId(eyebrow) ? <Badge emphasis>{stripScreenId(eyebrow)}</Badge> : null}
         <h1 style={{ margin: "var(--space-sm) 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
           {title}
         </h1>

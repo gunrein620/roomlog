@@ -11,6 +11,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { MANAGER_COST_ROUTES } from "@/lib/cost-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 export const typeLabel: Record<CostType, string> = {
   repair: "수리비",
@@ -60,7 +61,7 @@ export function ScreenHeader({
       }}
     >
       <div>
-        <Badge emphasis>{eyebrow}</Badge>
+        {stripScreenId(eyebrow) ? <Badge emphasis>{stripScreenId(eyebrow)}</Badge> : null}
         <h1 style={{ margin: "var(--space-sm) 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
           {title}
         </h1>

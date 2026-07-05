@@ -48,15 +48,17 @@ export default async function Page() {
 
       <Card style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: "var(--space-md)", alignItems: "center" }}>
         <Input aria-label="티켓 검색" placeholder="호실, 증상, 티켓 ID 검색" />
-        <Badge emphasis>보류 N 진입</Badge>
+        <Badge emphasis>보류 {summary.onHold}건</Badge>
         <Badge>긴급순 · 최신순</Badge>
       </Card>
 
-      <Card style={{ padding: 0, overflow: "hidden" }}>
+      {/* 좁은 창에서는 행을 찌그러뜨리지 않고 가로 스크롤로 전환 */}
+      <Card style={{ padding: 0, overflowX: "auto" }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr 120px 180px 120px 120px",
+            minWidth: 920,
             gap: "var(--space-md)",
             padding: "var(--space-md) var(--space-lg)",
             borderBottom: "1px solid var(--border)",
@@ -80,6 +82,7 @@ export default async function Page() {
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr 120px 180px 120px 120px",
+                minWidth: 920,
                 gap: "var(--space-md)",
                 padding: "var(--space-md) var(--space-lg)",
                 borderBottom: "1px solid var(--border)",

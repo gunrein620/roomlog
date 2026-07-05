@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
 import { requireUser } from "@/lib/session";
@@ -11,14 +10,7 @@ export default async function VendorLayout({ children }: { children: ReactNode }
   await requireUser("VENDOR");
   return (
     <PhoneFrame
-      label={
-        <>
-          <Link href="/shell" style={{ color: "var(--primary)", textDecoration: "none" }}>
-            ← 셸 인덱스
-          </Link>
-          <span>V-JOB 수리업체 · 390×844</span>
-        </>
-      }
+      label={<span>파트너 · 수리 작업</span>}
     >
       {children}
     </PhoneFrame>

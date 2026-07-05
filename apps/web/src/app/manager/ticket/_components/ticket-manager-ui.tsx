@@ -10,6 +10,7 @@ import type {
   Urgency,
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
+import { stripScreenId } from "@/lib/screen-id";
 
 export const dashRoutes = {
   "00": "/manager/ticket/dash/00",
@@ -328,7 +329,7 @@ export function MobileScreen({
           borderBottom: "1px solid var(--border)",
         }}
       >
-        <div style={muted}>{eyebrow}</div>
+        {stripScreenId(eyebrow) ? <div style={muted}>{stripScreenId(eyebrow)}</div> : null}
         <div style={{ fontSize: "var(--fs-title)", fontWeight: "var(--fw-title)", marginTop: "var(--space-xs)" }}>
           {title}
         </div>

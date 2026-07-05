@@ -20,7 +20,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const vendors = await listVendors({ q, trade: trade as never, sort: "trade_recent" });
 
   return (
-    <ManagerShell title="업체 주소록" context="M-VEND-00 · 자동 누적 read" nav={<ManagerVendorMgmtNav />}>
+    <ManagerShell title="업체 주소록" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-00"
