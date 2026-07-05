@@ -1,4 +1,4 @@
-import type { Announcement, Thread } from "@roomlog/types";
+import type { Announcement, CreateTenantMessagingThreadInput, Thread } from "@roomlog/types";
 import { DEMO_ANNOUNCEMENTS, DEMO_THREAD_ID, DEMO_THREADS } from "./demo-messaging";
 import { serverFetch } from "./server-api";
 
@@ -9,6 +9,7 @@ const DEMO_ANNOUNCEMENT_ID = DEMO_ANNOUNCEMENTS[0].id;
 export const tenantMessagingPaths = {
   threads: () => "/tenant/messaging/threads",
   thread: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}`,
+  deleteThread: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}`,
   threadMessages: (id: string) => `/tenant/messaging/threads/${encodeURIComponent(id)}/messages`,
   announcements: () => "/tenant/messaging/announcements",
   announcement: (id: string) => `/tenant/messaging/announcements/${encodeURIComponent(id)}`,
@@ -31,9 +32,15 @@ export function listThreads(): Promise<Thread[]> {
   return tryFetch(tenantMessagingPaths.threads(), DEMO_THREADS, "임차인 메시지 목록 조회");
 }
 
-export function getThread(id: string = DEMO_THREAD_ID): Promise<Thread> {
-  const fallback = DEMO_THREADS.find((thread) => thread.id === id) ?? DEMO_THREADS[0];
-  return tryFetch(tenantMessagingPaths.thread(id), fallback, "임차인 메시지 상세 조회");
+export function getThread(id: string): Promise<Thread> {
+  return serverFetch<Thread>(tenantMessagingPaths.thread(id));
+}
+
+export function createTenantThread(input: CreateTenantMessagingThreadInput): Promise<Thread> {
+  return serverFetch<Thread>(tenantMessagingPaths.threads(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function addTenantThreadMessage(
@@ -43,6 +50,12 @@ export function addTenantThreadMessage(
   return serverFetch<Thread>(tenantMessagingPaths.threadMessages(id), {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteTenantThread(id: string): Promise<{ threadId: string; deleted: true }> {
+  return serverFetch(tenantMessagingPaths.deleteThread(id), {
+    method: "DELETE",
   });
 }
 

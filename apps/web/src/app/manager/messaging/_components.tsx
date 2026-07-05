@@ -7,6 +7,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 export const CATEGORY_LABEL: Record<AnnouncementCategory, string> = {
   urgent: "긴급",
@@ -194,7 +195,7 @@ export function ScreenHeader({
       }}
     >
       <div>
-        <div style={sectionTitleStyle}>{eyebrow}</div>
+        {stripScreenId(eyebrow) ? <div style={sectionTitleStyle}>{stripScreenId(eyebrow)}</div> : null}
         <h1 style={{ margin: 0, fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
           {title}
         </h1>

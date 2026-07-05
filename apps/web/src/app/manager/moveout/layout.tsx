@@ -8,12 +8,11 @@ const navItems = [
   ["M-OUT-01", "기록 리포트"],
   ["M-OUT-02", "예상 정산안"],
   ["M-OUT-03", "이의 처리"],
-  ["M-OUT-E0", "오류 복구"],
 ] as const;
 
 export default function MoveoutManagerLayout({ children }: { children: ReactNode }) {
   return (
-    <ManagerShell title="퇴실·정산 검토" context="M-OUT · 존엄·근거 대칭" nav={<MoveoutManagerNav />}>
+    <ManagerShell title="퇴실·정산 검토" context="관리 중인 집 · 퇴실 정산" nav={<MoveoutManagerNav />}>
       {children}
     </ManagerShell>
   );
@@ -37,7 +36,7 @@ function MoveoutManagerNav() {
             fontWeight: 700,
           }}
         >
-          {id} · {label}
+          {label}
         </Link>
       ))}
       <div

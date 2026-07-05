@@ -9,12 +9,11 @@ const navItems = [
   ["M-COST-02", "OCR 검토"],
   ["M-COST-03", "비용 상세"],
   ["M-COST-04", "공개 관리"],
-  ["M-COST-E0", "오류 복구"],
 ] as const;
 
 export default function CostLayout({ children }: { children: ReactNode }) {
   return (
-    <ManagerShell title="비용 원장" context="M-COST · 지출 투명성" nav={<CostNav />}>
+    <ManagerShell title="비용 원장" context="관리 중인 집 · 비용 원장" nav={<CostNav />}>
       {children}
     </ManagerShell>
   );
@@ -56,8 +55,8 @@ function CostNav() {
           lineHeight: "var(--lh-body)",
         }}
       >
-        비용은 지출 원장입니다. 청구액(M-BILL)과 관리비 사용내역(T-PAY-04)은 같은 수치로
-        취급하지 않습니다.
+        비용은 지출 원장입니다. 세입자에게 청구한 금액이나 관리비 사용내역과는 별도 수치로
+        관리합니다.
       </div>
     </nav>
   );

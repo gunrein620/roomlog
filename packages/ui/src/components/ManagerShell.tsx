@@ -37,6 +37,23 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* 집우집주 복귀 동선 — 관리 콘솔도 같은 WOOZU 계정의 한 표면이다 */}
+          <a
+            href="/"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              color: "var(--on-surface)",
+              fontSize: "var(--fs-caption)",
+              fontWeight: 800,
+              textDecoration: "none",
+            }}
+          >
+            집우집주
+            <span style={{ color: "var(--primary)" }}>WOOZU</span>
+          </a>
+          <span aria-hidden="true" style={{ color: "var(--border)" }}>|</span>
           <span
             style={{
               fontSize: "var(--fs-caption)",
@@ -49,7 +66,7 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
           >
             관리인
           </span>
-          <span style={{ fontSize: "var(--fs-header)", fontWeight: 600 }}>{title}</span>
+          <span style={{ fontSize: "var(--fs-header)", fontWeight: 700 }}>{title}</span>
         </div>
         {context ? (
           <span style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)" }}>
@@ -76,6 +93,7 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
         <main
           style={{
             flex: 1,
+            minWidth: 0, // 넓은 표(가로 스크롤 카드)가 페이지 전체를 밀어내지 않게
             padding: "var(--space-xl)",
             maxWidth: 1200,
             width: "100%",

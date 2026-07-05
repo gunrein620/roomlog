@@ -1,4 +1,5 @@
 import type {
+  Bill,
   BillDashboardSummary,
   CollectionSummary,
   Deposit,
@@ -6,18 +7,24 @@ import type {
   ManagerBillRow,
   OverdueCase,
 } from "@roomlog/types";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
-
-async function tryFetch<T>(path: string, fallback: T): Promise<T> {
-  try {
-    const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
-    return fallback;
-  }
-}
+import { serverFetch } from "./server-api";
+import {
+  toBill,
+  toCollectionSummary,
+  toDeposit,
+  toDunningDraft,
+  toManagerDashboard,
+  toManagerDepositsData,
+  toOverdueCase,
+  type ManagerPaymentReportRow,
+  type TeamBill,
+  type TeamCollection,
+  type TeamDashboardResponse,
+  type TeamDeposit,
+  type TeamDepositsResponse,
+  type TeamDunning,
+  type TeamOverdue,
+} from "./billing-manager-mapping";
 
 export interface ManagerDashboardData {
   summary: BillDashboardSummary;
@@ -25,7 +32,7 @@ export interface ManagerDashboardData {
 }
 
 export interface ManagerDepositsData {
-  paymentReports: ManagerBillRow[];
+  paymentReports: ManagerPaymentReportRow[];
   deposits: Deposit[];
   orphanDeposits: Deposit[];
   mismatchDeposits: Deposit[];
@@ -35,6 +42,22 @@ export interface ManagerOverdueData {
   activeCases: OverdueCase[];
   waitingCases: OverdueCase[];
 }
+
+interface TeamOverdueResponse {
+  activeCases?: TeamOverdue[];
+  waitingCases?: TeamOverdue[];
+}
+
+export interface SendDunningInput {
+  text: string;
+  channel: string;
+}
+
+const DEMO_ACCOUNT = {
+  bankName: "하나은행",
+  accountNumber: "123-456789-0000",
+  accountHolder: "룸로그관리",
+};
 
 const DEMO_BILLS: ManagerBillRow[] = [
   {
@@ -94,6 +117,13 @@ const DEMO_BILLS: ManagerBillRow[] = [
   },
 ];
 
+const DEMO_PAYMENT_REPORTS: ManagerPaymentReportRow[] = DEMO_BILLS.filter(
+  (bill) => bill.status === "confirming"
+).map((bill) => ({
+  ...bill,
+  reportId: `report-${bill.billId}`,
+}));
+
 const DEMO_DEPOSITS: Deposit[] = [
   {
     id: "dep-001",
@@ -139,6 +169,46 @@ const DEMO_DASHBOARD: ManagerDashboardData = {
   bills: DEMO_BILLS,
 };
 
+function demoBillFromRow(row: ManagerBillRow): Bill {
+  const maintenanceAmount = row.totalAmount > 0 ? Math.min(70000, row.totalAmount) : 0;
+  const rentAmount = Math.max(row.totalAmount - maintenanceAmount, 0);
+  return {
+    id: row.billId,
+    unitId: row.unitId,
+    billingMonth: row.billingMonth,
+    status: row.status,
+    items: [
+      { label: "월 임대료", amount: rentAmount },
+      { label: "관리비", amount: maintenanceAmount },
+    ].filter((item) => item.amount > 0),
+    totalAmount: row.totalAmount,
+    paidAmount: row.paidAmount,
+    dueDate: row.dueDate,
+    account: DEMO_ACCOUNT,
+    createdAt: `${row.billingMonth}-01T09:00:00+09:00`,
+    updatedAt: `${row.billingMonth}-01T09:00:00+09:00`,
+  };
+}
+
+const DEMO_MANAGER_BILLS: Bill[] = DEMO_BILLS.map(demoBillFromRow);
+
+const DEMO_NEW_BILL: Bill = {
+  id: "new",
+  unitId: "전체",
+  billingMonth: "2026-08",
+  status: "draft",
+  items: [
+    { label: "월 임대료", amount: 650000 },
+    { label: "관리비", amount: 70000 },
+  ],
+  totalAmount: 720000,
+  paidAmount: 0,
+  dueDate: "2026-08-10",
+  account: DEMO_ACCOUNT,
+  createdAt: "2026-08-01T09:00:00+09:00",
+  updatedAt: "2026-08-01T09:00:00+09:00",
+};
+
 const DEMO_COLLECTION: CollectionSummary = {
   billingMonth: "2026-07",
   collectionRate: 0.47,
@@ -151,7 +221,7 @@ const DEMO_COLLECTION: CollectionSummary = {
 };
 
 const DEMO_DEPOSITS_DATA: ManagerDepositsData = {
-  paymentReports: DEMO_BILLS.filter((bill) => bill.status === "confirming"),
+  paymentReports: DEMO_PAYMENT_REPORTS,
   deposits: DEMO_DEPOSITS.filter((deposit) => deposit.matchStatus === "unmatched" || deposit.matchStatus === "matched"),
   orphanDeposits: DEMO_DEPOSITS.filter((deposit) => deposit.matchStatus === "orphan"),
   mismatchDeposits: DEMO_DEPOSITS.filter((deposit) => deposit.matchStatus === "mismatch"),
@@ -207,23 +277,89 @@ const DEMO_DUNNING: DunningDraft = {
 
 export const DEMO_MANAGER_BILL_ID = "bill-2026-07-401";
 
-export function getManagerDashboard(): Promise<ManagerDashboardData> {
-  return tryFetch("/bills/manager/dashboard", DEMO_DASHBOARD);
+function demoBillFallback(billId?: string): Bill {
+  if (billId === "new") return DEMO_NEW_BILL;
+  return (
+    DEMO_MANAGER_BILLS.find((bill) => bill.id === billId) ??
+    DEMO_MANAGER_BILLS.find((bill) => bill.id === DEMO_MANAGER_BILL_ID) ??
+    DEMO_MANAGER_BILLS[0] ??
+    DEMO_NEW_BILL
+  );
 }
 
-export function getManagerCollection(): Promise<CollectionSummary> {
-  return tryFetch("/bills/manager/collection", DEMO_COLLECTION);
+async function getTeamBillById(billId: string): Promise<TeamBill | null> {
+  try {
+    return await serverFetch<TeamBill>(`/manager/bills/${encodeURIComponent(billId)}`);
+  } catch (error) {
+    console.error(`[manager/billing-api] /manager/bills/${billId} 조회 실패:`, error);
+    return null;
+  }
 }
 
-export function getManagerDeposits(): Promise<ManagerDepositsData> {
-  return tryFetch("/bills/manager/deposits", DEMO_DEPOSITS_DATA);
+async function resolveTeamBill(billId?: string): Promise<TeamBill | null> {
+  if (billId && billId !== "active" && billId !== "new") return getTeamBillById(billId);
+
+  try {
+    const data = await serverFetch<TeamDashboardResponse>("/manager/bills/dashboard");
+    const firstBillId = data.bills?.[0]?.billId ?? data.bills?.[0]?.id;
+    return firstBillId ? getTeamBillById(firstBillId) : null;
+  } catch (error) {
+    console.error("[manager/billing-api] 활성 청구서 조회 실패:", error);
+    return null;
+  }
 }
 
-export function getManagerOverdue(): Promise<ManagerOverdueData> {
-  return tryFetch("/bills/manager/overdue", DEMO_OVERDUE);
+export async function getManagerDashboard(): Promise<ManagerDashboardData> {
+  try {
+    return toManagerDashboard(await serverFetch<TeamDashboardResponse>("/manager/bills/dashboard"));
+  } catch (error) {
+    console.error("[manager/billing-api] 대시보드 조회 실패 → 데모 폴백:", error);
+    return DEMO_DASHBOARD;
+  }
 }
 
-export function getManagerDunning(billId: string): Promise<DunningDraft> {
+export async function getManagerBill(billId?: string): Promise<Bill> {
+  if (billId === "new") return DEMO_NEW_BILL;
+
+  const teamBill = await resolveTeamBill(billId);
+  if (teamBill) return toBill(teamBill);
+
+  console.warn("[manager/billing-api] 실제 청구서 없음 → 데모 청구서 폴백");
+  return demoBillFallback(billId);
+}
+
+export async function getManagerCollection(): Promise<CollectionSummary> {
+  try {
+    return toCollectionSummary(await serverFetch<TeamCollection>("/manager/bills/collection"));
+  } catch (error) {
+    console.error("[manager/billing-api] 수금 현황 조회 실패 → 데모 폴백:", error);
+    return DEMO_COLLECTION;
+  }
+}
+
+export async function getManagerDeposits(): Promise<ManagerDepositsData> {
+  try {
+    return toManagerDepositsData(await serverFetch<TeamDepositsResponse>("/manager/bills/deposits"));
+  } catch (error) {
+    console.error("[manager/billing-api] 입금 매칭 조회 실패 → 데모 폴백:", error);
+    return DEMO_DEPOSITS_DATA;
+  }
+}
+
+export async function getManagerOverdue(): Promise<ManagerOverdueData> {
+  try {
+    const data = await serverFetch<TeamOverdueResponse>("/manager/bills/overdue");
+    return {
+      activeCases: (data.activeCases ?? []).map(toOverdueCase),
+      waitingCases: (data.waitingCases ?? []).map(toOverdueCase),
+    };
+  } catch (error) {
+    console.error("[manager/billing-api] 연체 목록 조회 실패 → 데모 폴백:", error);
+    return DEMO_OVERDUE;
+  }
+}
+
+export async function getManagerDunning(billId: string): Promise<DunningDraft> {
   const fallback =
     billId.includes("302") || billId.includes("orphan")
       ? {
@@ -239,5 +375,63 @@ export function getManagerDunning(billId: string): Promise<DunningDraft> {
         }
       : { ...DEMO_DUNNING, billId };
 
-  return tryFetch(`/bills/manager/dunning/${billId}`, fallback);
+  try {
+    return toDunningDraft(await serverFetch<TeamDunning>(`/manager/bills/${encodeURIComponent(billId)}/dunning`));
+  } catch (error) {
+    console.error(`[manager/billing-api] /manager/bills/${billId}/dunning 조회 실패 → 데모 폴백:`, error);
+    return fallback;
+  }
+}
+
+export async function matchManagerDeposit(
+  depositId: string,
+  billId: string
+): Promise<Deposit | undefined> {
+  try {
+    return toDeposit(
+      await serverFetch<TeamDeposit>(`/manager/bills/deposits/${encodeURIComponent(depositId)}/match`, {
+        method: "POST",
+        body: JSON.stringify({ billId }),
+      })
+    );
+  } catch (error) {
+    console.error(`[manager/billing-api] 입금 매칭 실패 deposit=${depositId} bill=${billId}:`, error);
+    return undefined;
+  }
+}
+
+export async function confirmManagerPaymentReport(
+  billId: string,
+  reportId: string
+): Promise<Bill | undefined> {
+  try {
+    return toBill(
+      await serverFetch<TeamBill>(
+        `/manager/bills/${encodeURIComponent(billId)}/reports/${encodeURIComponent(reportId)}/confirm`,
+        { method: "POST" }
+      )
+    );
+  } catch (error) {
+    console.error(`[manager/billing-api] 납부 신고 확정 실패 bill=${billId} report=${reportId}:`, error);
+    return undefined;
+  }
+}
+
+export async function sendManagerDunning(
+  billId: string,
+  input: SendDunningInput
+): Promise<boolean> {
+  try {
+    const result = await serverFetch<{ ok: true }>(
+      `/manager/bills/${encodeURIComponent(billId)}/dunning/send`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      }
+    );
+    return result.ok === true;
+  } catch (error) {
+    console.error(`[manager/billing-api] 독촉 발송 실패 bill=${billId}:`, error);
+    return false;
+  }
 }

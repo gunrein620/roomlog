@@ -207,6 +207,7 @@ export const managerMessagingPaths = {
       ? `/manager/messaging/threads?context=${encodeURIComponent(context)}`
       : "/manager/messaging/threads",
   thread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
+  deleteThread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
   threadMessages: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}/messages`,
   announcementDrafts: () => "/manager/messaging/announcement-drafts",
   announcementDraft: (id: string) =>
@@ -240,11 +241,8 @@ export function listManagerThreads(context?: ThreadContext): Promise<Thread[]> {
   );
 }
 
-export async function getManagerThread(id: string = DEMO_MANAGER_THREAD_ID): Promise<Thread> {
-  const fallback =
-    DEMO_MANAGER_THREADS.find((thread) => thread.id === id || thread.unitId === id) ??
-    DEMO_MANAGER_THREADS[0];
-  return tryFetch(managerMessagingPaths.thread(id), fallback, "관리인 메시지 상세 조회");
+export async function getManagerThread(id: string): Promise<Thread> {
+  return serverFetch<Thread>(managerMessagingPaths.thread(id));
 }
 
 export function addManagerThreadMessage(
@@ -257,12 +255,32 @@ export function addManagerThreadMessage(
   });
 }
 
+export function deleteManagerThread(id: string): Promise<{ threadId: string; deleted: true }> {
+  return serverFetch(managerMessagingPaths.deleteThread(id), {
+    method: "DELETE",
+  });
+}
+
 export function listAnnouncementDrafts(): Promise<AnnouncementDraft[]> {
   return tryFetch(
     managerMessagingPaths.announcementDrafts(),
     DEMO_MANAGER_DRAFTS,
     "공지 초안 목록 조회",
   );
+}
+
+export function createAnnouncementDraft(input: {
+  category: AnnouncementDraft["category"];
+  scope: AnnouncementDraft["scope"];
+  targetLabel: string;
+  title: string;
+  body: string;
+  confirmRequired?: boolean;
+}): Promise<AnnouncementDraft> {
+  return serverFetch<AnnouncementDraft>(managerMessagingPaths.announcementDrafts(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function getAnnouncementDraft(id: string = DEMO_MANAGER_DRAFT_ID): Promise<AnnouncementDraft> {

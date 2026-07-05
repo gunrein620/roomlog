@@ -16,11 +16,10 @@ export default async function Page() {
   }));
 
   return (
-    <ManagerShell title="미처리 업무 허브" context="워크스페이스 · 라우팅 전용" nav={<HomeNav />}>
+    <ManagerShell title="미처리 업무 허브" context="관리 중인 집 · 오늘 할 일" nav={<HomeNav />}>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
           <div>
-            <Badge emphasis>M-HOME-01</Badge>
             <h1 style={{ margin: "var(--space-sm) 0", fontSize: "var(--fs-title)" }}>오늘 처리할 업무</h1>
             <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>
               여기서는 분류와 이동만 제공합니다. 실제 처리는 각 원천 세트에서 진행합니다.

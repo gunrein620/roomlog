@@ -5,9 +5,10 @@ import { apiUrl } from "@/lib/api-url";
 
 // 로그인 프록시(BFF): 자격을 Nest /auth/login에 forward → accessToken을 httpOnly 쿠키로 심고
 // 토큰이 아닌 프로필만 클라이언트에 반환. 토큰은 브라우저 JS에 절대 노출되지 않는다.
+// 로그인은 역할을 제한하지 않는다 — 모든 WOOZU 계정이 하나의 로그인으로 들어오고,
+// 룸로그 표면 접근은 세션의 capability(roles)로 판단한다.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  const expectedRole = typeof body?.expectedRole === "string" ? body.expectedRole : undefined;
   if (!body) {
     return NextResponse.json({ message: "잘못된 요청입니다." }, { status: 400 });
   }
@@ -29,12 +30,6 @@ export async function POST(request: Request) {
   }
 
   const { accessToken, ...profile } = data as { accessToken: string; [k: string]: unknown };
-  if (expectedRole && profile.role !== expectedRole) {
-    return NextResponse.json(
-      { message: "해당 로그인은 일반 이용자 계정만 사용할 수 있습니다." },
-      { status: 403 }
-    );
-  }
 
   (await cookies()).set(AUTH_COOKIE, accessToken, authCookieOptions);
 

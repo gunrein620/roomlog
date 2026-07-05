@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Store, StoreProjector } from "./roomlog.service";
 import { IntakeDraft, MessageSenderRole, PhotoAnalysis, TicketMessage } from "./roomlog.types";
 import type {
+  BillStatus as PrismaBillStatus,
   ContractDeletionState as PrismaContractDeletionState,
   ContractDocumentOrigin as PrismaContractDocumentOrigin,
   ContractLifecycle as PrismaContractLifecycle,
@@ -12,6 +13,8 @@ import type {
   CostReviewReason as PrismaCostReviewReason,
   CostStatus as PrismaCostStatus,
   CostType as PrismaCostType,
+  DepositMatchStatus as PrismaDepositMatchStatus,
+  PaymentReportStatus as PrismaPaymentReportStatus,
   DisclosureState as PrismaDisclosureState,
   MessagingAnnouncementCategory as PrismaMessagingAnnouncementCategory,
   MessagingAnnouncementDraftStatus as PrismaMessagingAnnouncementDraftStatus,
@@ -33,7 +36,8 @@ import type {
   MoveoutWearAdjustmentAction as PrismaMoveoutWearAdjustmentAction,
   MoveoutWearVerdict as PrismaMoveoutWearVerdict,
   ReceiptSource as PrismaReceiptSource,
-  RepairPaymentState as PrismaRepairPaymentState
+  RepairPaymentState as PrismaRepairPaymentState,
+  UserRole as PrismaUserRole
 } from "@prisma/client";
 
 function asDate(value?: string) {
@@ -58,6 +62,10 @@ function toLowerEnum<T extends string>(value: string | null | undefined) {
 
 function toUpperEnum<T extends string>(value: string | null | undefined) {
   return optional(value?.toUpperCase()) as T | undefined;
+}
+
+function toPrismaUserRole(value: Store["users"][number]["role"]) {
+  return value as unknown as PrismaUserRole;
 }
 
 function asPhotoAnalysis(value: Prisma.JsonValue | null): PhotoAnalysis | undefined {
@@ -97,6 +105,12 @@ export class PrismaStoreProjector implements StoreProjector {
       contractExtractions,
       contractPrivacies,
       contractInvites,
+      bills,
+      billLineItems,
+      paymentReports,
+      deposits,
+      maintenanceFees,
+      maintenanceFeeItems,
       attachments,
       floorPlans,
       moveInChecklist,
@@ -141,6 +155,12 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.contractExtraction.findMany(),
       this.prisma.contractPrivacy.findMany(),
       this.prisma.contractInvite.findMany(),
+      this.prisma.bill.findMany(),
+      this.prisma.billLineItem.findMany(),
+      this.prisma.paymentReport.findMany(),
+      this.prisma.deposit.findMany(),
+      this.prisma.maintenanceFee.findMany(),
+      this.prisma.maintenanceFeeItem.findMany(),
       this.prisma.attachment.findMany(),
       this.prisma.floorPlan.findMany(),
       this.prisma.moveInChecklistItem.findMany(),
@@ -181,6 +201,10 @@ export class PrismaStoreProjector implements StoreProjector {
       !users.length &&
       !rooms.length &&
       !contracts.length &&
+      !bills.length &&
+      !paymentReports.length &&
+      !deposits.length &&
+      !maintenanceFees.length &&
       !floorPlans.length &&
       !intakeSessions.length &&
       !complaints.length &&
@@ -248,7 +272,8 @@ export class PrismaStoreProjector implements StoreProjector {
         contactPerson: vendor.contactPerson,
         phone: vendor.phone,
         serviceArea: vendor.serviceArea,
-        activeJobs: vendor.activeJobs
+        activeJobs: vendor.activeJobs,
+        createdByManagerId: optional(vendor.createdByManagerId)
       })),
       vendorInvites: vendorInvites.map((invite) => ({
         id: invite.id,
@@ -294,6 +319,7 @@ export class PrismaStoreProjector implements StoreProjector {
         monthlyRent: optional(contract.monthlyRent),
         maintenanceFee: optional(contract.maintenanceFee),
         paymentDay: optional(contract.paymentDay),
+        optionInventory: contract.optionInventory ?? [],
         startDate: asIso(contract.startDate),
         endDate: asIso(contract.endDate),
         createdAt: asIso(contract.createdAt) ?? new Date().toISOString(),
@@ -345,6 +371,64 @@ export class PrismaStoreProjector implements StoreProjector {
         createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
         acceptedAt: asIso(invite.acceptedAt),
         acceptedByUserId: optional(invite.acceptedByUserId)
+      })),
+      bills: bills.map((bill) => ({
+        id: bill.id,
+        unitId: bill.unitId,
+        billingMonth: bill.billingMonth,
+        status: bill.status,
+        totalAmount: bill.totalAmount,
+        paidAmount: bill.paidAmount,
+        dueDate: asIso(bill.dueDate) ?? new Date().toISOString(),
+        bankName: bill.bankName,
+        accountNumber: bill.accountNumber,
+        accountHolder: bill.accountHolder,
+        correctionHistory: bill.correctionHistory,
+        maintenanceFeeId: optional(bill.maintenanceFeeId),
+        depositConfirmationRequested: bill.depositConfirmationRequested,
+        items: billLineItems
+          .filter((item) => item.billId === bill.id)
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            amount: item.amount
+          })),
+        createdAt: asIso(bill.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(bill.updatedAt) ?? new Date().toISOString()
+      })),
+      paymentReports: paymentReports.map((report) => ({
+        id: report.id,
+        billId: report.billId,
+        unitId: report.unitId,
+        amount: report.amount,
+        depositorName: optional(report.depositorName),
+        status: report.status,
+        etaHours: report.etaHours,
+        reportedAt: asIso(report.reportedAt) ?? new Date().toISOString()
+      })),
+      deposits: deposits.map((deposit) => ({
+        id: deposit.id,
+        depositorName: deposit.depositorName,
+        amount: deposit.amount,
+        depositedAt: asIso(deposit.depositedAt) ?? new Date().toISOString(),
+        matchStatus: deposit.matchStatus,
+        matchedBillId: optional(deposit.matchedBillId),
+        guessedUnitId: optional(deposit.guessedUnitId)
+      })),
+      maintenanceFees: maintenanceFees.map((fee) => ({
+        id: fee.id,
+        unitId: fee.unitId,
+        billingMonth: fee.billingMonth,
+        totalAmount: fee.totalAmount,
+        available: fee.available,
+        items: maintenanceFeeItems
+          .filter((item) => item.maintenanceFeeId === fee.id)
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            amount: item.amount,
+            receiptAvailable: item.receiptAvailable
+          }))
       })),
       attachments: attachments.map((attachment) => ({
         id: attachment.id,
@@ -876,7 +960,7 @@ export class PrismaStoreProjector implements StoreProjector {
             passwordHash: user.passwordHash,
             name: user.name,
             phone: user.phone,
-            role: user.role,
+            role: toPrismaUserRole(user.role),
             status: user.status,
             createdAt: asDate(user.createdAt)
           },
@@ -885,7 +969,7 @@ export class PrismaStoreProjector implements StoreProjector {
             passwordHash: user.passwordHash,
             name: user.name,
             phone: user.phone,
-            role: user.role,
+            role: toPrismaUserRole(user.role),
             status: user.status
           }
         });
@@ -957,7 +1041,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           },
           update: {
             userId: vendor.userId,
@@ -965,7 +1050,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           }
         });
       }
@@ -1089,6 +1175,7 @@ export class PrismaStoreProjector implements StoreProjector {
             monthlyRent: contract.monthlyRent,
             maintenanceFee: contract.maintenanceFee,
             paymentDay: contract.paymentDay,
+            optionInventory: contract.optionInventory ?? [],
             startDate: asDate(contract.startDate),
             endDate: asDate(contract.endDate),
             extractionId: contract.extractionId,
@@ -1111,6 +1198,7 @@ export class PrismaStoreProjector implements StoreProjector {
             monthlyRent: contract.monthlyRent,
             maintenanceFee: contract.maintenanceFee,
             paymentDay: contract.paymentDay,
+            optionInventory: contract.optionInventory ?? [],
             startDate: asDate(contract.startDate),
             endDate: asDate(contract.endDate),
             extractionId: contract.extractionId,
@@ -1223,6 +1311,151 @@ export class PrismaStoreProjector implements StoreProjector {
             acceptedByUserId: invite.acceptedByUserId
           }
         });
+      }
+
+      for (const bill of store.bills) {
+        await tx.bill.upsert({
+          where: { id: bill.id },
+          create: {
+            id: bill.id,
+            unitId: bill.unitId,
+            billingMonth: bill.billingMonth,
+            status: toUpperEnum<PrismaBillStatus>(bill.status) ?? "DRAFT",
+            totalAmount: bill.totalAmount,
+            paidAmount: bill.paidAmount,
+            dueDate: asDate(bill.dueDate) ?? new Date(),
+            bankName: bill.bankName,
+            accountNumber: bill.accountNumber,
+            accountHolder: bill.accountHolder,
+            correctionHistory: bill.correctionHistory ?? [],
+            maintenanceFeeId: bill.maintenanceFeeId,
+            depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+            createdAt: asDate(bill.createdAt),
+            updatedAt: asDate(bill.updatedAt)
+          },
+          update: {
+            unitId: bill.unitId,
+            billingMonth: bill.billingMonth,
+            status: toUpperEnum<PrismaBillStatus>(bill.status) ?? "DRAFT",
+            totalAmount: bill.totalAmount,
+            paidAmount: bill.paidAmount,
+            dueDate: asDate(bill.dueDate) ?? new Date(),
+            bankName: bill.bankName,
+            accountNumber: bill.accountNumber,
+            accountHolder: bill.accountHolder,
+            correctionHistory: bill.correctionHistory ?? [],
+            maintenanceFeeId: bill.maintenanceFeeId,
+            depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+            updatedAt: asDate(bill.updatedAt)
+          }
+        });
+
+        for (const [index, item] of bill.items.entries()) {
+          const itemId = item.id ?? `${bill.id}-line-${index + 1}`;
+
+          await tx.billLineItem.upsert({
+            where: { id: itemId },
+            create: {
+              id: itemId,
+              billId: bill.id,
+              label: item.label,
+              amount: item.amount
+            },
+            update: {
+              billId: bill.id,
+              label: item.label,
+              amount: item.amount
+            }
+          });
+        }
+      }
+
+      for (const report of store.paymentReports) {
+        await tx.paymentReport.upsert({
+          where: { id: report.id },
+          create: {
+            id: report.id,
+            billId: report.billId,
+            unitId: report.unitId,
+            amount: report.amount,
+            depositorName: report.depositorName,
+            status: toUpperEnum<PrismaPaymentReportStatus>(report.status) ?? "CONFIRMING",
+            etaHours: report.etaHours,
+            reportedAt: asDate(report.reportedAt)
+          },
+          update: {
+            billId: report.billId,
+            unitId: report.unitId,
+            amount: report.amount,
+            depositorName: report.depositorName,
+            status: toUpperEnum<PrismaPaymentReportStatus>(report.status) ?? "CONFIRMING",
+            etaHours: report.etaHours,
+            reportedAt: asDate(report.reportedAt)
+          }
+        });
+      }
+
+      for (const deposit of store.deposits) {
+        await tx.deposit.upsert({
+          where: { id: deposit.id },
+          create: {
+            id: deposit.id,
+            depositorName: deposit.depositorName,
+            amount: deposit.amount,
+            depositedAt: asDate(deposit.depositedAt) ?? new Date(),
+            matchStatus: toUpperEnum<PrismaDepositMatchStatus>(deposit.matchStatus) ?? "UNMATCHED",
+            matchedBillId: deposit.matchedBillId,
+            guessedUnitId: deposit.guessedUnitId
+          },
+          update: {
+            depositorName: deposit.depositorName,
+            amount: deposit.amount,
+            depositedAt: asDate(deposit.depositedAt) ?? new Date(),
+            matchStatus: toUpperEnum<PrismaDepositMatchStatus>(deposit.matchStatus) ?? "UNMATCHED",
+            matchedBillId: deposit.matchedBillId,
+            guessedUnitId: deposit.guessedUnitId
+          }
+        });
+      }
+
+      for (const fee of store.maintenanceFees) {
+        await tx.maintenanceFee.upsert({
+          where: { id: fee.id },
+          create: {
+            id: fee.id,
+            unitId: fee.unitId,
+            billingMonth: fee.billingMonth,
+            totalAmount: fee.totalAmount,
+            available: fee.available
+          },
+          update: {
+            unitId: fee.unitId,
+            billingMonth: fee.billingMonth,
+            totalAmount: fee.totalAmount,
+            available: fee.available
+          }
+        });
+
+        for (const [index, item] of fee.items.entries()) {
+          const itemId = item.id ?? `${fee.id}-line-${index + 1}`;
+
+          await tx.maintenanceFeeItem.upsert({
+            where: { id: itemId },
+            create: {
+              id: itemId,
+              maintenanceFeeId: fee.id,
+              label: item.label,
+              amount: item.amount,
+              receiptAvailable: item.receiptAvailable
+            },
+            update: {
+              maintenanceFeeId: fee.id,
+              label: item.label,
+              amount: item.amount,
+              receiptAvailable: item.receiptAvailable
+            }
+          });
+        }
       }
 
       for (const attachment of store.attachments) {

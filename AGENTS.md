@@ -2,6 +2,18 @@
 
 > 이 폴더는 **룸로그 클릭투어 셸(prototype)** 이다. Codex·Claude Code 등 AI 에이전트가 이 코드베이스에서 작업할 때 **먼저 이 문서를 읽고** 컨벤션·다음 단계를 따른다.
 
+## 환경
+- 개발환경은 local docker-compose 사용
+
+- 배포환경은 
+  - AWS EC2 사용
+  - AWS RDS 사용
+  - AWS S3 사용
+  - AWS CloudFront 사용
+  - AWS Route 53 사용
+  - AWS Certificate Manager 사용
+접속은 ssh rlog
+
 ## 0. 이게 뭔가
 - **Next.js(web) + NestJS(api) pnpm 모노레포.** 임차인·관리인·수리업체 3역할의 화면·라우팅·전이가 **클릭으로 동작하는 껍데기**.
 - **전략 = evolutionary(진짜 제품으로 키움).** 버릴 프로토타입 아님. 지금은 **기능 스텁 · 데이터 인메모리 · 인증 없음** 상태.

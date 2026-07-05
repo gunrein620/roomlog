@@ -4,11 +4,10 @@ import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 
 export default function Page() {
   return (
-    <ManagerShell title="건물·호실 등록 / CSV" context="워크스페이스 · 큰 화면 권장" nav={<HomeNav />}>
+    <ManagerShell title="건물·호실 등록 / CSV" context="관리 중인 집 · 등록" nav={<HomeNav />}>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
           <div>
-            <Badge emphasis>M-HOME-05</Badge>
             <h1 style={{ margin: "var(--space-sm) 0", fontSize: "var(--fs-title)" }}>건물과 호실을 등록합니다</h1>
             <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>
               CSV는 큰 화면에서 더 효율적이지만 단건 등록 흐름은 같은 PWA에서 완결됩니다.

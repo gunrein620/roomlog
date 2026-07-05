@@ -13,11 +13,10 @@ const rooms = [
 
 export default function Page() {
   return (
-    <ManagerShell title="건물 상세" context="연남 스테이 · return context" nav={<HomeNav />}>
+    <ManagerShell title="건물 상세" context="관리 중인 집 · 건물 상세" nav={<HomeNav />}>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
           <div>
-            <Badge emphasis>M-HOME-04</Badge>
             <h1 style={{ margin: "var(--space-sm) 0", fontSize: "var(--fs-title)" }}>연남 스테이</h1>
             <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>서울 마포구 동교로 · 리스크 정밀 검토</p>
           </div>

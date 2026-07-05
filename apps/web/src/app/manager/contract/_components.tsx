@@ -38,7 +38,7 @@ export function ContractShell({
   children: React.ReactNode;
 }) {
   return (
-    <ManagerShell title={title} context={`${id} · 관리인 데스크탑`} nav={<ContractNav active={id} />}>
+    <ManagerShell title={title} context="관리 중인 집 · 계약서" nav={<ContractNav active={id} />}>
       {children}
     </ManagerShell>
   );
@@ -47,7 +47,9 @@ export function ContractShell({
 function ContractNav({ active }: { active: keyof typeof screenMeta }) {
   return (
     <nav aria-label="관리인 계약 화면" style={{ display: "grid", gap: "var(--space-sm)" }}>
-      {Object.entries(screenMeta).map(([id, [label, href]]) => (
+      {Object.entries(screenMeta)
+        .filter(([id]) => id !== "M-DOC-E0")
+        .map(([id, [label, href]]) => (
         <Link
           key={id}
           href={href}
@@ -65,7 +67,7 @@ function ContractNav({ active }: { active: keyof typeof screenMeta }) {
             border: active === id ? "1.5px solid var(--primary)" : "1px solid var(--border)",
           }}
         >
-          {id} · {label}
+          {label}
         </Link>
       ))}
       <Card

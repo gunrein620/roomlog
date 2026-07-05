@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CallLayout({ children }: { children: ReactNode }) {
   // dash와 동일하게 관리인(LANDLORD) 가드 — 미인증/타역할 접근 차단.
-  await requireUser("/manager/login", "LANDLORD");
+  await requireUser("LANDLORD");
   return (
     <PhoneFrame
       label={
@@ -16,7 +16,7 @@ export default async function CallLayout({ children }: { children: ReactNode }) 
           <Link href="/manager/ticket/dash/00" style={{ color: "var(--primary)", textDecoration: "none" }}>
             데스크탑에서 보기
           </Link>
-          <span>M-CALL · 관리인 Voice · 390×844</span>
+          <span>관리 중인 집 · 통화 티켓</span>
         </>
       }
     >

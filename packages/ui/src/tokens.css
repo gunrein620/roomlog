@@ -1,33 +1,33 @@
 /*
- * @roomlog/ui — 디자인 토큰 (theme v0 = 회색조 와이어프레임)
+ * @roomlog/ui — 디자인 토큰 (theme v1 = 집우집주/WOOZU 스킨)
  * 원칙: 컴포넌트는 이 변수를 "의미"로 소비한다 (raw hex 금지).
- * 나중에 design.md가 나오면 이 파일의 값만 교체 → 전체 스킨 스왑 (로직·구조 불변).
- * 출처: roomlog-handoff/spec/_DESIGN_tokens.md
+ * v0(회색조 와이어프레임) 값을 집우집주 부동산 앱 팔레트로 교체 — 로직·구조 불변.
+ * 팔레트 출처: apps/web/src/app/globals.css :root (--ink/--muted/--line/--canvas/--blue 계열)
  */
 :root {
-  /* --- color: surface --- */
-  --surface: #fbf9f4;
-  --surface-dim: #dcdad5;
+  /* --- color: surface (WOOZU 쿨그레이 스케일) --- */
+  --surface: #f5f6f8;
+  --surface-dim: #e9edf3;
   --surface-container-lowest: #ffffff;
-  --surface-container-low: #f6f3ee;
-  --surface-container: #f0eee9;
-  --surface-container-high: #eae8e3;
-  --surface-container-highest: #e4e2dd;
-  --on-surface: #1b1c19;
-  --on-surface-variant: #444748;
-  --inverse-surface: #30312d;
-  --inverse-on-surface: #f3f0eb;
+  --surface-container-low: #f5f6f8;
+  --surface-container: #eef2f8;
+  --surface-container-high: #e9edf3;
+  --surface-container-highest: #e3e6ed;
+  --on-surface: #171923;
+  --on-surface-variant: #6f7787;
+  --inverse-surface: #171923;
+  --inverse-on-surface: #f5f6f8;
 
   /* --- color: outline / border --- */
-  --outline: #747878;
-  --outline-variant: #c4c7c7;
-  --border: #e2e0db; /* 카드·헤더·리스트 기본 경계 */
+  --outline: #9aa1af;
+  --outline-variant: #e3e6ed;
+  --border: #e3e6ed; /* 카드·헤더·리스트 기본 경계 (= WOOZU --line) */
 
-  /* --- color: primary (action) --- */
-  --primary: #2b2b2b;
+  /* --- color: primary (action = WOOZU 블루) --- */
+  --primary: #2f55ff;
   --on-primary: #ffffff;
-  --primary-container: #2b2b2b;
-  --on-primary-container: #939292;
+  --primary-container: #eef2ff;
+  --on-primary-container: #173ad7;
 
   /* --- color: feedback --- */
   --error: #ba1a1a;
@@ -36,21 +36,24 @@
   --on-error-container: #93000a;
 
   /* --- color: chip/badge --- */
-  --chip-bg: #eceae5;
-  --chip-on: #4a4a4a;
+  --chip-bg: #eef2f8;
+  --chip-on: #47506a;
 
   /* --- color: input --- */
-  --input-border: #e2e0db;
-  --input-placeholder: #b5b5b0;
-  --input-text: #1a1a1a;
+  --input-border: #e3e6ed;
+  --input-placeholder: #9aa1af;
+  --input-text: #171923;
 
-  /* --- typography --- */
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --fs-title: 20px;      --fw-title: 700;    --lh-title: 30px;
-  --fs-subtitle: 18px;   --fw-subtitle: 600; --lh-subtitle: 27px;
-  --fs-header: 18px;     --fw-header: 600;   --lh-header: 27px;
+  /* --- typography (WOOZU 본문과 동일 계열) --- */
+  --font-sans: Arial, Helvetica, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --fs-title: 20px;      --fw-title: 800;    --lh-title: 30px;
+  --fs-subtitle: 18px;   --fw-subtitle: 700; --lh-subtitle: 27px;
+  --fs-header: 18px;     --fw-header: 700;   --lh-header: 27px;
   --fs-body: 16px;       --fw-body: 400;     --lh-body: 24px;
   --fs-caption: 13px;    --fw-caption: 400;  --lh-caption: 19.5px;
+
+  /* --- elevation (WOOZU 카드 그림자) --- */
+  --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
 
   /* --- spacing (4/8/12/16/24/32) --- */
   --space-xs: 4px;
@@ -62,12 +65,12 @@
   --page-margin: 20px;
   --card-padding: 16px;
 
-  /* --- radius --- */
-  --radius-sm: 4px;
-  --radius: 8px;
-  --radius-md: 12px;   /* 카드·입력·컨테이너 */
-  --radius-btn: 10px;  /* 버튼 */
-  --radius-lg: 16px;
+  /* --- radius (WOOZU 라운드 감성 — 카드 16 / 버튼 14) --- */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-md: 16px;   /* 카드·입력·컨테이너 */
+  --radius-btn: 14px;  /* 버튼 */
+  --radius-lg: 20px;
   --radius-full: 9999px;
 
   /* --- touch / sizing --- */

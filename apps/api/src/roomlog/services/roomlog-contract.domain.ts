@@ -1,13 +1,23 @@
 // 계약(contract)·문서 도메인 협력 클래스 — roomlog.service.ts에서 추출(동작 불변).
 // 자기완결(contract* 헬퍼 통째). 공유 헬퍼는 동명 필드로 주입해 본문 verbatim 유지.
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { now } from "../roomlog-support";
+import { id, now } from "../roomlog-support";
 import type {
   Contract,
+  ContractDocument,
   ContractExtraction,
+  ContractInvite,
   ContractPrivacy,
+  CreateManagerContractInput,
+  CreateManagerContractInviteInput,
+  CreateTenantContractInput,
   DeletionState,
+  ExtractionGroup,
   Room,
+  UpdateManagerContractInventoryInput,
+  UpdateManagerContractInviteInput,
+  UpdateManagerContractManualValuesInput,
+  UpdateManagerContractPrivacyInput,
   UserAccount
 } from "../roomlog.types";
 import type {
@@ -63,6 +73,49 @@ export class RoomlogContractDomain {
     this.persistStore();
 
     return this.presentContractPrivacy(privacy);
+  }
+
+  createTenantContract(tenantId: string, input: CreateTenantContractInput) {
+    if (!input.ocrConsent || !input.storageConsent) {
+      throw new BadRequestException("OCR 분석과 보관 동의가 모두 필요합니다.");
+    }
+
+    const roomId = this.store.tenantRooms[tenantId];
+    if (!roomId) {
+      throw new NotFoundException("계약서를 등록할 호실을 찾을 수 없습니다.");
+    }
+
+    const room = this.findRoom(roomId);
+    const existing = this.tenantContracts(tenantId)[0];
+    const contract = existing ?? this.createContractRecord({
+      room,
+      tenantId,
+      managerId: room.landlordId,
+      unitId: this.displayUnitId(room).replace(/호$/, ""),
+      origin: "tenant_upload",
+      fileName: input.fileName,
+      fileUrl: input.fileUrl
+    });
+
+    const document = this.addContractDocument(contract, {
+      uploadedByUserId: tenantId,
+      origin: "tenant_upload",
+      fileName: input.fileName,
+      fileUrl: input.fileUrl
+    });
+    contract.documentId = document.id;
+    contract.extractionId = this.ensureContractExtraction(contract).id;
+    contract.review = "pending";
+    contract.lifecycle = "analyzing";
+    contract.updatedAt = now();
+    this.ensureContractPrivacy(contract);
+    this.persistStore();
+
+    return {
+      contract: this.presentContract(contract),
+      extraction: this.presentContractExtraction(this.findContractExtraction(contract)),
+      privacy: this.presentContractPrivacy(this.findContractPrivacy(contract))
+    };
   }
 
   getManagerContractDashboard(managerId: string) {
@@ -133,7 +186,9 @@ export class RoomlogContractDomain {
         paymentDay: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "관리자 수동값 없음",
         account: this.extractionValue(extraction, "임대인 계좌") ?? "관리자 수동값 없음"
       },
-      inventory: ["에어컨", "세탁기", "냉장고", "인덕션", "블라인드"],
+      inventory: contract.optionInventory?.length
+        ? [...contract.optionInventory]
+        : ["에어컨", "세탁기", "냉장고", "인덕션", "블라인드"],
       timeline: this.contractTimeline(contract, room),
       auditLogs: this.contractAuditLogs(contract, extraction),
       deletionRequests,
@@ -170,6 +225,187 @@ export class RoomlogContractDomain {
     const contract = this.findManagerContract(managerId, contractId);
 
     contract.review = "info_requested";
+    contract.updatedAt = now();
+    this.persistStore();
+
+    return this.getManagerContractDetail(managerId, contract.id);
+  }
+
+  createManagerContract(managerId: string, input: CreateManagerContractInput) {
+    const room = this.findManagerRoom(managerId, input.roomId, input.unitId);
+    const unitId = input.unitId?.trim() || this.displayUnitId(room).replace(/호$/, "");
+    const contract =
+      this.managerContracts(managerId).find((item) => item.roomId === room.id && item.unitId === unitId) ??
+      this.createContractRecord({
+        room,
+        tenantId: input.tenantId,
+        managerId,
+        unitId,
+        origin: "manager_upload",
+        fileName: input.fileName,
+        fileUrl: input.fileUrl
+      });
+
+    contract.managerId = managerId;
+    contract.tenantId = input.tenantId ?? contract.tenantId;
+    contract.monthlyRent = this.positiveInteger(input.monthlyRent) ?? contract.monthlyRent;
+    contract.maintenanceFee = this.positiveInteger(input.maintenanceFee) ?? contract.maintenanceFee;
+    contract.paymentDay = this.paymentDay(input.paymentDay) ?? contract.paymentDay;
+    contract.startDate = input.startDate || contract.startDate;
+    contract.endDate = input.endDate || contract.endDate;
+    contract.review = "pending";
+    contract.lifecycle = "analyzing";
+    contract.updatedAt = now();
+
+    const document = this.addContractDocument(contract, {
+      uploadedByUserId: managerId,
+      origin: "manager_upload",
+      fileName: input.fileName,
+      fileUrl: input.fileUrl
+    });
+    contract.documentId = document.id;
+    contract.extractionId = this.ensureContractExtraction(contract).id;
+    this.ensureContractPrivacy(contract);
+
+    if (input.tenantName?.trim()) {
+      this.upsertContractInvite(contract, managerId, {
+        tenantName: input.tenantName.trim(),
+        email: undefined,
+        phone: undefined
+      });
+    }
+
+    this.persistStore();
+
+    return this.getManagerContractDetail(managerId, contract.id);
+  }
+
+  updateManagerContractManualValues(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractManualValuesInput
+  ) {
+    const contract = this.findManagerContract(managerId, contractId);
+    const extraction = this.ensureContractExtraction(contract);
+
+    contract.monthlyRent = this.positiveInteger(input.monthlyRent) ?? contract.monthlyRent;
+    contract.maintenanceFee = this.positiveInteger(input.maintenanceFee) ?? contract.maintenanceFee;
+    contract.paymentDay = this.paymentDay(input.paymentDay) ?? contract.paymentDay;
+    contract.valueSource = "manual";
+    contract.updatedAt = now();
+
+    this.upsertExtractionItem(extraction, "보증금", input.deposit, "money");
+    this.upsertExtractionItem(
+      extraction,
+      "월세",
+      contract.monthlyRent ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : undefined,
+      "money"
+    );
+    this.upsertExtractionItem(
+      extraction,
+      "관리비",
+      contract.maintenanceFee ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : undefined,
+      "money"
+    );
+    this.upsertExtractionItem(
+      extraction,
+      "납부일",
+      contract.paymentDay ? `매월 ${contract.paymentDay}일` : undefined,
+      "money"
+    );
+    this.upsertExtractionItem(extraction, "임대인 계좌", input.account, "money", true);
+    this.persistStore();
+
+    return this.getManagerContractDetail(managerId, contract.id);
+  }
+
+  updateManagerContractInventory(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractInventoryInput
+  ) {
+    const contract = this.findManagerContract(managerId, contractId);
+    const items = Array.from(
+      new Set(input.items.map((item) => item.trim()).filter(Boolean))
+    ).slice(0, 30);
+
+    contract.optionInventory = items;
+    contract.updatedAt = now();
+    this.persistStore();
+
+    return this.getManagerContractDetail(managerId, contract.id);
+  }
+
+  createManagerContractInvite(
+    managerId: string,
+    contractId: string,
+    input: CreateManagerContractInviteInput
+  ) {
+    const contract = this.findManagerContract(managerId, contractId);
+    const invite = this.upsertContractInvite(contract, managerId, input);
+
+    this.persistStore();
+
+    return {
+      invite: { ...invite },
+      detail: this.getManagerContractDetail(managerId, contract.id)
+    };
+  }
+
+  updateManagerContractInvite(
+    managerId: string,
+    inviteId: string,
+    input: UpdateManagerContractInviteInput
+  ) {
+    const invite = this.store.contractInvites.find(
+      (item) => item.id === inviteId && item.invitedByManagerId === managerId
+    );
+
+    if (!invite) {
+      throw new NotFoundException("관리 가능한 계약 초대를 찾을 수 없습니다.");
+    }
+
+    const contract = this.findManagerContract(managerId, invite.contractId);
+    invite.state = input.state;
+    invite.audit = input.note?.trim() || this.inviteAuditLabel(input.state);
+
+    if (input.state === "connected") {
+      const tenant = this.findTenantForInvite(invite);
+      invite.acceptedAt = now();
+      invite.acceptedByUserId = tenant?.id;
+      contract.tenantId = tenant?.id ?? contract.tenantId;
+      if (tenant) {
+        this.store.tenantRooms[tenant.id] = contract.roomId;
+      }
+    }
+
+    contract.updatedAt = now();
+    this.persistStore();
+
+    return this.getManagerContractDetail(managerId, contract.id);
+  }
+
+  updateManagerContractPrivacy(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractPrivacyInput
+  ) {
+    const contract = this.findManagerContract(managerId, contractId);
+    const privacy = this.ensureContractPrivacy(contract);
+
+    if (input.maskingEnabled !== undefined) privacy.maskingEnabled = input.maskingEnabled;
+    if (input.forwardingConsent !== undefined) privacy.forwardingConsent = input.forwardingConsent;
+    if (input.retentionNote?.trim()) {
+      privacy.retention = [
+        ...privacy.retention,
+        {
+          label: "관리자 보관 사유",
+          reason: input.retentionNote.trim(),
+          until: contract.lifecycle === "expired" ? "계약 종료 후 5년 이내" : "계약 유효 기간 및 정산 종료까지"
+        }
+      ];
+    }
+
     contract.updatedAt = now();
     this.persistStore();
 
@@ -287,6 +523,253 @@ export class RoomlogContractDomain {
     return privacy;
   }
 
+  private ensureContractExtraction(contract: Contract): ContractExtraction {
+    const existing = this.store.contractExtractions.find(
+      (item) => item.id === contract.extractionId || item.contractId === contract.id
+    );
+
+    if (existing) return existing;
+
+    const createdAt = now();
+    const extraction: ContractExtraction = {
+      id: id("cx"),
+      contractId: contract.id,
+      confirmed: contract.review === "confirmed",
+      highlights: [
+        "새 계약서가 등록되었습니다. 원문 대조 후 확정하세요.",
+        "돈·기간·책임 항목은 관리자 확정 전까지 참고본입니다.",
+        "민감정보는 기본 마스킹 상태로 보관됩니다."
+      ],
+      items: [
+        { label: "월세", value: contract.monthlyRent ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
+        { label: "관리비", value: contract.maintenanceFee ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
+        { label: "납부일", value: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미확인", group: "money", needsCheck: true },
+        { label: "계약 기간", value: `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`, group: "term", needsCheck: true },
+        { label: "원상복구", value: "원문 확인 필요", group: "responsibility", needsCheck: true }
+      ],
+      helpNotes: [
+        {
+          clause: "관리자 확정 전 참고본",
+          plain: "OCR이나 수동 입력값은 관리자 확정 전까지 참고용입니다.",
+          source: "M-DOC-01 확정 게이트"
+        }
+      ],
+      createdAt
+    };
+
+    this.store.contractExtractions.push(extraction);
+    contract.extractionId = extraction.id;
+
+    return extraction;
+  }
+
+  private ensureContractPrivacy(contract: Contract): ContractPrivacy {
+    const existing = this.store.contractPrivacies.find((item) => item.contractId === contract.id);
+    if (existing) return existing;
+
+    const privacy: ContractPrivacy = {
+      contractId: contract.id,
+      maskingEnabled: true,
+      retention: [
+        { label: "계약서 원본·추출값", reason: "정산·분쟁 대비", until: "계약 종료 후 5년" },
+        { label: "삭제 요청 이력", reason: "처리 감사로그", until: "3년" }
+      ],
+      forwardingConsent: false,
+      deletion: contract.deletion,
+      deletionSlaHours: 72,
+      deletable: contract.lifecycle === "expired"
+    };
+
+    this.store.contractPrivacies.push(privacy);
+
+    return privacy;
+  }
+
+  private findManagerRoom(managerId: string, roomId?: string, unitId?: string) {
+    const candidates = this.store.rooms.filter((room) => this.canManagerAccessRoom(managerId, room.id));
+    const room =
+      candidates.find((item) => item.id === roomId) ??
+      candidates.find((item) => item.roomNo === unitId || this.displayUnitId(item).replace(/호$/, "") === unitId) ??
+      candidates[0];
+
+    if (!room) {
+      throw new NotFoundException("관리 가능한 호실을 찾을 수 없습니다.");
+    }
+
+    this.assertManagerCanAccessRoom(managerId, room.id);
+
+    return room;
+  }
+
+  private createContractRecord({
+    room,
+    tenantId,
+    managerId,
+    unitId,
+    origin,
+    fileName,
+    fileUrl
+  }: {
+    room: Room;
+    tenantId?: string;
+    managerId?: string;
+    unitId: string;
+    origin: "tenant_upload" | "manager_upload" | "manual";
+    fileName?: string;
+    fileUrl?: string;
+  }) {
+    const createdAt = now();
+    const contract: Contract = {
+      id: id("ct"),
+      roomId: room.id,
+      tenantId,
+      managerId,
+      unitId,
+      landlordName: this.store.users.find((user) => user.id === (managerId ?? room.landlordId))?.name ?? "관리자",
+      lifecycle: "analyzing",
+      review: "pending",
+      deletion: "none",
+      valueSource: origin === "manual" ? "manual" : "unverified",
+      optionInventory: [],
+      createdAt,
+      updatedAt: createdAt
+    };
+
+    this.store.contracts.push(contract);
+    const document = this.addContractDocument(contract, {
+      uploadedByUserId: tenantId ?? managerId,
+      origin,
+      fileName,
+      fileUrl
+    });
+    contract.documentId = document.id;
+    contract.extractionId = this.ensureContractExtraction(contract).id;
+    this.ensureContractPrivacy(contract);
+
+    return contract;
+  }
+
+  private addContractDocument(
+    contract: Contract,
+    input: {
+      uploadedByUserId?: string;
+      origin: "tenant_upload" | "manager_upload" | "manual";
+      fileName?: string;
+      fileUrl?: string;
+    }
+  ): ContractDocument {
+    const uploadedAt = now();
+    const document: ContractDocument = {
+      id: id("cdoc"),
+      contractId: contract.id,
+      uploadedByUserId: input.uploadedByUserId,
+      origin: input.origin,
+      fileName: input.fileName?.trim() || "contract.pdf",
+      fileUrl: input.fileUrl?.trim() || `/uploads/${contract.id}.pdf`,
+      uploadedAt
+    };
+
+    this.store.contractDocuments.push(document);
+
+    return document;
+  }
+
+  private upsertContractInvite(
+    contract: Contract,
+    managerId: string,
+    input: CreateManagerContractInviteInput
+  ): ContractInvite {
+    const tenantName = input.tenantName?.trim();
+    if (!tenantName) {
+      throw new BadRequestException("초대할 임차인 이름이 필요합니다.");
+    }
+
+    const existing = this.store.contractInvites.find(
+      (item) => item.contractId === contract.id && item.tenantName === tenantName
+    );
+    const inviteToken = existing?.inviteToken ?? id("cinv").replace(/^cinv_/, "");
+    const invite: ContractInvite = existing ?? {
+      id: id("cinv"),
+      contractId: contract.id,
+      roomId: contract.roomId,
+      inviteToken,
+      invitedByManagerId: managerId,
+      tenantName,
+      state: "waiting",
+      signupUrl: `/signup?role=TENANT&inviteToken=${inviteToken}`,
+      audit: "초대 링크 생성",
+      createdAt: now()
+    };
+
+    invite.email = input.email?.trim() || invite.email;
+    invite.phone = input.phone?.trim() || invite.phone;
+    invite.audit = "초대 링크 생성";
+
+    if (!existing) this.store.contractInvites.push(invite);
+
+    return invite;
+  }
+
+  private upsertExtractionItem(
+    extraction: ContractExtraction,
+    label: string,
+    value: string | undefined,
+    group: ExtractionGroup,
+    masked = false
+  ) {
+    const nextValue = value?.trim();
+    if (!nextValue) return;
+
+    const existing = extraction.items.find((item) => item.label === label);
+    if (existing) {
+      existing.value = nextValue;
+      existing.group = group;
+      existing.masked = masked || existing.masked;
+      existing.needsCheck = true;
+      existing.evidence = existing.evidence ?? "관리자 수동 입력";
+      return;
+    }
+
+    extraction.items.push({
+      label,
+      value: nextValue,
+      group,
+      needsCheck: true,
+      masked,
+      evidence: "관리자 수동 입력"
+    });
+  }
+
+  // 통합 계정 모델: 초대는 "기존 로그인 계정에 관계를 붙이는 루트"이므로
+  // 이메일/휴대폰 같은 강한 식별자는 role과 무관하게 매칭한다.
+  // 이름 단독 일치는 약한 신호라 이미 임차 관계가 있는 계정으로 한정(오연결 방지).
+  private findTenantForInvite(invite: ContractInvite) {
+    return this.store.users.find((user) => {
+      if (invite.email && user.email === invite.email) return true;
+      if (invite.phone && user.phone === invite.phone) return true;
+      return Boolean(this.store.tenantRooms[user.id]) && user.name === invite.tenantName;
+    });
+  }
+
+  private inviteAuditLabel(state: "waiting" | "connected" | "disputed") {
+    if (state === "connected") return "관리자 확인 후 연결 완료";
+    if (state === "disputed") return "임차인 이의 또는 정보 불일치로 보류";
+    return "초대 링크 발송 대기";
+  }
+
+  private positiveInteger(value: number | undefined) {
+    if (value === undefined || value === null || Number.isNaN(Number(value))) return undefined;
+    const parsed = Math.floor(Number(value));
+
+    return parsed >= 0 ? parsed : undefined;
+  }
+
+  private paymentDay(value: number | undefined) {
+    const parsed = this.positiveInteger(value);
+
+    return parsed && parsed >= 1 && parsed <= 31 ? parsed : undefined;
+  }
+
   private buildManagerContractRow(managerId: string, contract: Contract): ManagerContractRow {
     this.assertManagerCanAccessRoom(managerId, contract.roomId);
     const room = this.findRoom(contract.roomId);
@@ -399,6 +882,7 @@ export class RoomlogContractDomain {
     return this.store.contractInvites
       .filter((invite) => invite.invitedByManagerId === managerId)
       .map((invite) => ({
+        id: invite.id,
         unitId: this.displayUnitId(this.findRoom(invite.roomId)),
         tenantName: invite.tenantName,
         state: invite.state,

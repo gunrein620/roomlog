@@ -11,7 +11,8 @@ import type {
   ReportStatus,
 } from "@roomlog/types";
 import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
-import { actionHref, MANAGER_REPORT_ROUTES, sourceHref } from "@/lib/report-nav";
+import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 const navItems = [
   ["허브", MANAGER_REPORT_ROUTES["M-RPT-00"]],
@@ -24,7 +25,7 @@ const navItems = [
 
 export function ReportShell({ children }: { children: ReactNode }) {
   return (
-    <ManagerShell title="운영 보고" context="M-RPT · 임대인 보고" nav={<ReportNav />}>
+    <ManagerShell title="운영 보고" context="관리 중인 집 · 임대인 보고" nav={<ReportNav />}>
       {children}
     </ManagerShell>
   );
@@ -63,7 +64,7 @@ export function ScreenHeader({
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
       <div>
-        <div style={captionStyle}>{eyebrow}</div>
+        {stripScreenId(eyebrow) ? <div style={captionStyle}>{stripScreenId(eyebrow)}</div> : null}
         <h1 style={{ margin: "4px 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>{title}</h1>
         {subtitle ? <p style={mutedTextStyle}>{subtitle}</p> : null}
       </div>
@@ -156,7 +157,7 @@ export function ReportTable({ reports }: { reports: Report[] }) {
               <td style={tdStyle}><StatusBadge status={report.status} /></td>
               <td style={tdStyle}>{report.recipient?.name ?? "미지정"}</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>
-                <Link href={MANAGER_REPORT_ROUTES["M-RPT-02"]} style={inlineLinkStyle}>상세</Link>
+                <Link href={reportHref("M-RPT-02", report.id)} style={inlineLinkStyle}>상세</Link>
               </td>
             </tr>
           ))}
@@ -207,7 +208,7 @@ export function NextActionList({ actions }: { actions: ReportNextAction[] }) {
           <div>
             <div style={{ fontWeight: 850 }}>{action.label}</div>
             <div style={mutedSmallStyle}>
-              {action.targetScreenId}로 대상·기간을 넘기고, 발송 전 원본 행을 대조합니다.
+              메시징 초안으로 연결하고, 발송 전 원본 행을 대조합니다.
             </div>
           </div>
           <LinkButton href={actionHref(action)} variant="secondary">초안 열기</LinkButton>

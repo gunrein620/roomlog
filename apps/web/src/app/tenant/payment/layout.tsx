@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
 
@@ -7,17 +6,7 @@ import { PhoneFrame } from "@roomlog/ui";
 export default function PaymentLayout({ children }: { children: ReactNode }) {
   return (
     <PhoneFrame
-      label={
-        <>
-          <Link
-            href="/shell"
-            style={{ color: "var(--primary)", textDecoration: "none" }}
-          >
-            ← 셸 인덱스
-          </Link>
-          <span>T-PAY 납부 · 임차인 · 390×844</span>
-        </>
-      }
+      label={<span>사는 집 · 관리비·납부</span>}
     >
       {children}
     </PhoneFrame>

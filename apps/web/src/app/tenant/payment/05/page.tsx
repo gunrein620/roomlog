@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button, Card } from "@roomlog/ui";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
-import { getBill, DEMO_BILL_ID } from "@/lib/payment-api";
+import { getBill } from "@/lib/payment-api";
 
 // T-PAY-05 · 연체(납부) 안내
 // 연체를 존엄하게 알리고 납부·상담으로 잇는다. 단계 라벨(경미/주의/심각)은 관리인 전용 → 비노출.
@@ -20,8 +20,17 @@ function won(n: number): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
 
-export default async function Page() {
-  const bill = await getBill(DEMO_BILL_ID);
+function withBillId(route: string, billId?: string): string {
+  return billId ? `${route}?id=${encodeURIComponent(billId)}` : route;
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  const bill = await getBill(id);
   const remaining = bill.totalAmount - bill.paidAmount;
   const daysPast = Math.floor(
     (new Date().getTime() - new Date(bill.dueDate).getTime()) / 86_400_000,
@@ -116,7 +125,10 @@ export default async function Page() {
           gap: 8,
         }}
       >
-        <Link href={PAYMENT_ROUTES["T-PAY-02"]} style={{ textDecoration: "none", display: "block" }}>
+        <Link
+          href={withBillId(PAYMENT_ROUTES["T-PAY-02"], bill.id)}
+          style={{ textDecoration: "none", display: "block" }}
+        >
           <Button fullWidth>납부하기</Button>
         </Link>
         {/* 시스템/크로스(채팅) — 이번 슬라이스 밖 */}

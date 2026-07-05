@@ -1,12 +1,15 @@
 import type {
   CreateMoveoutDisputeDto,
   CreateMoveoutInquiryDto,
+  EscalateMoveoutDisputeDto,
   MoveoutChecklistItem,
   Dispute,
   MoveoutRecordItem,
   MoveoutSummary,
   SettlementEstimate,
   Thread,
+  UpdateTenantMoveoutDisputeDto,
+  UpdateMoveoutChecklistDto,
 } from "@roomlog/types";
 import {
   DEMO_MOVEOUT,
@@ -25,8 +28,11 @@ export const tenantMoveoutPaths = {
   moveout: (id: string) => `/moveouts/${encodeURIComponent(id)}`,
   records: (id: string) => `/moveouts/${encodeURIComponent(id)}/records`,
   checklist: (id: string) => `/moveouts/${encodeURIComponent(id)}/checklist`,
+  updateChecklist: (id: string) => `/moveouts/${encodeURIComponent(id)}/checklist`,
   settlement: (id: string) => `/moveouts/${encodeURIComponent(id)}/settlement`,
   disputes: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes`,
+  disputeAction: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes/action`,
+  disputeEscalation: (id: string) => `/moveouts/${encodeURIComponent(id)}/disputes/escalate`,
   inquiries: (id: string) => `/moveouts/${encodeURIComponent(id)}/inquiries`,
 };
 
@@ -60,6 +66,16 @@ export function getChecklist(id: string): Promise<MoveoutChecklistItem[]> {
   return tryFetch(tenantMoveoutPaths.checklist(id), DEMO_MOVEOUT_CHECKLIST, "임차인 퇴실 체크리스트 조회");
 }
 
+export function updateMoveoutChecklist(
+  id: string,
+  input: UpdateMoveoutChecklistDto,
+): Promise<MoveoutChecklistItem[]> {
+  return serverFetch<MoveoutChecklistItem[]>(tenantMoveoutPaths.updateChecklist(id), {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export function getSettlement(id: string): Promise<SettlementEstimate> {
   return tryFetch(tenantMoveoutPaths.settlement(id), DEMO_MOVEOUT_SETTLEMENT, "임차인 퇴실 정산 조회");
 }
@@ -70,6 +86,26 @@ export function getDisputes(id: string): Promise<Dispute[]> {
 
 export function createMoveoutDispute(id: string, input: CreateMoveoutDisputeDto): Promise<Dispute> {
   return serverFetch<Dispute>(tenantMoveoutPaths.disputes(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateTenantMoveoutDispute(
+  id: string,
+  input: UpdateTenantMoveoutDisputeDto,
+): Promise<Dispute> {
+  return serverFetch<Dispute>(tenantMoveoutPaths.disputeAction(id), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function escalateMoveoutDispute(
+  id: string,
+  input: EscalateMoveoutDisputeDto,
+): Promise<Dispute> {
+  return serverFetch<Dispute>(tenantMoveoutPaths.disputeEscalation(id), {
     method: "POST",
     body: JSON.stringify(input),
   });

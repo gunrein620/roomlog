@@ -1,12 +1,10 @@
 import { redirect } from "next/navigation";
 import type { Message, Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
-import {
-  addManagerThreadMessage,
-  DEMO_MANAGER_THREAD_ID,
-  getManagerThread,
-} from "@/lib/messaging-manager-api";
+import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
+import { addManagerThreadMessage, deleteManagerThread, getManagerThread } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
@@ -21,7 +19,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ id?: string; unitId?: string }>;
+type SearchParams = Promise<{ id?: string }>;
 
 async function sendManagerMessage(formData: FormData) {
   "use server";
@@ -29,29 +27,86 @@ async function sendManagerMessage(formData: FormData) {
   const threadId = String(formData.get("threadId") ?? "");
   const body = String(formData.get("body") ?? "").trim();
 
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
   if (threadId && body) {
     await addManagerThreadMessage(threadId, { body });
   }
 
-  redirect(
-    `${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(
-      threadId || DEMO_MANAGER_THREAD_ID,
-    )}`,
-  );
+  redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function deleteManagerThreadAction(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  try {
+    await deleteManagerThread(threadId);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+}
+
+async function getRequiredManagerThread(id: string): Promise<Thread> {
+  try {
+    return await getManagerThread(id);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id, unitId } = await searchParams;
-  const thread = await getManagerThread(id ?? unitId ?? DEMO_MANAGER_THREAD_ID);
+  const { id } = await searchParams;
+  if (!id) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  const thread = await getRequiredManagerThread(id);
   const messages = thread.messages ?? [];
   const isPayment = thread.context === "payment";
 
   return (
     <>
+      <MessageAutoRefresh intervalMs={3000} />
       <ScreenHeader
         eyebrow="M-MSG-04"
         title={`${thread.unitId}호 채팅 스레드`}
-        actions={<LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>}
+        actions={
+          <>
+            <LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>
+            <form action={deleteManagerThreadAction}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Button
+                type="submit"
+                variant="ghost"
+                aria-label={`${thread.unitId}호 ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+              >
+                삭제
+              </Button>
+            </form>
+          </>
+        }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: "var(--space-lg)", alignItems: "start" }}>
@@ -92,7 +147,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </div>
 
           {isPayment ? (
-            <NoticeCard title="D20 청구 맥락 톤 가드" emphasis>
+            <NoticeCard title="청구 맥락 톤 가드" emphasis>
               이 채팅은 문의 해결용입니다. 관리인발 독촉 문구, 납부 압박, 미납 낙인 표현은 보낼 수 없습니다.
             </NoticeCard>
           ) : (
@@ -130,7 +185,7 @@ function ContextCard({ thread }: { thread: Thread }) {
       </div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>
       <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: 1.5 }}>
-        source {thread.contextRef ?? thread.id} · 같은 스레드의 임차인 투영은 T-MSG-01입니다.
+        연결된 업무: {thread.contextRef ?? thread.id} · 임차인에게도 같은 대화가 표시됩니다.
       </div>
     </Card>
   );

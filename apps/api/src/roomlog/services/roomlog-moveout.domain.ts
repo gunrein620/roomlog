@@ -4,6 +4,7 @@ import type {
   CreateMessagingThreadInput,
   CreateMoveoutDisputeInput,
   CreateTenantMoveoutInquiryInput,
+  EscalateMoveoutDisputeInput,
   MessagingThread,
   MoveoutAdjustDeductionInput,
   MoveoutAdjustWearVerdictInput,
@@ -22,7 +23,9 @@ import type {
   MoveoutReviewGateBlockReason,
   MoveoutSettlementEstimate,
   MoveoutSummary,
-  Room
+  UpdateTenantMoveoutDisputeInput,
+  Room,
+  UpdateMoveoutChecklistInput
 } from "../roomlog.types";
 import type { Store } from "../roomlog.service";
 
@@ -77,6 +80,60 @@ export class RoomlogMoveoutDomain {
     return this.checklistFor(moveout.id);
   }
 
+  updateTenantMoveoutChecklist(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateMoveoutChecklistInput
+  ): MoveoutChecklistItem[] {
+    const moveout = this.findTenantMoveout(tenantId, moveoutId);
+    const items = Array.isArray(input?.items) ? input.items : [];
+
+    if (items.length === 0) {
+      throw new BadRequestException("저장할 퇴실 체크리스트 항목이 필요합니다.");
+    }
+
+    const nextItems = items.map((item) => {
+      const label = item.label?.trim();
+      const itemId = item.id?.trim() || id("mchk");
+      const existing = this.store.moveoutChecklist.find((candidate) => candidate.id === itemId);
+
+      if (!label) {
+        throw new BadRequestException("퇴실 체크리스트 항목명을 입력해주세요.");
+      }
+
+      if (!["normal", "aging", "damage_check"].includes(item.condition)) {
+        throw new BadRequestException("퇴실 체크리스트 상태 값이 올바르지 않습니다.");
+      }
+
+      if (existing && existing.summaryId !== moveout.id) {
+        throw new ForbiddenException("다른 퇴실 요청의 체크리스트 항목은 수정할 수 없습니다.");
+      }
+
+      const note = item.note?.trim();
+      const attachmentUrls = this.nonEmptyStrings(item.attachmentUrls);
+
+      return {
+        id: itemId,
+        summaryId: moveout.id,
+        label,
+        present: Boolean(item.present),
+        condition: item.condition,
+        note: note || undefined,
+        attachmentUrls
+      };
+    });
+
+    this.store.moveoutChecklist = [
+      ...this.store.moveoutChecklist.filter((item) => item.summaryId !== moveout.id),
+      ...nextItems
+    ];
+    moveout.prepProgress = this.checklistProgress(nextItems);
+    moveout.updatedAt = now();
+    this.persistStore();
+
+    return nextItems.map((item) => ({ ...item, attachmentUrls: [...item.attachmentUrls] }));
+  }
+
   getTenantMoveoutSettlement(tenantId: string, moveoutId: string): MoveoutSettlementEstimate {
     const moveout = this.findTenantMoveout(tenantId, moveoutId);
 
@@ -102,7 +159,8 @@ export class RoomlogMoveoutDomain {
     }
 
     const managerId = this.managerIdFor(moveout);
-    const thread = this.ensureMoveoutThread(moveout, managerId, "tenant", body, input.attachmentUrls);
+    const attachmentUrls = this.nonEmptyStrings(input.attachmentUrls);
+    const thread = this.ensureMoveoutThread(moveout, managerId, "tenant", body, attachmentUrls);
     const createdAt = now();
     this.store.moveoutRecords.unshift({
       id: id("mrec"),
@@ -133,12 +191,14 @@ export class RoomlogMoveoutDomain {
     }
 
     const createdAt = now();
+    const attachmentUrls = this.nonEmptyStrings(input.attachmentUrls);
     const dispute: MoveoutDispute = {
       id: id("mdp"),
       summaryId: moveout.id,
       targetItemId: input.targetItemId?.trim() || undefined,
       targetLabel,
       reason,
+      attachmentUrls,
       status: "received",
       slaDeadline: this.addHoursIso(createdAt, 72),
       slaBreached: false,
@@ -151,13 +211,119 @@ export class RoomlogMoveoutDomain {
       moveout,
       managerId,
       "tenant",
-      `퇴실 이의 접수: ${targetLabel}\n사유: ${reason}`
+      `퇴실 이의 접수: ${targetLabel}\n사유: ${reason}`,
+      attachmentUrls
     );
 
     dispute.messagingThreadId = thread.id;
     moveout.messagingThreadId = thread.id;
     this.store.moveoutDisputes.unshift(dispute);
     moveout.updatedAt = createdAt;
+    this.persistStore();
+
+    return this.presentDispute(dispute);
+  }
+
+  updateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateTenantMoveoutDisputeInput
+  ): MoveoutDispute {
+    const moveout = this.findTenantMoveout(tenantId, moveoutId);
+    const dispute = this.findDisputeForMoveout(moveout.id, input.disputeId);
+    const action = input.action;
+    const actedAt = now();
+    const attachmentUrls = this.nonEmptyStrings(input.attachmentUrls);
+    const reason = input.reason?.trim();
+
+    if (!["confirm", "re_dispute", "resolve"].includes(action)) {
+      throw new BadRequestException("퇴실 이의 전이 값이 올바르지 않습니다.");
+    }
+
+    if (action === "confirm" && dispute.status !== "answered") {
+      throw new BadRequestException("관리자 응답 이후에만 확인 처리할 수 있습니다.");
+    }
+
+    if (action === "re_dispute" && !reason) {
+      throw new BadRequestException("재이의 사유를 입력해주세요.");
+    }
+
+    if (action === "resolve" && !["answered", "confirmed", "re_disputed", "reviewing"].includes(dispute.status)) {
+      throw new BadRequestException("해소 처리할 수 있는 이의 상태가 아닙니다.");
+    }
+
+    const nextStatus =
+      action === "confirm" ? "confirmed" : action === "re_dispute" ? "re_disputed" : "resolved";
+    const note =
+      action === "confirm"
+        ? "관리자 응답 확인"
+        : action === "resolve"
+          ? "임차인 해소 처리"
+          : reason;
+
+    dispute.status = nextStatus;
+    if (action === "re_dispute") {
+      dispute.reason = reason!;
+      dispute.attachmentUrls = attachmentUrls;
+    }
+    dispute.history = [
+      ...dispute.history,
+      { status: nextStatus, at: actedAt, actorUserId: tenantId, note }
+    ];
+    dispute.updatedAt = actedAt;
+
+    const managerId = this.managerIdFor(moveout);
+    this.ensureMoveoutThread(
+      moveout,
+      managerId,
+      "tenant",
+      this.tenantDisputeActionMessage(dispute.targetLabel, action, note),
+      attachmentUrls
+    );
+    moveout.updatedAt = actedAt;
+    this.persistStore();
+
+    return this.presentDispute(dispute);
+  }
+
+  escalateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: EscalateMoveoutDisputeInput
+  ): MoveoutDispute {
+    const moveout = this.findTenantMoveout(tenantId, moveoutId);
+    const dispute = this.findDisputeForMoveout(moveout.id, input.disputeId);
+
+    if (!dispute.slaBreached) {
+      throw new BadRequestException("SLA 경과 전에는 에스컬레이션할 수 없습니다.");
+    }
+
+    if (dispute.status === "resolved") {
+      throw new BadRequestException("이미 해소된 이의는 에스컬레이션할 수 없습니다.");
+    }
+
+    const escalatedAt = now();
+    const reason = input.reason?.trim() || "SLA 경과로 에스컬레이션 요청";
+    dispute.status = "reviewing";
+    dispute.history = [
+      ...dispute.history,
+      {
+        status: "reviewing",
+        at: escalatedAt,
+        actorUserId: tenantId,
+        note: `에스컬레이션 요청: ${reason}`
+      }
+    ];
+    dispute.updatedAt = escalatedAt;
+
+    const managerId = this.managerIdFor(moveout);
+    this.ensureMoveoutThread(
+      moveout,
+      managerId,
+      "tenant",
+      `퇴실 이의 SLA 에스컬레이션: ${dispute.targetLabel}\n사유: ${reason}`
+    );
+    moveout.updatedAt = escalatedAt;
     this.persistStore();
 
     return this.presentDispute(dispute);
@@ -423,6 +589,19 @@ export class RoomlogMoveoutDomain {
         managerId,
         at: answeredAt
       });
+
+      if (input.reflect === "settlement" && input.kind === "accept" && dispute.targetItemId) {
+        const deduction = this.store.moveoutDeductions.find(
+          (item) => item.summaryId === moveout.id && item.id === dispute.targetItemId
+        );
+
+        if (deduction) {
+          deduction.estimatedMin = 0;
+          deduction.estimatedMax = 0;
+          deduction.needsConfirmation = false;
+          this.recalculateSettlementRange(moveout);
+        }
+      }
     }
 
     moveout.updatedAt = answeredAt;
@@ -472,13 +651,16 @@ export class RoomlogMoveoutDomain {
   private recordsFor(summaryId: string) {
     return this.store.moveoutRecords
       .filter((record) => record.summaryId === summaryId)
-      .map((record) => ({ ...record }));
+      .map((record) => ({
+        ...record,
+        evidenceUrls: record.evidenceUrls ? this.nonEmptyStrings(record.evidenceUrls) : undefined
+      }));
   }
 
   private checklistFor(summaryId: string) {
     return this.store.moveoutChecklist
       .filter((item) => item.summaryId === summaryId)
-      .map((item) => ({ ...item }));
+      .map((item) => ({ ...item, attachmentUrls: [...(item.attachmentUrls ?? [])] }));
   }
 
   private disputesFor(summaryId: string) {
@@ -486,6 +668,18 @@ export class RoomlogMoveoutDomain {
       .filter((dispute) => dispute.summaryId === summaryId)
       .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt))
       .map((dispute) => this.presentDispute(dispute));
+  }
+
+  private findDisputeForMoveout(summaryId: string, disputeId: string) {
+    const dispute = this.store.moveoutDisputes.find(
+      (item) => item.summaryId === summaryId && item.id === disputeId
+    );
+
+    if (!dispute) {
+      throw new NotFoundException("퇴실 이의를 찾을 수 없습니다.");
+    }
+
+    return dispute;
   }
 
   private presentMoveout(moveout: MoveoutSummary): MoveoutSummary {
@@ -512,6 +706,7 @@ export class RoomlogMoveoutDomain {
   private presentDispute(dispute: MoveoutDispute): MoveoutDispute {
     return {
       ...dispute,
+      attachmentUrls: [...(dispute.attachmentUrls ?? [])],
       history: dispute.history.map((event) => ({ ...event }))
     };
   }
@@ -715,6 +910,32 @@ export class RoomlogMoveoutDomain {
 
   private addHoursIso(startIso: string, hours: number) {
     return new Date(this.timeOf(startIso) + hours * 60 * 60 * 1000).toISOString();
+  }
+
+  private checklistProgress(items: MoveoutChecklistItem[]) {
+    if (items.length === 0) {
+      return 0;
+    }
+
+    const readyCount = items.filter((item) => item.present && item.condition !== "damage_check").length;
+    return Number((readyCount / items.length).toFixed(2));
+  }
+
+  private nonEmptyStrings(values?: string[]) {
+    return Array.from(
+      new Set((Array.isArray(values) ? values : []).map((value) => value.trim()).filter(Boolean))
+    );
+  }
+
+  private tenantDisputeActionMessage(
+    targetLabel: string,
+    action: UpdateTenantMoveoutDisputeInput["action"],
+    note?: string
+  ) {
+    const label =
+      action === "confirm" ? "응답 확인" : action === "resolve" ? "해소 처리" : "재이의";
+
+    return `퇴실 이의 ${label}: ${targetLabel}${note ? `\n내용: ${note}` : ""}`;
   }
 
   private findUser(userId: string) {

@@ -166,6 +166,15 @@ export type CreateMessagingThreadInput = {
   };
 };
 
+export type CreateTenantMessagingThreadInput = {
+  context?: MessagingThreadContext;
+  contextRef?: string;
+  contextLabel?: string;
+  body: string;
+  kind?: MessagingMessageKind;
+  attachmentUrls?: string[];
+};
+
 export type AddMessagingThreadMessageInput = {
   body?: string;
   kind?: MessagingMessageKind;
@@ -513,6 +522,7 @@ export type MoveoutRecordItem = {
   occurredAt?: string;
   wearVerdict?: MoveoutWearVerdict;
   wearNote?: string;
+  evidenceUrls?: string[];
   moveinComparisonAvailable: boolean;
 };
 
@@ -523,6 +533,7 @@ export type MoveoutChecklistItem = {
   present: boolean;
   condition: MoveoutChecklistCondition;
   note?: string;
+  attachmentUrls?: string[];
 };
 
 export type MoveoutDeductionCandidate = {
@@ -564,6 +575,7 @@ export type MoveoutDispute = {
   targetItemId?: string;
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
   status: MoveoutDisputeStatus;
   slaDeadline: string;
   slaBreached: boolean;
@@ -656,11 +668,39 @@ export type CreateMoveoutDisputeInput = {
   targetItemId?: string;
   targetLabel: string;
   reason: string;
+  attachmentUrls?: string[];
 };
 
 export type CreateTenantMoveoutInquiryInput = {
   body: string;
   attachmentUrls?: string[];
+};
+
+export type UpdateMoveoutChecklistItemInput = {
+  id?: string;
+  label: string;
+  present: boolean;
+  condition: MoveoutChecklistCondition;
+  note?: string;
+  attachmentUrls?: string[];
+};
+
+export type UpdateMoveoutChecklistInput = {
+  items: UpdateMoveoutChecklistItemInput[];
+};
+
+export type TenantMoveoutDisputeAction = "confirm" | "re_dispute" | "resolve";
+
+export type UpdateTenantMoveoutDisputeInput = {
+  disputeId: string;
+  action: TenantMoveoutDisputeAction;
+  reason?: string;
+  attachmentUrls?: string[];
+};
+
+export type EscalateMoveoutDisputeInput = {
+  disputeId: string;
+  reason?: string;
 };
 
 export type ContractLifecycle =
@@ -689,6 +729,7 @@ export type Contract = {
   monthlyRent?: number;
   maintenanceFee?: number;
   paymentDay?: number;
+  optionInventory?: string[];
   startDate?: string;
   endDate?: string;
   createdAt: string;
@@ -765,6 +806,56 @@ export type ContractInvite = {
   createdAt: string;
   acceptedAt?: string;
   acceptedByUserId?: string;
+};
+
+export type CreateTenantContractInput = {
+  fileName?: string;
+  fileUrl?: string;
+  ocrConsent: boolean;
+  storageConsent: boolean;
+};
+
+export type CreateManagerContractInput = {
+  roomId?: string;
+  unitId?: string;
+  tenantId?: string;
+  tenantName?: string;
+  fileName?: string;
+  fileUrl?: string;
+  monthlyRent?: number;
+  maintenanceFee?: number;
+  paymentDay?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+export type UpdateManagerContractManualValuesInput = {
+  deposit?: string;
+  monthlyRent?: number;
+  maintenanceFee?: number;
+  paymentDay?: number;
+  account?: string;
+};
+
+export type UpdateManagerContractInventoryInput = {
+  items: string[];
+};
+
+export type CreateManagerContractInviteInput = {
+  tenantName: string;
+  email?: string;
+  phone?: string;
+};
+
+export type UpdateManagerContractInviteInput = {
+  state: "waiting" | "connected" | "disputed";
+  note?: string;
+};
+
+export type UpdateManagerContractPrivacyInput = {
+  maskingEnabled?: boolean;
+  forwardingConsent?: boolean;
+  retentionNote?: string;
 };
 
 export type CostReviewQueueSummary = {
@@ -1500,6 +1591,179 @@ export type StatusHistory = {
   toStatus: TicketStatus;
   note?: string;
   createdAt: string;
+};
+
+export type BillStatus =
+  | "DRAFT"
+  | "SENT"
+  | "CONFIRMING"
+  | "PARTIALLY_PAID"
+  | "PAID"
+  | "OVERDUE"
+  | "CORRECTED"
+  | "CANCELED";
+
+export type PaymentBadge = "NONE" | "DUE" | "CONFIRMING" | "PARTIAL" | "PAID" | "OVERDUE";
+
+export type PaymentReportStatus = "CONFIRMING" | "MATCHED" | "MISMATCH";
+
+export type DepositMatchStatus = "UNMATCHED" | "MATCHED" | "ORPHAN" | "MISMATCH";
+
+export type OverdueStage = "MINOR" | "WARNING" | "SEVERE";
+
+export type BillLineItem = {
+  id?: string;
+  label: string;
+  amount: number;
+};
+
+export type PaymentAccount = {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+};
+
+export type Bill = {
+  id: string;
+  unitId: string;
+  billingMonth: string;
+  status: BillStatus;
+  items: BillLineItem[];
+  totalAmount: number;
+  paidAmount: number;
+  dueDate: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  correctionHistory?: string[];
+  maintenanceFeeId?: string;
+  depositConfirmationRequested?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PaymentReport = {
+  id: string;
+  billId: string;
+  unitId: string;
+  amount: number;
+  depositorName?: string;
+  status: PaymentReportStatus;
+  etaHours: number;
+  reportedAt: string;
+};
+
+export type Deposit = {
+  id: string;
+  depositorName: string;
+  amount: number;
+  depositedAt: string;
+  matchStatus: DepositMatchStatus;
+  matchedBillId?: string;
+  guessedUnitId?: string;
+};
+
+export type MaintenanceFeeItem = {
+  id?: string;
+  label: string;
+  amount: number;
+  receiptAvailable: boolean;
+};
+
+export type MaintenanceFee = {
+  id: string;
+  unitId: string;
+  billingMonth: string;
+  items: MaintenanceFeeItem[];
+  totalAmount: number;
+  available: boolean;
+};
+
+export type DunningGuard = {
+  blocked: boolean;
+  hasConfirming: boolean;
+  hasOrphan: boolean;
+};
+
+export type TeamBill = Omit<
+  Bill,
+  "items" | "bankName" | "accountNumber" | "accountHolder"
+> & {
+  items: Array<Pick<BillLineItem, "label" | "amount">>;
+  account: PaymentAccount;
+};
+
+export type TeamReport = PaymentReport;
+
+export type TeamDeposit = Deposit;
+
+export type TeamMaintenance = Omit<MaintenanceFee, "items"> & {
+  items: Array<Pick<MaintenanceFeeItem, "label" | "amount" | "receiptAvailable">>;
+};
+
+export type TeamBillRow = {
+  billId: string;
+  unitId: string;
+  tenantName: string;
+  billingMonth: string;
+  totalAmount: number;
+  paidAmount: number;
+  status: BillStatus;
+  dueDate: string;
+  badge?: PaymentBadge;
+};
+
+export type TeamDashSummary = {
+  total: number;
+  confirmNeeded: number;
+  pending: number;
+  overdue: number;
+};
+
+export type TeamCollection = {
+  billingMonth: string;
+  collectionRate: number;
+  collectedAmount: number;
+  unpaidAmount: number;
+  vacancyLoss: number;
+  confirmingAmount: number;
+  orphanAmount: number;
+  recentDeposits: TeamDeposit[];
+};
+
+export type TeamOverdue = {
+  billId: string;
+  unitId: string;
+  tenantName: string;
+  unpaidAmount: number;
+  daysOverdue: number;
+  stage: OverdueStage;
+  dueDate: string;
+  guard: DunningGuard;
+};
+
+export type TeamDunning = {
+  billId: string;
+  unitId: string;
+  tenantName: string;
+  unpaidAmount: number;
+  draftText: string;
+  channel: string;
+  guard: DunningGuard;
+};
+
+export type CreatePaymentReportInput = {
+  amount: number;
+  depositorName?: string;
+};
+
+export type MatchDepositInput = {
+  billId: string;
+};
+
+export type SendDunningInput = {
+  text: string;
+  channel: string;
 };
 
 export type CreateComplaintInput = {

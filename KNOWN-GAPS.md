@@ -4,6 +4,7 @@
 
 ## 이미 고침 (셸에서 해소, 참고)
 - M-HOME-01 가짜 큐 제거(실집계만), M-HOME-03 임의 리스크 라벨 제거("산정 전"), M-COST-03 dead-end→M-DASH-05, moveout/03 null 크래시 가드, M-VEND-01 신규 배지, M-CALL-01 2단 접힘(동급 5버튼 해소), T-PAY-02 실제 createReport 배선, M-VOX-01 확인 게이트 실작동.
+- **KAN-137 리포트**: `manager/report` 레이아웃 인증 가드, `/manager/reports` API 배선, 생성/외부공유 POST 명시 액션화, production demo fallback fail-closed, 선택 리포트 `id` 스냅샷 유지, 후속 액션 메시징 연결까지 해소. Docker 배포 스모크로 생성·상세·공유 마스킹/감사로그·챗봇 `draft_only`·FAQ 메시징 연결 확인.
 
 ## 이월 — C버킷: 서버측 강제 (실물 단계)
 클라이언트 disabled 버튼/문구로만 있고 서버가 강제 안 함. 실제 API/auth 붙을 때 서버 가드 필수.
@@ -25,9 +26,16 @@
 7. **배너 단일 슬롯**: 임차인 조건 배너는 우선순위 1개만(연체>일부납부>확인중), stacking 금지. '입금 확인 요청'(`depositConfirmationRequested`) 응답은 별개 슬롯.
 
 ## 이월 — 프론트-백엔드 배선 (실물 단계)
-- **report / vendor-mgmt API 경로+shape 불일치**: 프론트가 `/reports/manager`·`/vendor-mgmt/vendors` 호출 → 백엔드는 `/reports`·`/vendors`. tryFetch가 조용히 데모 폴백해서 **항상 데모만 렌더**(서버 통신 0). 실물 전 프론트 api 클라이언트를 백엔드 라우트/shape에 맞춰 재작성 필요(허브는 여러 엔드포인트 합성). report는 생성(POST) 엔드포인트 자체가 부재.
+- **vendor-mgmt production fallback 정책**: 경로는 `/manager/vendor-mgmt/*`로 백엔드와 정합하지만, API 실패 시 데모 폴백을 계속 허용한다. report처럼 production에서는 실패를 숨기지 않는 정책 정리 필요.
 - **T-HOME-06 안심요약**·**M-HOME-01 계약/moveout 큐**·**D19 4번째 tier(계약/퇴실)**: 실제 상태 데이터 연동 필요(지금은 fabrication 회피 위해 미표시/미연동).
 - **리포트 크로스링크 payload**: 대상 세대/청구건이 하드코딩 1건으로만 연결(D24 pre-fill 미구현).
+
+## 이월 — 통합 인증 (계정 identity ≠ 룸로그 관계 authorization)
+단일 WOOZU 로그인(/login) + 파생 capability(roles) 전환은 완료. 남은 결선:
+- **signup 통합**: /signup은 SEEKER 전용으로 남았고, 역할별 가입 검증(validateSignupInput의 LANDLORD/무초대 TENANT 건물정보 강제)은 유지 중. 방향: 가입은 SEEKER 기본, 역할별 정보는 capability 연결 시 수집.
+- **LANDLORD capability 연결 경로**: /login의 "관리 중인 집 연결 필요" 안내는 마이페이지 집 내놓기로 보내지만, 집 내놓기 → Room.landlordId 실제 연결은 미배선(등록 흐름이 아직 데모 상태).
+- **D18 초대+연락처 OTP**: acceptInviteForUser는 이메일 일치(강한 식별자) + phone 상호 존재 시에만 대조하는 fail-safe. OTP 검증은 후속 — 외국인/특수 연락처 하드블록 금지 원칙 유지할 것.
+- **UserAccount.role 정리**: legacy 단일값은 backward compat으로 파생 roles에 항상 포함시킨다(관계 없어도). 관계 데이터가 충분히 쌓이면 이 폴백을 제거하고 관계만 믿는 방향.
 
 ## 이월 — 라우팅 정합 (경미)
 - T-OUT-04 뒤로 조건부(01/03), T-OUT-03 관리자문의→M-MSG, T-DOC-02 의견→M-DOC 큐: 진입맥락/메시징 연결 필요(T-DEF-02 뒤로와 같은 단일-DOM/맥락 클래스).

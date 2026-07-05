@@ -42,6 +42,7 @@ jobs:
         env:
           PROD_ENV: "${{ secrets.PROD_ENV }}"
           DATABASE_URL: "${{ secrets.DATABASE_URL }}"
+          API_INTERNAL_URL: "${{ secrets.API_INTERNAL_URL }}"
           NEXT_PUBLIC_API_URL: "${{ secrets.NEXT_PUBLIC_API_URL }}"
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: "${{ secrets.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID }}"
           ROOMLOG_PUBLIC_ORIGIN: "${{ secrets.ROOMLOG_PUBLIC_ORIGIN }}"
@@ -56,6 +57,13 @@ jobs:
 
           : "${DATABASE_URL:?DATABASE_URL secret is required}"
 
+          if [ -z "${API_INTERNAL_URL:-}" ] && [ -n "${PROD_ENV:-}" ]; then
+            API_INTERNAL_URL="$(
+              printf '%s\n' "$PROD_ENV" \
+                | awk 'BEGIN { FS = "=" } $1 == "API_INTERNAL_URL" { sub(/^[^=]*=/, ""); print; exit }'
+            )"
+          fi
+          API_INTERNAL_URL="${API_INTERNAL_URL:-http://api:4000}"
           NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api}"
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID="${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}"
 
@@ -96,7 +104,7 @@ jobs:
 
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -104,6 +112,7 @@ jobs:
 
           cat >> .env.production <<EOF
           DATABASE_URL=${DATABASE_URL}
+          API_INTERNAL_URL=${API_INTERNAL_URL}
           NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}
           ROOMLOG_PUBLIC_ORIGIN=${ROOMLOG_PUBLIC_ORIGIN}
@@ -149,7 +158,7 @@ jobs:
             echo "== roomlog containers =="
             docker ps -a --filter "name=roomlog" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || true
             echo "== listeners on roomlog ports =="
-            (sudo ss -ltnp 2>/dev/null || ss -ltnp) | grep -E ':(80|3000|3001|3002|3003|4000)\b' || true
+            (sudo ss -ltnp 2>/dev/null || ss -ltnp) | grep -E ':(3000|4000)\b' || true
           }
 
           on_exit() {
@@ -187,7 +196,7 @@ jobs:
           echo "Container state before deploy:"
           dump_docker_state
 
-          docker rm -f roomlog-nginx roomlog-tenant roomlog-manager roomlog-vendor 2>/dev/null || true
+          docker rm -f roomlog-web roomlog-api 2>/dev/null || true
 
           compose -f docker-compose.prod.yml up -d --build --remove-orphans
           docker image prune -f

@@ -14,7 +14,8 @@ import type {
   WearVerdict,
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
-import { MANAGER_MOVEOUT_ROUTES } from "@/lib/moveout-manager-nav";
+import { MANAGER_MOVEOUT_ROUTES, withManagerMoveoutId } from "@/lib/moveout-manager-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 export const DISCLAIMER = "참고자료이며 최종 정산은 관리자 확인 후 확정됩니다";
 
@@ -76,7 +77,7 @@ export function ScreenHeader({
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", marginBottom: "var(--space-lg)" }}>
       <div>
-        <Badge emphasis>{eyebrow}</Badge>
+        {stripScreenId(eyebrow) ? <Badge emphasis>{stripScreenId(eyebrow)}</Badge> : null}
         <h1 style={{ margin: "var(--space-sm) 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
           {title}
         </h1>
@@ -199,18 +200,21 @@ export function ManagerRowsTable({ rows }: { rows: MoveoutManagerRow[] }) {
             <td style={tdStyle}><StatusBadge status={row.settlementStatus} /></td>
             <td style={tdStyle}>
               {row.openDisputeCount > 0 ? (
-                <Link href={`${MANAGER_MOVEOUT_ROUTES["M-OUT-03"]}?id=${row.summaryId}`} style={linkStyle}>
+                <Link href={withManagerMoveoutId(MANAGER_MOVEOUT_ROUTES["M-OUT-03"], row.summaryId)} style={linkStyle}>
                   이의 처리 {row.openDisputeCount}건
                 </Link>
               ) : "없음"}
             </td>
             <td style={tdStyle}><Badge emphasis={row.slaBreached}>{row.slaBreached ? "초과" : "정상"}</Badge></td>
             <td style={{ ...tdStyle, textAlign: "right" }}>
-              {row.contractConfirmed ? (
-                <Link href={`${MANAGER_MOVEOUT_ROUTES["M-OUT-01"]}?id=${row.summaryId}`} style={linkStyle}>기록 보기</Link>
-              ) : (
-                <span style={mutedSmallStyle}>계약 확정 후</span>
-              )}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+                <Link href={withManagerMoveoutId(MANAGER_MOVEOUT_ROUTES["M-OUT-01"], row.summaryId)} style={linkStyle}>
+                  기록
+                </Link>
+                <Link href={withManagerMoveoutId(MANAGER_MOVEOUT_ROUTES["M-OUT-02"], row.summaryId)} style={linkStyle}>
+                  정산
+                </Link>
+              </div>
             </td>
           </tr>
         ))}

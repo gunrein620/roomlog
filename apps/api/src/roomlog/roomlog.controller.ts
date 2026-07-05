@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Headers,
@@ -28,10 +29,16 @@ import {
   CreateComplaintFromCallInput,
   CreateIntakeSessionInput,
   CreateMessagingThreadInput,
+  CreateManagerContractInput,
+  CreateManagerContractInviteInput,
   CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreatePaymentReportInput,
+  CreateTenantContractInput,
+  CreateTenantMessagingThreadInput,
   CreateTenantMoveoutInquiryInput,
   DeletionState,
+  EscalateMoveoutDisputeInput,
   FinalizeIntakeInput,
   FloorPlanOpeningDetectionInput,
   AskManagerReportChatInput,
@@ -44,7 +51,10 @@ import {
   MoveoutAdjustWearVerdictInput,
   MoveoutCompleteReviewInput,
   MoveoutRespondDisputeInput,
+  UpdateTenantMoveoutDisputeInput,
+  UpdateMoveoutChecklistInput,
   ManagerTicketReplyInput,
+  MatchDepositInput,
   RealtimeClientSecretInput,
   RecordRealtimeTurnInput,
   ReopenTenantComplaintInput,
@@ -52,7 +62,12 @@ import {
   SaveFloorPlanDraftInput,
   SaveRoomWallsInput,
   SendIntakeMessageInput,
+  SendDunningInput,
   SubmitTenantAiFeedbackInput,
+  UpdateManagerContractInventoryInput,
+  UpdateManagerContractInviteInput,
+  UpdateManagerContractManualValuesInput,
+  UpdateManagerContractPrivacyInput,
   UserAccount,
   UserRole
 } from "./roomlog.types";
@@ -106,6 +121,19 @@ export class RoomlogController {
     @Param("inviteToken") inviteToken: string
   ) {
     return this.roomlogService.getSignupInvitePreview(role, inviteToken);
+  }
+
+  // 초대 수락(연결) — 새 계정 생성 루트가 아니라 "이미 로그인한 계정에 관계를 붙이는" 루트.
+  // 역할 가드 없이 인증만 요구한다: 어떤 capability의 계정이든 초대로 새 관계를 얻을 수 있다.
+  @Post("auth/invites/:role/:inviteToken/accept")
+  acceptInvite(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("role") role: UserRole,
+    @Param("inviteToken") inviteToken: string
+  ) {
+    const user = this.roomlogService.getUserFromToken(authorization);
+
+    return this.roomlogService.acceptInviteForUser(user.id, role, inviteToken);
   }
 
   @Post("auth/login")
@@ -285,6 +313,44 @@ export class RoomlogController {
     return this.roomlogService.listTenantComplaints(user.id);
   }
 
+  @Get("tenant/bills")
+  listTenantBills(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantBills(user.id);
+  }
+
+  @Get("tenant/bills/:billId/maintenance")
+  getTenantBillMaintenance(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantBillMaintenance(user.id, billId);
+  }
+
+  @Post("tenant/bills/:billId/reports")
+  createTenantPaymentReport(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string,
+    @Body() body: CreatePaymentReportInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createTenantPaymentReport(user.id, billId, body);
+  }
+
+  @Get("tenant/bills/:billId")
+  getTenantBill(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantBill(user.id, billId);
+  }
+
   @Post("tenant/complaints")
   createComplaint(
     @Headers("authorization") authorization: string | undefined,
@@ -430,6 +496,16 @@ export class RoomlogController {
     return this.roomlogService.submitTenantAiFeedback(user.id, complaintId, body);
   }
 
+  @Post("tenant/messaging/threads")
+  createTenantMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateTenantMessagingThreadInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createTenantMessagingThread(user.id, body);
+  }
+
   @Get("tenant/messaging/threads")
   listTenantMessagingThreads(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);
@@ -456,6 +532,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.addTenantMessagingThreadMessage(user.id, threadId, body);
+  }
+
+  @Delete("tenant/messaging/threads/:threadId")
+  deleteTenantMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.deleteTenantMessagingThread(user.id, threadId);
   }
 
   @Get("tenant/messaging/announcements")
@@ -533,6 +619,71 @@ export class RoomlogController {
     return this.roomlogService.requestManagerContractInfo(user.id, contractId);
   }
 
+  @Post("contracts/manager")
+  createManagerContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateManagerContractInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerContract(user.id, body);
+  }
+
+  @Patch("contracts/manager/:contractId/manual-values")
+  updateManagerContractManualValues(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string,
+    @Body() body: UpdateManagerContractManualValuesInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateManagerContractManualValues(user.id, contractId, body);
+  }
+
+  @Patch("contracts/manager/:contractId/inventory")
+  updateManagerContractInventory(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string,
+    @Body() body: UpdateManagerContractInventoryInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateManagerContractInventory(user.id, contractId, body);
+  }
+
+  @Post("contracts/manager/:contractId/invites")
+  createManagerContractInvite(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string,
+    @Body() body: CreateManagerContractInviteInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerContractInvite(user.id, contractId, body);
+  }
+
+  @Patch("contracts/manager/invites/:inviteId")
+  updateManagerContractInvite(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("inviteId") inviteId: string,
+    @Body() body: UpdateManagerContractInviteInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateManagerContractInvite(user.id, inviteId, body);
+  }
+
+  @Patch("contracts/manager/:contractId/privacy")
+  updateManagerContractPrivacy(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string,
+    @Body() body: UpdateManagerContractPrivacyInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateManagerContractPrivacy(user.id, contractId, body);
+  }
+
   @Post("contracts/manager/:contractId/deletion-decision")
   decideManagerContractDeletion(
     @Headers("authorization") authorization: string | undefined,
@@ -594,6 +745,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.requestTenantContractDeletion(user.id, contractId);
+  }
+
+  @Post("contracts")
+  createTenantContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateTenantContractInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createTenantContract(user.id, body);
   }
 
   @Get("moveouts/manager/dashboard")
@@ -731,6 +892,17 @@ export class RoomlogController {
     return this.roomlogService.listTenantMoveoutChecklist(user.id, moveoutId);
   }
 
+  @Patch("moveouts/:moveoutId/checklist")
+  updateTenantMoveoutChecklist(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: UpdateMoveoutChecklistInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.updateTenantMoveoutChecklist(user.id, moveoutId, body);
+  }
+
   @Get("moveouts/:moveoutId/settlement")
   getTenantMoveoutSettlement(
     @Headers("authorization") authorization: string | undefined,
@@ -762,6 +934,28 @@ export class RoomlogController {
     return this.roomlogService.createTenantMoveoutDispute(user.id, moveoutId, body);
   }
 
+  @Post("moveouts/:moveoutId/disputes/action")
+  updateTenantMoveoutDispute(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: UpdateTenantMoveoutDisputeInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.updateTenantMoveoutDispute(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/disputes/escalate")
+  escalateTenantMoveoutDispute(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: EscalateMoveoutDisputeInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.escalateTenantMoveoutDispute(user.id, moveoutId, body);
+  }
+
   @Post("moveouts/:moveoutId/inquiries")
   createTenantMoveoutInquiry(
     @Headers("authorization") authorization: string | undefined,
@@ -778,6 +972,87 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.listTicketsForManager(user.id);
+  }
+
+  @Get("manager/bills/dashboard")
+  getManagerBillDashboard(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerBillDashboard(user.id);
+  }
+
+  @Get("manager/bills/collection")
+  getManagerCollection(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerCollection(user.id);
+  }
+
+  @Get("manager/bills/deposits")
+  listManagerBillDeposits(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerBillDeposits(user.id);
+  }
+
+  @Post("manager/bills/deposits/:depositId/match")
+  matchManagerDeposit(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("depositId") depositId: string,
+    @Body() body: MatchDepositInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.matchManagerDeposit(user.id, depositId, body);
+  }
+
+  @Get("manager/bills/overdue")
+  listManagerOverdueCases(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerOverdueCases(user.id);
+  }
+
+  @Get("manager/bills/:billId/dunning")
+  getManagerDunningDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerDunningDraft(user.id, billId);
+  }
+
+  @Post("manager/bills/:billId/dunning/send")
+  sendManagerDunning(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string,
+    @Body() body: SendDunningInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.sendManagerDunning(user.id, billId, body);
+  }
+
+  @Post("manager/bills/:billId/reports/:reportId/confirm")
+  confirmManagerPaymentReport(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string,
+    @Param("reportId") reportId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.confirmManagerPaymentReport(user.id, billId, reportId);
+  }
+
+  @Get("manager/bills/:billId")
+  getManagerBill(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerBill(user.id, billId);
   }
 
   @Post("manager/assistant/query")
@@ -829,6 +1104,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.addManagerMessagingThreadMessage(user.id, threadId, body);
+  }
+
+  @Delete("manager/messaging/threads/:threadId")
+  deleteManagerMessagingThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.deleteManagerMessagingThread(user.id, threadId);
   }
 
   @Get("manager/messaging/announcement-drafts")
@@ -1062,6 +1347,16 @@ export class RoomlogController {
     return this.roomlogService.getManagerReceiptOcr(user.id, ocrId);
   }
 
+  @Post("manager/costs/receipt-ocrs/:ocrId/confirm")
+  confirmManagerReceiptOcr(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ocrId") ocrId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.confirmManagerReceiptOcr(user.id, ocrId);
+  }
+
   @Get("manager/costs/disclosure-settings")
   getManagerDisclosureSetting(
     @Headers("authorization") authorization: string | undefined,
@@ -1080,6 +1375,38 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.getManagerCost(user.id, costId);
+  }
+
+  @Post("manager/costs/:costId/confirm")
+  confirmManagerCost(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("costId") costId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.confirmManagerCost(user.id, costId);
+  }
+
+  @Post("manager/costs/:costId/void")
+  voidManagerCost(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("costId") costId: string,
+    @Body() body: { reason?: string }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.voidManagerCost(user.id, costId, body.reason);
+  }
+
+  @Patch("manager/costs/:costId/disclosure")
+  updateManagerCostDisclosure(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("costId") costId: string,
+    @Body() body: { disclosure: "public" | "private" }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateManagerCostDisclosure(user.id, costId, body.disclosure);
   }
 
   @Patch("manager/tickets/:ticketId")
@@ -1163,6 +1490,22 @@ export class RoomlogController {
     return this.roomlogService.listManagerVendorMgmtVendors(user.id, { q, trade, sort });
   }
 
+  @Post("manager/vendor-mgmt/vendors")
+  createManagerVendorMgmtVendor(
+    @Headers("authorization") authorization: string | undefined,
+    @Body()
+    body: {
+      businessName?: string;
+      contactPerson?: string;
+      phone?: string;
+      serviceArea?: string;
+    }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerVendorProfile(user.id, body);
+  }
+
   @Get("manager/vendor-mgmt/vendors/:vendorId")
   getManagerVendorMgmtDetail(
     @Headers("authorization") authorization: string | undefined,
@@ -1171,6 +1514,23 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.getManagerVendorMgmtDetail(user.id, vendorId);
+  }
+
+  @Patch("manager/vendor-mgmt/vendors/:vendorId")
+  updateManagerVendorMgmtVendor(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("vendorId") vendorId: string,
+    @Body()
+    body: {
+      businessName?: string;
+      contactPerson?: string;
+      phone?: string;
+      serviceArea?: string;
+    }
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateManagerVendorProfile(user.id, vendorId, body);
   }
 
   @Get("manager/vendor-mgmt/vendors/:vendorId/perf")
@@ -1332,10 +1692,13 @@ export class RoomlogController {
     return this.roomlogService.reportCompletion(user.id, repairId, body);
   }
 
+  // capability 가드 — user.role 단일값이 아니라 관계에서 파생한 roles로 판단한다.
+  // 한 계정이 TENANT이면서 LANDLORD인 겸직 계정도 각 표면에 진입할 수 있다.
   private requireRole(authorization: string | undefined, roles: UserRole[]): UserAccount {
     const user = this.roomlogService.getUserFromToken(authorization);
+    const userRoles = this.roomlogService.rolesForUser(user);
 
-    if (!roles.includes(user.role)) {
+    if (!roles.some((role) => userRoles.includes(role))) {
       throw new ForbiddenException("이 역할로 접근할 수 없습니다.");
     }
 

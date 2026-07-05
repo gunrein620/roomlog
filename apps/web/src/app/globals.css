@@ -4525,6 +4525,27 @@ p {
   color: #ffffff;
 }
 
+.inquiry-submit-feedback button {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.owner-draft-status {
+  display: block;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .fact-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4677,6 +4698,98 @@ p {
   background: #f8f9fc;
 }
 
+.owner-dashboard-layout {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.owner-dashboard-sidebar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.owner-dashboard-sidebar button {
+  display: grid;
+  flex: 0 0 138px;
+  gap: 4px;
+  min-height: 58px;
+  align-content: center;
+  padding: 10px 12px;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+  background: #f9fbff;
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+}
+
+.owner-dashboard-sidebar button[aria-current="page"] {
+  border-color: rgba(47, 85, 255, 0.65);
+  background: rgba(47, 85, 255, 0.09);
+  color: var(--blue);
+}
+
+.owner-dashboard-sidebar span {
+  color: var(--muted);
+  font-size: 0.67rem;
+  font-weight: 900;
+}
+
+.owner-dashboard-sidebar strong {
+  font-size: 0.9rem;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.owner-dashboard-content {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.owner-panel-heading {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(47, 85, 255, 0.1), rgba(255, 255, 255, 0.92)),
+    #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.06);
+}
+
+.owner-panel-heading span {
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.owner-panel-heading h2 {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 1.45rem;
+  line-height: 1.18;
+}
+
+.owner-panel-heading p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.owner-hero,
+.owner-ops-card,
+.owner-form {
+  scroll-margin-top: 96px;
+}
+
 .owner-hero {
   display: flex;
   align-items: flex-start;
@@ -4817,6 +4930,361 @@ p {
   background: var(--blue);
 }
 
+.owner-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.owner-dashboard-content > .owner-ops-grid {
+  grid-template-columns: 1fr;
+  margin-top: 0;
+}
+
+.owner-ops-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  scroll-margin-top: 96px;
+  padding: 14px;
+  border: 1px solid #dfe6f2;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.owner-ops-head,
+.owner-panel-head,
+.owner-disclosure-strip,
+.owner-duplicate-strip,
+.owner-vendor-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.owner-ops-head span,
+.owner-panel-head span,
+.owner-disclosure-strip span,
+.owner-duplicate-strip span,
+.owner-vendor-title-row span,
+.owner-perf-gate span {
+  color: var(--blue);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.owner-ops-head h3 {
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.28;
+}
+
+.owner-ops-head > strong,
+.owner-vendor-title-row > em {
+  flex: 0 0 auto;
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef3ff;
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-ops-metrics,
+.owner-cost-breakdown,
+.owner-perf-gate {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.owner-ops-metrics article,
+.owner-cost-breakdown div,
+.owner-perf-gate > div {
+  display: grid;
+  min-height: 74px;
+  align-content: center;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e1e7f0;
+  border-radius: 13px;
+  background: #f9fbff;
+  min-width: 0;
+}
+
+.owner-ops-metrics span,
+.owner-cost-breakdown span,
+.owner-ledger-list small,
+.owner-vendor-jobs small,
+.owner-vendor-detail small,
+.owner-disclosure-strip small,
+.owner-duplicate-strip small,
+.owner-empty-row small {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 850;
+  line-height: 1.3;
+}
+
+.owner-ops-metrics strong,
+.owner-cost-breakdown strong,
+.owner-perf-gate strong {
+  color: #202837;
+  font-size: 0.88rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.owner-review-panel,
+.owner-vendor-detail,
+.owner-contract-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(47, 85, 255, 0.14);
+  border-radius: 15px;
+  background: #fbfcff;
+}
+
+.owner-panel-head strong,
+.owner-disclosure-strip strong,
+.owner-duplicate-strip strong,
+.owner-vendor-title-row strong,
+.owner-empty-row strong,
+.owner-contract-list strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.owner-contract-list div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid #e1e7f0;
+  border-radius: 13px;
+  background: #ffffff;
+}
+
+.owner-contract-list span {
+  color: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.owner-contract-list small,
+.owner-ops-metrics small {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 850;
+  line-height: 1.3;
+}
+
+.owner-panel-head button,
+.owner-disclosure-strip button,
+.owner-duplicate-strip button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-review-list,
+.owner-ledger-list,
+.owner-vendor-jobs {
+  display: grid;
+  gap: 8px;
+}
+
+.owner-review-list > div,
+.owner-ledger-list > div,
+.owner-vendor-jobs > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #edf1f7;
+}
+
+.owner-review-list span {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b25e09;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.owner-review-list strong,
+.owner-ledger-list strong,
+.owner-vendor-jobs strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.owner-ledger-list > div {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.owner-ledger-list > div > span {
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-ledger-list em {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e7f8f0;
+  color: #067a4b;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-disclosure-strip,
+.owner-duplicate-strip {
+  align-items: center;
+  padding: 12px;
+  border-radius: 15px;
+  background: #f7f9ff;
+  border: 1px solid #e2e8f5;
+}
+
+.owner-vendor-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.owner-vendor-list button {
+  display: grid;
+  gap: 6px;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid #e1e7f0;
+  border-radius: 13px;
+  background: #f9fbff;
+  text-align: left;
+}
+
+.owner-vendor-list button.active {
+  border-color: rgba(47, 85, 255, 0.45);
+  background: #eef3ff;
+}
+
+.owner-vendor-list button > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.owner-vendor-list strong {
+  color: var(--ink);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-vendor-list em {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e7f8f0;
+  color: #067a4b;
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.owner-vendor-list small {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.owner-vendor-jobs > div {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.owner-vendor-jobs span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef3ff;
+  color: var(--blue);
+  font-size: 0.62rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-empty-row {
+  grid-template-columns: 1fr !important;
+}
+
+@media (max-width: 760px) {
+  .owner-ops-grid,
+  .owner-ops-metrics,
+  .owner-cost-breakdown,
+  .owner-perf-gate,
+  .owner-vendor-list {
+    grid-template-columns: 1fr;
+  }
+
+  .owner-ledger-list > div,
+  .owner-vendor-jobs > div,
+  .owner-disclosure-strip,
+  .owner-duplicate-strip {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .owner-panel-head,
+  .owner-disclosure-strip,
+  .owner-duplicate-strip,
+  .owner-vendor-title-row {
+    display: grid;
+  }
+
+  .owner-panel-head button,
+  .owner-disclosure-strip button,
+  .owner-duplicate-strip button {
+    width: 100%;
+  }
+}
+
 .owner-preview-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -4873,6 +5341,61 @@ p {
   font-size: 0.72rem;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.domain-test-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.domain-test-heading {
+  display: grid;
+  gap: 5px;
+}
+
+.domain-test-heading span {
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.domain-test-heading h3 {
+  color: var(--ink);
+  font-size: 1.04rem;
+}
+
+.domain-test-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.domain-test-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.domain-test-link.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--paper);
 }
 
 .owner-exposure-card {
@@ -7642,6 +8165,25 @@ p {
     padding: 24px 28px 104px;
   }
 
+  .owner-dashboard-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+    align-items: start;
+    gap: 18px;
+  }
+
+  .owner-dashboard-sidebar {
+    position: sticky;
+    top: 96px;
+    z-index: 2;
+    display: grid;
+    align-self: start;
+    overflow: visible;
+  }
+
+  .owner-dashboard-sidebar button {
+    flex-basis: auto;
+  }
+
   /* 홈: 다방식 세로 포털 흐름 */
   .home-screen {
     display: block;
@@ -7820,11 +8362,12 @@ p {
     margin-left: auto;
   }
 
+  /* 행 구성: 1 검색바 · 2 필터 · 3 요약바 · 4 인사이트 스트립 · 5 지도+결과시트(늘어나는 행) */
   .map-screen {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: minmax(0, 1fr) 390px;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
     gap: 12px 16px;
     padding-right: 24px;
     padding-left: 24px;
@@ -7841,10 +8384,26 @@ p {
     padding-left: 0;
   }
 
-  .map-stage {
-    grid-column: 1;
+  /* 지도 자리를 차지하며 세로로 늘어나던 인사이트 카드 → 지도 위 슬림한 가로 스트립으로 */
+  .map-screen > .map-insight-strip {
+    grid-column: 1 / -1;
     grid-row: 4;
-    height: min(680px, calc(100vh - 220px));
+    align-self: start;
+    margin: 0;
+    overflow: visible;
+  }
+
+  /* 지도는 map-canvas-stack으로 감싸져 있으므로 그리드 배치는 stack에 준다 */
+  .map-canvas-stack {
+    grid-column: 1;
+    grid-row: 5;
+  }
+
+  /* [data-state] 셀렉터는 오류/키없음 상태에서 height 340px를 거는
+     .naver-map-shell[data-state=...] 규칙(0,2,0)보다 우선하기 위한 specificity 확보용 */
+  .map-stage,
+  .map-canvas-stack .map-stage[data-state] {
+    height: 100%;
     min-height: 520px;
     margin-top: 0;
     border: 1px solid var(--line);
@@ -7857,8 +8416,8 @@ p {
 
   .result-sheet {
     grid-column: 2;
-    grid-row: 4;
-    max-height: min(680px, calc(100vh - 220px));
+    grid-row: 5;
+    max-height: min(680px, calc(100vh - 280px));
     overflow-y: auto;
     margin-top: 0;
     padding: 12px;
@@ -7899,6 +8458,15 @@ p {
   .profile-screen > * {
     margin-top: 0;
     margin-bottom: 0;
+  }
+
+  .owner-screen {
+    grid-template-columns: 1fr;
+  }
+
+  .owner-screen > .mypage-role-bar,
+  .owner-screen > .owner-dashboard-layout {
+    grid-column: 1 / -1;
   }
 
   .saved-screen > .section-title,
@@ -8671,4 +9239,154 @@ p {
 
 .contract-sheet-table {
   margin: 4px 0 14px;
+}
+
+/* ── 내 룸로그: 주거 프로세스 흐름 바 + 관계 카드 ── */
+.my-flow-bar {
+  flex-wrap: wrap;
+}
+
+.my-flow-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 데스크톱에서 .mypage-role-bar button을 숨기는 규칙보다 구체적으로 지정해 흐름 칩은 항상 노출 */
+.my-flow-bar .my-flow-chips button {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.my-flow-bar .my-flow-chips button.active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.my-roomlog-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.my-roomlog-heading {
+  display: grid;
+  gap: 5px;
+}
+
+.my-roomlog-heading span {
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.my-roomlog-heading h3 {
+  color: var(--ink);
+  font-size: 1.04rem;
+}
+
+.my-roomlog-heading p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.my-roomlog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.my-roomlog-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--canvas);
+}
+
+.my-roomlog-card.is-active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.my-roomlog-card header {
+  display: grid;
+  gap: 2px;
+}
+
+.my-roomlog-card em {
+  color: var(--blue);
+  font-size: 0.7rem;
+  font-weight: 900;
+  font-style: normal;
+}
+
+.my-roomlog-card strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.my-roomlog-card > p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.my-roomlog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.my-roomlog-actions button,
+.my-roomlog-actions a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--blue-dark);
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.my-roomlog-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.domain-test-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+/* 데스크톱 6열 그리드(.profile-screen)에서 내 룸로그 섹션은 전체 폭 사용 */
+.profile-screen > .my-roomlog-section {
+  grid-column: 1 / -1;
+}
+
+/* 세입자 마이페이지 데스크톱 그리드에서 룸로그 진입 카드가 전체 폭·자연스러운 순서를 갖도록 */
+.tenant-screen > .tenant-domain-test-card {
+  order: 6;
+  grid-column: 1 / -1;
 }

@@ -6,11 +6,12 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import { id, normalizePhoneNumber, now } from "../roomlog-support";
+import { deriveUserRoles, id, normalizePhoneNumber, now } from "../roomlog-support";
 import type { Complaint, RepairRequest, Room, Ticket } from "../roomlog.types";
 import type {
   CreateTenantInviteInput,
   CreateVendorInviteInput,
+  ManagerVendorProfileInput,
   Store,
   TenantInvite,
   VendorInvite,
@@ -108,10 +109,53 @@ export class RoomlogVendorMgmtDomain {
     return candidates;
   }
 
+  createManagerVendorProfile(managerId: string, input: ManagerVendorProfileInput) {
+    this.assertLandlord(managerId);
+    const values = this.normalizeVendorProfileInput(input);
+    const vendorId = id("vnd");
+    const vendor: VendorSummary = {
+      id: vendorId,
+      userId: `manual:${vendorId}`,
+      ...values,
+      activeJobs: 0,
+      createdByManagerId: managerId
+    };
+
+    this.store.vendors.unshift(vendor);
+    this.persistStore();
+
+    return this.getManagerVendorMgmtDetail(managerId, vendorId);
+  }
+
+  updateManagerVendorProfile(
+    managerId: string,
+    vendorId: string,
+    input: ManagerVendorProfileInput
+  ) {
+    this.assertLandlord(managerId);
+    const vendor = this.store.vendors.find((item) => item.id === vendorId);
+
+    if (!vendor || !this.canManagerSeeVendor(managerId, vendor)) {
+      throw new NotFoundException("관리 가능한 업체를 찾을 수 없습니다.");
+    }
+
+    if (vendor.createdByManagerId && vendor.createdByManagerId !== managerId) {
+      throw new ForbiddenException("다른 관리인이 직접 등록한 업체는 편집할 수 없습니다.");
+    }
+
+    const values = this.normalizeVendorProfileInput(input);
+    vendor.businessName = values.businessName;
+    vendor.contactPerson = values.contactPerson;
+    vendor.phone = values.phone;
+    vendor.serviceArea = values.serviceArea;
+    vendor.createdByManagerId ??= managerId;
+    this.persistStore();
+
+    return this.getManagerVendorMgmtDetail(managerId, vendorId);
+  }
+
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
+    const manager = this.findLandlord(managerId);
 
     if (!manager) {
       throw new ForbiddenException("관리자만 협력업체를 초대할 수 있습니다.");
@@ -172,9 +216,7 @@ export class RoomlogVendorMgmtDomain {
   }
 
   createTenantInvite(managerId: string, input: CreateTenantInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
+    const manager = this.findLandlord(managerId);
 
     if (!manager) {
       throw new ForbiddenException("관리자만 임차인을 초대할 수 있습니다.");
@@ -233,6 +275,7 @@ export class RoomlogVendorMgmtDomain {
     const trade = this.isVendorMgmtTrade(filters.trade) ? filters.trade : undefined;
 
     return this.store.vendors
+      .filter((vendor) => this.canManagerSeeVendor(managerId, vendor))
       .map((vendor) => this.presentManagerVendorProfile(managerId, vendor))
       .filter((vendor) => {
         const matchesQuery =
@@ -291,6 +334,59 @@ export class RoomlogVendorMgmtDomain {
           : "아직 완료 수리 이력이 없는 업체입니다.",
       createdAt,
       updatedAt: lastUsedAt ?? createdAt
+    };
+  }
+
+  private canManagerSeeVendor(managerId: string, vendor: VendorSummary) {
+    if (vendor.createdByManagerId) {
+      return vendor.createdByManagerId === managerId || this.managerVendorJobRecords(managerId, vendor.id).length > 0;
+    }
+
+    return true;
+  }
+
+  private assertLandlord(managerId: string) {
+    if (!this.findLandlord(managerId)) {
+      throw new ForbiddenException("관리인만 업체 주소록을 수정할 수 있습니다.");
+    }
+  }
+
+  // capability 기준 관리인 조회 — legacy role이 TENANT인 겸직 계정도 소유한 집이 있으면 관리인이다.
+  private findLandlord(managerId: string) {
+    const user = this.store.users.find((account) => account.id === managerId);
+
+    if (!user) return undefined;
+
+    return deriveUserRoles(user, this.store).includes("LANDLORD") ? user : undefined;
+  }
+
+  private normalizeVendorProfileInput(input: ManagerVendorProfileInput) {
+    const businessName = input.businessName?.trim();
+    const contactPerson = input.contactPerson?.trim();
+    const phone = normalizePhoneNumber(input.phone);
+    const serviceArea = input.serviceArea?.trim();
+
+    if (!businessName) {
+      throw new BadRequestException("업체명을 입력해주세요.");
+    }
+
+    if (!contactPerson) {
+      throw new BadRequestException("담당자명을 입력해주세요.");
+    }
+
+    if (!phone) {
+      throw new BadRequestException("업체 연락처를 입력해주세요.");
+    }
+
+    if (!serviceArea) {
+      throw new BadRequestException("서비스 지역을 입력해주세요.");
+    }
+
+    return {
+      businessName,
+      contactPerson,
+      phone,
+      serviceArea
     };
   }
 

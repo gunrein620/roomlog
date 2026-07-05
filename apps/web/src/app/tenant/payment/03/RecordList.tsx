@@ -22,6 +22,10 @@ function won(n: number): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
 
+function withBillId(route: string, billId?: string): string {
+  return billId ? `${route}?id=${encodeURIComponent(billId)}` : route;
+}
+
 // billingMonth(YYYY-MM)가 기준월로부터 N개월 이내인지.
 function withinMonths(month: string, n: number): boolean {
   const [y, m] = month.split("-").map(Number);
@@ -81,7 +85,7 @@ export function RecordList({ records }: { records: RecordRow[] }) {
           {visible.map((r) => (
             <Card key={r.billId} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <Link
-                href={PAYMENT_ROUTES["T-PAY-01"]}
+                href={withBillId(PAYMENT_ROUTES["T-PAY-01"], r.billId)}
                 style={{ textDecoration: "none", color: "inherit" }}
               >
                 <div

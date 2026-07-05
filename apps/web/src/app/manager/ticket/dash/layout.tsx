@@ -14,16 +14,15 @@ const navItems = [
   ["03", "답변 초안"],
   ["04", "업체·수리"],
   ["05", "결제 승인"],
-  ["e0", "로드 오류"],
 ] as const;
 
 export default async function DashLayout({ children }: { children: ReactNode }) {
   // [레퍼런스 가드] 관리인(LANDLORD) 전용. 미인증/타역할이면 관리인 로그인으로.
-  await requireUser("/manager/login", "LANDLORD");
+  await requireUser("LANDLORD");
   return (
     <ManagerShell
       title="하자/민원 티켓 처리"
-      context="M-DASH · 데스크탑"
+      context="관리 중인 집 · 하자·민원"
       nav={
         <nav style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
           {navItems.map(([id, label]) => (
@@ -40,7 +39,7 @@ export default async function DashLayout({ children }: { children: ReactNode }) 
                 fontSize: "var(--fs-caption)",
               }}
             >
-              M-DASH-{id.toUpperCase()} · {label}
+              {label}
             </Link>
           ))}
           <Link
