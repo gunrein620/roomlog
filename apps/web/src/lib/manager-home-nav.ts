@@ -23,7 +23,7 @@ export const MVOX_ROUTES = {
 export type MHomeScreenId = keyof typeof MHOME_ROUTES;
 export type MVoxScreenId = keyof typeof MVOX_ROUTES;
 
-/** 기존 관리인 세트로의 크로스 라우팅 (셸 위임 대상). 미구현 세트는 나중에 라우트 생김. */
+/** 기존 관리인 세트로의 크로스 라우팅 (셸 위임 대상). */
 export const MANAGER_CROSS = {
   ticketDash: "/manager/ticket/dash/00", // M-DASH
   ticketCall: "/manager/ticket/call/00", // M-CALL
@@ -32,5 +32,5 @@ export const MANAGER_CROSS = {
   cost: "/manager/cost", // M-COST (병렬 구축 중)
   contract: "/manager/contract/00", // M-DOC (미구현 — 추후)
   moveout: "/manager/moveout/00", // M-OUT (미구현 — 추후)
-  report: "/manager/report/00", // M-RPT (미구현 — 추후)
+  report: "/manager/report/00", // M-RPT
 } as const;
