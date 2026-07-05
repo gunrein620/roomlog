@@ -883,7 +883,7 @@ describe("RoomlogService", () => {
       return new Response(
         JSON.stringify({
           output_text:
-            '{"summary":"OpenAI가 도면 구조와 치수 후보를 검토했습니다.","textDetections":[{"text":"5860","confidence":0.84}],"scaleCandidates":[{"realLengthMm":5860,"pixelLength":293,"pixelToMmRatio":20,"confidence":0.78,"source":"openai/vision"}]}'
+            '{"summary":"OpenAI가 도면 구조와 치수 후보를 검토했습니다.","textDetections":[{"text":"5860","confidence":0.84,"boundingBox":{"x":120,"y":80,"width":60,"height":20},"targetLine":{"x1":100,"y1":110,"x2":460,"y2":110}}],"scaleCandidates":[{"realLengthMm":5860,"pixelLength":293,"pixelToMmRatio":20,"confidence":0.78,"source":"openai/vision"}]}'
         }),
         { headers: { "Content-Type": "application/json" }, status: 200 }
       );
@@ -900,8 +900,11 @@ describe("RoomlogService", () => {
       assert.equal(capturedBody?.model, "gpt-5.4-mini");
       assert.match(String(capturedBody?.instructions), /단위 없는 3-5자리 치수 숫자/);
       assert.match(String(capturedBody?.instructions), /textDetections에 모든 보이는 치수 숫자/);
+      assert.match(String(capturedBody?.instructions), /targetLine/);
+      assert.match(String(capturedBody?.instructions), /Do not guess boundingBox or targetLine/);
       assert.equal(result.status, "ready");
       assert.equal(result.model, "openai/floor-plan-vision");
+      assert.deepEqual(result.textDetections[0].targetLine, { x1: 100, y1: 110, x2: 460, y2: 110 });
       assert.equal(result.scaleCandidates[0].source, "openai/vision");
       assert.equal(result.scaleCandidates[0].pixelToMmRatio, 20);
     } finally {
@@ -912,6 +915,55 @@ describe("RoomlogService", () => {
       else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
       if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
       else delete process.env.OPENAI_CHAT_MODEL;
+    }
+  });
+
+  it("classifies dimensions and keeps furniture out of floor plan scale candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"분류 완료","dimensions":[{"text":"5860mm","valueMm":5860,"kind":"outer_total","axis":"horizontal","confidence":0.9,"boundingBox":null,"targetLine":null,"placementStatus":"placed","useForScale":true,"useForWallGeneration":true,"useForFurnitureFit":false,"appliesTo":"overall","reason":"outer"},{"text":"1500 x 2000mm","valueMm":2000,"kind":"furniture","axis":"unknown","confidence":0.7,"boundingBox":null,"targetLine":null,"placementStatus":"unplaced","useForScale":false,"useForWallGeneration":false,"useForFurnitureFit":true,"appliesTo":"bed","reason":"multiplication label"}],"textDetections":[],"scaleCandidates":[{"realLengthMm":5860,"pixelLength":293,"pixelToMmRatio":20,"confidence":0.8,"source":"openai/vision"},{"realLengthMm":2000,"pixelLength":100,"pixelToMmRatio":20,"confidence":0.6,"source":"openai/vision"}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      const instructions = String(capturedBody?.instructions);
+      assert.match(instructions, /outer_total/);
+      assert.match(instructions, /opening/);
+      assert.match(instructions, /furniture/);
+      assert.equal(result.dimensions?.length, 2);
+      assert.equal(result.dimensions?.[0].kind, "outer_total");
+      assert.equal(result.dimensions?.[0].useForScale, true);
+      assert.equal(result.dimensions?.[1].kind, "furniture");
+      assert.equal(result.dimensions?.[1].useForScale, false);
+      assert.equal(result.dimensions?.[1].useForFurnitureFit, true);
+      // 구조 치수(5860)만 축척 후보로 남고 가구값(2000)은 제외된다.
+      assert.equal(result.scaleCandidates.length, 1);
+      assert.equal(result.scaleCandidates[0].realLengthMm, 5860);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
     }
   });
 

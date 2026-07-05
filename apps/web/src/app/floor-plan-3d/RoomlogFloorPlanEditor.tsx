@@ -3,15 +3,19 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AiDimensionDetection,
   CandidateStatus,
+  DimensionKind,
   ExtractionMeta,
   FloorPlanCandidate,
+  ScaleCandidate,
   UploadedFloorPlanSource
 } from "./plan-extraction/types";
 import {
   moveCandidate,
   updateCandidateStatus
 } from "./plan-extraction/wall-detection.mjs";
+import { snapWallsToStructuralBoundaries, solveDimensionRowChains, structuralBoundaryOffsetsMm } from "./plan-extraction/dimension-layout.mjs";
 import type {
   RoboflowDetectionBox,
   RoboflowDetectionOverlayBox,
@@ -84,9 +88,28 @@ type ViewMode = "2d" | "3d";
 type WallDragMode = "move" | "resize-start" | "resize-end";
 type WallDragOperation = { mode: WallDragMode; originPoint: Point; originalWall: Wall; wallId: Wall["id"] };
 type AiGeneratedWall = Wall & { markers?: string[]; source?: string };
+type NormalizedTextBoundingBox = { height: number; width: number; x: number; y: number };
+type NormalizedTargetLine = { x1: number; x2: number; y1: number; y2: number };
+type DimensionAxis = "horizontal" | "vertical" | null;
+type DimensionSide = "start" | "end" | null;
+type PrintedDimensionChip = {
+  axis: DimensionAxis;
+  side: DimensionSide;
+  boundingBox?: NormalizedTextBoundingBox | null;
+  confidence?: number;
+  id: string;
+  kind: DimensionKind;
+  realLengthMm: number;
+  targetLine?: NormalizedTargetLine | null;
+  text: string;
+  useForFurnitureFit: boolean;
+  useForScale: boolean;
+  useForWallGeneration: boolean;
+};
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
+const MAX_VISIBLE_PRINTED_DIMENSIONS = 24;
 const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
 const FURNITURE_KIND_FILTERS = ["전체", "침대", "식탁", "의자", "소파", "책상", "서랍", "옷장", "기타"] as const;
@@ -157,10 +180,421 @@ async function fileToCompressedDataUrl(file: File) {
   }
 }
 
+function convertDimensionToMm(valueText: string, unit: string) {
+  const value = Number(valueText.replace(",", "."));
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const normalizedUnit = unit.toLowerCase();
+  if (normalizedUnit === "mm" || normalizedUnit === "밀리미터") return Math.round(value);
+  if (normalizedUnit === "cm" || normalizedUnit === "센티미터") return Math.round(value * 10);
+
+  return Math.round(value * 1000);
+}
+
+function parseDimensionTextsToMm(text: string) {
+  const trimmedText = text.trim();
+  // 면적(9.3㎡)과 가구 크기(1500 × 2000mm)는 길이 치수가 아니다.
+  if (/㎡|m²|m2\b|평/i.test(trimmedText) || /\d\s*[×x*]\s*\d/i.test(trimmedText)) return [];
+  const values: number[] = [];
+
+  for (const match of trimmedText.matchAll(/(\d+(?:[.,]\d+)?)\s*(mm|밀리미터|cm|센티미터|m|미터)/gi)) {
+    const realLengthMm = convertDimensionToMm(match[1], match[2]);
+    if (realLengthMm && realLengthMm >= 1000) values.push(realLengthMm);
+  }
+
+  if (values.length) return values;
+
+  for (const match of trimmedText.matchAll(/\b(\d{3,5})\b/g)) {
+    const realLengthMm = Number(match[1]);
+    if (realLengthMm >= 1000 && realLengthMm <= 30000) values.push(realLengthMm);
+  }
+
+  return values;
+}
+
+function normalizeAiTextBoundingBox(box: unknown): NormalizedTextBoundingBox | null {
+  if (!box || typeof box !== "object") return null;
+  const record = box as Record<string, unknown>;
+  const x = Number(record.x);
+  const y = Number(record.y);
+  const width = Number(record.width);
+  const height = Number(record.height);
+  if ([x, y, width, height].every(Number.isFinite) && width > 0 && height > 0) {
+    return {
+      height: Math.min(1000, Math.max(1, height)),
+      width: Math.min(1000, Math.max(1, width)),
+      x: Math.min(1000, Math.max(0, x)),
+      y: Math.min(1000, Math.max(0, y))
+    };
+  }
+
+  const x1 = Number(record.x1);
+  const y1 = Number(record.y1);
+  const x2 = Number(record.x2);
+  const y2 = Number(record.y2);
+  if ([x1, y1, x2, y2].every(Number.isFinite) && x2 > x1 && y2 > y1) {
+    return {
+      height: Math.min(1000, Math.max(1, y2 - y1)),
+      width: Math.min(1000, Math.max(1, x2 - x1)),
+      x: Math.min(1000, Math.max(0, x1)),
+      y: Math.min(1000, Math.max(0, y1))
+    };
+  }
+
+  return null;
+}
+
+function normalizeAiTargetLine(line: unknown): NormalizedTargetLine | null {
+  if (!line || typeof line !== "object") return null;
+  const record = line as Record<string, unknown>;
+  const x1 = Number(record.x1);
+  const y1 = Number(record.y1);
+  const x2 = Number(record.x2);
+  const y2 = Number(record.y2);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  if (Math.hypot(x2 - x1, y2 - y1) < 4) return null;
+
+  return {
+    x1: Math.min(1000, Math.max(0, x1)),
+    x2: Math.min(1000, Math.max(0, x2)),
+    y1: Math.min(1000, Math.max(0, y1)),
+    y2: Math.min(1000, Math.max(0, y2))
+  };
+}
+
+function hasReliableDimensionPlacement(dimension: PrintedDimensionChip) {
+  return Boolean(dimension.boundingBox || dimension.targetLine);
+}
+
+function getPrintedDimensionLocationStatus(dimension: PrintedDimensionChip) {
+  const locationStatus = hasReliableDimensionPlacement(dimension) ? "위치 확인" : "위치 미확인";
+
+  return locationStatus;
+}
+
+function printedDimensionKey(detectionIndex: number, valueIndex: number, realLengthMm: number, boundingBox: NormalizedTextBoundingBox | null) {
+  const boxKey = boundingBox
+    ? `${Math.round(boundingBox.x)}:${Math.round(boundingBox.y)}:${Math.round(boundingBox.width)}:${Math.round(boundingBox.height)}`
+    : "no-box";
+
+  return `${detectionIndex}:${valueIndex}:${realLengthMm}:${boxKey}`;
+}
+
+// 구조 치수(전체외곽/외곽분할/방폭/벽사이)만 축척·3D 벽 생성에 쓴다.
+function isStructuralDimensionKind(kind: DimensionKind) {
+  return kind === "outer_total" || kind === "outer_segment" || kind === "room_span" || kind === "wall_span";
+}
+
+function normalizeDimensionKind(kind: unknown): DimensionKind {
+  return kind === "outer_total" ||
+    kind === "outer_segment" ||
+    kind === "room_span" ||
+    kind === "wall_span" ||
+    kind === "opening" ||
+    kind === "furniture" ||
+    kind === "fixture" ||
+    kind === "area" ||
+    kind === "ignore"
+    ? kind
+    : "ignore";
+}
+
+// AI targetLine 픽셀 좌표는 여전히 못 믿으므로 텍스트에서 곱셈기호/면적 단위를 보고
+// 하드 가드레일을 적용한다: ×는 무조건 가구, ㎡/평은 무조건 무시. AI kind와 다르면 가드레일이 이긴다.
+function guardrailKind(kind: DimensionKind, text: string): DimensionKind {
+  if (/㎡|m²|m2\b|평/i.test(text)) return "area";
+  if (/\d\s*[×xX*]\s*\d/.test(text)) return kind === "fixture" ? "fixture" : "furniture";
+
+  return kind;
+}
+
+// 가구/설비 치수는 '810 x 1400mm'처럼 폭×깊이라 가장 큰 변을 대표값으로 쓴다.
+function parseFurnitureDimensionValueMm(text: string) {
+  const values = [...text.matchAll(/(\d{2,5})(?:\s*(?:mm|밀리미터))?/gi)]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0 && value <= 30000);
+
+  return values.length ? Math.max(...values) : null;
+}
+
+function computeBackgroundImageFrame(image: HTMLImageElement | null) {
+  if (!image?.complete || !image.width || !image.height) return null;
+  const imageAspect = image.width / image.height;
+  const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
+  let drawWidth = CANVAS_WIDTH * 0.8;
+  let drawHeight = drawWidth / imageAspect;
+  if (imageAspect <= canvasAspect) {
+    drawHeight = CANVAS_HEIGHT * 0.8;
+    drawWidth = drawHeight * imageAspect;
+  }
+
+  return { height: drawHeight, width: drawWidth, x: -drawWidth / 2, y: -drawHeight / 2 };
+}
+
+function targetLineCanvasLength(line: NormalizedTargetLine, frame: { height: number; width: number }) {
+  return Math.hypot(((line.x2 - line.x1) / 1000) * frame.width, ((line.y2 - line.y1) / 1000) * frame.height);
+}
+
+// AI가 준 픽셀 좌표(targetLine)는 못 믿지만, 라벨이 도면의 위/아래 여백에 있는지
+// 좌/우 여백에 있는지 정도의 대략적 위치(boundingBox)는 신뢰할 수 있다.
+// side는 치수 체인이 사는 여백을 뜻한다: 가로 치수는 위(start)/아래(end),
+// 세로 치수는 왼쪽(start)/오른쪽(end).
+function classifyDimensionPlacement(
+  boundingBox: NormalizedTextBoundingBox | null,
+  targetLine: NormalizedTargetLine | null
+): { axis: DimensionAxis; side: DimensionSide } {
+  if (boundingBox) {
+    const centerX = boundingBox.x + boundingBox.width / 2;
+    const centerY = boundingBox.y + boundingBox.height / 2;
+    const nearTopBottom = centerY <= 200 || centerY >= 800;
+    const nearLeftRight = centerX <= 200 || centerX >= 800;
+    if (nearTopBottom && !nearLeftRight) return { axis: "horizontal", side: centerY <= 200 ? "start" : "end" };
+    if (nearLeftRight && !nearTopBottom) return { axis: "vertical", side: centerX <= 200 ? "start" : "end" };
+  }
+  if (targetLine) {
+    return {
+      axis: Math.abs(targetLine.x2 - targetLine.x1) >= Math.abs(targetLine.y2 - targetLine.y1) ? "horizontal" : "vertical",
+      side: null
+    };
+  }
+
+  return { axis: null, side: null };
+}
+
+// 축을 알면(=AI가 분류했으면) side는 라벨이 도면의 어느 절반에 있는지로 정한다.
+// 20% 밴드보다 중첩된 안쪽 치수줄에 강하다: 위쪽 전체줄과 위쪽 구간줄이 모두 start로 잡힌다.
+function dimensionSideFromAxis(axis: DimensionAxis, boundingBox: NormalizedTextBoundingBox | null): DimensionSide {
+  if (!axis || !boundingBox) return null;
+  if (axis === "horizontal") return boundingBox.y + boundingBox.height / 2 < 500 ? "start" : "end";
+
+  return boundingBox.x + boundingBox.width / 2 < 500 ? "start" : "end";
+}
+
+function computeWallUnionBox(boxes: RoboflowDetectionOverlayBox[]) {
+  const wallBoxes = boxes.filter((overlayBox) => overlayBox.type === "WALL").map((overlayBox) => normalizeOverlayBox(overlayBox.box));
+  if (!wallBoxes.length) return null;
+
+  return {
+    x1: Math.min(...wallBoxes.map((box) => box.x1)),
+    x2: Math.max(...wallBoxes.map((box) => box.x2)),
+    y1: Math.min(...wallBoxes.map((box) => box.y1)),
+    y2: Math.max(...wallBoxes.map((box) => box.y2))
+  };
+}
+
+// 한국 도면의 최외곽 치수는 벽 외곽면 사이 거리다. 가장 큰 가로/세로 치수를
+// Roboflow 벽 union 폭/높이에 대응시키면 AI 좌표 없이 축척이 나온다.
+function estimateWallUnionScaleCandidate(
+  chips: PrintedDimensionChip[],
+  unionBox: { x1: number; x2: number; y1: number; y2: number } | null
+): ScaleCandidate | null {
+  if (!unionBox) return null;
+  const unionWidth = unionBox.x2 - unionBox.x1;
+  const unionHeight = unionBox.y2 - unionBox.y1;
+  const maxHorizontalMm = Math.max(0, ...chips.filter((chip) => chip.axis === "horizontal").map((chip) => chip.realLengthMm));
+  const maxVerticalMm = Math.max(0, ...chips.filter((chip) => chip.axis === "vertical").map((chip) => chip.realLengthMm));
+  const widthRatio = unionWidth >= 50 && maxHorizontalMm > 0 ? maxHorizontalMm / unionWidth : null;
+  const heightRatio = unionHeight >= 50 && maxVerticalMm > 0 ? maxVerticalMm / unionHeight : null;
+
+  if (widthRatio && heightRatio) {
+    // 두 축이 8% 이내로 일치해야 채택 — 어긋나면 치수 오독이나 축 오분류이므로 축척을 내지 않는다.
+    if (Math.abs(widthRatio - heightRatio) / widthRatio > 0.08) return null;
+
+    return {
+      confidence: 0.92,
+      pixelLength: Math.round(unionWidth),
+      pixelToMmRatio: (widthRatio + heightRatio) / 2,
+      realLengthMm: maxHorizontalMm,
+      source: "printed-dimension+wall-union-both-axes"
+    };
+  }
+
+  const singleRatio = widthRatio ?? heightRatio;
+  if (!singleRatio) return null;
+
+  return {
+    confidence: 0.7,
+    pixelLength: Math.round(widthRatio ? unionWidth : unionHeight),
+    pixelToMmRatio: singleRatio,
+    realLengthMm: widthRatio ? maxHorizontalMm : maxVerticalMm,
+    source: "printed-dimension+wall-union-single-axis"
+  };
+}
+
+type RatioSample = { canvasLength: number; ratio: number; realLengthMm: number };
+
+// 서로 7% 이내로 일치하는 샘플이 가장 많은 비율을 채택 — 오독 하나가 축척을 지배하지 못하게 한다.
+function pickConsensusRatio(samples: RatioSample[]) {
+  if (!samples.length) return null;
+  let bestSample = samples[0];
+  let bestSupport: RatioSample[] = [];
+  for (const sample of samples) {
+    const support = samples.filter((other) => Math.abs(other.ratio - sample.ratio) / sample.ratio <= 0.07);
+    if (support.length > bestSupport.length) {
+      bestSample = sample;
+      bestSupport = support;
+    }
+  }
+  const sortedRatios = bestSupport.map((sample) => sample.ratio).sort((a, b) => a - b);
+
+  return { ratio: sortedRatios[Math.floor(sortedRatios.length / 2)], sample: bestSample, support: bestSupport.length };
+}
+
+// 배경 프레임(≈1300px)에 3~30m 도면이 들어가는 현실 범위를 벗어난 비율은 오독으로 버린다.
+function isPlausiblePixelToMmRatio(ratio: number) {
+  return ratio >= 0.8 && ratio <= 60;
+}
+
+function estimatePrintedDimensionScaleCandidate(
+  detections: Array<{ boundingBox?: unknown; confidence?: number; targetLine?: unknown; text: string }>,
+  frame: { height: number; width: number } | null
+): ScaleCandidate | null {
+  if (!frame) return null;
+
+  const samples = detections.flatMap((detection) => {
+    const targetLine = normalizeAiTargetLine(detection.targetLine);
+    if (!targetLine) return [];
+    const canvasLength = targetLineCanvasLength(targetLine, frame);
+    if (canvasLength < 8) return [];
+
+    return parseDimensionTextsToMm(detection.text).flatMap((realLengthMm) => {
+      const ratio = realLengthMm / canvasLength;
+      if (!isPlausiblePixelToMmRatio(ratio)) return [];
+
+      return [{ canvasLength, ratio, realLengthMm }];
+    });
+  });
+  const consensus = pickConsensusRatio(samples);
+  if (!consensus) return null;
+
+  return {
+    confidence: Math.min(0.95, 0.45 + consensus.support * 0.12),
+    pixelLength: Math.round(consensus.sample.canvasLength),
+    pixelToMmRatio: consensus.ratio,
+    realLengthMm: consensus.sample.realLengthMm,
+    source: `printed-dimension-x${consensus.support}`
+  };
+}
+
+type DetectedDimensionLineSpan = { axis: Exclude<DimensionAxis, null>; cross: number; max: number; min: number };
+
+// 라벨 근처에서 원본 도면에 인쇄된 치수선(가늘고 긴 선)을 픽셀 단위로 찾는다.
+// 좌표는 이미지 정규화 0~1000. 벽처럼 두꺼운 채움은 두께 검사로 제외한다.
+function findPrintedDimensionLineSpan(
+  imageData: ImageData,
+  axis: Exclude<DimensionAxis, null>,
+  labelCenter: { x: number; y: number }
+): DetectedDimensionLineSpan | null {
+  const { data, height, width } = imageData;
+  const isDark = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return false;
+    const offset = (y * width + x) * 4;
+    if (data[offset + 3] < 120) return false;
+    const luminance = 0.299 * data[offset] + 0.587 * data[offset + 1] + 0.114 * data[offset + 2];
+
+    // 도면 치수선은 아주 연한 회색인 경우가 많고 JPEG 압축으로 더 옅어진다.
+    return luminance < 228;
+  };
+  // main = 치수선이 뻗는 방향, cross = 그에 수직(탐색 창 방향)
+  const mainSize = axis === "vertical" ? height : width;
+  const crossSize = axis === "vertical" ? width : height;
+  const darkAt = (cross: number, main: number) => (axis === "vertical" ? isDark(cross, main) : isDark(main, cross));
+  const labelMain = Math.round(((axis === "vertical" ? labelCenter.y : labelCenter.x) / 1000) * mainSize);
+  const labelCross = Math.round(((axis === "vertical" ? labelCenter.x : labelCenter.y) / 1000) * crossSize);
+  const searchRadius = Math.max(12, Math.round(crossSize * 0.09));
+  const minRunLength = Math.max(20, Math.round(mainSize * 0.05));
+  const maxGap = 3;
+  let best: { cross: number; max: number; min: number; score: number } | null = null;
+
+  const considerRun = (cross: number, runStart: number, runEnd: number) => {
+    const length = runEnd - runStart + 1;
+    if (length < minRunLength) return;
+    // 라벨은 자기 치수선의 구간 안(약간의 여유 포함)에 인쇄된다.
+    if (labelMain < runStart - mainSize * 0.06 || labelMain > runEnd + mainSize * 0.06) return;
+    const mid = Math.round((runStart + runEnd) / 2);
+    let thickness = 1;
+    for (let delta = 1; delta <= 6 && darkAt(cross + delta, mid); delta += 1) thickness += 1;
+    for (let delta = 1; delta <= 6 && darkAt(cross - delta, mid); delta += 1) thickness += 1;
+    if (thickness > 5) return;
+    const runCenter = (runStart + runEnd) / 2;
+    const score = Math.abs(runCenter - labelMain) / mainSize + (Math.abs(cross - labelCross) / crossSize) * 0.6;
+    if (!best || score < best.score) best = { cross, max: runEnd, min: runStart, score };
+  };
+
+  const crossMin = Math.max(0, labelCross - searchRadius);
+  const crossMax = Math.min(crossSize - 1, labelCross + searchRadius);
+  for (let cross = crossMin; cross <= crossMax; cross += 1) {
+    let runStart = -1;
+    let lastDark = -1;
+    for (let main = 0; main < mainSize; main += 1) {
+      if (darkAt(cross, main)) {
+        if (runStart < 0) runStart = main;
+        lastDark = main;
+      } else if (runStart >= 0 && main - lastDark > maxGap) {
+        considerRun(cross, runStart, lastDark);
+        runStart = -1;
+      }
+    }
+    if (runStart >= 0) considerRun(cross, runStart, lastDark);
+  }
+  if (!best) return null;
+  const found: { cross: number; max: number; min: number; score: number } = best;
+  const tickRunRadius = Math.max(10, Math.round(crossSize * 0.025));
+  const minTickLength = Math.max(8, Math.round(crossSize * 0.018));
+  const minTickGap = Math.max(6, Math.round(mainSize * 0.012));
+  const tickPositions: number[] = [found.min, found.max];
+  const perpendicularRunLength = (main: number) => {
+    if (!darkAt(found.cross, main)) return 0;
+    let leftLength = 0;
+    for (let cross = found.cross - 1; cross >= Math.max(0, found.cross - tickRunRadius) && darkAt(cross, main); cross -= 1) {
+      leftLength += 1;
+    }
+    let rightLength = 0;
+    for (let cross = found.cross + 1; cross <= Math.min(crossSize - 1, found.cross + tickRunRadius) && darkAt(cross, main); cross += 1) {
+      rightLength += 1;
+    }
+    if (!leftLength || !rightLength) return 0;
+
+    return leftLength + 1 + rightLength;
+  };
+
+  for (let main = found.min; main <= found.max; main += 1) {
+    if (perpendicularRunLength(main) < minTickLength) continue;
+    const previous = tickPositions[tickPositions.length - 1];
+    if (Math.abs(main - previous) >= minTickGap) {
+      tickPositions.push(main);
+      continue;
+    }
+    if (Math.abs(main - found.min) < Math.abs(previous - found.min) || Math.abs(main - found.max) < Math.abs(previous - found.max)) {
+      tickPositions[tickPositions.length - 1] = main;
+    }
+  }
+
+  tickPositions.sort((left, right) => left - right);
+  let measuredMin = found.min;
+  let measuredMax = found.max;
+  for (let index = 0; index < tickPositions.length - 1; index += 1) {
+    const left = tickPositions[index];
+    const right = tickPositions[index + 1];
+    if (right - left < minRunLength * 0.35) continue;
+    if (labelMain >= left - minTickGap && labelMain <= right + minTickGap) {
+      measuredMin = left;
+      measuredMax = right;
+      break;
+    }
+  }
+
+  return {
+    axis,
+    cross: (found.cross / crossSize) * 1000,
+    max: (measuredMax / mainSize) * 1000,
+    min: (measuredMin / mainSize) * 1000
+  };
+}
+
 export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("landlord");
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
@@ -222,6 +656,292 @@ export default function RoomlogFloorPlanEditor() {
     () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
     [pixelToMmRatio, visibleWalls]
   );
+  // AI가 분류한 dimensions(kind 포함)가 1순위. 없으면 예전 textDetections를 wall_span으로 폴백한다.
+  const allPrintedDimensionChips = useMemo<PrintedDimensionChip[]>(() => {
+    const aiDimensions = extractionMeta.aiDimensions ?? [];
+    const chips = aiDimensions.length
+      ? aiDimensions.flatMap((dimension, dimensionIndex) => {
+          const kind = guardrailKind(normalizeDimensionKind(dimension.kind), dimension.text);
+          const realLengthMm =
+            dimension.valueMm && dimension.valueMm > 0
+              ? Math.round(dimension.valueMm)
+              : kind === "furniture" || kind === "fixture"
+                ? parseFurnitureDimensionValueMm(dimension.text)
+                : parseDimensionTextsToMm(dimension.text)[0];
+          if (!realLengthMm || kind === "area" || kind === "ignore") return [];
+          const boundingBox = normalizeAiTextBoundingBox(dimension.boundingBox);
+          const targetLine = normalizeAiTargetLine(dimension.targetLine);
+          const placement = classifyDimensionPlacement(boundingBox, targetLine);
+          const structural = isStructuralDimensionKind(kind);
+          const axis = dimension.axis === "horizontal" || dimension.axis === "vertical" ? dimension.axis : placement.axis;
+
+          return [
+            {
+              axis,
+              boundingBox,
+              confidence: dimension.confidence,
+              id: printedDimensionKey(dimensionIndex, 0, realLengthMm, boundingBox),
+              kind,
+              realLengthMm,
+              side: dimensionSideFromAxis(axis, boundingBox) ?? placement.side,
+              targetLine,
+              text: `${realLengthMm}mm`,
+              useForFurnitureFit: (kind === "furniture" || kind === "fixture") && dimension.useForFurnitureFit !== false,
+              useForScale: structural && dimension.useForScale === true,
+              useForWallGeneration: structural && dimension.useForWallGeneration !== false
+            }
+          ];
+        })
+      : (extractionMeta.aiTextDetections ?? []).flatMap((detection, detectionIndex) =>
+          parseDimensionTextsToMm(detection.text).flatMap((realLengthMm, valueIndex) => {
+            const boundingBox = normalizeAiTextBoundingBox(detection.boundingBox);
+            const targetLine = normalizeAiTargetLine(detection.targetLine);
+            const placement = classifyDimensionPlacement(boundingBox, targetLine);
+
+            return [
+              {
+                axis: placement.axis,
+                boundingBox,
+                confidence: detection.confidence,
+                id: printedDimensionKey(detectionIndex, valueIndex, realLengthMm, boundingBox),
+                kind: "wall_span" as const,
+                realLengthMm,
+                side: placement.side,
+                targetLine,
+                text: `${realLengthMm}mm`,
+                useForFurnitureFit: false,
+                useForScale: true,
+                useForWallGeneration: true
+              }
+            ];
+          })
+        );
+
+    return chips.sort((a, b) => b.realLengthMm - a.realLengthMm);
+  }, [extractionMeta.aiDimensions, extractionMeta.aiTextDetections]);
+  // 구조 치수만 축척·격자·오버레이·벽 생성에 쓴다.
+  const structuralDimensionChips = useMemo(() => allPrintedDimensionChips.filter((chip) => isStructuralDimensionKind(chip.kind)), [allPrintedDimensionChips]);
+  const openingDimensionChips = useMemo(() => allPrintedDimensionChips.filter((chip) => chip.kind === "opening"), [allPrintedDimensionChips]);
+  const furnitureDimensionChips = useMemo(
+    () => allPrintedDimensionChips.filter((chip) => chip.kind === "furniture" || chip.kind === "fixture"),
+    [allPrintedDimensionChips]
+  );
+  const printedDimensionChips = useMemo(() => {
+    // 캔버스 오버레이는 구조 치수만. 여백(위/아래/좌/우) 치수를 안쪽 치수보다 앞세운다.
+    const marginChips = structuralDimensionChips.filter((chip) => chip.side !== null);
+    const interiorChips = structuralDimensionChips.filter((chip) => chip.side === null);
+
+    return [...marginChips, ...interiorChips].slice(0, MAX_VISIBLE_PRINTED_DIMENSIONS);
+  }, [structuralDimensionChips]);
+  const [printedDimensionLineSpans, setPrintedDimensionLineSpans] = useState<Map<string, DetectedDimensionLineSpan>>(() => new Map());
+  const aiImagePixelsRef = useRef<{ imageData: ImageData; src: string } | null>(null);
+
+  // 원본 이미지 픽셀에서 각 치수 라벨 근처의 인쇄된 치수선을 찾는다.
+  useEffect(() => {
+    let cancelled = false;
+    const targets = structuralDimensionChips.filter((chip) => chip.axis && chip.boundingBox);
+    if (!uploadedAiImageDataUrl || !targets.length) {
+      setPrintedDimensionLineSpans(new Map());
+      return;
+    }
+    (async () => {
+      try {
+        let pixels = aiImagePixelsRef.current;
+        if (!pixels || pixels.src !== uploadedAiImageDataUrl) {
+          const image = await loadImage(uploadedAiImageDataUrl);
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth || image.width;
+          canvas.height = image.naturalHeight || image.height;
+          const context = canvas.getContext("2d");
+          if (!context) return;
+          context.drawImage(image, 0, 0);
+          pixels = { imageData: context.getImageData(0, 0, canvas.width, canvas.height), src: uploadedAiImageDataUrl };
+          aiImagePixelsRef.current = pixels;
+        }
+        if (cancelled) return;
+        const spans = new Map<string, DetectedDimensionLineSpan>();
+        for (const chip of targets) {
+          const box = chip.boundingBox!;
+          const span = findPrintedDimensionLineSpan(pixels.imageData, chip.axis as Exclude<DimensionAxis, null>, {
+            x: box.x + box.width / 2,
+            y: box.y + box.height / 2
+          });
+          if (span) spans.set(chip.id, span);
+        }
+        if (!cancelled) setPrintedDimensionLineSpans(spans);
+      } catch {
+        if (!cancelled) setPrintedDimensionLineSpans(new Map());
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [structuralDimensionChips, uploadedAiImageDataUrl]);
+
+  const printedDimensionScale = useMemo<ScaleCandidate | null>(() => {
+    // 1순위: 인쇄된 치수선을 직접 검출한 길이 — 도면 자체가 근거라 가장 정확하다.
+    const frame = computeBackgroundImageFrame(cachedBackgroundImage);
+    if (frame && printedDimensionLineSpans.size) {
+      const samples = structuralDimensionChips.flatMap((chip) => {
+        const span = printedDimensionLineSpans.get(chip.id);
+        if (!span) return [];
+        const canvasLength = ((span.max - span.min) / 1000) * (span.axis === "horizontal" ? frame.width : frame.height);
+        if (canvasLength < 8) return [];
+        const ratio = chip.realLengthMm / canvasLength;
+
+        return isPlausiblePixelToMmRatio(ratio) ? [{ canvasLength, ratio, realLengthMm: chip.realLengthMm }] : [];
+      });
+      const consensus = pickConsensusRatio(samples);
+      if (consensus && consensus.support >= 2) {
+        return {
+          confidence: Math.min(0.97, 0.6 + consensus.support * 0.08),
+          pixelLength: Math.round(consensus.sample.canvasLength),
+          pixelToMmRatio: consensus.ratio,
+          realLengthMm: consensus.sample.realLengthMm,
+          source: `printed-dimension-line-x${consensus.support}`
+        };
+      }
+    }
+
+    const unionCandidate = estimateWallUnionScaleCandidate(structuralDimensionChips, computeWallUnionBox(detectionBoxes));
+    if (unionCandidate) return unionCandidate;
+
+    // 벽 탐지 전이거나 축 매칭이 실패하면 AI targetLine 교차검증으로라도 후보를 낸다.
+    // 구조 치수의 targetLine만 쓴다(가구/opening 제외).
+    return estimatePrintedDimensionScaleCandidate(
+      structuralDimensionChips.flatMap((chip) => (chip.targetLine ? [{ targetLine: chip.targetLine, text: chip.text }] : [])),
+      computeBackgroundImageFrame(cachedBackgroundImage)
+    );
+  }, [structuralDimensionChips, cachedBackgroundImage, detectionBoxes, printedDimensionLineSpans]);
+
+  useEffect(() => {
+    if (!printedDimensionScale) return;
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleCandidates: [printedDimensionScale] }));
+    // 인쇄 치수선 검출 기반 축척(치수선 2개 이상 합의)은 실측 근거라 자동 확정한다.
+    // 사용자가 이미 축척을 정했다면 덮어쓰지 않는다.
+    if (!isScaleSet && printedDimensionScale.source.includes("dimension-line") && printedDimensionScale.pixelToMmRatio > 0) {
+      setPixelToMmRatio(printedDimensionScale.pixelToMmRatio);
+      setIsScaleSet(true);
+      setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
+      setUploadStatus(`축척 자동 적용됨(치수선 검출): 1px = ${printedDimensionScale.pixelToMmRatio.toFixed(2)}mm`);
+    }
+  }, [isScaleSet, printedDimensionScale]);
+
+  // 격자를 도면에 맞춘다: 도면의 벽 외곽 모서리에서 격자가 시작되고,
+  // 축척이 있으면 한 칸이 실측 라운드 값(250/500/1000mm)이 되게 한다.
+  // 원점은 ① 검출된 전체 치수선의 끝점(=벽 외곽면, 픽셀 정확) ② Roboflow 벽 union 순으로 신뢰한다.
+  const gridSpec = useMemo(() => {
+    const union = computeWallUnionBox(detectionBoxes);
+    const frame = computeBackgroundImageFrame(cachedBackgroundImage);
+    let originX: number | null = null;
+    let originY: number | null = null;
+    if (frame) {
+      for (const axis of ["horizontal", "vertical"] as const) {
+        const axisChips = structuralDimensionChips.filter(
+          (chip) => chip.axis === axis && printedDimensionLineSpans.get(chip.id)?.axis === axis
+        );
+        if (!axisChips.length) continue;
+        const largest = axisChips.reduce((best, chip) => (chip.realLengthMm > best.realLengthMm ? chip : best));
+        const span = printedDimensionLineSpans.get(largest.id)!;
+        const frameSize = axis === "horizontal" ? frame.width : frame.height;
+        const spanLengthCanvas = ((span.max - span.min) / 1000) * frameSize;
+        const unionSpan = union ? (axis === "horizontal" ? union.x2 - union.x1 : union.y2 - union.y1) : null;
+        // 부분 치수를 전체로 오인하지 않게, 벽 union 폭과 얼추 맞을 때만 원점으로 쓴다.
+        if (unionSpan && Math.abs(spanLengthCanvas - unionSpan) / unionSpan > 0.1) continue;
+        if (axis === "horizontal") originX = frame.x + (span.min / 1000) * frame.width;
+        else originY = frame.y + (span.min / 1000) * frame.height;
+      }
+    }
+    if (originX === null && union) originX = union.x1;
+    if (originY === null && union) originY = union.y1;
+    if (originX === null || originY === null) {
+      return { aligned: false, origin: { x: 0, y: 0 }, spacing: GRID_SIZE_PX, stepMm: null as number | null };
+    }
+    const origin = { x: originX, y: originY };
+    const ratio = isScaleSet ? pixelToMmRatio : printedDimensionScale?.pixelToMmRatio ?? null;
+    if (!ratio || ratio <= 0) return { aligned: true, origin, spacing: GRID_SIZE_PX, stepMm: null as number | null };
+    // 칸 크기는 화면상 보기 좋은 범위(14~64px) 중에서 고르되, 도면 전체 치수를
+    // 나누어떨어지게 하는 값을 우선한다 — 그래야 네 모서리가 전부 격자에 맞물린다.
+    const totalWidthMm = Math.max(0, ...structuralDimensionChips.filter((chip) => chip.axis === "horizontal").map((chip) => chip.realLengthMm));
+    const totalHeightMm = Math.max(0, ...structuralDimensionChips.filter((chip) => chip.axis === "vertical").map((chip) => chip.realLengthMm));
+    const stepCandidates = [100, 200, 250, 500, 1000, 2000].filter((stepMm) => stepMm / ratio >= 14 && stepMm / ratio <= 64);
+    const dividesBoth = stepCandidates.filter(
+      (stepMm) => totalWidthMm > 0 && totalHeightMm > 0 && totalWidthMm % stepMm === 0 && totalHeightMm % stepMm === 0
+    );
+    const dividesOne = stepCandidates.filter((stepMm) => (totalWidthMm > 0 && totalWidthMm % stepMm === 0) || (totalHeightMm > 0 && totalHeightMm % stepMm === 0));
+    const stepMm = dividesBoth[dividesBoth.length - 1] ?? dividesOne[dividesOne.length - 1] ?? stepCandidates[0] ?? null;
+    if (stepMm) return { aligned: true, origin, spacing: stepMm / ratio, stepMm: stepMm as number | null };
+
+    return { aligned: true, origin, spacing: GRID_SIZE_PX, stepMm: null as number | null };
+  }, [
+    structuralDimensionChips,
+    cachedBackgroundImage,
+    detectionBoxes,
+    isScaleSet,
+    pixelToMmRatio,
+    printedDimensionLineSpans,
+    printedDimensionScale
+  ]);
+
+  // 구조 치수 경계선(캔버스 좌표): 벽이 "있어야 할 자리". 가로 치수 체인 → 세로벽 x, 세로 치수 체인 → 가로벽 y.
+  // 여기서만 구조 치수(structuralDimensionChips)를 소비 — 가구/opening/면적은 애초에 안 들어온다.
+  const structuralWallBoundaries = useMemo<{ horizontalLineY: number[]; verticalLineX: number[] }>(() => {
+    const empty = { horizontalLineY: [] as number[], verticalLineX: [] as number[] };
+    const frame = uploadedImage ? computeBackgroundImageFrame(cachedBackgroundImage) : null;
+    if (!frame) return empty;
+    const ratio = isScaleSet ? pixelToMmRatio : printedDimensionScale?.pixelToMmRatio ?? null;
+    if (!ratio || ratio <= 0) return empty;
+    const union = computeWallUnionBox(detectionBoxes);
+    const toCanvasPoint = (x: number, y: number) => ({ x: frame.x + (x / 1000) * frame.width, y: frame.y + (y / 1000) * frame.height });
+    // 도면 실제 범위: 검출된 전체 치수선 끝(=벽 외곽면) 1순위, 없으면 벽 union. (오버레이의 planExtentForAxis와 동일 규칙)
+    const planExtentForAxis = (axis: Exclude<DimensionAxis, null>) => {
+      const unionMin = axis === "horizontal" ? union?.x1 ?? null : union?.y1 ?? null;
+      const unionMax = axis === "horizontal" ? union?.x2 ?? null : union?.y2 ?? null;
+      const axisChips = structuralDimensionChips.filter((chip) => chip.axis === axis && printedDimensionLineSpans.get(chip.id)?.axis === axis);
+      if (axisChips.length) {
+        const largest = axisChips.reduce((best, chip) => (chip.realLengthMm > best.realLengthMm ? chip : best));
+        const span = printedDimensionLineSpans.get(largest.id)!;
+        const start = axis === "horizontal" ? toCanvasPoint(span.min, span.cross).x : toCanvasPoint(span.cross, span.min).y;
+        const end = axis === "horizontal" ? toCanvasPoint(span.max, span.cross).x : toCanvasPoint(span.cross, span.max).y;
+        const unionSpan = unionMin !== null && unionMax !== null ? unionMax - unionMin : null;
+        if (!unionSpan || Math.abs(end - start - unionSpan) / unionSpan <= 0.1) return { max: end, min: start };
+      }
+
+      return unionMin !== null && unionMax !== null ? { max: unionMax, min: unionMin } : null;
+    };
+
+    const verticalLineX: number[] = [];
+    const horizontalLineY: number[] = [];
+    for (const axis of ["horizontal", "vertical"] as const) {
+      const planExtent = planExtentForAxis(axis);
+      if (!planExtent) continue;
+      const spanMm = (planExtent.max - planExtent.min) * ratio;
+      if (spanMm <= 0) continue;
+      const axisChips = structuralDimensionChips.filter((chip) => chip.axis === axis && chip.boundingBox);
+      if (!axisChips.length) continue;
+      const perpSizes = axisChips
+        .map((chip) => (axis === "horizontal" ? chip.boundingBox!.height : chip.boundingBox!.width))
+        .sort((a, b) => a - b);
+      const perpTolerance = Math.max(12, (perpSizes[Math.floor(perpSizes.length / 2)] || 20) * 1.2);
+      const layoutInput = axisChips.map((chip) => {
+        const box = chip.boundingBox!;
+        return {
+          alongCoord: axis === "horizontal" ? box.x + box.width / 2 : box.y + box.height / 2,
+          id: chip.id,
+          perpCoord: axis === "horizontal" ? box.y + box.height / 2 : box.x + box.width / 2,
+          realLengthMm: chip.realLengthMm
+        };
+      });
+      const offsetsMm = structuralBoundaryOffsetsMm(layoutInput, spanMm, { perpTolerance }) as number[];
+      const coords = offsetsMm.map((mm) => planExtent.min + mm / ratio);
+      if (axis === "horizontal") verticalLineX.push(...coords);
+      else horizontalLineY.push(...coords);
+    }
+
+    return { horizontalLineY, verticalLineX };
+  }, [cachedBackgroundImage, detectionBoxes, isScaleSet, pixelToMmRatio, printedDimensionLineSpans, printedDimensionScale, structuralDimensionChips, uploadedImage]);
+
   const hiddenWallCount = hiddenWallIds.size;
   const selectedFurniture = useMemo(
     () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
@@ -318,30 +1038,24 @@ export default function RoomlogFloorPlanEditor() {
     context.scale(viewScale, viewScale);
     context.translate(viewOffset.x, viewOffset.y);
 
-    if (uploadedImage && cachedBackgroundImage?.complete) {
-      const imageAspect = cachedBackgroundImage.width / cachedBackgroundImage.height;
-      const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
-      let drawWidth = CANVAS_WIDTH * 0.8;
-      let drawHeight = drawWidth / imageAspect;
-      if (imageAspect <= canvasAspect) {
-        drawHeight = CANVAS_HEIGHT * 0.8;
-        drawWidth = drawHeight * imageAspect;
-      }
-
+    const backgroundImageFrame = uploadedImage ? computeBackgroundImageFrame(cachedBackgroundImage) : null;
+    if (backgroundImageFrame && cachedBackgroundImage) {
       context.globalAlpha = backgroundOpacity;
-      context.drawImage(cachedBackgroundImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      context.drawImage(cachedBackgroundImage, backgroundImageFrame.x, backgroundImageFrame.y, backgroundImageFrame.width, backgroundImageFrame.height);
       context.globalAlpha = 1;
     }
 
     context.strokeStyle = "#e0e0e0";
     context.lineWidth = 0.5 / viewScale;
-    for (let x = -5000; x <= 5000; x += GRID_SIZE_PX) {
+    const gridStartX = gridSpec.origin.x + Math.ceil((-5000 - gridSpec.origin.x) / gridSpec.spacing) * gridSpec.spacing;
+    for (let x = gridStartX; x <= 5000; x += gridSpec.spacing) {
       context.beginPath();
       context.moveTo(x, -5000);
       context.lineTo(x, 5000);
       context.stroke();
     }
-    for (let y = -5000; y <= 5000; y += GRID_SIZE_PX) {
+    const gridStartY = gridSpec.origin.y + Math.ceil((-5000 - gridSpec.origin.y) / gridSpec.spacing) * gridSpec.spacing;
+    for (let y = gridStartY; y <= 5000; y += gridSpec.spacing) {
       context.beginPath();
       context.moveTo(-5000, y);
       context.lineTo(5000, y);
@@ -602,7 +1316,198 @@ export default function RoomlogFloorPlanEditor() {
       context.restore();
     };
 
+    const drawPrintedDimensionOverlays = () => {
+      if (!printedDimensionChips.length || !backgroundImageFrame) return;
+      const reliablyPlacedDimensions = printedDimensionChips.filter(hasReliableDimensionPlacement);
+      if (!reliablyPlacedDimensions.length) return;
+
+      const toCanvasPoint = (x: number, y: number) => ({
+        x: backgroundImageFrame.x + (x / 1000) * backgroundImageFrame.width,
+        y: backgroundImageFrame.y + (y / 1000) * backgroundImageFrame.height
+      });
+      // AI targetLine 좌표는 신뢰하지 않는다. 측정 구간은 확정/후보 축척으로
+      // 치수값을 역산한 길이를 그리되, 벽 union에 스냅해 도면과 정렬시킨다.
+      const overlayPixelToMmRatio = isScaleSet ? pixelToMmRatio : printedDimensionScale?.pixelToMmRatio ?? null;
+      const overlayWallUnion = computeWallUnionBox(detectionBoxes);
+      const spanExtentAlongAxis = (center: number, length: number, unionMin: number | null, unionMax: number | null) => {
+        if (unionMin === null || unionMax === null || unionMax <= unionMin) {
+          return { max: center + length / 2, min: center - length / 2 };
+        }
+        const unionSpan = unionMax - unionMin;
+        // 전체 치수(벽 union 폭/높이와 6% 이내)는 벽 끝~끝에 정확히 정렬한다.
+        if (Math.abs(length - unionSpan) / unionSpan <= 0.06) return { max: unionMax, min: unionMin };
+        // 부분 치수는 도면 관례대로 가까운 쪽 벽 끝에서 시작하게 앵커한다.
+        // (라벨이 중심선보다 앞이면 시작 벽, 뒤면 끝 벽 기준)
+        if (center <= (unionMin + unionMax) / 2) return { max: unionMin + length, min: unionMin };
+
+        return { max: unionMax, min: unionMax - length };
+      };
+      // 도면의 실제 범위: 검출된 전체 치수선의 양 끝(=벽 외곽면)이 1순위,
+      // 없으면 Roboflow 벽 union으로 폴백한다.
+      const planExtentForAxis = (axis: Exclude<DimensionAxis, null>) => {
+        const unionMin = axis === "horizontal" ? overlayWallUnion?.x1 ?? null : overlayWallUnion?.y1 ?? null;
+        const unionMax = axis === "horizontal" ? overlayWallUnion?.x2 ?? null : overlayWallUnion?.y2 ?? null;
+        const axisChips = reliablyPlacedDimensions.filter(
+          (chip) => chip.axis === axis && printedDimensionLineSpans.get(chip.id)?.axis === axis
+        );
+        if (axisChips.length) {
+          const largest = axisChips.reduce((best, chip) => (chip.realLengthMm > best.realLengthMm ? chip : best));
+          const span = printedDimensionLineSpans.get(largest.id)!;
+          const startOnLine = axis === "horizontal" ? toCanvasPoint(span.min, span.cross).x : toCanvasPoint(span.cross, span.min).y;
+          const endOnLine = axis === "horizontal" ? toCanvasPoint(span.max, span.cross).x : toCanvasPoint(span.cross, span.max).y;
+          const unionSpan = unionMin !== null && unionMax !== null ? unionMax - unionMin : null;
+          if (!unionSpan || Math.abs(endOnLine - startOnLine - unionSpan) / unionSpan <= 0.1) {
+            return { max: endOnLine, min: startOnLine };
+          }
+        }
+
+        return unionMin !== null && unionMax !== null ? { max: unionMax, min: unionMin } : null;
+      };
+      const planExtents = { horizontal: planExtentForAxis("horizontal"), vertical: planExtentForAxis("vertical") };
+
+      // 중첩 치수줄 처리: 같은 변에 전체줄/구간줄이 여러 겹 있으므로, 합산 체인을 풀기 전에
+      // 라벨의 수직 위치(perpCoord)로 먼저 "줄"을 갈라낸 뒤 각 줄 안에서만 합=전체 체인을 푼다.
+      // (solveDimensionRowChains가 클러스터링+체인을 담당. 여기선 좌표 변환만 한다.)
+      const chainExtentByChip = new Map<PrintedDimensionChip, { max: number; min: number }>();
+      if (overlayPixelToMmRatio) {
+        for (const axis of ["horizontal", "vertical"] as const) {
+          const planExtent = planExtents[axis];
+          if (!planExtent) continue;
+          const unionSpanMm = (planExtent.max - planExtent.min) * overlayPixelToMmRatio;
+          if (unionSpanMm <= 0) continue;
+          const axisChips = reliablyPlacedDimensions.filter((chip) => chip.axis === axis && chip.boundingBox);
+          if (axisChips.length < 2) continue;
+          const chipById = new Map(axisChips.map((chip) => [chip.id, chip]));
+          // 줄 간격 임계값 = 라벨의 "축에 수직인 크기" 중앙값 기준. 세로 치수는 라벨이 90° 회전이라
+          // height가 텍스트 길이가 되므로, 가로는 height·세로는 width를 써야 컬럼이 안 뭉친다.
+          const perpSizes = axisChips
+            .map((chip) => (axis === "horizontal" ? chip.boundingBox!.height : chip.boundingBox!.width))
+            .sort((a, b) => a - b);
+          const medianPerpSize = perpSizes[Math.floor(perpSizes.length / 2)] || 20;
+          const perpTolerance = Math.max(12, medianPerpSize * 1.2);
+          const layoutInput = axisChips.map((chip) => {
+            const box = chip.boundingBox!;
+            return {
+              alongCoord: axis === "horizontal" ? box.x + box.width / 2 : box.y + box.height / 2,
+              id: chip.id,
+              perpCoord: axis === "horizontal" ? box.y + box.height / 2 : box.x + box.width / 2,
+              realLengthMm: chip.realLengthMm
+            };
+          });
+          const layout = solveDimensionRowChains(layoutInput, unionSpanMm, { perpTolerance }) as Map<string, { endMm: number; startMm: number }>;
+          layout.forEach((offset, chipId) => {
+            const chip = chipById.get(chipId);
+            if (!chip) return;
+            // mm 오프셋(도면 시작 기준) → 캔버스 좌표. planExtent.min이 외벽 안쪽면.
+            chainExtentByChip.set(chip, {
+              max: planExtent.min + offset.endMm / overlayPixelToMmRatio,
+              min: planExtent.min + offset.startMm / overlayPixelToMmRatio
+            });
+          });
+        }
+      }
+      const drawDimensionTargetLine = (dimension: PrintedDimensionChip, center: Point, canvasLength: number, axis: Exclude<DimensionAxis, null>) => {
+        // 1순위: 원본에서 검출한 인쇄 치수선 위에 그대로 얹는다.
+        // (역산 길이와 25% 넘게 어긋나면 엉뚱한 선을 잡은 것이므로 버린다)
+        let extent: { max: number; min: number } | null = null;
+        let crossCoord = axis === "horizontal" ? center.y : center.x;
+        const detectedSpan = printedDimensionLineSpans.get(dimension.id);
+        if (detectedSpan && detectedSpan.axis === axis) {
+          const startPointOnLine =
+            axis === "horizontal" ? toCanvasPoint(detectedSpan.min, detectedSpan.cross) : toCanvasPoint(detectedSpan.cross, detectedSpan.min);
+          const endPointOnLine =
+            axis === "horizontal" ? toCanvasPoint(detectedSpan.max, detectedSpan.cross) : toCanvasPoint(detectedSpan.cross, detectedSpan.max);
+          const detectedExtent =
+            axis === "horizontal" ? { max: endPointOnLine.x, min: startPointOnLine.x } : { max: endPointOnLine.y, min: startPointOnLine.y };
+          if (Math.abs(detectedExtent.max - detectedExtent.min - canvasLength) / canvasLength <= 0.25) {
+            extent = detectedExtent;
+            crossCoord = axis === "horizontal" ? startPointOnLine.y : startPointOnLine.x;
+          }
+        }
+        if (!extent) {
+          extent =
+            chainExtentByChip.get(dimension) ??
+            (axis === "horizontal"
+              ? spanExtentAlongAxis(center.x, canvasLength, planExtents.horizontal?.min ?? null, planExtents.horizontal?.max ?? null)
+              : spanExtentAlongAxis(center.y, canvasLength, planExtents.vertical?.min ?? null, planExtents.vertical?.max ?? null));
+        }
+        const start = axis === "horizontal" ? { x: extent.min, y: crossCoord } : { x: crossCoord, y: extent.min };
+        const end = axis === "horizontal" ? { x: extent.max, y: crossCoord } : { x: crossCoord, y: extent.max };
+        const nx = axis === "horizontal" ? 0 : 1;
+        const ny = axis === "horizontal" ? 1 : 0;
+        const tick = 10 / viewScale;
+
+        context.save();
+        context.strokeStyle = "#2176ff";
+        context.lineWidth = 2 / viewScale;
+        context.lineCap = "round";
+        context.beginPath();
+        context.moveTo(start.x, start.y);
+        context.lineTo(end.x, end.y);
+        context.stroke();
+        for (const point of [start, end]) {
+          context.beginPath();
+          context.moveTo(point.x - nx * tick, point.y - ny * tick);
+          context.lineTo(point.x + nx * tick, point.y + ny * tick);
+          context.stroke();
+        }
+        context.restore();
+
+        // 라벨은 실제로 그린 구간의 중앙에 붙인다.
+        return axis === "horizontal"
+          ? { x: (extent.min + extent.max) / 2, y: crossCoord }
+          : { x: crossCoord, y: (extent.min + extent.max) / 2 };
+      };
+
+      context.save();
+      context.font = `bold ${12 / viewScale}px Arial, sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+
+      const placedLabelRects: Array<{ height: number; width: number; x: number; y: number }> = [];
+      const rectsOverlap = (a: { height: number; width: number; x: number; y: number }, b: { height: number; width: number; x: number; y: number }) =>
+        a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+      reliablyPlacedDimensions.forEach((dimension) => {
+        const box = dimension.boundingBox;
+        let labelCenter = box
+          ? toCanvasPoint(box.x + box.width / 2, box.y + box.height / 2)
+          : dimension.targetLine
+            ? toCanvasPoint((dimension.targetLine.x1 + dimension.targetLine.x2) / 2, (dimension.targetLine.y1 + dimension.targetLine.y2) / 2)
+            : null;
+        if (!labelCenter) return;
+        if (overlayPixelToMmRatio && dimension.axis) {
+          labelCenter = drawDimensionTargetLine(dimension, labelCenter, dimension.realLengthMm / overlayPixelToMmRatio, dimension.axis);
+        }
+        const text = dimension.text;
+        const paddingX = 7 / viewScale;
+        const paddingY = 4 / viewScale;
+        const labelWidth = context.measureText(text).width + paddingX * 2;
+        const labelHeight = 20 / viewScale;
+        const labelRect = { height: labelHeight, width: labelWidth, x: labelCenter.x - labelWidth / 2, y: labelCenter.y - labelHeight / 2 };
+        // 이미 그린 라벨과 겹치면 아래로 밀어낸다.
+        for (let attempt = 0; attempt < 6 && placedLabelRects.some((placed) => rectsOverlap(placed, labelRect)); attempt += 1) {
+          labelRect.y += labelHeight + 3 / viewScale;
+        }
+        placedLabelRects.push(labelRect);
+        const labelTextCenter = { x: labelRect.x + labelWidth / 2, y: labelRect.y + labelHeight / 2 };
+
+        context.globalAlpha = 0.92;
+        context.fillStyle = "#ffffff";
+        context.fillRect(labelRect.x, labelRect.y, labelWidth, labelHeight);
+        context.globalAlpha = 1;
+        context.strokeStyle = "#2176ff";
+        context.lineWidth = 1.5 / viewScale;
+        context.strokeRect(labelRect.x, labelRect.y, labelWidth, labelHeight);
+        context.fillStyle = "#0f2f61";
+        context.fillText(text, labelTextCenter.x, labelTextCenter.y + paddingY / 4);
+      });
+
+      context.restore();
+    };
+
     drawRoboflowDetectionOverlays();
+    drawPrintedDimensionOverlays();
 
     if (scaleWall && tool === "scale") drawWall(scaleWall, "scale");
     if (isDrawing && startPoint && currentPoint) drawWall({ id: "draft", start: startPoint, end: currentPoint }, "draft");
@@ -618,14 +1523,19 @@ export default function RoomlogFloorPlanEditor() {
     detectionBoxes,
     eraseAreaEnd,
     eraseAreaStart,
+    gridSpec,
     hoveredWall,
     hiddenWallIds,
     isDrawing,
+    isScaleSet,
     isSelectingEraseArea,
     fixtureCandidates,
     openingCandidates,
     partialEraserSelectedWall,
     pixelToMmRatio,
+    printedDimensionChips,
+    printedDimensionLineSpans,
+    printedDimensionScale,
     scaleWall,
     selectedWall,
     startPoint,
@@ -882,7 +1792,7 @@ export default function RoomlogFloorPlanEditor() {
 
     const coords = getCanvasCoordinates(event);
     if (tool === "wall" || tool === "scale") {
-      const snappedStart = snapCanvasPoint(coords);
+      const snappedStart = snapEditorPoint(coords);
       setStartPoint(snappedStart);
       setCurrentPoint(snappedStart);
       setIsDrawing(true);
@@ -967,7 +1877,7 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     if (isDrawing && startPoint && (tool === "wall" || tool === "scale")) {
-      setCurrentPoint(snapCanvasPoint(snapToOrthogonal(startPoint, coords)));
+      setCurrentPoint(snapEditorPoint(snapToOrthogonal(startPoint, coords) as Point));
       return;
     }
 
@@ -998,7 +1908,7 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     if (isDrawing && startPoint && currentPoint && (tool === "wall" || tool === "scale")) {
-      const snappedEnd = snapCanvasPoint(snapToOrthogonal(startPoint, getCanvasCoordinates(event)));
+      const snappedEnd = snapEditorPoint(snapToOrthogonal(startPoint, getCanvasCoordinates(event)) as Point);
       if (startPoint.x !== snappedEnd.x || startPoint.y !== snappedEnd.y) {
         const nextWall = { id: `wall-${Date.now()}`, start: startPoint, end: snappedEnd };
         if (tool === "scale") {
@@ -1106,6 +2016,9 @@ export default function RoomlogFloorPlanEditor() {
         aiGeneratedWallCount: 0,
         aiNoiseFlags: undefined,
         aiPlanStyle: undefined,
+        aiSummary: undefined,
+        aiDimensions: [],
+        aiTextDetections: [],
         aiRoomCount: 0,
         detectedWallCount: 0,
         dimensionCandidateCount: 0,
@@ -1130,6 +2043,80 @@ export default function RoomlogFloorPlanEditor() {
   function isWallUsableForRoboflowPostProcess(wall: Wall) {
     const source = (wall as AiGeneratedWall).source;
     return source !== "ai-room-edge" && source !== "ai-missing-wall-hint" && !String(wall.id).startsWith("rf-wall");
+  }
+
+  async function runPrintedDimensionReading() {
+    const attachmentId = uploadedFloorPlanSource?.attachmentId;
+    if (!attachmentId && !uploadedAiImageDataUrl) {
+      setAiAnalysisStatus("먼저 도면을 업로드하세요");
+      return;
+    }
+
+    setIsProcessing(true);
+    setAiAnalysisStatus("치수 숫자 읽는 중");
+    try {
+      const token = await getFloorPlanAccessToken();
+      const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
+        body: JSON.stringify({
+          analysisMode: "dimension",
+          imageDataUrl: attachmentId ? undefined : uploadedAiImageDataUrl,
+          model: "openai/floor-plan-vision",
+          prompt: "인쇄된 평면도의 치수 숫자를 읽고 dimensions 배열로 분류해 주세요. 각 숫자는 kind(outer_total/outer_segment/room_span/wall_span/opening/furniture/fixture/area/ignore)로 분류합니다. 구조 치수(outer_total/outer_segment/room_span/wall_span)만 useForScale·useForWallGeneration을 true로 두고, 문/창문 폭은 opening, '1500 × 2000mm' 같은 가구 크기는 furniture, 면적(㎡)은 area로 둡니다. boundingBox와 targetLine은 0~1000 좌표로 넣되 불확실하면 null로 보냅니다. 같은 숫자라도 위치가 다르면 별도 항목으로 유지합니다.",
+          sourceAttachmentId: attachmentId
+        }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      if (!response.ok) throw new Error(`Dimension reading failed: ${response.status}`);
+
+      const result = (await response.json()) as {
+        status: "ready" | "config-required" | "failed";
+        summary: string;
+        dimensions?: AiDimensionDetection[];
+        textDetections?: Array<{ boundingBox?: unknown; confidence?: number; targetLine?: unknown; text: string }>;
+      };
+      if (result.status !== "ready") {
+        setAiAnalysisStatus(result.summary);
+        return;
+      }
+
+      const aiDimensions = result.dimensions ?? [];
+      const textDetections = result.textDetections ?? [];
+      const structuralCount = aiDimensions.filter((dimension) => isStructuralDimensionKind(normalizeDimensionKind(dimension.kind))).length;
+      const openingCount = aiDimensions.filter((dimension) => normalizeDimensionKind(dimension.kind) === "opening").length;
+      const furnitureCount = aiDimensions.filter((dimension) => {
+        const kind = normalizeDimensionKind(dimension.kind);
+        return kind === "furniture" || kind === "fixture";
+      }).length;
+      const dimensionCount = aiDimensions.length
+        ? structuralCount
+        : textDetections.reduce((count, detection) => count + parseDimensionTextsToMm(detection.text).length, 0);
+      setExtractionMeta((currentMeta) => ({
+        ...currentMeta,
+        aiDimensions,
+        aiModel: "openai/floor-plan-vision",
+        aiPhase1Status: result.status,
+        aiSummary: result.summary,
+        aiTextDetections: textDetections,
+        dimensionCandidateCount: dimensionCount,
+        needsReview: dimensionCount > 0 || currentMeta.needsReview,
+        ocrStatus: dimensionCount > 0 ? "ready" : currentMeta.ocrStatus
+      }));
+      setAiAnalysisStatus(
+        aiDimensions.length
+          ? `${result.summary} 구조 치수 ${structuralCount} / 문창문 ${openingCount} / 가구 ${furnitureCount}개`
+          : dimensionCount > 0
+            ? `${result.summary} 읽힌 치수 ${dimensionCount}개 (축척 확인 필요)`
+            : `${result.summary} 읽힌 치수가 없어 수동 확인이 필요합니다`
+      );
+    } catch {
+      setAiAnalysisStatus("치수 읽기 실패");
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   async function runOpeningDetection() {
@@ -1385,6 +2372,40 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(`Roboflow 벽 후처리 ${detectionWallResult.generatedWallCount}개 적용`);
   }
 
+  // 구조 치수 경계에 벽을 스냅해, 3D 방 크기·벽 간 거리를 도면 치수와 맞춘다.
+  // Roboflow가 만든 벽은 픽셀 기하라 수십 mm 어긋날 수 있는데, 이걸 구조 치수 값으로 교정한다.
+  function applyStructuralDimensionWallCorrection() {
+    const boundaries = structuralWallBoundaries;
+    const lineCount = boundaries.verticalLineX.length + boundaries.horizontalLineY.length;
+    if (!lineCount) {
+      setAiAnalysisStatus("보정할 구조 치수 경계가 없습니다. 문/창문 탐지 → 치수 읽기 → 벽 후처리를 먼저 하세요.");
+      return;
+    }
+    if (!walls.length) {
+      setAiAnalysisStatus("보정할 벽이 없습니다. 벽 후처리로 벽을 먼저 만드세요.");
+      return;
+    }
+    // 다른 경계로 잘못 당기지 않게, 허용 오차를 경계 최소 간격의 45% 이하로 제한한다.
+    const allGaps: number[] = [];
+    for (const lines of [boundaries.verticalLineX, boundaries.horizontalLineY]) {
+      const sorted = [...lines].sort((a, b) => a - b);
+      for (let index = 1; index < sorted.length; index += 1) allGaps.push(sorted[index] - sorted[index - 1]);
+    }
+    const minGap = allGaps.length ? Math.min(...allGaps) : 60;
+    const tolerancePx = Math.max(8, Math.min(45, minGap * 0.45));
+    const { movedCount, walls: corrected } = snapWallsToStructuralBoundaries(walls as never[], boundaries, tolerancePx) as {
+      movedCount: number;
+      walls: Wall[];
+    };
+    setWalls(corrected);
+    setSelectedWall(null);
+    setHoveredWall(null);
+    setUploadStatus(`구조 치수로 벽 ${movedCount}개 보정됨 (허용오차 ${Math.round(tolerancePx)}px)`);
+    setAiAnalysisStatus(
+      `구조 치수 경계에 벽 ${movedCount}/${walls.length}개 스냅 — 세로벽 기준선 ${boundaries.verticalLineX.length} / 가로벽 기준선 ${boundaries.horizontalLineY.length}. 3D 방 크기가 도면 치수에 맞춰졌습니다.`
+    );
+  }
+
   function applyScale() {
     if (!scaleWall || !scaleRealLength) return;
     const pixelDistance = Math.hypot(scaleWall.end.x - scaleWall.start.x, scaleWall.end.y - scaleWall.start.y);
@@ -1401,9 +2422,39 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function confirmSuggestedScale() {
+    const candidate = extractionMeta.scaleCandidates[0];
+    const confirmedRatio = candidate && candidate.pixelToMmRatio > 0 ? candidate.pixelToMmRatio : pixelToMmRatio;
+    setPixelToMmRatio(confirmedRatio);
     setIsScaleSet(true);
     setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
-    setUploadStatus(`축척 확인 완료: 1px = ${pixelToMmRatio.toFixed(2)}mm`);
+    setUploadStatus(`축척 확인 완료: 1px = ${confirmedRatio.toFixed(2)}mm`);
+  }
+
+  function applyPrintedDimensionScale(dimension: PrintedDimensionChip) {
+    // 벽 union 기반 전역 축척이 있으면 그걸 적용한다. AI targetLine 픽셀 길이는
+    // 신뢰할 수 없으므로 전역 후보가 없을 때만 최후 수단으로 쓴다.
+    let ratio = printedDimensionScale?.pixelToMmRatio ?? null;
+    if (!ratio && dimension.targetLine) {
+      const frame = computeBackgroundImageFrame(cachedBackgroundImage);
+      const canvasLength = frame ? targetLineCanvasLength(dimension.targetLine, frame) : 0;
+      if (canvasLength >= 8) ratio = dimension.realLengthMm / canvasLength;
+    }
+    if (!ratio) return;
+
+    setPixelToMmRatio(ratio);
+    setIsScaleSet(true);
+    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
+    setUploadStatus(`축척 적용됨(치수 ${dimension.text}): 1px = ${ratio.toFixed(2)}mm`);
+  }
+
+  // 벽 그리기 스냅도 도면에 정렬된 격자를 따른다 (격자에 보이는 대로 붙게).
+  function snapEditorPoint(point: Point): Point {
+    if (!gridSpec.aligned) return snapCanvasPoint(point) as Point;
+
+    return {
+      x: gridSpec.origin.x + Math.round((point.x - gridSpec.origin.x) / gridSpec.spacing) * gridSpec.spacing,
+      y: gridSpec.origin.y + Math.round((point.y - gridSpec.origin.y) / gridSpec.spacing) * gridSpec.spacing
+    };
   }
 
   function toggleCandidateStatus(layer: "opening" | "fixture", candidateId: string, status: CandidateStatus) {
@@ -1570,14 +2621,33 @@ export default function RoomlogFloorPlanEditor() {
 
       <section className="floor-plan-canvas wheretoput-floor-plan-canvas" aria-label="도면 캔버스">
         <div className="floor-plan-upload-row">
-          <input accept="image/*" className="floor-plan-file-input" onChange={handleImageUpload} ref={fileInputRef} type="file" />
+          <input
+            accept="image/*"
+            className="floor-plan-file-input"
+            disabled={isProcessing}
+            id="floor-plan-source-input"
+            onChange={handleImageUpload}
+            type="file"
+          />
           {experienceMode === "landlord" ? (
             <>
-              <button className="floor-plan-secondary" disabled={isProcessing} onClick={() => fileInputRef.current?.click()} type="button">
+              <label
+                aria-disabled={isProcessing}
+                className={`floor-plan-secondary floor-plan-upload-label${isProcessing ? " is-disabled" : ""}`}
+                htmlFor="floor-plan-source-input"
+              >
                 도면 등록
-              </button>
+              </label>
               <button className="floor-plan-secondary" onClick={() => setTool("scale")} type="button">
                 축척
+              </button>
+              <button
+                className="floor-plan-secondary"
+                disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
+                onClick={() => runPrintedDimensionReading()}
+                type="button"
+              >
+                치수 읽기
               </button>
               <button
                 className="floor-plan-secondary"
@@ -1595,6 +2665,15 @@ export default function RoomlogFloorPlanEditor() {
               >
                 벽 후처리 적용
               </button>
+              <button
+                className="floor-plan-secondary"
+                disabled={isProcessing || !(structuralWallBoundaries.verticalLineX.length + structuralWallBoundaries.horizontalLineY.length)}
+                onClick={applyStructuralDimensionWallCorrection}
+                title="읽힌 구조 치수 경계에 벽을 스냅해 3D 방 크기를 도면 치수와 맞춥니다"
+                type="button"
+              >
+                구조 치수로 벽 보정
+              </button>
             </>
           ) : (
             <button className="floor-plan-secondary" onClick={() => setViewMode("3d")} type="button">
@@ -1604,6 +2683,67 @@ export default function RoomlogFloorPlanEditor() {
           <span>{uploadStatus}</span>
           {uploadedImage ? <span>{aiAnalysisStatus}</span> : null}
         </div>
+
+        {printedDimensionChips.length || openingDimensionChips.length || furnitureDimensionChips.length ? (
+          <div className="floor-plan-visible-dimension-strip" aria-label="읽힌 치수 빠른 확인">
+            <span>구조 치수</span>
+            {gridSpec.stepMm ? <code>격자 1칸={gridSpec.stepMm}mm</code> : null}
+            {isScaleSet ? (
+              <code>축척 적용됨 1px={pixelToMmRatio.toFixed(2)}mm</code>
+            ) : printedDimensionScale ? (
+              <code>
+                축척 후보 1px={printedDimensionScale.pixelToMmRatio.toFixed(2)}mm (
+                {printedDimensionScale.source.includes("dimension-line")
+                  ? "치수선 검출 기준"
+                  : printedDimensionScale.source.includes("wall-union")
+                    ? "벽 탐지 기준"
+                    : "AI 선 기준"})
+              </code>
+            ) : (
+              <code>축척 후보 없음 — 문/창문 탐지를 먼저 실행하세요</code>
+            )}
+            <div className="floor-plan-visible-dimension-chips">
+              {printedDimensionChips.map((dimension) => (
+                <button
+                  className="floor-plan-dimension-chip"
+                  disabled={!printedDimensionScale && !dimension.targetLine}
+                  key={dimension.id}
+                  onClick={() => applyPrintedDimensionScale(dimension)}
+                  title={printedDimensionScale || dimension.targetLine ? "클릭하면 읽힌 치수 기준 축척을 적용합니다" : getPrintedDimensionLocationStatus(dimension)}
+                  type="button"
+                >
+                  {dimension.text}
+                  {dimension.confidence ? ` ${Math.round(dimension.confidence * 100)}%` : ""}
+                  {!hasReliableDimensionPlacement(dimension) ? ` ${getPrintedDimensionLocationStatus(dimension)}` : ""}
+                </button>
+              ))}
+            </div>
+            {openingDimensionChips.length ? (
+              <div className="floor-plan-visible-dimension-aside">
+                <span>문/창문 폭 (벽 길이 아님)</span>
+                <div className="floor-plan-visible-dimension-chips">
+                  {openingDimensionChips.map((dimension) => (
+                    <span className="floor-plan-dimension-chip is-opening" key={dimension.id} title="opening으로 분리 저장 — 축척/벽 생성에 쓰지 않음">
+                      {dimension.text}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {furnitureDimensionChips.length ? (
+              <div className="floor-plan-visible-dimension-aside">
+                <span>가구/설비 (배치 검증용)</span>
+                <div className="floor-plan-visible-dimension-chips">
+                  {furnitureDimensionChips.map((dimension) => (
+                    <span className="floor-plan-dimension-chip is-furniture" key={dimension.id} title="가구 치수 — 공간 크기 계산에 쓰지 않고 배치 가능 비교용으로만 보관">
+                      {dimension.text}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {viewMode === "2d" ? (
           <div className="floor-plan-canvas-shell" ref={containerRef}>
@@ -1770,6 +2910,28 @@ export default function RoomlogFloorPlanEditor() {
               </code>
               <code>일반 클릭 확정, Shift 클릭 거절</code>
             </div>
+
+            {printedDimensionChips.length ? (
+              <div className="floor-plan-sim-preview">
+                <span>구조 치수</span>
+                <div className="floor-plan-furniture-actions">
+                  {printedDimensionChips.map((dimension) => (
+                    <button
+                      className="floor-plan-dimension-chip"
+                      disabled={!printedDimensionScale && !dimension.targetLine}
+                      key={dimension.id}
+                      onClick={() => applyPrintedDimensionScale(dimension)}
+                      title={printedDimensionScale || dimension.targetLine ? "클릭하면 읽힌 치수 기준 축척을 적용합니다" : getPrintedDimensionLocationStatus(dimension)}
+                      type="button"
+                    >
+                      {dimension.text}
+                      {dimension.confidence ? ` ${Math.round(dimension.confidence * 100)}%` : ""}
+                      {!hasReliableDimensionPlacement(dimension) ? ` ${getPrintedDimensionLocationStatus(dimension)}` : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {tool === "scale" ? (
               <div className="floor-plan-sim-preview">

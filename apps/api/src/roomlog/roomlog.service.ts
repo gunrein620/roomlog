@@ -82,6 +82,8 @@ import {
   FinalizeIntakeInput,
   FloorPlanAiAnalysisInput,
   FloorPlanAiAnalysisResult,
+  FloorPlanAiDimensionDetection,
+  FloorPlanAiDimensionKind,
   FloorPlanAiModel,
   FloorPlanAiModelId,
   FloorPlanAiCandidateReview,
@@ -3544,10 +3546,152 @@ export class RoomlogService {
       "도면 이미지에서 방 구조, 치수 텍스트, 치수선 관계, 문/창문/설비처럼 OpenCV 후처리에 도움이 되는 단서를 읽습니다.",
       "픽셀 좌표나 길이를 확신하지 못하면 추측하지 말고 textDetections에 읽은 텍스트만 남깁니다.",
       "도면에 2760, 5040처럼 단위 없는 3-5자리 치수 숫자가 보이면 mm 치수로 보고 각 숫자를 textDetections에 별도 항목으로 넣습니다.",
-      "summary에만 치수 숫자를 쓰지 말고, 사용자가 버튼으로 고를 수 있도록 textDetections에 모든 보이는 치수 숫자를 반복 없이 포함합니다.",
+      "같은 숫자가 도면의 다른 위치에 여러 번 인쇄되어 있으면 위치마다 별도 항목으로 넣습니다.",
+      "면적(㎡/평), 동·호수, 층수, 축척 표기(1:100), 날짜, 도면 번호처럼 길이 치수가 아닌 숫자는 textDetections에 넣지 않습니다.",
+      "'1500 × 2000mm'처럼 곱셈 기호가 있는 가구/설비 크기 표기는 건물 치수가 아니므로 제외합니다. 도면 안쪽 가구 위에 인쇄된 숫자도 제외하고, 벽을 따라 배치된 치수선의 숫자만 읽습니다.",
+      "세로로 회전되어 인쇄된 치수 숫자도 반드시 읽습니다. 한국 아파트 도면은 세로 치수를 90도 회전해 표기하는 경우가 많습니다.",
+      "summary에만 치수 숫자를 쓰지 말고, 사용자가 버튼으로 고를 수 있도록 textDetections에 모든 보이는 치수 숫자를 포함합니다.",
       "벽 최종 좌표는 OpenCV와 사용자가 확정하므로, 이 응답은 후보 분석으로만 사용됩니다.",
-      "JSON schema: {\"summary\": string, \"textDetections\": [{\"text\": string, \"confidence\": number}], \"scaleCandidates\": [{\"realLengthMm\": number, \"pixelLength\": number, \"pixelToMmRatio\": number, \"confidence\": number, \"source\": string}]}"
+      "For every visible dimension text, include boundingBox in image-normalized 0~1000 coordinates as {x,y,width,height}. Also include targetLine {x1,y1,x2,y2} for the actual measured span (the extent between the dimension line's end ticks/arrows) that the dimension text labels. Do not guess boundingBox or targetLine; set the field to null when the text location or measured span is genuinely unclear. A wrong targetLine is worse than null.",
+      "또한 dimensions 배열에 보이는 모든 치수 숫자를 분류해서 넣습니다. 각 항목은 text, valueMm(mm 정수), kind, axis, boundingBox, targetLine, placementStatus, useForScale, useForWallGeneration, useForFurnitureFit, appliesTo, reason을 가집니다.",
+      "kind는 다음 중 하나입니다: outer_total(건물 전체 외곽 가로/세로), outer_segment(외곽을 쪼갠 구간 치수), room_span(방 내부 폭/길이), wall_span(벽 사이 거리), opening(문/창문 폭), furniture(가구 크기), fixture(설비 크기), area(면적), ignore(날짜·호수·축척표기·워터마크 등).",
+      "구조 치수(outer_total, outer_segment, room_span, wall_span)만 useForScale과 useForWallGeneration을 true로 둘 수 있습니다. opening/furniture/fixture/area/ignore는 반드시 false입니다.",
+      "'1500 × 2000mm', '810 x 1400mm'처럼 곱셈 기호로 폭×깊이를 나타내는 값은 furniture 또는 fixture이며, 공간 크기 계산에 절대 쓰지 않습니다(useForScale=false, useForWallGeneration=false, useForFurnitureFit=true).",
+      "문/창문 개구부 폭(예: 800, 870, 1200)은 opening이며 벽 길이로 쓰지 않습니다(useForScale=false, useForWallGeneration=false).",
+      "면적(9.3㎡, 5.1㎡)은 area, 날짜·호수·축척표기는 ignore이며 모든 use 플래그가 false입니다.",
+      "valueMm는 mm 단위 정수입니다. '9.3㎡'처럼 면적이면 valueMm를 넣지 말고 kind=area로 둡니다.",
+      "위치나 측정 구간을 확신하지 못하면 placementStatus를 unplaced 또는 uncertain으로 두고 boundingBox/targetLine을 null로 둡니다. 확실하면 placed입니다.",
+      "appliesTo에는 이 치수가 가리키는 대상을 짧게 적습니다(예: 'overall horizontal outside span', 'bed width'). reason에는 그 kind로 분류한 근거를 짧게 적습니다."
     ].join("\n");
+    const nullableBox = {
+      anyOf: [
+        { type: "null" },
+        {
+          additionalProperties: false,
+          properties: { height: { type: "number" }, width: { type: "number" }, x: { type: "number" }, y: { type: "number" } },
+          required: ["x", "y", "width", "height"],
+          type: "object"
+        }
+      ]
+    };
+    const nullableLine = {
+      anyOf: [
+        { type: "null" },
+        {
+          additionalProperties: false,
+          properties: { x1: { type: "number" }, x2: { type: "number" }, y1: { type: "number" }, y2: { type: "number" } },
+          required: ["x1", "y1", "x2", "y2"],
+          type: "object"
+        }
+      ]
+    };
+    const dimensionReadingSchema = {
+      additionalProperties: false,
+      properties: {
+        dimensions: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              appliesTo: { type: "string" },
+              axis: { enum: ["horizontal", "vertical", "unknown"], type: "string" },
+              boundingBox: nullableBox,
+              confidence: { type: "number" },
+              kind: {
+                enum: ["outer_total", "outer_segment", "room_span", "wall_span", "opening", "furniture", "fixture", "area", "ignore"],
+                type: "string"
+              },
+              placementStatus: { enum: ["placed", "unplaced", "uncertain"], type: "string" },
+              reason: { type: "string" },
+              targetLine: nullableLine,
+              text: { type: "string" },
+              useForFurnitureFit: { type: "boolean" },
+              useForScale: { type: "boolean" },
+              useForWallGeneration: { type: "boolean" },
+              valueMm: { type: "number" }
+            },
+            required: [
+              "text",
+              "valueMm",
+              "kind",
+              "axis",
+              "confidence",
+              "boundingBox",
+              "targetLine",
+              "placementStatus",
+              "useForScale",
+              "useForWallGeneration",
+              "useForFurnitureFit",
+              "appliesTo",
+              "reason"
+            ],
+            type: "object"
+          },
+          type: "array"
+        },
+        scaleCandidates: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              confidence: { type: "number" },
+              pixelLength: { type: "number" },
+              pixelToMmRatio: { type: "number" },
+              realLengthMm: { type: "number" },
+              source: { type: "string" }
+            },
+            required: ["confidence", "pixelLength", "pixelToMmRatio", "realLengthMm", "source"],
+            type: "object"
+          },
+          type: "array"
+        },
+        summary: { type: "string" },
+        textDetections: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              boundingBox: {
+                anyOf: [
+                  { type: "null" },
+                  {
+                    additionalProperties: false,
+                    properties: {
+                      height: { type: "number" },
+                      width: { type: "number" },
+                      x: { type: "number" },
+                      y: { type: "number" }
+                    },
+                    required: ["x", "y", "width", "height"],
+                    type: "object"
+                  }
+                ]
+              },
+              confidence: { type: "number" },
+              targetLine: {
+                anyOf: [
+                  { type: "null" },
+                  {
+                    additionalProperties: false,
+                    properties: {
+                      x1: { type: "number" },
+                      x2: { type: "number" },
+                      y1: { type: "number" },
+                      y2: { type: "number" }
+                    },
+                    required: ["x1", "y1", "x2", "y2"],
+                    type: "object"
+                  }
+                ]
+              },
+              text: { type: "string" }
+            },
+            required: ["text", "confidence", "boundingBox", "targetLine"],
+            type: "object"
+          },
+          type: "array"
+        }
+      },
+      required: ["summary", "dimensions", "textDetections", "scaleCandidates"],
+      type: "object"
+    };
 
     try {
       const response = await fetch("https://api.openai.com/v1/responses", {
@@ -3568,10 +3712,18 @@ export class RoomlogService {
                   type: "input_text",
                   text: prompt?.trim() || "도면 이미지의 치수 텍스트와 축척 후보를 JSON으로 분석해줘."
                 },
-                { type: "input_image", image_url: imageDataUrl, detail: "auto" }
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
               ]
             }
-          ]
+          ],
+          text: {
+            format: {
+              name: "floor_plan_dimension_reading",
+              schema: dimensionReadingSchema,
+              strict: true,
+              type: "json_schema"
+            }
+          }
         })
       });
 
@@ -3580,14 +3732,16 @@ export class RoomlogService {
       const payload = (await response.json()) as Record<string, unknown>;
       const rawText = this.extractOpenAiResponseText(payload);
       const parsed = this.parseFloorPlanAiJson(rawText);
+      const dimensions = this.validAiDimensions(parsed.dimensions);
       const textDetections = this.validAiTextDetections(parsed.textDetections);
-      const scaleCandidates = this.validAiScaleCandidates(parsed.scaleCandidates);
+      const scaleCandidates = this.filterAiScaleCandidatesByDimensions(this.validAiScaleCandidates(parsed.scaleCandidates), dimensions);
 
       return {
         model,
         mode: "vision-reasoning",
         status: "ready",
         summary: parsed.summary || "OpenAI 도면 1차 분석을 완료했습니다.",
+        dimensions,
         textDetections,
         scaleCandidates,
         rawText
@@ -3810,6 +3964,7 @@ export class RoomlogService {
 
   private parseFloorPlanAiJson(rawText: string): {
     candidateReviews?: unknown;
+    dimensions?: unknown;
     missingWallHints?: unknown;
     noiseFlags?: unknown;
     planStyle?: unknown;
@@ -3826,6 +3981,7 @@ export class RoomlogService {
 
       return {
         candidateReviews: parsed.candidateReviews,
+        dimensions: parsed.dimensions,
         missingWallHints: parsed.missingWallHints,
         noiseFlags: parsed.noiseFlags,
         planStyle: parsed.planStyle,
@@ -3857,10 +4013,78 @@ export class RoomlogService {
         {
           text,
           ...(Number.isFinite(confidence) ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
-          boundingBox: item.boundingBox
+          boundingBox: item.boundingBox,
+          targetLine: item.targetLine
         }
       ];
     });
+  }
+
+  private normalizeAiDimensionKind(kind: unknown): FloorPlanAiDimensionKind {
+    if (
+      kind === "outer_total" ||
+      kind === "outer_segment" ||
+      kind === "room_span" ||
+      kind === "wall_span" ||
+      kind === "opening" ||
+      kind === "furniture" ||
+      kind === "fixture" ||
+      kind === "area" ||
+      kind === "ignore"
+    ) {
+      return kind;
+    }
+
+    return "ignore";
+  }
+
+  private isAiScaleDimensionKind(kind: FloorPlanAiDimensionKind) {
+    return kind === "outer_total" || kind === "outer_segment" || kind === "room_span" || kind === "wall_span";
+  }
+
+  private validAiDimensions(value: unknown): FloorPlanAiDimensionDetection[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const text = typeof item?.text === "string" ? item.text.trim() : "";
+      if (!text) return [];
+      const kind = this.normalizeAiDimensionKind(item.kind);
+      const valueMm = Number(item.valueMm);
+      const confidence = Number(item.confidence);
+      const axis = item.axis === "horizontal" || item.axis === "vertical" || item.axis === "unknown" ? item.axis : "unknown";
+      const placementStatus =
+        item.placementStatus === "placed" || item.placementStatus === "unplaced" || item.placementStatus === "uncertain"
+          ? item.placementStatus
+          : "unplaced";
+
+      return [
+        {
+          text,
+          kind,
+          axis,
+          ...(Number.isFinite(valueMm) && valueMm > 0 ? { valueMm } : {}),
+          ...(Number.isFinite(confidence) ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+          boundingBox: item.boundingBox,
+          targetLine: item.targetLine,
+          placementStatus,
+          ...(typeof item.appliesTo === "string" ? { appliesTo: item.appliesTo } : {}),
+          useForScale: this.isAiScaleDimensionKind(kind) && item.useForScale === true,
+          useForWallGeneration: this.isAiScaleDimensionKind(kind) && item.useForWallGeneration !== false,
+          useForFurnitureFit: (kind === "furniture" || kind === "fixture") && item.useForFurnitureFit !== false,
+          ...(typeof item.reason === "string" ? { reason: item.reason } : {})
+        }
+      ];
+    });
+  }
+
+  private filterAiScaleCandidatesByDimensions(
+    scaleCandidates: FloorPlanAiScaleCandidate[],
+    dimensions: FloorPlanAiDimensionDetection[]
+  ) {
+    if (!dimensions.length) return scaleCandidates;
+    const scaleLengths = new Set(dimensions.filter((dimension) => dimension.useForScale && dimension.valueMm).map((dimension) => Math.round(dimension.valueMm!)));
+
+    return scaleCandidates.filter((candidate) => scaleLengths.has(Math.round(candidate.realLengthMm)));
   }
 
   private validAiScaleCandidates(value: unknown): FloorPlanAiScaleCandidate[] {

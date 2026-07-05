@@ -39,6 +39,51 @@ export type ScaleCandidate = {
   source: string;
 };
 
+export type AiTextBoundingBox = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+export type AiTextTargetLine = {
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+};
+
+// 3D 벽/공간 생성에 쓸 구조 치수와 opening/가구/무시 숫자를 구분하기 위한 분류.
+export type DimensionKind =
+  | "outer_total"
+  | "outer_segment"
+  | "room_span"
+  | "wall_span"
+  | "opening"
+  | "furniture"
+  | "fixture"
+  | "area"
+  | "ignore";
+
+export type DimensionAxis = "horizontal" | "vertical" | "unknown";
+export type DimensionPlacementStatus = "placed" | "unplaced" | "uncertain";
+
+export type AiDimensionDetection = {
+  appliesTo?: string;
+  axis: DimensionAxis;
+  boundingBox?: AiTextBoundingBox | unknown;
+  confidence?: number;
+  kind: DimensionKind;
+  placementStatus: DimensionPlacementStatus;
+  reason?: string;
+  targetLine?: AiTextTargetLine | unknown;
+  text: string;
+  useForFurnitureFit: boolean;
+  useForWallGeneration: boolean;
+  useForScale: boolean;
+  valueMm?: number;
+};
+
 export type ExtractionMeta = {
   annotationCandidateCount?: number;
   detectedWallCount: number;
@@ -56,7 +101,8 @@ export type ExtractionMeta = {
   aiRoomCount?: number;
   aiRoomStructureSummary?: string;
   aiSummary?: string;
-  aiTextDetections?: Array<{ confidence?: number; text: string }>;
+  aiDimensions?: AiDimensionDetection[];
+  aiTextDetections?: Array<{ boundingBox?: AiTextBoundingBox | unknown; confidence?: number; targetLine?: AiTextTargetLine | unknown; text: string }>;
   mainPlanBounds?: { height: number; width: number; x: number; y: number };
   needsReview?: boolean;
   ocrStatus: "ready" | "failed" | "manual-scale-required";

@@ -1234,6 +1234,37 @@ export type FloorPlanAiTextDetection = {
   text: string;
   confidence?: number;
   boundingBox?: unknown;
+  targetLine?: unknown;
+};
+
+export type FloorPlanAiDimensionKind =
+  | "outer_total"
+  | "outer_segment"
+  | "room_span"
+  | "wall_span"
+  | "opening"
+  | "furniture"
+  | "fixture"
+  | "area"
+  | "ignore";
+
+export type FloorPlanAiDimensionAxis = "horizontal" | "vertical" | "unknown";
+export type FloorPlanAiDimensionPlacementStatus = "placed" | "unplaced" | "uncertain";
+
+export type FloorPlanAiDimensionDetection = {
+  appliesTo?: string;
+  axis: FloorPlanAiDimensionAxis;
+  boundingBox?: unknown;
+  confidence?: number;
+  kind: FloorPlanAiDimensionKind;
+  placementStatus: FloorPlanAiDimensionPlacementStatus;
+  reason?: string;
+  targetLine?: unknown;
+  text: string;
+  useForFurnitureFit: boolean;
+  useForWallGeneration: boolean;
+  useForScale: boolean;
+  valueMm?: number;
 };
 
 export type FloorPlanAiScaleCandidate = {
@@ -1303,6 +1334,7 @@ export type FloorPlanAiAnalysisResult = {
   noiseFlags?: FloorPlanAiRoomStructureNoiseFlags;
   planStyle?: FloorPlanAiRoomStructurePlanStyle;
   rooms?: FloorPlanAiRoomStructure[];
+  dimensions?: FloorPlanAiDimensionDetection[];
   textDetections: FloorPlanAiTextDetection[];
   scaleCandidates: FloorPlanAiScaleCandidate[];
   rawText?: string;
