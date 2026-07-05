@@ -25,7 +25,8 @@ test("report follow-up actions route to messaging review instead of direct dunni
   assert.doesNotMatch(componentsSource, /\{action\.targetScreenId\}로 대상·기간을 넘기고/);
   assert.match(componentsSource, /대상·기간을 넘긴 검토 화면으로 연결/);
   assert.doesNotMatch(faqSource, /billing\/dunning/);
-  assert.match(faqSource, /href="\/manager\/messaging\/00"/);
+  assert.match(faqSource, /<AnswerCard answer=\{answer\} \/>/);
+  assert.match(componentsSource, /<LinkButton href=\{actionHref\(answer\.draft\)\} variant="secondary">초안 확인<\/LinkButton>/);
 });
 
 test("manager messaging compose reads report follow-up prefill from query params", () => {

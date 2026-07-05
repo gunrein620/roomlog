@@ -11,7 +11,7 @@ import type {
   ReportStatus,
 } from "@roomlog/types";
 import { Badge, Card, ManagerShell } from "@roomlog/ui";
-import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
+import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref, type ManagerReportScreenId } from "@/lib/report-nav";
 
 const navItems = [
   ["허브", MANAGER_REPORT_ROUTES["M-RPT-00"]],
@@ -263,11 +263,11 @@ export function AnswerCard({ answer }: { answer: ChatAnswer }) {
   );
 }
 
-export function FaqButtons({ faq, targetReportId }: { faq: FaqQuestion[]; targetReportId?: string }) {
+export function FaqButtons({ faq, targetReportId, screenId = "M-RPT-04" }: { faq: FaqQuestion[]; targetReportId?: string; screenId?: ManagerReportScreenId }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-sm)" }}>
       {faq.map((item) => (
-        <LinkButton key={item.id} href={reportHref("M-RPT-04", targetReportId, item.query)} variant="secondary">
+        <LinkButton key={item.id} href={reportHref(screenId, targetReportId, item.query)} variant="secondary">
           {item.label}
         </LinkButton>
       ))}

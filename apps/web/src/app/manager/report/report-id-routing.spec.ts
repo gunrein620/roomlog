@@ -41,9 +41,20 @@ test("manager report chat page submits typed questions through a server action",
 });
 
 test("manager report quick lookup sends FAQ queries into the report chatbot", () => {
-  assert.match(componentSource, /export function FaqButtons\(\{ faq, targetReportId \}/);
-  assert.match(componentSource, /reportHref\("M-RPT-04", targetReportId, item\.query\)/);
+  assert.match(componentSource, /export function FaqButtons\(\{ faq, targetReportId, screenId = "M-RPT-04" \}/);
+  assert.match(componentSource, /screenId = "M-RPT-04"/);
+  assert.match(componentSource, /reportHref\(screenId, targetReportId, item\.query\)/);
   assert.match(quickLookupSource, /targetReportId=\{DEMO_REPORT_ID\}/);
+});
+
+test("manager report quick lookup renders the selected FAQ answer inline", () => {
+  assert.match(quickLookupSource, /type SearchParams = Promise<\{ question\?: string \}>/);
+  assert.match(quickLookupSource, /const \{ question \} = await searchParams/);
+  assert.match(quickLookupSource, /const selectedQuestion = question\?\.trim\(\) \|\| faq\[0\]\?\.query/);
+  assert.match(quickLookupSource, /await getReportChat\(DEMO_REPORT_ID, selectedQuestion\)/);
+  assert.match(quickLookupSource, /screenId="M-RPT-05"/);
+  assert.match(quickLookupSource, /<AnswerCard answer=\{answer\} \/>/);
+  assert.doesNotMatch(quickLookupSource, /현재 미납은 3세대입니다/);
 });
 
 test("manager report hub quick questions carry the latest report id and FAQ query into chat", () => {
