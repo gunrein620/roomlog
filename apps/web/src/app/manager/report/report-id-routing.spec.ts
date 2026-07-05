@@ -6,6 +6,7 @@ import test from "node:test";
 const detailSource = readFileSync(join(__dirname, "02/page.tsx"), "utf8");
 const deliverySource = readFileSync(join(__dirname, "03/page.tsx"), "utf8");
 const chatSource = readFileSync(join(__dirname, "04/page.tsx"), "utf8");
+const hubSource = readFileSync(join(__dirname, "00/page.tsx"), "utf8");
 const quickLookupSource = readFileSync(join(__dirname, "05/page.tsx"), "utf8");
 const componentSource = readFileSync(join(__dirname, "_components.tsx"), "utf8");
 
@@ -43,4 +44,10 @@ test("manager report quick lookup sends FAQ queries into the report chatbot", ()
   assert.match(componentSource, /export function FaqButtons\(\{ faq, targetReportId \}/);
   assert.match(componentSource, /reportHref\("M-RPT-04", targetReportId, item\.query\)/);
   assert.match(quickLookupSource, /targetReportId=\{DEMO_REPORT_ID\}/);
+});
+
+test("manager report hub quick questions carry the latest report id and FAQ query into chat", () => {
+  assert.match(hubSource, /const quickReportId = reports\[0\]\?\.id/);
+  assert.match(hubSource, /<FaqButtons faq=\{faq\} targetReportId=\{quickReportId\} \/>/);
+  assert.doesNotMatch(hubSource, /href=\{MANAGER_REPORT_ROUTES\["M-RPT-04"\]\} variant="secondary">\s*\{item\.label\}/);
 });
