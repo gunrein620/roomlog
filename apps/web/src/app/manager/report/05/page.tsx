@@ -1,4 +1,5 @@
 import { getReportFaq } from "@/lib/report-api";
+import { DEMO_REPORT_ID } from "@/lib/demo-report";
 import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
 import { Badge, Card } from "@roomlog/ui";
 import { FaqButtons, LinkButton, PageStack, ScreenHeader, Section } from "../_components";
@@ -16,7 +17,7 @@ export default async function Page() {
       />
 
       <Section title="자주 묻는 질문">
-        <FaqButtons faq={faq} />
+        <FaqButtons faq={faq} targetReportId={DEMO_REPORT_ID} />
       </Section>
 
       <Card style={{ display: "grid", gap: "var(--space-md)", maxWidth: 560 }}>

@@ -24,10 +24,21 @@ export function routeFor(id: ManagerReportScreenId): ManagerReportRoute {
   return MANAGER_REPORT_ROUTES[id];
 }
 
-export function reportHref(id: ManagerReportScreenId, reportId?: string): string {
+export function reportHref(id: ManagerReportScreenId, reportId?: string, question?: string): string {
   const route = routeFor(id);
+  const params = new URLSearchParams();
 
-  return reportId ? `${route}?id=${encodeURIComponent(reportId)}` : route;
+  if (reportId) {
+    params.set("id", reportId);
+  }
+
+  if (question?.trim()) {
+    params.set("question", question.trim());
+  }
+
+  const query = params.toString();
+
+  return query ? `${route}?${query}` : route;
 }
 
 export function sourceHref(source: ReportSource): string {

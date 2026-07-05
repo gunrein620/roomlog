@@ -10,7 +10,7 @@ import type {
   ReportSource,
   ReportStatus,
 } from "@roomlog/types";
-import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
+import { Badge, Card, ManagerShell } from "@roomlog/ui";
 import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
 
 const navItems = [
@@ -263,11 +263,13 @@ export function AnswerCard({ answer }: { answer: ChatAnswer }) {
   );
 }
 
-export function FaqButtons({ faq }: { faq: FaqQuestion[] }) {
+export function FaqButtons({ faq, targetReportId }: { faq: FaqQuestion[]; targetReportId?: string }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-sm)" }}>
       {faq.map((item) => (
-        <Button key={item.id} variant="secondary" style={{ justifyContent: "flex-start" }}>{item.label}</Button>
+        <LinkButton key={item.id} href={reportHref("M-RPT-04", targetReportId, item.query)} variant="secondary">
+          {item.label}
+        </LinkButton>
       ))}
     </div>
   );
