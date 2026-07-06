@@ -195,7 +195,12 @@ function splitEditorBoxAtOpenings(box: EditorRect, openings: EditorRect[], horiz
 
 
 function apiUrl(path: string) {
-  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const configured = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  // 프로덕션의 NEXT_PUBLIC_API_URL(/api)은 Next BFF용 상대경로라 브라우저에서 Nest에 직접 닿지 않는다.
+  // 도면 에디터는 Nest를 직접 호출하므로, 상대경로면 API 오리진(웹소켓과 같은 호스트)으로 승격한다.
+  const base = /^https?:\/\//.test(configured)
+    ? configured
+    : process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000";
   const normalized = base.replace(/\/$/, "");
 
   return normalized.endsWith("/api") ? `${normalized}${path}` : `${normalized}/api${path}`;
@@ -219,15 +224,33 @@ async function getFloorPlanAccessToken() {
   return payload.accessToken;
 }
 
+/** Bearer 부착 fetch — localStorage에 캐시된 토큰이 무효(401)면 재발급해 한 번 더 시도한다. */
+async function floorPlanAuthorizedFetch(url: string, init: RequestInit = {}) {
+  const request = async () => {
+    const token = await getFloorPlanAccessToken();
+
+    return fetch(url, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` }
+    });
+  };
+
+  let response = await request();
+  if (response.status === 401) {
+    window.localStorage.removeItem("floorPlanAccessToken");
+    response = await request();
+  }
+
+  return response;
+}
+
 async function uploadFloorPlanSource(file: File): Promise<UploadedFloorPlanSource | null> {
   try {
-    const token = await getFloorPlanAccessToken();
     const formData = new FormData();
     formData.append("file", file);
     formData.append("category", "FLOOR_PLAN_SOURCE");
-    const response = await fetch(apiUrl("/attachments"), {
+    const response = await floorPlanAuthorizedFetch(apiUrl("/attachments"), {
       body: formData,
-      headers: { Authorization: `Bearer ${token}` },
       method: "POST"
     });
     if (!response.ok) throw new Error("Floor plan source upload failed");
@@ -2450,8 +2473,7 @@ export default function RoomlogFloorPlanEditor() {
     setIsProcessing(true);
     setAiAnalysisStatus(forceRefresh ? "치수 다시 읽는 중" : "치수 숫자 읽는 중");
     try {
-      const token = await getFloorPlanAccessToken();
-      const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
+      const response = await floorPlanAuthorizedFetch(apiUrl("/floor-plans/ai-analysis"), {
         body: JSON.stringify({
           analysisMode: "dimension",
           forceRefresh,
@@ -2460,10 +2482,7 @@ export default function RoomlogFloorPlanEditor() {
           prompt: "인쇄된 평면도의 치수 숫자를 읽고 dimensions 배열로 분류해 주세요. 각 숫자는 kind(outer_total/outer_segment/room_span/wall_span/opening/furniture/fixture/area/ignore)로 분류합니다. 구조 치수(outer_total/outer_segment/room_span/wall_span)만 useForScale·useForWallGeneration을 true로 두고, 문/창문 폭은 opening, '1500 × 2000mm' 같은 가구 크기는 furniture, 면적(㎡)은 area로 둡니다. boundingBox와 targetLine은 0~1000 좌표로 넣되 불확실하면 null로 보냅니다. 같은 숫자라도 위치가 다르면 별도 항목으로 유지합니다.",
           sourceAttachmentId: attachmentId
         }),
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         method: "POST"
       });
       if (!response.ok) throw new Error(`Dimension reading failed: ${response.status}`);
@@ -2527,16 +2546,12 @@ export default function RoomlogFloorPlanEditor() {
     setIsProcessing(true);
     setAiAnalysisStatus("문/창문 후보 탐지중");
     try {
-      const token = await getFloorPlanAccessToken();
-      const response = await fetch(apiUrl("/floor-plans/opening-detection"), {
+      const response = await floorPlanAuthorizedFetch(apiUrl("/floor-plans/opening-detection"), {
         body: JSON.stringify({
           imageDataUrl: attachmentId ? undefined : uploadedAiImageDataUrl,
           sourceAttachmentId: attachmentId
         }),
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         method: "POST"
       });
       if (!response.ok) throw new Error(`Opening detection failed: ${response.status}`);
@@ -3029,14 +3044,10 @@ export default function RoomlogFloorPlanEditor() {
         return;
       }
       setUploadStatus(nextStatus === "PUBLISHED" ? "도면 발행중" : "도면 저장중");
-      const token = await getFloorPlanAccessToken();
       const endpoint = floorPlanDraftId ? apiUrl(`/floor-plans/${floorPlanDraftId}`) : apiUrl("/floor-plans");
-      const response = await fetch(endpoint, {
+      const response = await floorPlanAuthorizedFetch(endpoint, {
         body: JSON.stringify(payload),
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         method: floorPlanDraftId ? "PATCH" : "POST"
       });
       if (!response.ok) throw new Error(`Floor plan save failed: ${response.status}`);
