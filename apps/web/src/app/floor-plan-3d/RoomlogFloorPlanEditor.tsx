@@ -36,6 +36,7 @@ import {
   createPostProcessedWallOverlayBox,
   fitOpeningBoxesToPostProcessedWalls,
   normalizeOverlayBox,
+  ROBOFLOW_OPENING_CONFIDENCE_THRESHOLD,
   ROBOFLOW_SITE_CONFIDENCE_THRESHOLD,
   snapOpeningBoxEdgesToNearbyWallBreaks,
   trimWallBoxCornerOverlaps
@@ -720,6 +721,8 @@ export default function RoomlogFloorPlanEditor() {
   const [uploadStatus, setUploadStatus] = useState("도면을 등록하세요");
   const [aiAnalysisStatus, setAiAnalysisStatus] = useState("문/창문 탐지 대기");
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
+  // 마지막 저장 결과 — 버튼 옆에 계속 표시해 "저장이 됐는지" 헷갈리지 않게 한다.
+  const [saveState, setSaveState] = useState<{ kind: "draft" | "published" | "local"; at: number } | null>(null);
   const [pixelToMmRatio, setPixelToMmRatio] = useState(DEFAULT_PIXEL_TO_MM_RATIO);
   const [isScaleSet, setIsScaleSet] = useState(false);
   // 방 내부 재기: 두 점 측정으로 방 가로/세로(mm)와 면적(㎡)을 구한다.
@@ -1203,16 +1206,16 @@ export default function RoomlogFloorPlanEditor() {
         const items = Array.isArray(payload) ? payload.filter(isFurnitureCatalogItem).map(normalizeCatalogItem) : [];
         if (!items.length) {
           setFurnitureCatalog(FURNITURE_CATALOG);
-          setFurnitureCatalogStatus("?섑뵆 媛援?移댄깉濡쒓렇");
+          setFurnitureCatalogStatus("샘플 가구 카탈로그");
           return;
         }
 
         setFurnitureCatalog(items);
-        setFurnitureCatalogStatus("濡쒖뺄 媛援?移댄깉濡쒓렇");
+        setFurnitureCatalogStatus("로컬 가구 카탈로그");
       } catch {
         if (!isActive) return;
         setFurnitureCatalog(FURNITURE_CATALOG);
-        setFurnitureCatalogStatus("?섑뵆 媛援?移댄깉濡쒓렇");
+        setFurnitureCatalogStatus("샘플 가구 카탈로그");
       }
     }
 
@@ -2570,7 +2573,7 @@ export default function RoomlogFloorPlanEditor() {
       }
       const toEditorBox = (box: RoboflowDetectionBox) => convertRoboflowBoxToEditorBox(box, result.imageWidth, result.imageHeight);
       const detectedWalls = (result.walls ?? []).filter((wallBox) => wallBox.confidence >= ROBOFLOW_SITE_CONFIDENCE_THRESHOLD);
-      const detectedOpenings = result.openings.filter((opening) => opening.confidence >= ROBOFLOW_SITE_CONFIDENCE_THRESHOLD);
+      const detectedOpenings = result.openings.filter((opening) => opening.confidence >= ROBOFLOW_OPENING_CONFIDENCE_THRESHOLD);
       const detected = detectedOpenings.map(
         (opening): FloorPlanCandidate => ({
           confidence: opening.confidence,
@@ -3040,10 +3043,12 @@ export default function RoomlogFloorPlanEditor() {
       const saved = (await response.json()) as { id?: string };
       if (saved.id) setFloorPlanDraftId(saved.id);
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, id: saved.id, savedAt: Date.now() }));
+      setSaveState({ kind: nextStatus === "PUBLISHED" ? "published" : "draft", at: Date.now() });
       setUploadStatus(nextStatus === "PUBLISHED" ? "발행 완료" : "저장 완료");
     } catch {
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, savedAt: Date.now(), status: "LOCAL_DRAFT" }));
-      setUploadStatus("API 저장 실패 - 로컬 임시 저장");
+      setSaveState({ kind: "local", at: Date.now() });
+      setUploadStatus("서버 저장 실패 — 이 브라우저에만 임시 저장됨");
     }
   }
 
@@ -3216,7 +3221,7 @@ export default function RoomlogFloorPlanEditor() {
             }}
           >
             📐 전체 {wallBoundsMm.widthMm.toLocaleString()}mm × {wallBoundsMm.heightMm.toLocaleString()}mm{" "}
-            {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '벽 길이 입력'으로 맞추세요"}
+            {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '방 내부 재기 → 축척 재기'로 맞추세요"}
           </div>
         ) : null}
 
@@ -3382,6 +3387,24 @@ export default function RoomlogFloorPlanEditor() {
               배치 저장
             </button>
           )}
+          {saveState ? (
+            <span
+              aria-live="polite"
+              style={{
+                alignSelf: "center",
+                padding: "4px 10px",
+                borderRadius: 6,
+                fontWeight: 700,
+                fontSize: 13,
+                background: saveState.kind === "published" ? "#dcfce7" : saveState.kind === "local" ? "#fef3c7" : "#e0edff",
+                color: saveState.kind === "published" ? "#166534" : saveState.kind === "local" ? "#92400e" : "#1e40af"
+              }}
+            >
+              {saveState.kind === "published" ? "📢 발행됨" : saveState.kind === "local" ? "⚠️ 로컬에만 저장됨" : "💾 초안 저장됨"}
+              {" · "}
+              {new Date(saveState.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          ) : null}
         </div>
       </section>
 
