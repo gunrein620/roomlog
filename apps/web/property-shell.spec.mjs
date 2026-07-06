@@ -1060,11 +1060,14 @@ test("uses the Naver Maps SDK path instead of a mock map drawing", () => {
   assert.match(pageSource, /naver-price-marker/);
   assert.match(pageSource, /mapLabel/);
   assert.match(pageSource, /clusterLabel/);
-  assert.match(pageSource, /selectedMapListingIndex/);
+  assert.match(pageSource, /selectedMapListingNo/);
   assert.match(pageSource, /selectedMapListing/);
   assert.match(pageSource, /map-selected-card/);
   assert.match(pageSource, /지도 선택 매물/);
-  assert.match(pageSource, /setSelectedMapListingIndex\(listing\.listingIndex\)/);
+  assert.match(pageSource, /setSelectedMapListingNo\(listing\.listingNo\)/);
+  // 직접등록 매물이 지도 목록·마커에 합류하는 경로 (QA: 지도에 매물 안 찍힘)
+  assert.match(pageSource, /tradeListingToMapItem/);
+  assert.match(pageSource, /markers=\{mapMarkers\}/);
   assert.match(cssSource, /\.naver-price-marker/);
   assert.match(cssSource, /\.map-canvas-stack/);
   assert.match(cssSource, /\.map-selected-card/);
