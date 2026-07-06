@@ -6142,11 +6142,17 @@ p {
   border-bottom: 0;
 }
 
+/* 헤드 라벨("문의 타임라인")은 58px 칸에서 줄바꿈되지 않게 자연 폭 사용 */
+.inquiry-timeline-head {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .inquiry-timeline-head span,
 .inquiry-timeline-card article > span {
   color: var(--blue);
   font-size: 0.7rem;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .inquiry-timeline-head strong,
@@ -8109,14 +8115,19 @@ p {
     overflow: visible;
   }
 
+  /* 카드가 세로로 비대해 빈 공간이 크던 문제 — 아이콘 좌측·텍스트 우측의 컴팩트 가로형으로 */
   .home-screen > .category-strip .category-card {
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 1px;
     justify-items: start;
-    align-content: space-between;
-    gap: 14px;
     min-width: 0;
-    min-height: 128px;
-    padding: 18px 15px;
-    border-radius: 18px;
+    min-height: 74px;
+    padding: 14px 16px;
+    border-radius: 16px;
     background: #ffffff;
     box-shadow: 0 8px 20px rgba(18, 24, 40, 0.05);
     transition: transform 0.14s ease, box-shadow 0.14s ease;
@@ -8128,22 +8139,24 @@ p {
   }
 
   .home-screen > .category-strip .category-card i {
-    width: 44px;
-    height: 44px;
-    border-radius: 13px;
+    grid-row: 1 / span 2;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
   }
 
   .home-screen > .category-strip .category-card i svg {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
   }
 
   .home-screen > .category-strip .category-card span {
-    font-size: 1.02rem;
+    font-size: 0.96rem;
   }
 
   .home-screen > .category-strip .category-card strong {
-    font-size: 0.82rem;
+    color: #8a90a0;
+    font-size: 0.76rem;
   }
 
   .home-screen > .category-strip .category-card.active {
@@ -8503,7 +8516,8 @@ p {
     grid-column: 1 / -1;
   }
 
-  /* 문의센터 */
+  /* 문의센터: 채팅이 주인공 — 좌 4/6칸 채팅, 우 2/6칸 타임라인·요약, 채널 안내는 하단 보조.
+     (기존: 채팅에 배치 규칙이 없어 1/6칸에 짜부되고, 빈 채널 카드가 stretch로 가운데를 차지하던 문제) */
   .inquiry-screen > .inquiry-history-list {
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8511,14 +8525,37 @@ p {
     align-items: start;
   }
 
-  .inquiry-screen > .inquiry-channel-card {
-    grid-column: span 3;
-    align-self: stretch;
+  /* DOM 순서(채널 카드가 타임라인보다 앞)와 무관하게 자리를 고정 — 행 명시(1행 = 제목줄) */
+  .inquiry-screen > .inquiry-chat-panel {
+    grid-column: 1 / span 4;
+    grid-row: 2 / span 2;
+    min-width: 0;
+  }
+
+  .inquiry-screen > .inquiry-timeline-card {
+    grid-column: 5 / span 2;
+    grid-row: 2;
+    margin-top: 0;
   }
 
   .inquiry-screen > .inquiry-mini-grid {
-    grid-column: span 3;
-    align-self: stretch;
+    grid-column: 5 / span 2;
+    grid-row: 3;
+    align-self: start;
+    margin-top: 0;
+  }
+
+  .inquiry-screen > .inquiry-channel-card {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    align-self: start;
+    margin-top: 0;
+  }
+
+  /* 채널 카드 = 하단 보조 안내: 3열 그대로, 카드가 늘어나 빈 공간이 생기지 않게 콘텐츠 높이만큼만 */
+  .inquiry-screen .inquiry-channel-grid article {
+    min-height: 0;
+    padding: 14px 16px;
   }
 
   /* 찜 목록 */

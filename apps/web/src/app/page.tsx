@@ -2761,12 +2761,15 @@ function InquiryHubSection({
       </div>
 
       {/* 서버 스레드 기반 문의 채팅 — 보낸 문의(구매자)와 받은 문의(집주인)를 한 곳에서 본다.
-          QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제. */}
-      <TradeChatCenter
-        emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
-        onRequireLogin={onRequireLogin}
-        focusThreadId={focusThreadId}
-      />
+          QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제.
+          래퍼 클래스는 데스크톱 그리드 배치용 — 채팅이 문의센터의 주인공(좌측 넓은 칸)이 된다. */}
+      <div className="inquiry-chat-panel">
+        <TradeChatCenter
+          emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
+          onRequireLogin={onRequireLogin}
+          focusThreadId={focusThreadId}
+        />
+      </div>
 
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
