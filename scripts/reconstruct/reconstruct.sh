@@ -26,6 +26,15 @@ ns-process-data video --data "$VIDEO" --output-dir "$DATA" --num-frames-target "
 # 매칭은 기본 vocab_tree 유지. sequential은 실측(2026-07-06, room1)에서 322장 중 2장만
 # 포즈 성공 — 특징점 빈곤 구간에서 사슬이 끊기면 전체가 조각남. vocab_tree는 22/102 나옴.
 
+# 포즈 게이트: 매칭률이 바닥이면 학습은 GPU 낭비다 (실측: 2장으로도 15k iters 완주해버림)
+POSED=$(python3 -c "import json;print(len(json.load(open('$DATA/transforms.json'))['frames']))" 2>/dev/null || echo 0)
+echo "  포즈 성공: ${POSED}장 / 목표 ${FRAMES}장"
+if [ "$POSED" -lt $((FRAMES / 3)) ]; then
+  echo "✗ 포즈 매칭률 33% 미만 — 원인은 대개 캡처(흰 벽·반사면·빠른 이동). 학습 중단."
+  echo "  README '테스트 입력'의 촬영 가이드로 재촬영 후 다시 실행하세요."
+  exit 1
+fi
+
 echo "▶ [2/4] gsplat 학습 (splatfacto), iters=${ITERS}  — L40S에서 수~수십 분"
 ns-train splatfacto \
   --data "$DATA" \
