@@ -681,7 +681,8 @@ export default function RoomlogFloorPlanEditor() {
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("landlord");
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
-  const [walls, setWalls] = useState<Wall[]>(() => getStarterWalls());
+  // 빈 캔버스에서 시작 — 샘플 벽은 '샘플 도면 체험'/'샘플 복원'과 세입자 체험 진입 시에만 채운다.
+  const [walls, setWalls] = useState<Wall[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
@@ -3108,6 +3109,11 @@ export default function RoomlogFloorPlanEditor() {
             onClick={() => {
               setExperienceMode("resident");
               setViewMode("3d");
+              // 체험 모드는 둘러볼 공간이 있어야 하니, 빈 캔버스면 샘플 도면을 깔아준다.
+              if (walls.length === 0) {
+                setWalls(getStarterWalls());
+                setUploadStatus("체험용 샘플 도면을 불러왔어요");
+              }
             }}
             type="button"
           >
@@ -3208,18 +3214,7 @@ export default function RoomlogFloorPlanEditor() {
         </div>
 
         {wallBoundsMm ? (
-          <div
-            style={{
-              margin: "8px 0",
-              padding: "8px 12px",
-              background: isScaleSet ? "#e6f0ff" : "#fff3cd",
-              border: `1px solid ${isScaleSet ? "#4a86ff" : "#e0b400"}`,
-              borderRadius: 6,
-              fontWeight: 700,
-              fontSize: 14,
-              whiteSpace: "nowrap"
-            }}
-          >
+          <div className={`floor-plan-scale-banner${isScaleSet ? " is-set" : ""}`}>
             📐 전체 {wallBoundsMm.widthMm.toLocaleString()}mm × {wallBoundsMm.heightMm.toLocaleString()}mm{" "}
             {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '방 내부 재기 → 축척 재기'로 맞추세요"}
           </div>
@@ -3287,18 +3282,41 @@ export default function RoomlogFloorPlanEditor() {
         ) : null}
 
         {viewMode === "2d" ? (
-          <div className="floor-plan-canvas-shell" ref={containerRef}>
-            <canvas
-              className="floor-plan-drawing-canvas"
-              onAuxClick={handleCanvasAuxClick}
-              onContextMenu={(event) => event.preventDefault()}
-              onMouseDown={handleMouseDown}
-              onMouseLeave={handleCanvasMouseLeave}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onWheel={handleWheel}
-              ref={canvasRef}
-            />
+          <div className="floor-plan-canvas-stage">
+            <div className="floor-plan-canvas-shell" ref={containerRef}>
+              <canvas
+                className="floor-plan-drawing-canvas"
+                onAuxClick={handleCanvasAuxClick}
+                onContextMenu={(event) => event.preventDefault()}
+                onMouseDown={handleMouseDown}
+                onMouseLeave={handleCanvasMouseLeave}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onWheel={handleWheel}
+                ref={canvasRef}
+              />
+            </div>
+            {experienceMode === "landlord" && walls.length === 0 && !uploadedImage && !isProcessing ? (
+              <div className="floor-plan-empty-guide" aria-label="도면 시작 안내">
+                <strong>도면을 등록해 시작하세요</strong>
+                <p>도면 이미지를 올리면 벽·문/창문을 자동으로 인식해요. 도면이 없다면 왼쪽 드로잉 도구로 벽을 직접 그릴 수 있어요.</p>
+                <div className="floor-plan-empty-guide-actions">
+                  <label className="floor-plan-primary floor-plan-upload-label" htmlFor="floor-plan-source-input">
+                    도면 이미지 등록
+                  </label>
+                  <button
+                    className="floor-plan-secondary"
+                    onClick={() => {
+                      setWalls(getStarterWalls());
+                      setUploadStatus("샘플 도면을 불러왔어요 — 자유롭게 수정해보세요");
+                    }}
+                    type="button"
+                  >
+                    샘플 도면으로 체험
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <RoomlogThreeFloorPlanView

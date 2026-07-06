@@ -7344,6 +7344,7 @@ p {
   background: #f6f8fc;
   color: #465064;
   font-weight: 900;
+  word-break: keep-all;
 }
 
 .floor-plan-toolbar strong {
@@ -7366,20 +7367,104 @@ p {
 }
 
 .floor-plan-canvas {
-  display: grid;
-  grid-template-rows: auto minmax(420px, min(62vh, 720px)) auto;
+  /* 캔버스 컬럼은 flex로 쌓는다 — 배너/치수 스트립이 끼어들어도 캔버스 행 크기를 뺏지 않게. */
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   padding: 14px;
 }
 
+.floor-plan-canvas > .floor-plan-canvas-stage,
+.floor-plan-canvas > .floor-plan-3d-preview {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 420px;
+  max-height: min(62vh, 720px);
+}
+
+.floor-plan-canvas-stage {
+  position: relative;
+  display: flex;
+}
+
 .floor-plan-upload-row {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(112px, 132px)) minmax(0, 1fr);
-  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 10px;
 }
 
+.floor-plan-upload-row .floor-plan-secondary,
+.floor-plan-upload-row .floor-plan-upload-label {
+  flex: 0 0 auto;
+  min-width: 112px;
+  padding: 0 16px;
+}
+
+.floor-plan-scale-banner {
+  align-self: flex-start;
+  padding: 9px 14px;
+  border: 1px solid #e6c34d;
+  border-radius: 12px;
+  background: #fff7dd;
+  color: #6b5310;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.floor-plan-scale-banner.is-set {
+  border-color: #9db9ff;
+  background: #ecf2ff;
+  color: #24418f;
+}
+
+.floor-plan-empty-guide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 20px;
+  pointer-events: none;
+}
+
+/* 안내 문구는 클릭을 통과시켜 벽 그리기를 막지 않는다 — 버튼만 상호작용. */
+.floor-plan-empty-guide-actions {
+  pointer-events: auto;
+}
+
+.floor-plan-empty-guide > strong {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--ink);
+  text-align: center;
+}
+
+.floor-plan-empty-guide > p {
+  max-width: 380px;
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.floor-plan-empty-guide-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.floor-plan-empty-guide-actions .floor-plan-primary,
+.floor-plan-empty-guide-actions .floor-plan-secondary {
+  min-width: 150px;
+  padding: 0 18px;
+  box-shadow: 0 10px 24px rgba(18, 24, 40, 0.14);
+}
+
 .floor-plan-upload-row span {
+  flex: 1 1 160px;
+  align-self: center;
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -7882,16 +7967,18 @@ p {
     grid-column: 1 / -1;
   }
 
-  .floor-plan-canvas {
-    grid-template-rows: auto 360px auto;
+  .floor-plan-canvas > .floor-plan-canvas-stage,
+  .floor-plan-canvas > .floor-plan-3d-preview {
+    min-height: 360px;
   }
 
   .floor-plan-actions {
     grid-template-columns: 1fr;
   }
 
-  .floor-plan-upload-row {
-    grid-template-columns: 1fr;
+  .floor-plan-upload-row .floor-plan-secondary,
+  .floor-plan-upload-row .floor-plan-upload-label {
+    flex: 1 1 100%;
   }
 
   .floor-plan-toolbar {
