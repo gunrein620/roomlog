@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
 import { RoomlogController } from "./roomlog.controller";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 function createMoveoutTestService() {
   const createdAt = "2026-07-01T00:00:00.000Z";
@@ -714,7 +715,7 @@ describe("RoomlogService", () => {
 
   it("lets a derived multi-role account pass both TENANT and LANDLORD capability guards", () => {
     const service = new RoomlogService();
-    const controller = new RoomlogController(service);
+    const controller = new RoomlogController(service, new RealtimeGateway());
     const auth = service.login({ email: "multi@roomlog.test", password: "password123!" });
     const header = `Bearer ${auth.accessToken}`;
 
@@ -725,7 +726,7 @@ describe("RoomlogService", () => {
 
   it("blocks missing capabilities with 403 instead of asking to re-login", () => {
     const service = new RoomlogService();
-    const controller = new RoomlogController(service);
+    const controller = new RoomlogController(service, new RealtimeGateway());
     const auth = service.login({ email: "multi@roomlog.test", password: "password123!" });
 
     assert.throws(

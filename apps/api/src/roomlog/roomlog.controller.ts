@@ -69,6 +69,8 @@ import {
   UserRole
 } from "./roomlog.types";
 import { RoomlogService } from "./roomlog.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { issueSocketTicket } from "../realtime/socket-ticket";
 
 type UploadedImageFile = {
   buffer: Buffer;
@@ -79,7 +81,10 @@ type UploadedImageFile = {
 
 @Controller()
 export class RoomlogController {
-  constructor(private readonly roomlogService: RoomlogService) {}
+  constructor(
+    private readonly roomlogService: RoomlogService,
+    private readonly realtime: RealtimeGateway
+  ) {}
 
   @Get("roomlog/demo")
   getDemoState() {
@@ -155,6 +160,14 @@ export class RoomlogController {
   @Get("auth/me")
   getMe(@Headers("authorization") authorization?: string) {
     return this.roomlogService.getMe(authorization);
+  }
+
+  // 소켓 핸드셰이크용 단기 티켓 — httpOnly 쿠키 토큰을 못 읽는 브라우저 JS 대신 BFF가 받아간다.
+  @Post("auth/socket-ticket")
+  issueSocketTicket(@Headers("authorization") authorization?: string) {
+    const user = this.roomlogService.getUserFromToken(authorization);
+
+    return { ticket: issueSocketTicket(user.id, user.name) };
   }
 
   @Post("attachments")
@@ -442,7 +455,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.createTenantMessagingThread(user.id, body);
+    const result = this.roomlogService.createTenantMessagingThread(user.id, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging" });
+
+    return result;
   }
 
   @Get("tenant/messaging/threads")
@@ -470,7 +486,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.addTenantMessagingThreadMessage(user.id, threadId, body);
+    const result = this.roomlogService.addTenantMessagingThreadMessage(user.id, threadId, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging" });
+
+    return result;
   }
 
   @Delete("tenant/messaging/threads/:threadId")
@@ -1032,7 +1051,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.createMessagingThread(user.id, body);
+    const result = this.roomlogService.createMessagingThread(user.id, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging" });
+
+    return result;
   }
 
   @Get("manager/messaging/threads/:threadId")
@@ -1053,7 +1075,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.addManagerMessagingThreadMessage(user.id, threadId, body);
+    const result = this.roomlogService.addManagerMessagingThreadMessage(user.id, threadId, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging" });
+
+    return result;
   }
 
   @Delete("manager/messaging/threads/:threadId")
@@ -1110,7 +1135,10 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.sendManagerAnnouncementDraft(user.id, draftId);
+    const result = this.roomlogService.sendManagerAnnouncementDraft(user.id, draftId);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging" });
+
+    return result;
   }
 
   @Get("manager/messaging/announcement-results")
