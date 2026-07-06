@@ -59,11 +59,11 @@ import {
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
 import {
   pickInquiryTargetNo,
-  withInquiryReply,
   withNewInquiry,
   type InquiryItem,
   type InquiryPayload
 } from "../lib/inquiry-flow";
+import { TradeChatCenter } from "./_components/TradeChatCenter";
 import {
   OWNER_DRAFT_STORAGE_KEY,
   emptyOwnerForm,
@@ -476,6 +476,61 @@ const listings = [
 
 type Listing = (typeof listings)[number];
 
+// 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
+type TradeListing = {
+  id: string;
+  ownerId: string;
+  ownerName: string;
+  title: string;
+  roomType: string;
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  location: string;
+  description: string;
+  status: string;
+  createdAt: string;
+};
+
+const TRADE_LISTING_NO_PREFIX = "TRADE-";
+
+function tradePriceLabel(listing: TradeListing): string {
+  if (listing.tradeType === "월세") return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
+  if (listing.tradeType === "전세") return `전세 ${listing.depositManwon.toLocaleString("ko-KR")}만`;
+  return `매매 ${listing.depositManwon.toLocaleString("ko-KR")}만`;
+}
+
+// 직접등록 매물을 홈 카드/상세가 쓰는 쇼케이스 매물 형태로 투영한다.
+// 미확인 값은 "확인 중"으로 두고, 문의는 listingNo의 TRADE- 접두어로 서버 매물임을 식별한다.
+function tradeListingToCard(listing: TradeListing): Listing {
+  return {
+    listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
+    detailHeader: `직접등록 매물 · ${listing.title}`,
+    listingLabel: "집주인 직접등록",
+    title: listing.title,
+    location: listing.location,
+    price: tradePriceLabel(listing),
+    headline: listing.description || "집주인이 직접 등록한 매물입니다.",
+    spec: `${listing.roomType} · 집주인 직접`,
+    roomType: listing.roomType,
+    sizeLabel: "확인 중",
+    floorLabel: "확인 중",
+    maintenanceFee: "확인 중",
+    viewCount: "새 매물",
+    unitCount: "확인 중",
+    complexPrice: "확인 중",
+    image: "/listing-studio.jpg",
+    gallery: ["/listing-studio.jpg", "/listing-bedroom.jpg"],
+    badges: ["집주인 직접"],
+    tags: [listing.tradeType, listing.roomType],
+    score: "안심 확인중",
+    updated: "방금 등록",
+    broker: `${listing.ownerName} (집주인)`,
+    verification: "집주인 직접 등록",
+    response: "채팅 문의 가능"
+  };
+}
+
 const getListingPriceRows = (listing: Listing) => {
   const monthlyMatch = listing.price.match(/월세\s*([\d,]+)\s*\/\s*([\d,]+)/);
   const jeonseMatch = listing.price.match(/전세\s*(.+)/);
@@ -762,25 +817,50 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
     isSubmittingListingRef.current = true;
     setIsSubmittingListing(true);
-    window.setTimeout(() => {
-      const id = Date.now();
+    // 등록은 서버(/api/trade/listings)로 보낸다 — 다른 계정의 홈 피드에 실제로 노출되고,
+    // 문의가 오면 "받은 문의" 채팅으로 이어진다.
+    void (async () => {
+      try {
+        const response = await fetch("/api/trade/listings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: ownerForm.title,
+            roomType: "원룸",
+            tradeType: ownerForm.tradeType,
+            depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
+            monthlyRentManwon: Number(ownerForm.monthly) || 0,
+            location: ownerForm.address || "위치 미입력",
+            description: [
+              ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
+              ownerForm.floor ? `${ownerForm.floor}층` : "",
+              ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
+            ].filter(Boolean).join(" · ")
+          })
+        });
 
-      setRegistrationStatus("검수 대기");
-      setMyListings((current) => [
-        { id, title: ownerForm.title, price: ownerPriceLabel, status: "검수 대기", caption: "실매물 확인 후 노출됩니다" },
-        ...current
-      ]);
-      setOwnerToast("검수 요청이 접수됐습니다. 확인이 끝나면 매물이 노출됩니다.");
-      isSubmittingListingRef.current = false;
-      setIsSubmittingListing(false);
-      window.setTimeout(() => {
+        if (response.status === 401) {
+          setOwnerToast("매물을 등록하려면 WOOZU 계정 로그인이 필요합니다.");
+          return;
+        }
+        if (!response.ok) {
+          setOwnerToast("매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+          return;
+        }
+
         setRegistrationStatus("노출중");
-        setMyListings((current) =>
-          current.map((item) => (item.id === id ? { ...item, status: "노출중", caption: "방금 노출 시작 · 문의 대기" } : item))
-        );
-        setOwnerToast("실매물 확인이 끝나 매물 노출이 시작됐습니다.");
-      }, 6000);
-    }, 700);
+        setMyListings((current) => [
+          { id: Date.now(), title: ownerForm.title, price: ownerPriceLabel, status: "노출중", caption: "방금 노출 시작 · 모든 사용자에게 보입니다" },
+          ...current
+        ]);
+        setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
+      } catch {
+        setOwnerToast("매물 등록에 실패했습니다. 네트워크를 확인해 주세요.");
+      } finally {
+        isSubmittingListingRef.current = false;
+        setIsSubmittingListing(false);
+      }
+    })();
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
   const continueOwnerRegistration = () => {
@@ -825,18 +905,18 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     : `거래 ${selectedVendorPerf?.completedCount ?? selectedVendor?.dealCount ?? 0}건`;
   const ownerDashboardTabs = [
     { id: "dashboard", label: "대시보드", note: "현재 페이지" },
-    { id: "contract-dashboard", label: "검토 대시보드", note: "KAN-133" },
+    { id: "contract-dashboard", label: "검토 대시보드", note: "계약" },
     { id: "contract-ocr", label: "OCR 검토", note: "계약" },
     { id: "contract-register", label: "계약서 등록", note: "계약" },
     { id: "contract-timeline", label: "호실·타임라인", note: "계약" },
     { id: "contract-invite", label: "임차인 초대", note: "계약" },
     { id: "contract-storage", label: "보관·삭제", note: "계약" },
-    { id: "cost-ledger", label: "원장/큐", note: "KAN-135" },
+    { id: "cost-ledger", label: "원장/큐", note: "비용" },
     { id: "cost-receipt", label: "영수증 첨부", note: "비용" },
     { id: "cost-ocr", label: "OCR 검토", note: "비용" },
     { id: "cost-detail", label: "비용 상세", note: "비용" },
     { id: "cost-disclosure", label: "공개 관리", note: "비용" },
-    { id: "vendor-address", label: "주소록", note: "KAN-136" },
+    { id: "vendor-address", label: "주소록", note: "업체" },
     { id: "vendor-detail", label: "상세", note: "업체" },
     { id: "vendor-performance", label: "성과", note: "업체" },
     { id: "vendor-edit", label: "등록/편집", note: "업체" }
@@ -921,6 +1001,20 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
             <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
           </article>
         ))}
+      </section>
+
+      {/* 내 매물로 들어온 구매 문의 — 문의센터(구매자 쪽)와 같은 스레드를 집주인 시점에서 본다 */}
+      <section aria-label="받은 문의 채팅" style={{ marginTop: 16 }}>
+        <div className="section-title no-margin" style={{ marginBottom: 10 }}>
+          <div>
+            <h2 style={{ fontSize: "1.08rem" }}>받은 문의</h2>
+            <p>내 매물에 온 문의가 채팅으로 쌓입니다. 답장하면 상대 문의센터에 바로 보입니다.</p>
+          </div>
+        </div>
+        <TradeChatCenter
+          roleFilter="owner"
+          emptyText="아직 받은 문의가 없습니다. 매물이 노출되면 여기로 문의가 들어옵니다."
+        />
       </section>
 
       <section className="owner-preview-card" aria-label="등록 매물 미리보기">
@@ -1042,7 +1136,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         <article id="kan-133-contract" className="owner-ops-card owner-contract-card">
           <div className="owner-ops-head">
             <div>
-              <span>KAN-133 계약 관리</span>
+              <span>계약 관리</span>
               <h3>계약서 검토와 임차인 초대</h3>
             </div>
             <strong>관리 대기</strong>
@@ -1088,7 +1182,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         <article id="kan-135-cost" className="owner-ops-card owner-cost-card">
           <div className="owner-ops-head">
             <div>
-              <span>KAN-135 비용 정산</span>
+              <span>비용 정산</span>
               <h3>비용 원장과 영수증 검토</h3>
             </div>
             <strong>{DEMO_MONTHLY_SUMMARY.month}</strong>
@@ -1191,7 +1285,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         <article id="kan-136-vendor" className="owner-ops-card owner-vendor-card">
           <div className="owner-ops-head">
             <div>
-              <span>KAN-136 업체 관리</span>
+              <span>업체 관리</span>
               <h3>업체 주소록과 성과 게이트</h3>
             </div>
             <strong>{ownerOpenDuplicateCount > 0 ? `중복 ${ownerOpenDuplicateCount}` : "중복 없음"}</strong>
@@ -1609,14 +1703,16 @@ function ListingDetailView({
   onBack,
   onToggleSaved,
   onSubmitInquiry,
-  onViewInquiryCenter
+  onViewInquiryCenter,
+  onRequireLogin
 }: {
   listing: Listing;
   isSaved: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
-  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onSubmitInquiry: (payload: InquiryPayload, listingNo?: string) => Promise<"ok" | "auth" | "error">;
   onViewInquiryCenter: () => void;
+  onRequireLogin?: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
   const [isInquirySheetOpen, setIsInquirySheetOpen] = useState(false);
@@ -2162,6 +2258,7 @@ function ListingDetailView({
           onClose={() => setIsInquirySheetOpen(false)}
           onSubmitInquiry={onSubmitInquiry}
           onViewInquiryCenter={onViewInquiryCenter}
+          onRequireLogin={onRequireLogin}
         />
       ) : null}
     </section>
@@ -2174,17 +2271,21 @@ function InquirySheet({
   listing,
   onClose,
   onSubmitInquiry,
-  onViewInquiryCenter
+  onViewInquiryCenter,
+  onRequireLogin
 }: {
   listing: Listing;
   onClose: () => void;
-  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onSubmitInquiry: (payload: InquiryPayload, listingNo?: string) => Promise<"ok" | "auth" | "error">;
   onViewInquiryCenter: () => void;
+  onRequireLogin?: () => void;
 }) {
   const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
   const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
   const [inquiryMemo, setInquiryMemo] = useState("");
-  const [inquirySent, setInquirySent] = useState(false);
+  const [submitState, setSubmitState] = useState<"idle" | "sending" | "sent" | "auth" | "error">("idle");
+  const inquirySent = submitState === "sent";
+  const setInquirySent = (sent: boolean) => setSubmitState(sent ? "sent" : "idle");
 
   return (
     <div className="inquiry-sheet-backdrop" role="presentation" onClick={onClose}>
@@ -2194,7 +2295,7 @@ function InquirySheet({
           <div>
             <span>문의하기</span>
             <h2 id="inquiry-sheet-title">간편문의</h2>
-            <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
+            <p>문의를 보내면 집주인과 채팅으로 바로 이어집니다. (로그인 필요)</p>
           </div>
           <button type="button" onClick={onClose} aria-label="문의 닫기">×</button>
         </header>
@@ -2279,27 +2380,44 @@ function InquirySheet({
           <button type="button" onClick={onClose}>닫기</button>
           <button
             type="button"
-            onClick={() => {
-              if (!inquirySent) {
-                onSubmitInquiry({
+            disabled={submitState === "sending"}
+            onClick={async () => {
+              if (inquirySent || submitState === "sending") return;
+              setSubmitState("sending");
+              const message = inquiryMemo.trim()
+                ? `${selectedInquiryMessage} — ${inquiryMemo.trim()}`
+                : selectedInquiryMessage;
+              const result = await onSubmitInquiry(
+                {
                   listingTitle: listing.title,
                   broker: listing.broker,
-                  message: selectedInquiryMessage,
+                  message,
                   visitTime: selectedVisitTime
-                });
-              }
-
-              setInquirySent(true);
+                },
+                listing.listingNo
+              );
+              setSubmitState(result === "ok" ? "sent" : result);
             }}
           >
-            문의 보내기
+            {submitState === "sending" ? "보내는 중…" : "문의 보내기"}
           </button>
         </div>
 
         {inquirySent ? (
           <div className="inquiry-submit-feedback" role="status">
-            <p>문의가 접수됐습니다. 답변이 오면 문의센터와 마이페이지에서 확인할 수 있어요.</p>
+            <p>문의가 접수됐습니다. 집주인이 답하면 문의센터 채팅으로 이어집니다.</p>
             <button type="button" onClick={onViewInquiryCenter}>문의센터 보기</button>
+          </div>
+        ) : null}
+        {submitState === "auth" ? (
+          <div className="inquiry-submit-feedback" role="status">
+            <p>문의를 보내려면 WOOZU 계정 로그인이 필요합니다.</p>
+            {onRequireLogin ? <button type="button" onClick={onRequireLogin}>로그인하기</button> : null}
+          </div>
+        ) : null}
+        {submitState === "error" ? (
+          <div className="inquiry-submit-feedback" role="status">
+            <p>문의 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
           </div>
         ) : null}
       </section>
@@ -2368,20 +2486,18 @@ function SavedListingsSection({
 }
 
 function InquiryHubSection({
-  inquiries,
-  onNewInquiry
+  onNewInquiry,
+  onRequireLogin
 }: {
-  inquiries: InquiryItem[];
   onNewInquiry: () => void;
+  onRequireLogin: () => void;
 }) {
-  const pendingCount = inquiries.filter((item) => item.status === "답변 대기").length;
-
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
       <div className="section-title no-margin">
         <div>
           <h2 id="inquiry-title">문의센터</h2>
-          <p>진행중 문의 {inquiries.length}건 · 답변 대기 {pendingCount}건</p>
+          <p>보낸 문의가 집주인과의 채팅으로 이어집니다.</p>
         </div>
         {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
         <button type="button" onClick={onNewInquiry}>
@@ -2389,29 +2505,12 @@ function InquiryHubSection({
         </button>
       </div>
 
-      <div className="inquiry-history-list" aria-label="보낸 문의 목록">
-        {inquiries.map((item) => (
-          <article className="inquiry-history-card" key={item.id}>
-            <div className="inquiry-history-head">
-              <strong>{item.listingTitle}</strong>
-              <em className={item.status === "답변 완료" ? "done" : ""}>{item.status}</em>
-            </div>
-            <p>{item.message} · {item.visitTime} 방문 희망</p>
-            <small>{item.broker} · {item.time}</small>
-            {item.reply ? (
-              <div className="inquiry-reply-bubble">
-                <span>중개사 답변</span>
-                <p>{item.reply}</p>
-              </div>
-            ) : (
-              <div className="inquiry-reply-bubble waiting">
-                <span>답변 대기</span>
-                <p>중개사가 평균 8분 안에 문자로 답변합니다.</p>
-              </div>
-            )}
-          </article>
-        ))}
-      </div>
+      {/* 서버 스레드 기반 문의 채팅 — 다른 계정(집주인)이 실제로 받고 답한다 */}
+      <TradeChatCenter
+        roleFilter="buyer"
+        emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요."
+        onRequireLogin={onRequireLogin}
+      />
 
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
@@ -3448,11 +3547,30 @@ export default function Home() {
   // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
   const [isListingStartMode, setIsListingStartMode] = useState(false);
   const isAuthHistoryPushedRef = useRef(false);
+  // 집주인이 직접 등록한 서버 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
+  const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetch("/api/trade/listings", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: TradeListing[]) => {
+          if (!cancelled && Array.isArray(data)) setTradeListings(data);
+        })
+        .catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+  const allListings = [...tradeListings.map(tradeListingToCard), ...listings];
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const activeSearchQuery = committedSearchQuery.trim();
-  const visibleHomeListings = listings.filter((listing) => {
+  const visibleHomeListings = allListings.filter((listing) => {
     const categoryMatches =
       activeCategory === "전체"
         ? true
@@ -3546,11 +3664,11 @@ export default function Home() {
   const selectedMapListing = visibleMapListings.find((listing) => listing.listingIndex === selectedMapListingIndex) ?? visibleMapListings[0];
 
   const viewedListings = viewedListingNos
-    .map((listingNo) => listings.find((listing) => listing.listingNo === listingNo))
+    .map((listingNo) => allListings.find((listing) => listing.listingNo === listingNo))
     .filter((listing): listing is Listing => Boolean(listing));
 
   const inquiryComposeListing = inquiryComposeListingNo
-    ? listings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
+    ? allListings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
     : null;
 
   const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
@@ -3572,16 +3690,33 @@ export default function Home() {
     resetWindowScrollSoon();
   };
 
-  const submitInquiry = (payload: InquiryPayload) => {
-    const id = Date.now();
-
-    // 새 문의는 문의센터 목록 맨 앞에 즉시 반영된다 (QA 7 회귀 방지 — lib/inquiry-flow 테스트로 고정).
-    setInquiries((current) => withNewInquiry(current, payload, id));
-    window.setTimeout(() => {
-      setInquiries((current) =>
-        withInquiryReply(current, id, `네, 거래 가능합니다. ${payload.visitTime} 방문 괜찮습니다.`)
-      );
-    }, 6000);
+  // 문의는 서버 스레드로 전송된다 — 집주인(또는 데모 임대인) 계정이 실제로 받고, 채팅으로 이어진다.
+  // 반환값: ok=접수, auth=로그인 필요, error=실패.
+  const submitInquiry = async (
+    payload: InquiryPayload,
+    listingNo?: string
+  ): Promise<"ok" | "auth" | "error"> => {
+    try {
+      const response = await fetch("/api/trade/inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: listingNo?.startsWith(TRADE_LISTING_NO_PREFIX)
+            ? listingNo.slice(TRADE_LISTING_NO_PREFIX.length)
+            : null,
+          listingTitle: payload.listingTitle,
+          message: payload.message,
+          visitTime: payload.visitTime
+        })
+      });
+      if (response.status === 401) return "auth";
+      if (!response.ok) return "error";
+      // 로컬 요약 목록에도 즉시 반영 (문의센터 상단 노출 — lib/inquiry-flow 테스트로 고정된 규칙)
+      setInquiries((current) => withNewInquiry(current, payload, Date.now()));
+      return "ok";
+    } catch {
+      return "error";
+    }
   };
 
   // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
@@ -3595,7 +3730,7 @@ export default function Home() {
     const targetNo = pickInquiryTargetNo(
       viewedListingNos,
       visibleHomeListings.map((item) => item.listingNo)
-    ) ?? listings[0]?.listingNo;
+    ) ?? allListings[0]?.listingNo;
 
     if (targetNo) setInquiryComposeListingNo(targetNo);
   };
@@ -3874,6 +4009,10 @@ export default function Home() {
             onViewInquiryCenter={() => {
               setSelectedListing(null);
               activateTab("inquiry");
+            }}
+            onRequireLogin={() => {
+              setSelectedListing(null);
+              openAuthScreen("login");
             }}
           />
         </div>
@@ -4501,7 +4640,7 @@ export default function Home() {
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection inquiries={inquiries} onNewInquiry={() => openInquiryComposer()} />
+          <InquiryHubSection onNewInquiry={() => openInquiryComposer()} onRequireLogin={() => openAuthScreen("login")} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
           <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
@@ -4587,6 +4726,10 @@ export default function Home() {
             onViewInquiryCenter={() => {
               setInquiryComposeListingNo(null);
               activateTab("inquiry");
+            }}
+            onRequireLogin={() => {
+              setInquiryComposeListingNo(null);
+              openAuthScreen("login");
             }}
           />
         ) : null}
