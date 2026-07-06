@@ -6,6 +6,7 @@ import {
   RoomlogServiceOptions
 } from "./roomlog.service";
 import { PrismaStoreProjector } from "./prisma-store-projector";
+import { RealtimeModule } from "../realtime/realtime.module";
 
 export async function createRoomlogServiceOptions(
   env: NodeJS.ProcessEnv = process.env
@@ -20,6 +21,7 @@ export async function createRoomlogServiceOptions(
 }
 
 @Module({
+  imports: [RealtimeModule],
   controllers: [RoomlogController],
   providers: [
     {

@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getRealtimeSocket } from "@/lib/realtime-client";
 
 // 거래 문의 채팅 센터 — 구매 희망자(문의센터 탭)와 집주인(내놓은 집 마이페이지)이
-// 같은 스레드를 양쪽에서 보는 공용 컴포넌트. 폴링 기반(목록 8초 · 열린 대화 3초)으로
-// "웹소켓처럼" 왕복이 이어지게 한다. 전송/수신 계약은 /api/trade/* 프록시 뒤에 있어
-// 나중에 WS로 바꿔도 이 컴포넌트의 화면 구조는 유지된다.
+// 같은 스레드를 양쪽에서 보는 공용 컴포넌트.
+// 수신 1차 채널은 웹소켓 "trade:updated" 이벤트. 소켓이 끊기면 원래 폴링
+// (목록 8초 · 열린 대화 3초)으로 폴백하고, 연결 중에도 느린 주기(30초) 폴링을
+// 안전망으로 유지한다. 데이터 조회는 언제나 기존 REST(/api/trade/*)다.
 
 export type TradeThreadSummary = {
   id: string;
@@ -61,8 +63,11 @@ export function TradeChatCenter({
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [myUserId, setMyUserId] = useState("");
+  const [isSocketLive, setIsSocketLive] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastMessageCountRef = useRef(0);
+  const openThreadIdRef = useRef<string | null>(null);
+  openThreadIdRef.current = openThreadId;
 
   const loadThreads = useCallback(async () => {
     try {
@@ -100,11 +105,37 @@ export function TradeChatCenter({
       .catch(() => undefined);
   }, []);
 
+  // 웹소켓 수신 — 상대가 보낸 즉시 목록과 열린 대화를 갱신한다.
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onConnect = () => setIsSocketLive(true);
+    const onDisconnect = () => setIsSocketLive(false);
+    const onTradeUpdated = (payload: { threadId?: string }) => {
+      loadThreads();
+      const current = openThreadIdRef.current;
+      if (current && (!payload.threadId || payload.threadId === current)) {
+        loadOpenThread(current);
+      }
+    };
+
+    setIsSocketLive(socket.connected);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("trade:updated", onTradeUpdated);
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("trade:updated", onTradeUpdated);
+    };
+  }, [loadThreads, loadOpenThread]);
+
   useEffect(() => {
     loadThreads();
-    const timer = window.setInterval(loadThreads, 8000);
+    // 소켓이 살아 있으면 폴링은 30초 안전망으로만 남긴다.
+    const timer = window.setInterval(loadThreads, isSocketLive ? 30000 : 8000);
     return () => window.clearInterval(timer);
-  }, [loadThreads]);
+  }, [loadThreads, isSocketLive]);
 
   useEffect(() => {
     if (!openThreadId) {
@@ -112,9 +143,9 @@ export function TradeChatCenter({
       return;
     }
     loadOpenThread(openThreadId);
-    const timer = window.setInterval(() => loadOpenThread(openThreadId), 3000);
+    const timer = window.setInterval(() => loadOpenThread(openThreadId), isSocketLive ? 30000 : 3000);
     return () => window.clearInterval(timer);
-  }, [openThreadId, loadOpenThread]);
+  }, [openThreadId, loadOpenThread, isSocketLive]);
 
   // 새 메시지가 도착했을 때만 맨 아래로 스크롤
   useEffect(() => {
