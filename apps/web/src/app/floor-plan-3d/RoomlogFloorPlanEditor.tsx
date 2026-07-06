@@ -15,7 +15,14 @@ import {
   moveCandidate,
   updateCandidateStatus
 } from "./plan-extraction/wall-detection.mjs";
-import { snapWallsToStructuralBoundaries, solveDimensionRowChains, structuralBoundaryOffsetsMm } from "./plan-extraction/dimension-layout.mjs";
+import {
+  filterRatioSamplesNearExpected,
+  inferMissingWallsFromStructuralBoundaries,
+  mergeCoordinates,
+  snapWallsToStructuralBoundaries,
+  solveDimensionRowChains,
+  structuralBoundaryOffsetsMm
+} from "./plan-extraction/dimension-layout.mjs";
 import type {
   RoboflowDetectionBox,
   RoboflowDetectionOverlayBox,
@@ -29,14 +36,18 @@ import {
   createPostProcessedWallOverlayBox,
   fitOpeningBoxesToPostProcessedWalls,
   normalizeOverlayBox,
+  ROBOFLOW_OPENING_CONFIDENCE_THRESHOLD,
   ROBOFLOW_SITE_CONFIDENCE_THRESHOLD,
   snapOpeningBoxEdgesToNearbyWallBreaks,
   trimWallBoxCornerOverlaps
 } from "./plan-extraction/roboflow-post-processing";
 import { loadImage } from "./plan-extraction/wall-detector";
 import {
+  catalogItemFootprint,
   catalogKind,
   createFurnitureModel,
+  describeFurnitureFit,
+  judgeFurnitureFit,
   finalizeFurnitureDraft,
   FURNITURE_CATALOG,
   furnitureImageUrl,
@@ -83,7 +94,7 @@ import {
 } from "./room-model/wall-model.mjs";
 import { RoomlogThreeFloorPlanView } from "./room-scene/RoomlogThreeFloorPlanView";
 
-type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "opening" | "fixture" | "furniture" | "scale" | "none";
+type EditorTool = "wall" | "select" | "eraser" | "partial_eraser" | "hide" | "opening" | "fixture" | "furniture" | "interior" | "none";
 type ViewMode = "2d" | "3d";
 type WallDragMode = "move" | "resize-start" | "resize-end";
 type WallDragOperation = { mode: WallDragMode; originPoint: Point; originalWall: Wall; wallId: Wall["id"] };
@@ -114,6 +125,74 @@ const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
 const FURNITURE_KIND_FILTERS = ["전체", "침대", "식탁", "의자", "소파", "책상", "서랍", "옷장", "기타"] as const;
 type FurnitureKindFilter = (typeof FURNITURE_KIND_FILTERS)[number];
+
+type RoboflowBoundingBox = { x: number; y: number; width: number; height: number; confidence?: number };
+
+// 창문 박스를 붙어있는 벽 라인(같은 방향·가까운 축)에 맞춰 정렬한다.
+// 길이 구간은 유지하되 축(중심)·두께는 매칭된 벽에 스냅 → 벽과 자연스럽게 이어짐. 매칭 벽 없으면 null.
+function alignWindowBoxToWallLine(windowBox: RoboflowBoundingBox, wallBoxes: RoboflowBoundingBox[]): RoboflowBoundingBox | null {
+  const windowHorizontal = windowBox.width >= windowBox.height;
+  const windowAxis = windowHorizontal ? windowBox.y + windowBox.height / 2 : windowBox.x + windowBox.width / 2;
+  const windowHalf = (windowHorizontal ? windowBox.height : windowBox.width) / 2;
+  const windowStart = windowHorizontal ? windowBox.x : windowBox.y;
+  const windowEnd = windowHorizontal ? windowBox.x + windowBox.width : windowBox.y + windowBox.height;
+
+  let best: { axis: number; thickness: number; axisDist: number } | null = null;
+  for (const wall of wallBoxes) {
+    const wallHorizontal = wall.width >= wall.height;
+    if (wallHorizontal !== windowHorizontal) continue;
+    const wallAxis = wallHorizontal ? wall.y + wall.height / 2 : wall.x + wall.width / 2;
+    const wallThickness = wallHorizontal ? wall.height : wall.width;
+    const wallStart = wallHorizontal ? wall.x : wall.y;
+    const wallEnd = wallHorizontal ? wall.x + wall.width : wall.y + wall.height;
+    const longOverlap = Math.min(windowEnd, wallEnd) - Math.max(windowStart, wallStart);
+    if (longOverlap < -30) continue; // 벽 라인 방향으로 너무 떨어짐
+    const axisDist = Math.abs(wallAxis - windowAxis);
+    if (axisDist > windowHalf + wallThickness / 2 + 20) continue; // 같은 라인이 아님
+    if (!best || axisDist < best.axisDist) best = { axis: wallAxis, thickness: wallThickness, axisDist };
+  }
+  if (!best) return null;
+
+  return windowHorizontal
+    ? { x: windowStart, y: best.axis - best.thickness / 2, width: windowEnd - windowStart, height: best.thickness, confidence: windowBox.confidence }
+    : { x: best.axis - best.thickness / 2, y: windowStart, width: best.thickness, height: windowEnd - windowStart, confidence: windowBox.confidence };
+}
+
+type EditorRect = { x1: number; x2: number; y1: number; y2: number };
+
+// 벽 박스를 겹치는 opening(문) 자리에서 잘라, 뚫린 구간을 뺀 벽 조각들을 돌려준다.
+function splitEditorBoxAtOpenings(box: EditorRect, openings: EditorRect[], horizontal: boolean): EditorRect[] {
+  const axisStart = horizontal ? box.x1 : box.y1;
+  const axisEnd = horizontal ? box.x2 : box.y2;
+  const blocked = openings
+    .map((opening): [number, number] =>
+      horizontal
+        ? [Math.max(axisStart, opening.x1), Math.min(axisEnd, opening.x2)]
+        : [Math.max(axisStart, opening.y1), Math.min(axisEnd, opening.y2)]
+    )
+    .filter(([start, end]) => end > start)
+    .sort((left, right) => left[0] - right[0]);
+
+  const merged: Array<[number, number]> = [];
+  for (const [start, end] of blocked) {
+    const last = merged[merged.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  }
+
+  const pieces: Array<[number, number]> = [];
+  let cursor = axisStart;
+  for (const [start, end] of merged) {
+    if (start > cursor) pieces.push([cursor, start]);
+    cursor = Math.max(cursor, end);
+  }
+  if (cursor < axisEnd) pieces.push([cursor, axisEnd]);
+
+  return pieces.map(([start, end]) =>
+    horizontal ? { x1: start, x2: end, y1: box.y1, y2: box.y2 } : { x1: box.x1, x2: box.x2, y1: start, y2: end }
+  );
+}
+
 
 function apiUrl(path: string) {
   const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -435,9 +514,13 @@ function pickConsensusRatio(samples: RatioSample[]) {
       bestSupport = support;
     }
   }
-  const sortedRatios = bestSupport.map((sample) => sample.ratio).sort((a, b) => a - b);
+  // 클러스터 대표값은 중앙값 대신 길이 가중 비율(Σmm ÷ Σpx).
+  // 짧은 치수선은 끝점 1~2px 검출 오차가 비율을 몇 %씩 흔들지만, 긴 치수선(전체 치수)은
+  // 같은 픽셀 오차가 비율에 거의 안 먹히므로 길이에 비례해 가중하면 축척이 참값에 수렴한다.
+  const totalMm = bestSupport.reduce((sum, sample) => sum + sample.realLengthMm, 0);
+  const totalPx = bestSupport.reduce((sum, sample) => sum + sample.canvasLength, 0);
 
-  return { ratio: sortedRatios[Math.floor(sortedRatios.length / 2)], sample: bestSample, support: bestSupport.length };
+  return { ratio: totalPx > 0 ? totalMm / totalPx : bestSample.ratio, sample: bestSample, support: bestSupport.length };
 }
 
 // 배경 프레임(≈1300px)에 3~30m 도면이 들어가는 현실 범위를 벗어난 비율은 오독으로 버린다.
@@ -606,7 +689,7 @@ export default function RoomlogFloorPlanEditor() {
   const [hoveredWall, setHoveredWall] = useState<Wall | null>(null);
   const [hiddenWallIds, setHiddenWallIds] = useState<Set<string>>(() => new Set());
   const [furnitureCatalog, setFurnitureCatalog] = useState<FurnitureCatalogItem[]>(FURNITURE_CATALOG);
-  const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("?ъ슜??紐⑤뱶 諛곗튂 移댄깉濡쒓렇");
+  const [furnitureCatalogStatus, setFurnitureCatalogStatus] = useState("사용자 모드 배치 카탈로그");
   const [furnitureKindFilter, setFurnitureKindFilter] = useState<FurnitureKindFilter>("전체");
   const [furnitureSearchQuery, setFurnitureSearchQuery] = useState("");
   const [placedFurnitures, setPlacedFurnitures] = useState<PlacedFurniture[]>([]);
@@ -615,6 +698,8 @@ export default function RoomlogFloorPlanEditor() {
   const [openingCandidates, setOpeningCandidates] = useState<FloorPlanCandidate[]>([]);
   const [fixtureCandidates, setFixtureCandidates] = useState<FloorPlanCandidate[]>([]);
   const [detectionBoxes, setDetectionBoxes] = useState<RoboflowDetectionOverlayBox[]>([]);
+  // 확인용: 클릭한 벽 조각(문/창문 gap으로 끊긴 연결 구간)을 밝게 표시하는 사각들.
+  const [selectedWallRunRects, setSelectedWallRunRects] = useState<Array<{ x1: number; x2: number; y1: number; y2: number }> | null>(null);
   const [roboflowDetections, setRoboflowDetections] = useState<RoboflowFloorPlanDetections | null>(null);
   const [roboflowWallPostProcessSourceWalls, setRoboflowWallPostProcessSourceWalls] = useState<Wall[]>([]);
   const [extractionMeta, setExtractionMeta] = useState<ExtractionMeta>({
@@ -636,10 +721,20 @@ export default function RoomlogFloorPlanEditor() {
   const [uploadStatus, setUploadStatus] = useState("도면을 등록하세요");
   const [aiAnalysisStatus, setAiAnalysisStatus] = useState("문/창문 탐지 대기");
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
+  // 마지막 저장 결과 — 버튼 옆에 계속 표시해 "저장이 됐는지" 헷갈리지 않게 한다.
+  const [saveState, setSaveState] = useState<{ kind: "draft" | "published" | "local"; at: number } | null>(null);
   const [pixelToMmRatio, setPixelToMmRatio] = useState(DEFAULT_PIXEL_TO_MM_RATIO);
   const [isScaleSet, setIsScaleSet] = useState(false);
-  const [scaleWall, setScaleWall] = useState<Wall | null>(null);
-  const [scaleRealLength, setScaleRealLength] = useState("");
+  // 방 내부 재기: 두 점 측정으로 방 가로/세로(mm)와 면적(㎡)을 구한다.
+  // "scale"은 축척(1px=mm)만 확정하는 전용 모드 — 방 가로/세로 측정과 분리돼 있다.
+  const [interiorMeasureTarget, setInteriorMeasureTarget] = useState<"width" | "depth" | "scale" | null>(null);
+  const [interiorMeasureStart, setInteriorMeasureStart] = useState<Point | null>(null);
+  const [interiorMeasureEnd, setInteriorMeasureEnd] = useState<Point | null>(null);
+  const [interiorMeasurePx, setInteriorMeasurePx] = useState(0);
+  const [interiorHoverSnap, setInteriorHoverSnap] = useState<Point | null>(null);
+  const [interiorCalibrationMm, setInteriorCalibrationMm] = useState("");
+  const [roomWidthMm, setRoomWidthMm] = useState("");
+  const [roomDepthMm, setRoomDepthMm] = useState("");
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -651,11 +746,74 @@ export default function RoomlogFloorPlanEditor() {
   const [eraseAreaEnd, setEraseAreaEnd] = useState<Point | null>(null);
   const summary = useMemo(() => summarizeWalls(walls) as WallSummary, [walls]);
   const visibleWalls = useMemo(() => walls.filter((wall) => !hiddenWallIds.has(String(wall.id))), [hiddenWallIds, walls]);
-  const wheretoputWalls = useMemo(() => convertWallsToWheretoputSimulator(walls as never) as WheretoputWall3D[], [walls]);
+  // 디버그 표시용이지만 확정된 축척을 넘겨 실치수와 일치시킨다(기본값 10mm/px 고정 방지).
+  const wheretoputWalls = useMemo(
+    () => convertWallsToWheretoputSimulator(walls as never, { pixelToMeterRatio: pixelToMmRatio / 1000 }) as WheretoputWall3D[],
+    [pixelToMmRatio, walls]
+  );
   const roomWalls3D = useMemo(
     () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
     [pixelToMmRatio, visibleWalls]
   );
+  // 전체 벽 외곽 크기(mm) — 축척이 실제 도면과 맞는지 한눈에 비교용.
+  const wallBoundsMm = useMemo(() => {
+    if (!walls.length) return null;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const wall of walls) {
+      for (const point of [wall.start, wall.end]) {
+        minX = Math.min(minX, point.x);
+        maxX = Math.max(maxX, point.x);
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
+      }
+    }
+    return { widthMm: Math.round((maxX - minX) * pixelToMmRatio), heightMm: Math.round((maxY - minY) * pixelToMmRatio) };
+  }, [walls, pixelToMmRatio]);
+  // 벽 축 라인: 세로벽들의 X, 가로벽들의 Y를 가까운 값끼리 묶는다(교차점 = 코너).
+  // 벽은 중심선으로 저장되므로, 안쪽 면 꼭짓점 스냅을 위해 각 축의 벽 두께도 함께 들고 다닌다.
+  const wallAxisLines = useMemo(() => {
+    const clusterTolerance = 12;
+    type WallAxisSample = { axis: number; thickness: number };
+    const verticalXs: WallAxisSample[] = [];
+    const horizontalYs: WallAxisSample[] = [];
+    for (const wall of walls) {
+      const horizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+      const thickness = Math.max(0, Number(wall.thicknessPx ?? wall.depthPx ?? 0));
+      if (horizontal) horizontalYs.push({ axis: (wall.start.y + wall.end.y) / 2, thickness });
+      else verticalXs.push({ axis: (wall.start.x + wall.end.x) / 2, thickness });
+    }
+    const cluster = (samples: WallAxisSample[]) => {
+      const sorted = [...samples].sort((left, right) => left.axis - right.axis);
+      const groups: WallAxisSample[] = [];
+      let bucket: WallAxisSample[] = [];
+      const flushBucket = () => {
+        if (!bucket.length) return;
+        groups.push({
+          axis: bucket.reduce((sum, item) => sum + item.axis, 0) / bucket.length,
+          thickness: Math.max(...bucket.map((item) => item.thickness))
+        });
+        bucket = [];
+      };
+      for (const sample of sorted) {
+        if (bucket.length && sample.axis - bucket[bucket.length - 1].axis > clusterTolerance) flushBucket();
+        bucket.push(sample);
+      }
+      flushBucket();
+      return groups;
+    };
+    return { verticalX: cluster(verticalXs), horizontalY: cluster(horizontalYs) };
+  }, [walls]);
+
+  // 방 내부 면적(㎡) = 가로 × 세로.
+  const roomAreaM2 = useMemo(() => {
+    const widthMm = Number(roomWidthMm);
+    const depthMm = Number(roomDepthMm);
+    if (!widthMm || !depthMm || widthMm <= 0 || depthMm <= 0) return null;
+    return (widthMm * depthMm) / 1_000_000;
+  }, [roomWidthMm, roomDepthMm]);
   // AI가 분류한 dimensions(kind 포함)가 1순위. 없으면 예전 textDetections를 wall_span으로 폴백한다.
   const allPrintedDimensionChips = useMemo<PrintedDimensionChip[]>(() => {
     const aiDimensions = extractionMeta.aiDimensions ?? [];
@@ -780,10 +938,24 @@ export default function RoomlogFloorPlanEditor() {
   }, [structuralDimensionChips, uploadedAiImageDataUrl]);
 
   const printedDimensionScale = useMemo<ScaleCandidate | null>(() => {
-    // 1순위: 인쇄된 치수선을 직접 검출한 길이 — 도면 자체가 근거라 가장 정확하다.
     const frame = computeBackgroundImageFrame(cachedBackgroundImage);
+    const union = computeWallUnionBox(detectionBoxes);
+    // 벽 union 기반 "기대 축척": 가장 큰 가로/세로 구조 치수 ÷ union 폭/높이.
+    // 픽셀 검출 축척이 이와 크게 어긋나면(예: 짧은 선 오인으로 3배 이탈) 그 샘플을 걸러낸다.
+    let expectedRatio: number | null = null;
+    if (union) {
+      const maxHorizontalMm = Math.max(0, ...structuralDimensionChips.filter((chip) => chip.axis === "horizontal").map((chip) => chip.realLengthMm));
+      const maxVerticalMm = Math.max(0, ...structuralDimensionChips.filter((chip) => chip.axis === "vertical").map((chip) => chip.realLengthMm));
+      const unionWidth = union.x2 - union.x1;
+      const unionHeight = union.y2 - union.y1;
+      const ratioH = unionWidth > 20 && maxHorizontalMm > 0 ? maxHorizontalMm / unionWidth : null;
+      const ratioV = unionHeight > 20 && maxVerticalMm > 0 ? maxVerticalMm / unionHeight : null;
+      expectedRatio = ratioH !== null && ratioV !== null ? (ratioH + ratioV) / 2 : ratioH ?? ratioV;
+    }
+
+    // 1순위: 인쇄된 치수선을 직접 검출한 길이 — 도면 자체가 근거라 가장 정확하다.
     if (frame && printedDimensionLineSpans.size) {
-      const samples = structuralDimensionChips.flatMap((chip) => {
+      const rawSamples = structuralDimensionChips.flatMap((chip) => {
         const span = printedDimensionLineSpans.get(chip.id);
         if (!span) return [];
         const canvasLength = ((span.max - span.min) / 1000) * (span.axis === "horizontal" ? frame.width : frame.height);
@@ -792,19 +964,23 @@ export default function RoomlogFloorPlanEditor() {
 
         return isPlausiblePixelToMmRatio(ratio) ? [{ canvasLength, ratio, realLengthMm: chip.realLengthMm }] : [];
       });
+      // 벽 union 기대 축척으로 outlier 제거(±30%). union 없으면 원본 유지.
+      const samples = filterRatioSamplesNearExpected(rawSamples, expectedRatio) as typeof rawSamples;
       const consensus = pickConsensusRatio(samples);
       if (consensus && consensus.support >= 2) {
+        // union으로 검증된 축척은 source에 표시 — 나중에 union이 생겨 오독을 교정할 수 있게.
+        const validatedTag = expectedRatio ? "-validated" : "";
         return {
           confidence: Math.min(0.97, 0.6 + consensus.support * 0.08),
           pixelLength: Math.round(consensus.sample.canvasLength),
           pixelToMmRatio: consensus.ratio,
           realLengthMm: consensus.sample.realLengthMm,
-          source: `printed-dimension-line-x${consensus.support}`
+          source: `printed-dimension-line${validatedTag}-x${consensus.support}`
         };
       }
     }
 
-    const unionCandidate = estimateWallUnionScaleCandidate(structuralDimensionChips, computeWallUnionBox(detectionBoxes));
+    const unionCandidate = estimateWallUnionScaleCandidate(structuralDimensionChips, union);
     if (unionCandidate) return unionCandidate;
 
     // 벽 탐지 전이거나 축 매칭이 실패하면 AI targetLine 교차검증으로라도 후보를 낸다.
@@ -815,18 +991,32 @@ export default function RoomlogFloorPlanEditor() {
     );
   }, [structuralDimensionChips, cachedBackgroundImage, detectionBoxes, printedDimensionLineSpans]);
 
+  const scaleAutoAppliedRef = useRef(false);
   useEffect(() => {
     if (!printedDimensionScale) return;
     setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleCandidates: [printedDimensionScale] }));
-    // 인쇄 치수선 검출 기반 축척(치수선 2개 이상 합의)은 실측 근거라 자동 확정한다.
-    // 사용자가 이미 축척을 정했다면 덮어쓰지 않는다.
-    if (!isScaleSet && printedDimensionScale.source.includes("dimension-line") && printedDimensionScale.pixelToMmRatio > 0) {
-      setPixelToMmRatio(printedDimensionScale.pixelToMmRatio);
+    const ratio = printedDimensionScale.pixelToMmRatio;
+    if (!(ratio > 0)) return;
+    const isDimensionLine = printedDimensionScale.source.includes("dimension-line");
+    const isUnionValidated = printedDimensionScale.source.includes("validated");
+
+    // 최초: 인쇄 치수선 검출 기반이면 자동 확정(union 없을 때도 기존 동작 유지).
+    if (!isScaleSet && isDimensionLine) {
+      setPixelToMmRatio(ratio);
       setIsScaleSet(true);
+      scaleAutoAppliedRef.current = true;
       setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
-      setUploadStatus(`축척 자동 적용됨(치수선 검출): 1px = ${printedDimensionScale.pixelToMmRatio.toFixed(2)}mm`);
+      setUploadStatus(`축척 자동 적용됨(치수선 검출): 1px = ${ratio.toFixed(2)}mm`);
+      return;
     }
-  }, [isScaleSet, printedDimensionScale]);
+
+    // 교정: 자동 적용해둔 축척이, 나중에 벽 union으로 검증된 축척과 25% 넘게 다르면 오독으로 보고 교체한다.
+    // (치수 읽기를 문/창문 탐지보다 먼저 해서 union 없이 잘못 잠긴 경우를 바로잡는다. 사용자가 직접 정한 축척은 안 건드림.)
+    if (isScaleSet && scaleAutoAppliedRef.current && isUnionValidated && Math.abs(ratio - pixelToMmRatio) / pixelToMmRatio > 0.25) {
+      setPixelToMmRatio(ratio);
+      setUploadStatus(`축척 교정됨(벽 탐지로 검증): 1px = ${ratio.toFixed(2)}mm`);
+    }
+  }, [isScaleSet, pixelToMmRatio, printedDimensionScale]);
 
   // 격자를 도면에 맞춘다: 도면의 벽 외곽 모서리에서 격자가 시작되고,
   // 축척이 있으면 한 칸이 실측 라운드 값(250/500/1000mm)이 되게 한다.
@@ -920,6 +1110,24 @@ export default function RoomlogFloorPlanEditor() {
       if (spanMm <= 0) continue;
       const axisChips = structuralDimensionChips.filter((chip) => chip.axis === axis && chip.boundingBox);
       if (!axisChips.length) continue;
+
+      // 경계 좌표를 두 소스에서 모은다.
+      const boundaryCoords: number[] = [planExtent.min, planExtent.max];
+
+      // (1) 1순위: 원본에서 검출한 치수선 끝점 = 벽 면 위치(픽셀 정확). 세로처럼 체인이 안 맞아도 여기서 경계가 나온다.
+      //     단, 검출 스팬 길이가 치수값과 15% 넘게 다르면 잘못 잡은 선이므로 버린다(검증).
+      for (const chip of axisChips) {
+        const span = printedDimensionLineSpans.get(chip.id);
+        if (!span || span.axis !== axis) continue;
+        const startCoord = axis === "horizontal" ? toCanvasPoint(span.min, span.cross).x : toCanvasPoint(span.cross, span.min).y;
+        const endCoord = axis === "horizontal" ? toCanvasPoint(span.max, span.cross).x : toCanvasPoint(span.cross, span.max).y;
+        const detectedLen = Math.abs(endCoord - startCoord);
+        const expectedLen = chip.realLengthMm / ratio;
+        if (expectedLen < 4 || Math.abs(detectedLen - expectedLen) / expectedLen > 0.15) continue;
+        boundaryCoords.push(startCoord, endCoord);
+      }
+
+      // (2) 보완: 검출이 없었던 구간은 치수 체인 산술로 메운다(합=전체인 줄만).
       const perpSizes = axisChips
         .map((chip) => (axis === "horizontal" ? chip.boundingBox!.height : chip.boundingBox!.width))
         .sort((a, b) => a - b);
@@ -933,10 +1141,19 @@ export default function RoomlogFloorPlanEditor() {
           realLengthMm: chip.realLengthMm
         };
       });
-      const offsetsMm = structuralBoundaryOffsetsMm(layoutInput, spanMm, { perpTolerance }) as number[];
-      const coords = offsetsMm.map((mm) => planExtent.min + mm / ratio);
-      if (axis === "horizontal") verticalLineX.push(...coords);
-      else horizontalLineY.push(...coords);
+      // E: 부분 체인도 도면 가장자리에 붙어 있으면 배치. 라벨 along 좌표는 0~1000 정규화 기준.
+      const offsetsMm = structuralBoundaryOffsetsMm(layoutInput, spanMm, {
+        allowEdgeAnchoredPartial: true,
+        alongEnd: 1000,
+        alongStart: 0,
+        perpTolerance
+      }) as number[];
+      boundaryCoords.push(...offsetsMm.map((mm) => planExtent.min + mm / ratio));
+
+      // 두 소스를 병합(가까운 경계는 하나로). 병합 허용오차 = 최소 구간의 30% 이하로 제한해 인접 벽을 뭉개지 않게.
+      const merged = mergeCoordinates(boundaryCoords, Math.max(4, Math.min(12, (200 / ratio) * 0.3))) as number[];
+      if (axis === "horizontal") verticalLineX.push(...merged);
+      else horizontalLineY.push(...merged);
     }
 
     return { horizontalLineY, verticalLineX };
@@ -989,16 +1206,16 @@ export default function RoomlogFloorPlanEditor() {
         const items = Array.isArray(payload) ? payload.filter(isFurnitureCatalogItem).map(normalizeCatalogItem) : [];
         if (!items.length) {
           setFurnitureCatalog(FURNITURE_CATALOG);
-          setFurnitureCatalogStatus("?섑뵆 媛援?移댄깉濡쒓렇");
+          setFurnitureCatalogStatus("샘플 가구 카탈로그");
           return;
         }
 
         setFurnitureCatalog(items);
-        setFurnitureCatalogStatus("濡쒖뺄 媛援?移댄깉濡쒓렇");
+        setFurnitureCatalogStatus("로컬 가구 카탈로그");
       } catch {
         if (!isActive) return;
         setFurnitureCatalog(FURNITURE_CATALOG);
-        setFurnitureCatalogStatus("?섑뵆 媛援?移댄깉濡쒓렇");
+        setFurnitureCatalogStatus("샘플 가구 카탈로그");
       }
     }
 
@@ -1010,7 +1227,7 @@ export default function RoomlogFloorPlanEditor() {
   }, []);
 
   useEffect(() => {
-    if (experienceMode === "resident" && (tool === "opening" || tool === "fixture" || tool === "scale")) {
+    if (experienceMode === "resident" && (tool === "opening" || tool === "fixture")) {
       setTool("furniture");
       setSelectedWall(null);
     }
@@ -1062,7 +1279,7 @@ export default function RoomlogFloorPlanEditor() {
       context.stroke();
     }
 
-    const drawWall = (wall: Wall, variant: "normal" | "ai-room" | "ai-missing" | "draft" | "selected" | "hover" | "scale" | "erase" | "hidden") => {
+    const drawWall = (wall: Wall, variant: "normal" | "ai-room" | "ai-missing" | "draft" | "selected" | "hover" | "erase" | "hidden") => {
       const colors = {
         "ai-missing": "#d97706",
         "ai-room": "#00a36c",
@@ -1071,7 +1288,6 @@ export default function RoomlogFloorPlanEditor() {
         hidden: "rgba(121, 130, 145, 0.42)",
         hover: "#0066ff",
         normal: "rgba(43, 43, 43, 0.82)",
-        scale: "rgba(0, 68, 255, 0.76)",
         selected: "#0066ff"
       };
       context.strokeStyle = colors[variant];
@@ -1102,7 +1318,7 @@ export default function RoomlogFloorPlanEditor() {
         }
       }
 
-      if (variant !== "scale" && variant !== "erase") {
+      if (variant !== "erase") {
         const midX = (wall.start.x + wall.end.x) / 2;
         const midY = (wall.start.y + wall.end.y) / 2;
         const angle = Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x);
@@ -1244,8 +1460,11 @@ export default function RoomlogFloorPlanEditor() {
           .filter((box) => box.x2 - box.x1 > 0 && box.y2 - box.y1 > 0);
         if (!wallBoxes.length) return;
 
-        const xCoordinates = [...new Set(wallBoxes.flatMap((box) => [box.x1, box.x2]))].sort((left, right) => left - right);
-        const yCoordinates = [...new Set(wallBoxes.flatMap((box) => [box.y1, box.y2]))].sort((left, right) => left - right);
+        // 문/창문 박스: 벽을 이 자리에서 갈라(gap) 분리한다.
+        const openingCutBoxes = openingOverlayBoxes.map((overlayBox) => normalizeOverlayBox(overlayBox.box));
+
+        const xCoordinates = [...new Set([...wallBoxes, ...openingCutBoxes].flatMap((box) => [box.x1, box.x2]))].sort((left, right) => left - right);
+        const yCoordinates = [...new Set([...wallBoxes, ...openingCutBoxes].flatMap((box) => [box.y1, box.y2]))].sort((left, right) => left - right);
         const coveredWallCells = new Set<string>();
         const cellKey = (xIndex: number, yIndex: number) => `${xIndex}:${yIndex}`;
 
@@ -1253,7 +1472,9 @@ export default function RoomlogFloorPlanEditor() {
           for (let xIndex = 0; xIndex < xCoordinates.length - 1; xIndex += 1) {
             const centerX = (xCoordinates[xIndex] + xCoordinates[xIndex + 1]) / 2;
             const centerY = (yCoordinates[yIndex] + yCoordinates[yIndex + 1]) / 2;
-            if (wallBoxes.some((box) => centerX >= box.x1 && centerX <= box.x2 && centerY >= box.y1 && centerY <= box.y2)) {
+            const insideWall = wallBoxes.some((box) => centerX >= box.x1 && centerX <= box.x2 && centerY >= box.y1 && centerY <= box.y2);
+            const insideOpening = openingCutBoxes.some((box) => centerX >= box.x1 && centerX <= box.x2 && centerY >= box.y1 && centerY <= box.y2);
+            if (insideWall && !insideOpening) {
               coveredWallCells.add(cellKey(xIndex, yIndex));
             }
           }
@@ -1509,7 +1730,65 @@ export default function RoomlogFloorPlanEditor() {
     drawRoboflowDetectionOverlays();
     drawPrintedDimensionOverlays();
 
-    if (scaleWall && tool === "scale") drawWall(scaleWall, "scale");
+    // 확인용: 선택한 벽 조각을 밝은 파란색으로 채워 강조.
+    if (selectedWallRunRects) {
+      context.save();
+      context.fillStyle = "rgba(0, 102, 255, 0.4)";
+      for (const rect of selectedWallRunRects) {
+        context.fillRect(rect.x1, rect.y1, rect.x2 - rect.x1, rect.y2 - rect.y1);
+      }
+      context.restore();
+    }
+
+    // 방 내부 재기 측정선.
+    if (tool === "interior" && interiorMeasureStart && interiorMeasureEnd) {
+      const measureStart = interiorMeasureStart;
+      const measureEnd = interiorMeasureEnd;
+      const lengthPx = interiorMeasurePx > 0 ? interiorMeasurePx : Math.hypot(measureEnd.x - measureStart.x, measureEnd.y - measureStart.y);
+      context.save();
+      context.strokeStyle = "#e6007a";
+      context.lineWidth = 3 / viewScale;
+      context.beginPath();
+      context.moveTo(measureStart.x, measureStart.y);
+      context.lineTo(measureEnd.x, measureEnd.y);
+      context.stroke();
+      for (const endpoint of [measureStart, measureEnd]) {
+        context.beginPath();
+        context.arc(endpoint.x, endpoint.y, 5 / viewScale, 0, Math.PI * 2);
+        context.fillStyle = "#e6007a";
+        context.fill();
+      }
+      const label = isScaleSet ? `${Math.round(lengthPx * pixelToMmRatio)}mm` : `${Math.round(lengthPx)}px`;
+      context.fillStyle = "#e6007a";
+      context.font = `bold ${13 / viewScale}px Arial, sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "bottom";
+      context.fillText(label, (measureStart.x + measureEnd.x) / 2, (measureStart.y + measureEnd.y) / 2 - 6 / viewScale);
+      context.restore();
+    }
+
+    // 방 내부 재기: 커서가 코너에 닿으면 동그라미 + 짧은 십자선.
+    if (tool === "interior" && interiorHoverSnap) {
+      const cross = 16 / viewScale;
+      context.save();
+      context.strokeStyle = "rgba(230, 0, 122, 0.45)";
+      context.lineWidth = 1 / viewScale;
+      context.beginPath();
+      context.moveTo(interiorHoverSnap.x - cross, interiorHoverSnap.y);
+      context.lineTo(interiorHoverSnap.x + cross, interiorHoverSnap.y);
+      context.moveTo(interiorHoverSnap.x, interiorHoverSnap.y - cross);
+      context.lineTo(interiorHoverSnap.x, interiorHoverSnap.y + cross);
+      context.stroke();
+      context.beginPath();
+      context.arc(interiorHoverSnap.x, interiorHoverSnap.y, 9 / viewScale, 0, Math.PI * 2);
+      context.strokeStyle = "#e6007a";
+      context.lineWidth = 2.5 / viewScale;
+      context.fillStyle = "rgba(230, 0, 122, 0.22)";
+      context.fill();
+      context.stroke();
+      context.restore();
+    }
+
     if (isDrawing && startPoint && currentPoint) drawWall({ id: "draft", start: startPoint, end: currentPoint }, "draft");
     if (isSelectingEraseArea && eraseAreaStart && eraseAreaEnd) {
       drawWall({ id: "erase-draft", start: eraseAreaStart, end: eraseAreaEnd }, "erase");
@@ -1529,6 +1808,10 @@ export default function RoomlogFloorPlanEditor() {
     isDrawing,
     isScaleSet,
     isSelectingEraseArea,
+    interiorMeasureStart,
+    interiorMeasureEnd,
+    interiorMeasurePx,
+    interiorHoverSnap,
     fixtureCandidates,
     openingCandidates,
     partialEraserSelectedWall,
@@ -1536,7 +1819,7 @@ export default function RoomlogFloorPlanEditor() {
     printedDimensionChips,
     printedDimensionLineSpans,
     printedDimensionScale,
-    scaleWall,
+    selectedWallRunRects,
     selectedWall,
     startPoint,
     tool,
@@ -1608,6 +1891,56 @@ export default function RoomlogFloorPlanEditor() {
     setSelectedWall(nextWall);
   }
 
+  // 클릭 지점이 든 "벽 조각"(문/창문 gap으로 끊긴 연결 구간)의 사각들을 찾는다. 확인용.
+  function findWallRunRectsAt(point: Point): Array<{ x1: number; x2: number; y1: number; y2: number }> | null {
+    const wallBoxes = detectionBoxes.filter((detectionBox) => detectionBox.type === "WALL").map((detectionBox) => normalizeOverlayBox(detectionBox.box));
+    if (!wallBoxes.length) return null;
+    const openingBoxes = detectionBoxes.filter((detectionBox) => detectionBox.type !== "WALL").map((detectionBox) => normalizeOverlayBox(detectionBox.box));
+
+    const xs = [...new Set([...wallBoxes, ...openingBoxes].flatMap((box) => [box.x1, box.x2]))].sort((left, right) => left - right);
+    const ys = [...new Set([...wallBoxes, ...openingBoxes].flatMap((box) => [box.y1, box.y2]))].sort((left, right) => left - right);
+    const nx = xs.length - 1;
+    const ny = ys.length - 1;
+    if (nx <= 0 || ny <= 0) return null;
+
+    const covered: boolean[][] = [];
+    for (let xi = 0; xi < nx; xi += 1) {
+      covered[xi] = [];
+      for (let yi = 0; yi < ny; yi += 1) {
+        const cx = (xs[xi] + xs[xi + 1]) / 2;
+        const cy = (ys[yi] + ys[yi + 1]) / 2;
+        const inWall = wallBoxes.some((box) => cx >= box.x1 && cx <= box.x2 && cy >= box.y1 && cy <= box.y2);
+        const inOpening = openingBoxes.some((box) => cx >= box.x1 && cx <= box.x2 && cy >= box.y1 && cy <= box.y2);
+        covered[xi][yi] = inWall && !inOpening;
+      }
+    }
+
+    let startXi = -1;
+    let startYi = -1;
+    for (let xi = 0; xi < nx; xi += 1) if (point.x >= xs[xi] && point.x <= xs[xi + 1]) { startXi = xi; break; }
+    for (let yi = 0; yi < ny; yi += 1) if (point.y >= ys[yi] && point.y <= ys[yi + 1]) { startYi = yi; break; }
+    if (startXi < 0 || startYi < 0 || !covered[startXi][startYi]) return null;
+
+    const visited: boolean[][] = covered.map((column) => column.map(() => false));
+    const stack: Array<[number, number]> = [[startXi, startYi]];
+    visited[startXi][startYi] = true;
+    const componentCells: Array<[number, number]> = [];
+    while (stack.length) {
+      const [xi, yi] = stack.pop() as [number, number];
+      componentCells.push([xi, yi]);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ax = xi + dx;
+        const ay = yi + dy;
+        if (ax >= 0 && ax < nx && ay >= 0 && ay < ny && !visited[ax][ay] && covered[ax][ay]) {
+          visited[ax][ay] = true;
+          stack.push([ax, ay]);
+        }
+      }
+    }
+
+    return componentCells.map(([xi, yi]) => ({ x1: xs[xi], x2: xs[xi + 1], y1: ys[yi], y2: ys[yi + 1] }));
+  }
+
   function findClosestCandidate(candidates: FloorPlanCandidate[], point: Point, maxDistance = 28) {
     return candidates.reduce<{ candidate: FloorPlanCandidate | null; distance: number }>(
       (closest, candidate) => {
@@ -1633,7 +1966,7 @@ export default function RoomlogFloorPlanEditor() {
   function hideWallById(wallId: string | number) {
     setHiddenWallIds((currentHidden) => new Set(currentHidden).add(String(wallId)));
     if (String(selectedWall?.id ?? "") === String(wallId)) setSelectedWall(null);
-    setUploadStatus(`踰?${wallId} ?④?`);
+    setUploadStatus(`벽 ${wallId} 숨김`);
   }
 
   function partiallyEraseWallByRatio(wallId: string | number, eraseRatio: number) {
@@ -1647,7 +1980,7 @@ export default function RoomlogFloorPlanEditor() {
     });
     setSelectedWall(null);
     setPartialEraserSelectedWall(null);
-    setUploadStatus(`踰?${wallId} 遺遺???젣`);
+    setUploadStatus(`벽 ${wallId} 부분 삭제`);
   }
 
   function handle3DWallPointerDown(wallData: WheretoputWall3D, event: ThreeEvent<PointerEvent>) {
@@ -1662,13 +1995,13 @@ export default function RoomlogFloorPlanEditor() {
 
     if (tool === "select" || tool === "wall" || tool === "none") {
       setSelectedWall((currentWall) => (String(currentWall?.id ?? "") === String(wallId) ? null : wall ?? null));
-      setUploadStatus(`踰?${wallId} ?좏깮`);
+      setUploadStatus(`벽 ${wallId} 선택`);
       return;
     }
 
     if (tool === "eraser") {
       removeWallById(wallId);
-      setUploadStatus(`踰?${wallId} ??젣`);
+      setUploadStatus(`벽 ${wallId} 삭제`);
       return;
     }
 
@@ -1691,7 +2024,7 @@ export default function RoomlogFloorPlanEditor() {
     setSelectedWall(null);
     setTool("furniture");
     setViewMode("3d");
-    setUploadStatus(`${item.name} 諛곗튂 ?꾩튂瑜?3D 諛붾떏?먯꽌 ?대┃`);
+    setUploadStatus(`${item.name} 배치 위치를 3D 바닥에서 클릭`);
   }
 
   function handle3DFloorPointerDown(event: ThreeEvent<PointerEvent>) {
@@ -1724,7 +2057,7 @@ export default function RoomlogFloorPlanEditor() {
     const targetName = pendingFurniture.name;
     setPendingFurniture(null);
     setSelectedFurnitureId(null);
-    setUploadStatus(`${targetName} 諛곗튂 痍⑥냼`);
+    setUploadStatus(`${targetName} 배치 취소`);
   }
 
   function rotatePendingFurniture() {
@@ -1791,7 +2124,7 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     const coords = getCanvasCoordinates(event);
-    if (tool === "wall" || tool === "scale") {
+    if (tool === "wall") {
       const snappedStart = snapEditorPoint(coords);
       setStartPoint(snappedStart);
       setCurrentPoint(snappedStart);
@@ -1799,7 +2132,61 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
+    if (tool === "interior") {
+      const snapped = snapToWallCorner(coords);
+      // 첫 클릭: 시작점. 이미 완료된 선이 있으면 새로 시작.
+      if (!interiorMeasureStart || interiorMeasurePx > 0) {
+        setInteriorMeasureStart(snapped);
+        setInteriorMeasureEnd(snapped);
+        setInteriorMeasurePx(0);
+        return;
+      }
+      // 둘째 클릭: 끝점 확정.
+      const measuredPx = Math.hypot(snapped.x - interiorMeasureStart.x, snapped.y - interiorMeasureStart.y);
+      setInteriorMeasureEnd(snapped);
+      setInteriorMeasurePx(measuredPx);
+      // 축척 재기 모드: 방 치수는 건드리지 않고, 실제 길이 입력만 기다린다.
+      if (interiorMeasureTarget === "scale") {
+        setUploadStatus(`${Math.round(measuredPx)}px 측정됨 — 오른쪽에 이 선의 실제 길이(mm)를 입력해 축척을 맞추세요`);
+        return;
+      }
+      if (isScaleSet && measuredPx > 0) {
+        const mm = Math.round(measuredPx * pixelToMmRatio);
+        if (interiorMeasureTarget === "width") setRoomWidthMm(String(mm));
+        else if (interiorMeasureTarget === "depth") setRoomDepthMm(String(mm));
+        const measuredLabel = interiorMeasureTarget === "width" ? "가로" : "세로";
+        // 연속 측정: 남은 치수가 비어 있으면 버튼을 다시 누를 필요 없이 자동으로 그 측정으로 넘어간다.
+        const nextTarget =
+          interiorMeasureTarget === "width" && !roomDepthMm ? ("depth" as const)
+          : interiorMeasureTarget === "depth" && !roomWidthMm ? ("width" as const)
+          : null;
+        if (nextTarget) {
+          setInteriorMeasureTarget(nextTarget);
+          setUploadStatus(`${measuredLabel} ${mm}mm 측정됨 — 이어서 방 안쪽 '${nextTarget === "width" ? "가로" : "세로"}' 두 점을 클릭하세요`);
+        } else {
+          const widthMm = interiorMeasureTarget === "width" ? mm : Number(roomWidthMm);
+          const depthMm = interiorMeasureTarget === "depth" ? mm : Number(roomDepthMm);
+          const areaSuffix = widthMm > 0 && depthMm > 0 ? ` — 면적 ${((widthMm * depthMm) / 1_000_000).toFixed(2)}㎡` : "";
+          setUploadStatus(`${measuredLabel} ${mm}mm 측정됨${areaSuffix}`);
+        }
+      } else {
+        setUploadStatus(`${Math.round(measuredPx)}px 측정됨 — 축척이 없습니다. '축척 맞추기'로 먼저 1px당 mm를 정하세요`);
+      }
+      return;
+    }
+
     if (tool === "select") {
+      // 확인용: 클릭한 벽 조각(문/창문 gap으로 끊긴 구간)을 밝게 표시.
+      const runRects = findWallRunRectsAt(coords);
+      if (runRects) {
+        setSelectedWallRunRects(runRects);
+        setSelectedWall(null);
+        setWallDragOperation(null);
+        setUploadStatus("벽 조각 선택됨 — 문/창문 건너편을 클릭했을 때 따로 켜지면 분리된 것");
+        return;
+      }
+      setSelectedWallRunRects(null);
+
       const closestWall = findClosestWall(coords, 30);
       if (!closestWall) {
         setSelectedWall(null);
@@ -1810,7 +2197,7 @@ export default function RoomlogFloorPlanEditor() {
       const mode = getWallDragMode(closestWall, coords);
       setSelectedWall(closestWall);
       setWallDragOperation({ mode, originPoint: coords, originalWall: closestWall, wallId: closestWall.id });
-      setUploadStatus(mode === "move" ? `踰?${closestWall.id} ?대룞` : `踰?${closestWall.id} 湲몄씠 議곗젅`);
+      setUploadStatus(mode === "move" ? `벽 ${closestWall.id} 이동` : `벽 ${closestWall.id} 길이 조절`);
       return;
     }
 
@@ -1834,7 +2221,7 @@ export default function RoomlogFloorPlanEditor() {
       const closestWall = findClosestWall(coords, 20);
       if (closestWall) {
         removeWallById(closestWall.id);
-        setUploadStatus(`踰?${closestWall.id} ??젣`);
+        setUploadStatus(`벽 ${closestWall.id} 삭제`);
       }
       return;
     }
@@ -1876,13 +2263,23 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
-    if (isDrawing && startPoint && (tool === "wall" || tool === "scale")) {
+    if (isDrawing && startPoint && tool === "wall") {
       setCurrentPoint(snapEditorPoint(snapToOrthogonal(startPoint, coords) as Point));
       return;
     }
 
     if (isSelectingEraseArea && partialEraserSelectedWall) {
       setEraseAreaEnd(projectPointOntoWall(coords, partialEraserSelectedWall));
+      return;
+    }
+
+    // 방 내부 재기: 코너 hover 동그라미 + (측정 중이면) 끝점 따라오기.
+    if (tool === "interior") {
+      const snapCorner = findSnapCorner(coords);
+      setInteriorHoverSnap(snapCorner);
+      if (interiorMeasureStart && interiorMeasurePx === 0) {
+        setInteriorMeasureEnd(snapCorner ?? coords);
+      }
       return;
     }
 
@@ -1907,15 +2304,11 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
-    if (isDrawing && startPoint && currentPoint && (tool === "wall" || tool === "scale")) {
+    if (isDrawing && startPoint && currentPoint && tool === "wall") {
       const snappedEnd = snapEditorPoint(snapToOrthogonal(startPoint, getCanvasCoordinates(event)) as Point);
       if (startPoint.x !== snappedEnd.x || startPoint.y !== snappedEnd.y) {
         const nextWall = { id: `wall-${Date.now()}`, start: startPoint, end: snappedEnd };
-        if (tool === "scale") {
-          setScaleWall(nextWall);
-        } else {
-          setWalls((currentWalls) => [...currentWalls, nextWall]);
-        }
+        setWalls((currentWalls) => [...currentWalls, nextWall]);
       }
       setIsDrawing(false);
       setStartPoint(null);
@@ -1959,7 +2352,7 @@ export default function RoomlogFloorPlanEditor() {
       x: pointerX / nextScale - worldBeforeZoom.x,
       y: pointerY / nextScale - worldBeforeZoom.y
     });
-    setUploadStatus(`?붾㈃ ${Math.round(nextScale * 100)}%`);
+    setUploadStatus(`화면 ${Math.round(nextScale * 100)}%`);
   }
 
   function handleCanvasAuxClick(event: React.MouseEvent<HTMLCanvasElement>) {
@@ -1997,13 +2390,13 @@ export default function RoomlogFloorPlanEditor() {
       setWalls([]);
       setHiddenWallIds(new Set());
       setSelectedWall(null);
-      setScaleWall(null);
       setHoveredWall(null);
       setPendingFurniture(null);
       setSelectedFurnitureId(null);
       setOpeningCandidates([]);
       setFixtureCandidates([]);
       setDetectionBoxes([]);
+      setSelectedWallRunRects(null);
       setRoboflowDetections(null);
       setRoboflowWallPostProcessSourceWalls([]);
       setUploadedImage(imageUrl);
@@ -2031,6 +2424,7 @@ export default function RoomlogFloorPlanEditor() {
         scaleConfirmed: false
       });
       setIsScaleSet(false);
+      scaleAutoAppliedRef.current = false;
       setUploadStatus(`${file.name} 도면 등록 완료`);
     } catch {
       setUploadStatus("도면 등록 실패");
@@ -2045,7 +2439,7 @@ export default function RoomlogFloorPlanEditor() {
     return source !== "ai-room-edge" && source !== "ai-missing-wall-hint" && !String(wall.id).startsWith("rf-wall");
   }
 
-  async function runPrintedDimensionReading() {
+  async function runPrintedDimensionReading(forceRefresh = false) {
     const attachmentId = uploadedFloorPlanSource?.attachmentId;
     if (!attachmentId && !uploadedAiImageDataUrl) {
       setAiAnalysisStatus("먼저 도면을 업로드하세요");
@@ -2053,12 +2447,13 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     setIsProcessing(true);
-    setAiAnalysisStatus("치수 숫자 읽는 중");
+    setAiAnalysisStatus(forceRefresh ? "치수 다시 읽는 중" : "치수 숫자 읽는 중");
     try {
       const token = await getFloorPlanAccessToken();
       const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
         body: JSON.stringify({
           analysisMode: "dimension",
+          forceRefresh,
           imageDataUrl: attachmentId ? undefined : uploadedAiImageDataUrl,
           model: "openai/floor-plan-vision",
           prompt: "인쇄된 평면도의 치수 숫자를 읽고 dimensions 배열로 분류해 주세요. 각 숫자는 kind(outer_total/outer_segment/room_span/wall_span/opening/furniture/fixture/area/ignore)로 분류합니다. 구조 치수(outer_total/outer_segment/room_span/wall_span)만 useForScale·useForWallGeneration을 true로 두고, 문/창문 폭은 opening, '1500 × 2000mm' 같은 가구 크기는 furniture, 면적(㎡)은 area로 둡니다. boundingBox와 targetLine은 0~1000 좌표로 넣되 불확실하면 null로 보냅니다. 같은 숫자라도 위치가 다르면 별도 항목으로 유지합니다.",
@@ -2075,6 +2470,7 @@ export default function RoomlogFloorPlanEditor() {
       const result = (await response.json()) as {
         status: "ready" | "config-required" | "failed";
         summary: string;
+        cached?: boolean;
         dimensions?: AiDimensionDetection[];
         textDetections?: Array<{ boundingBox?: unknown; confidence?: number; targetLine?: unknown; text: string }>;
       };
@@ -2105,11 +2501,12 @@ export default function RoomlogFloorPlanEditor() {
         needsReview: dimensionCount > 0 || currentMeta.needsReview,
         ocrStatus: dimensionCount > 0 ? "ready" : currentMeta.ocrStatus
       }));
+      const cacheTag = result.cached ? " (캐시)" : "";
       setAiAnalysisStatus(
         aiDimensions.length
-          ? `${result.summary} 구조 치수 ${structuralCount} / 문창문 ${openingCount} / 가구 ${furnitureCount}개`
+          ? `${result.summary} 구조 치수 ${structuralCount} / 문창문 ${openingCount} / 가구 ${furnitureCount}개${cacheTag}`
           : dimensionCount > 0
-            ? `${result.summary} 읽힌 치수 ${dimensionCount}개 (축척 확인 필요)`
+            ? `${result.summary} 읽힌 치수 ${dimensionCount}개 (축척 확인 필요)${cacheTag}`
             : `${result.summary} 읽힌 치수가 없어 수동 확인이 필요합니다`
       );
     } catch {
@@ -2176,7 +2573,7 @@ export default function RoomlogFloorPlanEditor() {
       }
       const toEditorBox = (box: RoboflowDetectionBox) => convertRoboflowBoxToEditorBox(box, result.imageWidth, result.imageHeight);
       const detectedWalls = (result.walls ?? []).filter((wallBox) => wallBox.confidence >= ROBOFLOW_SITE_CONFIDENCE_THRESHOLD);
-      const detectedOpenings = result.openings.filter((opening) => opening.confidence >= ROBOFLOW_SITE_CONFIDENCE_THRESHOLD);
+      const detectedOpenings = result.openings.filter((opening) => opening.confidence >= ROBOFLOW_OPENING_CONFIDENCE_THRESHOLD);
       const detected = detectedOpenings.map(
         (opening): FloorPlanCandidate => ({
           confidence: opening.confidence,
@@ -2202,6 +2599,7 @@ export default function RoomlogFloorPlanEditor() {
       });
       setRoboflowWallPostProcessSourceWalls(walls.filter(isWallUsableForRoboflowPostProcess));
       setExtractionMeta((currentMeta) => ({ ...currentMeta, detectedWallCount: detectedWalls.length, needsReview: true }));
+      setSelectedWallRunRects(null);
       setDetectionBoxes([
         ...detectedWalls.map((wallBox) => ({
           box: toEditorBox(wallBox.boundingBox),
@@ -2298,6 +2696,14 @@ export default function RoomlogFloorPlanEditor() {
       return source !== "ai-room-edge" && source !== "ai-missing-wall-hint";
     });
     const fusionSourceWalls = roboflowWallPostProcessSourceWalls.length ? roboflowWallPostProcessSourceWalls : fallbackSourceWalls;
+
+    // 파란 벽 박스 + (벽 라인에 정렬한) 노란 창문 박스를 벽 생성 기준으로. 창문 자리도 벽으로 이어짐. 문(DOOR)만 gap.
+    const rawWallBoundingBoxes = roboflowDetections.walls.map((wallBox) => wallBox.boundingBox);
+    const alignedWindowWallBoxes = roboflowDetections.openings
+      .filter((opening) => opening.type === "WINDOW")
+      .map((opening) => alignWindowBoxToWallLine({ ...opening.boundingBox, confidence: opening.confidence }, rawWallBoundingBoxes))
+      .filter((box): box is RoboflowBoundingBox => box !== null);
+
     const detectionWallResult = buildWallsFromDetectionBoxes({
       canvasHeight: CANVAS_HEIGHT,
       canvasWidth: CANVAS_WIDTH,
@@ -2308,7 +2714,10 @@ export default function RoomlogFloorPlanEditor() {
       minGeneratedWallCount: 1,
       openingBoxes: roboflowDetections.openings.filter((opening) => opening.type === "DOOR").map((opening) => opening.boundingBox),
       pixelToMmRatio,
-      wallBoxes: roboflowDetections.walls.map((wallBox) => ({ ...wallBox.boundingBox, confidence: wallBox.confidence }))
+      wallBoxes: [
+        ...roboflowDetections.walls.map((wallBox) => ({ ...wallBox.boundingBox, confidence: wallBox.confidence })),
+        ...alignedWindowWallBoxes
+      ]
     });
 
     if (!detectionWallResult.generatedWallCount) {
@@ -2341,10 +2750,8 @@ export default function RoomlogFloorPlanEditor() {
       }
     }
 
-    setWalls(snappedWalls);
     setHiddenWallIds(new Set());
     setSelectedWall(null);
-    setScaleWall(null);
     setHoveredWall(null);
     setExtractionMeta((currentMeta) => ({ ...currentMeta, detectedWallCount: detectionWallResult.walls.length, needsReview: true }));
     const postProcessedWallBoxes = snappedWallBoxes.map((wallBox) => ({ ...wallBox, variant: "postprocessed" as const }));
@@ -2368,12 +2775,54 @@ export default function RoomlogFloorPlanEditor() {
     const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines(cornerTrimmedWallBoxes, fittedOpeningBoxes);
     const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners(openingLineAlignedWallBoxes);
     setDetectionBoxes([...cornerAlignedWallBoxes, ...fittedOpeningBoxes]);
-    setAiAnalysisStatus(`${roboflowDetections.summary} 후처리 완료: 원본 벽 ${roboflowDetections.walls.length}개 -> 3D 변환용 벽 ${detectionWallResult.generatedWallCount}개`);
-    setUploadStatus(`Roboflow 벽 후처리 ${detectionWallResult.generatedWallCount}개 적용`);
+    setSelectedWallRunRects(null);
+
+    // 3D 벽 = 화면에 보이는 벽 박스를 그대로 변환(중심선). 단 문(DOOR) 자리는 잘라서 뚫는다(창문은 이어짐 유지).
+    const doorCutBoxes = fittedOpeningBoxes
+      .filter((opening) => opening.type === "DOOR")
+      .map((opening) => normalizeOverlayBox(opening.box));
+    const wallsFromDisplayBoxes = cornerAlignedWallBoxes.flatMap((overlayBox, boxIndex) => {
+      const box = normalizeOverlayBox(overlayBox.box);
+      const horizontal = box.x2 - box.x1 >= box.y2 - box.y1;
+      const thickness = Math.max(4, horizontal ? box.y2 - box.y1 : box.x2 - box.x1);
+      const overlappingDoors = doorCutBoxes.filter(
+        (door) => door.x1 < box.x2 && door.x2 > box.x1 && door.y1 < box.y2 && door.y2 > box.y1
+      );
+      const pieces = overlappingDoors.length ? splitEditorBoxAtOpenings(box, overlappingDoors, horizontal) : [box];
+      return pieces
+        .filter((piece) => (horizontal ? piece.x2 - piece.x1 : piece.y2 - piece.y1) > 2)
+        .map((piece, pieceIndex) => {
+          const centerX = (piece.x1 + piece.x2) / 2;
+          const centerY = (piece.y1 + piece.y2) / 2;
+          return {
+            id: `wall-box-${boxIndex}-${pieceIndex}`,
+            start: horizontal ? { x: piece.x1, y: centerY } : { x: centerX, y: piece.y1 },
+            end: horizontal ? { x: piece.x2, y: centerY } : { x: centerX, y: piece.y2 },
+            source: "roboflow-postprocessed",
+            depthPx: thickness,
+            thicknessPx: thickness
+          };
+        });
+    }) as unknown as Wall[];
+    setWalls(wallsFromDisplayBoxes);
+
+    setAiAnalysisStatus(`${roboflowDetections.summary} 후처리 완료: 화면 벽 ${cornerAlignedWallBoxes.length}개를 3D 벽으로 변환`);
+    setUploadStatus(`벽 후처리 완료 — 3D 벽 ${wallsFromDisplayBoxes.length}개 (화면과 동일)`);
   }
 
   // 구조 치수 경계에 벽을 스냅해, 3D 방 크기·벽 간 거리를 도면 치수와 맞춘다.
   // Roboflow가 만든 벽은 픽셀 기하라 수십 mm 어긋날 수 있는데, 이걸 구조 치수 값으로 교정한다.
+  function getStructuralBoundaryTolerancePx(boundaries: { horizontalLineY: number[]; verticalLineX: number[] }) {
+    const allGaps: number[] = [];
+    for (const lines of [boundaries.verticalLineX, boundaries.horizontalLineY]) {
+      const sorted = [...lines].sort((a, b) => a - b);
+      for (let index = 1; index < sorted.length; index += 1) allGaps.push(sorted[index] - sorted[index - 1]);
+    }
+    const minGap = allGaps.length ? Math.min(...allGaps) : 60;
+
+    return Math.max(8, Math.min(45, minGap * 0.45));
+  }
+
   function applyStructuralDimensionWallCorrection() {
     const boundaries = structuralWallBoundaries;
     const lineCount = boundaries.verticalLineX.length + boundaries.horizontalLineY.length;
@@ -2386,13 +2835,7 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
     // 다른 경계로 잘못 당기지 않게, 허용 오차를 경계 최소 간격의 45% 이하로 제한한다.
-    const allGaps: number[] = [];
-    for (const lines of [boundaries.verticalLineX, boundaries.horizontalLineY]) {
-      const sorted = [...lines].sort((a, b) => a - b);
-      for (let index = 1; index < sorted.length; index += 1) allGaps.push(sorted[index] - sorted[index - 1]);
-    }
-    const minGap = allGaps.length ? Math.min(...allGaps) : 60;
-    const tolerancePx = Math.max(8, Math.min(45, minGap * 0.45));
+    const tolerancePx = getStructuralBoundaryTolerancePx(boundaries);
     const { movedCount, walls: corrected } = snapWallsToStructuralBoundaries(walls as never[], boundaries, tolerancePx) as {
       movedCount: number;
       walls: Wall[];
@@ -2406,28 +2849,105 @@ export default function RoomlogFloorPlanEditor() {
     );
   }
 
-  function applyScale() {
-    if (!scaleWall || !scaleRealLength) return;
-    const pixelDistance = Math.hypot(scaleWall.end.x - scaleWall.start.x, scaleWall.end.y - scaleWall.start.y);
-    const realLengthMm = Number(scaleRealLength);
-    if (!pixelDistance || !realLengthMm) return;
+  function applyStructuralDimensionMissingWallInference() {
+    const boundaries = structuralWallBoundaries;
+    const lineCount = boundaries.verticalLineX.length + boundaries.horizontalLineY.length;
+    if (!lineCount) {
+      setAiAnalysisStatus("누락 벽을 보완할 구조 치수 경계가 없습니다. 치수 읽기와 벽 후처리를 먼저 실행하세요.");
+      return;
+    }
+    if (!walls.length) {
+      setAiAnalysisStatus("누락 벽을 보완할 기준 벽이 없습니다. 벽 후처리로 기본 외곽/내벽을 먼저 만드세요.");
+      return;
+    }
 
-    setPixelToMmRatio(realLengthMm / pixelDistance);
-    setIsScaleSet(true);
-    setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
-    setScaleWall(null);
-    setScaleRealLength("");
-    setTool("wall");
-    setUploadStatus(`축척 적용됨: 1px = ${(realLengthMm / pixelDistance).toFixed(2)}mm`);
+    const tolerancePx = getStructuralBoundaryTolerancePx(boundaries);
+    const snapped = snapWallsToStructuralBoundaries(walls as never[], boundaries, tolerancePx) as {
+      movedCount: number;
+      walls: Wall[];
+    };
+    const inferred = inferMissingWallsFromStructuralBoundaries(snapped.walls as never[], boundaries, tolerancePx, {
+      minWallLengthPx: 45
+    }) as { createdCount: number; createdWalls: Wall[]; walls: Wall[] };
+
+    setWalls(inferred.walls);
+    setHiddenWallIds(new Set());
+    setSelectedWall(null);
+    setHoveredWall(null);
+    setUploadStatus(`치수 기준 누락 벽 ${inferred.createdCount}개 보완`);
+    setAiAnalysisStatus(
+      `구조 치수 경계 기준으로 기존 벽 ${snapped.movedCount}개를 맞추고, Roboflow가 놓친 후보 벽 ${inferred.createdCount}개를 추가했습니다. 문/창문 구멍은 3D 변환 단계의 opening 후보로 다시 잘립니다.`
+    );
   }
 
-  function confirmSuggestedScale() {
-    const candidate = extractionMeta.scaleCandidates[0];
-    const confirmedRatio = candidate && candidate.pixelToMmRatio > 0 ? candidate.pixelToMmRatio : pixelToMmRatio;
-    setPixelToMmRatio(confirmedRatio);
+  // 가까운 세로벽 X + 가로벽 Y 둘 다 반경 안일 때만 그 교차점(코너)에 스냅. 벽에서 멀면 null.
+  // 축은 벽 중심선이므로, 클릭한 쪽(=방 안쪽)으로 두께 절반만큼 밀어 눈에 보이는 안쪽 면 꼭짓점에 붙인다.
+  function findSnapCorner(point: Point): Point | null {
+    const tolerance = 20 / viewScale;
+    const nearest = (samples: Array<{ axis: number; thickness: number }>, target: number) => {
+      let best: { axis: number; thickness: number } | null = null;
+      let bestDistance = tolerance;
+      for (const sample of samples) {
+        // 거리는 중심선이 아니라 벽 면(중심선 ± 두께/2) 기준 — 두꺼운 벽의 면 코너 클릭도 반경 안에 들어온다.
+        const distance = Math.max(0, Math.abs(sample.axis - target) - sample.thickness / 2);
+        if (distance <= bestDistance) {
+          bestDistance = distance;
+          best = sample;
+        }
+      }
+      return best;
+    };
+    const snapX = nearest(wallAxisLines.verticalX, point.x);
+    const snapY = nearest(wallAxisLines.horizontalY, point.y);
+    if (snapX === null || snapY === null) return null;
+    return {
+      x: snapX.axis + Math.sign(point.x - snapX.axis) * (snapX.thickness / 2),
+      y: snapY.axis + Math.sign(point.y - snapY.axis) * (snapY.thickness / 2)
+    };
+  }
+
+  // 측정 점을 꼭짓점에 스냅(반경 안이면 코너, 아니면 그대로).
+  function snapToWallCorner(point: Point): Point {
+    return findSnapCorner(point) ?? point;
+  }
+
+  // 방 내부 재기: 가로/세로 측정 시작(두 점 클릭 모드로 전환).
+  function startInteriorMeasure(target: "width" | "depth" | "scale") {
+    setTool("interior");
+    setInteriorMeasureTarget(target);
+    setInteriorMeasureStart(null);
+    setInteriorMeasureEnd(null);
+    setInteriorMeasurePx(0);
+    setInteriorCalibrationMm("");
+    setUploadStatus(
+      target === "scale"
+        ? "축척 맞추기: 도면에서 실제 길이(mm)를 아는 두 점을 클릭하세요 (예: 치수가 적힌 벽의 양 끝)"
+        : target === "width"
+          ? "방 안쪽 '가로' 두 점을 클릭하세요"
+          : "방 안쪽 '세로' 두 점을 클릭하세요"
+    );
+  }
+
+  // 방금 잰 선의 실제 길이(mm)로 축척만 확정한다 — 방 가로/세로 치수와는 분리.
+  function applyInteriorCalibration() {
+    const realMm = Number(interiorCalibrationMm);
+    if (!realMm || realMm <= 0 || interiorMeasurePx <= 0) return;
+    const ratio = realMm / interiorMeasurePx;
+    setPixelToMmRatio(ratio);
     setIsScaleSet(true);
     setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
-    setUploadStatus(`축척 확인 완료: 1px = ${confirmedRatio.toFixed(2)}mm`);
+    setInteriorCalibrationMm("");
+    // 연속 측정: 축척이 잡혔으니 남은 방 치수가 비어 있으면 바로 그 측정으로 넘어간다.
+    const nextTarget = !roomWidthMm ? ("width" as const) : !roomDepthMm ? ("depth" as const) : null;
+    if (nextTarget) {
+      setInteriorMeasureTarget(nextTarget);
+      setInteriorMeasurePx(0);
+      setInteriorMeasureStart(null);
+      setInteriorMeasureEnd(null);
+      setUploadStatus(`축척 맞춤: 1px = ${ratio.toFixed(2)}mm — 이어서 방 안쪽 '${nextTarget === "width" ? "가로" : "세로"}' 두 점을 클릭하세요`);
+    } else {
+      setUploadStatus(`축척 맞춤: 1px = ${ratio.toFixed(2)}mm`);
+    }
   }
 
   function applyPrintedDimensionScale(dimension: PrintedDimensionChip) {
@@ -2472,6 +2992,17 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(`후보 레이어 ${candidateId} 이동`);
   }
 
+  // 방 내부 재기로 측정/입력한 실측값 — 저장 payload에 실어 가구 fit 판단의 근거로 남긴다.
+  function buildRoomInteriorMeasurement() {
+    const widthMm = Number(roomWidthMm);
+    const depthMm = Number(roomDepthMm);
+    return {
+      areaM2: roomAreaM2,
+      depthMm: depthMm > 0 ? Math.round(depthMm) : null,
+      widthMm: widthMm > 0 ? Math.round(widthMm) : null
+    };
+  }
+
   async function saveFloorPlanDraft(nextStatus: "DRAFT" | "PUBLISHED" = "DRAFT") {
     const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
     const payload = buildFloorPlanDraftPayload({
@@ -2482,6 +3013,7 @@ export default function RoomlogFloorPlanEditor() {
       landlordFurnitures: landlordOptionFurnitures,
       openingCandidates,
       pixelToMmRatio,
+      roomInterior: buildRoomInteriorMeasurement(),
       scaleConfirmed: isScaleSet,
       status: nextStatus,
       uploadedFloorPlanSource,
@@ -2511,10 +3043,12 @@ export default function RoomlogFloorPlanEditor() {
       const saved = (await response.json()) as { id?: string };
       if (saved.id) setFloorPlanDraftId(saved.id);
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, id: saved.id, savedAt: Date.now() }));
+      setSaveState({ kind: nextStatus === "PUBLISHED" ? "published" : "draft", at: Date.now() });
       setUploadStatus(nextStatus === "PUBLISHED" ? "발행 완료" : "저장 완료");
     } catch {
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, savedAt: Date.now(), status: "LOCAL_DRAFT" }));
-      setUploadStatus("API 저장 실패 - 로컬 임시 저장");
+      setSaveState({ kind: "local", at: Date.now() });
+      setUploadStatus("서버 저장 실패 — 이 브라우저에만 임시 저장됨");
     }
   }
 
@@ -2530,6 +3064,7 @@ export default function RoomlogFloorPlanEditor() {
         landlordFurnitures: landlordOptionFurnitures,
         openingCandidates,
         pixelToMmRatio,
+        roomInterior: buildRoomInteriorMeasurement(),
         timestamp: Date.now(),
         walls,
         walls3D: roomWalls3D
@@ -2638,16 +3173,13 @@ export default function RoomlogFloorPlanEditor() {
               >
                 도면 등록
               </label>
-              <button className="floor-plan-secondary" onClick={() => setTool("scale")} type="button">
-                축척
-              </button>
               <button
-                className="floor-plan-secondary"
-                disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
-                onClick={() => runPrintedDimensionReading()}
+                className={tool === "interior" ? "floor-plan-secondary active" : "floor-plan-secondary"}
+                onClick={() => startInteriorMeasure(isScaleSet ? "width" : "scale")}
+                title="방 안쪽 두 점을 클릭해 가로/세로(mm)를 재고 면적을 구합니다 (축척이 없으면 축척 맞추기부터 시작)"
                 type="button"
               >
-                치수 읽기
+                방 크기 재기
               </button>
               <button
                 className="floor-plan-secondary"
@@ -2665,15 +3197,6 @@ export default function RoomlogFloorPlanEditor() {
               >
                 벽 후처리 적용
               </button>
-              <button
-                className="floor-plan-secondary"
-                disabled={isProcessing || !(structuralWallBoundaries.verticalLineX.length + structuralWallBoundaries.horizontalLineY.length)}
-                onClick={applyStructuralDimensionWallCorrection}
-                title="읽힌 구조 치수 경계에 벽을 스냅해 3D 방 크기를 도면 치수와 맞춥니다"
-                type="button"
-              >
-                구조 치수로 벽 보정
-              </button>
             </>
           ) : (
             <button className="floor-plan-secondary" onClick={() => setViewMode("3d")} type="button">
@@ -2683,6 +3206,24 @@ export default function RoomlogFloorPlanEditor() {
           <span>{uploadStatus}</span>
           {uploadedImage ? <span>{aiAnalysisStatus}</span> : null}
         </div>
+
+        {wallBoundsMm ? (
+          <div
+            style={{
+              margin: "8px 0",
+              padding: "8px 12px",
+              background: isScaleSet ? "#e6f0ff" : "#fff3cd",
+              border: `1px solid ${isScaleSet ? "#4a86ff" : "#e0b400"}`,
+              borderRadius: 6,
+              fontWeight: 700,
+              fontSize: 14,
+              whiteSpace: "nowrap"
+            }}
+          >
+            📐 전체 {wallBoundsMm.widthMm.toLocaleString()}mm × {wallBoundsMm.heightMm.toLocaleString()}mm{" "}
+            {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '방 내부 재기 → 축척 재기'로 맞추세요"}
+          </div>
+        ) : null}
 
         {printedDimensionChips.length || openingDimensionChips.length || furnitureDimensionChips.length ? (
           <div className="floor-plan-visible-dimension-strip" aria-label="읽힌 치수 빠른 확인">
@@ -2846,6 +3387,24 @@ export default function RoomlogFloorPlanEditor() {
               배치 저장
             </button>
           )}
+          {saveState ? (
+            <span
+              aria-live="polite"
+              style={{
+                alignSelf: "center",
+                padding: "4px 10px",
+                borderRadius: 6,
+                fontWeight: 700,
+                fontSize: 13,
+                background: saveState.kind === "published" ? "#dcfce7" : saveState.kind === "local" ? "#fef3c7" : "#e0edff",
+                color: saveState.kind === "published" ? "#166534" : saveState.kind === "local" ? "#92400e" : "#1e40af"
+              }}
+            >
+              {saveState.kind === "published" ? "📢 발행됨" : saveState.kind === "local" ? "⚠️ 로컬에만 저장됨" : "💾 초안 저장됨"}
+              {" · "}
+              {new Date(saveState.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          ) : null}
         </div>
       </section>
 
@@ -2933,33 +3492,71 @@ export default function RoomlogFloorPlanEditor() {
               </div>
             ) : null}
 
-            {tool === "scale" ? (
-              <div className="floor-plan-sim-preview">
-                <span>축척 설정</span>
-                {extractionMeta.scaleCandidates[0] && !isScaleSet ? (
+            {tool === "interior" ? (
+              <div className="floor-plan-sim-preview floor-plan-scale-selected-wall">
+                <span>방 크기 측정 → 면적</span>
+                {/* 축척(1px=mm)은 여기서 따로 확정한다. 아래 가로/세로 재기는 확정된 축척을 소비만 한다. */}
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    className={interiorMeasureTarget === "scale" ? "floor-plan-secondary active" : "floor-plan-secondary"}
+                    onClick={() => startInteriorMeasure("scale")}
+                    title="실제 길이를 아는 두 점을 클릭하고 mm를 입력하면 축척이 확정됩니다"
+                    type="button"
+                  >
+                    축척 맞추기 (두 점)
+                  </button>
+                  <code>{isScaleSet ? `1px = ${pixelToMmRatio.toFixed(2)}mm` : "축척 없음"}</code>
+                </div>
+
+                {interiorMeasureTarget === "scale" && interiorMeasurePx > 0 ? (
                   <>
-                    <code>
-                      자동 추정 {extractionMeta.scaleCandidates[0].realLengthMm}mm / {extractionMeta.scaleCandidates[0].pixelLength}px
-                    </code>
-                    <button className="floor-plan-primary" onClick={confirmSuggestedScale} type="button">
-                      축척 확인
+                    <code>방금 잰 길이: {Math.round(interiorMeasurePx)}px = ? mm</code>
+                    <input
+                      aria-label="측정한 실제 길이"
+                      onChange={(event) => setInteriorCalibrationMm(event.target.value)}
+                      placeholder="이 선의 실제 길이 mm"
+                      type="number"
+                      value={interiorCalibrationMm}
+                    />
+                    <button className="floor-plan-primary" disabled={!interiorCalibrationMm} onClick={applyInteriorCalibration} type="button">
+                      축척 맞추기
                     </button>
                   </>
                 ) : null}
-                {scaleWall ? (
-                  <>
-                    <input
-                      aria-label="실제 길이" onChange={(event) => setScaleRealLength(event.target.value)}
-                      placeholder="실제 길이 mm"
-                      type="number"
-                      value={scaleRealLength}
-                    />
-                    <button className="floor-plan-primary" disabled={!scaleRealLength} onClick={applyScale} type="button">
-                      축척 적용
-                    </button>
-                  </>
+
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("width")} type="button">
+                    가로 재기
+                  </button>
+                  <input
+                    aria-label="방 가로 mm"
+                    onChange={(event) => setRoomWidthMm(event.target.value)}
+                    placeholder="가로 mm"
+                    style={{ width: 90 }}
+                    type="number"
+                    value={roomWidthMm}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("depth")} type="button">
+                    세로 재기
+                  </button>
+                  <input
+                    aria-label="방 세로 mm"
+                    onChange={(event) => setRoomDepthMm(event.target.value)}
+                    placeholder="세로 mm"
+                    style={{ width: 90 }}
+                    type="number"
+                    value={roomDepthMm}
+                  />
+                </div>
+
+                {roomAreaM2 !== null ? (
+                  <code style={{ background: "#e6f0ff", padding: "4px 8px", borderRadius: 4, fontWeight: 700 }}>
+                    이 방 약 {roomAreaM2.toFixed(1)}㎡ ({roomWidthMm}×{roomDepthMm}mm)
+                  </code>
                 ) : (
-                  <code>기준 벽을 그려주세요</code>
+                  <code>가로·세로 둘 다 재면 면적이 나옵니다</code>
                 )}
               </div>
             ) : null}
@@ -3022,6 +3619,11 @@ export default function RoomlogFloorPlanEditor() {
               <div className="floor-plan-furniture-grid">
                 {filteredFurnitureCatalog.map((item) => {
                   const imageUrl = furnitureImageUrl(item);
+                  // 측정한 방 크기 대비 가능/빡빡/불가 — MVP의 핵심 판단. 방을 안 쟀으면 표시하지 않는다.
+                  const fit = judgeFurnitureFit(catalogItemFootprint(item), {
+                    widthMm: Number(roomWidthMm) || null,
+                    depthMm: Number(roomDepthMm) || null
+                  });
 
                   return (
                     <button
@@ -3048,6 +3650,16 @@ export default function RoomlogFloorPlanEditor() {
                         {catalogKind(item)} · {item.brand}
                       </small>
                       <em>{item.length.join("x")}mm</em>
+                      {fit.verdict !== "unknown" ? (
+                        <small
+                          style={{
+                            color: fit.verdict === "fit" ? "#0a7a3d" : fit.verdict === "tight" ? "#b45309" : "#b91c1c",
+                            fontWeight: 700
+                          }}
+                        >
+                          {describeFurnitureFit(fit)}
+                        </small>
+                      ) : null}
                       <b>{Number(item.price).toLocaleString()}원</b>
                     </button>
                   );
