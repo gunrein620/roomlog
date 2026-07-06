@@ -6,6 +6,7 @@ import {
   RoomlogServiceOptions
 } from "./roomlog.service";
 import { PrismaStoreProjector } from "./prisma-store-projector";
+import { RealtimeModule } from "../realtime/realtime.module";
 
 export async function createRoomlogServiceOptions(
   env: NodeJS.ProcessEnv = process.env
@@ -20,6 +21,7 @@ export async function createRoomlogServiceOptions(
 }
 
 @Module({
+  imports: [RealtimeModule],
   controllers: [RoomlogController],
   providers: [
     {
@@ -27,6 +29,8 @@ export async function createRoomlogServiceOptions(
       useFactory: async () => createRoomlogServiceOptions()
     },
     RoomlogService
-  ]
+  ],
+  // 거래(trade) 모듈이 같은 토큰 인증을 재사용한다.
+  exports: [RoomlogService]
 })
 export class RoomlogModule {}
