@@ -28,7 +28,7 @@ export type RoboflowDetectionOverlayBox = {
   variant?: "raw" | "postprocessed";
 };
 
-export const ROBOFLOW_SITE_CONFIDENCE_THRESHOLD = 0.5;
+export const ROBOFLOW_SITE_CONFIDENCE_THRESHOLD = 0.35;
 
 function clampValue(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));

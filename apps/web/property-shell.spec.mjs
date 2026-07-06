@@ -1577,8 +1577,9 @@ test("consumes structural dimensions to correct Roboflow wall positions", () => 
     "structuralWallBoundaries",
     "structuralBoundaryOffsetsMm",
     "snapWallsToStructuralBoundaries",
+    "inferMissingWallsFromStructuralBoundaries",
     "applyStructuralDimensionWallCorrection",
-    "구조 치수로 벽 보정"
+    "applyStructuralDimensionMissingWallInference"
   ]) {
     assert.match(floorPlanContainerSource, new RegExp(label));
   }
@@ -1879,21 +1880,11 @@ test("floor plan editor model builds closed-loop floor polygon data", async () =
   assert.equal(polygons[0].perimeterMeters, 8);
 });
 
-test("floor plan editor model converts 2D walls into wheretoput-style 3D wall boxes", async () => {
+test("floor plan editor model no longer exposes legacy 2.5D wall box conversion", async () => {
   const model = floorPlanModel;
-  const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
-  const converted = model.convertWallsTo3D([wall], { height: 96, depth: 8 });
 
-  assert.equal(converted.wallPanels.length, 1);
-  assert.equal(converted.wallBoxes.length, 1);
-  assert.equal(converted.wallBoxes[0].id, "front");
-  assert.equal(converted.wallBoxes[0].height, 96);
-  assert.equal(converted.wallBoxes[0].depth, 8);
-  assert.match(converted.wallBoxes[0].frontPath, /^M /);
-  assert.match(converted.wallBoxes[0].topPath, /^M /);
-  assert.match(converted.wallBoxes[0].endCapPath, /^M /);
-  assert.notEqual(converted.wallBoxes[0].frontPath, converted.wallBoxes[0].topPath);
-  assert.equal(converted.floor.path.includes("L"), true);
+  assert.equal("convertWallsTo3D" in model, false);
+  assert.equal(typeof model.convertWallsToWheretoputRoom3D, "function");
 });
 
 test("floor plan editor model creates wheretoput simulator wall data", async () => {

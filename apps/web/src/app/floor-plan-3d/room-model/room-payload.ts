@@ -11,6 +11,13 @@ type CandidateLike = { status?: string };
 
 type UploadedSourceLike = { attachmentId?: string; imageUrl?: string };
 
+// 방 내부 재기로 측정/입력한 실측값. 가구가 들어갈지 판단하는 MVP의 핵심 데이터라 저장에 포함한다.
+export type RoomInteriorMeasurement = {
+  areaM2: number | null;
+  depthMm: number | null;
+  widthMm: number | null;
+};
+
 type RoomPayloadBaseInput<TCandidate extends CandidateLike> = {
   fixtureCandidates: readonly TCandidate[];
   landlordFurnitures: readonly PlacedFurniture[];
@@ -47,6 +54,7 @@ export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMe
   landlordFurnitures,
   openingCandidates,
   pixelToMmRatio,
+  roomInterior,
   scaleConfirmed,
   status,
   uploadedFloorPlanSource,
@@ -58,6 +66,7 @@ export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMe
     extractionMeta: TMeta;
     hiddenWallCount: number;
     pixelToMmRatio: number;
+    roomInterior?: RoomInteriorMeasurement | null;
     scaleConfirmed: boolean;
     status: DraftStatus;
     uploadedFloorPlanSource?: UploadedSourceLike | null;
@@ -81,6 +90,7 @@ export function buildFloorPlanDraftPayload<TCandidate extends CandidateLike, TMe
     openings: [...openingCandidates],
     pixelToMmRatio,
     room3d,
+    roomInterior: roomInterior ?? null,
     sourceAttachmentId: uploadedFloorPlanSource?.attachmentId,
     sourceImageUrl: uploadedFloorPlanSource?.imageUrl ?? uploadedImage ?? undefined,
     status,
@@ -95,6 +105,7 @@ export function buildFloorPlanLocalSnapshot<TCandidate extends CandidateLike, TM
   landlordFurnitures,
   openingCandidates,
   pixelToMmRatio,
+  roomInterior,
   timestamp,
   walls,
   walls3D
@@ -102,6 +113,7 @@ export function buildFloorPlanLocalSnapshot<TCandidate extends CandidateLike, TM
   HiddenWallIdsInput & {
     extractionMeta: TMeta;
     pixelToMmRatio: number;
+    roomInterior?: RoomInteriorMeasurement | null;
     timestamp: number;
     walls: readonly Wall[];
   }) {
@@ -112,6 +124,7 @@ export function buildFloorPlanLocalSnapshot<TCandidate extends CandidateLike, TM
     hiddenWallIds: Array.from(hiddenWallIds),
     openings: [...openingCandidates],
     pixelToMmRatio,
+    roomInterior: roomInterior ?? null,
     room3d: {
       fixtures: fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED"),
       furnitures: [...landlordFurnitures],

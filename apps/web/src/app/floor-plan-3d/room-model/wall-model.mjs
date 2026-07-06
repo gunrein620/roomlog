@@ -138,12 +138,6 @@ export function summarizeWalls(walls) {
   };
 }
 
-function createPath(points) {
-  return points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
-    .join(" ")
-    .concat(" Z");
-}
 
 function roundMetric(value) {
   return Math.round(value * 1000) / 1000;
@@ -494,130 +488,6 @@ export function normalizePlanName(name = "plan") {
     .toLowerCase();
 }
 
-export function projectPointTo3D(point, z = 0, camera = {}) {
-  const yaw = camera.yaw ?? 0;
-  const pitch = camera.pitch ?? 1;
-  const center = camera.center ?? { x: 432, y: 288 };
-  const relativeX = point.x - center.x;
-  const relativeY = point.y - center.y;
-  const cos = Math.cos(yaw);
-  const sin = Math.sin(yaw);
-  const rotatedX = relativeX * cos - relativeY * sin;
-  const rotatedY = relativeX * sin + relativeY * cos;
-
-  return {
-    x: 480 + (rotatedX - rotatedY) * 0.55,
-    y: 300 + (rotatedX + rotatedY) * 0.22 * pitch - z
-  };
-}
-
-export function convertWallTo3D(wall, options = {}) {
-  const height = options.height ?? DEFAULT_WALL_HEIGHT;
-  const depth = options.depth ?? DEFAULT_WALL_DEPTH;
-  const camera = options.camera ?? {};
-  const bottomStart = projectPointTo3D(wall.start, 0, camera);
-  const bottomEnd = projectPointTo3D(wall.end, 0, camera);
-  const topEnd = projectPointTo3D(wall.end, height, camera);
-  const topStart = projectPointTo3D(wall.start, height, camera);
-
-  return {
-    id: wall.id,
-    height,
-    depth,
-    path: createPath([bottomStart, bottomEnd, topEnd, topStart]),
-    topLine: {
-      start: topStart,
-      end: topEnd
-    }
-  };
-}
-
-export function convertWallTo3DBox(wall, options = {}) {
-  const height = options.height ?? DEFAULT_WALL_HEIGHT;
-  const depth = options.depth ?? DEFAULT_WALL_DEPTH;
-  const camera = options.camera ?? {};
-  const lineX = wall.end.x - wall.start.x;
-  const lineY = wall.end.y - wall.start.y;
-  const length = Math.hypot(lineX, lineY) || 1;
-  const normal = {
-    x: (-lineY / length) * depth,
-    y: (lineX / length) * depth
-  };
-  const startDepth = {
-    x: wall.start.x + normal.x,
-    y: wall.start.y + normal.y
-  };
-  const endDepth = {
-    x: wall.end.x + normal.x,
-    y: wall.end.y + normal.y
-  };
-  const bottomStart = projectPointTo3D(wall.start, 0, camera);
-  const bottomEnd = projectPointTo3D(wall.end, 0, camera);
-  const topEnd = projectPointTo3D(wall.end, height, camera);
-  const topStart = projectPointTo3D(wall.start, height, camera);
-  const bottomStartDepth = projectPointTo3D(startDepth, 0, camera);
-  const bottomEndDepth = projectPointTo3D(endDepth, 0, camera);
-  const topEndDepth = projectPointTo3D(endDepth, height, camera);
-  const topStartDepth = projectPointTo3D(startDepth, height, camera);
-  const allPoints = [
-    bottomStart,
-    bottomEnd,
-    topEnd,
-    topStart,
-    bottomStartDepth,
-    bottomEndDepth,
-    topEndDepth,
-    topStartDepth
-  ];
-
-  return {
-    id: wall.id,
-    height,
-    depth,
-    frontPath: createPath([bottomStart, bottomEnd, topEnd, topStart]),
-    topPath: createPath([topStart, topEnd, topEndDepth, topStartDepth]),
-    startCapPath: createPath([bottomStartDepth, bottomStart, topStart, topStartDepth]),
-    endCapPath: createPath([bottomEnd, bottomEndDepth, topEndDepth, topEnd]),
-    sortY: Math.max(...allPoints.map((point) => point.y)),
-    topLine: {
-      start: topStart,
-      end: topEnd
-    }
-  };
-}
-
-export function convertWallsTo3D(walls, options = {}) {
-  const wallBoxes = walls.map((wall) => convertWallTo3DBox(wall, options)).sort((left, right) => left.sortY - right.sortY);
-  const wallPanels = wallBoxes.map((box) => ({
-    id: box.id,
-    height: box.height,
-    depth: box.depth,
-    path: box.frontPath,
-    topLine: box.topLine
-  }));
-  const points = walls.flatMap((wall) => [wall.start, wall.end]);
-  const hasPoints = points.length > 0;
-  const minX = hasPoints ? Math.min(...points.map((point) => point.x)) : 120;
-  const maxX = hasPoints ? Math.max(...points.map((point) => point.x)) : 720;
-  const minY = hasPoints ? Math.min(...points.map((point) => point.y)) : 120;
-  const maxY = hasPoints ? Math.max(...points.map((point) => point.y)) : 456;
-  const pad = GRID_SIZE + (options.depth ?? DEFAULT_WALL_DEPTH);
-  const camera = options.camera ?? {};
-  const floorCorners = [
-    projectPointTo3D({ x: minX - pad, y: minY - pad }, 0, camera),
-    projectPointTo3D({ x: maxX + pad, y: minY - pad }, 0, camera),
-    projectPointTo3D({ x: maxX + pad, y: maxY + pad }, 0, camera),
-    projectPointTo3D({ x: minX - pad, y: maxY + pad }, 0, camera)
-  ];
-
-  return {
-    wallPanels,
-    wallBoxes,
-    floor: {
-      path: createPath(floorCorners)
-    }
-  };
-}
 
 export function convertWallToWheretoputSimulator(wall, options = {}) {
   const pixelToMeterRatio = options.pixelToMeterRatio ?? DEFAULT_PIXEL_TO_METER_RATIO;
@@ -672,8 +542,10 @@ export function convertWallsToWheretoputRoom3D(walls, options = {}) {
     const centerX = (startX + endX) / 2;
     const centerZ = (startZ + endZ) / 2;
     const rotation = Math.atan2(endZ - startZ, endX - startX);
-    // 탐지 벽 박스처럼 벽별 두께 정보(depthPx, 에디터 px)가 있으면 고정 두께 대신 사용한다.
-    const wallDepth = Number(wall.depthPx) > 0 ? Math.max(0.05, roundMetric((wall.depthPx * pixelToMmRatio) / 1000)) : depth;
+    // 탐지 벽 박스처럼 벽별 두께 정보(에디터 px)가 있으면 고정 두께 대신 사용한다.
+    // depthPx ?? thicknessPx 폴백은 이 파일의 다른 두께 소비처와 동일한 규칙.
+    const wallThicknessPx = Number(wall.depthPx ?? wall.thicknessPx ?? 0);
+    const wallDepth = wallThicknessPx > 0 ? Math.max(0.05, roundMetric((wallThicknessPx * pixelToMmRatio) / 1000)) : depth;
 
     return {
       id: options.stableIds ? stableWallId(wall.id) : `wall-${index}`,
