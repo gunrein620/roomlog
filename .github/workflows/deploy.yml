@@ -98,13 +98,20 @@ jobs:
             GOOGLE_LOGIN_CALLBACK_URL="$(read_prod_env_key GOOGLE_LOGIN_CALLBACK_URL)"
           fi
 
+          # 웹소켓 접속 주소 — PROD_ENV로 덮어쓸 수 있고, 기본은 api 서브도메인(ALB 호스트 규칙).
+          NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL:-}"
+          if [ -z "$NEXT_PUBLIC_SOCKET_URL" ] && [ -n "${PROD_ENV:-}" ]; then
+            NEXT_PUBLIC_SOCKET_URL="$(read_prod_env_key NEXT_PUBLIC_SOCKET_URL)"
+          fi
+          NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL:-https://api.woo-zu.com}"
+
           PORT="${PORT:-4000}"
           AWS_REGION="${AWS_REGION:-ap-northeast-2}"
           S3_BUCKET_NAME="${S3_BUCKET_NAME:-roomlog-files}"
 
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -115,6 +122,7 @@ jobs:
           API_INTERNAL_URL=${API_INTERNAL_URL}
           NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}
+          NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}
           ROOMLOG_PUBLIC_ORIGIN=${ROOMLOG_PUBLIC_ORIGIN}
           GOOGLE_LOGIN_CLIENT_ID=${GOOGLE_LOGIN_CLIENT_ID}
           GOOGLE_LOGIN_CLIENT_SECRET=${GOOGLE_LOGIN_CLIENT_SECRET}
