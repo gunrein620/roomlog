@@ -78,7 +78,8 @@ type MapResultTab = "rooms" | "complexes" | "agents";
 
 type NaverLatLng = unknown;
 type NaverMap = unknown;
-type NaverMarker = unknown;
+// setMap(null) = 마커 제거 — 지도 탭에서 매물 목록이 바뀔 때 마커를 다시 그리는 데 쓴다.
+type NaverMarker = { setMap: (map: NaverMap | null) => void };
 type NaverPoint = unknown;
 type NaverInfoWindow = {
   open: (map: NaverMap, marker: NaverMarker) => void;
@@ -750,6 +751,44 @@ const mapListings = [
 
 const mapDealMarkers = mapListings;
 
+// 지도 탭 패널·마커 공용 아이템 — 데모는 listingNo로 정규화하고, 직접등록 매물은 렌더 시 합류한다.
+// (QA: 지도에 새 매물이 안 찍히고 매물창이 갱신되지 않던 문제의 뿌리 = 하드코딩 mapListings 단독 사용)
+type MapPanelItem = Omit<(typeof mapListings)[number], "listingIndex"> & { listingNo: string };
+
+const demoMapItems: MapPanelItem[] = mapListings.map(({ listingIndex, ...item }) => ({
+  ...item,
+  listingNo: listings[listingIndex].listingNo
+}));
+
+/** 직접등록 매물을 지도 패널 아이템으로 투영 — 좌표 없으면 NaN(마커 제외, 목록에는 노출). */
+function tradeListingToMapItem(listing: TradeListing, index: number, total: number): MapPanelItem {
+  const shortPrice =
+    listing.tradeType === "월세"
+      ? `${listing.depositManwon}/${listing.monthlyRentManwon}`
+      : tradePriceLabel(listing);
+  return {
+    listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
+    title: listing.title,
+    price: tradePriceLabel(listing),
+    meta: `${listing.roomType} · 집주인 직접`,
+    distance: listing.location,
+    updated: "방금 등록",
+    flags: ["집주인 직접"],
+    image: (Array.isArray(listing.images) && listing.images[0]) || "/listing-studio.jpg",
+    lat: typeof listing.lat === "number" ? listing.lat : Number.NaN,
+    lng: typeof listing.lng === "number" ? listing.lng : Number.NaN,
+    mapLabel: shortPrice,
+    clusterLabel: "직접",
+    verifyStatus: "집주인 직접 등록",
+    responseStatus: "채팅 문의 가능",
+    tourStatus: "방문 예약",
+    accuracyRank: 0,
+    recencyRank: index - total, // 서버 목록은 최신순 — 데모(0~2)보다 항상 앞선다
+    monthlyRent: listing.monthlyRentManwon,
+    has3DTour: false
+  };
+}
+
 const getMapFilterSummary = (filter: string) => {
   if (filter === "원룸·투룸") {
     return "원룸·복층 중심";
@@ -814,18 +853,8 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-const initialInquiries: InquiryItem[] = [
-  {
-    id: 1,
-    listingTitle: "방배 루미에르 402호",
-    broker: "내방역 푸른공인중개사",
-    message: "아직 거래 가능한가요?",
-    visitTime: "오늘 3시",
-    status: "답변 완료",
-    reply: "네, 아직 거래 가능합니다. 오늘 3시 방문도 가능해요.",
-    time: "10분 전"
-  }
-];
+// QA: 데모 문의(답변 포함)가 세션마다 "문의 1" 배지를 되살리던 문제 — 실제 문의만 쌓이도록 빈 목록으로 시작.
+const initialInquiries: InquiryItem[] = [];
 
 const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
 
@@ -1583,7 +1612,14 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
             </label>
             <label>
               입주가능일
-              <input value={ownerForm.moveIn} onChange={(event) => updateOwnerForm("moveIn", event.target.value)} placeholder="예: 즉시, 2026-08-01" />
+              {/* QA: 자유 텍스트 대신 달력에서 선택 — 기존 초안의 비날짜 값("즉시" 등)은 빈 값으로 보이지만 지우지 않는다 */}
+              <input
+                type="date"
+                value={ownerForm.moveIn}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(event) => updateOwnerForm("moveIn", event.target.value)}
+                aria-label="입주가능일 달력 선택"
+              />
             </label>
           </div>
 
@@ -1707,21 +1743,39 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   );
 }
 
+type MapMarkerInput = {
+  lat: number;
+  lng: number;
+  title: string;
+  price: string;
+  mapLabel: string;
+  clusterLabel: string;
+};
+
 function NaverMapPreview({
   className = "",
   center,
-  title
+  title,
+  markers
 }: {
   className?: string;
   /** 특정 매물 좌표 — 있으면 그 위치를 중심으로 단일 마커를 찍는다(없으면 데모 마커). */
   center?: { lat: number; lng: number } | null;
   title?: string;
+  /** 지도 탭용 동적 마커 목록 — 값이 바뀌면 마커를 다시 그린다(직접등록 매물 포함). */
+  markers?: MapMarkerInput[];
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const isMapInitializedRef = useRef(false);
+  const mapInstanceRef = useRef<NaverMap | null>(null);
+  const dynamicMarkersRef = useRef<NaverMarker[]>([]);
   const [isScriptReady, setIsScriptReady] = useState(false);
   const [loadState, setLoadState] = useState<MapLoadState>(naverMapClientId ? "loading" : "missing-key");
   const scriptUrl = naverMapScriptUrl;
+  // 좌표 배열이 실제로 달라졌을 때만 마커를 다시 그린다 (렌더마다 새 배열이 와도 무시).
+  const markersKey = markers
+    ? JSON.stringify(markers.map((deal) => [deal.lat, deal.lng, deal.mapLabel]))
+    : "";
 
   useEffect(() => {
     if (window.naver?.maps) {
@@ -1755,8 +1809,10 @@ function NaverMapPreview({
       zoom: 16,
       zoomControl: true
     });
+    mapInstanceRef.current = map;
 
-    if (!hasCenter) {
+    // markers 프롭이 있으면(지도 탭) 마커는 아래 동기화 이펙트가 그린다 — 여기서는 지도만 만든다.
+    if (!hasCenter && !markers) {
       mapDealMarkers.forEach((deal, index) => {
         const position = new maps.LatLng(deal.lat, deal.lng);
         new maps.Marker({
@@ -1770,16 +1826,18 @@ function NaverMapPreview({
       });
     }
 
-    const marker = new maps.Marker({
-      map,
-      position: centerLatLng
-    });
-    const infoWindow = new maps.InfoWindow({
-      content: hasCenter
-        ? `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "이 매물"}</b><strong>현재 위치</strong></div>`
-        : '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
-    });
-    infoWindow.open(map, marker);
+    if (hasCenter || !markers) {
+      const marker = new maps.Marker({
+        map,
+        position: centerLatLng
+      });
+      const infoWindow = new maps.InfoWindow({
+        content: hasCenter
+          ? `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "이 매물"}</b><strong>현재 위치</strong></div>`
+          : '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
+      });
+      infoWindow.open(map, marker);
+    }
     setLoadState("ready");
 
     window.setTimeout(() => {
@@ -1793,6 +1851,31 @@ function NaverMapPreview({
       }
     }, 600);
   }, [isScriptReady, loadState]);
+
+  // 동적 마커 동기화 — 매물 목록(직접등록 포함)이 바뀌면 기존 마커를 지우고 다시 그린다.
+  useEffect(() => {
+    if (!markersKey || loadState !== "ready") return;
+    const maps = window.naver?.maps;
+    const map = mapInstanceRef.current;
+    if (!maps || !map) return;
+
+    dynamicMarkersRef.current.forEach((marker) => marker.setMap(null));
+    const parsed = JSON.parse(markersKey) as Array<[number, number, string]>;
+    dynamicMarkersRef.current = parsed.map(([lat, lng, mapLabel], index) => {
+      const clusterLabel = escapeHtml(String((markers ?? [])[index]?.clusterLabel ?? ""));
+      const markerTitle = escapeHtml(String((markers ?? [])[index]?.title ?? ""));
+      const price = escapeHtml(String((markers ?? [])[index]?.price ?? ""));
+      return new maps.Marker({
+        map,
+        position: new maps.LatLng(lat, lng),
+        icon: {
+          content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${markerTitle} ${price}"><b>${clusterLabel}</b><strong>${escapeHtml(String(mapLabel))}</strong></button>`,
+          anchor: new maps.Point(42, 56)
+        }
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- markersKey가 markers의 좌표·라벨을 대변한다
+  }, [markersKey, loadState]);
 
   const handleScriptReady = () => {
     requestAnimationFrame(() => {
@@ -2669,7 +2752,7 @@ function InquiryHubSection({
       <div className="section-title no-margin">
         <div>
           <h2 id="inquiry-title">문의센터</h2>
-          <p>보낸 문의가 집주인과의 채팅으로 이어집니다.</p>
+          <p>보낸 문의와 받은 문의가 모두 채팅으로 이어집니다.</p>
         </div>
         {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
         <button type="button" onClick={onNewInquiry}>
@@ -2677,10 +2760,10 @@ function InquiryHubSection({
         </button>
       </div>
 
-      {/* 서버 스레드 기반 문의 채팅 — 다른 계정(집주인)이 실제로 받고 답한다 */}
+      {/* 서버 스레드 기반 문의 채팅 — 보낸 문의(구매자)와 받은 문의(집주인)를 한 곳에서 본다.
+          QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제. */}
       <TradeChatCenter
-        roleFilter="buyer"
-        emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요."
+        emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
         onRequireLogin={onRequireLogin}
         focusThreadId={focusThreadId}
       />
@@ -3701,7 +3784,7 @@ export default function Home() {
   const [activeMapFilter, setActiveMapFilter] = useState("시세");
   const [activeSort, setActiveSort] = useState(sortOptions[0].label);
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
-  const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
+  const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
   const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
   const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
   // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
@@ -3756,12 +3839,12 @@ export default function Home() {
           : activeCategory === "투룸"
             ? listing.spec.includes("투룸") || listing.spec.includes("복층")
             : false;
-    const dealTypeFilters = activeQuickFilters.filter((filter) => filter === "월세" || filter === "전세");
-    const optionFilters = activeQuickFilters.filter((filter) => filter !== "월세" && filter !== "전세");
+    // 거래유형(월세/전세/매매/단기)끼리는 OR — 둘 다 켜면 "월세 또는 전세"다 (QA: every()로 AND 되던 버그).
+    const dealTypeFilters = activeQuickFilters.filter((filter) => ["월세", "전세", "매매", "단기"].includes(filter));
+    const optionFilters = activeQuickFilters.filter((filter) => !dealTypeFilters.includes(filter));
     const dealTypeMatches =
-      dealTypeFilters.length === 0 || dealTypeFilters.some((filter) => listing.price.includes(filter));
+      dealTypeFilters.length === 0 || dealTypeFilters.some((filter) => listing.price.includes(filter) || listing.tags.includes(filter));
     const optionMatches = optionFilters.every((filter) => {
-
       if (filter === "관리비 포함") {
         return listing.maintenanceFee !== "15만원";
       }
@@ -3772,6 +3855,7 @@ export default function Home() {
 
       return listing.tags.includes(filter);
     });
+    // 검색은 app 브랜치의 제출형 구현(공백 정규화 + 넓은 필드)을 따른다.
     const normalizedSearchQuery = activeSearchQuery.toLowerCase().replace(/\s/g, "");
     const searchMatches =
       normalizedSearchQuery.length === 0 ||
@@ -3801,7 +3885,12 @@ export default function Home() {
     ? `${activeFilterSummary} 조건 안에서 검색어와 맞는 매물을 보여줍니다.`
     : `${activeFilterSummary} 조건에 맞는 매물을 보여줍니다.`;
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
-  const visibleMapListings = [...mapListings]
+  // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
+  const allMapItems = [
+    ...tradeListings.map((listing, index) => tradeListingToMapItem(listing, index, tradeListings.length)),
+    ...demoMapItems
+  ];
+  const visibleMapListings = allMapItems
     .filter((listing) => {
       if (activeMapFilter === "3D 가능") {
         return listing.has3DTour;
@@ -3836,7 +3925,10 @@ export default function Home() {
 
       return a.accuracyRank - b.accuracyRank;
     });
-  const selectedMapListing = visibleMapListings.find((listing) => listing.listingIndex === selectedMapListingIndex) ?? visibleMapListings[0];
+  const selectedMapListing = visibleMapListings.find((listing) => listing.listingNo === selectedMapListingNo) ?? visibleMapListings[0];
+  // 지도 마커 = 좌표가 유효한 매물만 (직접등록 매물 포함 — QA: 지도에 매물 안 찍힘)
+  const mapMarkers = visibleMapListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
+  const findListingCardByNo = (listingNo: string) => allListings.find((listing) => listing.listingNo === listingNo);
 
   const viewedListings = viewedListingNos
     .map((listingNo) => allListings.find((listing) => listing.listingNo === listingNo))
@@ -4275,6 +4367,7 @@ export default function Home() {
             <p className="web-hero-sub">전월세부터 매매까지 | 방문 전 3D로 먼저 둘러보세요</p>
           </div>
 
+          {/* 검색 UX는 app 브랜치 구현 유지 — 버튼/Enter로 제출하는 검색 (QA: 직접 입력 가능) */}
           <div className="search-box" role="search">
             <button className="search-submit-button" type="button" aria-label="검색" onClick={runHomeSearch}>
               <Search size={20} strokeWidth={2.4} aria-hidden="true" />
@@ -4635,10 +4728,16 @@ export default function Home() {
           </section>
 
           <div className="map-canvas-stack">
-            <NaverMapPreview className="map-stage" />
+            <NaverMapPreview className="map-stage" markers={mapMarkers} />
             {selectedMapListing ? (
               <article className="map-selected-card" aria-label="지도 선택 매물">
-                <button type="button" onClick={() => openListing(listings[selectedMapListing.listingIndex])}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const card = findListingCardByNo(selectedMapListing.listingNo);
+                    if (card) openListing(card);
+                  }}
+                >
                   <span>{selectedMapListing.clusterLabel} · {selectedMapListing.updated}</span>
                   <strong>{selectedMapListing.title}</strong>
                   <small>{selectedMapListing.price} · {selectedMapListing.distance}</small>
@@ -4685,11 +4784,11 @@ export default function Home() {
             <section className="map-result-summary" aria-label="지도 결과 요약">
               <article>
                 <span>확인매물</span>
-                <strong>39개</strong>
+                <strong>{visibleMapListings.length}개</strong>
               </article>
               <article>
                 <span>3D 가능</span>
-                <strong>12개</strong>
+                <strong>{visibleMapListings.filter((listing) => listing.has3DTour).length}개</strong>
               </article>
               <article>
                 <span>평균 응답</span>
@@ -4705,15 +4804,16 @@ export default function Home() {
 
                 <div className="map-list">
                   {visibleMapListings.map((listing) => (
-                    <article className="map-listing" key={listing.title}>
+                    <article className="map-listing" key={listing.listingNo}>
                       <button
-                        className={selectedMapListing?.listingIndex === listing.listingIndex ? "map-listing-action active" : "map-listing-action"}
+                        className={selectedMapListing?.listingNo === listing.listingNo ? "map-listing-action active" : "map-listing-action"}
                         type="button"
-                        onFocus={() => setSelectedMapListingIndex(listing.listingIndex)}
-                        onMouseEnter={() => setSelectedMapListingIndex(listing.listingIndex)}
+                        onFocus={() => setSelectedMapListingNo(listing.listingNo)}
+                        onMouseEnter={() => setSelectedMapListingNo(listing.listingNo)}
                         onClick={() => {
-                          setSelectedMapListingIndex(listing.listingIndex);
-                          openListing(listings[listing.listingIndex]);
+                          setSelectedMapListingNo(listing.listingNo);
+                          const card = findListingCardByNo(listing.listingNo);
+                          if (card) openListing(card);
                         }}
                       >
                         <div
@@ -4746,12 +4846,12 @@ export default function Home() {
                         </div>
                       </button>
                       <button
-                        className={savedListingNos.includes(listings[listing.listingIndex].listingNo) ? "saved" : ""}
+                        className={savedListingNos.includes(listing.listingNo) ? "saved" : ""}
                         type="button"
                         aria-label={`${listing.title} 저장`}
-                        onClick={() => toggleSavedListing(listings[listing.listingIndex].listingNo)}
+                        onClick={() => toggleSavedListing(listing.listingNo)}
                       >
-                        <Heart size={20} fill={savedListingNos.includes(listings[listing.listingIndex].listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                        <Heart size={20} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
                       </button>
                     </article>
                   ))}
