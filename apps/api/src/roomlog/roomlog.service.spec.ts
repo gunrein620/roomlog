@@ -3195,6 +3195,7 @@ describe("RoomlogService", () => {
       ]
     });
     const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
+    assert.equal(sent.draftId, reviewedDraft.id);
 
     let tenantAnnouncement = service.getTenantMessagingAnnouncement(
       "tenant-demo",

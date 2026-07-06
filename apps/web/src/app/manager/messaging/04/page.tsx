@@ -21,6 +21,9 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
 
+const MANAGER_DRAFT_REPLY_BODY =
+  "문의 내용을 확인했습니다. 처리 가능 시간과 필요한 추가 정보를 안내드리겠습니다.";
+
 async function sendManagerMessage(formData: FormData) {
   "use server";
 
@@ -32,7 +35,83 @@ async function sendManagerMessage(formData: FormData) {
   }
 
   if (threadId && body) {
-    await addManagerThreadMessage(threadId, { body });
+    try {
+      await addManagerThreadMessage(threadId, { body });
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        redirect("/manager/login");
+      }
+      if (error instanceof ApiError && error.status === 404) {
+        redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+      }
+      throw error;
+    }
+  }
+
+  redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function sendManagerDraftReply(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  try {
+    await addManagerThreadMessage(threadId, { body: MANAGER_DRAFT_REPLY_BODY });
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
+  }
+
+  redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+}
+
+async function sendManagerRequestMessage(formData: FormData) {
+  "use server";
+
+  const threadId = String(formData.get("threadId") ?? "");
+  const requestType = String(formData.get("requestType") ?? "");
+
+  if (!threadId) {
+    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+  }
+
+  const message =
+    requestType === "photo"
+      ? {
+          kind: "photo_request" as const,
+          body: "사진을 추가로 보내주세요. 문제 위치와 주변이 함께 보이게 촬영해 주세요.",
+        }
+      : requestType === "description"
+        ? {
+            kind: "text" as const,
+            body: "상황을 더 자세히 설명해 주세요. 발생 시각과 반복 여부를 함께 알려주세요.",
+          }
+        : null;
+
+  if (!message) {
+    redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
+  }
+
+  try {
+    await addManagerThreadMessage(threadId, message);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      redirect("/manager/login");
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
+    }
+    throw error;
   }
 
   redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-04"]}?id=${encodeURIComponent(threadId)}`);
@@ -142,8 +221,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             사진 또는 설명 요청은 임차인 T-MSG-01 상단에 고정되고, 하자 맥락이면 T-DEF-11에도 반영됩니다.
           </NoticeCard>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-            <StaticButton>사진 요청</StaticButton>
-            <StaticButton>설명 요청</StaticButton>
+            <form action={sendManagerRequestMessage}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <input type="hidden" name="requestType" value="photo" />
+              <Button type="submit" variant="secondary">사진 요청</Button>
+            </form>
+            <form action={sendManagerRequestMessage}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <input type="hidden" name="requestType" value="description" />
+              <Button type="submit" variant="secondary">설명 요청</Button>
+            </form>
           </div>
 
           {isPayment ? (
@@ -159,9 +246,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitleStyle}>AI 답장 초안</div>
             <div style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-              문의 내용을 확인했습니다. 처리 가능 시간과 필요한 추가 정보를 안내하는 해결지향 문구로 답장합니다.
+              {MANAGER_DRAFT_REPLY_BODY}
             </div>
-            <StaticButton>초안 적용</StaticButton>
+            <form action={sendManagerDraftReply}>
+              <input type="hidden" name="threadId" value={thread.id} />
+              <Button type="submit" variant="secondary" fullWidth>
+                초안 적용
+              </Button>
+            </form>
           </Card>
 
           <NoticeCard title="음성 답장 확인 1스텝" emphasis>

@@ -193,7 +193,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantRecordsSource, /SOURCE_ROUTE/);
   assert.match(tenantRecordsSource, /evidenceUrls/);
   assert.match(tenantRecordsSource, /targetItemId=\$\{record\.id\}/);
-  assert.match(tenantRecordsSource, /근거 상세/);
+  assert.match(tenantRecordsSource, /상세정보 보기/);
   assert.match(tenantRecordsSource, /searchParams/);
   assert.doesNotMatch(tenantRecordsSource, /href=\{MOVEOUT_ROUTES\["T-OUT-04"\]\}/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
@@ -201,7 +201,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantSettlementSource, /name="moveoutId"/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry\(moveoutId/);
   assert.match(tenantSettlementSource, /attachmentUrlsFrom/);
-  assert.match(tenantSettlementSource, /targetItemId=\$\{deduction\.id\}/);
+  assert.match(tenantSettlementSource, /disputeHref\(moveout\.id, deduction\.id\)/);
   assert.match(tenantSettlementSource, /SOURCE_ROUTE/);
   assert.match(tenantSettlementSource, /계약 정보 확정 후 예상 정산 안내/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
@@ -307,6 +307,45 @@ test("redirects messaging detail auth failures instead of rendering a Next error
     assert.match(source, /error\.status === 401 \|\| error\.status === 403/);
     assert.match(source, new RegExp(`redirect\\("${loginPath}"\\)`));
   }
+});
+
+test("redirects messaging send action auth and missing-thread failures", () => {
+  assert.match(
+    tenantMessagingThreadSource,
+    /async function sendTenantMessage[\s\S]*try \{[\s\S]*addTenantThreadMessage[\s\S]*error instanceof ApiError && \(error\.status === 401 \|\| error\.status === 403\)[\s\S]*redirect\("\/tenant\/login"\)[\s\S]*error instanceof ApiError && error\.status === 404[\s\S]*redirect\(MESSAGING_ROUTES\["T-MSG-00"\]\)/
+  );
+  assert.match(
+    managerMessagingThreadSource,
+    /async function sendManagerMessage[\s\S]*try \{[\s\S]*addManagerThreadMessage[\s\S]*error instanceof ApiError && \(error\.status === 401 \|\| error\.status === 403\)[\s\S]*redirect\("\/manager\/login"\)[\s\S]*error instanceof ApiError && error\.status === 404[\s\S]*redirect\(MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\)/
+  );
+});
+
+test("manager thread extra requests post through messaging mutations", () => {
+  assert.match(managerMessagingThreadSource, /async function sendManagerRequestMessage/);
+  assert.match(managerMessagingThreadSource, /const requestType = String\(formData\.get\("requestType"\) \?\? ""\)/);
+  assert.match(managerMessagingThreadSource, /requestType === "photo"/);
+  assert.match(managerMessagingThreadSource, /kind: "photo_request"/);
+  assert.match(managerMessagingThreadSource, /requestType === "description"/);
+  assert.match(managerMessagingThreadSource, /kind: "text"/);
+  assert.match(managerMessagingThreadSource, /action=\{sendManagerRequestMessage\}/);
+  assert.match(managerMessagingThreadSource, /name="requestType" value="photo"/);
+  assert.match(managerMessagingThreadSource, /name="requestType" value="description"/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>사진 요청<\/StaticButton>/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>설명 요청<\/StaticButton>/);
+});
+
+test("manager thread draft reply posts through messaging mutations", () => {
+  assert.match(managerMessagingThreadSource, /async function sendManagerDraftReply/);
+  assert.match(managerMessagingThreadSource, /MANAGER_DRAFT_REPLY_BODY/);
+  assert.match(managerMessagingThreadSource, /action=\{sendManagerDraftReply\}/);
+  assert.match(managerMessagingThreadSource, /addManagerThreadMessage\(threadId, \{ body: MANAGER_DRAFT_REPLY_BODY \}\)/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>초안 적용<\/StaticButton>/);
+});
+
+test("manager announcement resend keeps the source draft id", () => {
+  assert.match(managerMessagingResultSource, /result\.draftId/);
+  assert.match(managerMessagingResultSource, /encodeURIComponent\(result\.draftId\)/);
+  assert.doesNotMatch(managerMessagingResultSource, /id=draft_urgent_water/);
 });
 
 test("auto-refreshes open messaging thread details without infrastructure changes", () => {

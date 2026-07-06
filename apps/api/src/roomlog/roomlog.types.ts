@@ -249,6 +249,7 @@ export type MessagingAnnouncementDelivery = {
 
 export type MessagingAnnouncementResult = {
   announcementId: string;
+  draftId: string;
   category: MessagingAnnouncementCategory;
   scope: MessagingAnnouncementScope;
   title: string;
