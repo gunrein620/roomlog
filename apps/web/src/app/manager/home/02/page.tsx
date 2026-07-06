@@ -18,11 +18,10 @@ const charts = [
 
 export default function Page() {
   return (
-    <ManagerShell title="임대 현황 리포트" context="워크스페이스 · 지표·차트" nav={<HomeNav />}>
+    <ManagerShell title="임대 현황 리포트" context="관리 중인 집 · 리포트" nav={<HomeNav />}>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)" }}>
           <div>
-            <Badge emphasis>M-HOME-02</Badge>
             <h1 style={{ margin: "var(--space-sm) 0", fontSize: "var(--fs-title)" }}>지표와 차트</h1>
           </div>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>

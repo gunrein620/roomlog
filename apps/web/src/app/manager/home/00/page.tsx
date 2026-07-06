@@ -20,12 +20,11 @@ export default async function Page() {
   ];
 
   return (
-    <ManagerShell title={`${summary.managerName} 자산현황 대시보드`} context="워크스페이스 · 큰 화면" nav={<HomeNav active="home" />}>
+    <ManagerShell title={`${summary.managerName} 자산현황 대시보드`} context="관리 중인 집 · 대시보드" nav={<HomeNav active="home" />}>
       <div style={{ display: "grid", gap: "var(--space-xl)" }}>
         <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-xl)", alignItems: "center", background: "var(--surface-container-high)" }}>
           <div>
             <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-              <Badge emphasis>M-HOME-00</Badge>
               <Badge>{summary.managerName}</Badge>
               {summary.managedRoomCount > 0 ? <Badge>관리 호실 {summary.managedRoomCount}개</Badge> : null}
             </div>

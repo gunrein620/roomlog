@@ -374,7 +374,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </section>
 
         <section>
-          <div style={labelStyle}>무응답 SLA</div>
+          <div style={labelStyle}>관리자 응답 기한</div>
           {disputes.length === 0 ? (
             <Card style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
               제출된 이의가 생기면 관리자 응답 기한이 이곳에 표시됩니다.
@@ -394,7 +394,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 800 }}>
-                    {dispute.slaBreached ? "SLA 경과" : "응답 대기"}
+                    {dispute.slaBreached ? "답변 지연" : "응답 대기"}
                   </span>
                   <Badge emphasis={dispute.slaBreached}>
                     {dispute.slaBreached ? "에스컬레이션 가능" : "기한 내"}

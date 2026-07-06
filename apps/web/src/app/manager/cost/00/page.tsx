@@ -31,7 +31,7 @@ export default async function Page() {
 
       <section style={grid3Style}>
         <MetricCard label="검토 대기" value={`${queue.total}건`} note="사유별로 나눠 처리" />
-        <MetricCard label="이번 달 지출" value={won(monthly.totalAmount)} note="confirmed만 반영" />
+        <MetricCard label="이번 달 지출" value={won(monthly.totalAmount)} note="확정 건만 반영" />
         <MetricCard label="미검증 확정" value={`${queue.unverifiedConfirmed}건`} note="정직한 꼬리표로 유지" />
       </section>
 

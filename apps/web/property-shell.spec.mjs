@@ -193,7 +193,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantRecordsSource, /SOURCE_ROUTE/);
   assert.match(tenantRecordsSource, /evidenceUrls/);
   assert.match(tenantRecordsSource, /targetItemId=\$\{record\.id\}/);
-  assert.match(tenantRecordsSource, /근거 상세/);
+  assert.match(tenantRecordsSource, /상세정보 보기/);
   assert.match(tenantRecordsSource, /searchParams/);
   assert.doesNotMatch(tenantRecordsSource, /href=\{MOVEOUT_ROUTES\["T-OUT-04"\]\}/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry/);
@@ -201,7 +201,7 @@ test("wires moveout screens to backend mutations instead of static links", () =>
   assert.match(tenantSettlementSource, /name="moveoutId"/);
   assert.match(tenantSettlementSource, /createMoveoutInquiry\(moveoutId/);
   assert.match(tenantSettlementSource, /attachmentUrlsFrom/);
-  assert.match(tenantSettlementSource, /targetItemId=\$\{deduction\.id\}/);
+  assert.match(tenantSettlementSource, /disputeHref\(moveout\.id, deduction\.id\)/);
   assert.match(tenantSettlementSource, /SOURCE_ROUTE/);
   assert.match(tenantSettlementSource, /계약 정보 확정 후 예상 정산 안내/);
   assert.match(tenantDisputeSource, /createMoveoutDispute/);
@@ -307,6 +307,45 @@ test("redirects messaging detail auth failures instead of rendering a Next error
     assert.match(source, /error\.status === 401 \|\| error\.status === 403/);
     assert.match(source, new RegExp(`redirect\\("${loginPath}"\\)`));
   }
+});
+
+test("redirects messaging send action auth and missing-thread failures", () => {
+  assert.match(
+    tenantMessagingThreadSource,
+    /async function sendTenantMessage[\s\S]*try \{[\s\S]*addTenantThreadMessage[\s\S]*error instanceof ApiError && \(error\.status === 401 \|\| error\.status === 403\)[\s\S]*redirect\("\/tenant\/login"\)[\s\S]*error instanceof ApiError && error\.status === 404[\s\S]*redirect\(MESSAGING_ROUTES\["T-MSG-00"\]\)/
+  );
+  assert.match(
+    managerMessagingThreadSource,
+    /async function sendManagerMessage[\s\S]*try \{[\s\S]*addManagerThreadMessage[\s\S]*error instanceof ApiError && \(error\.status === 401 \|\| error\.status === 403\)[\s\S]*redirect\("\/manager\/login"\)[\s\S]*error instanceof ApiError && error\.status === 404[\s\S]*redirect\(MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\)/
+  );
+});
+
+test("manager thread extra requests post through messaging mutations", () => {
+  assert.match(managerMessagingThreadSource, /async function sendManagerRequestMessage/);
+  assert.match(managerMessagingThreadSource, /const requestType = String\(formData\.get\("requestType"\) \?\? ""\)/);
+  assert.match(managerMessagingThreadSource, /requestType === "photo"/);
+  assert.match(managerMessagingThreadSource, /kind: "photo_request"/);
+  assert.match(managerMessagingThreadSource, /requestType === "description"/);
+  assert.match(managerMessagingThreadSource, /kind: "text"/);
+  assert.match(managerMessagingThreadSource, /action=\{sendManagerRequestMessage\}/);
+  assert.match(managerMessagingThreadSource, /name="requestType" value="photo"/);
+  assert.match(managerMessagingThreadSource, /name="requestType" value="description"/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>사진 요청<\/StaticButton>/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>설명 요청<\/StaticButton>/);
+});
+
+test("manager thread draft reply posts through messaging mutations", () => {
+  assert.match(managerMessagingThreadSource, /async function sendManagerDraftReply/);
+  assert.match(managerMessagingThreadSource, /MANAGER_DRAFT_REPLY_BODY/);
+  assert.match(managerMessagingThreadSource, /action=\{sendManagerDraftReply\}/);
+  assert.match(managerMessagingThreadSource, /addManagerThreadMessage\(threadId, \{ body: MANAGER_DRAFT_REPLY_BODY \}\)/);
+  assert.doesNotMatch(managerMessagingThreadSource, /<StaticButton>초안 적용<\/StaticButton>/);
+});
+
+test("manager announcement resend keeps the source draft id", () => {
+  assert.match(managerMessagingResultSource, /result\.draftId/);
+  assert.match(managerMessagingResultSource, /encodeURIComponent\(result\.draftId\)/);
+  assert.doesNotMatch(managerMessagingResultSource, /id=draft_urgent_water/);
 });
 
 test("auto-refreshes open messaging thread details without infrastructure changes", () => {
@@ -430,6 +469,47 @@ test("routes every roomlog entry through the unified WOOZU /login with capabilit
   // Google OAuth 실패 복귀 경로도 /login?intent=... 하나로 수렴한다.
   assert.match(googleAuthSharedSource, /\/login\?intent=/);
   assert.doesNotMatch(googleAuthSharedSource, /return "\/(tenant|manager|vendor)\/login"/);
+});
+
+test("landlord link-required CTA starts the unprotected listing flow instead of looping to /login", () => {
+  // QA 2 회귀 방지: capability 없는 계정의 "집 내놓기"가 보호된 마이페이지로 갔다가
+  // 다시 /login으로 돌아오는 루프가 없어야 한다.
+  assert.match(unifiedLoginPageSource, /\/\?flow=listing/);
+  assert.doesNotMatch(unifiedLoginPageSource, /"\/(\?role=landlord&tab=mypage)"/);
+  assert.match(pageSource, /flow === "listing"/);
+  assert.match(pageSource, /isListingStartMode/);
+  // 등록 시작 모드에서는 landlord 마이페이지가 보호 대상에서 빠진다.
+  assert.match(pageSource, /activeRole === "landlord" && isListingStartMode\s*\?\s*null/);
+});
+
+test("every inquiry entry point opens the same composer sheet and feeds the inquiry center", () => {
+  // QA 3·4·6·7 회귀 방지: 홈 카드 문자문의·상세 문의하기·문의 탭 새 문의가 같은 sheet로 이어진다.
+  assert.match(pageSource, /function InquirySheet/);
+  assert.match(pageSource, /openInquiryComposer\(listing\)/);
+  assert.match(pageSource, /onNewInquiry=\{\(\) => openInquiryComposer\(\)\}/);
+  assert.match(pageSource, /pickInquiryTargetNo/);
+  assert.match(pageSource, /withNewInquiry/);
+  // "새 문의"가 안내 문구만 띄우고 홈으로 보내던 동작 금지.
+  assert.doesNotMatch(pageSource, /새 문의는 매물 상세에서 바로 보낼 수 있습니다/);
+  // 접수 완료 상태에서 문의센터로 바로 이동할 수 있다.
+  assert.match(pageSource, /문의센터 보기/);
+  assert.match(pageSource, /onViewInquiryCenter/);
+});
+
+test("owner registration state survives refresh via a versioned local draft with no fake prefills", () => {
+  // QA 8 + 사전 입력 제거: 폼은 빈 값으로 시작하고, 작성/등록 상태는 localStorage draft로 유지된다.
+  assert.match(pageSource, /useState\(emptyOwnerForm\)/);
+  assert.match(pageSource, /OWNER_DRAFT_STORAGE_KEY/);
+  assert.match(pageSource, /parseOwnerDraft/);
+  assert.match(pageSource, /serializeOwnerDraft/);
+  assert.match(pageSource, /임시저장됨/);
+  assert.doesNotMatch(pageSource, /title: "방배 루미에르 402호",\s*\n\s*address: "서울특별시 서초구 방배동"/);
+  assert.match(cssSource, /\.owner-draft-status/);
+});
+
+test("login success consumes the pushed auth history entry so back does not reopen the login screen", () => {
+  // QA 5 회귀 방지(앱 내부 히스토리): completeServiceAuth도 closeAuthScreen처럼 push 엔트리를 소비한다.
+  assert.match(pageSource, /const completeServiceAuth[\s\S]{0,400}isAuthHistoryPushedRef\.current = false;\s*\n\s*window\.history\.back\(\)/);
 });
 
 test("opens the dedicated signup page from signup actions and social fallback", () => {

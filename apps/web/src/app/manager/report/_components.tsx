@@ -10,8 +10,9 @@ import type {
   ReportSource,
   ReportStatus,
 } from "@roomlog/types";
-import { Badge, Card, ManagerShell } from "@roomlog/ui";
-import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref, type ManagerReportScreenId } from "@/lib/report-nav";
+import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
+import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 const navItems = [
   ["허브", MANAGER_REPORT_ROUTES["M-RPT-00"]],
@@ -24,7 +25,7 @@ const navItems = [
 
 export function ReportShell({ children }: { children: ReactNode }) {
   return (
-    <ManagerShell title="운영 보고" context="M-RPT · 임대인 보고" nav={<ReportNav />}>
+    <ManagerShell title="운영 보고" context="관리 중인 집 · 임대인 보고" nav={<ReportNav />}>
       {children}
     </ManagerShell>
   );
@@ -63,7 +64,7 @@ export function ScreenHeader({
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
       <div>
-        <div style={captionStyle}>{eyebrow}</div>
+        {stripScreenId(eyebrow) ? <div style={captionStyle}>{stripScreenId(eyebrow)}</div> : null}
         <h1 style={{ margin: "4px 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>{title}</h1>
         {subtitle ? <p style={mutedTextStyle}>{subtitle}</p> : null}
       </div>

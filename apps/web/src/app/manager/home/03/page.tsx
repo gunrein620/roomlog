@@ -12,11 +12,10 @@ const buildings = [
 
 export default function Page() {
   return (
-    <ManagerShell title="전체 건물 관리" context="워크스페이스 · triage" nav={<HomeNav />}>
+    <ManagerShell title="전체 건물 관리" context="관리 중인 집 · 전체 건물" nav={<HomeNav />}>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-lg)", alignItems: "end" }}>
           <div>
-            <Badge emphasis>M-HOME-03</Badge>
             <h1 style={{ margin: "var(--space-sm) 0", fontSize: "var(--fs-title)" }}>건물 카드</h1>
             <Input aria-label="건물 검색" placeholder="건물명, 지역, 담당자 검색" readOnly />
           </div>

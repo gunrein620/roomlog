@@ -30,8 +30,8 @@ const intentGuidance: Record<LoginIntent, { title: string; body: string; linkHin
   },
   landlord: {
     title: "관리 중인 집 연결이 필요합니다",
-    body: "이 WOOZU 계정에는 아직 관리 중인 집이 없습니다. 마이페이지에서 집을 내놓으면 이 계정에 관리 중인 집이 연결됩니다.",
-    linkHint: "집 내놓기로 연결"
+    body: "이 WOOZU 계정에는 아직 관리 중인 집이 없습니다. 집을 내놓으면 이 계정에 관리 중인 집이 연결됩니다.",
+    linkHint: "집 내놓기 시작"
   },
   vendor: {
     title: "협력업체 연결이 필요합니다",
@@ -143,8 +143,10 @@ export default function UnifiedLoginPage() {
             </span>
           ) : null}
           <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap", justifyContent: "center" }}>
+            {/* landlord는 보호된 마이페이지(/?role=landlord)가 아니라 비보호 등록 시작(flow=listing)으로 —
+                capability 없는 계정이 CTA를 눌러 다시 /login으로 돌아오는 루프 방지 (QA 2) */}
             <a
-              href={state.intent === "landlord" ? "/?role=landlord&tab=mypage" : "/"}
+              href={state.intent === "landlord" ? "/?flow=listing" : "/"}
               style={{
                 padding: "10px 16px",
                 borderRadius: "var(--radius-btn, 10px)",

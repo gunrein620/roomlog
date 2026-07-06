@@ -90,9 +90,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <div style={rowStyle}>
           <div>
             <div style={{ fontWeight: 850 }}>관리비는 기본 공개</div>
-            <div style={mutedSmallStyle}>비공개 예외가 있으면 M-COST-04에서 항목별로 숨김 처리합니다.</div>
+            <div style={mutedSmallStyle}>비공개 예외가 있으면 관리비 공개 화면에서 항목별로 숨김 처리합니다.</div>
           </div>
-          <span style={{ fontWeight: 850 }}>opt-out</span>
+          <span style={{ fontWeight: 850 }}>예외 허용</span>
         </div>
       </Section>
 

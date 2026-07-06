@@ -23,7 +23,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const showRating = perf.ratingVisible && perf.satisfactionAvg != null;
 
   return (
-    <ManagerShell title="성과 기록" context="M-VEND-02 · read-only" nav={<ManagerVendorMgmtNav />}>
+    <ManagerShell title="성과 기록" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-02"
