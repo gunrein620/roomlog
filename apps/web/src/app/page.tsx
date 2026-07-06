@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   Banknote,
@@ -57,6 +58,13 @@ import {
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
+
+// 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
+const ListingTourRoom3D = dynamic(() => import("./_components/ListingTourRoom3D"), {
+  ssr: false,
+  loading: () => <div className="tour-room-loading">3D 도면을 불러오는 중…</div>
+});
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
 import {
   pickInquiryTargetNo,
@@ -558,7 +566,12 @@ const listings = [
 ];
 
 // 데모 매물엔 좌표가 없고, 직접등록 매물은 지오코딩된 lat/lng를 실어 상세 지도에 쓴다(옵셔널).
-type Listing = (typeof listings)[number] & { lat?: number; lng?: number };
+type Listing = (typeof listings)[number] & {
+  lat?: number;
+  lng?: number;
+  has3DTour?: boolean;
+  floorPlan3D?: ListingFloorPlan3D;
+};
 
 // 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
 type TradeListing = {
@@ -577,9 +590,26 @@ type TradeListing = {
   images?: string[];
   lat?: number;
   lng?: number;
+  floorPlan?: ListingFloorPlan3D | null;
 };
 
 const TRADE_LISTING_NO_PREFIX = "TRADE-";
+// 도면 에디터가 남긴 3D 스냅샷 키 — RoomlogFloorPlanEditor의 LISTING_FLOOR_PLAN_STORAGE_KEY와 동일해야 한다.
+const LISTING_FLOOR_PLAN_STORAGE_KEY = "roomlogListingFloorPlan3D";
+
+/** 에디터가 저장한 3D 도면 스냅샷을 읽는다(없거나 벽 0개면 null). */
+function readListingFloorPlanSnapshot(): ListingFloorPlan3D | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ListingFloorPlan3D;
+    if (!parsed || !Array.isArray(parsed.walls3D) || parsed.walls3D.length === 0) return null;
+    return { walls3D: parsed.walls3D, furnitures: Array.isArray(parsed.furnitures) ? parsed.furnitures : [], name: parsed.name };
+  } catch {
+    return null;
+  }
+}
 
 function tradePriceLabel(listing: TradeListing): string {
   if (listing.tradeType === "월세") return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
@@ -594,6 +624,10 @@ function tradeListingToCard(listing: TradeListing): Listing {
   const uploaded = Array.isArray(listing.images) ? listing.images.filter((url) => typeof url === "string" && url) : [];
   const image = uploaded[0] ?? "/listing-studio.jpg";
   const gallery = uploaded.length > 0 ? uploaded : ["/listing-studio.jpg", "/listing-bedroom.jpg"];
+  const floorPlan3D =
+    listing.floorPlan && Array.isArray(listing.floorPlan.walls3D) && listing.floorPlan.walls3D.length > 0
+      ? listing.floorPlan
+      : undefined;
   return {
     listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
     detailHeader: `직접등록 매물 · ${listing.title}`,
@@ -612,15 +646,17 @@ function tradeListingToCard(listing: TradeListing): Listing {
     complexPrice: "확인 중",
     image,
     gallery,
-    badges: ["집주인 직접"],
-    tags: [listing.tradeType, listing.roomType],
+    badges: floorPlan3D ? ["집주인 직접", "3D 투어"] : ["집주인 직접"],
+    tags: floorPlan3D ? [listing.tradeType, listing.roomType, "3D 투어"] : [listing.tradeType, listing.roomType],
     score: "안심 확인중",
     updated: "방금 등록",
     broker: `${listing.ownerName} (집주인)`,
     verification: "집주인 직접 등록",
     response: "채팅 문의 가능",
     lat: listing.lat,
-    lng: listing.lng
+    lng: listing.lng,
+    has3DTour: Boolean(floorPlan3D),
+    floorPlan3D
   };
 }
 
@@ -1003,7 +1039,23 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
       setDraftSavedAt(draft.savedAt);
     }
 
+    // 도면 에디터에서 실제로 3D를 만들고 돌아왔는지는 스냅샷 존재로 판단한다(클릭만으론 연결로 치지 않음).
+    if (readListingFloorPlanSnapshot()) setHas3DRoom(true);
+
     setIsDraftLoaded(true);
+  }, []);
+
+  // 에디터 탭에서 3D를 만들고 이 탭으로 돌아오면 "3D방 연결" 상태를 즉시 반영한다.
+  useEffect(() => {
+    const syncFloorPlanConnection = () => {
+      if (document.visibilityState === "visible" && readListingFloorPlanSnapshot()) setHas3DRoom(true);
+    };
+    window.addEventListener("visibilitychange", syncFloorPlanConnection);
+    window.addEventListener("focus", syncFloorPlanConnection);
+    return () => {
+      window.removeEventListener("visibilitychange", syncFloorPlanConnection);
+      window.removeEventListener("focus", syncFloorPlanConnection);
+    };
   }, []);
 
   // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
@@ -1072,6 +1124,9 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           lng: geoCoords?.lng
         };
         if (!isEditing || images.length > 0) payload.images = images;
+        // 3D방 연결 상태이고 에디터 스냅샷이 있으면 매물에 도면을 실어 보낸다 → 상세 "3D 보기"에서 실제 렌더.
+        const floorPlanSnapshot = has3DRoom ? readListingFloorPlanSnapshot() : null;
+        if (floorPlanSnapshot) payload.floorPlan = floorPlanSnapshot;
 
         const response = await fetch(
           isEditing ? `/api/trade/listings/${editingListingId}` : "/api/trade/listings",
@@ -1791,15 +1846,13 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           <a
             className={has3DRoom ? "upload-3d-button floor-plan-link active" : "upload-3d-button floor-plan-link"}
             href="/floor-plan-3d"
-            onClick={() => {
-              setHas3DRoom(true);
-              setRegistrationStatus("작성 중");
-            }}
+            onClick={() => setRegistrationStatus("작성 중")}
           >
             <strong>3D 도면 만들기</strong>
             <span>
-              {has3DRoom ? "3D 방 자료가 연결된 상태입니다." : "3D 방 파일 또는 링크를 등록할 수 있습니다."} 실측 도면 기반
-              3D 편집 페이지로 이동
+              {has3DRoom
+                ? "3D 도면이 연결됐어요. 등록하면 상세 페이지에서 3D로 보여집니다."
+                : "도면을 만들고 저장하면 자동으로 연결돼요. 실측 도면 기반 3D 편집 페이지로 이동"}
             </span>
           </a>
         </section>
@@ -2413,20 +2466,37 @@ function ListingDetailView({
             </header>
 
             <div className="tour-preview-stage" aria-label="3D 투어 미리보기">
-              <div className="tour-room-box">
-                <span className="tour-wall wall-left" />
-                <span className="tour-wall wall-right" />
-                <span className="tour-bed" />
-                <span className="tour-desk" />
-                <span className="tour-window" />
-                <strong>공간 미리보기</strong>
-              </div>
+              {listing.floorPlan3D ? (
+                <div className="tour-room-3d">
+                  <ListingTourRoom3D floorPlan={listing.floorPlan3D} />
+                </div>
+              ) : (
+                <div className="tour-room-box tour-room-box-empty">
+                  <span className="tour-wall wall-left" />
+                  <span className="tour-wall wall-right" />
+                  <span className="tour-bed" />
+                  <span className="tour-desk" />
+                  <span className="tour-window" />
+                  <strong>3D 도면 미연결 매물</strong>
+                  <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                </div>
+              )}
             </div>
 
             <div className="tour-step-list">
-              <span>도면 기반 공간 스캔</span>
-              <span>옵션 배치 확인</span>
-              <span>투어 예약 연결</span>
+              {listing.floorPlan3D ? (
+                <>
+                  <span>실측 도면 기반 3D</span>
+                  <span>드래그로 둘러보기</span>
+                  <span>투어 예약 연결</span>
+                </>
+              ) : (
+                <>
+                  <span>도면 기반 공간 스캔</span>
+                  <span>옵션 배치 확인</span>
+                  <span>투어 예약 연결</span>
+                </>
+              )}
             </div>
 
             <div className="tour-sheet-actions">

@@ -244,6 +244,50 @@ async function floorPlanAuthorizedFetch(url: string, init: RequestInit = {}) {
   return response;
 }
 
+// 매물 등록 폼(홈)이 읽어 가는 3D 도면 스냅샷 키 — 에디터↔매물 등록의 유일한 핸드오프 지점.
+// 에디터는 별도 라우트라 아직 생성 안 된 매물 id를 모르므로, 저장/3D변환 시 여기에 남겨 둔다.
+export const LISTING_FLOOR_PLAN_STORAGE_KEY = "roomlogListingFloorPlan3D";
+
+/** walls3D + 임대인 옵션 가구를 렌더에 필요한 필드만 추려 매물 연결용 스냅샷으로 만든다. */
+function persistListingFloorPlanSnapshot(
+  walls3D: WheretoputWall3D[],
+  landlordFurnitures: PlacedFurniture[],
+  name?: string
+) {
+  if (typeof window === "undefined") return;
+  if (!walls3D.length) return;
+
+  const snapshot = {
+    name,
+    savedAt: Date.now(),
+    walls3D: walls3D.map((wall) => ({
+      id: String(wall.id),
+      wall_id: wall.wall_id,
+      dimensions: wall.dimensions,
+      position: wall.position,
+      rotation: wall.rotation
+    })),
+    furnitures: landlordFurnitures.map((furniture) => ({
+      id: furniture.id,
+      furniture_id: furniture.furniture_id,
+      name: furniture.name,
+      color: furniture.color,
+      length: furniture.length,
+      modelUrl: furniture.modelUrl,
+      position: furniture.position,
+      rotation: furniture.rotation,
+      scale: furniture.scale,
+      sizeMm: furniture.sizeMm
+    }))
+  };
+
+  try {
+    window.localStorage.setItem(LISTING_FLOOR_PLAN_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // 용량 초과 등 저장 실패는 무시 — 3D 연결이 안 될 뿐 등록 흐름은 계속된다.
+  }
+}
+
 async function uploadFloorPlanSource(file: File): Promise<UploadedFloorPlanSource | null> {
   try {
     const formData = new FormData();
@@ -3055,6 +3099,8 @@ export default function RoomlogFloorPlanEditor() {
       const saved = (await response.json()) as { id?: string };
       if (saved.id) setFloorPlanDraftId(saved.id);
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, id: saved.id, savedAt: Date.now() }));
+      // 매물 등록 폼이 읽어 갈 3D 스냅샷을 남긴다 — 이걸로 상세 "3D 보기"가 실제 도면을 렌더한다.
+      persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
       setSaveState({ kind: nextStatus === "PUBLISHED" ? "published" : "draft", at: Date.now() });
       setUploadStatus(nextStatus === "PUBLISHED" ? "발행 완료" : "저장 완료");
     } catch {
@@ -3067,6 +3113,8 @@ export default function RoomlogFloorPlanEditor() {
   function convertTo3D() {
     const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
     setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
+    // 3D 변환을 하면 매물 등록 폼이 바로 연결할 수 있게 스냅샷도 갱신한다(저장 전이라도).
+    persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
     window.localStorage.setItem(
       "floorPlanData",
       JSON.stringify(buildFloorPlanLocalSnapshot({

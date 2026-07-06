@@ -3723,6 +3723,44 @@ p {
   background-size: 24px 24px;
 }
 
+/* 실제 3D 도면 뷰 — 편집기와 같은 R3F 캔버스를 상세 시트 크기에 맞춰 채운다. */
+.tour-room-3d {
+  width: 100%;
+  height: min(52vh, 420px);
+}
+
+.tour-room-3d .floor-plan-3d-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.tour-room-loading {
+  display: grid;
+  place-content: center;
+  width: 100%;
+  height: min(52vh, 420px);
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.tour-room-box-empty em {
+  position: absolute;
+  left: 50%;
+  bottom: -56px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-style: normal;
+}
+
 .tour-room-box {
   position: relative;
   width: 220px;

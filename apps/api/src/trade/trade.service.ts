@@ -10,6 +10,36 @@ import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/st
  * 채팅은 폴링 기반(REST) — 큰 흐름 연결이 목적이며 WS 전환점은 이 서비스 뒤로 숨겨져 있다.
  */
 
+/** 3D 도면 벽 한 조각(에디터의 walls3D 스냅샷) — 렌더에 필요한 최소 필드만 저장한다. */
+export type ListingFloorPlanWall = {
+  id: string;
+  wall_id: string | number;
+  dimensions: { width: number; height: number; depth: number };
+  position: [number, number, number];
+  rotation: [number, number, number];
+};
+
+/** 3D 도면에 배치된 임대인 옵션 가구 한 점 — GLB/박스 렌더에 필요한 필드만 저장한다. */
+export type ListingFloorPlanFurniture = {
+  id: string;
+  furniture_id: string;
+  name: string;
+  color: string;
+  length: [number, number, number];
+  modelUrl?: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+  sizeMm?: { width: number; depth: number; height?: number };
+};
+
+/** 매물에 연결된 3D 도면 스냅샷 — 상세 뷰의 "3D 보기"가 실제로 렌더한다. */
+export type ListingFloorPlan = {
+  walls3D: ListingFloorPlanWall[];
+  furnitures: ListingFloorPlanFurniture[];
+  name?: string;
+};
+
 export type TradeListingInput = {
   title: string;
   roomType: string;
@@ -23,6 +53,8 @@ export type TradeListingInput = {
   /** 주소 지오코딩 좌표(없으면 상세 지도는 데모/안내 상태 유지) */
   lat?: number;
   lng?: number;
+  /** 등록 시 만든 3D 도면 스냅샷(없으면 상세 "3D 보기"는 미연결 안내) */
+  floorPlan?: ListingFloorPlan | null;
 };
 
 export type TradeListing = Omit<TradeListingInput, "images"> & {
@@ -80,6 +112,8 @@ const FALLBACK_OWNER = { id: "landlord-demo", name: "박관리" };
 const MAX_LISTING_IMAGES = 10;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"];
+const MAX_FLOOR_PLAN_WALLS = 600;
+const MAX_FLOOR_PLAN_FURNITURES = 120;
 
 /** 저장할 사진 URL 배열 정규화 — 문자열만, 최대 10장. */
 function normalizeImages(images?: string[]): string[] {
@@ -98,6 +132,73 @@ function normalizeCoords(lat?: number, lng?: number): { lat?: number; lng?: numb
   if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return {};
   if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) return {};
   return { lat: latNum, lng: lngNum };
+}
+
+function finiteTriple(value: unknown): [number, number, number] | null {
+  if (!Array.isArray(value) || value.length < 3) return null;
+  const nums = value.slice(0, 3).map((item) => Number(item));
+  return nums.every((num) => Number.isFinite(num)) ? [nums[0], nums[1], nums[2]] : null;
+}
+
+/**
+ * 매물에 연결할 3D 도면 스냅샷을 정규화한다.
+ * 신뢰할 수 없는 클라이언트 입력이므로 렌더에 필요한 필드만 뽑고, 좌표는 유한수만, 개수는 상한을 둔다.
+ * 유효한 벽이 하나도 없으면 null(=미연결)로 취급한다.
+ */
+function normalizeFloorPlan(input?: ListingFloorPlan | null): ListingFloorPlan | undefined {
+  if (!input || typeof input !== "object") return undefined;
+
+  const walls: ListingFloorPlanWall[] = [];
+  for (const raw of Array.isArray(input.walls3D) ? input.walls3D : []) {
+    if (walls.length >= MAX_FLOOR_PLAN_WALLS) break;
+    const position = finiteTriple(raw?.position);
+    const rotation = finiteTriple(raw?.rotation);
+    const width = Number(raw?.dimensions?.width);
+    const height = Number(raw?.dimensions?.height);
+    const depth = Number(raw?.dimensions?.depth);
+    if (!position || !rotation) continue;
+    if (![width, height, depth].every((num) => Number.isFinite(num))) continue;
+    const wallId = raw?.wall_id;
+    walls.push({
+      id: String(raw?.id ?? `wall-${walls.length}`),
+      wall_id: typeof wallId === "number" ? wallId : String(wallId ?? walls.length),
+      dimensions: { width, height, depth },
+      position,
+      rotation
+    });
+  }
+
+  if (walls.length === 0) return undefined;
+
+  const furnitures: ListingFloorPlanFurniture[] = [];
+  for (const raw of Array.isArray(input.furnitures) ? input.furnitures : []) {
+    if (furnitures.length >= MAX_FLOOR_PLAN_FURNITURES) break;
+    const position = finiteTriple(raw?.position);
+    const rotation = finiteTriple(raw?.rotation);
+    const length = finiteTriple(raw?.length);
+    if (!position || !rotation || !length) continue;
+    const sizeWidth = Number(raw?.sizeMm?.width);
+    const sizeDepth = Number(raw?.sizeMm?.depth);
+    const sizeHeight = Number(raw?.sizeMm?.height);
+    furnitures.push({
+      id: String(raw?.id ?? `furniture-${furnitures.length}`),
+      furniture_id: String(raw?.furniture_id ?? raw?.id ?? furnitures.length),
+      name: typeof raw?.name === "string" ? raw.name.slice(0, 80) : "가구",
+      color: typeof raw?.color === "string" ? raw.color.slice(0, 32) : "#c9c9c9",
+      length,
+      modelUrl: typeof raw?.modelUrl === "string" ? raw.modelUrl.slice(0, 500) : undefined,
+      position,
+      rotation,
+      scale: Number.isFinite(Number(raw?.scale)) ? Number(raw.scale) : 1,
+      sizeMm:
+        Number.isFinite(sizeWidth) && Number.isFinite(sizeDepth)
+          ? { width: sizeWidth, depth: sizeDepth, ...(Number.isFinite(sizeHeight) ? { height: sizeHeight } : {}) }
+          : undefined
+    });
+  }
+
+  const name = typeof input.name === "string" ? input.name.slice(0, 120) : undefined;
+  return { walls3D: walls, furnitures, ...(name ? { name } : {}) };
 }
 
 function extensionForUpload(mimeType: string, originalName: string): string {
@@ -144,9 +245,10 @@ export class TradeService {
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as TradeStore;
       if (Array.isArray(parsed?.listings) && Array.isArray(parsed?.threads)) {
-        // 구버전 레코드 후방호환 — images 없으면 빈 배열로 채운다.
+        // 구버전 레코드 후방호환 — images 없으면 빈 배열로, 손상된 floorPlan은 제거한다.
         parsed.listings.forEach((listing) => {
           listing.images = normalizeImages(listing.images);
+          listing.floorPlan = normalizeFloorPlan(listing.floorPlan);
         });
         this.store = parsed;
       }
@@ -223,6 +325,7 @@ export class TradeService {
       description: input.description?.trim() || "",
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
+      ...(normalizeFloorPlan(input.floorPlan) ? { floorPlan: normalizeFloorPlan(input.floorPlan) } : {}),
       status: "노출중",
       createdAt: new Date().toISOString()
     };
@@ -258,6 +361,8 @@ export class TradeService {
       listing.lat = coords.lat;
       listing.lng = coords.lng;
     }
+    // floorPlan 키가 오면 교체(null이면 연결 해제). 키 자체가 없으면 기존 도면 유지.
+    if (input.floorPlan !== undefined) listing.floorPlan = normalizeFloorPlan(input.floorPlan);
 
     this.persist();
     return listing;
