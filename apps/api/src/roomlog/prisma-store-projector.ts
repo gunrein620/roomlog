@@ -95,6 +95,7 @@ export class PrismaStoreProjector implements StoreProjector {
       users,
       socialAccounts,
       rooms,
+      roomWalls,
       tenantRooms,
       vendors,
       vendorInvites,
@@ -144,6 +145,7 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.userAccount.findMany(),
       this.prisma.socialAccount.findMany(),
       this.prisma.room.findMany(),
+      this.prisma.roomWall.findMany({ orderBy: { wallOrder: "asc" } }),
       this.prisma.tenantRoom.findMany(),
       this.prisma.vendorProfile.findMany(),
       this.prisma.vendorInvite.findMany(),
@@ -245,6 +247,20 @@ export class PrismaStoreProjector implements StoreProjector {
         roomNo: room.roomNo,
         address: room.address,
         landlordId: optional(room.landlordId)
+      })),
+      roomWalls: roomWalls.map((wall) => ({
+        id: wall.id,
+        roomId: wall.roomId,
+        sourceWallId: wall.sourceWallId,
+        start: wall.start as any,
+        end: wall.end as any,
+        lengthMm: wall.lengthMm,
+        rotationRad: wall.rotationRad,
+        position: wall.position as any,
+        dimensions: wall.dimensions as any,
+        wallOrder: wall.wallOrder,
+        createdAt: asIso(wall.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(wall.updatedAt) ?? new Date().toISOString()
       })),
       tenantRooms: Object.fromEntries(
         tenantRooms.map((tenantRoom) => [tenantRoom.tenantId, tenantRoom.roomId])
@@ -438,6 +454,7 @@ export class PrismaStoreProjector implements StoreProjector {
         extractionMeta: (floorPlan.extractionMeta as any) ?? { scaleConfirmed: false },
         openings: (floorPlan.openings as any) ?? [],
         fixtures: (floorPlan.fixtures as any) ?? [],
+        roomId: optional(floorPlan.roomId),
         createdAt: asIso(floorPlan.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(floorPlan.updatedAt) ?? new Date().toISOString()
       })),
@@ -1039,6 +1056,42 @@ export class PrismaStoreProjector implements StoreProjector {
         });
       }
 
+      const roomWallIds = store.roomWalls.map((wall) => wall.id);
+      await tx.roomWall.deleteMany({
+        where: roomWallIds.length ? { id: { notIn: roomWallIds } } : {}
+      });
+      for (const wall of store.roomWalls) {
+        await tx.roomWall.upsert({
+          where: { id: wall.id },
+          create: {
+            id: wall.id,
+            roomId: wall.roomId,
+            sourceWallId: wall.sourceWallId,
+            start: asJson(wall.start),
+            end: asJson(wall.end),
+            lengthMm: wall.lengthMm,
+            rotationRad: wall.rotationRad,
+            position: asJson(wall.position),
+            dimensions: asJson(wall.dimensions),
+            wallOrder: wall.wallOrder,
+            createdAt: asDate(wall.createdAt),
+            updatedAt: asDate(wall.updatedAt)
+          },
+          update: {
+            roomId: wall.roomId,
+            sourceWallId: wall.sourceWallId,
+            start: asJson(wall.start),
+            end: asJson(wall.end),
+            lengthMm: wall.lengthMm,
+            rotationRad: wall.rotationRad,
+            position: asJson(wall.position),
+            dimensions: asJson(wall.dimensions),
+            wallOrder: wall.wallOrder,
+            updatedAt: asDate(wall.updatedAt)
+          }
+        });
+      }
+
       for (const invite of store.vendorInvites) {
         await tx.vendorInvite.upsert({
           where: { id: invite.id },
@@ -1435,6 +1488,7 @@ export class PrismaStoreProjector implements StoreProjector {
           create: {
             id: floorPlan.id,
             ownerId: floorPlan.ownerId,
+            roomId: floorPlan.roomId,
             sourceAttachmentId: floorPlan.sourceAttachmentId,
             sourceImageUrl: floorPlan.sourceImageUrl,
             status: floorPlan.status,
@@ -1451,6 +1505,7 @@ export class PrismaStoreProjector implements StoreProjector {
           },
           update: {
             ownerId: floorPlan.ownerId,
+            roomId: floorPlan.roomId,
             sourceAttachmentId: floorPlan.sourceAttachmentId,
             sourceImageUrl: floorPlan.sourceImageUrl,
             status: floorPlan.status,

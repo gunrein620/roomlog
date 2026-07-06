@@ -1,14 +1,30 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const pageSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
 const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
-const floorPlanEditorSource = existsSync(floorPlanEditorPath) ? readFileSync(floorPlanEditorPath, "utf8") : "";
-const floorPlanWorkerPath = new URL("./src/app/floor-plan-3d/floor-plan-extraction.worker.ts", import.meta.url);
+const floorPlanContainerSource = existsSync(floorPlanEditorPath) ? readFileSync(floorPlanEditorPath, "utf8") : "";
+// floor-plan-3d는 plan-extraction / room-model / room-scene 폴더로 분할되어 있어서
+// 편집기 기능 검증은 폴더 아래 모든 소스 파일을 합친 코퍼스를 대상으로 한다.
+const floorPlanDirUrl = new URL("./src/app/floor-plan-3d/", import.meta.url);
+const floorPlanEditorSource = existsSync(floorPlanDirUrl)
+  ? readdirSync(floorPlanDirUrl, { recursive: true })
+      .map((name) => String(name).replaceAll("\\", "/"))
+      .filter((name) => /\.(tsx|ts|mjs)$/.test(name) && name !== "page.tsx")
+      .sort()
+      .map((name) => readFileSync(new URL(name, floorPlanDirUrl), "utf8"))
+      .join("\n")
+  : "";
+const floorPlanWorkerPath = new URL("./src/app/floor-plan-3d/plan-extraction/floor-plan-extraction.worker.ts", import.meta.url);
 const floorPlanWorkerSource = existsSync(floorPlanWorkerPath) ? readFileSync(floorPlanWorkerPath, "utf8") : "";
+const floorPlanModel = {
+  ...(await import("./src/app/floor-plan-3d/room-model/wall-model.mjs")),
+  ...(await import("./src/app/floor-plan-3d/plan-extraction/wall-detection.mjs"))
+};
+const dimensionLayout = await import("./src/app/floor-plan-3d/plan-extraction/dimension-layout.mjs");
 const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const webPackageSource = readFileSync(new URL("./package.json", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
@@ -1238,6 +1254,172 @@ test("offers a 3D conversion mode for the floor plan editor", () => {
   }
 });
 
+test("post-processes Roboflow wall boxes before using them as 3D walls", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 50, width: 120, x: 430, y: 490 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [
+      { confidence: 0.83, height: 20, width: 400, x: 100, y: 500 },
+      { confidence: 0.76, height: 18, width: 360, x: 480, y: 503 },
+      { confidence: 0.18, height: 22, width: 400, x: 100, y: 700 }
+    ]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.equal(result.walls.every((wall) => wall.source === "roboflow-postprocessed"), true);
+  assert.equal(new Set(result.walls.map((wall) => wall.orientation)).size, 1);
+  assert.deepEqual(
+    result.walls.map((wall) => Math.round(wall.start.y)),
+    [1, 1].map(() => Math.round(result.walls[0].start.y))
+  );
+  assert.ok(result.walls[0].end.x <= -80, "opening should cut the left segment before the doorway");
+  assert.ok(result.walls[1].start.x >= 30, "opening should cut the right segment after the doorway");
+});
+
+test("cuts walls when Roboflow opening boxes are slightly offset from the wall axis", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 40, width: 240, x: 380, y: 545 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [{ confidence: 0.8, height: 20, width: 800, x: 100, y: 500 }]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.ok(result.walls.every((wall) => wall.source === "roboflow-postprocessed"));
+});
+
+test("keeps existing wall axes when Roboflow detects only a partial wall segment", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    currentWalls: [{ id: "existing-bottom", start: { x: -320, y: 0 }, end: { x: 320, y: 0 } }],
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 40, width: 140, x: 430, y: 500 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [{ confidence: 0.78, height: 20, width: 220, x: 100, y: 500 }]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.ok(result.walls[0].end.x < 0, "left segment should stop before the opening");
+  assert.ok(result.walls[1].start.x > 0, "right segment should remain after the opening");
+  assert.ok(result.walls[1].end.x >= 300, "right segment should keep the existing wall extent");
+});
+
+test("exposes Roboflow wall post-processing as a separate editor action", () => {
+  for (const label of ["roboflowDetections", "applyRoboflowWallPostProcessing", "벽 후처리 적용", "Roboflow 원본 박스 저장됨"]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
+test("extends and merges raw Roboflow wall boxes instead of dropping them from the cleaned overlay", () => {
+  assert.match(floorPlanEditorSource, /generatedWallBoxes/);
+  assert.match(floorPlanEditorSource, /variant: "postprocessed"/);
+  assert.match(floorPlanEditorSource, /buildAdjustedWallBoxesFromRawAndGenerated/);
+  assert.match(floorPlanEditorSource, /rawWallDisplayBoxes/);
+  assert.match(floorPlanEditorSource, /fitOpeningBoxesToPostProcessedWalls/);
+  assert.doesNotMatch(floorPlanEditorSource, /setLineDash\(\[8 \/ viewScale, 5 \/ viewScale\]\)/);
+});
+
+test("shows Roboflow post-processed walls as purple boxes instead of black center lines", () => {
+  assert.match(floorPlanEditorSource, /isRoboflowPostProcessedWall/);
+  assert.match(floorPlanEditorSource, /if \(isRoboflowPostProcessedWall\) return/);
+});
+
+test("preserves raw Roboflow wall boxes and a stable wall-axis source for post-processing", () => {
+  assert.match(floorPlanEditorSource, /roboflowWallPostProcessSourceWalls/);
+  assert.match(floorPlanEditorSource, /setRoboflowWallPostProcessSourceWalls/);
+  assert.match(floorPlanEditorSource, /variant: "raw"/);
+  assert.match(floorPlanEditorSource, /setDetectionBoxes\(\[\.\.\.cornerAlignedWallBoxes, \.\.\.fittedOpeningBoxes\]\)/);
+});
+
+test("keeps Roboflow windows over continuous walls and cuts wall boxes only at doors", () => {
+  assert.match(floorPlanEditorSource, /openingBoxes: roboflowDetections\.openings\.filter\(\(opening\) => opening\.type === "DOOR"\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /openingBoxes: roboflowDetections\.openings\.map\(\(opening\) => opening\.boundingBox\)/);
+});
+
+test("clips Roboflow opening overlays to wall bounds without increasing their length", () => {
+  assert.match(floorPlanEditorSource, /clipSegmentToRange/);
+  assert.doesNotMatch(floorPlanEditorSource, /minimumLength/);
+  assert.doesNotMatch(floorPlanEditorSource, /Math\.max\(sourceLength, minimumLength\)/);
+});
+
+test("uses a conservative wall gap fill so unrelated wall boxes are not stretched together", () => {
+  assert.match(floorPlanEditorSource, /const gapTolerance = Math\.max\(36, Math\.min\(72, thickness \* 2\.5\)\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /const gapTolerance = 180/);
+});
+
+test("trims perpendicular Roboflow wall overlay corners so box strokes do not leave small square overlaps", () => {
+  assert.match(floorPlanEditorSource, /trimWallBoxCornerOverlaps/);
+  assert.match(floorPlanEditorSource, /const cornerTolerance = 6/);
+  assert.match(floorPlanEditorSource, /const maxTrimOverlap = cornerTolerance \* 2/);
+  assert.match(floorPlanEditorSource, /if \(overlapX > maxTrimOverlap && overlapY > maxTrimOverlap\) continue/);
+  assert.match(floorPlanEditorSource, /const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+});
+
+test("micro-snaps Roboflow opening overlay edges to nearby original wall breaks", () => {
+  assert.match(floorPlanEditorSource, /snapOpeningBoxEdgesToNearbyWallBreaks/);
+  assert.match(floorPlanEditorSource, /const openingEdgeSnapTolerance = 14/);
+  assert.match(floorPlanEditorSource, /rawWallDisplayBoxes/);
+});
+
+test("aligns wall overlay thickness from already fitted Roboflow opening lines", () => {
+  assert.match(floorPlanEditorSource, /alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /const fittedOpeningLineTolerance = 12/);
+  assert.match(floorPlanEditorSource, /const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /setDetectionBoxes\(\[\.\.\.cornerAlignedWallBoxes, \.\.\.fittedOpeningBoxes\]\)/);
+  assert.match(floorPlanEditorSource, /fitOpeningBoxesToPostProcessedWalls\(rawOpeningDisplayBoxes, cornerTrimmedWallBoxes\)/);
+});
+
+test("keeps merged Roboflow wall rendering aligned to fitted opening lines after edge snapping", () => {
+  assert.match(floorPlanEditorSource, /const openingAlignedSnappedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /snappedWallBoxes\.map\(\(box\) => createPostProcessedWallOverlayBox\(box\)\)/);
+  assert.match(floorPlanEditorSource, /openingOverlayBoxes/);
+  assert.match(floorPlanEditorSource, /\.map\(\(overlayBox\) => overlayBox\.box\)/);
+});
+
+test("propagates fitted Roboflow wall lines across connected perpendicular corner boxes", () => {
+  assert.match(floorPlanEditorSource, /alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /const perpendicularCornerLineTolerance = 14/);
+  assert.match(floorPlanEditorSource, /const perpendicularCornerTouchTolerance = 24/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedSnappedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /verticalBox\.y1 = horizontalBox\.y1/);
+  assert.match(floorPlanEditorSource, /horizontalBox\.x2 = verticalBox\.x2/);
+});
+
+test("renders raw Roboflow walls as original boxes and merged post-processed walls", () => {
+  assert.match(floorPlanEditorSource, /drawRoboflowDetectionOverlays/);
+  assert.match(floorPlanEditorSource, /const wallOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(floorPlanEditorSource, /const openingOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(floorPlanEditorSource, /drawRawWallOverlayBox/);
+  assert.match(floorPlanEditorSource, /const hasPostProcessedWall = wallOverlayBoxes\.some/);
+  assert.match(floorPlanEditorSource, /if \(hasPostProcessedWall\) drawMergedWallOverlayBoxes\(\)/);
+  assert.match(floorPlanEditorSource, /else wallOverlayBoxes\.forEach\(drawRawWallOverlayBox\)/);
+  assert.match(floorPlanEditorSource, /drawMergedWallOverlayBoxes/);
+  assert.doesNotMatch(floorPlanEditorSource, /bridgeTouchingWallOverlayCorners/);
+  assert.doesNotMatch(floorPlanEditorSource, /cornerBridgeTolerance/);
+  assert.match(floorPlanEditorSource, /const edgeSnapTolerance = 24/);
+  assert.doesNotMatch(floorPlanEditorSource, /const edgeSnapTolerance = 14 \/ viewScale/);
+  assert.match(floorPlanEditorSource, /coveredWallCells/);
+  assert.match(floorPlanEditorSource, /context\.lineCap = "butt"/);
+  assert.doesNotMatch(floorPlanEditorSource, /context\.lineCap = "square"/);
+  assert.match(floorPlanEditorSource, /context\.stroke\(\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(fillWallOverlayBox\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(strokeVisibleWallEdges\)/);
+  assert.match(floorPlanEditorSource, /openingOverlayBoxes\.forEach\(drawOpeningOverlayBox\)/);
+});
+
 test("lets 3D floor plan walls be selected, erased, partially erased, and hidden", () => {
   for (const label of [
     "handle3DWallPointerDown",
@@ -1258,20 +1440,21 @@ test("keeps the 2D floor plan canvas scrollable inside its editor shell", () => 
     "floor-plan-canvas-shell",
     "overscroll-behavior",
     "scrollbar-gutter",
-    "if (!(event.ctrlKey || event.metaKey || event.altKey)) return",
-    "Ctrl/Cmd/Alt 휠로 확대"
+    "worldBeforeZoom",
+    "handleWheel",
+    "onWheel"
   ]) {
     assert.ok(`${floorPlanEditorSource}\n${globalsCssSource}`.includes(label));
   }
 });
-
 test("switches between landlord authoring and resident furniture placement modes", () => {
   for (const label of [
     "experienceMode",
     "landlord",
     "resident",
     "집주인 모드",
-    "임차인/일반사용자 모드",
+    // 3d 브랜치에서 라벨이 "세입자 일반사용자 모드"로 변경됨 — 스펙을 현재 문구에 맞춘다.
+    "세입자 일반사용자 모드",
     "임대인 옵션 가구",
     "wheretoput furniture picker",
     "handleFurnitureSelect",
@@ -1318,6 +1501,198 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   }
 });
 
+test("removes legacy floor plan OpenAI analysis controls", () => {
+  for (const label of [
+    "FLOOR_PLAN_AI_MODELS",
+    "OpenAI Vision",
+    "selectedAiModel",
+    "runAiDimensionAnalysis",
+    "runAiCandidateReview",
+    "requestFloorPlanAiAnalysis",
+    "applyAiDimensionAnalysisResult",
+    "applyAiCandidateReviewResult",
+    "manualAiScaleRealLength",
+    "AI 후보 검토",
+    "AI 정밀 수치 읽기"
+  ]) {
+    assert.doesNotMatch(floorPlanEditorSource, new RegExp(label));
+  }
+
+  for (const label of [
+    "runOpeningDetection",
+    "applyRoboflowWallPostProcessing",
+    "apiUrl\\(\"/floor-plans/opening-detection\"\\)",
+    "fileToCompressedDataUrl"
+  ]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+test("offers printed dimension reading with detected dimension chips", () => {
+  for (const label of [
+    "runPrintedDimensionReading",
+    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
+    "analysisMode: \"dimension\"",
+    "openai/floor-plan-vision",
+    "parseDimensionTextsToMm",
+    "printedDimensionChips",
+    "drawPrintedDimensionOverlays",
+    "normalizeAiTextBoundingBox",
+    "normalizeAiTargetLine",
+    "drawDimensionTargetLine",
+    "boundingBox",
+    "targetLine",
+    "0~1000",
+    "floor-plan-visible-dimension-strip",
+    "치수 읽기",
+    "읽힌 치수"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+});
+
+test("classifies dimensions and uses only structural dimensions for scale and grid", () => {
+  for (const label of [
+    "aiDimensions",
+    "isStructuralDimensionKind",
+    "structuralDimensionChips",
+    "openingDimensionChips",
+    "furnitureDimensionChips",
+    "guardrailKind",
+    "outer_total",
+    "room_span",
+    "wall_span"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  // 축척·격자 계산은 구조 치수만 소비해야 한다 (전체 치수 배열이 아니라).
+  assert.match(floorPlanContainerSource, /estimateWallUnionScaleCandidate\(structuralDimensionChips/);
+  assert.match(floorPlanContainerSource, /const marginChips = structuralDimensionChips\.filter/);
+  // × 가구 표기와 ㎡ 면적은 하드 가드레일로 걸러진다.
+  assert.match(floorPlanContainerSource, /return "area"/);
+  assert.match(floorPlanContainerSource, /return kind === "fixture" \? "fixture" : "furniture"/);
+  // 중첩 치수줄은 줄 클러스터링 후 각 줄 안에서만 체인을 푼다.
+  assert.match(floorPlanContainerSource, /solveDimensionRowChains/);
+  assert.match(floorPlanContainerSource, /perpTolerance/);
+});
+
+test("consumes structural dimensions to correct Roboflow wall positions", () => {
+  // 구조 치수가 벽 위치 보정에 실제로 소비되는지(단순 표시 아님) 확인한다.
+  for (const label of [
+    "structuralWallBoundaries",
+    "structuralBoundaryOffsetsMm",
+    "snapWallsToStructuralBoundaries",
+    "inferMissingWallsFromStructuralBoundaries",
+    "applyStructuralDimensionWallCorrection",
+    "applyStructuralDimensionMissingWallInference"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  // 경계는 구조 치수만으로 만든다(가구/opening/면적 제외).
+  assert.match(floorPlanContainerSource, /structuralDimensionChips\.filter\(\(chip\) => chip\.axis === axis/);
+  // 보정 결과가 실제 벽 상태에 반영된다.
+  assert.match(floorPlanContainerSource, /setWalls\(corrected\)/);
+});
+
+test("dimension-layout separates nested dimension rows and lays out each chain independently", () => {
+  const { clusterDimensionRows, solveDimensionRowChains } = dimensionLayout;
+  // 위쪽 여백에 전체줄 [10720]과 구간줄 [3040,1440,3120,3120]이 중첩된 케이스.
+  const chips = [
+    { id: "total", realLengthMm: 10720, perpCoord: 40, alongCoord: 500 },
+    { id: "s1", realLengthMm: 3040, perpCoord: 75, alongCoord: 140 },
+    { id: "s2", realLengthMm: 1440, perpCoord: 76, alongCoord: 340 },
+    { id: "s3", realLengthMm: 3120, perpCoord: 74, alongCoord: 560 },
+    { id: "s4", realLengthMm: 3120, perpCoord: 75, alongCoord: 820 }
+  ];
+  const rows = clusterDimensionRows(chips, 15);
+  assert.equal(rows.length, 2, "전체줄과 구간줄이 2개 줄로 분리되어야 한다");
+
+  const layout = solveDimensionRowChains(chips, 10720);
+  assert.deepEqual(layout.get("total"), { endMm: 10720, startMm: 0 });
+  assert.equal(layout.get("s1").startMm, 0);
+  assert.ok(Math.abs(layout.get("s1").endMm - 3040) < 5);
+  assert.ok(Math.abs(layout.get("s2").startMm - layout.get("s1").endMm) < 1, "구간이 끊김 없이 이어져야 한다");
+  assert.ok(Math.abs(layout.get("s4").endMm - 10720) < 1, "마지막 구간이 전체 폭에 정확히 맞물려야 한다");
+
+  // 합이 전체와 안 맞는 불완전한 줄은 배치하지 않는다(개별 앵커 폴백 대상).
+  const incomplete = [
+    { id: "x1", realLengthMm: 3040, perpCoord: 70, alongCoord: 140 },
+    { id: "x2", realLengthMm: 1440, perpCoord: 70, alongCoord: 340 }
+  ];
+  assert.equal(solveDimensionRowChains(incomplete, 10720).size, 0);
+});
+
+test("structural dimensions correct Roboflow wall positions to match printed dimensions", () => {
+  const { structuralBoundaryOffsetsMm, snapWallsToStructuralBoundaries } = dimensionLayout;
+  // high.png 가로 체인 [10720]+[3040,1440,3120,3120] → 경계 mm 0/3040/4480/7600/10720
+  const chips = [
+    { id: "total", realLengthMm: 10720, perpCoord: 29, alongCoord: 500 },
+    { id: "s1", realLengthMm: 3040, perpCoord: 63, alongCoord: 140 },
+    { id: "s2", realLengthMm: 1440, perpCoord: 63, alongCoord: 340 },
+    { id: "s3", realLengthMm: 3120, perpCoord: 63, alongCoord: 560 },
+    { id: "s4", realLengthMm: 3120, perpCoord: 63, alongCoord: 820 }
+  ];
+  const boundariesMm = structuralBoundaryOffsetsMm(chips, 10720);
+  assert.deepEqual(boundariesMm, [0, 3040, 4480, 7600, 10720]);
+
+  // mm 경계 → 캔버스 x (planMin=-500, ratio=13.6mm/px)
+  const planMin = -500;
+  const ratio = 13.6;
+  const verticalLineX = boundariesMm.map((mm) => planMin + mm / ratio);
+  // Roboflow 벽이 경계에서 어긋나 있는 상태
+  const walls = verticalLineX.map((x, i) => ({
+    id: `w${i}`,
+    start: { x: x + (i % 2 === 0 ? 12 : -14), y: -300 },
+    end: { x: x + (i % 2 === 0 ? 12 : -14), y: 300 }
+  }));
+  // 경계에서 먼 벽은 스냅되면 안 된다
+  walls.push({ id: "far", start: { x: verticalLineX[2] + 90, y: -300 }, end: { x: verticalLineX[2] + 90, y: 300 } });
+
+  const { walls: corrected, movedCount } = snapWallsToStructuralBoundaries(walls, { verticalLineX }, 30);
+  assert.equal(movedCount, 5, "경계 근처 벽 5개가 보정되어야 한다");
+  // 완료 기준: 보정 후 벽 간 거리 * ratio = 도면 구간 치수
+  const centers = corrected.slice(0, 5).map((w) => (w.start.x + w.end.x) / 2);
+  const segMm = [];
+  for (let i = 1; i < 5; i++) segMm.push(Math.round((centers[i] - centers[i - 1]) * ratio));
+  assert.deepEqual(segMm, [3040, 1440, 3120, 3120], "보정 후 벽 간 거리가 도면 치수와 일치해야 한다");
+  // far 벽은 그대로
+  assert.ok(Math.abs((corrected[5].start.x + corrected[5].end.x) / 2 - (verticalLineX[2] + 90)) < 0.01);
+});
+
+test("does not collapse complex floor-plan dimensions by value or an 8-item display cap", () => {
+  assert.match(floorPlanContainerSource, /MAX_VISIBLE_PRINTED_DIMENSIONS = 24/);
+  assert.match(floorPlanContainerSource, /printedDimensionKey/);
+  assert.doesNotMatch(floorPlanContainerSource, /const seen = new Set<number>\(\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /seen\.has\(realLengthMm\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /slice\(0, 8\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /new Map<number, DetectedDimensionLineSpan>/);
+});
+
+
+
+
+test("uses native label-based floor plan file selection", () => {
+  for (const label of [
+    "id=\"floor-plan-source-input\"",
+    "htmlFor=\"floor-plan-source-input\"",
+    "floor-plan-upload-label",
+    "type=\"file\"",
+    "accept=\"image/\\*\""
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  assert.doesNotMatch(floorPlanContainerSource, /fileInputRef\.current\?\.click\(\)/);
+});
+
+test("keeps unplaced printed dimensions out of the canvas overlay", () => {
+  assert.match(floorPlanContainerSource, /hasReliableDimensionPlacement/);
+  assert.match(floorPlanContainerSource, /locationStatus/);
+  assert.match(floorPlanContainerSource, /위치 미확인/);
+  assert.doesNotMatch(floorPlanContainerSource, /fallbackX/);
+  assert.doesNotMatch(floorPlanContainerSource, /fallbackY/);
+});
+
+
+
 test("stores extraction metadata, openings, and fixtures through the floor plan API", () => {
   for (const label of [
     "extractionMeta",
@@ -1350,48 +1725,43 @@ test("renders 3D conversion with the wheretoput React Three Fiber stack", () => 
   }
 });
 
-test("imports wheretoput-style upload, extraction, and rotatable 3D simulator controls", () => {
+test("imports wheretoput-style upload and Roboflow 3D conversion controls", () => {
   for (const label of [
     "도면 등록",
-    "벽 자동 추출",
-    "화면 드래그 회전",
+    "문/창문 탐지",
+    "벽 후처리 적용",
     "배율 조절",
     "handleImageUpload",
-    "WallDetector",
+    "runOpeningDetection",
+    "applyRoboflowWallPostProcessing",
     "convertWallsToWheretoputSimulator",
     "convertWallsToWheretoputRoom3D"
   ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
+    assert.match(floorPlanContainerSource, new RegExp(label));
   }
+
+  assert.doesNotMatch(floorPlanContainerSource, /벽 자동 추출/);
+  assert.doesNotMatch(floorPlanContainerSource, /WallDetector/);
 });
 
-test("extracts uploaded image walls through a wheretoput-style pixel line pipeline", () => {
-  for (const label of [
-    "getImageData",
-    "detectWallLinesFromImageData",
-    "createWallsFromDetectedLines",
-    "WallDetector",
-    "이미지 벽"
-  ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
-  }
+test("keeps uploaded floor plan registration separate from local pixel wall extraction", () => {
+  assert.match(floorPlanContainerSource, /uploadFloorPlanSource/);
+  assert.match(floorPlanContainerSource, /fileToCompressedDataUrl/);
+  assert.match(floorPlanContainerSource, /setWalls\(\[\]\)/);
+  assert.match(floorPlanContainerSource, /setRoboflowDetections\(null\)/);
+  assert.match(floorPlanContainerSource, /setDetectionBoxes\(\[\]\)/);
+  assert.match(floorPlanContainerSource, /도면 등록 완료/);
+  assert.doesNotMatch(floorPlanContainerSource, /detectWallLinesFromImageData/);
+  assert.doesNotMatch(floorPlanContainerSource, /createWallsFromDetectedLines/);
+  assert.doesNotMatch(floorPlanContainerSource, /WallDetector/);
 });
 
-test("preloads OpenCV wall extraction in a worker and falls back to canvas extraction", () => {
-  for (const label of [
-    "floor-plan-extraction.worker",
-    "preloadOpenCvWorker",
-    "추출 엔진 준비중",
-    "도면 분석중",
-    "검수 후 저장",
-    "opencvReady",
-    "fallbackCanvasWallExtraction",
-    "processingMs"
-  ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
-  }
+test("keeps upload flow free of wall-first local extraction fallback", () => {
+  assert.doesNotMatch(floorPlanContainerSource, /mode:\s*"wall-first"/);
+  assert.doesNotMatch(floorPlanContainerSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
+  assert.match(floorPlanContainerSource, /runOpeningDetection/);
+  assert.match(floorPlanContainerSource, /applyRoboflowWallPostProcessing/);
 });
-
 test("uses OCR only for scale candidate extraction and keeps manual scale fallback", () => {
   for (const label of [
     "TESSERACT_OCR_URL",
@@ -1403,7 +1773,6 @@ test("uses OCR only for scale candidate extraction and keeps manual scale fallba
     assert.match(`${floorPlanEditorSource}\n${floorPlanWorkerSource}`, new RegExp(label));
   }
 });
-
 test("saves floor plan drafts through the API while keeping a local fallback", () => {
   for (const label of [
     "apiUrl\\(\"/floor-plans\"\\)",
@@ -1412,50 +1781,118 @@ test("saves floor plan drafts through the API while keeping a local fallback", (
     "room3d",
     "localStorage.setItem\\(\"floorPlanDraft\"",
     "저장 완료",
-    "로컬 임시 저장"
+    "이 브라우저에만 임시 저장됨"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
 });
 
+test("floor plan editor container wires room-model payload helpers", () => {
+  for (const label of [
+    "buildFloorPlanDraftPayload",
+    "buildFloorPlanLocalSnapshot",
+    "buildResidentDesignPayload"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+
+  assert.doesNotMatch(floorPlanContainerSource, /const room3d = \{/);
+  assert.doesNotMatch(floorPlanContainerSource, /const nextExtractionMeta = \{/);
+  assert.match(floorPlanContainerSource, /JSON\.stringify\(\{ \.\.\.payload, id: saved\.id, savedAt: Date\.now\(\) \}\)/);
+});
+
 test("floor plan editor model snaps, selects, removes, and summarizes walls", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const wall = model.createWall({ x: 0, y: 0 }, { x: 130, y: 40 }, "w1");
+  const units = await import("./src/app/floor-plan-3d/room-model/units.ts");
 
   assert.deepEqual(wall, {
     id: "w1",
     start: { x: 0, y: 0 },
-    end: { x: 120, y: 0 }
+    end: { x: 125, y: 0 }
   });
 
+  assert.equal(model.GRID_SIZE, 25);
+  assert.equal(units.GRID_SIZE_PX, 25);
+  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 10);
+  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.01);
   assert.equal(model.findNearestWall([wall], { x: 48, y: 5 }, 18)?.id, "w1");
   assert.deepEqual(model.removeWall([wall], "w1"), []);
   assert.deepEqual(model.summarizeWalls([wall]), {
     wallCount: 1,
-    approximateMeters: 2.5,
+    approximateMeters: 1.3,
     status: "편집중"
   });
+  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 1.2);
 });
 
-test("floor plan editor model converts 2D walls into wheretoput-style 3D wall boxes", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
-  const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
-  const converted = model.convertWallsTo3D([wall], { height: 96, depth: 8 });
+test("floor plan editor model moves and resizes selected walls without mutating originals", async () => {
+  const model = floorPlanModel;
+  const wall = { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } };
 
-  assert.equal(converted.wallPanels.length, 1);
-  assert.equal(converted.wallBoxes.length, 1);
-  assert.equal(converted.wallBoxes[0].id, "front");
-  assert.equal(converted.wallBoxes[0].height, 96);
-  assert.equal(converted.wallBoxes[0].depth, 8);
-  assert.match(converted.wallBoxes[0].frontPath, /^M /);
-  assert.match(converted.wallBoxes[0].topPath, /^M /);
-  assert.match(converted.wallBoxes[0].endCapPath, /^M /);
-  assert.notEqual(converted.wallBoxes[0].frontPath, converted.wallBoxes[0].topPath);
-  assert.equal(converted.floor.path.includes("L"), true);
+  const moved = model.moveWall(wall, { x: 25, y: 50 });
+  const resizedEnd = model.resizeWall(wall, "end", { x: 360, y: 140 });
+  const resizedStart = model.resizeWall(wall, "start", { x: 80, y: 60 });
+
+  assert.deepEqual(moved, { id: "edit-wall", start: { x: 125, y: 150 }, end: { x: 325, y: 150 } });
+  assert.deepEqual(resizedEnd, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 360, y: 100 } });
+  assert.deepEqual(resizedStart, { id: "edit-wall", start: { x: 80, y: 100 }, end: { x: 300, y: 100 } });
+  assert.deepEqual(wall, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } });
+});
+
+test("floor plan editor model optimizes wall conversion with stable ids", async () => {
+  const model = floorPlanModel;
+  const walls = [
+    { id: "a", start: { x: 0, y: 0 }, end: { x: 50, y: 0 } },
+    { id: "b", start: { x: 50, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "side", start: { x: 100, y: 0 }, end: { x: 100, y: 100 } }
+  ];
+
+  const converted = model.convertOptimizedWallsToWheretoputRoom3D(walls, {
+    mergeCollinear: true,
+    pixelToMmRatio: 20,
+    stableIds: true
+  });
+
+  assert.equal(converted.length, 2);
+  assert.equal(converted[0].id, "wall-merged-a-b");
+  assert.equal(converted[0].wall_id, "merged:a+b");
+  assert.deepEqual(converted[0].dimensions, { width: 2, height: 2.5, depth: 0.15 });
+  assert.equal(converted[1].id, "wall-side");
+  assert.deepEqual(walls[0], { id: "a", start: { x: 0, y: 0 }, end: { x: 50, y: 0 } });
+});
+
+test("floor plan editor model builds closed-loop floor polygon data", async () => {
+  const model = floorPlanModel;
+  const square = [
+    { id: "top", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "right", start: { x: 100, y: 0 }, end: { x: 100, y: 100 } },
+    { id: "bottom", start: { x: 100, y: 100 }, end: { x: 0, y: 100 } },
+    { id: "left", start: { x: 0, y: 100 }, end: { x: 0, y: 0 } }
+  ];
+
+  const polygons = model.buildClosedLoopFloorPolygons(square, { pixelToMmRatio: 20 });
+
+  assert.equal(polygons.length, 1);
+  assert.deepEqual(polygons[0].wallIds.sort(), ["bottom", "left", "right", "top"]);
+  assert.deepEqual(polygons[0].points, [
+    { x: 0, z: 0 },
+    { x: 2, z: 0 },
+    { x: 2, z: 2 },
+    { x: 0, z: 2 }
+  ]);
+  assert.equal(polygons[0].perimeterMeters, 8);
+});
+
+test("floor plan editor model no longer exposes legacy 2.5D wall box conversion", async () => {
+  const model = floorPlanModel;
+
+  assert.equal("convertWallsTo3D" in model, false);
+  assert.equal(typeof model.convertWallsToWheretoputRoom3D, "function");
 });
 
 test("floor plan editor model creates wheretoput simulator wall data", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
   const converted = model.convertWallsToWheretoputSimulator([wall], {
     height: 2.5,
@@ -1466,13 +1903,13 @@ test("floor plan editor model creates wheretoput simulator wall data", async () 
   assert.equal(converted.length, 1);
   assert.equal(converted[0].id, "front");
   assert.equal(converted[0].wall_id, "front");
-  assert.deepEqual(converted[0].position, [1.2, 1.25, 0]);
+  assert.deepEqual(converted[0].position, [1.25, 1.25, 0]);
   assert.deepEqual(converted[0].rotation, [0, 0, 0]);
-  assert.deepEqual(converted[0].dimensions, { width: 2.4, height: 2.5, depth: 0.15 });
+  assert.deepEqual(converted[0].dimensions, { width: 2.5, height: 2.5, depth: 0.15 });
 });
 
 test("floor plan editor model creates centered wheretoput room 3D wall data", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = [
     { id: "left", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
     { id: "right", start: { x: 100, y: 0 }, end: { x: 100, y: 100 } }
@@ -1488,7 +1925,7 @@ test("floor plan editor model creates centered wheretoput room 3D wall data", as
 });
 
 test("floor plan editor model can extract starter walls from a registered plan", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = model.createWallsFromRegisteredPlan({ width: 1600, height: 1000, name: "unit.png" });
 
   assert.equal(walls.length >= 5, true);
@@ -1497,7 +1934,7 @@ test("floor plan editor model can extract starter walls from a registered plan",
 });
 
 test("floor plan editor model detects wall lines from a binary image mask", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const width = 12;
   const height = 10;
   const mask = Array.from({ length: width * height }, () => false);
@@ -1512,7 +1949,7 @@ test("floor plan editor model detects wall lines from a binary image mask", asyn
 });
 
 test("floor plan editor model extracts wall center bands and preserves open gaps", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const width = 220;
   const height = 180;
   const mask = Array.from({ length: width * height }, () => false);
@@ -1551,7 +1988,7 @@ test("floor plan editor model extracts wall center bands and preserves open gaps
 });
 
 test("floor plan editor model removes small text noise before extracting wall lines", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const width = 40;
   const height = 24;
   const mask = Array.from({ length: width * height }, () => false);
@@ -1571,7 +2008,7 @@ test("floor plan editor model removes small text noise before extracting wall li
 });
 
 test("floor plan editor model merges nearby wall candidates and caps noisy output", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
     [
       { x1: 10, y1: 20, x2: 100, y2: 20, orientation: "horizontal" },
@@ -1596,8 +2033,40 @@ test("floor plan editor model merges nearby wall candidates and caps noisy outpu
   assert.equal(capped.length, 24);
 });
 
+test("floor plan editor model does not merge wall gaps marked by perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 286, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 286, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { axisTolerance: 4, gapTolerance: 50, maxLines: 10, respectPerpendicularGapMarkers: true }
+  );
+
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 420), false);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 315 && line.x2 === 420), true);
+});
+
+test("floor plan editor model does not merge distant same-axis walls when axis sorting differs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 602, y1: 144, x2: 743, y2: 144, orientation: "horizontal", thickness: 6 },
+      { x1: 151, y1: 148, x2: 475, y2: 148, orientation: "horizontal", thickness: 12 }
+    ],
+    { axisTolerance: 4, gapTolerance: 35, maxLines: 10 }
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged.some((line) => line.x1 === 151 && line.x2 === 475), true);
+  assert.equal(merged.some((line) => line.x1 === 602 && line.x2 === 743), true);
+});
+
 test("floor plan editor model preserves wall thickness and removes thin interior symbols", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
     [
       { x1: 20, y1: 100, x2: 360, y2: 100, orientation: "horizontal" },
@@ -1625,7 +2094,7 @@ test("floor plan editor model preserves wall thickness and removes thin interior
 });
 
 test("floor plan editor model removes contained duplicate wall fragments", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const result = model.filterCommercialWallCandidates(
     [
       { x1: 100, y1: 100, x2: 500, y2: 100, orientation: "horizontal", thickness: 6 },
@@ -1643,7 +2112,7 @@ test("floor plan editor model removes contained duplicate wall fragments", async
 });
 
 test("floor plan editor model uses filled interior support without breaking monochrome plans", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const coloredPlan = model.filterCommercialWallCandidates(
     [
       { x1: 100, y1: 100, x2: 500, y2: 100, orientation: "horizontal", thickness: 7, fillSupport: 0.56 },
@@ -1671,7 +2140,7 @@ test("floor plan editor model uses filled interior support without breaking mono
 });
 
 test("floor plan editor model removes dimension candidates before wall creation", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 40, y1: 40, x2: 300, y2: 40, orientation: "horizontal", thickness: 8 },
     { x1: 30, y1: 12, x2: 330, y2: 12, orientation: "horizontal", thickness: 1, markers: ["arrow-start", "arrow-end"] }
@@ -1685,7 +2154,7 @@ test("floor plan editor model removes dimension candidates before wall creation"
 });
 
 test("floor plan editor model removes dimension lines offset from the main wall cluster", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 100, y1: 120, x2: 500, y2: 120, orientation: "horizontal" },
     { x1: 500, y1: 120, x2: 500, y2: 420, orientation: "vertical" },
@@ -1703,7 +2172,7 @@ test("floor plan editor model removes dimension lines offset from the main wall 
 });
 
 test("floor plan editor model removes far outside dimensions without losing structural walls", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 150, y1: 180, x2: 650, y2: 180, orientation: "horizontal", thickness: 9 },
     { x1: 650, y1: 180, x2: 650, y2: 560, orientation: "vertical", thickness: 9 },
@@ -1722,7 +2191,7 @@ test("floor plan editor model removes far outside dimensions without losing stru
 });
 
 test("floor plan editor model keeps crossing outer dimensions out of structural bounds", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 150, y1: 140, x2: 620, y2: 140, orientation: "horizontal" },
     { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical" },
@@ -1740,7 +2209,7 @@ test("floor plan editor model keeps crossing outer dimensions out of structural 
 });
 
 test("floor plan editor model separates dashed annotations from wall candidates", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const lines = [
     { x1: 100, y1: 100, x2: 440, y2: 100, orientation: "horizontal", thickness: 8 },
     { x1: 440, y1: 100, x2: 440, y2: 340, orientation: "vertical", thickness: 8 },
@@ -1757,8 +2226,384 @@ test("floor plan editor model separates dashed annotations from wall candidates"
   assert.equal(result.removedNoiseCount, 2);
 });
 
+test("floor plan editor model conservative mode keeps only confident thick wall lines", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 9 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 9 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 9 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 9 },
+      { x1: 300, y1: 140, x2: 300, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 180, y1: 260, x2: 410, y2: 260, orientation: "horizontal", thickness: 3 },
+      { x1: 100, y1: 88, x2: 640, y2: 88, orientation: "horizontal", thickness: 1 },
+      { x1: 210, y1: 330, x2: 260, y2: 330, orientation: "horizontal", thickness: 2 }
+    ],
+    { height: 680, mode: "conservative", width: 760 }
+  );
+
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.walls.some((line) => line.x1 === 300 && line.x2 === 300), true);
+  assert.equal(result.walls.some((line) => line.thickness <= 3), false);
+  assert.equal(result.dimensionCandidates.length, 1);
+  assert.equal(result.removedNoiseCount, 3);
+});
+
+test("floor plan editor model conservative mode drops all ambiguous thin wall candidates", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 160, y1: 160, x2: 520, y2: 160, orientation: "horizontal", thickness: 2 },
+      { x1: 520, y1: 160, x2: 520, y2: 420, orientation: "vertical", thickness: 2 },
+      { x1: 520, y1: 420, x2: 160, y2: 420, orientation: "horizontal", thickness: 2 },
+      { x1: 160, y1: 420, x2: 160, y2: 160, orientation: "vertical", thickness: 2 }
+    ],
+    { height: 560, mode: "conservative", width: 680 }
+  );
+
+  assert.equal(result.walls.length, 0);
+  assert.equal(result.annotationCandidates.length, 4);
+  assert.equal(result.needsReview, true);
+});
+
+test("floor plan editor model wall-first mode reconnects dark wall runs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 330, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 362, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 320, y1: 180, x2: 320, y2: 490, orientation: "vertical", thickness: 7 },
+      { x1: 120, y1: 92, x2: 620, y2: 92, orientation: "horizontal", thickness: 1, markers: ["arrow-start", "arrow-end"] },
+      { x1: 260, y1: 270, x2: 300, y2: 270, orientation: "horizontal", thickness: 2 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 140 && line.x1 === 120 && line.x2 === 620), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320), true);
+  assert.equal(result.dimensionCandidates.length, 1);
+  assert.equal(result.removedNoiseCount, 2);
+});
+
+test("floor plan editor model wall-first mode keeps door gaps open when gap has perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 288, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 288, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 <= 180 && line.x2 >= 420), false);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 315 && line.x2 === 420), true);
+});
+
+test("floor plan editor model wall-first mode does not bridge larger probable opening gaps by default", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 260, y2: 320, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 358, x2: 260, y2: 490, orientation: "vertical", thickness: 8 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 <= 180 && line.y2 >= 490), false);
+});
+
+test("floor plan editor model wall-first mode preserves short thick wall stubs connected to structure", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 140, x2: 260, y2: 198, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 === 140 && line.y2 === 198), true);
+});
+
+test("floor plan editor model wall-first mode preserves small thick rectangular wall loops", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 360, y1: 320, x2: 425, y2: 320, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 380, x2: 425, y2: 380, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 320, x2: 360, y2: 380, orientation: "vertical", thickness: 7 },
+      { x1: 425, y1: 320, x2: 425, y2: 380, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 320), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 360 && line.y1 === 320 && line.y2 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 425 && line.y1 === 320 && line.y2 === 380), true);
+});
+
+test("floor plan editor model wall-first mode infers missing outer edges and extends near walls", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 120, y1: 520, x2: 620, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 320, y1: 168, x2: 320, y2: 493, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 120 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.needsReview, true);
+});
+
+test("floor plan editor model wall-first mode skips inferred outer edges on complex multi-room plans", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 100, y1: 100, x2: 620, y2: 100, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 100, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 100, y1: 520, x2: 100, y2: 100, orientation: "vertical", thickness: 8 },
+      { x1: 220, y1: 100, x2: 220, y2: 260, orientation: "vertical", thickness: 7 },
+      { x1: 360, y1: 100, x2: 360, y2: 280, orientation: "vertical", thickness: 7 },
+      { x1: 480, y1: 280, x2: 480, y2: 520, orientation: "vertical", thickness: 7 },
+      { x1: 100, y1: 220, x2: 260, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 300, y1: 220, x2: 460, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 100, y1: 340, x2: 260, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 340, y1: 340, x2: 520, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 180, y1: 420, x2: 300, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 420, x2: 540, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 540, y1: 360, x2: 540, y2: 520, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.markers?.includes("wall-first-inferred-outer")), false);
+});
+
+test("floor plan editor model strict line mask ignores filled surfaces and small dark noise", async () => {
+  const model = floorPlanModel;
+  const width = 240;
+  const height = 180;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const paint = (x, y, color) => {
+    const offset = (y * width + x) * 4;
+    data[offset] = color;
+    data[offset + 1] = color;
+    data[offset + 2] = color;
+    data[offset + 3] = 255;
+  };
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) paint(x, y, color);
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 200, 35, 0);
+  fillRect(30, 140, 200, 145, 0);
+  fillRect(30, 30, 35, 145, 0);
+  fillRect(195, 30, 200, 145, 0);
+  fillRect(70, 65, 165, 110, 135);
+  fillRect(12, 12, 18, 18, 0);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+
+  assert.equal(lines.length, 4);
+  assert.equal(lines.every((line) => line.thickness <= 8), true);
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 65 && line.y1 <= 110), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 70 && line.x1 <= 165), false);
+});
+
+test("floor plan editor model separates dark furniture fill from black walls with adaptive luminance", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 상단 벽 안쪽에 붙은 진회색 싱크대 채움 — 벽으로 검출되면 안 된다.
+  fillRect(100, 38, 200, 80, 90);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 40, strictLineMask: true, width }
+  );
+
+  assert.equal(
+    lines.some((line) => line.orientation === "horizontal" && Math.abs(line.y1 - 33) <= 3 && line.x1 <= 34 && line.x2 >= 266),
+    true
+  );
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 40 && line.y1 <= 85), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 95 && line.x1 <= 205 && line.y2 <= 90), false);
+});
+
+test("floor plan editor model keeps wall bands separate from adjacent solid fill blocks", async () => {
+  const model = floorPlanModel;
+  const width = 220;
+  const height = 120;
+  const mask = Array.from({ length: width * height }, () => false);
+  const fillRect = (x1, y1, x2, y2) => {
+    for (let y = y1; y <= y2; y += 1) {
+      for (let x = x1; x <= x2; x += 1) mask[y * width + x] = true;
+    }
+  };
+
+  fillRect(10, 20, 209, 27);
+  // 벽 바로 아래 같은 색으로 붙은 채움 블록 — 벽 밴드를 흡수하면 안 된다.
+  fillRect(60, 28, 119, 70);
+
+  const lines = model.detectWallBandLinesFromMask(mask, { height, minRunLength: 40, width });
+  const wallBand = lines.find((line) => line.orientation === "horizontal" && line.y1 <= 28);
+
+  assert.equal(Boolean(wallBand), true);
+  assert.equal(wallBand.thickness <= 10, true);
+  assert.equal(wallBand.x1 <= 12 && wallBand.x2 >= 207, true);
+});
+
+test("floor plan editor model recovers short thick wall stubs below the primary run length", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  fillRect(146, 38, 153, 74, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const recoveredStub = lines.find(
+    (line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80
+  );
+
+  assert.equal(Boolean(recoveredStub), true);
+  assert.equal(recoveredStub.markers?.includes("short-wall-recovered"), true);
+
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  assert.equal(
+    filtered.walls.some((line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80),
+    true
+  );
+});
+
+test("floor plan editor model keeps small solid rectangular wall blocks as single walls", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 순흑으로 채운 24x32 덕트/샤프트 — 긴 축 방향 벽 하나로 남아야 한다.
+  fillRect(180, 120, 203, 151, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  const blockWalls = filtered.walls.filter(
+    (line) => line.x1 >= 172 && line.x2 <= 211 && line.y1 >= 112 && line.y2 <= 159
+  );
+
+  assert.equal(blockWalls.length, 1);
+  assert.equal(blockWalls[0].orientation, "vertical");
+});
+
+test("floor plan editor model classifies over-thick fill bands as furniture candidates", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 410, y2: 180, orientation: "horizontal", thickness: 60 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => Number(line.thickness ?? 1) >= 60), false);
+  assert.equal(result.annotationCandidates.some((candidate) => candidate.source === "furniture-fill-band"), true);
+});
+
 test("floor plan editor model estimates scale from outside dimensions", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const candidate = model.estimateScaleCandidateFromDimensions([
     {
       line: { x1: 100, y1: 20, x2: 420, y2: 20, orientation: "horizontal" },
@@ -1773,8 +2618,93 @@ test("floor plan editor model estimates scale from outside dimensions", async ()
   assert.equal(candidate.source, "outside-dimension-ocr");
 });
 
+test("floor plan editor model snaps normalized AI missing wall hints to dark image evidence", async () => {
+  const model = floorPlanModel;
+  const width = 120;
+  const height = 80;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 38; y <= 42; y += 1) {
+    for (let x = 15; x <= 105; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 20;
+      data[offset + 1] = 20;
+      data[offset + 2] = 20;
+    }
+  }
+
+  const snapped = model.snapNormalizedLineToWallEvidence(
+    { x1: 120, y1: 465, x2: 900, y2: 465 },
+    { data, height, width },
+    { darkThreshold: 80, searchRadiusPx: 8 }
+  );
+
+  assert.equal(snapped.orientation, "horizontal");
+  assert.equal(snapped.y1, 40);
+  assert.equal(snapped.thickness >= 4, true);
+  assert.equal(snapped.confidence > 0.7, true);
+});
+
+test("floor plan editor model creates wall candidates from AI room polygons and merges shared room edges", async () => {
+  const model = floorPlanModel;
+  const width = 200;
+  const height = 120;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 20; y <= 100; y += 1) {
+    for (let x = 99; x <= 101; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 10;
+      data[offset + 1] = 10;
+      data[offset + 2] = 10;
+    }
+  }
+
+  const lines = model.createWallCandidatesFromRoomPolygons(
+    [
+      {
+        confidence: 0.82,
+        label: "거실",
+        polygon: [
+          { x: 100, y: 150 },
+          { x: 500, y: 150 },
+          { x: 500, y: 850 },
+          { x: 100, y: 850 }
+        ]
+      },
+      {
+        confidence: 0.8,
+        label: "침실",
+        polygon: [
+          { x: 500, y: 150 },
+          { x: 900, y: 150 },
+          { x: 900, y: 850 },
+          { x: 500, y: 850 }
+        ]
+      }
+    ],
+    { data, height, width },
+    { darkThreshold: 80, minLength: 20, searchRadiusPx: 8 }
+  );
+  const sharedWalls = lines.filter((line) => line.orientation === "vertical" && line.x1 >= 98 && line.x1 <= 102);
+
+  assert.equal(sharedWalls.length, 1);
+  assert.equal(sharedWalls[0].markers.includes("ai-room-edge"), true);
+  assert.equal(sharedWalls[0].thickness >= 2, true);
+});
+
 test("floor plan editor model creates opening candidates as editable layers", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const candidates = model.detectOpeningCandidates({
     arcs: [{ x: 120, y: 140, radius: 36 }],
     gaps: [{ x1: 100, y1: 140, x2: 150, y2: 140 }]
@@ -1788,7 +2718,7 @@ test("floor plan editor model creates opening candidates as editable layers", as
 });
 
 test("floor plan editor model creates fixed fixture candidates separately from movable furniture", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const candidates = model.detectFixtureCandidates({
     labels: [{ text: "싱크대", x: 220, y: 320, confidence: 0.86 }],
     shapes: [{ kind: "cabinet", x: 210, y: 300, width: 120, height: 36 }]
@@ -1799,8 +2729,57 @@ test("floor plan editor model creates fixed fixture candidates separately from m
   assert.equal(candidates[0].movable, false);
 });
 
+test("floor plan editor model recovers full structural bounds from a fragmented outline (real plan regression)", async () => {
+  // 실제 원룸 도면(창문/문 opening으로 외곽선이 조각난 케이스)의 fallback 추출 결과.
+  // 컴포넌트 기반 경계 추정이 국소 조각으로 붕괴해 벽 대부분을 잃던 회귀 케이스.
+  const model = floorPlanModel;
+  const rawLines = [
+    { x1: 541, y1: 233, x2: 635, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 905, y1: 233, x2: 1008, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 286, y1: 754, x2: 460, y2: 754, orientation: "horizontal", thickness: 6, markers: ["wall-band"] },
+    { x1: 668, y1: 767, x2: 1012, y2: 767, orientation: "horizontal", thickness: 12, markers: ["wall-band"] },
+    { x1: 285, y1: 957, x2: 461, y2: 957, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 497, y1: 958, x2: 1008, y2: 958, orientation: "horizontal", thickness: 18, markers: ["wall-band"] },
+    { x1: 269, y1: 253, x2: 269, y2: 737, orientation: "vertical", thickness: 19, markers: ["wall-band"] },
+    { x1: 463, y1: 774, x2: 463, y2: 935, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 495, y1: 774, x2: 495, y2: 935, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 660, y1: 252, x2: 660, y2: 737, orientation: "vertical", thickness: 5, markers: ["wall-band"] },
+    { x1: 1010, y1: 766, x2: 1010, y2: 940, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 1036, y1: 250, x2: 1036, y2: 739, orientation: "vertical", thickness: 15, markers: ["wall-band"] },
+    { x1: 1042, y1: 768, x2: 1042, y2: 950, orientation: "vertical", thickness: 4, markers: ["wall-band"] },
+    { x1: 285, y1: 232, x2: 346, y2: 232, orientation: "horizontal", thickness: 17, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 671, y1: 233, x2: 710, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 269, y1: 773, x2: 269, y2: 823, orientation: "vertical", thickness: 19, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 269, y1: 907, x2: 269, y2: 940, orientation: "vertical", thickness: 19, markers: ["wall-band", "short-wall-recovered"] }
+  ];
+
+  const result = floorPlanModel.filterCommercialWallCandidates(rawLines, { height: 1280, mode: "wall-first", width: 1382 });
+
+  // 경계가 건물 전체를 덮어야 한다 (국소 조각 아님).
+  assert.equal(result.mainPlanBounds.minX <= 270, true);
+  assert.equal(result.mainPlanBounds.maxX >= 1036, true);
+  assert.equal(result.mainPlanBounds.minY <= 233, true);
+  assert.equal(result.mainPlanBounds.maxY >= 957, true);
+
+  // 방 사이 얇은 내벽(x=660, thick=5)과 아래쪽 외벽이 살아남아야 한다.
+  assert.equal(
+    result.walls.some((line) => line.orientation === "vertical" && Math.abs((line.x1 + line.x2) / 2 - 660) <= 4),
+    true
+  );
+  assert.equal(
+    result.walls.some((line) => line.orientation === "horizontal" && Math.abs((line.y1 + line.y2) / 2 - 958) <= 4),
+    true
+  );
+
+  // 벽이 건물 경계 밖으로 생성되면 안 된다 (유령 벽 회귀 방지).
+  for (const line of result.walls) {
+    assert.equal(Math.max(line.y1, line.y2) <= result.mainPlanBounds.maxY + 12, true);
+    assert.equal(Math.max(line.x1, line.x2) <= result.mainPlanBounds.maxX + 12, true);
+  }
+});
+
 test("floor plan editor model scales detected image lines into editor walls", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = model.createWallsFromDetectedLines(
     [{ x1: 100, y1: 50, x2: 900, y2: 50, orientation: "horizontal" }],
     { width: 1000, height: 500, name: "scan.png" }
@@ -1812,8 +2791,22 @@ test("floor plan editor model scales detected image lines into editor walls", as
   assert.equal(walls[0].end.x > walls[0].start.x, true);
 });
 
+test("floor plan editor model overlays detected walls on the centered uploaded image", async () => {
+  const model = floorPlanModel;
+  const walls = model.createWallsFromDetectedLines(
+    [{ x1: 500, y1: 0, x2: 500, y2: 500, orientation: "vertical" }],
+    { width: 1000, height: 500, name: "scan.png" }
+  );
+
+  assert.equal(walls.length, 1);
+  assert.equal(walls[0].start.x, 0);
+  assert.equal(walls[0].end.x, 0);
+  assert.equal(walls[0].start.y, -320);
+  assert.equal(walls[0].end.y, 320);
+});
+
 test("floor plan editor model keeps small detected openings instead of snapping them closed", async () => {
-  const model = await import("./src/app/floor-plan-3d/floor-plan-editor-model.mjs");
+  const model = floorPlanModel;
   const walls = model.createWallsFromDetectedLines(
     [
       { x1: 120, y1: 100, x2: 420, y2: 100, orientation: "horizontal" },
@@ -1825,4 +2818,250 @@ test("floor plan editor model keeps small detected openings instead of snapping 
   assert.equal(walls.length, 2);
   assert.equal(walls[1].start.x > walls[0].end.x, true);
   assert.equal(walls[1].start.x - walls[0].end.x < 16, true);
+});
+
+test("floor plan editor model builds normalized floor plan draft payload", async () => {
+  const payloadModel = await import("./src/app/floor-plan-3d/room-model/room-payload.ts");
+  const walls3D = [{ id: "wall-0", wall_id: "w1", position: [0, 1.25, 0], rotation: [0, 0, 0], dimensions: { width: 2, height: 2.5, depth: 0.15 } }];
+  const confirmed = { id: "c1", status: "CONFIRMED" };
+  const pending = { id: "c2", status: "PENDING" };
+  const payload = payloadModel.buildFloorPlanDraftPayload({
+    extractionMeta: { detectedLineCount: 4 },
+    fixtureCandidates: [confirmed, pending],
+    hiddenWallCount: 1,
+    hiddenWallIds: new Set(["w2"]),
+    landlordFurnitures: [{ id: "f1", source: "LANDLORD_OPTION" }],
+    openingCandidates: [pending],
+    pixelToMmRatio: 20,
+    scaleConfirmed: true,
+    status: "DRAFT",
+    uploadedFloorPlanSource: { attachmentId: "att-1", imageUrl: "https://img" },
+    uploadedImage: "data:fallback",
+    walls: [{ id: "w1", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } }],
+    walls3D
+  });
+
+  assert.equal(payload.status, "DRAFT");
+  assert.equal(payload.extractionMeta.scaleConfirmed, true);
+  assert.equal(payload.extractionMeta.detectedLineCount, 4);
+  assert.deepEqual(payload.hiddenWallIds, ["w2"]);
+  assert.equal(payload.fixtures.length, 2);
+  assert.equal(payload.sourceAttachmentId, "att-1");
+  assert.equal(payload.sourceImageUrl, "https://img");
+  assert.equal(payload.room3d.wallCount, 1);
+  assert.equal(payload.room3d.hiddenWallCount, 1);
+  assert.deepEqual(payload.room3d.fixtures, [confirmed]);
+  assert.deepEqual(payload.room3d.openings, []);
+});
+
+test("floor plan editor model builds resident design and local snapshot payloads", async () => {
+  const payloadModel = await import("./src/app/floor-plan-3d/room-model/room-payload.ts");
+  const walls3D = [{ id: "wall-0", wall_id: "w1", position: [0, 1.25, 0], rotation: [0, 0, 0], dimensions: { width: 2, height: 2.5, depth: 0.15 } }];
+  const resident = payloadModel.buildResidentDesignPayload({
+    fixtureCandidates: [{ id: "c1", status: "CONFIRMED" }],
+    floorPlanDraftId: "draft-9",
+    hiddenWallIds: [],
+    landlordOptionFurnitures: [{ id: "f1", source: "LANDLORD_OPTION" }],
+    openingCandidates: [],
+    pixelToMmRatio: 20,
+    residentDesignFurnitures: [{ id: "f2", source: "RESIDENT_DESIGN" }],
+    savedAt: 1234,
+    walls: [],
+    walls3D
+  });
+
+  assert.equal(resident.mode, "resident");
+  assert.equal(resident.sourceFloorPlanDraftId, "draft-9");
+  assert.equal(resident.lockedFurnitures[0].id, "f1");
+  assert.equal(resident.furnitures[0].id, "f2");
+  assert.deepEqual(resident.room3d, { walls: walls3D });
+
+  const snapshot = payloadModel.buildFloorPlanLocalSnapshot({
+    extractionMeta: { detectedLineCount: 4 },
+    fixtureCandidates: [{ id: "c1", status: "CONFIRMED" }],
+    hiddenWallIds: ["w2"],
+    landlordFurnitures: [],
+    openingCandidates: [{ id: "c3", status: "PENDING" }],
+    pixelToMmRatio: 20,
+    timestamp: 5678,
+    walls: [],
+    walls3D
+  });
+
+  assert.equal(snapshot.timestamp, 5678);
+  assert.equal(snapshot.extractionMeta.scaleConfirmed, undefined);
+  assert.equal(snapshot.room3d.fixtures.length, 1);
+  assert.deepEqual(snapshot.room3d.openings, []);
+  assert.equal(snapshot.room3d.wallCount, undefined);
+});
+
+test("floor plan editor model builds wall endpoint graphs and finds dangling ends", async () => {
+  const graphModel = await import("./src/app/floor-plan-3d/room-model/wall-graph.ts");
+  const walls = [
+    { id: "top", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "right", start: { x: 100.4, y: 0.3 }, end: { x: 100, y: 80 } },
+    { id: "broken", start: { x: 180, y: 0 }, end: { x: 220, y: 0 } }
+  ];
+
+  const graph = graphModel.buildWallGraph(walls, 1);
+  const corners = graphModel.findCorners(walls, 1);
+  const danglingEnds = graphModel.findDanglingEnds(walls, 1);
+
+  assert.equal(graph.nodes.some((node) => node.wallIds.includes("top") && node.wallIds.includes("right")), true);
+  assert.equal(corners.length, 1);
+  assert.deepEqual(corners[0].wallIds, ["top", "right"]);
+  assert.equal(danglingEnds.length, 4);
+  assert.deepEqual(
+    danglingEnds.map((end) => `${end.wallId}:${end.end}`).sort(),
+    ["broken:end", "broken:start", "right:end", "top:start"]
+  );
+});
+
+test("floor plan editor model merges collinear overlapping wall runs", async () => {
+  const graphModel = await import("./src/app/floor-plan-3d/room-model/wall-graph.ts");
+  const walls = [
+    { id: "a", start: { x: 0, y: 0 }, end: { x: 50, y: 0 } },
+    { id: "b", start: { x: 50.4, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "c", start: { x: 80, y: 0 }, end: { x: 130, y: 0 } },
+    { id: "side", start: { x: 160, y: 0 }, end: { x: 160, y: 40 } }
+  ];
+
+  const merged = graphModel.mergeCollinearWalls(walls, { gapTolerancePx: 1, tolerancePx: 1 });
+
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged[0], {
+    id: "merged:a+b+c",
+    start: { x: 0, y: 0 },
+    end: { x: 130, y: 0 }
+  });
+  assert.deepEqual(merged[1], walls[3]);
+  assert.deepEqual(walls[1].start, { x: 50.4, y: 0 });
+});
+
+test("floor plan editor model detects closed wall loops", async () => {
+  const graphModel = await import("./src/app/floor-plan-3d/room-model/wall-graph.ts");
+  const square = [
+    { id: "top", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    { id: "right", start: { x: 100, y: 0 }, end: { x: 100, y: 80 } },
+    { id: "bottom", start: { x: 100, y: 80 }, end: { x: 0, y: 80 } },
+    { id: "left", start: { x: 0, y: 80 }, end: { x: 0, y: 0 } }
+  ];
+
+  const loops = graphModel.detectClosedLoops(square, 1);
+  const openLoops = graphModel.detectClosedLoops(square.slice(0, 3), 1);
+
+  assert.equal(loops.length, 1);
+  assert.deepEqual(loops[0].wallIds.sort(), ["bottom", "left", "right", "top"]);
+  assert.equal(loops[0].points.length, 4);
+  assert.equal(loops[0].perimeterPx, 360);
+  assert.deepEqual(openLoops, []);
+});
+
+test("floor plan editor model calculates rotated furniture footprints", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const furniture = {
+    id: "desk-1",
+    furniture_id: "desk",
+    length: [2000, 740, 1000],
+    position: [1, 0.37, 2],
+    rotation: [0, Math.PI / 2, 0],
+    scale: 1
+  };
+
+  const footprint = collisionModel.getFurnitureFootprint(furniture);
+
+  assert.equal(footprint.width, 2);
+  assert.equal(footprint.depth, 1);
+  assert.deepEqual(footprint.bounds, { maxX: 1.5, maxZ: 3, minX: 0.5, minZ: 1 });
+  assert.deepEqual(footprint.corners, [
+    { x: 1.5, z: 1 },
+    { x: 1.5, z: 3 },
+    { x: 0.5, z: 3 },
+    { x: 0.5, z: 1 }
+  ]);
+  assert.deepEqual(furniture.position, [1, 0.37, 2]);
+});
+
+test("floor plan editor model detects furniture wall and furniture overlaps", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const wall = {
+    id: "wall-0",
+    wall_id: "top",
+    position: [0, 1.25, 0],
+    rotation: [0, 0, 0],
+    dimensions: { width: 4, height: 2.5, depth: 0.2 }
+  };
+  const sofa = {
+    id: "sofa",
+    furniture_id: "sofa",
+    length: [1200, 700, 800],
+    position: [0, 0.35, 0.15],
+    rotation: [0, 0, 0],
+    scale: 1
+  };
+  const table = {
+    ...sofa,
+    id: "table",
+    position: [0.5, 0.35, 0.2]
+  };
+  const farChair = {
+    ...sofa,
+    id: "chair",
+    position: [3, 0.35, 2]
+  };
+
+  assert.equal(collisionModel.furnitureIntersectsWall(sofa, wall), true);
+  assert.equal(collisionModel.furnitureIntersectsWall(farChair, wall), false);
+  assert.equal(collisionModel.furnitureOverlapsFurniture(sofa, table), true);
+  assert.equal(collisionModel.furnitureOverlapsFurniture(sofa, farChair), false);
+});
+
+test("floor plan editor model clamps furniture inside wall bounds", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const walls = [
+    { id: "top", wall_id: "top", position: [0, 1.25, -2], rotation: [0, 0, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } },
+    { id: "right", wall_id: "right", position: [2, 1.25, 0], rotation: [0, Math.PI / 2, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } },
+    { id: "bottom", wall_id: "bottom", position: [0, 1.25, 2], rotation: [0, 0, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } },
+    { id: "left", wall_id: "left", position: [-2, 1.25, 0], rotation: [0, Math.PI / 2, 0], dimensions: { width: 4, height: 2.5, depth: 0.15 } }
+  ];
+  const bed = {
+    id: "bed",
+    furniture_id: "bed",
+    length: [1000, 500, 1000],
+    position: [2.4, 0.25, -2.3],
+    rotation: [0, 0, 0],
+    scale: 1
+  };
+
+  const clamped = collisionModel.clampFurnitureIntoRoom(bed, walls);
+
+  assert.deepEqual(clamped.position, [1.5, 0.25, -1.5]);
+  assert.notEqual(clamped, bed);
+  assert.deepEqual(bed.position, [2.4, 0.25, -2.3]);
+});
+
+test("floor plan editor model snaps furniture to the nearest wall", async () => {
+  const collisionModel = await import("./src/app/floor-plan-3d/room-model/collision.ts");
+  const wall = {
+    id: "wall-0",
+    wall_id: "top",
+    position: [0, 1.25, 0],
+    rotation: [0, 0, 0],
+    dimensions: { width: 4, height: 2.5, depth: 0.2 }
+  };
+  const wardrobe = {
+    id: "wardrobe",
+    furniture_id: "wardrobe",
+    length: [1000, 1900, 600],
+    position: [0.4, 0.95, 0.45],
+    rotation: [0, Math.PI / 2, 0],
+    scale: 1
+  };
+
+  const snapped = collisionModel.snapFurnitureToWall(wardrobe, [wall], 0.4);
+  const unchanged = collisionModel.snapFurnitureToWall({ ...wardrobe, position: [0.4, 0.95, 1.4] }, [wall], 0.4);
+
+  assert.deepEqual(snapped.position, [0.4, 0.95, 0.4]);
+  assert.deepEqual(snapped.rotation, [0, 0, 0]);
+  assert.deepEqual(unchanged.position, [0.4, 0.95, 1.4]);
 });

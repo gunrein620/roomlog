@@ -418,6 +418,8 @@ model Room {
   updatedAt    DateTime @updatedAt
 
   tenants              TenantRoom[]
+  roomWalls            RoomWall[]
+  floorPlans           FloorPlan[]
   contracts            Contract[]
   complaints           Complaint[]
   tickets              Ticket[]
@@ -427,6 +429,25 @@ model Room {
 
   @@index([landlordId])
   @@unique([buildingName, roomNo])
+}
+
+model RoomWall {
+  id           String   @id
+  roomId       String
+  sourceWallId String
+  start        Json
+  end          Json
+  lengthMm     Int
+  rotationRad  Float
+  position     Json
+  dimensions   Json
+  wallOrder    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, wallOrder])
 }
 
 model TenantRoom {
@@ -704,6 +725,7 @@ model Attachment {
 model FloorPlan {
   id                 String          @id
   ownerId            String
+  roomId             String?
   sourceAttachmentId String?
   sourceImageUrl     String?
   status             FloorPlanStatus @default(DRAFT)
@@ -719,8 +741,10 @@ model FloorPlan {
   updatedAt          DateTime        @updatedAt
 
   owner UserAccount @relation("OwnedFloorPlans", fields: [ownerId], references: [id])
+  room  Room?       @relation(fields: [roomId], references: [id])
 
   @@index([ownerId, updatedAt])
+  @@index([roomId])
   @@index([status])
 }
 

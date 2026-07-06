@@ -618,6 +618,467 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("stores room walls from detected floor-plan coordinates and returns simulator wallsData", () => {
+    const service = new RoomlogService();
+
+    const created = service.createRoom("landlord-demo", {
+      buildingName: "도면빌라",
+      roomNo: "501호",
+      address: "서울시 성동구 도면로 5",
+      roomData: {
+        pixelToMmRatio: 20,
+        walls: [
+          { id: "wall-a", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+          { id: "wall-b", start: { x: 100, y: 0 }, end: { x: 100, y: 80 } }
+        ]
+      }
+    });
+
+    assert.equal(created.room.buildingName, "도면빌라");
+    assert.equal(created.roomWalls.length, 2);
+    assert.equal(created.roomWalls[0].roomId, created.room.id);
+    assert.equal(created.roomWalls[0].sourceWallId, "wall-a");
+    assert.equal(created.roomWalls[0].lengthMm, 2000);
+    assert.equal(created.roomWalls[0].rotationRad, 0);
+    assert.equal(created.roomWalls[1].lengthMm, 1600);
+
+    const simulator = service.loadSimulatorRoom(created.room.id);
+    assert.equal(simulator.room.id, created.room.id);
+    assert.equal(simulator.wallsData.length, 2);
+    assert.deepEqual(simulator.wallsData[0].dimensions, { width: 2, height: 2.5, depth: 0.15 });
+    assert.deepEqual(simulator.wallsData[0].position, [-0.5, 1.25, -0.4]);
+    assert.equal(simulator.room_objects.length, 0);
+
+    const updatedWalls = service.replaceRoomWalls("landlord-demo", created.room.id, {
+      pixelToMmRatio: 10,
+      walls: [{ id: "wall-c", start: { x: 0, y: 0 }, end: { x: 0, y: 300 } }]
+    });
+
+    assert.equal(updatedWalls.length, 1);
+    assert.equal(updatedWalls[0].sourceWallId, "wall-c");
+    assert.equal(updatedWalls[0].lengthMm, 3000);
+    assert.equal(service.loadSimulatorRoom(created.room.id).wallsData[0].dimensions.width, 3);
+  });
+
+  it("exposes hosted floor plan AI model choices including OpenAI vision", () => {
+    const service = new RoomlogService();
+    const models = service.listFloorPlanAiModels();
+
+    assert.deepEqual(
+      models.map((model) => model.id),
+      [
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/cosmos3-nano-reasoner",
+        "openai/floor-plan-vision"
+      ]
+    );
+    assert.equal(models.every((model) => model.mode === "vision-reasoning"), true);
+  });
+
+  it("uses NVIDIA integrate chat completions for floor plan reasoning models", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.NVIDIA_API_KEY;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.NVIDIA_API_KEY = "nvapi-test";
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"summary":"도면 치수 후보를 검토했습니다.","scaleCandidates":[{"realLengthMm":5860,"pixelLength":320,"pixelToMmRatio":18.31,"confidence":0.82,"source":"nvidia/vlm"}]}'
+              }
+            }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+      });
+
+      assert.equal(capturedUrl, "https://integrate.api.nvidia.com/v1/chat/completions");
+      assert.equal(capturedBody?.model, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
+      assert.equal(result.status, "ready");
+      assert.equal(result.scaleCandidates[0].realLengthMm, 5860);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.NVIDIA_API_KEY = originalApiKey;
+      else delete process.env.NVIDIA_API_KEY;
+    }
+  });
+
+  it("detects floor plan openings via Roboflow and maps them to normalized candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    const originalModel = process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+
+    process.env.ROBOFLOW_API_KEY = "rf-test-key";
+    process.env.ROBOFLOW_FLOOR_PLAN_MODEL = "cubicasa5k-2-qpmsa/1";
+    globalThis.fetch = (async (input) => {
+      capturedUrl = String(input);
+
+      return new Response(
+        JSON.stringify({
+          image: { width: 1000, height: 500 },
+          predictions: [
+            { class: "window", confidence: 0.81, x: 450, y: 40, width: 180, height: 36 },
+            { class: "door", confidence: 0.28, x: 500, y: 420, width: 20, height: 140 },
+            // 같은 자리 중복 판정(겹침 큼) — 신뢰도 낮은 쪽이 제거되어야 함
+            { class: "window", confidence: 0.31, x: 500, y: 421, width: 22, height: 138 },
+            // wall 클래스는 openings가 아니라 walls로 분리
+            { class: "wall", confidence: 0.7, x: 500, y: 250, width: 900, height: 20 },
+            // 하한 미달 창문(30% 미만)은 제외
+            { class: "window", confidence: 0.17, x: 900, y: 480, width: 30, height: 30 }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.match(capturedUrl, /detect\.roboflow\.com\/cubicasa5k-2-qpmsa\/1/);
+      assert.match(capturedUrl, /api_key=rf-test-key/);
+      assert.match(capturedUrl, /confidence=20/);
+      assert.equal(result.status, "ready");
+      assert.equal(result.openings.length, 3);
+      const window = result.openings.find((item) => item.type === "WINDOW");
+      const door = result.openings.find((item) => item.type === "DOOR");
+      assert.equal(window?.confidence, 0.81);
+      // 중심 (450,40) 크기 180x36, 이미지 1000x500 → 좌상단 (360,44) 크기 (180,72) [0-1000 정규화]
+      assert.equal(window?.boundingBox.x, 360);
+      assert.equal(window?.boundingBox.y, 44);
+      assert.equal(window?.boundingBox.width, 180);
+      assert.equal(window?.boundingBox.height, 72);
+      // 후보 검토용으로 door/window가 겹쳐도 서로 다른 타입이면 둘 다 남긴다
+      assert.equal(door?.confidence, 0.28);
+      assert.equal(result.openings.some((item) => item.confidence === 0.17), false);
+      // wall 클래스는 walls 배열로 분리: 중심 (500,250) 크기 900x20, 이미지 1000x500 → 좌상단 (50,480) 크기 (900,40)
+      assert.equal(result.walls.length, 1);
+      assert.equal(result.walls[0].confidence, 0.7);
+      assert.equal(result.walls[0].boundingBox.x, 50);
+      assert.equal(result.walls[0].boundingBox.y, 480);
+      assert.equal(result.walls[0].boundingBox.width, 900);
+      assert.equal(result.walls[0].boundingBox.height, 40);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+      else delete process.env.ROBOFLOW_API_KEY;
+      if (originalModel) process.env.ROBOFLOW_FLOOR_PLAN_MODEL = originalModel;
+      else delete process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("uses the current Roboflow Universe model version by default", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    const originalModel = process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+
+    process.env.ROBOFLOW_API_KEY = "rf-test-key";
+    delete process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    globalThis.fetch = (async (input) => {
+      capturedUrl = String(input);
+
+      return new Response(JSON.stringify({ image: { width: 1000, height: 500 }, predictions: [] }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      });
+    }) as typeof fetch;
+
+    try {
+      await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.match(capturedUrl, /detect\.roboflow\.com\/cubicasa5k-2-qpmsa\/6/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+      else delete process.env.ROBOFLOW_API_KEY;
+      if (originalModel) process.env.ROBOFLOW_FLOOR_PLAN_MODEL = originalModel;
+      else delete process.env.ROBOFLOW_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("deduplicates nested Roboflow door and wall boxes before returning candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    const originalFetch = globalThis.fetch;
+
+    process.env.ROBOFLOW_API_KEY = "rf-test-key";
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          image: { width: 1000, height: 500 },
+          predictions: [
+            { class: "door", confidence: 0.6, x: 500, y: 180, width: 360, height: 80 },
+            { class: "door", confidence: 0.16, x: 500, y: 180, width: 280, height: 40 },
+            { class: "wall", confidence: 0.54, x: 820, y: 230, width: 80, height: 320 },
+            { class: "wall", confidence: 0.35, x: 830, y: 235, width: 70, height: 300 }
+          ]
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      )) as typeof fetch;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.equal(result.openings.length, 1);
+      assert.equal(result.openings[0].type, "DOOR");
+      assert.equal(result.openings[0].confidence, 0.6);
+      assert.equal(result.walls.length, 1);
+      assert.equal(result.walls[0].confidence, 0.54);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+      else delete process.env.ROBOFLOW_API_KEY;
+    }
+  });
+
+  it("returns config-required for opening detection when ROBOFLOW_API_KEY is missing", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.ROBOFLOW_API_KEY;
+    delete process.env.ROBOFLOW_API_KEY;
+
+    try {
+      const result = await service.detectFloorPlanOpenings({ imageDataUrl: "data:image/png;base64,Zm9v" });
+
+      assert.equal(result.status, "config-required");
+      assert.equal(result.openings.length, 0);
+    } finally {
+      if (originalApiKey) process.env.ROBOFLOW_API_KEY = originalApiKey;
+    }
+  });
+
+  it("uses OpenAI Responses for the floor plan vision model", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedHeaders: Headers | undefined;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    delete process.env.OPENAI_CHAT_MODEL;
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedHeaders = new Headers(init?.headers);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"OpenAI가 도면 구조와 치수 후보를 검토했습니다.","textDetections":[{"text":"5860","confidence":0.84,"boundingBox":{"x":120,"y":80,"width":60,"height":20},"targetLine":{"x1":100,"y1":110,"x2":460,"y2":110}}],"scaleCandidates":[{"realLengthMm":5860,"pixelLength":293,"pixelToMmRatio":20,"confidence":0.78,"source":"openai/vision"}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      assert.equal(capturedUrl, "https://api.openai.com/v1/responses");
+      assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-test-roomlog");
+      assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.match(String(capturedBody?.instructions), /단위 없는 3-5자리 치수 숫자/);
+      assert.match(String(capturedBody?.instructions), /textDetections에 모든 보이는 치수 숫자/);
+      assert.match(String(capturedBody?.instructions), /targetLine/);
+      assert.match(String(capturedBody?.instructions), /Do not guess boundingBox or targetLine/);
+      assert.equal(result.status, "ready");
+      assert.equal(result.model, "openai/floor-plan-vision");
+      assert.deepEqual(result.textDetections[0].targetLine, { x1: 100, y1: 110, x2: 460, y2: 110 });
+      assert.equal(result.scaleCandidates[0].source, "openai/vision");
+      assert.equal(result.scaleCandidates[0].pixelToMmRatio, 20);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+      if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      else delete process.env.OPENAI_CHAT_MODEL;
+    }
+  });
+
+  it("classifies dimensions and keeps furniture out of floor plan scale candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"분류 완료","dimensions":[{"text":"5860mm","valueMm":5860,"kind":"outer_total","axis":"horizontal","confidence":0.9,"boundingBox":null,"targetLine":null,"placementStatus":"placed","useForScale":true,"useForWallGeneration":true,"useForFurnitureFit":false,"appliesTo":"overall","reason":"outer"},{"text":"1500 x 2000mm","valueMm":2000,"kind":"furniture","axis":"unknown","confidence":0.7,"boundingBox":null,"targetLine":null,"placementStatus":"unplaced","useForScale":false,"useForWallGeneration":false,"useForFurnitureFit":true,"appliesTo":"bed","reason":"multiplication label"}],"textDetections":[],"scaleCandidates":[{"realLengthMm":5860,"pixelLength":293,"pixelToMmRatio":20,"confidence":0.8,"source":"openai/vision"},{"realLengthMm":2000,"pixelLength":100,"pixelToMmRatio":20,"confidence":0.6,"source":"openai/vision"}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      const instructions = String(capturedBody?.instructions);
+      assert.match(instructions, /outer_total/);
+      assert.match(instructions, /opening/);
+      assert.match(instructions, /furniture/);
+      assert.equal(result.dimensions?.length, 2);
+      assert.equal(result.dimensions?.[0].kind, "outer_total");
+      assert.equal(result.dimensions?.[0].useForScale, true);
+      assert.equal(result.dimensions?.[1].kind, "furniture");
+      assert.equal(result.dimensions?.[1].useForScale, false);
+      assert.equal(result.dimensions?.[1].useForFurnitureFit, true);
+      // 구조 치수(5860)만 축척 후보로 남고 가구값(2000)은 제외된다.
+      assert.equal(result.scaleCandidates.length, 1);
+      assert.equal(result.scaleCandidates[0].realLengthMm, 5860);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("uses OpenAI Responses to review OpenCV floor plan wall candidates", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"OpenCV 후보를 검토했습니다.","candidateReviews":[{"id":"W1","verdict":"keep","confidence":0.86,"reason":"외곽 벽과 일치"}],"missingWallHints":[{"description":"오른쪽 세로 외곽 벽이 약하게 누락됨","confidence":0.62,"orientation":"vertical","line":{"x1":860,"y1":120,"x2":860,"y2":910}}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        analysisMode: "candidate-review",
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision",
+        wallCandidates: [
+          {
+            end: { x: 120, y: 10 },
+            id: "W1",
+            lengthPx: 110,
+            orientation: "horizontal",
+            start: { x: 10, y: 10 }
+          }
+        ]
+      });
+
+      assert.match(String(capturedBody?.instructions), /OpenCV 도면 벽 후보 검토기/);
+      assert.match(String(capturedBody?.instructions), /0~1000 정규화 좌표/);
+      assert.match(String(capturedBody?.instructions), /candidateReviews/);
+      assert.equal((capturedBody?.text as any)?.format?.type, "json_schema");
+      assert.equal((capturedBody?.text as any)?.format?.strict, true);
+      assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.missingWallHints?.items?.properties?.line?.type, "object");
+      assert.match(JSON.stringify(capturedBody), /wallCandidates/);
+      assert.equal(result.analysisMode, "candidate-review");
+      assert.equal(result.status, "ready");
+      assert.equal(result.candidateReviews?.[0].id, "W1");
+      assert.equal(result.candidateReviews?.[0].verdict, "keep");
+      assert.equal(result.missingWallHints?.[0].description, "오른쪽 세로 외곽 벽이 약하게 누락됨");
+      assert.equal(result.missingWallHints?.[0].orientation, "vertical");
+      assert.equal(result.missingWallHints?.[0].line?.x1, 860);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    }
+  });
+
+  it("uses OpenAI structured outputs for floor plan room structure analysis", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFloorPlanModel = process.env.OPENAI_FLOOR_PLAN_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_FLOOR_PLAN_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text:
+            '{"summary":"방 구조를 분석했습니다.","planStyle":"double-line-hollow","noiseFlags":{"decorativeHatching":true,"watermark":false},"rooms":[{"label":"거실","confidence":0.82,"polygon":[{"x":100,"y":100},{"x":560,"y":100},{"x":560,"y":460},{"x":100,"y":460}]}]}'
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.analyzeFloorPlanWithAi({
+        analysisMode: "room-structure",
+        imageDataUrl: "data:image/png;base64,Zm9v",
+        model: "openai/floor-plan-vision"
+      });
+
+      assert.match(String(capturedBody?.instructions), /방 구조 분석기/);
+      assert.match(String(capturedBody?.instructions), /0~1000 정규화 좌표/);
+      assert.equal((capturedBody?.text as any)?.format?.type, "json_schema");
+      assert.equal((capturedBody?.text as any)?.format?.strict, true);
+      assert.equal((capturedBody?.text as any)?.format?.schema?.properties?.planStyle?.type, "string");
+      assert.match(JSON.stringify(capturedBody), /"detail":"high"/);
+      assert.equal(result.analysisMode, "room-structure");
+      assert.equal(result.status, "ready");
+      assert.equal(result.planStyle, "double-line-hollow");
+      assert.equal(result.noiseFlags?.decorativeHatching, true);
+      assert.equal(result.rooms?.[0].label, "거실");
+      assert.equal(result.rooms?.[0].polygon[2].x, 560);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalFloorPlanModel) process.env.OPENAI_FLOOR_PLAN_MODEL = originalFloorPlanModel;
+      else delete process.env.OPENAI_FLOOR_PLAN_MODEL;
+    }
+  });
+
   it("persists users, intake threads, complaints, and tickets across service restarts", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-store-"));
     const storeFilePath = join(dir, "store.json");
