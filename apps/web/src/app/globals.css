@@ -7383,7 +7383,7 @@ p {
 
 .floor-plan-upload-row {
   display: grid;
-  grid-template-columns: 132px 132px 132px minmax(0, 1fr);
+  grid-template-columns: repeat(5, minmax(112px, 132px)) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }
@@ -7400,6 +7400,36 @@ p {
 
 .floor-plan-file-input {
   display: none;
+}
+
+.floor-plan-upload-label {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  text-align: center;
+  user-select: none;
+}
+
+.floor-plan-upload-label.is-disabled {
+  color: #a6adba;
+  cursor: not-allowed;
+  opacity: 0.56;
+  pointer-events: none;
+}
+
+.floor-plan-ai-model-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  border: 1px solid #d9deea;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 900;
+  overflow: hidden;
+  padding: 0 12px;
+  text-overflow: ellipsis;
 }
 
 .floor-plan-svg,
@@ -7633,6 +7663,56 @@ p {
 .floor-plan-furniture-grid {
   display: grid;
   gap: 8px;
+  max-height: 430px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.floor-plan-furniture-search input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #d9dfeb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.floor-plan-furniture-kind-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.floor-plan-furniture-kind-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #d9dfeb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4e5b73;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.floor-plan-furniture-kind-tabs button.active {
+  border-color: var(--blue);
+  background: rgba(47, 85, 255, 0.08);
+  color: var(--blue);
+}
+
+.floor-plan-furniture-kind-tabs small {
+  color: inherit;
+  font-size: 0.66rem;
+  font-weight: 900;
 }
 
 .floor-plan-furniture-grid button {
@@ -7654,12 +7734,20 @@ p {
   box-shadow: 0 0 0 2px rgba(47, 85, 255, 0.12);
 }
 
-.floor-plan-furniture-grid i {
+.floor-plan-furniture-thumb {
   grid-row: 1 / 4;
   width: 30px;
   height: 30px;
   border-radius: 8px;
+  overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(18, 24, 40, 0.08);
+}
+
+.floor-plan-furniture-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .floor-plan-furniture-grid strong,
@@ -7700,6 +7788,80 @@ p {
   min-height: 42px;
   border-radius: 10px;
   font-size: 0.78rem;
+}
+
+.floor-plan-dimension-chip {
+  align-items: center;
+  background: rgba(33, 118, 255, 0.1);
+  border: 1px solid rgba(33, 118, 255, 0.24);
+  border-radius: 8px;
+  color: #0f2f61;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.floor-plan-dimension-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.floor-plan-dimension-chip.is-opening {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #92400e;
+}
+
+.floor-plan-dimension-chip.is-furniture {
+  background: rgba(120, 120, 130, 0.1);
+  border-color: rgba(120, 120, 130, 0.26);
+  color: #454b57;
+}
+
+.floor-plan-visible-dimension-aside {
+  align-items: center;
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.floor-plan-visible-dimension-aside > span {
+  color: #5b6472;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.floor-plan-visible-dimension-strip {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid rgba(33, 118, 255, 0.18);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+
+.floor-plan-visible-dimension-strip > span {
+  color: #0f2f61;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.floor-plan-visible-dimension-chips {
+  display: flex;
+  flex: 1 1 360px;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 @media (max-width: 860px) {

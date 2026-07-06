@@ -1,42 +1,4 @@
-export const GRID_SIZE = 24;
-export const DEFAULT_WALL_HEIGHT = 96;
-export const DEFAULT_WALL_DEPTH = 8;
-export const DEFAULT_PIXEL_TO_METER_RATIO = 1 / 48;
-export const WHERETOPUT_WALL_HEIGHT = 2.5;
-export const WHERETOPUT_WALL_DEPTH = 0.15;
-
-export function snapToGrid(point, gridSize = GRID_SIZE) {
-  return {
-    x: Math.round(point.x / gridSize) * gridSize,
-    y: Math.round(point.y / gridSize) * gridSize
-  };
-}
-
-export function snapToOrthogonal(start, end) {
-  const dx = Math.abs(end.x - start.x);
-  const dy = Math.abs(end.y - start.y);
-
-  if (dx >= dy) {
-    return { x: end.x, y: start.y };
-  }
-
-  return { x: start.x, y: end.y };
-}
-
-export function createWall(start, end, id) {
-  const snappedStart = snapToGrid(start);
-  const snappedEnd = snapToOrthogonal(snappedStart, snapToGrid(end));
-
-  if (snappedStart.x === snappedEnd.x && snappedStart.y === snappedEnd.y) {
-    return null;
-  }
-
-  return {
-    id,
-    start: snappedStart,
-    end: snappedEnd
-  };
-}
+import { DEFAULT_PIXEL_TO_MM_RATIO, normalizePlanName, snapToOrthogonal } from "../room-model/wall-model.mjs";
 
 function createDetectedWall(start, end, id) {
   const roundedStart = {
@@ -57,302 +19,6 @@ function createDetectedWall(start, end, id) {
     start: roundedStart,
     end: orthogonalEnd
   };
-}
-
-export function wallLength(wall) {
-  return Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
-}
-
-export function distanceToWall(point, wall) {
-  const lineX = wall.end.x - wall.start.x;
-  const lineY = wall.end.y - wall.start.y;
-  const lengthSquared = lineX * lineX + lineY * lineY;
-
-  if (lengthSquared === 0) {
-    return Math.hypot(point.x - wall.start.x, point.y - wall.start.y);
-  }
-
-  const t = Math.max(
-    0,
-    Math.min(
-      1,
-      ((point.x - wall.start.x) * lineX + (point.y - wall.start.y) * lineY) / lengthSquared
-    )
-  );
-  const projection = {
-    x: wall.start.x + t * lineX,
-    y: wall.start.y + t * lineY
-  };
-
-  return Math.hypot(point.x - projection.x, point.y - projection.y);
-}
-
-export function findNearestWall(walls, point, maxDistance = 18) {
-  return walls.reduce(
-    (nearest, wall) => {
-      const distance = distanceToWall(point, wall);
-
-      if (distance <= maxDistance && distance < nearest.distance) {
-        return { wall, distance };
-      }
-
-      return nearest;
-    },
-    { wall: null, distance: Infinity }
-  ).wall;
-}
-
-export function removeWall(walls, wallId) {
-  return walls.filter((wall) => wall.id !== wallId);
-}
-
-export function summarizeWalls(walls) {
-  const totalLength = walls.reduce((sum, wall) => sum + wallLength(wall), 0);
-
-  return {
-    wallCount: walls.length,
-    approximateMeters: Math.round((totalLength / GRID_SIZE) * 0.5 * 10) / 10,
-    status: walls.length > 0 ? "편집중" : "초안"
-  };
-}
-
-function createPath(points) {
-  return points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
-    .join(" ")
-    .concat(" Z");
-}
-
-function roundMetric(value) {
-  return Math.round(value * 1000) / 1000;
-}
-
-function normalizePlanName(name = "plan") {
-  return name
-    .replace(/\.[^.]+$/, "")
-    .replace(/[^a-z0-9가-힣]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-}
-
-export function projectPointTo3D(point, z = 0, camera = {}) {
-  const yaw = camera.yaw ?? 0;
-  const pitch = camera.pitch ?? 1;
-  const center = camera.center ?? { x: 432, y: 288 };
-  const relativeX = point.x - center.x;
-  const relativeY = point.y - center.y;
-  const cos = Math.cos(yaw);
-  const sin = Math.sin(yaw);
-  const rotatedX = relativeX * cos - relativeY * sin;
-  const rotatedY = relativeX * sin + relativeY * cos;
-
-  return {
-    x: 480 + (rotatedX - rotatedY) * 0.55,
-    y: 300 + (rotatedX + rotatedY) * 0.22 * pitch - z
-  };
-}
-
-export function convertWallTo3D(wall, options = {}) {
-  const height = options.height ?? DEFAULT_WALL_HEIGHT;
-  const depth = options.depth ?? DEFAULT_WALL_DEPTH;
-  const camera = options.camera ?? {};
-  const bottomStart = projectPointTo3D(wall.start, 0, camera);
-  const bottomEnd = projectPointTo3D(wall.end, 0, camera);
-  const topEnd = projectPointTo3D(wall.end, height, camera);
-  const topStart = projectPointTo3D(wall.start, height, camera);
-
-  return {
-    id: wall.id,
-    height,
-    depth,
-    path: createPath([bottomStart, bottomEnd, topEnd, topStart]),
-    topLine: {
-      start: topStart,
-      end: topEnd
-    }
-  };
-}
-
-export function convertWallTo3DBox(wall, options = {}) {
-  const height = options.height ?? DEFAULT_WALL_HEIGHT;
-  const depth = options.depth ?? DEFAULT_WALL_DEPTH;
-  const camera = options.camera ?? {};
-  const lineX = wall.end.x - wall.start.x;
-  const lineY = wall.end.y - wall.start.y;
-  const length = Math.hypot(lineX, lineY) || 1;
-  const normal = {
-    x: (-lineY / length) * depth,
-    y: (lineX / length) * depth
-  };
-  const startDepth = {
-    x: wall.start.x + normal.x,
-    y: wall.start.y + normal.y
-  };
-  const endDepth = {
-    x: wall.end.x + normal.x,
-    y: wall.end.y + normal.y
-  };
-  const bottomStart = projectPointTo3D(wall.start, 0, camera);
-  const bottomEnd = projectPointTo3D(wall.end, 0, camera);
-  const topEnd = projectPointTo3D(wall.end, height, camera);
-  const topStart = projectPointTo3D(wall.start, height, camera);
-  const bottomStartDepth = projectPointTo3D(startDepth, 0, camera);
-  const bottomEndDepth = projectPointTo3D(endDepth, 0, camera);
-  const topEndDepth = projectPointTo3D(endDepth, height, camera);
-  const topStartDepth = projectPointTo3D(startDepth, height, camera);
-  const allPoints = [
-    bottomStart,
-    bottomEnd,
-    topEnd,
-    topStart,
-    bottomStartDepth,
-    bottomEndDepth,
-    topEndDepth,
-    topStartDepth
-  ];
-
-  return {
-    id: wall.id,
-    height,
-    depth,
-    frontPath: createPath([bottomStart, bottomEnd, topEnd, topStart]),
-    topPath: createPath([topStart, topEnd, topEndDepth, topStartDepth]),
-    startCapPath: createPath([bottomStartDepth, bottomStart, topStart, topStartDepth]),
-    endCapPath: createPath([bottomEnd, bottomEndDepth, topEndDepth, topEnd]),
-    sortY: Math.max(...allPoints.map((point) => point.y)),
-    topLine: {
-      start: topStart,
-      end: topEnd
-    }
-  };
-}
-
-export function convertWallsTo3D(walls, options = {}) {
-  const wallBoxes = walls.map((wall) => convertWallTo3DBox(wall, options)).sort((left, right) => left.sortY - right.sortY);
-  const wallPanels = wallBoxes.map((box) => ({
-    id: box.id,
-    height: box.height,
-    depth: box.depth,
-    path: box.frontPath,
-    topLine: box.topLine
-  }));
-  const points = walls.flatMap((wall) => [wall.start, wall.end]);
-  const hasPoints = points.length > 0;
-  const minX = hasPoints ? Math.min(...points.map((point) => point.x)) : 120;
-  const maxX = hasPoints ? Math.max(...points.map((point) => point.x)) : 720;
-  const minY = hasPoints ? Math.min(...points.map((point) => point.y)) : 120;
-  const maxY = hasPoints ? Math.max(...points.map((point) => point.y)) : 456;
-  const pad = GRID_SIZE + (options.depth ?? DEFAULT_WALL_DEPTH);
-  const camera = options.camera ?? {};
-  const floorCorners = [
-    projectPointTo3D({ x: minX - pad, y: minY - pad }, 0, camera),
-    projectPointTo3D({ x: maxX + pad, y: minY - pad }, 0, camera),
-    projectPointTo3D({ x: maxX + pad, y: maxY + pad }, 0, camera),
-    projectPointTo3D({ x: minX - pad, y: maxY + pad }, 0, camera)
-  ];
-
-  return {
-    wallPanels,
-    wallBoxes,
-    floor: {
-      path: createPath(floorCorners)
-    }
-  };
-}
-
-export function convertWallToWheretoputSimulator(wall, options = {}) {
-  const pixelToMeterRatio = options.pixelToMeterRatio ?? DEFAULT_PIXEL_TO_METER_RATIO;
-  const height = options.height ?? WHERETOPUT_WALL_HEIGHT;
-  const depth = options.depth ?? WHERETOPUT_WALL_DEPTH;
-  const start = {
-    x: roundMetric(wall.start.x * pixelToMeterRatio),
-    y: roundMetric(wall.start.y * pixelToMeterRatio)
-  };
-  const end = {
-    x: roundMetric(wall.end.x * pixelToMeterRatio),
-    y: roundMetric(wall.end.y * pixelToMeterRatio)
-  };
-  const length = roundMetric(wallLength(wall) * pixelToMeterRatio);
-  const rotation = roundMetric(Math.atan2(end.y - start.y, end.x - start.x));
-
-  return {
-    id: wall.id,
-    wall_id: wall.id,
-    start,
-    end,
-    length,
-    height,
-    depth,
-    position: [roundMetric((start.x + end.x) / 2), roundMetric(height / 2), roundMetric((start.y + end.y) / 2)],
-    rotation: [0, rotation, 0],
-    dimensions: {
-      width: length,
-      height,
-      depth
-    },
-    wall_order: options.wallOrder ?? null
-  };
-}
-
-export function convertWallsToWheretoputSimulator(walls, options = {}) {
-  return walls.map((wall, index) =>
-    convertWallToWheretoputSimulator(wall, { ...options, wallOrder: index + 1 })
-  );
-}
-
-export function convertWallsToWheretoputRoom3D(walls, options = {}) {
-  const pixelToMmRatio = options.pixelToMmRatio ?? 20;
-  const height = options.height ?? WHERETOPUT_WALL_HEIGHT;
-  const depth = options.depth ?? WHERETOPUT_WALL_DEPTH;
-  const walls3D = walls.map((wall, index) => {
-    const startX = (wall.start.x * pixelToMmRatio) / 1000;
-    const startZ = (wall.start.y * pixelToMmRatio) / 1000;
-    const endX = (wall.end.x * pixelToMmRatio) / 1000;
-    const endZ = (wall.end.y * pixelToMmRatio) / 1000;
-    const length = Math.hypot(endX - startX, endZ - startZ);
-    const centerX = (startX + endX) / 2;
-    const centerZ = (startZ + endZ) / 2;
-    const rotation = Math.atan2(endZ - startZ, endX - startX);
-
-    return {
-      id: `wall-${index}`,
-      wall_id: wall.id,
-      start: { x: roundMetric(startX), y: roundMetric(startZ) },
-      end: { x: roundMetric(endX), y: roundMetric(endZ) },
-      length: roundMetric(length),
-      height,
-      depth,
-      position: [centerX, height / 2, centerZ],
-      rotation: [0, rotation, 0],
-      dimensions: {
-        width: roundMetric(length),
-        height,
-        depth
-      },
-      material: "wall",
-      original2D: wall,
-      wall_order: index
-    };
-  });
-
-  if (walls3D.length === 0) return walls3D;
-
-  const centerX = walls3D.reduce((sum, wall) => sum + wall.position[0], 0) / walls3D.length;
-  const centerZ = walls3D.reduce((sum, wall) => sum + wall.position[2], 0) / walls3D.length;
-
-  return walls3D.map((wall) => ({
-    ...wall,
-    start: {
-      x: roundMetric(wall.start.x - centerX),
-      y: roundMetric(wall.start.y - centerZ)
-    },
-    end: {
-      x: roundMetric(wall.end.x - centerX),
-      y: roundMetric(wall.end.y - centerZ)
-    },
-    position: [roundMetric(wall.position[0] - centerX), roundMetric(wall.position[1]), roundMetric(wall.position[2] - centerZ)],
-    rotation: wall.rotation.map(roundMetric)
-  }));
 }
 
 function lineLength(line) {
@@ -432,7 +98,12 @@ function linesIntersectOrthogonally(lineA, lineB, tolerance = 6) {
   );
 }
 
-function inferStructuralBounds(lines, options = {}) {
+function inferStructuralBounds(allLines, options = {}) {
+  // 구조 경계는 두께 있는 선(실제 벽)만으로 추정한다. 얇은 치수선을 포함하면
+  // 경계가 치수선까지 부풀어서 "경계 바깥 치수선" 필터가 무력화된다.
+  const structuralMinThickness = options.structuralMinThickness ?? 3;
+  const thickLines = allLines.filter((line) => Number(line.thickness ?? 6) >= structuralMinThickness);
+  const lines = thickLines.length >= 3 ? thickLines : allLines;
   const adjacency = new Map();
   lines.forEach((_line, index) => adjacency.set(index, new Set()));
 
@@ -498,14 +169,24 @@ function inferStructuralBounds(lines, options = {}) {
     : lines;
   if (!sourceLines.length) return null;
 
-  const bounds = sourceLines.map(lineBounds);
-
-  return {
-    maxX: Math.max(...bounds.map((bound) => bound.maxX)),
-    maxY: Math.max(...bounds.map((bound) => bound.maxY)),
-    minX: Math.min(...bounds.map((bound) => bound.minX)),
-    minY: Math.min(...bounds.map((bound) => bound.minY))
+  const bboxOf = (boxLines) => {
+    const boxBounds = boxLines.map(lineBounds);
+    return {
+      maxX: Math.max(...boxBounds.map((bound) => bound.maxX)),
+      maxY: Math.max(...boxBounds.map((bound) => bound.maxY)),
+      minX: Math.min(...boxBounds.map((bound) => bound.minX)),
+      minY: Math.min(...boxBounds.map((bound) => bound.minY))
+    };
   };
+  const componentBounds = bboxOf(sourceLines);
+  const thickBounds = bboxOf(lines);
+  const areaOf = (box) => Math.max(1, box.maxX - box.minX) * Math.max(1, box.maxY - box.minY);
+
+  // 창문/문 opening으로 외곽선이 조각나면 컴포넌트끼리 서로 닿지 않아 경계가 국소 조각으로
+  // 붕괴한다. 컴포넌트 경계가 두꺼운 선 전체 범위 대비 지나치게 작으면 전체 bbox를 신뢰한다.
+  if (areaOf(componentBounds) < areaOf(thickBounds) * 0.5) return thickBounds;
+
+  return componentBounds;
 }
 
 function overlapLength(aStart, aEnd, bStart, bEnd) {
@@ -726,6 +407,308 @@ function isLowFillNonUnitLine(line, candidateWalls, structuralBounds) {
   return highFillIntersections === 0 || lineLength(line) < Math.max(70, lineLength(candidateWalls[0] ?? line) * 0.35);
 }
 
+function conservativeThicknessThreshold(lines, options = {}) {
+  const thicknesses = (lines ?? [])
+    .map((line) => Number(line.thickness ?? 1))
+    .filter((thickness) => Number.isFinite(thickness) && thickness > 0)
+    .sort((left, right) => left - right);
+  if (!thicknesses.length) return Number(options.minConservativeWallThickness ?? 4);
+
+  const median = thicknesses[Math.floor(thicknesses.length / 2)];
+  return Math.max(Number(options.minConservativeWallThickness ?? 4), median * 0.7);
+}
+
+function isConservativeWallLine(line, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  if (!Number.isFinite(thickness) || thickness < threshold) return false;
+
+  const minLength = Math.max(80, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.12));
+  if (lineLength(line) < minLength) return false;
+
+  if (Number.isFinite(Number(line.fillSupport)) && Number(line.fillSupport ?? 0) < 0.02 && hasInteriorFillContext([line])) {
+    return false;
+  }
+
+  if (!structuralBounds) return true;
+  const bounds = lineBounds(line);
+  const nearStructuralBounds =
+    bounds.minX >= structuralBounds.minX - 18 &&
+    bounds.maxX <= structuralBounds.maxX + 18 &&
+    bounds.minY >= structuralBounds.minY - 18 &&
+    bounds.maxY <= structuralBounds.maxY + 18;
+
+  return nearStructuralBounds;
+}
+
+function isConnectedThickWallStub(line, candidateWalls, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  const length = lineLength(line);
+  const minStubLength = options.wallFirstMinStubLength ?? Math.max(24, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.032));
+  if (!Number.isFinite(thickness) || thickness < Math.max(4, threshold * 0.8)) return false;
+  if (length < minStubLength) return false;
+
+  if (structuralBounds) {
+    const bounds = lineBounds(line);
+    const insideStructuralBounds =
+      bounds.minX >= structuralBounds.minX - 18 &&
+      bounds.maxX <= structuralBounds.maxX + 18 &&
+      bounds.minY >= structuralBounds.minY - 18 &&
+      bounds.maxY <= structuralBounds.maxY + 18;
+    if (!insideStructuralBounds) return false;
+  }
+
+  return candidateWalls.some((otherLine) => {
+    if (otherLine === line || lineOrientation(otherLine) === lineOrientation(line)) return false;
+    if (Number(otherLine.thickness ?? 1) < Math.max(4, threshold * 0.8)) return false;
+    if (lineLength(otherLine) < Math.max(80, length * 1.3)) return false;
+    return linesIntersectOrthogonally(line, otherLine, 10);
+  });
+}
+
+function isSmallClosedWallLoopSegment(line, candidateWalls, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  const length = lineLength(line);
+  const minLoopLength = options.wallFirstMinLoopLength ?? Math.max(30, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.045));
+  const maxLoopLength = options.wallFirstMaxLoopLength ?? Math.max(120, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.18));
+  if (!Number.isFinite(thickness) || thickness < Math.max(4, threshold * 0.8)) return false;
+  if (length < minLoopLength || length > maxLoopLength) return false;
+
+  if (structuralBounds) {
+    const bounds = lineBounds(line);
+    const insideStructuralBounds =
+      bounds.minX >= structuralBounds.minX - 24 &&
+      bounds.maxX <= structuralBounds.maxX + 24 &&
+      bounds.minY >= structuralBounds.minY - 24 &&
+      bounds.maxY <= structuralBounds.maxY + 24;
+    if (!insideStructuralBounds) return false;
+  }
+
+  const orthogonalNeighbors = candidateWalls.filter((otherLine) => {
+    if (otherLine === line || lineOrientation(otherLine) === lineOrientation(line)) return false;
+    if (Number(otherLine.thickness ?? 1) < Math.max(4, threshold * 0.8)) return false;
+    const otherLength = lineLength(otherLine);
+    if (otherLength < minLoopLength || otherLength > maxLoopLength) return false;
+    return linesIntersectOrthogonally(line, otherLine, 10);
+  });
+
+  if (orthogonalNeighbors.length < 2) return false;
+
+  return orthogonalNeighbors.some((firstNeighbor, firstIndex) =>
+    orthogonalNeighbors.slice(firstIndex + 1).some((secondNeighbor) => Math.abs(lineAxisPosition(firstNeighbor) - lineAxisPosition(secondNeighbor)) >= minLoopLength * 0.65)
+  );
+}
+
+// 순흑으로 꽉 채워 그린 작은 사각 벽(덕트/샤프트/기둥)은 굵고 짧은 밴드 하나로 나온다.
+// 긴 축 방향 밴드(length >= thickness)만 벽으로 삼아 교차 중복을 피한다.
+function isSolidWallBlockLine(line, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  const length = lineLength(line);
+  const maxBlockLength =
+    options.wallFirstMaxBlockLength ?? Math.max(72, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.09));
+  // 덕트/기둥은 350mm(≈4% 스케일)를 넘지 않는다. 그보다 두꺼운 채움은 가구다.
+  const maxBlockThickness =
+    options.wallFirstMaxBlockThickness ?? Math.max(26, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.04));
+  if (!Number.isFinite(thickness) || thickness < Math.max(10, threshold * 1.6)) return false;
+  if (thickness > maxBlockThickness) return false;
+  if (length > maxBlockLength || thickness > length) return false;
+  if (thickness < length * 0.4) return false;
+
+  if (!structuralBounds) return true;
+
+  const bounds = lineBounds(line);
+  return (
+    bounds.minX >= structuralBounds.minX - 24 &&
+    bounds.maxX <= structuralBounds.maxX + 24 &&
+    bounds.minY >= structuralBounds.minY - 24 &&
+    bounds.maxY <= structuralBounds.maxY + 24
+  );
+}
+
+function typicalLongWallThickness(lines, options = {}) {
+  const minLongLength = Math.max(90, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.11));
+  const thicknesses = (lines ?? [])
+    .filter((line) => lineLength(line) >= minLongLength)
+    .map((line) => Number(line.thickness ?? 0))
+    .filter((thickness) => Number.isFinite(thickness) && thickness >= 3)
+    .sort((left, right) => left - right);
+  if (thicknesses.length < 3) return null;
+
+  return thicknesses[Math.floor(thicknesses.length / 2)];
+}
+
+// 벽 두께 중앙값보다 훨씬 두꺼운 밴드는 가구 채움(싱크대 상판, 붙박이 진회색 면)이다.
+// 작은 솔리드 벽 블록은 예외로 남긴다.
+function isFurnitureFillBand(line, typicalThickness, structuralBounds, options = {}, threshold = 4) {
+  if (!typicalThickness) return false;
+
+  const thickness = Number(line.thickness ?? 1);
+  const cap = options.maxWallThickness ?? Math.max(24, Math.round(typicalThickness * 3.2));
+  if (!Number.isFinite(thickness) || thickness <= cap) return false;
+
+  return !isSolidWallBlockLine(line, structuralBounds, options, threshold);
+}
+
+function isWallFirstLine(line, structuralBounds, options = {}, threshold = 4) {
+  const thickness = Number(line.thickness ?? 1);
+  // 내부 칸막이벽은 외벽(15~19px)보다 훨씬 얇게 그려지므로, 외벽 두께 기반
+  // 임계값을 그대로 쓰면 진짜 내벽이 잘린다. 게이트 상한을 5px로 둔다.
+  if (!Number.isFinite(thickness) || thickness < Math.max(3, Math.min(threshold * 0.68, 5))) return false;
+
+  const minLength = Math.max(90, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.11));
+  if (lineLength(line) < minLength) {
+    return (
+      isConnectedThickWallStub(line, options.candidateWalls ?? [], structuralBounds, options, threshold) ||
+      isSmallClosedWallLoopSegment(line, options.candidateWalls ?? [], structuralBounds, options, threshold) ||
+      isSolidWallBlockLine(line, structuralBounds, options, threshold)
+    );
+  }
+
+  if (!structuralBounds) return true;
+
+  const bounds = lineBounds(line);
+  return (
+    bounds.minX >= structuralBounds.minX - 36 &&
+    bounds.maxX <= structuralBounds.maxX + 36 &&
+    bounds.minY >= structuralBounds.minY - 36 &&
+    bounds.maxY <= structuralBounds.maxY + 36
+  );
+}
+
+function lineCoversStructuralSide(line, structuralBounds, side, tolerance = 10) {
+  const bounds = lineBounds(line);
+  if (side === "top") {
+    return (
+      lineOrientation(line) === "horizontal" &&
+      Math.abs(lineAxisPosition(line) - structuralBounds.minY) <= tolerance &&
+      overlapLength(bounds.minX, bounds.maxX, structuralBounds.minX, structuralBounds.maxX) >=
+        (structuralBounds.maxX - structuralBounds.minX) * 0.62
+    );
+  }
+  if (side === "bottom") {
+    return (
+      lineOrientation(line) === "horizontal" &&
+      Math.abs(lineAxisPosition(line) - structuralBounds.maxY) <= tolerance &&
+      overlapLength(bounds.minX, bounds.maxX, structuralBounds.minX, structuralBounds.maxX) >=
+        (structuralBounds.maxX - structuralBounds.minX) * 0.62
+    );
+  }
+  if (side === "left") {
+    return (
+      lineOrientation(line) === "vertical" &&
+      Math.abs(lineAxisPosition(line) - structuralBounds.minX) <= tolerance &&
+      overlapLength(bounds.minY, bounds.maxY, structuralBounds.minY, structuralBounds.maxY) >=
+        (structuralBounds.maxY - structuralBounds.minY) * 0.62
+    );
+  }
+
+  return (
+    lineOrientation(line) === "vertical" &&
+    Math.abs(lineAxisPosition(line) - structuralBounds.maxX) <= tolerance &&
+    overlapLength(bounds.minY, bounds.maxY, structuralBounds.minY, structuralBounds.maxY) >=
+      (structuralBounds.maxY - structuralBounds.minY) * 0.62
+  );
+}
+
+function wallFirstCompleteAndExtend(lines, structuralBounds, options = {}) {
+  if (!structuralBounds) return { adjustedCount: 0, walls: lines };
+
+  const snapDistance = options.wallFirstSnapDistance ?? Math.max(36, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.055));
+  let adjustedCount = 0;
+  const extendedWalls = lines.map((line) => {
+    const orientation = lineOrientation(line);
+    const bounds = lineBounds(line);
+    const nextLine = { ...line };
+
+    if (orientation === "horizontal") {
+      if (bounds.minX > structuralBounds.minX && bounds.minX - structuralBounds.minX <= snapDistance) {
+        nextLine.x1 = structuralBounds.minX;
+        adjustedCount += 1;
+      }
+      if (bounds.maxX < structuralBounds.maxX && structuralBounds.maxX - bounds.maxX <= snapDistance) {
+        nextLine.x2 = structuralBounds.maxX;
+        adjustedCount += 1;
+      }
+    } else {
+      if (bounds.minY > structuralBounds.minY && bounds.minY - structuralBounds.minY <= snapDistance) {
+        nextLine.y1 = structuralBounds.minY;
+        adjustedCount += 1;
+      }
+      if (bounds.maxY < structuralBounds.maxY && structuralBounds.maxY - bounds.maxY <= snapDistance) {
+        nextLine.y2 = structuralBounds.maxY;
+        adjustedCount += 1;
+      }
+    }
+
+    return nextLine;
+  });
+
+  const sideTolerance = options.wallFirstSideTolerance ?? Math.max(10, Math.round(snapDistance * 0.3));
+  const sides = {
+    bottom: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "bottom", sideTolerance)),
+    left: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "left", sideTolerance)),
+    right: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "right", sideTolerance)),
+    top: extendedWalls.some((line) => lineCoversStructuralSide(line, structuralBounds, "top", sideTolerance))
+  };
+  const presentSideCount = Object.values(sides).filter(Boolean).length;
+  const inferredWalls = [];
+  const inferredThickness = Math.max(4, Math.round(conservativeThicknessThreshold(extendedWalls, options)));
+  const allowInferredOuterEdges = extendedWalls.length <= (options.wallFirstMaxInferredEdgeWallCount ?? 8);
+
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.left) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "vertical",
+      thickness: inferredThickness,
+      x1: structuralBounds.minX,
+      x2: structuralBounds.minX,
+      y1: structuralBounds.minY,
+      y2: structuralBounds.maxY
+    });
+  }
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.right) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "vertical",
+      thickness: inferredThickness,
+      x1: structuralBounds.maxX,
+      x2: structuralBounds.maxX,
+      y1: structuralBounds.minY,
+      y2: structuralBounds.maxY
+    });
+  }
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.top) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "horizontal",
+      thickness: inferredThickness,
+      x1: structuralBounds.minX,
+      x2: structuralBounds.maxX,
+      y1: structuralBounds.minY,
+      y2: structuralBounds.minY
+    });
+  }
+  if (allowInferredOuterEdges && presentSideCount >= 3 && !sides.bottom) {
+    inferredWalls.push({
+      confidence: 0.48,
+      markers: ["wall-first-inferred-outer"],
+      orientation: "horizontal",
+      thickness: inferredThickness,
+      x1: structuralBounds.minX,
+      x2: structuralBounds.maxX,
+      y1: structuralBounds.maxY,
+      y2: structuralBounds.maxY
+    });
+  }
+
+  return {
+    adjustedCount: adjustedCount + inferredWalls.length,
+    walls: [...extendedWalls, ...inferredWalls]
+  };
+}
+
 export function filterCommercialWallCandidates(lines, options = {}) {
   const annotationCandidates = [];
   const dimensionCandidates = [];
@@ -765,9 +748,21 @@ export function filterCommercialWallCandidates(lines, options = {}) {
   }
 
   const structuralBounds = inferStructuralBounds(candidateWalls, options);
+  const typicalThickness = typicalLongWallThickness(candidateWalls, options);
+  const furnitureThreshold = conservativeThicknessThreshold(candidateWalls, options);
   const walls = [];
 
   for (const line of candidateWalls) {
+    if (isFurnitureFillBand(line, typicalThickness, structuralBounds, options, furnitureThreshold)) {
+      annotationCandidates.push({
+        confidence: Number(line.confidence ?? 0.78),
+        line,
+        source: "furniture-fill-band"
+      });
+      removedNoiseCount += 1;
+      continue;
+    }
+
     if (isThinInteriorSymbol(line, candidateWalls, structuralBounds, options)) {
       annotationCandidates.push({
         confidence: Number(line.confidence ?? 0.7),
@@ -804,15 +799,64 @@ export function filterCommercialWallCandidates(lines, options = {}) {
     walls.push(line);
   }
 
-  const mergedWalls = mergeDetectedWallLines(walls, options);
-  const cleanedWalls = removeContainedDetectedWallFragments(mergedWalls, options);
-  removedNoiseCount += mergedWalls.length - cleanedWalls.length;
+  const mode = options.mode ?? "balanced";
+  const conservativeThreshold = conservativeThicknessThreshold(walls, options);
+  const finalWalls =
+    mode === "conservative"
+      ? walls.filter((line) => {
+          const keep = isConservativeWallLine(line, structuralBounds, options, conservativeThreshold);
+          if (!keep) {
+            annotationCandidates.push({
+              confidence: Number(line.confidence ?? 0.68),
+              line,
+              source: "conservative-uncertain-line"
+            });
+            removedNoiseCount += 1;
+          }
+
+          return keep;
+        })
+      : mode === "wall-first"
+        ? walls.filter((line) => {
+            const keep = isWallFirstLine(line, structuralBounds, { ...options, candidateWalls: walls }, conservativeThreshold);
+            if (!keep) {
+              annotationCandidates.push({
+                confidence: Number(line.confidence ?? 0.68),
+                line,
+                source: "wall-first-non-wall-line"
+              });
+              removedNoiseCount += 1;
+            }
+
+            return keep;
+          })
+        : walls;
+  const mergedWalls = mergeDetectedWallLines(
+    finalWalls,
+    mode === "wall-first"
+      ? {
+          ...options,
+          gapTolerance:
+            options.wallFirstGapTolerance ??
+            options.gapTolerance ??
+            Math.max(32, Math.round(Math.min(options.width ?? 800, options.height ?? 600) * 0.04)),
+          maxLines: options.maxLines ?? 40,
+          respectPerpendicularGapMarkers: true
+        }
+      : options
+  );
+  const wallFirstCompletion =
+    mode === "wall-first" ? wallFirstCompleteAndExtend(mergedWalls, structuralBounds, options) : { adjustedCount: 0, walls: mergedWalls };
+  const cleanedWalls = removeContainedDetectedWallFragments(wallFirstCompletion.walls, options);
+  removedNoiseCount += wallFirstCompletion.walls.length - cleanedWalls.length;
 
   return {
     annotationCandidates,
     dimensionCandidates,
     mainPlanBounds: structuralBounds,
     needsReview:
+      wallFirstCompletion.adjustedCount > 0 ||
+      (mode === "conservative" && cleanedWalls.length === 0) ||
       cleanedWalls.length > 18 ||
       annotationCandidates.length > 8 ||
       candidateWalls.filter((line) => Number(line.thickness ?? 6) <= 2 && !outsideOffsetFromStructuralBounds(line, structuralBounds)).length > 4 ||
@@ -872,7 +916,7 @@ export function detectOpeningCandidates(input = {}) {
 
   arcs.forEach((arc, index) => {
     const nearGap = gaps.find((gap) => Math.hypot((gap.x1 + gap.x2) / 2 - arc.x, (gap.y1 + gap.y2) / 2 - arc.y) <= (arc.radius ?? 36) * 1.4);
-    const widthMm = nearGap ? Math.round(lineLength(nearGap) * (input.pixelToMmRatio ?? 20)) : undefined;
+    const widthMm = nearGap ? Math.round(lineLength(nearGap) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO)) : undefined;
     candidates.push({
       confidence: nearGap ? 0.84 : 0.66,
       id: candidateId("door", index, arc),
@@ -892,7 +936,7 @@ export function detectOpeningCandidates(input = {}) {
       source: "thin-double-line",
       status: "CANDIDATE",
       type: "WINDOW",
-      widthMm: Math.round(lineLength(line) * (input.pixelToMmRatio ?? 20))
+      widthMm: Math.round(lineLength(line) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO))
     });
   });
 
@@ -944,8 +988,8 @@ export function detectFixtureCandidates(input = {}) {
         position: { x: Number(label.x) || 0, y: Number(label.y) || 0 },
         sizeMm: nearShape
           ? {
-              depth: Math.round(Number(nearShape.height ?? 0) * (input.pixelToMmRatio ?? 20)),
-              width: Math.round(Number(nearShape.width ?? 0) * (input.pixelToMmRatio ?? 20))
+              depth: Math.round(Number(nearShape.height ?? 0) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO)),
+              width: Math.round(Number(nearShape.width ?? 0) * (input.pixelToMmRatio ?? DEFAULT_PIXEL_TO_MM_RATIO))
             }
           : undefined,
         source: nearShape ? "ocr+shape" : "ocr",
@@ -1012,10 +1056,64 @@ export function limitDetectedWallCandidates(lines, options = {}) {
   return [...lines].sort((lineA, lineB) => lineLength(lineB) - lineLength(lineA)).slice(0, maxLines);
 }
 
+function hasPerpendicularGapMarker(lines, firstLine, secondLine, options = {}) {
+  if (!options.respectPerpendicularGapMarkers) return false;
+  if (lineOrientation(firstLine) !== lineOrientation(secondLine)) return false;
+
+  const orientation = lineOrientation(firstLine);
+  const axisTolerance = options.axisTolerance ?? 4;
+  const markerTolerance = options.gapMarkerTolerance ?? Math.max(10, axisTolerance * 2);
+  const firstBounds = lineBounds(firstLine);
+  const secondBounds = lineBounds(secondLine);
+  const minThickness = Math.max(3, Math.min(Number(firstLine.thickness ?? 6), Number(secondLine.thickness ?? 6)) * 0.55);
+
+  if (orientation === "horizontal") {
+    const gapStart = firstBounds.maxX;
+    const gapEnd = secondBounds.minX;
+    const axis = Math.round((firstLine.y1 + secondLine.y1) / 2);
+
+    return lines.some((line) => {
+      if (line === firstLine || line === secondLine || lineOrientation(line) !== "vertical") return false;
+      if (Number(line.thickness ?? 1) < minThickness) return false;
+      const bounds = lineBounds(line);
+      const markerX = Math.round((line.x1 + line.x2) / 2);
+      return (
+        markerX >= gapStart - markerTolerance &&
+        markerX <= gapEnd + markerTolerance &&
+        axis >= bounds.minY - markerTolerance &&
+        axis <= bounds.maxY + markerTolerance
+      );
+    });
+  }
+
+  const gapStart = firstBounds.maxY;
+  const gapEnd = secondBounds.minY;
+  const axis = Math.round((firstLine.x1 + secondLine.x1) / 2);
+
+  return lines.some((line) => {
+    if (line === firstLine || line === secondLine || lineOrientation(line) !== "horizontal") return false;
+    if (Number(line.thickness ?? 1) < minThickness) return false;
+    const bounds = lineBounds(line);
+    const markerY = Math.round((line.y1 + line.y2) / 2);
+    return (
+      markerY >= gapStart - markerTolerance &&
+      markerY <= gapEnd + markerTolerance &&
+      axis >= bounds.minX - markerTolerance &&
+      axis <= bounds.maxX + markerTolerance
+    );
+  });
+}
+
 function runOverlapRatio(runA, runB) {
   const overlap = overlapLength(runA.start, runA.end, runB.start, runB.end);
   const shortest = Math.max(1, Math.min(runA.end - runA.start, runB.end - runB.start));
   return overlap / shortest;
+}
+
+function runBalanceRatio(runA, runB) {
+  const overlap = overlapLength(runA.start, runA.end, runB.start, runB.end);
+  const longest = Math.max(1, Math.max(runA.end - runA.start, runB.end - runB.start));
+  return overlap / longest;
 }
 
 function createBandLine(band, orientation, options = {}) {
@@ -1062,6 +1160,8 @@ function extractWallBandsFromRuns(rows, orientation, options = {}) {
   const minRunLength = options.minRunLength ?? 24;
   const axisGapTolerance = options.bandAxisGapTolerance ?? 1;
   const overlapRatio = options.bandOverlapRatio ?? 0.64;
+  // 벽 run과 길이가 크게 다른 run(가구 채움/카운터)은 같은 밴드로 흡수하지 않는다.
+  const balanceRatio = options.bandRunBalanceRatio ?? 0.6;
   const bands = [];
   let activeBands = [];
 
@@ -1076,6 +1176,7 @@ function extractWallBandsFromRuns(rows, orientation, options = {}) {
 
       for (const band of activeBands) {
         if (axis - band.maxAxis > axisGapTolerance + 1) continue;
+        if (runBalanceRatio(run, band.lastRun) < balanceRatio) continue;
         const candidateOverlap = runOverlapRatio(run, band.lastRun);
         if (candidateOverlap > bestOverlap) {
           bestBand = band;
@@ -1198,8 +1299,11 @@ export function mergeDetectedWallLines(lines, options = {}) {
       if (lineA.orientation !== lineB.orientation) return lineA.orientation === "horizontal" ? -1 : 1;
       const axisA = lineA.orientation === "horizontal" ? lineA.y1 : lineA.x1;
       const axisB = lineB.orientation === "horizontal" ? lineB.y1 : lineB.x1;
+      const startA = lineA.orientation === "horizontal" ? lineA.x1 : lineA.y1;
+      const startB = lineB.orientation === "horizontal" ? lineB.x1 : lineB.y1;
+      if (Math.abs(axisA - axisB) <= axisTolerance && startA !== startB) return startA - startB;
       if (axisA !== axisB) return axisA - axisB;
-      return lineA.orientation === "horizontal" ? lineA.x1 - lineB.x1 : lineA.y1 - lineB.y1;
+      return startA - startB;
     });
   const merged = [];
 
@@ -1213,7 +1317,7 @@ export function mergeDetectedWallLines(lines, options = {}) {
     if (line.orientation === "horizontal") {
       const sameAxis = Math.abs(previous.y1 - line.y1) <= axisTolerance;
       const closeGap = line.x1 - previous.x2 <= gapTolerance;
-      if (sameAxis && closeGap) {
+      if (sameAxis && closeGap && !hasPerpendicularGapMarker(normalized, previous, line, options)) {
         const weight = previous.weight + 1;
         const y = Math.round((previous.y1 * previous.weight + line.y1) / weight);
         previous.x1 = Math.min(previous.x1, line.x1);
@@ -1230,7 +1334,7 @@ export function mergeDetectedWallLines(lines, options = {}) {
     } else {
       const sameAxis = Math.abs(previous.x1 - line.x1) <= axisTolerance;
       const closeGap = line.y1 - previous.y2 <= gapTolerance;
-      if (sameAxis && closeGap) {
+      if (sameAxis && closeGap && !hasPerpendicularGapMarker(normalized, previous, line, options)) {
         const weight = previous.weight + 1;
         const x = Math.round((previous.x1 * previous.weight + line.x1) / weight);
         previous.y1 = Math.min(previous.y1, line.y1);
@@ -1327,15 +1431,9 @@ export function detectWallLinesFromMask(mask, options = {}) {
   );
 }
 
-export function detectWallLinesFromImageData(imageData, options = {}) {
-  const width = imageData?.width ?? 0;
-  const height = imageData?.height ?? 0;
-  const data = imageData?.data;
-  const darkThreshold = options.darkThreshold ?? 170;
-
-  if (!data || width <= 0 || height <= 0) return [];
-
-  const mask = Array.from({ length: width * height }, (_, index) => {
+function buildLuminanceMask(imageData, threshold) {
+  const { data } = imageData;
+  return Array.from({ length: imageData.width * imageData.height }, (_, index) => {
     const offset = index * 4;
     const red = data[offset] ?? 255;
     const green = data[offset + 1] ?? 255;
@@ -1343,14 +1441,135 @@ export function detectWallLinesFromImageData(imageData, options = {}) {
     const alpha = data[offset + 3] ?? 255;
     const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
 
-    return alpha > 24 && luminance < darkThreshold;
+    return alpha > 24 && luminance < threshold;
   });
+}
 
-  const cleanedMask = removeSmallWallComponents(mask, {
+// 어두운 픽셀 분포를 둘로 나눠(Otsu) 순흑 벽과 진회색 가구 채움(싱크대 상판 등)을
+// 분리할 수 있으면 벽 쪽 임계값을 돌려준다. 분리가 불확실하면 baseThreshold 유지.
+export function estimateWallLuminanceThreshold(imageData, options = {}) {
+  const baseThreshold = Math.round(options.baseThreshold ?? 128);
+  const data = imageData?.data;
+  const pixelCount = (imageData?.width ?? 0) * (imageData?.height ?? 0);
+  if (!data || pixelCount <= 0) return baseThreshold;
+
+  const histogram = new Array(Math.max(1, baseThreshold)).fill(0);
+  let darkTotal = 0;
+
+  for (let index = 0; index < pixelCount; index += 1) {
+    const offset = index * 4;
+    if ((data[offset + 3] ?? 255) <= 24) continue;
+    const luminance = Math.round(
+      (data[offset] ?? 255) * 0.2126 + (data[offset + 1] ?? 255) * 0.7152 + (data[offset + 2] ?? 255) * 0.0722
+    );
+    if (luminance >= baseThreshold) continue;
+    histogram[luminance] += 1;
+    darkTotal += 1;
+  }
+
+  if (darkTotal < Math.max(400, Math.round(pixelCount * 0.002))) return baseThreshold;
+
+  let totalSum = 0;
+  for (let luminance = 0; luminance < baseThreshold; luminance += 1) totalSum += luminance * histogram[luminance];
+
+  let weightDarker = 0;
+  let sumDarker = 0;
+  let bestVariance = 0;
+  let bestSplit = null;
+
+  for (let luminance = 0; luminance < baseThreshold; luminance += 1) {
+    weightDarker += histogram[luminance];
+    sumDarker += luminance * histogram[luminance];
+    if (!weightDarker) continue;
+    const weightLighter = darkTotal - weightDarker;
+    if (!weightLighter) break;
+    const meanDarker = sumDarker / weightDarker;
+    const meanLighter = (totalSum - sumDarker) / weightLighter;
+    const variance = weightDarker * weightLighter * (meanDarker - meanLighter) ** 2;
+    if (variance > bestVariance) {
+      bestVariance = variance;
+      bestSplit = { meanDarker, meanLighter, weightDarker, weightLighter };
+    }
+  }
+
+  if (!bestSplit) return baseThreshold;
+
+  const separation = bestSplit.meanLighter - bestSplit.meanDarker;
+  const darkerRatio = bestSplit.weightDarker / darkTotal;
+  const lighterRatio = bestSplit.weightLighter / darkTotal;
+  // 벽(가장 어두운 계층)이 지배적이고 두 계층이 뚜렷이 떨어져 있을 때만 낮춘다.
+  if (separation < (options.minClassSeparation ?? 26)) return baseThreshold;
+  if (darkerRatio < (options.minDarkerRatio ?? 0.3) || lighterRatio < (options.minLighterRatio ?? 0.05)) {
+    return baseThreshold;
+  }
+
+  return Math.max(32, Math.min(baseThreshold, Math.round((bestSplit.meanDarker + bestSplit.meanLighter) / 2)));
+}
+
+// 문설주·짧은 벽·샤프트 같은 짧고 두꺼운 세그먼트는 기본 minRunLength에서 소실되므로
+// 두께 조건을 강화한 짧은 run 기준으로 한 번 더 추출해 보강한다.
+function recoverShortWallBandLines(mask, primaryLines, options = {}) {
+  const width = Number(options.width) || 0;
+  const height = Number(options.height) || 0;
+  const primaryMinRunLength = options.minRunLength ?? Math.max(24, Math.round(Math.min(width, height) * 0.06));
+  const shortMinRunLength =
+    options.shortSegmentMinRunLength ?? Math.max(20, Math.round(Math.min(width, height) * 0.025));
+  if (shortMinRunLength >= primaryMinRunLength) return primaryLines;
+
+  const shortLines = detectWallBandLinesFromMask(mask, {
+    ...options,
     height,
-    minArea: options.minComponentArea ?? Math.max(16, Math.round((width * height) / 20000)),
+    minRunLength: shortMinRunLength,
+    minWallThickness: Math.max(options.shortSegmentMinThickness ?? 5, options.minWallThickness ?? 3),
     width
-  });
+  })
+    .filter((line) => lineLength(line) < primaryMinRunLength)
+    .map((line) => ({ ...line, markers: [...(line.markers ?? []), "short-wall-recovered"] }));
+
+  if (!shortLines.length) return primaryLines;
+
+  return removeContainedDetectedWallFragments([...primaryLines, ...shortLines], options);
+}
+
+export function detectWallLinesFromImageData(imageData, options = {}) {
+  const width = imageData?.width ?? 0;
+  const height = imageData?.height ?? 0;
+  const data = imageData?.data;
+  const darkThreshold = options.darkThreshold ?? 170;
+  const strictLineThreshold = Math.min(darkThreshold, options.strictLineThreshold ?? 128);
+
+  if (!data || width <= 0 || height <= 0) return [];
+
+  const cleanMask = (mask) =>
+    removeSmallWallComponents(mask, {
+      height,
+      minArea: options.minComponentArea ?? Math.max(16, Math.round((width * height) / 20000)),
+      width
+    });
+
+  if (options.strictLineMask) {
+    const bandOptions = {
+      ...options,
+      bandAxisGapTolerance: options.bandAxisGapTolerance ?? 2,
+      bandOverlapRatio: options.bandOverlapRatio ?? 0.5,
+      height,
+      minWallThickness: options.minWallThickness ?? 3,
+      width
+    };
+    const wallThreshold = estimateWallLuminanceThreshold(imageData, { baseThreshold: strictLineThreshold });
+    let cleanedMask = cleanMask(buildLuminanceMask(imageData, wallThreshold));
+    let bandLines = detectWallBandLinesFromMask(cleanedMask, bandOptions);
+
+    // 적응 임계값이 벽까지 지워버린 경우(밴드 부족) 원래 임계값으로 되돌린다.
+    if (wallThreshold < strictLineThreshold && bandLines.length < 3) {
+      cleanedMask = cleanMask(buildLuminanceMask(imageData, strictLineThreshold));
+      bandLines = detectWallBandLinesFromMask(cleanedMask, bandOptions);
+    }
+
+    return annotateLinesWithFillSupport(recoverShortWallBandLines(cleanedMask, bandLines, bandOptions), imageData);
+  }
+
+  const cleanedMask = cleanMask(buildLuminanceMask(imageData, darkThreshold));
 
   return annotateLinesWithFillSupport(detectWallLinesFromMask(cleanedMask, { ...options, width, height }), imageData);
 }
@@ -1404,12 +1623,295 @@ function annotateLinesWithFillSupport(lines, imageData) {
   }));
 }
 
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizedPointToPixel(point, imageData) {
+  const width = Math.max(1, Number(imageData?.width) || 1);
+  const height = Math.max(1, Number(imageData?.height) || 1);
+
+  return {
+    x: (clampNumber(Number(point?.x) || 0, 0, 1000) / 1000) * (width - 1),
+    y: (clampNumber(Number(point?.y) || 0, 0, 1000) / 1000) * (height - 1)
+  };
+}
+
+function normalizedLineToPixel(line, imageData) {
+  const start = normalizedPointToPixel({ x: line?.x1, y: line?.y1 }, imageData);
+  const end = normalizedPointToPixel({ x: line?.x2, y: line?.y2 }, imageData);
+  const orientation = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y) ? "horizontal" : "vertical";
+
+  if (orientation === "horizontal") {
+    const y = Math.round((start.y + end.y) / 2);
+    return {
+      orientation,
+      x1: Math.round(Math.min(start.x, end.x)),
+      x2: Math.round(Math.max(start.x, end.x)),
+      y1: y,
+      y2: y
+    };
+  }
+
+  const x = Math.round((start.x + end.x) / 2);
+  return {
+    orientation,
+    x1: x,
+    x2: x,
+    y1: Math.round(Math.min(start.y, end.y)),
+    y2: Math.round(Math.max(start.y, end.y))
+  };
+}
+
+function pixelLineToNormalized(line, imageData) {
+  const width = Math.max(1, Number(imageData?.width) || 1);
+  const height = Math.max(1, Number(imageData?.height) || 1);
+
+  return {
+    x1: (line.x1 / Math.max(1, width - 1)) * 1000,
+    x2: (line.x2 / Math.max(1, width - 1)) * 1000,
+    y1: (line.y1 / Math.max(1, height - 1)) * 1000,
+    y2: (line.y2 / Math.max(1, height - 1)) * 1000
+  };
+}
+
+function imagePixelLuminance(imageData, x, y) {
+  const width = imageData?.width ?? 0;
+  const height = imageData?.height ?? 0;
+  const data = imageData?.data;
+  const roundedX = Math.round(x);
+  const roundedY = Math.round(y);
+  if (!data || roundedX < 0 || roundedY < 0 || roundedX >= width || roundedY >= height) return 255;
+
+  const offset = (roundedY * width + roundedX) * 4;
+  const red = data[offset] ?? 255;
+  const green = data[offset + 1] ?? 255;
+  const blue = data[offset + 2] ?? 255;
+
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+}
+
+function scoreDarkAxis(line, imageData, axis, darkThreshold) {
+  const orientation = lineOrientation(line);
+  const length = Math.max(1, lineLength(line));
+  const sampleCount = Math.max(12, Math.min(240, Math.round(length)));
+  let dark = 0;
+
+  for (let index = 0; index <= sampleCount; index += 1) {
+    const ratio = index / sampleCount;
+    const x = orientation === "horizontal" ? line.x1 + (line.x2 - line.x1) * ratio : axis;
+    const y = orientation === "horizontal" ? axis : line.y1 + (line.y2 - line.y1) * ratio;
+    if (imagePixelLuminance(imageData, x, y) <= darkThreshold) dark += 1;
+  }
+
+  return dark / (sampleCount + 1);
+}
+
+export function snapNormalizedLineToWallEvidence(line, imageData, options = {}) {
+  if (!imageData?.data || !imageData.width || !imageData.height) return null;
+
+  const pixelLine = normalizedLineToPixel(line, imageData);
+  const orientation = lineOrientation(pixelLine);
+  const minDimension = Math.max(1, Math.min(imageData.width, imageData.height));
+  const searchRadius = Math.max(2, Math.round(Number(options.searchRadiusPx) || minDimension * 0.03));
+  const darkThreshold = Number(options.darkThreshold) || estimateWallLuminanceThreshold(imageData);
+  const minConfidence = Number(options.minConfidence) || 0.18;
+  const baseAxis = orientation === "horizontal" ? pixelLine.y1 : pixelLine.x1;
+  let bestAxis = baseAxis;
+  let bestScore = 0;
+
+  for (let offset = -searchRadius; offset <= searchRadius; offset += 1) {
+    const axis = Math.round(baseAxis + offset);
+    if (axis < 0 || axis >= (orientation === "horizontal" ? imageData.height : imageData.width)) continue;
+    const score = scoreDarkAxis(pixelLine, imageData, axis, darkThreshold);
+    if (score > bestScore) {
+      bestAxis = axis;
+      bestScore = score;
+    }
+  }
+
+  if (bestScore < minConfidence) return null;
+
+  let minAxis = bestAxis;
+  let maxAxis = bestAxis;
+  const thicknessThreshold = Math.max(0.08, bestScore * 0.45);
+  for (let axis = bestAxis - 1; axis >= bestAxis - searchRadius; axis -= 1) {
+    if (axis < 0 || scoreDarkAxis(pixelLine, imageData, axis, darkThreshold) < thicknessThreshold) break;
+    minAxis = axis;
+  }
+  const axisLimit = orientation === "horizontal" ? imageData.height : imageData.width;
+  for (let axis = bestAxis + 1; axis <= bestAxis + searchRadius; axis += 1) {
+    if (axis >= axisLimit || scoreDarkAxis(pixelLine, imageData, axis, darkThreshold) < thicknessThreshold) break;
+    maxAxis = axis;
+  }
+  const snappedAxis = Math.round((minAxis + maxAxis) / 2);
+
+  const snappedLine =
+    orientation === "horizontal"
+      ? {
+          confidence: Math.min(0.98, bestScore),
+          markers: ["ai-wall-evidence"],
+          orientation,
+          thickness: Math.max(1, maxAxis - minAxis + 1),
+          x1: clampNumber(pixelLine.x1, 0, imageData.width - 1),
+          x2: clampNumber(pixelLine.x2, 0, imageData.width - 1),
+          y1: snappedAxis,
+          y2: snappedAxis
+        }
+      : {
+          confidence: Math.min(0.98, bestScore),
+          markers: ["ai-wall-evidence"],
+          orientation,
+          thickness: Math.max(1, maxAxis - minAxis + 1),
+          x1: snappedAxis,
+          x2: snappedAxis,
+          y1: clampNumber(pixelLine.y1, 0, imageData.height - 1),
+          y2: clampNumber(pixelLine.y2, 0, imageData.height - 1)
+        };
+
+  return snappedLine;
+}
+
+function roomPolygonEdgesToPixelLines(rooms = [], imageData) {
+  return rooms.flatMap((room, roomIndex) => {
+    const polygon = Array.isArray(room?.polygon) ? room.polygon : [];
+    if (polygon.length < 4) return [];
+    const points = polygon.map((point) => normalizedPointToPixel(point, imageData));
+
+    return points.flatMap((point, index) => {
+      const next = points[(index + 1) % points.length];
+      const dx = Math.abs(next.x - point.x);
+      const dy = Math.abs(next.y - point.y);
+      if (dx < 1 && dy < 1) return [];
+      const orientation = dx >= dy ? "horizontal" : "vertical";
+      if (orientation === "horizontal") {
+        const y = Math.round((point.y + next.y) / 2);
+        return [
+          {
+            confidence: Number(room?.confidence) || 0.5,
+            markers: ["ai-room-edge"],
+            orientation,
+            roomIndex,
+            x1: Math.round(Math.min(point.x, next.x)),
+            x2: Math.round(Math.max(point.x, next.x)),
+            y1: y,
+            y2: y
+          }
+        ];
+      }
+
+      const x = Math.round((point.x + next.x) / 2);
+      return [
+        {
+          confidence: Number(room?.confidence) || 0.5,
+          markers: ["ai-room-edge"],
+          orientation,
+          roomIndex,
+          x1: x,
+          x2: x,
+          y1: Math.round(Math.min(point.y, next.y)),
+          y2: Math.round(Math.max(point.y, next.y))
+        }
+      ];
+    });
+  });
+}
+
+function mergeCollinearPixelLines(lines, options = {}) {
+  const axisTolerance = options.axisTolerance ?? 4;
+  const overlapTolerance = options.overlapTolerance ?? 8;
+  const merged = [];
+
+  for (const line of [...lines].sort((lineA, lineB) => lineOrientation(lineA).localeCompare(lineOrientation(lineB)) || lineLength(lineB) - lineLength(lineA))) {
+    const orientation = lineOrientation(line);
+    const bounds = lineBounds(line);
+    const match = merged.find((candidate) => {
+      if (lineOrientation(candidate) !== orientation) return false;
+      const candidateBounds = lineBounds(candidate);
+      if (orientation === "horizontal") {
+        if (Math.abs(candidate.y1 - line.y1) > axisTolerance) return false;
+        return bounds.minX <= candidateBounds.maxX + overlapTolerance && bounds.maxX >= candidateBounds.minX - overlapTolerance;
+      }
+
+      if (Math.abs(candidate.x1 - line.x1) > axisTolerance) return false;
+      return bounds.minY <= candidateBounds.maxY + overlapTolerance && bounds.maxY >= candidateBounds.minY - overlapTolerance;
+    });
+
+    if (!match) {
+      merged.push({ ...line });
+      continue;
+    }
+
+    const matchBounds = lineBounds(match);
+    if (orientation === "horizontal") {
+      const y = Math.round((match.y1 + line.y1) / 2);
+      match.x1 = Math.min(matchBounds.minX, bounds.minX);
+      match.x2 = Math.max(matchBounds.maxX, bounds.maxX);
+      match.y1 = y;
+      match.y2 = y;
+    } else {
+      const x = Math.round((match.x1 + line.x1) / 2);
+      match.x1 = x;
+      match.x2 = x;
+      match.y1 = Math.min(matchBounds.minY, bounds.minY);
+      match.y2 = Math.max(matchBounds.maxY, bounds.maxY);
+    }
+    match.confidence = Math.max(Number(match.confidence) || 0, Number(line.confidence) || 0);
+  }
+
+  return merged;
+}
+
+export function createWallCandidatesFromRoomPolygons(rooms = [], imageData, options = {}) {
+  if (!imageData?.width || !imageData.height) return [];
+
+  const minLength = options.minLength ?? Math.max(8, Math.min(imageData.width, imageData.height) * 0.04);
+  const mergedLines = mergeCollinearPixelLines(roomPolygonEdgesToPixelLines(rooms, imageData), options).filter((line) => lineLength(line) >= minLength);
+
+  return mergedLines
+    .map((line) => {
+      const snappedLine = imageData?.data
+        ? snapNormalizedLineToWallEvidence(pixelLineToNormalized(line, imageData), imageData, {
+            darkThreshold: options.darkThreshold,
+            minConfidence: options.minEvidenceConfidence,
+            searchRadiusPx: options.searchRadiusPx
+          })
+        : null;
+      const nextLine = snappedLine
+        ? {
+            ...snappedLine,
+            confidence: Math.max(Number(line.confidence) || 0.5, Number(snappedLine.confidence) || 0),
+            markers: ["ai-room-edge", ...(snappedLine.markers ?? [])]
+          }
+        : {
+            ...line,
+            confidence: Math.max(0.35, Math.min(0.95, Number(line.confidence) || 0.5)),
+            markers: ["ai-room-edge"],
+            thickness: Number(line.thickness) || 1
+          };
+
+      return nextLine;
+    })
+    .filter((line) => lineLength(line) >= minLength);
+}
+
 export function createWallsFromDetectedLines(lines, plan = {}) {
   const imageWidth = Math.max(1, Number(plan.width) || 960);
   const imageHeight = Math.max(1, Number(plan.height) || 620);
-  const scale = Math.min(860 / imageWidth, 520 / imageHeight);
-  const offsetX = (960 - imageWidth * scale) / 2;
-  const offsetY = (620 - imageHeight * scale) / 2;
+  const canvasWidth = Math.max(1, Number(plan.canvasWidth) || 1600);
+  const canvasHeight = Math.max(1, Number(plan.canvasHeight) || 1200);
+  const imageFillRatio = Math.max(0.1, Math.min(1, Number(plan.imageFillRatio) || 0.8));
+  const imageAspect = imageWidth / imageHeight;
+  const canvasAspect = canvasWidth / canvasHeight;
+  let drawWidth = canvasWidth * imageFillRatio;
+  let drawHeight = drawWidth / imageAspect;
+  if (imageAspect <= canvasAspect) {
+    drawHeight = canvasHeight * imageFillRatio;
+    drawWidth = drawHeight * imageAspect;
+  }
+  const scale = drawWidth / imageWidth;
+  const offsetX = -drawWidth / 2;
+  const offsetY = -drawHeight / 2;
   const baseId = normalizePlanName(plan.name) || "detected";
   const cleanedLines = removeContainedDetectedWallFragments(lines, {
     axisTolerance: plan.axisTolerance ?? 5,
@@ -1418,7 +1920,7 @@ export function createWallsFromDetectedLines(lines, plan = {}) {
 
   return cleanedLines
     .filter((line) => lineLength(line) > 0)
-    .slice(0, 24)
+    .slice(0, Math.max(1, Number(plan.maxWalls) || 32))
     .map((line, index) =>
       createDetectedWall(
         {
@@ -1433,39 +1935,4 @@ export function createWallsFromDetectedLines(lines, plan = {}) {
       )
     )
     .filter(Boolean);
-}
-
-export function createWallsFromRegisteredPlan(plan = {}) {
-  const planWidth = Math.max(1, Number(plan.width) || 1280);
-  const planHeight = Math.max(1, Number(plan.height) || 900);
-  const aspectRatio = planWidth / planHeight;
-  const roomWidth = Math.min(660, Math.max(420, aspectRatio >= 1 ? 660 : 520));
-  const roomHeight = Math.min(420, Math.max(300, aspectRatio >= 1 ? roomWidth / aspectRatio : 420));
-  const left = Math.round((960 - roomWidth) / 2 / GRID_SIZE) * GRID_SIZE;
-  const top = Math.round((620 - roomHeight) / 2 / GRID_SIZE) * GRID_SIZE;
-  const right = Math.round((left + roomWidth) / GRID_SIZE) * GRID_SIZE;
-  const bottom = Math.round((top + roomHeight) / GRID_SIZE) * GRID_SIZE;
-  const middleX = Math.round((left + (right - left) * 0.56) / GRID_SIZE) * GRID_SIZE;
-  const middleY = Math.round((top + (bottom - top) * 0.52) / GRID_SIZE) * GRID_SIZE;
-  const baseId = `upload-${normalizePlanName(plan.name) || "plan"}`;
-
-  return [
-    createWall({ x: left, y: top }, { x: right, y: top }, `${baseId}-top`),
-    createWall({ x: right, y: top }, { x: right, y: bottom }, `${baseId}-right`),
-    createWall({ x: right, y: bottom }, { x: left, y: bottom }, `${baseId}-bottom`),
-    createWall({ x: left, y: bottom }, { x: left, y: top }, `${baseId}-left`),
-    createWall({ x: left, y: middleY }, { x: middleX, y: middleY }, `${baseId}-inner-a`),
-    createWall({ x: middleX, y: middleY }, { x: middleX, y: bottom }, `${baseId}-inner-b`)
-  ].filter(Boolean);
-}
-
-export function createStarterWalls() {
-  return [
-    createWall({ x: 144, y: 120 }, { x: 720, y: 120 }, "starter-top"),
-    createWall({ x: 720, y: 120 }, { x: 720, y: 456 }, "starter-right"),
-    createWall({ x: 720, y: 456 }, { x: 144, y: 456 }, "starter-bottom"),
-    createWall({ x: 144, y: 456 }, { x: 144, y: 120 }, "starter-left"),
-    createWall({ x: 144, y: 288 }, { x: 432, y: 288 }, "starter-inner-a"),
-    createWall({ x: 432, y: 288 }, { x: 432, y: 456 }, "starter-inner-b")
-  ].filter(Boolean);
 }

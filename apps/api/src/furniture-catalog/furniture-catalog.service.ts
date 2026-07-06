@@ -84,6 +84,7 @@ export type NormalizedFurnitureCatalogItem = {
 
 export type FurnitureCatalogApiItem = {
   brand: string;
+  category: string;
   color: string;
   furniture_id: string;
   imageUrls: string[];
@@ -107,6 +108,7 @@ export type ProductCrawlResult =
 
 type FurnitureCatalogRow = {
   brand: string;
+  category: string;
   color: string;
   depthMm: number;
   heightMm: number;
@@ -288,6 +290,7 @@ function sourceProductIdFromUrl(sourceUrl: string) {
 
 function asApiItem(item: {
   brand: string;
+  category: string;
   color: string;
   depthMm: number;
   heightMm: number;
@@ -302,6 +305,7 @@ function asApiItem(item: {
 }): FurnitureCatalogApiItem {
   return {
     brand: item.brand,
+    category: item.category,
     color: item.color,
     furniture_id: item.id,
     imageUrls: item.imageUrls,

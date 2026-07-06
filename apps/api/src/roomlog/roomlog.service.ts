@@ -9,7 +9,7 @@ import {
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -17,7 +17,7 @@ import {
   renameSync,
   writeFileSync
 } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
   hasRequiredPasswordMix,
@@ -58,6 +58,7 @@ import {
   ComplaintSourceChannel,
   ComplaintStatus,
   ConfirmTenantCompletionInput,
+  CreateRoomInput,
   Contract,
   ContractDocument,
   ContractExtraction,
@@ -88,7 +89,25 @@ import {
   Deposit,
   DuplicateTicketCandidate,
   FinalizeIntakeInput,
+  FloorPlanAiAnalysisInput,
+  FloorPlanAiAnalysisResult,
+  FloorPlanAiDimensionDetection,
+  FloorPlanAiDimensionKind,
+  FloorPlanAiModel,
+  FloorPlanAiModelId,
+  FloorPlanAiCandidateReview,
+  FloorPlanAiMissingWallHint,
+  FloorPlanAiNormalizedLine,
+  FloorPlanAiRoomStructure,
+  FloorPlanAiRoomStructureNoiseFlags,
+  FloorPlanAiRoomStructurePlanStyle,
+  FloorPlanAiScaleCandidate,
+  FloorPlanAiTextDetection,
+  FloorPlanAiWallCandidate,
   FloorPlanDraft,
+  FloorPlanOpeningCandidate,
+  FloorPlanOpeningDetectionInput,
+  FloorPlanOpeningDetectionResult,
   FloorPlanWall,
   IntakeDraft,
   IntakeMessage,
@@ -148,9 +167,12 @@ import {
   Receipt,
   ReceiptOcr,
   Room,
+  RoomWall,
   RoomTimelineEntry,
   SaveAttachmentInput,
   SaveFloorPlanDraftInput,
+  SaveRoomWallsInput,
+  SimulatorWallData,
   ScheduleRepairInput,
   SendIntakeMessageInput,
   SendDunningInput,
@@ -228,6 +250,359 @@ export type GoogleSocialLoginInput = {
   inviteToken?: string;
   flow?: "login" | "signup";
 };
+
+const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
+  {
+    id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    label: "Nemotron Omni",
+    mode: "vision-reasoning",
+    description: "NVIDIA vision reasoning model for reading dimensions and structural hints from floor-plan images."
+  },
+  {
+    id: "nvidia/cosmos3-nano-reasoner",
+    label: "Cosmos3 Reasoner",
+    mode: "vision-reasoning",
+    description: "NVIDIA reasoning model for fast floor-plan dimension analysis."
+  },
+  {
+    id: "openai/floor-plan-vision",
+    label: "OpenAI Vision",
+    mode: "vision-reasoning",
+    description: "OpenAI vision model for dimension, candidate, room-structure, and object-graph analysis."
+  }
+];
+
+const FLOOR_PLAN_NORMALIZED_LINE_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x1: { maximum: 1000, minimum: 0, type: "number" },
+    x2: { maximum: 1000, minimum: 0, type: "number" },
+    y1: { maximum: 1000, minimum: 0, type: "number" },
+    y2: { maximum: 1000, minimum: 0, type: "number" }
+  },
+  required: ["x1", "y1", "x2", "y2"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    candidateReviews: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          id: { type: "string" },
+          reason: { type: "string" },
+          verdict: { enum: ["keep", "reject", "review"], type: "string" }
+        },
+        required: ["id", "verdict", "confidence", "reason"],
+        type: "object"
+      },
+      maxItems: 80,
+      type: "array"
+    },
+    missingWallHints: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          description: { type: "string" },
+          line: FLOOR_PLAN_NORMALIZED_LINE_SCHEMA,
+          orientation: { enum: ["horizontal", "vertical"], type: "string" }
+        },
+        required: ["description", "confidence", "orientation", "line"],
+        type: "object"
+      },
+      maxItems: 30,
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "candidateReviews", "missingWallHints"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_ROOM_POINT_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x: { maximum: 1000, minimum: 0, type: "number" },
+    y: { maximum: 1000, minimum: 0, type: "number" }
+  },
+  required: ["x", "y"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    noiseFlags: {
+      additionalProperties: false,
+      properties: {
+        decorativeHatching: { type: "boolean" },
+        watermark: { type: "boolean" }
+      },
+      required: ["decorativeHatching", "watermark"],
+      type: "object"
+    },
+    planStyle: { enum: ["solid-filled", "double-line-hollow", "hatched", "gray-fill"], type: "string" },
+    rooms: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          label: { type: "string" },
+          polygon: {
+            items: FLOOR_PLAN_ROOM_POINT_SCHEMA,
+            maxItems: 12,
+            minItems: 4,
+            type: "array"
+          }
+        },
+        required: ["label", "polygon", "confidence"],
+        type: "object"
+      },
+      maxItems: 40,
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "planStyle", "noiseFlags", "rooms"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_PROMPT = `You extract a structured object graph from a Korean residential floor-plan image (apartment/villa/officetel) for a 2D/3D room modeling pipeline.
+Return JSON only, following the provided schema exactly.
+
+The original image size is {width}x{height} pixels. All coordinates use this original pixel coordinate system: origin at top-left, x to the right, y down.
+
+A second image may be provided: a reference sheet of Korean floor-plan symbols. Use it only to learn what each symbol looks like. Never copy geometry or coordinates from the reference sheet.
+
+## Region policy
+- Use floor color/texture ONLY to separate the home unit interior from non-home areas (common corridor, stairwell, elevator core, neighboring unit, background, app UI chrome).
+- homeRegions: output one "home" polygon covering the unit interior including balconies, and "excluded" polygons for adjacent non-home structures that could be mistaken for the unit.
+- Do not segment individual rooms by floor color.
+
+## Wall policy
+- Output structural wall centerlines. Merge double parallel lines and filled wall masses into ONE centerline at the visual center of the wall mass.
+- Prefer orthogonal horizontal/vertical segments. Split only at corners, T-junctions, and room-boundary turns.
+- Vertical walls must have identical x at both endpoints; horizontal walls identical y. Before emitting each wall, verify start/end are not accidentally collapsed (x equal to y by copy mistake). Diagonal walls are rare in Korean floor plans — only output one when the drawing clearly shows a slanted wall.
+- DO NOT split walls at door openings. Keep each wall centerline continuous through both doors and windows; report openings separately in objects. The client cuts door gaps later using your objects.
+- thicknessPx: wall mass thickness in pixels, or null if unclear.
+- Only include walls of the home unit. Never output walls that belong to excluded regions (neighbor unit, common core).
+- Never create walls from: door leaves, swing arcs, window frame/sash lines, furniture outlines, fixtures, stair treads, hatching/tile/wood textures, dimension lines, arrows, extension lines, text, watermarks, UI chrome.
+
+## Object policy
+Detect these symbol classes (type ids are fixed):
+- swingDoor: straight door leaf + quarter-circle swing arc at a wall opening (방문, 현관문).
+- doubleSwingDoor: two mirrored leaves with two arcs.
+- slidingDoor: overlapping thin parallel panels in an opening, no swing arc (미닫이문, 중문, 슬라이딩도어).
+- pocketDoor: a leaf that slides into a wall pocket, no arc.
+- window: thin double/triple frame lines drawn inside/on a wall band, no arc.
+- balconyWindow: long multi-track window frame on an exterior or balcony wall (샷시).
+- toilet: bowl ellipse + tank rectangle near a bathroom wall.
+- sink: small wash-basin rectangle/half-round on a bathroom wall.
+- bathtub: long rounded rectangle along a bathroom wall.
+- showerBooth: small partitioned corner with diagonal or drain mark.
+- floorDrain: small circle/square with cross or grid mark on wet-area floor.
+- kitchenSink: sink bowl rectangle on a counter line.
+- gasRange: rectangle containing 2-4 burner circles on a counter.
+- refrigerator: large appliance box in kitchen/utility area.
+- stairs: repeated parallel treads, may carry UP/DN text — only when inside the home unit.
+- elevator: shaft square with X — usually in excluded region; output only if inside the home unit.
+- column: small solid structural rectangle, attached to or separate from walls.
+
+For every object:
+- center and size: the axis-aligned bounding box in pixels (size measured before rotation).
+- rotationDeg: 0, 90, 180 or 270 — the rotation that maps the canonical upright symbol onto the drawing.
+- attachedWallId: id of the wall the object sits on or in, else null. Every door and window MUST reference a wall id when one exists; if you truly cannot match a wall, keep the object with attachedWallId null and lower confidence.
+- spanOnWall: doors/windows only — the exact segment of the wall centerline covered by the opening, both endpoints lying on that wall. null for non-openings.
+- swing: swingDoor/doubleSwingDoor only — hinge: which spanOnWall endpoint ("start" or "end") carries the hinge; opensTowards: a point roughly at the middle of the swept arc area, on the side the door opens into. null otherwise.
+- confidence 0..1 and a short evidence string (e.g. "leaf+arc at bathroom entry").
+
+Reject and count in rejectionSummary:
+- freestanding furniture (bed, sofa, table, wardrobe) unless clearly built-in
+- text labels, room-name text, area text
+- dimension lines, arrows, extension lines
+- hatching and floor textures
+- watermarks and screenshot UI
+
+## Dimension policy
+- dimensionTexts: printed dimension labels (e.g. "2051mm"), with valueMm parsed when clear and appliesTo describing the measured span.
+- scaleCandidates: when a printed dimension clearly matches a pixel span, output pixelLength, realLengthMm, pixelToMmRatio, confidence, sourceText.
+
+## Quality
+- Prefer missing a doubtful fixture over inventing one. Prefer missing a short wall over creating false geometry.
+- Wall endpoints that visually meet must share nearly identical coordinates (within a few pixels) so corners close cleanly.
+- When unsure, lower confidence and mention it in warnings.`;
+
+const FLOOR_PLAN_OBJECT_TYPES = [
+  "swingDoor",
+  "doubleSwingDoor",
+  "slidingDoor",
+  "pocketDoor",
+  "window",
+  "balconyWindow",
+  "toilet",
+  "sink",
+  "bathtub",
+  "showerBooth",
+  "floorDrain",
+  "kitchenSink",
+  "gasRange",
+  "refrigerator",
+  "stairs",
+  "elevator",
+  "column"
+] as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x: { type: "number" },
+    y: { type: "number" }
+  },
+  required: ["x", "y"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    dimensionTexts: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          appliesTo: { type: "string" },
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          text: { type: "string" },
+          valueMm: { type: ["number", "null"] }
+        },
+        required: ["text", "valueMm", "appliesTo", "confidence"],
+        type: "object"
+      },
+      maxItems: 40,
+      type: "array"
+    },
+    homeRegions: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          kind: { enum: ["home", "excluded"], type: "string" },
+          polygon: {
+            items: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+            maxItems: 40,
+            minItems: 3,
+            type: "array"
+          }
+        },
+        required: ["kind", "polygon"],
+        type: "object"
+      },
+      maxItems: 8,
+      type: "array"
+    },
+    objects: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          attachedWallId: { type: ["string", "null"] },
+          center: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          evidence: { type: "string" },
+          id: { type: "string" },
+          rotationDeg: { enum: [0, 90, 180, 270], type: "number" },
+          size: {
+            additionalProperties: false,
+            properties: {
+              height: { minimum: 0, type: "number" },
+              width: { minimum: 0, type: "number" }
+            },
+            required: ["width", "height"],
+            type: "object"
+          },
+          spanOnWall: {
+            additionalProperties: false,
+            properties: {
+              end: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+              start: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA
+            },
+            required: ["start", "end"],
+            type: ["object", "null"]
+          },
+          swing: {
+            additionalProperties: false,
+            properties: {
+              hinge: { enum: ["start", "end"], type: "string" },
+              opensTowards: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA
+            },
+            required: ["hinge", "opensTowards"],
+            type: ["object", "null"]
+          },
+          type: { enum: FLOOR_PLAN_OBJECT_TYPES, type: "string" }
+        },
+        required: ["id", "type", "center", "size", "rotationDeg", "attachedWallId", "spanOnWall", "swing", "confidence", "evidence"],
+        type: "object"
+      },
+      maxItems: 60,
+      type: "array"
+    },
+    rejectionSummary: {
+      additionalProperties: false,
+      properties: {
+        dimensionOrText: { minimum: 0, type: "integer" },
+        doorSymbols: { minimum: 0, type: "integer" },
+        furnitureOrFixtures: { minimum: 0, type: "integer" },
+        textureOrHatching: { minimum: 0, type: "integer" },
+        uiChrome: { minimum: 0, type: "integer" },
+        windowFrameOnly: { minimum: 0, type: "integer" }
+      },
+      required: ["doorSymbols", "windowFrameOnly", "furnitureOrFixtures", "dimensionOrText", "textureOrHatching", "uiChrome"],
+      type: "object"
+    },
+    scaleCandidates: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          pixelLength: { minimum: 0, type: "number" },
+          pixelToMmRatio: { minimum: 0, type: "number" },
+          realLengthMm: { minimum: 0, type: "number" },
+          sourceText: { type: "string" }
+        },
+        required: ["pixelLength", "realLengthMm", "pixelToMmRatio", "confidence", "sourceText"],
+        type: "object"
+      },
+      maxItems: 30,
+      type: "array"
+    },
+    summary: { type: "string" },
+    walls: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          end: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          id: { type: "string" },
+          role: { enum: ["outer", "inner", "balcony", "wet-area", "unknown"], type: "string" },
+          start: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          thicknessPx: { type: ["number", "null"] }
+        },
+        required: ["id", "start", "end", "thicknessPx", "role", "confidence"],
+        type: "object"
+      },
+      maxItems: 90,
+      type: "array"
+    },
+    warnings: {
+      items: { type: "string" },
+      maxItems: 20,
+      type: "array"
+    }
+  },
+  required: ["summary", "warnings", "homeRegions", "walls", "objects", "dimensionTexts", "scaleCandidates", "rejectionSummary"],
+  type: "object"
+} as const;
 
 export type VendorMgmtTrade =
   | "plumbing"
@@ -331,6 +706,7 @@ export type Store = {
   users: UserAccount[];
   socialAccounts: SocialAccount[];
   rooms: Room[];
+  roomWalls: RoomWall[];
   tenantRooms: Record<string, string>;
   vendors: VendorSummary[];
   vendorInvites: VendorInvite[];
@@ -388,7 +764,31 @@ type GeneratedIntakeTurn = {
   source: "openai" | "fallback";
 };
 
+const ROOM_WALL_HEIGHT_M = 2.5;
+const ROOM_WALL_DEPTH_M = 0.15;
+const DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE = 20;
+const DEFAULT_ROBOFLOW_DETECTION_OVERLAP = 30;
+const DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE = 0.5;
+const DEFAULT_ROBOFLOW_DOOR_MIN_BOX_CONFIDENCE = 0.15;
+const DEFAULT_ROBOFLOW_WINDOW_MIN_BOX_CONFIDENCE = 0.2;
+const ROBOFLOW_BOX_IOU_DUPLICATE_THRESHOLD = 0.5;
+const ROBOFLOW_BOX_CONTAINMENT_DUPLICATE_THRESHOLD = 0.75;
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
+
+function envNumber(name: string, fallback: number, min: number, max: number) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+
+  return Math.max(min, Math.min(max, value));
+}
+
+function envConfidenceRatio(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  const ratio = value > 1 ? value / 100 : value;
+
+  return Math.max(0, Math.min(1, ratio));
+}
 
 function priorityDueAt(priority: number) {
   const due = new Date();
@@ -508,6 +908,7 @@ function createDemoStore(): Store {
         landlordId: "multi-demo"
       }
     ],
+    roomWalls: [],
     tenantRooms: {
       "tenant-demo": "room-301",
       "multi-demo": "room-301"
@@ -1366,6 +1767,7 @@ function createEmptyStore(): Store {
     users: [],
     socialAccounts: [],
     rooms: [],
+    roomWalls: [],
     tenantRooms: {},
     vendors: [],
     vendorInvites: [],
@@ -3676,12 +4078,110 @@ export class RoomlogService {
     return this.checklist.listManagerMoveInChecklist(managerId, roomId);
   }
 
-  saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
+  createRoom(ownerId: string, input: CreateRoomInput) {
+    this.assertFloorPlanOwner(ownerId);
+    const buildingName = input.buildingName?.trim();
+    const roomNo = input.roomNo?.trim();
+    const address = input.address?.trim();
+
+    if (!buildingName || !roomNo || !address) {
+      throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
+    }
+
+    const existingRoom = this.store.rooms.find(
+      (room) => room.buildingName === buildingName && room.roomNo === roomNo && room.address === address
+    );
+    const room =
+      existingRoom ??
+      ({
+        id: id("room"),
+        buildingName,
+        roomNo,
+        address,
+        landlordId: ownerId
+      } satisfies Room);
+
+    if (room.landlordId && room.landlordId !== ownerId) {
+      throw new ForbiddenException("담당 호실에만 도면을 저장할 수 있습니다.");
+    }
+    room.landlordId = ownerId;
+
+    if (!existingRoom) {
+      this.store.rooms.push(room);
+    }
+
+    const roomWalls = input.roomData
+      ? this.replaceRoomWallsForRoom(room, input.roomData)
+      : this.listRoomWalls(room.id);
+    this.persistStore();
+
+    return {
+      room: { ...room },
+      roomWalls
+    };
+  }
+
+  listRoomWalls(roomId: string) {
+    this.findRoom(roomId);
+
+    return this.store.roomWalls
+      .filter((wall) => wall.roomId === roomId)
+      .sort((left, right) => left.wallOrder - right.wallOrder)
+      .map((wall) => this.presentRoomWall(wall));
+  }
+
+  replaceRoomWalls(ownerId: string, roomId: string, input: SaveRoomWallsInput) {
+    this.assertManagerCanAccessRoom(ownerId, roomId);
+    const room = this.findRoom(roomId);
+    const roomWalls = this.replaceRoomWallsForRoom(room, input);
+    this.persistStore();
+
+    return roomWalls;
+  }
+
+  loadSimulatorRoom(roomId: string) {
+    const room = this.findRoom(roomId);
+    const roomWalls = this.listRoomWalls(roomId);
+    const wallsData = roomWalls.map((wall) => this.roomWallToSimulatorWall(wall));
+
+    return {
+      room: { ...room },
+      room_objects: [],
+      room_walls: roomWalls,
+      wallsData
+    };
+  }
+
+  async saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
     return this.floorPlan.saveAttachment(uploadedByUserId, input);
   }
 
   createFloorPlanDraft(ownerId: string, input: SaveFloorPlanDraftInput) {
-    return this.floorPlan.createFloorPlanDraft(ownerId, input);
+    this.assertFloorPlanOwner(ownerId);
+    const createdAt = now();
+    const draft: FloorPlanDraft = {
+      id: id("plan"),
+      ownerId,
+      roomId: this.optionalOwnedRoomId(ownerId, input.roomId),
+      sourceAttachmentId: this.optionalAttachmentId(ownerId, input.sourceAttachmentId),
+      sourceImageUrl: this.optionalUrl(input.sourceImageUrl),
+      status: "DRAFT",
+      pixelToMmRatio: this.validPixelToMmRatio(input.pixelToMmRatio),
+      walls: this.validFloorPlanWalls(input.walls),
+      hiddenWallIds: this.validStringArray(input.hiddenWallIds),
+      furnitures: [],
+      room3d: this.validJsonObject(input.room3d),
+      extractionMeta: this.validExtractionMeta(input.extractionMeta),
+      openings: this.validFloorPlanCandidates(input.openings),
+      fixtures: this.validFloorPlanCandidates(input.fixtures),
+      createdAt,
+      updatedAt: createdAt
+    };
+
+    this.store.floorPlans.unshift(draft);
+    this.persistStore();
+
+    return this.presentFloorPlanDraft(draft);
   }
 
   getFloorPlanDraft(ownerId: string, floorPlanId: string) {
@@ -3689,7 +4189,1363 @@ export class RoomlogService {
   }
 
   updateFloorPlanDraft(ownerId: string, floorPlanId: string, input: SaveFloorPlanDraftInput) {
-    return this.floorPlan.updateFloorPlanDraft(ownerId, floorPlanId, input);
+    this.assertFloorPlanOwner(ownerId);
+    const draft = this.store.floorPlans.find((floorPlan) => floorPlan.id === floorPlanId);
+
+    if (!draft) {
+      throw new NotFoundException("저장된 도면을 찾을 수 없습니다.");
+    }
+
+    if (draft.ownerId !== ownerId) {
+      throw new ForbiddenException("이 도면을 수정할 권한이 없습니다.");
+    }
+
+    if (input.sourceAttachmentId !== undefined) {
+      draft.sourceAttachmentId = this.optionalAttachmentId(ownerId, input.sourceAttachmentId);
+    }
+    if (input.roomId !== undefined) {
+      draft.roomId = this.optionalOwnedRoomId(ownerId, input.roomId);
+    }
+    if (input.sourceImageUrl !== undefined) {
+      draft.sourceImageUrl = this.optionalUrl(input.sourceImageUrl);
+    }
+    if (input.status !== undefined) {
+      draft.status = this.validFloorPlanStatus(input.status);
+    }
+    if (input.pixelToMmRatio !== undefined) {
+      draft.pixelToMmRatio = this.validPixelToMmRatio(input.pixelToMmRatio);
+    }
+    if (input.walls !== undefined) {
+      draft.walls = this.validFloorPlanWalls(input.walls);
+    }
+    if (input.hiddenWallIds !== undefined) {
+      draft.hiddenWallIds = this.validStringArray(input.hiddenWallIds);
+    }
+    if (input.furnitures !== undefined) {
+      draft.furnitures = [];
+    }
+    if (input.room3d !== undefined) {
+      draft.room3d = this.validJsonObject(input.room3d);
+    }
+    if (input.extractionMeta !== undefined) {
+      draft.extractionMeta = this.validExtractionMeta(input.extractionMeta);
+    }
+    if (input.openings !== undefined) {
+      draft.openings = this.validFloorPlanCandidates(input.openings);
+    }
+    if (input.fixtures !== undefined) {
+      draft.fixtures = this.validFloorPlanCandidates(input.fixtures);
+    }
+    if (draft.status === "PUBLISHED") {
+      this.assertPublishableFloorPlan(draft);
+      if (draft.roomId) {
+        this.replaceRoomWallsForRoom(this.findRoom(draft.roomId), {
+          pixelToMmRatio: draft.pixelToMmRatio,
+          walls: draft.walls
+        });
+      }
+    }
+
+    draft.updatedAt = now();
+    this.persistStore();
+
+    return this.presentFloorPlanDraft(draft);
+  }
+
+  listFloorPlanAiModels() {
+    return FLOOR_PLAN_AI_MODELS.map((model) => ({ ...model }));
+  }
+
+  async analyzeFloorPlanWithAi(input: FloorPlanAiAnalysisInput, ownerId?: string): Promise<FloorPlanAiAnalysisResult> {
+    const model = this.validFloorPlanAiModel(input.model);
+    const modelInfo = FLOOR_PLAN_AI_MODELS.find((item) => item.id === model) ?? FLOOR_PLAN_AI_MODELS[0];
+    const imageDataUrl = input.sourceAttachmentId
+      ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
+      : this.validFloorPlanImageDataUrl(input.imageDataUrl);
+
+    if (model === "openai/floor-plan-vision") {
+      if (!process.env.OPENAI_API_KEY) {
+        return {
+          model,
+          mode: modelInfo.mode,
+          status: "config-required",
+          summary: "OPENAI_API_KEY가 설정되지 않아 OpenAI 도면 1차 분석을 실행하지 않았습니다.",
+          textDetections: [],
+          scaleCandidates: []
+        };
+      }
+
+      if (input.analysisMode === "candidate-review") {
+        return this.reviewFloorPlanCandidatesWithOpenAi(model, imageDataUrl, this.validFloorPlanAiWallCandidates(input.wallCandidates), input.prompt);
+      }
+
+      if (input.analysisMode === "room-structure") {
+        return this.analyzeFloorPlanRoomStructureWithOpenAi(model, imageDataUrl, input.prompt);
+      }
+
+      return this.analyzeFloorPlanWithOpenAiVision(model, imageDataUrl, input.prompt);
+    }
+
+    if (!process.env.NVIDIA_API_KEY) {
+      return {
+        model,
+        mode: modelInfo.mode,
+        status: "config-required",
+        summary: "NVIDIA_API_KEY가 설정되지 않아 AI 정밀 분석을 실행하지 않았습니다.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+
+    return this.analyzeFloorPlanWithNvidiaVisionReasoning(model, imageDataUrl, input.prompt);
+  }
+
+  async detectFloorPlanOpenings(input: FloorPlanOpeningDetectionInput, ownerId?: string): Promise<FloorPlanOpeningDetectionResult> {
+    const model = process.env.ROBOFLOW_FLOOR_PLAN_MODEL || "cubicasa5k-2-qpmsa/6";
+
+    if (!process.env.ROBOFLOW_API_KEY) {
+      return {
+        model,
+        openings: [],
+        status: "config-required",
+        summary: "ROBOFLOW_API_KEY가 설정되지 않아 문/창문 탐지를 실행하지 않았습니다.",
+        walls: [],
+        warnings: []
+      };
+    }
+
+    const imageDataUrl = input.sourceAttachmentId
+      ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
+      : this.validFloorPlanImageDataUrl(input.imageDataUrl);
+    const base64 = imageDataUrl.slice(imageDataUrl.indexOf(",") + 1);
+
+    try {
+      const detectionConfidence = envNumber(
+        "ROBOFLOW_DETECTION_CONFIDENCE",
+        DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE,
+        1,
+        100
+      );
+      const detectionOverlap = envNumber("ROBOFLOW_DETECTION_OVERLAP", DEFAULT_ROBOFLOW_DETECTION_OVERLAP, 1, 100);
+      const endpoint = `https://detect.roboflow.com/${model}?api_key=${process.env.ROBOFLOW_API_KEY}&confidence=${detectionConfidence}&overlap=${detectionOverlap}`;
+      const response = await fetch(endpoint, {
+        body: base64,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        method: "POST"
+      });
+      if (!response.ok) throw new Error(`Roboflow opening detection failed with ${response.status}`);
+
+      const payload = (await response.json()) as {
+        image?: { width?: number; height?: number };
+        predictions?: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>;
+      };
+      const imageWidth = Math.max(1, Number(payload.image?.width) || 1);
+      const imageHeight = Math.max(1, Number(payload.image?.height) || 1);
+      const openings = this.mapRoboflowPredictionsToOpenings(payload.predictions ?? [], imageWidth, imageHeight, model);
+      const walls = this.mapRoboflowPredictionsToWallBoxes(payload.predictions ?? [], imageWidth, imageHeight);
+
+      return {
+        imageHeight,
+        imageWidth,
+        model,
+        openings,
+        status: "ready",
+        summary: `벽 ${walls.length}개, 문 ${openings.filter((item) => item.type === "DOOR").length}개, 창문 ${openings.filter((item) => item.type === "WINDOW").length}개 후보를 탐지했습니다.`,
+        walls,
+        warnings: openings.some((item) => item.confidence < 0.4)
+          ? ["신뢰도 40% 미만 후보가 포함되어 있습니다. 후보 검수 후 확정하세요."]
+          : []
+      };
+    } catch {
+      return {
+        model,
+        openings: [],
+        status: "failed",
+        summary: "문/창문 탐지에 실패했습니다. 후보 없이 진행하거나 다시 시도하세요.",
+        walls: [],
+        warnings: []
+      };
+    }
+  }
+
+  private mapRoboflowPredictionsToWallBoxes(
+    predictions: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>,
+    imageWidth: number,
+    imageHeight: number
+  ) {
+    const minConfidence = envConfidenceRatio("ROBOFLOW_WALL_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE);
+    const mapped = predictions
+      .filter((prediction) => prediction.class === "wall" && (Number(prediction.confidence) || 0) >= minConfidence)
+      .flatMap((prediction, index) => {
+        const centerX = Number(prediction.x);
+        const centerY = Number(prediction.y);
+        const width = Number(prediction.width);
+        const height = Number(prediction.height);
+        if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(width > 0) || !(height > 0)) return [];
+
+        return [
+          {
+            boundingBox: {
+              height: Math.round((height / imageHeight) * 1000),
+              width: Math.round((width / imageWidth) * 1000),
+              x: Math.round(((centerX - width / 2) / imageWidth) * 1000),
+              y: Math.round(((centerY - height / 2) / imageHeight) * 1000)
+            },
+            confidence: Number(prediction.confidence) || 0,
+            id: `wall-box-${index + 1}`
+          }
+        ];
+      });
+    const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
+    const kept: typeof sorted = [];
+    for (const candidate of sorted) {
+      const overlapsKept = kept.some((existing) => this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox));
+      if (!overlapsKept) kept.push(candidate);
+    }
+
+    return kept.map((candidate, index) => ({ ...candidate, id: `wall-box-${index + 1}` }));
+  }
+
+  private mapRoboflowPredictionsToOpenings(
+    predictions: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>,
+    imageWidth: number,
+    imageHeight: number,
+    model: string
+  ): FloorPlanOpeningCandidate[] {
+    // 클래스별 신뢰도 하한: 문은 실도면에서 15~30%로 낮게 잡혀 후보로는 살리고, 창문은 30% 미만이면 노이즈가 많다.
+    const minConfidenceByType: Record<"DOOR" | "WINDOW", number> = {
+      DOOR: envConfidenceRatio("ROBOFLOW_DOOR_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_DOOR_MIN_BOX_CONFIDENCE),
+      WINDOW: envConfidenceRatio("ROBOFLOW_WINDOW_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_WINDOW_MIN_BOX_CONFIDENCE)
+    };
+    const mapped = predictions.flatMap((prediction) => {
+      const type = this.roboflowOpeningType(prediction.class);
+      const confidence = Number(prediction.confidence) || 0;
+      const centerX = Number(prediction.x);
+      const centerY = Number(prediction.y);
+      const width = Number(prediction.width);
+      const height = Number(prediction.height);
+      if (!type || confidence < minConfidenceByType[type]) return [];
+      if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(width > 0) || !(height > 0)) return [];
+
+      return [
+        {
+          boundingBox: {
+            height: Math.round((height / imageHeight) * 1000),
+            width: Math.round((width / imageWidth) * 1000),
+            x: Math.round(((centerX - width / 2) / imageWidth) * 1000),
+            y: Math.round(((centerY - height / 2) / imageHeight) * 1000)
+          },
+          confidence,
+          source: `roboflow/${model}`,
+          status: "CANDIDATE" as const,
+          type
+        }
+      ];
+    });
+
+    // 같은 자리를 door/window로 중복 판정하는 경우가 있어 겹침이 크면 신뢰도 높은 쪽만 남긴다.
+    const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
+    const kept: typeof sorted = [];
+    for (const candidate of sorted) {
+      const overlapsKept = kept.some(
+        (existing) => existing.type === candidate.type && this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox)
+      );
+      if (!overlapsKept) kept.push(candidate);
+    }
+
+    return kept.map((candidate, index) => ({ ...candidate, id: `opening-${index + 1}` }));
+  }
+
+  private roboflowOpeningType(className?: string): "DOOR" | "WINDOW" | null {
+    const normalized = String(className ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    if (normalized.includes("door")) return "DOOR";
+    if (normalized.includes("window")) return "WINDOW";
+
+    return null;
+  }
+
+  private isDuplicateRoboflowBox(
+    existing: { height: number; width: number; x: number; y: number },
+    candidate: { height: number; width: number; x: number; y: number }
+  ) {
+    const ax2 = existing.x + existing.width;
+    const ay2 = existing.y + existing.height;
+    const bx2 = candidate.x + candidate.width;
+    const by2 = candidate.y + candidate.height;
+    const interW = Math.max(0, Math.min(ax2, bx2) - Math.max(existing.x, candidate.x));
+    const interH = Math.max(0, Math.min(ay2, by2) - Math.max(existing.y, candidate.y));
+    const inter = interW * interH;
+    const areaA = Math.max(1, existing.width * existing.height);
+    const areaB = Math.max(1, candidate.width * candidate.height);
+    const union = Math.max(1, areaA + areaB - inter);
+    const smallerArea = Math.max(1, Math.min(areaA, areaB));
+
+    return (
+      inter / union > ROBOFLOW_BOX_IOU_DUPLICATE_THRESHOLD ||
+      inter / smallerArea > ROBOFLOW_BOX_CONTAINMENT_DUPLICATE_THRESHOLD
+    );
+  }
+
+  private floorPlanAttachmentDataUrl(attachmentId: string, ownerId?: string) {
+    const attachment = this.store.attachments.find((item) => item.id === attachmentId);
+
+    if (!attachment) {
+      throw new NotFoundException("도면 이미지 첨부를 찾을 수 없습니다.");
+    }
+
+    if (ownerId && attachment.uploadedByUserId !== ownerId) {
+      throw new ForbiddenException("이 도면 이미지 첨부를 사용할 권한이 없습니다.");
+    }
+
+    if (!attachment.mimeType.startsWith("image/")) {
+      throw new BadRequestException("도면 이미지 첨부만 AI 분석에 사용할 수 있습니다.");
+    }
+
+    const filePath = join(this.uploadDir, attachment.fileName);
+    if (!existsSync(filePath)) {
+      throw new NotFoundException("저장된 도면 이미지 파일을 찾을 수 없습니다.");
+    }
+
+    return `data:${attachment.mimeType};base64,${readFileSync(filePath).toString("base64")}`;
+  }
+
+  private validFloorPlanAiModel(model?: string): FloorPlanAiModelId {
+    const fallback = FLOOR_PLAN_AI_MODELS[0].id;
+    const selected = model ?? fallback;
+
+    if (FLOOR_PLAN_AI_MODELS.some((item) => item.id === selected)) {
+      return selected as FloorPlanAiModelId;
+    }
+
+    throw new BadRequestException("지원하지 않는 도면 AI 모델입니다.");
+  }
+
+  private validFloorPlanImageDataUrl(value?: string) {
+    const trimmed = value?.trim() ?? "";
+
+    if (!/^data:image\/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) {
+      throw new BadRequestException("도면 이미지는 png 또는 jpeg data URL이어야 합니다.");
+    }
+
+    return trimmed.replace(/^data:image\/jpg;/i, "data:image/jpeg;");
+  }
+
+  private validFloorPlanAiWallCandidates(value: unknown): FloorPlanAiWallCandidate[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 80).flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim().slice(0, 24) : "";
+      const start = item?.start as { x?: unknown; y?: unknown } | undefined;
+      const end = item?.end as { x?: unknown; y?: unknown } | undefined;
+      const startX = Number(start?.x);
+      const startY = Number(start?.y);
+      const endX = Number(end?.x);
+      const endY = Number(end?.y);
+      const lengthPx = Number(item?.lengthPx);
+      const orientation = item?.orientation;
+      if (!id || !Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) return [];
+
+      return [
+        {
+          end: { x: endX, y: endY },
+          id,
+          lengthPx: Number.isFinite(lengthPx) && lengthPx > 0 ? lengthPx : Math.hypot(endX - startX, endY - startY),
+          orientation: orientation === "horizontal" || orientation === "vertical" || orientation === "diagonal" ? orientation : "diagonal",
+          originalWallId: typeof item?.originalWallId === "string" ? item.originalWallId.slice(0, 80) : undefined,
+          start: { x: startX, y: startY }
+        }
+      ];
+    });
+  }
+
+  private async analyzeFloorPlanWithNvidiaVisionReasoning(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const endpoint = (process.env.NVIDIA_INTEGRATE_API_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, "");
+    const instructions = [
+      "한국 부동산 방 도면 이미지에서 벽 치수 텍스트와 치수선 관계를 읽어라.",
+      "반드시 JSON만 반환해라.",
+      "schema: {\"summary\": string, \"textDetections\": [{\"text\": string, \"confidence\": number}], \"scaleCandidates\": [{\"realLengthMm\": number, \"pixelLength\": number, \"pixelToMmRatio\": number, \"confidence\": number, \"source\": string}]}",
+      "확신이 낮거나 픽셀 길이를 모르면 scaleCandidates는 비워두고 textDetections에 치수 문자열만 남겨라."
+    ].join("\n");
+
+    try {
+      const response = await fetch(`${endpoint}/chat/completions`, {
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: `${instructions}\n${prompt?.trim() || "도면 치수와 축척 후보를 읽어줘."}` },
+                { type: "image_url", image_url: { url: imageDataUrl } }
+              ]
+            }
+          ],
+          max_tokens: 2048,
+          temperature: 0.1
+        }),
+        headers: {
+          Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+
+      if (!response.ok) throw new Error(`NVIDIA VLM failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractChatCompletionText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+      const textDetections = this.validAiTextDetections(parsed.textDetections);
+      const scaleCandidates = this.validAiScaleCandidates(parsed.scaleCandidates);
+
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "AI 도면 치수 분석을 완료했습니다.",
+        textDetections,
+        scaleCandidates,
+        rawText
+      };
+    } catch {
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "NVIDIA 비전 추론 분석에 실패했습니다. 다른 모델 또는 수동 축척을 사용하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private async analyzeFloorPlanWithOpenAiVision(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 한국 부동산 도면 1차 분석기입니다.",
+      "도면 이미지에서 방 구조, 치수 텍스트, 치수선 관계, 문/창문/설비처럼 OpenCV 후처리에 도움이 되는 단서를 읽습니다.",
+      "픽셀 좌표나 길이를 확신하지 못하면 추측하지 말고 textDetections에 읽은 텍스트만 남깁니다.",
+      "도면에 2760, 5040처럼 단위 없는 3-5자리 치수 숫자가 보이면 mm 치수로 보고 각 숫자를 textDetections에 별도 항목으로 넣습니다.",
+      "같은 숫자가 도면의 다른 위치에 여러 번 인쇄되어 있으면 위치마다 별도 항목으로 넣습니다.",
+      "면적(㎡/평), 동·호수, 층수, 축척 표기(1:100), 날짜, 도면 번호처럼 길이 치수가 아닌 숫자는 textDetections에 넣지 않습니다.",
+      "'1500 × 2000mm'처럼 곱셈 기호가 있는 가구/설비 크기 표기는 건물 치수가 아니므로 제외합니다. 도면 안쪽 가구 위에 인쇄된 숫자도 제외하고, 벽을 따라 배치된 치수선의 숫자만 읽습니다.",
+      "세로로 회전되어 인쇄된 치수 숫자도 반드시 읽습니다. 한국 아파트 도면은 세로 치수를 90도 회전해 표기하는 경우가 많습니다.",
+      "summary에만 치수 숫자를 쓰지 말고, 사용자가 버튼으로 고를 수 있도록 textDetections에 모든 보이는 치수 숫자를 포함합니다.",
+      "벽 최종 좌표는 OpenCV와 사용자가 확정하므로, 이 응답은 후보 분석으로만 사용됩니다.",
+      "For every visible dimension text, include boundingBox in image-normalized 0~1000 coordinates as {x,y,width,height}. Also include targetLine {x1,y1,x2,y2} for the actual measured span (the extent between the dimension line's end ticks/arrows) that the dimension text labels. Do not guess boundingBox or targetLine; set the field to null when the text location or measured span is genuinely unclear. A wrong targetLine is worse than null.",
+      "또한 dimensions 배열에 보이는 모든 치수 숫자를 분류해서 넣습니다. 각 항목은 text, valueMm(mm 정수), kind, axis, boundingBox, targetLine, placementStatus, useForScale, useForWallGeneration, useForFurnitureFit, appliesTo, reason을 가집니다.",
+      "kind는 다음 중 하나입니다: outer_total(건물 전체 외곽 가로/세로), outer_segment(외곽을 쪼갠 구간 치수), room_span(방 내부 폭/길이), wall_span(벽 사이 거리), opening(문/창문 폭), furniture(가구 크기), fixture(설비 크기), area(면적), ignore(날짜·호수·축척표기·워터마크 등).",
+      "구조 치수(outer_total, outer_segment, room_span, wall_span)만 useForScale과 useForWallGeneration을 true로 둘 수 있습니다. opening/furniture/fixture/area/ignore는 반드시 false입니다.",
+      "'1500 × 2000mm', '810 x 1400mm'처럼 곱셈 기호로 폭×깊이를 나타내는 값은 furniture 또는 fixture이며, 공간 크기 계산에 절대 쓰지 않습니다(useForScale=false, useForWallGeneration=false, useForFurnitureFit=true).",
+      "문/창문 개구부 폭(예: 800, 870, 1200)은 opening이며 벽 길이로 쓰지 않습니다(useForScale=false, useForWallGeneration=false).",
+      "면적(9.3㎡, 5.1㎡)은 area, 날짜·호수·축척표기는 ignore이며 모든 use 플래그가 false입니다.",
+      "valueMm는 mm 단위 정수입니다. '9.3㎡'처럼 면적이면 valueMm를 넣지 말고 kind=area로 둡니다.",
+      "위치나 측정 구간을 확신하지 못하면 placementStatus를 unplaced 또는 uncertain으로 두고 boundingBox/targetLine을 null로 둡니다. 확실하면 placed입니다.",
+      "appliesTo에는 이 치수가 가리키는 대상을 짧게 적습니다(예: 'overall horizontal outside span', 'bed width'). reason에는 그 kind로 분류한 근거를 짧게 적습니다."
+    ].join("\n");
+    const nullableBox = {
+      anyOf: [
+        { type: "null" },
+        {
+          additionalProperties: false,
+          properties: { height: { type: "number" }, width: { type: "number" }, x: { type: "number" }, y: { type: "number" } },
+          required: ["x", "y", "width", "height"],
+          type: "object"
+        }
+      ]
+    };
+    const nullableLine = {
+      anyOf: [
+        { type: "null" },
+        {
+          additionalProperties: false,
+          properties: { x1: { type: "number" }, x2: { type: "number" }, y1: { type: "number" }, y2: { type: "number" } },
+          required: ["x1", "y1", "x2", "y2"],
+          type: "object"
+        }
+      ]
+    };
+    const dimensionReadingSchema = {
+      additionalProperties: false,
+      properties: {
+        dimensions: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              appliesTo: { type: "string" },
+              axis: { enum: ["horizontal", "vertical", "unknown"], type: "string" },
+              boundingBox: nullableBox,
+              confidence: { type: "number" },
+              kind: {
+                enum: ["outer_total", "outer_segment", "room_span", "wall_span", "opening", "furniture", "fixture", "area", "ignore"],
+                type: "string"
+              },
+              placementStatus: { enum: ["placed", "unplaced", "uncertain"], type: "string" },
+              reason: { type: "string" },
+              targetLine: nullableLine,
+              text: { type: "string" },
+              useForFurnitureFit: { type: "boolean" },
+              useForScale: { type: "boolean" },
+              useForWallGeneration: { type: "boolean" },
+              valueMm: { type: "number" }
+            },
+            required: [
+              "text",
+              "valueMm",
+              "kind",
+              "axis",
+              "confidence",
+              "boundingBox",
+              "targetLine",
+              "placementStatus",
+              "useForScale",
+              "useForWallGeneration",
+              "useForFurnitureFit",
+              "appliesTo",
+              "reason"
+            ],
+            type: "object"
+          },
+          type: "array"
+        },
+        scaleCandidates: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              confidence: { type: "number" },
+              pixelLength: { type: "number" },
+              pixelToMmRatio: { type: "number" },
+              realLengthMm: { type: "number" },
+              source: { type: "string" }
+            },
+            required: ["confidence", "pixelLength", "pixelToMmRatio", "realLengthMm", "source"],
+            type: "object"
+          },
+          type: "array"
+        },
+        summary: { type: "string" },
+        textDetections: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              boundingBox: {
+                anyOf: [
+                  { type: "null" },
+                  {
+                    additionalProperties: false,
+                    properties: {
+                      height: { type: "number" },
+                      width: { type: "number" },
+                      x: { type: "number" },
+                      y: { type: "number" }
+                    },
+                    required: ["x", "y", "width", "height"],
+                    type: "object"
+                  }
+                ]
+              },
+              confidence: { type: "number" },
+              targetLine: {
+                anyOf: [
+                  { type: "null" },
+                  {
+                    additionalProperties: false,
+                    properties: {
+                      x1: { type: "number" },
+                      x2: { type: "number" },
+                      y1: { type: "number" },
+                      y2: { type: "number" }
+                    },
+                    required: ["x1", "y1", "x2", "y2"],
+                    type: "object"
+                  }
+                ]
+              },
+              text: { type: "string" }
+            },
+            required: ["text", "confidence", "boundingBox", "targetLine"],
+            type: "object"
+          },
+          type: "array"
+        }
+      },
+      required: ["summary", "dimensions", "textDetections", "scaleCandidates"],
+      type: "object"
+    };
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt?.trim() || "도면 이미지의 치수 텍스트와 축척 후보를 JSON으로 분석해줘."
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_dimension_reading",
+              schema: dimensionReadingSchema,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan vision failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+      const dimensions = this.validAiDimensions(parsed.dimensions);
+      const textDetections = this.validAiTextDetections(parsed.textDetections);
+      const scaleCandidates = this.filterAiScaleCandidatesByDimensions(this.validAiScaleCandidates(parsed.scaleCandidates), dimensions);
+
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI 도면 1차 분석을 완료했습니다.",
+        dimensions,
+        textDetections,
+        scaleCandidates,
+        rawText
+      };
+    } catch {
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 도면 1차 분석에 실패했습니다. OpenCV 추출 결과를 검수하거나 수동 축척을 사용하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private async reviewFloorPlanCandidatesWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    wallCandidates: FloorPlanAiWallCandidate[],
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 OpenCV 도면 벽 후보 검토기입니다.",
+      "이미지에는 OpenCV가 뽑은 벽 후보가 파란 선과 W1, W2 같은 라벨로 표시되어 있습니다.",
+      "제공된 wallCandidates 목록의 id만 검토하고, 새 좌표나 새 후보 id를 만들지 마세요.",
+      "각 후보가 실제 방 외곽/내벽인지 keep, 치수선/가구/문자/노이즈면 reject, 애매하면 review로 판정합니다.",
+      "후보별 판정은 candidateReviews 배열에 id, verdict, confidence, reason으로 작성합니다.",
+      "OpenCV가 놓친 것으로 보이는 큰 외곽/내벽은 missingWallHints에 description, confidence, orientation, line을 적습니다.",
+      "missingWallHints.line 좌표계는 이미지 전체 기준 0~1000 정규화 좌표입니다. 좌상단 원점, x는 오른쪽, y는 아래입니다.",
+      "line은 누락 벽 중심선의 x1,y1,x2,y2이며, horizontal 또는 vertical 직교 선분만 사용합니다.",
+      "응답은 제공된 JSON schema를 엄격히 따릅니다."
+    ].join("\n");
+    const candidateSummary = JSON.stringify(
+      wallCandidates.map((candidate) => ({
+        end: candidate.end,
+        id: candidate.id,
+        lengthPx: Math.round(candidate.lengthPx),
+        orientation: candidate.orientation,
+        start: candidate.start
+      }))
+    );
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-candidate-review", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: [
+                    prompt?.trim() || "OpenCV 벽 후보를 원본 도면과 비교해서 후보별 판정을 JSON으로 반환해줘.",
+                    `wallCandidates: ${candidateSummary}`
+                  ].join("\n")
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_candidate_review",
+              schema: FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan candidate review failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: this.validAiCandidateReviews(parsed.candidateReviews),
+        missingWallHints: this.validAiMissingWallHints(parsed.missingWallHints),
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 OpenCV 벽 후보를 검토했습니다.",
+        textDetections: [],
+        scaleCandidates: [],
+        rawText
+      };
+    } catch {
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: [],
+        missingWallHints: [],
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 벽 후보 검토에 실패했습니다. OpenCV 추출 결과를 직접 검수하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private async analyzeFloorPlanRoomStructureWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 도면 방 구조 분석기입니다.",
+      "도면 스타일을 solid-filled, double-line-hollow, hatched, gray-fill 중 하나로 분류합니다.",
+      "장식 해칭과 워터마크 같은 구조 추출 방해 요소를 noiseFlags에 표시합니다.",
+      "각 방의 외곽 polygon을 0~1000 정규화 좌표로 반환합니다. 좌상단 원점, x는 오른쪽, y는 아래이며 이미지 너비/높이 기준입니다.",
+      "polygon은 직교 꼭짓점 4~12개만 사용하고, 가구/치수선/텍스트는 방 polygon으로 만들지 않습니다.",
+      "응답은 제공된 JSON schema를 엄격히 따릅니다."
+    ].join("\n");
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-room-structure", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt?.trim() || "도면의 방 구조 polygon과 도면 스타일을 JSON schema에 맞게 분석해줘."
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_room_structure",
+              schema: FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan room structure failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+
+      return {
+        analysisMode: "room-structure",
+        model,
+        mode: "vision-reasoning",
+        noiseFlags: this.validAiRoomStructureNoiseFlags(parsed.noiseFlags),
+        planStyle: this.validAiRoomStructurePlanStyle(parsed.planStyle),
+        rooms: this.validAiRoomStructures(parsed.rooms),
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 도면 방 구조를 분석했습니다.",
+        textDetections: [],
+        scaleCandidates: [],
+        rawText
+      };
+    } catch {
+      return {
+        analysisMode: "room-structure",
+        model,
+        mode: "vision-reasoning",
+        noiseFlags: { decorativeHatching: false, watermark: false },
+        planStyle: "solid-filled",
+        rooms: [],
+        status: "failed",
+        summary: "OpenAI 도면 방 구조 분석에 실패했습니다. OpenCV 추출 결과를 직접 검수하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private extractOpenAiResponseText(payload: Record<string, unknown>) {
+    if (typeof payload.output_text === "string") return payload.output_text;
+
+    return this.extractOutputText(payload.output) ?? "";
+  }
+
+  private extractChatCompletionText(payload: Record<string, unknown>) {
+    const choices = Array.isArray(payload.choices) ? payload.choices : [];
+    const firstChoice = choices[0] as { message?: { content?: unknown } } | undefined;
+    const content = firstChoice?.message?.content;
+
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => (typeof part === "string" ? part : typeof part?.text === "string" ? part.text : ""))
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    return "";
+  }
+
+  private parseFloorPlanAiJson(rawText: string): {
+    candidateReviews?: unknown;
+    dimensions?: unknown;
+    missingWallHints?: unknown;
+    noiseFlags?: unknown;
+    planStyle?: unknown;
+    rooms?: unknown;
+    summary?: string;
+    textDetections?: unknown;
+    scaleCandidates?: unknown;
+  } {
+    const trimmed = rawText.trim();
+    const jsonCandidate = trimmed.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
+
+    try {
+      const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
+
+      return {
+        candidateReviews: parsed.candidateReviews,
+        dimensions: parsed.dimensions,
+        missingWallHints: parsed.missingWallHints,
+        noiseFlags: parsed.noiseFlags,
+        planStyle: parsed.planStyle,
+        rooms: parsed.rooms,
+        summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
+        textDetections: parsed.textDetections,
+        scaleCandidates: parsed.scaleCandidates
+      };
+    } catch {
+      return {
+        summary: rawText.slice(0, 200),
+        textDetections: rawText
+          .split(/\n|,/)
+          .map((text) => ({ text: text.trim(), confidence: 0.4 }))
+          .filter((item) => item.text)
+      };
+    }
+  }
+
+  private validAiTextDetections(value: unknown): FloorPlanAiTextDetection[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const text = typeof item?.text === "string" ? item.text.trim() : "";
+      if (!text) return [];
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          text,
+          ...(Number.isFinite(confidence) ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+          boundingBox: item.boundingBox,
+          targetLine: item.targetLine
+        }
+      ];
+    });
+  }
+
+  private normalizeAiDimensionKind(kind: unknown): FloorPlanAiDimensionKind {
+    if (
+      kind === "outer_total" ||
+      kind === "outer_segment" ||
+      kind === "room_span" ||
+      kind === "wall_span" ||
+      kind === "opening" ||
+      kind === "furniture" ||
+      kind === "fixture" ||
+      kind === "area" ||
+      kind === "ignore"
+    ) {
+      return kind;
+    }
+
+    return "ignore";
+  }
+
+  private isAiScaleDimensionKind(kind: FloorPlanAiDimensionKind) {
+    return kind === "outer_total" || kind === "outer_segment" || kind === "room_span" || kind === "wall_span";
+  }
+
+  private validAiDimensions(value: unknown): FloorPlanAiDimensionDetection[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const text = typeof item?.text === "string" ? item.text.trim() : "";
+      if (!text) return [];
+      const kind = this.normalizeAiDimensionKind(item.kind);
+      const valueMm = Number(item.valueMm);
+      const confidence = Number(item.confidence);
+      const axis = item.axis === "horizontal" || item.axis === "vertical" || item.axis === "unknown" ? item.axis : "unknown";
+      const placementStatus =
+        item.placementStatus === "placed" || item.placementStatus === "unplaced" || item.placementStatus === "uncertain"
+          ? item.placementStatus
+          : "unplaced";
+
+      return [
+        {
+          text,
+          kind,
+          axis,
+          ...(Number.isFinite(valueMm) && valueMm > 0 ? { valueMm } : {}),
+          ...(Number.isFinite(confidence) ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+          boundingBox: item.boundingBox,
+          targetLine: item.targetLine,
+          placementStatus,
+          ...(typeof item.appliesTo === "string" ? { appliesTo: item.appliesTo } : {}),
+          useForScale: this.isAiScaleDimensionKind(kind) && item.useForScale === true,
+          useForWallGeneration: this.isAiScaleDimensionKind(kind) && item.useForWallGeneration !== false,
+          useForFurnitureFit: (kind === "furniture" || kind === "fixture") && item.useForFurnitureFit !== false,
+          ...(typeof item.reason === "string" ? { reason: item.reason } : {})
+        }
+      ];
+    });
+  }
+
+  private filterAiScaleCandidatesByDimensions(
+    scaleCandidates: FloorPlanAiScaleCandidate[],
+    dimensions: FloorPlanAiDimensionDetection[]
+  ) {
+    if (!dimensions.length) return scaleCandidates;
+    const scaleLengths = new Set(dimensions.filter((dimension) => dimension.useForScale && dimension.valueMm).map((dimension) => Math.round(dimension.valueMm!)));
+
+    return scaleCandidates.filter((candidate) => scaleLengths.has(Math.round(candidate.realLengthMm)));
+  }
+
+  private validAiScaleCandidates(value: unknown): FloorPlanAiScaleCandidate[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const realLengthMm = Number(item?.realLengthMm);
+      if (!Number.isFinite(realLengthMm) || realLengthMm <= 0) return [];
+      const pixelLength = Number(item.pixelLength);
+      const pixelToMmRatio = Number(item.pixelToMmRatio);
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          ...(Number.isFinite(pixelLength) && pixelLength > 0 ? { pixelLength } : {}),
+          ...(Number.isFinite(pixelToMmRatio) && pixelToMmRatio > 0 ? { pixelToMmRatio } : {}),
+          realLengthMm,
+          source: typeof item.source === "string" ? item.source : "nvidia/vlm"
+        }
+      ];
+    });
+  }
+
+  private validAiCandidateReviews(value: unknown): FloorPlanAiCandidateReview[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim() : "";
+      const verdict = item?.verdict;
+      if (!id || (verdict !== "keep" && verdict !== "reject" && verdict !== "review")) return [];
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          id,
+          reason: typeof item.reason === "string" ? item.reason.slice(0, 180) : undefined,
+          verdict
+        }
+      ];
+    });
+  }
+
+  private validAiMissingWallHints(value: unknown): FloorPlanAiMissingWallHint[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const description = typeof item?.description === "string" ? item.description.trim() : "";
+      if (!description) return [];
+      const confidence = Number(item.confidence);
+      const orientation = item?.orientation;
+      const line = this.validAiNormalizedLine(item?.line);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          description: description.slice(0, 220),
+          ...(line ? { line } : {}),
+          ...(orientation === "horizontal" || orientation === "vertical" ? { orientation } : {})
+        }
+      ];
+    });
+  }
+
+  private validAiNormalizedLine(value: unknown): FloorPlanAiNormalizedLine | undefined {
+    const item = value as { x1?: unknown; x2?: unknown; y1?: unknown; y2?: unknown } | undefined;
+    const x1 = Number(item?.x1);
+    const y1 = Number(item?.y1);
+    const x2 = Number(item?.x2);
+    const y2 = Number(item?.y2);
+    if (![x1, y1, x2, y2].every((coordinate) => Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 1000)) return undefined;
+
+    return { x1, y1, x2, y2 };
+  }
+
+  private validAiRoomStructurePlanStyle(value: unknown): FloorPlanAiRoomStructurePlanStyle {
+    return value === "solid-filled" || value === "double-line-hollow" || value === "hatched" || value === "gray-fill"
+      ? value
+      : "solid-filled";
+  }
+
+  private validAiRoomStructureNoiseFlags(value: unknown): FloorPlanAiRoomStructureNoiseFlags {
+    const item = value as { decorativeHatching?: unknown; watermark?: unknown } | undefined;
+
+    return {
+      decorativeHatching: item?.decorativeHatching === true,
+      watermark: item?.watermark === true
+    };
+  }
+
+  private validAiRoomStructures(value: unknown): FloorPlanAiRoomStructure[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 40).flatMap((item) => {
+      const label = typeof item?.label === "string" ? item.label.trim().slice(0, 80) : "";
+      const confidence = Number(item?.confidence);
+      const polygon = this.validAiRoomPolygon(item?.polygon);
+      if (!label || !polygon) return [];
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          label,
+          polygon
+        }
+      ];
+    });
+  }
+
+  private validAiRoomPolygon(value: unknown) {
+    if (!Array.isArray(value) || value.length < 4 || value.length > 12) return undefined;
+
+    const points = value.flatMap((point) => {
+      const x = Number(point?.x);
+      const y = Number(point?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1000 || y < 0 || y > 1000) return [];
+
+      return [{ x, y }];
+    });
+    if (points.length !== value.length) return undefined;
+
+    const orthogonal = points.every((point, index) => {
+      const next = points[(index + 1) % points.length];
+      return point.x === next.x || point.y === next.y;
+    });
+
+    return orthogonal ? points : undefined;
+  }
+
+  private assertFloorPlanOwner(ownerId: string) {
+    const user = this.store.users.find((account) => account.id === ownerId);
+
+    if (!user) {
+      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
+    }
+
+    if (user.role !== "LANDLORD") {
+      throw new ForbiddenException("도면은 집주인 계정으로 저장할 수 있습니다.");
+    }
+  }
+
+  private replaceRoomWallsForRoom(room: Room, input: SaveRoomWallsInput) {
+    const walls = this.validFloorPlanWalls(input.walls);
+    const pixelToMmRatio = this.validPixelToMmRatio(input.pixelToMmRatio);
+    const nextWalls = this.createRoomWallsFromFloorPlanWalls(room.id, walls, pixelToMmRatio);
+
+    this.store.roomWalls = this.store.roomWalls.filter((wall) => wall.roomId !== room.id);
+    this.store.roomWalls.push(...nextWalls);
+
+    return nextWalls.map((wall) => this.presentRoomWall(wall));
+  }
+
+  private createRoomWallsFromFloorPlanWalls(roomId: string, walls: FloorPlanWall[], pixelToMmRatio: number) {
+    if (walls.length === 0) return [];
+
+    const createdAt = now();
+    const rawWalls = walls.map((wall, index) => {
+      const startM = {
+        x: (wall.start.x * pixelToMmRatio) / 1000,
+        y: (wall.start.y * pixelToMmRatio) / 1000
+      };
+      const endM = {
+        x: (wall.end.x * pixelToMmRatio) / 1000,
+        y: (wall.end.y * pixelToMmRatio) / 1000
+      };
+      const lengthM = Math.hypot(endM.x - startM.x, endM.y - startM.y);
+      const centerX = (startM.x + endM.x) / 2;
+      const centerZ = (startM.y + endM.y) / 2;
+
+      return {
+        id: id("room_wall"),
+        roomId,
+        sourceWallId: String(wall.id ?? `wall-${index + 1}`),
+        start: wall.start,
+        end: wall.end,
+        lengthM,
+        rotationRad: Math.atan2(endM.y - startM.y, endM.x - startM.x),
+        position: [centerX, ROOM_WALL_HEIGHT_M / 2, centerZ] as [number, number, number],
+        wallOrder: index
+      };
+    });
+    const centerX = rawWalls.reduce((sum, wall) => sum + wall.position[0], 0) / rawWalls.length;
+    const centerZ = rawWalls.reduce((sum, wall) => sum + wall.position[2], 0) / rawWalls.length;
+
+    return rawWalls.map((wall) => ({
+      id: wall.id,
+      roomId: wall.roomId,
+      sourceWallId: wall.sourceWallId,
+      start: wall.start,
+      end: wall.end,
+      lengthMm: Math.round(wall.lengthM * 1000),
+      rotationRad: this.roundMetric(wall.rotationRad),
+      position: [
+        this.roundMetric(wall.position[0] - centerX),
+        this.roundMetric(wall.position[1]),
+        this.roundMetric(wall.position[2] - centerZ)
+      ] as [number, number, number],
+      dimensions: {
+        width: this.roundMetric(wall.lengthM),
+        height: ROOM_WALL_HEIGHT_M,
+        depth: ROOM_WALL_DEPTH_M
+      },
+      wallOrder: wall.wallOrder,
+      createdAt,
+      updatedAt: createdAt
+    }));
+  }
+
+  private roomWallToSimulatorWall(wall: RoomWall): SimulatorWallData {
+    return {
+      id: wall.id,
+      wall_id: wall.sourceWallId,
+      start: wall.start,
+      end: wall.end,
+      length: wall.dimensions.width,
+      height: wall.dimensions.height,
+      depth: wall.dimensions.depth,
+      position: wall.position,
+      rotation: [0, wall.rotationRad, 0],
+      dimensions: wall.dimensions,
+      material: "wall",
+      wall_order: wall.wallOrder
+    };
+  }
+
+  private presentRoomWall(wall: RoomWall): RoomWall {
+    return JSON.parse(JSON.stringify(wall)) as RoomWall;
+  }
+
+  private roundMetric(value: number) {
+    return Math.round(value * 1000) / 1000;
+  }
+
+  private optionalAttachmentId(ownerId: string, attachmentId?: string) {
+    if (!attachmentId) return undefined;
+
+    const attachment = this.store.attachments.find((item) => item.id === attachmentId);
+    if (!attachment) {
+      throw new NotFoundException("도면 이미지 첨부를 찾을 수 없습니다.");
+    }
+    if (attachment.uploadedByUserId !== ownerId) {
+      throw new ForbiddenException("이 첨부 파일을 사용할 권한이 없습니다.");
+    }
+
+    return attachment.id;
+  }
+
+  private optionalOwnedRoomId(ownerId: string, roomId?: string) {
+    if (!roomId) return undefined;
+
+    this.assertManagerCanAccessRoom(ownerId, roomId);
+
+    return roomId;
+  }
+
+  private optionalUrl(value?: string) {
+    const trimmed = value?.trim();
+
+    return trimmed || undefined;
+  }
+
+  private validPixelToMmRatio(value?: number) {
+    const ratio = Number(value ?? 20);
+
+    if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1000) {
+      throw new BadRequestException("축척 값이 올바르지 않습니다.");
+    }
+
+    return ratio;
+  }
+
+  private validFloorPlanWalls(value?: FloorPlanWall[]) {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .filter((wall) => wall && wall.start && wall.end)
+      .map((wall, index) => {
+        const normalized = {
+          id: String(wall.id ?? `wall-${index + 1}`),
+          start: {
+            x: Number(wall.start.x),
+            y: Number(wall.start.y)
+          },
+          end: {
+            x: Number(wall.end.x),
+            y: Number(wall.end.y)
+          }
+        };
+
+        if (
+          !Number.isFinite(normalized.start.x) ||
+          !Number.isFinite(normalized.start.y) ||
+          !Number.isFinite(normalized.end.x) ||
+          !Number.isFinite(normalized.end.y)
+        ) {
+          throw new BadRequestException("벽 좌표가 올바르지 않습니다.");
+        }
+
+        return normalized;
+      });
+  }
+
+  private validStringArray(value?: string[]) {
+    return Array.isArray(value)
+      ? value.map((item) => String(item)).filter((item) => item.trim().length > 0)
+      : [];
+  }
+
+  private validFloorPlanStatus(value: string) {
+    if (value === "DRAFT" || value === "PUBLISHED" || value === "ARCHIVED") return value;
+
+    throw new BadRequestException("도면 상태가 올바르지 않습니다.");
+  }
+
+  private validJsonObject(value?: Record<string, unknown>) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  private validExtractionMeta(value?: Record<string, unknown>) {
+    const meta = this.validJsonObject(value);
+
+    return {
+      ...meta,
+      scaleConfirmed: Boolean(meta.scaleConfirmed)
+    };
+  }
+
+  private validFloorPlanCandidates(value?: Array<Record<string, unknown>>) {
+    if (!Array.isArray(value)) return [];
+
+    return value.map((candidate, index) => {
+      const rawStatus = String(candidate.status ?? "CANDIDATE");
+      if (!["CANDIDATE", "CONFIRMED", "REJECTED"].includes(rawStatus)) {
+        throw new BadRequestException("도면 후보 상태가 올바르지 않습니다.");
+      }
+      const status = rawStatus as "CANDIDATE" | "CONFIRMED" | "REJECTED";
+
+      const confidence = candidate.confidence === undefined ? undefined : Number(candidate.confidence);
+      if (confidence !== undefined && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)) {
+        throw new BadRequestException("도면 후보 신뢰도가 올바르지 않습니다.");
+      }
+
+      return {
+        ...candidate,
+        id: String(candidate.id ?? `candidate-${index + 1}`),
+        source: String(candidate.source ?? "manual"),
+        status,
+        type: String(candidate.type ?? "UNKNOWN"),
+        ...(confidence === undefined ? {} : { confidence })
+      };
+    });
+  }
+
+  private assertPublishableFloorPlan(draft: FloorPlanDraft) {
+    const roomWalls = Array.isArray((draft.room3d as { walls?: unknown[] }).walls)
+      ? (draft.room3d as { walls?: unknown[] }).walls ?? []
+      : [];
+
+    if (draft.walls.length === 0 || roomWalls.length === 0) {
+      throw new BadRequestException("3D 도면 발행에는 벽과 3D 변환 데이터가 필요합니다.");
+    }
+
+    if (!draft.extractionMeta.scaleConfirmed || !Number.isFinite(draft.pixelToMmRatio) || draft.pixelToMmRatio <= 0) {
+      throw new BadRequestException("도면 발행 전 축척 확인이 필요합니다.");
+    }
+  }
+
+  private presentFloorPlanDraft(draft: FloorPlanDraft): FloorPlanDraft {
+    return JSON.parse(JSON.stringify(draft)) as FloorPlanDraft;
   }
 
   getTenantRoom(tenantId: string) {
@@ -4404,6 +6260,7 @@ export class RoomlogService {
       attachments: parsed.attachments ?? [],
       floorPlans: (parsed.floorPlans ?? []).map((floorPlan) => ({
         ...floorPlan,
+        roomId: floorPlan.roomId,
         extractionMeta: floorPlan.extractionMeta ?? { scaleConfirmed: false },
         openings: floorPlan.openings ?? [],
         fixtures: floorPlan.fixtures ?? [],
@@ -4415,6 +6272,7 @@ export class RoomlogService {
         ...room,
         landlordId: room.landlordId ?? "landlord-demo"
       })),
+      roomWalls: parsed.roomWalls ?? [],
       intakeSessions: parsed.intakeSessions.map((session) => ({
         ...session,
         draft: {
@@ -4597,6 +6455,7 @@ export class RoomlogService {
         Array.isArray(snapshot.users) &&
         (snapshot.socialAccounts === undefined || Array.isArray(snapshot.socialAccounts)) &&
         Array.isArray(snapshot.rooms) &&
+        (snapshot.roomWalls === undefined || Array.isArray(snapshot.roomWalls)) &&
         snapshot.tenantRooms &&
         Array.isArray(snapshot.vendors) &&
         (snapshot.vendorInvites === undefined || Array.isArray(snapshot.vendorInvites)) &&
