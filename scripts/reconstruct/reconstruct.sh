@@ -23,6 +23,8 @@ mkdir -p "$ROOT"
 echo "▶ [1/4] 키프레임 추출 + COLMAP (SfM 카메라 포즈)  — 수 분"
 # ns-process-data가 ffmpeg 프레임추출 → COLMAP feature/match/mapper를 한 번에 처리.
 ns-process-data video --data "$VIDEO" --output-dir "$DATA" --num-frames-target "$FRAMES"
+# 매칭은 기본 vocab_tree 유지. sequential은 실측(2026-07-06, room1)에서 322장 중 2장만
+# 포즈 성공 — 특징점 빈곤 구간에서 사슬이 끊기면 전체가 조각남. vocab_tree는 22/102 나옴.
 
 echo "▶ [2/4] gsplat 학습 (splatfacto), iters=${ITERS}  — L40S에서 수~수십 분"
 ns-train splatfacto \
