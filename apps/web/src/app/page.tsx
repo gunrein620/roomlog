@@ -107,6 +107,17 @@ type NaverMapsApi = {
   }) => NaverMarker;
   InfoWindow: new (options: { content: string }) => NaverInfoWindow;
   Point: new (x: number, y: number) => NaverPoint;
+  Service?: {
+    geocode: (
+      options: { query: string },
+      callback: (status: string, response: NaverGeocodeResponse) => void
+    ) => void;
+    Status: { OK: string; ERROR: string };
+  };
+};
+
+type NaverGeocodeResponse = {
+  v2?: { addresses?: Array<{ x: string; y: string; roadAddress?: string; jibunAddress?: string }> };
 };
 
 type MapLoadState = "missing-key" | "loading" | "ready" | "error";
@@ -120,6 +131,82 @@ declare global {
 }
 
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
+// 지도 InfoWindow는 HTML 문자열을 받으므로 사용자 입력(매물명)은 이스케이프한다.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      default: return "&#39;";
+    }
+  });
+}
+// 업로드 사진은 절대 URL(API 정적서빙/S3) — next/image 최적화기는 사설 IP(dev의 localhost/api)를
+// 차단하므로 절대 URL 사진은 unoptimized로 브라우저가 직접 로드하게 한다(번들 목업은 그대로 최적화).
+const isRemotePhoto = (src: string) => /^https?:\/\//.test(src);
+// geocoder 서브모듈 포함 — 주소→좌표 변환(naver.maps.Service.geocode)을 쓰기 위함.
+const naverMapScriptUrl = naverMapClientId
+  ? `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${naverMapClientId}&submodules=geocoder`
+  : "";
+
+// 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
+let naverMapsLoadPromise: Promise<boolean> | null = null;
+function loadNaverMaps(): Promise<boolean> {
+  if (typeof window === "undefined" || !naverMapScriptUrl) return Promise.resolve(false);
+  if (window.naver?.maps?.Service) return Promise.resolve(true);
+  if (naverMapsLoadPromise) return naverMapsLoadPromise;
+  naverMapsLoadPromise = new Promise((resolvePromise) => {
+    const existing = document.getElementById("naver-map-loader") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolvePromise(Boolean(window.naver?.maps)), { once: true });
+      existing.addEventListener("error", () => resolvePromise(false), { once: true });
+      if (window.naver?.maps) resolvePromise(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "naver-map-loader";
+    script.src = naverMapScriptUrl;
+    script.async = true;
+    script.onload = () => resolvePromise(Boolean(window.naver?.maps));
+    script.onerror = () => {
+      naverMapsLoadPromise = null;
+      resolvePromise(false);
+    };
+    document.head.appendChild(script);
+  });
+  return naverMapsLoadPromise;
+}
+
+// 주소 문자열을 좌표로 변환한다. 실패(미활성/무결과)면 null — 호출측은 좌표 없이 진행한다.
+async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  const ready = await loadNaverMaps();
+  const service = window.naver?.maps?.Service;
+  if (!ready || !service) return null;
+  return new Promise((resolvePromise) => {
+    try {
+      service.geocode({ query: trimmed }, (status, response) => {
+        if (status !== service.Status.OK) {
+          resolvePromise(null);
+          return;
+        }
+        const first = response?.v2?.addresses?.[0];
+        const lat = Number(first?.y);
+        const lng = Number(first?.x);
+        if (!first || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+          resolvePromise(null);
+          return;
+        }
+        resolvePromise({ lat, lng });
+      });
+    } catch {
+      resolvePromise(null);
+    }
+  });
+}
 
 const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
   { id: "seeker", label: "방 찾는 중", href: "/" },
@@ -474,7 +561,8 @@ const listings = [
   }
 ];
 
-type Listing = (typeof listings)[number];
+// 데모 매물엔 좌표가 없고, 직접등록 매물은 지오코딩된 lat/lng를 실어 상세 지도에 쓴다(옵셔널).
+type Listing = (typeof listings)[number] & { lat?: number; lng?: number };
 
 // 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
 type TradeListing = {
@@ -490,6 +578,9 @@ type TradeListing = {
   description: string;
   status: string;
   createdAt: string;
+  images?: string[];
+  lat?: number;
+  lng?: number;
 };
 
 const TRADE_LISTING_NO_PREFIX = "TRADE-";
@@ -503,6 +594,10 @@ function tradePriceLabel(listing: TradeListing): string {
 // 직접등록 매물을 홈 카드/상세가 쓰는 쇼케이스 매물 형태로 투영한다.
 // 미확인 값은 "확인 중"으로 두고, 문의는 listingNo의 TRADE- 접두어로 서버 매물임을 식별한다.
 function tradeListingToCard(listing: TradeListing): Listing {
+  // 업로드된 실제 사진이 있으면 그걸 쓰고, 없으면 기존 목업으로 폴백한다(데모 매물 보호).
+  const uploaded = Array.isArray(listing.images) ? listing.images.filter((url) => typeof url === "string" && url) : [];
+  const image = uploaded[0] ?? "/listing-studio.jpg";
+  const gallery = uploaded.length > 0 ? uploaded : ["/listing-studio.jpg", "/listing-bedroom.jpg"];
   return {
     listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
     detailHeader: `직접등록 매물 · ${listing.title}`,
@@ -519,15 +614,17 @@ function tradeListingToCard(listing: TradeListing): Listing {
     viewCount: "새 매물",
     unitCount: "확인 중",
     complexPrice: "확인 중",
-    image: "/listing-studio.jpg",
-    gallery: ["/listing-studio.jpg", "/listing-bedroom.jpg"],
+    image,
+    gallery,
     badges: ["집주인 직접"],
     tags: [listing.tradeType, listing.roomType],
     score: "안심 확인중",
     updated: "방금 등록",
     broker: `${listing.ownerName} (집주인)`,
     verification: "집주인 직접 등록",
-    response: "채팅 문의 가능"
+    response: "채팅 문의 가능",
+    lat: listing.lat,
+    lng: listing.lng
   };
 }
 
@@ -759,6 +856,10 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
+  // 선택한 실제 파일(등록 시 업로드) — 초안 저장 대상은 아니다(파일은 직렬화 불가).
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  // 주소 지오코딩 결과 — 등록 페이로드의 lat/lng로 실린다(실패/미활성 시 null).
+  const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [has3DRoom, setHas3DRoom] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState("작성 중");
   const [myListings, setMyListings] = useState(initialOwnerListings);
@@ -776,6 +877,25 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
+
+  // 주소 입력을 디바운스로 지오코딩 — 상세 지도에 실제 매물 좌표를 찍기 위함.
+  useEffect(() => {
+    const address = ownerForm.address?.trim();
+    if (!address) {
+      setGeoCoords(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void geocodeAddress(address).then((coords) => {
+        if (!cancelled) setGeoCoords(coords);
+      });
+    }, 700);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [ownerForm.address]);
 
   // 복원: 반드시 마운트 후에만 localStorage 접근 — SSR 초기 렌더와의 hydration 불일치 방지 (QA 8).
   useEffect(() => {
@@ -821,6 +941,26 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     // 문의가 오면 "받은 문의" 채팅으로 이어진다.
     void (async () => {
       try {
+        // 1) 사진이 있으면 먼저 업로드해 공개 URL을 확보한다(멀티파트 프록시).
+        let images: string[] = [];
+        if (photoFiles.length > 0) {
+          const form = new FormData();
+          photoFiles.forEach((file) => form.append("files", file));
+          const uploadRes = await fetch("/api/trade/uploads", { method: "POST", body: form });
+          if (uploadRes.status === 401) {
+            setOwnerToast("매물을 등록하려면 WOOZU 계정 로그인이 필요합니다.");
+            return;
+          }
+          if (uploadRes.ok) {
+            const uploaded = (await uploadRes.json()) as { images?: string[] };
+            images = Array.isArray(uploaded.images) ? uploaded.images : [];
+          } else {
+            setOwnerToast("사진 업로드에 실패했습니다. 사진 없이 등록하거나 잠시 후 다시 시도해 주세요.");
+            return;
+          }
+        }
+
+        // 2) 매물 등록 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
         const response = await fetch("/api/trade/listings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -835,7 +975,10 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
               ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
               ownerForm.floor ? `${ownerForm.floor}층` : "",
               ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
-            ].filter(Boolean).join(" · ")
+            ].filter(Boolean).join(" · "),
+            images,
+            lat: geoCoords?.lat,
+            lng: geoCoords?.lng
           })
         });
 
@@ -848,6 +991,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           return;
         }
 
+        setPhotoFiles([]);
         setRegistrationStatus("노출중");
         setMyListings((current) => [
           { id: Date.now(), title: ownerForm.title, price: ownerPriceLabel, status: "노출중", caption: "방금 노출 시작 · 모든 사용자에게 보입니다" },
@@ -1494,7 +1638,9 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
               accept="image/*"
               aria-label="사진 업로드"
               onChange={(event) => {
-                setPhotoCount(event.target.files?.length ?? 0);
+                const files = event.target.files ? Array.from(event.target.files) : [];
+                setPhotoFiles(files);
+                setPhotoCount(files.length);
                 setRegistrationStatus("작성 중");
               }}
             />
@@ -1561,14 +1707,21 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   );
 }
 
-function NaverMapPreview({ className = "" }: { className?: string }) {
+function NaverMapPreview({
+  className = "",
+  center,
+  title
+}: {
+  className?: string;
+  /** 특정 매물 좌표 — 있으면 그 위치를 중심으로 단일 마커를 찍는다(없으면 데모 마커). */
+  center?: { lat: number; lng: number } | null;
+  title?: string;
+}) {
   const mapRef = useRef<HTMLDivElement>(null);
   const isMapInitializedRef = useRef(false);
   const [isScriptReady, setIsScriptReady] = useState(false);
   const [loadState, setLoadState] = useState<MapLoadState>(naverMapClientId ? "loading" : "missing-key");
-  const scriptUrl = naverMapClientId
-    ? `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${naverMapClientId}`
-    : "";
+  const scriptUrl = naverMapScriptUrl;
 
   useEffect(() => {
     if (window.naver?.maps) {
@@ -1592,30 +1745,39 @@ function NaverMapPreview({ className = "" }: { className?: string }) {
 
     isMapInitializedRef.current = true;
     const maps = window.naver.maps;
-    const center = new maps.LatLng(37.4875, 126.9931);
+    // 매물 좌표가 주어지면 그 위치를, 아니면 기존 데모 중심(방배)을 쓴다.
+    const hasCenter = center && Number.isFinite(center.lat) && Number.isFinite(center.lng);
+    const centerLatLng = hasCenter
+      ? new maps.LatLng(center.lat, center.lng)
+      : new maps.LatLng(37.4875, 126.9931);
     const map = new maps.Map(mapRef.current, {
-      center,
+      center: centerLatLng,
       zoom: 16,
       zoomControl: true
     });
-    mapDealMarkers.forEach((deal, index) => {
-      const position = new maps.LatLng(deal.lat, deal.lng);
-      new maps.Marker({
-        map,
-        position,
-        icon: {
-          content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${deal.title} ${deal.price}"><b>${deal.clusterLabel}</b><strong>${deal.mapLabel}</strong></button>`,
-          anchor: new maps.Point(42, 56)
-        }
+
+    if (!hasCenter) {
+      mapDealMarkers.forEach((deal, index) => {
+        const position = new maps.LatLng(deal.lat, deal.lng);
+        new maps.Marker({
+          map,
+          position,
+          icon: {
+            content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${deal.title} ${deal.price}"><b>${deal.clusterLabel}</b><strong>${deal.mapLabel}</strong></button>`,
+            anchor: new maps.Point(42, 56)
+          }
+        });
       });
-    });
+    }
 
     const marker = new maps.Marker({
       map,
-      position: center
+      position: centerLatLng
     });
     const infoWindow = new maps.InfoWindow({
-      content: '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
+      content: hasCenter
+        ? `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "이 매물"}</b><strong>현재 위치</strong></div>`
+        : '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
     });
     infoWindow.open(map, marker);
     setLoadState("ready");
@@ -1789,7 +1951,7 @@ function ListingDetailView({
 
       <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
         <div className="gallery-main">
-          <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority />
+          <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority unoptimized={isRemotePhoto(activePhoto)} />
           <span className="gallery-photo-count">{activePhotoIndex + 1} / {listing.gallery.length}</span>
         </div>
         <div className="gallery-stack">
@@ -2019,7 +2181,15 @@ function ListingDetailView({
           <h2>위치</h2>
           <p>정확한 위치와 주변 생활권을 지도에서 확인하세요.</p>
         </div>
-        <NaverMapPreview className="detail-naver-map" />
+        <NaverMapPreview
+          className="detail-naver-map"
+          center={
+            typeof listing.lat === "number" && typeof listing.lng === "number"
+              ? { lat: listing.lat, lng: listing.lng }
+              : null
+          }
+          title={listing.title}
+        />
       </section>
 
       <div className="detail-contact-bar" id="detail-contact">
@@ -2461,7 +2631,7 @@ function SavedListingsSection({
           savedListings.map((listing) => (
             <article className="saved-card" key={listing.listingNo}>
               <button type="button" onClick={() => openListing(listing)}>
-                <Image src={listing.image} alt={`${listing.title} 찜한 매물 사진`} width={240} height={180} />
+                <Image src={listing.image} alt={`${listing.title} 찜한 매물 사진`} width={240} height={180} unoptimized={isRemotePhoto(listing.image)} />
                 <span>
                   <b>{listing.price}</b>
                   <strong>{listing.title}</strong>
@@ -2487,10 +2657,12 @@ function SavedListingsSection({
 
 function InquiryHubSection({
   onNewInquiry,
-  onRequireLogin
+  onRequireLogin,
+  focusThreadId
 }: {
   onNewInquiry: () => void;
   onRequireLogin: () => void;
+  focusThreadId?: string;
 }) {
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
@@ -2510,6 +2682,7 @@ function InquiryHubSection({
         roleFilter="buyer"
         emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요."
         onRequireLogin={onRequireLogin}
+        focusThreadId={focusThreadId}
       />
 
 
@@ -3531,6 +3704,8 @@ export default function Home() {
   const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
   // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
   const [inquiryComposeListingNo, setInquiryComposeListingNo] = useState<string | null>(null);
+  // 문의 전송 직후 채팅으로 바로 진입할 스레드 id (문의센터 TradeChatCenter로 전달)
+  const [buyerFocusThreadId, setBuyerFocusThreadId] = useState<string | undefined>(undefined);
   const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
   const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -3689,6 +3864,14 @@ export default function Home() {
       if (!response.ok) return "error";
       // 로컬 요약 목록에도 즉시 반영 (문의센터 상단 노출 — lib/inquiry-flow 테스트로 고정된 규칙)
       setInquiries((current) => withNewInquiry(current, payload, Date.now()));
+      // 서버가 방금 생성/이어붙인 스레드 id를 돌려주면, 문의센터 채팅으로 바로 진입한다(당근식).
+      const created = (await response.json().catch(() => ({}))) as { id?: string };
+      if (created.id) {
+        setBuyerFocusThreadId(created.id);
+        setSelectedListing(null);
+        setInquiryComposeListingNo(null);
+        activateTab("inquiry");
+      }
       return "ok";
     } catch {
       return "error";
@@ -4125,7 +4308,7 @@ export default function Home() {
                   <article className="listing-card" key={listing.title}>
                     <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
                       <div className="listing-photo">
-                        <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} />
+                        <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />
                         <div className="badge-row">
                           {listing.badges.map((badge) => (
                             <span key={badge}>{badge}</span>
@@ -4589,7 +4772,7 @@ export default function Home() {
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onNewInquiry={() => openInquiryComposer()} onRequireLogin={() => openAuthScreen("login")} />
+          <InquiryHubSection onNewInquiry={() => openInquiryComposer()} onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
           <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
