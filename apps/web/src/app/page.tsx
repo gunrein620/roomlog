@@ -3422,6 +3422,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [selectedArea, setSelectedArea] = useState("서초구 방배동");
   const [recentSearches, setRecentSearches] = useState(searchSuggestions.recent);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [committedSearchQuery, setCommittedSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState(categories[0].label);
   const [activeQuickFilters, setActiveQuickFilters] = useState<string[]>([]);
   const [activeMapFilter, setActiveMapFilter] = useState("시세");
@@ -3449,6 +3451,7 @@ export default function Home() {
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
+  const activeSearchQuery = committedSearchQuery.trim();
   const visibleHomeListings = listings.filter((listing) => {
     const categoryMatches =
       activeCategory === "전체"
@@ -3476,10 +3479,34 @@ export default function Home() {
 
       return listing.tags.includes(filter);
     });
+    const normalizedSearchQuery = activeSearchQuery.toLowerCase().replace(/\s/g, "");
+    const searchMatches =
+      normalizedSearchQuery.length === 0 ||
+      [
+        listing.title,
+        listing.location,
+        listing.price,
+        listing.headline,
+        listing.spec,
+        listing.roomType,
+        listing.broker,
+        listing.verification,
+        listing.response,
+        ...listing.badges,
+        ...listing.tags
+      ]
+        .join(" ")
+        .toLowerCase()
+        .replace(/\s/g, "")
+        .includes(normalizedSearchQuery);
 
-    return categoryMatches && dealTypeMatches && optionMatches;
+    return categoryMatches && dealTypeMatches && optionMatches && searchMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
+  const homeResultHeading = activeSearchQuery ? `"${activeSearchQuery}" 검색 결과` : "추천 매물";
+  const homeResultDescription = activeSearchQuery
+    ? `${activeFilterSummary} 조건 안에서 검색어와 맞는 매물을 보여줍니다.`
+    : `${activeFilterSummary} 조건에 맞는 매물을 보여줍니다.`;
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
   const visibleMapListings = [...mapListings]
     .filter((listing) => {
@@ -3631,6 +3658,14 @@ export default function Home() {
     setActiveQuickFilters((current) =>
       current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter]
     );
+  };
+
+  const runHomeSearch = () => {
+    const nextQuery = searchQuery.trim();
+    setCommittedSearchQuery(nextQuery);
+    if (nextQuery) {
+      setRecentSearches((current) => [nextQuery, ...current.filter((item) => item !== nextQuery)].slice(0, 5));
+    }
   };
 
   const toggleSavedListing = (listingNo: string) => {
@@ -3919,12 +3954,20 @@ export default function Home() {
           </div>
 
           <div className="search-box" role="search">
-            <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+            <button className="search-submit-button" type="button" aria-label="검색" onClick={runHomeSearch}>
+              <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+            </button>
             <input
-              defaultValue=""
+              value={searchQuery}
               placeholder="지역, 지하철, 건물명 검색"
               aria-label="지역, 지하철, 건물명 검색"
-              onFocus={() => setIsSearchSheetOpen(true)}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  runHomeSearch();
+                }
+              }}
             />
             <button type="button" aria-label="필터" onClick={() => setIsFilterSheetOpen(true)}>
               <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -3972,8 +4015,8 @@ export default function Home() {
 
           <div className="section-title">
             <div>
-              <h2>추천 매물</h2>
-              <p>{activeFilterSummary} 조건에 맞는 매물을 보여줍니다.</p>
+              <h2>{homeResultHeading}</h2>
+              <p>{homeResultDescription}</p>
             </div>
             <a href="#map-list" onClick={(event) => {
               event.preventDefault();
@@ -4047,9 +4090,15 @@ export default function Home() {
               </>
             ) : (
               <article className="listing-empty-card">
-                <strong>조건에 맞는 추천 매물이 없습니다</strong>
-                <p>필터를 줄이거나 지도에서 주변 매물을 더 넓게 확인해보세요.</p>
+                <strong>{activeSearchQuery ? "검색어와 조건에 맞는 매물이 없습니다" : "조건에 맞는 추천 매물이 없습니다"}</strong>
+                <p>
+                  {activeSearchQuery
+                    ? "검색어를 바꾸거나 조건을 줄여서 다시 확인해보세요."
+                    : "필터를 줄이거나 지도에서 주변 매물을 더 넓게 확인해보세요."}
+                </p>
                 <button type="button" onClick={() => {
+                  setSearchQuery("");
+                  setCommittedSearchQuery("");
                   setActiveCategory("오피스텔");
                   setActiveQuickFilters(["월세"]);
                 }}>
