@@ -229,7 +229,7 @@ export function TradeChatCenter({
             목록으로
           </button>
         </header>
-        <div ref={scrollRef} style={{ maxHeight: 360, overflowY: "auto", padding: 14, display: "grid", gap: 8, background: "var(--canvas)" }}>
+        <div ref={scrollRef} style={{ maxHeight: "min(62vh, 560px)", minHeight: 220, overflowY: "auto", padding: 14, display: "grid", gap: 8, background: "var(--canvas)" }}>
           {openThread.messages.map((message) => {
             const mine = message.senderId === myUserId;
             return (
