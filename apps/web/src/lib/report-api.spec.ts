@@ -23,6 +23,11 @@ test("report demo fallback is disabled in production unless explicitly enabled",
   assert.match(source, /throw error/);
 });
 
+test("report demo fallback can be disabled explicitly outside production", () => {
+  assert.match(source, /process\.env\.ROOMLOG_REPORT_DEMO_FALLBACK === "false"/);
+  assert.match(source, /return false/);
+});
+
 test("report reads do not create reports as a hidden side effect", () => {
   assert.doesNotMatch(source, /fetchOrCreateReports/);
   assert.doesNotMatch(source, /createDefaultReport/);
@@ -39,4 +44,11 @@ test("report delivery reads do not create or view external shares", () => {
   assert.doesNotMatch(deliverySource, /externalReport/);
   assert.match(deliverySource, /fetchDeliveryAuditLog/);
   assert.match(source, /export function createReportExternalShare/);
+});
+
+test("report chat posts the manager's actual question to the selected report", () => {
+  assert.match(source, /export function getReportChat\(reportId = DEMO_REPORT_ID, question\?: string\)/);
+  assert.match(source, /const selectedQuestion = question\?\.trim\(\) \|\| DEMO_FAQ\[0\]\?\.query/);
+  assert.match(source, /body: JSON\.stringify\(\{ question: selectedQuestion \}\)/);
+  assert.match(source, /text: selectedQuestion/);
 });

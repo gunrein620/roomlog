@@ -1,6 +1,6 @@
 import { getReportHub } from "@/lib/report-api";
 import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
-import { Grid, LinkButton, MetricCard, PageStack, ReportTable, ScreenHeader, Section, TrustNotice } from "../_components";
+import { FaqButtons, Grid, LinkButton, MetricCard, PageStack, ReportTable, ScreenHeader, Section, TrustNotice } from "../_components";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,7 @@ export default async function Page() {
   const { reports, recipients, faq } = await getReportHub();
   const delivered = reports.filter((report) => report.status === "delivered").length;
   const drafts = reports.length - delivered;
+  const quickReportId = reports[0]?.id;
 
   return (
     <PageStack>
@@ -42,13 +43,7 @@ export default async function Page() {
       </Section>
 
       <Section title="빠른 질의">
-        <Grid min={180}>
-          {faq.map((item) => (
-            <LinkButton key={item.id} href={MANAGER_REPORT_ROUTES["M-RPT-04"]} variant="secondary">
-              {item.label}
-            </LinkButton>
-          ))}
-        </Grid>
+        <FaqButtons faq={faq} targetReportId={quickReportId} />
       </Section>
     </PageStack>
   );
