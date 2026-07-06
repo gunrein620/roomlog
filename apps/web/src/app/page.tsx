@@ -56,6 +56,7 @@ import {
   type AuthMode,
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
+import { getRealtimeSocket } from "@/lib/realtime-client";
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
 import {
   pickInquiryTargetNo,
@@ -208,12 +209,6 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
     }
   });
 }
-
-const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
-  { id: "seeker", label: "방 찾는 중", href: "/" },
-  { id: "tenant", label: "내가 사는 집", href: "/?role=tenant&tab=mypage" },
-  { id: "landlord", label: "내가 내놓은 집", href: "/?role=landlord&tab=mypage" }
-];
 
 // 내 주거 프로세스: 한 계정이 상황에 따라 갖는 집과의 관계(흐름) 단위.
 // "역할 전환"이 아니라 같은 계정에서 여러 흐름을 오간다는 관점으로 표현한다.
@@ -907,6 +902,75 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     setRegistrationStatus("작성 중");
   };
 
+  // 내가 서버에 등록한 실제 매물 — 수정/내리기의 대상. null = 아직 조회 전.
+  const [serverListings, setServerListings] = useState<TradeListing[] | null>(null);
+  // 수정 모드: 등록 폼을 재사용해 이 id의 매물을 PATCH 한다.
+  const [editingListingId, setEditingListingId] = useState<string | null>(null);
+
+  const loadMyServerListings = async () => {
+    try {
+      const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!meRes.ok) {
+        setServerListings([]);
+        return;
+      }
+      const me = (await meRes.json()) as { userId?: string };
+      if (!me.userId) {
+        setServerListings([]);
+        return;
+      }
+      const res = await fetch("/api/trade/listings", { cache: "no-store" });
+      if (!res.ok) return;
+      const all = (await res.json()) as TradeListing[];
+      setServerListings(all.filter((listing) => listing.ownerId === me.userId));
+    } catch {
+      // 네트워크 일시 오류 — 다음 갱신에서 복구
+    }
+  };
+
+  useEffect(() => {
+    void loadMyServerListings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 시 1회 조회
+  }, []);
+
+  /** 수정 시작 — 매물 값을 등록 폼에 채우고 폼으로 스크롤한다. */
+  const startEditListing = (listing: TradeListing) => {
+    setEditingListingId(listing.id);
+    setOwnerForm((current) => ({
+      ...current,
+      title: listing.title,
+      address: listing.location === "위치 미입력" ? "" : listing.location,
+      tradeType: listing.tradeType,
+      deposit: listing.tradeType === "전세" ? current.deposit : String(listing.depositManwon || ""),
+      jeonse: listing.tradeType === "전세" ? String(listing.depositManwon || "") : current.jeonse,
+      monthly: String(listing.monthlyRentManwon || "")
+    }));
+    setOwnerToast(`'${listing.title}' 수정 중 — 아래 폼을 고친 뒤 저장을 누르세요.`);
+    continueOwnerRegistration();
+  };
+
+  const cancelEditListing = () => {
+    setEditingListingId(null);
+    setOwnerToast("수정을 취소했습니다.");
+  };
+
+  /** 매물 내리기 — 홈 피드에서 즉시 사라진다(문의 대화 기록은 유지). */
+  const deleteServerListing = async (listing: TradeListing) => {
+    if (!window.confirm(`'${listing.title}' 매물을 내릴까요? 홈 피드에서 바로 사라집니다.`)) return;
+    try {
+      const res = await fetch(`/api/trade/listings/${listing.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setOwnerToast("매물 내리기에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      if (editingListingId === listing.id) setEditingListingId(null);
+      setOwnerToast(`'${listing.title}' 매물을 내렸습니다.`);
+      void loadMyServerListings();
+    } catch {
+      setOwnerToast("매물 내리기에 실패했습니다. 네트워크를 확인해 주세요.");
+    }
+  };
+
   // 주소 입력을 디바운스로 지오코딩 — 상세 지도에 실제 매물 좌표를 찍기 위함.
   useEffect(() => {
     const address = ownerForm.address?.trim();
@@ -989,44 +1053,57 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           }
         }
 
-        // 2) 매물 등록 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
-        const response = await fetch("/api/trade/listings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: ownerForm.title,
-            roomType: "원룸",
-            tradeType: ownerForm.tradeType,
-            depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
-            monthlyRentManwon: Number(ownerForm.monthly) || 0,
-            location: ownerForm.address || "위치 미입력",
-            description: [
-              ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
-              ownerForm.floor ? `${ownerForm.floor}층` : "",
-              ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
-            ].filter(Boolean).join(" · "),
-            images,
-            lat: geoCoords?.lat,
-            lng: geoCoords?.lng
-          })
-        });
+        // 2) 등록 또는 수정 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
+        //    수정(PATCH)일 때 새 사진이 없으면 images를 보내지 않아 기존 사진을 유지한다.
+        const isEditing = Boolean(editingListingId);
+        const payload: Record<string, unknown> = {
+          title: ownerForm.title,
+          roomType: "원룸",
+          tradeType: ownerForm.tradeType,
+          depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
+          monthlyRentManwon: Number(ownerForm.monthly) || 0,
+          location: ownerForm.address || "위치 미입력",
+          description: [
+            ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
+            ownerForm.floor ? `${ownerForm.floor}층` : "",
+            ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
+          ].filter(Boolean).join(" · "),
+          lat: geoCoords?.lat,
+          lng: geoCoords?.lng
+        };
+        if (!isEditing || images.length > 0) payload.images = images;
+
+        const response = await fetch(
+          isEditing ? `/api/trade/listings/${editingListingId}` : "/api/trade/listings",
+          {
+            method: isEditing ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          }
+        );
 
         if (response.status === 401) {
           setOwnerToast("매물을 등록하려면 WOOZU 계정 로그인이 필요합니다.");
           return;
         }
         if (!response.ok) {
-          setOwnerToast("매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+          setOwnerToast(isEditing ? "매물 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." : "매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.");
           return;
         }
 
         setPhotoFiles([]);
         setRegistrationStatus("노출중");
-        setMyListings((current) => [
-          { id: Date.now(), title: ownerForm.title, price: ownerPriceLabel, status: "노출중", caption: "방금 노출 시작 · 모든 사용자에게 보입니다" },
-          ...current
-        ]);
-        setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
+        if (isEditing) {
+          setEditingListingId(null);
+          setOwnerToast("매물이 수정됐습니다. 홈 피드에 바로 반영됩니다.");
+        } else {
+          setMyListings((current) => [
+            { id: Date.now(), title: ownerForm.title, price: ownerPriceLabel, status: "노출중", caption: "방금 노출 시작 · 모든 사용자에게 보입니다" },
+            ...current
+          ]);
+          setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
+        }
+        void loadMyServerListings();
       } catch {
         setOwnerToast("매물 등록에 실패했습니다. 네트워크를 확인해 주세요.");
       } finally {
@@ -1162,18 +1239,47 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
       <section className="owner-my-listings" aria-label="내 등록 매물">
         <div className="owner-my-listings-head">
-          <strong>내 매물 {myListings.length}개</strong>
-          <span>검수 통과 시 자동 노출</span>
+          <strong>내 매물 {(serverListings?.length ?? 0) > 0 ? serverListings!.length : myListings.length}개</strong>
+          <span>수정·내리기는 즉시 반영</span>
         </div>
-        {myListings.map((item) => (
-          <article key={item.id}>
+        {/* 서버에 실제 등록된 내 매물 — 수정/내리기 가능 */}
+        {(serverListings ?? []).map((listing) => (
+          <article key={listing.id}>
             <div>
-              <strong>{item.title}</strong>
-              <small>{item.price} · {item.caption}</small>
+              <strong>{listing.title}{editingListingId === listing.id ? " · 수정 중" : ""}</strong>
+              <small>{tradePriceLabel(listing)} · {listing.location}</small>
             </div>
-            <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
+              <em className="live">{listing.status}</em>
+              <button
+                type="button"
+                onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
+                style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line)", background: "#ffffff", color: "var(--ink)", fontSize: "0.72rem", fontWeight: 900 }}
+              >
+                {editingListingId === listing.id ? "수정 취소" : "수정"}
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteServerListing(listing)}
+                style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid #f1c8c8", background: "#fff6f6", color: "#c03535", fontSize: "0.72rem", fontWeight: 900 }}
+              >
+                내리기
+              </button>
+            </div>
           </article>
         ))}
+        {/* 서버 매물이 없을 때만 로컬 데모 목록으로 폴백(비로그인/첫 방문) */}
+        {(serverListings?.length ?? 0) === 0
+          ? myListings.map((item) => (
+              <article key={item.id}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <small>{item.price} · {item.caption}</small>
+                </div>
+                <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+              </article>
+            ))
+          : null}
       </section>
 
       {/* 내 매물로 들어온 구매 문의 — 문의센터(구매자 쪽)와 같은 스레드를 집주인 시점에서 본다 */}
@@ -1728,8 +1834,10 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           {isSubmittingListing ? (
             <>
               <span className="btn-spinner" aria-hidden="true" />
-              등록 처리 중…
+              {editingListingId ? "수정 저장 중…" : "등록 처리 중…"}
             </>
+          ) : editingListingId ? (
+            "수정 내용 저장"
           ) : (
             "매물 등록하기"
           )}
@@ -3804,6 +3912,8 @@ export default function Home() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isRouteReady, setIsRouteReady] = useState(false);
   const [isDevRolePreview, setIsDevRolePreview] = useState(false);
+  // URL ?role=/flow= 딥링크가 역할을 정했는지 — 정했다면 계정 기반 자동 역할이 덮지 않는다.
+  const urlRoleAppliedRef = useRef(false);
   // 집 내놓기 시작 모드(/?flow=listing) — 관리 콘솔 보호와 분리된 비보호 등록 진입.
   // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
   const [isListingStartMode, setIsListingStartMode] = useState(false);
@@ -3875,7 +3985,17 @@ export default function Home() {
     ...tradeListings.map((listing, index) => tradeListingToMapItem(listing, index, tradeListings.length)),
     ...demoMapItems
   ];
-  const visibleMapListings = allMapItems
+  // 지역 검색이 개수·목록에 실제 반영되도록 지역 토큰으로 필터 (QA: 지역 바꿔도 개수가 그대로던 표기이상).
+  // 토큰 = 선택 지역의 마지막 단어에서 동/역/구 접미사 제거(예: "서초구 방배동"→"방배").
+  const areaSearchToken = (selectedAreaTitle.split(" ").pop() ?? "").replace(/(동|역|구)$/, "").trim();
+  const areaMatchedMapItems = areaSearchToken
+    ? allMapItems.filter((listing) =>
+        [listing.title, listing.meta, listing.distance].join(" ").includes(areaSearchToken)
+      )
+    : allMapItems;
+  // 매칭이 하나도 없으면 전체로 폴백 — 데모 데이터 범위 밖 지역을 골라도 지도가 텅 비지 않게.
+  const areaScopedMapItems = areaMatchedMapItems.length > 0 ? areaMatchedMapItems : allMapItems;
+  const visibleMapListings = areaScopedMapItems
     .filter((listing) => {
       if (activeMapFilter === "3D 가능") {
         return listing.has3DTour;
@@ -3924,6 +4044,32 @@ export default function Home() {
     : null;
 
   const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
+
+  // 실시간 문의 신호 — 웹소켓 trade:updated가 오면 문의 탭 밖에서는 배지를 켠다(탭 진입 시 해제).
+  const [unseenTradeCount, setUnseenTradeCount] = useState(0);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  useEffect(() => {
+    if (!viewer) return; // 소켓 인증 티켓은 로그인 세션 기반 — 비로그인 재연결 루프 방지
+
+    const socket = getRealtimeSocket();
+    const onTradeUpdated = () => {
+      if (activeTabRef.current !== "inquiry") {
+        setUnseenTradeCount((count) => count + 1);
+      }
+    };
+    socket.on("trade:updated", onTradeUpdated);
+    return () => {
+      socket.off("trade:updated", onTradeUpdated);
+    };
+  }, [viewer]);
+
+  useEffect(() => {
+    if (activeTab === "inquiry") setUnseenTradeCount(0);
+  }, [activeTab]);
+
+  const inquiryBadgeCount = unseenReplyCount + unseenTradeCount;
 
   // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
   useEffect(() => {
@@ -4110,6 +4256,7 @@ export default function Home() {
     } else if (flow === "listing") {
       // 집 내놓기 시작 — capability 가드를 타지 않는 등록 진입점.
       // /login의 "관리 중인 집 연결 필요" CTA가 여기로 온다 (로그인 루프 방지, QA 2).
+      urlRoleAppliedRef.current = true;
       setActiveRole("landlord");
       setActiveTab("mypage");
       setIsListingStartMode(true);
@@ -4118,6 +4265,7 @@ export default function Home() {
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
     } else if (role) {
+      urlRoleAppliedRef.current = true;
       setActiveRole(role);
       setActiveTab(tab ?? (role === "seeker" ? "home" : "mypage"));
       setSelectedListing(null);
@@ -4171,6 +4319,15 @@ export default function Home() {
     };
   }, []);
 
+  // "내 흐름" 셀렉트 제거 이후: 역할은 로그인 계정의 capability에서 자동 결정된다.
+  // (URL 딥링크가 역할을 명시했으면 그 선택을 존중, 이후 전환은 마이페이지 흐름 칩이 담당)
+  useEffect(() => {
+    if (!viewer || urlRoleAppliedRef.current) return;
+    setActiveRole(
+      hasCapability(viewer, "LANDLORD") ? "landlord" : hasCapability(viewer, "TENANT") ? "tenant" : "seeker"
+    );
+  }, [viewer]);
+
   // 집 내놓기 시작 모드는 보호 대상에서 제외 — 등록 시작은 capability가 아니라
   // 매물 등록 자체가 LANDLORD 관계를 만드는 진입점이다. 관리 콘솔(/manager/*)은 계속 서버 가드.
   const protectedConfig =
@@ -4199,17 +4356,6 @@ export default function Home() {
     setSelectedListing(null);
     setAuthMode(null);
     setIsDevRolePreview(false);
-  };
-
-  const navigateRoleHome = (role: AppRole) => {
-    const target = roleSwitchOptions.find((item) => item.id === role);
-    if (!target) return;
-
-    setIsDevRolePreview(true);
-    setActiveRole(role);
-    setActiveTab(role === "seeker" ? "home" : "mypage");
-    window.history.pushState(null, "", target.href);
-    resetWindowScrollSoon();
   };
 
   // 내 룸로그 흐름 전환: 한 계정에서 탐색·임대인·세입자 마이페이지를 오가고,
@@ -4294,21 +4440,13 @@ export default function Home() {
               <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
               <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
                 문의
-                {unseenReplyCount > 0 ? <span className="nav-badge">{unseenReplyCount}</span> : null}
+                {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
               <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>우리집</button>
             </nav>
             <div className="web-topbar-actions">
-              <label className="web-role-select">
-                <span>내 흐름</span>
-                <select value={activeRole} onChange={(event) => navigateRoleHome(event.target.value as AppRole)}>
-                  {roleSwitchOptions.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {/* "내 흐름" 테스트 역할 셀렉트 제거 — 역할은 로그인 계정 capability에서 자동 결정되고,
+                  마이페이지 안의 흐름 칩(MyFlowBar)이 다중 역할 전환을 담당한다. */}
               {viewer ? (
                 <div className="web-profile-menu" aria-label="로그인 사용자">
                   <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
@@ -4930,7 +5068,7 @@ export default function Home() {
             >
               <item.Icon size={22} strokeWidth={2.3} aria-hidden="true" />
               {item.label}
-              {item.key === "inquiry" && unseenReplyCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 답변 ${unseenReplyCount}건`} /> : null}
+              {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 문의 ${inquiryBadgeCount}건`} /> : null}
             </a>
           ))}
         </nav>
