@@ -835,6 +835,15 @@ p {
   font-size: 0.78rem;
 }
 
+.search-box .search-submit-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .category-strip,
 .quick-filter-row,
 .map-filter-row {

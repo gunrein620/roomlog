@@ -429,6 +429,68 @@ model Room {
   @@unique([buildingName, roomNo])
 }
 
+model Listing {
+  id                  String   @id @default(cuid())
+  ownerId             String?
+  ownerEmail          String?
+  ownerName           String?
+  title               String
+  headline            String   @default("")
+  registeredAt        DateTime @default(now())
+  status              String   @default("거래중")
+  viewCount           Int      @default(0)
+  tradeType           String
+  depositManwon       Int      @default(0)
+  monthlyRentManwon   Int      @default(0)
+  salePriceManwon     Int      @default(0)
+  maintenanceManwon   Int      @default(0)
+  maintenanceIncludes String[] @default([])
+  loanManwon          Int      @default(0)
+  availableFrom       String   @default("즉시")
+  contractMonths      Int      @default(24)
+  kind                String
+  areaExclusiveM2     Float    @default(0)
+  areaSupplyM2        Float    @default(0)
+  floor               Int      @default(1)
+  totalFloors         Int      @default(1)
+  rooms               Int      @default(1)
+  bathrooms           Int      @default(1)
+  direction           String   @default("")
+  buildYear           Int      @default(0)
+  parking             Boolean  @default(false)
+  elevator            Boolean  @default(false)
+  heating             String   @default("")
+  address             String
+  jibunAddress        String   @default("")
+  dong                String   @default("")
+  lawdCd              String   @default("")
+  lat                 Float    @default(37.5665)
+  lng                 Float    @default(126.978)
+  nearestStation      String   @default("")
+  walkMinutes         Int      @default(0)
+  options             String[] @default([])
+  petsAllowed         Boolean  @default(false)
+  tags                String[] @default([])
+  coverImage          String   @default("")
+  gallery             String[] @default([])
+  tourId              String?
+  registrantType      String   @default("집주인")
+  brokerName          String   @default("")
+  contactPhone        String   @default("")
+  responseMinutes     Int      @default(0)
+  verified            Boolean  @default(false)
+  reviewStatus        String   @default("등록")
+  safetyScore         Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([ownerEmail])
+  @@index([kind, tradeType])
+  @@index([lawdCd])
+  @@index([createdAt])
+}
+
 model TenantRoom {
   tenantId  String
   roomId    String
