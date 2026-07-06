@@ -3918,13 +3918,18 @@ export default function Home() {
             <p className="web-hero-sub">전월세부터 매매까지 | 방문 전 3D로 먼저 둘러보세요</p>
           </div>
 
-          <label className="search-box">
+          <div className="search-box" role="search">
             <Search size={20} strokeWidth={2.4} aria-hidden="true" />
-            <input defaultValue="" placeholder="지역, 지하철, 건물명 검색" onFocus={() => setIsSearchSheetOpen(true)} />
+            <input
+              defaultValue=""
+              placeholder="지역, 지하철, 건물명 검색"
+              aria-label="지역, 지하철, 건물명 검색"
+              onFocus={() => setIsSearchSheetOpen(true)}
+            />
             <button type="button" aria-label="필터" onClick={() => setIsFilterSheetOpen(true)}>
               <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
             </button>
-          </label>
+          </div>
 
           <nav className="category-strip" aria-label="매물 유형">
             {categories.map((category) => {
