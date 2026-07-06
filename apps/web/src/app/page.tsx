@@ -946,13 +946,14 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const loadMyServerListings = async () => {
     try {
       const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+      // 비로그인 → null(데모 폴백 유지). 로그인 → 실제 배열(0개면 빈 상태). 이 구분이 삭제/수정 진실을 결정한다.
       if (!meRes.ok) {
-        setServerListings([]);
+        setServerListings(null);
         return;
       }
       const me = (await meRes.json()) as { userId?: string };
       if (!me.userId) {
-        setServerListings([]);
+        setServerListings(null);
         return;
       }
       const res = await fetch("/api/trade/listings", { cache: "no-store" });
@@ -1146,19 +1147,22 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           return;
         }
 
+        // 등록/수정 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
+        //   (로컬 그림자 목록은 만들지 않는다 — 내 매물은 항상 서버 진실(serverListings)만 보여준다.)
+        setOwnerForm(emptyOwnerForm);
         setPhotoFiles([]);
+        setPhotoCount(0);
+        setHas3DRoom(false);
+        setGeoCoords(null);
+        if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
         if (isEditing) {
           setEditingListingId(null);
-          setOwnerToast("매물이 수정됐습니다. 홈 피드에 바로 반영됩니다.");
+          setOwnerToast("매물이 수정됐습니다. 내 매물과 홈 피드에 바로 반영됩니다.");
         } else {
-          setMyListings((current) => [
-            { id: Date.now(), title: ownerForm.title, price: ownerPriceLabel, status: "노출중", caption: "방금 노출 시작 · 모든 사용자에게 보입니다" },
-            ...current
-          ]);
           setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
         }
-        void loadMyServerListings();
+        await loadMyServerListings();
       } catch {
         setOwnerToast("매물 등록에 실패했습니다. 네트워크를 확인해 주세요.");
       } finally {
@@ -1294,47 +1298,57 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
       <section className="owner-my-listings" aria-label="내 등록 매물">
         <div className="owner-my-listings-head">
-          <strong>내 매물 {(serverListings?.length ?? 0) > 0 ? serverListings!.length : myListings.length}개</strong>
+          <strong>내 매물 {serverListings ? serverListings.length : myListings.length}개</strong>
           <span>수정·내리기는 즉시 반영</span>
         </div>
-        {/* 서버에 실제 등록된 내 매물 — 수정/내리기 가능 */}
-        {(serverListings ?? []).map((listing) => (
-          <article key={listing.id}>
-            <div>
-              <strong>{listing.title}{editingListingId === listing.id ? " · 수정 중" : ""}</strong>
-              <small>{tradePriceLabel(listing)} · {listing.location}</small>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-              <em className="live">{listing.status}</em>
-              <button
-                type="button"
-                onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
-                style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line)", background: "#ffffff", color: "var(--ink)", fontSize: "0.72rem", fontWeight: 900 }}
-              >
-                {editingListingId === listing.id ? "수정 취소" : "수정"}
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteServerListing(listing)}
-                style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid #f1c8c8", background: "#fff6f6", color: "#c03535", fontSize: "0.72rem", fontWeight: 900 }}
-              >
-                내리기
-              </button>
-            </div>
-          </article>
-        ))}
-        {/* 서버 매물이 없을 때만 로컬 데모 목록으로 폴백(비로그인/첫 방문) */}
-        {(serverListings?.length ?? 0) === 0
-          ? myListings.map((item) => (
-              <article key={item.id}>
+        {serverListings !== null ? (
+          // 로그인 상태 — 서버 진실만 보여준다. 삭제하면 여기서 즉시·영구히 사라진다(데모 폴백으로 되살아나지 않음).
+          serverListings.length > 0 ? (
+            serverListings.map((listing) => (
+              <article key={listing.id}>
                 <div>
-                  <strong>{item.title}</strong>
-                  <small>{item.price} · {item.caption}</small>
+                  <strong>{listing.title}{editingListingId === listing.id ? " · 수정 중" : ""}</strong>
+                  <small>{tradePriceLabel(listing)} · {listing.location}</small>
                 </div>
-                <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
+                  <em className="live">{listing.status}</em>
+                  <button
+                    type="button"
+                    onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
+                    style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line)", background: "#ffffff", color: "var(--ink)", fontSize: "0.72rem", fontWeight: 900 }}
+                  >
+                    {editingListingId === listing.id ? "수정 취소" : "수정"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteServerListing(listing)}
+                    style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid #f1c8c8", background: "#fff6f6", color: "#c03535", fontSize: "0.72rem", fontWeight: 900 }}
+                  >
+                    내리기
+                  </button>
+                </div>
               </article>
             ))
-          : null}
+          ) : (
+            <article className="owner-my-listings-empty">
+              <div>
+                <strong>아직 등록한 매물이 없어요</strong>
+                <small>위에서 매물을 등록하면 여기서 수정·내리기를 할 수 있어요.</small>
+              </div>
+            </article>
+          )
+        ) : (
+          // 비로그인/첫 방문 — 데모 쇼케이스 목록(관리 불가)
+          myListings.map((item) => (
+            <article key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <small>{item.price} · {item.caption}</small>
+              </div>
+              <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+            </article>
+          ))
+        )}
       </section>
 
       {/* 내 매물로 들어온 구매 문의 — 문의센터(구매자 쪽)와 같은 스레드를 집주인 시점에서 본다 */}

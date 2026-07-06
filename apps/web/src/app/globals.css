@@ -9288,6 +9288,20 @@ p {
   color: #067a4b;
 }
 
+.owner-my-listings article.owner-my-listings-empty {
+  justify-content: flex-start;
+  border: 1px dashed var(--line);
+  background: transparent;
+}
+
+.owner-my-listings-empty strong {
+  color: var(--ink);
+}
+
+.owner-my-listings-empty small {
+  color: var(--subtle);
+}
+
 .tenant-repair-card {
   padding: 16px;
   border-radius: 18px;
