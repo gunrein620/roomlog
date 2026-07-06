@@ -49,12 +49,15 @@ function timeLabel(iso: string): string {
 export function TradeChatCenter({
   roleFilter,
   emptyText,
-  onRequireLogin
+  onRequireLogin,
+  focusThreadId
 }: {
   /** buyer=보낸 문의만, owner=받은 문의만, 생략=전부 */
   roleFilter?: "buyer" | "owner";
   emptyText: string;
   onRequireLogin?: () => void;
+  /** 값이 바뀌면 해당 스레드를 자동으로 연다(문의 전송 직후 채팅으로 바로 진입). */
+  focusThreadId?: string;
 }) {
   const [threads, setThreads] = useState<TradeThreadSummary[] | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -96,6 +99,14 @@ export function TradeChatCenter({
       // 다음 폴링에서 복구
     }
   }, []);
+
+  // 외부에서 특정 스레드를 지목하면(문의 전송 직후) 그 대화를 바로 연다.
+  useEffect(() => {
+    if (focusThreadId) {
+      setOpenThreadId(focusThreadId);
+      loadThreads();
+    }
+  }, [focusThreadId, loadThreads]);
 
   // 내 userId — 말풍선 좌/우 구분용
   useEffect(() => {
