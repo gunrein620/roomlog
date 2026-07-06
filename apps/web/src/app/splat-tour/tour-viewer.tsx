@@ -13,7 +13,9 @@ import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 
-const SPLAT_SRC = "/samples/room.spz";
+// 임시 조치: splat-transform ≥2.3이 뽑은 SPZ v4를 Spark 2.1.0(v1~3만 지원)이 못 읽어 "Invalid gzip header" 발생.
+// Spark 업그레이드 후 room.spz로 복귀 예정.
+const SPLAT_SRC = "/samples/dryrun.ply";
 
 function clamp01to100(value: number): number {
   return Math.min(100, Math.max(0, value));
