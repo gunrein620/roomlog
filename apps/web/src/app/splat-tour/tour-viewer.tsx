@@ -4,10 +4,12 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { ChevronDown, Footprints, UploadCloud } from "lucide-react";
+import { Armchair, ChevronDown, Footprints, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
 import { SplatDropzone } from "./splat-dropzone";
+import { loadSplatFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
+import { SplatFurnitureLayer } from "./splat-furniture-layer";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
@@ -41,6 +43,11 @@ export default function TourViewer() {
   const [isDropzoneOpen, setIsDropzoneOpen] = useState(false);
   const [isWalkMode, setIsWalkMode] = useState(false);
   const [minimapPosition, setMinimapPosition] = useState<{ x: number; y: number } | null>(null);
+  const [showFurniture, setShowFurniture] = useState(true);
+  const [furnitureState, setFurnitureState] = useState<SplatFurnitureState>({
+    furnitures: [],
+    source: "none"
+  });
 
   const handleCameraMove = useCallback((position: [number, number, number]) => {
     setMinimapPosition(worldToMinimapPercent(position[0], position[2]));
@@ -79,6 +86,12 @@ export default function TourViewer() {
         URL.revokeObjectURL(objectUrlRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const state = loadSplatFurnitureFromBrowser();
+    setFurnitureState(state);
+    console.info("[splat-tour] furniture " + JSON.stringify({ source: state.source, count: state.furnitures.length }));
   }, []);
 
   return (
@@ -431,6 +444,10 @@ export default function TourViewer() {
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
         <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} />
+        {/* 가구 레이어는 도면 좌표 그대로 월드에 놓인다(월드=도면 프레임) */}
+        {showFurniture && furnitureState.furnitures.length > 0 ? (
+          <SplatFurnitureLayer furnitures={furnitureState.furnitures} />
+        ) : null}
         <TourCamera
           activeId={activeId}
           onArrive={setActiveId}
@@ -512,6 +529,17 @@ export default function TourViewer() {
           <Footprints aria-hidden size={16} strokeWidth={2.4} />
           <span>걷기</span>
         </button>
+        {furnitureState.furnitures.length > 0 ? (
+          <button
+            aria-pressed={showFurniture}
+            className={`tour-walk-toggle${showFurniture ? " is-active" : ""}`}
+            onClick={() => setShowFurniture((current) => !current)}
+            type="button"
+          >
+            <Armchair aria-hidden size={16} strokeWidth={2.4} />
+            <span>가구</span>
+          </button>
+        ) : null}
       </div>
     </div>
   );
