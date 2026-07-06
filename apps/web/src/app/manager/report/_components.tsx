@@ -11,7 +11,7 @@ import type {
   ReportStatus,
 } from "@roomlog/types";
 import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
-import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
+import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref, type ManagerReportScreenId } from "@/lib/report-nav";
 import { stripScreenId } from "@/lib/screen-id";
 
 const navItems = [
