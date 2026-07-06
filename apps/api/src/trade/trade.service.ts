@@ -231,6 +231,46 @@ export class TradeService {
     return listing;
   }
 
+  /** 소유자 검증 포함 매물 조회 — 수정/삭제 공용. */
+  private ownedListing(ownerId: string, listingId: string): TradeListing {
+    const listing = this.store.listings.find((item) => item.id === listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    if (listing.ownerId !== ownerId) throw new ForbiddenException("내 매물만 수정하거나 내릴 수 있습니다.");
+    return listing;
+  }
+
+  /** 매물 수정 — 전달된 필드만 갱신(소유자 전용). images는 배열이 오면 통째로 교체. */
+  updateListing(owner: { id: string }, listingId: string, input: Partial<TradeListingInput>): TradeListing {
+    const listing = this.ownedListing(owner.id, listingId);
+
+    if (typeof input.title === "string" && input.title.trim()) listing.title = input.title.trim();
+    if (typeof input.roomType === "string" && input.roomType.trim()) listing.roomType = input.roomType.trim();
+    if (input.tradeType === "월세" || input.tradeType === "전세" || input.tradeType === "매매") {
+      listing.tradeType = input.tradeType;
+    }
+    if (input.depositManwon !== undefined) listing.depositManwon = Number(input.depositManwon) || 0;
+    if (input.monthlyRentManwon !== undefined) listing.monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
+    if (typeof input.location === "string" && input.location.trim()) listing.location = input.location.trim();
+    if (typeof input.description === "string") listing.description = input.description.trim();
+    if (Array.isArray(input.images)) listing.images = normalizeImages(input.images);
+    if (input.lat !== undefined || input.lng !== undefined) {
+      const coords = normalizeCoords(input.lat, input.lng);
+      listing.lat = coords.lat;
+      listing.lng = coords.lng;
+    }
+
+    this.persist();
+    return listing;
+  }
+
+  /** 매물 삭제(내리기) — 소유자 전용. 연결된 문의 스레드는 대화 기록으로 남긴다. */
+  deleteListing(owner: { id: string }, listingId: string): { ok: true } {
+    this.ownedListing(owner.id, listingId);
+    this.store.listings = this.store.listings.filter((item) => item.id !== listingId);
+    this.persist();
+    return { ok: true };
+  }
+
   /**
    * 구매 문의 — 같은 매물·같은 구매자의 기존 스레드가 있으면 거기에 메시지를 잇는다.
    * listingId가 직접등록 매물이 아니면(쇼케이스 매물) 데모 임대인에게 전달한다.
