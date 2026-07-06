@@ -11,6 +11,7 @@
 | `wall-detector.ts` | 브라우저 진입점. `WallDetector` 클래스가 worker 호출, 실패 시 캔버스 픽셀 fallback. 이미지 스케일링, `loadImage` 유틸 포함. DOM 의존은 이 파일에만 |
 | `wall-detection.mjs` | 순수 로직(테스트 대상). 라인 필터링 파이프라인: 치수선/주석 분리(`filterCommercialWallCandidates`), 마스크 → 라인(`detectWallLinesFrom*`), 병합/노이즈 제거, 축척 추정(`estimateScaleCandidateFromDimensions`), 문창문/설비 후보(`detectOpening/FixtureCandidates`), 최종 벽 생성(`createWallsFromDetectedLines`) |
 | `wall-detection.d.ts` | `wall-detection.mjs`의 타입 선언. mjs에 함수를 추가/변경하면 여기도 같이 갱신할 것 |
+| `dimension-layout.mjs` | 순수 로직(테스트 대상). 중첩된 치수줄을 라벨 수직위치로 클러스터링(`clusterDimensionRows`)한 뒤, 각 줄 안에서 합=전체인 체인만 배치(`solveDimensionRowChains`). 체인 경계 mm 수집(`structuralBoundaryOffsetsMm`)과 벽을 그 경계에 스냅(`snapWallsToStructuralBoundaries`) — 구조 치수로 Roboflow 벽 위치를 보정해 3D 방 크기를 도면 치수에 맞춘다. 컨테이너의 오버레이/벽보정이 mm 오프셋→캔버스 좌표로 변환해 씀 |
 | `types.ts` | **계약 타입**: `DetectedLine`, `FloorPlanCandidate`, `ScaleCandidate`, `ExtractionMeta`, `DetectedWallResult` 등. 컨테이너가 소비하므로 변경 전 팀 공유 |
 
 ## 파이프라인
@@ -21,6 +22,18 @@
       → estimateScaleCandidateFromDimensions()  # OCR 텍스트 기반 축척 후보
       → createWallsFromDetectedLines()     # 에디터 좌표계 Wall[]로 변환
 ```
+
+마스크 → 라인 추출(strict 경로)의 내부 단계:
+
+1. `estimateWallLuminanceThreshold` — 어두운 픽셀 히스토그램을 Otsu로 분할해 순흑 벽과
+   진회색 가구 채움(싱크대 상판 등)을 분리. 분리 실패 시 기본 임계값(128)으로 자동 복귀.
+2. 밴드 추출 시 run 길이 균형 검사(`bandRunBalanceRatio`) — 벽에 붙은 채움 블록이
+   벽 밴드를 흡수해 실제 벽 라인을 파괴하는 것을 방지.
+3. 짧은 세그먼트 복구 패스 — 기본 `minRunLength`(≈6%)에서 소실되는 문설주·짧은 벽·
+   작은 사각 벽(덕트/샤프트)을 두께 조건(≥5px)을 강화한 짧은 기준으로 재추출
+   (`short-wall-recovered` 마커).
+4. 필터 단계에서 `furniture-fill-band`(벽 두께 중앙값보다 3배 이상 두꺼운 밴드 → 주석 후보)와
+   솔리드 블록 구제(`isSolidWallBlockLine`, 긴 축 방향 한 줄만 유지)로 정밀도 보강.
 
 ## 규칙
 

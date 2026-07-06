@@ -6,6 +6,7 @@ node_modules/
 !.env.example
 
 .next/
+next-env.d.ts
 dist/
 coverage/
 uploads/
@@ -16,8 +17,10 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.run/
 
 .DS_Store
 .cursor/
+agent.md
 .worktrees/
 worktrees/

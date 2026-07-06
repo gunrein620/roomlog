@@ -24,6 +24,7 @@ const floorPlanModel = {
   ...(await import("./src/app/floor-plan-3d/room-model/wall-model.mjs")),
   ...(await import("./src/app/floor-plan-3d/plan-extraction/wall-detection.mjs"))
 };
+const dimensionLayout = await import("./src/app/floor-plan-3d/plan-extraction/dimension-layout.mjs");
 const globalsCssSource = readFileSync(new URL("./src/app/globals.css", import.meta.url), "utf8");
 const webPackageSource = readFileSync(new URL("./package.json", import.meta.url), "utf8");
 const floorPlanRouteSource = `${floorPlanPageSource}\n${floorPlanEditorSource}`;
@@ -39,6 +40,29 @@ const prodComposeSource = readFileSync(new URL("../../docker-compose.prod.yml", 
 const deployWorkflowSource = readFileSync(new URL("../../.github/workflows/deploy.yml", import.meta.url), "utf8");
 const apiDockerfileSource = readFileSync(new URL("../api/Dockerfile", import.meta.url), "utf8");
 const webDockerfileSource = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
+const googleAuthSharedSource = readFileSync(new URL("./src/app/api/auth/google/_shared.ts", import.meta.url), "utf8");
+const signupPageSource = readFileSync(new URL("./src/app/signup/page.tsx", import.meta.url), "utf8");
+const signupRouteSource = readFileSync(new URL("./src/app/api/auth/signup/route.ts", import.meta.url), "utf8");
+const loginRouteSource = readFileSync(new URL("./src/app/api/auth/login/route.ts", import.meta.url), "utf8");
+const loginScreenSource = readFileSync(new URL("./src/app/_components/WoozuLoginScreen.tsx", import.meta.url), "utf8");
+const unifiedLoginPageSource = readFileSync(new URL("./src/app/login/page.tsx", import.meta.url), "utf8");
+const sessionLibSource = readFileSync(new URL("./src/lib/session.ts", import.meta.url), "utf8");
+const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
+const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
+const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
+const tenantMessagingApiSource = readFileSync(new URL("./src/lib/messaging-api.ts", import.meta.url), "utf8");
+const messageAutoRefreshPath = new URL("./src/app/_components/MessageAutoRefresh.tsx", import.meta.url);
+const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
+  ? readFileSync(messageAutoRefreshPath, "utf8")
+  : "";
+const managerMessagingListSource = readFileSync(new URL("./src/app/manager/messaging/00/page.tsx", import.meta.url), "utf8");
+const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
+const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
+const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
+const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
+const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
+const managerContractApiSource = readFileSync(new URL("./src/lib/contract-manager-api.ts", import.meta.url), "utf8");
+const managerMessagingApiSource = readFileSync(new URL("./src/lib/messaging-manager-api.ts", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
@@ -58,9 +82,35 @@ test("serves role frontends from the single web container on port 3000", () => {
 });
 
 test("production deploy removes stale role containers before rebinding port 3000", () => {
-  assert.match(deployWorkflowSource, /roomlog-nginx roomlog-tenant roomlog-manager roomlog-vendor/);
+  assert.match(deployWorkflowSource, /roomlog-web roomlog-api/);
   assert.match(deployWorkflowSource, /up -d --build --remove-orphans/);
   assert.match(deployWorkflowSource, /docker ps -a --filter "name=roomlog"/);
+});
+
+test("routes server-side web API calls to the api container in Docker", () => {
+  const internalApiPattern = /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/;
+
+  assert.match(dockerComposeSource, internalApiPattern);
+  assert.match(prodComposeSource, internalApiPattern);
+  assert.match(deployWorkflowSource, /API_INTERNAL_URL: "\$\{\{ secrets\.API_INTERNAL_URL \}\}"/);
+  assert.match(deployWorkflowSource, /API_INTERNAL_URL="\$\{API_INTERNAL_URL:-http:\/\/api:4000\}"/);
+  assert.match(deployWorkflowSource, /API_INTERNAL_URL=\$\{API_INTERNAL_URL\}/);
+});
+
+test("production web container can reach the API over the Docker network for auth BFF routes", () => {
+  assert.match(prodComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
+});
+
+test("local Docker web container can reach the API over the Docker network for auth BFF routes", () => {
+  assert.match(dockerComposeSource, /API_INTERNAL_URL:\s*\$\{API_INTERNAL_URL:-http:\/\/api:4000\}/);
+});
+
+test("production web container receives Google OAuth runtime configuration", () => {
+  assert.match(prodComposeSource, /ROOMLOG_PUBLIC_ORIGIN:\s*\$\{ROOMLOG_PUBLIC_ORIGIN:-https:\/\/www\.woo-zu\.com\}/);
+  assert.match(prodComposeSource, /GOOGLE_LOGIN_CLIENT_ID:\s*\$\{GOOGLE_LOGIN_CLIENT_ID:-\}/);
+  assert.match(prodComposeSource, /GOOGLE_LOGIN_CALLBACK_URL:\s*\$\{GOOGLE_LOGIN_CALLBACK_URL:-\}/);
+  assert.match(deployWorkflowSource, /GOOGLE_LOGIN_CLIENT_ID: "\$\{\{ secrets\.GOOGLE_LOGIN_CLIENT_ID \}\}"/);
+  assert.match(deployWorkflowSource, /GOOGLE_LOGIN_CLIENT_SECRET: "\$\{\{ secrets\.GOOGLE_LOGIN_CLIENT_SECRET \}\}"/);
 });
 
 test("api image trusts the Amazon RDS certificate bundle for TLS database connections", () => {
@@ -68,22 +118,246 @@ test("api image trusts the Amazon RDS certificate bundle for TLS database connec
   assert.match(apiDockerfileSource, /NODE_EXTRA_CA_CERTS=\/usr\/local\/share\/ca-certificates\/aws-rds-global-bundle\.pem/);
 });
 
-test("keeps tenant, manager, and vendor screens available as web routes", () => {
+test("keeps tenant, manager, and vendor entry routes available", () => {
+  // KAN-130 1-E: 거대 단일-page 뷰 셸은 은퇴하고, 역할 진입 인덱스는 App Router
+  // 도메인 첫 화면으로 리다이렉트한다(화면 = app/<role>/<domain>/<screen>).
+  const redirectTargets = {
+    tenant: "/?role=tenant&tab=mypage",
+    manager: "/?role=landlord&tab=mypage",
+    vendor: "/vendor/job/00"
+  };
   for (const route of ["tenant", "manager", "vendor"]) {
     assert.equal(existsSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url)), true);
     assert.equal(existsSync(new URL(`./src/app/${route}/layout.tsx`, import.meta.url)), true);
-    assert.equal(existsSync(new URL(`./src/app/${route}/globals.css`, import.meta.url)), true);
 
     const routePageSource = readFileSync(new URL(`./src/app/${route}/page.tsx`, import.meta.url), "utf8");
-    assert.match(routePageSource, new RegExp(`Roomlog ${route[0].toUpperCase()}${route.slice(1)}`));
-    assert.match(routePageSource, /NEXT_PUBLIC_API_URL/);
+    assert.match(routePageSource, /redirect\(/);
+    assert.match(routePageSource, new RegExp(redirectTargets[route]));
   }
+});
+
+test("wires moveout screens to backend mutations instead of static links", () => {
+  const moveoutNavSource = readFileSync(new URL("./src/lib/moveout-nav.ts", import.meta.url), "utf8");
+  const moveoutLoadingExists = existsSync(new URL("./src/app/tenant/moveout/loading.tsx", import.meta.url));
+  const moveoutErrorExists = existsSync(new URL("./src/app/tenant/moveout/error.tsx", import.meta.url));
+  const tenantMoveoutHomeSource = readFileSync(
+    new URL("./src/app/tenant/moveout/00/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const tenantRecordsSource = readFileSync(
+    new URL("./src/app/tenant/moveout/01/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const tenantSettlementSource = readFileSync(
+    new URL("./src/app/tenant/moveout/03/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const tenantDisputeSource = readFileSync(
+    new URL("./src/app/tenant/moveout/04/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const tenantChecklistSource = readFileSync(
+    new URL("./src/app/tenant/moveout/02/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutHomeSource = readFileSync(
+    new URL("./src/app/manager/moveout/00/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutNavSource = readFileSync(
+    new URL("./src/lib/moveout-manager-nav.ts", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutComponentsSource = readFileSync(
+    new URL("./src/app/manager/moveout/_components.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerMoveoutLoadingPath = new URL("./src/app/manager/moveout/loading.tsx", import.meta.url);
+  const managerMoveoutErrorPath = new URL("./src/app/manager/moveout/error.tsx", import.meta.url);
+  const managerMoveoutLoadingExists = existsSync(managerMoveoutLoadingPath);
+  const managerMoveoutErrorExists = existsSync(managerMoveoutErrorPath);
+  const managerMoveoutLoadingSource = managerMoveoutLoadingExists
+    ? readFileSync(managerMoveoutLoadingPath, "utf8")
+    : "";
+  const managerMoveoutErrorSource = managerMoveoutErrorExists
+    ? readFileSync(managerMoveoutErrorPath, "utf8")
+    : "";
+  const managerReviewSource = readFileSync(
+    new URL("./src/app/manager/moveout/02/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerReportSource = readFileSync(
+    new URL("./src/app/manager/moveout/01/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const managerDisputeSource = readFileSync(
+    new URL("./src/app/manager/moveout/03/page.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(moveoutNavSource, /withMoveoutId/);
+  assert.equal(moveoutLoadingExists, true);
+  assert.equal(moveoutErrorExists, true);
+  assert.match(tenantMoveoutHomeSource, /listMoveouts/);
+  assert.match(tenantMoveoutHomeSource, /getChecklist/);
+  assert.match(tenantMoveoutHomeSource, /getDisputes/);
+  assert.match(tenantMoveoutHomeSource, /completionProgress/);
+  assert.match(tenantMoveoutHomeSource, /notificationItems/);
+  assert.match(tenantMoveoutHomeSource, /withMoveoutId/);
+  assert.doesNotMatch(tenantMoveoutHomeSource, /DEMO_MOVEOUT_ID/);
+  assert.doesNotMatch(tenantMoveoutHomeSource, /<span[\s\S]*>\s*1\s*<\/span>/);
+  assert.match(tenantRecordsSource, /SOURCE_ROUTE/);
+  assert.match(tenantRecordsSource, /evidenceUrls/);
+  assert.match(tenantRecordsSource, /targetItemId=\$\{record\.id\}/);
+  assert.match(tenantRecordsSource, /근거 상세/);
+  assert.match(tenantRecordsSource, /searchParams/);
+  assert.doesNotMatch(tenantRecordsSource, /href=\{MOVEOUT_ROUTES\["T-OUT-04"\]\}/);
+  assert.match(tenantSettlementSource, /createMoveoutInquiry/);
+  assert.match(tenantSettlementSource, /action=\{createInquiryAction\}/);
+  assert.match(tenantSettlementSource, /name="moveoutId"/);
+  assert.match(tenantSettlementSource, /createMoveoutInquiry\(moveoutId/);
+  assert.match(tenantSettlementSource, /attachmentUrlsFrom/);
+  assert.match(tenantSettlementSource, /targetItemId=\$\{deduction\.id\}/);
+  assert.match(tenantSettlementSource, /SOURCE_ROUTE/);
+  assert.match(tenantSettlementSource, /계약 정보 확정 후 예상 정산 안내/);
+  assert.match(tenantDisputeSource, /createMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{createDisputeAction\}/);
+  assert.match(tenantDisputeSource, /name="moveoutId"/);
+  assert.match(tenantDisputeSource, /createMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /updateTenantMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /escalateMoveoutDispute\(moveoutId/);
+  assert.match(tenantDisputeSource, /updateTenantMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{updateDisputeAction\}/);
+  assert.match(tenantDisputeSource, /escalateMoveoutDispute/);
+  assert.match(tenantDisputeSource, /action=\{escalateDisputeAction\}/);
+  assert.match(tenantDisputeSource, /name="targetItemId"/);
+  assert.match(tenantDisputeSource, /attachmentUrlsFrom/);
+  assert.match(tenantChecklistSource, /updateMoveoutChecklist/);
+  assert.match(tenantChecklistSource, /action=\{saveChecklistAction\}/);
+  assert.match(tenantChecklistSource, /name="moveoutId"/);
+  assert.match(tenantChecklistSource, /updateMoveoutChecklist\(moveoutId/);
+  assert.match(managerMoveoutNavSource, /withManagerMoveoutId/);
+  assert.match(managerMoveoutHomeSource, /selectedRow/);
+  assert.match(managerMoveoutHomeSource, /rows\.length === 0/);
+  assert.match(managerMoveoutHomeSource, /withManagerMoveoutId\(MANAGER_MOVEOUT_ROUTES\["M-OUT-03"\]/);
+  assert.match(managerMoveoutComponentsSource, /withManagerMoveoutId/);
+  assert.match(managerMoveoutComponentsSource, /MANAGER_MOVEOUT_ROUTES\["M-OUT-02"\]/);
+  assert.equal(managerMoveoutLoadingExists, true);
+  assert.equal(managerMoveoutErrorExists, true);
+  assert.match(managerMoveoutLoadingSource, /퇴실\/정산 정보를 불러오는 중/);
+  assert.match(managerMoveoutErrorSource, /reset/);
+  assert.match(managerReviewSource, /completeReview/);
+  assert.match(managerReviewSource, /action=\{completeReviewAction\}/);
+  assert.match(managerReviewSource, /adjustDeduction/);
+  assert.match(managerReviewSource, /action=\{adjustDeductionAction\}/);
+  assert.match(managerReviewSource, /name="deductionId"/);
+  assert.match(managerReviewSource, /name=\{`estimatedMin-\$\{deduction\.id\}`\}/);
+  assert.match(managerReviewSource, /name=\{`estimatedMax-\$\{deduction\.id\}`\}/);
+  assert.match(managerReviewSource, /name=\{`resolveConfirmation-\$\{deduction\.id\}`\}/);
+  assert.match(managerReportSource, /adjustWearVerdict/);
+  assert.match(managerReportSource, /action=\{adjustWearVerdictAction\}/);
+  assert.match(managerReportSource, /name="recordItemId"/);
+  assert.match(managerReportSource, /name=\{`evidenceNote-\$\{record\.id\}`\}/);
+  assert.match(managerReportSource, /name=\{`notifyTenant-\$\{record\.id\}`\}/);
+  assert.match(managerDisputeSource, /respondDispute/);
+  assert.match(managerDisputeSource, /action=\{respondDisputeAction\}/);
+  assert.match(managerDisputeSource, /selectedDisputeId/);
+  assert.match(managerDisputeSource, /targetDisputeId/);
+  assert.match(managerDisputeSource, /name="selectedDisputeId"/);
+  assert.match(managerDisputeSource, /reflect === "settlement"/);
+
+  assert.doesNotMatch(tenantSettlementSource, /disabled[\s\S]*관리자 문의/);
+  assert.doesNotMatch(tenantDisputeSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*이의 제출/);
+  assert.doesNotMatch(tenantDisputeSource, /disabled=\{!dispute\.slaBreached\}/);
+  assert.doesNotMatch(tenantChecklistSource, /<Link href=\{MOVEOUT_ROUTES\["T-OUT-00"\]\}[\s\S]*체크 저장/);
+  assert.doesNotMatch(managerReviewSource, /<DisabledButton>정산안 저장<\/DisabledButton>/);
+  assert.doesNotMatch(managerDisputeSource, /<LinkButton href=\{MANAGER_MOVEOUT_ROUTES\["M-OUT-00"\]\}>응답 발송<\/LinkButton>/);
+});
+
+test("opens tenant message compose only from real API thread ids", () => {
+  assert.doesNotMatch(tenantMessagingThreadSource, /DEMO_THREAD_ID/);
+  assert.doesNotMatch(tenantMessagingApiSource, /getThread\(id: string = DEMO_THREAD_ID/);
+  assert.match(tenantMessagingApiSource, /deleteTenantThread/);
+  assert.match(tenantMessagingThreadSource, /if \(!id\)/);
+  assert.match(tenantMessagingThreadSource, /redirect\(MESSAGING_ROUTES\["T-MSG-00"\]\)/);
+  assert.match(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][\s\S]*\?id=\$\{thread\.id\}/);
+  assert.match(tenantMessagingListSource, /deleteTenantThreadAction/);
+  assert.match(tenantMessagingListSource, /action=\{deleteTenantThreadAction\}/);
+  assert.match(tenantMessagingThreadSource, /deleteTenantThreadAction/);
+  assert.match(tenantMessagingThreadSource, /action=\{deleteTenantThreadAction\}/);
+  assert.match(tenantMessagingAnnouncementSource, /createAnnouncementInquiryAction/);
+  assert.match(tenantMessagingAnnouncementSource, /createTenantThread/);
+  assert.match(tenantMessagingAnnouncementSource, /action=\{createAnnouncementInquiryAction\}/);
+  assert.match(tenantMessagingAnnouncementSource, /context:\s*"announcement"/);
+  assert.match(tenantMessagingAnnouncementSource, /redirect\(`\$\{MESSAGING_ROUTES\["T-MSG-01"\]\}\?id=\$\{encodeURIComponent\(thread\.id\)\}`\)/);
+  assert.doesNotMatch(tenantMessagingListSource, /MESSAGING_ROUTES\["T-MSG-01"\][^?]*새 문의 시작/);
+  assert.doesNotMatch(tenantMessagingAnnouncementSource, /MESSAGING_ROUTES\["T-MSG-01"\][^\n]*announcementId/);
+});
+
+test("opens manager message compose only from real API thread ids", () => {
+  assert.doesNotMatch(managerMessagingThreadSource, /DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /getManagerThread\(id: string = DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /thread\.id === id \|\| thread\.unitId === id/);
+  assert.match(managerMessagingApiSource, /deleteManagerThread/);
+  assert.match(managerMessagingThreadSource, /type SearchParams = Promise<\{ id\?: string \}>/);
+  assert.match(managerMessagingThreadSource, /if \(!id\)/);
+  assert.match(managerMessagingThreadSource, /redirect\(MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\)/);
+  assert.match(managerMessagingListSource, /deleteManagerThreadAction/);
+  assert.match(managerMessagingListSource, /action=\{deleteManagerThreadAction\}/);
+  assert.match(managerMessagingThreadSource, /deleteManagerThreadAction/);
+  assert.match(managerMessagingThreadSource, /action=\{deleteManagerThreadAction\}/);
+  assert.doesNotMatch(managerContractPageSource, /th_mgr_302/);
+  assert.doesNotMatch(managerContractApiSource, /th_mgr_302/);
+  assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
+});
+
+test("redirects messaging detail auth failures instead of rendering a Next error boundary", () => {
+  for (const [source, loginPath] of [
+    [tenantMessagingThreadSource, "/tenant/login"],
+    [tenantMessagingAnnouncementSource, "/tenant/login"],
+    [managerMessagingReviewSource, "/manager/login"],
+    [managerMessagingThreadSource, "/manager/login"],
+    [managerMessagingResultSource, "/manager/login"]
+  ]) {
+    assert.match(source, /error instanceof ApiError/);
+    assert.match(source, /error\.status === 401 \|\| error\.status === 403/);
+    assert.match(source, new RegExp(`redirect\\("${loginPath}"\\)`));
+  }
+});
+
+test("auto-refreshes open messaging thread details without infrastructure changes", () => {
+  assert.equal(existsSync(messageAutoRefreshPath), true);
+  assert.match(messageAutoRefreshSource, /"use client"/);
+  assert.match(messageAutoRefreshSource, /useRouter/);
+  assert.match(messageAutoRefreshSource, /router\.refresh\(\)/);
+  assert.match(messageAutoRefreshSource, /setInterval/);
+  assert.match(messageAutoRefreshSource, /document\.visibilityState/);
+  assert.match(tenantMessagingThreadSource, /<MessageAutoRefresh /);
+  assert.match(managerMessagingThreadSource, /<MessageAutoRefresh /);
+});
+
+test("manager announcement compose creates editable drafts before review", () => {
+  assert.match(managerMessagingComposeSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingComposeSource, /action=\{createDraftAction\}/);
+  assert.match(managerMessagingComposeSource, /name="title"/);
+  assert.match(managerMessagingComposeSource, /name="body"/);
+  assert.match(managerMessagingComposeSource, /name="category"/);
+  assert.match(managerMessagingComposeSource, /name="scope"/);
+  assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingApiSource, /method: "POST"/);
+  assert.doesNotMatch(managerMessagingComposeSource, /value=\{draft\.title\} readOnly/);
+  assert.doesNotMatch(managerMessagingComposeSource, /<StaticButton>임시 저장<\/StaticButton>/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["조건에 맞는 방", "지도 열기", "추천 매물", "매물 57804322", "전체"]) {
     assert.match(pageSource, new RegExp(label));
   }
+});
+
+test("opens the public website directly on the listing home instead of signup", () => {
+  assert.match(pageSource, /useState<AppRole>\("seeker"\)/);
+  assert.doesNotMatch(pageSource, /useState<AppRole \| null>\(null\)/);
 });
 
 test("promotes the future 3D room tour as a primary listing detail action", () => {
@@ -96,37 +370,145 @@ test("promotes the future 3D room tour as a primary listing detail action", () =
   assert.doesNotMatch(pageSource, /3D ENGINE SLOT|다른 팀의 3D 엔진|연결될 위치/);
 });
 
-test("offers social-only sign in with a developer shortcut for local entry", () => {
+test("offers a clean white social sign-in limited to Naver and Google with a developer shortcut", () => {
+  // 로그인 화면은 WoozuLoginScreen으로 추출되어 /?auth=login과 /login이 공유한다.
   for (const label of [
-    "카카오",
     "네이버",
-    "Apple",
     "Google",
     "개발용 로그인",
     "집우집주",
-    "소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다",
-    "방문 전 3D 투어와 안심 정보를 먼저 확인하세요",
-    "3D 투어",
-    "확인매물",
-    "지도 검색"
+    "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다",
+    "3D투어",
+    "입주관리AI",
+    "업체연결"
   ]) {
-    assert.match(pageSource, new RegExp(label));
+    assert.match(loginScreenSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /socialLoginNotice/);
-  assert.match(pageSource, /setSocialLoginNotice/);
-  assert.match(pageSource, /setActiveRole/);
-  assert.match(pageSource, /assets\/img\/image\.png/);
-  assert.match(pageSource, /loginHeroImage/);
-  assert.match(pageSource, /login-visual/);
-  assert.match(pageSource, /login-hero-image/);
-  assert.match(cssSource, /\.login-visual/);
-  assert.match(cssSource, /\.login-hero-image/);
-  assert.match(cssSource, /\.login-hero-image\s*{[^}]*object-fit:\s*contain/s);
-  assert.match(cssSource, /\.login-trust-row/);
+  assert.match(loginScreenSource, /socialLoginNotice/);
+  assert.match(loginScreenSource, /setSocialLoginNotice/);
+  assert.match(loginScreenSource, /service-login-panel/);
+  assert.match(loginScreenSource, /submitServiceLogin/);
+  assert.match(loginScreenSource, /\/api\/auth\/login/);
+  // 통합 로그인: 로그인은 역할을 제한하지 않는다 — expectedRole 차단 로직은 제거됐다.
+  assert.doesNotMatch(loginScreenSource, /expectedRole/);
+  assert.doesNotMatch(loginRouteSource, /expectedRole/);
+  assert.match(loginScreenSource, /\/api\/auth\/me/);
+  assert.match(loginScreenSource, /setActiveRole/);
+  assert.match(loginScreenSource, /login-brandmark/);
+  assert.match(loginScreenSource, /brand-mark-icon/);
+  assert.match(pageSource, /WoozuLoginScreen/);
+  assert.match(cssSource, /\.login-phone\s*{[^}]*background:\s*#ffffff/s);
+  assert.match(cssSource, /\.login-feature-bar/);
   assert.match(cssSource, /\.social-login-notice/);
+  assert.doesNotMatch(loginScreenSource, /카카오로 계속하기/);
+  assert.doesNotMatch(loginScreenSource, /Apple로 계속하기/);
+  assert.doesNotMatch(loginScreenSource, /assets\/img\/image\.png/);
+  assert.doesNotMatch(loginScreenSource, /loginHeroImage/);
+  assert.doesNotMatch(loginScreenSource, /login-visual/);
+  assert.doesNotMatch(loginScreenSource, /login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.login-visual/);
+  assert.doesNotMatch(cssSource, /\.login-hero-image/);
+  assert.doesNotMatch(cssSource, /\.social-button\.kakao/);
+  assert.doesNotMatch(cssSource, /\.social-button\.apple/);
   assert.doesNotMatch(pageSource, /개발 중에는/);
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
+});
+
+test("routes every roomlog entry through the unified WOOZU /login with capability continuation", () => {
+  assert.equal(existsSync(new URL("./src/app/login/page.tsx", import.meta.url)), true);
+  assert.match(unifiedLoginPageSource, /WoozuLoginScreen/);
+  assert.match(unifiedLoginPageSource, /resolvePostLoginDestination/);
+  // capability가 없으면 재로그인이 아니라 "연결 필요" 안내 상태로 이어진다.
+  assert.match(unifiedLoginPageSource, /link-required/);
+  assert.match(unifiedLoginPageSource, /다른 계정으로 로그인/);
+
+  // 기존 역할별 로그인 경로는 삭제하지 않고 /login?intent=... 호환 redirect로 남긴다.
+  for (const [dir, intent] of [
+    ["tenant", "tenant"],
+    ["manager", "landlord"],
+    ["vendor", "vendor"]
+  ]) {
+    const wrapperSource = readFileSync(
+      new URL(`./src/app/${dir}/login/page.tsx`, import.meta.url),
+      "utf8"
+    );
+    assert.match(wrapperSource, /legacyLoginRedirectTarget/);
+    assert.match(wrapperSource, new RegExp(`"${intent}"`));
+    assert.doesNotMatch(wrapperSource, /api\/auth\/login/);
+  }
+
+  // 서버 가드도 통합 로그인으로 보낸다 — 역할별 로그인 경로 하드코딩 금지.
+  assert.match(sessionLibSource, /unifiedLoginPath/);
+  assert.match(sessionLibSource, /hasCapability/);
+  assert.doesNotMatch(sessionLibSource, /\/tenant\/login|\/manager\/login|\/vendor\/login/);
+
+  // Google OAuth 실패 복귀 경로도 /login?intent=... 하나로 수렴한다.
+  assert.match(googleAuthSharedSource, /\/login\?intent=/);
+  assert.doesNotMatch(googleAuthSharedSource, /return "\/(tenant|manager|vendor)\/login"/);
+});
+
+test("landlord link-required CTA starts the unprotected listing flow instead of looping to /login", () => {
+  // QA 2 회귀 방지: capability 없는 계정의 "집 내놓기"가 보호된 마이페이지로 갔다가
+  // 다시 /login으로 돌아오는 루프가 없어야 한다.
+  assert.match(unifiedLoginPageSource, /\/\?flow=listing/);
+  assert.doesNotMatch(unifiedLoginPageSource, /"\/(\?role=landlord&tab=mypage)"/);
+  assert.match(pageSource, /flow === "listing"/);
+  assert.match(pageSource, /isListingStartMode/);
+  // 등록 시작 모드에서는 landlord 마이페이지가 보호 대상에서 빠진다.
+  assert.match(pageSource, /activeRole === "landlord" && isListingStartMode\s*\?\s*null/);
+});
+
+test("every inquiry entry point opens the same composer sheet and feeds the inquiry center", () => {
+  // QA 3·4·6·7 회귀 방지: 홈 카드 문자문의·상세 문의하기·문의 탭 새 문의가 같은 sheet로 이어진다.
+  assert.match(pageSource, /function InquirySheet/);
+  assert.match(pageSource, /openInquiryComposer\(listing\)/);
+  assert.match(pageSource, /onNewInquiry=\{\(\) => openInquiryComposer\(\)\}/);
+  assert.match(pageSource, /pickInquiryTargetNo/);
+  assert.match(pageSource, /withNewInquiry/);
+  // "새 문의"가 안내 문구만 띄우고 홈으로 보내던 동작 금지.
+  assert.doesNotMatch(pageSource, /새 문의는 매물 상세에서 바로 보낼 수 있습니다/);
+  // 접수 완료 상태에서 문의센터로 바로 이동할 수 있다.
+  assert.match(pageSource, /문의센터 보기/);
+  assert.match(pageSource, /onViewInquiryCenter/);
+});
+
+test("owner registration state survives refresh via a versioned local draft with no fake prefills", () => {
+  // QA 8 + 사전 입력 제거: 폼은 빈 값으로 시작하고, 작성/등록 상태는 localStorage draft로 유지된다.
+  assert.match(pageSource, /useState\(emptyOwnerForm\)/);
+  assert.match(pageSource, /OWNER_DRAFT_STORAGE_KEY/);
+  assert.match(pageSource, /parseOwnerDraft/);
+  assert.match(pageSource, /serializeOwnerDraft/);
+  assert.match(pageSource, /임시저장됨/);
+  assert.doesNotMatch(pageSource, /title: "방배 루미에르 402호",\s*\n\s*address: "서울특별시 서초구 방배동"/);
+  assert.match(cssSource, /\.owner-draft-status/);
+});
+
+test("login success consumes the pushed auth history entry so back does not reopen the login screen", () => {
+  // QA 5 회귀 방지(앱 내부 히스토리): completeServiceAuth도 closeAuthScreen처럼 push 엔트리를 소비한다.
+  assert.match(pageSource, /const completeServiceAuth[\s\S]{0,400}isAuthHistoryPushedRef\.current = false;\s*\n\s*window\.history\.back\(\)/);
+});
+
+test("opens the dedicated signup page from signup actions and social fallback", () => {
+  assert.match(pageSource, /const \[authMode, setAuthMode\]/);
+  assert.match(pageSource, /openAuthScreen/);
+  assert.match(pageSource, /normalizeAuthMode/);
+  assert.match(loginScreenSource, /socialProvidersForMode/);
+  assert.match(loginScreenSource, /flow=\$\{flow\}/);
+  assert.match(loginScreenSource, /role=SEEKER/);
+  assert.match(pageSource, /className="web-signup"/);
+  assert.match(pageSource, /window\.location\.href = "\/signup"/);
+  assert.equal(existsSync(new URL("./src/app/signup/page.tsx", import.meta.url)), true);
+  assert.equal(existsSync(new URL("./src/app/signup/social/page.tsx", import.meta.url)), true);
+  assert.match(googleAuthSharedSource, /roomlog\.local\/signup/);
+  assert.doesNotMatch(googleAuthSharedSource, /roomlog\.local\/signup\/social/);
+  assert.match(signupPageSource, /role: "SEEKER"/);
+  assert.match(signupPageSource, /Google로 회원가입/);
+  assert.match(signupRouteSource, /apiUrl\("\/auth\/signup"/);
+  assert.match(signupRouteSource, /AUTH_COOKIE/);
+  assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
+  assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
+  assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);
 });
 
 test("borrows mature Zigbang and Dabang product patterns for trust and map search", () => {
@@ -336,28 +718,45 @@ test("makes filters and saved listings behave like interactive app state", () =>
 
 test("offers three developer login roles for seekers, tenants, and landlords", () => {
   for (const label of ["일반 집보는 사람", "세입자", "집주인"]) {
-    assert.match(pageSource, new RegExp(label));
+    assert.match(loginScreenSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /type AppRole/);
+  assert.match(loginScreenSource, /type AppRole/);
   assert.match(pageSource, /roleDisplayLabels/);
   assert.match(pageSource, /seeker:\s*"방 찾기"/);
   assert.match(pageSource, /roleLabel\} 활동에 맞춘 검색 조건/);
-  assert.match(pageSource, /setActiveRole\(role\.id\)/);
+  assert.match(loginScreenSource, /setActiveRole\(role\.id\)/);
   assert.match(pageSource, /startRoleSession/);
   assert.match(pageSource, /setActiveTab\(role === "seeker" \? "home" : "mypage"\)/);
-  assert.match(pageSource, /<LoginScreen setActiveRole=\{startRoleSession\}/);
+  assert.match(loginScreenSource, /function WoozuLoginScreen/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
-  assert.match(pageSource, /\[activeRole, activeTab, selectedListing\]/);
+  assert.match(pageSource, /\[activeRole, activeTab, selectedListing, authMode\]/);
 });
 
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
-  for (const label of ["세입자 마이페이지", "계약 상태", "수리요청", "관리비", "방문 일정", "에어컨 필터 교체 방문", "124,000원"]) {
+  for (const label of [
+    "세입자 마이페이지",
+    "계약 상태",
+    "수리요청",
+    "관리비",
+    "방문 일정",
+    "에어컨 필터 교체 방문",
+    "124,000원",
+    "내 룸로그",
+    "메시지",
+    "퇴실 정산"
+  ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
   assert.match(pageSource, /activeRole === "tenant"/);
+  assert.match(pageSource, /href="\/tenant\/messaging\/00"/);
+  assert.match(pageSource, /href="\/tenant\/moveout\/00"/);
+  assert.match(pageSource, /tenant-domain-test-card/);
+  assert.match(cssSource, /\.domain-test-card/);
+  assert.match(cssSource, /\.domain-test-link-grid/);
+  assert.match(cssSource, /\.domain-test-link/);
   assert.match(cssSource, /\.tenant-contract-card/);
   assert.match(cssSource, /\.maintenance-card/);
   assert.doesNotMatch(pageSource, /HVAC|₩124,000|2:30 PM/);
@@ -391,12 +790,45 @@ test("shows a landlord my page with property registration fields and media actio
     "검수 요청 요약",
     "92%",
     "예상 검수",
-    "확인매물·3D 투어 배지"
+    "확인매물·3D 투어 배지",
+    "KAN-135 비용 정산",
+    "비용 원장과 영수증 검토",
+    "이번 달 지출",
+    "영수증 검토 큐",
+    "검토 완료 처리",
+    "관리비 공개 설정",
+    "비공개 항목은 임차인 화면에 숨김 건수로 표시됩니다.",
+    "KAN-136 업체 관리",
+    "업체 주소록과 성과 게이트",
+    "등록 업체",
+    "신규 배지",
+    "성과 게이트",
+    "신규·중복 업체 게이트",
+    "중복 후보 확인",
+    "소표본 업체는 별점 수치와 AI 코멘트를 숨깁니다.",
+    "신규 업체는 격리하지 않고 배지만 표시합니다.",
+    "내 룸로그",
+    "메시지",
+    "퇴실 관리"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
+  assert.match(pageSource, /href="\/manager\/messaging\/00"/);
+  assert.match(pageSource, /href="\/manager\/moveout\/00"/);
+  assert.match(pageSource, /landlord-domain-test-card/);
   assert.match(pageSource, /ownerReviewItems/);
+  assert.match(pageSource, /DEMO_COSTS/);
+  assert.match(pageSource, /DEMO_MONTHLY_SUMMARY/);
+  assert.match(pageSource, /DEMO_RECEIPTS/);
+  assert.match(pageSource, /DEMO_VENDORS/);
+  assert.match(pageSource, /DEMO_VENDOR_PERF/);
+  assert.match(pageSource, /DEMO_VENDOR_DUPLICATE_CANDIDATES/);
+  assert.match(pageSource, /id="kan-135-cost"/);
+  assert.match(pageSource, /id="kan-136-vendor"/);
+  assert.match(pageSource, /selectedVendorId/);
+  assert.match(pageSource, /ownerPendingCostReviews/);
+  assert.match(pageSource, /ownerOpenDuplicateCount/);
   assert.match(pageSource, /ownerCompletionRate/);
   assert.match(pageSource, /ownerCompletionRate = photoCount >= 3 && has3DRoom \? 92 : 68/);
   assert.match(pageSource, /owner-readiness-card/);
@@ -421,6 +853,15 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(cssSource, /\.owner-readiness-list/);
   assert.match(cssSource, /\.owner-submit-summary/);
   assert.match(cssSource, /\.owner-submit-grid/);
+  assert.match(cssSource, /\.owner-ops-grid/);
+  assert.match(cssSource, /\.owner-ops-card/);
+  assert.match(cssSource, /scroll-margin-top: 96px/);
+  assert.match(cssSource, /\.owner-cost-breakdown/);
+  assert.match(cssSource, /\.owner-review-panel/);
+  assert.match(cssSource, /\.owner-ledger-list/);
+  assert.match(cssSource, /\.owner-vendor-list/);
+  assert.match(cssSource, /\.owner-perf-gate/);
+  assert.match(cssSource, /\.owner-duplicate-strip/);
   assert.match(cssSource, /\.upload-3d-button\.active/);
 });
 
@@ -429,20 +870,17 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
     "찜한 매물",
     "문의센터",
     "마이페이지",
-    "진행중 문의",
     "저장 조건",
-    "최근 문의 상태가 여기에 표시됩니다",
+    "매물 상세에서 문자문의를 보내면 여기에 표시됩니다",
     "찜한 매물 비교 요약",
     "가격 변동",
     "방문 후보",
-    "문의 타임라인",
-    "최근 문의 흐름",
+    "문의 흐름",
     "문의 채널",
     "원하는 방식으로 바로 확인",
     "로그인 없이 가능",
     "방문예약",
     "문의 진행",
-    "저장 지역",
     "검색 조건 관리",
     "최근 본 방",
     "문의 확인"
@@ -472,7 +910,7 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   assert.doesNotMatch(pageSource, /onClick=\{\(event\) => \{[\s\S]*scrollIntoView[\s\S]*activateTab\(item\.key\)/);
   assert.match(pageSource, /href: "#saved-list"/);
   assert.match(pageSource, /href: "#inquiry"/);
-  assert.match(pageSource, /setInquiryNotice/);
+  assert.match(pageSource, /setInquiries/);
   assert.match(cssSource, /\.inquiry-notice/);
   assert.match(cssSource, /\.saved-compare-strip/);
   assert.match(cssSource, /\.inquiry-timeline-card/);
@@ -671,15 +1109,29 @@ test("keeps the bottom app tabs fixed to the viewport", () => {
   assert.match(cssSource, /\.map-card-tags/);
 });
 
-test("supports a responsive desktop web layout beyond the phone frame", () => {
+test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
   assert.match(cssSource, /@media \(min-width:\s*1080px\)/);
-  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*min\(calc\(100vw - 48px\), 1180px\)/s);
-  assert.match(cssSource, /\.home-screen\s*{[^}]*grid-template-columns:\s*minmax\(340px, 0\.86fr\) minmax\(500px, 1\.14fr\)/s);
+  // 데스크톱은 전체폭 포털 셸(모바일 카드 프레임 제거)
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*display:\s*block/s);
+  assert.match(cssSource, /\.service-frame\.with-bottom-tabs\s*{[^}]*width:\s*100%/s);
+  // 상단 가로 네비 + 히어로는 기본(모바일) 숨김, 데스크톱에서 노출
+  assert.match(cssSource, /\.web-topbar,\s*\.web-hero-head\s*{[^}]*display:\s*none/s);
+  assert.match(cssSource, /\.web-topbar\s*{[^}]*position:\s*sticky/s);
+  assert.match(cssSource, /\.web-hero-head\s*{[^}]*display:\s*block/s);
+  assert.match(pageSource, /web-topbar/);
+  assert.match(pageSource, /web-hero-head/);
+  assert.match(pageSource, /web-logo-roof/);
+  assert.match(pageSource, /방 구할 땐, 우주에서/);
+  assert.match(pageSource, /web-hero-sub/);
+  assert.match(cssSource, /web-hero-sub-shine/);
+  // 카테고리 = 큰 카드 한 줄, 매물 = 넓은 3열 그리드
+  assert.match(cssSource, /\.home-screen > \.category-strip\s*{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/s);
+  assert.match(cssSource, /\.home-screen > \.listing-feed\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
+  // 지도/상세 데스크톱 그리드는 유지
   assert.match(cssSource, /\.map-screen\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 390px/s);
   assert.match(cssSource, /\.listing-detail-screen\s*{[^}]*grid-template-columns:\s*minmax\(460px, 1fr\) 360px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*width:\s*min\(540px, calc\(100vw - 48px\)\)/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*border-radius:\s*999px/s);
-  assert.match(cssSource, /\.bottom-tabs\s*{[^}]*backdrop-filter:\s*blur\(18px\)/s);
+  // 데스크톱에서는 하단 탭 숨김(상단 네비가 대체)
+  assert.match(cssSource, /@media \(min-width:\s*1080px\)[\s\S]*\.bottom-tabs\s*{\s*display:\s*none/);
 });
 
 test("is configured as an installable PWA shell", () => {
@@ -716,7 +1168,8 @@ test("is configured as an installable PWA shell", () => {
   assert.match(serviceWorkerSource, /\/apple-touch-icon\.png/);
   assert.match(serviceWorkerSource, /caches\.open/);
   assert.match(serviceWorkerSource, /fetch\(request\)/);
-  assert.doesNotMatch(pageSource, /ROOMLOG PWA|오프라인 캐시|Roomlog|ROOMLOG|룸로그/);
+  // "내 룸로그" 흐름이 홈에 들어오면서 룸로그 표기는 정식 제품 카피가 됐다 — PWA 목업 카피만 계속 금지.
+  assert.doesNotMatch(pageSource, /ROOMLOG PWA|오프라인 캐시/);
 });
 
 test("keeps local development free from stale service worker caches", () => {
@@ -736,7 +1189,8 @@ test("keeps local development free from stale service worker caches", () => {
 
 test("removes obvious mockup copy from the visible product shell", () => {
   assert.doesNotMatch(pageSource, /프론트 셸/);
-  assert.doesNotMatch(pageSource, /연결 예정/);
+  // "관리자 관계 · 연결 예정"은 목업 카피가 아니라 내 룸로그의 관계 상태 표기다.
+  assert.doesNotMatch(pageSource, /데이터 연결 예정|화면 연결 예정/);
   assert.doesNotMatch(pageSource, /핵심 진입점/);
   assert.doesNotMatch(pageSource, /샘플/);
   assert.doesNotMatch(pageSource, /준비중/);
@@ -797,6 +1251,172 @@ test("offers a 3D conversion mode for the floor plan editor", () => {
   }
 });
 
+test("post-processes Roboflow wall boxes before using them as 3D walls", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 50, width: 120, x: 430, y: 490 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [
+      { confidence: 0.83, height: 20, width: 400, x: 100, y: 500 },
+      { confidence: 0.76, height: 18, width: 360, x: 480, y: 503 },
+      { confidence: 0.18, height: 22, width: 400, x: 100, y: 700 }
+    ]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.equal(result.walls.every((wall) => wall.source === "roboflow-postprocessed"), true);
+  assert.equal(new Set(result.walls.map((wall) => wall.orientation)).size, 1);
+  assert.deepEqual(
+    result.walls.map((wall) => Math.round(wall.start.y)),
+    [1, 1].map(() => Math.round(result.walls[0].start.y))
+  );
+  assert.ok(result.walls[0].end.x <= -80, "opening should cut the left segment before the doorway");
+  assert.ok(result.walls[1].start.x >= 30, "opening should cut the right segment after the doorway");
+});
+
+test("cuts walls when Roboflow opening boxes are slightly offset from the wall axis", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 40, width: 240, x: 380, y: 545 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [{ confidence: 0.8, height: 20, width: 800, x: 100, y: 500 }]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.ok(result.walls.every((wall) => wall.source === "roboflow-postprocessed"));
+});
+
+test("keeps existing wall axes when Roboflow detects only a partial wall segment", () => {
+  const result = floorPlanModel.buildWallsFromDetectionBoxes({
+    canvasHeight: 1000,
+    canvasWidth: 1000,
+    currentWalls: [{ id: "existing-bottom", start: { x: -320, y: 0 }, end: { x: 320, y: 0 } }],
+    imageHeight: 1000,
+    imageWidth: 1000,
+    minGeneratedWallCount: 1,
+    openingBoxes: [{ height: 40, width: 140, x: 430, y: 500 }],
+    pixelToMmRatio: 10,
+    wallBoxes: [{ confidence: 0.78, height: 20, width: 220, x: 100, y: 500 }]
+  });
+
+  assert.equal(result.generatedWallCount, 2);
+  assert.ok(result.walls[0].end.x < 0, "left segment should stop before the opening");
+  assert.ok(result.walls[1].start.x > 0, "right segment should remain after the opening");
+  assert.ok(result.walls[1].end.x >= 300, "right segment should keep the existing wall extent");
+});
+
+test("exposes Roboflow wall post-processing as a separate editor action", () => {
+  for (const label of ["roboflowDetections", "applyRoboflowWallPostProcessing", "벽 후처리 적용", "Roboflow 원본 박스 저장됨"]) {
+    assert.match(floorPlanEditorSource, new RegExp(label));
+  }
+});
+
+test("extends and merges raw Roboflow wall boxes instead of dropping them from the cleaned overlay", () => {
+  assert.match(floorPlanEditorSource, /generatedWallBoxes/);
+  assert.match(floorPlanEditorSource, /variant: "postprocessed"/);
+  assert.match(floorPlanEditorSource, /buildAdjustedWallBoxesFromRawAndGenerated/);
+  assert.match(floorPlanEditorSource, /rawWallDisplayBoxes/);
+  assert.match(floorPlanEditorSource, /fitOpeningBoxesToPostProcessedWalls/);
+  assert.doesNotMatch(floorPlanEditorSource, /setLineDash\(\[8 \/ viewScale, 5 \/ viewScale\]\)/);
+});
+
+test("shows Roboflow post-processed walls as purple boxes instead of black center lines", () => {
+  assert.match(floorPlanEditorSource, /isRoboflowPostProcessedWall/);
+  assert.match(floorPlanEditorSource, /if \(isRoboflowPostProcessedWall\) return/);
+});
+
+test("preserves raw Roboflow wall boxes and a stable wall-axis source for post-processing", () => {
+  assert.match(floorPlanEditorSource, /roboflowWallPostProcessSourceWalls/);
+  assert.match(floorPlanEditorSource, /setRoboflowWallPostProcessSourceWalls/);
+  assert.match(floorPlanEditorSource, /variant: "raw"/);
+  assert.match(floorPlanEditorSource, /setDetectionBoxes\(\[\.\.\.cornerAlignedWallBoxes, \.\.\.fittedOpeningBoxes\]\)/);
+});
+
+test("keeps Roboflow windows over continuous walls and cuts wall boxes only at doors", () => {
+  assert.match(floorPlanEditorSource, /openingBoxes: roboflowDetections\.openings\.filter\(\(opening\) => opening\.type === "DOOR"\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /openingBoxes: roboflowDetections\.openings\.map\(\(opening\) => opening\.boundingBox\)/);
+});
+
+test("clips Roboflow opening overlays to wall bounds without increasing their length", () => {
+  assert.match(floorPlanEditorSource, /clipSegmentToRange/);
+  assert.doesNotMatch(floorPlanEditorSource, /minimumLength/);
+  assert.doesNotMatch(floorPlanEditorSource, /Math\.max\(sourceLength, minimumLength\)/);
+});
+
+test("uses a conservative wall gap fill so unrelated wall boxes are not stretched together", () => {
+  assert.match(floorPlanEditorSource, /const gapTolerance = Math\.max\(36, Math\.min\(72, thickness \* 2\.5\)\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /const gapTolerance = 180/);
+});
+
+test("trims perpendicular Roboflow wall overlay corners so box strokes do not leave small square overlaps", () => {
+  assert.match(floorPlanEditorSource, /trimWallBoxCornerOverlaps/);
+  assert.match(floorPlanEditorSource, /const cornerTolerance = 6/);
+  assert.match(floorPlanEditorSource, /const maxTrimOverlap = cornerTolerance \* 2/);
+  assert.match(floorPlanEditorSource, /if \(overlapX > maxTrimOverlap && overlapY > maxTrimOverlap\) continue/);
+  assert.match(floorPlanEditorSource, /const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+});
+
+test("micro-snaps Roboflow opening overlay edges to nearby original wall breaks", () => {
+  assert.match(floorPlanEditorSource, /snapOpeningBoxEdgesToNearbyWallBreaks/);
+  assert.match(floorPlanEditorSource, /const openingEdgeSnapTolerance = 14/);
+  assert.match(floorPlanEditorSource, /rawWallDisplayBoxes/);
+});
+
+test("aligns wall overlay thickness from already fitted Roboflow opening lines", () => {
+  assert.match(floorPlanEditorSource, /alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /const fittedOpeningLineTolerance = 12/);
+  assert.match(floorPlanEditorSource, /const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /setDetectionBoxes\(\[\.\.\.cornerAlignedWallBoxes, \.\.\.fittedOpeningBoxes\]\)/);
+  assert.match(floorPlanEditorSource, /fitOpeningBoxesToPostProcessedWalls\(rawOpeningDisplayBoxes, cornerTrimmedWallBoxes\)/);
+});
+
+test("keeps merged Roboflow wall rendering aligned to fitted opening lines after edge snapping", () => {
+  assert.match(floorPlanEditorSource, /const openingAlignedSnappedWallBoxes = alignWallBoxesToFittedOpeningLines/);
+  assert.match(floorPlanEditorSource, /snappedWallBoxes\.map\(\(box\) => createPostProcessedWallOverlayBox\(box\)\)/);
+  assert.match(floorPlanEditorSource, /openingOverlayBoxes/);
+  assert.match(floorPlanEditorSource, /\.map\(\(overlayBox\) => overlayBox\.box\)/);
+});
+
+test("propagates fitted Roboflow wall lines across connected perpendicular corner boxes", () => {
+  assert.match(floorPlanEditorSource, /alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /const perpendicularCornerLineTolerance = 14/);
+  assert.match(floorPlanEditorSource, /const perpendicularCornerTouchTolerance = 24/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedSnappedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /verticalBox\.y1 = horizontalBox\.y1/);
+  assert.match(floorPlanEditorSource, /horizontalBox\.x2 = verticalBox\.x2/);
+});
+
+test("renders raw Roboflow walls as original boxes and merged post-processed walls", () => {
+  assert.match(floorPlanEditorSource, /drawRoboflowDetectionOverlays/);
+  assert.match(floorPlanEditorSource, /const wallOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(floorPlanEditorSource, /const openingOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(floorPlanEditorSource, /drawRawWallOverlayBox/);
+  assert.match(floorPlanEditorSource, /const hasPostProcessedWall = wallOverlayBoxes\.some/);
+  assert.match(floorPlanEditorSource, /if \(hasPostProcessedWall\) drawMergedWallOverlayBoxes\(\)/);
+  assert.match(floorPlanEditorSource, /else wallOverlayBoxes\.forEach\(drawRawWallOverlayBox\)/);
+  assert.match(floorPlanEditorSource, /drawMergedWallOverlayBoxes/);
+  assert.doesNotMatch(floorPlanEditorSource, /bridgeTouchingWallOverlayCorners/);
+  assert.doesNotMatch(floorPlanEditorSource, /cornerBridgeTolerance/);
+  assert.match(floorPlanEditorSource, /const edgeSnapTolerance = 24/);
+  assert.doesNotMatch(floorPlanEditorSource, /const edgeSnapTolerance = 14 \/ viewScale/);
+  assert.match(floorPlanEditorSource, /coveredWallCells/);
+  assert.match(floorPlanEditorSource, /context\.lineCap = "butt"/);
+  assert.doesNotMatch(floorPlanEditorSource, /context\.lineCap = "square"/);
+  assert.match(floorPlanEditorSource, /context\.stroke\(\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(fillWallOverlayBox\)/);
+  assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(strokeVisibleWallEdges\)/);
+  assert.match(floorPlanEditorSource, /openingOverlayBoxes\.forEach\(drawOpeningOverlayBox\)/);
+});
+
 test("lets 3D floor plan walls be selected, erased, partially erased, and hidden", () => {
   for (const label of [
     "handle3DWallPointerDown",
@@ -817,13 +1437,13 @@ test("keeps the 2D floor plan canvas scrollable inside its editor shell", () => 
     "floor-plan-canvas-shell",
     "overscroll-behavior",
     "scrollbar-gutter",
-    "if (!(event.ctrlKey || event.metaKey || event.altKey)) return",
-    "Ctrl/Cmd/Alt 휠로 확대"
+    "worldBeforeZoom",
+    "handleWheel",
+    "onWheel"
   ]) {
     assert.ok(`${floorPlanEditorSource}\n${globalsCssSource}`.includes(label));
   }
 });
-
 test("switches between landlord authoring and resident furniture placement modes", () => {
   for (const label of [
     "experienceMode",
@@ -877,25 +1497,196 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   }
 });
 
-test("offers NVIDIA floor plan AI model selection for precise dimension reading", () => {
+test("removes legacy floor plan OpenAI analysis controls", () => {
   for (const label of [
     "FLOOR_PLAN_AI_MODELS",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    "nvidia/cosmos3-nano-reasoner",
+    "OpenAI Vision",
     "selectedAiModel",
-    "uploadedAiImageDataUrl",
-    "fileToCompressedDataUrl",
-    "canvas\\.toDataURL\\(\"image/jpeg\"",
     "runAiDimensionAnalysis",
-    "sourceAttachmentId",
-    "uploadedFloorPlanSource\\?\\.attachmentId",
-    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
+    "runAiCandidateReview",
+    "requestFloorPlanAiAnalysis",
+    "applyAiDimensionAnalysisResult",
+    "applyAiCandidateReviewResult",
+    "manualAiScaleRealLength",
+    "AI 후보 검토",
     "AI 정밀 수치 읽기"
+  ]) {
+    assert.doesNotMatch(floorPlanEditorSource, new RegExp(label));
+  }
+
+  for (const label of [
+    "runOpeningDetection",
+    "applyRoboflowWallPostProcessing",
+    "apiUrl\\(\"/floor-plans/opening-detection\"\\)",
+    "fileToCompressedDataUrl"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
-  assert.doesNotMatch(floorPlanEditorSource, /nvidia\/nemotron-ocr-v2/);
 });
+test("offers printed dimension reading with detected dimension chips", () => {
+  for (const label of [
+    "runPrintedDimensionReading",
+    "apiUrl\\(\"/floor-plans/ai-analysis\"\\)",
+    "analysisMode: \"dimension\"",
+    "openai/floor-plan-vision",
+    "parseDimensionTextsToMm",
+    "printedDimensionChips",
+    "drawPrintedDimensionOverlays",
+    "normalizeAiTextBoundingBox",
+    "normalizeAiTargetLine",
+    "drawDimensionTargetLine",
+    "boundingBox",
+    "targetLine",
+    "0~1000",
+    "floor-plan-visible-dimension-strip",
+    "치수 읽기",
+    "읽힌 치수"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+});
+
+test("classifies dimensions and uses only structural dimensions for scale and grid", () => {
+  for (const label of [
+    "aiDimensions",
+    "isStructuralDimensionKind",
+    "structuralDimensionChips",
+    "openingDimensionChips",
+    "furnitureDimensionChips",
+    "guardrailKind",
+    "outer_total",
+    "room_span",
+    "wall_span"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  // 축척·격자 계산은 구조 치수만 소비해야 한다 (전체 치수 배열이 아니라).
+  assert.match(floorPlanContainerSource, /estimateWallUnionScaleCandidate\(structuralDimensionChips/);
+  assert.match(floorPlanContainerSource, /const marginChips = structuralDimensionChips\.filter/);
+  // × 가구 표기와 ㎡ 면적은 하드 가드레일로 걸러진다.
+  assert.match(floorPlanContainerSource, /return "area"/);
+  assert.match(floorPlanContainerSource, /return kind === "fixture" \? "fixture" : "furniture"/);
+  // 중첩 치수줄은 줄 클러스터링 후 각 줄 안에서만 체인을 푼다.
+  assert.match(floorPlanContainerSource, /solveDimensionRowChains/);
+  assert.match(floorPlanContainerSource, /perpTolerance/);
+});
+
+test("consumes structural dimensions to correct Roboflow wall positions", () => {
+  // 구조 치수가 벽 위치 보정에 실제로 소비되는지(단순 표시 아님) 확인한다.
+  for (const label of [
+    "structuralWallBoundaries",
+    "structuralBoundaryOffsetsMm",
+    "snapWallsToStructuralBoundaries",
+    "applyStructuralDimensionWallCorrection",
+    "구조 치수로 벽 보정"
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  // 경계는 구조 치수만으로 만든다(가구/opening/면적 제외).
+  assert.match(floorPlanContainerSource, /structuralDimensionChips\.filter\(\(chip\) => chip\.axis === axis/);
+  // 보정 결과가 실제 벽 상태에 반영된다.
+  assert.match(floorPlanContainerSource, /setWalls\(corrected\)/);
+});
+
+test("dimension-layout separates nested dimension rows and lays out each chain independently", () => {
+  const { clusterDimensionRows, solveDimensionRowChains } = dimensionLayout;
+  // 위쪽 여백에 전체줄 [10720]과 구간줄 [3040,1440,3120,3120]이 중첩된 케이스.
+  const chips = [
+    { id: "total", realLengthMm: 10720, perpCoord: 40, alongCoord: 500 },
+    { id: "s1", realLengthMm: 3040, perpCoord: 75, alongCoord: 140 },
+    { id: "s2", realLengthMm: 1440, perpCoord: 76, alongCoord: 340 },
+    { id: "s3", realLengthMm: 3120, perpCoord: 74, alongCoord: 560 },
+    { id: "s4", realLengthMm: 3120, perpCoord: 75, alongCoord: 820 }
+  ];
+  const rows = clusterDimensionRows(chips, 15);
+  assert.equal(rows.length, 2, "전체줄과 구간줄이 2개 줄로 분리되어야 한다");
+
+  const layout = solveDimensionRowChains(chips, 10720);
+  assert.deepEqual(layout.get("total"), { endMm: 10720, startMm: 0 });
+  assert.equal(layout.get("s1").startMm, 0);
+  assert.ok(Math.abs(layout.get("s1").endMm - 3040) < 5);
+  assert.ok(Math.abs(layout.get("s2").startMm - layout.get("s1").endMm) < 1, "구간이 끊김 없이 이어져야 한다");
+  assert.ok(Math.abs(layout.get("s4").endMm - 10720) < 1, "마지막 구간이 전체 폭에 정확히 맞물려야 한다");
+
+  // 합이 전체와 안 맞는 불완전한 줄은 배치하지 않는다(개별 앵커 폴백 대상).
+  const incomplete = [
+    { id: "x1", realLengthMm: 3040, perpCoord: 70, alongCoord: 140 },
+    { id: "x2", realLengthMm: 1440, perpCoord: 70, alongCoord: 340 }
+  ];
+  assert.equal(solveDimensionRowChains(incomplete, 10720).size, 0);
+});
+
+test("structural dimensions correct Roboflow wall positions to match printed dimensions", () => {
+  const { structuralBoundaryOffsetsMm, snapWallsToStructuralBoundaries } = dimensionLayout;
+  // high.png 가로 체인 [10720]+[3040,1440,3120,3120] → 경계 mm 0/3040/4480/7600/10720
+  const chips = [
+    { id: "total", realLengthMm: 10720, perpCoord: 29, alongCoord: 500 },
+    { id: "s1", realLengthMm: 3040, perpCoord: 63, alongCoord: 140 },
+    { id: "s2", realLengthMm: 1440, perpCoord: 63, alongCoord: 340 },
+    { id: "s3", realLengthMm: 3120, perpCoord: 63, alongCoord: 560 },
+    { id: "s4", realLengthMm: 3120, perpCoord: 63, alongCoord: 820 }
+  ];
+  const boundariesMm = structuralBoundaryOffsetsMm(chips, 10720);
+  assert.deepEqual(boundariesMm, [0, 3040, 4480, 7600, 10720]);
+
+  // mm 경계 → 캔버스 x (planMin=-500, ratio=13.6mm/px)
+  const planMin = -500;
+  const ratio = 13.6;
+  const verticalLineX = boundariesMm.map((mm) => planMin + mm / ratio);
+  // Roboflow 벽이 경계에서 어긋나 있는 상태
+  const walls = verticalLineX.map((x, i) => ({
+    id: `w${i}`,
+    start: { x: x + (i % 2 === 0 ? 12 : -14), y: -300 },
+    end: { x: x + (i % 2 === 0 ? 12 : -14), y: 300 }
+  }));
+  // 경계에서 먼 벽은 스냅되면 안 된다
+  walls.push({ id: "far", start: { x: verticalLineX[2] + 90, y: -300 }, end: { x: verticalLineX[2] + 90, y: 300 } });
+
+  const { walls: corrected, movedCount } = snapWallsToStructuralBoundaries(walls, { verticalLineX }, 30);
+  assert.equal(movedCount, 5, "경계 근처 벽 5개가 보정되어야 한다");
+  // 완료 기준: 보정 후 벽 간 거리 * ratio = 도면 구간 치수
+  const centers = corrected.slice(0, 5).map((w) => (w.start.x + w.end.x) / 2);
+  const segMm = [];
+  for (let i = 1; i < 5; i++) segMm.push(Math.round((centers[i] - centers[i - 1]) * ratio));
+  assert.deepEqual(segMm, [3040, 1440, 3120, 3120], "보정 후 벽 간 거리가 도면 치수와 일치해야 한다");
+  // far 벽은 그대로
+  assert.ok(Math.abs((corrected[5].start.x + corrected[5].end.x) / 2 - (verticalLineX[2] + 90)) < 0.01);
+});
+
+test("does not collapse complex floor-plan dimensions by value or an 8-item display cap", () => {
+  assert.match(floorPlanContainerSource, /MAX_VISIBLE_PRINTED_DIMENSIONS = 24/);
+  assert.match(floorPlanContainerSource, /printedDimensionKey/);
+  assert.doesNotMatch(floorPlanContainerSource, /const seen = new Set<number>\(\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /seen\.has\(realLengthMm\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /slice\(0, 8\)/);
+  assert.doesNotMatch(floorPlanContainerSource, /new Map<number, DetectedDimensionLineSpan>/);
+});
+
+
+
+
+test("uses native label-based floor plan file selection", () => {
+  for (const label of [
+    "id=\"floor-plan-source-input\"",
+    "htmlFor=\"floor-plan-source-input\"",
+    "floor-plan-upload-label",
+    "type=\"file\"",
+    "accept=\"image/\\*\""
+  ]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  assert.doesNotMatch(floorPlanContainerSource, /fileInputRef\.current\?\.click\(\)/);
+});
+
+test("keeps unplaced printed dimensions out of the canvas overlay", () => {
+  assert.match(floorPlanContainerSource, /hasReliableDimensionPlacement/);
+  assert.match(floorPlanContainerSource, /locationStatus/);
+  assert.match(floorPlanContainerSource, /위치 미확인/);
+  assert.doesNotMatch(floorPlanContainerSource, /fallbackX/);
+  assert.doesNotMatch(floorPlanContainerSource, /fallbackY/);
+});
+
+
 
 test("stores extraction metadata, openings, and fixtures through the floor plan API", () => {
   for (const label of [
@@ -929,48 +1720,43 @@ test("renders 3D conversion with the wheretoput React Three Fiber stack", () => 
   }
 });
 
-test("imports wheretoput-style upload, extraction, and rotatable 3D simulator controls", () => {
+test("imports wheretoput-style upload and Roboflow 3D conversion controls", () => {
   for (const label of [
     "도면 등록",
-    "벽 자동 추출",
-    "화면 드래그 회전",
+    "문/창문 탐지",
+    "벽 후처리 적용",
     "배율 조절",
     "handleImageUpload",
-    "WallDetector",
+    "runOpeningDetection",
+    "applyRoboflowWallPostProcessing",
     "convertWallsToWheretoputSimulator",
     "convertWallsToWheretoputRoom3D"
   ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
+    assert.match(floorPlanContainerSource, new RegExp(label));
   }
+
+  assert.doesNotMatch(floorPlanContainerSource, /벽 자동 추출/);
+  assert.doesNotMatch(floorPlanContainerSource, /WallDetector/);
 });
 
-test("extracts uploaded image walls through a wheretoput-style pixel line pipeline", () => {
-  for (const label of [
-    "getImageData",
-    "detectWallLinesFromImageData",
-    "createWallsFromDetectedLines",
-    "WallDetector",
-    "이미지 벽"
-  ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
-  }
+test("keeps uploaded floor plan registration separate from local pixel wall extraction", () => {
+  assert.match(floorPlanContainerSource, /uploadFloorPlanSource/);
+  assert.match(floorPlanContainerSource, /fileToCompressedDataUrl/);
+  assert.match(floorPlanContainerSource, /setWalls\(\[\]\)/);
+  assert.match(floorPlanContainerSource, /setRoboflowDetections\(null\)/);
+  assert.match(floorPlanContainerSource, /setDetectionBoxes\(\[\]\)/);
+  assert.match(floorPlanContainerSource, /도면 등록 완료/);
+  assert.doesNotMatch(floorPlanContainerSource, /detectWallLinesFromImageData/);
+  assert.doesNotMatch(floorPlanContainerSource, /createWallsFromDetectedLines/);
+  assert.doesNotMatch(floorPlanContainerSource, /WallDetector/);
 });
 
-test("preloads OpenCV wall extraction in a worker and falls back to canvas extraction", () => {
-  for (const label of [
-    "floor-plan-extraction.worker",
-    "preloadOpenCvWorker",
-    "추출 엔진 준비중",
-    "도면 분석중",
-    "검수 후 저장",
-    "opencvReady",
-    "fallbackCanvasWallExtraction",
-    "processingMs"
-  ]) {
-    assert.match(floorPlanEditorSource, new RegExp(label));
-  }
+test("keeps upload flow free of wall-first local extraction fallback", () => {
+  assert.doesNotMatch(floorPlanContainerSource, /mode:\s*"wall-first"/);
+  assert.doesNotMatch(floorPlanContainerSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
+  assert.match(floorPlanContainerSource, /runOpeningDetection/);
+  assert.match(floorPlanContainerSource, /applyRoboflowWallPostProcessing/);
 });
-
 test("uses OCR only for scale candidate extraction and keeps manual scale fallback", () => {
   for (const label of [
     "TESSERACT_OCR_URL",
@@ -982,13 +1768,6 @@ test("uses OCR only for scale candidate extraction and keeps manual scale fallba
     assert.match(`${floorPlanEditorSource}\n${floorPlanWorkerSource}`, new RegExp(label));
   }
 });
-
-test("uses conservative uploaded floor plan extraction without starter wall fallback", () => {
-  assert.match(floorPlanEditorSource, /mode:\s*"conservative"/);
-  assert.doesNotMatch(floorPlanEditorSource, /setWalls\(detectedWalls\.length > 0 \? detectedWalls : getStarterWalls\(\)\)/);
-  assert.match(floorPlanEditorSource, /직접 그려주세요/);
-});
-
 test("saves floor plan drafts through the API while keeping a local fallback", () => {
   for (const label of [
     "apiUrl\\(\"/floor-plans\"\\)",
@@ -1030,16 +1809,30 @@ test("floor plan editor model snaps, selects, removes, and summarizes walls", as
 
   assert.equal(model.GRID_SIZE, 25);
   assert.equal(units.GRID_SIZE_PX, 25);
-  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 20);
-  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.02);
+  assert.equal(units.DEFAULT_PIXEL_TO_MM_RATIO, 10);
+  assert.equal(units.DEFAULT_PIXEL_TO_METER_RATIO, 0.01);
   assert.equal(model.findNearestWall([wall], { x: 48, y: 5 }, 18)?.id, "w1");
   assert.deepEqual(model.removeWall([wall], "w1"), []);
   assert.deepEqual(model.summarizeWalls([wall]), {
     wallCount: 1,
-    approximateMeters: 2.5,
+    approximateMeters: 1.3,
     status: "편집중"
   });
-  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 2.4);
+  assert.equal(model.summarizeWalls([{ id: "120px", start: { x: 0, y: 0 }, end: { x: 120, y: 0 } }]).approximateMeters, 1.2);
+});
+
+test("floor plan editor model moves and resizes selected walls without mutating originals", async () => {
+  const model = floorPlanModel;
+  const wall = { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } };
+
+  const moved = model.moveWall(wall, { x: 25, y: 50 });
+  const resizedEnd = model.resizeWall(wall, "end", { x: 360, y: 140 });
+  const resizedStart = model.resizeWall(wall, "start", { x: 80, y: 60 });
+
+  assert.deepEqual(moved, { id: "edit-wall", start: { x: 125, y: 150 }, end: { x: 325, y: 150 } });
+  assert.deepEqual(resizedEnd, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 360, y: 100 } });
+  assert.deepEqual(resizedStart, { id: "edit-wall", start: { x: 80, y: 100 }, end: { x: 300, y: 100 } });
+  assert.deepEqual(wall, { id: "edit-wall", start: { x: 100, y: 100 }, end: { x: 300, y: 100 } });
 });
 
 test("floor plan editor model optimizes wall conversion with stable ids", async () => {
@@ -1245,6 +2038,38 @@ test("floor plan editor model merges nearby wall candidates and caps noisy outpu
   assert.equal(capped.length, 24);
 });
 
+test("floor plan editor model does not merge wall gaps marked by perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 286, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 286, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { axisTolerance: 4, gapTolerance: 50, maxLines: 10, respectPerpendicularGapMarkers: true }
+  );
+
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 420), false);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(merged.some((line) => line.orientation === "horizontal" && line.x1 === 315 && line.x2 === 420), true);
+});
+
+test("floor plan editor model does not merge distant same-axis walls when axis sorting differs", async () => {
+  const model = floorPlanModel;
+  const merged = model.mergeDetectedWallLines(
+    [
+      { x1: 602, y1: 144, x2: 743, y2: 144, orientation: "horizontal", thickness: 6 },
+      { x1: 151, y1: 148, x2: 475, y2: 148, orientation: "horizontal", thickness: 12 }
+    ],
+    { axisTolerance: 4, gapTolerance: 35, maxLines: 10 }
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged.some((line) => line.x1 === 151 && line.x2 === 475), true);
+  assert.equal(merged.some((line) => line.x1 === 602 && line.x2 === 743), true);
+});
+
 test("floor plan editor model preserves wall thickness and removes thin interior symbols", async () => {
   const model = floorPlanModel;
   const merged = model.mergeDetectedWallLines(
@@ -1446,6 +2271,342 @@ test("floor plan editor model conservative mode drops all ambiguous thin wall ca
   assert.equal(result.needsReview, true);
 });
 
+test("floor plan editor model wall-first mode reconnects dark wall runs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 330, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 362, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 320, y1: 180, x2: 320, y2: 490, orientation: "vertical", thickness: 7 },
+      { x1: 120, y1: 92, x2: 620, y2: 92, orientation: "horizontal", thickness: 1, markers: ["arrow-start", "arrow-end"] },
+      { x1: 260, y1: 270, x2: 300, y2: 270, orientation: "horizontal", thickness: 2 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 140 && line.x1 === 120 && line.x2 === 620), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320), true);
+  assert.equal(result.dimensionCandidates.length, 1);
+  assert.equal(result.removedNoiseCount, 2);
+});
+
+test("floor plan editor model wall-first mode keeps door gaps open when gap has perpendicular jambs", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 180, y1: 300, x2: 270, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 315, y1: 300, x2: 420, y2: 300, orientation: "horizontal", thickness: 7 },
+      { x1: 270, y1: 288, x2: 270, y2: 318, orientation: "vertical", thickness: 6 },
+      { x1: 315, y1: 288, x2: 315, y2: 318, orientation: "vertical", thickness: 6 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 <= 180 && line.x2 >= 420), false);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 180 && line.x2 === 270), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.y1 === 300 && line.x1 === 315 && line.x2 === 420), true);
+});
+
+test("floor plan editor model wall-first mode does not bridge larger probable opening gaps by default", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 260, y2: 320, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 358, x2: 260, y2: 490, orientation: "vertical", thickness: 8 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 <= 180 && line.y2 >= 490), false);
+});
+
+test("floor plan editor model wall-first mode preserves short thick wall stubs connected to structure", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 140, x2: 260, y2: 198, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 260 && line.y1 === 140 && line.y2 === 198), true);
+});
+
+test("floor plan editor model wall-first mode preserves small thick rectangular wall loops", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 360, y1: 320, x2: 425, y2: 320, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 380, x2: 425, y2: 380, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 320, x2: 360, y2: 380, orientation: "vertical", thickness: 7 },
+      { x1: 425, y1: 320, x2: 425, y2: 380, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 320), true);
+  assert.equal(result.walls.some((line) => line.orientation === "horizontal" && line.x1 === 360 && line.x2 === 425 && line.y1 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 360 && line.y1 === 320 && line.y2 === 380), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 425 && line.y1 === 320 && line.y2 === 380), true);
+});
+
+test("floor plan editor model wall-first mode infers missing outer edges and extends near walls", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 120, y1: 520, x2: 620, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 320, y1: 168, x2: 320, y2: 493, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 120 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.some((line) => line.orientation === "vertical" && line.x1 === 320 && line.y1 === 140 && line.y2 === 520), true);
+  assert.equal(result.walls.length, 5);
+  assert.equal(result.needsReview, true);
+});
+
+test("floor plan editor model wall-first mode skips inferred outer edges on complex multi-room plans", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 100, y1: 100, x2: 620, y2: 100, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 100, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 100, y1: 520, x2: 100, y2: 100, orientation: "vertical", thickness: 8 },
+      { x1: 220, y1: 100, x2: 220, y2: 260, orientation: "vertical", thickness: 7 },
+      { x1: 360, y1: 100, x2: 360, y2: 280, orientation: "vertical", thickness: 7 },
+      { x1: 480, y1: 280, x2: 480, y2: 520, orientation: "vertical", thickness: 7 },
+      { x1: 100, y1: 220, x2: 260, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 300, y1: 220, x2: 460, y2: 220, orientation: "horizontal", thickness: 7 },
+      { x1: 100, y1: 340, x2: 260, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 340, y1: 340, x2: 520, y2: 340, orientation: "horizontal", thickness: 7 },
+      { x1: 180, y1: 420, x2: 300, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 360, y1: 420, x2: 540, y2: 420, orientation: "horizontal", thickness: 7 },
+      { x1: 540, y1: 360, x2: 540, y2: 520, orientation: "vertical", thickness: 7 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => line.markers?.includes("wall-first-inferred-outer")), false);
+});
+
+test("floor plan editor model strict line mask ignores filled surfaces and small dark noise", async () => {
+  const model = floorPlanModel;
+  const width = 240;
+  const height = 180;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const paint = (x, y, color) => {
+    const offset = (y * width + x) * 4;
+    data[offset] = color;
+    data[offset + 1] = color;
+    data[offset + 2] = color;
+    data[offset + 3] = 255;
+  };
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) paint(x, y, color);
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 200, 35, 0);
+  fillRect(30, 140, 200, 145, 0);
+  fillRect(30, 30, 35, 145, 0);
+  fillRect(195, 30, 200, 145, 0);
+  fillRect(70, 65, 165, 110, 135);
+  fillRect(12, 12, 18, 18, 0);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+
+  assert.equal(lines.length, 4);
+  assert.equal(lines.every((line) => line.thickness <= 8), true);
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 65 && line.y1 <= 110), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 70 && line.x1 <= 165), false);
+});
+
+test("floor plan editor model separates dark furniture fill from black walls with adaptive luminance", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 상단 벽 안쪽에 붙은 진회색 싱크대 채움 — 벽으로 검출되면 안 된다.
+  fillRect(100, 38, 200, 80, 90);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 40, strictLineMask: true, width }
+  );
+
+  assert.equal(
+    lines.some((line) => line.orientation === "horizontal" && Math.abs(line.y1 - 33) <= 3 && line.x1 <= 34 && line.x2 >= 266),
+    true
+  );
+  assert.equal(lines.some((line) => line.orientation === "horizontal" && line.y1 >= 40 && line.y1 <= 85), false);
+  assert.equal(lines.some((line) => line.orientation === "vertical" && line.x1 >= 95 && line.x1 <= 205 && line.y2 <= 90), false);
+});
+
+test("floor plan editor model keeps wall bands separate from adjacent solid fill blocks", async () => {
+  const model = floorPlanModel;
+  const width = 220;
+  const height = 120;
+  const mask = Array.from({ length: width * height }, () => false);
+  const fillRect = (x1, y1, x2, y2) => {
+    for (let y = y1; y <= y2; y += 1) {
+      for (let x = x1; x <= x2; x += 1) mask[y * width + x] = true;
+    }
+  };
+
+  fillRect(10, 20, 209, 27);
+  // 벽 바로 아래 같은 색으로 붙은 채움 블록 — 벽 밴드를 흡수하면 안 된다.
+  fillRect(60, 28, 119, 70);
+
+  const lines = model.detectWallBandLinesFromMask(mask, { height, minRunLength: 40, width });
+  const wallBand = lines.find((line) => line.orientation === "horizontal" && line.y1 <= 28);
+
+  assert.equal(Boolean(wallBand), true);
+  assert.equal(wallBand.thickness <= 10, true);
+  assert.equal(wallBand.x1 <= 12 && wallBand.x2 >= 207, true);
+});
+
+test("floor plan editor model recovers short thick wall stubs below the primary run length", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  fillRect(146, 38, 153, 74, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const recoveredStub = lines.find(
+    (line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80
+  );
+
+  assert.equal(Boolean(recoveredStub), true);
+  assert.equal(recoveredStub.markers?.includes("short-wall-recovered"), true);
+
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  assert.equal(
+    filtered.walls.some((line) => line.orientation === "vertical" && Math.abs(line.x1 - 149) <= 3 && line.y2 <= 80),
+    true
+  );
+});
+
+test("floor plan editor model keeps small solid rectangular wall blocks as single walls", async () => {
+  const model = floorPlanModel;
+  const width = 300;
+  const height = 240;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const fillRect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const offset = (y * width + x) * 4;
+        data[offset] = color;
+        data[offset + 1] = color;
+        data[offset + 2] = color;
+        data[offset + 3] = 255;
+      }
+    }
+  };
+
+  fillRect(0, 0, width - 1, height - 1, 255);
+  fillRect(30, 30, 270, 37, 20);
+  fillRect(30, 202, 270, 209, 20);
+  fillRect(30, 30, 37, 209, 20);
+  fillRect(263, 30, 270, 209, 20);
+  // 순흑으로 채운 24x32 덕트/샤프트 — 긴 축 방향 벽 하나로 남아야 한다.
+  fillRect(180, 120, 203, 151, 20);
+
+  const lines = model.detectWallLinesFromImageData(
+    { data, height, width },
+    { height, minRunLength: 60, strictLineMask: true, width }
+  );
+  const filtered = model.filterCommercialWallCandidates(lines, { height, mode: "wall-first", width });
+  const blockWalls = filtered.walls.filter(
+    (line) => line.x1 >= 172 && line.x2 <= 211 && line.y1 >= 112 && line.y2 <= 159
+  );
+
+  assert.equal(blockWalls.length, 1);
+  assert.equal(blockWalls[0].orientation, "vertical");
+});
+
+test("floor plan editor model classifies over-thick fill bands as furniture candidates", async () => {
+  const model = floorPlanModel;
+  const result = model.filterCommercialWallCandidates(
+    [
+      { x1: 120, y1: 140, x2: 620, y2: 140, orientation: "horizontal", thickness: 8 },
+      { x1: 620, y1: 140, x2: 620, y2: 520, orientation: "vertical", thickness: 8 },
+      { x1: 620, y1: 520, x2: 120, y2: 520, orientation: "horizontal", thickness: 8 },
+      { x1: 120, y1: 520, x2: 120, y2: 140, orientation: "vertical", thickness: 8 },
+      { x1: 260, y1: 180, x2: 410, y2: 180, orientation: "horizontal", thickness: 60 }
+    ],
+    { height: 680, mode: "wall-first", width: 760 }
+  );
+
+  assert.equal(result.walls.some((line) => Number(line.thickness ?? 1) >= 60), false);
+  assert.equal(result.annotationCandidates.some((candidate) => candidate.source === "furniture-fill-band"), true);
+});
+
 test("floor plan editor model estimates scale from outside dimensions", async () => {
   const model = floorPlanModel;
   const candidate = model.estimateScaleCandidateFromDimensions([
@@ -1460,6 +2621,91 @@ test("floor plan editor model estimates scale from outside dimensions", async ()
   assert.equal(candidate.pixelLength, 320);
   assert.equal(Number(candidate.pixelToMmRatio.toFixed(2)), 18.31);
   assert.equal(candidate.source, "outside-dimension-ocr");
+});
+
+test("floor plan editor model snaps normalized AI missing wall hints to dark image evidence", async () => {
+  const model = floorPlanModel;
+  const width = 120;
+  const height = 80;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 38; y <= 42; y += 1) {
+    for (let x = 15; x <= 105; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 20;
+      data[offset + 1] = 20;
+      data[offset + 2] = 20;
+    }
+  }
+
+  const snapped = model.snapNormalizedLineToWallEvidence(
+    { x1: 120, y1: 465, x2: 900, y2: 465 },
+    { data, height, width },
+    { darkThreshold: 80, searchRadiusPx: 8 }
+  );
+
+  assert.equal(snapped.orientation, "horizontal");
+  assert.equal(snapped.y1, 40);
+  assert.equal(snapped.thickness >= 4, true);
+  assert.equal(snapped.confidence > 0.7, true);
+});
+
+test("floor plan editor model creates wall candidates from AI room polygons and merges shared room edges", async () => {
+  const model = floorPlanModel;
+  const width = 200;
+  const height = 120;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = 255;
+  }
+  for (let y = 20; y <= 100; y += 1) {
+    for (let x = 99; x <= 101; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 10;
+      data[offset + 1] = 10;
+      data[offset + 2] = 10;
+    }
+  }
+
+  const lines = model.createWallCandidatesFromRoomPolygons(
+    [
+      {
+        confidence: 0.82,
+        label: "거실",
+        polygon: [
+          { x: 100, y: 150 },
+          { x: 500, y: 150 },
+          { x: 500, y: 850 },
+          { x: 100, y: 850 }
+        ]
+      },
+      {
+        confidence: 0.8,
+        label: "침실",
+        polygon: [
+          { x: 500, y: 150 },
+          { x: 900, y: 150 },
+          { x: 900, y: 850 },
+          { x: 500, y: 850 }
+        ]
+      }
+    ],
+    { data, height, width },
+    { darkThreshold: 80, minLength: 20, searchRadiusPx: 8 }
+  );
+  const sharedWalls = lines.filter((line) => line.orientation === "vertical" && line.x1 >= 98 && line.x1 <= 102);
+
+  assert.equal(sharedWalls.length, 1);
+  assert.equal(sharedWalls[0].markers.includes("ai-room-edge"), true);
+  assert.equal(sharedWalls[0].thickness >= 2, true);
 });
 
 test("floor plan editor model creates opening candidates as editable layers", async () => {
@@ -1486,6 +2732,55 @@ test("floor plan editor model creates fixed fixture candidates separately from m
   assert.equal(candidates[0].type, "SINK");
   assert.equal(candidates[0].status, "CANDIDATE");
   assert.equal(candidates[0].movable, false);
+});
+
+test("floor plan editor model recovers full structural bounds from a fragmented outline (real plan regression)", async () => {
+  // 실제 원룸 도면(창문/문 opening으로 외곽선이 조각난 케이스)의 fallback 추출 결과.
+  // 컴포넌트 기반 경계 추정이 국소 조각으로 붕괴해 벽 대부분을 잃던 회귀 케이스.
+  const model = floorPlanModel;
+  const rawLines = [
+    { x1: 541, y1: 233, x2: 635, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 905, y1: 233, x2: 1008, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 286, y1: 754, x2: 460, y2: 754, orientation: "horizontal", thickness: 6, markers: ["wall-band"] },
+    { x1: 668, y1: 767, x2: 1012, y2: 767, orientation: "horizontal", thickness: 12, markers: ["wall-band"] },
+    { x1: 285, y1: 957, x2: 461, y2: 957, orientation: "horizontal", thickness: 19, markers: ["wall-band"] },
+    { x1: 497, y1: 958, x2: 1008, y2: 958, orientation: "horizontal", thickness: 18, markers: ["wall-band"] },
+    { x1: 269, y1: 253, x2: 269, y2: 737, orientation: "vertical", thickness: 19, markers: ["wall-band"] },
+    { x1: 463, y1: 774, x2: 463, y2: 935, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 495, y1: 774, x2: 495, y2: 935, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 660, y1: 252, x2: 660, y2: 737, orientation: "vertical", thickness: 5, markers: ["wall-band"] },
+    { x1: 1010, y1: 766, x2: 1010, y2: 940, orientation: "vertical", thickness: 3, markers: ["wall-band"] },
+    { x1: 1036, y1: 250, x2: 1036, y2: 739, orientation: "vertical", thickness: 15, markers: ["wall-band"] },
+    { x1: 1042, y1: 768, x2: 1042, y2: 950, orientation: "vertical", thickness: 4, markers: ["wall-band"] },
+    { x1: 285, y1: 232, x2: 346, y2: 232, orientation: "horizontal", thickness: 17, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 671, y1: 233, x2: 710, y2: 233, orientation: "horizontal", thickness: 19, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 269, y1: 773, x2: 269, y2: 823, orientation: "vertical", thickness: 19, markers: ["wall-band", "short-wall-recovered"] },
+    { x1: 269, y1: 907, x2: 269, y2: 940, orientation: "vertical", thickness: 19, markers: ["wall-band", "short-wall-recovered"] }
+  ];
+
+  const result = floorPlanModel.filterCommercialWallCandidates(rawLines, { height: 1280, mode: "wall-first", width: 1382 });
+
+  // 경계가 건물 전체를 덮어야 한다 (국소 조각 아님).
+  assert.equal(result.mainPlanBounds.minX <= 270, true);
+  assert.equal(result.mainPlanBounds.maxX >= 1036, true);
+  assert.equal(result.mainPlanBounds.minY <= 233, true);
+  assert.equal(result.mainPlanBounds.maxY >= 957, true);
+
+  // 방 사이 얇은 내벽(x=660, thick=5)과 아래쪽 외벽이 살아남아야 한다.
+  assert.equal(
+    result.walls.some((line) => line.orientation === "vertical" && Math.abs((line.x1 + line.x2) / 2 - 660) <= 4),
+    true
+  );
+  assert.equal(
+    result.walls.some((line) => line.orientation === "horizontal" && Math.abs((line.y1 + line.y2) / 2 - 958) <= 4),
+    true
+  );
+
+  // 벽이 건물 경계 밖으로 생성되면 안 된다 (유령 벽 회귀 방지).
+  for (const line of result.walls) {
+    assert.equal(Math.max(line.y1, line.y2) <= result.mainPlanBounds.maxY + 12, true);
+    assert.equal(Math.max(line.x1, line.x2) <= result.mainPlanBounds.maxX + 12, true);
+  }
 });
 
 test("floor plan editor model scales detected image lines into editor walls", async () => {

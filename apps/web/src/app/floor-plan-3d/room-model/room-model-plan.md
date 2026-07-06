@@ -21,9 +21,9 @@
 | 항목 | 값 A | 값 B | 영향 |
 |---|---|---|---|
 | 그리드 | `wall-model.mjs` `GRID_SIZE=24` (`createWall`/`snapToGrid`) | `wall-editing.ts` `GRID_SIZE_PX=25` (`snapCanvasPoint`, 캔버스가 실제 사용) | `createWall`로 만든 벽과 캔버스 스냅 좌표가 서로 다른 격자에 붙음 |
-| 축척 | `DEFAULT_PIXEL_TO_METER_RATIO = 1/48` (≈20.83mm/px), `summarizeWalls`도 24px=0.5m 가정 | `DEFAULT_PIXEL_TO_MM_RATIO = 20` (20mm/px, Room3D 변환·치수 표기 기본값) | 요약(대략 m)과 치수(mm)·3D 변환이 서로 다른 축척 사용 (~4% 오차) |
+| 축척 | 과거 `DEFAULT_PIXEL_TO_METER_RATIO = 1/48` (≈20.83mm/px), `summarizeWalls`도 24px=0.5m 가정 | 현재 `DEFAULT_PIXEL_TO_MM_RATIO = 10` (10mm/px, Room3D 변환·치수 표기 기본값) | 요약(대략 m)과 치수(mm)·3D 변환이 `units.ts` 기준을 공유 |
 
-`summarizeWalls`의 결과값(120px → 2.5m)은 `property-shell.spec.mjs`가 고정하고 있어서, 통일하려면 **스펙 수정 + 팀 공유**가 필요하다. 그 전까지는 문서화만.
+`summarizeWalls`의 결과값은 현재 `property-shell.spec.mjs`에서 10mm/px 기준(120px → 1.2m)으로 고정한다.
 
 ---
 
@@ -71,7 +71,8 @@
 
 - [x] `units.ts` 신설: 그리드/축척 상수를 한 곳에 모으고 각 상수의 의미·사용처 주석으로 문서화. 기존 export는 삭제하지 않고 re-export(별칭)로 유지
 - [x] 위 표의 24 vs 25, 1/48 vs 20mm 불일치를 팀에 공유하고 통일안 결정 (제안: 캔버스 기준인 25px·20mm/px로 통일) — `3d` 통합 브랜치 공유 기준으로 선반영
-- [x] 합의되면 `summarizeWalls` 계산 + 스펙 기대값 수정 (같은 PR, 리뷰어: 담당 A·C) — 120px → 2.4m 기준으로 수정
+- [x] 기본 축척을 더 세밀한 도면 작성 기준인 10mm/px로 조정 — `visionapi-test`에서 선반영
+- [x] 합의되면 `summarizeWalls` 계산 + 스펙 기대값 수정 (같은 PR, 리뷰어: 담당 A·C) — 120px → 1.2m 기준으로 수정
 
 **주의**: 여기만 계약에 손대는 Phase. 합의 전에는 진행하지 않는다.
 
@@ -137,5 +138,5 @@ pnpm build                         # 번들 검증
 
 ### `property-shell.spec.mjs` (스펙)
 
-- `wall-model.mjs` 전체를 `floorPlanModel`로 import해 동작을 고정: `createWall`, `findNearestWall`, `removeWall`, `summarizeWalls`(120px→2.5m 고정), `convertWallsTo3D`, `convertWallsToWheretoputSimulator`, `convertWallsToWheretoputRoom3D`, `createWallsFromRegisteredPlan` 등
+- `wall-model.mjs` 전체를 `floorPlanModel`로 import해 동작을 고정: `createWall`, `findNearestWall`, `removeWall`, `summarizeWalls`(120px→1.2m 고정), `convertWallsTo3D`, `convertWallsToWheretoputSimulator`, `convertWallsToWheretoputRoom3D`, `createWallsFromRegisteredPlan` 등
 - `furniture-model.ts`의 `LANDLORD_OPTION` 리터럴(`locked: true`, `editableBy: ["LANDLORD"]`, `visibleToTenant: true`)을 소스 문자열로 검사

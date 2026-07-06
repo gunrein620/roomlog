@@ -7,7 +7,7 @@
 | 좌표계 | 단위 | 사용처 |
 |---|---|---|
 | 2D 캔버스 | px (그리드 `GRID_SIZE_PX`=25) | 편집기 캔버스의 `Wall.start/end` |
-| 실측 | mm | `pixelToMmRatio`(기본 20)로 px↔mm 변환, 치수 표기/저장 |
+| 실측 | mm | `pixelToMmRatio`(기본 10)로 px↔mm 변환, 치수 표기/저장 |
 | 3D 씬 | m | `convertWallsToWheretoputRoom3D`가 px → m 변환 + 중심 정렬. y-up, 2D의 y가 3D의 z |
 
 ## 파일
@@ -18,14 +18,14 @@
 | `wall-model.mjs` | 벽 생성/스냅(`createWall`, `snapToGrid`, `snapToOrthogonal`), 거리/길이/요약, 2D→3D 변환(`convertWalls*`), 스타터 벽 |
 | `wall-model.d.ts` | `wall-model.mjs` 타입 선언. mjs 수정 시 같이 갱신 |
 | `wall-editing.ts` | 캔버스 편집용 순수 계산: 부분 삭제(`splitWallByEraseArea/Ratio`), 벽 위 투영, 캔버스 스냅 |
-| `furniture-model.ts` | 가구 카탈로그 + 배치 모델. **임대인 옵션(`LANDLORD_OPTION`, locked) vs 임차인 배치(`RESIDENT_DESIGN`) 소유권 규칙**이 여기 있다 |
+| `furniture-model.ts` | 기존 import 호환용 re-export. 실제 가구 카탈로그/배치 규칙은 `../furniture-placement`가 소유한다 |
 
 ## 규칙
 
 - import 금지: 폴더 밖의 모든 것 (plan-extraction, room-scene, React, three.js, DOM API).
   - `Date.now()` 정도는 허용, `window`/`document`는 금지.
 - 함수는 입력을 변경(mutate)하지 않고 새 객체를 반환한다 — 기존 코드 전부 이 스타일.
-- `furniture-model.ts`의 `LANDLORD_OPTION` 관련 리터럴(`locked: true`, `editableBy: ["LANDLORD"]`, `visibleToTenant: true`)은 스펙 테스트가 검사한다. 바꾸면 `npm test` 확인.
+- `../furniture-placement/placement.ts`의 `LANDLORD_OPTION` 관련 리터럴(`locked: true`, `editableBy: ["LANDLORD"]`, `visibleToTenant: true`)은 스펙 테스트가 검사한다. 바꾸면 `npm test` 확인.
 
 ## 주요 작업 (담당자 백로그)
 

@@ -1,7 +1,44 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Store, StoreProjector } from "./roomlog.service";
-import { IntakeDraft, PhotoAnalysis, TicketMessage } from "./roomlog.types";
+import { IntakeDraft, MessageSenderRole, PhotoAnalysis, TicketMessage } from "./roomlog.types";
+import type {
+  BillStatus as PrismaBillStatus,
+  ContractDeletionState as PrismaContractDeletionState,
+  ContractDocumentOrigin as PrismaContractDocumentOrigin,
+  ContractLifecycle as PrismaContractLifecycle,
+  ContractReview as PrismaContractReview,
+  ContractValueSource as PrismaContractValueSource,
+  CostAttributionScope as PrismaCostAttributionScope,
+  CostReviewReason as PrismaCostReviewReason,
+  CostStatus as PrismaCostStatus,
+  CostType as PrismaCostType,
+  DepositMatchStatus as PrismaDepositMatchStatus,
+  PaymentReportStatus as PrismaPaymentReportStatus,
+  DisclosureState as PrismaDisclosureState,
+  MessagingAnnouncementCategory as PrismaMessagingAnnouncementCategory,
+  MessagingAnnouncementDraftStatus as PrismaMessagingAnnouncementDraftStatus,
+  MessagingAnnouncementReadState as PrismaMessagingAnnouncementReadState,
+  MessagingAnnouncementScope as PrismaMessagingAnnouncementScope,
+  MessagingMessageKind as PrismaMessagingMessageKind,
+  MessagingMessageSender as PrismaMessagingMessageSender,
+  MessagingThreadContext as PrismaMessagingThreadContext,
+  ManagerReportAuditAction as PrismaManagerReportAuditAction,
+  ManagerReportPeriod as PrismaManagerReportPeriod,
+  ManagerReportShareStatus as PrismaManagerReportShareStatus,
+  ManagerReportSourceKind as PrismaManagerReportSourceKind,
+  ManagerReportStatus as PrismaManagerReportStatus,
+  MoveoutChecklistCondition as PrismaMoveoutChecklistCondition,
+  MoveoutDeductionKind as PrismaMoveoutDeductionKind,
+  MoveoutDisputeStatus as PrismaMoveoutDisputeStatus,
+  MoveoutRecordSource as PrismaMoveoutRecordSource,
+  MoveoutSettlementStatus as PrismaMoveoutSettlementStatus,
+  MoveoutWearAdjustmentAction as PrismaMoveoutWearAdjustmentAction,
+  MoveoutWearVerdict as PrismaMoveoutWearVerdict,
+  ReceiptSource as PrismaReceiptSource,
+  RepairPaymentState as PrismaRepairPaymentState,
+  UserRole as PrismaUserRole
+} from "@prisma/client";
 
 function asDate(value?: string) {
   return value ? new Date(value) : undefined;
@@ -19,12 +56,30 @@ function optional<T>(value: T | null | undefined) {
   return value ?? undefined;
 }
 
+function toLowerEnum<T extends string>(value: string | null | undefined) {
+  return optional(value?.toLowerCase()) as T | undefined;
+}
+
+function toUpperEnum<T extends string>(value: string | null | undefined) {
+  return optional(value?.toUpperCase()) as T | undefined;
+}
+
+function toPrismaUserRole(value: Store["users"][number]["role"]) {
+  return value as unknown as PrismaUserRole;
+}
+
 function asPhotoAnalysis(value: Prisma.JsonValue | null): PhotoAnalysis | undefined {
   return value ? (value as unknown as PhotoAnalysis) : undefined;
 }
 
-function actorRoleFor(store: Store, userId: string) {
-  return store.users.find((user) => user.id === userId)?.role ?? "SYSTEM";
+function actorRoleFor(store: Store, userId: string): MessageSenderRole {
+  const role = store.users.find((user) => user.id === userId)?.role;
+  if (role === "TENANT" || role === "LANDLORD" || role === "VENDOR") return role;
+  return "SYSTEM";
+}
+
+function stableMoveoutDisputeEventId(disputeId: string, status: string, at: string) {
+  return `${disputeId}_${status}_${at}`.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 180);
 }
 
 export class PrismaStoreProjector implements StoreProjector {
@@ -38,12 +93,24 @@ export class PrismaStoreProjector implements StoreProjector {
   async load(): Promise<Store | undefined> {
     const [
       users,
+      socialAccounts,
       rooms,
       roomWalls,
       tenantRooms,
       vendors,
       vendorInvites,
       tenantInvites,
+      contracts,
+      contractDocuments,
+      contractExtractions,
+      contractPrivacies,
+      contractInvites,
+      bills,
+      billLineItems,
+      paymentReports,
+      deposits,
+      maintenanceFees,
+      maintenanceFeeItems,
       attachments,
       floorPlans,
       moveInChecklist,
@@ -52,17 +119,48 @@ export class PrismaStoreProjector implements StoreProjector {
       tickets,
       feedback,
       repairs,
+      costs,
+      receipts,
+      receiptOcrs,
       messages,
+      messagingThreads,
+      messagingMessages,
+      messagingAnnouncementDrafts,
+      messagingAnnouncements,
+      messagingAnnouncementDeliveries,
+      managerReports,
+      managerReportSourceReferences,
+      managerReportExternalShares,
+      managerReportAuditLogs,
+      moveouts,
+      moveoutRecords,
+      moveoutChecklist,
+      moveoutSettlements,
+      moveoutDeductions,
+      moveoutDisputes,
+      moveoutReportAudits,
       history,
       analyses
     ] = await Promise.all([
       this.prisma.userAccount.findMany(),
+      this.prisma.socialAccount.findMany(),
       this.prisma.room.findMany(),
       this.prisma.roomWall.findMany({ orderBy: { wallOrder: "asc" } }),
       this.prisma.tenantRoom.findMany(),
       this.prisma.vendorProfile.findMany(),
       this.prisma.vendorInvite.findMany(),
       this.prisma.tenantInvite.findMany(),
+      this.prisma.contract.findMany(),
+      this.prisma.contractDocument.findMany(),
+      this.prisma.contractExtraction.findMany(),
+      this.prisma.contractPrivacy.findMany(),
+      this.prisma.contractInvite.findMany(),
+      this.prisma.bill.findMany(),
+      this.prisma.billLineItem.findMany(),
+      this.prisma.paymentReport.findMany(),
+      this.prisma.deposit.findMany(),
+      this.prisma.maintenanceFee.findMany(),
+      this.prisma.maintenanceFeeItem.findMany(),
       this.prisma.attachment.findMany(),
       this.prisma.floorPlan.findMany(),
       this.prisma.moveInChecklistItem.findMany(),
@@ -73,7 +171,28 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.ticket.findMany(),
       this.prisma.aiFeedback.findMany(),
       this.prisma.repairRequest.findMany(),
+      this.prisma.cost.findMany(),
+      this.prisma.receipt.findMany(),
+      this.prisma.receiptOcr.findMany(),
       this.prisma.ticketMessage.findMany(),
+      this.prisma.messagingThread.findMany(),
+      this.prisma.messagingMessage.findMany(),
+      this.prisma.messagingAnnouncementDraft.findMany(),
+      this.prisma.messagingAnnouncement.findMany(),
+      this.prisma.messagingAnnouncementDelivery.findMany(),
+      this.prisma.managerReport.findMany(),
+      this.prisma.managerReportSourceReference.findMany(),
+      this.prisma.managerReportExternalShare.findMany(),
+      this.prisma.managerReportAuditLogEntry.findMany(),
+      this.prisma.moveoutRequest.findMany(),
+      this.prisma.moveoutRecord.findMany(),
+      this.prisma.moveoutChecklistItem.findMany(),
+      this.prisma.moveoutSettlement.findMany(),
+      this.prisma.moveoutDeduction.findMany(),
+      this.prisma.moveoutDispute.findMany({
+        include: { history: { orderBy: { createdAt: "asc" } } }
+      }),
+      this.prisma.moveoutReportAuditEntry.findMany(),
       this.prisma.statusHistory.findMany(),
       this.prisma.aiAnalysis.findMany()
     ]);
@@ -81,10 +200,21 @@ export class PrismaStoreProjector implements StoreProjector {
     if (
       !users.length &&
       !rooms.length &&
+      !contracts.length &&
+      !bills.length &&
+      !paymentReports.length &&
+      !deposits.length &&
+      !maintenanceFees.length &&
       !floorPlans.length &&
       !intakeSessions.length &&
       !complaints.length &&
-      !tickets.length
+      !tickets.length &&
+      !costs.length &&
+      !receipts.length &&
+      !messagingThreads.length &&
+      !messagingAnnouncements.length &&
+      !managerReports.length &&
+      !moveouts.length
     ) {
       return undefined;
     }
@@ -99,6 +229,17 @@ export class PrismaStoreProjector implements StoreProjector {
         role: user.role,
         status: user.status,
         createdAt: asIso(user.createdAt) ?? new Date().toISOString()
+      })),
+      socialAccounts: socialAccounts.map((account) => ({
+        id: account.id,
+        provider: account.provider,
+        providerUserId: account.providerUserId,
+        userId: account.userId,
+        email: optional(account.email),
+        name: optional(account.name),
+        avatarUrl: optional(account.avatarUrl),
+        createdAt: asIso(account.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(account.updatedAt) ?? new Date().toISOString()
       })),
       rooms: rooms.map((room) => ({
         id: room.id,
@@ -131,7 +272,8 @@ export class PrismaStoreProjector implements StoreProjector {
         contactPerson: vendor.contactPerson,
         phone: vendor.phone,
         serviceArea: vendor.serviceArea,
-        activeJobs: vendor.activeJobs
+        activeJobs: vendor.activeJobs,
+        createdByManagerId: optional(vendor.createdByManagerId)
       })),
       vendorInvites: vendorInvites.map((invite) => ({
         id: invite.id,
@@ -162,6 +304,131 @@ export class PrismaStoreProjector implements StoreProjector {
         createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
         acceptedAt: asIso(invite.acceptedAt),
         acceptedByUserId: optional(invite.acceptedByUserId)
+      })),
+      contracts: contracts.map((contract) => ({
+        id: contract.id,
+        roomId: contract.roomId,
+        tenantId: optional(contract.tenantId),
+        managerId: optional(contract.managerId),
+        unitId: contract.unitId,
+        landlordName: contract.landlordName,
+        lifecycle: toLowerEnum<Store["contracts"][number]["lifecycle"]>(contract.lifecycle) ?? "active",
+        review: toLowerEnum<Store["contracts"][number]["review"]>(contract.review) ?? "pending",
+        deletion: toLowerEnum<Store["contracts"][number]["deletion"]>(contract.deletion) ?? "none",
+        valueSource: toLowerEnum<Store["contracts"][number]["valueSource"]>(contract.valueSource) ?? "unverified",
+        monthlyRent: optional(contract.monthlyRent),
+        maintenanceFee: optional(contract.maintenanceFee),
+        paymentDay: optional(contract.paymentDay),
+        optionInventory: contract.optionInventory ?? [],
+        startDate: asIso(contract.startDate),
+        endDate: asIso(contract.endDate),
+        createdAt: asIso(contract.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(contract.updatedAt) ?? new Date().toISOString(),
+        extractionId: optional(contract.extractionId),
+        documentId: optional(contract.documentId),
+        confirmedAt: asIso(contract.confirmedAt),
+        confirmedByManagerId: optional(contract.confirmedByManagerId)
+      })),
+      contractDocuments: contractDocuments.map((document) => ({
+        id: document.id,
+        contractId: document.contractId,
+        uploadedByUserId: optional(document.uploadedByUserId),
+        origin: toLowerEnum<Store["contractDocuments"][number]["origin"]>(document.origin) ?? "manual",
+        fileName: optional(document.fileName),
+        fileUrl: optional(document.fileUrl),
+        uploadedAt: asIso(document.uploadedAt) ?? new Date().toISOString()
+      })),
+      contractExtractions: contractExtractions.map((extraction) => ({
+        id: extraction.id,
+        contractId: extraction.contractId,
+        confirmed: extraction.confirmed,
+        highlights: extraction.highlights,
+        items: (extraction.items as unknown as Store["contractExtractions"][number]["items"]) ?? [],
+        helpNotes: (extraction.helpNotes as unknown as Store["contractExtractions"][number]["helpNotes"]) ?? [],
+        createdAt: asIso(extraction.createdAt) ?? new Date().toISOString()
+      })),
+      contractPrivacies: contractPrivacies.map((privacy) => ({
+        contractId: privacy.contractId,
+        maskingEnabled: privacy.maskingEnabled,
+        retention: (privacy.retention as unknown as Store["contractPrivacies"][number]["retention"]) ?? [],
+        forwardingConsent: privacy.forwardingConsent,
+        deletion: toLowerEnum<Store["contractPrivacies"][number]["deletion"]>(privacy.deletion) ?? "none",
+        deletionSlaHours: optional(privacy.deletionSlaHours),
+        deletable: privacy.deletable
+      })),
+      contractInvites: contractInvites.map((invite) => ({
+        id: invite.id,
+        contractId: invite.contractId,
+        roomId: invite.roomId,
+        inviteToken: invite.inviteToken,
+        invitedByManagerId: invite.invitedByManagerId,
+        tenantName: invite.tenantName,
+        email: optional(invite.email),
+        phone: optional(invite.phone),
+        state: invite.state as Store["contractInvites"][number]["state"],
+        signupUrl: invite.signupUrl,
+        audit: invite.audit,
+        createdAt: asIso(invite.createdAt) ?? new Date().toISOString(),
+        acceptedAt: asIso(invite.acceptedAt),
+        acceptedByUserId: optional(invite.acceptedByUserId)
+      })),
+      bills: bills.map((bill) => ({
+        id: bill.id,
+        unitId: bill.unitId,
+        billingMonth: bill.billingMonth,
+        status: bill.status,
+        totalAmount: bill.totalAmount,
+        paidAmount: bill.paidAmount,
+        dueDate: asIso(bill.dueDate) ?? new Date().toISOString(),
+        bankName: bill.bankName,
+        accountNumber: bill.accountNumber,
+        accountHolder: bill.accountHolder,
+        correctionHistory: bill.correctionHistory,
+        maintenanceFeeId: optional(bill.maintenanceFeeId),
+        depositConfirmationRequested: bill.depositConfirmationRequested,
+        items: billLineItems
+          .filter((item) => item.billId === bill.id)
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            amount: item.amount
+          })),
+        createdAt: asIso(bill.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(bill.updatedAt) ?? new Date().toISOString()
+      })),
+      paymentReports: paymentReports.map((report) => ({
+        id: report.id,
+        billId: report.billId,
+        unitId: report.unitId,
+        amount: report.amount,
+        depositorName: optional(report.depositorName),
+        status: report.status,
+        etaHours: report.etaHours,
+        reportedAt: asIso(report.reportedAt) ?? new Date().toISOString()
+      })),
+      deposits: deposits.map((deposit) => ({
+        id: deposit.id,
+        depositorName: deposit.depositorName,
+        amount: deposit.amount,
+        depositedAt: asIso(deposit.depositedAt) ?? new Date().toISOString(),
+        matchStatus: deposit.matchStatus,
+        matchedBillId: optional(deposit.matchedBillId),
+        guessedUnitId: optional(deposit.guessedUnitId)
+      })),
+      maintenanceFees: maintenanceFees.map((fee) => ({
+        id: fee.id,
+        unitId: fee.unitId,
+        billingMonth: fee.billingMonth,
+        totalAmount: fee.totalAmount,
+        available: fee.available,
+        items: maintenanceFeeItems
+          .filter((item) => item.maintenanceFeeId === fee.id)
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            amount: item.amount,
+            receiptAvailable: item.receiptAvailable
+          }))
       })),
       attachments: attachments.map((attachment) => ({
         id: attachment.id,
@@ -312,6 +579,77 @@ export class PrismaStoreProjector implements StoreProjector {
         createdAt: asIso(repair.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(repair.updatedAt) ?? new Date().toISOString()
       })),
+      costs: costs.map((cost) => ({
+        id: cost.id,
+        managerId: optional(cost.managerId),
+        date: asIso(cost.date) ?? new Date().toISOString(),
+        item: cost.item,
+        amount: cost.amount,
+        type: toLowerEnum<Store["costs"][number]["type"]>(cost.type) ?? "other",
+        scope: toLowerEnum<Store["costs"][number]["scope"]>(cost.scope) ?? "building",
+        unitId: optional(cost.unitId),
+        status: toLowerEnum<Store["costs"][number]["status"]>(cost.status) ?? "draft",
+        verified: cost.verified,
+        reviewReason: toLowerEnum<NonNullable<Store["costs"][number]["reviewReason"]>>(
+          cost.reviewReason
+        ),
+        disclosure: toLowerEnum<NonNullable<Store["costs"][number]["disclosure"]>>(
+          cost.disclosure
+        ),
+        repairPayment: toLowerEnum<NonNullable<Store["costs"][number]["repairPayment"]>>(
+          cost.repairPayment
+        ),
+        paymentRef: optional(cost.paymentRef),
+        receiptId: optional(cost.receiptId),
+        supersedesId: optional(cost.supersedesId),
+        voidReason: optional(cost.voidReason),
+        createdAt: asIso(cost.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(cost.updatedAt) ?? new Date().toISOString()
+      })),
+      receipts: receipts.map((receipt) => ({
+        id: receipt.id,
+        managerId: optional(receipt.managerId),
+        source: toLowerEnum<Store["receipts"][number]["source"]>(receipt.source) ?? "manual",
+        imageUrl: optional(receipt.imageUrl),
+        hasEvidence: receipt.hasEvidence,
+        uploadedAt: asIso(receipt.uploadedAt) ?? new Date().toISOString(),
+        duplicateOfId: optional(receipt.duplicateOfId)
+      })),
+      receiptOcrs: receiptOcrs.map((ocr) => ({
+        id: ocr.id,
+        receiptId: ocr.receiptId,
+        costId: optional(ocr.costId),
+        fields: {
+          item: {
+            value: ocr.itemValue,
+            confidence: ocr.itemConfidence,
+            needsReview: ocr.itemNeedsReview
+          },
+          date: {
+            value: ocr.dateValue,
+            confidence: ocr.dateConfidence,
+            needsReview: ocr.dateNeedsReview
+          },
+          amount: {
+            value: ocr.amountValue,
+            confidence: ocr.amountConfidence,
+            needsReview: ocr.amountNeedsReview
+          },
+          unitId: ocr.unitIdValue
+            ? {
+                value: ocr.unitIdValue,
+                confidence: ocr.unitIdConfidence ?? 1,
+                needsReview: ocr.unitIdNeedsReview ?? false
+              }
+            : undefined
+        },
+        suggestedType: toLowerEnum<NonNullable<Store["receiptOcrs"][number]["suggestedType"]>>(
+          ocr.suggestedType
+        ),
+        typeConfidence: optional(ocr.typeConfidence),
+        lineItems: (ocr.lineItems as unknown as Store["receiptOcrs"][number]["lineItems"]) ?? [],
+        createdAt: asIso(ocr.createdAt) ?? new Date().toISOString()
+      })),
       messages: messages.map((message) => ({
         id: message.id,
         ticketId: message.ticketId,
@@ -323,6 +661,282 @@ export class PrismaStoreProjector implements StoreProjector {
         attachmentUrls: message.attachmentUrls,
         createdAt: asIso(message.createdAt) ?? new Date().toISOString()
       }) as TicketMessage & { repairId?: string }),
+      messagingThreads: messagingThreads.map((thread) => ({
+        id: thread.id,
+        roomId: thread.roomId,
+        unitId: thread.unitId,
+        tenantId: thread.tenantId,
+        context:
+          toLowerEnum<Store["messagingThreads"][number]["context"]>(thread.context) ?? "general",
+        contextRef: optional(thread.contextRef),
+        contextLabel: optional(thread.contextLabel),
+        lastMessage: thread.lastMessage,
+        unreadCount: thread.unreadCount,
+        pendingRequest: thread.pendingRequest,
+        archivedNotice: thread.archivedNotice,
+        createdAt: asIso(thread.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(thread.updatedAt) ?? new Date().toISOString()
+      })),
+      messagingMessages: messagingMessages.map((message) => ({
+        id: message.id,
+        threadId: message.threadId,
+        senderUserId: message.senderUserId,
+        sender: toLowerEnum<Store["messagingMessages"][number]["sender"]>(message.sender) ?? "tenant",
+        kind: toLowerEnum<Store["messagingMessages"][number]["kind"]>(message.kind) ?? "text",
+        body: message.body,
+        originalBody: optional(message.originalBody),
+        attachmentUrls: message.attachmentUrls,
+        createdAt: asIso(message.createdAt) ?? new Date().toISOString()
+      })),
+      messagingAnnouncementDrafts: messagingAnnouncementDrafts.map((draft) => ({
+        id: draft.id,
+        category:
+          toLowerEnum<Store["messagingAnnouncementDrafts"][number]["category"]>(draft.category) ??
+          "life",
+        scope:
+          toLowerEnum<Store["messagingAnnouncementDrafts"][number]["scope"]>(draft.scope) ??
+          "building",
+        targetLabel: draft.targetLabel,
+        targetRoomIds: draft.targetRoomIds,
+        title: draft.title,
+        body: draft.body,
+        translations:
+          (draft.translations as unknown as Store["messagingAnnouncementDrafts"][number]["translations"]) ??
+          [],
+        confirmRequired: draft.confirmRequired,
+        status:
+          toLowerEnum<Store["messagingAnnouncementDrafts"][number]["status"]>(draft.status) ??
+          "draft",
+        createdByManagerId: draft.createdByManagerId,
+        createdAt: asIso(draft.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(draft.updatedAt) ?? new Date().toISOString()
+      })),
+      messagingAnnouncements: messagingAnnouncements.map((announcement) => ({
+        id: announcement.id,
+        draftId: optional(announcement.draftId),
+        category:
+          toLowerEnum<Store["messagingAnnouncements"][number]["category"]>(
+            announcement.category
+          ) ?? "life",
+        scope:
+          toLowerEnum<Store["messagingAnnouncements"][number]["scope"]>(announcement.scope) ??
+          "building",
+        targetLabel: announcement.targetLabel,
+        title: announcement.title,
+        body: announcement.body,
+        originalBody: optional(announcement.originalBody),
+        sender: announcement.sender,
+        senderId: announcement.senderId,
+        sentAt: asIso(announcement.sentAt) ?? new Date().toISOString(),
+        confirmRequired: announcement.confirmRequired,
+        safetyCta: optional(announcement.safetyCta)
+      })),
+      messagingAnnouncementDeliveries: messagingAnnouncementDeliveries.map((delivery) => ({
+        id: delivery.id,
+        announcementId: delivery.announcementId,
+        tenantId: delivery.tenantId,
+        roomId: delivery.roomId,
+        unitId: delivery.unitId,
+        tenantName: delivery.tenantName,
+        preferredLang: delivery.preferredLang,
+        state:
+          toLowerEnum<Store["messagingAnnouncementDeliveries"][number]["state"]>(
+            delivery.state
+          ) ?? "unread",
+        readAt: asIso(delivery.readAt),
+        confirmedAt: asIso(delivery.confirmedAt),
+        failed: delivery.failed
+      })),
+      managerReports: managerReports.map((report) => ({
+        id: report.id,
+        managerId: report.managerId,
+        period: toLowerEnum<Store["managerReports"][number]["period"]>(report.period) ?? "month",
+        periodLabel: report.periodLabel,
+        periodStart: asIso(report.periodStart) ?? new Date().toISOString(),
+        periodEnd: asIso(report.periodEnd) ?? new Date().toISOString(),
+        scope: report.scope as unknown as Store["managerReports"][number]["scope"],
+        status: toLowerEnum<Store["managerReports"][number]["status"]>(report.status) ?? "draft",
+        snapshotAt: asIso(report.snapshotAt) ?? new Date().toISOString(),
+        recipient: (report.recipient as unknown as Store["managerReports"][number]["recipient"]) ?? undefined,
+        disclaimer: report.disclaimer,
+        summary: report.summary,
+        nextActions:
+          (report.nextActions as unknown as Store["managerReports"][number]["nextActions"]) ?? [],
+        sections: (report.sections as unknown as Store["managerReports"][number]["sections"]) ?? [],
+        linkedFollowUps:
+          (report.linkedFollowUps as unknown as Store["managerReports"][number]["linkedFollowUps"]) ??
+          [],
+        createdAt: asIso(report.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(report.updatedAt) ?? new Date().toISOString(),
+        deliveredAt: asIso(report.deliveredAt)
+      })),
+      managerReportSourceReferences: managerReportSourceReferences.map((reference) => ({
+        id: reference.id,
+        reportId: reference.reportId,
+        sectionKey: reference.sectionKey,
+        sourceKind:
+          toLowerEnum<Store["managerReportSourceReferences"][number]["sourceKind"]>(
+            reference.sourceKind
+          ) ?? "metric",
+        entityType: reference.entityType,
+        entityId: reference.entityId,
+        roomId: optional(reference.roomId),
+        tenantId: optional(reference.tenantId),
+        label: reference.label,
+        drilldownScreenId: reference.drilldownScreenId,
+        basis: reference.basis,
+        snapshotAt: asIso(reference.snapshotAt) ?? new Date().toISOString(),
+        createdAt: asIso(reference.createdAt) ?? new Date().toISOString()
+      })),
+      managerReportExternalShares: managerReportExternalShares.map((share) => ({
+        id: share.id,
+        reportId: share.reportId,
+        token: share.token,
+        recipientName: share.recipientName,
+        masked: share.masked,
+        status:
+          toLowerEnum<Store["managerReportExternalShares"][number]["status"]>(
+            share.status
+          ) ?? "active",
+        createdByManagerId: share.createdByManagerId,
+        createdAt: asIso(share.createdAt) ?? new Date().toISOString(),
+        revokedAt: asIso(share.revokedAt)
+      })),
+      managerReportAuditLogs: managerReportAuditLogs.map((audit) => ({
+        id: audit.id,
+        reportId: audit.reportId,
+        shareId: optional(audit.shareId),
+        action:
+          toLowerEnum<Store["managerReportAuditLogs"][number]["action"]>(audit.action) ??
+          "external_share_viewed",
+        actorId: optional(audit.actorId),
+        actorLabel: audit.actorLabel,
+        at: asIso(audit.createdAt) ?? new Date().toISOString(),
+        detail: optional(audit.detail)
+      })),
+      moveouts: moveouts.map((moveout) => ({
+        id: moveout.id,
+        tenantId: moveout.tenantId,
+        roomId: moveout.roomId,
+        contractId: optional(moveout.contractId),
+        unitId: moveout.unitId,
+        contractConfirmed:
+          Boolean(moveout.contractId) &&
+          contracts.some((contract) => contract.id === moveout.contractId && contract.review === "CONFIRMED"),
+        leaseEndDate: asIso(moveout.leaseEndDate),
+        daysRemaining: undefined,
+        depositAmount: optional(moveout.depositAmount),
+        estimatedRefundMin: optional(moveout.estimatedRefundMin),
+        estimatedRefundMax: optional(moveout.estimatedRefundMax),
+        settlementStatus:
+          toLowerEnum<Store["moveouts"][number]["settlementStatus"]>(moveout.settlementStatus) ??
+          "estimate",
+        prepProgress: moveout.prepProgress,
+        settlementId: optional(
+          moveoutSettlements.find((settlement) => settlement.moveoutId === moveout.id)?.id
+        ),
+        messagingThreadId: optional(moveout.messagingThreadId),
+        createdAt: asIso(moveout.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(moveout.updatedAt) ?? new Date().toISOString()
+      })),
+      moveoutRecords: moveoutRecords.map((record) => ({
+        id: record.id,
+        summaryId: record.moveoutId,
+        source:
+          toLowerEnum<Store["moveoutRecords"][number]["source"]>(record.source) ?? "chat",
+        title: record.title,
+        description: record.description,
+        occurredAt: asIso(record.occurredAt),
+        wearVerdict: toLowerEnum<NonNullable<Store["moveoutRecords"][number]["wearVerdict"]>>(
+          record.wearVerdict
+        ),
+        wearNote: optional(record.wearNote),
+        moveinComparisonAvailable: record.moveinComparisonAvailable
+      })),
+      moveoutChecklist: moveoutChecklist.map((item) => ({
+        id: item.id,
+        summaryId: item.moveoutId,
+        label: item.label,
+        present: item.present,
+        condition:
+          toLowerEnum<Store["moveoutChecklist"][number]["condition"]>(item.condition) ??
+          "normal",
+        note: optional(item.note)
+      })),
+      moveoutSettlements: moveoutSettlements.map((settlement) => ({
+        id: settlement.id,
+        summaryId: settlement.moveoutId,
+        depositAmount: settlement.depositAmount,
+        deductions: [],
+        refundMin: settlement.refundMin,
+        refundMax: settlement.refundMax,
+        status:
+          toLowerEnum<Store["moveoutSettlements"][number]["status"]>(settlement.status) ??
+          "estimate",
+        disclaimer: settlement.disclaimer,
+        createdAt: asIso(settlement.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(settlement.updatedAt)
+      })),
+      moveoutDeductions: moveoutDeductions.map((deduction) => ({
+        id: deduction.id,
+        summaryId: deduction.moveoutId,
+        kind:
+          toLowerEnum<Store["moveoutDeductions"][number]["kind"]>(deduction.kind) ??
+          "repair",
+        label: deduction.label,
+        estimatedMin: deduction.estimatedMin,
+        estimatedMax: deduction.estimatedMax,
+        needsConfirmation: deduction.needsConfirmation,
+        evidenceNote: deduction.evidenceNote,
+        source:
+          toLowerEnum<Store["moveoutDeductions"][number]["source"]>(deduction.source) ??
+          "repair"
+      })),
+      moveoutDisputes: moveoutDisputes.map((dispute) => ({
+        id: dispute.id,
+        summaryId: dispute.moveoutId,
+        targetItemId: optional(dispute.targetItemId),
+        targetLabel: dispute.targetLabel,
+        reason: dispute.reason,
+        status:
+          toLowerEnum<Store["moveoutDisputes"][number]["status"]>(dispute.status) ??
+          "received",
+        slaDeadline: asIso(dispute.slaDeadline) ?? new Date().toISOString(),
+        slaBreached: dispute.slaBreached,
+        managerResponse: optional(dispute.managerResponse),
+        messagingThreadId: optional(dispute.messagingThreadId),
+        history: dispute.history.map((event) => ({
+          id: event.id,
+          status:
+            toLowerEnum<Store["moveoutDisputes"][number]["history"][number]["status"]>(
+              event.status
+            ) ?? "received",
+          at: asIso(event.createdAt) ?? new Date().toISOString(),
+          note: optional(event.note),
+          actorUserId: optional(event.actorUserId)
+        })),
+        createdAt: asIso(dispute.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(dispute.updatedAt) ?? new Date().toISOString()
+      })),
+      moveoutReportAudits: moveoutReportAudits.map((audit) => ({
+        id: audit.id,
+        summaryId: audit.moveoutId,
+        recordItemId: audit.recordItemId,
+        action:
+          toLowerEnum<Store["moveoutReportAudits"][number]["action"]>(audit.action) ??
+          "keep",
+        fromVerdict: toLowerEnum<NonNullable<Store["moveoutReportAudits"][number]["fromVerdict"]>>(
+          audit.fromVerdict
+        ),
+        toVerdict: toLowerEnum<NonNullable<Store["moveoutReportAudits"][number]["toVerdict"]>>(
+          audit.toVerdict
+        ),
+        evidenceNote: audit.evidenceNote,
+        tenantNotified: audit.tenantNotified,
+        managerName: audit.managerName,
+        managerId: audit.managerId,
+        at: asIso(audit.createdAt) ?? new Date().toISOString()
+      })),
       history: history.map((item) => ({
         id: item.id,
         ticketId: item.ticketId,
@@ -346,7 +960,7 @@ export class PrismaStoreProjector implements StoreProjector {
             passwordHash: user.passwordHash,
             name: user.name,
             phone: user.phone,
-            role: user.role,
+            role: toPrismaUserRole(user.role),
             status: user.status,
             createdAt: asDate(user.createdAt)
           },
@@ -355,8 +969,37 @@ export class PrismaStoreProjector implements StoreProjector {
             passwordHash: user.passwordHash,
             name: user.name,
             phone: user.phone,
-            role: user.role,
+            role: toPrismaUserRole(user.role),
             status: user.status
+          }
+        });
+      }
+
+      for (const account of store.socialAccounts ?? []) {
+        await tx.socialAccount.upsert({
+          where: {
+            provider_providerUserId: {
+              provider: account.provider,
+              providerUserId: account.providerUserId
+            }
+          },
+          create: {
+            id: account.id,
+            provider: account.provider,
+            providerUserId: account.providerUserId,
+            userId: account.userId,
+            email: account.email,
+            name: account.name,
+            avatarUrl: account.avatarUrl,
+            createdAt: asDate(account.createdAt),
+            updatedAt: asDate(account.updatedAt)
+          },
+          update: {
+            userId: account.userId,
+            email: account.email,
+            name: account.name,
+            avatarUrl: account.avatarUrl,
+            updatedAt: asDate(account.updatedAt)
           }
         });
       }
@@ -398,7 +1041,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           },
           update: {
             userId: vendor.userId,
@@ -406,7 +1050,8 @@ export class PrismaStoreProjector implements StoreProjector {
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            activeJobs: vendor.activeJobs
+            activeJobs: vendor.activeJobs,
+            createdByManagerId: vendor.createdByManagerId
           }
         });
       }
@@ -511,6 +1156,306 @@ export class PrismaStoreProjector implements StoreProjector {
             acceptedByUserId: invite.acceptedByUserId
           }
         });
+      }
+
+      for (const contract of store.contracts) {
+        await tx.contract.upsert({
+          where: { id: contract.id },
+          create: {
+            id: contract.id,
+            roomId: contract.roomId,
+            tenantId: contract.tenantId,
+            managerId: contract.managerId,
+            unitId: contract.unitId,
+            landlordName: contract.landlordName,
+            lifecycle: toUpperEnum<PrismaContractLifecycle>(contract.lifecycle) ?? "ACTIVE",
+            review: toUpperEnum<PrismaContractReview>(contract.review) ?? "PENDING",
+            deletion: toUpperEnum<PrismaContractDeletionState>(contract.deletion) ?? "NONE",
+            valueSource: toUpperEnum<PrismaContractValueSource>(contract.valueSource) ?? "UNVERIFIED",
+            monthlyRent: contract.monthlyRent,
+            maintenanceFee: contract.maintenanceFee,
+            paymentDay: contract.paymentDay,
+            optionInventory: contract.optionInventory ?? [],
+            startDate: asDate(contract.startDate),
+            endDate: asDate(contract.endDate),
+            extractionId: contract.extractionId,
+            documentId: contract.documentId,
+            confirmedAt: asDate(contract.confirmedAt),
+            confirmedByManagerId: contract.confirmedByManagerId,
+            createdAt: asDate(contract.createdAt),
+            updatedAt: asDate(contract.updatedAt)
+          },
+          update: {
+            roomId: contract.roomId,
+            tenantId: contract.tenantId,
+            managerId: contract.managerId,
+            unitId: contract.unitId,
+            landlordName: contract.landlordName,
+            lifecycle: toUpperEnum<PrismaContractLifecycle>(contract.lifecycle) ?? "ACTIVE",
+            review: toUpperEnum<PrismaContractReview>(contract.review) ?? "PENDING",
+            deletion: toUpperEnum<PrismaContractDeletionState>(contract.deletion) ?? "NONE",
+            valueSource: toUpperEnum<PrismaContractValueSource>(contract.valueSource) ?? "UNVERIFIED",
+            monthlyRent: contract.monthlyRent,
+            maintenanceFee: contract.maintenanceFee,
+            paymentDay: contract.paymentDay,
+            optionInventory: contract.optionInventory ?? [],
+            startDate: asDate(contract.startDate),
+            endDate: asDate(contract.endDate),
+            extractionId: contract.extractionId,
+            documentId: contract.documentId,
+            confirmedAt: asDate(contract.confirmedAt),
+            confirmedByManagerId: contract.confirmedByManagerId,
+            updatedAt: asDate(contract.updatedAt)
+          }
+        });
+      }
+
+      for (const document of store.contractDocuments) {
+        await tx.contractDocument.upsert({
+          where: { id: document.id },
+          create: {
+            id: document.id,
+            contractId: document.contractId,
+            uploadedByUserId: document.uploadedByUserId,
+            origin: toUpperEnum<PrismaContractDocumentOrigin>(document.origin) ?? "MANUAL",
+            fileName: document.fileName,
+            fileUrl: document.fileUrl,
+            uploadedAt: asDate(document.uploadedAt)
+          },
+          update: {
+            contractId: document.contractId,
+            uploadedByUserId: document.uploadedByUserId,
+            origin: toUpperEnum<PrismaContractDocumentOrigin>(document.origin) ?? "MANUAL",
+            fileName: document.fileName,
+            fileUrl: document.fileUrl,
+            uploadedAt: asDate(document.uploadedAt)
+          }
+        });
+      }
+
+      for (const extraction of store.contractExtractions) {
+        await tx.contractExtraction.upsert({
+          where: { id: extraction.id },
+          create: {
+            id: extraction.id,
+            contractId: extraction.contractId,
+            confirmed: extraction.confirmed,
+            highlights: extraction.highlights,
+            items: asJson(extraction.items),
+            helpNotes: asJson(extraction.helpNotes),
+            createdAt: asDate(extraction.createdAt)
+          },
+          update: {
+            contractId: extraction.contractId,
+            confirmed: extraction.confirmed,
+            highlights: extraction.highlights,
+            items: asJson(extraction.items),
+            helpNotes: asJson(extraction.helpNotes)
+          }
+        });
+      }
+
+      for (const privacy of store.contractPrivacies) {
+        await tx.contractPrivacy.upsert({
+          where: { contractId: privacy.contractId },
+          create: {
+            contractId: privacy.contractId,
+            maskingEnabled: privacy.maskingEnabled,
+            retention: asJson(privacy.retention),
+            forwardingConsent: privacy.forwardingConsent,
+            deletion: toUpperEnum<PrismaContractDeletionState>(privacy.deletion) ?? "NONE",
+            deletionSlaHours: privacy.deletionSlaHours,
+            deletable: privacy.deletable
+          },
+          update: {
+            maskingEnabled: privacy.maskingEnabled,
+            retention: asJson(privacy.retention),
+            forwardingConsent: privacy.forwardingConsent,
+            deletion: toUpperEnum<PrismaContractDeletionState>(privacy.deletion) ?? "NONE",
+            deletionSlaHours: privacy.deletionSlaHours,
+            deletable: privacy.deletable
+          }
+        });
+      }
+
+      for (const invite of store.contractInvites) {
+        await tx.contractInvite.upsert({
+          where: { id: invite.id },
+          create: {
+            id: invite.id,
+            contractId: invite.contractId,
+            roomId: invite.roomId,
+            inviteToken: invite.inviteToken,
+            invitedByManagerId: invite.invitedByManagerId,
+            tenantName: invite.tenantName,
+            email: invite.email,
+            phone: invite.phone,
+            state: invite.state,
+            signupUrl: invite.signupUrl,
+            audit: invite.audit,
+            createdAt: asDate(invite.createdAt),
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          },
+          update: {
+            contractId: invite.contractId,
+            roomId: invite.roomId,
+            invitedByManagerId: invite.invitedByManagerId,
+            tenantName: invite.tenantName,
+            email: invite.email,
+            phone: invite.phone,
+            state: invite.state,
+            signupUrl: invite.signupUrl,
+            audit: invite.audit,
+            acceptedAt: asDate(invite.acceptedAt),
+            acceptedByUserId: invite.acceptedByUserId
+          }
+        });
+      }
+
+      for (const bill of store.bills) {
+        await tx.bill.upsert({
+          where: { id: bill.id },
+          create: {
+            id: bill.id,
+            unitId: bill.unitId,
+            billingMonth: bill.billingMonth,
+            status: toUpperEnum<PrismaBillStatus>(bill.status) ?? "DRAFT",
+            totalAmount: bill.totalAmount,
+            paidAmount: bill.paidAmount,
+            dueDate: asDate(bill.dueDate) ?? new Date(),
+            bankName: bill.bankName,
+            accountNumber: bill.accountNumber,
+            accountHolder: bill.accountHolder,
+            correctionHistory: bill.correctionHistory ?? [],
+            maintenanceFeeId: bill.maintenanceFeeId,
+            depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+            createdAt: asDate(bill.createdAt),
+            updatedAt: asDate(bill.updatedAt)
+          },
+          update: {
+            unitId: bill.unitId,
+            billingMonth: bill.billingMonth,
+            status: toUpperEnum<PrismaBillStatus>(bill.status) ?? "DRAFT",
+            totalAmount: bill.totalAmount,
+            paidAmount: bill.paidAmount,
+            dueDate: asDate(bill.dueDate) ?? new Date(),
+            bankName: bill.bankName,
+            accountNumber: bill.accountNumber,
+            accountHolder: bill.accountHolder,
+            correctionHistory: bill.correctionHistory ?? [],
+            maintenanceFeeId: bill.maintenanceFeeId,
+            depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+            updatedAt: asDate(bill.updatedAt)
+          }
+        });
+
+        for (const [index, item] of bill.items.entries()) {
+          const itemId = item.id ?? `${bill.id}-line-${index + 1}`;
+
+          await tx.billLineItem.upsert({
+            where: { id: itemId },
+            create: {
+              id: itemId,
+              billId: bill.id,
+              label: item.label,
+              amount: item.amount
+            },
+            update: {
+              billId: bill.id,
+              label: item.label,
+              amount: item.amount
+            }
+          });
+        }
+      }
+
+      for (const report of store.paymentReports) {
+        await tx.paymentReport.upsert({
+          where: { id: report.id },
+          create: {
+            id: report.id,
+            billId: report.billId,
+            unitId: report.unitId,
+            amount: report.amount,
+            depositorName: report.depositorName,
+            status: toUpperEnum<PrismaPaymentReportStatus>(report.status) ?? "CONFIRMING",
+            etaHours: report.etaHours,
+            reportedAt: asDate(report.reportedAt)
+          },
+          update: {
+            billId: report.billId,
+            unitId: report.unitId,
+            amount: report.amount,
+            depositorName: report.depositorName,
+            status: toUpperEnum<PrismaPaymentReportStatus>(report.status) ?? "CONFIRMING",
+            etaHours: report.etaHours,
+            reportedAt: asDate(report.reportedAt)
+          }
+        });
+      }
+
+      for (const deposit of store.deposits) {
+        await tx.deposit.upsert({
+          where: { id: deposit.id },
+          create: {
+            id: deposit.id,
+            depositorName: deposit.depositorName,
+            amount: deposit.amount,
+            depositedAt: asDate(deposit.depositedAt) ?? new Date(),
+            matchStatus: toUpperEnum<PrismaDepositMatchStatus>(deposit.matchStatus) ?? "UNMATCHED",
+            matchedBillId: deposit.matchedBillId,
+            guessedUnitId: deposit.guessedUnitId
+          },
+          update: {
+            depositorName: deposit.depositorName,
+            amount: deposit.amount,
+            depositedAt: asDate(deposit.depositedAt) ?? new Date(),
+            matchStatus: toUpperEnum<PrismaDepositMatchStatus>(deposit.matchStatus) ?? "UNMATCHED",
+            matchedBillId: deposit.matchedBillId,
+            guessedUnitId: deposit.guessedUnitId
+          }
+        });
+      }
+
+      for (const fee of store.maintenanceFees) {
+        await tx.maintenanceFee.upsert({
+          where: { id: fee.id },
+          create: {
+            id: fee.id,
+            unitId: fee.unitId,
+            billingMonth: fee.billingMonth,
+            totalAmount: fee.totalAmount,
+            available: fee.available
+          },
+          update: {
+            unitId: fee.unitId,
+            billingMonth: fee.billingMonth,
+            totalAmount: fee.totalAmount,
+            available: fee.available
+          }
+        });
+
+        for (const [index, item] of fee.items.entries()) {
+          const itemId = item.id ?? `${fee.id}-line-${index + 1}`;
+
+          await tx.maintenanceFeeItem.upsert({
+            where: { id: itemId },
+            create: {
+              id: itemId,
+              maintenanceFeeId: fee.id,
+              label: item.label,
+              amount: item.amount,
+              receiptAvailable: item.receiptAvailable
+            },
+            update: {
+              maintenanceFeeId: fee.id,
+              label: item.label,
+              amount: item.amount,
+              receiptAvailable: item.receiptAvailable
+            }
+          });
+        }
       }
 
       for (const attachment of store.attachments) {
@@ -815,6 +1760,121 @@ export class PrismaStoreProjector implements StoreProjector {
         });
       }
 
+      for (const receipt of store.receipts) {
+        await tx.receipt.upsert({
+          where: { id: receipt.id },
+          create: {
+            id: receipt.id,
+            managerId: receipt.managerId,
+            source: toUpperEnum<PrismaReceiptSource>(receipt.source) ?? "MANUAL",
+            imageUrl: receipt.imageUrl,
+            hasEvidence: receipt.hasEvidence,
+            uploadedAt: asDate(receipt.uploadedAt),
+            duplicateOfId: receipt.duplicateOfId
+          },
+          update: {
+            managerId: receipt.managerId,
+            source: toUpperEnum<PrismaReceiptSource>(receipt.source) ?? "MANUAL",
+            imageUrl: receipt.imageUrl,
+            hasEvidence: receipt.hasEvidence,
+            uploadedAt: asDate(receipt.uploadedAt),
+            duplicateOfId: receipt.duplicateOfId
+          }
+        });
+      }
+
+      for (const cost of store.costs) {
+        await tx.cost.upsert({
+          where: { id: cost.id },
+          create: {
+            id: cost.id,
+            managerId: cost.managerId,
+            date: asDate(cost.date) ?? new Date(),
+            item: cost.item,
+            amount: cost.amount,
+            type: toUpperEnum<PrismaCostType>(cost.type) ?? "OTHER",
+            scope: toUpperEnum<PrismaCostAttributionScope>(cost.scope) ?? "BUILDING",
+            unitId: cost.unitId,
+            status: toUpperEnum<PrismaCostStatus>(cost.status) ?? "DRAFT",
+            verified: cost.verified,
+            reviewReason: toUpperEnum<PrismaCostReviewReason>(cost.reviewReason),
+            disclosure: toUpperEnum<PrismaDisclosureState>(cost.disclosure),
+            repairPayment: toUpperEnum<PrismaRepairPaymentState>(cost.repairPayment),
+            paymentRef: cost.paymentRef,
+            receiptId: cost.receiptId,
+            supersedesId: cost.supersedesId,
+            voidReason: cost.voidReason,
+            createdAt: asDate(cost.createdAt),
+            updatedAt: asDate(cost.updatedAt)
+          },
+          update: {
+            managerId: cost.managerId,
+            date: asDate(cost.date),
+            item: cost.item,
+            amount: cost.amount,
+            type: toUpperEnum<PrismaCostType>(cost.type) ?? "OTHER",
+            scope: toUpperEnum<PrismaCostAttributionScope>(cost.scope) ?? "BUILDING",
+            unitId: cost.unitId,
+            status: toUpperEnum<PrismaCostStatus>(cost.status) ?? "DRAFT",
+            verified: cost.verified,
+            reviewReason: toUpperEnum<PrismaCostReviewReason>(cost.reviewReason),
+            disclosure: toUpperEnum<PrismaDisclosureState>(cost.disclosure),
+            repairPayment: toUpperEnum<PrismaRepairPaymentState>(cost.repairPayment),
+            paymentRef: cost.paymentRef,
+            receiptId: cost.receiptId,
+            supersedesId: cost.supersedesId,
+            voidReason: cost.voidReason,
+            updatedAt: asDate(cost.updatedAt)
+          }
+        });
+      }
+
+      for (const ocr of store.receiptOcrs) {
+        await tx.receiptOcr.upsert({
+          where: { id: ocr.id },
+          create: {
+            id: ocr.id,
+            receiptId: ocr.receiptId,
+            costId: ocr.costId,
+            itemValue: ocr.fields.item.value,
+            itemConfidence: ocr.fields.item.confidence,
+            itemNeedsReview: ocr.fields.item.needsReview,
+            dateValue: ocr.fields.date.value,
+            dateConfidence: ocr.fields.date.confidence,
+            dateNeedsReview: ocr.fields.date.needsReview,
+            amountValue: ocr.fields.amount.value,
+            amountConfidence: ocr.fields.amount.confidence,
+            amountNeedsReview: ocr.fields.amount.needsReview,
+            unitIdValue: ocr.fields.unitId?.value,
+            unitIdConfidence: ocr.fields.unitId?.confidence,
+            unitIdNeedsReview: ocr.fields.unitId?.needsReview,
+            suggestedType: toUpperEnum<PrismaCostType>(ocr.suggestedType),
+            typeConfidence: ocr.typeConfidence,
+            lineItems: asJson(ocr.lineItems),
+            createdAt: asDate(ocr.createdAt)
+          },
+          update: {
+            receiptId: ocr.receiptId,
+            costId: ocr.costId,
+            itemValue: ocr.fields.item.value,
+            itemConfidence: ocr.fields.item.confidence,
+            itemNeedsReview: ocr.fields.item.needsReview,
+            dateValue: ocr.fields.date.value,
+            dateConfidence: ocr.fields.date.confidence,
+            dateNeedsReview: ocr.fields.date.needsReview,
+            amountValue: ocr.fields.amount.value,
+            amountConfidence: ocr.fields.amount.confidence,
+            amountNeedsReview: ocr.fields.amount.needsReview,
+            unitIdValue: ocr.fields.unitId?.value,
+            unitIdConfidence: ocr.fields.unitId?.confidence,
+            unitIdNeedsReview: ocr.fields.unitId?.needsReview,
+            suggestedType: toUpperEnum<PrismaCostType>(ocr.suggestedType),
+            typeConfidence: ocr.typeConfidence,
+            lineItems: asJson(ocr.lineItems)
+          }
+        });
+      }
+
       for (const message of store.messages) {
         const repairId = (message as { repairId?: string }).repairId;
 
@@ -839,6 +1899,531 @@ export class PrismaStoreProjector implements StoreProjector {
             senderRole: message.senderRole,
             messageText: message.messageText,
             attachmentUrls: message.attachmentUrls
+          }
+        });
+      }
+
+      for (const thread of store.messagingThreads) {
+        await tx.messagingThread.upsert({
+          where: { id: thread.id },
+          create: {
+            id: thread.id,
+            roomId: thread.roomId,
+            unitId: thread.unitId,
+            tenantId: thread.tenantId,
+            context: toUpperEnum<PrismaMessagingThreadContext>(thread.context) ?? "GENERAL",
+            contextRef: thread.contextRef,
+            contextLabel: thread.contextLabel,
+            lastMessage: thread.lastMessage,
+            unreadCount: thread.unreadCount,
+            pendingRequest: thread.pendingRequest,
+            archivedNotice: thread.archivedNotice,
+            createdAt: asDate(thread.createdAt),
+            updatedAt: asDate(thread.updatedAt)
+          },
+          update: {
+            roomId: thread.roomId,
+            unitId: thread.unitId,
+            tenantId: thread.tenantId,
+            context: toUpperEnum<PrismaMessagingThreadContext>(thread.context) ?? "GENERAL",
+            contextRef: thread.contextRef,
+            contextLabel: thread.contextLabel,
+            lastMessage: thread.lastMessage,
+            unreadCount: thread.unreadCount,
+            pendingRequest: thread.pendingRequest,
+            archivedNotice: thread.archivedNotice,
+            updatedAt: asDate(thread.updatedAt)
+          }
+        });
+      }
+
+      for (const message of store.messagingMessages) {
+        await tx.messagingMessage.upsert({
+          where: { id: message.id },
+          create: {
+            id: message.id,
+            threadId: message.threadId,
+            senderUserId: message.senderUserId,
+            sender: toUpperEnum<PrismaMessagingMessageSender>(message.sender) ?? "TENANT",
+            kind: toUpperEnum<PrismaMessagingMessageKind>(message.kind) ?? "TEXT",
+            body: message.body,
+            originalBody: message.originalBody,
+            attachmentUrls: message.attachmentUrls,
+            createdAt: asDate(message.createdAt)
+          },
+          update: {
+            threadId: message.threadId,
+            senderUserId: message.senderUserId,
+            sender: toUpperEnum<PrismaMessagingMessageSender>(message.sender) ?? "TENANT",
+            kind: toUpperEnum<PrismaMessagingMessageKind>(message.kind) ?? "TEXT",
+            body: message.body,
+            originalBody: message.originalBody,
+            attachmentUrls: message.attachmentUrls
+          }
+        });
+      }
+
+      for (const draft of store.messagingAnnouncementDrafts) {
+        await tx.messagingAnnouncementDraft.upsert({
+          where: { id: draft.id },
+          create: {
+            id: draft.id,
+            category: toUpperEnum<PrismaMessagingAnnouncementCategory>(draft.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(draft.scope) ?? "BUILDING",
+            targetLabel: draft.targetLabel,
+            targetRoomIds: draft.targetRoomIds,
+            title: draft.title,
+            body: draft.body,
+            translations: asJson(draft.translations),
+            confirmRequired: draft.confirmRequired,
+            status: toUpperEnum<PrismaMessagingAnnouncementDraftStatus>(draft.status) ?? "DRAFT",
+            createdByManagerId: draft.createdByManagerId,
+            createdAt: asDate(draft.createdAt),
+            updatedAt: asDate(draft.updatedAt)
+          },
+          update: {
+            category: toUpperEnum<PrismaMessagingAnnouncementCategory>(draft.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(draft.scope) ?? "BUILDING",
+            targetLabel: draft.targetLabel,
+            targetRoomIds: draft.targetRoomIds,
+            title: draft.title,
+            body: draft.body,
+            translations: asJson(draft.translations),
+            confirmRequired: draft.confirmRequired,
+            status: toUpperEnum<PrismaMessagingAnnouncementDraftStatus>(draft.status) ?? "DRAFT",
+            createdByManagerId: draft.createdByManagerId,
+            updatedAt: asDate(draft.updatedAt)
+          }
+        });
+      }
+
+      for (const announcement of store.messagingAnnouncements) {
+        await tx.messagingAnnouncement.upsert({
+          where: { id: announcement.id },
+          create: {
+            id: announcement.id,
+            draftId: announcement.draftId,
+            category:
+              toUpperEnum<PrismaMessagingAnnouncementCategory>(announcement.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(announcement.scope) ?? "BUILDING",
+            targetLabel: announcement.targetLabel,
+            title: announcement.title,
+            body: announcement.body,
+            originalBody: announcement.originalBody,
+            sender: announcement.sender,
+            senderId: announcement.senderId,
+            sentAt: asDate(announcement.sentAt) ?? new Date(),
+            confirmRequired: announcement.confirmRequired,
+            safetyCta: announcement.safetyCta
+          },
+          update: {
+            draftId: announcement.draftId,
+            category:
+              toUpperEnum<PrismaMessagingAnnouncementCategory>(announcement.category) ?? "LIFE",
+            scope: toUpperEnum<PrismaMessagingAnnouncementScope>(announcement.scope) ?? "BUILDING",
+            targetLabel: announcement.targetLabel,
+            title: announcement.title,
+            body: announcement.body,
+            originalBody: announcement.originalBody,
+            sender: announcement.sender,
+            senderId: announcement.senderId,
+            sentAt: asDate(announcement.sentAt) ?? new Date(),
+            confirmRequired: announcement.confirmRequired,
+            safetyCta: announcement.safetyCta
+          }
+        });
+      }
+
+      for (const delivery of store.messagingAnnouncementDeliveries) {
+        await tx.messagingAnnouncementDelivery.upsert({
+          where: { id: delivery.id },
+          create: {
+            id: delivery.id,
+            announcementId: delivery.announcementId,
+            tenantId: delivery.tenantId,
+            roomId: delivery.roomId,
+            unitId: delivery.unitId,
+            tenantName: delivery.tenantName,
+            preferredLang: delivery.preferredLang,
+            state: toUpperEnum<PrismaMessagingAnnouncementReadState>(delivery.state) ?? "UNREAD",
+            readAt: asDate(delivery.readAt),
+            confirmedAt: asDate(delivery.confirmedAt),
+            failed: delivery.failed ?? false
+          },
+          update: {
+            announcementId: delivery.announcementId,
+            tenantId: delivery.tenantId,
+            roomId: delivery.roomId,
+            unitId: delivery.unitId,
+            tenantName: delivery.tenantName,
+            preferredLang: delivery.preferredLang,
+            state: toUpperEnum<PrismaMessagingAnnouncementReadState>(delivery.state) ?? "UNREAD",
+            readAt: asDate(delivery.readAt),
+            confirmedAt: asDate(delivery.confirmedAt),
+            failed: delivery.failed ?? false
+          }
+        });
+      }
+
+      for (const report of store.managerReports) {
+        await tx.managerReport.upsert({
+          where: { id: report.id },
+          create: {
+            id: report.id,
+            managerId: report.managerId,
+            period: toUpperEnum<PrismaManagerReportPeriod>(report.period) ?? "MONTH",
+            periodLabel: report.periodLabel,
+            periodStart: asDate(report.periodStart) ?? new Date(),
+            periodEnd: asDate(report.periodEnd) ?? new Date(),
+            scope: asJson(report.scope),
+            status: toUpperEnum<PrismaManagerReportStatus>(report.status) ?? "DRAFT",
+            snapshotAt: asDate(report.snapshotAt) ?? new Date(),
+            recipient: report.recipient ? asJson(report.recipient) : undefined,
+            disclaimer: report.disclaimer,
+            summary: report.summary,
+            nextActions: asJson(report.nextActions),
+            sections: asJson(report.sections),
+            linkedFollowUps: asJson(report.linkedFollowUps),
+            createdAt: asDate(report.createdAt),
+            updatedAt: asDate(report.updatedAt),
+            deliveredAt: asDate(report.deliveredAt)
+          },
+          update: {
+            managerId: report.managerId,
+            period: toUpperEnum<PrismaManagerReportPeriod>(report.period) ?? "MONTH",
+            periodLabel: report.periodLabel,
+            periodStart: asDate(report.periodStart) ?? new Date(),
+            periodEnd: asDate(report.periodEnd) ?? new Date(),
+            scope: asJson(report.scope),
+            status: toUpperEnum<PrismaManagerReportStatus>(report.status) ?? "DRAFT",
+            snapshotAt: asDate(report.snapshotAt) ?? new Date(),
+            recipient: report.recipient ? asJson(report.recipient) : undefined,
+            disclaimer: report.disclaimer,
+            summary: report.summary,
+            nextActions: asJson(report.nextActions),
+            sections: asJson(report.sections),
+            linkedFollowUps: asJson(report.linkedFollowUps),
+            updatedAt: asDate(report.updatedAt),
+            deliveredAt: asDate(report.deliveredAt)
+          }
+        });
+      }
+
+      for (const reference of store.managerReportSourceReferences) {
+        await tx.managerReportSourceReference.upsert({
+          where: { id: reference.id },
+          create: {
+            id: reference.id,
+            reportId: reference.reportId,
+            sectionKey: reference.sectionKey,
+            sourceKind:
+              toUpperEnum<PrismaManagerReportSourceKind>(reference.sourceKind) ?? "METRIC",
+            entityType: reference.entityType,
+            entityId: reference.entityId,
+            roomId: reference.roomId,
+            tenantId: reference.tenantId,
+            label: reference.label,
+            drilldownScreenId: reference.drilldownScreenId,
+            basis: reference.basis,
+            snapshotAt: asDate(reference.snapshotAt) ?? new Date(),
+            createdAt: asDate(reference.createdAt)
+          },
+          update: {
+            reportId: reference.reportId,
+            sectionKey: reference.sectionKey,
+            sourceKind:
+              toUpperEnum<PrismaManagerReportSourceKind>(reference.sourceKind) ?? "METRIC",
+            entityType: reference.entityType,
+            entityId: reference.entityId,
+            roomId: reference.roomId,
+            tenantId: reference.tenantId,
+            label: reference.label,
+            drilldownScreenId: reference.drilldownScreenId,
+            basis: reference.basis,
+            snapshotAt: asDate(reference.snapshotAt) ?? new Date()
+          }
+        });
+      }
+
+      for (const share of store.managerReportExternalShares) {
+        await tx.managerReportExternalShare.upsert({
+          where: { id: share.id },
+          create: {
+            id: share.id,
+            reportId: share.reportId,
+            token: share.token,
+            recipientName: share.recipientName,
+            masked: share.masked,
+            status: toUpperEnum<PrismaManagerReportShareStatus>(share.status) ?? "ACTIVE",
+            createdByManagerId: share.createdByManagerId,
+            createdAt: asDate(share.createdAt),
+            revokedAt: asDate(share.revokedAt)
+          },
+          update: {
+            reportId: share.reportId,
+            token: share.token,
+            recipientName: share.recipientName,
+            masked: share.masked,
+            status: toUpperEnum<PrismaManagerReportShareStatus>(share.status) ?? "ACTIVE",
+            createdByManagerId: share.createdByManagerId,
+            revokedAt: asDate(share.revokedAt)
+          }
+        });
+      }
+
+      for (const audit of store.managerReportAuditLogs) {
+        await tx.managerReportAuditLogEntry.upsert({
+          where: { id: audit.id },
+          create: {
+            id: audit.id,
+            reportId: audit.reportId,
+            shareId: audit.shareId,
+            action:
+              toUpperEnum<PrismaManagerReportAuditAction>(audit.action) ??
+              "EXTERNAL_SHARE_VIEWED",
+            actorId: audit.actorId,
+            actorLabel: audit.actorLabel,
+            detail: audit.detail,
+            createdAt: asDate(audit.at)
+          },
+          update: {
+            reportId: audit.reportId,
+            shareId: audit.shareId,
+            action:
+              toUpperEnum<PrismaManagerReportAuditAction>(audit.action) ??
+              "EXTERNAL_SHARE_VIEWED",
+            actorId: audit.actorId,
+            actorLabel: audit.actorLabel,
+            detail: audit.detail
+          }
+        });
+      }
+
+      for (const moveout of store.moveouts) {
+        await tx.moveoutRequest.upsert({
+          where: { id: moveout.id },
+          create: {
+            id: moveout.id,
+            tenantId: moveout.tenantId,
+            roomId: moveout.roomId,
+            contractId: moveout.contractId,
+            unitId: moveout.unitId,
+            leaseEndDate: asDate(moveout.leaseEndDate),
+            depositAmount: moveout.depositAmount,
+            estimatedRefundMin: moveout.estimatedRefundMin,
+            estimatedRefundMax: moveout.estimatedRefundMax,
+            settlementStatus:
+              toUpperEnum<PrismaMoveoutSettlementStatus>(moveout.settlementStatus) ?? "ESTIMATE",
+            prepProgress: moveout.prepProgress,
+            messagingThreadId: moveout.messagingThreadId,
+            createdAt: asDate(moveout.createdAt),
+            updatedAt: asDate(moveout.updatedAt)
+          },
+          update: {
+            tenantId: moveout.tenantId,
+            roomId: moveout.roomId,
+            contractId: moveout.contractId,
+            unitId: moveout.unitId,
+            leaseEndDate: asDate(moveout.leaseEndDate),
+            depositAmount: moveout.depositAmount,
+            estimatedRefundMin: moveout.estimatedRefundMin,
+            estimatedRefundMax: moveout.estimatedRefundMax,
+            settlementStatus:
+              toUpperEnum<PrismaMoveoutSettlementStatus>(moveout.settlementStatus) ?? "ESTIMATE",
+            prepProgress: moveout.prepProgress,
+            messagingThreadId: moveout.messagingThreadId,
+            updatedAt: asDate(moveout.updatedAt)
+          }
+        });
+      }
+
+      for (const record of store.moveoutRecords) {
+        await tx.moveoutRecord.upsert({
+          where: { id: record.id },
+          create: {
+            id: record.id,
+            moveoutId: record.summaryId,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(record.source) ?? "CHAT",
+            title: record.title,
+            description: record.description,
+            occurredAt: asDate(record.occurredAt),
+            wearVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(record.wearVerdict),
+            wearNote: record.wearNote,
+            moveinComparisonAvailable: record.moveinComparisonAvailable,
+            createdAt: asDate(record.occurredAt)
+          },
+          update: {
+            moveoutId: record.summaryId,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(record.source) ?? "CHAT",
+            title: record.title,
+            description: record.description,
+            occurredAt: asDate(record.occurredAt),
+            wearVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(record.wearVerdict),
+            wearNote: record.wearNote,
+            moveinComparisonAvailable: record.moveinComparisonAvailable
+          }
+        });
+      }
+
+      for (const item of store.moveoutChecklist) {
+        await tx.moveoutChecklistItem.upsert({
+          where: { id: item.id },
+          create: {
+            id: item.id,
+            moveoutId: item.summaryId,
+            label: item.label,
+            present: item.present,
+            condition: toUpperEnum<PrismaMoveoutChecklistCondition>(item.condition) ?? "NORMAL",
+            note: item.note,
+            updatedAt: new Date()
+          },
+          update: {
+            moveoutId: item.summaryId,
+            label: item.label,
+            present: item.present,
+            condition: toUpperEnum<PrismaMoveoutChecklistCondition>(item.condition) ?? "NORMAL",
+            note: item.note,
+            updatedAt: new Date()
+          }
+        });
+      }
+
+      for (const settlement of store.moveoutSettlements) {
+        await tx.moveoutSettlement.upsert({
+          where: { id: settlement.id },
+          create: {
+            id: settlement.id,
+            moveoutId: settlement.summaryId,
+            depositAmount: settlement.depositAmount,
+            refundMin: settlement.refundMin,
+            refundMax: settlement.refundMax,
+            status: toUpperEnum<PrismaMoveoutSettlementStatus>(settlement.status) ?? "ESTIMATE",
+            disclaimer: settlement.disclaimer,
+            createdAt: asDate(settlement.createdAt),
+            updatedAt: asDate(settlement.updatedAt ?? settlement.createdAt)
+          },
+          update: {
+            moveoutId: settlement.summaryId,
+            depositAmount: settlement.depositAmount,
+            refundMin: settlement.refundMin,
+            refundMax: settlement.refundMax,
+            status: toUpperEnum<PrismaMoveoutSettlementStatus>(settlement.status) ?? "ESTIMATE",
+            disclaimer: settlement.disclaimer,
+            updatedAt: asDate(settlement.updatedAt ?? settlement.createdAt)
+          }
+        });
+      }
+
+      for (const deduction of store.moveoutDeductions) {
+        await tx.moveoutDeduction.upsert({
+          where: { id: deduction.id },
+          create: {
+            id: deduction.id,
+            moveoutId: deduction.summaryId,
+            kind: toUpperEnum<PrismaMoveoutDeductionKind>(deduction.kind) ?? "REPAIR",
+            label: deduction.label,
+            estimatedMin: deduction.estimatedMin,
+            estimatedMax: deduction.estimatedMax,
+            needsConfirmation: deduction.needsConfirmation,
+            evidenceNote: deduction.evidenceNote,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(deduction.source) ?? "REPAIR",
+            updatedAt: new Date()
+          },
+          update: {
+            moveoutId: deduction.summaryId,
+            kind: toUpperEnum<PrismaMoveoutDeductionKind>(deduction.kind) ?? "REPAIR",
+            label: deduction.label,
+            estimatedMin: deduction.estimatedMin,
+            estimatedMax: deduction.estimatedMax,
+            needsConfirmation: deduction.needsConfirmation,
+            evidenceNote: deduction.evidenceNote,
+            source: toUpperEnum<PrismaMoveoutRecordSource>(deduction.source) ?? "REPAIR",
+            updatedAt: new Date()
+          }
+        });
+      }
+
+      for (const dispute of store.moveoutDisputes) {
+        await tx.moveoutDispute.upsert({
+          where: { id: dispute.id },
+          create: {
+            id: dispute.id,
+            moveoutId: dispute.summaryId,
+            targetItemId: dispute.targetItemId,
+            targetLabel: dispute.targetLabel,
+            reason: dispute.reason,
+            status: toUpperEnum<PrismaMoveoutDisputeStatus>(dispute.status) ?? "RECEIVED",
+            slaDeadline: asDate(dispute.slaDeadline) ?? new Date(),
+            slaBreached: dispute.slaBreached,
+            managerResponse: dispute.managerResponse,
+            messagingThreadId: dispute.messagingThreadId,
+            createdAt: asDate(dispute.createdAt),
+            updatedAt: asDate(dispute.updatedAt)
+          },
+          update: {
+            moveoutId: dispute.summaryId,
+            targetItemId: dispute.targetItemId,
+            targetLabel: dispute.targetLabel,
+            reason: dispute.reason,
+            status: toUpperEnum<PrismaMoveoutDisputeStatus>(dispute.status) ?? "RECEIVED",
+            slaDeadline: asDate(dispute.slaDeadline) ?? new Date(),
+            slaBreached: dispute.slaBreached,
+            managerResponse: dispute.managerResponse,
+            messagingThreadId: dispute.messagingThreadId,
+            updatedAt: asDate(dispute.updatedAt)
+          }
+        });
+
+        for (const event of dispute.history) {
+          const eventId =
+            event.id ?? stableMoveoutDisputeEventId(dispute.id, event.status, event.at);
+
+          await tx.moveoutDisputeEvent.upsert({
+            where: { id: eventId },
+            create: {
+              id: eventId,
+              disputeId: dispute.id,
+              status: toUpperEnum<PrismaMoveoutDisputeStatus>(event.status) ?? "RECEIVED",
+              actorUserId: event.actorUserId,
+              note: event.note,
+              createdAt: asDate(event.at)
+            },
+            update: {
+              disputeId: dispute.id,
+              status: toUpperEnum<PrismaMoveoutDisputeStatus>(event.status) ?? "RECEIVED",
+              actorUserId: event.actorUserId,
+              note: event.note
+            }
+          });
+        }
+      }
+
+      for (const audit of store.moveoutReportAudits) {
+        await tx.moveoutReportAuditEntry.upsert({
+          where: { id: audit.id },
+          create: {
+            id: audit.id,
+            moveoutId: audit.summaryId,
+            recordItemId: audit.recordItemId,
+            action: toUpperEnum<PrismaMoveoutWearAdjustmentAction>(audit.action) ?? "KEEP",
+            fromVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.fromVerdict),
+            toVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.toVerdict),
+            evidenceNote: audit.evidenceNote,
+            tenantNotified: audit.tenantNotified,
+            managerName: audit.managerName,
+            managerId: audit.managerId,
+            createdAt: asDate(audit.at)
+          },
+          update: {
+            moveoutId: audit.summaryId,
+            recordItemId: audit.recordItemId,
+            action: toUpperEnum<PrismaMoveoutWearAdjustmentAction>(audit.action) ?? "KEEP",
+            fromVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.fromVerdict),
+            toVerdict: toUpperEnum<PrismaMoveoutWearVerdict>(audit.toVerdict),
+            evidenceNote: audit.evidenceNote,
+            tenantNotified: audit.tenantNotified,
+            managerName: audit.managerName,
+            managerId: audit.managerId
           }
         });
       }

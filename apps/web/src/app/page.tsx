@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import Script from "next/script";
-import loginHeroImage from "../../../../assets/img/image.png";
 import {
   ArrowLeft,
   Banknote,
@@ -12,6 +12,7 @@ import {
   Building,
   Building2,
   CalendarClock,
+  ChevronRight,
   Copy,
   DoorOpen,
   Heart,
@@ -29,8 +30,49 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import {
+  formatManwon,
+  getMarketSummary,
+  propertyTypeForRoom,
+  regionForLocation,
+  type MarketSummary
+} from "../lib/api";
+import {
+  DEMO_COST_QUEUE_SUMMARY,
+  DEMO_COSTS,
+  DEMO_DISCLOSURE_SETTING,
+  DEMO_MONTHLY_SUMMARY,
+  DEMO_RECEIPTS
+} from "../lib/demo-cost";
+import {
+  DEMO_VENDOR_DUPLICATE_CANDIDATES,
+  DEMO_VENDOR_JOBS,
+  DEMO_VENDOR_PERF,
+  DEMO_VENDORS
+} from "../lib/demo-vendor-mgmt";
+import {
+  WoozuLoginScreen,
+  type AppRole,
+  type AuthMode,
+  type ViewerProfile
+} from "./_components/WoozuLoginScreen";
+import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
+import {
+  pickInquiryTargetNo,
+  withInquiryReply,
+  withNewInquiry,
+  type InquiryItem,
+  type InquiryPayload
+} from "../lib/inquiry-flow";
+import {
+  OWNER_DRAFT_STORAGE_KEY,
+  emptyOwnerForm,
+  formatDraftSavedAt,
+  initialOwnerListings,
+  parseOwnerDraft,
+  serializeOwnerDraft
+} from "../lib/owner-draft";
 
-type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
 type MapResultTab = "rooms" | "complexes" | "agents";
 
@@ -79,34 +121,58 @@ declare global {
 
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
-const socialProviders = [
-  { label: "카카오로 계속하기", className: "kakao", mark: "K" },
-  { label: "네이버로 계속하기", className: "naver", mark: "N" },
-  { label: "Apple로 계속하기", className: "apple", mark: "A" },
-  { label: "Google로 계속하기", className: "google", mark: "G" }
+const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
+  { id: "seeker", label: "방 찾는 중", href: "/" },
+  { id: "tenant", label: "내가 사는 집", href: "/?role=tenant&tab=mypage" },
+  { id: "landlord", label: "내가 내놓은 집", href: "/?role=landlord&tab=mypage" }
 ];
 
-const devRoles: Array<{
-  id: AppRole;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "seeker",
-    label: "일반 집보는 사람",
-    description: "지도와 매물 상세를 둘러보는 기본 탐색 모드"
-  },
-  {
-    id: "tenant",
-    label: "세입자",
-    description: "관심 매물과 입주 예정 방을 확인하는 임차인 모드"
-  },
-  {
-    id: "landlord",
-    label: "집주인",
-    description: "마이페이지에서 내 집을 등록하는 임대인 모드"
-  }
+// 내 주거 프로세스: 한 계정이 상황에 따라 갖는 집과의 관계(흐름) 단위.
+// "역할 전환"이 아니라 같은 계정에서 여러 흐름을 오간다는 관점으로 표현한다.
+type MyFlow = "seeking" | "listing" | "living" | "managing";
+
+const myFlowItems: Array<{ id: MyFlow; label: string }> = [
+  { id: "seeking", label: "방 찾는 중" },
+  { id: "listing", label: "내놓은 집" },
+  { id: "living", label: "사는 집" },
+  { id: "managing", label: "관리 중인 집" }
 ];
+
+const protectedRoleConfig = {
+  tenant: {
+    sessionRole: "TENANT",
+    intent: "tenant",
+    redirectTo: "/?role=tenant&tab=mypage"
+  },
+  landlord: {
+    sessionRole: "LANDLORD",
+    intent: "landlord",
+    redirectTo: "/?role=landlord&tab=mypage"
+  }
+} as const;
+
+const normalizeAppRole = (value: string | null): AppRole | null => {
+  if (value === "seeker" || value === "tenant" || value === "landlord") return value;
+  return null;
+};
+
+const normalizeAppTab = (value: string | null): AppTab | null => {
+  if (value === "home" || value === "map" || value === "saved" || value === "inquiry" || value === "mypage") {
+    return value;
+  }
+  return null;
+};
+
+const normalizeAuthMode = (value: string | null): AuthMode | null => {
+  if (value === "login" || value === "signup" || value === "broker") return value;
+  return null;
+};
+
+const appRoleForViewer = (viewer: ViewerProfile): AppRole => {
+  if (viewer.role === "TENANT") return "tenant";
+  if (viewer.role === "LANDLORD") return "landlord";
+  return "seeker";
+};
 
 const categories = [
   { label: "전체", count: "1,287", Icon: Building },
@@ -212,6 +278,46 @@ const ownerReviewItems = [
   { label: "중개전달", caption: "반경 5km 우선" }
 ];
 
+const ownerCostTypeLabels: Record<string, string> = {
+  repair: "수리비",
+  maintenance: "관리비",
+  common: "공용비",
+  other: "기타"
+};
+
+const ownerCostStatusLabels: Record<string, string> = {
+  draft: "검토 대기",
+  confirmed: "확정",
+  amended: "정정",
+  void: "무효"
+};
+
+const ownerCostReviewLabels: Record<string, string> = {
+  ocr_low_confidence: "OCR 저신뢰",
+  classification_unclear: "분류 확인",
+  unit_unmatched: "호실 확인"
+};
+
+const ownerVendorTradeLabels: Record<string, string> = {
+  plumbing: "배관·누수",
+  electrical: "전기",
+  hvac: "냉난방",
+  appliance: "가전",
+  locksmith: "도어락",
+  waterproofing: "방수",
+  cleaning: "청소",
+  general: "종합",
+  other: "기타"
+};
+
+const ownerVendorStatusLabels: Record<string, string> = {
+  active: "활성",
+  inactive: "비활성",
+  closed: "폐업"
+};
+
+const formatWon = (amount: number) => `${amount.toLocaleString("ko-KR")}원`;
+
 const savedComparisonItems = [
   { label: "저장 조건", value: "월세 130 이하", caption: "방배동 · 내방역" },
   { label: "가격 변동", value: "변동 없음", caption: "최근 7일 기준" },
@@ -256,6 +362,14 @@ const inquiryChannelItems = [
 ];
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
+
+// role="button" article를 키보드로도 조작할 수 있도록 Enter/Space를 실제 버튼처럼 처리
+const handleActivateKey = (event: React.KeyboardEvent, action: () => void) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    action();
+  }
+};
 
 const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
 
@@ -548,96 +662,126 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-const loginTrustItems = [
-  { label: "3D 투어", value: "방문 전 확인" },
-  { label: "확인매물", value: "실매물 검수" },
-  { label: "지도 검색", value: "시세·안전" }
+const initialInquiries: InquiryItem[] = [
+  {
+    id: 1,
+    listingTitle: "방배 루미에르 402호",
+    broker: "내방역 푸른공인중개사",
+    message: "아직 거래 가능한가요?",
+    visitTime: "오늘 3시",
+    status: "답변 완료",
+    reply: "네, 아직 거래 가능합니다. 오늘 3시 방문도 가능해요.",
+    time: "10분 전"
+  }
 ];
 
-function LoginScreen({ setActiveRole }: { setActiveRole: (role: AppRole) => void }) {
-  const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
+const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
 
+function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectFlow: (flow: MyFlow) => void }) {
   return (
-    <main className="app-canvas">
-      <section className="login-phone" aria-label="집우집주 로그인">
-        <div className="login-visual" aria-hidden="true">
-          <Image className="login-hero-image" src={loginHeroImage} alt="" priority />
-        </div>
-
-        <div className="login-panel">
-          <p className="brand-kicker">집우집주</p>
-          <h1>방 보러 가기 전에 먼저 걸어보세요</h1>
-          <p>
-            지도에서 조건에 맞는 방을 찾고, 방문 전 3D 투어와 안심 정보를 먼저 확인하세요.
-          </p>
-
-          <div className="login-trust-row" aria-label="서비스 핵심 정보">
-            {loginTrustItems.map((item) => (
-              <span key={item.label}>
-                <b>{item.label}</b>
-                {item.value}
-              </span>
-            ))}
-          </div>
-
-          <div className="social-stack" aria-label="소셜 로그인">
-            {socialProviders.map((provider) => (
-              <button
-                className={`social-button ${provider.className}`}
-                type="button"
-                key={provider.label}
-                onClick={() => setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`)}
-              >
-                <span aria-hidden="true">{provider.mark}</span>
-                {provider.label}
-              </button>
-            ))}
-          </div>
-
-          <p className="social-login-notice" role="status">{socialLoginNotice}</p>
-
-          <div className="dev-login-panel" aria-label="개발용 로그인">
-            <div>
-              <strong>개발용 로그인</strong>
-              <span>역할을 골라 바로 입장</span>
-            </div>
-            {devRoles.map((role) => (
-              <button className="dev-role-button" type="button" key={role.id} onClick={() => setActiveRole(role.id)}>
-                <strong>{role.label}</strong>
-                <span>{role.description}</span>
-              </button>
-            ))}
-          </div>
-
-          <small>일반 계정 로그인은 제공하지 않습니다.</small>
-        </div>
-      </section>
-    </main>
+    <div className="mypage-role-bar my-flow-bar">
+      <span>
+        내 주거 프로세스 — 한 계정으로 <b>여러 집과 관계</b>를 이어갑니다
+      </span>
+      <div className="my-flow-chips" aria-label="연결된 흐름">
+        {myFlowItems.map((flow) => (
+          <button
+            key={flow.id}
+            type="button"
+            className={flow.id === activeFlow ? "active" : ""}
+            aria-current={flow.id === activeFlow ? "true" : undefined}
+            onClick={() => onSelectFlow(flow.id)}
+          >
+            {flow.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function LandlordMyPage() {
-  const [ownerForm, setOwnerForm] = useState({
-    title: "방배 루미에르 402호",
-    address: "서울특별시 서초구 방배동",
-    tradeType: "월세",
-    moveIn: "즉시",
-    deposit: "1000",
-    monthly: "35",
-    jeonse: "0",
-    maintenance: "8",
-    area: "24.5",
-    floor: "4층 / 16층"
-  });
+function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlow) => void; onGoHome: () => void }) {
+  // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
+  const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
   const [has3DRoom, setHas3DRoom] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState("작성 중");
+  const [myListings, setMyListings] = useState(initialOwnerListings);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState("");
+  const [ownerToast, setOwnerToast] = useState("");
+  const [isSubmittingListing, setIsSubmittingListing] = useState(false);
+  const isSubmittingListingRef = useRef(false);
+  const [activeOwnerPanel, setActiveOwnerPanel] = useState("dashboard");
+  const [isCostReviewCleared, setIsCostReviewCleared] = useState(false);
+  const [isDisclosureAcknowledged, setIsDisclosureAcknowledged] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState(DEMO_VENDORS[0]?.id ?? "");
+  const [isDuplicateResolved, setIsDuplicateResolved] = useState(false);
   const updateOwnerForm = (key: keyof typeof ownerForm, value: string) => {
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
+
+  // 복원: 반드시 마운트 후에만 localStorage 접근 — SSR 초기 렌더와의 hydration 불일치 방지 (QA 8).
+  useEffect(() => {
+    const draft = parseOwnerDraft(window.localStorage.getItem(OWNER_DRAFT_STORAGE_KEY));
+
+    if (draft) {
+      setOwnerForm(draft.ownerForm);
+      setPhotoCount(draft.photoCount);
+      setHas3DRoom(draft.has3DRoom);
+      setRegistrationStatus(draft.registrationStatus);
+      setMyListings(draft.myListings);
+      setDraftSavedAt(draft.savedAt);
+    }
+
+    setIsDraftLoaded(true);
+  }, []);
+
+  // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
+  useEffect(() => {
+    if (!isDraftLoaded) return;
+
+    const savedAt = new Date().toISOString();
+    window.localStorage.setItem(
+      OWNER_DRAFT_STORAGE_KEY,
+      serializeOwnerDraft({ ownerForm, photoCount, has3DRoom, registrationStatus, myListings }, savedAt)
+    );
+    setDraftSavedAt(savedAt);
+  }, [isDraftLoaded, ownerForm, photoCount, has3DRoom, registrationStatus, myListings]);
   const submitOwnerListing = () => {
-    setRegistrationStatus("검수 대기");
+    // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
+    if (isSubmittingListingRef.current) {
+      return;
+    }
+
+    if (!ownerForm.title.trim()) {
+      setOwnerToast("매물명을 입력해야 등록할 수 있습니다.");
+      return;
+    }
+
+    isSubmittingListingRef.current = true;
+    setIsSubmittingListing(true);
+    window.setTimeout(() => {
+      const id = Date.now();
+
+      setRegistrationStatus("검수 대기");
+      setMyListings((current) => [
+        { id, title: ownerForm.title, price: ownerPriceLabel, status: "검수 대기", caption: "실매물 확인 후 노출됩니다" },
+        ...current
+      ]);
+      setOwnerToast("검수 요청이 접수됐습니다. 확인이 끝나면 매물이 노출됩니다.");
+      isSubmittingListingRef.current = false;
+      setIsSubmittingListing(false);
+      window.setTimeout(() => {
+        setRegistrationStatus("노출중");
+        setMyListings((current) =>
+          current.map((item) => (item.id === id ? { ...item, status: "노출중", caption: "방금 노출 시작 · 문의 대기" } : item))
+        );
+        setOwnerToast("실매물 확인이 끝나 매물 노출이 시작됐습니다.");
+      }, 6000);
+    }, 700);
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
   const continueOwnerRegistration = () => {
     const scrollToOwnerForm = () => {
@@ -663,14 +807,86 @@ function LandlordMyPage() {
     ? `전세 ${ownerForm.jeonse || "0"}만원`
     : `${ownerForm.tradeType} ${ownerForm.deposit || "0"}/${ownerForm.monthly || "0"}`;
   const ownerCompletionRate = photoCount >= 3 && has3DRoom ? 92 : 68;
+  const confirmedOwnerCosts = DEMO_COSTS.filter((cost) => cost.status === "confirmed" || cost.status === "amended");
+  const ownerCostReviewItems = DEMO_COSTS.filter((cost) => cost.status === "draft" && cost.reviewReason);
+  const ownerPendingCostReviews = isCostReviewCleared ? 0 : DEMO_COST_QUEUE_SUMMARY.total;
+  const ownerPrivateDisclosureCount = isDisclosureAcknowledged ? 0 : DEMO_DISCLOSURE_SETTING.hiddenCount;
+  const ownerReceiptEvidenceCount = DEMO_RECEIPTS.filter((receipt) => receipt.hasEvidence).length;
+  const selectedVendor = DEMO_VENDORS.find((vendor) => vendor.id === selectedVendorId) ?? DEMO_VENDORS[0];
+  const selectedVendorPerf = selectedVendor
+    ? DEMO_VENDOR_PERF.find((perf) => perf.vendorId === selectedVendor.id)
+    : undefined;
+  const selectedVendorJobs = selectedVendor
+    ? DEMO_VENDOR_JOBS.filter((job) => job.vendorId === selectedVendor.id)
+    : [];
+  const ownerOpenDuplicateCount = isDuplicateResolved ? 0 : DEMO_VENDOR_DUPLICATE_CANDIDATES.length;
+  const ownerVendorRatingLabel = selectedVendorPerf?.ratingVisible && selectedVendorPerf.satisfactionAvg
+    ? `${selectedVendorPerf.satisfactionAvg.toFixed(1)}점`
+    : `거래 ${selectedVendorPerf?.completedCount ?? selectedVendor?.dealCount ?? 0}건`;
+  const ownerDashboardTabs = [
+    { id: "dashboard", label: "대시보드", note: "현재 페이지" },
+    { id: "contract-dashboard", label: "검토 대시보드", note: "KAN-133" },
+    { id: "contract-ocr", label: "OCR 검토", note: "계약" },
+    { id: "contract-register", label: "계약서 등록", note: "계약" },
+    { id: "contract-timeline", label: "호실·타임라인", note: "계약" },
+    { id: "contract-invite", label: "임차인 초대", note: "계약" },
+    { id: "contract-storage", label: "보관·삭제", note: "계약" },
+    { id: "cost-ledger", label: "원장/큐", note: "KAN-135" },
+    { id: "cost-receipt", label: "영수증 첨부", note: "비용" },
+    { id: "cost-ocr", label: "OCR 검토", note: "비용" },
+    { id: "cost-detail", label: "비용 상세", note: "비용" },
+    { id: "cost-disclosure", label: "공개 관리", note: "비용" },
+    { id: "vendor-address", label: "주소록", note: "KAN-136" },
+    { id: "vendor-detail", label: "상세", note: "업체" },
+    { id: "vendor-performance", label: "성과", note: "업체" },
+    { id: "vendor-edit", label: "등록/편집", note: "업체" }
+  ];
+  const activeOwnerTab = ownerDashboardTabs.find((tab) => tab.id === activeOwnerPanel) ?? ownerDashboardTabs[0];
+  const activeOwnerDomain = activeOwnerPanel.split("-")[0];
+  const ownerContractStats = [
+    { label: "검토 대기", value: "2건", note: "임차인·관리자 업로드 유입" },
+    { label: "확인 필요", value: "3개", note: "OCR 원문 대조 필요" },
+    { label: "SLA 초과", value: "1건", note: "장기 미확정 출구 표시" }
+  ];
+  const ownerContractRows = [
+    { status: "검토 전 참고문", title: "연남 스테이 302호 · Alex Kim", caption: "계약일 2026년 3월 1일 · 확인필요 3" },
+    { status: "미등록 호실", title: "성수 하우스 405호 · Linh Tran", caption: "관리자 수동값 · 확인필요 0" }
+  ];
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
-      <div className="owner-hero">
-        <p className="brand-kicker">매물 관리</p>
-        <h2 id="owner-title">집주인 마이페이지</h2>
-        <p>사진, 가격, 3D 방 자료를 한 번에 정리해 매물 등록을 진행합니다.</p>
+      <MyFlowBar activeFlow="listing" onSelectFlow={onSelectFlow} />
+
+      <div className="owner-dashboard-layout">
+        <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
+          {ownerDashboardTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
+              onClick={() => setActiveOwnerPanel(tab.id)}
+            >
+              <span>{tab.note}</span>
+              <strong>{tab.label}</strong>
+            </button>
+          ))}
+        </nav>
+
+        <div className="owner-dashboard-content">
+          {activeOwnerPanel === "dashboard" ? (
+            <>
+      <div className="owner-hero" id="owner-dashboard-top">
+        <div>
+          <p className="brand-kicker">매물 관리</p>
+          <h2 id="owner-title">집주인 마이페이지</h2>
+          <p>사진, 가격, 3D 방 자료를 한 번에 정리해 매물 등록을 진행합니다.</p>
+        </div>
+        <button className="mypage-main-button" type="button" onClick={onGoHome}>
+          메인으로
+        </button>
       </div>
+
+      {ownerToast ? <p className="mypage-toast" role="status">{ownerToast}</p> : null}
 
       <section className="owner-status-board" aria-label="등록 매물 현황">
         <article>
@@ -680,9 +896,31 @@ function LandlordMyPage() {
         </article>
         <article>
           <span>검수 상태</span>
-          <strong>{registrationStatus === "검수 대기" ? "실매물 확인 요청" : "실매물 확인 전"}</strong>
+          <strong>
+            {registrationStatus === "검수 대기"
+              ? "실매물 확인 요청"
+              : registrationStatus === "노출중"
+                ? "확인 완료 · 노출중"
+                : "실매물 확인 전"}
+          </strong>
           <p>{ownerForm.address} · {ownerPriceLabel}</p>
         </article>
+      </section>
+
+      <section className="owner-my-listings" aria-label="내 등록 매물">
+        <div className="owner-my-listings-head">
+          <strong>내 매물 {myListings.length}개</strong>
+          <span>검수 통과 시 자동 노출</span>
+        </div>
+        {myListings.map((item) => (
+          <article key={item.id}>
+            <div>
+              <strong>{item.title}</strong>
+              <small>{item.price} · {item.caption}</small>
+            </div>
+            <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+          </article>
+        ))}
       </section>
 
       <section className="owner-preview-card" aria-label="등록 매물 미리보기">
@@ -695,6 +933,35 @@ function LandlordMyPage() {
           <strong>{ownerPriceLabel}</strong>
           <button type="button" onClick={continueOwnerRegistration}>입력 계속하기</button>
         </div>
+      </section>
+
+      <section className="domain-test-card landlord-domain-test-card" aria-labelledby="landlord-roomlog-title">
+        <div className="domain-test-heading">
+          <span>내 룸로그</span>
+          <h3 id="landlord-roomlog-title">이 집을 룸로그로 관리하기</h3>
+          <p>세입자가 연결되면 같은 계정에서 계약·비용·메시지·하자를 관리 콘솔로 이어서 처리합니다.</p>
+        </div>
+        <div className="domain-test-link-grid">
+          <Link className="domain-test-link primary" href="/manager/home/00">
+            관리 콘솔 홈
+          </Link>
+          <Link className="domain-test-link" href="/manager/contract/00">
+            계약 관리
+          </Link>
+          <Link className="domain-test-link" href="/manager/ticket/dash/00">
+            하자·티켓
+          </Link>
+          <Link className="domain-test-link" href="/manager/cost/00">
+            비용 정산
+          </Link>
+          <Link className="domain-test-link" href="/manager/messaging/00">
+            메시지
+          </Link>
+          <Link className="domain-test-link" href="/manager/moveout/00">
+            퇴실 관리
+          </Link>
+        </div>
+        <small className="domain-test-note">이 계정에 관리 중인 집이 연결되면 이어집니다.</small>
       </section>
 
       <section className="owner-exposure-card" aria-label="집 내놓기 전달 범위">
@@ -760,6 +1027,287 @@ function LandlordMyPage() {
         </div>
       </section>
 
+            </>
+          ) : null}
+
+          {activeOwnerPanel !== "dashboard" ? (
+            <>
+              <div className="owner-panel-heading">
+                <span>{activeOwnerTab.note}</span>
+                <h2>{activeOwnerTab.label}</h2>
+                <p>집주인 대시보드 안에서 관리 기능을 확인합니다.</p>
+              </div>
+      <section className="owner-ops-grid" aria-label="집주인 운영 기능">
+        {activeOwnerDomain === "contract" ? (
+        <article id="kan-133-contract" className="owner-ops-card owner-contract-card">
+          <div className="owner-ops-head">
+            <div>
+              <span>KAN-133 계약 관리</span>
+              <h3>계약서 검토와 임차인 초대</h3>
+            </div>
+            <strong>관리 대기</strong>
+          </div>
+
+          <div className="owner-ops-metrics" aria-label="계약 관리 요약">
+            {ownerContractStats.map((stat) => (
+              <article key={stat.label}>
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
+                <small>{stat.note}</small>
+              </article>
+            ))}
+          </div>
+
+          <div className="owner-contract-list" aria-label="계약 검토 목록">
+            {ownerContractRows.map((row) => (
+              <div key={row.title}>
+                <span>{row.status}</span>
+                <strong>{row.title}</strong>
+                <small>{row.caption}</small>
+              </div>
+            ))}
+          </div>
+
+          <div className="owner-disclosure-strip" aria-label="계약 관리 원칙">
+            <div>
+              <span>원칙 게이트</span>
+              <strong>OCR 원문 대조 후 확정</strong>
+              <small>계약 확정·삭제·초대는 기록을 남기고 현재 대시보드에서 상태를 관리합니다.</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOwnerToast("계약 검토 항목을 확인했습니다. 실제 확정은 계약 원칙 게이트를 통과해야 합니다.")}
+            >
+              검토 확인
+            </button>
+          </div>
+        </article>
+        ) : null}
+
+        {activeOwnerDomain === "cost" ? (
+        <article id="kan-135-cost" className="owner-ops-card owner-cost-card">
+          <div className="owner-ops-head">
+            <div>
+              <span>KAN-135 비용 정산</span>
+              <h3>비용 원장과 영수증 검토</h3>
+            </div>
+            <strong>{DEMO_MONTHLY_SUMMARY.month}</strong>
+          </div>
+
+          <div className="owner-ops-metrics" aria-label="비용 정산 요약">
+            <article>
+              <span>이번 달 지출</span>
+              <strong>{formatWon(DEMO_MONTHLY_SUMMARY.totalAmount)}</strong>
+            </article>
+            <article>
+              <span>확정 비용</span>
+              <strong>{DEMO_MONTHLY_SUMMARY.confirmedCount}건</strong>
+            </article>
+            <article>
+              <span>검토 대기</span>
+              <strong>{ownerPendingCostReviews}건</strong>
+            </article>
+            <article>
+              <span>영수증 증빙</span>
+              <strong>{ownerReceiptEvidenceCount}건</strong>
+            </article>
+          </div>
+
+          <div className="owner-cost-breakdown" aria-label="비용 유형별 집계">
+            {Object.entries(DEMO_MONTHLY_SUMMARY.byType).map(([type, amount]) => (
+              <div key={type}>
+                <span>{ownerCostTypeLabels[type]}</span>
+                <strong>{formatWon(amount)}</strong>
+              </div>
+            ))}
+          </div>
+
+          <div className="owner-review-panel">
+            <div className="owner-panel-head">
+              <div>
+                <span>영수증 검토 큐</span>
+                <strong>{ownerPendingCostReviews > 0 ? "확인 필요" : "정리됨"}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCostReviewCleared(true);
+                  setOwnerToast("비용 검토 큐를 정리했습니다. 미검증 확정 항목은 원장에 꼬리표로 남습니다.");
+                }}
+              >
+                검토 완료 처리
+              </button>
+            </div>
+            <div className="owner-review-list">
+              {(ownerPendingCostReviews > 0 ? ownerCostReviewItems : []).map((cost) => (
+                <div key={cost.id}>
+                  <span>{ownerCostReviewLabels[cost.reviewReason ?? ""] ?? "검토"}</span>
+                  <strong>{cost.item}</strong>
+                  <small>{formatWon(cost.amount)} · {cost.scope === "unit" ? `${cost.unitId ?? "호실 미정"}호` : "건물"}</small>
+                </div>
+              ))}
+              {ownerPendingCostReviews === 0 ? (
+                <div className="owner-empty-row">
+                  <strong>대기 중인 영수증 검토가 없습니다.</strong>
+                  <small>새 영수증이나 OCR 저신뢰 항목이 생기면 여기에 표시됩니다.</small>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="owner-ledger-list" aria-label="비용 원장 최근 항목">
+            {confirmedOwnerCosts.slice(0, 4).map((cost) => (
+              <div key={cost.id}>
+                <div>
+                  <strong>{cost.item}</strong>
+                  <small>{ownerCostTypeLabels[cost.type]} · {cost.scope === "unit" ? `${cost.unitId ?? "호실 미정"}호` : "건물 기록"}</small>
+                </div>
+                <span>{formatWon(cost.amount)}</span>
+                <em>{ownerCostStatusLabels[cost.status]}</em>
+              </div>
+            ))}
+          </div>
+
+          <div className="owner-disclosure-strip" aria-label="관리비 공개 설정">
+            <div>
+              <span>관리비 공개 설정</span>
+              <strong>{ownerPrivateDisclosureCount > 0 ? `숨김 ${ownerPrivateDisclosureCount}건` : "공개 상태 확인"}</strong>
+              <small>비공개 항목은 임차인 화면에 숨김 건수로 표시됩니다.</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDisclosureAcknowledged(true);
+                setOwnerToast("관리비 공개 상태를 확인했습니다.");
+              }}
+            >
+              공개 상태 확인
+            </button>
+          </div>
+        </article>
+        ) : null}
+
+        {activeOwnerDomain === "vendor" ? (
+        <article id="kan-136-vendor" className="owner-ops-card owner-vendor-card">
+          <div className="owner-ops-head">
+            <div>
+              <span>KAN-136 업체 관리</span>
+              <h3>업체 주소록과 성과 게이트</h3>
+            </div>
+            <strong>{ownerOpenDuplicateCount > 0 ? `중복 ${ownerOpenDuplicateCount}` : "중복 없음"}</strong>
+          </div>
+
+          <div className="owner-ops-metrics" aria-label="업체 관리 요약">
+            <article>
+              <span>등록 업체</span>
+              <strong>{DEMO_VENDORS.length}곳</strong>
+            </article>
+            <article>
+              <span>신규 배지</span>
+              <strong>{DEMO_VENDORS.filter((vendor) => vendor.isNew).length}곳</strong>
+            </article>
+            <article>
+              <span>최근 완료</span>
+              <strong>{DEMO_VENDOR_JOBS.length}건</strong>
+            </article>
+            <article>
+              <span>성과 표시</span>
+              <strong>{ownerVendorRatingLabel}</strong>
+            </article>
+          </div>
+
+          <div className="owner-vendor-list" aria-label="업체 주소록">
+            {DEMO_VENDORS.slice(0, 4).map((vendor) => (
+              <button
+                className={selectedVendor?.id === vendor.id ? "active" : ""}
+                key={vendor.id}
+                type="button"
+                onClick={() => setSelectedVendorId(vendor.id)}
+              >
+                <span>
+                  <strong>{vendor.name}</strong>
+                  {vendor.isNew ? <em>신규</em> : null}
+                </span>
+                <small>{vendor.trades.map((trade) => ownerVendorTradeLabels[trade]).join(" · ")}</small>
+              </button>
+            ))}
+          </div>
+
+          {selectedVendor ? (
+            <div className="owner-vendor-detail" aria-label="선택 업체 상세">
+              <div className="owner-vendor-title-row">
+                <div>
+                  <span>{ownerVendorStatusLabels[selectedVendor.status]}</span>
+                  <strong>{selectedVendor.name}</strong>
+                  <small>{selectedVendor.contactPerson ?? "담당자 미등록"} · {selectedVendor.phone ?? "연락처 확인 필요"}</small>
+                </div>
+                <em>{selectedVendor.source === "auto" ? "자동 누적" : "직접 추가"}</em>
+              </div>
+
+              <div className="owner-perf-gate">
+                <div>
+                  <span>성과 게이트</span>
+                  <strong>
+                    {selectedVendorPerf?.ratingVisible
+                      ? `표본 ${selectedVendorPerf.sampleN}/${selectedVendorPerf.minN} 통과`
+                      : `표본 ${selectedVendorPerf?.sampleN ?? 0}/${selectedVendorPerf?.minN ?? 5} 미달`}
+                  </strong>
+                  <small>
+                    {selectedVendorPerf?.aiCommentEnabled
+                      ? selectedVendorPerf.aiComment?.summary
+                      : "소표본 업체는 별점 수치와 AI 코멘트를 숨깁니다."}
+                  </small>
+                </div>
+                <div>
+                  <span>응답 중앙값</span>
+                  <strong>{selectedVendorPerf?.responseMedianHours ? `${selectedVendorPerf.responseMedianHours}시간` : "참고 불가"}</strong>
+                  <small>커버리지 {Math.round((selectedVendorPerf?.coverageRatio ?? 0) * 100)}%</small>
+                </div>
+              </div>
+
+              <div className="owner-vendor-jobs" aria-label="최근 완료 수리">
+                {selectedVendorJobs.slice(0, 3).map((job) => (
+                  <div key={job.id}>
+                    <span>{job.unitMasked ? "***호" : `${job.unitId ?? "호실 미정"}호`}</span>
+                    <strong>{job.quoteAmount ? formatWon(job.quoteAmount) : "견적 없음"}</strong>
+                    <small>{new Date(job.completedAt).toLocaleDateString("ko-KR")} 완료</small>
+                  </div>
+                ))}
+                {selectedVendorJobs.length === 0 ? (
+                  <div className="owner-empty-row">
+                    <strong>완료 수리 이력이 아직 없습니다.</strong>
+                    <small>배정과 완료가 쌓이면 성과가 자동 계산됩니다.</small>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="owner-duplicate-strip" aria-label="업체 중복 후보">
+            <div>
+              <span>신규·중복 업체 게이트</span>
+              <strong>{ownerOpenDuplicateCount > 0 ? `${ownerOpenDuplicateCount}건 확인 필요` : "처리 완료"}</strong>
+              <small>신규 업체는 격리하지 않고 배지만 표시합니다.</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDuplicateResolved(true);
+                setOwnerToast("업체 중복 후보를 확인했습니다.");
+              }}
+            >
+              중복 후보 확인
+            </button>
+          </div>
+        </article>
+        ) : null}
+      </section>
+
+            </>
+          ) : null}
+
+          {activeOwnerPanel === "dashboard" ? (
+            <>
       <form className="owner-form" id="owner-registration-form">
         <section className="owner-card">
           <div className="form-heading">
@@ -769,6 +1317,12 @@ function LandlordMyPage() {
             </div>
             <strong>임대인 전용</strong>
           </div>
+
+          {draftSavedAt ? (
+            <small className="owner-draft-status" role="status">
+              임시저장됨 · {formatDraftSavedAt(draftSavedAt)} — 새로고침해도 작성 내용이 유지됩니다.
+            </small>
+          ) : null}
 
           <label>
             매물명
@@ -871,8 +1425,11 @@ function LandlordMyPage() {
         <section className="owner-submit-summary" aria-label="검수 요청 요약">
           <div>
             <span>검수 요청 요약</span>
-            <h3>{ownerForm.title}</h3>
-            <p>{ownerPriceLabel} · 관리비 {ownerForm.maintenance}만원 · {ownerForm.area}m² · {ownerForm.floor}</p>
+            <h3>{ownerForm.title || "매물명을 입력해주세요"}</h3>
+            <p>
+              {ownerPriceLabel} · 관리비 {ownerForm.maintenance || "0"}만원 · {ownerForm.area || "-"}m² ·{" "}
+              {ownerForm.floor || "층수 미입력"}
+            </p>
           </div>
           <div className="owner-submit-grid">
             <span>
@@ -891,10 +1448,21 @@ function LandlordMyPage() {
           <p>검수 요청 후 주변 중개사 12곳에 매물 정보가 전달되고, 확인매물 여부가 표시됩니다.</p>
         </section>
 
-        <button className="submit-listing" type="button" onClick={submitOwnerListing}>
-          매물 등록하기
+        <button className="submit-listing" type="button" onClick={submitOwnerListing} disabled={isSubmittingListing} aria-busy={isSubmittingListing}>
+          {isSubmittingListing ? (
+            <>
+              <span className="btn-spinner" aria-hidden="true" />
+              등록 처리 중…
+            </>
+          ) : (
+            "매물 등록하기"
+          )}
         </button>
       </form>
+            </>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }
@@ -1039,12 +1607,16 @@ function ListingDetailView({
   listing,
   isSaved,
   onBack,
-  onToggleSaved
+  onToggleSaved,
+  onSubmitInquiry,
+  onViewInquiryCenter
 }: {
   listing: Listing;
   isSaved: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
+  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onViewInquiryCenter: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
   const [isInquirySheetOpen, setIsInquirySheetOpen] = useState(false);
@@ -1053,14 +1625,40 @@ function ListingDetailView({
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
-  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
-  const [inquiryMemo, setInquiryMemo] = useState("실매물 여부와 방문 가능한 시간을 확인하고 싶습니다.");
-  const [inquirySent, setInquirySent] = useState(false);
+  const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const safetyScore = listing.score.replace("안심 ", "");
+
+  // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
+  // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
+  useEffect(() => {
+    const controller = new AbortController();
+    const region = regionForLocation(listing.location);
+    getMarketSummary(
+      { lawdCd: region.lawdCd, propertyType: propertyTypeForRoom(listing.roomType), months: 3 },
+      controller.signal
+    ).then((summary) => {
+      if (summary && summary.count > 0) {
+        setMarketSummary(summary);
+      }
+    });
+    return () => controller.abort();
+  }, [listing.location, listing.roomType]);
+
+  const marketRecent = marketSummary?.recent[0];
+  const complexRecentLabel = marketRecent
+    ? marketRecent.tradeType === "월세"
+      ? `${formatManwon(marketRecent.depositManwon)}/${marketRecent.monthlyRentManwon}만`
+      : formatManwon(marketRecent.depositManwon)
+    : listing.complexPrice;
+  const complexAvgLabel =
+    marketSummary && marketSummary.count > 0
+      ? formatManwon(marketSummary.avgJeonseDepositManwon || marketSummary.avgDepositManwon)
+      : listing.unitCount;
+  const complexMonthlyAvgLabel =
+    marketSummary && marketSummary.monthlyCount > 0 ? `${marketSummary.avgMonthlyRentManwon}만` : "76만";
 
   const copyListingNo = async () => {
     const text = listing.listingLabel;
@@ -1270,32 +1868,34 @@ function ListingDetailView({
         <button type="button" onClick={() => setIsInquirySheetOpen(true)}>간편문의</button>
       </section>
 
-      <section className="detail-info-section" aria-label="옵션 정보">
-        <div className="detail-section-heading">
-          <h2>옵션 정보</h2>
-          <span>현장 확인 필요</span>
-        </div>
-        <div className="option-chip-grid">
-          {optionItems.map((option) => (
-            <span key={option}>{option}</span>
-          ))}
-        </div>
-      </section>
+      <div className="detail-info-pair">
+        <section className="detail-info-section" aria-label="옵션 정보">
+          <div className="detail-section-heading">
+            <h2>옵션 정보</h2>
+            <span>현장 확인 필요</span>
+          </div>
+          <div className="option-chip-grid">
+            {optionItems.map((option) => (
+              <span key={option}>{option}</span>
+            ))}
+          </div>
+        </section>
 
-      <section className="detail-info-section" aria-label="건물 정보">
-        <div className="detail-section-heading">
-          <h2>건물 정보</h2>
-          <span>등기·현장 기준</span>
-        </div>
-        <dl className="detail-info-table">
-          {listingBuildingRows.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+        <section className="detail-info-section" aria-label="건물 정보">
+          <div className="detail-section-heading">
+            <h2>건물 정보</h2>
+            <span>등기·현장 기준</span>
+          </div>
+          <dl className="detail-info-table">
+            {listingBuildingRows.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </div>
 
       <section className="detail-neighborhood-card" aria-label="상세 주변 정보">
         <h2>주변 정보</h2>
@@ -1333,8 +1933,8 @@ function ListingDetailView({
           <strong>전화</strong>
         </button>
         <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
-          <span>3D 투어</span>
-          <strong>예약하기</strong>
+          <span>3D</span>
+          <strong>둘러보기</strong>
         </button>
         <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
           <strong>문자로 문의하기</strong>
@@ -1438,17 +2038,23 @@ function ListingDetailView({
             <div className="complex-price-summary">
               <article>
                 <span>최근 실거래</span>
-                <strong>{listing.complexPrice}</strong>
+                <strong>{complexRecentLabel}</strong>
               </article>
               <article>
                 <span>동일 면적 평균</span>
-                <strong>{listing.unitCount}</strong>
+                <strong>{complexAvgLabel}</strong>
               </article>
               <article>
                 <span>월세 평균</span>
-                <strong>76만</strong>
+                <strong>{complexMonthlyAvgLabel}</strong>
               </article>
             </div>
+
+            {marketSummary && marketSummary.count > 0 ? (
+              <p className="complex-source-note">
+                국토교통부 실거래가 {marketSummary.count}건 기준 · 최근 3개월
+              </p>
+            ) : null}
 
             <section className="complex-building-card" aria-label="단지 건물 요약">
               <div>
@@ -1551,104 +2157,153 @@ function ListingDetailView({
       ) : null}
 
       {isInquirySheetOpen ? (
-        <div className="inquiry-sheet-backdrop" role="presentation" onClick={() => setIsInquirySheetOpen(false)}>
-          <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
-            <div className="sheet-handle" aria-hidden="true" />
-            <header>
-              <div>
-                <span>문의하기</span>
-                <h2 id="inquiry-sheet-title">간편문의</h2>
-                <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
-              </div>
-              <button type="button" onClick={() => setIsInquirySheetOpen(false)} aria-label="문의 닫기">×</button>
-            </header>
-
-            <div className="inquiry-listing-summary">
-              <strong>{listing.price}</strong>
-              <span>{listing.title}</span>
-              <small>{listing.broker} · {listing.response}</small>
-            </div>
-
-            <div className="inquiry-message-group">
-              <strong>문의 내용 선택</strong>
-              <div className="inquiry-message-grid">
-                {[
-                  "아직 거래 가능한가요?",
-                  "오늘 방문 가능한가요?",
-                  "관리비 포함 내역 알려주세요",
-                  "3D 투어 먼저 보고 싶어요"
-                ].map((message) => (
-                  <button
-                    className={selectedInquiryMessage === message ? "active" : ""}
-                    type="button"
-                    key={message}
-                    onClick={() => {
-                      setSelectedInquiryMessage(message);
-                      setInquirySent(false);
-                    }}
-                  >
-                    {message}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="visit-time-group">
-              <strong>방문 희망 시간</strong>
-              <div>
-                {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
-                  <button
-                    className={selectedVisitTime === time ? "active" : ""}
-                    type="button"
-                    key={time}
-                    onClick={() => {
-                      setSelectedVisitTime(time);
-                      setInquirySent(false);
-                    }}
-                  >
-                    {time}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="inquiry-textarea">
-              <span>추가 메모</span>
-              <textarea value={inquiryMemo} onChange={(event) => {
-                setInquiryMemo(event.target.value);
-                setInquirySent(false);
-              }} />
-            </label>
-
-            <div className="inquiry-selected-summary" role="status">
-              <strong>선택한 문의</strong>
-              <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
-            </div>
-
-            <div className="inquiry-agent-row">
-              <span aria-hidden="true">✓</span>
-              <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
-            </div>
-
-            <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
-              <strong>허위매물 차단</strong>
-              <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
-            </div>
-
-            <div className="inquiry-sheet-actions">
-              <button type="button" onClick={() => setIsInquirySheetOpen(false)}>닫기</button>
-              <button type="button" onClick={() => setInquirySent(true)}>문의 보내기</button>
-            </div>
-
-            {inquirySent ? (
-              <p className="inquiry-submit-feedback" role="status">
-                문의가 접수됐습니다. 중개사가 평균 8분 안에 문자로 답변합니다.
-              </p>
-            ) : null}
-          </section>
-        </div>
+        <InquirySheet
+          listing={listing}
+          onClose={() => setIsInquirySheetOpen(false)}
+          onSubmitInquiry={onSubmitInquiry}
+          onViewInquiryCenter={onViewInquiryCenter}
+        />
       ) : null}
     </section>
+  );
+}
+
+// 통합 문의 작성 sheet — 매물 상세 "문의하기", 홈 카드 "문자문의",
+// 문의 탭 "새 문의"가 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
+function InquirySheet({
+  listing,
+  onClose,
+  onSubmitInquiry,
+  onViewInquiryCenter
+}: {
+  listing: Listing;
+  onClose: () => void;
+  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onViewInquiryCenter: () => void;
+}) {
+  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
+  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
+  const [inquiryMemo, setInquiryMemo] = useState("");
+  const [inquirySent, setInquirySent] = useState(false);
+
+  return (
+    <div className="inquiry-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <span>문의하기</span>
+            <h2 id="inquiry-sheet-title">간편문의</h2>
+            <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="문의 닫기">×</button>
+        </header>
+
+        <div className="inquiry-listing-summary">
+          <strong>{listing.price}</strong>
+          <span>{listing.title}</span>
+          <small>{listing.broker} · {listing.response}</small>
+        </div>
+
+        <div className="inquiry-message-group">
+          <strong>문의 내용 선택</strong>
+          <div className="inquiry-message-grid">
+            {[
+              "아직 거래 가능한가요?",
+              "오늘 방문 가능한가요?",
+              "관리비 포함 내역 알려주세요",
+              "3D 투어 먼저 보고 싶어요"
+            ].map((message) => (
+              <button
+                className={selectedInquiryMessage === message ? "active" : ""}
+                type="button"
+                key={message}
+                onClick={() => {
+                  setSelectedInquiryMessage(message);
+                  setInquirySent(false);
+                }}
+              >
+                {message}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="visit-time-group">
+          <strong>방문 희망 시간</strong>
+          <div>
+            {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
+              <button
+                className={selectedVisitTime === time ? "active" : ""}
+                type="button"
+                key={time}
+                onClick={() => {
+                  setSelectedVisitTime(time);
+                  setInquirySent(false);
+                }}
+              >
+                {time}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="inquiry-textarea">
+          <span>추가 메모</span>
+          <textarea
+            value={inquiryMemo}
+            placeholder="예: 실매물 여부와 방문 가능한 시간을 확인하고 싶습니다."
+            onChange={(event) => {
+              setInquiryMemo(event.target.value);
+              setInquirySent(false);
+            }}
+          />
+        </label>
+
+        <div className="inquiry-selected-summary" role="status">
+          <strong>선택한 문의</strong>
+          <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
+        </div>
+
+        <div className="inquiry-agent-row">
+          <span aria-hidden="true">✓</span>
+          <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
+        </div>
+
+        <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
+          <strong>허위매물 차단</strong>
+          <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
+        </div>
+
+        <div className="inquiry-sheet-actions">
+          <button type="button" onClick={onClose}>닫기</button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!inquirySent) {
+                onSubmitInquiry({
+                  listingTitle: listing.title,
+                  broker: listing.broker,
+                  message: selectedInquiryMessage,
+                  visitTime: selectedVisitTime
+                });
+              }
+
+              setInquirySent(true);
+            }}
+          >
+            문의 보내기
+          </button>
+        </div>
+
+        {inquirySent ? (
+          <div className="inquiry-submit-feedback" role="status">
+            <p>문의가 접수됐습니다. 답변이 오면 문의센터와 마이페이지에서 확인할 수 있어요.</p>
+            <button type="button" onClick={onViewInquiryCenter}>문의센터 보기</button>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -1712,30 +2367,52 @@ function SavedListingsSection({
   );
 }
 
-function InquiryHubSection() {
-  const [inquiryNotice, setInquiryNotice] = useState("최근 문의 상태가 여기에 표시됩니다.");
+function InquiryHubSection({
+  inquiries,
+  onNewInquiry
+}: {
+  inquiries: InquiryItem[];
+  onNewInquiry: () => void;
+}) {
+  const pendingCount = inquiries.filter((item) => item.status === "답변 대기").length;
 
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
       <div className="section-title no-margin">
         <div>
           <h2 id="inquiry-title">문의센터</h2>
-          <p>방문 전 문자문의와 전화 상담 흐름을 바로 확인합니다.</p>
+          <p>진행중 문의 {inquiries.length}건 · 답변 대기 {pendingCount}건</p>
         </div>
-        <button type="button" onClick={() => setInquiryNotice("새 문의는 매물 상세에서 바로 보낼 수 있습니다.")}>새 문의</button>
+        {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
+        <button type="button" onClick={onNewInquiry}>
+          새 문의
+        </button>
       </div>
 
-      <div className="inquiry-status-card">
-        <span>진행중 문의</span>
-        <strong>방배 루미에르 402호</strong>
-        <p>중개사가 평균 8분 안에 응답합니다. 로그인하지 않아도 문자문의가 가능합니다.</p>
-        <div>
-          <button type="button" onClick={() => setInquiryNotice("전화문의 대상: 대표 공인중개사 김하늘")}>전화문의</button>
-          <button type="button" onClick={() => setInquiryNotice("문자문의 대상: 방배 루미에르 402호")}>문자문의</button>
-        </div>
+      <div className="inquiry-history-list" aria-label="보낸 문의 목록">
+        {inquiries.map((item) => (
+          <article className="inquiry-history-card" key={item.id}>
+            <div className="inquiry-history-head">
+              <strong>{item.listingTitle}</strong>
+              <em className={item.status === "답변 완료" ? "done" : ""}>{item.status}</em>
+            </div>
+            <p>{item.message} · {item.visitTime} 방문 희망</p>
+            <small>{item.broker} · {item.time}</small>
+            {item.reply ? (
+              <div className="inquiry-reply-bubble">
+                <span>중개사 답변</span>
+                <p>{item.reply}</p>
+              </div>
+            ) : (
+              <div className="inquiry-reply-bubble waiting">
+                <span>답변 대기</span>
+                <p>중개사가 평균 8분 안에 문자로 답변합니다.</p>
+              </div>
+            )}
+          </article>
+        ))}
       </div>
 
-      <p className="inquiry-notice" role="status">{inquiryNotice}</p>
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
         <div className="inquiry-channel-head">
@@ -1787,9 +2464,40 @@ function InquiryHubSection() {
   );
 }
 
-function UserMyPage({ roleLabel }: { roleLabel?: string }) {
+function UserMyPage({
+  roleLabel,
+  savedCount,
+  viewedListings,
+  inquiries,
+  onGoSaved,
+  onGoInquiry,
+  onOpenListing,
+  onOpenFilter,
+  onOpenNotifications,
+  onApplyCondition,
+  onSelectFlow,
+  onGoHome
+}: {
+  roleLabel: string;
+  savedCount: number;
+  viewedListings: Listing[];
+  inquiries: InquiryItem[];
+  onGoSaved: () => void;
+  onGoInquiry: () => void;
+  onOpenListing: (listing: Listing) => void;
+  onOpenFilter: () => void;
+  onOpenNotifications: () => void;
+  onApplyCondition: (condition: (typeof savedConditions)[number]) => void;
+  onSelectFlow: (flow: MyFlow) => void;
+  onGoHome: () => void;
+}) {
+  const latestInquiry = inquiries[0];
+  const latestViewed = viewedListings[0];
+
   return (
     <section className="screen profile-screen" id="my-page" aria-labelledby="profile-title">
+      <MyFlowBar activeFlow="seeking" onSelectFlow={onSelectFlow} />
+
       <header className="profile-account-card">
         <div className="profile-avatar" aria-hidden="true">
           <UserRound size={26} strokeWidth={2.4} />
@@ -1799,31 +2507,113 @@ function UserMyPage({ roleLabel }: { roleLabel?: string }) {
           <h2 id="profile-title">마이페이지</h2>
           <p>{roleLabel} 활동에 맞춘 검색 조건과 문의 내역을 정리합니다.</p>
         </div>
+        <button className="mypage-main-button profile-main-button" type="button" onClick={onGoHome}>
+          메인으로
+        </button>
       </header>
 
+      <section className="my-roomlog-section" aria-labelledby="my-roomlog-title">
+        <div className="my-roomlog-heading">
+          <span>내 룸로그</span>
+          <h3 id="my-roomlog-title">내 주거 프로세스</h3>
+          <p>방을 찾고, 집을 내놓고, 계약된 집은 같은 계정에서 룸로그로 이어서 관리합니다.</p>
+        </div>
+        <div className="my-roomlog-grid">
+          <article className="my-roomlog-card is-active">
+            <header>
+              <em>계약 전 · 탐색</em>
+              <strong>방 찾는 중</strong>
+            </header>
+            <p>찜 {savedCount}개 · 문의 {inquiries.length}건 · 최근 본 방 {viewedListings.length}개</p>
+            <div className="my-roomlog-actions">
+              <button type="button" onClick={onGoSaved}>찜한 매물</button>
+              <button type="button" onClick={onGoInquiry}>문의한 매물</button>
+              <button type="button" onClick={onGoHome}>방 더 보기</button>
+            </div>
+          </article>
+
+          <article className="my-roomlog-card">
+            <header>
+              <em>임대인 관계 · 데모</em>
+              <strong>내가 내놓은 집</strong>
+            </header>
+            <p>방배 루미에르 302호 · 노출중 · 조회 128 · 문의 6건</p>
+            <div className="my-roomlog-actions">
+              <button type="button" onClick={() => onSelectFlow("listing")}>등록·문의 현황</button>
+              <button type="button" onClick={() => onSelectFlow("listing")}>새 집 내놓기</button>
+            </div>
+            <small>계약이 연결되면 집주인으로 관리가 시작됩니다.</small>
+          </article>
+
+          <article className="my-roomlog-card">
+            <header>
+              <em>세입자 관계 · 데모</em>
+              <strong>내가 사는 집</strong>
+            </header>
+            <p>방배 루미에르 402호 · 계약 중 · D-124 재계약 예정</p>
+            <div className="my-roomlog-actions">
+              <button type="button" onClick={() => onSelectFlow("living")}>사는 집 현황</button>
+              <Link href="/tenant/home/00">룸로그 홈</Link>
+              <Link href="/tenant/defect/00">하자 접수</Link>
+              <Link href="/tenant/payment/00">관리비</Link>
+            </div>
+            <small>이 계정에 사는 집이 연결되면 이어집니다.</small>
+          </article>
+
+          <article className="my-roomlog-card">
+            <header>
+              <em>관리자 관계 · 연결 예정</em>
+              <strong>관리 중인 집</strong>
+            </header>
+            <p>연남 스테이 외 2개 동 · 진행 티켓 3건 · 검토 대기 2건</p>
+            <div className="my-roomlog-actions">
+              <Link href="/manager/home/00">관리 콘솔</Link>
+              <Link href="/manager/ticket/dash/00">하자·티켓</Link>
+              <Link href="/manager/cost/00">비용 정산</Link>
+              <Link href="/manager/messaging/00">메시지</Link>
+            </div>
+            <small>이 계정에 관리 중인 집이 연결되면 이어집니다.</small>
+          </article>
+        </div>
+      </section>
+
       <section className="profile-activity-grid" aria-label="내 활동 요약">
-        <article>
+        <article role="button" tabIndex={0} onClick={onGoSaved} onKeyDown={(event) => handleActivateKey(event, onGoSaved)}>
           <Heart size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>찜한 매물</span>
-          <strong>2개</strong>
+          <strong>{savedCount}개</strong>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
-        <article>
+        <article role="button" tabIndex={0} onClick={onGoInquiry} onKeyDown={(event) => handleActivateKey(event, onGoInquiry)}>
           <MessageCircle size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>문의 진행</span>
-          <strong>1건</strong>
+          <strong>{inquiries.length}건</strong>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
-        <article>
+        <article
+          role="button"
+          tabIndex={0}
+          onClick={() => (latestViewed ? onOpenListing(latestViewed) : onGoHome())}
+          onKeyDown={(event) => handleActivateKey(event, () => (latestViewed ? onOpenListing(latestViewed) : onGoHome()))}
+        >
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
-          <span>저장 지역</span>
-          <strong>3곳</strong>
+          <span>최근 본 방</span>
+          <strong>{viewedListings.length}개</strong>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
       </section>
 
       <div className="profile-summary-list">
-        <article>
+        <article
+          role="button"
+          tabIndex={0}
+          onClick={() => onApplyCondition(savedConditions[0])}
+          onKeyDown={(event) => handleActivateKey(event, () => onApplyCondition(savedConditions[0]))}
+        >
           <span>저장 조건</span>
-          <strong>방배동 월세 1000/130 이하</strong>
-          <p>새 매물이 올라오면 홈에서 바로 확인합니다.</p>
+          <strong>{savedConditions[0].label}</strong>
+          <p>저장 지역 조건은 누르면 지도에서 바로 확인합니다.</p>
+          <ChevronRight className="activity-card-chevron" size={14} strokeWidth={2.4} aria-hidden="true" />
         </article>
         <article>
           <span>입주 체크</span>
@@ -1835,22 +2625,47 @@ function UserMyPage({ roleLabel }: { roleLabel?: string }) {
       <section className="profile-inquiry-card" aria-label="최근 문의">
         <div>
           <span>최근 문의</span>
-          <strong>방배 루미에르 402호</strong>
-          <p>문자문의 가능 · 평균 응답 8분 · 오늘 3시 방문 후보</p>
+          <strong>{latestInquiry ? latestInquiry.listingTitle : "보낸 문의 없음"}</strong>
+          <p>
+            {latestInquiry
+              ? `${latestInquiry.message} · ${latestInquiry.status}`
+              : "매물 상세에서 문자문의를 보내면 여기에 표시됩니다."}
+          </p>
         </div>
-        <button type="button">문의 확인</button>
+        <button type="button" onClick={onGoInquiry}>문의 확인</button>
       </section>
+
+      {viewedListings.length > 0 ? (
+        <section className="recent-viewed-card" aria-label="최근 본 방">
+          <div className="recent-viewed-head">
+            <strong>최근 본 방</strong>
+            <span>{viewedListings.length}개</span>
+          </div>
+          {viewedListings.slice(0, 3).map((listing) => (
+            <button type="button" key={listing.listingNo} onClick={() => onOpenListing(listing)}>
+              <b>{listing.price}</b>
+              <span>{listing.title}</span>
+              <small>{listing.location}</small>
+            </button>
+          ))}
+        </section>
+      ) : null}
 
       <section className="profile-menu-card" aria-label="마이페이지 메뉴">
         {[
-          { label: "알림 설정", value: "새 매물 · 답변 알림", Icon: Bell },
-          { label: "검색 조건 관리", value: "예산, 지역, 옵션", Icon: SlidersHorizontal },
-          { label: "최근 본 방", value: "3개 매물 비교", Icon: MapPinned }
+          { label: "알림 설정", value: "새 매물 · 답변 알림", Icon: Bell, action: onOpenNotifications },
+          { label: "검색 조건 관리", value: "예산, 지역, 옵션", Icon: SlidersHorizontal, action: onOpenFilter },
+          {
+            label: "최근 본 방",
+            value: latestViewed ? `${latestViewed.title} 다시 보기` : "방 둘러보러 가기",
+            Icon: MapPinned,
+            action: () => (latestViewed ? onOpenListing(latestViewed) : onGoHome())
+          }
         ].map((item) => {
           const MenuIcon = item.Icon;
 
           return (
-            <button type="button" key={item.label}>
+            <button type="button" key={item.label} onClick={item.action}>
               <span aria-hidden="true">
                 <MenuIcon size={18} strokeWidth={2.4} />
               </span>
@@ -1866,14 +2681,74 @@ function UserMyPage({ roleLabel }: { roleLabel?: string }) {
   );
 }
 
-function TenantMyPage() {
+function TenantMyPage({
+  onSelectFlow,
+  onGoInquiry,
+  onGoHome
+}: {
+  onSelectFlow: (flow: MyFlow) => void;
+  onGoInquiry: () => void;
+  onGoHome: () => void;
+}) {
+  const [repairRequests, setRepairRequests] = useState([
+    { id: 1, title: "창문 누수", status: "업체 배정" },
+    { id: 2, title: "욕실 타일 보수", status: "접수됨" }
+  ]);
+  const [selectedIssue, setSelectedIssue] = useState(tenantIssuePresets[0]);
+  const [maintenancePaid, setMaintenancePaid] = useState(false);
+  const [visitConfirmed, setVisitConfirmed] = useState(false);
+  const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
+  const [tenantToast, setTenantToast] = useState("");
+  const [isPaying, setIsPaying] = useState(false);
+  const [isSubmittingRepair, setIsSubmittingRepair] = useState(false);
+  // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
+  const isPayingRef = useRef(false);
+  const isSubmittingRepairRef = useRef(false);
+
+  const showToast = (message: string) => {
+    setTenantToast(message);
+    window.setTimeout(() => setTenantToast(""), 2400);
+  };
+  const addRepairRequest = () => {
+    if (isSubmittingRepairRef.current) {
+      return;
+    }
+
+    isSubmittingRepairRef.current = true;
+    setIsSubmittingRepair(true);
+    window.setTimeout(() => {
+      setRepairRequests((current) => [{ id: Date.now(), title: selectedIssue, status: "접수됨" }, ...current]);
+      showToast("수리요청이 접수됐습니다. 관리인이 확인 후 업체를 배정합니다.");
+      isSubmittingRepairRef.current = false;
+      setIsSubmittingRepair(false);
+    }, 600);
+  };
+
+  const contractRows = [
+    ["임대인", "김우주"],
+    ["계약 기간", "2025-11-04 ~ 2027-11-03"],
+    ["보증금", "1,000만원"],
+    ["월세", "130만원"],
+    ["관리비", "12만 4,000원"],
+    ["특약", "재계약 시 월세 인상률 5% 이내"]
+  ];
+
   return (
     <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
+      <MyFlowBar activeFlow="living" onSelectFlow={onSelectFlow} />
+
       <div className="owner-hero compact-profile tenant-hero">
-        <p className="brand-kicker">입주 생활</p>
-        <h2 id="tenant-title">세입자 마이페이지</h2>
-        <p>계약, 관리비, 수리요청, 방문 일정을 한 화면에서 확인합니다.</p>
+        <div>
+          <p className="brand-kicker">입주 생활</p>
+          <h2 id="tenant-title">세입자 마이페이지</h2>
+          <p>계약, 관리비, 수리요청, 방문 일정을 한 화면에서 확인합니다.</p>
+        </div>
+        <button className="mypage-main-button" type="button" onClick={onGoHome}>
+          메인으로
+        </button>
       </div>
+
+      {tenantToast ? <p className="mypage-toast" role="status">{tenantToast}</p> : null}
 
       <section className="tenant-contract-card" aria-label="계약 상태">
         <div>
@@ -1881,33 +2756,200 @@ function TenantMyPage() {
           <strong>D-124 재계약 예정</strong>
           <p>방배 루미에르 402호 · 보증금 1,000만원 · 월세 130만원</p>
         </div>
-        <button type="button">계약서 보기</button>
+        <button type="button" onClick={() => setIsContractSheetOpen(true)}>계약서 보기</button>
       </section>
 
       <div className="tenant-task-grid" aria-label="세입자 할 일">
         <article>
           <span>수리요청</span>
-          <strong>02건</strong>
-          <p>창문 누수 · 욕실 타일</p>
+          <strong>{String(repairRequests.length).padStart(2, "0")}건</strong>
+          <p>{repairRequests.slice(0, 2).map((item) => item.title).join(" · ")}</p>
         </article>
         <article>
           <span>관리비</span>
-          <strong>124,000원</strong>
-          <p>이번 달 납부 예정</p>
+          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
+          <p>{maintenancePaid ? "7월분 납부 확인" : "이번 달 납부 예정"}</p>
         </article>
         <article>
           <span>방문 일정</span>
-          <strong>오늘 2:30</strong>
+          <strong>{visitConfirmed ? "확인 완료" : "오늘 2:30"}</strong>
           <p>에어컨 필터 점검</p>
         </article>
       </div>
 
+      <section className="tenant-contract-card" aria-label="관리비 납부">
+        <div>
+          <span>이번 달 관리비</span>
+          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
+          <p>{maintenancePaid ? "7월 관리비 납부가 확인됐습니다." : "수도·인터넷 포함 · 7월 25일까지"}</p>
+        </div>
+        <button
+          type="button"
+          disabled={isPaying}
+          aria-busy={isPaying}
+          onClick={() => {
+            if (maintenancePaid) {
+              showToast("영수증이 문자로 발송됐습니다.");
+              return;
+            }
+
+            if (isPayingRef.current) {
+              return;
+            }
+
+            isPayingRef.current = true;
+            setIsPaying(true);
+            window.setTimeout(() => {
+              setMaintenancePaid(true);
+              isPayingRef.current = false;
+              setIsPaying(false);
+              showToast("관리비 124,000원 납부가 완료됐습니다.");
+            }, 700);
+          }}
+        >
+          {isPaying ? (
+            <>
+              <span className="btn-spinner" aria-hidden="true" />
+              처리 중…
+            </>
+          ) : maintenancePaid ? (
+            "영수증 보기"
+          ) : (
+            "납부하기"
+          )}
+        </button>
+      </section>
+
+      <section className="tenant-repair-card" aria-label="수리요청">
+        <div className="tenant-repair-head">
+          <div>
+            <span>수리요청</span>
+            <strong>진행 중 {repairRequests.length}건</strong>
+          </div>
+          <button type="button" onClick={onGoInquiry}>관리인 문의</button>
+        </div>
+        <div className="tenant-repair-list">
+          {repairRequests.map((item) => (
+            <article key={item.id}>
+              <strong>{item.title}</strong>
+              <em className={item.status === "업체 배정" ? "assigned" : ""}>{item.status}</em>
+            </article>
+          ))}
+        </div>
+        <div className="tenant-repair-new">
+          <strong>새 수리요청</strong>
+          <div className="repair-issue-chips">
+            {tenantIssuePresets.map((issue) => (
+              <button
+                className={selectedIssue === issue ? "active" : ""}
+                type="button"
+                key={issue}
+                onClick={() => setSelectedIssue(issue)}
+              >
+                {issue}
+              </button>
+            ))}
+          </div>
+          <button className="repair-submit" type="button" onClick={addRepairRequest} disabled={isSubmittingRepair} aria-busy={isSubmittingRepair}>
+            {isSubmittingRepair ? (
+              <>
+                <span className="btn-spinner" aria-hidden="true" />
+                접수 처리 중…
+              </>
+            ) : (
+              `${selectedIssue} 접수하기`
+            )}
+          </button>
+        </div>
+      </section>
+
+      <section className="domain-test-card tenant-domain-test-card" aria-labelledby="tenant-roomlog-title">
+        <div className="domain-test-heading">
+          <span>내 룸로그</span>
+          <h3 id="tenant-roomlog-title">이 집의 관리 프로세스</h3>
+          <p>계약된 집은 입주부터 퇴실까지 같은 계정의 룸로그에서 이어집니다.</p>
+        </div>
+        <div className="domain-test-link-grid">
+          <Link className="domain-test-link primary" href="/tenant/home/00">
+            룸로그 홈
+          </Link>
+          <Link className="domain-test-link" href="/tenant/movein/00">
+            입주 점검
+          </Link>
+          <Link className="domain-test-link" href="/tenant/contract/00">
+            계약
+          </Link>
+          <Link className="domain-test-link" href="/tenant/defect/00">
+            하자 접수
+          </Link>
+          <Link className="domain-test-link" href="/tenant/payment/00">
+            관리비·납부
+          </Link>
+          <Link className="domain-test-link" href="/tenant/messaging/00">
+            메시지
+          </Link>
+          <Link className="domain-test-link" href="/tenant/moveout/00">
+            퇴실 정산
+          </Link>
+        </div>
+        <small className="domain-test-note">이 계정에 사는 집이 연결되면 이어집니다.</small>
+      </section>
+
       <section className="maintenance-card" aria-label="긴급 점검 일정">
         <span>오늘 방문 일정</span>
         <h3>에어컨 필터 교체 방문</h3>
-        <p>관리 기사가 오늘 오후 2시 30분 방문합니다. 현관과 설비실 접근만 확인해주세요.</p>
-        <button type="button">방문 확인</button>
+        <p>
+          {visitConfirmed
+            ? "방문 확인이 완료됐습니다. 기사에게 방문 예정 알림이 전달됐어요."
+            : "관리 기사가 오늘 오후 2시 30분 방문합니다. 현관과 설비실 접근만 확인해주세요."}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (!visitConfirmed) {
+              setVisitConfirmed(true);
+              showToast("방문 일정을 확인했습니다.");
+            }
+          }}
+        >
+          {visitConfirmed ? "확인 완료" : "방문 확인"}
+        </button>
       </section>
+
+      {isContractSheetOpen ? (
+        <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsContractSheetOpen(false)}>
+          <section
+            className="notification-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contract-sheet-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>전자 계약서</span>
+                <h2 id="contract-sheet-title">방배 루미에르 402호</h2>
+                <p>2025-11-04 체결 · 임대차 표준계약서</p>
+              </div>
+              <button type="button" onClick={() => setIsContractSheetOpen(false)} aria-label="계약서 닫기">×</button>
+            </header>
+
+            <dl className="detail-info-table contract-sheet-table">
+              {contractRows.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            <button className="notification-action" type="button" onClick={() => setIsContractSheetOpen(false)}>
+              확인
+            </button>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2374,7 +3416,8 @@ function PwaInstallCard() {
 }
 
 export default function Home() {
-  const [activeRole, setActiveRole] = useState<AppRole | null>(null);
+  const [activeRole, setActiveRole] = useState<AppRole>("seeker");
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("home");
   const [selectedArea, setSelectedArea] = useState("서초구 방배동");
@@ -2386,11 +3429,24 @@ export default function Home() {
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
   const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
   const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
+  const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
+  // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
+  const [inquiryComposeListingNo, setInquiryComposeListingNo] = useState<string | null>(null);
+  const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
+  const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
   const [isNotificationSheetOpen, setIsNotificationSheetOpen] = useState(false);
-  const activeRoleLabel = activeRole ? roleDisplayLabels[activeRole] : "";
+  const [viewer, setViewer] = useState<ViewerProfile | null>(null);
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const [isRouteReady, setIsRouteReady] = useState(false);
+  const [isDevRolePreview, setIsDevRolePreview] = useState(false);
+  // 집 내놓기 시작 모드(/?flow=listing) — 관리 콘솔 보호와 분리된 비보호 등록 진입.
+  // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
+  const [isListingStartMode, setIsListingStartMode] = useState(false);
+  const isAuthHistoryPushedRef = useRef(false);
+  const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const visibleHomeListings = listings.filter((listing) => {
@@ -2465,19 +3521,112 @@ export default function Home() {
     });
   const selectedMapListing = visibleMapListings.find((listing) => listing.listingIndex === selectedMapListingIndex) ?? visibleMapListings[0];
 
+  const viewedListings = viewedListingNos
+    .map((listingNo) => listings.find((listing) => listing.listingNo === listingNo))
+    .filter((listing): listing is Listing => Boolean(listing));
+
+  const inquiryComposeListing = inquiryComposeListingNo
+    ? listings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
+    : null;
+
+  const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
+
+  // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
+  useEffect(() => {
+    if (activeTab !== "inquiry") return;
+
+    setSeenInquiryIds((current) => {
+      const repliedIds = inquiries.filter((item) => item.reply).map((item) => item.id);
+      const merged = Array.from(new Set([...current, ...repliedIds]));
+      return merged.length === current.length ? current : merged;
+    });
+  }, [activeTab, inquiries]);
+
   const openListing = (listing: Listing) => {
     setSelectedListing(listing);
+    setViewedListingNos((current) => [listing.listingNo, ...current.filter((no) => no !== listing.listingNo)].slice(0, 4));
     resetWindowScrollSoon();
   };
 
+  const submitInquiry = (payload: InquiryPayload) => {
+    const id = Date.now();
+
+    // 새 문의는 문의센터 목록 맨 앞에 즉시 반영된다 (QA 7 회귀 방지 — lib/inquiry-flow 테스트로 고정).
+    setInquiries((current) => withNewInquiry(current, payload, id));
+    window.setTimeout(() => {
+      setInquiries((current) =>
+        withInquiryReply(current, id, `네, 거래 가능합니다. ${payload.visitTime} 방문 괜찮습니다.`)
+      );
+    }, 6000);
+  };
+
+  // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
+  // 홈 카드 "문자문의"와 문의 탭 "새 문의"가 모두 이 흐름을 쓴다 (QA 3·4·7).
+  const openInquiryComposer = (listing?: Listing) => {
+    if (listing) {
+      setInquiryComposeListingNo(listing.listingNo);
+      return;
+    }
+
+    const targetNo = pickInquiryTargetNo(
+      viewedListingNos,
+      visibleHomeListings.map((item) => item.listingNo)
+    ) ?? listings[0]?.listingNo;
+
+    if (targetNo) setInquiryComposeListingNo(targetNo);
+  };
+
   const activateTab = (tab: AppTab) => {
+    setAuthMode(null);
     setActiveTab(tab);
     resetWindowScrollSoon();
   };
 
+  const openAuthScreen = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setSelectedListing(null);
+    if (!isAuthHistoryPushedRef.current) {
+      window.history.pushState({ roomlogAuthScreen: true }, "", window.location.href);
+      isAuthHistoryPushedRef.current = true;
+    }
+    resetWindowScrollSoon();
+  };
+
+  // 로그인 화면의 "집우집주" 로고를 눌렀을 때: 뒤로가기와 동일하게 동작하도록
+  // pushState로 쌓아둔 히스토리를 그대로 소비한다(중복 엔트리 방지).
+  const closeAuthScreen = () => {
+    if (isAuthHistoryPushedRef.current) {
+      isAuthHistoryPushedRef.current = false;
+      window.history.back();
+      return;
+    }
+    setAuthMode(null);
+    resetWindowScrollSoon();
+  };
+
   const startRoleSession = (role: AppRole) => {
+    setAuthMode(null);
+    setIsDevRolePreview(true);
     setActiveRole(role);
     setActiveTab(role === "seeker" ? "home" : "mypage");
+    resetWindowScrollSoon();
+  };
+
+  const completeServiceAuth = (profile: ViewerProfile) => {
+    // 로그인 화면을 열 때 push한 히스토리 엔트리를 여기서도 소비한다 —
+    // 성공 후 뒤로가기가 로그인 화면으로 되돌아가지 않게 (closeAuthScreen과 동일 원칙, QA 5).
+    if (isAuthHistoryPushedRef.current) {
+      isAuthHistoryPushedRef.current = false;
+      window.history.back();
+    }
+
+    const nextRole = appRoleForViewer(profile);
+    setViewer(profile);
+    setAuthMode(null);
+    setIsDevRolePreview(false);
+    setActiveRole(nextRole);
+    setActiveTab(nextRole === "seeker" ? "home" : "mypage");
+    setSelectedListing(null);
     resetWindowScrollSoon();
   };
 
@@ -2516,10 +3665,10 @@ export default function Home() {
   }, [selectedListing]);
 
   useEffect(() => {
-    if (activeRole && !selectedListing) {
+    if (activeRole && !selectedListing && !authMode) {
       resetWindowScrollSoon();
     }
-  }, [activeRole, activeTab, selectedListing]);
+  }, [activeRole, activeTab, selectedListing, authMode]);
 
   useEffect(() => {
     if (selectedListing) {
@@ -2527,8 +3676,157 @@ export default function Home() {
     }
   }, [selectedListing]);
 
-  if (!activeRole) {
-    return <LoginScreen setActiveRole={startRoleSession} />;
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const auth = normalizeAuthMode(params.get("auth"));
+    const role = normalizeAppRole(params.get("role"));
+    const tab = normalizeAppTab(params.get("tab"));
+    const flow = params.get("flow");
+
+    if (auth) {
+      setAuthMode(auth);
+      setSelectedListing(null);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (flow === "listing") {
+      // 집 내놓기 시작 — capability 가드를 타지 않는 등록 진입점.
+      // /login의 "관리 중인 집 연결 필요" CTA가 여기로 온다 (로그인 루프 방지, QA 2).
+      setActiveRole("landlord");
+      setActiveTab("mypage");
+      setIsListingStartMode(true);
+      setSelectedListing(null);
+      setAuthMode(null);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (role) {
+      setActiveRole(role);
+      setActiveTab(tab ?? (role === "seeker" ? "home" : "mypage"));
+      setSelectedListing(null);
+      setAuthMode(null);
+      setIsDevRolePreview(false);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (tab) {
+      setActiveTab(tab);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    }
+    setIsRouteReady(true);
+  }, []);
+
+  // 로그인 화면이 열려 있는 동안 브라우저 뒤로가기를 누르면 홈으로 돌아가도록 처리.
+  useEffect(() => {
+    function handlePopState() {
+      isAuthHistoryPushedRef.current = false;
+      setAuthMode((current) => (current ? null : current));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    let isAlive = true;
+
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then(async (response) => {
+        if (!isAlive) return;
+        if (!response.ok) {
+          setViewer(null);
+          setIsAuthChecked(true);
+          return;
+        }
+
+        setViewer((await response.json()) as ViewerProfile);
+        setIsAuthChecked(true);
+      })
+      .catch(() => {
+        if (isAlive) {
+          setViewer(null);
+          setIsAuthChecked(true);
+        }
+      });
+
+    return () => {
+      isAlive = false;
+    };
+  }, []);
+
+  // 집 내놓기 시작 모드는 보호 대상에서 제외 — 등록 시작은 capability가 아니라
+  // 매물 등록 자체가 LANDLORD 관계를 만드는 진입점이다. 관리 콘솔(/manager/*)은 계속 서버 가드.
+  const protectedConfig =
+    activeTab === "mypage" && (activeRole === "tenant" || activeRole === "landlord")
+      ? activeRole === "landlord" && isListingStartMode
+        ? null
+        : protectedRoleConfig[activeRole]
+      : null;
+  const isProtectedRolePage = Boolean(protectedConfig);
+  const canAccessProtectedRolePage =
+    !protectedConfig ||
+    isDevRolePreview ||
+    (viewer ? hasCapability(viewer, protectedConfig.sessionRole) : false);
+
+  useEffect(() => {
+    if (!isRouteReady || !isAuthChecked || !protectedConfig || canAccessProtectedRolePage) return;
+
+    window.location.href = unifiedLoginPath(protectedConfig.intent, protectedConfig.redirectTo);
+  }, [canAccessProtectedRolePage, isAuthChecked, isRouteReady, protectedConfig]);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    setViewer(null);
+    setActiveRole("seeker");
+    setActiveTab("home");
+    setSelectedListing(null);
+    setAuthMode(null);
+    setIsDevRolePreview(false);
+  };
+
+  const navigateRoleHome = (role: AppRole) => {
+    const target = roleSwitchOptions.find((item) => item.id === role);
+    if (!target) return;
+
+    setIsDevRolePreview(true);
+    setActiveRole(role);
+    setActiveTab(role === "seeker" ? "home" : "mypage");
+    window.history.pushState(null, "", target.href);
+    resetWindowScrollSoon();
+  };
+
+  // 내 룸로그 흐름 전환: 한 계정에서 탐색·임대인·세입자 마이페이지를 오가고,
+  // 관리자 흐름은 기존 관리 콘솔 화면으로 이어준다. (데모 미리보기 — 로그인 강제 없음)
+  const openMyFlow = (flow: MyFlow) => {
+    if (flow === "managing") {
+      window.location.href = "/manager/home/00";
+      return;
+    }
+
+    setIsDevRolePreview(true);
+    setActiveRole(flow === "listing" ? "landlord" : flow === "living" ? "tenant" : "seeker");
+    setActiveTab("mypage");
+    resetWindowScrollSoon();
+  };
+
+  if (authMode) {
+    return (
+      <WoozuLoginScreen
+        mode={authMode}
+        setActiveRole={startRoleSession}
+        onAuthenticated={completeServiceAuth}
+        onGoHome={closeAuthScreen}
+      />
+    );
+  }
+
+  if (isProtectedRolePage && (!isAuthChecked || !canAccessProtectedRolePage)) {
+    return (
+      <main className="app-canvas">
+        <section className="auth-check-screen" aria-live="polite">
+          <strong>로그인 확인 중</strong>
+          <span>WOOZU 계정 로그인 후, 계정에 연결된 집 정보로 이어집니다.</span>
+        </section>
+      </main>
+    );
   }
 
   if (selectedListing) {
@@ -2540,6 +3838,11 @@ export default function Home() {
             isSaved={savedListingNos.includes(selectedListing.listingNo)}
             onBack={() => setSelectedListing(null)}
             onToggleSaved={toggleSavedListing}
+            onSubmitInquiry={submitInquiry}
+            onViewInquiryCenter={() => {
+              setSelectedListing(null);
+              activateTab("inquiry");
+            }}
           />
         </div>
       </main>
@@ -2549,6 +3852,56 @@ export default function Home() {
   return (
     <main className="app-canvas">
       <div className="service-frame with-bottom-tabs" aria-label="집우집주 부동산 앱">
+        <header className="web-topbar" aria-label="웹 상단 메뉴">
+          <div className="web-topbar-inner">
+            <button className="web-logo" type="button" onClick={() => activateTab("home")}>
+              <span className="web-logo-icon" aria-hidden="true">
+                <svg className="web-logo-roof" viewBox="0 0 140 68" fill="none">
+                  <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
+                  <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                </svg>
+              </span>
+              집우집주<span>WOOZU</span>
+            </button>
+            <nav className="web-nav" aria-label="주요 메뉴">
+              <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
+              <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
+              <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
+                문의
+                {unseenReplyCount > 0 ? <span className="nav-badge">{unseenReplyCount}</span> : null}
+              </button>
+              <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>우리집</button>
+            </nav>
+            <div className="web-topbar-actions">
+              <label className="web-role-select">
+                <span>내 흐름</span>
+                <select value={activeRole} onChange={(event) => navigateRoleHome(event.target.value as AppRole)}>
+                  {roleSwitchOptions.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {viewer ? (
+                <div className="web-profile-menu" aria-label="로그인 사용자">
+                  <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
+                  <span className="web-profile-name">{viewer.name}</span>
+                  <button className="web-logout" type="button" onClick={logout}>로그아웃</button>
+                </div>
+              ) : (
+                <>
+                  <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
+                  <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup"; }}>회원가입</button>
+                  <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
+                </>
+              )}
+            </div>
+          </div>
+        </header>
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
           <header className="app-header">
@@ -2562,6 +3915,11 @@ export default function Home() {
               <Bell size={19} strokeWidth={2.4} aria-hidden="true" />
             </button>
           </header>
+
+          <div className="web-hero-head" aria-hidden="true">
+            <h1>방 구할 땐, 우주에서</h1>
+            <p className="web-hero-sub">전월세부터 매매까지 | 방문 전 3D로 먼저 둘러보세요</p>
+          </div>
 
           <label className="search-box">
             <Search size={20} strokeWidth={2.4} aria-hidden="true" />
@@ -2657,7 +4015,7 @@ export default function Home() {
                     </button>
                     <div className="listing-card-footer" aria-label={`${listing.title} 빠른 액션`}>
                       <button type="button" onClick={() => openListing(listing)}>상세 보기</button>
-                      <button type="button" onClick={() => activateTab("inquiry")}>문자문의</button>
+                      <button type="button" onClick={() => openInquiryComposer(listing)}>문자문의</button>
                       <button type="button" onClick={() => openListing(listing)}>3D 보기</button>
                     </div>
                     <button
@@ -3091,10 +4449,35 @@ export default function Home() {
           onToggleSaved={toggleSavedListing}
         />
         ) : null}
-        {activeTab === "inquiry" ? <InquiryHubSection /> : null}
-        {activeTab === "mypage" && activeRole === "landlord" ? <LandlordMyPage /> : null}
-        {activeTab === "mypage" && activeRole === "tenant" ? <TenantMyPage /> : null}
-        {activeTab === "mypage" && activeRole === "seeker" ? <UserMyPage roleLabel={activeRoleLabel} /> : null}
+        {activeTab === "inquiry" ? (
+          <InquiryHubSection inquiries={inquiries} onNewInquiry={() => openInquiryComposer()} />
+        ) : null}
+        {activeTab === "mypage" && activeRole === "landlord" ? (
+          <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
+        ) : null}
+        {activeTab === "mypage" && activeRole === "tenant" ? (
+          <TenantMyPage
+            onSelectFlow={openMyFlow}
+            onGoInquiry={() => activateTab("inquiry")}
+            onGoHome={() => activateTab("home")}
+          />
+        ) : null}
+        {activeTab === "mypage" && activeRole === "seeker" ? (
+          <UserMyPage
+            roleLabel={activeRoleLabel}
+            savedCount={savedListingNos.length}
+            viewedListings={viewedListings}
+            inquiries={inquiries}
+            onGoSaved={() => activateTab("saved")}
+            onGoInquiry={() => activateTab("inquiry")}
+            onOpenListing={openListing}
+            onOpenFilter={() => setIsFilterSheetOpen(true)}
+            onOpenNotifications={() => setIsNotificationSheetOpen(true)}
+            onApplyCondition={applySavedCondition}
+            onSelectFlow={openMyFlow}
+            onGoHome={() => activateTab("home")}
+          />
+        ) : null}
 
         <nav className="bottom-tabs" aria-label="앱 하단 메뉴">
           {bottomTabs.map((item) => (
@@ -3109,6 +4492,7 @@ export default function Home() {
             >
               <item.Icon size={22} strokeWidth={2.3} aria-hidden="true" />
               {item.label}
+              {item.key === "inquiry" && unseenReplyCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 답변 ${unseenReplyCount}건`} /> : null}
             </a>
           ))}
         </nav>
@@ -3144,6 +4528,17 @@ export default function Home() {
           isOpen={isNotificationSheetOpen}
           onClose={() => setIsNotificationSheetOpen(false)}
         />
+        {inquiryComposeListing ? (
+          <InquirySheet
+            listing={inquiryComposeListing}
+            onClose={() => setInquiryComposeListingNo(null)}
+            onSubmitInquiry={submitInquiry}
+            onViewInquiryCenter={() => {
+              setInquiryComposeListingNo(null);
+              activateTab("inquiry");
+            }}
+          />
+        ) : null}
       </div>
     </main>
   );

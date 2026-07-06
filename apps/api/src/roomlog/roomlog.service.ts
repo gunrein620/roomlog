@@ -9,7 +9,7 @@ import {
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -17,36 +17,97 @@ import {
   renameSync,
   writeFileSync
 } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
+  hasRequiredPasswordMix,
+  hashPassword,
+  id,
+  isValidPhoneNumber,
+  normalizePhoneNumber,
+  now,
+  tokenFor,
+  tokenSecret,
+  verifyPassword
+} from "./roomlog-support";
+import { RoomlogAuthDomain } from "./services/roomlog-auth.domain";
+import { RoomlogFloorPlanDomain } from "./services/roomlog-floor-plan.domain";
+import { RoomlogCostDomain } from "./services/roomlog-cost.domain";
+import { RoomlogChecklistDomain } from "./services/roomlog-checklist.domain";
+import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
+import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
+import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
+import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
+import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
+import { RoomlogReportDomain } from "./services/roomlog-report.domain";
+import {
+  AddMessagingThreadMessageInput,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
+  AskManagerReportChatInput,
   AiFeedback,
   AiFeedbackTarget,
   AiAnalysis,
   ApproveRepairEstimateInput,
   AssignVendorInput,
   Attachment,
+  Bill,
+  BillStatus,
   CallbotTicketContext,
   Complaint,
   ComplaintSourceChannel,
   ComplaintStatus,
   ConfirmTenantCompletionInput,
   CreateRoomInput,
+  Contract,
+  ContractDocument,
+  ContractExtraction,
+  ContractInvite,
+  ContractPrivacy,
+  Cost,
+  CostReviewQueueSummary,
+  CostType,
+  CreateManagerContractInput,
+  CreateManagerContractInviteInput,
+  CreateAnnouncementDraftInput,
+  CreateManagerReportExternalShareInput,
+  CreateManagerReportFollowUpInput,
+  CreateManagerReportInput,
+  DeletionState,
+  EscalateMoveoutDisputeInput,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
+  CreateMessagingThreadInput,
+  CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreatePaymentReportInput,
+  CreateTenantContractInput,
+  CreateTenantMessagingThreadInput,
+  CreateTenantMoveoutInquiryInput,
+  DisclosureSetting,
+  Deposit,
   DuplicateTicketCandidate,
   FinalizeIntakeInput,
   FloorPlanAiAnalysisInput,
   FloorPlanAiAnalysisResult,
+  FloorPlanAiDimensionDetection,
+  FloorPlanAiDimensionKind,
   FloorPlanAiModel,
   FloorPlanAiModelId,
+  FloorPlanAiCandidateReview,
+  FloorPlanAiMissingWallHint,
+  FloorPlanAiNormalizedLine,
+  FloorPlanAiRoomStructure,
+  FloorPlanAiRoomStructureNoiseFlags,
+  FloorPlanAiRoomStructurePlanStyle,
   FloorPlanAiScaleCandidate,
   FloorPlanAiTextDetection,
+  FloorPlanAiWallCandidate,
   FloorPlanDraft,
+  FloorPlanOpeningCandidate,
+  FloorPlanOpeningDetectionInput,
+  FloorPlanOpeningDetectionResult,
   FloorPlanWall,
   IntakeDraft,
   IntakeMessage,
@@ -54,14 +115,43 @@ import {
   IntakeSlot,
   IntakeSlotKey,
   IntakeThreadSummary,
+  MessagingAnnouncement,
+  MessagingAnnouncementDelivery,
+  MessagingAnnouncementDraft,
+  MessagingAnnouncementResult,
+  MessagingMessage,
+  MessagingThread,
+  MessagingThreadContext,
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
+  ManagerReport,
+  ManagerReportAuditLogEntry,
+  ManagerReportExternalShare,
+  ManagerReportSourceReference,
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerReplyIntent,
   ManagerTicketReplyInput,
+  MaintenanceFee,
+  MatchDepositInput,
   MoveInChecklistItem,
+  PaymentBadge,
+  PaymentReport,
+  MoveoutAdjustDeductionInput,
+  MoveoutAdjustWearVerdictInput,
+  MoveoutChecklistItem,
+  MoveoutCompleteReviewInput,
+  MoveoutDeductionCandidate,
+  MoveoutDispute,
+  MoveoutManagerSettlementReview,
+  MoveoutRecordItem,
+  MoveoutReportAuditEntry,
+  MoveoutRespondDisputeInput,
+  MoveoutSettlementEstimate,
+  MoveoutSummary,
+  UpdateTenantMoveoutDisputeInput,
+  UpdateMoveoutChecklistInput,
   PhotoAnalysis,
   PhotoComparisonStatus,
   RealtimeClientSecretInput,
@@ -73,6 +163,8 @@ import {
   RepairStatus,
   ReviewTenantAiFeedbackInput,
   ReportCompletionInput,
+  Receipt,
+  ReceiptOcr,
   Room,
   RoomWall,
   RoomTimelineEntry,
@@ -82,17 +174,32 @@ import {
   SimulatorWallData,
   ScheduleRepairInput,
   SendIntakeMessageInput,
+  SendDunningInput,
   StatusHistory,
   SubmitTenantAiFeedbackInput,
   SubmitEstimateInput,
+  TeamBill,
+  TeamBillRow,
+  TeamCollection,
+  TeamDashSummary,
+  TeamDeposit,
+  TeamDunning,
+  TeamMaintenance,
+  TeamOverdue,
+  TeamReport,
   Ticket,
   TicketMessage,
   TicketStatus,
+  SocialAccount,
+  UpdateManagerContractInventoryInput,
+  UpdateManagerContractInviteInput,
+  UpdateManagerContractManualValuesInput,
+  UpdateManagerContractPrivacyInput,
   UserAccount,
   UserRole
 } from "./roomlog.types";
 
-type SignupInput = {
+export type SignupInput = {
   email: string;
   password: string;
   passwordConfirm?: string;
@@ -107,7 +214,7 @@ type SignupInput = {
   serviceArea?: string;
 };
 
-type CreateVendorInviteInput = {
+export type CreateVendorInviteInput = {
   email?: string;
   businessName: string;
   contactPerson: string;
@@ -115,7 +222,7 @@ type CreateVendorInviteInput = {
   serviceArea: string;
 };
 
-type CreateTenantInviteInput = {
+export type CreateTenantInviteInput = {
   roomId: string;
   email?: string;
   tenantName: string;
@@ -123,39 +230,415 @@ type CreateTenantInviteInput = {
   moveInDate?: string;
 };
 
-type LoginInput = {
+export type ManagerVendorProfileInput = {
+  businessName?: string;
+  contactPerson?: string;
+  phone?: string;
+  serviceArea?: string;
+};
+
+export type LoginInput = {
   email: string;
   password: string;
+};
+
+export type GoogleSocialLoginInput = {
+  code: string;
+  redirectUri: string;
+  role?: UserRole;
+  inviteToken?: string;
+  flow?: "login" | "signup";
 };
 
 const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
   {
     id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    label: "Nemotron 3 Nano Omni",
+    label: "Nemotron Omni",
     mode: "vision-reasoning",
-    description: "도면 이미지와 치수선을 함께 보고 축척 후보를 추론합니다."
+    description: "NVIDIA vision reasoning model for reading dimensions and structural hints from floor-plan images."
   },
   {
     id: "nvidia/cosmos3-nano-reasoner",
-    label: "Cosmos3 Nano Reasoner",
+    label: "Cosmos3 Reasoner",
     mode: "vision-reasoning",
-    description: "이미지 구조를 물리 공간 관점으로 검토해 치수 후보를 보조 검증합니다."
+    description: "NVIDIA reasoning model for fast floor-plan dimension analysis."
+  },
+  {
+    id: "openai/floor-plan-vision",
+    label: "OpenAI Vision",
+    mode: "vision-reasoning",
+    description: "OpenAI vision model for dimension, candidate, room-structure, and object-graph analysis."
   }
 ];
 
-function normalizePhoneNumber(phone?: string) {
-  const digits = phone?.replace(/\D+/g, "") ?? "";
+const FLOOR_PLAN_NORMALIZED_LINE_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x1: { maximum: 1000, minimum: 0, type: "number" },
+    x2: { maximum: 1000, minimum: 0, type: "number" },
+    y1: { maximum: 1000, minimum: 0, type: "number" },
+    y2: { maximum: 1000, minimum: 0, type: "number" }
+  },
+  required: ["x1", "y1", "x2", "y2"],
+  type: "object"
+} as const;
 
-  return digits || undefined;
-}
+const FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    candidateReviews: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          id: { type: "string" },
+          reason: { type: "string" },
+          verdict: { enum: ["keep", "reject", "review"], type: "string" }
+        },
+        required: ["id", "verdict", "confidence", "reason"],
+        type: "object"
+      },
+      maxItems: 80,
+      type: "array"
+    },
+    missingWallHints: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          description: { type: "string" },
+          line: FLOOR_PLAN_NORMALIZED_LINE_SCHEMA,
+          orientation: { enum: ["horizontal", "vertical"], type: "string" }
+        },
+        required: ["description", "confidence", "orientation", "line"],
+        type: "object"
+      },
+      maxItems: 30,
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "candidateReviews", "missingWallHints"],
+  type: "object"
+} as const;
 
-function isValidPhoneNumber(phone: string) {
-  return /^\d{10,11}$/.test(phone);
-}
+const FLOOR_PLAN_ROOM_POINT_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x: { maximum: 1000, minimum: 0, type: "number" },
+    y: { maximum: 1000, minimum: 0, type: "number" }
+  },
+  required: ["x", "y"],
+  type: "object"
+} as const;
 
-function hasRequiredPasswordMix(password: string) {
-  return /[A-Za-z]/.test(password) && /\d/.test(password);
-}
+const FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    noiseFlags: {
+      additionalProperties: false,
+      properties: {
+        decorativeHatching: { type: "boolean" },
+        watermark: { type: "boolean" }
+      },
+      required: ["decorativeHatching", "watermark"],
+      type: "object"
+    },
+    planStyle: { enum: ["solid-filled", "double-line-hollow", "hatched", "gray-fill"], type: "string" },
+    rooms: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          label: { type: "string" },
+          polygon: {
+            items: FLOOR_PLAN_ROOM_POINT_SCHEMA,
+            maxItems: 12,
+            minItems: 4,
+            type: "array"
+          }
+        },
+        required: ["label", "polygon", "confidence"],
+        type: "object"
+      },
+      maxItems: 40,
+      type: "array"
+    },
+    summary: { type: "string" }
+  },
+  required: ["summary", "planStyle", "noiseFlags", "rooms"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_PROMPT = `You extract a structured object graph from a Korean residential floor-plan image (apartment/villa/officetel) for a 2D/3D room modeling pipeline.
+Return JSON only, following the provided schema exactly.
+
+The original image size is {width}x{height} pixels. All coordinates use this original pixel coordinate system: origin at top-left, x to the right, y down.
+
+A second image may be provided: a reference sheet of Korean floor-plan symbols. Use it only to learn what each symbol looks like. Never copy geometry or coordinates from the reference sheet.
+
+## Region policy
+- Use floor color/texture ONLY to separate the home unit interior from non-home areas (common corridor, stairwell, elevator core, neighboring unit, background, app UI chrome).
+- homeRegions: output one "home" polygon covering the unit interior including balconies, and "excluded" polygons for adjacent non-home structures that could be mistaken for the unit.
+- Do not segment individual rooms by floor color.
+
+## Wall policy
+- Output structural wall centerlines. Merge double parallel lines and filled wall masses into ONE centerline at the visual center of the wall mass.
+- Prefer orthogonal horizontal/vertical segments. Split only at corners, T-junctions, and room-boundary turns.
+- Vertical walls must have identical x at both endpoints; horizontal walls identical y. Before emitting each wall, verify start/end are not accidentally collapsed (x equal to y by copy mistake). Diagonal walls are rare in Korean floor plans — only output one when the drawing clearly shows a slanted wall.
+- DO NOT split walls at door openings. Keep each wall centerline continuous through both doors and windows; report openings separately in objects. The client cuts door gaps later using your objects.
+- thicknessPx: wall mass thickness in pixels, or null if unclear.
+- Only include walls of the home unit. Never output walls that belong to excluded regions (neighbor unit, common core).
+- Never create walls from: door leaves, swing arcs, window frame/sash lines, furniture outlines, fixtures, stair treads, hatching/tile/wood textures, dimension lines, arrows, extension lines, text, watermarks, UI chrome.
+
+## Object policy
+Detect these symbol classes (type ids are fixed):
+- swingDoor: straight door leaf + quarter-circle swing arc at a wall opening (방문, 현관문).
+- doubleSwingDoor: two mirrored leaves with two arcs.
+- slidingDoor: overlapping thin parallel panels in an opening, no swing arc (미닫이문, 중문, 슬라이딩도어).
+- pocketDoor: a leaf that slides into a wall pocket, no arc.
+- window: thin double/triple frame lines drawn inside/on a wall band, no arc.
+- balconyWindow: long multi-track window frame on an exterior or balcony wall (샷시).
+- toilet: bowl ellipse + tank rectangle near a bathroom wall.
+- sink: small wash-basin rectangle/half-round on a bathroom wall.
+- bathtub: long rounded rectangle along a bathroom wall.
+- showerBooth: small partitioned corner with diagonal or drain mark.
+- floorDrain: small circle/square with cross or grid mark on wet-area floor.
+- kitchenSink: sink bowl rectangle on a counter line.
+- gasRange: rectangle containing 2-4 burner circles on a counter.
+- refrigerator: large appliance box in kitchen/utility area.
+- stairs: repeated parallel treads, may carry UP/DN text — only when inside the home unit.
+- elevator: shaft square with X — usually in excluded region; output only if inside the home unit.
+- column: small solid structural rectangle, attached to or separate from walls.
+
+For every object:
+- center and size: the axis-aligned bounding box in pixels (size measured before rotation).
+- rotationDeg: 0, 90, 180 or 270 — the rotation that maps the canonical upright symbol onto the drawing.
+- attachedWallId: id of the wall the object sits on or in, else null. Every door and window MUST reference a wall id when one exists; if you truly cannot match a wall, keep the object with attachedWallId null and lower confidence.
+- spanOnWall: doors/windows only — the exact segment of the wall centerline covered by the opening, both endpoints lying on that wall. null for non-openings.
+- swing: swingDoor/doubleSwingDoor only — hinge: which spanOnWall endpoint ("start" or "end") carries the hinge; opensTowards: a point roughly at the middle of the swept arc area, on the side the door opens into. null otherwise.
+- confidence 0..1 and a short evidence string (e.g. "leaf+arc at bathroom entry").
+
+Reject and count in rejectionSummary:
+- freestanding furniture (bed, sofa, table, wardrobe) unless clearly built-in
+- text labels, room-name text, area text
+- dimension lines, arrows, extension lines
+- hatching and floor textures
+- watermarks and screenshot UI
+
+## Dimension policy
+- dimensionTexts: printed dimension labels (e.g. "2051mm"), with valueMm parsed when clear and appliesTo describing the measured span.
+- scaleCandidates: when a printed dimension clearly matches a pixel span, output pixelLength, realLengthMm, pixelToMmRatio, confidence, sourceText.
+
+## Quality
+- Prefer missing a doubtful fixture over inventing one. Prefer missing a short wall over creating false geometry.
+- Wall endpoints that visually meet must share nearly identical coordinates (within a few pixels) so corners close cleanly.
+- When unsure, lower confidence and mention it in warnings.`;
+
+const FLOOR_PLAN_OBJECT_TYPES = [
+  "swingDoor",
+  "doubleSwingDoor",
+  "slidingDoor",
+  "pocketDoor",
+  "window",
+  "balconyWindow",
+  "toilet",
+  "sink",
+  "bathtub",
+  "showerBooth",
+  "floorDrain",
+  "kitchenSink",
+  "gasRange",
+  "refrigerator",
+  "stairs",
+  "elevator",
+  "column"
+] as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    x: { type: "number" },
+    y: { type: "number" }
+  },
+  required: ["x", "y"],
+  type: "object"
+} as const;
+
+const FLOOR_PLAN_OBJECT_GRAPH_SCHEMA = {
+  additionalProperties: false,
+  properties: {
+    dimensionTexts: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          appliesTo: { type: "string" },
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          text: { type: "string" },
+          valueMm: { type: ["number", "null"] }
+        },
+        required: ["text", "valueMm", "appliesTo", "confidence"],
+        type: "object"
+      },
+      maxItems: 40,
+      type: "array"
+    },
+    homeRegions: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          kind: { enum: ["home", "excluded"], type: "string" },
+          polygon: {
+            items: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+            maxItems: 40,
+            minItems: 3,
+            type: "array"
+          }
+        },
+        required: ["kind", "polygon"],
+        type: "object"
+      },
+      maxItems: 8,
+      type: "array"
+    },
+    objects: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          attachedWallId: { type: ["string", "null"] },
+          center: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          evidence: { type: "string" },
+          id: { type: "string" },
+          rotationDeg: { enum: [0, 90, 180, 270], type: "number" },
+          size: {
+            additionalProperties: false,
+            properties: {
+              height: { minimum: 0, type: "number" },
+              width: { minimum: 0, type: "number" }
+            },
+            required: ["width", "height"],
+            type: "object"
+          },
+          spanOnWall: {
+            additionalProperties: false,
+            properties: {
+              end: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+              start: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA
+            },
+            required: ["start", "end"],
+            type: ["object", "null"]
+          },
+          swing: {
+            additionalProperties: false,
+            properties: {
+              hinge: { enum: ["start", "end"], type: "string" },
+              opensTowards: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA
+            },
+            required: ["hinge", "opensTowards"],
+            type: ["object", "null"]
+          },
+          type: { enum: FLOOR_PLAN_OBJECT_TYPES, type: "string" }
+        },
+        required: ["id", "type", "center", "size", "rotationDeg", "attachedWallId", "spanOnWall", "swing", "confidence", "evidence"],
+        type: "object"
+      },
+      maxItems: 60,
+      type: "array"
+    },
+    rejectionSummary: {
+      additionalProperties: false,
+      properties: {
+        dimensionOrText: { minimum: 0, type: "integer" },
+        doorSymbols: { minimum: 0, type: "integer" },
+        furnitureOrFixtures: { minimum: 0, type: "integer" },
+        textureOrHatching: { minimum: 0, type: "integer" },
+        uiChrome: { minimum: 0, type: "integer" },
+        windowFrameOnly: { minimum: 0, type: "integer" }
+      },
+      required: ["doorSymbols", "windowFrameOnly", "furnitureOrFixtures", "dimensionOrText", "textureOrHatching", "uiChrome"],
+      type: "object"
+    },
+    scaleCandidates: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          pixelLength: { minimum: 0, type: "number" },
+          pixelToMmRatio: { minimum: 0, type: "number" },
+          realLengthMm: { minimum: 0, type: "number" },
+          sourceText: { type: "string" }
+        },
+        required: ["pixelLength", "realLengthMm", "pixelToMmRatio", "confidence", "sourceText"],
+        type: "object"
+      },
+      maxItems: 30,
+      type: "array"
+    },
+    summary: { type: "string" },
+    walls: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          confidence: { maximum: 1, minimum: 0, type: "number" },
+          end: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          id: { type: "string" },
+          role: { enum: ["outer", "inner", "balcony", "wet-area", "unknown"], type: "string" },
+          start: FLOOR_PLAN_OBJECT_GRAPH_POINT_SCHEMA,
+          thicknessPx: { type: ["number", "null"] }
+        },
+        required: ["id", "start", "end", "thicknessPx", "role", "confidence"],
+        type: "object"
+      },
+      maxItems: 90,
+      type: "array"
+    },
+    warnings: {
+      items: { type: "string" },
+      maxItems: 20,
+      type: "array"
+    }
+  },
+  required: ["summary", "warnings", "homeRegions", "walls", "objects", "dimensionTexts", "scaleCandidates", "rejectionSummary"],
+  type: "object"
+} as const;
+
+export type VendorMgmtTrade =
+  | "plumbing"
+  | "electrical"
+  | "hvac"
+  | "appliance"
+  | "locksmith"
+  | "waterproofing"
+  | "cleaning"
+  | "general"
+  | "other";
+
+export type VendorMgmtListFilters = {
+  q?: string;
+  trade?: string;
+  sort?: string;
+};
+
+export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
+
+export type ManagerContractRow = {
+  contract: Contract;
+  tenantName: string;
+  buildingName: string;
+  origin: ManagerContractOrigin;
+  statusLabel: string;
+  slaOverdue: boolean;
+  needsCheckCount: number;
+  daysToExpire: number;
+  mobileQuickConfirm: boolean;
+};
+
+export type ConfirmContractInput = {
+  confirmNeedsCheck?: boolean;
+  note?: string;
+};
+
 
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
@@ -167,9 +650,10 @@ export type RoomlogServiceOptions = {
   storeProjector?: StoreProjector;
 };
 
-type AuthResult = {
+export type AuthResult = {
   userId: string;
   role: UserRole;
+  roles: UserRole[];
   accessToken: string;
   name: string;
 };
@@ -182,6 +666,7 @@ export type VendorSummary = {
   phone: string;
   serviceArea: string;
   activeJobs: number;
+  createdByManagerId?: string;
 };
 
 export type VendorInvite = {
@@ -218,12 +703,22 @@ export type TenantInvite = {
 
 export type Store = {
   users: UserAccount[];
+  socialAccounts: SocialAccount[];
   rooms: Room[];
   roomWalls: RoomWall[];
   tenantRooms: Record<string, string>;
   vendors: VendorSummary[];
   vendorInvites: VendorInvite[];
   tenantInvites: TenantInvite[];
+  contracts: Contract[];
+  contractDocuments: ContractDocument[];
+  contractExtractions: ContractExtraction[];
+  contractPrivacies: ContractPrivacy[];
+  contractInvites: ContractInvite[];
+  bills: Bill[];
+  paymentReports: PaymentReport[];
+  deposits: Deposit[];
+  maintenanceFees: MaintenanceFee[];
   attachments: Attachment[];
   floorPlans: FloorPlanDraft[];
   moveInChecklist: MoveInChecklistItem[];
@@ -233,7 +728,26 @@ export type Store = {
   analyses: Record<string, AiAnalysis>;
   tickets: Ticket[];
   repairs: RepairRequest[];
+  costs: Cost[];
+  receipts: Receipt[];
+  receiptOcrs: ReceiptOcr[];
   messages: TicketMessage[];
+  messagingThreads: MessagingThread[];
+  messagingMessages: MessagingMessage[];
+  messagingAnnouncementDrafts: MessagingAnnouncementDraft[];
+  messagingAnnouncements: MessagingAnnouncement[];
+  messagingAnnouncementDeliveries: MessagingAnnouncementDelivery[];
+  managerReports: ManagerReport[];
+  managerReportSourceReferences: ManagerReportSourceReference[];
+  managerReportExternalShares: ManagerReportExternalShare[];
+  managerReportAuditLogs: ManagerReportAuditLogEntry[];
+  moveouts: MoveoutSummary[];
+  moveoutRecords: MoveoutRecordItem[];
+  moveoutChecklist: MoveoutChecklistItem[];
+  moveoutSettlements: MoveoutSettlementEstimate[];
+  moveoutDeductions: MoveoutDeductionCandidate[];
+  moveoutDisputes: MoveoutDispute[];
+  moveoutReportAudits: MoveoutReportAuditEntry[];
   history: StatusHistory[];
 };
 
@@ -249,37 +763,28 @@ type GeneratedIntakeTurn = {
   source: "openai" | "fallback";
 };
 
-const now = () => new Date().toISOString();
 const ROOM_WALL_HEIGHT_M = 2.5;
 const ROOM_WALL_DEPTH_M = 0.15;
-
-function id(prefix: string) {
-  return `${prefix}_${randomBytes(5).toString("hex")}`;
-}
-
-function hashPassword(password: string, salt = randomBytes(12).toString("hex")) {
-  const key = scryptSync(password, salt, 32).toString("hex");
-  return `${salt}:${key}`;
-}
-
-function verifyPassword(password: string, storedHash: string) {
-  const [salt, key] = storedHash.split(":");
-  const actual = Buffer.from(hashPassword(password, salt).split(":")[1], "hex");
-  const expected = Buffer.from(key, "hex");
-
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-const tokenSecret = process.env.JWT_SECRET || "roomlog-local-dev-secret";
+const DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE = 50;
+const DEFAULT_ROBOFLOW_DETECTION_OVERLAP = 30;
+const DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE = 0.5;
+const ROBOFLOW_BOX_IOU_DUPLICATE_THRESHOLD = 0.5;
+const ROBOFLOW_BOX_CONTAINMENT_DUPLICATE_THRESHOLD = 0.75;
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
 
-function tokenFor(user: UserAccount) {
-  const payload = Buffer.from(
-    JSON.stringify({ sub: user.id, role: user.role, email: user.email })
-  ).toString("base64url");
-  const signature = createHmac("sha256", tokenSecret).update(payload).digest("base64url");
+function envNumber(name: string, fallback: number, min: number, max: number) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
 
-  return `${payload}.${signature}`;
+  return Math.max(min, Math.min(max, value));
+}
+
+function envConfidenceRatio(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  const ratio = value > 1 ? value / 100 : value;
+
+  return Math.max(0, Math.min(1, ratio));
 }
 
 function priorityDueAt(priority: number) {
@@ -319,6 +824,10 @@ function complaintStatusFor(ticketStatus: TicketStatus): ComplaintStatus {
 
 function createDemoStore(): Store {
   const createdAt = now();
+  const moveoutCreatedAt = "2026-07-01T09:00:00+09:00";
+  const moveoutUpdatedAt = "2026-07-02T09:00:00+09:00";
+  const moveoutDisputeCreatedAt = "2026-06-28T09:00:00+09:00";
+  const moveoutDisputeDeadline = "2026-07-01T09:00:00+09:00";
   const users: UserAccount[] = [
     {
       id: "tenant-demo",
@@ -349,11 +858,37 @@ function createDemoStore(): Store {
       role: "VENDOR",
       status: "ACTIVE",
       createdAt
+    },
+    // multi-role 데모: 정글빌라 301호에 세들어 살면서(TENANT) 402호를 내놓은(LANDLORD) 겸직 계정.
+    // legacy role 단일값은 TENANT지만, 파생 capability로 LANDLORD 표면에도 진입할 수 있어야 한다.
+    {
+      id: "multi-demo",
+      email: "multi@roomlog.test",
+      passwordHash: hashPassword("password123!"),
+      name: "정겸직",
+      phone: "010-4000-0001",
+      role: "TENANT",
+      status: "ACTIVE",
+      createdAt
     }
   ];
+  const contractCreatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+  const contractUpdatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 10 * 60 * 1000).toISOString();
+  const billingDate = new Date();
+  const currentBillingMonth = billingDate.toISOString().slice(0, 7);
+  const previousBillingDate = new Date(billingDate);
+  previousBillingDate.setMonth(previousBillingDate.getMonth() - 1);
+  const previousBillingMonth = previousBillingDate.toISOString().slice(0, 7);
+  const currentDueDate = new Date(billingDate);
+  currentDueDate.setDate(currentDueDate.getDate() + 5);
+  const guardedDueDate = new Date(billingDate);
+  guardedDueDate.setDate(guardedDueDate.getDate() - 3);
+  const guardedDepositDate = new Date(guardedDueDate);
+  guardedDepositDate.setDate(guardedDepositDate.getDate() + 1);
 
   return {
     users,
+    socialAccounts: [],
     rooms: [
       {
         id: "room-301",
@@ -361,11 +896,19 @@ function createDemoStore(): Store {
         roomNo: "301호",
         address: "서울시 성동구 성수동",
         landlordId: "landlord-demo"
+      },
+      {
+        id: "room-402",
+        buildingName: "정글빌라",
+        roomNo: "402호",
+        address: "서울시 성동구 성수동",
+        landlordId: "multi-demo"
       }
     ],
     roomWalls: [],
     tenantRooms: {
-      "tenant-demo": "room-301"
+      "tenant-demo": "room-301",
+      "multi-demo": "room-301"
     },
     vendors: [
       {
@@ -380,6 +923,215 @@ function createDemoStore(): Store {
     ],
     vendorInvites: [],
     tenantInvites: [],
+    contracts: [
+      {
+        id: "ct_moveout_0001",
+        roomId: "room-301",
+        tenantId: "tenant-demo",
+        managerId: "landlord-demo",
+        unitId: "302",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "confirmed",
+        deletion: "none",
+        valueSource: "confirmed",
+        monthlyRent: 650000,
+        maintenanceFee: 70000,
+        paymentDay: 25,
+        startDate: "2024-08-01T00:00:00+09:00",
+        endDate: "2026-07-31T00:00:00+09:00",
+        createdAt: "2024-08-01T10:00:00+09:00",
+        updatedAt: "2026-06-20T10:00:00+09:00",
+        confirmedAt: "2026-06-20T10:00:00+09:00",
+        confirmedByManagerId: "landlord-demo"
+      },
+      {
+        id: "ct_0001",
+        roomId: "room-301",
+        tenantId: "tenant-demo",
+        managerId: "landlord-demo",
+        unitId: "301",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "pending",
+        deletion: "none",
+        valueSource: "unverified",
+        monthlyRent: 650000,
+        maintenanceFee: 70000,
+        paymentDay: 25,
+        optionInventory: ["에어컨", "세탁기", "냉장고", "인덕션", "블라인드"],
+        startDate: "2026-03-01T00:00:00+09:00",
+        endDate: "2028-02-29T00:00:00+09:00",
+        createdAt: contractCreatedAt,
+        updatedAt: contractUpdatedAt,
+        extractionId: "cx_0001",
+        documentId: "cdoc_0001"
+      }
+    ],
+    contractDocuments: [
+      {
+        id: "cdoc_0001",
+        contractId: "ct_0001",
+        uploadedByUserId: "tenant-demo",
+        origin: "tenant_upload",
+        fileName: "contract-301.pdf",
+        fileUrl: "/uploads/contract-301.pdf",
+        uploadedAt: contractCreatedAt
+      }
+    ],
+    contractExtractions: [
+      {
+        id: "cx_0001",
+        contractId: "ct_0001",
+        confirmed: false,
+        highlights: [
+          "월세 65만원 · 매월 25일 납부",
+          "계약 기간 2026.03.01 ~ 2028.02.29 (2년)",
+          "묵시적 자동연장 특약 있음 — 확인 필요"
+        ],
+        items: [
+          { label: "보증금", value: "10,000,000원", group: "money", needsCheck: false, evidence: "제1조 보증금은 금 일천만원정(₩10,000,000)으로 한다." },
+          { label: "월세", value: "650,000원", group: "money", needsCheck: false, evidence: "차임은 월 금 육십오만원정으로 하며" },
+          { label: "관리비", value: "70,000원", group: "money", needsCheck: true, evidence: "관리비 별도(관리규약에 따름)" },
+          { label: "납부일", value: "매월 25일", group: "money", needsCheck: false, evidence: "매월 25일까지 임대인 계좌로 납부한다." },
+          { label: "임대인 계좌", value: "○○은행 ***-**-****21", group: "money", needsCheck: false, masked: true, evidence: "입금계좌: ○○은행 123-45-678921" },
+          { label: "계약 기간", value: "2026.03.01 ~ 2028.02.29", group: "term", needsCheck: false, evidence: "임대차 기간은 2026년 3월 1일부터 24개월로 한다." },
+          { label: "자동연장", value: "묵시적 갱신 특약", group: "term", needsCheck: true, evidence: "만료 1개월 전 통지 없을 시 동일 조건 자동연장" },
+          { label: "상세 주소", value: "서울시 ○○구 ***로 **길 **", group: "term", needsCheck: false, masked: true, evidence: "목적물: 서울시 ○○구 △△로 12길 34, 301호" },
+          { label: "원상복구", value: "퇴거 시 원상복구 의무", group: "responsibility", needsCheck: false, evidence: "임차인은 퇴거 시 목적물을 원상으로 회복하여 반환한다." },
+          { label: "수선 책임", value: "소모품·경미한 수선 임차인 부담", group: "responsibility", needsCheck: true, evidence: "경미한 수선 및 소모품 교체는 임차인 부담으로 한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "묵시적 자동연장",
+            plain: "만료 1개월 전에 아무도 연락하지 않으면 같은 조건으로 계약이 자동으로 연장돼요. 이사 계획이 있으면 미리 알려두면 좋아요.",
+            source: "만료 1개월 전 통지 없을 시 동일 조건 자동연장"
+          },
+          {
+            clause: "원상복구 의무",
+            plain: "퇴거할 때 처음 상태로 되돌려 놓아야 해요. 입주 전 사진을 남겨두면 나중에 도움이 돼요.",
+            source: "임차인은 퇴거 시 목적물을 원상으로 회복하여 반환한다."
+          },
+          {
+            clause: "경미한 수선 부담",
+            plain: "소모품 교체나 작은 수리는 임차인이 부담할 수 있어요. 큰 하자는 임대인 책임일 수 있으니 관리자에게 물어보세요.",
+            source: "경미한 수선 및 소모품 교체는 임차인 부담으로 한다."
+          }
+        ],
+        createdAt: contractUpdatedAt
+      }
+    ],
+    contractPrivacies: [
+      {
+        contractId: "ct_0001",
+        maskingEnabled: true,
+        retention: [
+          { label: "계약서 원본·추출값", reason: "정산·분쟁 대비", until: "계약 종료 후 5년" },
+          { label: "임대인 계좌·연락처", reason: "정산 완료 시 즉시 파기", until: "정산 완료 시" },
+          { label: "삭제 요청 이력", reason: "처리 감사로그", until: "3년" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      }
+    ],
+    contractInvites: [
+      {
+        id: "cinv_0001",
+        contractId: "ct_0001",
+        roomId: "room-301",
+        inviteToken: "contract-demo-token",
+        invitedByManagerId: "landlord-demo",
+        tenantName: "김민수",
+        phone: "010-1000-3001",
+        state: "connected",
+        signupUrl: "/tenant?inviteToken=contract-demo-token",
+        audit: "2026-03-01 임차인 확인 완료",
+        createdAt: "2026-03-01T10:00:00+09:00",
+        acceptedAt: "2026-03-01T10:30:00+09:00",
+        acceptedByUserId: "tenant-demo"
+      }
+    ],
+    bills: [
+      {
+        id: "bill-demo-current",
+        unitId: "301호",
+        billingMonth: currentBillingMonth,
+        status: "SENT",
+        totalAmount: 720000,
+        paidAmount: 0,
+        dueDate: currentDueDate.toISOString(),
+        bankName: "룸로그은행",
+        accountNumber: "123-45-678921",
+        accountHolder: "박관리",
+        correctionHistory: [],
+        maintenanceFeeId: "mfee-demo-current",
+        depositConfirmationRequested: false,
+        items: [
+          { id: "bill-line-current-rent", label: "월세", amount: 650000 },
+          { id: "bill-line-current-maintenance", label: "관리비", amount: 70000 }
+        ],
+        createdAt,
+        updatedAt: createdAt
+      },
+      {
+        id: "bill-demo-guarded",
+        unitId: "301호",
+        billingMonth: previousBillingMonth,
+        status: "CONFIRMING",
+        totalAmount: 720000,
+        paidAmount: 0,
+        dueDate: guardedDueDate.toISOString(),
+        bankName: "룸로그은행",
+        accountNumber: "123-45-678921",
+        accountHolder: "박관리",
+        correctionHistory: [],
+        depositConfirmationRequested: true,
+        items: [
+          { id: "bill-line-guarded-rent", label: "월세", amount: 650000 },
+          { id: "bill-line-guarded-maintenance", label: "관리비", amount: 70000 }
+        ],
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    paymentReports: [
+      {
+        id: "payrep-demo-guarded",
+        billId: "bill-demo-guarded",
+        unitId: "301호",
+        amount: 720000,
+        depositorName: "김민수",
+        status: "CONFIRMING",
+        etaHours: 24,
+        reportedAt: guardedDepositDate.toISOString()
+      }
+    ],
+    deposits: [
+      {
+        id: "dep-demo-orphan",
+        depositorName: "김미숙",
+        amount: 720000,
+        depositedAt: guardedDepositDate.toISOString(),
+        matchStatus: "ORPHAN",
+        guessedUnitId: "301호"
+      }
+    ],
+    maintenanceFees: [
+      {
+        id: "mfee-demo-current",
+        unitId: "301호",
+        billingMonth: currentBillingMonth,
+        totalAmount: 70000,
+        available: true,
+        items: [
+          { id: "mfee-line-current-cleaning", label: "공용부 청소", amount: 30000, receiptAvailable: true },
+          { id: "mfee-line-current-electricity", label: "공용 전기", amount: 25000, receiptAvailable: true },
+          { id: "mfee-line-current-elevator", label: "승강기 점검", amount: 15000, receiptAvailable: false }
+        ]
+      }
+    ],
     attachments: [],
     floorPlans: [],
     moveInChecklist: [],
@@ -389,7 +1141,325 @@ function createDemoStore(): Store {
     analyses: {},
     tickets: [],
     repairs: [],
+    costs: [],
+    receipts: [],
+    receiptOcrs: [],
     messages: [],
+    messagingThreads: [
+      {
+        id: "mth_demo_general",
+        roomId: "room-301",
+        unitId: "301",
+        tenantId: "tenant-demo",
+        context: "general",
+        contextLabel: "생활 문의",
+        lastMessage: "확인 후 오늘 안으로 답변드리겠습니다.",
+        unreadCount: 1,
+        pendingRequest: false,
+        archivedNotice: true,
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingMessages: [
+      {
+        id: "msg_demo_general_1",
+        threadId: "mth_demo_general",
+        senderUserId: "tenant-demo",
+        sender: "tenant",
+        kind: "text",
+        body: "공용 현관 등이 깜빡입니다.",
+        attachmentUrls: [],
+        createdAt
+      },
+      {
+        id: "msg_demo_general_2",
+        threadId: "mth_demo_general",
+        senderUserId: "landlord-demo",
+        sender: "manager",
+        kind: "text",
+        body: "확인 후 오늘 안으로 답변드리겠습니다.",
+        attachmentUrls: [],
+        createdAt
+      }
+    ],
+    messagingAnnouncementDrafts: [
+      {
+        id: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        targetRoomIds: ["room-301"],
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        translations: [
+          {
+            lang: "en",
+            langLabel: "English",
+            title: "Emergency water outage",
+            body: "There will be a 30-minute emergency water outage from 18:00 today.",
+            reviewed: true
+          }
+        ],
+        confirmRequired: true,
+        status: "sent",
+        createdByManagerId: "landlord-demo",
+        createdAt,
+        updatedAt: createdAt
+      }
+    ],
+    messagingAnnouncements: [
+      {
+        id: "mann_demo_urgent",
+        draftId: "mad_demo_urgent",
+        category: "urgent",
+        scope: "building",
+        targetLabel: "정글빌라 전체",
+        title: "긴급 단수 안내",
+        body: "오늘 18시부터 30분간 긴급 단수가 있습니다.",
+        sender: "박관리",
+        senderId: "landlord-demo",
+        sentAt: createdAt,
+        confirmRequired: true,
+        safetyCta: "안전 확인"
+      }
+    ],
+    messagingAnnouncementDeliveries: [
+      {
+        id: "mdl_demo_urgent_tenant",
+        announcementId: "mann_demo_urgent",
+        tenantId: "tenant-demo",
+        roomId: "room-301",
+        unitId: "301",
+        tenantName: "김민수",
+        preferredLang: "ko",
+        state: "unread"
+      }
+    ],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
+    moveouts: [
+      {
+        id: "mo_0001",
+        tenantId: "tenant-demo",
+        roomId: "room-301",
+        contractId: "ct_moveout_0001",
+        unitId: "302",
+        contractConfirmed: true,
+        leaseEndDate: "2026-07-31T00:00:00+09:00",
+        daysRemaining: 30,
+        depositAmount: 10000000,
+        estimatedRefundMin: 9740000,
+        estimatedRefundMax: 9850000,
+        settlementStatus: "reviewing",
+        prepProgress: 0.72,
+        settlementId: "st_0001",
+        createdAt: moveoutCreatedAt,
+        updatedAt: moveoutUpdatedAt
+      }
+    ],
+    moveoutRecords: [
+      {
+        id: "rec_0001",
+        summaryId: "mo_0001",
+        source: "movein_photo",
+        title: "입주 전 욕실 사진",
+        description: "입주 시점 욕실 타일과 수전 사진이 있어 현재 상태와 비교할 수 있습니다.",
+        occurredAt: "2024-08-01T10:10:00+09:00",
+        evidenceUrls: ["/api/files/moveout/bathroom-before.jpg"],
+        moveinComparisonAvailable: true
+      },
+      {
+        id: "rec_0002",
+        summaryId: "mo_0001",
+        source: "defect",
+        title: "현관 센서등 깜빡임",
+        description: "입주 중 접수된 공용 설비 문의이며 수리 완료 이력이 연결되어 있습니다.",
+        occurredAt: "2026-02-11T14:20:00+09:00",
+        wearVerdict: "aging_likely",
+        wearNote: "소모품 노후 가능성이 높아 임차인 책임으로 단정하지 않습니다.",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0003",
+        summaryId: "mo_0001",
+        source: "repair",
+        title: "욕실 실리콘 보수",
+        description: "보수 완료 후 사진이 첨부되어 있어 차감 후보 산정 근거로만 사용됩니다.",
+        occurredAt: "2026-05-12T16:00:00+09:00",
+        wearVerdict: "unclear",
+        wearNote: "노후와 사용 중 훼손 가능성이 함께 있어 관리인 확인이 필요합니다.",
+        evidenceUrls: ["/api/files/moveout/bathroom-repair-after.jpg"],
+        moveinComparisonAvailable: true
+      },
+      {
+        id: "rec_0004",
+        summaryId: "mo_0001",
+        source: "payment",
+        title: "7월 관리비 정산",
+        description: "관리비 일부 미납 후보가 예상 정산안에 반영되었습니다.",
+        occurredAt: "2026-07-01T09:00:00+09:00",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0005",
+        summaryId: "mo_0001",
+        source: "contract",
+        title: "원상복구 특약",
+        description: "계약서 원상복구 조항은 참고 근거이며 최종 차감 확정이 아닙니다.",
+        occurredAt: "2024-08-01T10:00:00+09:00",
+        moveinComparisonAvailable: false
+      },
+      {
+        id: "rec_0006",
+        summaryId: "mo_0001",
+        source: "chat",
+        title: "퇴실 일정 문의",
+        description: "임차인이 퇴실 일정과 정산 예상 범위 안내를 요청했습니다.",
+        occurredAt: "2026-06-30T13:30:00+09:00",
+        moveinComparisonAvailable: false
+      }
+    ],
+    moveoutChecklist: [
+      {
+        id: "ck_0001",
+        summaryId: "mo_0001",
+        label: "현관 카드키 2개",
+        present: true,
+        condition: "normal",
+        note: "반납 예정"
+      },
+      {
+        id: "ck_0002",
+        summaryId: "mo_0001",
+        label: "에어컨 리모컨",
+        present: true,
+        condition: "normal"
+      },
+      {
+        id: "ck_0003",
+        summaryId: "mo_0001",
+        label: "욕실 환풍기",
+        present: true,
+        condition: "aging",
+        note: "소음이 있으나 노후로 보입니다."
+      },
+      {
+        id: "ck_0004",
+        summaryId: "mo_0001",
+        label: "붙박이장 손잡이",
+        present: true,
+        condition: "damage_check",
+        note: "헐거움 확인 필요"
+      },
+      {
+        id: "ck_0005",
+        summaryId: "mo_0001",
+        label: "우편함 열쇠",
+        present: false,
+        condition: "damage_check",
+        note: "분실 여부 확인 중"
+      }
+    ],
+    moveoutSettlements: [
+      {
+        id: "st_0001",
+        summaryId: "mo_0001",
+        depositAmount: 10000000,
+        deductions: [],
+        refundMin: 9740000,
+        refundMax: 9850000,
+        status: "reviewing",
+        disclaimer: "참고자료이며 최종 정산은 관리자 확인 후 확정됩니다.",
+        createdAt: moveoutCreatedAt,
+        updatedAt: moveoutUpdatedAt
+      }
+    ],
+    moveoutDeductions: [
+      {
+        id: "de_0001",
+        summaryId: "mo_0001",
+        kind: "unpaid",
+        label: "7월 관리비 미납 후보",
+        estimatedMin: 70000,
+        estimatedMax: 70000,
+        needsConfirmation: false,
+        evidenceNote: "납부 내역 기준 7월 관리비 잔액 후보입니다.",
+        source: "payment"
+      },
+      {
+        id: "de_0002",
+        summaryId: "mo_0001",
+        kind: "repair",
+        label: "욕실 실리콘 보수 후보",
+        estimatedMin: 30000,
+        estimatedMax: 80000,
+        needsConfirmation: false,
+        evidenceNote: "입주 전 사진과 2026년 보수 이력을 함께 비교합니다.",
+        source: "repair"
+      },
+      {
+        id: "de_0003",
+        summaryId: "mo_0001",
+        kind: "restoration",
+        label: "붙박이장 손잡이 원상복구 후보",
+        estimatedMin: 30000,
+        estimatedMax: 70000,
+        needsConfirmation: false,
+        evidenceNote: "체크리스트 손잡이 헐거움과 계약서 원상복구 조항을 참고합니다.",
+        source: "contract"
+      },
+      {
+        id: "de_0004",
+        summaryId: "mo_0001",
+        kind: "cleaning",
+        label: "퇴실 기본 청소 후보",
+        estimatedMin: 20000,
+        estimatedMax: 40000,
+        needsConfirmation: false,
+        evidenceNote: "퇴실 청소 조항 기준 예상 후보이며 실제 상태 확인 전 확정하지 않습니다.",
+        source: "contract"
+      }
+    ],
+    moveoutDisputes: [
+      {
+        id: "dp_0001",
+        summaryId: "mo_0001",
+        targetItemId: "de_0002",
+        targetLabel: "욕실 실리콘 보수 후보",
+        reason: "입주 전부터 있던 변색이라 차감 대상이 아니라고 봅니다.",
+        status: "received",
+        slaDeadline: moveoutDisputeDeadline,
+        slaBreached: true,
+        history: [
+          {
+            status: "received",
+            at: moveoutDisputeCreatedAt,
+            actorUserId: "tenant-demo",
+            note: "입주 전부터 있던 변색입니다."
+          }
+        ],
+        createdAt: moveoutDisputeCreatedAt,
+        updatedAt: moveoutDisputeCreatedAt
+      }
+    ],
+    moveoutReportAudits: [
+      {
+        id: "maud_0001",
+        summaryId: "mo_0001",
+        recordItemId: "rec_0003",
+        action: "reinforce",
+        fromVerdict: "unclear",
+        toVerdict: "unclear",
+        evidenceNote: "입주 전 욕실 사진과 보수 완료 사진을 같은 근거로 묶었습니다.",
+        tenantNotified: true,
+        managerName: "박관리",
+        managerId: "landlord-demo",
+        at: "2026-07-02T09:00:00+09:00"
+      }
+    ],
     history: []
   };
 }
@@ -397,12 +1467,22 @@ function createDemoStore(): Store {
 function createEmptyStore(): Store {
   return {
     users: [],
+    socialAccounts: [],
     rooms: [],
     roomWalls: [],
     tenantRooms: {},
     vendors: [],
     vendorInvites: [],
     tenantInvites: [],
+    contracts: [],
+    contractDocuments: [],
+    contractExtractions: [],
+    contractPrivacies: [],
+    contractInvites: [],
+    bills: [],
+    paymentReports: [],
+    deposits: [],
+    maintenanceFees: [],
     attachments: [],
     floorPlans: [],
     moveInChecklist: [],
@@ -412,9 +1492,39 @@ function createEmptyStore(): Store {
     analyses: {},
     tickets: [],
     repairs: [],
+    costs: [],
+    receipts: [],
+    receiptOcrs: [],
     messages: [],
+    messagingThreads: [],
+    messagingMessages: [],
+    messagingAnnouncementDrafts: [],
+    messagingAnnouncements: [],
+    messagingAnnouncementDeliveries: [],
+    managerReports: [],
+    managerReportSourceReferences: [],
+    managerReportExternalShares: [],
+    managerReportAuditLogs: [],
+    moveouts: [],
+    moveoutRecords: [],
+    moveoutChecklist: [],
+    moveoutSettlements: [],
+    moveoutDeductions: [],
+    moveoutDisputes: [],
+    moveoutReportAudits: [],
     history: []
   };
+}
+
+function mergeMissingById<T extends { id: string }>(current: T[], demo: T[]): T[] {
+  return mergeMissingByKey(current, demo, (item) => item.id);
+}
+
+function mergeMissingByKey<T>(current: T[], demo: T[], keyOf: (item: T) => string): T[] {
+  const currentKeys = new Set(current.map((item) => keyOf(item)));
+  const missingDemoItems = demo.filter((item) => !currentKeys.has(keyOf(item)));
+
+  return missingDemoItems.length ? [...current, ...missingDemoItems] : current;
 }
 
 function envFlag(value: string | undefined) {
@@ -449,6 +1559,16 @@ export class RoomlogService {
   private readonly storeProjector?: StoreProjector;
   private pendingPersistence = Promise.resolve();
   private persistenceError: unknown;
+  private readonly auth: RoomlogAuthDomain;
+  private readonly floorPlan: RoomlogFloorPlanDomain;
+  private readonly cost: RoomlogCostDomain;
+  private readonly checklist: RoomlogChecklistDomain;
+  private readonly contract: RoomlogContractDomain;
+  private readonly vendorMgmt: RoomlogVendorMgmtDomain;
+  private readonly vendorRepair: RoomlogVendorRepairDomain;
+  private readonly messaging: RoomlogMessagingDomain;
+  private readonly moveout: RoomlogMoveoutDomain;
+  private readonly report: RoomlogReportDomain;
 
   constructor(
     @Optional()
@@ -468,9 +1588,108 @@ export class RoomlogService {
     this.storageAdapter =
       options.storageAdapter ??
       createFileStorageAdapter(process.env, this.uploadDir, this.publicUploadBaseUrl);
-    this.store = options.initialStore
+    const loadedStore = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
+    this.store = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
+    this.auth = new RoomlogAuthDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId)
+    );
+    this.floorPlan = new RoomlogFloorPlanDomain(
+      this.store,
+      this.storageAdapter,
+      () => this.persistStore()
+    );
+    this.cost = new RoomlogCostDomain(
+      this.store,
+      () => this.persistStore(),
+      (iso) => this.timeOf(iso),
+      (ticketId) => this.findTicket(ticketId),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (ocr) => this.cloneReceiptOcr(ocr)
+    );
+    this.checklist = new RoomlogChecklistDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId)
+    );
+    this.contract = new RoomlogContractDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (startIso, endIso) => this.elapsedHours(startIso, endIso)
+    );
+    this.vendorMgmt = new RoomlogVendorMgmtDomain(
+      this.store,
+      () => this.persistStore(),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (ticketId) => this.findTicket(ticketId),
+      (roomId) => this.findRoom(roomId),
+      (complaintId) => this.findComplaint(complaintId),
+      (iso) => this.timeOf(iso),
+      (startIso, endIso) => this.elapsedHours(startIso, endIso),
+      (values) => this.average(values),
+      (values) => this.median(values)
+    );
+    this.vendorRepair = new RoomlogVendorRepairDomain(
+      this.store,
+      () => this.persistStore(),
+      (ticketId) => this.findTicket(ticketId),
+      (complaintId) => this.findComplaint(complaintId),
+      (repairId) => this.findRepair(repairId),
+      (ticketId, toStatus, changedByUserId, note) =>
+        this.transitionTicket(ticketId, toStatus, changedByUserId, note),
+      (ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls) =>
+        this.addMessageInternal(ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls),
+      (ticketId, changedByUserId, fromStatus, toStatus, note) =>
+        this.pushHistory(ticketId, changedByUserId, fromStatus, toStatus, note),
+      (repair, allowed, action) => this.assertRepairStatus(repair, allowed, action),
+      (managerId, ticket) => this.assertManagerCanAccessTicket(managerId, ticket),
+      (message) => this.presentTicketMessage(message)
+    );
+    this.messaging = new RoomlogMessagingDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso)
+    );
+    this.report = new RoomlogReportDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createManagerAnnouncementDraft(managerId, input),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input)
+    );
+    this.moveout = new RoomlogMoveoutDomain(
+      this.store,
+      () => this.persistStore(),
+      (roomId) => this.findRoom(roomId),
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
+      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
+      (room) => this.displayUnitId(room),
+      (iso) => this.timeOf(iso),
+      (managerId, input) => this.messaging.createMessagingThread(managerId, input),
+      (tenantId, threadId, input) =>
+        this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input),
+      (managerId, threadId, input) =>
+        this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input)
+    );
   }
 
   async flushPersistence() {
@@ -482,146 +1701,33 @@ export class RoomlogService {
   }
 
   signup(input: SignupInput): AuthResult {
-    const normalizedInput = this.normalizeSignupInput(input);
-    this.validateSignupInput(normalizedInput);
-    const vendorInvite =
-      normalizedInput.role === "VENDOR"
-        ? this.resolvePendingVendorInvite(normalizedInput)
-        : undefined;
-    const tenantInvite =
-      normalizedInput.role === "TENANT" && normalizedInput.inviteToken
-        ? this.resolvePendingTenantInvite(normalizedInput)
-        : undefined;
-
-    if (this.store.users.some((user) => user.email === normalizedInput.email)) {
-      throw new ConflictException("이미 가입된 이메일입니다.");
-    }
-
-    if (
-      normalizedInput.phone &&
-      this.store.users.some((user) => user.phone === normalizedInput.phone)
-    ) {
-      throw new ConflictException("이미 가입된 휴대폰 번호입니다.");
-    }
-
-    const user: UserAccount = {
-      id: id("usr"),
-      email: normalizedInput.email,
-      passwordHash: hashPassword(normalizedInput.password),
-      name: normalizedInput.name,
-      phone: normalizedInput.phone,
-      role: normalizedInput.role,
-      status: "ACTIVE",
-      createdAt: now()
-    };
-
-    this.store.users.push(user);
-
-    if (user.role === "TENANT") {
-      this.store.tenantRooms[user.id] =
-        tenantInvite?.roomId ??
-        this.findOrCreateRoomForSignup(normalizedInput, this.seededLandlordId());
-
-      if (tenantInvite) {
-        tenantInvite.status = "ACCEPTED";
-        tenantInvite.acceptedAt = now();
-        tenantInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    if (user.role === "LANDLORD") {
-      this.findOrCreateRoomForSignup(normalizedInput, user.id);
-    }
-
-    if (user.role === "VENDOR") {
-      this.store.vendors.push({
-        id: id("vnd"),
-        userId: user.id,
-        businessName:
-          vendorInvite?.businessName ?? normalizedInput.businessName ?? `${user.name} 협력업체`,
-        contactPerson: vendorInvite?.contactPerson ?? user.name,
-        phone: user.phone ?? vendorInvite?.phone ?? "",
-        serviceArea: vendorInvite?.serviceArea ?? normalizedInput.serviceArea ?? "서울",
-        activeJobs: 0
-      });
-
-      if (vendorInvite) {
-        vendorInvite.status = "ACCEPTED";
-        vendorInvite.acceptedAt = now();
-        vendorInvite.acceptedByUserId = user.id;
-      }
-    }
-
-    this.persistStore();
-    return this.authResult(user);
+    return this.auth.signup(input);
   }
 
   login(input: LoginInput): AuthResult {
-    const user = this.store.users.find((account) => account.email === input.email);
+    return this.auth.login(input);
+  }
 
-    if (!user || !verifyPassword(input.password, user.passwordHash)) {
-      throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
-    }
-
-    return this.authResult(user);
+  async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
+    return await this.auth.loginWithGoogle(input);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
-    const token = authorization?.replace(/^Bearer\s+/i, "");
+    return this.auth.getUserFromToken(authorization);
+  }
 
-    if (!token) {
-      throw new UnauthorizedException("인증 토큰이 필요합니다.");
-    }
+  /** 관계 기반 파생 capability — requireRole 등 권한 판단은 user.role 단일값 대신 이걸 쓴다. */
+  rolesForUser(user: UserAccount): UserRole[] {
+    return this.auth.rolesFor(user);
+  }
 
-    const [payload, signature] = token.split(".");
-
-    if (!payload || !signature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const expectedSignature = createHmac("sha256", tokenSecret)
-      .update(payload)
-      .digest("base64url");
-
-    if (signature !== expectedSignature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      sub?: string;
-    };
-    const userId = decoded.sub;
-    const user = this.store.users.find((account) => account.id === userId);
-
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    return user;
+  /** 초대를 이미 로그인한 계정에 관계로 연결한다(새 계정 생성 없음). */
+  acceptInviteForUser(userId: string, role: UserRole, inviteToken: string) {
+    return this.auth.acceptInviteForUser(userId, role, inviteToken);
   }
 
   getMe(authorization?: string) {
-    const user = this.getUserFromToken(authorization);
-    const roomId = this.store.tenantRooms[user.id];
-    const room = roomId ? this.store.rooms.find((item) => item.id === roomId) : undefined;
-    const vendor = this.store.vendors.find((item) => item.userId === user.id);
-    const managedRooms =
-      user.role === "LANDLORD"
-        ? this.store.rooms.filter((item) => item.landlordId === user.id).map((item) => ({ ...item }))
-        : undefined;
-
-    return {
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      phone: user.phone,
-      role: user.role,
-      roomId,
-      room: room ? { ...room } : undefined,
-      managedRooms,
-      vendorId: vendor?.id,
-      vendor: vendor ? { ...vendor } : undefined
-    };
+    return this.auth.getMe(authorization);
   }
 
   getDemoState() {
@@ -634,11 +1740,39 @@ export class RoomlogService {
       rooms: this.store.rooms,
       vendors: this.listVendors(),
       tenantInvites: this.store.tenantInvites,
+      contracts: this.store.contracts,
+      contractDocuments: this.store.contractDocuments,
+      contractExtractions: this.store.contractExtractions,
+      contractPrivacies: this.store.contractPrivacies,
+      contractInvites: this.store.contractInvites,
+      bills: this.store.bills,
+      paymentReports: this.store.paymentReports,
+      deposits: this.store.deposits,
+      maintenanceFees: this.store.maintenanceFees,
       complaints: this.store.complaints,
       intakeSessions: this.store.intakeSessions,
       tickets: this.store.tickets,
       repairs: this.store.repairs,
-      messages: this.store.messages
+      costs: this.store.costs,
+      receipts: this.store.receipts,
+      receiptOcrs: this.store.receiptOcrs,
+      messages: this.store.messages,
+      messagingThreads: this.store.messagingThreads,
+      messagingMessages: this.store.messagingMessages,
+      messagingAnnouncementDrafts: this.store.messagingAnnouncementDrafts,
+      messagingAnnouncements: this.store.messagingAnnouncements,
+      messagingAnnouncementDeliveries: this.store.messagingAnnouncementDeliveries,
+      managerReports: this.store.managerReports,
+      managerReportSourceReferences: this.store.managerReportSourceReferences,
+      managerReportExternalShares: this.store.managerReportExternalShares,
+      managerReportAuditLogs: this.store.managerReportAuditLogs,
+      moveouts: this.store.moveouts,
+      moveoutRecords: this.store.moveoutRecords,
+      moveoutChecklist: this.store.moveoutChecklist,
+      moveoutSettlements: this.store.moveoutSettlements,
+      moveoutDeductions: this.store.moveoutDeductions,
+      moveoutDisputes: this.store.moveoutDisputes,
+      moveoutReportAudits: this.store.moveoutReportAudits
     };
   }
 
@@ -648,6 +1782,359 @@ export class RoomlogService {
         enabled: this.seedDemoData
       }
     };
+  }
+
+  listTenantBills(tenantId: string): TeamBill[] {
+    return this.tenantBills(tenantId)
+      .filter((bill) => this.deriveBillStatus(bill) !== "DRAFT")
+      .map((bill) => this.presentBill(bill));
+  }
+
+  getTenantBill(tenantId: string, billId: string): TeamBill {
+    return this.presentBill(this.findTenantBill(tenantId, billId));
+  }
+
+  getTenantBillMaintenance(tenantId: string, billId: string): TeamMaintenance {
+    const bill = this.findTenantBill(tenantId, billId);
+
+    return this.presentMaintenanceFee(this.resolveMaintenanceFeeForBill(bill));
+  }
+
+  createTenantPaymentReport(
+    tenantId: string,
+    billId: string,
+    input: CreatePaymentReportInput
+  ): TeamReport {
+    const bill = this.findTenantBill(tenantId, billId);
+    const amount = Number(input.amount);
+    const status = this.deriveBillStatus(bill);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException("신고 금액은 0보다 커야 합니다.");
+    }
+
+    if (["PAID", "CORRECTED", "CANCELED"].includes(status)) {
+      throw new BadRequestException("이 청구서에는 납부 신고를 접수할 수 없습니다.");
+    }
+
+    const report: PaymentReport = {
+      id: id("payrep"),
+      billId: bill.id,
+      unitId: bill.unitId,
+      amount: Math.round(amount),
+      depositorName: input.depositorName?.trim() || undefined,
+      status: "CONFIRMING",
+      etaHours: 24,
+      reportedAt: now()
+    };
+
+    this.store.paymentReports.unshift(report);
+    bill.status = "CONFIRMING";
+    bill.depositConfirmationRequested = false;
+    bill.updatedAt = now();
+    this.persistStore();
+
+    return this.presentPaymentReport(report);
+  }
+
+  getManagerBillDashboard(managerId: string): { summary: TeamDashSummary; bills: TeamBillRow[] } {
+    const bills = this.managerBills(managerId);
+    const overdue = bills.filter((bill) => this.isBillInActiveOverdue(bill)).length;
+    const confirmNeeded = bills.filter((bill) => this.dunningGuardForBill(bill).blocked).length;
+    const pending = bills.filter((bill) => {
+      const status = this.deriveBillStatus(bill);
+
+      return ["SENT", "PARTIALLY_PAID"].includes(status) && !this.isBillPastDue(bill);
+    }).length;
+
+    return {
+      summary: {
+        total: bills.length,
+        confirmNeeded,
+        pending,
+        overdue
+      },
+      bills: bills.map((bill) => this.presentManagerBillRow(bill))
+    };
+  }
+
+  getManagerBill(managerId: string, billId: string): TeamBill {
+    return this.presentBill(this.findManagerBill(managerId, billId));
+  }
+
+  getManagerCollection(managerId: string): TeamCollection {
+    const bills = this.managerBills(managerId);
+    const billingMonth =
+      [...new Set(bills.map((bill) => bill.billingMonth))].sort().at(-1) ??
+      new Date().toISOString().slice(0, 7);
+    const scopedBills = bills.filter((bill) => bill.billingMonth === billingMonth);
+    const billedAmount = scopedBills.reduce((sum, bill) => sum + bill.totalAmount, 0);
+    const collectedAmount = scopedBills.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    const confirmingAmount = scopedBills.reduce(
+      (sum, bill) => sum + this.confirmingAmountForBill(bill),
+      0
+    );
+    const orphanAmount = this.managerRelevantDeposits(managerId)
+      .filter(
+        (deposit) =>
+          deposit.matchStatus === "ORPHAN" &&
+          scopedBills.some((bill) => this.orphanDepositAppliesToBill(deposit, bill))
+      )
+      .reduce((sum, deposit) => sum + deposit.amount, 0);
+    const grossUnpaid = scopedBills.reduce((sum, bill) => sum + this.unpaidAmount(bill), 0);
+    const recentDeposits = this.managerRelevantDeposits(managerId)
+      .sort((left, right) => right.depositedAt.localeCompare(left.depositedAt))
+      .slice(0, 5)
+      .map((deposit) => this.presentDeposit(deposit));
+
+    return {
+      billingMonth,
+      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
+      collectedAmount,
+      unpaidAmount: Math.max(0, grossUnpaid - confirmingAmount - orphanAmount),
+      vacancyLoss: 0,
+      confirmingAmount,
+      orphanAmount,
+      recentDeposits
+    };
+  }
+
+  listManagerBillDeposits(managerId: string): {
+    paymentReports: TeamBillRow[];
+    deposits: TeamDeposit[];
+    orphanDeposits: TeamDeposit[];
+    mismatchDeposits: TeamDeposit[];
+  } {
+    const billIdsWithReports = new Set(
+      this.store.paymentReports
+        .filter((report) => report.status === "CONFIRMING")
+        .map((report) => report.billId)
+    );
+    for (const deposit of this.store.deposits.filter((item) => item.matchStatus === "MISMATCH")) {
+      if (deposit.matchedBillId) {
+        billIdsWithReports.add(deposit.matchedBillId);
+      }
+    }
+
+    const paymentReports = this.managerBills(managerId)
+      .filter((bill) => billIdsWithReports.has(bill.id))
+      .map((bill) => this.presentManagerBillRow(bill));
+    const deposits = this.managerRelevantDeposits(managerId);
+
+    return {
+      paymentReports,
+      deposits: deposits
+        .filter((deposit) => !["ORPHAN", "MISMATCH"].includes(deposit.matchStatus))
+        .map((deposit) => this.presentDeposit(deposit)),
+      orphanDeposits: deposits
+        .filter((deposit) => deposit.matchStatus === "ORPHAN")
+        .map((deposit) => this.presentDeposit(deposit)),
+      mismatchDeposits: deposits
+        .filter((deposit) => deposit.matchStatus === "MISMATCH")
+        .map((deposit) => this.presentDeposit(deposit))
+    };
+  }
+
+  matchManagerDeposit(managerId: string, depositId: string, input: MatchDepositInput): TeamDeposit {
+    const bill = this.findManagerBill(managerId, input.billId);
+    const deposit = this.findDeposit(depositId);
+
+    if (!this.canManagerAccessDeposit(managerId, deposit)) {
+      throw new ForbiddenException("담당 호실의 입금 내역만 매칭할 수 있습니다.");
+    }
+
+    const previousBill =
+      deposit.matchStatus === "MATCHED" && deposit.matchedBillId
+        ? this.store.bills.find((item) => item.id === deposit.matchedBillId)
+        : undefined;
+
+    if (previousBill && previousBill.id !== bill.id) {
+      this.applyConfirmedPayment(previousBill, -deposit.amount);
+      this.refreshBillStatusAfterPaymentChange(previousBill);
+    }
+
+    if (deposit.matchStatus !== "MATCHED" || deposit.matchedBillId !== bill.id) {
+      this.applyConfirmedPayment(bill, deposit.amount);
+    }
+
+    deposit.matchStatus = "MATCHED";
+    deposit.matchedBillId = bill.id;
+    deposit.guessedUnitId = bill.unitId;
+
+    const report = this.store.paymentReports.find(
+      (item) => item.billId === bill.id && item.status === "CONFIRMING" && item.amount === deposit.amount
+    ) ?? this.store.paymentReports.find(
+      (item) => item.billId === bill.id && item.status === "CONFIRMING"
+    );
+
+    if (report) {
+      report.status = "MATCHED";
+    }
+
+    this.refreshBillStatusAfterPaymentChange(bill);
+    this.persistStore();
+
+    return this.presentDeposit(deposit);
+  }
+
+  confirmManagerPaymentReport(managerId: string, billId: string, reportId: string): TeamBill {
+    const bill = this.findManagerBill(managerId, billId);
+    const report = this.store.paymentReports.find(
+      (item) => item.id === reportId && item.billId === bill.id
+    );
+
+    if (!report) {
+      throw new NotFoundException("납부 신고를 찾을 수 없습니다.");
+    }
+
+    if (report.status !== "MATCHED") {
+      this.applyConfirmedPayment(bill, report.amount);
+      report.status = "MATCHED";
+    }
+
+    this.refreshBillStatusAfterPaymentChange(bill);
+    this.persistStore();
+
+    return this.presentBill(bill);
+  }
+
+  listManagerOverdueCases(managerId: string): { activeCases: TeamOverdue[]; waitingCases: TeamOverdue[] } {
+    const cases = this.managerBills(managerId)
+      .filter((bill) => this.canAutoOverdue(bill))
+      .map((bill) => this.presentOverdueCase(bill));
+
+    return {
+      activeCases: cases.filter((item) => !item.guard.blocked),
+      waitingCases: cases.filter((item) => item.guard.blocked)
+    };
+  }
+
+  getManagerDunningDraft(managerId: string, billId: string): TeamDunning {
+    return this.presentDunningDraft(this.findManagerBill(managerId, billId));
+  }
+
+  sendManagerDunning(
+    managerId: string,
+    billId: string,
+    input: SendDunningInput
+  ): { ok: true } {
+    const bill = this.findManagerBill(managerId, billId);
+    const text = input.text?.trim();
+    const channel = input.channel?.trim();
+
+    if (!text || !channel) {
+      throw new BadRequestException("독촉 발송에는 관리인이 편집한 문구와 채널이 필요합니다.");
+    }
+
+    if (this.unpaidAmount(bill) <= 0) {
+      throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
+    }
+
+    const guard = this.dunningGuardForBill(bill);
+
+    if (guard.blocked) {
+      throw new ConflictException("입금 확인 중이거나 미확인 입금이 있어 독촉을 보낼 수 없습니다.");
+    }
+
+    // TODO(KAN-131): messaging 소유 트랙에서 결제 컨텍스트 1:1 독촉 발송을 같은 가드로 차단해야 한다.
+    return { ok: true };
+  }
+
+  listTenantContracts(tenantId: string): Contract[] {
+    return this.contract.listTenantContracts(tenantId);
+  }
+
+  getTenantContract(tenantId: string, contractId: string): Contract {
+    return this.contract.getTenantContract(tenantId, contractId);
+  }
+
+  getTenantContractExtraction(tenantId: string, contractId: string): ContractExtraction {
+    return this.contract.getTenantContractExtraction(tenantId, contractId);
+  }
+
+  getTenantContractPrivacy(tenantId: string, contractId: string): ContractPrivacy {
+    return this.contract.getTenantContractPrivacy(tenantId, contractId);
+  }
+
+  requestTenantContractDeletion(tenantId: string, contractId: string): ContractPrivacy {
+    return this.contract.requestTenantContractDeletion(tenantId, contractId);
+  }
+
+  createTenantContract(tenantId: string, input: CreateTenantContractInput) {
+    return this.contract.createTenantContract(tenantId, input);
+  }
+
+  getManagerContractDashboard(managerId: string) {
+    return this.contract.getManagerContractDashboard(managerId);
+  }
+
+  getManagerContractDetail(managerId: string, contractId = "ct_0001") {
+    return this.contract.getManagerContractDetail(managerId, contractId);
+  }
+
+  confirmManagerContractReview(
+    managerId: string,
+    contractId: string,
+    input: ConfirmContractInput = {}
+  ) {
+    return this.contract.confirmManagerContractReview(managerId, contractId, input);
+  }
+
+  requestManagerContractInfo(managerId: string, contractId: string) {
+    return this.contract.requestManagerContractInfo(managerId, contractId);
+  }
+
+  createManagerContract(managerId: string, input: CreateManagerContractInput) {
+    return this.contract.createManagerContract(managerId, input);
+  }
+
+  updateManagerContractManualValues(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractManualValuesInput
+  ) {
+    return this.contract.updateManagerContractManualValues(managerId, contractId, input);
+  }
+
+  updateManagerContractInventory(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractInventoryInput
+  ) {
+    return this.contract.updateManagerContractInventory(managerId, contractId, input);
+  }
+
+  createManagerContractInvite(
+    managerId: string,
+    contractId: string,
+    input: CreateManagerContractInviteInput
+  ) {
+    return this.contract.createManagerContractInvite(managerId, contractId, input);
+  }
+
+  updateManagerContractInvite(
+    managerId: string,
+    inviteId: string,
+    input: UpdateManagerContractInviteInput
+  ) {
+    return this.contract.updateManagerContractInvite(managerId, inviteId, input);
+  }
+
+  updateManagerContractPrivacy(
+    managerId: string,
+    contractId: string,
+    input: UpdateManagerContractPrivacyInput
+  ) {
+    return this.contract.updateManagerContractPrivacy(managerId, contractId, input);
+  }
+
+  decideManagerContractDeletion(
+    managerId: string,
+    contractId: string,
+    state: DeletionState,
+    retentionNote?: string
+  ) {
+    return this.contract.decideManagerContractDeletion(managerId, contractId, state, retentionNote);
   }
 
   createComplaint(tenantId: string, input: CreateComplaintInput) {
@@ -1862,240 +3349,116 @@ export class RoomlogService {
     return repair;
   }
 
+  listManagerCosts(managerId: string) {
+    return this.cost.listManagerCosts(managerId);
+  }
+
+  getManagerCost(managerId: string, costId: string) {
+    return this.cost.getManagerCost(managerId, costId);
+  }
+
+  confirmManagerCost(managerId: string, costId: string) {
+    return this.cost.confirmManagerCost(managerId, costId);
+  }
+
+  confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+    return this.cost.confirmManagerReceiptOcr(managerId, ocrId);
+  }
+
+  voidManagerCost(managerId: string, costId: string, reason?: string) {
+    return this.cost.voidManagerCost(managerId, costId, reason);
+  }
+
+  updateManagerCostDisclosure(
+    managerId: string,
+    costId: string,
+    disclosure: "public" | "private"
+  ) {
+    return this.cost.updateManagerCostDisclosure(managerId, costId, disclosure);
+  }
+
+  getManagerCostReviewQueueSummary(managerId: string): CostReviewQueueSummary {
+    return this.cost.getManagerCostReviewQueueSummary(managerId);
+  }
+
+  getManagerMonthlyCostSummary(managerId: string, month?: string) {
+    return this.cost.getManagerMonthlyCostSummary(managerId, month);
+  }
+
+  listManagerReceipts(managerId: string) {
+    return this.cost.listManagerReceipts(managerId);
+  }
+
+  getManagerReceiptOcr(managerId: string, ocrId: string) {
+    return this.cost.getManagerReceiptOcr(managerId, ocrId);
+  }
+
+  getManagerDisclosureSetting(managerId: string, month?: string): DisclosureSetting {
+    return this.cost.getManagerDisclosureSetting(managerId, month);
+  }
+
   listVendors() {
-    return this.store.vendors.map((vendor) => ({ ...vendor }));
+    return this.vendorMgmt.listVendors();
+  }
+
+  listManagerVendorMgmtVendors(managerId: string, filters: VendorMgmtListFilters = {}) {
+    return this.vendorMgmt.listManagerVendorMgmtVendors(managerId, filters);
+  }
+
+  getManagerVendorMgmtDetail(managerId: string, vendorId: string) {
+    return this.vendorMgmt.getManagerVendorMgmtDetail(managerId, vendorId);
+  }
+
+  getManagerVendorMgmtPerf(managerId: string, vendorId: string) {
+    return this.vendorMgmt.getManagerVendorMgmtPerf(managerId, vendorId);
+  }
+
+  listManagerVendorDuplicateCandidates(managerId: string) {
+    return this.vendorMgmt.listManagerVendorDuplicateCandidates(managerId);
+  }
+
+  createManagerVendorProfile(managerId: string, input: ManagerVendorProfileInput) {
+    return this.vendorMgmt.createManagerVendorProfile(managerId, input);
+  }
+
+  updateManagerVendorProfile(
+    managerId: string,
+    vendorId: string,
+    input: ManagerVendorProfileInput
+  ) {
+    return this.vendorMgmt.updateManagerVendorProfile(managerId, vendorId, input);
   }
 
   createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
-
-    if (!manager) {
-      throw new ForbiddenException("관리자만 협력업체를 초대할 수 있습니다.");
-    }
-
-    const businessName = input.businessName?.trim();
-    const contactPerson = input.contactPerson?.trim();
-    const phone = normalizePhoneNumber(input.phone);
-    const serviceArea = input.serviceArea?.trim();
-    const email = input.email?.trim().toLowerCase();
-
-    if (!businessName) {
-      throw new BadRequestException("업체명을 입력해주세요.");
-    }
-
-    if (!contactPerson) {
-      throw new BadRequestException("담당자명을 입력해주세요.");
-    }
-
-    if (!phone) {
-      throw new BadRequestException("업체 연락처를 입력해주세요.");
-    }
-
-    if (!serviceArea) {
-      throw new BadRequestException("서비스 가능 지역을 입력해주세요.");
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new BadRequestException("초대 이메일 형식이 올바르지 않습니다.");
-    }
-
-    const inviteToken = randomBytes(18).toString("base64url");
-    const createdAt = now();
-    const invite: VendorInvite = {
-      id: id("vinv"),
-      inviteToken,
-      invitedByManagerId: managerId,
-      email,
-      businessName,
-      contactPerson,
-      phone,
-      serviceArea,
-      status: "PENDING",
-      signupUrl: `/vendor?inviteToken=${inviteToken}`,
-      createdAt
-    };
-
-    this.store.vendorInvites.unshift(invite);
-    this.persistStore();
-
-    return this.presentVendorInvite(invite);
+    return this.vendorMgmt.createVendorInvite(managerId, input);
   }
 
   listVendorInvites(managerId: string) {
-    return this.store.vendorInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
-      .map((invite) => this.presentVendorInvite(invite));
+    return this.vendorMgmt.listVendorInvites(managerId);
   }
 
   createTenantInvite(managerId: string, input: CreateTenantInviteInput) {
-    const manager = this.store.users.find(
-      (user) => user.id === managerId && user.role === "LANDLORD"
-    );
-
-    if (!manager) {
-      throw new ForbiddenException("관리자만 임차인을 초대할 수 있습니다.");
-    }
-
-    const roomId = input.roomId?.trim();
-    const tenantName = input.tenantName?.trim();
-    const phone = normalizePhoneNumber(input.phone);
-    const moveInDate = input.moveInDate?.trim();
-    const email = input.email?.trim().toLowerCase();
-
-    if (!roomId) {
-      throw new BadRequestException("초대할 호실을 선택해주세요.");
-    }
-
-    this.assertManagerCanAccessRoom(managerId, roomId);
-
-    if (!tenantName) {
-      throw new BadRequestException("임차인 이름을 입력해주세요.");
-    }
-
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new BadRequestException("초대 이메일 형식이 올바르지 않습니다.");
-    }
-
-    const inviteToken = randomBytes(18).toString("base64url");
-    const createdAt = now();
-    const invite: TenantInvite = {
-      id: id("tinv"),
-      inviteToken,
-      invitedByManagerId: managerId,
-      roomId,
-      email,
-      tenantName,
-      phone,
-      moveInDate,
-      status: "PENDING",
-      signupUrl: `/tenant?inviteToken=${inviteToken}`,
-      createdAt
-    };
-
-    this.store.tenantInvites.unshift(invite);
-    this.persistStore();
-
-    return this.presentTenantInvite(invite);
+    return this.vendorMgmt.createTenantInvite(managerId, input);
   }
 
   listTenantInvites(managerId: string) {
-    return this.store.tenantInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
-      .map((invite) => this.presentTenantInvite(invite));
+    return this.vendorMgmt.listTenantInvites(managerId);
   }
 
   getSignupInvitePreview(role: UserRole, inviteToken: string) {
-    const token = inviteToken?.trim();
-
-    if (!token) {
-      throw new BadRequestException("초대 토큰이 필요합니다.");
-    }
-
-    if (role === "TENANT") {
-      const invite = this.store.tenantInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-      }
-
-      this.assertPendingTenantInvite(invite);
-
-      const room = this.findRoom(invite.roomId);
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.tenantName,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        moveInDate: invite.moveInDate,
-        targetLabel: [room.buildingName, room.roomNo].filter(Boolean).join(" "),
-        room: { ...room },
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    if (role === "VENDOR") {
-      const invite = this.store.vendorInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-      }
-
-      this.assertPendingVendorInvite(invite);
-
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.contactPerson,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        businessName: invite.businessName,
-        serviceArea: invite.serviceArea,
-        targetLabel: invite.businessName,
-        signupUrl: invite.signupUrl
-      };
-    }
-
-    throw new BadRequestException("초대 역할이 올바르지 않습니다.");
+    return this.auth.getSignupInvitePreview(role, inviteToken);
   }
 
   listVendorRepairs(vendorUserOrProfileId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-
-    return this.store.repairs
-      .filter((repair) => repair.vendorId === vendor.id)
-      .map((repair) => this.presentRepair(repair));
+    return this.vendorRepair.listVendorRepairs(vendorUserOrProfileId);
   }
 
   getVendorRepair(vendorUserOrProfileId: string, repairId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const repair = this.store.repairs.find(
-      (item) => item.id === repairId && item.vendorId === vendor.id
-    );
-
-    if (!repair) {
-      throw new NotFoundException("수리 요청을 찾을 수 없습니다.");
-    }
-
-    return this.presentRepair(repair);
+    return this.vendorRepair.getVendorRepair(vendorUserOrProfileId, repairId);
   }
 
   submitEstimate(vendorUserOrProfileId: string, repairId: string, input: SubmitEstimateInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["REQUESTED", "ACCEPTED"], "견적 제출");
-    const estimateAmount = Number(input.estimateAmount);
-    const estimateDescription = input.estimateDescription?.trim();
-
-    if (!Number.isFinite(estimateAmount) || estimateAmount <= 0) {
-      throw new BadRequestException("견적 금액을 올바르게 입력해주세요.");
-    }
-
-    if (!estimateDescription) {
-      throw new BadRequestException("견적 설명을 입력해주세요.");
-    }
-
-    repair.estimateAmount = estimateAmount;
-    repair.estimateDescription = estimateDescription;
-    repair.status = "ESTIMATE_SUBMITTED";
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "ESTIMATE_REVIEW", repair.vendorId, "견적 제출");
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.submitEstimate(vendorUserOrProfileId, repairId, input);
   }
 
   approveRepairEstimate(
@@ -2103,92 +3466,15 @@ export class RoomlogService {
     repairId: string,
     input: ApproveRepairEstimateInput
   ) {
-    const repair = this.findRepair(repairId);
-    const ticket = this.findTicket(repair.ticketId);
-    this.assertManagerCanAccessTicket(managerId, ticket);
-    this.assertRepairStatus(repair, ["ESTIMATE_SUBMITTED"], "견적 승인");
-
-    if (!["LANDLORD", "TENANT", "PENDING"].includes(input.costBearer)) {
-      throw new BadRequestException("비용 주체를 선택해주세요.");
-    }
-
-    repair.status = "ESTIMATE_APPROVED";
-    repair.costBearer = input.costBearer;
-    repair.estimateApprovalNote = input.note?.trim() || this.costBearerLabel(input.costBearer);
-    repair.estimateApprovedAt = now();
-    repair.updatedAt = now();
-    ticket.updatedAt = now();
-    this.pushHistory(
-      ticket.id,
-      managerId,
-      ticket.status,
-      ticket.status,
-      `견적 승인: ${this.costBearerLabel(input.costBearer)}`
-    );
-    this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      managerId,
-      "LANDLORD",
-      [
-        `견적을 승인했습니다. 비용 주체: ${this.costBearerLabel(input.costBearer)}.`,
-        repair.estimateAmount ? `승인 금액: ${repair.estimateAmount.toLocaleString()}원.` : "",
-        repair.estimateApprovalNote ? `관리자 메모: ${repair.estimateApprovalNote}` : "",
-        "업체가 방문 일정을 확정하면 이 티켓에서 다시 안내드리겠습니다."
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.approveRepairEstimate(managerId, repairId, input);
   }
 
   scheduleRepair(vendorUserOrProfileId: string, repairId: string, input: ScheduleRepairInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["ESTIMATE_APPROVED"], "방문 일정 저장");
-    const scheduledAt = input.scheduledAt?.trim();
-
-    if (!scheduledAt) {
-      throw new BadRequestException("방문 일정을 입력해주세요.");
-    }
-
-    repair.scheduledAt = input.scheduledAt;
-    repair.status = "SCHEDULED";
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "REPAIR_IN_PROGRESS", repair.vendorId, "방문 일정 확정");
-    const ticket = this.findTicket(repair.ticketId);
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      vendor.userId,
-      "VENDOR",
-      [
-        `방문 일정이 확정되었습니다: ${scheduledAt}.`,
-        repair.costBearer ? `비용 주체: ${this.costBearerLabel(repair.costBearer)}.` : "",
-        "방문 전 문제 부위 주변을 정리해주시고, 추가로 보이는 증상이 있으면 이 티켓에 남겨주세요."
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.scheduleRepair(vendorUserOrProfileId, repairId, input);
   }
 
   reportCompletion(vendorUserOrProfileId: string, repairId: string, input: ReportCompletionInput) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    this.assertRepairStatus(repair, ["SCHEDULED", "IN_PROGRESS"], "완료 보고");
-    repair.status = "COMPLETION_REPORTED";
-    repair.completedAt = now();
-    repair.completionNote = input.completionNote;
-    repair.completionPhotoUrls = input.completionPhotoUrls ?? [];
-    repair.updatedAt = now();
-    this.transitionTicket(repair.ticketId, "COMPLETION_REPORTED", repair.vendorId, "완료 보고");
-    this.persistStore();
-
-    return repair;
+    return this.vendorRepair.reportCompletion(vendorUserOrProfileId, repairId, input);
   }
 
   addVendorRepairMessage(
@@ -2196,33 +3482,7 @@ export class RoomlogService {
     repairId: string,
     input: AddVendorRepairMessageInput
   ) {
-    const repair = this.findVendorRepair(vendorUserOrProfileId, repairId);
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const ticket = this.findTicket(repair.ticketId);
-    const messageText = input.messageText?.trim() ?? "";
-    const attachmentUrls = input.attachmentUrls ?? [];
-
-    if (!messageText && attachmentUrls.length === 0) {
-      throw new BadRequestException("업체 메시지 또는 사진이 필요합니다.");
-    }
-
-    const message = this.addMessageInternal(
-      ticket.id,
-      ticket.complaintId,
-      vendor.userId,
-      "VENDOR",
-      messageText || "업체 사진을 첨부했습니다.",
-      attachmentUrls
-    );
-    ticket.updatedAt = now();
-    repair.updatedAt = now();
-    this.persistStore();
-
-    return {
-      message: this.presentTicketMessage(message),
-      repair: this.presentRepair(repair),
-      ticket: this.presentTicket(ticket)
-    };
+    return this.vendorRepair.addVendorRepairMessage(vendorUserOrProfileId, repairId, input);
   }
 
   approveCompletion(managerId: string, ticketId: string, note?: string) {
@@ -2247,12 +3507,16 @@ export class RoomlogService {
   addMessage(senderUserId: string, ticketId: string, messageText: string) {
     const ticket = this.findTicket(ticketId);
     const user = this.store.users.find((account) => account.id === senderUserId);
+    const senderRole =
+      user?.role === "TENANT" || user?.role === "LANDLORD" || user?.role === "VENDOR"
+        ? user.role
+        : "TENANT";
 
     const message = this.addMessageInternal(
       ticket.id,
       ticket.complaintId,
       senderUserId,
-      user?.role ?? "TENANT",
+      senderRole,
       messageText
     );
     this.persistStore();
@@ -2482,68 +3746,15 @@ export class RoomlogService {
   }
 
   createMoveInChecklistItem(tenantId: string, input: CreateMoveInChecklistItemInput) {
-    const roomId = input.roomId?.trim() || this.store.tenantRooms[tenantId];
-
-    if (!roomId || this.store.tenantRooms[tenantId] !== roomId) {
-      throw new ForbiddenException("본인 호실의 체크리스트만 등록할 수 있습니다.");
-    }
-
-    const area = input.area?.trim();
-    const itemName = input.itemName?.trim();
-    const memo = input.memo?.trim();
-    const attachmentUrls = input.attachmentUrls?.map((url) => url.trim()).filter(Boolean) ?? [];
-
-    if (!area) {
-      throw new BadRequestException("공간명을 입력해주세요.");
-    }
-
-    if (!itemName) {
-      throw new BadRequestException("체크 항목명을 입력해주세요.");
-    }
-
-    if (attachmentUrls.length === 0) {
-      throw new BadRequestException("입주 전 기준 사진을 한 장 이상 첨부해주세요.");
-    }
-
-    this.findRoom(roomId);
-    const createdAt = now();
-    const item: MoveInChecklistItem = {
-      id: id("mchk"),
-      tenantId,
-      roomId,
-      area,
-      itemName,
-      memo,
-      guidance: this.moveInChecklistGuidance(area, itemName),
-      attachmentUrls,
-      createdAt,
-      updatedAt: createdAt
-    };
-
-    this.store.moveInChecklist.unshift(item);
-    this.persistStore();
-
-    return this.presentMoveInChecklistItem(item);
+    return this.checklist.createMoveInChecklistItem(tenantId, input);
   }
 
   listTenantMoveInChecklist(tenantId: string) {
-    const roomId = this.store.tenantRooms[tenantId];
-
-    if (!roomId) {
-      throw new NotFoundException("연결된 호실을 찾을 수 없습니다.");
-    }
-
-    return this.store.moveInChecklist
-      .filter((item) => item.tenantId === tenantId && item.roomId === roomId)
-      .map((item) => this.presentMoveInChecklistItem(item));
+    return this.checklist.listTenantMoveInChecklist(tenantId);
   }
 
   listManagerMoveInChecklist(managerId: string, roomId: string) {
-    this.assertManagerCanAccessRoom(managerId, roomId);
-
-    return this.store.moveInChecklist
-      .filter((item) => item.roomId === roomId)
-      .map((item) => this.presentMoveInChecklistItem(item));
+    return this.checklist.listManagerMoveInChecklist(managerId, roomId);
   }
 
   createRoom(ownerId: string, input: CreateRoomInput) {
@@ -2621,53 +3832,7 @@ export class RoomlogService {
   }
 
   async saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
-    const user = this.store.users.find((account) => account.id === uploadedByUserId);
-
-    if (!user) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    if (!input.mimeType.startsWith("image/")) {
-      throw new BadRequestException("이미지 파일만 업로드할 수 있습니다.");
-    }
-
-    if (!input.buffer.length) {
-      throw new BadRequestException("업로드할 파일이 비어 있습니다.");
-    }
-
-    if (input.buffer.length > 10 * 1024 * 1024) {
-      throw new BadRequestException("이미지는 10MB 이하만 업로드할 수 있습니다.");
-    }
-
-    const attachmentId = id("att");
-    const safeBaseName =
-      basename(input.originalName, extname(input.originalName))
-        .replace(/[^a-zA-Z0-9가-힣_-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 48) || "upload";
-    const extension = this.extensionForMimeType(input.mimeType, input.originalName);
-    const fileName = `${attachmentId}-${safeBaseName}${extension}`;
-    const storedFile = await this.storageAdapter.save({
-      buffer: input.buffer,
-      fileName,
-      mimeType: input.mimeType
-    });
-    const createdAt = now();
-    const attachment: Attachment = {
-      id: attachmentId,
-      uploadedByUserId,
-      category: input.category,
-      fileName: storedFile.fileName,
-      fileUrl: storedFile.fileUrl,
-      mimeType: input.mimeType,
-      sizeBytes: input.buffer.length,
-      createdAt
-    };
-
-    this.store.attachments.unshift(attachment);
-    this.persistStore();
-
-    return { ...attachment };
+    return this.floorPlan.saveAttachment(uploadedByUserId, input);
   }
 
   createFloorPlanDraft(ownerId: string, input: SaveFloorPlanDraftInput) {
@@ -2699,18 +3864,7 @@ export class RoomlogService {
   }
 
   getFloorPlanDraft(ownerId: string, floorPlanId: string) {
-    this.assertFloorPlanOwner(ownerId);
-    const draft = this.store.floorPlans.find((floorPlan) => floorPlan.id === floorPlanId);
-
-    if (!draft) {
-      throw new NotFoundException("저장된 도면을 찾을 수 없습니다.");
-    }
-
-    if (draft.ownerId !== ownerId) {
-      throw new ForbiddenException("이 도면에 접근할 권한이 없습니다.");
-    }
-
-    return this.presentFloorPlanDraft(draft);
+    return this.floorPlan.getFloorPlanDraft(ownerId, floorPlanId);
   }
 
   updateFloorPlanDraft(ownerId: string, floorPlanId: string, input: SaveFloorPlanDraftInput) {
@@ -2788,6 +3942,29 @@ export class RoomlogService {
       ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
       : this.validFloorPlanImageDataUrl(input.imageDataUrl);
 
+    if (model === "openai/floor-plan-vision") {
+      if (!process.env.OPENAI_API_KEY) {
+        return {
+          model,
+          mode: modelInfo.mode,
+          status: "config-required",
+          summary: "OPENAI_API_KEY가 설정되지 않아 OpenAI 도면 1차 분석을 실행하지 않았습니다.",
+          textDetections: [],
+          scaleCandidates: []
+        };
+      }
+
+      if (input.analysisMode === "candidate-review") {
+        return this.reviewFloorPlanCandidatesWithOpenAi(model, imageDataUrl, this.validFloorPlanAiWallCandidates(input.wallCandidates), input.prompt);
+      }
+
+      if (input.analysisMode === "room-structure") {
+        return this.analyzeFloorPlanRoomStructureWithOpenAi(model, imageDataUrl, input.prompt);
+      }
+
+      return this.analyzeFloorPlanWithOpenAiVision(model, imageDataUrl, input.prompt);
+    }
+
     if (!process.env.NVIDIA_API_KEY) {
       return {
         model,
@@ -2800,6 +3977,183 @@ export class RoomlogService {
     }
 
     return this.analyzeFloorPlanWithNvidiaVisionReasoning(model, imageDataUrl, input.prompt);
+  }
+
+  async detectFloorPlanOpenings(input: FloorPlanOpeningDetectionInput, ownerId?: string): Promise<FloorPlanOpeningDetectionResult> {
+    const model = process.env.ROBOFLOW_FLOOR_PLAN_MODEL || "cubicasa5k-2-qpmsa/6";
+
+    if (!process.env.ROBOFLOW_API_KEY) {
+      return {
+        model,
+        openings: [],
+        status: "config-required",
+        summary: "ROBOFLOW_API_KEY가 설정되지 않아 문/창문 탐지를 실행하지 않았습니다.",
+        walls: [],
+        warnings: []
+      };
+    }
+
+    const imageDataUrl = input.sourceAttachmentId
+      ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
+      : this.validFloorPlanImageDataUrl(input.imageDataUrl);
+    const base64 = imageDataUrl.slice(imageDataUrl.indexOf(",") + 1);
+
+    try {
+      const detectionConfidence = envNumber(
+        "ROBOFLOW_DETECTION_CONFIDENCE",
+        DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE,
+        1,
+        100
+      );
+      const detectionOverlap = envNumber("ROBOFLOW_DETECTION_OVERLAP", DEFAULT_ROBOFLOW_DETECTION_OVERLAP, 1, 100);
+      const endpoint = `https://detect.roboflow.com/${model}?api_key=${process.env.ROBOFLOW_API_KEY}&confidence=${detectionConfidence}&overlap=${detectionOverlap}`;
+      const response = await fetch(endpoint, {
+        body: base64,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        method: "POST"
+      });
+      if (!response.ok) throw new Error(`Roboflow opening detection failed with ${response.status}`);
+
+      const payload = (await response.json()) as {
+        image?: { width?: number; height?: number };
+        predictions?: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>;
+      };
+      const imageWidth = Math.max(1, Number(payload.image?.width) || 1);
+      const imageHeight = Math.max(1, Number(payload.image?.height) || 1);
+      const openings = this.mapRoboflowPredictionsToOpenings(payload.predictions ?? [], imageWidth, imageHeight, model);
+      const walls = this.mapRoboflowPredictionsToWallBoxes(payload.predictions ?? [], imageWidth, imageHeight);
+
+      return {
+        imageHeight,
+        imageWidth,
+        model,
+        openings,
+        status: "ready",
+        summary: `벽 ${walls.length}개, 문 ${openings.filter((item) => item.type === "DOOR").length}개, 창문 ${openings.filter((item) => item.type === "WINDOW").length}개 후보를 탐지했습니다.`,
+        walls,
+        warnings: openings.some((item) => item.confidence < 0.4)
+          ? ["신뢰도 40% 미만 후보가 포함되어 있습니다. 후보 검수 후 확정하세요."]
+          : []
+      };
+    } catch {
+      return {
+        model,
+        openings: [],
+        status: "failed",
+        summary: "문/창문 탐지에 실패했습니다. 후보 없이 진행하거나 다시 시도하세요.",
+        walls: [],
+        warnings: []
+      };
+    }
+  }
+
+  private mapRoboflowPredictionsToWallBoxes(
+    predictions: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>,
+    imageWidth: number,
+    imageHeight: number
+  ) {
+    const minConfidence = envConfidenceRatio("ROBOFLOW_WALL_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE);
+    const mapped = predictions
+      .filter((prediction) => prediction.class === "wall" && (Number(prediction.confidence) || 0) >= minConfidence)
+      .flatMap((prediction, index) => {
+        const centerX = Number(prediction.x);
+        const centerY = Number(prediction.y);
+        const width = Number(prediction.width);
+        const height = Number(prediction.height);
+        if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(width > 0) || !(height > 0)) return [];
+
+        return [
+          {
+            boundingBox: {
+              height: Math.round((height / imageHeight) * 1000),
+              width: Math.round((width / imageWidth) * 1000),
+              x: Math.round(((centerX - width / 2) / imageWidth) * 1000),
+              y: Math.round(((centerY - height / 2) / imageHeight) * 1000)
+            },
+            confidence: Number(prediction.confidence) || 0,
+            id: `wall-box-${index + 1}`
+          }
+        ];
+      });
+    const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
+    const kept: typeof sorted = [];
+    for (const candidate of sorted) {
+      const overlapsKept = kept.some((existing) => this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox));
+      if (!overlapsKept) kept.push(candidate);
+    }
+
+    return kept.map((candidate, index) => ({ ...candidate, id: `wall-box-${index + 1}` }));
+  }
+
+  private mapRoboflowPredictionsToOpenings(
+    predictions: Array<{ class?: string; confidence?: number; x?: number; y?: number; width?: number; height?: number }>,
+    imageWidth: number,
+    imageHeight: number,
+    model: string
+  ): FloorPlanOpeningCandidate[] {
+    // 클래스별 신뢰도 하한: 문은 실도면에서 15~30%로 낮게 잡혀 후보로는 살리고, 창문은 30% 미만이면 노이즈가 많다.
+    const minConfidenceByType: Record<"DOOR" | "WINDOW", number> = {
+      DOOR: envConfidenceRatio("ROBOFLOW_DOOR_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE),
+      WINDOW: envConfidenceRatio("ROBOFLOW_WINDOW_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE)
+    };
+    const mapped = predictions.flatMap((prediction) => {
+      const type: "DOOR" | "WINDOW" | null =
+        prediction.class === "door" ? "DOOR" : prediction.class === "window" ? "WINDOW" : null;
+      const confidence = Number(prediction.confidence) || 0;
+      const centerX = Number(prediction.x);
+      const centerY = Number(prediction.y);
+      const width = Number(prediction.width);
+      const height = Number(prediction.height);
+      if (!type || confidence < minConfidenceByType[type]) return [];
+      if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(width > 0) || !(height > 0)) return [];
+
+      return [
+        {
+          boundingBox: {
+            height: Math.round((height / imageHeight) * 1000),
+            width: Math.round((width / imageWidth) * 1000),
+            x: Math.round(((centerX - width / 2) / imageWidth) * 1000),
+            y: Math.round(((centerY - height / 2) / imageHeight) * 1000)
+          },
+          confidence,
+          source: `roboflow/${model}`,
+          status: "CANDIDATE" as const,
+          type
+        }
+      ];
+    });
+
+    // 같은 자리를 door/window로 중복 판정하는 경우가 있어 겹침이 크면 신뢰도 높은 쪽만 남긴다.
+    const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
+    const kept: typeof sorted = [];
+    for (const candidate of sorted) {
+      const overlapsKept = kept.some((existing) => this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox));
+      if (!overlapsKept) kept.push(candidate);
+    }
+
+    return kept.map((candidate, index) => ({ ...candidate, id: `opening-${index + 1}` }));
+  }
+
+  private isDuplicateRoboflowBox(
+    existing: { height: number; width: number; x: number; y: number },
+    candidate: { height: number; width: number; x: number; y: number }
+  ) {
+    const ax2 = existing.x + existing.width;
+    const ay2 = existing.y + existing.height;
+    const bx2 = candidate.x + candidate.width;
+    const by2 = candidate.y + candidate.height;
+    const interW = Math.max(0, Math.min(ax2, bx2) - Math.max(existing.x, candidate.x));
+    const interH = Math.max(0, Math.min(ay2, by2) - Math.max(existing.y, candidate.y));
+    const inter = interW * interH;
+    const areaA = Math.max(1, existing.width * existing.height);
+    const areaB = Math.max(1, candidate.width * candidate.height);
+    const union = Math.max(1, areaA + areaB - inter);
+    const smallerArea = Math.max(1, Math.min(areaA, areaB));
+
+    return (
+      inter / union > ROBOFLOW_BOX_IOU_DUPLICATE_THRESHOLD ||
+      inter / smallerArea > ROBOFLOW_BOX_CONTAINMENT_DUPLICATE_THRESHOLD
+    );
   }
 
   private floorPlanAttachmentDataUrl(attachmentId: string, ownerId?: string) {
@@ -2844,6 +4198,34 @@ export class RoomlogService {
     }
 
     return trimmed.replace(/^data:image\/jpg;/i, "data:image/jpeg;");
+  }
+
+  private validFloorPlanAiWallCandidates(value: unknown): FloorPlanAiWallCandidate[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 80).flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim().slice(0, 24) : "";
+      const start = item?.start as { x?: unknown; y?: unknown } | undefined;
+      const end = item?.end as { x?: unknown; y?: unknown } | undefined;
+      const startX = Number(start?.x);
+      const startY = Number(start?.y);
+      const endX = Number(end?.x);
+      const endY = Number(end?.y);
+      const lengthPx = Number(item?.lengthPx);
+      const orientation = item?.orientation;
+      if (!id || !Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) return [];
+
+      return [
+        {
+          end: { x: endX, y: endY },
+          id,
+          lengthPx: Number.isFinite(lengthPx) && lengthPx > 0 ? lengthPx : Math.hypot(endX - startX, endY - startY),
+          orientation: orientation === "horizontal" || orientation === "vertical" || orientation === "diagonal" ? orientation : "diagonal",
+          originalWallId: typeof item?.originalWallId === "string" ? item.originalWallId.slice(0, 80) : undefined,
+          start: { x: startX, y: startY }
+        }
+      ];
+    });
   }
 
   private async analyzeFloorPlanWithNvidiaVisionReasoning(
@@ -2911,6 +4293,417 @@ export class RoomlogService {
     }
   }
 
+  private async analyzeFloorPlanWithOpenAiVision(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 한국 부동산 도면 1차 분석기입니다.",
+      "도면 이미지에서 방 구조, 치수 텍스트, 치수선 관계, 문/창문/설비처럼 OpenCV 후처리에 도움이 되는 단서를 읽습니다.",
+      "픽셀 좌표나 길이를 확신하지 못하면 추측하지 말고 textDetections에 읽은 텍스트만 남깁니다.",
+      "도면에 2760, 5040처럼 단위 없는 3-5자리 치수 숫자가 보이면 mm 치수로 보고 각 숫자를 textDetections에 별도 항목으로 넣습니다.",
+      "같은 숫자가 도면의 다른 위치에 여러 번 인쇄되어 있으면 위치마다 별도 항목으로 넣습니다.",
+      "면적(㎡/평), 동·호수, 층수, 축척 표기(1:100), 날짜, 도면 번호처럼 길이 치수가 아닌 숫자는 textDetections에 넣지 않습니다.",
+      "'1500 × 2000mm'처럼 곱셈 기호가 있는 가구/설비 크기 표기는 건물 치수가 아니므로 제외합니다. 도면 안쪽 가구 위에 인쇄된 숫자도 제외하고, 벽을 따라 배치된 치수선의 숫자만 읽습니다.",
+      "세로로 회전되어 인쇄된 치수 숫자도 반드시 읽습니다. 한국 아파트 도면은 세로 치수를 90도 회전해 표기하는 경우가 많습니다.",
+      "summary에만 치수 숫자를 쓰지 말고, 사용자가 버튼으로 고를 수 있도록 textDetections에 모든 보이는 치수 숫자를 포함합니다.",
+      "벽 최종 좌표는 OpenCV와 사용자가 확정하므로, 이 응답은 후보 분석으로만 사용됩니다.",
+      "For every visible dimension text, include boundingBox in image-normalized 0~1000 coordinates as {x,y,width,height}. Also include targetLine {x1,y1,x2,y2} for the actual measured span (the extent between the dimension line's end ticks/arrows) that the dimension text labels. Do not guess boundingBox or targetLine; set the field to null when the text location or measured span is genuinely unclear. A wrong targetLine is worse than null.",
+      "또한 dimensions 배열에 보이는 모든 치수 숫자를 분류해서 넣습니다. 각 항목은 text, valueMm(mm 정수), kind, axis, boundingBox, targetLine, placementStatus, useForScale, useForWallGeneration, useForFurnitureFit, appliesTo, reason을 가집니다.",
+      "kind는 다음 중 하나입니다: outer_total(건물 전체 외곽 가로/세로), outer_segment(외곽을 쪼갠 구간 치수), room_span(방 내부 폭/길이), wall_span(벽 사이 거리), opening(문/창문 폭), furniture(가구 크기), fixture(설비 크기), area(면적), ignore(날짜·호수·축척표기·워터마크 등).",
+      "구조 치수(outer_total, outer_segment, room_span, wall_span)만 useForScale과 useForWallGeneration을 true로 둘 수 있습니다. opening/furniture/fixture/area/ignore는 반드시 false입니다.",
+      "'1500 × 2000mm', '810 x 1400mm'처럼 곱셈 기호로 폭×깊이를 나타내는 값은 furniture 또는 fixture이며, 공간 크기 계산에 절대 쓰지 않습니다(useForScale=false, useForWallGeneration=false, useForFurnitureFit=true).",
+      "문/창문 개구부 폭(예: 800, 870, 1200)은 opening이며 벽 길이로 쓰지 않습니다(useForScale=false, useForWallGeneration=false).",
+      "면적(9.3㎡, 5.1㎡)은 area, 날짜·호수·축척표기는 ignore이며 모든 use 플래그가 false입니다.",
+      "valueMm는 mm 단위 정수입니다. '9.3㎡'처럼 면적이면 valueMm를 넣지 말고 kind=area로 둡니다.",
+      "위치나 측정 구간을 확신하지 못하면 placementStatus를 unplaced 또는 uncertain으로 두고 boundingBox/targetLine을 null로 둡니다. 확실하면 placed입니다.",
+      "appliesTo에는 이 치수가 가리키는 대상을 짧게 적습니다(예: 'overall horizontal outside span', 'bed width'). reason에는 그 kind로 분류한 근거를 짧게 적습니다."
+    ].join("\n");
+    const nullableBox = {
+      anyOf: [
+        { type: "null" },
+        {
+          additionalProperties: false,
+          properties: { height: { type: "number" }, width: { type: "number" }, x: { type: "number" }, y: { type: "number" } },
+          required: ["x", "y", "width", "height"],
+          type: "object"
+        }
+      ]
+    };
+    const nullableLine = {
+      anyOf: [
+        { type: "null" },
+        {
+          additionalProperties: false,
+          properties: { x1: { type: "number" }, x2: { type: "number" }, y1: { type: "number" }, y2: { type: "number" } },
+          required: ["x1", "y1", "x2", "y2"],
+          type: "object"
+        }
+      ]
+    };
+    const dimensionReadingSchema = {
+      additionalProperties: false,
+      properties: {
+        dimensions: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              appliesTo: { type: "string" },
+              axis: { enum: ["horizontal", "vertical", "unknown"], type: "string" },
+              boundingBox: nullableBox,
+              confidence: { type: "number" },
+              kind: {
+                enum: ["outer_total", "outer_segment", "room_span", "wall_span", "opening", "furniture", "fixture", "area", "ignore"],
+                type: "string"
+              },
+              placementStatus: { enum: ["placed", "unplaced", "uncertain"], type: "string" },
+              reason: { type: "string" },
+              targetLine: nullableLine,
+              text: { type: "string" },
+              useForFurnitureFit: { type: "boolean" },
+              useForScale: { type: "boolean" },
+              useForWallGeneration: { type: "boolean" },
+              valueMm: { type: "number" }
+            },
+            required: [
+              "text",
+              "valueMm",
+              "kind",
+              "axis",
+              "confidence",
+              "boundingBox",
+              "targetLine",
+              "placementStatus",
+              "useForScale",
+              "useForWallGeneration",
+              "useForFurnitureFit",
+              "appliesTo",
+              "reason"
+            ],
+            type: "object"
+          },
+          type: "array"
+        },
+        scaleCandidates: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              confidence: { type: "number" },
+              pixelLength: { type: "number" },
+              pixelToMmRatio: { type: "number" },
+              realLengthMm: { type: "number" },
+              source: { type: "string" }
+            },
+            required: ["confidence", "pixelLength", "pixelToMmRatio", "realLengthMm", "source"],
+            type: "object"
+          },
+          type: "array"
+        },
+        summary: { type: "string" },
+        textDetections: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              boundingBox: {
+                anyOf: [
+                  { type: "null" },
+                  {
+                    additionalProperties: false,
+                    properties: {
+                      height: { type: "number" },
+                      width: { type: "number" },
+                      x: { type: "number" },
+                      y: { type: "number" }
+                    },
+                    required: ["x", "y", "width", "height"],
+                    type: "object"
+                  }
+                ]
+              },
+              confidence: { type: "number" },
+              targetLine: {
+                anyOf: [
+                  { type: "null" },
+                  {
+                    additionalProperties: false,
+                    properties: {
+                      x1: { type: "number" },
+                      x2: { type: "number" },
+                      y1: { type: "number" },
+                      y2: { type: "number" }
+                    },
+                    required: ["x1", "y1", "x2", "y2"],
+                    type: "object"
+                  }
+                ]
+              },
+              text: { type: "string" }
+            },
+            required: ["text", "confidence", "boundingBox", "targetLine"],
+            type: "object"
+          },
+          type: "array"
+        }
+      },
+      required: ["summary", "dimensions", "textDetections", "scaleCandidates"],
+      type: "object"
+    };
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt?.trim() || "도면 이미지의 치수 텍스트와 축척 후보를 JSON으로 분석해줘."
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_dimension_reading",
+              schema: dimensionReadingSchema,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan vision failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+      const dimensions = this.validAiDimensions(parsed.dimensions);
+      const textDetections = this.validAiTextDetections(parsed.textDetections);
+      const scaleCandidates = this.filterAiScaleCandidatesByDimensions(this.validAiScaleCandidates(parsed.scaleCandidates), dimensions);
+
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI 도면 1차 분석을 완료했습니다.",
+        dimensions,
+        textDetections,
+        scaleCandidates,
+        rawText
+      };
+    } catch {
+      return {
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 도면 1차 분석에 실패했습니다. OpenCV 추출 결과를 검수하거나 수동 축척을 사용하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private async reviewFloorPlanCandidatesWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    wallCandidates: FloorPlanAiWallCandidate[],
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 OpenCV 도면 벽 후보 검토기입니다.",
+      "이미지에는 OpenCV가 뽑은 벽 후보가 파란 선과 W1, W2 같은 라벨로 표시되어 있습니다.",
+      "제공된 wallCandidates 목록의 id만 검토하고, 새 좌표나 새 후보 id를 만들지 마세요.",
+      "각 후보가 실제 방 외곽/내벽인지 keep, 치수선/가구/문자/노이즈면 reject, 애매하면 review로 판정합니다.",
+      "후보별 판정은 candidateReviews 배열에 id, verdict, confidence, reason으로 작성합니다.",
+      "OpenCV가 놓친 것으로 보이는 큰 외곽/내벽은 missingWallHints에 description, confidence, orientation, line을 적습니다.",
+      "missingWallHints.line 좌표계는 이미지 전체 기준 0~1000 정규화 좌표입니다. 좌상단 원점, x는 오른쪽, y는 아래입니다.",
+      "line은 누락 벽 중심선의 x1,y1,x2,y2이며, horizontal 또는 vertical 직교 선분만 사용합니다.",
+      "응답은 제공된 JSON schema를 엄격히 따릅니다."
+    ].join("\n");
+    const candidateSummary = JSON.stringify(
+      wallCandidates.map((candidate) => ({
+        end: candidate.end,
+        id: candidate.id,
+        lengthPx: Math.round(candidate.lengthPx),
+        orientation: candidate.orientation,
+        start: candidate.start
+      }))
+    );
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-candidate-review", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: [
+                    prompt?.trim() || "OpenCV 벽 후보를 원본 도면과 비교해서 후보별 판정을 JSON으로 반환해줘.",
+                    `wallCandidates: ${candidateSummary}`
+                  ].join("\n")
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_candidate_review",
+              schema: FLOOR_PLAN_CANDIDATE_REVIEW_SCHEMA,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan candidate review failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: this.validAiCandidateReviews(parsed.candidateReviews),
+        missingWallHints: this.validAiMissingWallHints(parsed.missingWallHints),
+        model,
+        mode: "vision-reasoning",
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 OpenCV 벽 후보를 검토했습니다.",
+        textDetections: [],
+        scaleCandidates: [],
+        rawText
+      };
+    } catch {
+      return {
+        analysisMode: "candidate-review",
+        candidateReviews: [],
+        missingWallHints: [],
+        model,
+        mode: "vision-reasoning",
+        status: "failed",
+        summary: "OpenAI 벽 후보 검토에 실패했습니다. OpenCV 추출 결과를 직접 검수하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private async analyzeFloorPlanRoomStructureWithOpenAi(
+    model: FloorPlanAiModelId,
+    imageDataUrl: string,
+    prompt?: string
+  ): Promise<FloorPlanAiAnalysisResult> {
+    const openAiModel = process.env.OPENAI_FLOOR_PLAN_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const instructions = [
+      "당신은 Roomlog의 도면 방 구조 분석기입니다.",
+      "도면 스타일을 solid-filled, double-line-hollow, hatched, gray-fill 중 하나로 분류합니다.",
+      "장식 해칭과 워터마크 같은 구조 추출 방해 요소를 noiseFlags에 표시합니다.",
+      "각 방의 외곽 polygon을 0~1000 정규화 좌표로 반환합니다. 좌상단 원점, x는 오른쪽, y는 아래이며 이미지 너비/높이 기준입니다.",
+      "polygon은 직교 꼭짓점 4~12개만 사용하고, 가구/치수선/텍스트는 방 polygon으로 만들지 않습니다.",
+      "응답은 제공된 JSON schema를 엄격히 따릅니다."
+    ].join("\n");
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": this.safetyIdentifier("floor-plan-room-structure", model)
+        },
+        body: JSON.stringify({
+          model: openAiModel,
+          instructions,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt?.trim() || "도면의 방 구조 polygon과 도면 스타일을 JSON schema에 맞게 분석해줘."
+                },
+                { type: "input_image", image_url: imageDataUrl, detail: "high" }
+              ]
+            }
+          ],
+          text: {
+            format: {
+              name: "floor_plan_room_structure",
+              schema: FLOOR_PLAN_ROOM_STRUCTURE_SCHEMA,
+              strict: true,
+              type: "json_schema"
+            }
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(`OpenAI floor plan room structure failed with ${response.status}`);
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const rawText = this.extractOpenAiResponseText(payload);
+      const parsed = this.parseFloorPlanAiJson(rawText);
+
+      return {
+        analysisMode: "room-structure",
+        model,
+        mode: "vision-reasoning",
+        noiseFlags: this.validAiRoomStructureNoiseFlags(parsed.noiseFlags),
+        planStyle: this.validAiRoomStructurePlanStyle(parsed.planStyle),
+        rooms: this.validAiRoomStructures(parsed.rooms),
+        status: "ready",
+        summary: parsed.summary || "OpenAI가 도면 방 구조를 분석했습니다.",
+        textDetections: [],
+        scaleCandidates: [],
+        rawText
+      };
+    } catch {
+      return {
+        analysisMode: "room-structure",
+        model,
+        mode: "vision-reasoning",
+        noiseFlags: { decorativeHatching: false, watermark: false },
+        planStyle: "solid-filled",
+        rooms: [],
+        status: "failed",
+        summary: "OpenAI 도면 방 구조 분석에 실패했습니다. OpenCV 추출 결과를 직접 검수하세요.",
+        textDetections: [],
+        scaleCandidates: []
+      };
+    }
+  }
+
+  private extractOpenAiResponseText(payload: Record<string, unknown>) {
+    if (typeof payload.output_text === "string") return payload.output_text;
+
+    return this.extractOutputText(payload.output) ?? "";
+  }
+
   private extractChatCompletionText(payload: Record<string, unknown>) {
     const choices = Array.isArray(payload.choices) ? payload.choices : [];
     const firstChoice = choices[0] as { message?: { content?: unknown } } | undefined;
@@ -2928,6 +4721,12 @@ export class RoomlogService {
   }
 
   private parseFloorPlanAiJson(rawText: string): {
+    candidateReviews?: unknown;
+    dimensions?: unknown;
+    missingWallHints?: unknown;
+    noiseFlags?: unknown;
+    planStyle?: unknown;
+    rooms?: unknown;
     summary?: string;
     textDetections?: unknown;
     scaleCandidates?: unknown;
@@ -2939,6 +4738,12 @@ export class RoomlogService {
       const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
 
       return {
+        candidateReviews: parsed.candidateReviews,
+        dimensions: parsed.dimensions,
+        missingWallHints: parsed.missingWallHints,
+        noiseFlags: parsed.noiseFlags,
+        planStyle: parsed.planStyle,
+        rooms: parsed.rooms,
         summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
         textDetections: parsed.textDetections,
         scaleCandidates: parsed.scaleCandidates
@@ -2966,10 +4771,78 @@ export class RoomlogService {
         {
           text,
           ...(Number.isFinite(confidence) ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
-          boundingBox: item.boundingBox
+          boundingBox: item.boundingBox,
+          targetLine: item.targetLine
         }
       ];
     });
+  }
+
+  private normalizeAiDimensionKind(kind: unknown): FloorPlanAiDimensionKind {
+    if (
+      kind === "outer_total" ||
+      kind === "outer_segment" ||
+      kind === "room_span" ||
+      kind === "wall_span" ||
+      kind === "opening" ||
+      kind === "furniture" ||
+      kind === "fixture" ||
+      kind === "area" ||
+      kind === "ignore"
+    ) {
+      return kind;
+    }
+
+    return "ignore";
+  }
+
+  private isAiScaleDimensionKind(kind: FloorPlanAiDimensionKind) {
+    return kind === "outer_total" || kind === "outer_segment" || kind === "room_span" || kind === "wall_span";
+  }
+
+  private validAiDimensions(value: unknown): FloorPlanAiDimensionDetection[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const text = typeof item?.text === "string" ? item.text.trim() : "";
+      if (!text) return [];
+      const kind = this.normalizeAiDimensionKind(item.kind);
+      const valueMm = Number(item.valueMm);
+      const confidence = Number(item.confidence);
+      const axis = item.axis === "horizontal" || item.axis === "vertical" || item.axis === "unknown" ? item.axis : "unknown";
+      const placementStatus =
+        item.placementStatus === "placed" || item.placementStatus === "unplaced" || item.placementStatus === "uncertain"
+          ? item.placementStatus
+          : "unplaced";
+
+      return [
+        {
+          text,
+          kind,
+          axis,
+          ...(Number.isFinite(valueMm) && valueMm > 0 ? { valueMm } : {}),
+          ...(Number.isFinite(confidence) ? { confidence: Math.max(0, Math.min(1, confidence)) } : {}),
+          boundingBox: item.boundingBox,
+          targetLine: item.targetLine,
+          placementStatus,
+          ...(typeof item.appliesTo === "string" ? { appliesTo: item.appliesTo } : {}),
+          useForScale: this.isAiScaleDimensionKind(kind) && item.useForScale === true,
+          useForWallGeneration: this.isAiScaleDimensionKind(kind) && item.useForWallGeneration !== false,
+          useForFurnitureFit: (kind === "furniture" || kind === "fixture") && item.useForFurnitureFit !== false,
+          ...(typeof item.reason === "string" ? { reason: item.reason } : {})
+        }
+      ];
+    });
+  }
+
+  private filterAiScaleCandidatesByDimensions(
+    scaleCandidates: FloorPlanAiScaleCandidate[],
+    dimensions: FloorPlanAiDimensionDetection[]
+  ) {
+    if (!dimensions.length) return scaleCandidates;
+    const scaleLengths = new Set(dimensions.filter((dimension) => dimension.useForScale && dimension.valueMm).map((dimension) => Math.round(dimension.valueMm!)));
+
+    return scaleCandidates.filter((candidate) => scaleLengths.has(Math.round(candidate.realLengthMm)));
   }
 
   private validAiScaleCandidates(value: unknown): FloorPlanAiScaleCandidate[] {
@@ -2992,6 +4865,112 @@ export class RoomlogService {
         }
       ];
     });
+  }
+
+  private validAiCandidateReviews(value: unknown): FloorPlanAiCandidateReview[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const id = typeof item?.id === "string" ? item.id.trim() : "";
+      const verdict = item?.verdict;
+      if (!id || (verdict !== "keep" && verdict !== "reject" && verdict !== "review")) return [];
+      const confidence = Number(item.confidence);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          id,
+          reason: typeof item.reason === "string" ? item.reason.slice(0, 180) : undefined,
+          verdict
+        }
+      ];
+    });
+  }
+
+  private validAiMissingWallHints(value: unknown): FloorPlanAiMissingWallHint[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const description = typeof item?.description === "string" ? item.description.trim() : "";
+      if (!description) return [];
+      const confidence = Number(item.confidence);
+      const orientation = item?.orientation;
+      const line = this.validAiNormalizedLine(item?.line);
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : undefined,
+          description: description.slice(0, 220),
+          ...(line ? { line } : {}),
+          ...(orientation === "horizontal" || orientation === "vertical" ? { orientation } : {})
+        }
+      ];
+    });
+  }
+
+  private validAiNormalizedLine(value: unknown): FloorPlanAiNormalizedLine | undefined {
+    const item = value as { x1?: unknown; x2?: unknown; y1?: unknown; y2?: unknown } | undefined;
+    const x1 = Number(item?.x1);
+    const y1 = Number(item?.y1);
+    const x2 = Number(item?.x2);
+    const y2 = Number(item?.y2);
+    if (![x1, y1, x2, y2].every((coordinate) => Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 1000)) return undefined;
+
+    return { x1, y1, x2, y2 };
+  }
+
+  private validAiRoomStructurePlanStyle(value: unknown): FloorPlanAiRoomStructurePlanStyle {
+    return value === "solid-filled" || value === "double-line-hollow" || value === "hatched" || value === "gray-fill"
+      ? value
+      : "solid-filled";
+  }
+
+  private validAiRoomStructureNoiseFlags(value: unknown): FloorPlanAiRoomStructureNoiseFlags {
+    const item = value as { decorativeHatching?: unknown; watermark?: unknown } | undefined;
+
+    return {
+      decorativeHatching: item?.decorativeHatching === true,
+      watermark: item?.watermark === true
+    };
+  }
+
+  private validAiRoomStructures(value: unknown): FloorPlanAiRoomStructure[] {
+    if (!Array.isArray(value)) return [];
+
+    return value.slice(0, 40).flatMap((item) => {
+      const label = typeof item?.label === "string" ? item.label.trim().slice(0, 80) : "";
+      const confidence = Number(item?.confidence);
+      const polygon = this.validAiRoomPolygon(item?.polygon);
+      if (!label || !polygon) return [];
+
+      return [
+        {
+          confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+          label,
+          polygon
+        }
+      ];
+    });
+  }
+
+  private validAiRoomPolygon(value: unknown) {
+    if (!Array.isArray(value) || value.length < 4 || value.length > 12) return undefined;
+
+    const points = value.flatMap((point) => {
+      const x = Number(point?.x);
+      const y = Number(point?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1000 || y < 0 || y > 1000) return [];
+
+      return [{ x, y }];
+    });
+    if (points.length !== value.length) return undefined;
+
+    const orthogonal = points.every((point, index) => {
+      const next = points[(index + 1) % points.length];
+      return point.x === next.x || point.y === next.y;
+    });
+
+    return orthogonal ? points : undefined;
   }
 
   private assertFloorPlanOwner(ownerId: string) {
@@ -3236,6 +5215,670 @@ export class RoomlogService {
     return JSON.parse(JSON.stringify(draft)) as FloorPlanDraft;
   }
 
+  getTenantRoom(tenantId: string) {
+    const roomId = this.store.tenantRooms[tenantId];
+
+    if (!roomId) {
+      throw new NotFoundException("임차인 호실을 찾을 수 없습니다.");
+    }
+
+    return this.findRoom(roomId);
+  }
+
+  listTenantMoveouts(tenantId: string) {
+    return this.moveout.listTenantMoveouts(tenantId);
+  }
+
+  getTenantMoveout(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveout(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutRecords(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutRecords(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutChecklist(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutChecklist(tenantId, moveoutId);
+  }
+
+  updateTenantMoveoutChecklist(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateMoveoutChecklistInput
+  ) {
+    return this.moveout.updateTenantMoveoutChecklist(tenantId, moveoutId, input);
+  }
+
+  getTenantMoveoutSettlement(tenantId: string, moveoutId: string) {
+    return this.moveout.getTenantMoveoutSettlement(tenantId, moveoutId);
+  }
+
+  listTenantMoveoutDisputes(tenantId: string, moveoutId: string) {
+    return this.moveout.listTenantMoveoutDisputes(tenantId, moveoutId);
+  }
+
+  createTenantMoveoutInquiry(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateTenantMoveoutInquiryInput
+  ) {
+    return this.moveout.createTenantMoveoutInquiry(tenantId, moveoutId, input);
+  }
+
+  createTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: CreateMoveoutDisputeInput
+  ) {
+    return this.moveout.createTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  updateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: UpdateTenantMoveoutDisputeInput
+  ) {
+    return this.moveout.updateTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  escalateTenantMoveoutDispute(
+    tenantId: string,
+    moveoutId: string,
+    input: EscalateMoveoutDisputeInput
+  ) {
+    return this.moveout.escalateTenantMoveoutDispute(tenantId, moveoutId, input);
+  }
+
+  getManagerMoveoutDashboard(managerId: string) {
+    return this.moveout.getManagerMoveoutDashboard(managerId);
+  }
+
+  listManagerMoveoutRows(managerId: string) {
+    return this.moveout.listManagerMoveoutRows(managerId);
+  }
+
+  getManagerMoveout(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveout(managerId, moveoutId);
+  }
+
+  getManagerMoveoutRecords(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerMoveoutRecords(managerId, moveoutId);
+  }
+
+  getManagerReportAudit(managerId: string, moveoutId: string) {
+    return this.moveout.getManagerReportAudit(managerId, moveoutId);
+  }
+
+  getManagerMoveoutSettlement(
+    managerId: string,
+    moveoutId: string
+  ): MoveoutManagerSettlementReview {
+    return this.moveout.getManagerMoveoutSettlement(managerId, moveoutId);
+  }
+
+  adjustManagerMoveoutWearVerdict(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustWearVerdictInput
+  ) {
+    return this.moveout.adjustManagerMoveoutWearVerdict(managerId, moveoutId, input);
+  }
+
+  adjustManagerMoveoutDeduction(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutAdjustDeductionInput
+  ) {
+    return this.moveout.adjustManagerMoveoutDeduction(managerId, moveoutId, input);
+  }
+
+  completeManagerMoveoutReview(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutCompleteReviewInput
+  ) {
+    return this.moveout.completeManagerMoveoutReview(managerId, moveoutId, input);
+  }
+
+  respondManagerMoveoutDispute(
+    managerId: string,
+    moveoutId: string,
+    input: MoveoutRespondDisputeInput
+  ) {
+    return this.moveout.respondManagerMoveoutDispute(managerId, moveoutId, input);
+  }
+
+  createMessagingThread(managerId: string, input: CreateMessagingThreadInput) {
+    return this.messaging.createMessagingThread(managerId, input);
+  }
+
+  createTenantMessagingThread(tenantId: string, input: CreateTenantMessagingThreadInput) {
+    return this.messaging.createTenantMessagingThread(tenantId, input);
+  }
+
+  listTenantMessagingThreads(tenantId: string) {
+    return this.messaging.listTenantMessagingThreads(tenantId);
+  }
+
+  getTenantMessagingThread(tenantId: string, threadId: string) {
+    return this.messaging.getTenantMessagingThread(tenantId, threadId);
+  }
+
+  addTenantMessagingThreadMessage(
+    tenantId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input);
+  }
+
+  deleteTenantMessagingThread(tenantId: string, threadId: string) {
+    return this.messaging.deleteTenantMessagingThread(tenantId, threadId);
+  }
+
+  listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext) {
+    return this.messaging.listManagerMessagingThreads(managerId, context);
+  }
+
+  getManagerMessagingThread(managerId: string, threadId: string) {
+    return this.messaging.getManagerMessagingThread(managerId, threadId);
+  }
+
+  addManagerMessagingThreadMessage(
+    managerId: string,
+    threadId: string,
+    input: AddMessagingThreadMessageInput
+  ) {
+    return this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input);
+  }
+
+  deleteManagerMessagingThread(managerId: string, threadId: string) {
+    return this.messaging.deleteManagerMessagingThread(managerId, threadId);
+  }
+
+  createManagerAnnouncementDraft(managerId: string, input: CreateAnnouncementDraftInput) {
+    return this.messaging.createManagerAnnouncementDraft(managerId, input);
+  }
+
+  listManagerAnnouncementDrafts(managerId: string) {
+    return this.messaging.listManagerAnnouncementDrafts(managerId);
+  }
+
+  getManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.getManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listManagerAnnouncementRecipients(managerId: string, draftId: string) {
+    return this.messaging.listManagerAnnouncementRecipients(managerId, draftId);
+  }
+
+  sendManagerAnnouncementDraft(managerId: string, draftId: string) {
+    return this.messaging.sendManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  listTenantMessagingAnnouncements(tenantId: string) {
+    return this.messaging.listTenantMessagingAnnouncements(tenantId);
+  }
+
+  getTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.getTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  markTenantMessagingAnnouncementRead(tenantId: string, announcementId: string) {
+    return this.messaging.markTenantMessagingAnnouncementRead(tenantId, announcementId);
+  }
+
+  confirmTenantMessagingAnnouncement(tenantId: string, announcementId: string) {
+    return this.messaging.confirmTenantMessagingAnnouncement(tenantId, announcementId);
+  }
+
+  listManagerAnnouncementResults(managerId: string) {
+    return this.messaging.listManagerAnnouncementResults(managerId);
+  }
+
+  getManagerAnnouncementResult(managerId: string, announcementId: string) {
+    return this.messaging.getManagerAnnouncementResult(managerId, announcementId);
+  }
+
+  listManagerReports(managerId: string) {
+    return this.report.listManagerReports(managerId);
+  }
+
+  createManagerReport(managerId: string, input: CreateManagerReportInput) {
+    return this.report.createManagerReport(managerId, input);
+  }
+
+  getManagerReport(managerId: string, reportId: string) {
+    return this.report.getManagerReport(managerId, reportId);
+  }
+
+  listManagerReportSourceReferences(managerId: string, reportId: string) {
+    return this.report.listManagerReportSourceReferences(managerId, reportId);
+  }
+
+  askManagerReportChat(
+    managerId: string,
+    reportId: string,
+    input: AskManagerReportChatInput
+  ) {
+    return this.report.askManagerReportChat(managerId, reportId, input);
+  }
+
+  createManagerReportExternalShare(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportExternalShareInput
+  ) {
+    return this.report.createManagerReportExternalShare(managerId, reportId, input);
+  }
+
+  getExternalReportShare(token: string) {
+    return this.report.getExternalReportShare(token);
+  }
+
+  revokeManagerReportExternalShare(managerId: string, reportId: string, shareId: string) {
+    return this.report.revokeManagerReportExternalShare(managerId, reportId, shareId);
+  }
+
+  listManagerReportAuditLog(managerId: string, reportId: string) {
+    return this.report.listManagerReportAuditLog(managerId, reportId);
+  }
+
+  createManagerReportFollowUp(
+    managerId: string,
+    reportId: string,
+    input: CreateManagerReportFollowUpInput
+  ) {
+    return this.report.createManagerReportFollowUp(managerId, reportId, input);
+  }
+
+  private tenantBills(tenantId: string) {
+    const roomId = this.store.tenantRooms[tenantId];
+
+    if (!roomId) {
+      return [];
+    }
+
+    const room = this.findRoom(roomId);
+
+    return this.store.bills
+      .filter((bill) => this.unitMatchesRoom(bill.unitId, room))
+      .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  private managerBills(managerId: string) {
+    return this.store.bills
+      .filter((bill) => this.canManagerAccessBill(managerId, bill))
+      .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  private findBill(billId: string) {
+    const bill = this.store.bills.find((item) => item.id === billId);
+
+    if (!bill) {
+      throw new NotFoundException("청구서를 찾을 수 없습니다.");
+    }
+
+    return bill;
+  }
+
+  private findTenantBill(tenantId: string, billId: string) {
+    const bill = this.findBill(billId);
+    const roomId = this.store.tenantRooms[tenantId];
+    const room = roomId ? this.findRoom(roomId) : undefined;
+
+    if (!room || !this.unitMatchesRoom(bill.unitId, room)) {
+      throw new ForbiddenException("본인 호실의 청구서만 조회할 수 있습니다.");
+    }
+
+    if (this.deriveBillStatus(bill) === "DRAFT") {
+      throw new NotFoundException("청구서를 찾을 수 없습니다.");
+    }
+
+    return bill;
+  }
+
+  private findManagerBill(managerId: string, billId: string) {
+    const bill = this.findBill(billId);
+
+    this.assertManagerCanAccessBill(managerId, bill);
+
+    return bill;
+  }
+
+  private findDeposit(depositId: string) {
+    const deposit = this.store.deposits.find((item) => item.id === depositId);
+
+    if (!deposit) {
+      throw new NotFoundException("입금 내역을 찾을 수 없습니다.");
+    }
+
+    return deposit;
+  }
+
+  private canManagerAccessBill(managerId: string, bill: Bill) {
+    return this.store.rooms.some(
+      (room) => room.landlordId === managerId && this.unitMatchesRoom(bill.unitId, room)
+    );
+  }
+
+  private assertManagerCanAccessBill(managerId: string, bill: Bill) {
+    if (!this.canManagerAccessBill(managerId, bill)) {
+      throw new ForbiddenException("담당 호실의 청구서만 조회할 수 있습니다.");
+    }
+  }
+
+  private unitMatchesRoom(unitId: string | undefined, room: Room) {
+    return (
+      this.unitsEqual(unitId, room.roomNo) ||
+      this.unitsEqual(unitId, room.id) ||
+      this.unitsEqual(unitId, `${room.roomNo}호`)
+    );
+  }
+
+  private unitsEqual(left?: string, right?: string) {
+    return Boolean(left && right && this.normalizeUnitId(left) === this.normalizeUnitId(right));
+  }
+
+  private normalizeUnitId(value: string) {
+    return value.replace(/\s*호\s*$/u, "").trim();
+  }
+
+  private monthKey(iso: string) {
+    return iso.slice(0, 7);
+  }
+
+  private unpaidAmount(bill: Bill) {
+    return Math.max(0, bill.totalAmount - bill.paidAmount);
+  }
+
+  private isBillPastDue(bill: Bill) {
+    return Date.parse(bill.dueDate) < Date.now();
+  }
+
+  private canAutoOverdue(bill: Bill) {
+    return (
+      this.isBillPastDue(bill) &&
+      this.unpaidAmount(bill) > 0 &&
+      !["DRAFT", "PAID", "CORRECTED", "CANCELED"].includes(bill.status)
+    );
+  }
+
+  private isBillInActiveOverdue(bill: Bill) {
+    return this.canAutoOverdue(bill) && !this.dunningGuardForBill(bill).blocked;
+  }
+
+  private deriveBillStatus(bill: Bill): BillStatus {
+    if (bill.status === "CANCELED" || bill.status === "CORRECTED" || bill.status === "DRAFT") {
+      return bill.status;
+    }
+
+    if (this.unpaidAmount(bill) === 0) {
+      return "PAID";
+    }
+
+    const guard = this.dunningGuardForBill(bill);
+
+    if (guard.hasConfirming) {
+      return "CONFIRMING";
+    }
+
+    if (bill.paidAmount > 0) {
+      return this.canAutoOverdue(bill) && !guard.blocked ? "OVERDUE" : "PARTIALLY_PAID";
+    }
+
+    if (this.canAutoOverdue(bill) && !guard.blocked) {
+      return "OVERDUE";
+    }
+
+    if (bill.status === "OVERDUE" && !this.isBillInActiveOverdue(bill)) {
+      return bill.paidAmount > 0 ? "PARTIALLY_PAID" : "SENT";
+    }
+
+    return bill.status;
+  }
+
+  private refreshBillStatusAfterPaymentChange(bill: Bill) {
+    bill.status = this.deriveBillStatus(bill);
+    bill.updatedAt = now();
+  }
+
+  private applyConfirmedPayment(bill: Bill, amount: number) {
+    bill.paidAmount = Math.min(bill.totalAmount, Math.max(0, bill.paidAmount + amount));
+    bill.updatedAt = now();
+  }
+
+  private dunningGuardForBill(bill: Bill) {
+    const hasConfirming = this.hasConfirmingPaymentContext(bill);
+    const hasOrphan = this.hasOrphanDepositForBillPeriod(bill);
+
+    return {
+      blocked: hasConfirming || hasOrphan,
+      hasConfirming,
+      hasOrphan
+    };
+  }
+
+  private hasConfirmingPaymentContext(bill: Bill) {
+    return (
+      this.store.paymentReports.some(
+        (report) => report.billId === bill.id && report.status === "CONFIRMING"
+      ) ||
+      this.store.deposits.some(
+        (deposit) => deposit.matchedBillId === bill.id && deposit.matchStatus === "MISMATCH"
+      )
+    );
+  }
+
+  // orphan 입금은 입금월 또는 그 이전의 같은 호실 미납 청구를 가드한다.
+  // 미래 청구월은 가드하지 않아 다음 달 청구의 과잉 차단을 막는다.
+  private orphanDepositAppliesToBill(deposit: Deposit, bill: Bill) {
+    return (
+      this.unitsEqual(deposit.guessedUnitId, bill.unitId) &&
+      bill.billingMonth <= this.monthKey(deposit.depositedAt)
+    );
+  }
+
+  private hasOrphanDepositForBillPeriod(bill: Bill) {
+    return this.store.deposits.some(
+      (deposit) =>
+        deposit.matchStatus === "ORPHAN" &&
+        this.orphanDepositAppliesToBill(deposit, bill)
+    );
+  }
+
+  private confirmingAmountForBill(bill: Bill) {
+    const reports = this.store.paymentReports
+      .filter((report) => report.billId === bill.id && report.status === "CONFIRMING")
+      .reduce((sum, report) => sum + report.amount, 0);
+    const mismatches = this.store.deposits
+      .filter((deposit) => deposit.matchedBillId === bill.id && deposit.matchStatus === "MISMATCH")
+      .reduce((sum, deposit) => sum + deposit.amount, 0);
+
+    return reports + mismatches;
+  }
+
+  private managerRelevantDeposits(managerId: string) {
+    return this.store.deposits.filter((deposit) => {
+      return this.canManagerAccessDeposit(managerId, deposit);
+    });
+  }
+
+  private canManagerAccessDeposit(managerId: string, deposit: Deposit) {
+    if (!deposit.matchedBillId && !deposit.guessedUnitId) {
+      return false;
+    }
+
+    if (deposit.matchedBillId) {
+      const bill = this.store.bills.find((item) => item.id === deposit.matchedBillId);
+
+      return Boolean(bill && this.canManagerAccessBill(managerId, bill));
+    }
+
+    if (deposit.guessedUnitId) {
+      return this.store.rooms.some(
+        (room) => room.landlordId === managerId && this.unitMatchesRoom(deposit.guessedUnitId, room)
+      );
+    }
+
+    return false;
+  }
+
+  private resolveMaintenanceFeeForBill(bill: Bill): MaintenanceFee {
+    const maintenanceFee =
+      (bill.maintenanceFeeId
+        ? this.store.maintenanceFees.find((item) => item.id === bill.maintenanceFeeId)
+        : undefined) ??
+      this.store.maintenanceFees.find(
+        (item) => this.unitsEqual(item.unitId, bill.unitId) && item.billingMonth === bill.billingMonth
+      );
+
+    return (
+      maintenanceFee ?? {
+        id: bill.maintenanceFeeId ?? `maintenance-${bill.id}`,
+        unitId: bill.unitId,
+        billingMonth: bill.billingMonth,
+        totalAmount: 0,
+        available: false,
+        items: []
+      }
+    );
+  }
+
+  private tenantNameForBill(bill: Bill) {
+    const room = this.store.rooms.find((item) => this.unitMatchesRoom(bill.unitId, item));
+    const tenantId = room
+      ? Object.entries(this.store.tenantRooms).find(([, roomId]) => roomId === room.id)?.[0]
+      : undefined;
+
+    return this.store.users.find((user) => user.id === tenantId)?.name ?? "미연결 임차인";
+  }
+
+  private paymentBadgeForBill(bill: Bill): PaymentBadge {
+    const status = this.deriveBillStatus(bill);
+    const map: Record<BillStatus, PaymentBadge> = {
+      DRAFT: "NONE",
+      SENT: "DUE",
+      CONFIRMING: "CONFIRMING",
+      PARTIALLY_PAID: "PARTIAL",
+      PAID: "PAID",
+      OVERDUE: "OVERDUE",
+      CORRECTED: "DUE",
+      CANCELED: "NONE"
+    };
+
+    return map[status];
+  }
+
+  private presentBill(bill: Bill): TeamBill {
+    return {
+      id: bill.id,
+      unitId: bill.unitId,
+      billingMonth: bill.billingMonth,
+      status: this.deriveBillStatus(bill),
+      items: bill.items.map((item) => ({
+        label: item.label,
+        amount: item.amount
+      })),
+      totalAmount: bill.totalAmount,
+      paidAmount: bill.paidAmount,
+      dueDate: bill.dueDate,
+      account: {
+        bankName: bill.bankName,
+        accountNumber: bill.accountNumber,
+        accountHolder: bill.accountHolder
+      },
+      correctionHistory: bill.correctionHistory ?? [],
+      maintenanceFeeId: bill.maintenanceFeeId,
+      depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+      createdAt: bill.createdAt,
+      updatedAt: bill.updatedAt
+    };
+  }
+
+  private presentPaymentReport(report: PaymentReport): TeamReport {
+    return { ...report };
+  }
+
+  private presentDeposit(deposit: Deposit): TeamDeposit {
+    return { ...deposit };
+  }
+
+  private presentMaintenanceFee(fee: MaintenanceFee): TeamMaintenance {
+    return {
+      id: fee.id,
+      unitId: fee.unitId,
+      billingMonth: fee.billingMonth,
+      totalAmount: fee.totalAmount,
+      available: fee.available,
+      items: fee.items.map((item) => ({
+        label: item.label,
+        amount: item.amount,
+        receiptAvailable: item.receiptAvailable
+      }))
+    };
+  }
+
+  private presentManagerBillRow(bill: Bill): TeamBillRow {
+    return {
+      billId: bill.id,
+      unitId: bill.unitId,
+      tenantName: this.tenantNameForBill(bill),
+      billingMonth: bill.billingMonth,
+      totalAmount: bill.totalAmount,
+      paidAmount: bill.paidAmount,
+      status: this.deriveBillStatus(bill),
+      dueDate: bill.dueDate,
+      badge: this.paymentBadgeForBill(bill)
+    };
+  }
+
+  private presentOverdueCase(bill: Bill): TeamOverdue {
+    const daysOverdue = Math.max(
+      0,
+      Math.floor((Date.now() - Date.parse(bill.dueDate)) / (24 * 60 * 60 * 1000))
+    );
+
+    return {
+      billId: bill.id,
+      unitId: bill.unitId,
+      tenantName: this.tenantNameForBill(bill),
+      unpaidAmount: this.unpaidAmount(bill),
+      daysOverdue,
+      stage: this.stageForDaysOverdue(daysOverdue),
+      dueDate: bill.dueDate,
+      guard: this.dunningGuardForBill(bill)
+    };
+  }
+
+  private stageForDaysOverdue(daysOverdue: number): TeamOverdue["stage"] {
+    if (daysOverdue >= 30) {
+      return "SEVERE";
+    }
+
+    if (daysOverdue >= 7) {
+      return "WARNING";
+    }
+
+    return "MINOR";
+  }
+
+  private presentDunningDraft(bill: Bill): TeamDunning {
+    const tenantName = this.tenantNameForBill(bill);
+    const unpaidAmount = this.unpaidAmount(bill);
+    const dueDate = bill.dueDate.slice(0, 10);
+
+    return {
+      billId: bill.id,
+      unitId: bill.unitId,
+      tenantName,
+      unpaidAmount,
+      draftText: `${tenantName}님, ${bill.billingMonth} 청구 잔액 ${unpaidAmount.toLocaleString("ko-KR")}원이 ${dueDate} 기준 미납으로 확인되어 안내드립니다. 이미 납부하셨다면 앱에서 입금 확인 신고를 남겨주세요.`,
+      channel: "SMS",
+      guard: this.dunningGuardForBill(bill)
+    };
+  }
+
   private loadStore(): Store {
     if (!this.storeFilePath || !existsSync(this.storeFilePath)) {
       return this.seedDemoData ? createDemoStore() : createEmptyStore();
@@ -3253,8 +5896,26 @@ export class RoomlogService {
   private normalizeStoreSnapshot(parsed: Store): Store {
     return {
       ...parsed,
+      socialAccounts: parsed.socialAccounts ?? [],
       vendorInvites: parsed.vendorInvites ?? [],
       tenantInvites: parsed.tenantInvites ?? [],
+      contracts: parsed.contracts ?? [],
+      contractDocuments: parsed.contractDocuments ?? [],
+      contractExtractions: parsed.contractExtractions ?? [],
+      contractPrivacies: parsed.contractPrivacies ?? [],
+      contractInvites: parsed.contractInvites ?? [],
+      bills: (parsed.bills ?? []).map((bill) => ({
+        ...bill,
+        correctionHistory: bill.correctionHistory ?? [],
+        depositConfirmationRequested: bill.depositConfirmationRequested ?? false,
+        items: bill.items ?? []
+      })),
+      paymentReports: parsed.paymentReports ?? [],
+      deposits: parsed.deposits ?? [],
+      maintenanceFees: (parsed.maintenanceFees ?? []).map((fee) => ({
+        ...fee,
+        items: fee.items ?? []
+      })),
       attachments: parsed.attachments ?? [],
       floorPlans: (parsed.floorPlans ?? []).map((floorPlan) => ({
         ...floorPlan,
@@ -3291,7 +5952,126 @@ export class RoomlogService {
       messages: parsed.messages.map((message) => ({
         ...message,
         attachmentUrls: message.attachmentUrls ?? []
-      }))
+      })),
+      costs: parsed.costs ?? [],
+      receipts: parsed.receipts ?? [],
+      receiptOcrs: (parsed.receiptOcrs ?? []).map((ocr) => this.cloneReceiptOcr(ocr)),
+      messagingThreads: (parsed.messagingThreads ?? []).map((thread) => ({
+        ...thread,
+        archivedNotice: thread.archivedNotice ?? true,
+        pendingRequest: thread.pendingRequest ?? false,
+        unreadCount: thread.unreadCount ?? 0
+      })),
+      messagingMessages: (parsed.messagingMessages ?? []).map((message) => ({
+        ...message,
+        attachmentUrls: message.attachmentUrls ?? []
+      })),
+      messagingAnnouncementDrafts: (parsed.messagingAnnouncementDrafts ?? []).map((draft) => ({
+        ...draft,
+        targetRoomIds: draft.targetRoomIds ?? [],
+        translations: draft.translations ?? []
+      })),
+      messagingAnnouncements: parsed.messagingAnnouncements ?? [],
+      messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? [],
+      managerReports: (parsed.managerReports ?? []).map((report) => ({
+        ...report,
+        scope: {
+          ...report.scope,
+          roomIds: report.scope.roomIds ?? [],
+          unitIds: report.scope.unitIds ?? []
+        },
+        nextActions: report.nextActions ?? [],
+        sections: report.sections ?? [],
+        linkedFollowUps: report.linkedFollowUps ?? []
+      })),
+      managerReportSourceReferences: parsed.managerReportSourceReferences ?? [],
+      managerReportExternalShares: parsed.managerReportExternalShares ?? [],
+      managerReportAuditLogs: parsed.managerReportAuditLogs ?? [],
+      moveouts: parsed.moveouts ?? [],
+      moveoutRecords: parsed.moveoutRecords ?? [],
+      moveoutChecklist: parsed.moveoutChecklist ?? [],
+      moveoutSettlements: (parsed.moveoutSettlements ?? []).map((settlement) => ({
+        ...settlement,
+        deductions: settlement.deductions ?? []
+      })),
+      moveoutDeductions: parsed.moveoutDeductions ?? [],
+      moveoutDisputes: (parsed.moveoutDisputes ?? []).map((dispute) => ({
+        ...dispute,
+        history: dispute.history ?? []
+      })),
+      moveoutReportAudits: parsed.moveoutReportAudits ?? []
+    };
+  }
+
+  private backfillDemoStoreSnapshot(snapshot: Store): Store {
+    const demo = createDemoStore();
+
+    return {
+      ...snapshot,
+      tenantRooms: {
+        ...demo.tenantRooms,
+        ...snapshot.tenantRooms
+      },
+      analyses: {
+        ...demo.analyses,
+        ...snapshot.analyses
+      },
+      users: mergeMissingById(snapshot.users, demo.users),
+      socialAccounts: mergeMissingById(snapshot.socialAccounts, demo.socialAccounts),
+      rooms: mergeMissingById(snapshot.rooms, demo.rooms),
+      vendors: mergeMissingById(snapshot.vendors, demo.vendors),
+      vendorInvites: mergeMissingById(snapshot.vendorInvites, demo.vendorInvites),
+      tenantInvites: mergeMissingById(snapshot.tenantInvites, demo.tenantInvites),
+      contracts: mergeMissingById(snapshot.contracts, demo.contracts),
+      contractDocuments: mergeMissingById(snapshot.contractDocuments, demo.contractDocuments),
+      contractExtractions: mergeMissingById(snapshot.contractExtractions, demo.contractExtractions),
+      contractPrivacies: mergeMissingByKey(
+        snapshot.contractPrivacies,
+        demo.contractPrivacies,
+        (privacy) => privacy.contractId
+      ),
+      contractInvites: mergeMissingById(snapshot.contractInvites, demo.contractInvites),
+      attachments: mergeMissingById(snapshot.attachments, demo.attachments),
+      floorPlans: mergeMissingById(snapshot.floorPlans, demo.floorPlans),
+      moveInChecklist: mergeMissingById(snapshot.moveInChecklist, demo.moveInChecklist),
+      aiFeedback: mergeMissingById(snapshot.aiFeedback, demo.aiFeedback),
+      intakeSessions: mergeMissingById(snapshot.intakeSessions, demo.intakeSessions),
+      complaints: mergeMissingById(snapshot.complaints, demo.complaints),
+      tickets: mergeMissingById(snapshot.tickets, demo.tickets),
+      repairs: mergeMissingById(snapshot.repairs, demo.repairs),
+      costs: mergeMissingById(snapshot.costs, demo.costs),
+      receipts: mergeMissingById(snapshot.receipts, demo.receipts),
+      receiptOcrs: mergeMissingById(snapshot.receiptOcrs, demo.receiptOcrs),
+      messages: mergeMissingById(snapshot.messages, demo.messages),
+      messagingThreads: mergeMissingById(snapshot.messagingThreads, demo.messagingThreads),
+      messagingMessages: mergeMissingById(snapshot.messagingMessages, demo.messagingMessages),
+      messagingAnnouncementDrafts: mergeMissingById(
+        snapshot.messagingAnnouncementDrafts,
+        demo.messagingAnnouncementDrafts
+      ),
+      messagingAnnouncements: mergeMissingById(snapshot.messagingAnnouncements, demo.messagingAnnouncements),
+      messagingAnnouncementDeliveries: mergeMissingById(
+        snapshot.messagingAnnouncementDeliveries,
+        demo.messagingAnnouncementDeliveries
+      ),
+      managerReports: mergeMissingById(snapshot.managerReports, demo.managerReports),
+      managerReportSourceReferences: mergeMissingById(
+        snapshot.managerReportSourceReferences,
+        demo.managerReportSourceReferences
+      ),
+      managerReportExternalShares: mergeMissingById(
+        snapshot.managerReportExternalShares,
+        demo.managerReportExternalShares
+      ),
+      managerReportAuditLogs: mergeMissingById(snapshot.managerReportAuditLogs, demo.managerReportAuditLogs),
+      moveouts: mergeMissingById(snapshot.moveouts, demo.moveouts),
+      moveoutRecords: mergeMissingById(snapshot.moveoutRecords, demo.moveoutRecords),
+      moveoutChecklist: mergeMissingById(snapshot.moveoutChecklist, demo.moveoutChecklist),
+      moveoutSettlements: mergeMissingById(snapshot.moveoutSettlements, demo.moveoutSettlements),
+      moveoutDeductions: mergeMissingById(snapshot.moveoutDeductions, demo.moveoutDeductions),
+      moveoutDisputes: mergeMissingById(snapshot.moveoutDisputes, demo.moveoutDisputes),
+      moveoutReportAudits: mergeMissingById(snapshot.moveoutReportAudits, demo.moveoutReportAudits),
+      history: mergeMissingById(snapshot.history, demo.history)
     };
   }
 
@@ -3332,12 +6112,22 @@ export class RoomlogService {
     return Boolean(
       snapshot &&
         Array.isArray(snapshot.users) &&
+        (snapshot.socialAccounts === undefined || Array.isArray(snapshot.socialAccounts)) &&
         Array.isArray(snapshot.rooms) &&
         (snapshot.roomWalls === undefined || Array.isArray(snapshot.roomWalls)) &&
         snapshot.tenantRooms &&
         Array.isArray(snapshot.vendors) &&
         (snapshot.vendorInvites === undefined || Array.isArray(snapshot.vendorInvites)) &&
         (snapshot.tenantInvites === undefined || Array.isArray(snapshot.tenantInvites)) &&
+        (snapshot.contracts === undefined || Array.isArray(snapshot.contracts)) &&
+        (snapshot.contractDocuments === undefined || Array.isArray(snapshot.contractDocuments)) &&
+        (snapshot.contractExtractions === undefined || Array.isArray(snapshot.contractExtractions)) &&
+        (snapshot.contractPrivacies === undefined || Array.isArray(snapshot.contractPrivacies)) &&
+        (snapshot.contractInvites === undefined || Array.isArray(snapshot.contractInvites)) &&
+        (snapshot.bills === undefined || Array.isArray(snapshot.bills)) &&
+        (snapshot.paymentReports === undefined || Array.isArray(snapshot.paymentReports)) &&
+        (snapshot.deposits === undefined || Array.isArray(snapshot.deposits)) &&
+        (snapshot.maintenanceFees === undefined || Array.isArray(snapshot.maintenanceFees)) &&
         (snapshot.attachments === undefined || Array.isArray(snapshot.attachments)) &&
         (snapshot.floorPlans === undefined || Array.isArray(snapshot.floorPlans)) &&
         (snapshot.moveInChecklist === undefined || Array.isArray(snapshot.moveInChecklist)) &&
@@ -3347,139 +6137,34 @@ export class RoomlogService {
         snapshot.analyses &&
         Array.isArray(snapshot.tickets) &&
         Array.isArray(snapshot.repairs) &&
+        (snapshot.costs === undefined || Array.isArray(snapshot.costs)) &&
+        (snapshot.receipts === undefined || Array.isArray(snapshot.receipts)) &&
+        (snapshot.receiptOcrs === undefined || Array.isArray(snapshot.receiptOcrs)) &&
+        (snapshot.messagingThreads === undefined || Array.isArray(snapshot.messagingThreads)) &&
+        (snapshot.messagingMessages === undefined || Array.isArray(snapshot.messagingMessages)) &&
+        (snapshot.messagingAnnouncementDrafts === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDrafts)) &&
+        (snapshot.messagingAnnouncements === undefined ||
+          Array.isArray(snapshot.messagingAnnouncements)) &&
+        (snapshot.messagingAnnouncementDeliveries === undefined ||
+          Array.isArray(snapshot.messagingAnnouncementDeliveries)) &&
+        (snapshot.managerReports === undefined || Array.isArray(snapshot.managerReports)) &&
+        (snapshot.managerReportSourceReferences === undefined ||
+          Array.isArray(snapshot.managerReportSourceReferences)) &&
+        (snapshot.managerReportExternalShares === undefined ||
+          Array.isArray(snapshot.managerReportExternalShares)) &&
+        (snapshot.managerReportAuditLogs === undefined ||
+          Array.isArray(snapshot.managerReportAuditLogs)) &&
+        (snapshot.moveouts === undefined || Array.isArray(snapshot.moveouts)) &&
+        (snapshot.moveoutRecords === undefined || Array.isArray(snapshot.moveoutRecords)) &&
+        (snapshot.moveoutChecklist === undefined || Array.isArray(snapshot.moveoutChecklist)) &&
+        (snapshot.moveoutSettlements === undefined || Array.isArray(snapshot.moveoutSettlements)) &&
+        (snapshot.moveoutDeductions === undefined || Array.isArray(snapshot.moveoutDeductions)) &&
+        (snapshot.moveoutDisputes === undefined || Array.isArray(snapshot.moveoutDisputes)) &&
+        (snapshot.moveoutReportAudits === undefined || Array.isArray(snapshot.moveoutReportAudits)) &&
         Array.isArray(snapshot.messages) &&
         Array.isArray(snapshot.history)
     );
-  }
-
-  private extensionForMimeType(mimeType: string, originalName: string) {
-    const extension = extname(originalName).toLowerCase();
-    const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"];
-
-    if (allowedExtensions.includes(extension)) {
-      return extension;
-    }
-
-    const fallback: Record<string, string> = {
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/webp": ".webp",
-      "image/gif": ".gif",
-      "image/heic": ".heic"
-    };
-
-    return fallback[mimeType] ?? ".img";
-  }
-
-  private normalizeSignupInput(input: SignupInput): SignupInput {
-    return {
-      ...input,
-      email: input.email?.trim().toLowerCase(),
-      name: input.name?.trim(),
-      phone: normalizePhoneNumber(input.phone),
-      inviteToken: input.inviteToken?.trim(),
-      buildingName: input.buildingName?.trim(),
-      roomNo: input.roomNo?.trim(),
-      address: input.address?.trim(),
-      businessName: input.businessName?.trim(),
-      serviceArea: input.serviceArea?.trim()
-    };
-  }
-
-  private validateSignupInput(input: SignupInput) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email || "")) {
-      throw new BadRequestException("이메일 형식이 올바르지 않습니다.");
-    }
-
-    if (!input.password || input.password.length < 8) {
-      throw new BadRequestException("비밀번호는 8자 이상이어야 합니다.");
-    }
-
-    if (!hasRequiredPasswordMix(input.password)) {
-      throw new BadRequestException("비밀번호는 영문과 숫자를 포함해야 합니다.");
-    }
-
-    if (input.passwordConfirm !== undefined && input.password !== input.passwordConfirm) {
-      throw new BadRequestException("비밀번호 확인이 일치하지 않습니다.");
-    }
-
-    if (!input.name?.trim()) {
-      throw new BadRequestException("이름을 입력해주세요.");
-    }
-
-    if (!input.phone?.trim()) {
-      throw new BadRequestException("휴대폰 번호를 입력해주세요.");
-    }
-
-    if (!isValidPhoneNumber(input.phone)) {
-      throw new BadRequestException("휴대폰 번호는 숫자 10~11자리여야 합니다.");
-    }
-
-    if (!["TENANT", "LANDLORD", "VENDOR"].includes(input.role)) {
-      throw new BadRequestException("가입 역할이 올바르지 않습니다.");
-    }
-
-    if ((input.role === "TENANT" && !input.inviteToken) || input.role === "LANDLORD") {
-      if (!input.buildingName?.trim()) {
-        throw new BadRequestException("건물명을 입력해주세요.");
-      }
-
-      if (!input.roomNo?.trim()) {
-        throw new BadRequestException("호실을 입력해주세요.");
-      }
-
-      if (!input.address?.trim()) {
-        throw new BadRequestException("건물 주소를 입력해주세요.");
-      }
-    }
-
-    if (input.role === "VENDOR") {
-      if (!input.inviteToken?.trim()) {
-        throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-      }
-    }
-  }
-
-  private findOrCreateRoomForSignup(input: SignupInput, landlordId?: string) {
-    const buildingName = input.buildingName?.trim();
-    const roomNo = input.roomNo?.trim();
-    const address = input.address?.trim();
-
-    if (!buildingName || !roomNo || !address) {
-      throw new BadRequestException("건물명, 호실, 주소가 필요합니다.");
-    }
-
-    const existingRoom = this.store.rooms.find(
-      (room) =>
-        room.buildingName === buildingName &&
-        room.roomNo === roomNo &&
-        room.address === address
-    );
-
-    if (existingRoom) {
-      if (landlordId && !existingRoom.landlordId) {
-        existingRoom.landlordId = landlordId;
-      }
-
-      return existingRoom.id;
-    }
-
-    const room: Room = {
-      id: id("room"),
-      buildingName,
-      roomNo,
-      address,
-      landlordId
-    };
-    this.store.rooms.push(room);
-
-    return room.id;
-  }
-
-  private seededLandlordId() {
-    return this.store.users.some((user) => user.id === "landlord-demo")
-      ? "landlord-demo"
-      : undefined;
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
@@ -5422,15 +8107,6 @@ export class RoomlogService {
     ticket.priority = Math.min(ticket.priority, analysis.priority);
   }
 
-  private authResult(user: UserAccount): AuthResult {
-    return {
-      userId: user.id,
-      role: user.role,
-      accessToken: tokenFor(user),
-      name: user.name
-    };
-  }
-
   private analyzeComplaint(input: CreateComplaintInput): AiAnalysis {
     const text = `${input.title} ${input.description} ${input.location}`;
     const lower = text.toLowerCase();
@@ -5816,22 +8492,6 @@ export class RoomlogService {
     }
 
     return text.length > 86 ? `${text.slice(0, 83)}...` : text;
-  }
-
-  private presentMoveInChecklistItem(item: MoveInChecklistItem) {
-    return {
-      ...item,
-      attachmentUrls: [...item.attachmentUrls],
-      room: this.store.rooms.find((room) => room.id === item.roomId)
-    };
-  }
-
-  private moveInChecklistGuidance(area: string, itemName: string) {
-    return [
-      `${area} ${itemName}은 정면에서 전체가 보이게 촬영해주세요.`,
-      "같은 위치는 전체 사진 1장과 문제 부위가 보이는 근접 사진 1장을 남기면 이후 비교가 쉬워집니다.",
-      "퇴실 비교를 위해 문, 창문, 가전, 벽면처럼 기준점이 함께 보이게 촬영해주세요."
-    ].join(" ");
   }
 
   private inferManagerReplyIntent(ticket: Ticket): ManagerReplyIntent {
@@ -6295,6 +8955,47 @@ export class RoomlogService {
     };
   }
 
+  private cloneReceiptOcr(ocr: ReceiptOcr): ReceiptOcr {
+    return {
+      ...ocr,
+      fields: {
+        item: { ...ocr.fields.item },
+        date: { ...ocr.fields.date },
+        amount: { ...ocr.fields.amount },
+        unitId: ocr.fields.unitId ? { ...ocr.fields.unitId } : undefined
+      },
+      lineItems: ocr.lineItems.map((item) => ({ ...item }))
+    };
+  }
+
+  private displayUnitId(room: Room) {
+    return room.roomNo.replace(/호$/u, "");
+  }
+
+  private elapsedHours(startIso: string, endIso: string) {
+    const elapsed = this.timeOf(endIso) - this.timeOf(startIso);
+
+    return elapsed > 0 ? Math.round((elapsed / 3_600_000) * 10) / 10 : undefined;
+  }
+
+  private median(values: number[]) {
+    if (values.length === 0) return undefined;
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+
+    return sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  }
+
+  private average(values: number[]) {
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+
+  private timeOf(iso?: string) {
+    return iso ? new Date(iso).getTime() || 0 : 0;
+  }
+
   private displayStatus(status: TicketStatus) {
     const map: Record<TicketStatus, string> = {
       RECEIVED: "접수됨",
@@ -6432,90 +9133,6 @@ export class RoomlogService {
     this.assertManagerCanAccessRoom(managerId, ticket.roomId);
   }
 
-  private resolvePendingVendorInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.vendorInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-    }
-
-    this.assertPendingVendorInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingVendorInvite(invite: VendorInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 협력업체 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 협력업체 초대입니다.");
-    }
-  }
-
-  private resolvePendingTenantInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("임차인 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.tenantInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 임차인 초대입니다.");
-    }
-
-    this.assertPendingTenantInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    if (invite.phone && input.phone && invite.phone !== input.phone) {
-      throw new BadRequestException("초대된 휴대폰 번호와 가입 휴대폰 번호가 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingTenantInvite(invite: TenantInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 임차인 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 임차인 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 임차인 초대입니다.");
-    }
-  }
-
   private findIntakeSession(tenantId: string, sessionId: string) {
     const session = this.store.intakeSessions.find(
       (item) => item.id === sessionId && item.tenantId === tenantId
@@ -6528,44 +9145,6 @@ export class RoomlogService {
     return session;
   }
 
-  private presentVendorInvite(invite: VendorInvite) {
-    return { ...invite };
-  }
-
-  private presentTenantInvite(invite: TenantInvite) {
-    const room = this.store.rooms.find((item) => item.id === invite.roomId);
-
-    return {
-      ...invite,
-      room: room ? { ...room } : undefined
-    };
-  }
-
-  private resolveVendor(vendorUserOrProfileId: string) {
-    const vendor = this.store.vendors.find(
-      (item) => item.id === vendorUserOrProfileId || item.userId === vendorUserOrProfileId
-    );
-
-    if (!vendor) {
-      throw new NotFoundException("협력업체를 찾을 수 없습니다.");
-    }
-
-    return vendor;
-  }
-
-  private findVendorRepair(vendorUserOrProfileId: string, repairId: string) {
-    const vendor = this.resolveVendor(vendorUserOrProfileId);
-    const repair = this.store.repairs.find(
-      (item) => item.id === repairId && item.vendorId === vendor.id
-    );
-
-    if (!repair) {
-      throw new NotFoundException("수리 요청을 찾을 수 없습니다.");
-    }
-
-    return repair;
-  }
-
   private findRepair(repairId: string) {
     const repair = this.store.repairs.find((item) => item.id === repairId);
 
@@ -6576,13 +9155,4 @@ export class RoomlogService {
     return repair;
   }
 
-  private costBearerLabel(costBearer: "LANDLORD" | "TENANT" | "PENDING") {
-    const labels = {
-      LANDLORD: "임대인 부담",
-      TENANT: "임차인 부담 가능성",
-      PENDING: "비용 주체 판단 대기"
-    };
-
-    return labels[costBearer];
-  }
 }

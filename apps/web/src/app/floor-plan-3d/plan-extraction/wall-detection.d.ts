@@ -1,6 +1,14 @@
 import type { RegisteredPlanMetadata, Wall } from "../room-model/types";
 import type { DetectedLine, FloorPlanCandidate, ScaleCandidate } from "./types";
 
+type FloorPlanImageDataLike = ImageData | { width: number; height: number; data: Uint8ClampedArray };
+type NormalizedLine = { x1: number; y1: number; x2: number; y2: number };
+type NormalizedRoomPolygon = {
+  confidence?: number;
+  label?: string;
+  polygon: Array<{ x: number; y: number }>;
+};
+
 export function detectWallLinesFromMask(
   mask: boolean[],
   options?: {
@@ -22,8 +30,18 @@ export function detectWallBandLinesFromMask(
     minWallThickness?: number;
     bandAxisGapTolerance?: number;
     bandOverlapRatio?: number;
+    bandRunBalanceRatio?: number;
   }
 ): DetectedLine[];
+export function estimateWallLuminanceThreshold(
+  imageData: ImageData | { width: number; height: number; data: Uint8ClampedArray },
+  options?: {
+    baseThreshold?: number;
+    minClassSeparation?: number;
+    minDarkerRatio?: number;
+    minLighterRatio?: number;
+  }
+): number;
 export function detectWallLinesFromImageData(
   imageData: ImageData,
   options?: {
@@ -36,6 +54,14 @@ export function detectWallLinesFromImageData(
     gapTolerance?: number;
     minLength?: number;
     maxLines?: number;
+    strictLineMask?: boolean;
+    strictLineThreshold?: number;
+    minWallThickness?: number;
+    bandAxisGapTolerance?: number;
+    bandOverlapRatio?: number;
+    bandRunBalanceRatio?: number;
+    shortSegmentMinRunLength?: number;
+    shortSegmentMinThickness?: number;
   }
 ): DetectedLine[];
 export function removeSmallWallComponents(
@@ -44,7 +70,14 @@ export function removeSmallWallComponents(
 ): boolean[];
 export function mergeDetectedWallLines(
   lines: DetectedLine[],
-  options?: { axisTolerance?: number; gapTolerance?: number; minLength?: number; maxLines?: number }
+  options?: {
+    axisTolerance?: number;
+    gapMarkerTolerance?: number;
+    gapTolerance?: number;
+    minLength?: number;
+    maxLines?: number;
+    respectPerpendicularGapMarkers?: boolean;
+  }
 ): DetectedLine[];
 export function removeContainedDetectedWallFragments(
   lines: DetectedLine[],
@@ -63,8 +96,17 @@ export function filterCommercialWallCandidates(
     gapTolerance?: number;
     minLength?: number;
     maxLines?: number;
-    mode?: "balanced" | "conservative";
+    mode?: "balanced" | "conservative" | "wall-first";
     minConservativeWallThickness?: number;
+    maxWallThickness?: number;
+    wallFirstGapTolerance?: number;
+    wallFirstMaxBlockLength?: number;
+    wallFirstMaxInferredEdgeWallCount?: number;
+    wallFirstMaxLoopLength?: number;
+    wallFirstMinLoopLength?: number;
+    wallFirstMinStubLength?: number;
+    wallFirstSideTolerance?: number;
+    wallFirstSnapDistance?: number;
   }
 ): {
   walls: DetectedLine[];
@@ -98,6 +140,27 @@ export function detectFixtureCandidates(input?: {
   shapes?: Array<{ kind?: string; x: number; y: number; width?: number; height?: number }>;
   pixelToMmRatio?: number;
 }): FloorPlanCandidate[];
+export function snapNormalizedLineToWallEvidence(
+  line: NormalizedLine,
+  imageData: FloorPlanImageDataLike,
+  options?: {
+    darkThreshold?: number;
+    minConfidence?: number;
+    searchRadiusPx?: number;
+  }
+): DetectedLine | null;
+export function createWallCandidatesFromRoomPolygons(
+  rooms: NormalizedRoomPolygon[],
+  imageData: FloorPlanImageDataLike,
+  options?: {
+    axisTolerance?: number;
+    darkThreshold?: number;
+    minEvidenceConfidence?: number;
+    minLength?: number;
+    overlapTolerance?: number;
+    searchRadiusPx?: number;
+  }
+): DetectedLine[];
 export function createWallsFromDetectedLines(
   lines: DetectedLine[],
   plan?: RegisteredPlanMetadata & {
@@ -106,5 +169,6 @@ export function createWallsFromDetectedLines(
     canvasWidth?: number;
     containedRangeTolerance?: number;
     imageFillRatio?: number;
+    maxWalls?: number;
   }
 ): Wall[];

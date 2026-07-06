@@ -2,9 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "set -a; [ -f ../../.env ] && . ../../.env; set +a; exec ./node_modules/.bin/nest start"],
+      "cwd": "apps/api",
+      "port": 4000,
+      "autoPort": false
+    },
+    {
       "name": "web",
-      "runtimeExecutable": "./node_modules/.bin/next",
-      "runtimeArgs": ["dev", "-p", "3005"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "set -a; [ -f ../../.env ] && . ../../.env; set +a; exec ./node_modules/.bin/next dev -p 3005"],
       "cwd": "apps/web",
       "port": 3005,
       "autoPort": false
