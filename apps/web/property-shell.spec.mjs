@@ -1453,7 +1453,8 @@ test("switches between landlord authoring and resident furniture placement modes
     "landlord",
     "resident",
     "집주인 모드",
-    "임차인/일반사용자 모드",
+    // 3d 브랜치에서 라벨이 "세입자 일반사용자 모드"로 변경됨 — 스펙을 현재 문구에 맞춘다.
+    "세입자 일반사용자 모드",
     "임대인 옵션 가구",
     "wheretoput furniture picker",
     "handleFurnitureSelect",
