@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { Button, Input } from "@roomlog/ui";
+import type { AnnouncementDraft } from "@roomlog/types";
 import { createAnnouncementDraft, DEMO_MANAGER_DRAFT_ID, getAnnouncementDraft } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { ApiError } from "@/lib/server-api";
@@ -18,7 +19,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ id?: string }>;
+type SearchParams = Promise<{ id?: string; source?: string; actionType?: string; title?: string; unitIds?: string; billIds?: string; periodLabel?: string; note?: string }>;
+
+type ReportFollowUpPrefill = Awaited<SearchParams>;
 
 async function createDraftAction(formData: FormData) {
   "use server";
@@ -50,8 +53,10 @@ async function createDraftAction(formData: FormData) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id } = await searchParams;
-  const draft = await getAnnouncementDraft(id ?? DEMO_MANAGER_DRAFT_ID);
+  const params = await searchParams;
+  const { id } = params;
+  let draft = await getAnnouncementDraft(id ?? DEMO_MANAGER_DRAFT_ID);
+  draft = applyReportFollowUpPrefill(draft, params);
 
   return (
     <>
@@ -93,8 +98,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               ))}
             </div>
             <Input name="targetLabel" aria-label="공지 타깃" defaultValue={draft.targetLabel} />
-            <NoticeCard title="D20 타깃 가드">
-              미납 세대 옵션은 없습니다. 연체·독촉은 M-BILL-05 단일 채널에서만 처리합니다.
+            <NoticeCard title="공지 타깃 가드">
+              미납 세대 옵션은 없습니다. 연체·독촉은 청구·수금의 독촉 채널에서만 처리합니다.
             </NoticeCard>
           </Card>
 
@@ -156,4 +161,41 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       </form>
     </>
   );
+}
+
+function applyReportFollowUpPrefill(draft: AnnouncementDraft, params: ReportFollowUpPrefill): AnnouncementDraft {
+  const { source, actionType, title, unitIds, billIds, periodLabel, note } = params;
+
+  if (source !== "report") {
+    return draft;
+  }
+
+  const targetUnitIds = parseQueryList(unitIds);
+  const targetBillIds = parseQueryList(billIds);
+  const targetLabel = targetUnitIds.length ? `${targetUnitIds.join(", ")}호` : draft.targetLabel;
+  const actionLabel = actionType === "dunning" ? "납부 독촉 초안 검토" : "생활 공지 초안 만들기";
+  const bodyLines = [
+    note?.trim(),
+    periodLabel ? `기간: ${periodLabel}` : "",
+    targetBillIds.length ? `청구서: ${targetBillIds.join(", ")}` : "",
+    "발송 전 원본 행을 다시 대조하세요.",
+    "연체·독촉은 M-BILL-05 단일 채널에서만 확정합니다.",
+  ].filter(Boolean);
+
+  return {
+    ...draft,
+    category: "life",
+    scope: targetUnitIds.length ? "unit" : draft.scope,
+    targetLabel,
+    title: title?.trim() || actionLabel,
+    body: bodyLines.join("\n"),
+    confirmRequired: true,
+  };
+}
+
+function parseQueryList(value?: string): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }

@@ -1,15 +1,25 @@
 import { redirect } from "next/navigation";
 import { serverFetch, ApiError } from "./server-api";
+import {
+  defaultRedirectForIntent,
+  hasCapability,
+  intentForRole,
+  unifiedLoginPath,
+  type UserRole
+} from "./unified-login";
 
-export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
+export type { UserRole };
 
-// GET /auth/me 응답 shape (roomlog.service.getMe). 백엔드 불변이므로 이 shape에 맞춘다.
+// GET /auth/me 응답 shape (roomlog.service.getMe). 백엔드가 관계에서 파생한
+// roles/primaryRole을 내려주고, role 단일값은 backward compatibility로 유지된다.
 export interface SessionUser {
   userId: string;
   email: string;
   name: string;
   phone?: string;
   role: UserRole;
+  roles?: UserRole[];
+  primaryRole?: UserRole;
   roomId?: string;
   room?: { id: string; roomNo?: string; buildingId?: string } | undefined;
   managedRooms?: Array<{ id: string }> | undefined;
@@ -28,16 +38,18 @@ export async function getUser(): Promise<SessionUser | null> {
 }
 
 /**
- * 보호 화면 상단에서 호출. 미인증이면 로그인으로 리다이렉트.
- * role을 주면 역할까지 강제 — 다른 역할 세션의 진입을 막는다(백엔드 403이
- * 데모 폴백으로 가려지는 것 방지). 각 도메인 가드가 자기 역할을 명시한다.
+ * 보호 화면 상단에서 호출. 미인증이면 통합 로그인(/login)으로 리다이렉트.
+ * role은 파생 capability(roles) 기준으로 확인한다 — 겸직 계정(TENANT+LANDLORD)도
+ * 각 표면에 진입할 수 있다. capability가 없으면 재로그인 대신 /login의
+ * "이 계정에 연결이 필요하다" 안내 상태로 보낸다(intent 유지).
  */
-export async function requireUser(
-  loginPath = "/tenant/login",
-  role?: UserRole
-): Promise<SessionUser> {
+export async function requireUser(role?: UserRole, redirectTo?: string): Promise<SessionUser> {
+  const intent = intentForRole(role);
+  const loginPath = unifiedLoginPath(intent, redirectTo ?? defaultRedirectForIntent(intent));
   const user = await getUser();
+
   if (!user) redirect(loginPath);
-  if (role && user.role !== role) redirect(loginPath);
+  if (role && !hasCapability(user, role)) redirect(loginPath);
+
   return user;
 }

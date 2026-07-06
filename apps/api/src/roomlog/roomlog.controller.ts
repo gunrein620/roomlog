@@ -47,6 +47,7 @@ import {
   MoveoutAdjustDeductionInput,
   MoveoutAdjustWearVerdictInput,
   MoveoutCompleteReviewInput,
+  MoveoutPublishSettlementInput,
   MoveoutRespondDisputeInput,
   UpdateTenantMoveoutDisputeInput,
   UpdateMoveoutChecklistInput,
@@ -117,6 +118,19 @@ export class RoomlogController {
     @Param("inviteToken") inviteToken: string
   ) {
     return this.roomlogService.getSignupInvitePreview(role, inviteToken);
+  }
+
+  // 초대 수락(연결) — 새 계정 생성 루트가 아니라 "이미 로그인한 계정에 관계를 붙이는" 루트.
+  // 역할 가드 없이 인증만 요구한다: 어떤 capability의 계정이든 초대로 새 관계를 얻을 수 있다.
+  @Post("auth/invites/:role/:inviteToken/accept")
+  acceptInvite(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("role") role: UserRole,
+    @Param("inviteToken") inviteToken: string
+  ) {
+    const user = this.roomlogService.getUserFromToken(authorization);
+
+    return this.roomlogService.acceptInviteForUser(user.id, role, inviteToken);
   }
 
   @Post("auth/login")
@@ -767,6 +781,17 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.completeManagerMoveoutReview(user.id, moveoutId, body);
+  }
+
+  @Post("moveouts/:moveoutId/settlement/publish")
+  publishManagerMoveoutSettlement(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("moveoutId") moveoutId: string,
+    @Body() body: MoveoutPublishSettlementInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.publishManagerMoveoutSettlement(user.id, moveoutId, body);
   }
 
   @Post("moveouts/:moveoutId/disputes/respond")
@@ -1617,10 +1642,13 @@ export class RoomlogController {
     return this.roomlogService.reportCompletion(user.id, repairId, body);
   }
 
+  // capability 가드 — user.role 단일값이 아니라 관계에서 파생한 roles로 판단한다.
+  // 한 계정이 TENANT이면서 LANDLORD인 겸직 계정도 각 표면에 진입할 수 있다.
   private requireRole(authorization: string | undefined, roles: UserRole[]): UserAccount {
     const user = this.roomlogService.getUserFromToken(authorization);
+    const userRoles = this.roomlogService.rolesForUser(user);
 
-    if (!roles.includes(user.role)) {
+    if (!roles.some((role) => userRoles.includes(role))) {
       throw new ForbiddenException("이 역할로 접근할 수 없습니다.");
     }
 

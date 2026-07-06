@@ -13,10 +13,9 @@ const settings = [
 
 export default function Page() {
   return (
-    <ManagerShell title="설정" context="워크스페이스" nav={<HomeNav />}>
+    <ManagerShell title="설정" context="관리 중인 집" nav={<HomeNav />}>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header>
-          <Badge emphasis>M-HOME-06</Badge>
           <h1 style={{ margin: "var(--space-sm) 0", fontSize: "var(--fs-title)" }}>설정</h1>
           <p style={{ margin: 0, color: "var(--on-surface-variant)" }}>
             프로필, 알림, 권한, 보관 정책으로 이동합니다.

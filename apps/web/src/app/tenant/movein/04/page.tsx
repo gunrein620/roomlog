@@ -176,7 +176,7 @@ export default async function Page({ searchParams }: PageProps) {
                 lineHeight: 1.5,
               }}
             >
-              삭제는 T-HOME-06 권한·데이터 요청에서 record_type=move_in_photo로 신청해요.
+              삭제는 사는 집 설정의 권한·데이터 요청에서 ‘입주 전 사진’ 항목으로 신청해요.
             </div>
           </Card>
         </details>

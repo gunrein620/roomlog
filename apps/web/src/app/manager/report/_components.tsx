@@ -12,6 +12,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
 import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 const navItems = [
   ["허브", MANAGER_REPORT_ROUTES["M-RPT-00"]],
@@ -24,7 +25,7 @@ const navItems = [
 
 export function ReportShell({ children }: { children: ReactNode }) {
   return (
-    <ManagerShell title="운영 보고" context="M-RPT · 임대인 보고" nav={<ReportNav />}>
+    <ManagerShell title="운영 보고" context="관리 중인 집 · 임대인 보고" nav={<ReportNav />}>
       {children}
     </ManagerShell>
   );
@@ -63,7 +64,7 @@ export function ScreenHeader({
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
       <div>
-        <div style={captionStyle}>{eyebrow}</div>
+        {stripScreenId(eyebrow) ? <div style={captionStyle}>{stripScreenId(eyebrow)}</div> : null}
         <h1 style={{ margin: "4px 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>{title}</h1>
         {subtitle ? <p style={mutedTextStyle}>{subtitle}</p> : null}
       </div>
@@ -207,7 +208,7 @@ export function NextActionList({ actions }: { actions: ReportNextAction[] }) {
           <div>
             <div style={{ fontWeight: 850 }}>{action.label}</div>
             <div style={mutedSmallStyle}>
-              메시징 초안으로 연결하고, 발송 전 원본 행을 대조합니다.
+              대상·기간을 넘긴 검토 화면으로 연결하고, 발송 전 원본 행을 대조합니다.
             </div>
           </div>
           <LinkButton href={actionHref(action)} variant="secondary">초안 열기</LinkButton>
@@ -263,11 +264,13 @@ export function AnswerCard({ answer }: { answer: ChatAnswer }) {
   );
 }
 
-export function FaqButtons({ faq }: { faq: FaqQuestion[] }) {
+export function FaqButtons({ faq, targetReportId, screenId = "M-RPT-04" }: { faq: FaqQuestion[]; targetReportId?: string; screenId?: ManagerReportScreenId }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-sm)" }}>
       {faq.map((item) => (
-        <Button key={item.id} variant="secondary" style={{ justifyContent: "flex-start" }}>{item.label}</Button>
+        <LinkButton key={item.id} href={reportHref(screenId, targetReportId, item.query)} variant="secondary">
+          {item.label}
+        </LinkButton>
       ))}
     </div>
   );

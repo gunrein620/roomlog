@@ -64,6 +64,11 @@ function moneyRange(min: number, max: number) {
   ).toLocaleString("ko-KR")}만원`;
 }
 
+function disputeHref(moveoutId: string, targetItemId?: string) {
+  const targetQuery = targetItemId ? `&targetItemId=${encodeURIComponent(targetItemId)}` : "";
+  return `${withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveoutId)}${targetQuery}&from=settlement`;
+}
+
 function attachmentUrlsFrom(value: FormDataEntryValue | null) {
   return String(value ?? "")
     .split(",")
@@ -225,7 +230,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     </details>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <Link
-                        href={`${MOVEOUT_ROUTES["T-OUT-04"]}?id=${encodeURIComponent(moveout.id)}&targetItemId=${deduction.id}`}
+                        href={disputeHref(moveout.id, deduction.id)}
                         style={{ color: "var(--primary)", fontSize: 12, fontWeight: 800 }}
                       >
                         이의 제기
@@ -274,7 +279,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           gap: 8,
         }}
       >
-        <Link href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id)} style={{ textDecoration: "none", display: "block" }}>
+        <Link href={disputeHref(moveout.id)} style={{ textDecoration: "none", display: "block" }}>
           <Button fullWidth variant="secondary">
             이의·정정 요청
           </Button>

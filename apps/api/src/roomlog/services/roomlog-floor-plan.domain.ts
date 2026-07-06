@@ -7,7 +7,7 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import { basename, extname } from "node:path";
-import { id, now } from "../roomlog-support";
+import { deriveUserRoles, id, now } from "../roomlog-support";
 import type { FileStorageAdapter } from "../storage.service";
 import type {
   Attachment,
@@ -179,7 +179,7 @@ export class RoomlogFloorPlanDomain {
       throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
     }
 
-    if (user.role !== "LANDLORD") {
+    if (!deriveUserRoles(user, this.store).includes("LANDLORD")) {
       throw new ForbiddenException("도면은 집주인 계정으로 저장할 수 있습니다.");
     }
   }

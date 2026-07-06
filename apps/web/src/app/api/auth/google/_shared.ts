@@ -70,11 +70,13 @@ export function defaultRedirectForRole(role: GoogleOauthRole) {
   return "/";
 }
 
+// 통합 로그인: 실패 시 되돌아갈 곳은 역할별 로그인 화면이 아니라 /login 하나다.
+// role 파라미터는 identity 매칭이 아니라 intent(어느 표면으로 가려던 참이었나) 전달용.
 export function loginPathForRole(role: GoogleOauthRole) {
-  if (role === "LANDLORD") return "/manager/login";
-  if (role === "VENDOR") return "/vendor/login";
-  if (role === "TENANT") return "/tenant/login";
-  return "/?auth=login";
+  if (role === "LANDLORD") return "/login?intent=landlord";
+  if (role === "VENDOR") return "/login?intent=vendor";
+  if (role === "TENANT") return "/login?intent=tenant";
+  return "/login";
 }
 
 export function normalizeGoogleOauthRole(value: string | null): GoogleOauthRole {

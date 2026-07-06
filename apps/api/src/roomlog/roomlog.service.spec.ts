@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
+import { RoomlogController } from "./roomlog.controller";
 
 function createMoveoutTestService() {
   const createdAt = "2026-07-01T00:00:00.000Z";
@@ -694,6 +695,103 @@ describe("RoomlogService", () => {
     assert.equal(me.role, "SEEKER");
     assert.equal(me.roomId, undefined);
     assert.equal(me.managedRooms, undefined);
+    assert.deepEqual(me.roles, ["SEEKER"]);
+    assert.equal(me.primaryRole, "SEEKER");
+  });
+
+  it("derives roles from relations so one account can be TENANT and LANDLORD at once", () => {
+    const service = new RoomlogService();
+    const auth = service.login({ email: "multi@roomlog.test", password: "password123!" });
+
+    assert.deepEqual([...auth.roles].sort(), ["LANDLORD", "SEEKER", "TENANT"]);
+
+    const me = service.getMe(`Bearer ${auth.accessToken}`);
+    assert.equal(me.primaryRole, "TENANT");
+    assert.deepEqual([...me.roles].sort(), ["LANDLORD", "SEEKER", "TENANT"]);
+    assert.equal(me.roomId, "room-301");
+    assert.equal(me.managedRooms?.some((room) => room.id === "room-402"), true);
+  });
+
+  it("lets a derived multi-role account pass both TENANT and LANDLORD capability guards", () => {
+    const service = new RoomlogService();
+    const controller = new RoomlogController(service);
+    const auth = service.login({ email: "multi@roomlog.test", password: "password123!" });
+    const header = `Bearer ${auth.accessToken}`;
+
+    // legacy role 단일값은 TENANT지만 소유한 집(room-402)이 있어 LANDLORD 표면도 통과해야 한다.
+    assert.ok(controller.getTenantHome(header));
+    assert.ok(controller.listManagerTickets(header));
+  });
+
+  it("blocks missing capabilities with 403 instead of asking to re-login", () => {
+    const service = new RoomlogService();
+    const controller = new RoomlogController(service);
+    const auth = service.login({ email: "multi@roomlog.test", password: "password123!" });
+
+    assert.throws(
+      () => controller.listVendorRepairs(`Bearer ${auth.accessToken}`),
+      (error: { status?: number }) => error.status === 403
+    );
+  });
+
+  it("links a tenant invite to the already-logged-in account instead of a new signup", () => {
+    const service = new RoomlogService();
+    const invite = service.createTenantInvite("landlord-demo", {
+      roomId: "room-301",
+      tenantName: "Linked Seeker",
+      email: "linked-seeker@roomlog.test"
+    });
+
+    const seekerAuth = service.signup({
+      email: "linked-seeker@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "Linked Seeker",
+      role: "SEEKER"
+    });
+    assert.deepEqual(seekerAuth.roles, ["SEEKER"]);
+
+    const linked = service.acceptInviteForUser(seekerAuth.userId, "TENANT", invite.inviteToken);
+    assert.equal(linked.linked, "TENANT");
+    assert.equal(linked.roomId, "room-301");
+    assert.equal(linked.roles.includes("TENANT"), true);
+
+    // 멱등: 같은 계정이 같은 초대를 다시 열어도 에러가 아니라 연결 상태를 돌려준다.
+    const relinked = service.acceptInviteForUser(seekerAuth.userId, "TENANT", invite.inviteToken);
+    assert.equal(relinked.roomId, "room-301");
+
+    // 다른 계정이 이미 사용된 초대를 열면 막힌다.
+    const otherAuth = service.login({ email: "tenant@roomlog.test", password: "password123!" });
+    assert.throws(
+      () => service.acceptInviteForUser(otherAuth.userId, "TENANT", invite.inviteToken),
+      /이미 사용된/
+    );
+
+    const me = service.getMe(`Bearer ${seekerAuth.accessToken}`);
+    assert.equal(me.roomId, "room-301");
+    assert.equal(me.roles.includes("TENANT"), true);
+  });
+
+  it("blocks invite linking when the invite email does not match the account", () => {
+    const service = new RoomlogService();
+    const invite = service.createTenantInvite("landlord-demo", {
+      roomId: "room-301",
+      tenantName: "다른 사람",
+      email: "someone-else@roomlog.test"
+    });
+
+    const seekerAuth = service.signup({
+      email: "mismatch-seeker@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "Mismatch Seeker",
+      role: "SEEKER"
+    });
+
+    assert.throws(
+      () => service.acceptInviteForUser(seekerAuth.userId, "TENANT", invite.inviteToken),
+      /이메일/
+    );
   });
 
   it("logs in and links a verified Google account through the social auth flow", async () => {
@@ -3097,6 +3195,7 @@ describe("RoomlogService", () => {
       ]
     });
     const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
+    assert.equal(sent.draftId, reviewedDraft.id);
 
     let tenantAnnouncement = service.getTenantMessagingAnnouncement(
       "tenant-demo",
@@ -4341,6 +4440,29 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("publishes a reviewed moveout settlement to tenant messaging and audit log", () => {
+    const service = createMoveoutTestService() as any;
+
+    service.completeManagerMoveoutReview("manager-a", "mo-a", {
+      acknowledgeEvidence: true,
+      overrideSla: true,
+      overrideReason: "SLA 경과로 예상 정산안을 먼저 전달합니다."
+    });
+    const review = service.publishManagerMoveoutSettlement("manager-a", "mo-a", {
+      message: "검토한 예상 정산안을 임차인에게 전달합니다."
+    });
+    const tenantThreads = service.listTenantMessagingThreads("tenant-a");
+    const threadSummary = tenantThreads.find((thread: any) => thread.contextRef === "mo-a");
+    const thread = service.getTenantMessagingThread("tenant-a", threadSummary.id);
+    const audit = service.getManagerReportAudit("manager-a", "mo-a");
+
+    assert.equal(review.settlement.status, "review_done");
+    assert.match(thread.messages.at(-1).body, /예상 정산안/);
+    assert.equal(audit[0].recordItemId, "settlement");
+    assert.equal(audit[0].tenantNotified, true);
+    assert.match(audit[0].evidenceNote, /임차인 전달/);
+  });
+
   it("creates and links a manager-visible messaging thread for tenant moveout inquiries", () => {
     const service = createMoveoutTestService() as any;
 
@@ -4356,6 +4478,33 @@ describe("RoomlogService", () => {
     assert.equal(managerThreads.some((thread: any) => thread.id === result.thread.id), true);
     assert.match(tenantThread.messages.at(-1).body, /퇴실 일정/);
     assert.deepEqual(tenantThread.messages.at(-1).attachmentUrls, ["/api/files/moveout-question.jpg"]);
+  });
+
+  it("returns expandable chat details for tenant-created moveout inquiry records", () => {
+    const service = createMoveoutTestService() as any;
+
+    const result = service.createTenantMoveoutInquiry("tenant-a", "mo-a", {
+      body: "KAN-134 문의 연결 확인 1783090107112",
+      attachmentUrls: ["/api/files/moveout-question.jpg"]
+    });
+    service.addManagerMessagingThreadMessage("manager-a", result.thread.id, {
+      body: "관리인 답변: 해당 문의를 확인했습니다."
+    });
+    service.addTenantMessagingThreadMessage("tenant-a", result.thread.id, {
+      body: "추가 문의: 채팅 내역 전체가 필요합니다."
+    });
+    const records = service.listTenantMoveoutRecords("tenant-a", "mo-a");
+    const inquiryRecord = records.find((record: any) => record.source === "chat" && /KAN-134/.test(record.description));
+
+    assert.ok(inquiryRecord?.detailSections?.length > 0);
+    assert.ok(inquiryRecord?.detail?.chatMessages?.some((message: any) => /KAN-134/.test(message.body)));
+    assert.ok(inquiryRecord?.detail?.chatMessages?.some((message: any) => /관리인 답변/.test(message.body)));
+    assert.ok(inquiryRecord?.detail?.chatMessages?.some((message: any) => /추가 문의/.test(message.body)));
+    assert.deepEqual(
+      inquiryRecord?.detail?.chatMessages?.map((message: any) => message.senderLabel),
+      ["임차인", "관리인", "임차인"]
+    );
+    assert.deepEqual(inquiryRecord?.detail?.chatMessages?.[0]?.attachmentUrls, ["/api/files/moveout-question.jpg"]);
   });
 
   it("lets a tenant save moveout checklist item state and recalculates preparation progress", () => {
@@ -4538,6 +4687,30 @@ describe("RoomlogService", () => {
     assert.equal(service.listTenantMoveouts("tenant-demo").some((moveout: any) => moveout.id === "mo_0001"), true);
     assert.deepEqual(settlement.gate.blockingReasons, ["unresolved_dispute"]);
     assert.equal(settlement.gate.overrideAvailable, true);
+  });
+
+  it("hydrates existing KAN-134 moveout records with expandable detail data", () => {
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.moveoutRecords = legacyDemoSnapshot.moveoutRecords.map((record: any) => {
+      const { detailSections, detail, evidenceUrls, ...legacyRecord } = record;
+      return legacyRecord;
+    });
+
+    const service = new RoomlogService({
+      seedDemoData: true,
+      initialStore: legacyDemoSnapshot
+    } as any) as any;
+    const records = service.getManagerMoveoutRecords("landlord-demo", "mo_0001");
+    const moveinPhoto = records.find((record: any) => record.id === "rec_0001");
+    const chat = records.find((record: any) => record.id === "rec_0006");
+
+    assert.ok(moveinPhoto?.detailSections?.length > 0);
+    assert.ok(moveinPhoto?.detail?.media?.some((item: any) => item.url.includes("bathroom-before")));
+    assert.ok(chat?.detailSections?.length > 0);
+    assert.ok(chat?.detail?.chatMessages?.length >= 2);
   });
 
   it("lets a manager read only reports for rooms they manage", () => {

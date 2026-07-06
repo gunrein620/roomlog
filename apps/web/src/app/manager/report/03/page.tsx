@@ -8,6 +8,10 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
 
+function reportExportHref(format: "pdf" | "csv", reportId: string) {
+  return `/manager/report/03/export?id=${encodeURIComponent(reportId)}&format=${format}`;
+}
+
 async function createExternalShareAction(formData: FormData) {
   "use server";
 
@@ -40,8 +44,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Card style={{ display: "grid", gap: "var(--space-md)" }}>
           <h2 style={cardTitleStyle}>형식</h2>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-            <Badge>PDF</Badge>
-            <Badge>Excel</Badge>
+            <LinkButton href={reportExportHref("pdf", report.id)} variant="secondary">PDF 내보내기</LinkButton>
+            <LinkButton href={reportExportHref("csv", report.id)} variant="secondary">Excel 내보내기</LinkButton>
             <Badge emphasis>링크 전달</Badge>
           </div>
         </Card>

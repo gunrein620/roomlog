@@ -641,6 +641,7 @@ export class RoomlogMessagingDomain {
 
     return {
       announcementId: announcement.id,
+      draftId: announcement.draftId ?? announcement.id,
       category: announcement.category,
       scope: announcement.scope,
       title: announcement.title,

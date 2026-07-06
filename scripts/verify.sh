@@ -10,26 +10,34 @@ step() { echo ""; echo "▶ $1"; }
 ok()   { echo "  ✅ $1"; }
 bad()  { echo "  ❌ $1"; FAIL=1; }
 
-step "1. types 빌드(dist 선언 생성)"
-pnpm --filter @roomlog/types build >/tmp/rl_v_types.log 2>&1 && ok "types build" || { bad "types build (로그: /tmp/rl_v_types.log)"; }
+step "1. types typecheck"
+# @roomlog/types는 소스 export로 전환되어 build 스크립트가 없다 — typecheck로 검증.
+pnpm --filter @roomlog/types typecheck >/tmp/rl_v_types.log 2>&1 && ok "types typecheck" || { bad "types typecheck (로그: /tmp/rl_v_types.log)"; }
 
 step "2. ui typecheck"
 pnpm --filter @roomlog/ui typecheck >/tmp/rl_v_ui.log 2>&1 && ok "ui typecheck" || bad "ui typecheck (/tmp/rl_v_ui.log)"
 
+# 주의: web/api 패키지명은 스코프 없는 "web"/"api"다 — 스코프 필터를 쓰면 no-op으로 조용히 통과한다.
 step "3. web 빌드"
-pnpm --filter @roomlog/web build >/tmp/rl_v_web.log 2>&1 && ok "web build" || bad "web build (/tmp/rl_v_web.log)"
+pnpm --filter web build >/tmp/rl_v_web.log 2>&1 && ok "web build" || bad "web build (/tmp/rl_v_web.log)"
 
 step "4. api 빌드"
-pnpm --filter @roomlog/api build >/tmp/rl_v_api.log 2>&1 && ok "api build" || bad "api build (/tmp/rl_v_api.log)"
+pnpm --filter api build >/tmp/rl_v_api.log 2>&1 && ok "api build" || bad "api build (/tmp/rl_v_api.log)"
 
-step "5. api 스모크 (health + tickets)"
+step "5. api 스모크 (health + listings + 통합 로그인 roles)"
 lsof -ti tcp:4000 2>/dev/null | xargs kill -9 2>/dev/null
 ( cd apps/api && PORT=4000 node dist/main.js >/tmp/rl_v_apirun.log 2>&1 & )
 for i in $(seq 1 20); do grep -q "listening" /tmp/rl_v_apirun.log 2>/dev/null && break; sleep 1; done
 H=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4000/api/health)
-T=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4000/api/tickets)
+L=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:4000/api/listings)
 [ "$H" = "200" ] && ok "health 200" || bad "health=$H"
-[ "$T" = "200" ] && ok "tickets 200" || bad "tickets=$T"
+[ "$L" = "200" ] && ok "listings 200" || bad "listings=$L"
+# 통합 로그인: 데모 multi-role 계정이 expectedRole 없이 로그인되고 파생 roles를 받는지.
+AUTH=$(curl -s -X POST http://localhost:4000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"multi@roomlog.test","password":"password123!"}')
+echo "$AUTH" | grep -q '"TENANT"' && echo "$AUTH" | grep -q '"LANDLORD"' \
+  && ok "unified login roles(TENANT+LANDLORD)" || bad "unified login roles: $AUTH"
 lsof -ti tcp:4000 2>/dev/null | xargs kill -9 2>/dev/null
 
 echo ""

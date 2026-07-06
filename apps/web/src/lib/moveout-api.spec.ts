@@ -1,10 +1,16 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { tenantMoveoutPaths } from "./moveout-api";
 import {
   DEMO_MANAGER_MOVEOUT_ROWS,
   DEMO_MANAGER_SETTLEMENT_REVIEW,
+  adjustDeduction,
+  adjustWearVerdict,
+  completeReview,
   managerMoveoutPaths,
+  publishSettlement,
 } from "./moveout-manager-api";
 import { MANAGER_MOVEOUT_ROUTES, withManagerMoveoutId } from "./moveout-manager-nav";
 import {
@@ -36,6 +42,7 @@ describe("moveout api path contracts", () => {
     assert.equal(managerMoveoutPaths.adjustWearVerdict("mo 1"), "/moveouts/mo%201/records/wear-verdict");
     assert.equal(managerMoveoutPaths.adjustDeduction("mo 1"), "/moveouts/mo%201/deductions");
     assert.equal(managerMoveoutPaths.completeReview("mo 1"), "/moveouts/mo%201/complete-review");
+    assert.equal(managerMoveoutPaths.publishSettlement("mo 1"), "/moveouts/mo%201/settlement/publish");
     assert.equal(managerMoveoutPaths.respondDispute("mo 1"), "/moveouts/mo%201/disputes/respond");
   });
 
@@ -78,5 +85,86 @@ describe("moveout api path contracts", () => {
     assert.equal(firstManagerRow.slaBreached, true);
     assert.deepEqual(DEMO_MANAGER_SETTLEMENT_REVIEW.gate.blockingReasons, ["unresolved_dispute"]);
     assert.equal(DEMO_MANAGER_SETTLEMENT_REVIEW.gate.overrideAvailable, true);
+  });
+
+  it("provides detailed fallback sections for every moveout record card", () => {
+    const recordsWithDetails = DEMO_MOVEOUT_RECORDS.filter(
+      (record) => Array.isArray((record as any).detailSections) && (record as any).detailSections.length > 0,
+    );
+    const bathroomRepair = DEMO_MOVEOUT_RECORDS.find((record) => record.id === "rec_0003") as any;
+
+    assert.equal(recordsWithDetails.length, DEMO_MOVEOUT_RECORDS.length);
+    assert.deepEqual(
+      bathroomRepair.detailSections.map((section: any) => section.label),
+      ["원천 기록", "정산 영향", "다음 행동"],
+    );
+    assert.ok(
+      bathroomRepair.detailSections.some((section: any) =>
+        section.items.some((item: any) => item.value.includes("최종 차감 확정 아님")),
+      ),
+    );
+  });
+
+  it("provides source-specific expandable detail payloads for every moveout record", () => {
+    const recordsWithSourceDetails = DEMO_MOVEOUT_RECORDS.filter((record) => Boolean((record as any).detail));
+    const moveinPhoto = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "movein_photo") as any;
+    const chat = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "chat") as any;
+    const repair = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "repair") as any;
+    const payment = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "payment") as any;
+    const contract = DEMO_MOVEOUT_RECORDS.find((record) => record.source === "contract") as any;
+
+    assert.equal(recordsWithSourceDetails.length, DEMO_MOVEOUT_RECORDS.length);
+    assert.ok(moveinPhoto.detail.media.some((item: any) => item.kind === "photo" && item.url.includes("bathroom-before")));
+    assert.ok(chat.detail.chatMessages.length >= 2);
+    assert.ok(repair.detail.events.length >= 2);
+    assert.ok(payment.detail.amounts.some((item: any) => item.label.includes("미납")));
+    assert.ok(contract.detail.clauses.some((item: any) => item.title.includes("원상복구")));
+  });
+
+  it("uses public demo files for moveout evidence links", () => {
+    const evidenceUrls = DEMO_MOVEOUT_RECORDS.flatMap((record) => record.evidenceUrls ?? []);
+
+    assert.ok(evidenceUrls.length > 0);
+    for (const url of evidenceUrls) {
+      assert.match(url, /^\/demo\/moveout\/.+\.svg$/);
+      assert.equal(existsSync(join(process.cwd(), "public", url)), true);
+    }
+  });
+
+  it("falls back to demo manager mutation results when the API is unavailable", async () => {
+    const warn = console.warn;
+    console.warn = () => {};
+
+    try {
+      const wearResult = await adjustWearVerdict("mo_0001", {
+        recordItemId: "rec_0003",
+        action: "reinforce",
+        evidenceNote: "데모 근거 보강",
+        notifyTenant: true,
+      });
+      const deductionResult = await adjustDeduction("mo_0001", {
+        deductionId: "de_0002",
+        estimatedMin: 30_000,
+        estimatedMax: 80_000,
+        resolveConfirmation: true,
+        note: "데모 금액 조정",
+      });
+      const reviewResult = await completeReview("mo_0001", {
+        acknowledgeEvidence: true,
+        overrideSla: true,
+        overrideReason: "데모 검토 완료",
+      });
+      const publishResult = await publishSettlement("mo_0001", {
+        message: "데모 정산안 전달",
+      });
+
+      assert.equal(wearResult.record.id, "rec_0003");
+      assert.equal(wearResult.audit.evidenceNote, "데모 근거 보강");
+      assert.equal(deductionResult.id, DEMO_MOVEOUT_SETTLEMENT.id);
+      assert.equal(reviewResult.settlement.id, DEMO_MANAGER_SETTLEMENT_REVIEW.settlement.id);
+      assert.equal(publishResult.settlement.status, "review_done");
+    } finally {
+      console.warn = warn;
+    }
   });
 });

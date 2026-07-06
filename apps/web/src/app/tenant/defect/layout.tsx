@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { PhoneFrame } from "@roomlog/ui";
 import { requireUser } from "@/lib/session";
@@ -12,20 +11,10 @@ export const dynamic = "force-dynamic";
 // [레퍼런스 가드] 이 async 레이아웃이 /tenant/defect/* 전체를 인증 게이팅한다.
 // 미인증(쿠키 없음/만료)이면 requireUser가 /tenant/login으로 리다이렉트.
 export default async function DefectLayout({ children }: { children: ReactNode }) {
-  await requireUser("/tenant/login", "TENANT");
+  await requireUser("TENANT");
   return (
     <PhoneFrame
-      label={
-        <>
-          <Link
-            href="/shell"
-            style={{ color: "var(--primary)", textDecoration: "none" }}
-          >
-            ← 셸 인덱스
-          </Link>
-          <span>T-DEF 하자 · 임차인 · 390×844</span>
-        </>
-      }
+      label={<span>사는 집 · 하자 접수</span>}
     >
       {children}
     </PhoneFrame>

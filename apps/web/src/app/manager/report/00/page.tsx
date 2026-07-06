@@ -1,6 +1,6 @@
 import { getReportHub } from "@/lib/report-api";
 import { MANAGER_REPORT_ROUTES } from "@/lib/report-nav";
-import { Grid, LinkButton, MetricCard, PageStack, ReportTable, ScreenHeader, Section, TrustNotice } from "../_components";
+import { FaqButtons, Grid, LinkButton, MetricCard, PageStack, ReportTable, ScreenHeader, Section, TrustNotice } from "../_components";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,7 @@ export default async function Page() {
   const { reports, recipients, faq } = await getReportHub();
   const delivered = reports.filter((report) => report.status === "delivered").length;
   const drafts = reports.length - delivered;
+  const quickReportId = reports[0]?.id;
 
   return (
     <PageStack>
@@ -31,7 +32,7 @@ export default async function Page() {
       </Grid>
 
       <TrustNotice>
-        리포트의 1차 용도는 임대인 운영 보고입니다. 실시간 지표 탐색은 M-HOME-02, 납부 수치는 M-BILL 단일 산식, 그 외 공실·민원·비용은 각 원천 기준으로 분리합니다.
+        리포트의 1차 용도는 임대인 운영 보고입니다. 실시간 지표는 자산현황 리포트에서 탐색하고, 납부 수치는 청구·수금과 같은 기준으로 계산하며, 공실·민원·비용은 각 원천 기준으로 분리합니다.
       </TrustNotice>
 
       <Section
@@ -42,13 +43,7 @@ export default async function Page() {
       </Section>
 
       <Section title="빠른 질의">
-        <Grid min={180}>
-          {faq.map((item) => (
-            <LinkButton key={item.id} href={MANAGER_REPORT_ROUTES["M-RPT-04"]} variant="secondary">
-              {item.label}
-            </LinkButton>
-          ))}
-        </Grid>
+        <FaqButtons faq={faq} targetReportId={quickReportId} />
       </Section>
     </PageStack>
   );

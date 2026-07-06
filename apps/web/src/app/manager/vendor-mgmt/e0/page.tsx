@@ -19,7 +19,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     : MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"];
 
   return (
-    <ManagerShell title="빈 상태 / 오류" context="M-VEND-E0 · 복구" nav={<ManagerVendorMgmtNav />}>
+    <ManagerShell title="빈 상태 / 오류" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
       <PageStack>
         <ScreenHeader eyebrow="M-VEND-E0" title="빈 상태 / 로드 오류" />
 

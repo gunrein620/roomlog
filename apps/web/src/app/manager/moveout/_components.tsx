@@ -15,6 +15,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { MANAGER_MOVEOUT_ROUTES, withManagerMoveoutId } from "@/lib/moveout-manager-nav";
+import { stripScreenId } from "@/lib/screen-id";
 
 export const DISCLAIMER = "참고자료이며 최종 정산은 관리자 확인 후 확정됩니다";
 
@@ -76,7 +77,7 @@ export function ScreenHeader({
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", marginBottom: "var(--space-lg)" }}>
       <div>
-        <Badge emphasis>{eyebrow}</Badge>
+        {stripScreenId(eyebrow) ? <Badge emphasis>{stripScreenId(eyebrow)}</Badge> : null}
         <h1 style={{ margin: "var(--space-sm) 0 0", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
           {title}
         </h1>
@@ -235,10 +236,151 @@ export function RecordRows({ records }: { records: MoveoutRecordItem[] }) {
             <Badge emphasis={record.moveinComparisonAvailable}>{record.moveinComparisonAvailable ? "입주전 비교 가능" : "비교 근거 없음"}</Badge>
           </div>
           <div style={mutedSmallStyle}>{record.description}</div>
+          <RecordDetailSections record={record} />
         </Card>
       ))}
     </div>
   );
+}
+
+export function RecordDetailSections({ record }: { record: MoveoutRecordItem }) {
+  if (!record.detailSections?.length && !record.detail) {
+    return null;
+  }
+
+  return (
+    <details>
+      <summary style={summaryButtonStyle}>상세정보 보기</summary>
+      <div style={detailPanelStyle}>
+        <RecordSourceDetail record={record} />
+        {record.detailSections?.map((section) => (
+          <div key={section.label} style={detailSectionStyle}>
+            <div style={captionStyle}>{section.label}</div>
+            <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+              {section.items.map((item) => (
+                <div key={`${section.label}-${item.label}`} style={detailRowStyle}>
+                  <span style={{ fontWeight: 850 }}>{item.label}</span>
+                  <span style={mutedSmallStyle}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function RecordSourceDetail({ record }: { record: MoveoutRecordItem }) {
+  if (!record.detail) {
+    return null;
+  }
+
+  return (
+    <div style={sourceDetailStyle}>
+      {record.detail.summary ? <div style={mutedSmallStyle}>{record.detail.summary}</div> : null}
+
+      {record.detail?.media?.length ? (
+        <div style={detailSectionStyle}>
+          <div style={captionStyle}>사진·문서</div>
+          <div style={mediaGridStyle}>
+            {record.detail.media.map((item) => (
+              <a key={`${item.label}-${item.url}`} href={item.url} style={mediaCardStyle}>
+                <img src={item.url} alt={item.label} style={mediaImageStyle} />
+                <span style={{ fontWeight: 850 }}>{item.label}</span>
+                {item.caption ? <span style={mutedSmallStyle}>{item.caption}</span> : null}
+                {item.capturedAt ? <span style={mutedSmallStyle}>{formatDate(item.capturedAt)}</span> : null}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {record.detail?.chatMessages?.length ? (
+        <div style={detailSectionStyle}>
+          <div style={captionStyle}>채팅 내역</div>
+          <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+            {record.detail.chatMessages.map((message) => (
+              <div key={`${message.at}-${message.senderLabel}`} style={chatMessageStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 850 }}>{message.senderLabel}</span>
+                  <span style={mutedSmallStyle}>{formatDate(message.at)}</span>
+                </div>
+                <div style={mutedSmallStyle}>{message.body}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {record.detail?.events?.length ? (
+        <div style={detailSectionStyle}>
+          <div style={captionStyle}>처리 이력</div>
+          <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+            {record.detail.events.map((event) => (
+              <div key={`${event.at}-${event.label}`} style={eventRowStyle}>
+                <div>
+                  <div style={{ fontWeight: 850 }}>{event.label}</div>
+                  {event.note ? <div style={mutedSmallStyle}>{event.note}</div> : null}
+                </div>
+                <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "end" }}>
+                  {event.status ? <Badge>{event.status}</Badge> : null}
+                  <span style={mutedSmallStyle}>{formatDate(event.at)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {record.detail?.amounts?.length ? (
+        <div style={detailSectionStyle}>
+          <div style={captionStyle}>금액 연결</div>
+          <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+            {record.detail.amounts.map((amount) => (
+              <div key={amount.label} style={detailRowStyle}>
+                <span style={{ fontWeight: 850 }}>{amount.label}</span>
+                <span>
+                  <span style={{ fontWeight: 850 }}>{formatDetailAmount(amount)}</span>
+                  {amount.status ? <span style={mutedSmallStyle}> · {amount.status}</span> : null}
+                  {amount.note ? <div style={mutedSmallStyle}>{amount.note}</div> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {record.detail?.clauses?.length ? (
+        <div style={detailSectionStyle}>
+          <div style={captionStyle}>계약 조항</div>
+          <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+            {record.detail.clauses.map((clause) => (
+              <div key={clause.title} style={clauseStyle}>
+                <div style={{ fontWeight: 850 }}>{clause.title}</div>
+                <div style={mutedSmallStyle}>{clause.body}</div>
+                {clause.note ? <div style={mutedSmallStyle}>{clause.note}</div> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type RecordDetailAmount = NonNullable<NonNullable<MoveoutRecordItem["detail"]>["amounts"]>[number];
+
+function formatDetailAmount(amount: RecordDetailAmount) {
+  if (typeof amount.amount === "number") {
+    return won(amount.amount);
+  }
+
+  if (typeof amount.min === "number" && typeof amount.max === "number") {
+    return wonRange(amount.min, amount.max);
+  }
+
+  return "금액 확인 전";
 }
 
 export function TriageRows({ records, audit }: { records: MoveoutRecordItem[]; audit: ReportAuditEntry[] }) {
@@ -389,6 +531,106 @@ export const mutedSmallStyle: CSSProperties = {
   color: "var(--on-surface-variant)",
   fontSize: "var(--fs-caption)",
   lineHeight: "var(--lh-body)",
+};
+
+const summaryButtonStyle: CSSProperties = {
+  minHeight: "var(--touch-target)",
+  width: "fit-content",
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0 14px",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-btn)",
+  color: "var(--primary)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 850,
+  cursor: "pointer",
+  listStyle: "none",
+};
+
+const detailPanelStyle: CSSProperties = {
+  marginTop: "var(--space-sm)",
+  display: "grid",
+  gap: "var(--space-sm)",
+  padding: "var(--space-md)",
+  border: "1px dashed var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)",
+};
+
+const sourceDetailStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-sm)",
+  padding: "var(--space-md)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-low)",
+};
+
+const detailSectionStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-xs)",
+};
+
+const detailRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "120px minmax(0, 1fr)",
+  gap: "var(--space-sm)",
+  alignItems: "start",
+};
+
+const mediaGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "var(--space-sm)",
+};
+
+const mediaCardStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  padding: "var(--space-sm)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  color: "var(--on-surface)",
+  textDecoration: "none",
+  background: "var(--surface-container-lowest)",
+};
+
+const mediaImageStyle: CSSProperties = {
+  width: "100%",
+  aspectRatio: "16 / 9",
+  objectFit: "cover",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border)",
+};
+
+const chatMessageStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  padding: "var(--space-sm)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)",
+};
+
+const eventRowStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "var(--space-md)",
+  padding: "var(--space-sm)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)",
+};
+
+const clauseStyle: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  padding: "var(--space-sm)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)",
 };
 
 export const rowStyle: CSSProperties = {

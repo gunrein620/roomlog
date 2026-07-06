@@ -87,7 +87,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               <NoticeCard title="긴급 한정 재발송" emphasis>
                 미확인 수신자는 재산정 후 M-MSG-02 발송 게이트를 다시 거칩니다.
               </NoticeCard>
-              <LinkButton href={`${MANAGER_MESSAGING_ROUTES["M-MSG-02"]}?id=draft_urgent_water&resend=${result.announcementId}`}>
+              <LinkButton
+                href={`${MANAGER_MESSAGING_ROUTES["M-MSG-02"]}?id=${encodeURIComponent(result.draftId)}&resend=${encodeURIComponent(result.announcementId)}`}
+              >
                 미확인 재발송
               </LinkButton>
             </>

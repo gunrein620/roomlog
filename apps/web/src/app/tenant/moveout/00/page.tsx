@@ -131,7 +131,7 @@ function notificationItems(
 
   if (breachedDisputes > 0) {
     items.push({
-      label: `SLA 경과 ${breachedDisputes}건`,
+      label: `답변 지연 ${breachedDisputes}건`,
       href: withMoveoutId(MOVEOUT_ROUTES["T-OUT-04"], moveout.id),
     });
   }
@@ -191,7 +191,7 @@ export default async function Page() {
         <div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>{moveout.unitId}호 · 퇴실 준비</div>
           <div style={{ fontSize: 11, color: "var(--on-surface-variant)", marginTop: 2 }}>
-            룸로그 T-OUT
+            계약 종료까지 남은 일정과 정산을 한 곳에서
           </div>
         </div>
         <Link
@@ -264,7 +264,12 @@ export default async function Page() {
                 <div style={{ fontSize: 12, color: "var(--on-surface-variant)" }}>
                   종료일과 보증금 정보가 확정되면 예상 정산을 볼 수 있어요.
                 </div>
-                <Badge style={{ alignSelf: "flex-start" }}>관리자 문의 필요</Badge>
+                <Link
+                  href={withMoveoutId(MOVEOUT_ROUTES["T-OUT-03"], moveout.id)}
+                  style={{ alignSelf: "flex-start", textDecoration: "none" }}
+                >
+                  <Badge>관리자 문의 필요</Badge>
+                </Link>
               </>
             )}
           </Card>

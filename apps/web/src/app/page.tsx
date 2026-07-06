@@ -28,7 +28,7 @@ import {
   SlidersHorizontal,
   UserRound
 } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -50,17 +50,31 @@ import {
   DEMO_VENDOR_PERF,
   DEMO_VENDORS
 } from "../lib/demo-vendor-mgmt";
+import {
+  WoozuLoginScreen,
+  type AppRole,
+  type AuthMode,
+  type ViewerProfile
+} from "./_components/WoozuLoginScreen";
+import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
+import {
+  pickInquiryTargetNo,
+  withInquiryReply,
+  withNewInquiry,
+  type InquiryItem,
+  type InquiryPayload
+} from "../lib/inquiry-flow";
+import {
+  OWNER_DRAFT_STORAGE_KEY,
+  emptyOwnerForm,
+  formatDraftSavedAt,
+  initialOwnerListings,
+  parseOwnerDraft,
+  serializeOwnerDraft
+} from "../lib/owner-draft";
 
-type AppRole = "seeker" | "tenant" | "landlord";
 type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
-type AuthMode = "login" | "signup" | "broker";
 type MapResultTab = "rooms" | "complexes" | "agents";
-type ViewerProfile = {
-  userId: string;
-  email: string;
-  name: string;
-  role: string;
-};
 
 type NaverLatLng = unknown;
 type NaverMap = unknown;
@@ -107,55 +121,6 @@ declare global {
 
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
 
-const googleLogoSvg = (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
-    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" fill="#EA4335" />
-  </svg>
-);
-
-const defaultAuthRedirectPath = "/";
-
-const googleAuthHrefForMode = (mode: AuthMode) => {
-  const flow = mode === "signup" ? "signup" : "login";
-  const errorRedirectTo = mode === "signup" ? "/?auth=signup" : "/";
-  return `/api/auth/google/start?role=SEEKER&flow=${flow}&redirectTo=${encodeURIComponent(defaultAuthRedirectPath)}&errorRedirectTo=${encodeURIComponent(errorRedirectTo)}`;
-};
-
-const socialProvidersForMode = (mode: AuthMode): Array<{ label: string; className: string; mark: ReactNode; href?: string }> => [
-  { label: "네이버로 계속하기", className: "naver", mark: <span aria-hidden="true">N</span> },
-  {
-    label: "Google로 계속하기",
-    className: "google",
-    mark: <span className="google-logo-icon" aria-hidden="true">{googleLogoSvg}</span>,
-    href: googleAuthHrefForMode(mode)
-  }
-];
-
-const devRoles: Array<{
-  id: AppRole;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "seeker",
-    label: "일반 집보는 사람",
-    description: "지도와 매물 상세를 둘러보는 기본 탐색 모드"
-  },
-  {
-    id: "tenant",
-    label: "세입자",
-    description: "관심 매물과 입주 예정 방을 확인하는 임차인 모드"
-  },
-  {
-    id: "landlord",
-    label: "집주인",
-    description: "마이페이지에서 내 집을 등록하는 임대인 모드"
-  }
-];
-
 const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
   { id: "seeker", label: "방 찾는 중", href: "/" },
   { id: "tenant", label: "내가 사는 집", href: "/?role=tenant&tab=mypage" },
@@ -176,12 +141,12 @@ const myFlowItems: Array<{ id: MyFlow; label: string }> = [
 const protectedRoleConfig = {
   tenant: {
     sessionRole: "TENANT",
-    loginPath: "/tenant/login",
+    intent: "tenant",
     redirectTo: "/?role=tenant&tab=mypage"
   },
   landlord: {
     sessionRole: "LANDLORD",
-    loginPath: "/manager/login",
+    intent: "landlord",
     redirectTo: "/?role=landlord&tab=mypage"
   }
 } as const;
@@ -697,19 +662,6 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-type InquiryStatus = "답변 대기" | "답변 완료";
-
-type InquiryItem = {
-  id: number;
-  listingTitle: string;
-  broker: string;
-  message: string;
-  visitTime: string;
-  status: InquiryStatus;
-  reply?: string;
-  time: string;
-};
-
 const initialInquiries: InquiryItem[] = [
   {
     id: 1,
@@ -724,191 +676,6 @@ const initialInquiries: InquiryItem[] = [
 ];
 
 const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
-
-const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as const;
-
-function LoginScreen({
-  mode,
-  setActiveRole,
-  onAuthenticated,
-  onGoHome
-}: {
-  mode: AuthMode;
-  setActiveRole: (role: AppRole) => void;
-  onAuthenticated: (viewer: ViewerProfile) => void;
-  onGoHome: () => void;
-}) {
-  const [socialLoginNotice, setSocialLoginNotice] = useState("소셜 로그인으로 관심 매물과 문의 내역을 이어서 볼 수 있습니다.");
-  const [serviceEmail, setServiceEmail] = useState("");
-  const [servicePassword, setServicePassword] = useState("");
-  const [serviceLoginError, setServiceLoginError] = useState("");
-  const [isServiceLoginPending, setIsServiceLoginPending] = useState(false);
-  const socialProviders = socialProvidersForMode(mode);
-
-  async function submitServiceLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsServiceLoginPending(true);
-    setServiceLoginError("");
-
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: serviceEmail, password: servicePassword, expectedRole: "SEEKER" })
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => undefined);
-        setServiceLoginError(body?.message ?? "로그인에 실패했습니다.");
-        return;
-      }
-
-      const meResponse = await fetch("/api/auth/me", { cache: "no-store" });
-      if (!meResponse.ok) {
-        setServiceLoginError("로그인 상태를 확인하지 못했습니다.");
-        return;
-      }
-
-      onAuthenticated((await meResponse.json()) as ViewerProfile);
-    } catch {
-      setServiceLoginError("네트워크 오류로 로그인하지 못했습니다.");
-    } finally {
-      setIsServiceLoginPending(false);
-    }
-  }
-
-  return (
-    <main className="app-canvas login-canvas">
-      <section className="login-phone" aria-label="집우집주 로그인">
-        <div className="login-topbar">
-          <button type="button" className="login-home-link" onClick={onGoHome} aria-label="홈으로 이동">
-            <span className="login-home-icon" aria-hidden="true">
-              <svg className="login-home-roof" viewBox="0 0 140 68" fill="none">
-                <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-                <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              </svg>
-            </span>
-            집우집주<span>WOOZU</span>
-          </button>
-        </div>
-        <div className="login-brandmark">
-          <div className="brand-mark-icon">
-            <div className="brand-orbit">
-              <div className="brand-orbit-spin">
-                <span className="brand-star-fix">
-                  <span className="brand-star">
-                    <svg viewBox="0 0 24 24"><path d="M12 0c1.1 6.2 4.8 9.9 12 12-7.2 2.1-10.9 5.8-12 12-1.1-6.2-4.8-9.9-12-12 7.2-2.1 10.9-5.8 12-12Z" /></svg>
-                  </span>
-                </span>
-              </div>
-            </div>
-            <svg className="brand-roof" viewBox="0 0 140 68" fill="none">
-              <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-              <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-            </svg>
-          </div>
-          <div className="brand-word">우주</div>
-          <p className="brand-tagline">우주 | 3D공간 시뮬레이션</p>
-        </div>
-
-        <div className="login-panel">
-          <p className="brand-kicker">|집우집주|  입주부터 관리까지 우주에서</p>
-          <h1>우주에서 방을 구해보세요!</h1>
-          <p>
-            조건에 맞는 방을 찾고, 3D 투어와 정보확인은 우주에서
-          </p>
-
-          <div className="login-feature-bar" aria-label="서비스 핵심 기능">
-            {loginFeaturePills.map((label, index) => (
-              <Fragment key={label}>
-                {index > 0 ? <span className="login-feature-sep" aria-hidden="true" /> : null}
-                <span className={`login-feature-pill login-feature-pill--${index}`}>{label}</span>
-              </Fragment>
-            ))}
-          </div>
-
-          <div className="social-stack" aria-label="소셜 로그인">
-            {socialProviders.map((provider) => (
-              <button
-                className={`social-button ${provider.className}`}
-                type="button"
-                key={provider.label}
-                onClick={() => {
-                  if (provider.href) {
-                    window.location.href = provider.href;
-                    return;
-                  }
-                  setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`);
-                }}
-              >
-                {provider.mark}
-                {provider.label}
-              </button>
-            ))}
-          </div>
-
-          <p className="social-login-notice" role="status">{socialLoginNotice}</p>
-
-          <div className="service-login-panel" aria-label="서비스 로그인">
-            <div>
-              <strong>서비스 로그인</strong>
-            </div>
-            <form className="service-login-form" onSubmit={submitServiceLogin}>
-              <label>
-                이메일
-                <input
-                  type="email"
-                  value={serviceEmail}
-                  onChange={(event) => setServiceEmail(event.target.value)}
-                  autoComplete="username"
-                  required
-                />
-              </label>
-              <label>
-                비밀번호
-                <input
-                  type="password"
-                  value={servicePassword}
-                  onChange={(event) => setServicePassword(event.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-              {serviceLoginError ? (
-                <p className="service-auth-error" role="alert">{serviceLoginError}</p>
-              ) : null}
-              <button className="service-login-submit" type="submit" disabled={isServiceLoginPending}>
-                {isServiceLoginPending ? "로그인 중" : "로그인"}
-              </button>
-            </form>
-            <a className="service-signup-link" href="/signup">일반 회원가입</a>
-          </div>
-
-          <div className="dev-login-panel" aria-label="개발용 로그인">
-            <div>
-              <strong>개발용 로그인</strong>
-              <span>역할을 골라 바로 입장</span>
-            </div>
-            {devRoles.map((role) => (
-              <button className="dev-role-button" type="button" key={role.id} onClick={() => setActiveRole(role.id)}>
-                <strong>{role.label}</strong>
-                <span>{role.description}</span>
-              </button>
-            ))}
-          </div>
-
-          <small>일반 계정 로그인은 제공하지 않습니다.</small>
-        </div>
-      </section>
-    </main>
-  );
-}
 
 function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectFlow: (flow: MyFlow) => void }) {
   return (
@@ -934,24 +701,14 @@ function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectF
 }
 
 function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlow) => void; onGoHome: () => void }) {
-  const [ownerForm, setOwnerForm] = useState({
-    title: "방배 루미에르 402호",
-    address: "서울특별시 서초구 방배동",
-    tradeType: "월세",
-    moveIn: "즉시",
-    deposit: "1000",
-    monthly: "35",
-    jeonse: "0",
-    maintenance: "8",
-    area: "24.5",
-    floor: "4층 / 16층"
-  });
+  // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
+  const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
   const [has3DRoom, setHas3DRoom] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState("작성 중");
-  const [myListings, setMyListings] = useState([
-    { id: 1, title: "방배 루미에르 302호", price: "월세 1000/125", status: "노출중", caption: "조회 128 · 문의 6건" }
-  ]);
+  const [myListings, setMyListings] = useState(initialOwnerListings);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState("");
   const [ownerToast, setOwnerToast] = useState("");
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
@@ -964,6 +721,34 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
+
+  // 복원: 반드시 마운트 후에만 localStorage 접근 — SSR 초기 렌더와의 hydration 불일치 방지 (QA 8).
+  useEffect(() => {
+    const draft = parseOwnerDraft(window.localStorage.getItem(OWNER_DRAFT_STORAGE_KEY));
+
+    if (draft) {
+      setOwnerForm(draft.ownerForm);
+      setPhotoCount(draft.photoCount);
+      setHas3DRoom(draft.has3DRoom);
+      setRegistrationStatus(draft.registrationStatus);
+      setMyListings(draft.myListings);
+      setDraftSavedAt(draft.savedAt);
+    }
+
+    setIsDraftLoaded(true);
+  }, []);
+
+  // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
+  useEffect(() => {
+    if (!isDraftLoaded) return;
+
+    const savedAt = new Date().toISOString();
+    window.localStorage.setItem(
+      OWNER_DRAFT_STORAGE_KEY,
+      serializeOwnerDraft({ ownerForm, photoCount, has3DRoom, registrationStatus, myListings }, savedAt)
+    );
+    setDraftSavedAt(savedAt);
+  }, [isDraftLoaded, ownerForm, photoCount, has3DRoom, registrationStatus, myListings]);
   const submitOwnerListing = () => {
     // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
     if (isSubmittingListingRef.current) {
@@ -1040,13 +825,24 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     : `거래 ${selectedVendorPerf?.completedCount ?? selectedVendor?.dealCount ?? 0}건`;
   const ownerDashboardTabs = [
     { id: "dashboard", label: "대시보드", note: "현재 페이지" },
-    { id: "contract", label: "계약 관리", note: "KAN-133" },
-    { id: "cost", label: "비용·관리비", note: "KAN-135" },
-    { id: "vendor", label: "업체 관리", note: "KAN-136" },
-    { id: "repair", label: "수리 요청", note: "운영" }
+    { id: "contract-dashboard", label: "검토 대시보드", note: "KAN-133" },
+    { id: "contract-ocr", label: "OCR 검토", note: "계약" },
+    { id: "contract-register", label: "계약서 등록", note: "계약" },
+    { id: "contract-timeline", label: "호실·타임라인", note: "계약" },
+    { id: "contract-invite", label: "임차인 초대", note: "계약" },
+    { id: "contract-storage", label: "보관·삭제", note: "계약" },
+    { id: "cost-ledger", label: "원장/큐", note: "KAN-135" },
+    { id: "cost-receipt", label: "영수증 첨부", note: "비용" },
+    { id: "cost-ocr", label: "OCR 검토", note: "비용" },
+    { id: "cost-detail", label: "비용 상세", note: "비용" },
+    { id: "cost-disclosure", label: "공개 관리", note: "비용" },
+    { id: "vendor-address", label: "주소록", note: "KAN-136" },
+    { id: "vendor-detail", label: "상세", note: "업체" },
+    { id: "vendor-performance", label: "성과", note: "업체" },
+    { id: "vendor-edit", label: "등록/편집", note: "업체" }
   ];
   const activeOwnerTab = ownerDashboardTabs.find((tab) => tab.id === activeOwnerPanel) ?? ownerDashboardTabs[0];
-  const activeOwnerDomain = activeOwnerPanel;
+  const activeOwnerDomain = activeOwnerPanel.split("-")[0];
   const ownerContractStats = [
     { label: "검토 대기", value: "2건", note: "임차인·관리자 업로드 유입" },
     { label: "확인 필요", value: "3개", note: "OCR 원문 대조 필요" },
@@ -1143,23 +939,29 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         <div className="domain-test-heading">
           <span>내 룸로그</span>
           <h3 id="landlord-roomlog-title">이 집을 룸로그로 관리하기</h3>
-          <p>세입자가 연결되면 같은 화면에서 계약·비용·업체·수리 요청을 이어서 처리합니다.</p>
+          <p>세입자가 연결되면 같은 계정에서 계약·비용·메시지·하자를 관리 콘솔로 이어서 처리합니다.</p>
         </div>
         <div className="domain-test-link-grid">
-          <button className="domain-test-link primary" type="button" onClick={() => setActiveOwnerPanel("contract")}>
+          <Link className="domain-test-link primary" href="/manager/home/00">
+            관리 콘솔 홈
+          </Link>
+          <Link className="domain-test-link" href="/manager/contract/00">
             계약 관리
-          </button>
-          <button className="domain-test-link" type="button" onClick={() => setActiveOwnerPanel("cost")}>
-            비용·관리비
-          </button>
-          <button className="domain-test-link" type="button" onClick={() => setActiveOwnerPanel("vendor")}>
-            업체 관리
-          </button>
-          <button className="domain-test-link" type="button" onClick={() => setActiveOwnerPanel("repair")}>
-            수리 요청
-          </button>
+          </Link>
+          <Link className="domain-test-link" href="/manager/ticket/dash/00">
+            하자·티켓
+          </Link>
+          <Link className="domain-test-link" href="/manager/cost/00">
+            비용 정산
+          </Link>
+          <Link className="domain-test-link" href="/manager/messaging/00">
+            메시지
+          </Link>
+          <Link className="domain-test-link" href="/manager/moveout/00">
+            퇴실 관리
+          </Link>
         </div>
-        <small className="domain-test-note">레거시 관리 콘솔로 빠지지 않고 집주인 마이페이지 안에서 확인합니다.</small>
+        <small className="domain-test-note">이 계정에 관리 중인 집이 연결되면 이어집니다.</small>
       </section>
 
       <section className="owner-exposure-card" aria-label="집 내놓기 전달 범위">
@@ -1499,66 +1301,6 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           </div>
         </article>
         ) : null}
-
-        {activeOwnerDomain === "repair" ? (
-        <article id="owner-repair-requests" className="owner-ops-card owner-repair-card">
-          <div className="owner-ops-head">
-            <div>
-              <span>운영 수리 요청</span>
-              <h3>세입자 하자 신고와 업체 배정</h3>
-            </div>
-            <strong>배정 대기 1건</strong>
-          </div>
-
-          <div className="owner-ops-metrics" aria-label="수리 요청 요약">
-            <article>
-              <span>접수 요청</span>
-              <strong>2건</strong>
-              <small>세입자 하자 신고 기준</small>
-            </article>
-            <article>
-              <span>업체 배정</span>
-              <strong>1건</strong>
-              <small>{selectedVendor?.name ?? "등록 업체"} 연결 가능</small>
-            </article>
-            <article>
-              <span>방문 조율</span>
-              <strong>오늘 2:30</strong>
-              <small>세입자 가능 시간 확인</small>
-            </article>
-          </div>
-
-          <div className="owner-contract-list" aria-label="수리 요청 목록">
-            <div>
-              <span>배정 대기</span>
-              <strong>욕실 타일 들뜸 · 방배 루미에르 402호</strong>
-              <small>방문 가능 시간: 오늘 오후 2시 이후 · 권장 업체: {selectedVendor?.name ?? "업체 선택 필요"}</small>
-            </div>
-            <div>
-              <span>진행 중</span>
-              <strong>에어컨 필터 점검 · 방배 루미에르 302호</strong>
-              <small>업체 방문 예정 · 세입자 확인 대기</small>
-            </div>
-          </div>
-
-          <div className="owner-disclosure-strip" aria-label="수리 요청 처리">
-            <div>
-              <span>처리 원칙</span>
-              <strong>요청 내용·방문 가능 시간 확인 후 업체 배정</strong>
-              <small>책임 판단 자동화와 AI 분석은 후속 범위로 두고, 지금은 요청 조회와 배정 흐름을 한 탭에 모읍니다.</small>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setOwnerToast("수리 요청을 확인했습니다. 업체 배정은 업체 관리 탭의 등록 업체를 기준으로 진행합니다.");
-                setActiveOwnerPanel("vendor");
-              }}
-            >
-              업체 관리로 이동
-            </button>
-          </div>
-        </article>
-        ) : null}
       </section>
 
             </>
@@ -1575,6 +1317,12 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
             </div>
             <strong>임대인 전용</strong>
           </div>
+
+          {draftSavedAt ? (
+            <small className="owner-draft-status" role="status">
+              임시저장됨 · {formatDraftSavedAt(draftSavedAt)} — 새로고침해도 작성 내용이 유지됩니다.
+            </small>
+          ) : null}
 
           <label>
             매물명
@@ -1677,8 +1425,11 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         <section className="owner-submit-summary" aria-label="검수 요청 요약">
           <div>
             <span>검수 요청 요약</span>
-            <h3>{ownerForm.title}</h3>
-            <p>{ownerPriceLabel} · 관리비 {ownerForm.maintenance}만원 · {ownerForm.area}m² · {ownerForm.floor}</p>
+            <h3>{ownerForm.title || "매물명을 입력해주세요"}</h3>
+            <p>
+              {ownerPriceLabel} · 관리비 {ownerForm.maintenance || "0"}만원 · {ownerForm.area || "-"}m² ·{" "}
+              {ownerForm.floor || "층수 미입력"}
+            </p>
           </div>
           <div className="owner-submit-grid">
             <span>
@@ -1857,13 +1608,15 @@ function ListingDetailView({
   isSaved,
   onBack,
   onToggleSaved,
-  onSubmitInquiry
+  onSubmitInquiry,
+  onViewInquiryCenter
 }: {
   listing: Listing;
   isSaved: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
-  onSubmitInquiry: (payload: { listingTitle: string; broker: string; message: string; visitTime: string }) => void;
+  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onViewInquiryCenter: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
   const [isInquirySheetOpen, setIsInquirySheetOpen] = useState(false);
@@ -1872,10 +1625,6 @@ function ListingDetailView({
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
-  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
-  const [inquiryMemo, setInquiryMemo] = useState("실매물 여부와 방문 가능한 시간을 확인하고 싶습니다.");
-  const [inquirySent, setInquirySent] = useState(false);
   const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
@@ -2408,120 +2157,153 @@ function ListingDetailView({
       ) : null}
 
       {isInquirySheetOpen ? (
-        <div className="inquiry-sheet-backdrop" role="presentation" onClick={() => setIsInquirySheetOpen(false)}>
-          <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
-            <div className="sheet-handle" aria-hidden="true" />
-            <header>
-              <div>
-                <span>문의하기</span>
-                <h2 id="inquiry-sheet-title">간편문의</h2>
-                <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
-              </div>
-              <button type="button" onClick={() => setIsInquirySheetOpen(false)} aria-label="문의 닫기">×</button>
-            </header>
-
-            <div className="inquiry-listing-summary">
-              <strong>{listing.price}</strong>
-              <span>{listing.title}</span>
-              <small>{listing.broker} · {listing.response}</small>
-            </div>
-
-            <div className="inquiry-message-group">
-              <strong>문의 내용 선택</strong>
-              <div className="inquiry-message-grid">
-                {[
-                  "아직 거래 가능한가요?",
-                  "오늘 방문 가능한가요?",
-                  "관리비 포함 내역 알려주세요",
-                  "3D 투어 먼저 보고 싶어요"
-                ].map((message) => (
-                  <button
-                    className={selectedInquiryMessage === message ? "active" : ""}
-                    type="button"
-                    key={message}
-                    onClick={() => {
-                      setSelectedInquiryMessage(message);
-                      setInquirySent(false);
-                    }}
-                  >
-                    {message}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="visit-time-group">
-              <strong>방문 희망 시간</strong>
-              <div>
-                {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
-                  <button
-                    className={selectedVisitTime === time ? "active" : ""}
-                    type="button"
-                    key={time}
-                    onClick={() => {
-                      setSelectedVisitTime(time);
-                      setInquirySent(false);
-                    }}
-                  >
-                    {time}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="inquiry-textarea">
-              <span>추가 메모</span>
-              <textarea value={inquiryMemo} onChange={(event) => {
-                setInquiryMemo(event.target.value);
-                setInquirySent(false);
-              }} />
-            </label>
-
-            <div className="inquiry-selected-summary" role="status">
-              <strong>선택한 문의</strong>
-              <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
-            </div>
-
-            <div className="inquiry-agent-row">
-              <span aria-hidden="true">✓</span>
-              <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
-            </div>
-
-            <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
-              <strong>허위매물 차단</strong>
-              <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
-            </div>
-
-            <div className="inquiry-sheet-actions">
-              <button type="button" onClick={() => setIsInquirySheetOpen(false)}>닫기</button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!inquirySent) {
-                    onSubmitInquiry({
-                      listingTitle: listing.title,
-                      broker: listing.broker,
-                      message: selectedInquiryMessage,
-                      visitTime: selectedVisitTime
-                    });
-                  }
-
-                  setInquirySent(true);
-                }}
-              >
-                문의 보내기
-              </button>
-            </div>
-
-            {inquirySent ? (
-              <p className="inquiry-submit-feedback" role="status">
-                문의가 접수됐습니다. 답변이 오면 문의센터와 마이페이지에서 확인할 수 있어요.
-              </p>
-            ) : null}
-          </section>
-        </div>
+        <InquirySheet
+          listing={listing}
+          onClose={() => setIsInquirySheetOpen(false)}
+          onSubmitInquiry={onSubmitInquiry}
+          onViewInquiryCenter={onViewInquiryCenter}
+        />
       ) : null}
     </section>
+  );
+}
+
+// 통합 문의 작성 sheet — 매물 상세 "문의하기", 홈 카드 "문자문의",
+// 문의 탭 "새 문의"가 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
+function InquirySheet({
+  listing,
+  onClose,
+  onSubmitInquiry,
+  onViewInquiryCenter
+}: {
+  listing: Listing;
+  onClose: () => void;
+  onSubmitInquiry: (payload: InquiryPayload) => void;
+  onViewInquiryCenter: () => void;
+}) {
+  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
+  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
+  const [inquiryMemo, setInquiryMemo] = useState("");
+  const [inquirySent, setInquirySent] = useState(false);
+
+  return (
+    <div className="inquiry-sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" aria-hidden="true" />
+        <header>
+          <div>
+            <span>문의하기</span>
+            <h2 id="inquiry-sheet-title">간편문의</h2>
+            <p>로그인하지 않아도 중개사에게 문자 문의를 남길 수 있습니다.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="문의 닫기">×</button>
+        </header>
+
+        <div className="inquiry-listing-summary">
+          <strong>{listing.price}</strong>
+          <span>{listing.title}</span>
+          <small>{listing.broker} · {listing.response}</small>
+        </div>
+
+        <div className="inquiry-message-group">
+          <strong>문의 내용 선택</strong>
+          <div className="inquiry-message-grid">
+            {[
+              "아직 거래 가능한가요?",
+              "오늘 방문 가능한가요?",
+              "관리비 포함 내역 알려주세요",
+              "3D 투어 먼저 보고 싶어요"
+            ].map((message) => (
+              <button
+                className={selectedInquiryMessage === message ? "active" : ""}
+                type="button"
+                key={message}
+                onClick={() => {
+                  setSelectedInquiryMessage(message);
+                  setInquirySent(false);
+                }}
+              >
+                {message}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="visit-time-group">
+          <strong>방문 희망 시간</strong>
+          <div>
+            {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
+              <button
+                className={selectedVisitTime === time ? "active" : ""}
+                type="button"
+                key={time}
+                onClick={() => {
+                  setSelectedVisitTime(time);
+                  setInquirySent(false);
+                }}
+              >
+                {time}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="inquiry-textarea">
+          <span>추가 메모</span>
+          <textarea
+            value={inquiryMemo}
+            placeholder="예: 실매물 여부와 방문 가능한 시간을 확인하고 싶습니다."
+            onChange={(event) => {
+              setInquiryMemo(event.target.value);
+              setInquirySent(false);
+            }}
+          />
+        </label>
+
+        <div className="inquiry-selected-summary" role="status">
+          <strong>선택한 문의</strong>
+          <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
+        </div>
+
+        <div className="inquiry-agent-row">
+          <span aria-hidden="true">✓</span>
+          <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
+        </div>
+
+        <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
+          <strong>허위매물 차단</strong>
+          <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
+        </div>
+
+        <div className="inquiry-sheet-actions">
+          <button type="button" onClick={onClose}>닫기</button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!inquirySent) {
+                onSubmitInquiry({
+                  listingTitle: listing.title,
+                  broker: listing.broker,
+                  message: selectedInquiryMessage,
+                  visitTime: selectedVisitTime
+                });
+              }
+
+              setInquirySent(true);
+            }}
+          >
+            문의 보내기
+          </button>
+        </div>
+
+        {inquirySent ? (
+          <div className="inquiry-submit-feedback" role="status">
+            <p>문의가 접수됐습니다. 답변이 오면 문의센터와 마이페이지에서 확인할 수 있어요.</p>
+            <button type="button" onClick={onViewInquiryCenter}>문의센터 보기</button>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -2587,13 +2369,12 @@ function SavedListingsSection({
 
 function InquiryHubSection({
   inquiries,
-  onBrowseListings
+  onNewInquiry
 }: {
   inquiries: InquiryItem[];
-  onBrowseListings: () => void;
+  onNewInquiry: () => void;
 }) {
   const pendingCount = inquiries.filter((item) => item.status === "답변 대기").length;
-  const [inquiryNotice, setInquiryNotice] = useState("최근 문의 상태가 여기에 표시됩니다.");
 
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
@@ -2602,13 +2383,8 @@ function InquiryHubSection({
           <h2 id="inquiry-title">문의센터</h2>
           <p>진행중 문의 {inquiries.length}건 · 답변 대기 {pendingCount}건</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setInquiryNotice("새 문의는 매물 상세에서 바로 보낼 수 있습니다.");
-            onBrowseListings();
-          }}
-        >
+        {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
+        <button type="button" onClick={onNewInquiry}>
           새 문의
         </button>
       </div>
@@ -2637,7 +2413,6 @@ function InquiryHubSection({
         ))}
       </div>
 
-      <p className="inquiry-notice" role="status">{inquiryNotice}</p>
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
         <div className="inquiry-channel-head">
@@ -2782,7 +2557,7 @@ function UserMyPage({
               <Link href="/tenant/defect/00">하자 접수</Link>
               <Link href="/tenant/payment/00">관리비</Link>
             </div>
-            <small>룸로그 화면은 세입자 로그인 후 이어집니다.</small>
+            <small>이 계정에 사는 집이 연결되면 이어집니다.</small>
           </article>
 
           <article className="my-roomlog-card">
@@ -2797,7 +2572,7 @@ function UserMyPage({
               <Link href="/manager/cost/00">비용 정산</Link>
               <Link href="/manager/messaging/00">메시지</Link>
             </div>
-            <small>관리 콘솔은 관리인 로그인 후 이어집니다.</small>
+            <small>이 계정에 관리 중인 집이 연결되면 이어집니다.</small>
           </article>
         </div>
       </section>
@@ -3117,7 +2892,7 @@ function TenantMyPage({
             퇴실 정산
           </Link>
         </div>
-        <small className="domain-test-note">룸로그 화면은 세입자 로그인 후 이어집니다.</small>
+        <small className="domain-test-note">이 계정에 사는 집이 연결되면 이어집니다.</small>
       </section>
 
       <section className="maintenance-card" aria-label="긴급 점검 일정">
@@ -3655,6 +3430,8 @@ export default function Home() {
   const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
   const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
   const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
+  // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
+  const [inquiryComposeListingNo, setInquiryComposeListingNo] = useState<string | null>(null);
   const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
   const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -3665,6 +3442,9 @@ export default function Home() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isRouteReady, setIsRouteReady] = useState(false);
   const [isDevRolePreview, setIsDevRolePreview] = useState(false);
+  // 집 내놓기 시작 모드(/?flow=listing) — 관리 콘솔 보호와 분리된 비보호 등록 진입.
+  // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
+  const [isListingStartMode, setIsListingStartMode] = useState(false);
   const isAuthHistoryPushedRef = useRef(false);
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
@@ -3680,14 +3460,11 @@ export default function Home() {
           : activeCategory === "투룸"
             ? listing.spec.includes("투룸") || listing.spec.includes("복층")
             : false;
-    const quickFilterMatches = activeQuickFilters.every((filter) => {
-      if (filter === "월세") {
-        return listing.price.includes("월세");
-      }
-
-      if (filter === "전세") {
-        return listing.price.includes("전세");
-      }
+    const dealTypeFilters = activeQuickFilters.filter((filter) => filter === "월세" || filter === "전세");
+    const optionFilters = activeQuickFilters.filter((filter) => filter !== "월세" && filter !== "전세");
+    const dealTypeMatches =
+      dealTypeFilters.length === 0 || dealTypeFilters.some((filter) => listing.price.includes(filter));
+    const optionMatches = optionFilters.every((filter) => {
 
       if (filter === "관리비 포함") {
         return listing.maintenanceFee !== "15만원";
@@ -3700,7 +3477,7 @@ export default function Home() {
       return listing.tags.includes(filter);
     });
 
-    return categoryMatches && quickFilterMatches;
+    return categoryMatches && dealTypeMatches && optionMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
@@ -3745,6 +3522,10 @@ export default function Home() {
     .map((listingNo) => listings.find((listing) => listing.listingNo === listingNo))
     .filter((listing): listing is Listing => Boolean(listing));
 
+  const inquiryComposeListing = inquiryComposeListingNo
+    ? listings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
+    : null;
+
   const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
 
   // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
@@ -3764,19 +3545,32 @@ export default function Home() {
     resetWindowScrollSoon();
   };
 
-  const submitInquiry = (payload: { listingTitle: string; broker: string; message: string; visitTime: string }) => {
+  const submitInquiry = (payload: InquiryPayload) => {
     const id = Date.now();
 
-    setInquiries((current) => [{ id, ...payload, status: "답변 대기" as InquiryStatus, time: "방금" }, ...current]);
+    // 새 문의는 문의센터 목록 맨 앞에 즉시 반영된다 (QA 7 회귀 방지 — lib/inquiry-flow 테스트로 고정).
+    setInquiries((current) => withNewInquiry(current, payload, id));
     window.setTimeout(() => {
       setInquiries((current) =>
-        current.map((item) =>
-          item.id === id
-            ? { ...item, status: "답변 완료" as InquiryStatus, reply: `네, 거래 가능합니다. ${payload.visitTime} 방문 괜찮습니다.` }
-            : item
-        )
+        withInquiryReply(current, id, `네, 거래 가능합니다. ${payload.visitTime} 방문 괜찮습니다.`)
       );
     }, 6000);
+  };
+
+  // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
+  // 홈 카드 "문자문의"와 문의 탭 "새 문의"가 모두 이 흐름을 쓴다 (QA 3·4·7).
+  const openInquiryComposer = (listing?: Listing) => {
+    if (listing) {
+      setInquiryComposeListingNo(listing.listingNo);
+      return;
+    }
+
+    const targetNo = pickInquiryTargetNo(
+      viewedListingNos,
+      visibleHomeListings.map((item) => item.listingNo)
+    ) ?? listings[0]?.listingNo;
+
+    if (targetNo) setInquiryComposeListingNo(targetNo);
   };
 
   const activateTab = (tab: AppTab) => {
@@ -3816,6 +3610,13 @@ export default function Home() {
   };
 
   const completeServiceAuth = (profile: ViewerProfile) => {
+    // 로그인 화면을 열 때 push한 히스토리 엔트리를 여기서도 소비한다 —
+    // 성공 후 뒤로가기가 로그인 화면으로 되돌아가지 않게 (closeAuthScreen과 동일 원칙, QA 5).
+    if (isAuthHistoryPushedRef.current) {
+      isAuthHistoryPushedRef.current = false;
+      window.history.back();
+    }
+
     const nextRole = appRoleForViewer(profile);
     setViewer(profile);
     setAuthMode(null);
@@ -3877,10 +3678,21 @@ export default function Home() {
     const auth = normalizeAuthMode(params.get("auth"));
     const role = normalizeAppRole(params.get("role"));
     const tab = normalizeAppTab(params.get("tab"));
+    const flow = params.get("flow");
 
     if (auth) {
       setAuthMode(auth);
       setSelectedListing(null);
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      resetWindowScrollSoon();
+    } else if (flow === "listing") {
+      // 집 내놓기 시작 — capability 가드를 타지 않는 등록 진입점.
+      // /login의 "관리 중인 집 연결 필요" CTA가 여기로 온다 (로그인 루프 방지, QA 2).
+      setActiveRole("landlord");
+      setActiveTab("mypage");
+      setIsListingStartMode(true);
+      setSelectedListing(null);
+      setAuthMode(null);
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
     } else if (role) {
@@ -3937,18 +3749,24 @@ export default function Home() {
     };
   }, []);
 
+  // 집 내놓기 시작 모드는 보호 대상에서 제외 — 등록 시작은 capability가 아니라
+  // 매물 등록 자체가 LANDLORD 관계를 만드는 진입점이다. 관리 콘솔(/manager/*)은 계속 서버 가드.
   const protectedConfig =
     activeTab === "mypage" && (activeRole === "tenant" || activeRole === "landlord")
-      ? protectedRoleConfig[activeRole]
+      ? activeRole === "landlord" && isListingStartMode
+        ? null
+        : protectedRoleConfig[activeRole]
       : null;
   const isProtectedRolePage = Boolean(protectedConfig);
   const canAccessProtectedRolePage =
-    !protectedConfig || isDevRolePreview || (viewer?.role === protectedConfig.sessionRole);
+    !protectedConfig ||
+    isDevRolePreview ||
+    (viewer ? hasCapability(viewer, protectedConfig.sessionRole) : false);
 
   useEffect(() => {
     if (!isRouteReady || !isAuthChecked || !protectedConfig || canAccessProtectedRolePage) return;
 
-    window.location.href = `${protectedConfig.loginPath}?redirectTo=${encodeURIComponent(protectedConfig.redirectTo)}`;
+    window.location.href = unifiedLoginPath(protectedConfig.intent, protectedConfig.redirectTo);
   }, [canAccessProtectedRolePage, isAuthChecked, isRouteReady, protectedConfig]);
 
   const logout = async () => {
@@ -3988,7 +3806,7 @@ export default function Home() {
 
   if (authMode) {
     return (
-      <LoginScreen
+      <WoozuLoginScreen
         mode={authMode}
         setActiveRole={startRoleSession}
         onAuthenticated={completeServiceAuth}
@@ -4002,7 +3820,7 @@ export default function Home() {
       <main className="app-canvas">
         <section className="auth-check-screen" aria-live="polite">
           <strong>로그인 확인 중</strong>
-          <span>세입자/임대인 페이지는 로그인 후 접속할 수 있습니다.</span>
+          <span>WOOZU 계정 로그인 후, 계정에 연결된 집 정보로 이어집니다.</span>
         </section>
       </main>
     );
@@ -4018,6 +3836,10 @@ export default function Home() {
             onBack={() => setSelectedListing(null)}
             onToggleSaved={toggleSavedListing}
             onSubmitInquiry={submitInquiry}
+            onViewInquiryCenter={() => {
+              setSelectedListing(null);
+              activateTab("inquiry");
+            }}
           />
         </div>
       </main>
@@ -4190,7 +4012,7 @@ export default function Home() {
                     </button>
                     <div className="listing-card-footer" aria-label={`${listing.title} 빠른 액션`}>
                       <button type="button" onClick={() => openListing(listing)}>상세 보기</button>
-                      <button type="button" onClick={() => activateTab("inquiry")}>문자문의</button>
+                      <button type="button" onClick={() => openInquiryComposer(listing)}>문자문의</button>
                       <button type="button" onClick={() => openListing(listing)}>3D 보기</button>
                     </div>
                     <button
@@ -4625,7 +4447,7 @@ export default function Home() {
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection inquiries={inquiries} onBrowseListings={() => activateTab("home")} />
+          <InquiryHubSection inquiries={inquiries} onNewInquiry={() => openInquiryComposer()} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
           <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
@@ -4703,6 +4525,17 @@ export default function Home() {
           isOpen={isNotificationSheetOpen}
           onClose={() => setIsNotificationSheetOpen(false)}
         />
+        {inquiryComposeListing ? (
+          <InquirySheet
+            listing={inquiryComposeListing}
+            onClose={() => setInquiryComposeListingNo(null)}
+            onSubmitInquiry={submitInquiry}
+            onViewInquiryCenter={() => {
+              setInquiryComposeListingNo(null);
+              activateTab("inquiry");
+            }}
+          />
+        ) : null}
       </div>
     </main>
   );

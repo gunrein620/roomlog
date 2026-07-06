@@ -123,6 +123,7 @@ export interface AnnouncementDelivery {
  */
 export interface AnnouncementResult {
   announcementId: string;
+  draftId: string;
   category: AnnouncementCategory;
   scope: AnnouncementScope;
   title: string;

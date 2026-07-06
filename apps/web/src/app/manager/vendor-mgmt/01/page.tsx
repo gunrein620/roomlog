@@ -26,7 +26,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const { vendor, jobs, perf } = await getVendorDetail(id);
 
   return (
-    <ManagerShell title="업체 상세" context="M-VEND-01 · 관리인 전용" nav={<ManagerVendorMgmtNav />}>
+    <ManagerShell title="업체 상세" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-01"

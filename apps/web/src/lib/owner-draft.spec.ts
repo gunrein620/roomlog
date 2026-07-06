@@ -1,0 +1,75 @@
+import { describe, it } from "node:test";
+import { strict as assert } from "node:assert";
+import {
+  emptyOwnerForm,
+  formatDraftSavedAt,
+  initialOwnerListings,
+  parseOwnerDraft,
+  serializeOwnerDraft
+} from "./owner-draft";
+
+const sampleState = {
+  ownerForm: { ...emptyOwnerForm, title: "성수 아뜰리에 501호", deposit: "2000", monthly: "90" },
+  photoCount: 4,
+  has3DRoom: true,
+  registrationStatus: "검수 대기",
+  myListings: [
+    { id: 1749990000000, title: "성수 아뜰리에 501호", price: "월세 2000/90", status: "검수 대기", caption: "실매물 확인 후 노출됩니다" },
+    ...initialOwnerListings
+  ]
+};
+
+describe("owner listing draft persistence", () => {
+  it("round-trips the registration state through serialize/parse", () => {
+    // QA 8 회귀 방지: 새로고침 후에도 작성 중 폼과 제출된 매물이 복원돼야 한다.
+    const raw = serializeOwnerDraft(sampleState, "2026-07-05T12:34:56.000Z");
+    const restored = parseOwnerDraft(raw);
+
+    assert.ok(restored);
+    assert.equal(restored.savedAt, "2026-07-05T12:34:56.000Z");
+    assert.equal(restored.ownerForm.title, "성수 아뜰리에 501호");
+    assert.equal(restored.photoCount, 4);
+    assert.equal(restored.has3DRoom, true);
+    assert.equal(restored.registrationStatus, "검수 대기");
+    assert.equal(restored.myListings.length, 2);
+    assert.equal(restored.myListings[0].title, "성수 아뜰리에 501호");
+  });
+
+  it("rejects unknown versions and corrupted payloads", () => {
+    assert.equal(parseOwnerDraft(null), null);
+    assert.equal(parseOwnerDraft("not-json"), null);
+    assert.equal(parseOwnerDraft(JSON.stringify({ version: 2 })), null);
+    assert.equal(
+      parseOwnerDraft(JSON.stringify({ version: 1, savedAt: "x", photoCount: "4" })),
+      null
+    );
+  });
+
+  it("drops malformed listings and deduplicates by id", () => {
+    const raw = serializeOwnerDraft({
+      ...sampleState,
+      myListings: [
+        ...sampleState.myListings,
+        ...sampleState.myListings,
+        { id: "bad" } as unknown as (typeof sampleState.myListings)[number]
+      ]
+    });
+    const restored = parseOwnerDraft(raw);
+
+    assert.ok(restored);
+    // 같은 매물이 새로고침마다 불어나지 않는다 — id 기준 중복 제거.
+    assert.equal(restored.myListings.length, 2);
+  });
+
+  it("starts user-editable fields empty (no fake prefilled values)", () => {
+    assert.equal(emptyOwnerForm.title, "");
+    assert.equal(emptyOwnerForm.address, "");
+    assert.equal(emptyOwnerForm.deposit, "");
+    assert.equal(emptyOwnerForm.tradeType, "월세");
+  });
+
+  it("formats the saved-at time and tolerates bad input", () => {
+    assert.notEqual(formatDraftSavedAt("2026-07-05T12:34:56.000Z"), "");
+    assert.equal(formatDraftSavedAt("garbage"), "");
+  });
+});

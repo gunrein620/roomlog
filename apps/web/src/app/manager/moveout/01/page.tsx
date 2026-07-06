@@ -5,7 +5,6 @@ import { adjustWearVerdict, getMoveout, getRecords, getReportAudit } from "@/lib
 import { DEMO_MOVEOUT_ID } from "@/lib/demo-moveout";
 import { MANAGER_MOVEOUT_ROUTES } from "@/lib/moveout-manager-nav";
 import {
-  DisabledButton,
   LinkButton,
   NoticeBanner,
   PageStack,
@@ -24,6 +23,10 @@ import {
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
+
+function reportExportHref(format: "pdf" | "csv", moveoutId: string) {
+  return `/manager/moveout/01/export?id=${encodeURIComponent(moveoutId)}&format=${format}`;
+}
 
 async function adjustWearVerdictAction(formData: FormData) {
   "use server";
@@ -164,8 +167,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       </Section>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-        <DisabledButton>PDF 내보내기</DisabledButton>
-        <DisabledButton>Excel 내보내기</DisabledButton>
+        <LinkButton href={reportExportHref("pdf", moveoutId)} variant="secondary">PDF 내보내기</LinkButton>
+        <LinkButton href={reportExportHref("csv", moveoutId)} variant="secondary">Excel 내보내기</LinkButton>
         <LinkButton href={`${MANAGER_MOVEOUT_ROUTES["M-OUT-03"]}?id=${moveoutId}`} variant="secondary">이의 확인</LinkButton>
         <LinkButton href={`${MANAGER_MOVEOUT_ROUTES["M-OUT-02"]}?id=${moveoutId}`}>예상 정산안 검토</LinkButton>
       </div>
