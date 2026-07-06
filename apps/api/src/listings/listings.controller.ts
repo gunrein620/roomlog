@@ -1,38 +1,40 @@
-import { Controller, Get, NotFoundException, Param, Query } from "@nestjs/common";
-import { LISTINGS, findListing, type PropertyKind, type TradeType } from "./listings.data";
+import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import type { PropertyKind, TradeType } from "./listings.data";
+import { ListingsService } from "./listings.service";
 
 @Controller("listings")
 export class ListingsController {
+  constructor(private readonly listingsService: ListingsService) {}
+
   @Get()
   list(
     @Query("kind") kind?: PropertyKind,
     @Query("tradeType") tradeType?: TradeType,
     @Query("lawdCd") lawdCd?: string,
-    @Query("petsAllowed") petsAllowed?: string
+    @Query("petsAllowed") petsAllowed?: string,
+    @Query("ownerId") ownerId?: string,
+    @Query("ownerEmail") ownerEmail?: string
   ) {
-    return LISTINGS.filter((listing) => {
-      if (kind && listing.kind !== kind) {
-        return false;
-      }
-      if (tradeType && listing.tradeType !== tradeType) {
-        return false;
-      }
-      if (lawdCd && listing.lawdCd !== lawdCd) {
-        return false;
-      }
-      if (petsAllowed === "true" && !listing.petsAllowed) {
-        return false;
-      }
-      return true;
-    });
+    return this.listingsService.list({ kind, tradeType, lawdCd, petsAllowed, ownerId, ownerEmail });
+  }
+
+  @Get("me")
+  mine(@Query("ownerId") ownerId?: string, @Query("ownerEmail") ownerEmail?: string) {
+    return this.listingsService.mine({ ownerId, ownerEmail });
+  }
+
+  @Post()
+  create(@Body() payload: Record<string, unknown>) {
+    return this.listingsService.create(payload);
+  }
+
+  @Patch(":id")
+  update(@Param("id") id: string, @Body() payload: Record<string, unknown>) {
+    return this.listingsService.update(id, payload);
   }
 
   @Get(":id")
   detail(@Param("id") id: string) {
-    const listing = findListing(id);
-    if (!listing) {
-      throw new NotFoundException(`Listing ${id} not found`);
-    }
-    return listing;
+    return this.listingsService.detail(id);
   }
 }
