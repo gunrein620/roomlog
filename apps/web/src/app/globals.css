@@ -7477,13 +7477,62 @@ p {
   line-height: 1.1;
 }
 
+/* 캔버스가 주인공 — 좌우 레일 없이 한 열로 두고 맵을 최대 폭으로 쓴다 */
 .floor-plan-editor {
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
-  max-width: 1180px;
+  max-width: 1380px;
   min-height: calc(100vh - 98px);
   margin: 16px auto 0;
+}
+
+.floor-plan-stage-wrap {
+  position: relative;
+}
+
+/* 지도 앱처럼 캔버스 위에 떠 있는 아이콘 도구 팔레트 */
+.floor-plan-float-tools {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 12;
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid rgba(18, 24, 40, 0.08);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 30px rgba(18, 24, 40, 0.16);
+  backdrop-filter: blur(6px);
+}
+
+.floor-plan-float-tools button {
+  display: grid;
+  width: 58px;
+  gap: 3px;
+  justify-items: center;
+  padding: 8px 2px 7px;
+  border-radius: 11px;
+  background: transparent;
+  color: #465064;
+  font-weight: 900;
+}
+
+.floor-plan-float-tools button span {
+  font-size: 0.6rem;
+  line-height: 1.15;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.floor-plan-float-tools button:hover {
+  background: #eef2fb;
+}
+
+.floor-plan-float-tools button.active {
+  background: var(--blue);
+  color: #ffffff;
 }
 
 .floor-plan-toolbar,
@@ -7555,6 +7604,14 @@ p {
   padding: 14px;
 }
 
+.floor-plan-canvas > .floor-plan-stage-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.floor-plan-stage-wrap > .floor-plan-canvas-stage,
+.floor-plan-stage-wrap > .floor-plan-3d-preview,
 .floor-plan-canvas > .floor-plan-canvas-stage,
 .floor-plan-canvas > .floor-plan-3d-preview {
   flex: 1 1 auto;
@@ -7793,7 +7850,9 @@ p {
 .floor-3d-hint {
   position: absolute;
   top: 18px;
-  left: 18px;
+  /* 플로팅 도구 팔레트(좌측)와 겹치지 않게 오른쪽에 둔다 */
+  right: 18px;
+  left: auto;
   fill: rgba(255, 255, 255, 0.86);
   color: rgba(255, 255, 255, 0.86);
   font-size: 18px;
@@ -7889,6 +7948,25 @@ p {
   align-content: start;
   gap: 16px;
   padding: 18px;
+}
+
+/* 도면 요약은 캔버스 아래 가로 배치 — 지표들이 한 줄 카드로 흘러 가독성이 좋아진다 */
+.floor-plan-bottompanel dl {
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+}
+
+.floor-plan-bottompanel dl div {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 14px;
+}
+
+.floor-plan-bottompanel a {
+  justify-self: end;
+  min-width: 180px;
 }
 
 .floor-plan-sidepanel > div {
@@ -8202,8 +8280,8 @@ p {
     grid-column: 1 / -1;
   }
 
-  .floor-plan-canvas > .floor-plan-canvas-stage,
-  .floor-plan-canvas > .floor-plan-3d-preview {
+  .floor-plan-canvas .floor-plan-canvas-stage,
+  .floor-plan-canvas .floor-plan-3d-preview {
     min-height: 360px;
   }
 

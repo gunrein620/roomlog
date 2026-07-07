@@ -1452,8 +1452,7 @@ test("switches between landlord authoring and resident furniture placement modes
     "experienceMode",
     "landlord",
     "resident",
-    "집주인 모드",
-    // UX 정리에서 라벨을 "세입자 모드"로 간결화 — 스펙을 현재 문구에 맞춘다.
+    // 모드 스위치 UI는 제거됐지만(도구는 캔버스 플로팅 툴바로 이동) 세입자 잠금 분기 코드는 유지된다.
     "세입자 모드",
     "임대인 옵션 가구",
     "wheretoput furniture picker",
