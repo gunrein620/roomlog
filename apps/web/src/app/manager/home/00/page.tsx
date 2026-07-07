@@ -1,103 +1,75 @@
 import Link from "next/link";
-import { Badge, Card, ManagerShell } from "@roomlog/ui";
-import { getManagerHomeSummary } from "@/lib/manager-home-api";
+import { ManagerShell } from "@roomlog/ui";
+import { getUser } from "@/lib/session";
+import { serverFetch } from "@/lib/server-api";
+import { listManagerTickets } from "@/lib/ticket-manager-api";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
+import ManagerHomeTabs, { type ManagerListingRow, type ManagerTicketRow } from "./ManagerHomeTabs";
+
+// 관리 중인 집 홈 — "오늘 할 일/첫 건물/KPI 셸" 대신 실데이터 4탭:
+// 올려놓은 매물(미계약) · 계약중인 집(플로우 준비 중) · 민원/하자 · AI 관리자(준비 중).
+
+type TradeListing = {
+  id: string;
+  ownerId: string;
+  title: string;
+  location: string;
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  images?: string[];
+  floorPlan?: unknown;
+};
+
+function priceLabel(listing: TradeListing): string {
+  const deposit = (listing.depositManwon || 0).toLocaleString("ko-KR");
+  if (listing.tradeType === "월세") return `월세 ${deposit}/${listing.monthlyRentManwon || 0}`;
+  return `${listing.tradeType} ${deposit}만`;
+}
+
+const ticketStatusLabels: Record<string, string> = {
+  received: "접수",
+  reviewing: "검토중",
+  info_requested: "정보 요청",
+  processing: "처리 중",
+  resolved: "완료",
+  reopened: "재요청",
+  cancelled: "취소됨"
+};
 
 export default async function Page() {
-  const summary = await getManagerHomeSummary();
-  const hasKpi = Object.values(summary.kpi).some((value) => value !== null && value !== 0);
-  const kpis = [
-    { label: "입주율", value: summary.kpi.occupancyRate === null ? "확인 중" : `${summary.kpi.occupancyRate}%` },
-    { label: "이번 달 수납률", value: summary.kpi.collectionRate === null ? "확인 중" : `${summary.kpi.collectionRate}%` },
-    { label: "미납 금액", value: `${summary.kpi.overdueAmount.toLocaleString("ko-KR")}원` },
-    { label: "긴급민원", value: `${summary.kpi.urgentTickets}건` },
-  ];
+  const user = await getUser();
+
+  let listings: ManagerListingRow[] = [];
+  try {
+    const all = await serverFetch<TradeListing[]>("/trade/listings");
+    listings = all
+      .filter((listing) => listing.ownerId === user?.userId)
+      .map((listing) => ({
+        id: listing.id,
+        title: listing.title,
+        location: listing.location,
+        priceLabel: priceLabel(listing),
+        photoCount: listing.images?.length ?? 0,
+        has3D: Boolean(listing.floorPlan)
+      }));
+  } catch {
+    // 목록 API 일시 오류 — 빈 목록으로 렌더(위조 금지)
+  }
+
+  const tickets: ManagerTicketRow[] = (await listManagerTickets())
+    .filter((ticket) => ticket.status !== "resolved" && ticket.status !== "cancelled")
+    .map((ticket) => ({
+      id: ticket.id,
+      title: ticket.title,
+      unitId: ticket.unitId,
+      statusLabel: ticketStatusLabels[ticket.status] ?? ticket.status,
+      urgent: ticket.urgency <= 1
+    }));
 
   return (
-    <ManagerShell title={`${summary.managerName} 자산현황 대시보드`} context="관리 중인 집 · 대시보드" nav={<HomeNav active="home" />}>
-      <div style={{ display: "grid", gap: "var(--space-xl)" }}>
-        <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-xl)", alignItems: "center", background: "var(--surface-container-high)" }}>
-          <div>
-            <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-              <Badge>{summary.managerName}</Badge>
-              {summary.managedRoomCount > 0 ? <Badge>관리 호실 {summary.managedRoomCount}개</Badge> : null}
-            </div>
-            <h1 style={{ margin: "var(--space-md) 0 var(--space-sm)", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
-              오늘 할 일 {summary.todoCount}건
-            </h1>
-            <p style={{ margin: 0, color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-              {summary.managerName}님에게 배정된 호실과 티켓 기준으로만 요약합니다.
-            </p>
-          </div>
-          <LinkButton href={MHOME_ROUTES["M-HOME-01"]} primary>
-            오늘 할 일 열기
-          </LinkButton>
-        </Card>
-
-        {hasKpi ? (
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "var(--space-md)" }}>
-            {kpis.map((kpi) => (
-              <Link key={kpi.label} href={kpi.label.includes("수납") || kpi.label.includes("미납") ? MANAGER_CROSS.billing : MHOME_ROUTES["M-HOME-03"]} style={linkReset}>
-                <Card style={{ minHeight: 116 }}>
-                  <div style={captionStyle}>{kpi.label}</div>
-                  <div style={{ marginTop: "var(--space-md)", fontSize: "var(--fs-title)", fontWeight: 800 }}>{kpi.value}</div>
-                </Card>
-              </Link>
-            ))}
-          </section>
-        ) : (
-          <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-lg)", alignItems: "center", border: "1.5px dashed var(--outline-variant)" }}>
-            <div>
-              <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: 800 }}>첫 건물을 등록하세요</div>
-              <div style={{ marginTop: "var(--space-xs)", color: "var(--on-surface-variant)" }}>
-                아직 단일 산식으로 보여줄 KPI가 없어 0%를 표시하지 않습니다.
-              </div>
-            </div>
-            <LinkButton href={MHOME_ROUTES["M-HOME-05"]}>첫 건물 등록</LinkButton>
-          </Card>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "var(--space-lg)" }}>
-          <Card>
-            <SectionHeader title="건물 요약" href={MHOME_ROUTES["M-HOME-03"]} action="전체 건물 관리" />
-            {/* 데모 건물 목록 대신 세션 계정의 실제 관리 중인 집만 보여준다(매물 등록이 만든 연결 포함). */}
-            <div style={{ display: "grid", gap: "var(--space-sm)", marginTop: "var(--space-md)" }}>
-              {summary.managedRooms.length === 0 ? (
-                <div style={{ padding: "var(--space-lg) 0", color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-                  아직 관리 중인 집이 없습니다. 매물을 등록하면 이 계정에 관리 중인 집이 연결됩니다.
-                </div>
-              ) : (
-                summary.managedRooms.map((room) => (
-                  <Link key={room.id} href={MHOME_ROUTES["M-HOME-03"]} style={linkReset}>
-                    <div style={rowStyle}>
-                      <div>
-                        <div style={{ fontWeight: 800 }}>{room.buildingName}</div>
-                        <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>{room.address}</div>
-                      </div>
-                      <Badge>관리 중</Badge>
-                      <span style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
-                        {room.roomNo.endsWith("호") ? room.roomNo : `${room.roomNo}호`}
-                      </span>
-                    </div>
-                  </Link>
-                ))
-              )}
-            </div>
-          </Card>
-
-          <Card>
-            <SectionHeader title="임대 현황 리포트" href={MHOME_ROUTES["M-HOME-02"]} action="리포트 보기" />
-            <div style={{ marginTop: "var(--space-lg)", display: "grid", gap: "var(--space-sm)" }}>
-              {["실수납 추이", "공실·입주 비율", "수리비·비용"].map((label, index) => (
-                <div key={label} style={{ display: "grid", gridTemplateColumns: `${48 + index * 18}% 1fr`, gap: "var(--space-sm)", alignItems: "center" }}>
-                  <div style={{ height: 28, borderRadius: "var(--radius-sm)", background: "var(--surface-container-highest)" }} />
-                  <span style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)" }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      </div>
+    <ManagerShell title={`${user?.name ?? "관리인"} 자산현황 대시보드`} context="관리 중인 집 · 대시보드" nav={<HomeNav active="home" />}>
+      <ManagerHomeTabs listings={listings} tickets={tickets} ticketHubHref={MANAGER_CROSS.ticketDash} />
     </ManagerShell>
   );
 }
@@ -121,24 +93,4 @@ function HomeNav({ active }: { active: "home" | "settings" }) {
   );
 }
 
-function LinkButton({ href, primary, children }: { href: string; primary?: boolean; children: React.ReactNode }) {
-  return (
-    <Link href={href} style={{ minHeight: "var(--touch-target)", padding: "0 var(--space-lg)", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-btn)", background: primary ? "var(--primary)" : "transparent", color: primary ? "var(--on-primary)" : "var(--primary)", border: primary ? "none" : "1.5px solid var(--primary)", textDecoration: "none", fontWeight: 800 }}>
-      {children}
-    </Link>
-  );
-}
-
-function SectionHeader({ title, href, action }: { title: string; href: string; action: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center" }}>
-      <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: 800 }}>{title}</div>
-      <Link href={href} style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>{action}</Link>
-    </div>
-  );
-}
-
-const linkReset = { color: "inherit", textDecoration: "none" } as const;
-const captionStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", fontWeight: 700 } as const;
-const rowStyle = { minHeight: 68, display: "grid", gridTemplateColumns: "1fr auto auto", gap: "var(--space-md)", alignItems: "center", borderBottom: "1px solid var(--border)" } as const;
 const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800 } as const;
