@@ -220,6 +220,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
         cameraPosition={[9, 7.5, 11]}
         frameloop="always"
         furnitureData={placedFurnitures}
+        furnitureVerticalScale={TOUR_HORIZONTAL_SCALE}
         hideHint
         horizontalScale={TOUR_HORIZONTAL_SCALE}
         orbitMinDistance={1.6}
