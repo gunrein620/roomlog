@@ -858,7 +858,8 @@ export default function RoomlogFloorPlanEditor() {
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
   const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
-  // 문창문/설비 후보 드래그 — 누른 뒤 움직이면 이동/크기조절, 그대로 떼면 확정/거절 토글(클릭과 드래그 구분).
+  // 문창문/설비 후보 조작 — 일반 클릭은 선택만 하고, 움직이면 이동/크기조절한다.
+  // 확정/거절은 후보 목록·일괄 처리 버튼에서만 수행하며, 문창문 Alt+클릭은 타입만 전환한다.
   const [candidateDragOperation, setCandidateDragOperation] = useState<{
     axis: "horizontal" | "vertical";
     candidateId: string;
@@ -868,7 +869,6 @@ export default function RoomlogFloorPlanEditor() {
     originPoint: Point;
     originalBox: { height: number; width: number } | null;
     originalPosition: Point;
-    shiftKey: boolean;
   } | null>(null);
   // Delete 키 삭제 대상 — 문창문/설비 도구에서 마지막으로 잡은(누른) 후보. 캔버스에 파란 링으로 표시.
   const [selectedCandidate, setSelectedCandidate] = useState<{ id: string; layer: "opening" | "fixture" } | null>(null);
@@ -897,11 +897,11 @@ export default function RoomlogFloorPlanEditor() {
   const visibleWalls = useMemo(() => walls.filter((wall) => !hiddenWallIds.has(String(wall.id))), [hiddenWallIds, walls]);
   // 디버그 표시용이지만 확정된 축척을 넘겨 실치수와 일치시킨다(기본값 10mm/px 고정 방지).
   const wheretoputWalls = useMemo(
-    () => convertWallsToWheretoputSimulator(walls as never, { pixelToMeterRatio: pixelToMmRatio / 1000 }) as WheretoputWall3D[],
+    () => convertWallsToWheretoputSimulator(walls, { pixelToMeterRatio: pixelToMmRatio / 1000 }) as WheretoputWall3D[],
     [pixelToMmRatio, walls]
   );
   const roomWalls3D = useMemo(
-    () => convertWallsToWheretoputRoom3D(visibleWalls as never, { pixelToMmRatio }) as WheretoputWall3D[],
+    () => convertWallsToWheretoputRoom3D(visibleWalls, { pixelToMmRatio }) as WheretoputWall3D[],
     [pixelToMmRatio, visibleWalls]
   );
   // 전체 벽 외곽 크기(mm) — 축척이 실제 도면과 맞는지 한눈에 비교용.
@@ -2054,7 +2054,7 @@ export default function RoomlogFloorPlanEditor() {
   function findClosestWall(point: Point, maxDistance: number) {
     return walls.reduce<{ distance: number; wall: Wall | null }>(
       (closest, wall) => {
-        const distance = distanceToWall(point, wall as never);
+        const distance = distanceToWall(point, wall);
         return distance < closest.distance && distance < maxDistance ? { distance, wall } : closest;
       },
       { distance: Infinity, wall: null }
@@ -2067,7 +2067,7 @@ export default function RoomlogFloorPlanEditor() {
     let best: { surfaceDistance: number; wall: Wall } | null = null;
     for (const wall of walls) {
       const thickness = Math.max(8, wallGeometryOf(wall).thickness);
-      const surfaceDistance = distanceToWall(point, wall as never) - thickness / 2;
+      const surfaceDistance = distanceToWall(point, wall) - thickness / 2;
       if (surfaceDistance <= margin && (!best || surfaceDistance < best.surfaceDistance)) {
         best = { surfaceDistance, wall };
       }
@@ -2108,7 +2108,7 @@ export default function RoomlogFloorPlanEditor() {
     let nextWall: Wall;
 
     if (operation.mode === "move") {
-      nextWall = moveWall(original as never, {
+      nextWall = moveWall(original, {
         x: point.x - operation.originPoint.x,
         y: point.y - operation.originPoint.y
       }) as Wall;
@@ -2492,7 +2492,8 @@ export default function RoomlogFloorPlanEditor() {
         toggleOpeningCandidateType(hit.candidate.id);
         return;
       }
-      // 바로 토글하지 않고 드래그 후보로 잡는다 — 떼는 시점에 클릭(토글)/드래그(이동·크기조절)를 가른다.
+      // 일반 클릭은 선택만 유지한다. 움직이면 드래그 후보로 승격되어 이동·크기조절하고,
+      // 확정/거절은 후보 목록·일괄 처리 버튼으로만 한다. Alt+클릭은 위에서 타입 전환 후 종료된다.
       setCandidateDragOperation({
         axis: hit.axis,
         candidateId: hit.candidate.id,
@@ -2501,8 +2502,7 @@ export default function RoomlogFloorPlanEditor() {
         moved: false,
         originPoint: coords,
         originalBox: hit.candidate.boxPx ? { ...hit.candidate.boxPx } : null,
-        originalPosition: hit.candidate.position ?? { x: 0, y: 0 },
-        shiftKey: event.shiftKey
+        originalPosition: hit.candidate.position ?? { x: 0, y: 0 }
       });
       return;
     }
@@ -2519,8 +2519,7 @@ export default function RoomlogFloorPlanEditor() {
           moved: false,
           originPoint: coords,
           originalBox: null,
-          originalPosition: closestCandidate.position ?? { x: 0, y: 0 },
-          shiftKey: event.shiftKey
+          originalPosition: closestCandidate.position ?? { x: 0, y: 0 }
         });
       }
       return;
@@ -2590,7 +2589,9 @@ export default function RoomlogFloorPlanEditor() {
       const originalCenter = horizontal ? originalPosition.x : originalPosition.y;
       const cross = horizontal ? originalPosition.y : originalPosition.x;
       const fixedEdge = originalCenter - sign * (originalLength / 2);
-      const snapTarget = findWallEdgeSnapTarget(horizontal, cross, fixedEdge + sign * nextLength);
+      const snapTarget = findWallEdgeSnapTarget(horizontal, cross, fixedEdge + sign * nextLength, {
+        snapToOpeningsExcludingId: candidateDragOperation.candidateId
+      });
       if (snapTarget !== null && Math.abs(snapTarget - fixedEdge) >= 8) {
         nextLength = Math.abs(snapTarget - fixedEdge);
       }
@@ -2652,7 +2653,7 @@ export default function RoomlogFloorPlanEditor() {
             // 이웃 벽 끝점·옆벽 면이 가까우면 길이를 유지한 채 끝을 거기 붙인다.
             const geometry = snappedOpeningGeometryOnWall(current.position, current.boxPx);
             if (geometry) {
-              setCandidateGeometry("opening", candidateDragOperation.candidateId, slideOpeningEdgesToSnap(geometry));
+              setCandidateGeometry("opening", candidateDragOperation.candidateId, slideOpeningEdgesToSnap(geometry, candidateDragOperation.candidateId));
               snappedToWall = true;
             } else {
               // 벽 몸통 포착에 실패해도(벽이 끊긴 틈 위 등) 끝 정렬 자석은 따로 시도한다 —
@@ -2667,7 +2668,7 @@ export default function RoomlogFloorPlanEditor() {
                   : horizontal
                     ? { x: current.position.x, y: crossTarget }
                     : { x: crossTarget, y: current.position.y };
-              const slid = slideOpeningEdgesToSnap({ boxPx: current.boxPx, horizontal, position: alignedPosition });
+              const slid = slideOpeningEdgesToSnap({ boxPx: current.boxPx, horizontal, position: alignedPosition }, candidateDragOperation.candidateId);
               if (slid.position.x !== current.position.x || slid.position.y !== current.position.y) {
                 setCandidateGeometry("opening", candidateDragOperation.candidateId, slid);
                 snappedToWall = true;
@@ -2684,7 +2685,9 @@ export default function RoomlogFloorPlanEditor() {
             const movingSign = candidateDragOperation.mode === "resize-end" ? 1 : -1;
             const movingEdge = center + movingSign * half;
             const fixedEdge = center - movingSign * half;
-            const bestTarget = findWallEdgeSnapTarget(horizontal, cross, movingEdge);
+            const bestTarget = findWallEdgeSnapTarget(horizontal, cross, movingEdge, {
+              snapToOpeningsExcludingId: candidateDragOperation.candidateId
+            });
             if (bestTarget !== null && Math.abs(bestTarget - fixedEdge) >= 8) {
               const nextLength = Math.abs(bestTarget - fixedEdge);
               const nextCenter = (bestTarget + fixedEdge) / 2;
@@ -2704,12 +2707,6 @@ export default function RoomlogFloorPlanEditor() {
             : snappedToWall
               ? "벽에 맞춰 배치됨"
               : "후보 위치 이동됨"
-        );
-      } else {
-        toggleCandidateStatus(
-          candidateDragOperation.layer,
-          candidateDragOperation.candidateId,
-          candidateDragOperation.shiftKey ? "REJECTED" : "CONFIRMED"
         );
       }
       setCandidateDragOperation(null);
@@ -3465,7 +3462,7 @@ export default function RoomlogFloorPlanEditor() {
     }
     // 다른 경계로 잘못 당기지 않게, 허용 오차를 경계 최소 간격의 45% 이하로 제한한다.
     const tolerancePx = getStructuralBoundaryTolerancePx(boundaries);
-    const { movedCount, walls: corrected } = snapWallsToStructuralBoundaries(walls as never[], boundaries, tolerancePx) as {
+    const { movedCount, walls: corrected } = snapWallsToStructuralBoundaries(walls, boundaries, tolerancePx) as {
       movedCount: number;
       walls: Wall[];
     };
@@ -3491,11 +3488,11 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     const tolerancePx = getStructuralBoundaryTolerancePx(boundaries);
-    const snapped = snapWallsToStructuralBoundaries(walls as never[], boundaries, tolerancePx) as {
+    const snapped = snapWallsToStructuralBoundaries(walls, boundaries, tolerancePx) as {
       movedCount: number;
       walls: Wall[];
     };
-    const inferred = inferMissingWallsFromStructuralBoundaries(snapped.walls as never[], boundaries, tolerancePx, {
+    const inferred = inferMissingWallsFromStructuralBoundaries(snapped.walls, boundaries, tolerancePx, {
       minWallLengthPx: 45
     }) as { createdCount: number; createdWalls: Wall[]; walls: Wall[] };
 
@@ -3657,7 +3654,7 @@ export default function RoomlogFloorPlanEditor() {
             if (wallHorizontal !== boxHorizontal) continue;
           }
           const thickness = Math.max(8, Number(candidateWall.thicknessPx ?? candidateWall.depthPx ?? 0) || 12);
-          const surfaceDistance = distanceToWall(probe, candidateWall as never) - thickness / 2;
+          const surfaceDistance = distanceToWall(probe, candidateWall) - thickness / 2;
           if (surfaceDistance <= surfaceMargin && surfaceDistance < bestSurfaceDistance) {
             bestSurfaceDistance = surfaceDistance;
             best = candidateWall;
@@ -3683,7 +3680,10 @@ export default function RoomlogFloorPlanEditor() {
   // (리사이즈 핸들뿐 아니라 통째로 옮길 때도 벽에 '착' 붙게.)
   // 축은 박스 모양으로 추측하지 않는다 — 문 박스는 거의 정사각형(문+회전 호)이라 추측이 틀리기
   // 쉬우므로, 끼워진 벽의 방향(horizontal)을 그대로 받아 그 축으로만 미끄러뜨린다.
-  function slideOpeningEdgesToSnap(geometry: { boxPx: { height: number; width: number }; horizontal?: boolean; position: Point }) {
+  function slideOpeningEdgesToSnap(
+    geometry: { boxPx: { height: number; width: number }; horizontal?: boolean; position: Point },
+    excludeCandidateId?: string
+  ) {
     const horizontal = geometry.horizontal ?? geometry.boxPx.width >= geometry.boxPx.height;
     const length = horizontal ? geometry.boxPx.width : geometry.boxPx.height;
     const center = horizontal ? geometry.position.x : geometry.position.y;
@@ -3691,7 +3691,7 @@ export default function RoomlogFloorPlanEditor() {
     let bestShift: number | null = null;
     for (const sign of [-1, 1] as const) {
       const edge = center + sign * (length / 2);
-      const target = findWallEdgeSnapTarget(horizontal, cross, edge);
+      const target = findWallEdgeSnapTarget(horizontal, cross, edge, { snapToOpeningsExcludingId: excludeCandidateId });
       if (target === null) continue;
       const shift = target - edge;
       if (bestShift === null || Math.abs(shift) < Math.abs(bestShift)) bestShift = shift;
