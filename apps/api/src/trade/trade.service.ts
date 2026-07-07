@@ -61,9 +61,33 @@ export type TradeListing = Omit<TradeListingInput, "images"> & {
   id: string;
   ownerId: string;
   ownerName: string;
-  status: "노출중";
+  status: "노출중" | "계약완료";
   createdAt: string;
   images: string[];
+};
+
+/**
+ * 계약 — 채팅 스레드에서 집주인이 제안하고 문의자(예비 세입자)가 수락하는 2단계 handshake.
+ * 수락 시점의 조건(거래유형/보증금/월세)을 스냅샷으로 고정한다. 실제 계약서/서명/입금은 스코프 밖.
+ */
+export type TradeContractStatus = "proposed" | "accepted" | "declined" | "cancelled";
+
+export type TradeContract = {
+  id: string;
+  listingId: string;
+  listingTitle: string;
+  threadId: string;
+  landlordId: string;
+  landlordName: string;
+  tenantId: string;
+  tenantName: string;
+  status: TradeContractStatus;
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  location: string;
+  proposedAt: string;
+  respondedAt?: string;
 };
 
 export type TradeMessage = {
@@ -104,6 +128,7 @@ export type TradeThreadSummary = {
 type TradeStore = {
   listings: TradeListing[];
   threads: TradeThread[];
+  contracts: TradeContract[];
 };
 
 /** 쇼케이스(하드코딩) 매물 문의가 도착할 데모 임대인 계정 */
@@ -226,7 +251,7 @@ function defaultStoreFilePath(): string | undefined {
 
 @Injectable()
 export class TradeService {
-  private store: TradeStore = { listings: [], threads: [] };
+  private store: TradeStore = { listings: [], threads: [], contracts: [] };
   private readonly filePath: string | undefined;
   // main.ts와 동일한 기본값 — S3_UPLOADS_ENABLED가 켜지면 자동으로 S3 어댑터로 전환된다.
   private readonly storageAdapter: FileStorageAdapter = createFileStorageAdapter(
@@ -245,11 +270,13 @@ export class TradeService {
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as TradeStore;
       if (Array.isArray(parsed?.listings) && Array.isArray(parsed?.threads)) {
-        // 구버전 레코드 후방호환 — images 없으면 빈 배열로, 손상된 floorPlan은 제거한다.
+        // 구버전 레코드 후방호환 — images/contracts 없으면 빈 값으로, 손상된 floorPlan은 제거한다.
         parsed.listings.forEach((listing) => {
           listing.images = normalizeImages(listing.images);
           listing.floorPlan = normalizeFloorPlan(listing.floorPlan);
+          if (listing.status !== "계약완료") listing.status = "노출중";
         });
+        parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
         this.store = parsed;
       }
     } catch {
@@ -467,16 +494,124 @@ export class TradeService {
   sendMessage(user: { id: string; name: string }, threadId: string, body: string): TradeThread {
     if (!body?.trim()) throw new BadRequestException("메시지 내용이 필요합니다.");
     const thread = this.getThread(user.id, threadId);
+    this.pushMessage(thread, user, body.trim());
+    this.persist();
+    return thread;
+  }
+
+  private pushMessage(thread: TradeThread, sender: { id: string; name: string }, body: string) {
     const now = new Date().toISOString();
     thread.messages.push({
       id: randomUUID().slice(0, 12),
-      senderId: user.id,
-      senderName: user.name,
-      body: body.trim(),
+      senderId: sender.id,
+      senderName: sender.name,
+      body,
       createdAt: now
     });
     thread.updatedAt = now;
+  }
+
+  /** 계약 조건 한 줄 표기 — 채팅 안내 메시지 공용. */
+  private contractTermsLabel(contract: Pick<TradeContract, "tradeType" | "depositManwon" | "monthlyRentManwon">): string {
+    const deposit = (contract.depositManwon || 0).toLocaleString("ko-KR");
+    if (contract.tradeType === "월세") return `월세 ${deposit}/${contract.monthlyRentManwon || 0}`;
+    return `${contract.tradeType} ${deposit}만`;
+  }
+
+  /**
+   * 계약 제안 — 스레드의 집주인만, 직접등록 매물 대화에서만 가능.
+   * 같은 매물에 살아있는(proposed/accepted) 계약이 있으면 중복 제안을 막는다.
+   */
+  proposeContract(owner: { id: string; name: string }, threadId: string): { contract: TradeContract; thread: TradeThread } {
+    const thread = this.getThread(owner.id, threadId);
+    if (thread.ownerId !== owner.id) {
+      throw new ForbiddenException("내 매물의 문의 대화에서만 계약을 제안할 수 있습니다.");
+    }
+    const listing = thread.listingId
+      ? this.store.listings.find((item) => item.id === thread.listingId)
+      : undefined;
+    if (!listing) {
+      throw new BadRequestException("직접 등록한 매물의 대화에서만 계약을 제안할 수 있습니다.");
+    }
+
+    const active = this.store.contracts.find(
+      (item) => item.listingId === listing.id && (item.status === "proposed" || item.status === "accepted")
+    );
+    if (active?.status === "accepted") throw new BadRequestException("이미 계약이 체결된 매물입니다.");
+    if (active) {
+      if (active.tenantId === thread.buyerId) return { contract: active, thread };
+      throw new BadRequestException("다른 문의자에게 제안 중인 계약이 있습니다. 먼저 취소한 뒤 제안해주세요.");
+    }
+
+    const contract: TradeContract = {
+      id: randomUUID().slice(0, 12),
+      listingId: listing.id,
+      listingTitle: listing.title,
+      threadId: thread.id,
+      landlordId: thread.ownerId,
+      landlordName: thread.ownerName,
+      tenantId: thread.buyerId,
+      tenantName: thread.buyerName,
+      status: "proposed",
+      tradeType: listing.tradeType,
+      depositManwon: listing.depositManwon,
+      monthlyRentManwon: listing.monthlyRentManwon,
+      location: listing.location,
+      proposedAt: new Date().toISOString()
+    };
+    this.store.contracts.unshift(contract);
+    this.pushMessage(thread, owner, `📋 계약을 제안했어요 — ${this.contractTermsLabel(contract)} · 수락하면 계약이 체결됩니다.`);
     this.persist();
-    return thread;
+    return { contract, thread };
+  }
+
+  /** 계약 응답 — 제안받은 문의자(예비 세입자)만. 수락하면 매물이 계약완료로 전환된다. */
+  respondContract(user: { id: string; name: string }, contractId: string, accept: boolean): { contract: TradeContract; thread: TradeThread } {
+    const contract = this.store.contracts.find((item) => item.id === contractId);
+    if (!contract) throw new NotFoundException("계약 제안을 찾을 수 없습니다.");
+    if (contract.tenantId !== user.id) throw new ForbiddenException("제안받은 사람만 응답할 수 있습니다.");
+    if (contract.status !== "proposed") throw new BadRequestException("이미 처리된 계약 제안입니다.");
+
+    const thread = this.getThread(user.id, contract.threadId);
+    contract.status = accept ? "accepted" : "declined";
+    contract.respondedAt = new Date().toISOString();
+
+    if (accept) {
+      const listing = this.store.listings.find((item) => item.id === contract.listingId);
+      if (listing) listing.status = "계약완료";
+      this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
+    } else {
+      this.pushMessage(thread, user, "계약 제안을 거절했어요.");
+    }
+    this.persist();
+    return { contract, thread };
+  }
+
+  /** 제안 취소 — 집주인만, 아직 응답 전(proposed)일 때만. */
+  cancelContract(owner: { id: string; name: string }, contractId: string): { contract: TradeContract; thread: TradeThread } {
+    const contract = this.store.contracts.find((item) => item.id === contractId);
+    if (!contract) throw new NotFoundException("계약 제안을 찾을 수 없습니다.");
+    if (contract.landlordId !== owner.id) throw new ForbiddenException("제안한 집주인만 취소할 수 있습니다.");
+    if (contract.status !== "proposed") throw new BadRequestException("응답 전인 제안만 취소할 수 있습니다.");
+
+    const thread = this.getThread(owner.id, contract.threadId);
+    contract.status = "cancelled";
+    contract.respondedAt = new Date().toISOString();
+    this.pushMessage(thread, owner, "계약 제안을 취소했어요.");
+    this.persist();
+    return { contract, thread };
+  }
+
+  /** 내가 당사자인 계약 전부 — 집주인의 계약중인 집 탭, 세입자의 내 계약 조회 공용. */
+  listContracts(userId: string): TradeContract[] {
+    return this.store.contracts
+      .filter((item) => item.landlordId === userId || item.tenantId === userId)
+      .sort((a, b) => b.proposedAt.localeCompare(a.proposedAt));
+  }
+
+  /** 스레드의 최신 계약(참여자 전용) — 채팅 화면의 제안 버튼/수락 카드 상태 판단용. */
+  contractForThread(userId: string, threadId: string): TradeContract | null {
+    this.getThread(userId, threadId);
+    return this.store.contracts.find((item) => item.threadId === threadId) ?? null;
   }
 }

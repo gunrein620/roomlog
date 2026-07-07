@@ -5,12 +5,12 @@ import {
   LinkButton,
   Money,
   StatusBadges,
-  dashRoutes,
   muted,
   pageStack,
   repairStageLabel,
   row,
   sectionTitle,
+  ticketDashHref,
   ticketStatusLabel,
   urgencyLabel,
 } from "../../_components/ticket-manager-ui";
@@ -78,7 +78,7 @@ export default async function Page() {
           return (
             <Link
               key={ticket.id}
-              href={dashRoutes["01"]}
+              href={ticketDashHref("01", ticket.id)}
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr 120px 180px 120px 120px",

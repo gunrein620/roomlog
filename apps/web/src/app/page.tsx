@@ -29,7 +29,8 @@ import {
   Search,
   Share2,
   SlidersHorizontal,
-  UserRound
+  UserRound,
+  X
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -417,11 +418,6 @@ const savedComparisonItems = [
   { label: "방문 후보", value: "오늘 3시", caption: "2개 매물 가능" }
 ];
 
-const inquiryTimelineItems = [
-  { time: "방금", title: "문자문의 작성 가능", body: "매물 상세에서 바로 문의를 보낼 수 있습니다." },
-  { time: "5분 전", title: "중개사 평균 응답 8분", body: "답변이 오면 문의센터에서 상태를 확인합니다." }
-];
-
 const homeWebSummaryItems = [
   { label: "중개사 응답", value: "평균 8분" },
   { label: "오늘 확인", value: "39개" },
@@ -446,12 +442,6 @@ const safetyReportItems = [
   { label: "보증금 비율", value: "권장 범위", status: "양호" },
   { label: "대출·특약", value: "방문 시 확인", status: "확인" },
   { label: "주변 치안", value: "야간 동선 양호", status: "양호" }
-];
-
-const inquiryChannelItems = [
-  { label: "문자문의", value: "로그인 없이 가능", caption: "평균 8분 응답" },
-  { label: "전화문의", value: "중개사 연결", caption: "영업시간 09:00-20:00" },
-  { label: "방문예약", value: "오늘 3시 가능", caption: "3D 투어 먼저 확인" }
 ];
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
@@ -1369,7 +1359,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
                   <small>{tradePriceLabel(listing)} · {listing.location}</small>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-                  <em className="live">{listing.status}</em>
+                  <em className={listing.status === "노출중" ? "live" : ""}>{listing.status}</em>
                   <button
                     type="button"
                     onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
@@ -2767,8 +2757,8 @@ function ListingDetailView({
   );
 }
 
-// 통합 문의 작성 sheet — 매물 상세 "문의하기", 홈 카드 "문자문의",
-// 문의 탭 "새 문의"가 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
+// 통합 문의 작성 sheet — 매물 상세 "문의하기"와 홈 카드 "문자문의"가
+// 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
 function InquirySheet({
   listing,
   onClose,
@@ -2988,11 +2978,9 @@ function SavedListingsSection({
 }
 
 function InquiryHubSection({
-  onNewInquiry,
   onRequireLogin,
   focusThreadId
 }: {
-  onNewInquiry: () => void;
   onRequireLogin: () => void;
   focusThreadId?: string;
 }) {
@@ -3003,69 +2991,18 @@ function InquiryHubSection({
           <h2 id="inquiry-title">문의센터</h2>
           <p>보낸 문의와 받은 문의가 모두 채팅으로 이어집니다.</p>
         </div>
-        {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
-        <button type="button" onClick={onNewInquiry}>
-          새 문의
-        </button>
       </div>
 
       {/* 서버 스레드 기반 문의 채팅 — 보낸 문의(구매자)와 받은 문의(집주인)를 한 곳에서 본다.
           QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제.
-          래퍼 클래스는 데스크톱 그리드 배치용 — 채팅이 문의센터의 주인공(좌측 넓은 칸)이 된다. */}
+          variant="hub": 데스크톱 브라우저는 목록+대화 2패널, 앱(PWA·좁은 화면)은 채팅 목록 단일 패널. */}
       <div className="inquiry-chat-panel">
         <TradeChatCenter
-          emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
+          variant="hub"
+          emptyText="매물 상세의 '문자문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
           onRequireLogin={onRequireLogin}
           focusThreadId={focusThreadId}
         />
-      </div>
-
-
-      <section className="inquiry-channel-card" aria-label="문의 채널 상태">
-        <div className="inquiry-channel-head">
-          <span>문의 채널</span>
-          <strong>원하는 방식으로 바로 확인</strong>
-        </div>
-        <div className="inquiry-channel-grid">
-          {inquiryChannelItems.map((item) => (
-            <article key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.caption}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="inquiry-timeline-card" aria-label="문의 타임라인">
-        <div className="inquiry-timeline-head">
-          <span>문의 타임라인</span>
-          <strong>최근 문의 흐름</strong>
-        </div>
-        {inquiryTimelineItems.map((item) => (
-          <article key={item.title}>
-            <span>{item.time}</span>
-            <div>
-              <strong>{item.title}</strong>
-              <p>{item.body}</p>
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <div className="inquiry-mini-grid">
-        <article>
-          <span>최근 응답</span>
-          <strong>8분</strong>
-        </article>
-        <article>
-          <span>예약 가능</span>
-          <strong>오늘 3시</strong>
-        </article>
-        <article>
-          <span>확인매물</span>
-          <strong>126개</strong>
-        </article>
       </div>
     </section>
   );
@@ -3288,6 +3225,58 @@ function UserMyPage({
   );
 }
 
+type TenantContractSummary = {
+  threadId: string;
+  landlordName: string;
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  respondedAt?: string;
+};
+
+type TenantTenancy = {
+  buildingName: string;
+  roomNo: string;
+  address: string;
+  contract: TenantContractSummary | null;
+};
+
+type TenantRepairRequest = {
+  id: number;
+  title: string;
+  status: "접수됨" | "업체 배정";
+};
+
+type TenantMaintenanceBill = {
+  amountLabel: string;
+  summary: string;
+  paidSummary: string;
+};
+
+type TenantVisit = {
+  timeLabel: string;
+  title: string;
+  pendingDescription: string;
+  confirmedDescription: string;
+};
+
+// 계약 조건 한 줄 표기 — 실제 연결된 계약이 없으면 위조하지 않고 그 사실을 그대로 알린다.
+function tenancyTermsLabel(contract: TenantContractSummary | null): string {
+  if (!contract) return "계약 조건 정보 없음";
+  const deposit = (contract.depositManwon || 0).toLocaleString("ko-KR");
+  if (contract.tradeType === "월세") {
+    return `보증금 ${deposit}만원 · 월세 ${(contract.monthlyRentManwon || 0).toLocaleString("ko-KR")}만원`;
+  }
+  return `${contract.tradeType} ${deposit}만원`;
+}
+
+function tenancyDateLabel(iso?: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(date);
+}
+
 function TenantMyPage({
   onSelectFlow,
   onGoInquiry,
@@ -3297,14 +3286,89 @@ function TenantMyPage({
   onGoInquiry: () => void;
   onGoHome: () => void;
 }) {
-  const [repairRequests, setRepairRequests] = useState([
-    { id: 1, title: "창문 누수", status: "업체 배정" },
-    { id: 2, title: "욕실 타일 보수", status: "접수됨" }
-  ]);
-  const [selectedIssue, setSelectedIssue] = useState(tenantIssuePresets[0]);
+  // 이 계정에 실제로 연결된 집 — 없으면 null(연결 안내), 확인 전엔 "loading".
+  // 하드코딩된 매물 정보를 보여주던 자리를 실제 계약 데이터로 교체한다(위조 금지).
+  const [tenancy, setTenancy] = useState<TenantTenancy | null | "loading">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!meRes.ok) {
+          if (!cancelled) setTenancy(null);
+          return;
+        }
+        const me = (await meRes.json()) as {
+          userId?: string;
+          room?: { buildingName: string; roomNo: string; address: string; landlordId?: string };
+        };
+        if (!me.userId || !me.room) {
+          if (!cancelled) setTenancy(null);
+          return;
+        }
+
+        let contract: TenantContractSummary | null = null;
+        try {
+          const contractsRes = await fetch("/api/trade/contracts", { cache: "no-store" });
+          if (contractsRes.ok) {
+            const contracts = (await contractsRes.json()) as Array<{
+              tenantId: string;
+              landlordId: string;
+              landlordName: string;
+              status: string;
+              threadId: string;
+              tradeType: "월세" | "전세" | "매매";
+              depositManwon: number;
+              monthlyRentManwon: number;
+              respondedAt?: string;
+            }>;
+            const accepted = contracts.find(
+              (item) =>
+                item.tenantId === me.userId &&
+                item.status === "accepted" &&
+                item.landlordId === me.room?.landlordId
+            );
+            if (accepted) {
+              contract = {
+                threadId: accepted.threadId,
+                landlordName: accepted.landlordName,
+                tradeType: accepted.tradeType,
+                depositManwon: accepted.depositManwon,
+                monthlyRentManwon: accepted.monthlyRentManwon,
+                respondedAt: accepted.respondedAt
+              };
+            }
+          }
+        } catch {
+          // 계약 상세 조회 실패 — 방 정보만으로도 표시는 이어간다
+        }
+
+        if (!cancelled) {
+          setTenancy({
+            buildingName: me.room.buildingName,
+            roomNo: me.room.roomNo,
+            address: me.room.address,
+            contract
+          });
+        }
+      } catch {
+        if (!cancelled) setTenancy(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [repairRequests, setRepairRequests] = useState<TenantRepairRequest[]>([]);
+  const [maintenanceBill] = useState<TenantMaintenanceBill | null>(null);
+  const [scheduledVisit] = useState<TenantVisit | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState("");
   const [maintenancePaid, setMaintenancePaid] = useState(false);
   const [visitConfirmed, setVisitConfirmed] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
+  const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
   const [tenantToast, setTenantToast] = useState("");
   const [isPaying, setIsPaying] = useState(false);
   const [isSubmittingRepair, setIsSubmittingRepair] = useState(false);
@@ -3317,6 +3381,10 @@ function TenantMyPage({
     window.setTimeout(() => setTenantToast(""), 2400);
   };
   const addRepairRequest = () => {
+    if (!selectedIssue) {
+      return;
+    }
+
     if (isSubmittingRepairRef.current) {
       return;
     }
@@ -3331,14 +3399,31 @@ function TenantMyPage({
     }, 600);
   };
 
-  const contractRows = [
-    ["임대인", "김우주"],
-    ["계약 기간", "2025-11-04 ~ 2027-11-03"],
-    ["보증금", "1,000만원"],
-    ["월세", "130만원"],
-    ["관리비", "12만 4,000원"],
-    ["특약", "재계약 시 월세 인상률 5% 이내"]
-  ];
+  // 연결된 집이 없으면 특정 임대인/금액을 지어내지 않고 그 사실 자체를 한 행으로 보여준다.
+  const contractRows: Array<[string, string]> =
+    tenancy && tenancy !== "loading"
+      ? [
+          ["집 주소", `${tenancy.buildingName} ${tenancy.roomNo}호`],
+          ["상세 주소", tenancy.address || "미등록"],
+          ["임대인", tenancy.contract?.landlordName ?? "정보 없음"],
+          ["거래 유형", tenancy.contract?.tradeType ?? "정보 없음"],
+          [
+            "보증금",
+            tenancy.contract ? `${(tenancy.contract.depositManwon || 0).toLocaleString("ko-KR")}만원` : "정보 없음"
+          ],
+          [
+            "월세",
+            tenancy.contract && tenancy.contract.tradeType === "월세"
+              ? `${(tenancy.contract.monthlyRentManwon || 0).toLocaleString("ko-KR")}만원`
+              : "-"
+          ],
+          ["체결일", tenancy.contract?.respondedAt ? tenancyDateLabel(tenancy.contract.respondedAt) : "정보 없음"]
+        ]
+      : [["안내", "아직 연결된 집이 없습니다. 계약이 체결되면 이 자리에 실제 계약 정보가 표시됩니다."]];
+  const contractThreadId = tenancy && tenancy !== "loading" ? tenancy.contract?.threadId ?? "" : "";
+  const landlordChatTitle = tenancy && tenancy !== "loading" && tenancy.contract?.landlordName
+    ? `${tenancy.contract.landlordName} 집주인`
+    : "계약 집주인";
 
   return (
     <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
@@ -3360,8 +3445,24 @@ function TenantMyPage({
       <section className="tenant-contract-card" aria-label="계약 상태">
         <div>
           <span>계약 상태</span>
-          <strong>D-124 재계약 예정</strong>
-          <p>방배 루미에르 402호 · 보증금 1,000만원 · 월세 130만원</p>
+          {tenancy === "loading" ? (
+            <>
+              <strong>확인 중…</strong>
+              <p>연결된 집 정보를 불러오고 있어요.</p>
+            </>
+          ) : tenancy ? (
+            <>
+              <strong>{tenancy.contract ? "계약 중" : "집 연결됨 · 계약 정보 없음"}</strong>
+              <p>
+                {tenancy.buildingName} {tenancy.roomNo}호 · {tenancyTermsLabel(tenancy.contract)}
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>연결된 집이 없어요</strong>
+              <p>집주인과 채팅에서 계약이 체결되면 이 화면이 실제 계약 정보로 채워집니다.</p>
+            </>
+          )}
         </div>
         <button type="button" onClick={() => setIsContractSheetOpen(true)}>계약서 보기</button>
       </section>
@@ -3370,31 +3471,36 @@ function TenantMyPage({
         <article>
           <span>수리요청</span>
           <strong>{String(repairRequests.length).padStart(2, "0")}건</strong>
-          <p>{repairRequests.slice(0, 2).map((item) => item.title).join(" · ")}</p>
+          <p>{repairRequests.length ? repairRequests.slice(0, 2).map((item) => item.title).join(" · ") : "접수된 수리요청 없음"}</p>
         </article>
         <article>
           <span>관리비</span>
-          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
-          <p>{maintenancePaid ? "7월분 납부 확인" : "이번 달 납부 예정"}</p>
+          <strong>{maintenanceBill ? (maintenancePaid ? "납부 완료" : maintenanceBill.amountLabel) : "납부할 관리비 없음"}</strong>
+          <p>{maintenanceBill ? (maintenancePaid ? maintenanceBill.paidSummary : "이번 달 납부 예정") : "청구가 등록되면 표시됩니다."}</p>
         </article>
         <article>
           <span>방문 일정</span>
-          <strong>{visitConfirmed ? "확인 완료" : "오늘 2:30"}</strong>
-          <p>에어컨 필터 점검</p>
+          <strong>{scheduledVisit ? (visitConfirmed ? "확인 완료" : scheduledVisit.timeLabel) : "예정된 방문 없음"}</strong>
+          <p>{scheduledVisit ? scheduledVisit.title : "확정된 일정이 없습니다."}</p>
         </article>
       </div>
 
       <section className="tenant-contract-card" aria-label="관리비 납부">
         <div>
           <span>이번 달 관리비</span>
-          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
-          <p>{maintenancePaid ? "7월 관리비 납부가 확인됐습니다." : "수도·인터넷 포함 · 7월 25일까지"}</p>
+          <strong>{maintenanceBill ? (maintenancePaid ? "납부 완료" : maintenanceBill.amountLabel) : "납부할 관리비 없음"}</strong>
+          <p>{maintenanceBill ? (maintenancePaid ? maintenanceBill.paidSummary : maintenanceBill.summary) : "관리인이 청구를 등록하면 납부할 수 있습니다."}</p>
         </div>
         <button
           type="button"
-          disabled={isPaying}
+          disabled={!maintenanceBill || isPaying}
           aria-busy={isPaying}
           onClick={() => {
+            if (!maintenanceBill) {
+              return;
+            }
+            const currentBill = maintenanceBill;
+
             if (maintenancePaid) {
               showToast("영수증이 문자로 발송됐습니다.");
               return;
@@ -3410,7 +3516,7 @@ function TenantMyPage({
               setMaintenancePaid(true);
               isPayingRef.current = false;
               setIsPaying(false);
-              showToast("관리비 124,000원 납부가 완료됐습니다.");
+              showToast(`관리비 ${currentBill.amountLabel} 납부가 완료됐습니다.`);
             }, 700);
           }}
         >
@@ -3421,6 +3527,8 @@ function TenantMyPage({
             </>
           ) : maintenancePaid ? (
             "영수증 보기"
+          ) : !maintenanceBill ? (
+            "납부 대기"
           ) : (
             "납부하기"
           )}
@@ -3436,12 +3544,16 @@ function TenantMyPage({
           <button type="button" onClick={onGoInquiry}>관리인 문의</button>
         </div>
         <div className="tenant-repair-list">
-          {repairRequests.map((item) => (
-            <article key={item.id}>
-              <strong>{item.title}</strong>
-              <em className={item.status === "업체 배정" ? "assigned" : ""}>{item.status}</em>
-            </article>
-          ))}
+          {repairRequests.length ? (
+            repairRequests.map((item) => (
+              <article key={item.id}>
+                <strong>{item.title}</strong>
+                <em className={item.status === "업체 배정" ? "assigned" : ""}>{item.status}</em>
+              </article>
+            ))
+          ) : (
+            <p className="tenant-repair-empty">아직 접수된 수리요청이 없어요</p>
+          )}
         </div>
         <div className="tenant-repair-new">
           <strong>새 수리요청</strong>
@@ -3457,12 +3569,20 @@ function TenantMyPage({
               </button>
             ))}
           </div>
-          <button className="repair-submit" type="button" onClick={addRepairRequest} disabled={isSubmittingRepair} aria-busy={isSubmittingRepair}>
+          <button
+            className="repair-submit"
+            type="button"
+            onClick={addRepairRequest}
+            disabled={isSubmittingRepair || !selectedIssue}
+            aria-busy={isSubmittingRepair}
+          >
             {isSubmittingRepair ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
                 접수 처리 중…
               </>
+            ) : !selectedIssue ? (
+              "수리 항목을 선택하세요"
             ) : (
               `${selectedIssue} 접수하기`
             )}
@@ -3502,26 +3622,94 @@ function TenantMyPage({
         <small className="domain-test-note">이 계정에 사는 집이 연결되면 이어집니다.</small>
       </section>
 
-      <section className="maintenance-card" aria-label="긴급 점검 일정">
-        <span>오늘 방문 일정</span>
-        <h3>에어컨 필터 교체 방문</h3>
+      <section className="maintenance-card" aria-label="방문 일정">
+        <span>{scheduledVisit ? "오늘 방문 일정" : "방문 일정"}</span>
+        <h3>{scheduledVisit ? scheduledVisit.title : "예정된 방문 없음"}</h3>
         <p>
-          {visitConfirmed
-            ? "방문 확인이 완료됐습니다. 기사에게 방문 예정 알림이 전달됐어요."
-            : "관리 기사가 오늘 오후 2시 30분 방문합니다. 현관과 설비실 접근만 확인해주세요."}
+          {scheduledVisit
+            ? visitConfirmed
+              ? scheduledVisit.confirmedDescription
+              : scheduledVisit.pendingDescription
+            : "관리인이나 업체가 일정을 확정하면 여기에 표시됩니다."}
         </p>
         <button
           type="button"
           onClick={() => {
+            if (!scheduledVisit) {
+              onGoInquiry();
+              return;
+            }
+
             if (!visitConfirmed) {
               setVisitConfirmed(true);
               showToast("방문 일정을 확인했습니다.");
             }
           }}
         >
-          {visitConfirmed ? "확인 완료" : "방문 확인"}
+          {scheduledVisit ? (visitConfirmed ? "확인 완료" : "방문 확인") : "관리인 문의"}
         </button>
       </section>
+
+      <button
+        className="tenant-landlord-chat-button"
+        type="button"
+        disabled={!contractThreadId}
+        aria-expanded={isLandlordChatOpen}
+        aria-controls="tenant-landlord-chat-panel"
+        onClick={() => {
+          if (!contractThreadId) {
+            showToast("계약이 체결되면 집주인 채팅을 열 수 있습니다.");
+            return;
+          }
+          setIsLandlordChatOpen(true);
+        }}
+      >
+        <MessageCircle size={18} strokeWidth={2.4} aria-hidden="true" />
+        집주인 채팅
+      </button>
+
+      {isLandlordChatOpen ? (
+        <>
+          <button
+            className="tenant-chat-backdrop"
+            type="button"
+            aria-label="집주인 채팅 닫기"
+            onClick={() => setIsLandlordChatOpen(false)}
+          />
+          <aside
+            className="tenant-chat-panel"
+            id="tenant-landlord-chat-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-landlord-chat-title"
+          >
+            <header className="tenant-chat-panel-head">
+              <div>
+                <span>{landlordChatTitle}</span>
+                <h2 id="tenant-landlord-chat-title">집주인 채팅</h2>
+                <p>{tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "계약한 집"}</p>
+              </div>
+              <button type="button" onClick={() => setIsLandlordChatOpen(false)} aria-label="집주인 채팅 닫기">
+                <X size={18} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            </header>
+            <div className="tenant-chat-panel-body">
+              {tenancy && tenancy !== "loading" && tenancy.contract ? (
+                <TradeChatCenter
+                  roleFilter="buyer"
+                  lockedThreadId={tenancy.contract.threadId}
+                  emptyText="계약한 집주인과의 대화가 아직 준비되지 않았습니다."
+                />
+              ) : (
+                <div className="listing-empty-card" role="status">
+                  <strong>계약 채팅이 없습니다</strong>
+                  <p>계약이 체결되면 집주인과의 대화가 여기에 열립니다.</p>
+                </div>
+              )}
+            </div>
+          </aside>
+        </>
+      ) : null}
 
       {isContractSheetOpen ? (
         <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsContractSheetOpen(false)}>
@@ -3536,8 +3724,14 @@ function TenantMyPage({
             <header>
               <div>
                 <span>전자 계약서</span>
-                <h2 id="contract-sheet-title">방배 루미에르 402호</h2>
-                <p>2025-11-04 체결 · 임대차 표준계약서</p>
+                <h2 id="contract-sheet-title">
+                  {tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "연결된 집 없음"}
+                </h2>
+                <p>
+                  {tenancy && tenancy !== "loading" && tenancy.contract?.respondedAt
+                    ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결 · 임대차 표준계약서`
+                    : "계약이 체결되면 체결일이 여기에 표시됩니다."}
+                </p>
               </div>
               <button type="button" onClick={() => setIsContractSheetOpen(false)} aria-label="계약서 닫기">×</button>
             </header>
@@ -4087,9 +4281,10 @@ export default function Home() {
   }, []);
   // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
   // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
-  const sortedTradeListings = [...tradeListings].sort(
-    (a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0)
-  );
+  // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).
+  const sortedTradeListings = tradeListings
+    .filter((listing) => listing.status !== "계약완료")
+    .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
   const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
@@ -4199,7 +4394,7 @@ export default function Home() {
 
   const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
 
-  // 실시간 문의 신호 — 웹소켓 trade:updated가 오면 문의 탭 밖에서는 배지를 켠다(탭 진입 시 해제).
+  // 실시간 문의 신호 — 상대가 보낸 trade:updated만 문의 탭 밖에서 배지를 켠다(탭 진입 시 해제).
   const [unseenTradeCount, setUnseenTradeCount] = useState(0);
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
@@ -4208,7 +4403,8 @@ export default function Home() {
     if (!viewer) return; // 소켓 인증 티켓은 로그인 세션 기반 — 비로그인 재연결 루프 방지
 
     const socket = getRealtimeSocket();
-    const onTradeUpdated = () => {
+    const onTradeUpdated = (payload: { threadId?: string; senderId?: string }) => {
+      if (payload.senderId && payload.senderId === viewer.userId) return;
       if (activeTabRef.current !== "inquiry") {
         setUnseenTradeCount((count) => count + 1);
       }
@@ -4280,7 +4476,7 @@ export default function Home() {
   };
 
   // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
-  // 홈 카드 "문자문의"와 문의 탭 "새 문의"가 모두 이 흐름을 쓴다 (QA 3·4·7).
+  // 홈 카드 "문자문의"가 이 흐름을 쓴다 (QA 3·4·7). 문의 탭의 "새 문의" 버튼은 제거됐다.
   const openInquiryComposer = (listing?: Listing) => {
     if (listing) {
       setInquiryComposeListingNo(listing.listingNo);
@@ -5199,7 +5395,7 @@ export default function Home() {
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onNewInquiry={() => openInquiryComposer()} onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
+          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
           <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />

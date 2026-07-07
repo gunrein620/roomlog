@@ -4,15 +4,18 @@ import {
   EvidencePanel,
   LinkButton,
   TicketHeader,
-  dashRoutes,
   muted,
   pageStack,
   row,
   sectionTitle,
+  ticketDashHref,
 } from "../../_components/ticket-manager-ui";
 
-export default async function Page() {
-  const ticket = await getManagerTicket(MANAGER_DEMO_TICKET_ID);
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const ticket = await getManagerTicket(id ?? MANAGER_DEMO_TICKET_ID);
 
   return (
     <div style={pageStack}>
@@ -35,8 +38,8 @@ export default async function Page() {
         </Card>
       </div>
       <div style={row}>
-        <LinkButton href={dashRoutes["01"]}>이 근거로 책임 검토 반영</LinkButton>
-        <LinkButton href={dashRoutes["03"]} variant="secondary">사진 재요청</LinkButton>
+        <LinkButton href={ticketDashHref("01", ticket.id)}>이 근거로 책임 검토 반영</LinkButton>
+        <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">사진 재요청</LinkButton>
       </div>
     </div>
   );

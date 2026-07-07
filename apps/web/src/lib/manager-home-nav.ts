@@ -29,6 +29,7 @@ export const MANAGER_CROSS = {
   ticketCall: "/manager/ticket/call/00", // M-CALL
   billing: "/manager/billing", // M-BILL
   messaging: "/manager/messaging/00", // M-MSG (소통)
+  realtimeAgent: "/manager/agent/realtime", // 관리인 실시간 AI 운영 에이전트
   cost: "/manager/cost", // M-COST (병렬 구축 중)
   contract: "/manager/contract/00", // M-DOC (미구현 — 추후)
   moveout: "/manager/moveout/00", // M-OUT (미구현 — 추후)

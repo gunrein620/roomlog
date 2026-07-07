@@ -21,9 +21,10 @@ export class TradeController {
   }
 
   /** 스레드 양쪽 참여자에게 실시간 갱신 신호 — 데이터는 클라이언트가 REST로 다시 읽는다. */
-  private notifyThread(thread: TradeThread) {
+  private notifyThread(thread: TradeThread, senderId: string) {
     this.realtime.notifyUsers([thread.buyerId, thread.ownerId], "trade:updated", {
-      threadId: thread.id
+      threadId: thread.id,
+      senderId
     });
   }
 
@@ -82,8 +83,9 @@ export class TradeController {
     @Headers("authorization") authorization: string | undefined,
     @Body() body: { listingId?: string | null; listingTitle: string; message: string; visitTime?: string }
   ) {
-    const thread = this.tradeService.createInquiry(this.user(authorization), body);
-    this.notifyThread(thread);
+    const user = this.user(authorization);
+    const thread = this.tradeService.createInquiry(user, body);
+    this.notifyThread(thread, user.id);
 
     return thread;
   }
@@ -107,9 +109,72 @@ export class TradeController {
     @Param("threadId") threadId: string,
     @Body() body: { body: string }
   ) {
-    const thread = this.tradeService.sendMessage(this.user(authorization), threadId, body.body);
-    this.notifyThread(thread);
+    const user = this.user(authorization);
+    const thread = this.tradeService.sendMessage(user, threadId, body.body);
+    this.notifyThread(thread, user.id);
 
     return thread;
+  }
+
+  /** 스레드의 최신 계약 — 채팅 화면이 제안 버튼/수락 카드 상태를 판단한다. */
+  @Get("threads/:threadId/contract")
+  contractForThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    return this.tradeService.contractForThread(this.user(authorization).id, threadId);
+  }
+
+  /** 내가 당사자인 계약 전부 — 관리 콘솔 계약중인 집 탭이 사용. */
+  @Get("contracts")
+  listContracts(@Headers("authorization") authorization: string | undefined) {
+    return this.tradeService.listContracts(this.user(authorization).id);
+  }
+
+  /** 계약 제안 — 집주인이 채팅에서 "이 분과 계약하기". */
+  @Post("contracts")
+  proposeContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: { threadId: string }
+  ) {
+    const user = this.user(authorization);
+    const { contract, thread } = this.tradeService.proposeContract(user, body?.threadId ?? "");
+    this.notifyThread(thread, user.id);
+    return contract;
+  }
+
+  /** 계약 응답 — 수락 시 세입자 관계(tenantRooms)를 연결해 TENANT 권한이 파생되게 한다. */
+  @Post("contracts/:contractId/respond")
+  respondContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string,
+    @Body() body: { accept: boolean }
+  ) {
+    const user = this.user(authorization);
+    const { contract, thread } = this.tradeService.respondContract(
+      user,
+      contractId,
+      Boolean(body?.accept)
+    );
+    if (contract.status === "accepted") {
+      this.roomlogService.assignTenantRoomFromContract(contract.tenantId, contract.landlordId, {
+        title: contract.listingTitle,
+        location: contract.location
+      });
+    }
+    this.notifyThread(thread, user.id);
+    return contract;
+  }
+
+  /** 제안 취소 — 집주인 전용, 응답 전(proposed)만. */
+  @Post("contracts/:contractId/cancel")
+  cancelContract(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.user(authorization);
+    const { contract, thread } = this.tradeService.cancelContract(user, contractId);
+    this.notifyThread(thread, user.id);
+    return contract;
   }
 }

@@ -489,6 +489,98 @@ function createReportTestService() {
 }
 
 describe("RoomlogService", () => {
+  it("seeds manager billing dummy rows across every billing management list", () => {
+    const service = new RoomlogService();
+
+    const dashboard = service.getManagerBillDashboard("landlord-demo");
+    const collection = service.getManagerCollection("landlord-demo");
+    const deposits = service.listManagerBillDeposits("landlord-demo");
+    const overdue = service.listManagerOverdueCases("landlord-demo");
+
+    assert.equal(dashboard.bills.length >= 5, true, "청구 목록은 최소 5건이어야 한다.");
+    assert.equal(collection.recentDeposits.length, 5, "최근 입금은 5건이어야 한다.");
+    assert.equal(deposits.paymentReports.length, 5, "납부 신고 큐는 5건이어야 한다.");
+    assert.equal(deposits.deposits.length, 5, "실제 입금 매칭은 5건이어야 한다.");
+    assert.equal(deposits.orphanDeposits.length, 5, "orphan 입금 큐는 5건이어야 한다.");
+    assert.equal(deposits.mismatchDeposits.length, 5, "불일치 확인 요청은 5건이어야 한다.");
+    assert.equal(overdue.activeCases.length, 5, "연체 세대 목록은 5건이어야 한다.");
+    assert.equal(overdue.waitingCases.length, 5, "확인 대기 목록은 5건이어야 한다.");
+  });
+
+  it("backfills manager billing dummy rows when a persisted demo snapshot has empty billing tables", () => {
+    const legacyDemoSnapshot = JSON.parse(
+      JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
+    );
+
+    legacyDemoSnapshot.bills = [];
+    legacyDemoSnapshot.paymentReports = [];
+    legacyDemoSnapshot.deposits = [];
+    legacyDemoSnapshot.maintenanceFees = [];
+
+    const service = new RoomlogService({
+      seedDemoData: true,
+      initialStore: legacyDemoSnapshot
+    } as any);
+
+    const dashboard = service.getManagerBillDashboard("landlord-demo");
+    const collection = service.getManagerCollection("landlord-demo");
+    const deposits = service.listManagerBillDeposits("landlord-demo");
+    const overdue = service.listManagerOverdueCases("landlord-demo");
+
+    assert.equal(dashboard.bills.length >= 5, true, "청구 목록은 최소 5건이어야 한다.");
+    assert.equal(collection.recentDeposits.length, 5, "최근 입금은 5건이어야 한다.");
+    assert.equal(deposits.paymentReports.length, 5, "납부 신고 큐는 5건이어야 한다.");
+    assert.equal(deposits.deposits.length, 5, "실제 입금 매칭은 5건이어야 한다.");
+    assert.equal(deposits.orphanDeposits.length, 5, "orphan 입금 큐는 5건이어야 한다.");
+    assert.equal(deposits.mismatchDeposits.length, 5, "불일치 확인 요청은 5건이어야 한다.");
+    assert.equal(overdue.activeCases.length, 5, "연체 세대 목록은 5건이어야 한다.");
+    assert.equal(overdue.waitingCases.length, 5, "확인 대기 목록은 5건이어야 한다.");
+  });
+
+  it("seeds manager ticket dashboard dummy rows with analyses and repair flows", () => {
+    const service = new RoomlogService();
+
+    const tickets = service.listTicketsForManager("landlord-demo");
+    const titles = tickets.map((ticket: any) => ticket.complaint.title).join("\n");
+
+    assert.equal(tickets.length, 5, "티켓 처리 대시보드는 데모 티켓 5건을 표시해야 한다.");
+    assert.match(titles, /에어컨/);
+    assert.match(titles, /세면대/);
+
+    for (const ticket of tickets as any[]) {
+      assert.ok(ticket.analysis, `${ticket.id}는 AI 분석을 포함해야 한다.`);
+      assert.equal(ticket.repairs.length >= 1, true, `${ticket.id}는 하위 수리 흐름을 포함해야 한다.`);
+    }
+  });
+
+  it("lets the manager realtime agent report ticket query results by defect keyword", () => {
+    const service = new RoomlogService();
+
+    const airconResult = service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.query",
+      text: "에어컨 티켓 조회해서 결과 보고해줘"
+    });
+    const sinkResult = service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.query",
+      text: "세면대 누수 티켓 조회해서 결과 보고해줘"
+    });
+
+    const airconTickets = ((airconResult.data as any).matchedTickets ?? []) as any[];
+    const sinkTickets = ((sinkResult.data as any).matchedTickets ?? []) as any[];
+
+    assert.equal(airconResult.status, "executed");
+    assert.equal(airconTickets.length, 1);
+    assert.match(airconResult.summary, /에어컨/);
+    assert.equal(airconTickets[0].ticketId, "ticket-demo-aircon");
+    assert.equal((airconResult.data as any).filters.includes("키워드: 에어컨"), true);
+
+    assert.equal(sinkResult.status, "executed");
+    assert.equal(sinkTickets.length, 1);
+    assert.match(sinkResult.summary, /세면대/);
+    assert.equal(sinkTickets[0].ticketId, "ticket-demo-sink");
+    assert.equal((sinkResult.data as any).filters.includes("키워드: 세면대"), true);
+  });
+
   it("stores uploaded image files locally and rejects non-image files", async () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-upload-"));
     const service = new RoomlogService({
@@ -3751,6 +3843,255 @@ describe("RoomlogService", () => {
         process.env.OPENAI_API_KEY = originalApiKey;
       }
     }
+  });
+
+  it("creates a manager Realtime session with only allowlisted operation tools", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      const result = await service.createManagerRealtimeClientSecret("landlord-demo", {
+        voice: "marin"
+      });
+
+      assert.equal(result.mode, "not_configured");
+      assert.match(result.sessionId, /manager-agent:landlord-demo/);
+      assert.match(result.instructions, /관리인 운영 에이전트/);
+      assert.match(result.instructions, /티켓 처리/);
+      assert.match(result.instructions, /청구 관리/);
+      assert.match(result.instructions, /소통/);
+      assert.match(result.instructions, /독촉 발송은 billing\.send_dunning/);
+      assert.doesNotMatch(result.instructions, /확인중 입금 또는 orphan 입금이 있으면 서버가 차단/);
+      assert.equal(result.tools.some((tool: any) => tool.name === "run_manager_agent_command"), true);
+      assert.match(JSON.stringify(result.tools), /ticket.query/);
+      assert.match(JSON.stringify(result.tools), /billing.summary/);
+      assert.match(JSON.stringify(result.tools), /billing.send_dunning/);
+      assert.match(JSON.stringify(result.tools), /messaging.draft_reply/);
+      assert.match(JSON.stringify(result.tools), /messaging.send_reply/);
+    } finally {
+      if (originalApiKey) {
+        process.env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
+  it("uses OpenAI Responses to phrase manager realtime command answers with queried data", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedHeaders: Headers | undefined;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_CHAT_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedHeaders = new Headers(init?.headers);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text: "미납은 411호 888,000원, 502호 640,000원 등 총 1,888,000원입니다."
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.runManagerAgentCommandForRealtime("landlord-demo", {
+        command: "billing.summary",
+        text: "미납된 호수와 금액 알려줘"
+      });
+
+      assert.equal(capturedUrl, "https://api.openai.com/v1/responses");
+      assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-test-roomlog");
+      assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.match(String(capturedBody?.instructions), /Roomlog 관리인 실시간 AI/);
+      assert.match(JSON.stringify(capturedBody?.input), /미납된 호수와 금액/);
+      assert.match(JSON.stringify(capturedBody?.input), /billing\.summary/);
+      const requestText = (((capturedBody?.input as any[])?.[0]?.content as any[])?.[0]?.text ?? "{}") as string;
+      const requestPayload = JSON.parse(requestText);
+      const replyData = requestPayload.data;
+      assert.match(JSON.stringify(capturedBody?.input), /currentMonthUnpaidBills/);
+      assert.equal(replyData.dashboard.bills, undefined);
+      assert.equal(
+        replyData.currentMonthUnpaidBills.every(
+          (bill: any) => bill.billingMonth === replyData.collection.billingMonth
+        ),
+        true
+      );
+      assert.equal(result.status, "executed");
+      assert.equal(result.domain, "billing");
+      assert.equal(result.summary, "미납은 411호 888,000원, 502호 640,000원 등 총 1,888,000원입니다.");
+      assert.equal(result.navigation?.href, "/manager/billing");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      else delete process.env.OPENAI_CHAT_MODEL;
+    }
+  });
+
+  it("keeps the deterministic manager realtime command summary when OpenAI phrasing fails", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "temporarily unavailable" } }), {
+        headers: { "Content-Type": "application/json" },
+        status: 503
+      })) as typeof fetch;
+
+    try {
+      const result = await service.runManagerAgentCommandForRealtime("landlord-demo", {
+        command: "billing.summary",
+        text: "미납된 호수와 금액 알려줘"
+      });
+
+      assert.equal(result.status, "executed");
+      assert.equal(result.domain, "billing");
+      assert.match(result.summary, /이번 달 청구/);
+      assert.match(result.summary, /미납/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("runs manager agent commands through a narrow server allowlist", async () => {
+    const service = new RoomlogService();
+    const ticketResult = service.runManagerAgentCommand("landlord-demo", {
+      command: "ticket.query",
+      text: "긴급도 1순위 민원 중 아직 업체 배정 안 된 건 보여줘"
+    });
+    const billingResult = service.runManagerAgentCommand("landlord-demo", {
+      command: "billing.summary",
+      text: "이번 달 수납 현황 알려줘"
+    });
+    const draftResult = service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.draft_reply",
+      text: "사진을 더 요청하는 답장 초안 만들어줘"
+    });
+    const dunningResult = service.runManagerAgentCommand("landlord-demo", {
+      command: "billing.send_dunning",
+      text: "411호 미납 독촉 바로 보내줘"
+    });
+    const guardedDunningResult = service.runManagerAgentCommand("landlord-demo", {
+      command: "billing.send_dunning",
+      billId: "bill-demo-guarded",
+      text: "301호 확인중 청구 독촉 보내줘"
+    });
+
+    assert.equal(ticketResult.status, "executed");
+    assert.equal(ticketResult.domain, "ticket");
+    assert.match(ticketResult.summary, /조건으로/);
+    assert.equal(ticketResult.navigation?.href, "/manager/ticket/dash/00");
+
+    assert.equal(billingResult.status, "executed");
+    assert.equal(billingResult.domain, "billing");
+    assert.match(billingResult.summary, /수납률|청구/);
+    assert.equal(billingResult.navigation?.href, "/manager/billing");
+
+    assert.equal(draftResult.status, "draft_only");
+    assert.equal(draftResult.domain, "messaging");
+    assert.match(draftResult.summary, /초안/);
+    assert.match(String((draftResult.data as any).draftText), /사진/);
+    assert.equal(draftResult.navigation?.href, "/manager/messaging/00");
+
+    assert.equal(dunningResult.status, "executed");
+    assert.equal(dunningResult.domain, "billing");
+    assert.match(dunningResult.summary, /411호.*독촉.*발송/);
+    assert.equal(dunningResult.navigation?.href, "/manager/billing/dunning/bill-demo-overdue-411?id=bill-demo-overdue-411&send=ok");
+
+    assert.equal(guardedDunningResult.status, "executed");
+    assert.equal(guardedDunningResult.domain, "billing");
+    assert.match(guardedDunningResult.summary, /301호.*독촉.*발송/);
+    assert.equal(guardedDunningResult.navigation?.href, "/manager/billing/dunning/bill-demo-guarded?id=bill-demo-guarded&send=ok");
+  });
+
+  it("sends a manager realtime message into the tenant-visible messaging thread", async () => {
+    const service = new RoomlogService();
+    const body = "오늘 오후 4시에 공용 현관등 점검을 진행하겠습니다.";
+
+    const result = service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_reply",
+      threadId: "mth_demo_general",
+      body
+    });
+    const tenantThread = service.getTenantMessagingThread("tenant-demo", "mth_demo_general");
+    const lastMessage = tenantThread.messages?.at(-1);
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "messaging");
+    assert.match(result.summary, /임차인.*수신|메시지.*전달/);
+    assert.equal(tenantThread.lastMessage, body);
+    assert.equal(tenantThread.unreadCount, 2);
+    assert.equal(lastMessage?.sender, "manager");
+    assert.equal(lastMessage?.body, body);
+  });
+
+  it("records realtime dunning sends in the tenant-visible payment thread", async () => {
+    const service = new RoomlogService();
+
+    const result = service.runManagerAgentCommand("landlord-demo", {
+      command: "billing.send_dunning",
+      text: "411호 연체 독촉 메시지 바로 보내줘"
+    });
+    const tenantThreads = service.listTenantMessagingThreads("tenant-billing-411");
+    const paymentThread = tenantThreads.find(
+      (thread) => thread.context === "payment" && thread.contextRef === "bill-demo-overdue-411"
+    );
+
+    assert.equal(result.status, "executed");
+    assert.ok(paymentThread, "독촉 발송은 임차인 payment 메시지함에 기록되어야 한다.");
+    assert.equal(paymentThread.lastMessage, (result.data as any).text);
+    assert.equal(paymentThread.unreadCount, 1);
+
+    const detail = service.getTenantMessagingThread("tenant-billing-411", paymentThread.id);
+    const lastMessage = detail.messages?.at(-1);
+
+    assert.equal(lastMessage?.sender, "manager");
+    assert.match(lastMessage?.body ?? "", /미납|청구|독촉/);
+  });
+
+  it("sends guarded realtime dunning requests immediately into tenant-visible payment threads", async () => {
+    const service = new RoomlogService();
+
+    const result = service.runManagerAgentCommand("landlord-demo", {
+      command: "billing.send_dunning",
+      text: "302호 독촉 메시지 보내"
+    });
+    const tenantThreads = service.listTenantMessagingThreads("tenant-billing-302");
+    const paymentThread = tenantThreads.find(
+      (thread) => thread.context === "payment" && thread.contextRef === "bill-demo-guarded-302"
+    );
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "billing");
+    assert.ok(paymentThread, "확인중 청구도 독촉 요청 즉시 임차인 payment 메시지함에 기록되어야 한다.");
+    assert.equal(paymentThread.lastMessage, (result.data as any).text);
+    assert.equal(paymentThread.unreadCount, 1);
+  });
+
+  it("blocks realtime manager messages that look like payment dunning", async () => {
+    const service = new RoomlogService();
+
+    const result = service.runManagerAgentCommand("landlord-demo", {
+      command: "messaging.send_reply",
+      threadId: "mth_demo_general",
+      body: "301호 미납 독촉 메시지 보내줘"
+    });
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.domain, "messaging");
+    assert.match(result.summary, /발송|독촉|확인/);
   });
 
   it("drafts contextual manager replies and sends the edited reply into the ticket timeline", async () => {

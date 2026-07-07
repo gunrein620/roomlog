@@ -47,6 +47,8 @@ const loginRouteSource = readFileSync(new URL("./src/app/api/auth/login/route.ts
 const loginScreenSource = readFileSync(new URL("./src/app/_components/WoozuLoginScreen.tsx", import.meta.url), "utf8");
 const unifiedLoginPageSource = readFileSync(new URL("./src/app/login/page.tsx", import.meta.url), "utf8");
 const sessionLibSource = readFileSync(new URL("./src/lib/session.ts", import.meta.url), "utf8");
+const tradeChatCenterSource = readFileSync(new URL("./src/app/_components/TradeChatCenter.tsx", import.meta.url), "utf8");
+const tradeProxySource = readFileSync(new URL("./src/app/api/trade/[...path]/route.ts", import.meta.url), "utf8");
 const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
@@ -63,6 +65,7 @@ const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/mes
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
 const managerContractApiSource = readFileSync(new URL("./src/lib/contract-manager-api.ts", import.meta.url), "utf8");
 const managerMessagingApiSource = readFileSync(new URL("./src/lib/messaging-manager-api.ts", import.meta.url), "utf8");
+const tradeControllerSource = readFileSync(new URL("../api/src/trade/trade.controller.ts", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
@@ -461,10 +464,11 @@ test("landlord link-required CTA starts the unprotected listing flow instead of 
 });
 
 test("every inquiry entry point opens the same composer sheet and feeds the inquiry center", () => {
-  // QA 3·4·6·7 회귀 방지: 홈 카드 문자문의·상세 문의하기·문의 탭 새 문의가 같은 sheet로 이어진다.
+  // QA 3·4·6·7 회귀 방지: 홈 카드 문자문의·상세 문의하기가 같은 sheet로 이어진다.
   assert.match(pageSource, /function InquirySheet/);
   assert.match(pageSource, /openInquiryComposer\(listing\)/);
-  assert.match(pageSource, /onNewInquiry=\{\(\) => openInquiryComposer\(\)\}/);
+  // 문의 탭의 "새 문의" 버튼은 제거됐다 — 문의센터는 채팅 허브만 남는다.
+  assert.doesNotMatch(pageSource, /onNewInquiry/);
   assert.match(pageSource, /pickInquiryTargetNo/);
   assert.match(pageSource, /withNewInquiry/);
   // "새 문의"가 안내 문구만 띄우고 홈으로 보내던 동작 금지.
@@ -472,6 +476,43 @@ test("every inquiry entry point opens the same composer sheet and feeds the inqu
   // 접수 완료 상태에서 문의센터로 바로 이동할 수 있다.
   assert.match(pageSource, /문의센터 보기/);
   assert.match(pageSource, /onViewInquiryCenter/);
+});
+
+test("inquiry center chat hub splits desktop two-pane vs app list with sort and unread badges", () => {
+  // 문의센터는 TradeChatCenter 허브 변형 하나로 그려진다.
+  assert.match(pageSource, /variant="hub"/);
+  assert.doesNotMatch(pageSource, /inquiryChannelItems|inquiryTimelineItems|inquiry-mini-grid/);
+  // 데스크톱 브라우저(넓은 화면·비설치)만 2패널 — PWA standalone은 앱 목록 디자인.
+  assert.match(tradeChatCenterSource, /display-mode: standalone/);
+  assert.match(tradeChatCenterSource, /min-width: 1080px/);
+  assert.match(tradeChatCenterSource, /trade-hub-desktop/);
+  // 최근 메시지순 정렬 + 상대가 보낸 새 메시지의 스레드별 안읽음 뱃지(읽음 기준은 사용자별 저장).
+  assert.match(tradeChatCenterSource, /sortByLatest/);
+  assert.match(tradeChatCenterSource, /woozuTradeSeen:\$\{/);
+  assert.match(tradeChatCenterSource, /lastSenderId === myUserId/);
+  assert.match(tradeChatCenterSource, /trade-hub-unread/);
+  assert.match(cssSource, /\.trade-hub-desktop/);
+  assert.match(cssSource, /\.trade-hub-list\.app/);
+  assert.match(cssSource, /\.trade-hub-unread/);
+  assert.match(cssSource, /\.trade-chat-room\s*\{/);
+});
+
+test("switching hub threads never leaks the previous thread's conversation or contract bar", () => {
+  // QA 회귀: 계약 체결 스레드를 열었다가 다른 스레드로 직행하면 계약 바가 남던 문제.
+  // 1) 스레드 전환 시 이전 대화·계약 상태를 즉시 비운다.
+  assert.match(tradeChatCenterSource, /setOpenThread\(null\);\s*\n\s*setOpenContract\(null\);\s*\n\s*\}, \[openThreadId\]\)/);
+  // 2) 늦게 도착한 이전 스레드 응답은 버린다.
+  assert.match(tradeChatCenterSource, /if \(openThreadIdRef\.current === threadId\) setOpenThread/);
+  assert.match(tradeChatCenterSource, /if \(openThreadIdRef\.current === threadId\) setOpenContract/);
+  // 3) 계약 없는 스레드의 contract 조회(업스트림 null 바디)가 프록시에서 500이 되지 않는다.
+  assert.match(tradeProxySource, /NextResponse\.json\(data \?\? null\)/);
+});
+
+test("trade update badge ignores messages sent by the current viewer", () => {
+  assert.match(tradeControllerSource, /threadId: thread\.id,\s*\n\s*senderId/);
+  assert.match(pageSource, /onTradeUpdated = \(payload: \{ threadId\?: string; senderId\?: string \}\)/);
+  assert.match(pageSource, /payload\.senderId === viewer\.userId/);
+  assert.match(pageSource, /setUnseenTradeCount/);
 });
 
 test("owner registration state survives refresh via a versioned local draft with no fake prefills", () => {
@@ -742,8 +783,11 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "수리요청",
     "관리비",
     "방문 일정",
-    "에어컨 필터 교체 방문",
-    "124,000원",
+    "아직 접수된 수리요청이 없어요",
+    "납부할 관리비 없음",
+    "예정된 방문 없음",
+    "수리 항목을 선택하세요",
+    "집주인 채팅",
     "내 룸로그",
     "메시지",
     "퇴실 정산"
@@ -760,7 +804,12 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.match(cssSource, /\.domain-test-link/);
   assert.match(cssSource, /\.tenant-contract-card/);
   assert.match(cssSource, /\.maintenance-card/);
-  assert.doesNotMatch(pageSource, /HVAC|₩124,000|2:30 PM/);
+  assert.match(pageSource, /tenant-landlord-chat-button/);
+  assert.match(pageSource, /tenant-chat-panel/);
+  assert.match(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
+  assert.match(cssSource, /\.tenant-landlord-chat-button/);
+  assert.match(cssSource, /\.tenant-chat-panel/);
+  assert.doesNotMatch(pageSource, /창문 누수|욕실 타일 보수|에어컨 필터|124,000원|오늘 2:30|보일러 온수 불량 접수하기|HVAC|₩124,000|2:30 PM/);
 });
 
 test("shows a landlord my page with property registration fields and media actions", () => {
@@ -877,10 +926,6 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
     "가격 변동",
     "방문 후보",
     "문의 흐름",
-    "문의 채널",
-    "원하는 방식으로 바로 확인",
-    "로그인 없이 가능",
-    "방문예약",
     "문의 진행",
     "검색 조건 관리",
     "최근 본 방",
@@ -914,8 +959,8 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   assert.match(pageSource, /setInquiries/);
   assert.match(cssSource, /\.inquiry-notice/);
   assert.match(cssSource, /\.saved-compare-strip/);
-  assert.match(cssSource, /\.inquiry-timeline-card/);
-  assert.match(cssSource, /\.inquiry-channel-card/);
+  // 문의센터의 채널/타임라인/미니 통계 카드는 제거됐다 — 채팅 허브만 남는다.
+  assert.doesNotMatch(cssSource, /\.inquiry-timeline-card|\.inquiry-channel-card|\.inquiry-mini-grid/);
   assert.match(cssSource, /\.profile-account-card/);
   assert.match(cssSource, /\.profile-activity-grid/);
   assert.match(cssSource, /\.profile-inquiry-card/);

@@ -22,6 +22,12 @@ export const dashRoutes = {
   e0: "/manager/ticket/dash/e0",
 } as const;
 
+export function ticketDashHref(screen: keyof typeof dashRoutes, ticketId?: string) {
+  const route = dashRoutes[screen];
+
+  return ticketId ? `${route}?id=${encodeURIComponent(ticketId)}` : route;
+}
+
 export const callRoutes = {
   "00": "/manager/ticket/call/00",
   "01": "/manager/ticket/call/01",

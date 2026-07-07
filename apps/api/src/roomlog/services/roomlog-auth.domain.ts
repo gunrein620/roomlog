@@ -774,6 +774,33 @@ export class RoomlogAuthDomain {
     this.persistStore();
   }
 
+  /**
+   * 계약 체결 → 세입자 관계 연결.
+   * TENANT capability는 tenantRooms에서 파생되므로, 수락 순간 매물에 해당하는 임대인 room에
+   * 세입자를 연결하면 "나의 집"·민원 접수가 그대로 살아난다. 매물명과 일치하는 room이 없으면
+   * (임대인의 두 번째 이후 매물) 그 매물용 room을 새로 만든다.
+   */
+  assignTenantRoomFromContract(tenantId: string, landlordId: string, listing: { title: string; location: string }) {
+    let room = this.store.rooms.find(
+      (item) => item.landlordId === landlordId && item.buildingName === listing.title
+    );
+
+    if (!room) {
+      room = {
+        id: id("room"),
+        buildingName: listing.title,
+        roomNo: "101",
+        address: listing.location,
+        landlordId
+      };
+      this.store.rooms.push(room);
+    }
+
+    this.store.tenantRooms[tenantId] = room.id;
+    this.persistStore();
+    return room;
+  }
+
   private findOrCreateRoomForSignup(input: SignupInput, landlordId?: string) {
     const buildingName = input.buildingName?.trim();
     const roomNo = input.roomNo?.trim();

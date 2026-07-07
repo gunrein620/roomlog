@@ -33,6 +33,23 @@ async function activeTeamTicket(): Promise<TeamManagerTicket | null> {
   }
 }
 
+async function teamTicketById(id: string): Promise<TeamManagerTicket | null> {
+  try {
+    return await serverFetch<TeamManagerTicket>(`/manager/tickets/${encodeURIComponent(id)}`);
+  } catch (error) {
+    console.error(`[manager/api] /manager/tickets/${id} 조회 실패:`, error);
+    return null;
+  }
+}
+
+async function selectedTeamTicket(id: string): Promise<TeamManagerTicket | null> {
+  if (!id || id === MANAGER_DEMO_TICKET_ID) {
+    return activeTeamTicket();
+  }
+
+  return (await teamTicketById(id)) ?? (await activeTeamTicket());
+}
+
 export async function listManagerTickets(filter?: string): Promise<Ticket[]> {
   try {
     return (await listTeamTickets(filter)).map(toManagerTicket);
@@ -53,7 +70,7 @@ export async function getManagerQueueSummary(): Promise<ManagerQueueSummary> {
 }
 
 export async function getManagerTicket(id: string = MANAGER_DEMO_TICKET_ID): Promise<Ticket> {
-  const t = await activeTeamTicket();
+  const t = await selectedTeamTicket(id);
   if (t) return toManagerTicket(t);
   console.warn("[manager/api] 활성 티켓 없음 → 데모 폴백");
   return managerDemoTicket(id);
@@ -62,7 +79,7 @@ export async function getManagerTicket(id: string = MANAGER_DEMO_TICKET_ID): Pro
 export async function getManagerAnalysis(
   ticketId: string = MANAGER_DEMO_TICKET_ID
 ): Promise<DefectAnalysis> {
-  const t = await activeTeamTicket();
+  const t = await selectedTeamTicket(ticketId);
   const mapped = t && toManagerAnalysis(t);
   if (mapped) return mapped;
   console.warn("[manager/api] 실제 분석 없음 → 데모 폴백");
@@ -72,7 +89,7 @@ export async function getManagerAnalysis(
 export async function getManagerRepair(
   ticketId: string = MANAGER_DEMO_TICKET_ID
 ): Promise<RepairJob> {
-  const t = await activeTeamTicket();
+  const t = await selectedTeamTicket(ticketId);
   const mapped = t && toManagerRepair(t);
   if (mapped) return mapped;
   console.warn("[manager/api] 실제 수리 없음(미배정/취소) → 데모 폴백");

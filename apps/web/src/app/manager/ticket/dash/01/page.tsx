@@ -13,18 +13,22 @@ import {
   TicketHeader,
   Timeline,
   callRoutes,
-  dashRoutes,
   muted,
   pageStack,
   row,
   sectionTitle,
+  ticketDashHref,
 } from "../../_components/ticket-manager-ui";
 
-export default async function Page() {
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const ticketId = id ?? MANAGER_DEMO_TICKET_ID;
   const [ticket, analysis, repair] = await Promise.all([
-    getManagerTicket(MANAGER_DEMO_TICKET_ID),
-    getManagerAnalysis(MANAGER_DEMO_TICKET_ID),
-    getManagerRepair(MANAGER_DEMO_TICKET_ID),
+    getManagerTicket(ticketId),
+    getManagerAnalysis(ticketId),
+    getManagerRepair(ticketId),
   ]);
   const completionGuard = repair.stage === "completed" || repair.stage === "paid";
 
@@ -68,8 +72,8 @@ export default async function Page() {
               {completionGuard ? "완료 처리" : "완료 처리 · 수리완료/결제 가드"}
             </Button>
             <div style={{ ...row, justifyContent: "space-between" }}>
-              <LinkButton href={dashRoutes["03"]} variant="secondary">AI 답변/거절 통보</LinkButton>
-              <LinkButton href={dashRoutes["04"]} variant="secondary">업체 배정/견적</LinkButton>
+              <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">AI 답변/거절 통보</LinkButton>
+              <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
               <LinkButton href={callRoutes["01"]} variant="ghost">음성으로 빠른 승인</LinkButton>
             </div>
           </Card>
