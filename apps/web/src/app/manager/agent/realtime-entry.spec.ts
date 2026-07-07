@@ -70,3 +70,16 @@ test("manager realtime route uses a browser console wired to BFF agent APIs", ()
   assert.match(proxySource, /apiUrl\(`\/manager\/\$\{path\.join\("\/"\)\}\$\{search\}`/);
   assert.match(proxySource, /Authorization: `Bearer \$\{token\}`/);
 });
+
+test("manager realtime text surface is a chat with the agent instead of a command form", () => {
+  const consoleSource = readFileSync(realtimeConsolePath, "utf8");
+
+  assert.match(consoleSource, /AI agent와 대화/);
+  assert.match(consoleSource, /agentChatShellStyle/);
+  assert.match(consoleSource, /agentMessageToCommand/);
+  assert.match(consoleSource, /대화 입력/);
+  assert.match(consoleSource, /placeholder="AI agent에게 처리할 일을 입력하세요"/);
+  assert.match(consoleSource, /"전송"/);
+  assert.doesNotMatch(consoleSource, />텍스트 명령</);
+  assert.doesNotMatch(consoleSource, />명령 실행</);
+});

@@ -77,16 +77,16 @@ const commandOptions: Array<{
 ];
 
 export function ManagerRealtimeConsole() {
-  const [command, setCommand] = useState<ManagerAgentCommandName>("ticket.query");
-  const [text, setText] = useState(commandOptions[0].placeholder);
+  const [activeCommand, setActiveCommand] = useState<ManagerAgentCommandName>("ticket.query");
+  const [chatText, setChatText] = useState("");
   const [pendingText, setPendingText] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [session, setSession] = useState<ManagerRealtimeClientSecretResult | null>(null);
   const [entries, setEntries] = useState<ConsoleEntry[]>([
     {
       id: "initial",
-      role: "system",
-      text: "티켓 조회, 청구 요약, 청구 전용 연체 독촉 발송, 소통 답장 초안과 일반 답장 발송을 실행할 수 있습니다. 결제 확정·공지 발송은 관리인 확인 화면에서 처리합니다."
+      role: "agent",
+      text: "처리할 일을 대화로 입력하세요. 티켓 조회, 청구 요약, 청구 전용 연체 독촉 발송, 소통 답장 초안과 일반 답장 발송을 실행할 수 있습니다."
     }
   ]);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -100,15 +100,15 @@ export function ManagerRealtimeConsole() {
     };
   }, []);
 
-  const selectedOption = commandOptions.find((option) => option.command === command) ?? commandOptions[0];
+  const activeOption = commandOptions.find((option) => option.command === activeCommand) ?? commandOptions[0];
 
   function appendEntry(entry: Omit<ConsoleEntry, "id">) {
     setEntries((current) => [
+      ...current,
       {
         ...entry,
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`
-      },
-      ...current
+      }
     ]);
   }
 
@@ -149,23 +149,26 @@ export function ManagerRealtimeConsole() {
     return body as ManagerAgentCommandResult;
   }
 
-  async function submitTextCommand(event: FormEvent<HTMLFormElement>) {
+  async function submitAgentMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedText = text.trim();
+    const trimmedText = chatText.trim();
 
     if (!trimmedText) {
-      appendEntry({ role: "system", text: "텍스트 명령을 입력해주세요." });
+      appendEntry({ role: "system", text: "AI agent에게 전달할 내용을 입력해주세요." });
       return;
     }
 
+    const inferredCommand = agentMessageToCommand(trimmedText, activeCommand);
+    setActiveCommand(inferredCommand);
     setPendingText(true);
-    appendEntry({ role: "manager", text: `${selectedOption.label}: ${trimmedText}` });
+    appendEntry({ role: "manager", text: trimmedText });
+    setChatText("");
 
     try {
       const result = await runManagerCommand({
-        command,
+        command: inferredCommand,
         text: trimmedText,
-        body: command === "messaging.draft_reply" || command === "messaging.send_reply" ? trimmedText : undefined
+        body: inferredCommand === "messaging.draft_reply" || inferredCommand === "messaging.send_reply" ? trimmedText : undefined
       });
       appendEntry({ role: "agent", text: result.summary, result });
     } catch (error) {
@@ -324,14 +327,6 @@ export function ManagerRealtimeConsole() {
     audioRef.current = null;
   }
 
-  function onCommandChange(nextCommand: ManagerAgentCommandName) {
-    setCommand(nextCommand);
-    const option = commandOptions.find((item) => item.command === nextCommand);
-    if (option) {
-      setText(option.placeholder);
-    }
-  }
-
   return (
     <Card style={{ display: "grid", gap: "var(--space-lg)", background: "var(--surface-container-high)" }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--space-lg)", alignItems: "start" }}>
@@ -358,55 +353,84 @@ export function ManagerRealtimeConsole() {
         </div>
       </div>
 
-      <form onSubmit={submitTextCommand} style={{ display: "grid", gap: "var(--space-md)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-sm)", alignItems: "stretch" }}>
-          <label style={{ display: "grid", gap: "var(--space-xs)", fontWeight: 800 }}>
-            <span>작업</span>
-            <select
-              value={command}
-              onChange={(event) => onCommandChange(event.target.value as ManagerAgentCommandName)}
-              style={fieldStyle}
-            >
-              {commandOptions.map((option) => (
-                <option key={option.command} value={option.command}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={{ display: "grid", gap: "var(--space-xs)", fontWeight: 800 }}>
-            <span>텍스트 명령</span>
+      <section style={agentChatShellStyle} aria-label="AI agent 채팅">
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)", flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <strong>AI agent와 대화</strong>
+            <p style={{ margin: "var(--space-xs) 0 0", color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
+              자연어로 요청하면 가장 가까운 작업으로 분류해 실행합니다.
+            </p>
+          </div>
+          <Badge>{activeOption.label}</Badge>
+        </div>
+
+        <div role="list" aria-label="빠른 작업 선택" style={quickActionListStyle}>
+          {commandOptions.map((option) => {
+            const active = option.command === activeCommand;
+            return (
+              <button
+                key={option.command}
+                type="button"
+                onClick={() => {
+                  setActiveCommand(option.command);
+                  setChatText((current) => current || option.placeholder);
+                }}
+                style={{
+                  ...quickActionButtonStyle,
+                  background: active ? "var(--primary)" : "var(--surface-container-lowest)",
+                  color: active ? "var(--on-primary)" : "var(--on-surface)",
+                  border: active ? "1.5px solid var(--primary)" : "1px solid var(--border)"
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div role="log" aria-live="polite" style={agentChatTranscriptStyle}>
+          {entries.map((entry) => {
+            const mine = entry.role === "manager";
+            return (
+              <div key={entry.id} style={{ ...chatRowStyle, justifyItems: mine ? "end" : "start" }}>
+                <div
+                  style={{
+                    ...chatBubbleStyle,
+                    background: mine ? "var(--primary)" : "var(--surface-container)",
+                    color: mine ? "var(--on-primary)" : "var(--on-surface)"
+                  }}
+                >
+                  <span style={chatRoleStyle}>{roleLabel(entry.role)}</span>
+                  <span style={{ lineHeight: "var(--lh-body)" }}>{entry.text}</span>
+                  {entry.result?.navigation ? (
+                    <a href={entry.result.navigation.href} style={navigationLinkStyle}>
+                      {entry.result.navigation.label}
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <form onSubmit={submitAgentMessage} style={chatFormStyle}>
+          <label style={chatInputLabelStyle}>
+            <span>대화 입력</span>
             <textarea
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              rows={3}
-              style={{ ...fieldStyle, resize: "vertical", minHeight: 92 }}
+              value={chatText}
+              onChange={(event) => setChatText(event.target.value)}
+              rows={2}
+              placeholder="AI agent에게 처리할 일을 입력하세요"
+              style={chatInputStyle}
             />
           </label>
           <div style={{ display: "flex", alignItems: "end" }}>
             <Button type="submit" disabled={pendingText}>
-              {pendingText ? "실행 중" : "명령 실행"}
+              {pendingText ? "처리 중" : "전송"}
             </Button>
           </div>
-        </div>
-      </form>
-
-      <div style={{ display: "grid", gap: "var(--space-sm)" }}>
-        <strong>작업 로그</strong>
-        <div style={logListStyle}>
-          {entries.map((entry) => (
-            <div key={entry.id} style={logItemStyle}>
-              <Badge>{roleLabel(entry.role)}</Badge>
-              <span style={{ lineHeight: "var(--lh-body)" }}>{entry.text}</span>
-              {entry.result?.navigation ? (
-                <a href={entry.result.navigation.href} style={navigationLinkStyle}>
-                  {entry.result.navigation.label}
-                </a>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </div>
+        </form>
+      </section>
 
       {session ? (
         <p style={{ margin: 0, color: "var(--on-surface-variant)", fontSize: "var(--fs-small)", lineHeight: "var(--lh-body)" }}>
@@ -415,6 +439,18 @@ export function ManagerRealtimeConsole() {
       ) : null}
     </Card>
   );
+}
+
+function agentMessageToCommand(message: string, fallback: ManagerAgentCommandName): ManagerAgentCommandName {
+  const normalized = message.toLowerCase();
+
+  if (/send_dunning|dunning|독촉|연체/.test(normalized)) return "billing.send_dunning";
+  if (/초안|draft/.test(normalized)) return "messaging.draft_reply";
+  if (/답장|메시지|문자|소통|보내|발송/.test(normalized)) return "messaging.send_reply";
+  if (/청구|수납|입금|관리비|미납|월세|보증금/.test(normalized)) return "billing.summary";
+  if (/티켓|민원|하자|수리|에어컨|세면대|누수|업체|긴급/.test(normalized)) return "ticket.query";
+
+  return fallback;
 }
 
 function voiceStatusLabel(status: VoiceStatus) {
@@ -431,36 +467,81 @@ function roleLabel(role: ConsoleEntry["role"]) {
   return "시스템";
 }
 
-const fieldStyle = {
+const agentChatShellStyle = {
+  display: "grid",
+  gap: "var(--space-md)",
+  padding: "var(--space-md)",
+  borderRadius: "var(--radius)",
+  border: "1.5px solid var(--outline-variant)",
+  background: "var(--surface)"
+} as const;
+
+const quickActionListStyle = {
+  display: "flex",
+  gap: "var(--space-xs)",
+  flexWrap: "wrap"
+} as const;
+
+const quickActionButtonStyle = {
+  minHeight: 36,
+  padding: "0 var(--space-md)",
+  borderRadius: "var(--radius-btn)",
+  fontWeight: 800,
+  cursor: "pointer"
+} as const;
+
+const agentChatTranscriptStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
+  minHeight: 260,
+  maxHeight: 420,
+  overflow: "auto",
+  padding: "var(--space-md)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)"
+} as const;
+
+const chatRowStyle = {
+  display: "grid"
+} as const;
+
+const chatBubbleStyle = {
+  maxWidth: "min(78ch, 88%)",
+  display: "grid",
+  gap: "var(--space-xs)",
+  padding: "var(--space-sm) var(--space-md)",
+  borderRadius: "var(--radius-md)"
+} as const;
+
+const chatRoleStyle = {
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  opacity: 0.76
+} as const;
+
+const chatFormStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: "var(--space-sm)",
+  alignItems: "center",
+} as const;
+
+const chatInputLabelStyle = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  fontWeight: 800
+} as const;
+
+const chatInputStyle = {
   width: "100%",
-  minHeight: "var(--touch-target)",
+  minHeight: 72,
   borderRadius: "var(--radius-md)",
   border: "1.5px solid var(--outline-variant)",
   background: "var(--surface)",
   color: "var(--on-surface)",
   padding: "var(--space-sm)",
-  font: "inherit"
-} as const;
-
-const logListStyle = {
-  display: "grid",
-  gap: "var(--space-sm)",
-  maxHeight: 320,
-  overflow: "auto",
-  padding: "var(--space-sm)",
-  borderRadius: "var(--radius-md)",
-  border: "1.5px solid var(--outline-variant)",
-  background: "var(--surface)"
-} as const;
-
-const logItemStyle = {
-  display: "grid",
-  gridTemplateColumns: "auto minmax(0, 1fr) auto",
-  gap: "var(--space-sm)",
-  alignItems: "center",
-  padding: "var(--space-sm)",
-  borderRadius: "var(--radius-sm)",
-  background: "var(--surface-container)"
+  font: "inherit",
+  resize: "vertical"
 } as const;
 
 const navigationLinkStyle = {
