@@ -5,17 +5,21 @@ import {
   Money,
   RepairProgress,
   TicketHeader,
-  dashRoutes,
   muted,
   pageStack,
   row,
   sectionTitle,
+  ticketDashHref,
 } from "../../_components/ticket-manager-ui";
 
-export default async function Page() {
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const ticketId = id ?? MANAGER_DEMO_TICKET_ID;
   const [ticket, repair] = await Promise.all([
-    getManagerTicket(MANAGER_DEMO_TICKET_ID),
-    getManagerRepair(MANAGER_DEMO_TICKET_ID),
+    getManagerTicket(ticketId),
+    getManagerRepair(ticketId),
   ]);
 
   return (
@@ -52,7 +56,7 @@ export default async function Page() {
       <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
         <div style={sectionTitle}>수리 진행 추적</div>
         <div style={muted}>일정 확정 → 수리중 → 수리완료 확인 → 만족도 1탭 기록</div>
-        <LinkButton href={dashRoutes["05"]} fullWidth>
+        <LinkButton href={ticketDashHref("05", ticket.id)} fullWidth>
           수리완료 확인 시 결제 승인으로
         </LinkButton>
       </Card>

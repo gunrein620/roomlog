@@ -69,6 +69,22 @@ export const MANAGER_DEMO_TICKETS: Ticket[] = [
     repairJobId: "rj_0004",
     disposition: "open",
   },
+  {
+    id: "tk_0005",
+    type: "defect",
+    unitId: "412",
+    title: "세면대 하부 누수",
+    description: "욕실 세면대 아래 배관에서 물방울이 계속 떨어지고 수납장이 젖었습니다.",
+    location: "욕실 세면대",
+    occurredAt: "2026-07-02T09:20:00+09:00",
+    status: "processing",
+    urgency: 1,
+    createdAt: "2026-07-02T09:30:00+09:00",
+    updatedAt: "2026-07-02T10:10:00+09:00",
+    analysisId: "an_0005",
+    repairJobId: "rj_0005",
+    disposition: "open",
+  },
 ];
 
 export const MANAGER_DEMO_ANALYSES: Record<string, DefectAnalysis> = {
@@ -120,6 +136,18 @@ export const MANAGER_DEMO_ANALYSES: Record<string, DefectAnalysis> = {
     moveinComparisonAvailable: false,
     createdAt: "2026-07-01T08:00:00+09:00",
   },
+  tk_0005: {
+    id: "an_0005",
+    ticketId: "tk_0005",
+    problemCandidates: ["세면대 배수 트랩 누수", "수전 연결부 패킹 마모"],
+    urgency: 1,
+    responsibility: "landlord_likely",
+    reasoning: ["하부 배관 연결부 누수 가능성이 큼", "설비 마모 가능성이 높아 업체 견적 확인 필요"],
+    confidence: 0.88,
+    safetyRisk: false,
+    moveinComparisonAvailable: false,
+    createdAt: "2026-07-02T09:35:00+09:00",
+  },
 };
 
 export const MANAGER_DEMO_REPAIRS: Record<string, RepairJob> = {
@@ -135,6 +163,27 @@ export const MANAGER_DEMO_REPAIRS: Record<string, RepairJob> = {
     ],
     scheduledAt: "2026-07-02T11:00:00+09:00",
   },
+  tk_0002: {
+    id: "rj_0002",
+    ticketId: "tk_0002",
+    stage: "vendor_assigned",
+    vendorName: "빠른누수 설비",
+    quoteAmount: 0,
+    quoteItems: [],
+    scheduledAt: "2026-07-02T18:00:00+09:00",
+  },
+  tk_0003: {
+    id: "rj_0003",
+    ticketId: "tk_0003",
+    stage: "vendor_assigned",
+    vendorName: "창호케어",
+    quoteAmount: 52000,
+    quoteItems: [
+      { label: "출장·창문 잠금장치 점검", amount: 30000 },
+      { label: "레버 부품 확인", amount: 22000 },
+    ],
+    scheduledAt: "2026-07-03T10:00:00+09:00",
+  },
   tk_0004: {
     id: "rj_0004",
     ticketId: "tk_0004",
@@ -146,6 +195,18 @@ export const MANAGER_DEMO_REPAIRS: Record<string, RepairJob> = {
       { label: "배터리 단자 교체", amount: 90000 },
     ],
     scheduledAt: "2026-07-02T09:30:00+09:00",
+  },
+  tk_0005: {
+    id: "rj_0005",
+    ticketId: "tk_0005",
+    stage: "quoted",
+    vendorName: "빠른누수 설비",
+    quoteAmount: 66000,
+    quoteItems: [
+      { label: "출장·누수 점검", amount: 30000 },
+      { label: "배수 트랩 패킹 교체", amount: 36000 },
+    ],
+    scheduledAt: "2026-07-02T16:00:00+09:00",
   },
 };
 

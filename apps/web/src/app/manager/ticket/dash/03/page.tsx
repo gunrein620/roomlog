@@ -3,15 +3,18 @@ import { MANAGER_DEMO_TICKET_ID, getManagerTicket } from "@/lib/ticket-manager-a
 import {
   LinkButton,
   TicketHeader,
-  dashRoutes,
   muted,
   pageStack,
   row,
   sectionTitle,
+  ticketDashHref,
 } from "../../_components/ticket-manager-ui";
 
-export default async function Page() {
-  const ticket = await getManagerTicket(MANAGER_DEMO_TICKET_ID);
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const ticket = await getManagerTicket(id ?? MANAGER_DEMO_TICKET_ID);
 
   return (
     <div style={pageStack}>
@@ -38,9 +41,9 @@ export default async function Page() {
         <div style={muted}>발송은 임차인 알림만 생성하며 티켓 상태를 변경하지 않습니다.</div>
       </Card>
       <div style={row}>
-        <LinkButton href={dashRoutes["01"]}>수정 후 발송</LinkButton>
-        <LinkButton href={dashRoutes["03"]} variant="secondary">초안 다시 생성</LinkButton>
-        <LinkButton href={dashRoutes["01"]} variant="ghost">뒤로</LinkButton>
+        <LinkButton href={ticketDashHref("01", ticket.id)}>수정 후 발송</LinkButton>
+        <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">초안 다시 생성</LinkButton>
+        <LinkButton href={ticketDashHref("01", ticket.id)} variant="ghost">뒤로</LinkButton>
       </div>
     </div>
   );

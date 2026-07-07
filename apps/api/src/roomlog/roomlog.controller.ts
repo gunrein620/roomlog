@@ -44,6 +44,7 @@ import {
   AskManagerReportChatInput,
   CreateRoomInput,
   FloorPlanAiAnalysisInput,
+  ManagerAgentCommandInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
   MessagingThreadContext,
@@ -1082,6 +1083,26 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.queryManagerAssistant(user.id, body);
+  }
+
+  @Post("manager/agent/realtime/client-secret")
+  createManagerRealtimeClientSecret(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: RealtimeClientSecretInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerRealtimeClientSecret(user.id, body);
+  }
+
+  @Post("manager/agent/realtime/command")
+  runManagerAgentCommand(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: ManagerAgentCommandInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.runManagerAgentCommandForRealtime(user.id, body);
   }
 
   @Get("manager/messaging/threads")
