@@ -11,6 +11,7 @@ import {
   isInsideClipBox
 } from "./splat-clip";
 import { estimateSplatFloorY } from "./splat-floor";
+import { isWallShellPoint, readWallReplaceParam } from "./splat-walls";
 import type { SplatTransform } from "./tour-types";
 
 // 약 3m(가로) × 4m(세로), 층고 2.4m 원룸. 바닥 중앙이 원점.
@@ -40,6 +41,7 @@ interface SplatTuning {
   clip: boolean;
   clipMargin: number;
   floorSnap: boolean;
+  wallReplace: boolean;
   sources: {
     scaleMultiplier: SplatTuningSource;
     rotationXDegrees: SplatTuningSource;
@@ -51,6 +53,7 @@ interface SplatTuning {
     clip: SplatTuningSource;
     clipMargin: SplatTuningSource;
     floorSnap: SplatTuningSource;
+    wallReplace: SplatTuningSource;
   };
   overrides: {
     scaleMultiplier: boolean;
@@ -63,6 +66,7 @@ interface SplatTuning {
     clip: boolean;
     clipMargin: boolean;
     floorSnap: boolean;
+    wallReplace: boolean;
   };
 }
 
@@ -77,6 +81,7 @@ export interface SplatTuningProfile {
   clip?: boolean;
   clipMargin?: number;
   floorSnap?: boolean;
+  wallReplace?: boolean;
 }
 
 interface SplatFitInfo {
@@ -95,6 +100,13 @@ interface SplatFloorSnapInfo {
   floorY: number | null;
   correctionY: number;
   samples: number;
+}
+
+interface SplatWallClipInfo {
+  enabled: boolean;
+  applied: boolean;
+  totalSplats: number | null;
+  removedSplats: number;
 }
 
 interface SplatClipInfo {
@@ -164,6 +176,7 @@ export function SplatScene({
           : readSplatTuningFromLocation(profile);
         const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
         const floorSnapInfo = snapSplatFloor(nextSplatMesh, tuning);
+        const wallClipInfo = applyWallClip(nextSplatMesh, tuning);
         const clipInfo = applySplatClip(nextSplatMesh, tuning);
         console.info(
           "[splat-tour] applied splat transform " +
@@ -171,6 +184,7 @@ export function SplatScene({
               src,
               fitMode: tuning.fitMode,
               floorSnap: floorSnapInfo,
+              wallClip: wallClipInfo,
               clip: clipInfo,
               rotationXDegrees: tuning.rotationXDegrees,
               rotationYDegrees: tuning.rotationYDegrees,
@@ -362,6 +376,60 @@ function snapSplatFloor(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatF
   };
 }
 
+// 도면 벽 대체: 뭉개진 벽 splat을 opacity-mask로 숨겨 SplatPlanWalls의 깨끗한 평면이 대신 보이게 한다.
+// native 정합 배치에서만 유효(auto fit의 bbox 배치는 도면 좌표와 무관).
+function applyWallClip(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatWallClipInfo {
+  const totalSplats = getSplatCount(splatMesh);
+
+  if (!tuning.wallReplace || tuning.fitMode !== "native") {
+    return {
+      enabled: false,
+      applied: false,
+      totalSplats,
+      removedSplats: 0
+    };
+  }
+
+  const packedSplats = splatMesh.packedSplats;
+  if (!packedSplats) {
+    return {
+      enabled: true,
+      applied: false,
+      totalSplats,
+      removedSplats: 0
+    };
+  }
+
+  splatMesh.updateMatrixWorld(true);
+  const worldCenter = new Vector3();
+  let removed = 0;
+
+  packedSplats.forEachSplat((index, center, scales, quaternion, opacity, color) => {
+    worldCenter.copy(center).applyMatrix4(splatMesh.matrixWorld);
+
+    if (!isWallShellPoint(worldCenter)) {
+      return;
+    }
+
+    removed += 1;
+    if (opacity !== 0) {
+      packedSplats.setSplat(index, center, scales, quaternion, 0, color);
+    }
+  });
+
+  if (removed > 0) {
+    packedSplats.needsUpdate = true;
+    splatMesh.needsUpdate = true;
+  }
+
+  return {
+    enabled: true,
+    applied: true,
+    totalSplats,
+    removedSplats: removed
+  };
+}
+
 function applySplatClip(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatClipInfo {
   const box = createRoomClipBox(tuning.clipMargin);
   const totalSplats = getSplatCount(splatMesh);
@@ -521,6 +589,7 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   const clip = readBooleanValue(rawValue.clip);
   const clipMargin = readNumberValue(rawValue.clipMargin, { minInclusive: 0 });
   const floorSnap = readBooleanValue(rawValue.floorSnap);
+  const wallReplace = readBooleanValue(rawValue.walls);
 
   if (scaleMultiplier !== undefined) profile.scaleMultiplier = scaleMultiplier;
   if (rotationXDegrees !== undefined) profile.rotationXDegrees = rotationXDegrees;
@@ -532,6 +601,7 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   if (clip !== undefined) profile.clip = clip;
   if (clipMargin !== undefined) profile.clipMargin = clipMargin;
   if (floorSnap !== undefined) profile.floorSnap = floorSnap;
+  if (wallReplace !== undefined) profile.wallReplace = wallReplace;
 
   return profile;
 }
@@ -548,6 +618,7 @@ function createDefaultSplatTuning(): SplatTuning {
     clip: false,
     clipMargin: DEFAULT_SPLAT_CLIP_MARGIN_METERS,
     floorSnap: true,
+    wallReplace: false,
     sources: {
       scaleMultiplier: "default",
       rotationXDegrees: "default",
@@ -558,7 +629,8 @@ function createDefaultSplatTuning(): SplatTuning {
       fitMode: "default",
       clip: "default",
       clipMargin: "default",
-      floorSnap: "default"
+      floorSnap: "default",
+      wallReplace: "default"
     },
     overrides: {
       scaleMultiplier: false,
@@ -570,7 +642,8 @@ function createDefaultSplatTuning(): SplatTuning {
       fitMode: false,
       clip: false,
       clipMargin: false,
-      floorSnap: false
+      floorSnap: false,
+      wallReplace: false
     }
   };
 }
@@ -581,8 +654,15 @@ function createDefaultSplatTuning(): SplatTuning {
 function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProfile | null): SplatTuning {
   const base = applyProfileTuning(createDefaultSplatTuning(), profile);
   const injected: SplatTuningSource = "profile"; // 영속 정합값을 profile 소스로 표기
+  // transform 주입 경로는 URL 튜닝을 안 읽으므로, 벽 대체만 예외적으로 URL > profile > 기본ON 순서로 해석한다.
+  const search = typeof window === "undefined" ? "" : window.location.search;
+  const urlWallReplace = readWallReplaceParam(search);
+  const wallReplace = urlWallReplace ?? profile?.wallReplace ?? true;
+  const wallReplaceSource: SplatTuningSource =
+    urlWallReplace !== undefined ? "url" : profile?.wallReplace !== undefined ? "profile" : "default";
   return {
     ...base,
+    wallReplace,
     scaleMultiplier: transform.scaleMultiplier,
     rotationXDegrees: transform.rotationXDegrees,
     // SplatTransform.rotationYDegrees는 2D 계약(plan = s·R(θ)·splat + t, 표준 반시계)이고
@@ -601,7 +681,8 @@ function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProf
       offsetX: injected,
       offsetY: injected,
       offsetZ: injected,
-      fitMode: injected
+      fitMode: injected,
+      wallReplace: wallReplaceSource
     },
     overrides: {
       ...base.overrides,
@@ -611,7 +692,8 @@ function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProf
       offsetX: true,
       offsetY: true,
       offsetZ: true,
-      fitMode: true
+      fitMode: true,
+      wallReplace: wallReplaceSource !== "default"
     }
   };
 }
@@ -634,6 +716,7 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
   const clip = readBooleanParam(params, "splatClip");
   const clipMargin = readNumberParam(params, "splatClipMargin", { minInclusive: 0 });
   const floorSnap = readBooleanParam(params, "splatFloorSnap");
+  const wallReplace = readBooleanParam(params, "splatWalls");
 
   if (scaleMultiplier !== undefined) {
     tuning.scaleMultiplier = scaleMultiplier;
@@ -685,6 +768,11 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
     tuning.sources.floorSnap = "url";
     tuning.overrides.floorSnap = true;
   }
+  if (wallReplace !== undefined) {
+    tuning.wallReplace = wallReplace;
+    tuning.sources.wallReplace = "url";
+    tuning.overrides.wallReplace = true;
+  }
 
   return tuning;
 }
@@ -731,6 +819,10 @@ function applyProfileTuning(tuning: SplatTuning, profile: SplatTuningProfile | n
   if (profile.floorSnap !== undefined) {
     tuning.floorSnap = profile.floorSnap;
     tuning.sources.floorSnap = "profile";
+  }
+  if (profile.wallReplace !== undefined) {
+    tuning.wallReplace = profile.wallReplace;
+    tuning.sources.wallReplace = "profile";
   }
 
   return tuning;

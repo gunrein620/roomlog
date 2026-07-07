@@ -10,6 +10,8 @@ import { SplatScene } from "./splat-scene";
 import { SplatDropzone } from "./splat-dropzone";
 import { loadSplatFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
 import { SplatFurnitureLayer } from "./splat-furniture-layer";
+import { SplatPlanWalls } from "./splat-plan-walls";
+import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
@@ -52,6 +54,8 @@ export default function TourViewer() {
   });
   // 저장된 정합 결과(SplatAsset.transform). 있으면 SplatScene이 auto-fit 대신 절대 배치를 쓴다.
   const [assetTransform, setAssetTransform] = useState<SplatTransform | null>(null);
+  // 도면 벽 대체(월드=도면 프레임): assetTransform이 있을 때만 의미가 있다.
+  const [showPlanWalls, setShowPlanWalls] = useState(false);
 
   const handleCameraMove = useCallback((position: [number, number, number]) => {
     setMinimapPosition(worldToMinimapPercent(position[0], position[2]));
@@ -72,6 +76,7 @@ export default function TourViewer() {
     setShowHint(true);
     // 정합값은 asset의 파일에 대한 배치라, 다른 파일을 드롭하면 무의미 — 해제한다.
     setAssetTransform(null);
+    setShowPlanWalls(false);
   }, []);
 
   // ?asset=<id> — 저장된 SplatAsset(fileUrl+정합 transform)을 불러 투어를 연다.
@@ -89,7 +94,9 @@ export default function TourViewer() {
           setIsLoaded(false);
           setIsLoadingVisible(true);
         }
-        setAssetTransform(asset.status === "REGISTERED" ? asset.transform : null);
+        const transform = asset.status === "REGISTERED" ? asset.transform : null;
+        setAssetTransform(transform);
+        setShowPlanWalls(transform !== null && resolveWallReplace(window.location.search, true));
         console.info(
           "[splat-tour] asset " +
             JSON.stringify({ id: asset.id, status: asset.status, hasTransform: asset.transform !== null, fileUrl: asset.fileUrl })
@@ -480,6 +487,7 @@ export default function TourViewer() {
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
         <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} transform={assetTransform} />
+        {showPlanWalls ? <SplatPlanWalls /> : null}
         {/* 가구 레이어는 도면 좌표 그대로 월드에 놓인다(월드=도면 프레임) */}
         {showFurniture && furnitureState.furnitures.length > 0 ? (
           <SplatFurnitureLayer furnitures={furnitureState.furnitures} />
