@@ -9737,51 +9737,21 @@ p {
   color: #ffffff;
 }
 
-/* 흐름 전환 — 옵션 버튼을 누르면 칩 목록이 드롭다운으로 열린다 */
-.my-flow-switch {
-  position: relative;
-  flex: 0 0 auto;
-  margin-left: auto;
+/* 흐름 전환 — 바의 빈 공간을 큼직한 탭 4개가 채운다(드롭다운 없이 바로 이동) */
+.my-flow-bar .my-flow-tabs {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.my-flow-bar .my-flow-options-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 6px 13px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.my-flow-bar .my-flow-options-button[aria-expanded="true"] {
-  border-color: var(--blue);
-  color: var(--blue);
-}
-
-.my-flow-bar .my-flow-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 30;
-  flex-direction: column;
-  align-items: stretch;
-  min-width: 152px;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 18px 36px rgba(18, 24, 40, 0.16);
-}
-
-.my-flow-bar .my-flow-dropdown button {
-  justify-content: flex-start;
-  border-radius: 10px;
+.my-flow-bar .my-flow-tabs button {
+  flex: 1 1 0;
+  max-width: 190px;
+  min-height: 46px;
+  justify-content: center;
+  border-radius: 13px;
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .my-roomlog-section {

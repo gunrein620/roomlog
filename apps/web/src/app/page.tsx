@@ -901,44 +901,26 @@ function MyFlowBar({
   /** 바 왼쪽에 끼워 넣는 화면별 부가 버튼(예: 집주인 대시보드 메뉴 토글) */
   menuSlot?: ReactNode;
 }) {
-  // 흐름 칩을 항상 펼쳐두는 대신 옵션 버튼 아래 드롭다운으로 접어 상단 바를 슬림하게 유지한다.
-  const [isFlowMenuOpen, setIsFlowMenuOpen] = useState(false);
-  const activeFlowLabel = myFlowItems.find((flow) => flow.id === activeFlow)?.label ?? "옵션";
+  // 흐름 전환은 숨기지 않는다 — 바의 빈 공간을 큼직한 탭 4개로 채워 한 번에 눌러 이동한다.
   return (
     <div className="mypage-role-bar my-flow-bar">
       {menuSlot}
       <span>
         내 주거 프로세스 — 한 계정으로 <b>여러 집과 관계</b>를 이어갑니다
       </span>
-      <div className="my-flow-switch">
-        <button
-          className="my-flow-options-button"
-          type="button"
-          aria-expanded={isFlowMenuOpen}
-          aria-haspopup="true"
-          onClick={() => setIsFlowMenuOpen((open) => !open)}
-        >
-          <SlidersHorizontal size={14} strokeWidth={2.4} aria-hidden="true" />
-          {activeFlowLabel}
-        </button>
-        {isFlowMenuOpen ? (
-          <div className="my-flow-chips my-flow-dropdown" aria-label="연결된 흐름">
-            {myFlowItems.map((flow) => (
-              <button
-                key={flow.id}
-                type="button"
-                className={flow.id === activeFlow ? "active" : ""}
-                aria-current={flow.id === activeFlow ? "true" : undefined}
-                onClick={() => {
-                  setIsFlowMenuOpen(false);
-                  onSelectFlow(flow.id);
-                }}
-              >
-                {flow.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
+      <div className="my-flow-chips my-flow-tabs" aria-label="연결된 흐름" role="tablist">
+        {myFlowItems.map((flow) => (
+          <button
+            key={flow.id}
+            type="button"
+            role="tab"
+            aria-selected={flow.id === activeFlow}
+            className={flow.id === activeFlow ? "active" : ""}
+            onClick={() => onSelectFlow(flow.id)}
+          >
+            {flow.label}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -4585,7 +4567,7 @@ export default function Home() {
                 문의
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
-              <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>우리집</button>
+              <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>마이페이지</button>
             </nav>
             <div className="web-topbar-actions">
               {/* "내 흐름" 테스트 역할 셀렉트 제거 — 역할은 로그인 계정 capability에서 자동 결정되고,
