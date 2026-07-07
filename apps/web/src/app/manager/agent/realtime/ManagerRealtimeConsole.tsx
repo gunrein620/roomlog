@@ -121,10 +121,37 @@ export function ManagerRealtimeConsole() {
     const body = await response.json().catch(() => undefined);
 
     if (!response.ok) {
-      throw new Error(body?.message || "Realtime 세션을 준비하지 못했습니다.");
+      throw new Error(
+        body?.message || `Realtime 세션을 준비하지 못했습니다 (HTTP ${response.status}). 잠시 후 다시 시도해주세요.`
+      );
     }
 
     return body as ManagerRealtimeClientSecretResult;
+  }
+
+  /** 마이크 권한 실패를 원인별 한국어 안내로 바꾼다 — "Permission denied" 원문은 원인 파악이 안 된다. */
+  async function requestMicrophone(): Promise<MediaStream> {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("이 브라우저에서 마이크를 사용할 수 없습니다. HTTPS 접속과 최신 브라우저인지 확인해주세요.");
+    }
+
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError") {
+        throw new Error(
+          "마이크 권한이 거부되어 음성 연결을 시작할 수 없습니다. 주소창의 자물쇠(사이트 설정)에서 마이크를 허용한 뒤 다시 눌러주세요."
+        );
+      }
+      if (name === "NotFoundError" || name === "OverconstrainedError") {
+        throw new Error("사용 가능한 마이크 장치를 찾지 못했습니다. 마이크 연결 상태를 확인해주세요.");
+      }
+      if (name === "NotReadableError") {
+        throw new Error("다른 앱이 마이크를 사용 중이라 열 수 없습니다. 통화·녹음 앱을 종료한 뒤 다시 시도해주세요.");
+      }
+      throw new Error(`마이크를 여는 중 오류가 발생했습니다${name ? ` (${name})` : ""}. 다시 시도해주세요.`);
+    }
   }
 
   async function runManagerCommand(input: {
@@ -198,20 +225,23 @@ export function ManagerRealtimeConsole() {
     setVoiceStatus("connecting");
 
     try {
+      // 마이크 권한을 먼저 확보한다 — 세션부터 발급하면 권한 거부 시 발급된 시크릿만 버려지고,
+      // 사용자는 어느 단계에서 막혔는지 알기 어렵다.
+      const stream = await requestMicrophone();
+      streamRef.current = stream;
+
       const nextSession = await requestRealtimeClientSecret();
       setSession(nextSession);
 
       if (nextSession.mode !== "openai" || !nextSession.clientSecret?.value) {
         setVoiceStatus("not_configured");
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
         appendEntry({
           role: "system",
           text: nextSession.warning || "OPENAI_API_KEY가 없어 음성 연결은 비활성화되어 있습니다."
         });
         return;
-      }
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("이 브라우저에서 마이크 권한을 사용할 수 없습니다.");
       }
 
       const peer = new RTCPeerConnection();
@@ -224,9 +254,17 @@ export function ManagerRealtimeConsole() {
         remoteAudio.srcObject = trackEvent.streams[0];
         void remoteAudio.play().catch(() => undefined);
       };
+      peer.onconnectionstatechange = () => {
+        if (peer.connectionState === "failed") {
+          disconnectVoice();
+          setVoiceStatus("error");
+          appendEntry({
+            role: "system",
+            text: "음성 연결이 끊어졌습니다(네트워크 오류). 음성 연결 버튼으로 다시 연결해주세요."
+          });
+        }
+      };
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 
       const dataChannel = peer.createDataChannel("oai-events");
@@ -276,32 +314,60 @@ export function ManagerRealtimeConsole() {
   }
 
   async function handleRealtimeEvent(dataChannel: RTCDataChannel, rawEvent: string) {
-    const event = JSON.parse(rawEvent) as {
+    let event: {
       type?: string;
       call_id?: string;
       arguments?: string;
       delta?: string;
       transcript?: string;
+      error?: { message?: string };
     };
+    try {
+      event = JSON.parse(rawEvent);
+    } catch {
+      return; // 규격 밖 페이로드는 무시
+    }
+
+    if (event.type === "error") {
+      appendEntry({
+        role: "system",
+        text: `Realtime 오류: ${event.error?.message || "알 수 없는 오류"}`
+      });
+      return;
+    }
 
     if (event.type === "response.function_call_arguments.done" && event.call_id) {
-      const args = JSON.parse(event.arguments || "{}") as {
+      let args: {
         command?: string;
         text?: string;
         billId?: string;
         channel?: string;
         threadId?: string;
         body?: string;
-      };
-      const result = await runManagerCommand({
-        command: args.command || "",
-        text: args.text,
-        billId: args.billId,
-        channel: args.channel,
-        threadId: args.threadId,
-        body: args.body
-      });
-      appendEntry({ role: "agent", text: result.summary, result });
+      } = {};
+      try {
+        args = JSON.parse(event.arguments || "{}");
+      } catch {
+        args = {};
+      }
+
+      // 명령 실패도 모델에 결과로 돌려줘야 대화가 이어진다 — 안 돌려주면 응답 없이 멈춘 것처럼 보인다.
+      let result: ManagerAgentCommandResult;
+      try {
+        result = await runManagerCommand({
+          command: args.command || "",
+          text: args.text,
+          billId: args.billId,
+          channel: args.channel,
+          threadId: args.threadId,
+          body: args.body
+        });
+        appendEntry({ role: "agent", text: result.summary, result });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "명령 실행 중 오류가 발생했습니다.";
+        result = { status: "blocked", domain: "system", summary: message };
+        appendEntry({ role: "system", text: message });
+      }
       dataChannel.send(
         JSON.stringify({
           type: "conversation.item.create",
@@ -316,8 +382,18 @@ export function ManagerRealtimeConsole() {
       return;
     }
 
-    if (event.type === "response.audio_transcript.done" && event.transcript) {
+    // 에이전트 음성 자막 — GA(output_audio_transcript)와 구(audio_transcript) 이벤트명을 모두 받는다.
+    if (
+      (event.type === "response.output_audio_transcript.done" || event.type === "response.audio_transcript.done") &&
+      event.transcript
+    ) {
       appendEntry({ role: "agent", text: event.transcript });
+      return;
+    }
+
+    // 관리인 발화 인식 결과 — 내가 말한 내용이 어떻게 인식됐는지 대화창에 남긴다.
+    if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript) {
+      appendEntry({ role: "manager", text: event.transcript.trim() });
     }
   }
 
