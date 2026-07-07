@@ -1,6 +1,7 @@
 "use client";
 
 import type { ThreeEvent } from "@react-three/fiber";
+import { Armchair, DoorOpen, Eraser, EyeOff, Hand, MousePointer2, Pencil, Scissors, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AiDimensionDetection,
@@ -3153,74 +3154,8 @@ export default function RoomlogFloorPlanEditor() {
 
   return (
     <section className="floor-plan-editor wheretoput-floor-plan-editor" aria-label="도면 캔버스">
-      <aside className="floor-plan-toolbar wheretoput-floor-plan-toolbar" aria-label="도면 캔버스">
-        <p className="floor-plan-toolbar-label">모드</p>
-        <div className="floor-plan-mode-switch" aria-label="도면 캔버스">
-          <button
-            className={experienceMode === "landlord" ? "active" : ""}
-            onClick={() => setExperienceMode("landlord")}
-            type="button"
-          >
-            <strong>집주인 모드</strong>
-            <span>도면 생성/검토/발행</span>
-          </button>
-          <button
-            className={experienceMode === "resident" ? "active" : ""}
-            onClick={() => {
-              setExperienceMode("resident");
-              setViewMode("3d");
-              // 체험 모드는 둘러볼 공간이 있어야 하니, 빈 캔버스면 샘플 도면을 깔아준다.
-              if (walls.length === 0) {
-                setWalls(getStarterWalls());
-                setUploadStatus("체험용 샘플 도면을 불러왔어요");
-              }
-            }}
-            type="button"
-          >
-            <strong>세입자 모드</strong>
-            <span>가구 배치 체험</span>
-          </button>
-        </div>
-        <p className="floor-plan-toolbar-label">도구</p>
-        {(experienceMode === "landlord"
-          ? [
-              ["wall", "드로잉", "벽 그리기"],
-              ["select", "선택", "벽 선택"],
-              ["eraser", "지우기", "벽 삭제"],
-              ["partial_eraser", "부분 지우기", "벽 일부 삭제"],
-              ["hide", "숨기기", "3D 벽 숨기기"],
-              ["opening", "문창문", "문/창문 후보 검토"],
-              ["fixture", "설비", "고정 설비 후보 검토"],
-              ["furniture", "옵션가구", "임대인 옵션 가구 배치"],
-              ["none", "이동", "화면 이동"]
-            ]
-          : [
-              ["furniture", "가구", "가구 배치"],
-              ["select", "선택", "배치/벽 선택"],
-              ["none", "이동", "화면 이동"]
-            ]
-        ).map(([toolId, label, hint]) => (
-          <button
-            className={tool === toolId ? "active" : ""}
-            key={toolId}
-            onClick={() => {
-              setTool(toolId as EditorTool);
-              setPartialEraserSelectedWall(null);
-              if (toolId !== "select") setSelectedWall(null);
-              if (toolId !== "fixture" && toolId !== "opening") {
-                setPendingFurniture(null);
-                setSelectedFurnitureId(null);
-              }
-            }}
-            title={hint}
-            type="button"
-          >
-            <strong>{label}</strong>
-            <span>{hint}</span>
-          </button>
-        ))}
-      </aside>
-
+      {/* 예전 좌측 레일(모드 스위치 + 도구 목록)은 제거 — 도구는 캔버스 위 플로팅 툴바로 이동해
+          맵이 화면 폭을 온전히 쓴다. 세입자 체험 분기(experienceMode)는 코드로는 유지한다. */}
       <section className="floor-plan-canvas wheretoput-floor-plan-canvas" aria-label="도면 캔버스">
         <div className="floor-plan-upload-row">
           <input
@@ -3342,7 +3277,42 @@ export default function RoomlogFloorPlanEditor() {
           </div>
         ) : null}
 
-        {viewMode === "2d" ? (
+        <div className="floor-plan-stage-wrap">
+          {/* 편집 도구는 지도 앱처럼 캔버스 위에 아이콘 툴바로 띄운다 — 맵이 화면 폭을 그대로 쓴다 */}
+          <div className="floor-plan-float-tools" role="toolbar" aria-label="편집 도구">
+            {([
+              ["wall", "드로잉", "벽 그리기", Pencil],
+              ["select", "선택", "벽 선택", MousePointer2],
+              ["eraser", "지우기", "벽 삭제", Eraser],
+              ["partial_eraser", "부분 지우기", "벽 일부 삭제", Scissors],
+              ["hide", "숨기기", "3D 벽 숨기기", EyeOff],
+              ["opening", "문창문", "문/창문 후보 검토", DoorOpen],
+              ["fixture", "설비", "고정 설비 후보 검토", Wrench],
+              ["furniture", "옵션가구", "임대인 옵션 가구 배치", Armchair],
+              ["none", "이동", "화면 이동", Hand]
+            ] as const).map(([toolId, label, hint, ToolIcon]) => (
+              <button
+                className={tool === toolId ? "active" : ""}
+                key={toolId}
+                onClick={() => {
+                  setTool(toolId as EditorTool);
+                  setPartialEraserSelectedWall(null);
+                  if (toolId !== "select") setSelectedWall(null);
+                  if (toolId !== "fixture" && toolId !== "opening") {
+                    setPendingFurniture(null);
+                    setSelectedFurnitureId(null);
+                  }
+                }}
+                title={`${label} — ${hint}`}
+                type="button"
+              >
+                <ToolIcon size={17} strokeWidth={2.2} aria-hidden="true" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+
+          {viewMode === "2d" ? (
           <div className="floor-plan-canvas-stage">
             <div className="floor-plan-canvas-shell" ref={containerRef}>
               <canvas
@@ -3391,6 +3361,7 @@ export default function RoomlogFloorPlanEditor() {
             wallsData={roomWalls3D}
           />
         )}
+        </div>
 
         <div className="floor-plan-actions">
           {/* 왼쪽: 캔버스 정리 도구(부수 작업) — 오른쪽: 변환→저장→발행(핵심 흐름). 위계를 시각적으로 분리한다. */}
@@ -3491,7 +3462,7 @@ export default function RoomlogFloorPlanEditor() {
         </div>
       </section>
 
-      <aside className="floor-plan-sidepanel" aria-label="도면 캔버스">
+      <aside className="floor-plan-sidepanel floor-plan-bottompanel" aria-label="도면 요약">
         <div>
           <span>도면 요약</span>
           <strong>{experienceMode === "landlord" ? "내 도면" : "가구 배치 체험"}</strong>
