@@ -47,6 +47,8 @@ docker run --gpus all -it --rm --shm-size=12gb \
 bash /workspace/reconstruct.sh room1.mp4 room1 15000
 #   $1 영상  $2 작업이름  $3 학습 iters(원룸 15k면 충분, 기본 30k는 ~2배)
 #   FRAMES=300 환경변수로 키프레임 목표 수 조절
+#   SFM_TOOL=hloc 로 SuperPoint+SuperGlue 포즈 추정(저텍스처 실험) — 같은 영상을
+#   colmap 결과와 나란히 비교: SFM_TOOL=hloc bash reconstruct.sh room1.mp4 room1-hloc
 ```
 
 단계별로 `runs/<name>/` 밑에 쌓인다: `proc/`(COLMAP) → `train/`(체크포인트) → `export/*.ply` → `<name>.spz`.

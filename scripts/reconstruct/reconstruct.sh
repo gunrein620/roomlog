@@ -14,17 +14,26 @@ VIDEO="${1:?사용법: reconstruct.sh <video.mp4> [name] [iters]}"
 NAME="${2:-$(basename "${VIDEO%.*}")}"
 ITERS="${3:-15000}"            # 원룸 소형은 15k면 충분(기본 30k는 ~2배 시간)
 FRAMES="${FRAMES:-300}"        # 1~2분 영상에서 뽑을 키프레임 목표 수(①은 균등 샘플링)
+SFM_TOOL="${SFM_TOOL:-colmap}" # colmap(SIFT) | hloc(SuperPoint+SuperGlue — 저텍스처 실험용)
 
 ROOT="runs/${NAME}"
 DATA="${ROOT}/proc"           # ns-process-data 산출(images + colmap + transforms.json)
 EXPORT="${ROOT}/export"       # ns-export 산출(splat.ply)
 mkdir -p "$ROOT"
 
-echo "▶ [1/4] 키프레임 추출 + COLMAP (SfM 카메라 포즈)  — 수 분"
-# ns-process-data가 ffmpeg 프레임추출 → COLMAP feature/match/mapper를 한 번에 처리.
-ns-process-data video --data "$VIDEO" --output-dir "$DATA" --num-frames-target "$FRAMES"
+echo "▶ [1/4] 키프레임 추출 + SfM 카메라 포즈 (${SFM_TOOL})  — 수 분"
+# ns-process-data가 ffmpeg 프레임추출 → feature/match/mapper를 한 번에 처리.
+if [ "$SFM_TOOL" = "hloc" ]; then
+  # 실험(2026-07-07~): SIFT가 전멸한 흰벽·반사면 영상에서 학습 기반 특징점(SuperPoint)이
+  # 통하는지 검증. hloc은 nerfstudio 컨테이너에 포함돼 있으나 첫 실행 시 모델 다운로드.
+  ns-process-data video --data "$VIDEO" --output-dir "$DATA" --num-frames-target "$FRAMES" \
+    --sfm-tool hloc --feature-type superpoint_aachen --matcher-type superglue
+else
+  ns-process-data video --data "$VIDEO" --output-dir "$DATA" --num-frames-target "$FRAMES"
+fi
 # 매칭은 기본 vocab_tree 유지. sequential은 실측(2026-07-06, room1)에서 322장 중 2장만
-# 포즈 성공 — 특징점 빈곤 구간에서 사슬이 끊기면 전체가 조각남. vocab_tree는 22/102 나옴.
+# 포즈 성공 — 특징점 빈곤 구간에서 사슬이 끊기면 전체가 조각남. vocab_tree는 22/102,
+# exhaustive는 2/150 — 셋 다 전멸이라 SIFT 자체의 한계로 결론(→ hloc 실험).
 
 # 포즈 게이트: 매칭률이 바닥이면 학습은 GPU 낭비다 (실측: 2장으로도 15k iters 완주해버림)
 POSED=$(python3 -c "import json;print(len(json.load(open('$DATA/transforms.json'))['frames']))" 2>/dev/null || echo 0)
