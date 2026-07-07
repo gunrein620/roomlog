@@ -1216,7 +1216,7 @@ test("links the landlord 3D floor plan action to the dedicated creation page", (
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 
-  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "저장 초안"]) {
+  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "초안 저장"]) {
     assert.match(floorPlanRouteSource, new RegExp(label));
   }
 });
@@ -1453,8 +1453,8 @@ test("switches between landlord authoring and resident furniture placement modes
     "landlord",
     "resident",
     "집주인 모드",
-    // 3d 브랜치에서 라벨이 "세입자 일반사용자 모드"로 변경됨 — 스펙을 현재 문구에 맞춘다.
-    "세입자 일반사용자 모드",
+    // UX 정리에서 라벨을 "세입자 모드"로 간결화 — 스펙을 현재 문구에 맞춘다.
+    "세입자 모드",
     "임대인 옵션 가구",
     "wheretoput furniture picker",
     "handleFurnitureSelect",
@@ -1489,8 +1489,8 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   for (const label of [
     "openingCandidates",
     "fixtureCandidates",
-    "확정 문창문",
-    "확정 고정설비",
+    "문/창문 확정",
+    "고정설비 확정",
     "toggleCandidateStatus",
     "moveCandidate",
     "후보 레이어",
@@ -1730,7 +1730,7 @@ test("imports wheretoput-style upload and Roboflow 3D conversion controls", () =
     "도면 등록",
     "문/창문 탐지",
     "벽 후처리 적용",
-    "배율 조절",
+    "화면 배율",
     "handleImageUpload",
     "runOpeningDetection",
     "applyRoboflowWallPostProcessing",
