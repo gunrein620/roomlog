@@ -195,7 +195,12 @@ function splitEditorBoxAtOpenings(box: EditorRect, openings: EditorRect[], horiz
 
 
 function apiUrl(path: string) {
-  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const configured = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  // 프로덕션의 NEXT_PUBLIC_API_URL(/api)은 Next BFF용 상대경로라 브라우저에서 Nest에 직접 닿지 않는다.
+  // 도면 에디터는 Nest를 직접 호출하므로, 상대경로면 API 오리진(웹소켓과 같은 호스트)으로 승격한다.
+  const base = /^https?:\/\//.test(configured)
+    ? configured
+    : process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000";
   const normalized = base.replace(/\/$/, "");
 
   return normalized.endsWith("/api") ? `${normalized}${path}` : `${normalized}/api${path}`;
@@ -219,15 +224,77 @@ async function getFloorPlanAccessToken() {
   return payload.accessToken;
 }
 
+/** Bearer 부착 fetch — localStorage에 캐시된 토큰이 무효(401)면 재발급해 한 번 더 시도한다. */
+async function floorPlanAuthorizedFetch(url: string, init: RequestInit = {}) {
+  const request = async () => {
+    const token = await getFloorPlanAccessToken();
+
+    return fetch(url, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` }
+    });
+  };
+
+  let response = await request();
+  if (response.status === 401) {
+    window.localStorage.removeItem("floorPlanAccessToken");
+    response = await request();
+  }
+
+  return response;
+}
+
+// 매물 등록 폼(홈)이 읽어 가는 3D 도면 스냅샷 키 — 에디터↔매물 등록의 유일한 핸드오프 지점.
+// 에디터는 별도 라우트라 아직 생성 안 된 매물 id를 모르므로, 저장/3D변환 시 여기에 남겨 둔다.
+export const LISTING_FLOOR_PLAN_STORAGE_KEY = "roomlogListingFloorPlan3D";
+
+/** walls3D + 임대인 옵션 가구를 렌더에 필요한 필드만 추려 매물 연결용 스냅샷으로 만든다. */
+function persistListingFloorPlanSnapshot(
+  walls3D: WheretoputWall3D[],
+  landlordFurnitures: PlacedFurniture[],
+  name?: string
+) {
+  if (typeof window === "undefined") return;
+  if (!walls3D.length) return;
+
+  const snapshot = {
+    name,
+    savedAt: Date.now(),
+    walls3D: walls3D.map((wall) => ({
+      id: String(wall.id),
+      wall_id: wall.wall_id,
+      dimensions: wall.dimensions,
+      position: wall.position,
+      rotation: wall.rotation
+    })),
+    furnitures: landlordFurnitures.map((furniture) => ({
+      id: furniture.id,
+      furniture_id: furniture.furniture_id,
+      name: furniture.name,
+      color: furniture.color,
+      length: furniture.length,
+      modelUrl: furniture.modelUrl,
+      position: furniture.position,
+      rotation: furniture.rotation,
+      scale: furniture.scale,
+      sizeMm: furniture.sizeMm
+    }))
+  };
+
+  try {
+    window.localStorage.setItem(LISTING_FLOOR_PLAN_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // 용량 초과 등 저장 실패는 무시 — 3D 연결이 안 될 뿐 등록 흐름은 계속된다.
+  }
+}
+
 async function uploadFloorPlanSource(file: File): Promise<UploadedFloorPlanSource | null> {
   try {
-    const token = await getFloorPlanAccessToken();
     const formData = new FormData();
     formData.append("file", file);
     formData.append("category", "FLOOR_PLAN_SOURCE");
-    const response = await fetch(apiUrl("/attachments"), {
+    const response = await floorPlanAuthorizedFetch(apiUrl("/attachments"), {
       body: formData,
-      headers: { Authorization: `Bearer ${token}` },
       method: "POST"
     });
     if (!response.ok) throw new Error("Floor plan source upload failed");
@@ -681,7 +748,8 @@ export default function RoomlogFloorPlanEditor() {
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("landlord");
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
-  const [walls, setWalls] = useState<Wall[]>(() => getStarterWalls());
+  // 빈 캔버스에서 시작 — 샘플 벽은 '샘플 도면 체험'/'샘플 복원'과 세입자 체험 진입 시에만 채운다.
+  const [walls, setWalls] = useState<Wall[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
@@ -2449,8 +2517,7 @@ export default function RoomlogFloorPlanEditor() {
     setIsProcessing(true);
     setAiAnalysisStatus(forceRefresh ? "치수 다시 읽는 중" : "치수 숫자 읽는 중");
     try {
-      const token = await getFloorPlanAccessToken();
-      const response = await fetch(apiUrl("/floor-plans/ai-analysis"), {
+      const response = await floorPlanAuthorizedFetch(apiUrl("/floor-plans/ai-analysis"), {
         body: JSON.stringify({
           analysisMode: "dimension",
           forceRefresh,
@@ -2459,10 +2526,7 @@ export default function RoomlogFloorPlanEditor() {
           prompt: "인쇄된 평면도의 치수 숫자를 읽고 dimensions 배열로 분류해 주세요. 각 숫자는 kind(outer_total/outer_segment/room_span/wall_span/opening/furniture/fixture/area/ignore)로 분류합니다. 구조 치수(outer_total/outer_segment/room_span/wall_span)만 useForScale·useForWallGeneration을 true로 두고, 문/창문 폭은 opening, '1500 × 2000mm' 같은 가구 크기는 furniture, 면적(㎡)은 area로 둡니다. boundingBox와 targetLine은 0~1000 좌표로 넣되 불확실하면 null로 보냅니다. 같은 숫자라도 위치가 다르면 별도 항목으로 유지합니다.",
           sourceAttachmentId: attachmentId
         }),
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         method: "POST"
       });
       if (!response.ok) throw new Error(`Dimension reading failed: ${response.status}`);
@@ -2526,16 +2590,12 @@ export default function RoomlogFloorPlanEditor() {
     setIsProcessing(true);
     setAiAnalysisStatus("문/창문 후보 탐지중");
     try {
-      const token = await getFloorPlanAccessToken();
-      const response = await fetch(apiUrl("/floor-plans/opening-detection"), {
+      const response = await floorPlanAuthorizedFetch(apiUrl("/floor-plans/opening-detection"), {
         body: JSON.stringify({
           imageDataUrl: attachmentId ? undefined : uploadedAiImageDataUrl,
           sourceAttachmentId: attachmentId
         }),
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         method: "POST"
       });
       if (!response.ok) throw new Error(`Opening detection failed: ${response.status}`);
@@ -3028,14 +3088,10 @@ export default function RoomlogFloorPlanEditor() {
         return;
       }
       setUploadStatus(nextStatus === "PUBLISHED" ? "도면 발행중" : "도면 저장중");
-      const token = await getFloorPlanAccessToken();
       const endpoint = floorPlanDraftId ? apiUrl(`/floor-plans/${floorPlanDraftId}`) : apiUrl("/floor-plans");
-      const response = await fetch(endpoint, {
+      const response = await floorPlanAuthorizedFetch(endpoint, {
         body: JSON.stringify(payload),
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         method: floorPlanDraftId ? "PATCH" : "POST"
       });
       if (!response.ok) throw new Error(`Floor plan save failed: ${response.status}`);
@@ -3043,6 +3099,8 @@ export default function RoomlogFloorPlanEditor() {
       const saved = (await response.json()) as { id?: string };
       if (saved.id) setFloorPlanDraftId(saved.id);
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, id: saved.id, savedAt: Date.now() }));
+      // 매물 등록 폼이 읽어 갈 3D 스냅샷을 남긴다 — 이걸로 상세 "3D 보기"가 실제 도면을 렌더한다.
+      persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
       setSaveState({ kind: nextStatus === "PUBLISHED" ? "published" : "draft", at: Date.now() });
       setUploadStatus(nextStatus === "PUBLISHED" ? "발행 완료" : "저장 완료");
     } catch {
@@ -3055,6 +3113,8 @@ export default function RoomlogFloorPlanEditor() {
   function convertTo3D() {
     const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
     setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
+    // 3D 변환을 하면 매물 등록 폼이 바로 연결할 수 있게 스냅샷도 갱신한다(저장 전이라도).
+    persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
     window.localStorage.setItem(
       "floorPlanData",
       JSON.stringify(buildFloorPlanLocalSnapshot({
@@ -3094,6 +3154,7 @@ export default function RoomlogFloorPlanEditor() {
   return (
     <section className="floor-plan-editor wheretoput-floor-plan-editor" aria-label="도면 캔버스">
       <aside className="floor-plan-toolbar wheretoput-floor-plan-toolbar" aria-label="도면 캔버스">
+        <p className="floor-plan-toolbar-label">모드</p>
         <div className="floor-plan-mode-switch" aria-label="도면 캔버스">
           <button
             className={experienceMode === "landlord" ? "active" : ""}
@@ -3108,13 +3169,19 @@ export default function RoomlogFloorPlanEditor() {
             onClick={() => {
               setExperienceMode("resident");
               setViewMode("3d");
+              // 체험 모드는 둘러볼 공간이 있어야 하니, 빈 캔버스면 샘플 도면을 깔아준다.
+              if (walls.length === 0) {
+                setWalls(getStarterWalls());
+                setUploadStatus("체험용 샘플 도면을 불러왔어요");
+              }
             }}
             type="button"
           >
-            <strong>세입자 일반사용자 모드</strong>
+            <strong>세입자 모드</strong>
             <span>가구 배치 체험</span>
           </button>
         </div>
+        <p className="floor-plan-toolbar-label">도구</p>
         {(experienceMode === "landlord"
           ? [
               ["wall", "드로잉", "벽 그리기"],
@@ -3208,18 +3275,7 @@ export default function RoomlogFloorPlanEditor() {
         </div>
 
         {wallBoundsMm ? (
-          <div
-            style={{
-              margin: "8px 0",
-              padding: "8px 12px",
-              background: isScaleSet ? "#e6f0ff" : "#fff3cd",
-              border: `1px solid ${isScaleSet ? "#4a86ff" : "#e0b400"}`,
-              borderRadius: 6,
-              fontWeight: 700,
-              fontSize: 14,
-              whiteSpace: "nowrap"
-            }}
-          >
+          <div className={`floor-plan-scale-banner${isScaleSet ? " is-set" : ""}`}>
             📐 전체 {wallBoundsMm.widthMm.toLocaleString()}mm × {wallBoundsMm.heightMm.toLocaleString()}mm{" "}
             {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '방 내부 재기 → 축척 재기'로 맞추세요"}
           </div>
@@ -3287,18 +3343,41 @@ export default function RoomlogFloorPlanEditor() {
         ) : null}
 
         {viewMode === "2d" ? (
-          <div className="floor-plan-canvas-shell" ref={containerRef}>
-            <canvas
-              className="floor-plan-drawing-canvas"
-              onAuxClick={handleCanvasAuxClick}
-              onContextMenu={(event) => event.preventDefault()}
-              onMouseDown={handleMouseDown}
-              onMouseLeave={handleCanvasMouseLeave}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onWheel={handleWheel}
-              ref={canvasRef}
-            />
+          <div className="floor-plan-canvas-stage">
+            <div className="floor-plan-canvas-shell" ref={containerRef}>
+              <canvas
+                className="floor-plan-drawing-canvas"
+                onAuxClick={handleCanvasAuxClick}
+                onContextMenu={(event) => event.preventDefault()}
+                onMouseDown={handleMouseDown}
+                onMouseLeave={handleCanvasMouseLeave}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onWheel={handleWheel}
+                ref={canvasRef}
+              />
+            </div>
+            {experienceMode === "landlord" && walls.length === 0 && !uploadedImage && !isProcessing ? (
+              <div className="floor-plan-empty-guide" aria-label="도면 시작 안내">
+                <strong>도면을 등록해 시작하세요</strong>
+                <p>도면 이미지를 올리면 벽·문/창문을 자동으로 인식해요. 도면이 없다면 왼쪽 드로잉 도구로 벽을 직접 그릴 수 있어요.</p>
+                <div className="floor-plan-empty-guide-actions">
+                  <label className="floor-plan-primary floor-plan-upload-label" htmlFor="floor-plan-source-input">
+                    도면 이미지 등록
+                  </label>
+                  <button
+                    className="floor-plan-secondary"
+                    onClick={() => {
+                      setWalls(getStarterWalls());
+                      setUploadStatus("샘플 도면을 불러왔어요 — 자유롭게 수정해보세요");
+                    }}
+                    type="button"
+                  >
+                    샘플 도면으로 체험
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <RoomlogThreeFloorPlanView
@@ -3314,149 +3393,141 @@ export default function RoomlogFloorPlanEditor() {
         )}
 
         <div className="floor-plan-actions">
-          <button
-            className="floor-plan-secondary"
-            onClick={() => {
-              setWalls([]);
-              setHiddenWallIds(new Set());
-              setPlacedFurnitures([]);
-              setPendingFurniture(null);
-              setSelectedWall(null);
-              setSelectedFurnitureId(null);
-              setUploadStatus("벽 전체 삭제");
-            }}
-            type="button"
-          >
-            전체 지우기
-          </button>
-          <button
-            className="floor-plan-secondary"
-            onClick={() => {
-              setWalls(getStarterWalls());
-              setHiddenWallIds(new Set());
-              setPlacedFurnitures([]);
-              setPendingFurniture(null);
-              setSelectedWall(null);
-              setSelectedFurnitureId(null);
-              setUploadStatus("샘플 도면 복원");
-            }}
-            type="button"
-          >
-            샘플 복원
-          </button>
-          <button className={viewMode === "3d" ? "floor-plan-primary" : "floor-plan-secondary"} onClick={convertTo3D} type="button">
-            {viewMode === "2d" ? "3D 변환" : "2D 편집"}
-          </button>
-          <button
-            className="floor-plan-secondary"
-            onClick={() => {
-              setViewOffset({ x: 0, y: 0 });
-              setViewScale(1);
-            }}
-            type="button"
-          >
-            Reset
-          </button>
-          <button
-            className="floor-plan-secondary"
-            disabled={hiddenWallCount === 0}
-            onClick={() => {
-              setHiddenWallIds(new Set());
-              setUploadStatus("숨긴 벽 복원");
-            }}
-            type="button"
-          >
-            숨김 복원
-          </button>
-          {experienceMode === "landlord" ? (
-            <>
-              <button className="floor-plan-primary" disabled={isProcessing || walls.length === 0} onClick={() => saveFloorPlanDraft("DRAFT")} type="button">
-                저장 초안
-              </button>
-              <button
-                className="floor-plan-primary"
-                disabled={isProcessing || walls.length === 0 || !isScaleSet}
-                onClick={() => saveFloorPlanDraft("PUBLISHED")}
-                type="button"
-              >
-                발행
-              </button>
-            </>
-          ) : (
-            <button className="floor-plan-primary" disabled={residentDesignFurnitures.length === 0} onClick={saveResidentFurnitureDesign} type="button">
-              배치 저장
-            </button>
-          )}
-          {saveState ? (
-            <span
-              aria-live="polite"
-              style={{
-                alignSelf: "center",
-                padding: "4px 10px",
-                borderRadius: 6,
-                fontWeight: 700,
-                fontSize: 13,
-                background: saveState.kind === "published" ? "#dcfce7" : saveState.kind === "local" ? "#fef3c7" : "#e0edff",
-                color: saveState.kind === "published" ? "#166534" : saveState.kind === "local" ? "#92400e" : "#1e40af"
+          {/* 왼쪽: 캔버스 정리 도구(부수 작업) — 오른쪽: 변환→저장→발행(핵심 흐름). 위계를 시각적으로 분리한다. */}
+          <div className="floor-plan-actions-group" aria-label="캔버스 정리">
+            <button
+              className="floor-plan-secondary floor-plan-danger"
+              disabled={walls.length === 0 && placedFurnitures.length === 0}
+              onClick={() => {
+                setWalls([]);
+                setHiddenWallIds(new Set());
+                setPlacedFurnitures([]);
+                setPendingFurniture(null);
+                setSelectedWall(null);
+                setSelectedFurnitureId(null);
+                setUploadStatus("벽 전체 삭제");
               }}
+              type="button"
             >
-              {saveState.kind === "published" ? "📢 발행됨" : saveState.kind === "local" ? "⚠️ 로컬에만 저장됨" : "💾 초안 저장됨"}
-              {" · "}
-              {new Date(saveState.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          ) : null}
+              전체 지우기
+            </button>
+            <button
+              className="floor-plan-secondary"
+              onClick={() => {
+                setWalls(getStarterWalls());
+                setHiddenWallIds(new Set());
+                setPlacedFurnitures([]);
+                setPendingFurniture(null);
+                setSelectedWall(null);
+                setSelectedFurnitureId(null);
+                setUploadStatus("샘플 도면 복원");
+              }}
+              type="button"
+            >
+              샘플 복원
+            </button>
+            <button
+              className="floor-plan-secondary"
+              onClick={() => {
+                setViewOffset({ x: 0, y: 0 });
+                setViewScale(1);
+              }}
+              title="화면 이동/확대를 처음 상태로 되돌립니다 (도면은 그대로)"
+              type="button"
+            >
+              화면 초기화
+            </button>
+            <button
+              className="floor-plan-secondary"
+              disabled={hiddenWallCount === 0}
+              onClick={() => {
+                setHiddenWallIds(new Set());
+                setUploadStatus("숨긴 벽 복원");
+              }}
+              type="button"
+            >
+              숨김 복원
+            </button>
+          </div>
+
+          <div className="floor-plan-actions-group floor-plan-actions-main" aria-label="변환과 저장">
+            {saveState ? (
+              <span aria-live="polite" className={`floor-plan-save-state is-${saveState.kind}`}>
+                {saveState.kind === "published" ? "📢 발행됨" : saveState.kind === "local" ? "⚠️ 로컬에만 저장됨" : "💾 초안 저장됨"}
+                {" · "}
+                {new Date(saveState.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            ) : null}
+            <button className={viewMode === "3d" ? "floor-plan-primary" : "floor-plan-secondary"} onClick={convertTo3D} type="button">
+              {viewMode === "2d" ? "3D 변환" : "2D 편집"}
+            </button>
+            {experienceMode === "landlord" ? (
+              <>
+                <button
+                  className="floor-plan-primary"
+                  disabled={isProcessing || walls.length === 0}
+                  onClick={() => saveFloorPlanDraft("DRAFT")}
+                  title="지금까지 그린 도면을 초안으로 저장합니다"
+                  type="button"
+                >
+                  초안 저장
+                </button>
+                <button
+                  className="floor-plan-primary"
+                  disabled={isProcessing || walls.length === 0 || !isScaleSet}
+                  onClick={() => saveFloorPlanDraft("PUBLISHED")}
+                  title={isScaleSet ? "도면을 발행합니다" : "발행하려면 먼저 축척을 맞춰주세요 (방 크기 재기)"}
+                  type="button"
+                >
+                  발행
+                </button>
+              </>
+            ) : (
+              <button className="floor-plan-primary" disabled={residentDesignFurnitures.length === 0} onClick={saveResidentFurnitureDesign} type="button">
+                배치 저장
+              </button>
+            )}
+          </div>
         </div>
       </section>
 
       <aside className="floor-plan-sidepanel" aria-label="도면 캔버스">
         <div>
-          <span>wheretoput simulator model</span>
-          <strong>방배 루미에르 402호</strong>
+          <span>도면 요약</span>
+          <strong>{experienceMode === "landlord" ? "내 도면" : "가구 배치 체험"}</strong>
         </div>
         <dl>
           <div>
+            <dt>편집 상태</dt>
+            <dd>{viewMode === "3d" ? "3D 변환됨" : summary.status}</dd>
+          </div>
+          <div>
             <dt>벽체</dt>
-            <dd>{summary.wallCount}개</dd>
+            <dd>{summary.wallCount}개{hiddenWallCount > 0 ? ` (숨김 ${hiddenWallCount})` : ""}</dd>
           </div>
           <div>
             <dt>예상 둘레</dt>
             <dd>{summary.approximateMeters}m</dd>
           </div>
           <div>
-            <dt>편집 상태</dt>
-            <dd>{viewMode === "3d" ? "3D 변환됨" : summary.status}</dd>
+            <dt>축척</dt>
+            <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "미설정 (방 크기 재기)"}</dd>
           </div>
           <div>
-            <dt>3D 벽 데이터</dt>
-            <dd>{roomWalls3D.length}개</dd>
-          </div>
-          <div>
-            <dt>숨긴 벽</dt>
-            <dd>{hiddenWallCount}개</dd>
-          </div>
-          <div>
-            <dt>확정 문창문</dt>
+            <dt>문/창문 확정</dt>
             <dd>{openingCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{openingCandidates.length}개</dd>
           </div>
           <div>
-            <dt>확정 고정설비</dt>
+            <dt>고정설비 확정</dt>
             <dd>{fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{fixtureCandidates.length}개</dd>
           </div>
           <div>
-            <dt>배율 조절</dt>
+            <dt>화면 배율</dt>
             <dd>{Math.round(viewScale * 100)}%</dd>
           </div>
           <div>
-            <dt>축척</dt>
-            <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "1px=10mm"}</dd>
-          </div>
-          <div>
-            <dt>저장 ID</dt>
-            <dd>{floorPlanDraftId ?? "로컬 초안"}</dd>
-          </div>
-          <div>
-            <dt>사용 모드</dt>
-            <dd>{experienceMode === "landlord" ? "집주인 모드" : "세입자 일반사용자 모드"}</dd>
+            <dt>저장 위치</dt>
+            <dd>{floorPlanDraftId ? "서버 저장됨" : "로컬 초안"}</dd>
           </div>
         </dl>
 

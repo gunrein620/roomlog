@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   Banknote,
@@ -21,6 +22,8 @@ import {
   Layers3,
   MapPinned,
   MessageCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
   Phone,
   Ruler,
   Search,
@@ -28,7 +31,7 @@ import {
   SlidersHorizontal,
   UserRound
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -57,6 +60,13 @@ import {
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
+
+// 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
+const ListingTourRoom3D = dynamic(() => import("./_components/ListingTourRoom3D"), {
+  ssr: false,
+  loading: () => <div className="tour-room-loading">3D 도면을 불러오는 중…</div>
+});
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
 import {
   pickInquiryTargetNo,
@@ -558,7 +568,12 @@ const listings = [
 ];
 
 // 데모 매물엔 좌표가 없고, 직접등록 매물은 지오코딩된 lat/lng를 실어 상세 지도에 쓴다(옵셔널).
-type Listing = (typeof listings)[number] & { lat?: number; lng?: number };
+type Listing = (typeof listings)[number] & {
+  lat?: number;
+  lng?: number;
+  has3DTour?: boolean;
+  floorPlan3D?: ListingFloorPlan3D;
+};
 
 // 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
 type TradeListing = {
@@ -577,9 +592,26 @@ type TradeListing = {
   images?: string[];
   lat?: number;
   lng?: number;
+  floorPlan?: ListingFloorPlan3D | null;
 };
 
 const TRADE_LISTING_NO_PREFIX = "TRADE-";
+// 도면 에디터가 남긴 3D 스냅샷 키 — RoomlogFloorPlanEditor의 LISTING_FLOOR_PLAN_STORAGE_KEY와 동일해야 한다.
+const LISTING_FLOOR_PLAN_STORAGE_KEY = "roomlogListingFloorPlan3D";
+
+/** 에디터가 저장한 3D 도면 스냅샷을 읽는다(없거나 벽 0개면 null). */
+function readListingFloorPlanSnapshot(): ListingFloorPlan3D | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ListingFloorPlan3D;
+    if (!parsed || !Array.isArray(parsed.walls3D) || parsed.walls3D.length === 0) return null;
+    return { walls3D: parsed.walls3D, furnitures: Array.isArray(parsed.furnitures) ? parsed.furnitures : [], name: parsed.name };
+  } catch {
+    return null;
+  }
+}
 
 function tradePriceLabel(listing: TradeListing): string {
   if (listing.tradeType === "월세") return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
@@ -594,6 +626,10 @@ function tradeListingToCard(listing: TradeListing): Listing {
   const uploaded = Array.isArray(listing.images) ? listing.images.filter((url) => typeof url === "string" && url) : [];
   const image = uploaded[0] ?? "/listing-studio.jpg";
   const gallery = uploaded.length > 0 ? uploaded : ["/listing-studio.jpg", "/listing-bedroom.jpg"];
+  const floorPlan3D =
+    listing.floorPlan && Array.isArray(listing.floorPlan.walls3D) && listing.floorPlan.walls3D.length > 0
+      ? listing.floorPlan
+      : undefined;
   return {
     listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
     detailHeader: `직접등록 매물 · ${listing.title}`,
@@ -612,15 +648,17 @@ function tradeListingToCard(listing: TradeListing): Listing {
     complexPrice: "확인 중",
     image,
     gallery,
-    badges: ["집주인 직접"],
-    tags: [listing.tradeType, listing.roomType],
+    badges: floorPlan3D ? ["집주인 직접", "3D 투어"] : ["집주인 직접"],
+    tags: floorPlan3D ? [listing.tradeType, listing.roomType, "3D 투어"] : [listing.tradeType, listing.roomType],
     score: "안심 확인중",
     updated: "방금 등록",
     broker: `${listing.ownerName} (집주인)`,
     verification: "집주인 직접 등록",
     response: "채팅 문의 가능",
     lat: listing.lat,
-    lng: listing.lng
+    lng: listing.lng,
+    has3DTour: Boolean(floorPlan3D),
+    floorPlan3D
   };
 }
 
@@ -853,24 +891,54 @@ const initialInquiries: InquiryItem[] = [];
 
 const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
 
-function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectFlow: (flow: MyFlow) => void }) {
+function MyFlowBar({
+  activeFlow,
+  onSelectFlow,
+  menuSlot
+}: {
+  activeFlow: MyFlow;
+  onSelectFlow: (flow: MyFlow) => void;
+  /** 바 왼쪽에 끼워 넣는 화면별 부가 버튼(예: 집주인 대시보드 메뉴 토글) */
+  menuSlot?: ReactNode;
+}) {
+  // 흐름 칩을 항상 펼쳐두는 대신 옵션 버튼 아래 드롭다운으로 접어 상단 바를 슬림하게 유지한다.
+  const [isFlowMenuOpen, setIsFlowMenuOpen] = useState(false);
+  const activeFlowLabel = myFlowItems.find((flow) => flow.id === activeFlow)?.label ?? "옵션";
   return (
     <div className="mypage-role-bar my-flow-bar">
+      {menuSlot}
       <span>
         내 주거 프로세스 — 한 계정으로 <b>여러 집과 관계</b>를 이어갑니다
       </span>
-      <div className="my-flow-chips" aria-label="연결된 흐름">
-        {myFlowItems.map((flow) => (
-          <button
-            key={flow.id}
-            type="button"
-            className={flow.id === activeFlow ? "active" : ""}
-            aria-current={flow.id === activeFlow ? "true" : undefined}
-            onClick={() => onSelectFlow(flow.id)}
-          >
-            {flow.label}
-          </button>
-        ))}
+      <div className="my-flow-switch">
+        <button
+          className="my-flow-options-button"
+          type="button"
+          aria-expanded={isFlowMenuOpen}
+          aria-haspopup="true"
+          onClick={() => setIsFlowMenuOpen((open) => !open)}
+        >
+          <SlidersHorizontal size={14} strokeWidth={2.4} aria-hidden="true" />
+          {activeFlowLabel}
+        </button>
+        {isFlowMenuOpen ? (
+          <div className="my-flow-chips my-flow-dropdown" aria-label="연결된 흐름">
+            {myFlowItems.map((flow) => (
+              <button
+                key={flow.id}
+                type="button"
+                className={flow.id === activeFlow ? "active" : ""}
+                aria-current={flow.id === activeFlow ? "true" : undefined}
+                onClick={() => {
+                  setIsFlowMenuOpen(false);
+                  onSelectFlow(flow.id);
+                }}
+              >
+                {flow.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -893,6 +961,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const [activeOwnerPanel, setActiveOwnerPanel] = useState("dashboard");
+  const [isOwnerSidebarOpen, setIsOwnerSidebarOpen] = useState(true);
   const [isCostReviewCleared, setIsCostReviewCleared] = useState(false);
   const [isDisclosureAcknowledged, setIsDisclosureAcknowledged] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState(DEMO_VENDORS[0]?.id ?? "");
@@ -910,13 +979,14 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const loadMyServerListings = async () => {
     try {
       const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+      // 비로그인 → null(데모 폴백 유지). 로그인 → 실제 배열(0개면 빈 상태). 이 구분이 삭제/수정 진실을 결정한다.
       if (!meRes.ok) {
-        setServerListings([]);
+        setServerListings(null);
         return;
       }
       const me = (await meRes.json()) as { userId?: string };
       if (!me.userId) {
-        setServerListings([]);
+        setServerListings(null);
         return;
       }
       const res = await fetch("/api/trade/listings", { cache: "no-store" });
@@ -1003,7 +1073,23 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
       setDraftSavedAt(draft.savedAt);
     }
 
+    // 도면 에디터에서 실제로 3D를 만들고 돌아왔는지는 스냅샷 존재로 판단한다(클릭만으론 연결로 치지 않음).
+    if (readListingFloorPlanSnapshot()) setHas3DRoom(true);
+
     setIsDraftLoaded(true);
+  }, []);
+
+  // 에디터 탭에서 3D를 만들고 이 탭으로 돌아오면 "3D방 연결" 상태를 즉시 반영한다.
+  useEffect(() => {
+    const syncFloorPlanConnection = () => {
+      if (document.visibilityState === "visible" && readListingFloorPlanSnapshot()) setHas3DRoom(true);
+    };
+    window.addEventListener("visibilitychange", syncFloorPlanConnection);
+    window.addEventListener("focus", syncFloorPlanConnection);
+    return () => {
+      window.removeEventListener("visibilitychange", syncFloorPlanConnection);
+      window.removeEventListener("focus", syncFloorPlanConnection);
+    };
   }, []);
 
   // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
@@ -1072,6 +1158,9 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           lng: geoCoords?.lng
         };
         if (!isEditing || images.length > 0) payload.images = images;
+        // 3D방 연결 상태이고 에디터 스냅샷이 있으면 매물에 도면을 실어 보낸다 → 상세 "3D 보기"에서 실제 렌더.
+        const floorPlanSnapshot = has3DRoom ? readListingFloorPlanSnapshot() : null;
+        if (floorPlanSnapshot) payload.floorPlan = floorPlanSnapshot;
 
         const response = await fetch(
           isEditing ? `/api/trade/listings/${editingListingId}` : "/api/trade/listings",
@@ -1091,19 +1180,22 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           return;
         }
 
+        // 등록/수정 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
+        //   (로컬 그림자 목록은 만들지 않는다 — 내 매물은 항상 서버 진실(serverListings)만 보여준다.)
+        setOwnerForm(emptyOwnerForm);
         setPhotoFiles([]);
+        setPhotoCount(0);
+        setHas3DRoom(false);
+        setGeoCoords(null);
+        if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
         if (isEditing) {
           setEditingListingId(null);
-          setOwnerToast("매물이 수정됐습니다. 홈 피드에 바로 반영됩니다.");
+          setOwnerToast("매물이 수정됐습니다. 내 매물과 홈 피드에 바로 반영됩니다.");
         } else {
-          setMyListings((current) => [
-            { id: Date.now(), title: ownerForm.title, price: ownerPriceLabel, status: "노출중", caption: "방금 노출 시작 · 모든 사용자에게 보입니다" },
-            ...current
-          ]);
           setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
         }
-        void loadMyServerListings();
+        await loadMyServerListings();
       } catch {
         setOwnerToast("매물 등록에 실패했습니다. 네트워크를 확인해 주세요.");
       } finally {
@@ -1185,22 +1277,41 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
-      <MyFlowBar activeFlow="listing" onSelectFlow={onSelectFlow} />
+      <MyFlowBar
+        activeFlow="listing"
+        onSelectFlow={onSelectFlow}
+        menuSlot={
+          <button
+            className="owner-sidebar-toggle"
+            type="button"
+            aria-expanded={isOwnerSidebarOpen}
+            title={isOwnerSidebarOpen ? "기능 메뉴 접기" : "기능 메뉴 펼치기"}
+            onClick={() => setIsOwnerSidebarOpen((open) => !open)}
+          >
+            {isOwnerSidebarOpen
+              ? <PanelLeftClose size={16} strokeWidth={2.4} aria-hidden="true" />
+              : <PanelLeftOpen size={16} strokeWidth={2.4} aria-hidden="true" />}
+            <strong>메뉴</strong>
+          </button>
+        }
+      />
 
-      <div className="owner-dashboard-layout">
-        <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
-          {ownerDashboardTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
-              onClick={() => setActiveOwnerPanel(tab.id)}
-            >
-              <span>{tab.note}</span>
-              <strong>{tab.label}</strong>
-            </button>
-          ))}
-        </nav>
+      <div className={`owner-dashboard-layout${isOwnerSidebarOpen ? "" : " sidebar-collapsed"}`}>
+        {isOwnerSidebarOpen ? (
+          <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
+            {ownerDashboardTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
+                onClick={() => setActiveOwnerPanel(tab.id)}
+              >
+                <span>{tab.note}</span>
+                <strong>{tab.label}</strong>
+              </button>
+            ))}
+          </nav>
+        ) : null}
 
         <div className="owner-dashboard-content">
           {activeOwnerPanel === "dashboard" ? (
@@ -1239,47 +1350,57 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
       <section className="owner-my-listings" aria-label="내 등록 매물">
         <div className="owner-my-listings-head">
-          <strong>내 매물 {(serverListings?.length ?? 0) > 0 ? serverListings!.length : myListings.length}개</strong>
+          <strong>내 매물 {serverListings ? serverListings.length : myListings.length}개</strong>
           <span>수정·내리기는 즉시 반영</span>
         </div>
-        {/* 서버에 실제 등록된 내 매물 — 수정/내리기 가능 */}
-        {(serverListings ?? []).map((listing) => (
-          <article key={listing.id}>
-            <div>
-              <strong>{listing.title}{editingListingId === listing.id ? " · 수정 중" : ""}</strong>
-              <small>{tradePriceLabel(listing)} · {listing.location}</small>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-              <em className="live">{listing.status}</em>
-              <button
-                type="button"
-                onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
-                style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line)", background: "#ffffff", color: "var(--ink)", fontSize: "0.72rem", fontWeight: 900 }}
-              >
-                {editingListingId === listing.id ? "수정 취소" : "수정"}
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteServerListing(listing)}
-                style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid #f1c8c8", background: "#fff6f6", color: "#c03535", fontSize: "0.72rem", fontWeight: 900 }}
-              >
-                내리기
-              </button>
-            </div>
-          </article>
-        ))}
-        {/* 서버 매물이 없을 때만 로컬 데모 목록으로 폴백(비로그인/첫 방문) */}
-        {(serverListings?.length ?? 0) === 0
-          ? myListings.map((item) => (
-              <article key={item.id}>
+        {serverListings !== null ? (
+          // 로그인 상태 — 서버 진실만 보여준다. 삭제하면 여기서 즉시·영구히 사라진다(데모 폴백으로 되살아나지 않음).
+          serverListings.length > 0 ? (
+            serverListings.map((listing) => (
+              <article key={listing.id}>
                 <div>
-                  <strong>{item.title}</strong>
-                  <small>{item.price} · {item.caption}</small>
+                  <strong>{listing.title}{editingListingId === listing.id ? " · 수정 중" : ""}</strong>
+                  <small>{tradePriceLabel(listing)} · {listing.location}</small>
                 </div>
-                <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
+                  <em className="live">{listing.status}</em>
+                  <button
+                    type="button"
+                    onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
+                    style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line)", background: "#ffffff", color: "var(--ink)", fontSize: "0.72rem", fontWeight: 900 }}
+                  >
+                    {editingListingId === listing.id ? "수정 취소" : "수정"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteServerListing(listing)}
+                    style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid #f1c8c8", background: "#fff6f6", color: "#c03535", fontSize: "0.72rem", fontWeight: 900 }}
+                  >
+                    내리기
+                  </button>
+                </div>
               </article>
             ))
-          : null}
+          ) : (
+            <article className="owner-my-listings-empty">
+              <div>
+                <strong>아직 등록한 매물이 없어요</strong>
+                <small>위에서 매물을 등록하면 여기서 수정·내리기를 할 수 있어요.</small>
+              </div>
+            </article>
+          )
+        ) : (
+          // 비로그인/첫 방문 — 데모 쇼케이스 목록(관리 불가)
+          myListings.map((item) => (
+            <article key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <small>{item.price} · {item.caption}</small>
+              </div>
+              <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+            </article>
+          ))
+        )}
       </section>
 
       {/* 내 매물로 들어온 구매 문의 — 문의센터(구매자 쪽)와 같은 스레드를 집주인 시점에서 본다 */}
@@ -1791,15 +1912,13 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           <a
             className={has3DRoom ? "upload-3d-button floor-plan-link active" : "upload-3d-button floor-plan-link"}
             href="/floor-plan-3d"
-            onClick={() => {
-              setHas3DRoom(true);
-              setRegistrationStatus("작성 중");
-            }}
+            onClick={() => setRegistrationStatus("작성 중")}
           >
             <strong>3D 도면 만들기</strong>
             <span>
-              {has3DRoom ? "3D 방 자료가 연결된 상태입니다." : "3D 방 파일 또는 링크를 등록할 수 있습니다."} 실측 도면 기반
-              3D 편집 페이지로 이동
+              {has3DRoom
+                ? "3D 도면이 연결됐어요. 등록하면 상세 페이지에서 3D로 보여집니다."
+                : "도면을 만들고 저장하면 자동으로 연결돼요. 실측 도면 기반 3D 편집 페이지로 이동"}
             </span>
           </a>
         </section>
@@ -2079,6 +2198,9 @@ function ListingDetailView({
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const safetyScore = listing.score.replace("안심 ", "");
+  // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
+  const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
+  const isDirectListing = listing.listingLabel === "집주인 직접등록";
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
   // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
@@ -2183,7 +2305,7 @@ function ListingDetailView({
             <strong>투어 보기</strong>
           </button>
           <button type="button" onClick={scrollToSafetyReport}>
-            <span>{safetyScore}점</span>
+            <span>{safetyScoreLabel}</span>
             <strong>안심 리포트</strong>
           </button>
           <button type="button" onClick={() => setIsComplexSheetOpen(true)}>
@@ -2277,7 +2399,7 @@ function ListingDetailView({
           <h2>권리관계 특이사항 낮음</h2>
           <p>등기 변동, 보증금 비율, 관리비 수준을 함께 본 결과입니다.</p>
         </div>
-        <strong>{safetyScore}점</strong>
+        <strong>{safetyScoreLabel}</strong>
       </section>
 
       <section className="detail-report-card" aria-label="지킴 진단 리포트">
@@ -2301,9 +2423,13 @@ function ListingDetailView({
 
       <section className="agent-summary-card" aria-label="중개사 정보">
         <div>
-          <span>중개사 평점 4.8</span>
+          <span>{isDirectListing ? "집주인 직접 거래" : "중개사 평점 4.8"}</span>
           <h2>{listing.broker}</h2>
-          <p>{listing.response} · 확인매물 126개 · 헛걸음 보상 참여</p>
+          <p>
+            {isDirectListing
+              ? `${listing.response} · ${listing.verification} · 헛걸음 보상 참여`
+              : `${listing.response} · 확인매물 126개 · 헛걸음 보상 참여`}
+          </p>
         </div>
         <button type="button" onClick={() => setIsAgentSheetOpen(true)}>프로필</button>
       </section>
@@ -2413,20 +2539,37 @@ function ListingDetailView({
             </header>
 
             <div className="tour-preview-stage" aria-label="3D 투어 미리보기">
-              <div className="tour-room-box">
-                <span className="tour-wall wall-left" />
-                <span className="tour-wall wall-right" />
-                <span className="tour-bed" />
-                <span className="tour-desk" />
-                <span className="tour-window" />
-                <strong>공간 미리보기</strong>
-              </div>
+              {listing.floorPlan3D ? (
+                <div className="tour-room-3d">
+                  <ListingTourRoom3D floorPlan={listing.floorPlan3D} />
+                </div>
+              ) : (
+                <div className="tour-room-box tour-room-box-empty">
+                  <span className="tour-wall wall-left" />
+                  <span className="tour-wall wall-right" />
+                  <span className="tour-bed" />
+                  <span className="tour-desk" />
+                  <span className="tour-window" />
+                  <strong>3D 도면 미연결 매물</strong>
+                  <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                </div>
+              )}
             </div>
 
             <div className="tour-step-list">
-              <span>도면 기반 공간 스캔</span>
-              <span>옵션 배치 확인</span>
-              <span>투어 예약 연결</span>
+              {listing.floorPlan3D ? (
+                <>
+                  <span>실측 도면 기반 3D</span>
+                  <span>드래그로 둘러보기</span>
+                  <span>투어 예약 연결</span>
+                </>
+              ) : (
+                <>
+                  <span>도면 기반 공간 스캔</span>
+                  <span>옵션 배치 확인</span>
+                  <span>투어 예약 연결</span>
+                </>
+              )}
             </div>
 
             <div className="tour-sheet-actions">

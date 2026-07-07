@@ -3347,15 +3347,17 @@ p {
 }
 
 .detail-report-head > strong {
-  display: inline-grid;
-  width: 52px;
-  height: 52px;
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 52px;
   flex: 0 0 auto;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
   border-radius: 18px;
   background: var(--blue);
   color: #ffffff;
-  font-size: 1.12rem;
+  font-size: 1.02rem;
 }
 
 .detail-report-grid {
@@ -3390,6 +3392,102 @@ p {
 .detail-report-grid small {
   color: var(--blue);
   font-size: 0.64rem;
+  font-weight: 900;
+}
+
+/* AI 안전분석 요약 배너 — 지킴 진단 리포트와 같은 블루 카드 계열 */
+.safety-analysis-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 20px 18px 0;
+  padding: 16px;
+  border: 1px solid rgba(47, 85, 255, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(47, 85, 255, 0.08), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.safety-analysis-card span {
+  color: var(--blue);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.safety-analysis-card h2 {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.32;
+}
+
+.safety-analysis-card p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.safety-analysis-card > strong {
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 1.02rem;
+}
+
+/* 중개사/집주인 요약 카드 */
+.agent-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 18px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.agent-summary-card span {
+  color: var(--blue);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.agent-summary-card h2 {
+  margin-top: 6px;
+  font-size: 1rem;
+}
+
+.agent-summary-card p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.agent-summary-card button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid #d5dbe8;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #273043;
+  font-size: 0.78rem;
   font-weight: 900;
 }
 
@@ -3721,6 +3819,44 @@ p {
     linear-gradient(0deg, rgba(47, 85, 255, 0.09) 1px, transparent 1px),
     #eef3ff;
   background-size: 24px 24px;
+}
+
+/* 실제 3D 도면 뷰 — 편집기와 같은 R3F 캔버스를 상세 시트 크기에 맞춰 채운다. */
+.tour-room-3d {
+  width: 100%;
+  height: min(52vh, 420px);
+}
+
+.tour-room-3d .floor-plan-3d-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.tour-room-loading {
+  display: grid;
+  place-content: center;
+  width: 100%;
+  height: min(52vh, 420px);
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.tour-room-box-empty em {
+  position: absolute;
+  left: 50%;
+  bottom: -56px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-style: normal;
 }
 
 .tour-room-box {
@@ -4746,6 +4882,31 @@ p {
   font-size: 0.9rem;
   font-weight: 950;
   line-height: 1.2;
+}
+
+/* 사이드바 접기/펼치기 토글 — 상단 흐름 바(my-flow-bar) 왼쪽에 붙는다.
+   .my-flow-bar 하위로 지정해 데스크톱의 .mypage-role-bar button 숨김 규칙을 이긴다. */
+.my-flow-bar .owner-sidebar-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #d8dfec;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #465062;
+}
+
+.my-flow-bar .owner-sidebar-toggle strong {
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.my-flow-bar .owner-sidebar-toggle[aria-expanded="true"] {
+  border-color: rgba(47, 85, 255, 0.55);
+  color: var(--blue);
 }
 
 .owner-dashboard-content {
@@ -7280,11 +7441,17 @@ p {
 
 .floor-plan-topbar {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 72px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   max-width: 1180px;
   margin: 0 auto;
+}
+
+.floor-plan-topbar-hint {
+  color: #7a8296;
+  font-size: 0.74rem;
+  font-weight: 800;
 }
 
 .floor-plan-topbar a,
@@ -7335,6 +7502,20 @@ p {
   padding: 10px;
 }
 
+/* 좌측 레일의 "모드 / 도구" 구분 라벨 — 무엇이 상태고 무엇이 도구인지 한눈에 나눈다 */
+.floor-plan-toolbar-label {
+  margin: 2px 2px 0;
+  color: #8a91a2;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.floor-plan-toolbar-label + .floor-plan-mode-switch,
+.floor-plan-toolbar-label + button {
+  margin-top: -2px;
+}
+
 .floor-plan-toolbar button {
   display: grid;
   min-height: 72px;
@@ -7344,6 +7525,7 @@ p {
   background: #f6f8fc;
   color: #465064;
   font-weight: 900;
+  word-break: keep-all;
 }
 
 .floor-plan-toolbar strong {
@@ -7366,20 +7548,104 @@ p {
 }
 
 .floor-plan-canvas {
-  display: grid;
-  grid-template-rows: auto minmax(420px, min(62vh, 720px)) auto;
+  /* 캔버스 컬럼은 flex로 쌓는다 — 배너/치수 스트립이 끼어들어도 캔버스 행 크기를 뺏지 않게. */
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   padding: 14px;
 }
 
+.floor-plan-canvas > .floor-plan-canvas-stage,
+.floor-plan-canvas > .floor-plan-3d-preview {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 420px;
+  max-height: min(62vh, 720px);
+}
+
+.floor-plan-canvas-stage {
+  position: relative;
+  display: flex;
+}
+
 .floor-plan-upload-row {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(112px, 132px)) minmax(0, 1fr);
-  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 10px;
 }
 
+.floor-plan-upload-row .floor-plan-secondary,
+.floor-plan-upload-row .floor-plan-upload-label {
+  flex: 0 0 auto;
+  min-width: 112px;
+  padding: 0 16px;
+}
+
+.floor-plan-scale-banner {
+  align-self: flex-start;
+  padding: 9px 14px;
+  border: 1px solid #e6c34d;
+  border-radius: 12px;
+  background: #fff7dd;
+  color: #6b5310;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.floor-plan-scale-banner.is-set {
+  border-color: #9db9ff;
+  background: #ecf2ff;
+  color: #24418f;
+}
+
+.floor-plan-empty-guide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 20px;
+  pointer-events: none;
+}
+
+/* 안내 문구는 클릭을 통과시켜 벽 그리기를 막지 않는다 — 버튼만 상호작용. */
+.floor-plan-empty-guide-actions {
+  pointer-events: auto;
+}
+
+.floor-plan-empty-guide > strong {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--ink);
+  text-align: center;
+}
+
+.floor-plan-empty-guide > p {
+  max-width: 380px;
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.floor-plan-empty-guide-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.floor-plan-empty-guide-actions .floor-plan-primary,
+.floor-plan-empty-guide-actions .floor-plan-secondary {
+  min-width: 150px;
+  padding: 0 18px;
+  box-shadow: 0 10px 24px rgba(18, 24, 40, 0.14);
+}
+
 .floor-plan-upload-row span {
+  flex: 1 1 160px;
+  align-self: center;
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -7544,10 +7810,64 @@ p {
   box-shadow: 0 14px 28px rgba(47, 85, 255, 0.22);
 }
 
+/* 조건이 안 갖춰진 저장/발행은 확실히 죽은 색으로 — 파란색 그대로면 눌리는 줄 안다 */
+.floor-plan-primary:disabled {
+  background: #c6cede;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .floor-plan-actions {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.floor-plan-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.floor-plan-actions-group > button {
+  min-height: 48px;
+  padding: 0 16px;
+}
+
+/* 핵심 흐름(변환→저장→발행)은 오른쪽에 모으고 저장 상태 칩을 곁들인다 */
+.floor-plan-actions-main {
+  margin-left: auto;
+}
+
+.floor-plan-save-state {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.floor-plan-save-state.is-draft {
+  background: #e0edff;
+  color: #1e40af;
+}
+
+.floor-plan-save-state.is-local {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.floor-plan-save-state.is-published {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* 파괴적 액션은 색으로 경고 */
+.floor-plan-danger:not(:disabled) {
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .floor-plan-secondary {
@@ -7882,16 +8202,27 @@ p {
     grid-column: 1 / -1;
   }
 
-  .floor-plan-canvas {
-    grid-template-rows: auto 360px auto;
+  .floor-plan-canvas > .floor-plan-canvas-stage,
+  .floor-plan-canvas > .floor-plan-3d-preview {
+    min-height: 360px;
   }
 
-  .floor-plan-actions {
-    grid-template-columns: 1fr;
+  .floor-plan-actions,
+  .floor-plan-actions-main {
+    margin-left: 0;
   }
 
-  .floor-plan-upload-row {
-    grid-template-columns: 1fr;
+  .floor-plan-actions-group {
+    width: 100%;
+  }
+
+  .floor-plan-actions-group > button {
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  .floor-plan-upload-row .floor-plan-secondary,
+  .floor-plan-upload-row .floor-plan-upload-label {
+    flex: 1 1 100%;
   }
 
   .floor-plan-toolbar {
@@ -8175,6 +8506,11 @@ p {
     grid-template-columns: 220px minmax(0, 1fr);
     align-items: start;
     gap: 18px;
+  }
+
+  /* 접힘: 사이드바 노드 자체가 빠지므로 콘텐츠가 전체 폭을 쓴다 */
+  .owner-dashboard-layout.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .owner-dashboard-sidebar {
@@ -9163,6 +9499,20 @@ p {
   color: #067a4b;
 }
 
+.owner-my-listings article.owner-my-listings-empty {
+  justify-content: flex-start;
+  border: 1px dashed var(--line);
+  background: transparent;
+}
+
+.owner-my-listings-empty strong {
+  color: var(--ink);
+}
+
+.owner-my-listings-empty small {
+  color: var(--subtle);
+}
+
 .tenant-repair-card {
   padding: 16px;
   border-radius: 18px;
@@ -9307,6 +9657,53 @@ p {
   border-color: var(--blue);
   background: var(--blue);
   color: #ffffff;
+}
+
+/* 흐름 전환 — 옵션 버튼을 누르면 칩 목록이 드롭다운으로 열린다 */
+.my-flow-switch {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.my-flow-bar .my-flow-options-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.my-flow-bar .my-flow-options-button[aria-expanded="true"] {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.my-flow-bar .my-flow-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 152px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 36px rgba(18, 24, 40, 0.16);
+}
+
+.my-flow-bar .my-flow-dropdown button {
+  justify-content: flex-start;
+  border-radius: 10px;
 }
 
 .my-roomlog-section {

@@ -229,7 +229,9 @@ function RoomOrbitControls() {
 }
 
 export function RoomlogThreeFloorPlanView({
+  frameloop = "demand",
   furnitureData,
+  hideHint = false,
   onFloorPointerDown,
   onFurniturePointerDown,
   onWallPointerDown,
@@ -238,7 +240,11 @@ export function RoomlogThreeFloorPlanView({
   selectedWallId,
   wallsData
 }: {
+  // 편집기는 "demand"(입력 시에만 렌더)로 효율적이지만, 읽기 전용 뷰어는
+  // 드래그 전에도 방이 보여야 하므로 "always"를 넘겨 즉시·리사이즈 시 계속 렌더한다.
+  frameloop?: "demand" | "always";
   furnitureData: PlacedFurniture[];
+  hideHint?: boolean;
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
@@ -249,7 +255,7 @@ export function RoomlogThreeFloorPlanView({
 }) {
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
-      <Canvas camera={{ fov: 50, position: [14, 12, 18] }} dpr={[1, 2]} frameloop="demand">
+      <Canvas camera={{ fov: 50, position: [14, 12, 18] }} dpr={[1, 2]} frameloop={frameloop}>
         <color attach="background" args={["#626260"]} />
         <ambientLight intensity={0.72} />
         <directionalLight intensity={1.4} position={[6, 12, 8]} />
@@ -276,7 +282,7 @@ export function RoomlogThreeFloorPlanView({
         <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18} />
         <RoomOrbitControls />
       </Canvas>
-      <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>
+      {hideHint ? null : <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>}
     </div>
   );
 }

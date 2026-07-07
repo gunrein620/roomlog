@@ -52,6 +52,8 @@ jobs:
           PORT: "${{ secrets.PORT }}"
           AWS_REGION: "${{ secrets.AWS_REGION }}"
           S3_BUCKET_NAME: "${{ secrets.S3_BUCKET_NAME }}"
+          MOLIT_SERVICE_KEY: "${{ secrets.MOLIT_SERVICE_KEY }}"
+          ROBOFLOW_API_KEY: "${{ secrets.ROBOFLOW_API_KEY }}"
         run: |
           set -euo pipefail
 
@@ -109,9 +111,20 @@ jobs:
           AWS_REGION="${AWS_REGION:-ap-northeast-2}"
           S3_BUCKET_NAME="${S3_BUCKET_NAME:-roomlog-files}"
 
+          # 앱 API 키 — 개별 secret 우선, 없으면 PROD_ENV에서 읽는다.
+          MOLIT_SERVICE_KEY="${MOLIT_SERVICE_KEY:-}"
+          if [ -z "$MOLIT_SERVICE_KEY" ] && [ -n "${PROD_ENV:-}" ]; then
+            MOLIT_SERVICE_KEY="$(read_prod_env_key MOLIT_SERVICE_KEY)"
+          fi
+
+          ROBOFLOW_API_KEY="${ROBOFLOW_API_KEY:-}"
+          if [ -z "$ROBOFLOW_API_KEY" ] && [ -n "${PROD_ENV:-}" ]; then
+            ROBOFLOW_API_KEY="$(read_prod_env_key ROBOFLOW_API_KEY)"
+          fi
+
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -131,6 +144,14 @@ jobs:
           AWS_REGION=${AWS_REGION}
           S3_BUCKET_NAME=${S3_BUCKET_NAME}
           EOF
+
+          # 값이 있을 때만 기록 — secret 미등록 상태에서 빈 값으로 덮지 않는다.
+          if [ -n "$MOLIT_SERVICE_KEY" ]; then
+            echo "MOLIT_SERVICE_KEY=${MOLIT_SERVICE_KEY}" >> .env.production
+          fi
+          if [ -n "$ROBOFLOW_API_KEY" ]; then
+            echo "ROBOFLOW_API_KEY=${ROBOFLOW_API_KEY}" >> .env.production
+          fi
 
       - name: Deploy to EC2
         env:
