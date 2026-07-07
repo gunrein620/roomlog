@@ -15,7 +15,6 @@
 접속은 ssh rlog
 
 ## 작업 전 체크리스트 (빠른 참조)
-- 미완/이월 항목은 `KNOWN-GAPS.md`를 먼저 확인한다.
 - 화면/도메인 작업은 `packages/types` 공유 타입 계약부터 맞춘다.
 - 스타일 값은 `packages/ui/src/tokens.css`의 CSS 변수만 쓰고 raw hex는 금지.
 - 임차인/업체 화면은 `PhoneFrame`, 관리인 화면은 `ManagerShell`.
@@ -62,14 +61,14 @@ pnpm test:web            # web 유닛 테스트
 
 ## 4. 현재 상태 & 미완 항목
 - **완료**: 3역할 전 표면 렌더 + 라우팅 + 스텁 API(인메모리). 홈(`/`)에 도메인 인덱스.
-- **미완/이월**: **`KNOWN-GAPS.md` 를 반드시 읽을 것.** 셸 단계에서 안 한 것(서버측 원칙 게이트 강제·report/vendor-mgmt API 배선·실제 mutation 등)이 실물 단계 체크리스트로 정리돼 있음.
+- **미완/이월**: 서버측 원칙 게이트 강제·report/vendor-mgmt API 배선·실제 mutation 등은 실물 단계에서 코드와 현재 요구사항을 기준으로 확인한다.
 
 ## 5. 다음 단계 (실물 제품으로 — 이 순서 권장)
 walking skeleton 철학: **화면이 다 붙은 지금 → 위험한 seam부터 실물로.**
 
 1. **영속성(DB)** — 인메모리 리포지토리 → PostgreSQL. `repository`가 이미 인터페이스로 분리돼 있어 `InMemory*` → `Postgres*`(Drizzle/Prisma/TypeORM) 교체가 국소적. 마이그레이션·연결 추가.
 2. **인증·권한** — 실제 계정·세션(JWT), **D18 초대+연락처 OTP**(외국인 하드블록 금지), 역할(임차인/관리인/업체), **권한 스코프 서버 강제**(`tenant_id + room_link_id`).
-3. **서버측 원칙 게이트** (KNOWN-GAPS의 C버킷) — 결제완료 게이트·D20 1:1 독촉 금지·SLA override·M-DOC 확정 액션 등 지금 UI 문구뿐인 것들을 **서버에서 강제**.
+3. **서버측 원칙 게이트** — 결제완료 게이트·D20 1:1 독촉 금지·SLA override·M-DOC 확정 액션 등 지금 UI 문구뿐인 것들을 **서버에서 강제**.
 4. **실물 통합(위험 seam)** — 하자 사진 VLM 분석(AWS Bedrock)·결제 게이트웨이·S3 업로드·영수증 OCR(비용)·**음성 트리거 정산 사가**(멱등·보상, 이 제품의 핵심 기술 난제).
 5. **실제 폼·상태·실시간** — 폼 mutation·검증, 로딩/에러/빈 상태 UX, 메시징 실시간(웹소켓/폴링).
 6. **PWA·i18n·인프라** — 서비스워커·푸시·설치, 다국어(선택언어+원문 토글), 배포(EC2·DB·S3·CI).
@@ -83,4 +82,4 @@ walking skeleton 철학: **화면이 다 붙은 지금 → 위험한 seam부터 
 
 ## 7. 진실의 출처
 - 화면·전이·원칙 스펙 = 룸로그 기획 vault의 화면 그래프 문서(`roomlog_screens_*.md`) + 결정로그. (이 레포엔 스펙 원본 없음 — 팀 기획 소스 참조.)
-- 이월/미완 = `KNOWN-GAPS.md`. 디자인 토큰 = `packages/ui/src/tokens.css`.
+- 디자인 토큰 = `packages/ui/src/tokens.css`.

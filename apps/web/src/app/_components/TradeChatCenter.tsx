@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import { tradeChatDisplayMode } from "./trade-chat-display";
 
 // 거래 문의 채팅 센터 — 구매 희망자(문의센터 탭)와 집주인(내놓은 집 마이페이지)이
 // 같은 스레드를 양쪽에서 보는 공용 컴포넌트.
@@ -272,7 +273,15 @@ export function TradeChatCenter({
     }
   };
 
-  if (needsLogin) {
+  const displayMode = tradeChatDisplayMode({
+    needsLogin,
+    threadsLoaded: threads !== null,
+    threadCount: threads?.length ?? 0,
+    hasOpenThreadId: Boolean(openThreadId),
+    hasOpenThread: Boolean(openThread)
+  });
+
+  if (displayMode === "login") {
     return (
       <div className="listing-empty-card" role="status">
         <strong>로그인하면 문의 대화가 보입니다</strong>
@@ -284,11 +293,11 @@ export function TradeChatCenter({
     );
   }
 
-  if (threads === null) {
+  if (displayMode === "loading") {
     return <div className="listing-empty-card"><p>문의 대화를 불러오는 중…</p></div>;
   }
 
-  if (threads.length === 0) {
+  if (displayMode === "empty") {
     return (
       <div className="listing-empty-card">
         <strong>아직 문의 대화가 없습니다</strong>
@@ -298,7 +307,7 @@ export function TradeChatCenter({
   }
 
   // 열린 대화 화면
-  if (openThreadId && openThread) {
+  if (displayMode === "open" && openThreadId && openThread) {
     const iAmOwner = openThread.ownerId === myUserId;
     const counterpart = openThread.buyerId === myUserId ? openThread.ownerName : openThread.buyerName;
     const contractClosed = openContract?.status === "declined" || openContract?.status === "cancelled";
@@ -471,9 +480,10 @@ export function TradeChatCenter({
   }
 
   // 스레드 목록
+  const visibleThreads = threads ?? [];
   return (
     <div style={{ display: "grid", gap: 10 }} aria-label="문의 대화 목록">
-      {threads.map((thread) => (
+      {visibleThreads.map((thread) => (
         <button
           key={thread.id}
           type="button"
