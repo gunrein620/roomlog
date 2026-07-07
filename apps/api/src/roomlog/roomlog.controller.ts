@@ -1102,7 +1102,7 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.runManagerAgentCommand(user.id, body);
+    return this.roomlogService.runManagerAgentCommandForRealtime(user.id, body);
   }
 
   @Get("manager/messaging/threads")

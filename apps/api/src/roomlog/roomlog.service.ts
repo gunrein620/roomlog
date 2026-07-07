@@ -3594,6 +3594,171 @@ export class RoomlogService {
     };
   }
 
+  async runManagerAgentCommandForRealtime(
+    managerId: string,
+    input: ManagerAgentCommandInput
+  ): Promise<ManagerAgentCommandResult> {
+    const result = this.runManagerAgentCommand(managerId, input);
+
+    if (!process.env.OPENAI_API_KEY || result.status === "blocked") {
+      return result;
+    }
+
+    try {
+      const generatedSummary = await this.generateManagerAgentCommandReply(
+        managerId,
+        input,
+        result
+      );
+
+      return generatedSummary ? { ...result, summary: generatedSummary } : result;
+    } catch {
+      return result;
+    }
+  }
+
+  private async generateManagerAgentCommandReply(
+    managerId: string,
+    input: ManagerAgentCommandInput,
+    result: ManagerAgentCommandResult
+  ) {
+    const model = process.env.OPENAI_MANAGER_AGENT_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+        "OpenAI-Safety-Identifier": this.safetyIdentifier(managerId, input.command || result.domain)
+      },
+      body: JSON.stringify({
+        model,
+        instructions: this.managerAgentReplyInstructions(),
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: JSON.stringify(
+                  {
+                    userRequest: input.text || input.body || "",
+                    command: input.command,
+                    commandStatus: result.status,
+                    domain: result.domain,
+                    deterministicSummary: result.summary,
+                    requiresConfirmation: result.requiresConfirmation ?? false,
+                    navigation: result.navigation,
+                    data: this.managerAgentReplyData(result)
+                  },
+                  null,
+                  2
+                )
+              }
+            ]
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI manager agent response failed with ${response.status}`);
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    return this.cleanManagerAgentReplyText(this.extractOpenAiResponseText(payload));
+  }
+
+  private managerAgentReplyInstructions() {
+    return [
+      "당신은 Roomlog 관리인 실시간 AI 운영 에이전트입니다.",
+      "사용자의 요청과 서버가 조회/실행한 command 결과 JSON만 근거로 답하세요.",
+      "제공되지 않은 호수, 금액, 상태, 메시지 대상, 발송 결과를 추측하지 마세요.",
+      "질문이 특정 항목을 묻는다면 전체 요약 대신 해당 항목을 우선 답하세요. 예: 미납 호수와 금액을 물으면 unitId와 unpaidAmount를 열거합니다.",
+      "청구 요약에서 현재월 미납을 묻는 경우 currentMonthUnpaidBills만 열거하고 collection.unpaidAmount와 합계가 맞는지 확인하세요.",
+      "실행 결과가 발송 또는 mutation이면 실행 여부와 대상만 간결히 말하고, 필요한 확인 화면은 navigation.label로 안내합니다.",
+      "blocked 또는 requiresConfirmation이면 자동 처리하지 말고 확인이 필요한 이유를 말하세요.",
+      "한국어로 1~3문장, 필요하면 짧은 줄바꿈 목록으로 답하세요."
+    ].join("\n");
+  }
+
+  private managerAgentReplyData(result: ManagerAgentCommandResult) {
+    const data = result.data as Record<string, unknown> | undefined;
+
+    if (!data) {
+      return undefined;
+    }
+
+    if (result.domain === "billing") {
+      const dashboard = data.dashboard as { summary?: unknown; bills?: TeamBillRow[] } | undefined;
+      const collection = data.collection as TeamCollection | undefined;
+      const bills = (Array.isArray(dashboard?.bills) ? dashboard.bills : []).map((bill) => ({
+        billId: bill.billId,
+        unitId: bill.unitId,
+        tenantName: bill.tenantName,
+        billingMonth: bill.billingMonth,
+        status: bill.status,
+        totalAmount: bill.totalAmount,
+        paidAmount: bill.paidAmount,
+        unpaidAmount: Math.max(0, bill.totalAmount - bill.paidAmount),
+        dueDate: bill.dueDate
+      }));
+      const currentMonthBills = collection?.billingMonth
+        ? bills.filter((bill) => bill.billingMonth === collection.billingMonth)
+        : bills;
+      const currentMonthUnpaidBills = currentMonthBills.filter((bill) => bill.unpaidAmount > 0);
+
+      return {
+        dashboard: {
+          summary: dashboard?.summary
+        },
+        collection,
+        currentMonthBills,
+        currentMonthUnpaidBills,
+        omittedOtherMonthBillCount: Math.max(0, bills.length - currentMonthBills.length)
+      };
+    }
+
+    if (result.domain === "ticket") {
+      const matchedTickets = Array.isArray(data.matchedTickets) ? data.matchedTickets : [];
+
+      return {
+        answer: data.answer,
+        filters: data.filters,
+        nextActions: data.nextActions,
+        matchedTickets: matchedTickets.slice(0, 10)
+      };
+    }
+
+    if (result.domain === "messaging") {
+      const thread = data.thread as MessagingThread | undefined;
+
+      return thread
+        ? {
+            thread: {
+              id: thread.id,
+              unitId: thread.unitId,
+              context: thread.context,
+              contextRef: thread.contextRef,
+              lastMessage: thread.lastMessage,
+              unreadCount: thread.unreadCount
+            }
+          }
+        : data;
+    }
+
+    return data;
+  }
+
+  private cleanManagerAgentReplyText(text: string) {
+    const cleaned = text
+      .replace(/```(?:json|text)?/gi, "")
+      .replace(/```/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return cleaned.slice(0, 1200);
+  }
+
   private defaultManagerMessagingThreadId(managerId: string) {
     return this.listManagerMessagingThreads(managerId)[0]?.id;
   }

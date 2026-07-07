@@ -3875,6 +3875,95 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("uses OpenAI Responses to phrase manager realtime command answers with queried data", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalChatModel = process.env.OPENAI_CHAT_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedUrl = "";
+    let capturedHeaders: Headers | undefined;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_CHAT_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input);
+      capturedHeaders = new Headers(init?.headers);
+      capturedBody = JSON.parse(String(init?.body));
+
+      return new Response(
+        JSON.stringify({
+          output_text: "미납은 411호 888,000원, 502호 640,000원 등 총 1,888,000원입니다."
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const result = await service.runManagerAgentCommandForRealtime("landlord-demo", {
+        command: "billing.summary",
+        text: "미납된 호수와 금액 알려줘"
+      });
+
+      assert.equal(capturedUrl, "https://api.openai.com/v1/responses");
+      assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-test-roomlog");
+      assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.match(String(capturedBody?.instructions), /Roomlog 관리인 실시간 AI/);
+      assert.match(JSON.stringify(capturedBody?.input), /미납된 호수와 금액/);
+      assert.match(JSON.stringify(capturedBody?.input), /billing\.summary/);
+      const requestText = (((capturedBody?.input as any[])?.[0]?.content as any[])?.[0]?.text ?? "{}") as string;
+      const requestPayload = JSON.parse(requestText);
+      const replyData = requestPayload.data;
+      assert.match(JSON.stringify(capturedBody?.input), /currentMonthUnpaidBills/);
+      assert.equal(replyData.dashboard.bills, undefined);
+      assert.equal(
+        replyData.currentMonthUnpaidBills.every(
+          (bill: any) => bill.billingMonth === replyData.collection.billingMonth
+        ),
+        true
+      );
+      assert.equal(result.status, "executed");
+      assert.equal(result.domain, "billing");
+      assert.equal(result.summary, "미납은 411호 888,000원, 502호 640,000원 등 총 1,888,000원입니다.");
+      assert.equal(result.navigation?.href, "/manager/billing");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalChatModel) process.env.OPENAI_CHAT_MODEL = originalChatModel;
+      else delete process.env.OPENAI_CHAT_MODEL;
+    }
+  });
+
+  it("keeps the deterministic manager realtime command summary when OpenAI phrasing fails", async () => {
+    const service = new RoomlogService();
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalFetch = globalThis.fetch;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "temporarily unavailable" } }), {
+        headers: { "Content-Type": "application/json" },
+        status: 503
+      })) as typeof fetch;
+
+    try {
+      const result = await service.runManagerAgentCommandForRealtime("landlord-demo", {
+        command: "billing.summary",
+        text: "미납된 호수와 금액 알려줘"
+      });
+
+      assert.equal(result.status, "executed");
+      assert.equal(result.domain, "billing");
+      assert.match(result.summary, /이번 달 청구/);
+      assert.match(result.summary, /미납/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
   it("runs manager agent commands through a narrow server allowlist", async () => {
     const service = new RoomlogService();
     const ticketResult = service.runManagerAgentCommand("landlord-demo", {
