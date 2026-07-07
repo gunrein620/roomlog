@@ -55,9 +55,12 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
 
   return (
     <RoomlogThreeFloorPlanView
+      cameraPosition={[9, 7.5, 11]}
       frameloop="always"
       furnitureData={furnitureData}
       hideHint
+      horizontalScale={1.85}
+      orbitMinDistance={1.6}
       onFloorPointerDown={noop}
       onFurniturePointerDown={noop}
       onWallPointerDown={noop}
