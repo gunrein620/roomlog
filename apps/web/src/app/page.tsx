@@ -31,7 +31,7 @@ import {
   SlidersHorizontal,
   UserRound
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -891,24 +891,54 @@ const initialInquiries: InquiryItem[] = [];
 
 const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
 
-function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectFlow: (flow: MyFlow) => void }) {
+function MyFlowBar({
+  activeFlow,
+  onSelectFlow,
+  menuSlot
+}: {
+  activeFlow: MyFlow;
+  onSelectFlow: (flow: MyFlow) => void;
+  /** 바 왼쪽에 끼워 넣는 화면별 부가 버튼(예: 집주인 대시보드 메뉴 토글) */
+  menuSlot?: ReactNode;
+}) {
+  // 흐름 칩을 항상 펼쳐두는 대신 옵션 버튼 아래 드롭다운으로 접어 상단 바를 슬림하게 유지한다.
+  const [isFlowMenuOpen, setIsFlowMenuOpen] = useState(false);
+  const activeFlowLabel = myFlowItems.find((flow) => flow.id === activeFlow)?.label ?? "옵션";
   return (
     <div className="mypage-role-bar my-flow-bar">
+      {menuSlot}
       <span>
         내 주거 프로세스 — 한 계정으로 <b>여러 집과 관계</b>를 이어갑니다
       </span>
-      <div className="my-flow-chips" aria-label="연결된 흐름">
-        {myFlowItems.map((flow) => (
-          <button
-            key={flow.id}
-            type="button"
-            className={flow.id === activeFlow ? "active" : ""}
-            aria-current={flow.id === activeFlow ? "true" : undefined}
-            onClick={() => onSelectFlow(flow.id)}
-          >
-            {flow.label}
-          </button>
-        ))}
+      <div className="my-flow-switch">
+        <button
+          className="my-flow-options-button"
+          type="button"
+          aria-expanded={isFlowMenuOpen}
+          aria-haspopup="true"
+          onClick={() => setIsFlowMenuOpen((open) => !open)}
+        >
+          <SlidersHorizontal size={14} strokeWidth={2.4} aria-hidden="true" />
+          {activeFlowLabel}
+        </button>
+        {isFlowMenuOpen ? (
+          <div className="my-flow-chips my-flow-dropdown" aria-label="연결된 흐름">
+            {myFlowItems.map((flow) => (
+              <button
+                key={flow.id}
+                type="button"
+                className={flow.id === activeFlow ? "active" : ""}
+                aria-current={flow.id === activeFlow ? "true" : undefined}
+                onClick={() => {
+                  setIsFlowMenuOpen(false);
+                  onSelectFlow(flow.id);
+                }}
+              >
+                {flow.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1247,36 +1277,41 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
-      <MyFlowBar activeFlow="listing" onSelectFlow={onSelectFlow} />
-
-      <div className={`owner-dashboard-layout${isOwnerSidebarOpen ? "" : " sidebar-collapsed"}`}>
-        <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
+      <MyFlowBar
+        activeFlow="listing"
+        onSelectFlow={onSelectFlow}
+        menuSlot={
           <button
             className="owner-sidebar-toggle"
             type="button"
             aria-expanded={isOwnerSidebarOpen}
-            title={isOwnerSidebarOpen ? "메뉴 접기" : "메뉴 펼치기"}
+            title={isOwnerSidebarOpen ? "기능 메뉴 접기" : "기능 메뉴 펼치기"}
             onClick={() => setIsOwnerSidebarOpen((open) => !open)}
           >
             {isOwnerSidebarOpen
-              ? <PanelLeftClose size={17} strokeWidth={2.4} aria-hidden="true" />
-              : <PanelLeftOpen size={17} strokeWidth={2.4} aria-hidden="true" />}
-            <strong>{isOwnerSidebarOpen ? "메뉴 접기" : "메뉴"}</strong>
+              ? <PanelLeftClose size={16} strokeWidth={2.4} aria-hidden="true" />
+              : <PanelLeftOpen size={16} strokeWidth={2.4} aria-hidden="true" />}
+            <strong>메뉴</strong>
           </button>
-          {isOwnerSidebarOpen
-            ? ownerDashboardTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
-                  onClick={() => setActiveOwnerPanel(tab.id)}
-                >
-                  <span>{tab.note}</span>
-                  <strong>{tab.label}</strong>
-                </button>
-              ))
-            : null}
-        </nav>
+        }
+      />
+
+      <div className={`owner-dashboard-layout${isOwnerSidebarOpen ? "" : " sidebar-collapsed"}`}>
+        {isOwnerSidebarOpen ? (
+          <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
+            {ownerDashboardTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
+                onClick={() => setActiveOwnerPanel(tab.id)}
+              >
+                <span>{tab.note}</span>
+                <strong>{tab.label}</strong>
+              </button>
+            ))}
+          </nav>
+        ) : null}
 
         <div className="owner-dashboard-content">
           {activeOwnerPanel === "dashboard" ? (
