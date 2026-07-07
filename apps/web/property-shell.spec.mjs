@@ -63,6 +63,7 @@ const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/mes
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
 const managerContractApiSource = readFileSync(new URL("./src/lib/contract-manager-api.ts", import.meta.url), "utf8");
 const managerMessagingApiSource = readFileSync(new URL("./src/lib/messaging-manager-api.ts", import.meta.url), "utf8");
+const tradeControllerSource = readFileSync(new URL("../api/src/trade/trade.controller.ts", import.meta.url), "utf8");
 
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
@@ -472,6 +473,13 @@ test("every inquiry entry point opens the same composer sheet and feeds the inqu
   // 접수 완료 상태에서 문의센터로 바로 이동할 수 있다.
   assert.match(pageSource, /문의센터 보기/);
   assert.match(pageSource, /onViewInquiryCenter/);
+});
+
+test("trade update badge ignores messages sent by the current viewer", () => {
+  assert.match(tradeControllerSource, /threadId: thread\.id,\s*\n\s*senderId/);
+  assert.match(pageSource, /onTradeUpdated = \(payload: \{ threadId\?: string; senderId\?: string \}\)/);
+  assert.match(pageSource, /payload\.senderId === viewer\.userId/);
+  assert.match(pageSource, /setUnseenTradeCount/);
 });
 
 test("owner registration state survives refresh via a versioned local draft with no fake prefills", () => {

@@ -4474,7 +4474,7 @@ export default function Home() {
 
   const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
 
-  // 실시간 문의 신호 — 웹소켓 trade:updated가 오면 문의 탭 밖에서는 배지를 켠다(탭 진입 시 해제).
+  // 실시간 문의 신호 — 상대가 보낸 trade:updated만 문의 탭 밖에서 배지를 켠다(탭 진입 시 해제).
   const [unseenTradeCount, setUnseenTradeCount] = useState(0);
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
@@ -4483,7 +4483,8 @@ export default function Home() {
     if (!viewer) return; // 소켓 인증 티켓은 로그인 세션 기반 — 비로그인 재연결 루프 방지
 
     const socket = getRealtimeSocket();
-    const onTradeUpdated = () => {
+    const onTradeUpdated = (payload: { threadId?: string; senderId?: string }) => {
+      if (payload.senderId && payload.senderId === viewer.userId) return;
       if (activeTabRef.current !== "inquiry") {
         setUnseenTradeCount((count) => count + 1);
       }
