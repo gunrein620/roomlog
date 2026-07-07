@@ -122,9 +122,12 @@ import {
   MessagingMessage,
   MessagingThread,
   MessagingThreadContext,
+  ManagerAgentCommandInput,
+  ManagerAgentCommandResult,
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
+  ManagerRealtimeClientSecretResult,
   ManagerReport,
   ManagerReportAuditLogEntry,
   ManagerReportExternalShare,
@@ -887,18 +890,474 @@ function createDemoStore(): Store {
   guardedDueDate.setDate(guardedDueDate.getDate() - 3);
   const guardedDepositDate = new Date(guardedDueDate);
   guardedDepositDate.setDate(guardedDepositDate.getDate() + 1);
+  const activeOverdueDueDate = new Date(billingDate);
+  activeOverdueDueDate.setDate(activeOverdueDueDate.getDate() - 12);
+  const billingTimestamp = (dayOffset: number, hour: number) => {
+    const date = new Date(billingDate);
+    date.setDate(date.getDate() + dayOffset);
+    date.setHours(hour, 0, 0, 0);
+
+    return date.toISOString();
+  };
+  const currentBillUnits = ["301", "302", "303", "304", "305"];
+  const activeOverdueUnits = ["411", "412", "413", "414", "415"];
+  const orphanDepositUnits = ["601", "602", "603", "604", "605"];
+  const billingTenantSeed = [
+    { unit: "302", id: "tenant-billing-302", name: "김하윤", phone: "010-1000-0302" },
+    { unit: "303", id: "tenant-billing-303", name: "이준서", phone: "010-1000-0303" },
+    { unit: "304", id: "tenant-billing-304", name: "박서연", phone: "010-1000-0304" },
+    { unit: "305", id: "tenant-billing-305", name: "최민재", phone: "010-1000-0305" },
+    { unit: "411", id: "tenant-billing-411", name: "정예린", phone: "010-1000-0411" },
+    { unit: "412", id: "tenant-billing-412", name: "한도윤", phone: "010-1000-0412" },
+    { unit: "413", id: "tenant-billing-413", name: "오지후", phone: "010-1000-0413" },
+    { unit: "414", id: "tenant-billing-414", name: "서민지", phone: "010-1000-0414" },
+    { unit: "415", id: "tenant-billing-415", name: "유현우", phone: "010-1000-0415" }
+  ];
+  const managerBillingRooms: Room[] = [
+    ...new Set([...currentBillUnits, ...activeOverdueUnits, ...orphanDepositUnits])
+  ].map((unit) => ({
+    id: `room-${unit}`,
+    buildingName: "정글빌라",
+    roomNo: `${unit}호`,
+    address: "서울시 성동구 성수동",
+    landlordId: "landlord-demo"
+  }));
+  const billingTenantUsers: UserAccount[] = billingTenantSeed.map((tenant) => ({
+    id: tenant.id,
+    email: `${tenant.id}@roomlog.test`,
+    passwordHash: hashPassword("password123!"),
+    name: tenant.name,
+    phone: tenant.phone,
+    role: "TENANT",
+    status: "ACTIVE",
+    createdAt
+  }));
+  const billingTenantRooms = Object.fromEntries(
+    billingTenantSeed.map((tenant) => [tenant.id, `room-${tenant.unit}`])
+  );
+  const demoBillAmounts = (index: number) => {
+    const rent = 650000 + index * 10000;
+    const maintenance = 70000 + index * 2000;
+
+    return { rent, maintenance, total: rent + maintenance };
+  };
+  const makeManagerBillingBill = (input: {
+    id: string;
+    unit: string;
+    billingMonth: string;
+    status: BillStatus;
+    dueDate: string;
+    amountIndex: number;
+    paidAmount?: number | "FULL";
+    maintenanceFeeId?: string;
+    depositConfirmationRequested?: boolean;
+  }): Bill => {
+    const amount = demoBillAmounts(input.amountIndex);
+    const paidAmount = input.paidAmount === "FULL" ? amount.total : input.paidAmount ?? 0;
+
+    return {
+      id: input.id,
+      unitId: `${input.unit}호`,
+      billingMonth: input.billingMonth,
+      status: input.status,
+      totalAmount: amount.total,
+      paidAmount,
+      dueDate: input.dueDate,
+      bankName: "룸로그은행",
+      accountNumber: "123-45-678921",
+      accountHolder: "박관리",
+      correctionHistory: [],
+      maintenanceFeeId: input.maintenanceFeeId,
+      depositConfirmationRequested: input.depositConfirmationRequested ?? false,
+      items: [
+        { id: `${input.id}-rent`, label: "월세", amount: amount.rent },
+        { id: `${input.id}-maintenance`, label: "관리비", amount: amount.maintenance }
+      ],
+      createdAt,
+      updatedAt: createdAt
+    };
+  };
+  const currentManagerBills = currentBillUnits.map((unit, index) =>
+    makeManagerBillingBill({
+      id: unit === "301" ? "bill-demo-current" : `bill-demo-current-${unit}`,
+      unit,
+      billingMonth: currentBillingMonth,
+      status: index === 1 ? "PARTIALLY_PAID" : index === 2 || index === 4 ? "PAID" : "SENT",
+      paidAmount: index === 1 ? 320000 : index === 2 || index === 4 ? "FULL" : 0,
+      dueDate: currentDueDate.toISOString(),
+      amountIndex: index,
+      maintenanceFeeId: unit === "301" ? "mfee-demo-current" : `mfee-demo-current-${unit}`
+    })
+  );
+  const guardedManagerBills = currentBillUnits.map((unit, index) =>
+    makeManagerBillingBill({
+      id: unit === "301" ? "bill-demo-guarded" : `bill-demo-guarded-${unit}`,
+      unit,
+      billingMonth: previousBillingMonth,
+      status: "CONFIRMING",
+      dueDate: guardedDueDate.toISOString(),
+      amountIndex: index,
+      depositConfirmationRequested: true
+    })
+  );
+  const activeOverdueBills = activeOverdueUnits.map((unit, index) =>
+    makeManagerBillingBill({
+      id: `bill-demo-overdue-${unit}`,
+      unit,
+      billingMonth: previousBillingMonth,
+      status: "SENT",
+      dueDate: activeOverdueDueDate.toISOString(),
+      amountIndex: index + 5
+    })
+  );
+  const managerBillingBills = [
+    ...currentManagerBills,
+    ...guardedManagerBills,
+    ...activeOverdueBills
+  ];
+  const managerBillingPaymentReports: PaymentReport[] = guardedManagerBills.map((bill, index) => ({
+    id: index === 0 ? "payrep-demo-guarded" : `payrep-demo-guarded-${bill.unitId.replace(/\D/gu, "")}`,
+    billId: bill.id,
+    unitId: bill.unitId,
+    amount: bill.totalAmount,
+    depositorName: ["김민수", "김하윤", "이준서", "박서연", "최민재"][index],
+    status: "CONFIRMING",
+    etaHours: 24 + index * 6,
+    reportedAt: index === 0 ? guardedDepositDate.toISOString() : billingTimestamp(-2 - index, 9 + index)
+  }));
+  const managerBillingDeposits: Deposit[] = [
+    ...currentManagerBills.map((bill, index) => {
+      const isMatched = index === 1 || index === 2 || index === 4;
+
+      return {
+        id: `dep-demo-match-${bill.unitId.replace(/\D/gu, "")}`,
+        depositorName: ["김민수", "김하윤", "이준서", "박서연", "최민재"][index],
+        amount: isMatched ? Math.max(bill.paidAmount, bill.totalAmount) : bill.totalAmount,
+        depositedAt: billingTimestamp(-index, 9 + index),
+        matchStatus: isMatched ? "MATCHED" : "UNMATCHED",
+        matchedBillId: isMatched ? bill.id : undefined,
+        guessedUnitId: isMatched ? undefined : bill.unitId
+      } satisfies Deposit;
+    }),
+    ...orphanDepositUnits.map((unit, index) => ({
+      id: index === 0 ? "dep-demo-orphan" : `dep-demo-orphan-${unit}`,
+      depositorName: ["김미숙", "홍길동", "윤세아", "문태오", "배수진"][index],
+      amount: 720000 + index * 12000,
+      depositedAt: billingTimestamp(-6 - index, 10 + index),
+      matchStatus: "ORPHAN",
+      guessedUnitId: `${unit}호`
+    } satisfies Deposit)),
+    ...guardedManagerBills.map((bill, index) => ({
+      id: `dep-demo-mismatch-${bill.unitId.replace(/\D/gu, "")}`,
+      depositorName: ["김민수", "김하윤", "이준서", "박서연", "최민재"][index],
+      amount: Math.max(0, bill.totalAmount - 30000 - index * 5000),
+      depositedAt: billingTimestamp(-12 - index, 11 + index),
+      matchStatus: "MISMATCH",
+      matchedBillId: bill.id,
+      guessedUnitId: bill.unitId
+    } satisfies Deposit))
+  ];
+  const managerBillingMaintenanceFees: MaintenanceFee[] = currentManagerBills.map((bill, index) => {
+    const maintenance = bill.items.find((item) => item.label === "관리비")?.amount ?? 0;
+
+    return {
+      id: bill.maintenanceFeeId ?? `mfee-demo-current-${bill.unitId.replace(/\D/gu, "")}`,
+      unitId: bill.unitId,
+      billingMonth: bill.billingMonth,
+      totalAmount: maintenance,
+      available: true,
+      items: [
+        { id: `mfee-line-${index}-cleaning`, label: "공용부 청소", amount: 30000 + index * 1000, receiptAvailable: true },
+        { id: `mfee-line-${index}-electricity`, label: "공용 전기", amount: 25000 + index * 700, receiptAvailable: true },
+        {
+          id: `mfee-line-${index}-elevator`,
+          label: "승강기 점검",
+          amount: Math.max(0, maintenance - (55000 + index * 1700)),
+          receiptAvailable: index % 2 === 0
+        }
+      ]
+    };
+  });
+  const managerTicketTimestamp = (hour: number, minute = 0) => {
+    const date = new Date(billingDate);
+    date.setHours(hour, minute, 0, 0);
+
+    return date.toISOString();
+  };
+  const managerTicketSeed: Array<{
+    key: string;
+    unit: string;
+    tenantId: string;
+    title: string;
+    description: string;
+    location: string;
+    sourceChannel: ComplaintSourceChannel;
+    category: string;
+    detailCategory: string;
+    priority: number;
+    status: TicketStatus;
+    responsibilityHint: AiAnalysis["responsibilityHint"];
+    confidenceScore: number;
+    reasons: string[];
+    recommendedAction: string;
+    repairStatus: RepairStatus;
+    repairTitle: string;
+    repairDescription: string;
+    estimateAmount: number;
+    estimateDescription: string;
+    scheduledAt?: string;
+    completionNote?: string;
+    completionPhotoUrls?: string[];
+    messageText: string;
+    createdAt: string;
+  }> = [
+    {
+      key: "aircon",
+      unit: "411",
+      tenantId: "tenant-billing-411",
+      title: "에어컨 냉방 불량과 물샘",
+      description: "거실 에어컨이 찬바람이 약하고 실내기 아래로 물이 떨어집니다.",
+      location: "거실 에어컨",
+      sourceChannel: "REALTIME_CHAT",
+      category: "냉난방",
+      detailCategory: "에어컨 배수/냉방",
+      priority: 1,
+      status: "REPAIR_IN_PROGRESS",
+      responsibilityHint: "임대인 책임 가능성",
+      confidenceScore: 0.84,
+      reasons: ["옵션 설비인 에어컨 배수 계통 증상", "냉방 성능 저하와 물샘이 동시에 보고됨"],
+      recommendedAction: "냉난방 업체 현장 점검 결과를 확인하고 수리 완료 전 사진을 받으세요.",
+      repairStatus: "IN_PROGRESS",
+      repairTitle: "에어컨 배수관 점검",
+      repairDescription: "배수 호스 막힘과 실내기 결로 상태를 확인합니다.",
+      estimateAmount: 88000,
+      estimateDescription: "출장·배수관 청소·냉매 압력 점검",
+      scheduledAt: managerTicketTimestamp(15, 30),
+      messageText: "에어컨 사진 3장과 바닥 물샘 영상을 첨부했습니다.",
+      createdAt: managerTicketTimestamp(9, 5)
+    },
+    {
+      key: "sink",
+      unit: "412",
+      tenantId: "tenant-billing-412",
+      title: "세면대 하부 누수",
+      description: "욕실 세면대 아래 배관에서 물방울이 계속 떨어지고 수납장이 젖었습니다.",
+      location: "욕실 세면대",
+      sourceChannel: "VOICE_CHAT",
+      category: "배관/수전",
+      detailCategory: "세면대 배수 누수",
+      priority: 1,
+      status: "ESTIMATE_REVIEW",
+      responsibilityHint: "임대인 책임 가능성",
+      confidenceScore: 0.88,
+      reasons: ["세면대 하부 배관 연결부 누수 가능성이 큼", "사용자 과실보다 설비 마모 가능성이 높음"],
+      recommendedAction: "견적 금액과 누수 범위를 확인한 뒤 승인 여부를 결정하세요.",
+      repairStatus: "ESTIMATE_SUBMITTED",
+      repairTitle: "세면대 배수 트랩 교체",
+      repairDescription: "세면대 하부 트랩과 패킹을 교체하고 누수 테스트를 진행합니다.",
+      estimateAmount: 66000,
+      estimateDescription: "부품·출장·누수 테스트",
+      scheduledAt: managerTicketTimestamp(16),
+      messageText: "세면대 아래가 계속 젖어 있고 수납장 바닥이 불었습니다.",
+      createdAt: managerTicketTimestamp(9, 20)
+    },
+    {
+      key: "boiler",
+      unit: "413",
+      tenantId: "tenant-billing-413",
+      title: "보일러 온수 불량",
+      description: "온수가 나오다 갑자기 차가워지고 보일러에 에러 코드가 표시됩니다.",
+      location: "주방 보일러실",
+      sourceChannel: "DIRECT_FORM",
+      category: "보일러",
+      detailCategory: "온수 불량",
+      priority: 2,
+      status: "VENDOR_ASSIGNED",
+      responsibilityHint: "판단 어려움",
+      confidenceScore: 0.69,
+      reasons: ["에러 코드 확인 전까지 노후/사용 설정 원인을 구분하기 어려움", "온수 사용 불가로 빠른 점검 필요"],
+      recommendedAction: "업체가 에러 코드를 확인한 뒤 수리 범위와 책임 가능성을 업데이트하세요.",
+      repairStatus: "REQUESTED",
+      repairTitle: "보일러 에러 코드 점검",
+      repairDescription: "보일러 에러 코드, 난방수 압력, 온수 센서를 확인합니다.",
+      estimateAmount: 45000,
+      estimateDescription: "출장 점검",
+      scheduledAt: managerTicketTimestamp(17),
+      messageText: "보일러 에러 코드 사진과 온수 사용 불가 상황을 남겼습니다.",
+      createdAt: managerTicketTimestamp(10, 5)
+    },
+    {
+      key: "doorlock",
+      unit: "414",
+      tenantId: "tenant-billing-414",
+      title: "도어락 작동 불안정",
+      description: "현관 도어락이 여러 번 눌러야 열리고 배터리 교체 후에도 경고음이 납니다.",
+      location: "현관",
+      sourceChannel: "REALTIME_CHAT",
+      category: "출입/보안",
+      detailCategory: "도어락 점검",
+      priority: 2,
+      status: "COMPLETION_REPORTED",
+      responsibilityHint: "임대인 책임 가능성",
+      confidenceScore: 0.78,
+      reasons: ["출입 안전과 직결되는 설비", "배터리 교체 후에도 동일 증상이 반복됨"],
+      recommendedAction: "완료 보고 사진과 임차인 확인 여부를 보고 결제 승인 전 검토하세요.",
+      repairStatus: "COMPLETION_REPORTED",
+      repairTitle: "도어락 모듈 점검",
+      repairDescription: "도어락 배터리 단자와 잠금 모듈을 점검했습니다.",
+      estimateAmount: 99000,
+      estimateDescription: "모듈 점검·단자 교체",
+      scheduledAt: managerTicketTimestamp(11),
+      completionNote: "배터리 단자 부식 제거와 모듈 초기화를 완료했습니다.",
+      completionPhotoUrls: ["/api/files/demo-doorlock-complete.jpg"],
+      messageText: "도어락이 잘 열리지 않아 출입이 불안합니다.",
+      createdAt: managerTicketTimestamp(10, 35)
+    },
+    {
+      key: "window",
+      unit: "415",
+      tenantId: "tenant-billing-415",
+      title: "창문 잠금장치 파손",
+      description: "침실 창문 잠금 레버가 헛돌아 외출 시 잠글 수 없습니다.",
+      location: "침실 창문",
+      sourceChannel: "DIRECT_FORM",
+      category: "창호",
+      detailCategory: "창문 잠금장치",
+      priority: 3,
+      status: "REVIEWING",
+      responsibilityHint: "판단 어려움",
+      confidenceScore: 0.57,
+      reasons: ["입주 전 사진 대조가 필요함", "마모와 충격 파손 가능성이 모두 남아 있음"],
+      recommendedAction: "입주 전 사진과 현재 사진을 비교하고 필요하면 추가 사진을 요청하세요.",
+      repairStatus: "REQUESTED",
+      repairTitle: "창문 잠금장치 점검",
+      repairDescription: "창문 잠금 레버와 창틀 고정 상태를 확인합니다.",
+      estimateAmount: 52000,
+      estimateDescription: "출장 점검·레버 부품 확인",
+      scheduledAt: managerTicketTimestamp(18),
+      messageText: "창문 잠금 레버가 헛돌아 사진을 첨부했습니다.",
+      createdAt: managerTicketTimestamp(11, 10)
+    }
+  ];
+  const managerTicketComplaints: Complaint[] = managerTicketSeed.map((item) => ({
+    id: `complaint-demo-${item.key}`,
+    tenantId: item.tenantId,
+    roomId: `room-${item.unit}`,
+    ticketId: `ticket-demo-${item.key}`,
+    sourceChannel: item.sourceChannel,
+    title: item.title,
+    description: item.description,
+    location: item.location,
+    occurredAt: item.createdAt,
+    availableTimes: "오늘 오후 가능",
+    status:
+      item.status === "COMPLETED"
+        ? "COMPLETED"
+        : item.status === "ADDITIONAL_INFO_REQUESTED"
+          ? "ADDITIONAL_INFO_REQUESTED"
+          : item.status === "REPAIR_IN_PROGRESS" || item.status === "COMPLETION_REPORTED"
+            ? "REPAIR_IN_PROGRESS"
+            : item.status === "VENDOR_ASSIGNED" || item.status === "ESTIMATE_REVIEW"
+              ? "VENDOR_ASSIGNED"
+              : "REVIEWING",
+    createdAt: item.createdAt,
+    updatedAt: item.createdAt
+  }));
+  const managerTicketAnalyses = Object.fromEntries(
+    managerTicketSeed.map((item) => [
+      `ticket-demo-${item.key}`,
+      {
+        summary: item.description,
+        category: item.category,
+        detailCategory: item.detailCategory,
+        priority: item.priority,
+        responsibilityHint: item.responsibilityHint,
+        confidenceScore: item.confidenceScore,
+        reasons: item.reasons,
+        recommendedAction: item.recommendedAction,
+        photoAnalysis: {
+          attachmentUrls: [`/api/files/demo-${item.key}-1.jpg`, `/api/files/demo-${item.key}-2.jpg`],
+          previousAttachmentUrls: item.key === "window" ? ["/api/files/demo-window-movein.jpg"] : [],
+          candidates: [item.detailCategory],
+          comparisonStatus: item.key === "window" ? "추가 사진 필요" : "신규 발생 가능성",
+          summary: `${item.title} 사진 자료가 접수되었습니다.`,
+          evidence: item.reasons,
+          recommendedRetake: item.key === "window"
+        }
+      } satisfies AiAnalysis
+    ])
+  ) as Record<string, AiAnalysis>;
+  const managerTicketTickets: Ticket[] = managerTicketSeed.map((item) => ({
+    id: `ticket-demo-${item.key}`,
+    complaintId: `complaint-demo-${item.key}`,
+    tenantId: item.tenantId,
+    roomId: `room-${item.unit}`,
+    assignedVendorId: "vendor-demo",
+    sourceChannel: item.sourceChannel,
+    category: item.category,
+    priority: item.priority,
+    status: item.status,
+    responsibilityHint: item.responsibilityHint,
+    aiSummary: item.description,
+    dueAt: priorityDueAt(item.priority),
+    createdAt: item.createdAt,
+    updatedAt: item.createdAt
+  }));
+  const managerTicketRepairs: RepairRequest[] = managerTicketSeed.map((item) => ({
+    id: `repair-demo-${item.key}`,
+    ticketId: `ticket-demo-${item.key}`,
+    vendorId: "vendor-demo",
+    status: item.repairStatus,
+    title: item.repairTitle,
+    description: item.repairDescription,
+    estimateAmount: item.estimateAmount,
+    estimateDescription: item.estimateDescription,
+    costBearer: item.responsibilityHint === "임차인 책임 가능성" ? "TENANT" : "LANDLORD",
+    scheduledAt: item.scheduledAt,
+    completedAt:
+      item.repairStatus === "COMPLETION_REPORTED" || item.repairStatus === "COMPLETED"
+        ? managerTicketTimestamp(12)
+        : undefined,
+    completionNote: item.completionNote,
+    completionPhotoUrls: item.completionPhotoUrls ?? [],
+    createdAt: item.createdAt,
+    updatedAt: item.createdAt
+  }));
+  const managerTicketMessages: TicketMessage[] = managerTicketSeed.map((item) => ({
+    id: `ticket-message-demo-${item.key}`,
+    ticketId: `ticket-demo-${item.key}`,
+    complaintId: `complaint-demo-${item.key}`,
+    senderUserId: item.tenantId,
+    senderRole: "TENANT",
+    messageText: item.messageText,
+    attachmentUrls: [`/api/files/demo-${item.key}-1.jpg`],
+    createdAt: item.createdAt
+  }));
+  const managerTicketHistory: StatusHistory[] = managerTicketSeed.flatMap((item) => [
+    {
+      id: `history-demo-${item.key}-received`,
+      ticketId: `ticket-demo-${item.key}`,
+      changedByUserId: "system",
+      toStatus: "RECEIVED",
+      note: "데모 민원 접수",
+      createdAt: item.createdAt
+    },
+    {
+      id: `history-demo-${item.key}-current`,
+      ticketId: `ticket-demo-${item.key}`,
+      changedByUserId: "landlord-demo",
+      fromStatus: "RECEIVED",
+      toStatus: item.status,
+      note: "관리인 처리 상태 반영",
+      createdAt: item.createdAt
+    }
+  ]);
 
   return {
-    users,
+    users: [...users, ...billingTenantUsers],
     socialAccounts: [],
     rooms: [
-      {
-        id: "room-301",
-        buildingName: "정글빌라",
-        roomNo: "301호",
-        address: "서울시 성동구 성수동",
-        landlordId: "landlord-demo"
-      },
+      ...managerBillingRooms,
       {
         id: "room-402",
         buildingName: "정글빌라",
@@ -910,7 +1369,8 @@ function createDemoStore(): Store {
     roomWalls: [],
     tenantRooms: {
       "tenant-demo": "room-301",
-      "multi-demo": "room-301"
+      "multi-demo": "room-301",
+      ...billingTenantRooms
     },
     vendors: [
       {
@@ -1055,98 +1515,23 @@ function createDemoStore(): Store {
         acceptedByUserId: "tenant-demo"
       }
     ],
-    bills: [
-      {
-        id: "bill-demo-current",
-        unitId: "301호",
-        billingMonth: currentBillingMonth,
-        status: "SENT",
-        totalAmount: 720000,
-        paidAmount: 0,
-        dueDate: currentDueDate.toISOString(),
-        bankName: "룸로그은행",
-        accountNumber: "123-45-678921",
-        accountHolder: "박관리",
-        correctionHistory: [],
-        maintenanceFeeId: "mfee-demo-current",
-        depositConfirmationRequested: false,
-        items: [
-          { id: "bill-line-current-rent", label: "월세", amount: 650000 },
-          { id: "bill-line-current-maintenance", label: "관리비", amount: 70000 }
-        ],
-        createdAt,
-        updatedAt: createdAt
-      },
-      {
-        id: "bill-demo-guarded",
-        unitId: "301호",
-        billingMonth: previousBillingMonth,
-        status: "CONFIRMING",
-        totalAmount: 720000,
-        paidAmount: 0,
-        dueDate: guardedDueDate.toISOString(),
-        bankName: "룸로그은행",
-        accountNumber: "123-45-678921",
-        accountHolder: "박관리",
-        correctionHistory: [],
-        depositConfirmationRequested: true,
-        items: [
-          { id: "bill-line-guarded-rent", label: "월세", amount: 650000 },
-          { id: "bill-line-guarded-maintenance", label: "관리비", amount: 70000 }
-        ],
-        createdAt,
-        updatedAt: createdAt
-      }
-    ],
-    paymentReports: [
-      {
-        id: "payrep-demo-guarded",
-        billId: "bill-demo-guarded",
-        unitId: "301호",
-        amount: 720000,
-        depositorName: "김민수",
-        status: "CONFIRMING",
-        etaHours: 24,
-        reportedAt: guardedDepositDate.toISOString()
-      }
-    ],
-    deposits: [
-      {
-        id: "dep-demo-orphan",
-        depositorName: "김미숙",
-        amount: 720000,
-        depositedAt: guardedDepositDate.toISOString(),
-        matchStatus: "ORPHAN",
-        guessedUnitId: "301호"
-      }
-    ],
-    maintenanceFees: [
-      {
-        id: "mfee-demo-current",
-        unitId: "301호",
-        billingMonth: currentBillingMonth,
-        totalAmount: 70000,
-        available: true,
-        items: [
-          { id: "mfee-line-current-cleaning", label: "공용부 청소", amount: 30000, receiptAvailable: true },
-          { id: "mfee-line-current-electricity", label: "공용 전기", amount: 25000, receiptAvailable: true },
-          { id: "mfee-line-current-elevator", label: "승강기 점검", amount: 15000, receiptAvailable: false }
-        ]
-      }
-    ],
+    bills: managerBillingBills,
+    paymentReports: managerBillingPaymentReports,
+    deposits: managerBillingDeposits,
+    maintenanceFees: managerBillingMaintenanceFees,
     attachments: [],
     floorPlans: [],
     moveInChecklist: [],
     aiFeedback: [],
     intakeSessions: [],
-    complaints: [],
-    analyses: {},
-    tickets: [],
-    repairs: [],
+    complaints: managerTicketComplaints,
+    analyses: managerTicketAnalyses,
+    tickets: managerTicketTickets,
+    repairs: managerTicketRepairs,
     costs: [],
     receipts: [],
     receiptOcrs: [],
-    messages: [],
+    messages: managerTicketMessages,
     messagingThreads: [
       {
         id: "mth_demo_general",
@@ -2048,8 +2433,74 @@ export class RoomlogService {
       throw new ConflictException("입금 확인 중이거나 미확인 입금이 있어 독촉을 보낼 수 없습니다.");
     }
 
-    // TODO(KAN-131): messaging 소유 트랙에서 결제 컨텍스트 1:1 독촉 발송을 같은 가드로 차단해야 한다.
+    this.recordManagerDunningMessage(managerId, bill, text, channel);
+
     return { ok: true };
+  }
+
+  private recordManagerDunningMessage(managerId: string, bill: Bill, text: string, channel: string) {
+    const room = this.store.rooms.find(
+      (item) => item.landlordId === managerId && this.unitMatchesRoom(bill.unitId, item)
+    );
+
+    if (!room) {
+      return;
+    }
+
+    const tenantId = Object.entries(this.store.tenantRooms).find(([, roomId]) => roomId === room.id)?.[0];
+
+    if (!tenantId) {
+      return;
+    }
+
+    const createdAt = now();
+    const contextLabel = `${bill.billingMonth} 청구 독촉`;
+    let thread = this.store.messagingThreads.find(
+      (item) =>
+        item.roomId === room.id &&
+        item.tenantId === tenantId &&
+        item.context === "payment" &&
+        item.contextRef === bill.id
+    );
+
+    if (!thread) {
+      thread = {
+        id: id("mth"),
+        roomId: room.id,
+        unitId: this.displayUnitId(room),
+        tenantId,
+        context: "payment",
+        contextRef: bill.id,
+        contextLabel,
+        lastMessage: text,
+        unreadCount: 0,
+        pendingRequest: false,
+        archivedNotice: true,
+        createdAt,
+        updatedAt: createdAt
+      };
+      this.store.messagingThreads.push(thread);
+    }
+
+    thread.contextLabel = thread.contextLabel || contextLabel;
+    thread.lastMessage = text;
+    thread.unreadCount += 1;
+    thread.pendingRequest = false;
+    thread.archivedNotice = true;
+    thread.updatedAt = createdAt;
+
+    this.store.messagingMessages.push({
+      id: id("msg"),
+      threadId: thread.id,
+      senderUserId: managerId,
+      sender: "manager",
+      kind: "text",
+      body: text,
+      originalBody: channel,
+      attachmentUrls: [],
+      createdAt
+    });
+    this.persistStore();
   }
 
   listTenantContracts(tenantId: string): Contract[] {
@@ -2847,6 +3298,341 @@ export class RoomlogService {
     };
   }
 
+  async createManagerRealtimeClientSecret(
+    managerId: string,
+    input: RealtimeClientSecretInput = {}
+  ): Promise<ManagerRealtimeClientSecretResult> {
+    const sessionId = `manager-agent:${managerId}`;
+    const model = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2";
+    const transcriptionModel =
+      process.env.OPENAI_REALTIME_TRANSCRIPTION_MODEL || "gpt-4o-mini-transcribe";
+    const voice = input.voice || process.env.OPENAI_REALTIME_VOICE || "marin";
+    const instructions = this.buildManagerRealtimeInstructions(input);
+    const tools = this.managerRealtimeTools();
+    const commandEndpoint = "/manager/agent/realtime/command" as const;
+
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        mode: "not_configured",
+        sessionId,
+        model,
+        voice,
+        instructions,
+        warning:
+          "OPENAI_API_KEY가 설정되지 않아 실제 관리인 Realtime 연결은 비활성화되었습니다. 서버 환경변수에 OPENAI_API_KEY를 설정하면 WebRTC용 client secret을 발급합니다.",
+        tools,
+        commandEndpoint
+      };
+    }
+
+    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+        "OpenAI-Safety-Identifier": this.safetyIdentifier(managerId, sessionId)
+      },
+      body: JSON.stringify({
+        session: {
+          type: "realtime",
+          model,
+          instructions,
+          tools,
+          tool_choice: "auto",
+          audio: {
+            input: {
+              transcription: {
+                model: transcriptionModel,
+                language: "ko"
+              },
+              turn_detection: {
+                type: "server_vad",
+                threshold: 0.55,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 750,
+                create_response: true,
+                interrupt_response: true
+              }
+            },
+            output: {
+              voice
+            }
+          }
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new BadGatewayException(
+        `OpenAI Realtime client secret 발급 실패 (${response.status})${errorText ? `: ${errorText}` : ""}`
+      );
+    }
+
+    const body = (await response.json()) as {
+      value?: string;
+      expires_at?: number;
+      session?: {
+        id?: string;
+        model?: string;
+        instructions?: string;
+        audio?: {
+          output?: {
+            voice?: string;
+          };
+        };
+      };
+    };
+    const expiresAt = body.expires_at
+      ? new Date(body.expires_at * 1000).toISOString()
+      : undefined;
+
+    return {
+      mode: "openai",
+      sessionId,
+      openaiSessionId: body.session?.id,
+      model: body.session?.model ?? model,
+      voice: body.session?.audio?.output?.voice ?? voice,
+      instructions: body.session?.instructions ?? instructions,
+      expiresAt,
+      clientSecret: body.value
+        ? {
+            value: body.value,
+            expiresAt
+          }
+        : undefined,
+      tools,
+      commandEndpoint
+    };
+  }
+
+  runManagerAgentCommand(
+    managerId: string,
+    input: ManagerAgentCommandInput
+  ): ManagerAgentCommandResult {
+    const command = (input.command ?? "").trim();
+    const text = input.text?.trim() ?? "";
+    const body = input.body?.trim() ?? "";
+
+    if (!command || this.managerAgentBlockedCommand(command, `${text} ${body}`)) {
+      return {
+        status: "blocked",
+        domain: this.managerAgentDomainFor(command),
+        summary:
+          "허용되지 않은 명령입니다. 공지 발송·독촉·결제 확정은 관리인의 명시 확인 화면에서만 처리하고, 에이전트는 일반 소통 답장만 보낼 수 있습니다.",
+        requiresConfirmation: true
+      };
+    }
+
+    if (command === "ticket.query") {
+      const result = this.queryManagerAssistant(managerId, {
+        question: text || "미처리 티켓을 우선순위대로 알려줘"
+      });
+
+      return {
+        status: "executed",
+        domain: "ticket",
+        summary: result.answer,
+        data: result,
+        navigation: {
+          label: "티켓 대시보드",
+          href: "/manager/ticket/dash/00"
+        }
+      };
+    }
+
+    if (command === "billing.summary") {
+      const dashboard = this.getManagerBillDashboard(managerId);
+      const collection = this.getManagerCollection(managerId);
+      const collectionRate = Math.round(collection.collectionRate * 100);
+
+      return {
+        status: "executed",
+        domain: "billing",
+        summary: `이번 달 청구 ${dashboard.summary.total}건, 수납률 ${collectionRate}%, 미납 ${collection.unpaidAmount.toLocaleString("ko-KR")}원입니다.`,
+        data: {
+          dashboard,
+          collection
+        },
+        navigation: {
+          label: "청구 관리",
+          href: "/manager/billing"
+        }
+      };
+    }
+
+    if (command === "billing.send_dunning") {
+      try {
+        const bill = this.findManagerAgentDunningBill(managerId, input);
+        const draft = this.presentDunningDraft(bill);
+        const channel = input.channel?.trim() || draft.channel;
+        const messageText = body || draft.draftText;
+
+        this.sendManagerDunning(managerId, bill.id, {
+          text: messageText,
+          channel
+        });
+
+        return {
+          status: "executed",
+          domain: "billing",
+          summary: `${draft.unitId}호 ${draft.tenantName}님에게 ${channel}로 연체 독촉 메시지를 발송했습니다.`,
+          data: {
+            billId: draft.billId,
+            unitId: draft.unitId,
+            tenantName: draft.tenantName,
+            channel,
+            text: messageText,
+            guard: draft.guard
+          },
+          navigation: {
+            label: "독촉 발송 확인",
+            href: `/manager/billing/dunning/${encodeURIComponent(draft.billId)}?id=${encodeURIComponent(draft.billId)}&send=ok`
+          }
+        };
+      } catch (error) {
+        return {
+          status: "blocked",
+          domain: "billing",
+          summary:
+            error instanceof Error
+              ? `${error.message} 독촉 발송을 중단했습니다.`
+              : "독촉 대상과 가드 상태를 확인하지 못해 발송을 중단했습니다.",
+          requiresConfirmation: true
+        };
+      }
+    }
+
+    if (command === "messaging.list_threads") {
+      const threads = this.listManagerMessagingThreads(managerId);
+
+      return {
+        status: "executed",
+        domain: "messaging",
+        summary: `소통 스레드 ${threads.length}건을 찾았습니다. 미확인 대화부터 확인하세요.`,
+        data: {
+          threads: threads.slice(0, 5)
+        },
+        navigation: {
+          label: "소통함",
+          href: "/manager/messaging/00"
+        }
+      };
+    }
+
+    if (command === "messaging.draft_reply") {
+      const sourceText = body || text;
+      const draftText =
+        sourceText ||
+        "문의 내용을 확인했습니다. 필요한 사진과 가능 시간을 알려주시면 다음 조치를 안내드리겠습니다.";
+
+      return {
+        status: "draft_only",
+        domain: "messaging",
+        summary: "관리인 확인이 필요한 답장 초안을 만들었습니다. 발송은 화면에서 직접 확인 후 진행하세요.",
+        data: {
+          draftText
+        },
+        navigation: {
+          label: "소통함",
+          href: "/manager/messaging/00"
+        },
+        requiresConfirmation: true
+      };
+    }
+
+    if (command === "messaging.send_reply") {
+      const replyBody = body || text;
+      const threadId = input.threadId?.trim() || this.defaultManagerMessagingThreadId(managerId);
+
+      if (!replyBody || !threadId) {
+        return {
+          status: "blocked",
+          domain: "messaging",
+          summary: "임차인에게 보낼 메시지 본문과 대상 스레드가 필요합니다.",
+          requiresConfirmation: true
+        };
+      }
+
+      try {
+        const thread = this.addManagerMessagingThreadMessage(managerId, threadId, {
+          body: replyBody,
+          kind: "text"
+        });
+
+        return {
+          status: "executed",
+          domain: "messaging",
+          summary: `${thread.unitId}호 임차인 메시지함으로 메시지를 전달했습니다.`,
+          data: {
+            thread
+          },
+          navigation: {
+            label: "소통 스레드",
+            href: `/manager/messaging/04?id=${encodeURIComponent(thread.id)}`
+          }
+        };
+      } catch (error) {
+        return {
+          status: "blocked",
+          domain: "messaging",
+          summary:
+            error instanceof Error
+              ? error.message
+              : "메시지를 보낼 수 없습니다. 대상 스레드와 발송 가능 문구를 확인해주세요.",
+          requiresConfirmation: true
+        };
+      }
+    }
+
+    return {
+      status: "blocked",
+      domain: this.managerAgentDomainFor(command),
+      summary:
+        "허용되지 않은 명령입니다. 티켓 조회, 청구 요약, 독촉 전용 발송, 소통 목록, 답장 초안, 일반 답장 발송만 에이전트에서 실행할 수 있습니다.",
+      requiresConfirmation: true
+    };
+  }
+
+  private defaultManagerMessagingThreadId(managerId: string) {
+    return this.listManagerMessagingThreads(managerId)[0]?.id;
+  }
+
+  private findManagerAgentDunningBill(managerId: string, input: ManagerAgentCommandInput) {
+    const explicitBillId = input.billId?.trim();
+
+    if (explicitBillId) {
+      return this.findManagerBill(managerId, explicitBillId);
+    }
+
+    const unitId = this.extractUnitIdFromAgentText(`${input.text ?? ""} ${input.body ?? ""}`);
+    const candidates = this.managerBills(managerId).filter((bill) => this.canAutoOverdue(bill));
+
+    if (unitId) {
+      const matched = candidates.find((bill) => this.unitsEqual(bill.unitId, unitId));
+
+      if (matched) {
+        return matched;
+      }
+    }
+
+    const firstActive = candidates.find((bill) => !this.dunningGuardForBill(bill).blocked);
+
+    if (firstActive) {
+      return firstActive;
+    }
+
+    if (candidates[0]) {
+      return candidates[0];
+    }
+
+    throw new BadRequestException("독촉 대상 연체 청구서를 찾을 수 없습니다.");
+  }
+
+  private extractUnitIdFromAgentText(text: string) {
+    return text.match(/([0-9]{1,4})\s*호/u)?.[1];
+  }
+
   private createComplaintRecord(
     tenantId: string,
     roomId: string,
@@ -3013,6 +3799,13 @@ export class RoomlogService {
         return room?.roomNo.includes(roomNo) ?? false;
       });
       filters.push(`호실: ${roomNo}`);
+    }
+
+    for (const keyword of this.managerAssistantTicketKeywordFilters(normalizedQuestion)) {
+      matches = matches.filter((ticket) =>
+        this.managerAssistantTicketMatchesKeyword(ticket, keyword.aliases)
+      );
+      filters.push(`키워드: ${keyword.label}`);
     }
 
     if (/이번 주/.test(normalizedQuestion)) {
@@ -6055,6 +6848,10 @@ export class RoomlogService {
         (privacy) => privacy.contractId
       ),
       contractInvites: mergeMissingById(snapshot.contractInvites, demo.contractInvites),
+      bills: mergeMissingById(snapshot.bills, demo.bills),
+      paymentReports: mergeMissingById(snapshot.paymentReports, demo.paymentReports),
+      deposits: mergeMissingById(snapshot.deposits, demo.deposits),
+      maintenanceFees: mergeMissingById(snapshot.maintenanceFees, demo.maintenanceFees),
       attachments: mergeMissingById(snapshot.attachments, demo.attachments),
       floorPlans: mergeMissingById(snapshot.floorPlans, demo.floorPlans),
       moveInChecklist: mergeMissingById(snapshot.moveInChecklist, demo.moveInChecklist),
@@ -8705,6 +9502,51 @@ export class RoomlogService {
     };
   }
 
+  private managerAssistantTicketKeywordFilters(question: string) {
+    const normalizedQuestion = question.toLocaleLowerCase("ko-KR");
+    const groups = [
+      { label: "에어컨", aliases: ["에어컨", "냉방", "실내기", "냉난방"] },
+      { label: "세면대", aliases: ["세면대", "수전", "배수 트랩"] },
+      { label: "보일러", aliases: ["보일러", "온수", "난방"] },
+      { label: "도어락", aliases: ["도어락", "현관 잠금", "잠금장치"] },
+      { label: "창문", aliases: ["창문", "창호", "창틀"] },
+      { label: "누수", aliases: ["누수", "물샘", "물방울", "물이 떨어"] }
+    ];
+
+    return groups.filter((group) =>
+      group.aliases.some((alias) => normalizedQuestion.includes(alias.toLocaleLowerCase("ko-KR")))
+    );
+  }
+
+  private managerAssistantTicketMatchesKeyword(ticket: Ticket, aliases: string[]) {
+    const complaint = this.findComplaint(ticket.complaintId);
+    const analysis = this.store.analyses[ticket.id];
+    const messages = this.store.messages.filter((message) => message.ticketId === ticket.id);
+    const searchable = [
+      ticket.id,
+      ticket.category,
+      ticket.aiSummary,
+      ticket.responsibilityHint,
+      complaint.title,
+      complaint.description,
+      complaint.location,
+      analysis?.summary,
+      analysis?.category,
+      analysis?.detailCategory,
+      analysis?.recommendedAction,
+      ...(analysis?.reasons ?? []),
+      ...(analysis?.photoAnalysis?.candidates ?? []),
+      analysis?.photoAnalysis?.summary,
+      ...(analysis?.photoAnalysis?.evidence ?? []),
+      ...messages.map((message) => message.messageText)
+    ]
+      .filter((item): item is string => Boolean(item))
+      .join("\n")
+      .toLocaleLowerCase("ko-KR");
+
+    return aliases.some((alias) => searchable.includes(alias.toLocaleLowerCase("ko-KR")));
+  }
+
   private ticketNeedsPhotoForManagerAssistant(ticket: Ticket) {
     const analysis = this.store.analyses[ticket.id];
     const photoAnalysis = analysis?.photoAnalysis;
@@ -8779,6 +9621,102 @@ export class RoomlogService {
     }
 
     return actions.size ? Array.from(actions) : ["목록에서 티켓을 선택해 AI 요약과 처리 이력을 확인하세요."];
+  }
+
+  private buildManagerRealtimeInstructions(input: RealtimeClientSecretInput) {
+    const customInstructions = input.instructions?.trim();
+    const base = [
+      "당신은 룸로그 관리인 운영 에이전트입니다.",
+      "관리인이 티켓 처리, 청구 관리, 소통 업무를 음성 또는 텍스트로 빠르게 조회하고 조작하도록 돕습니다.",
+      "실행은 반드시 run_manager_agent_command 도구로 서버 allowlist를 통과한 명령만 사용합니다.",
+      "티켓 처리에서는 조건 조회와 다음 확인 지점 제안을 우선합니다.",
+      "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
+      "billing.send_dunning은 청구 전용 채널이며 확인중 입금 또는 orphan 입금이 있으면 서버가 차단합니다. 결제 확정과 입금 매칭은 실행하지 않습니다.",
+      "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉이나 공지 발송은 소통 채널로 보내지 않습니다.",
+      "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
+    ];
+
+    return customInstructions ? `${base.join("\n")}\n\n추가 지시:\n${customInstructions}` : base.join("\n");
+  }
+
+  private managerRealtimeTools(): Array<Record<string, unknown>> {
+    return [
+      {
+        type: "function",
+        name: "run_manager_agent_command",
+        description:
+          "룸로그 관리인 업무 명령을 서버 allowlist로 실행합니다. 티켓 조회, 청구 요약, 청구 전용 독촉 발송, 소통 조회, 답장 초안, 일반 답장 발송만 안전하게 처리합니다.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            command: {
+              type: "string",
+              enum: [
+                "ticket.query",
+                "billing.summary",
+                "billing.send_dunning",
+                "messaging.list_threads",
+                "messaging.draft_reply",
+                "messaging.send_reply"
+              ],
+              description: "실행할 관리인 업무 명령"
+            },
+            text: {
+              type: "string",
+              description: "사용자의 자연어 요청 또는 조회 조건"
+            },
+            billId: {
+              type: "string",
+              description: "독촉을 보낼 청구서 id. 없으면 자연어의 호실 또는 접근 가능한 첫 연체 청구서를 사용합니다."
+            },
+            channel: {
+              type: "string",
+              description: "독촉 발송 채널. 없으면 청구서의 기본 독촉 채널을 사용합니다."
+            },
+            threadId: {
+              type: "string",
+              description: "답장을 보낼 메시징 스레드 id. 없으면 관리인이 접근 가능한 최신 스레드를 사용합니다."
+            },
+            body: {
+              type: "string",
+              description: "관리인이 확인한 답장 본문 또는 초안 기준 문장"
+            }
+          },
+          required: ["command"]
+        }
+      }
+    ];
+  }
+
+  private managerAgentBlockedCommand(command: string, text: string) {
+    const normalized = `${command} ${text}`.toLowerCase();
+
+    if (/confirm_payment|payment\.confirm|match_deposit|deposit\.match|announcement\.send|send_announcement|결제\s*확정|입금\s*확정|입금\s*매칭|공지\s*발송/.test(normalized)) {
+      return true;
+    }
+
+    if (command !== "billing.send_dunning" && /send_dunning|dunning|독촉/.test(normalized)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private managerAgentDomainFor(command: string): ManagerAgentCommandResult["domain"] {
+    if (command.startsWith("ticket.")) {
+      return "ticket";
+    }
+
+    if (command.startsWith("billing.")) {
+      return "billing";
+    }
+
+    if (command.startsWith("messaging.")) {
+      return "messaging";
+    }
+
+    return "system";
   }
 
   private presentComplaint(complaint: Complaint) {

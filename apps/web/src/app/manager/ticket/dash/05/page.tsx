@@ -11,12 +11,17 @@ import {
   pageStack,
   row,
   sectionTitle,
+  ticketDashHref,
 } from "../../_components/ticket-manager-ui";
 
-export default async function Page() {
+type SearchParams = Promise<{ id?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const ticketId = id ?? MANAGER_DEMO_TICKET_ID;
   const [ticket, repair] = await Promise.all([
-    getManagerTicket(MANAGER_DEMO_TICKET_ID),
-    getManagerRepair(MANAGER_DEMO_TICKET_ID),
+    getManagerTicket(ticketId),
+    getManagerRepair(ticketId),
   ]);
 
   return (
@@ -41,9 +46,9 @@ export default async function Page() {
         <PaymentGate repair={repair} />
       </div>
       <div style={row}>
-        <LinkButton href={dashRoutes["01"]}>결제 승인 후 상세로</LinkButton>
+        <LinkButton href={ticketDashHref("01", ticket.id)}>결제 승인 후 상세로</LinkButton>
         <LinkButton href={dashRoutes["00"]} variant="secondary">보류·반려 큐로</LinkButton>
-        <LinkButton href={dashRoutes["04"]} variant="ghost">뒤로</LinkButton>
+        <LinkButton href={ticketDashHref("04", ticket.id)} variant="ghost">뒤로</LinkButton>
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 import ManagerHomeTabs, { type ManagerContractRow, type ManagerListingRow, type ManagerTicketRow } from "./ManagerHomeTabs";
 
 // 관리 중인 집 홈 — "오늘 할 일/첫 건물/KPI 셸" 대신 실데이터 4탭:
-// 올려놓은 매물(미계약) · 계약중인 집(체결된 계약) · 민원/하자 · AI 관리자(준비 중).
+// 올려놓은 매물(미계약) · 계약중인 집(체결된 계약) · 민원/하자 · AI 관리자.
 
 type TradeListing = {
   id: string;
@@ -105,7 +105,13 @@ export default async function Page() {
 
   return (
     <ManagerShell title={`${user?.name ?? "관리인"} 자산현황 대시보드`} context="관리 중인 집 · 대시보드" nav={<HomeNav active="home" />}>
-      <ManagerHomeTabs listings={listings} contracts={contracts} tickets={tickets} ticketHubHref={MANAGER_CROSS.ticketDash} />
+      <ManagerHomeTabs
+        listings={listings}
+        contracts={contracts}
+        tickets={tickets}
+        ticketHubHref={MANAGER_CROSS.ticketDash}
+        realtimeAgentHref={MANAGER_CROSS.realtimeAgent}
+      />
     </ManagerShell>
   );
 }

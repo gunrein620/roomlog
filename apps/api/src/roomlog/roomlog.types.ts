@@ -1162,6 +1162,35 @@ export type ManagerAssistantQueryResult = {
   generatedAt: string;
 };
 
+export type ManagerAgentCommandName =
+  | "ticket.query"
+  | "billing.summary"
+  | "billing.send_dunning"
+  | "messaging.list_threads"
+  | "messaging.draft_reply"
+  | "messaging.send_reply";
+
+export type ManagerAgentCommandInput = {
+  command: string;
+  text?: string;
+  billId?: string;
+  channel?: string;
+  threadId?: string;
+  body?: string;
+};
+
+export type ManagerAgentCommandResult = {
+  status: "executed" | "draft_only" | "blocked";
+  domain: "ticket" | "billing" | "messaging" | "system";
+  summary: string;
+  data?: unknown;
+  navigation?: {
+    label: string;
+    href: string;
+  };
+  requiresConfirmation?: boolean;
+};
+
 export type ManagerReplyIntent =
   | "RECEIPT_ACK"
   | "REQUEST_PHOTO"
@@ -1581,6 +1610,11 @@ export type RealtimeClientSecretResult = {
     value: string;
     expiresAt?: string;
   };
+};
+
+export type ManagerRealtimeClientSecretResult = RealtimeClientSecretResult & {
+  tools: Array<Record<string, unknown>>;
+  commandEndpoint: "/manager/agent/realtime/command";
 };
 
 export type StatusHistory = {

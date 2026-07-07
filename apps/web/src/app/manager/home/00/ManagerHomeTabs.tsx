@@ -39,12 +39,14 @@ export default function ManagerHomeTabs({
   listings,
   contracts,
   tickets,
-  ticketHubHref
+  ticketHubHref,
+  realtimeAgentHref
 }: {
   listings: ManagerListingRow[];
   contracts: ManagerContractRow[];
   tickets: ManagerTicketRow[];
   ticketHubHref: string;
+  realtimeAgentHref: string;
 }) {
   const [activeTab, setActiveTab] = useState<TabId>("올려놓은 매물");
 
@@ -155,8 +157,9 @@ export default function ManagerHomeTabs({
       {activeTab === "AI 관리자" ? (
         <section style={panelStyle} aria-label="AI 관리자">
           <EmptyState
-            title="AI 관리자 준비 중"
-            body="매물·민원·수납 데이터를 바탕으로 오늘 처리할 일을 요약하고 답변 초안을 제안하는 기능이 이 탭에 들어옵니다."
+            title="실시간 AI 운영 에이전트"
+            body="음성·텍스트로 티켓 처리, 청구 관리, 소통 작업을 진행합니다."
+            action={<Link href={realtimeAgentHref} style={actionLinkStyle}>AI agent</Link>}
           />
         </section>
       ) : null}
