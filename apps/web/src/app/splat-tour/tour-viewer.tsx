@@ -545,6 +545,7 @@ export default function TourViewer() {
           onCameraMove={handleCameraMove}
           presets={DEMO_PRESETS}
           walkMode={isWalkMode}
+          walkBounds={planBounds}
         />
       </Canvas>
 

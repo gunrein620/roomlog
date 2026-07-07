@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
-import { isNearAnyPlanWall, resolvePlanWalls, wallsToPlanBounds } from "./splat-plan-shape";
+import {
+  isNearAnyPlanWall,
+  planWallFootprint,
+  planWallsFromPayload,
+  resolvePlanWalls,
+  wallsToPlanBounds
+} from "./splat-plan-shape";
 
 const EPSILON = 1e-9;
 
@@ -136,6 +142,39 @@ test("isNearAnyPlanWall: defaults inset to the splat wall shell inset", () => {
   assert.equal(isNearAnyPlanWall({ x: 0, y: 1, z: 0.16 }, [wall], 2.4), true);
   assert.equal(isNearAnyPlanWall({ x: 0, y: 1, z: 0.16 }, [wall], 2.4, 0), false);
   assert.equal(isNearAnyPlanWall({ x: 0, y: 1, z: 0.18 }, [wall], 2.4), false);
+});
+
+test("planWallsFromPayload: accepts bare array, {walls}, and {room3d:{walls}} shapes", () => {
+  const wall = testWall("w1");
+
+  assert.deepEqual(planWallsFromPayload([wall]).map((w) => w.id), ["w1"]);
+  assert.deepEqual(planWallsFromPayload({ walls: [wall] }).map((w) => w.id), ["w1"]);
+  assert.deepEqual(planWallsFromPayload({ room3d: { walls: [wall] } }).map((w) => w.id), ["w1"]);
+});
+
+test("planWallsFromPayload: filters invalid walls and rejects non-plan payloads", () => {
+  const valid = testWall("ok");
+  const broken = { ...valid, id: "bad", dimensions: { width: 0, height: 2.4, depth: 0.15 } };
+
+  assert.deepEqual(planWallsFromPayload([valid, broken, "junk", null]).map((w) => w.id), ["ok"]);
+  assert.deepEqual(planWallsFromPayload("not-json-object"), []);
+  assert.deepEqual(planWallsFromPayload(42), []);
+  assert.deepEqual(planWallsFromPayload({ unrelated: true }), []);
+});
+
+test("planWallFootprint: rotated wall footprint matches wallsToPlanBounds corners", () => {
+  const wall = testWall("rot", { position: [1, 1.2, 2], rotation: [0, Math.PI / 2, 0] });
+  const corners = planWallFootprint(wall);
+
+  assert.equal(corners.length, 4);
+  const bounds = wallsToPlanBounds([wall]);
+  for (const corner of corners) {
+    assert.ok(corner.x >= bounds.minX - EPSILON && corner.x <= bounds.maxX + EPSILON);
+    assert.ok(corner.z >= bounds.minZ - EPSILON && corner.z <= bounds.maxZ + EPSILON);
+  }
+  // 90° 회전: 길이 2(width)가 z축을 따라 눕는다 → z 스팬 2, x 스팬은 두께 0.15
+  assertApproxEqual(bounds.maxZ - bounds.minZ, 2);
+  assertApproxEqual(bounds.maxX - bounds.minX, 0.15);
 });
 
 function fakeStorage(values: Record<string, string>): Pick<Storage, "getItem"> {

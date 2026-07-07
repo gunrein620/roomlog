@@ -1,10 +1,19 @@
 "use client";
 
 import { Canvas, useThree } from "@react-three/fiber";
+import { MapControls } from "@react-three/drei";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { SplatScene, loadSplatTuningProfile, type SplatTuningProfile } from "../splat-scene";
 import { composeWithPickViewTuning, solveSimilarity } from "../similarity-solve";
 import { SPLAT_CLIP_ROOM } from "../splat-clip";
+import {
+  loadPlanWallsFromBrowser,
+  persistTourUploadPlanWalls,
+  planWallFootprint,
+  planWallsFromPayload,
+  wallsToPlanBounds
+} from "../splat-plan-shape";
+import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
 import { registerSplatAsset } from "@/lib/splat-asset-api";
 
@@ -19,9 +28,43 @@ const POINT_COLORS = ["#2563eb", "#dc2626"]; // A, B
 
 type PickView = "splat" | "plan";
 
+type PlanSource = "placeholder" | "storage" | "upload";
+
 export default function Page() {
   const [splatPicks, setSplatPicks] = useState<Point2[]>([]);
   const [planPicks, setPlanPicks] = useState<Point2[]>([]);
+  const [planWalls, setPlanWalls] = useState<WheretoputWall3D[] | null>(null);
+  const [planSource, setPlanSource] = useState<PlanSource>("placeholder");
+  const [planMessage, setPlanMessage] = useState("");
+  const [splatReady, setSplatReady] = useState(false);
+
+  // 실도면: 도면 에디터 저장본(localStorage)이 있으면 자동 로드. 업로드가 오면 그쪽이 이긴다.
+  useEffect(() => {
+    const stored = loadPlanWallsFromBrowser();
+    if (stored) {
+      setPlanWalls(stored.walls);
+      setPlanSource("storage");
+    }
+  }, []);
+
+  async function uploadPlanJson(file: File) {
+    try {
+      const walls = planWallsFromPayload(JSON.parse(await file.text()));
+      if (walls.length === 0) {
+        setPlanMessage("이 JSON에서 유효한 벽을 못 찾았습니다 (walls / room3d.walls 필요).");
+        return;
+      }
+      setPlanWalls(walls);
+      setPlanSource("upload");
+      setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
+      setPreview(false);
+      // 뷰어(벽 대체·걷기 경계·미니맵)와 공유 — 투어 페이지는 새로고침 시 이 도면을 읽는다.
+      const shared = persistTourUploadPlanWalls(walls, window.localStorage, Date.now());
+      setPlanMessage(`벽 ${walls.length}개 로드 (${file.name})${shared ? " — 투어 뷰어에도 적용됨" : ""}`);
+    } catch {
+      setPlanMessage("JSON 파싱 실패 — 파일을 확인하세요.");
+    }
+  }
   const [preview, setPreview] = useState(false);
   const [assetId, setAssetId] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -109,24 +152,63 @@ export default function Page() {
         <section style={pane}>
           <PaneTitle step="1" label="splat 탑다운 — 바닥 모서리 클릭" picks={splatPicks.length} />
           <div style={canvasWrap}>
-            <Canvas orthographic camera={{ position: [0, 8, 0], zoom: 70, near: 0.1, far: 100 }}>
+            <Canvas orthographic camera={{ position: [0, 8, 0], zoom: 140, near: 0.1, far: 100 }}>
               <TopDownRig />
-              <SplatScene src={SPLAT_SRC} transform={preview ? transform : null} />
+              {/* 탑다운 전용 컨트롤: 휠=확대, 드래그=이동. 회전은 잠근다(픽 좌표는 XZ 정사영 전제). */}
+              <MapControls enableRotate={false} makeDefault minZoom={40} maxZoom={600} />
+              <SplatScene
+                src={SPLAT_SRC}
+                transform={preview ? transform : null}
+                onLoaded={() => setSplatReady(true)}
+              />
               <PickPlane onPick={(x, z) => addPick("splat", { x, y: z })} />
               {splatPicks.map((p, i) => (
-                <mesh key={i} position={[p.x, 0.05, p.y]}>
-                  <sphereGeometry args={[0.06, 16, 16]} />
-                  <meshBasicMaterial color={POINT_COLORS[i] ?? "#111"} />
-                </mesh>
+                <group key={i} position={[p.x, 0.1, p.y]}>
+                  {/* 바닥 링 + 구슬 — depthTest 끔: 가구·벽 splat이 위를 덮어도 항상 보이게 */}
+                  <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={998}>
+                    <ringGeometry args={[0.14, 0.2, 32]} />
+                    <meshBasicMaterial color="#ffffff" depthTest={false} />
+                  </mesh>
+                  <mesh renderOrder={999}>
+                    <sphereGeometry args={[0.13, 16, 16]} />
+                    <meshBasicMaterial color={POINT_COLORS[i] ?? "#111"} depthTest={false} />
+                  </mesh>
+                </group>
               ))}
             </Canvas>
-            <span style={hint}>클릭 → 월드 (x, z)</span>
+            {!splatReady ? (
+              // 페인트 전 빈 화면에 클릭하는 사고 방지 — 로드 완료까지 클릭을 막고 안내한다.
+              <div style={loadingOverlay}>splat 로딩 중… (수십 초 걸릴 수 있어요)</div>
+            ) : null}
+            <span style={hint}>클릭 = 점 찍기 (A→B, 3번째 클릭 = 처음부터) · 드래그 = 이동 · 휠 = 확대</span>
           </div>
         </section>
 
         <section style={pane}>
           <PaneTitle step="2" label="도면 — 같은 모서리 클릭" picks={planPicks.length} />
-          <PlanPicker picks={planPicks} onPick={(x, y) => addPick("plan", { x, y })} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+            <label style={{ ...ghostBtn, cursor: "pointer", fontSize: 13 }}>
+              도면 JSON 업로드
+              <input
+                type="file"
+                accept=".json,application/json"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadPlanJson(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <span style={muted}>
+              {planSource === "upload"
+                ? planMessage
+                : planSource === "storage"
+                  ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                  : planMessage || "도면 없음 — 3×4m 플레이스홀더 사용 중"}
+            </span>
+          </div>
+          <PlanPicker walls={planWalls} picks={planPicks} onPick={(x, y) => addPick("plan", { x, y })} />
           <span style={hint}>클릭 → 도면 좌표 (m)</span>
         </section>
       </div>
@@ -181,26 +263,44 @@ function TopDownRig() {
   return null;
 }
 
-// y=0 바닥 평면. onPointerDown의 event.point가 월드 교차점을 직접 준다(수동 언프로젝트 불필요).
+// y=0 바닥 평면. onClick의 event.point가 월드 교차점을 직접 준다(수동 언프로젝트 불필요).
+// onPointerDown이 아니라 onClick + delta 가드: MapControls 드래그(팬) 시작이 픽으로 오인되지 않게.
 function PickPlane({ onPick }: { onPick: (x: number, z: number) => void }) {
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
-      onPointerDown={(event) => {
+      onClick={(event) => {
+        if (event.delta > 4) return; // 드래그였다 — 픽 아님
         event.stopPropagation();
         onPick(event.point.x, event.point.z);
       }}
     >
-      <planeGeometry args={[20, 20]} />
+      <planeGeometry args={[40, 40]} />
       <meshBasicMaterial color="#38bdf8" transparent opacity={0.06} />
     </mesh>
   );
 }
 
-// 도면 2D SVG. 방 3m×4m 사각형(원점 중앙). 클릭 → 미터 좌표(x∈[-1.5,1.5], y=z∈[-2,2]).
-function PlanPicker({ picks, onPick }: { picks: Point2[]; onPick: (x: number, y: number) => void }) {
-  const w = SPLAT_CLIP_ROOM.width * PLAN_PX_PER_M;
-  const h = SPLAT_CLIP_ROOM.depth * PLAN_PX_PER_M;
+// 도면 2D SVG. 실벽(walls)이 있으면 발자국 폴리곤을 그리고, 없으면 3m×4m 플레이스홀더 사각형.
+// 클릭 → 도면 프레임 미터 좌표(투어 월드와 동일 프레임 — 벽·가구·미니맵이 쓰는 그 좌표계).
+function PlanPicker({
+  walls,
+  picks,
+  onPick
+}: {
+  walls: WheretoputWall3D[] | null;
+  picks: Point2[];
+  onPick: (x: number, y: number) => void;
+}) {
+  const bounds = walls && walls.length > 0 ? wallsToPlanBounds(walls) : null;
+  const minX = bounds ? bounds.minX : -SPLAT_CLIP_ROOM.width / 2;
+  const minZ = bounds ? bounds.minZ : -SPLAT_CLIP_ROOM.depth / 2;
+  const width = bounds ? bounds.width : SPLAT_CLIP_ROOM.width;
+  const depth = bounds ? bounds.depth : SPLAT_CLIP_ROOM.depth;
+  // 큰 도면이 패널을 넘지 않게 스케일 캡 (기본 70px/m)
+  const scale = Math.min(PLAN_PX_PER_M, 520 / Math.max(width, 0.5), 420 / Math.max(depth, 0.5));
+  const w = width * scale;
+  const h = depth * scale;
   const pad = 24;
   return (
     <div style={canvasWrap}>
@@ -212,17 +312,31 @@ function PlanPicker({ picks, onPick }: { picks: Point2[]; onPick: (x: number, y:
           const rect = event.currentTarget.getBoundingClientRect();
           const px = event.clientX - rect.left - pad;
           const py = event.clientY - rect.top - pad;
-          const x = px / PLAN_PX_PER_M - SPLAT_CLIP_ROOM.width / 2;
-          const y = py / PLAN_PX_PER_M - SPLAT_CLIP_ROOM.depth / 2;
+          const x = minX + px / scale;
+          const y = minZ + py / scale;
           onPick(Number(x.toFixed(3)), Number(y.toFixed(3)));
         }}
       >
-        <rect x={pad} y={pad} width={w} height={h} fill="none" stroke="#94a3b8" strokeWidth={2} rx={6} />
+        {walls && walls.length > 0 ? (
+          walls.map((wall) => (
+            <polygon
+              key={wall.id}
+              points={planWallFootprint(wall)
+                .map((c) => `${pad + (c.x - minX) * scale},${pad + (c.z - minZ) * scale}`)
+                .join(" ")}
+              fill="#cbd5e1"
+              stroke="#64748b"
+              strokeWidth={1}
+            />
+          ))
+        ) : (
+          <rect x={pad} y={pad} width={w} height={h} fill="none" stroke="#94a3b8" strokeWidth={2} rx={6} />
+        )}
         {picks.map((p, i) => (
           <circle
             key={i}
-            cx={pad + (p.x + SPLAT_CLIP_ROOM.width / 2) * PLAN_PX_PER_M}
-            cy={pad + (p.y + SPLAT_CLIP_ROOM.depth / 2) * PLAN_PX_PER_M}
+            cx={pad + (p.x - minX) * scale}
+            cy={pad + (p.y - minZ) * scale}
             r={6}
             fill={POINT_COLORS[i] ?? "#111"}
           />
@@ -260,6 +374,18 @@ const canvasWrap: CSSProperties = {
 const footer: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
 const muted: CSSProperties = { color: "#64748b", fontSize: 13 };
 const hint: CSSProperties = { position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "#64748b" };
+const loadingOverlay: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(248, 250, 252, 0.7)",
+  color: "#334155",
+  fontSize: 14,
+  fontWeight: 600,
+  zIndex: 1
+};
 const badge: CSSProperties = {
   background: "#0f172a",
   color: "#fff",

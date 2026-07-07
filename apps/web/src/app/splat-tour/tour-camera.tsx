@@ -5,9 +5,10 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import type { ComponentRef } from "react";
 import { Vector3 } from "three";
-import { createRoomClipBox } from "./splat-clip";
+import { createRoomClipBox, type SplatClipBox } from "./splat-clip";
 import { calculateTourCameraRigLimits, clampTourCameraPositionToClipBox } from "./tour-camera-math";
 import type { TourCameraRigLimits, TourCameraVector3 } from "./tour-camera-math";
+import type { PlanBounds } from "./splat-plan-shape";
 import type { TourPreset } from "./tour-types";
 
 const TRANSITION_SMOOTH_TIME_SECONDS = 0.45;
@@ -17,6 +18,8 @@ const DEFAULT_DOLLY_SPEED = 1;
 const WALK_EYE_HEIGHT_METERS = 1.45;
 const WALK_SPEED_METERS_PER_SECOND = 1.5;
 const VECTOR_EPSILON = 1e-6;
+// 실도면 걷기 경계: 벽 안쪽으로 살짝 들여서(벽에 얼굴 박기 방지) 방 밖 이탈을 막는다.
+const WALK_BOUNDS_INSET_METERS = 0.25;
 
 type TourCameraControls = NonNullable<ComponentRef<typeof CameraControls>>;
 type WalkLookAt = { position: [number, number, number]; target: [number, number, number] };
@@ -26,7 +29,8 @@ export function TourCamera({
   activeId,
   onArrive,
   walkMode = false,
-  onCameraMove
+  onCameraMove,
+  walkBounds = null
 }: {
   presets: TourPreset[];
   activeId: string;
@@ -34,6 +38,8 @@ export function TourCamera({
   walkMode?: boolean;
   // 미니맵 위치점용 — 카메라가 바닥평면에서 움직일 때(임계 초과) 월드 좌표를 보고한다.
   onCameraMove?: (position: [number, number, number]) => void;
+  // 실도면 경계(있으면) — 걷기 이동을 이 안으로 클램프. 없으면 플레이스홀더 방 박스.
+  walkBounds?: PlanBounds | null;
 }) {
   const controlsRef = useRef<ComponentRef<typeof CameraControls>>(null);
   const transitionTokenRef = useRef(0);
@@ -47,7 +53,7 @@ export function TourCamera({
   const frameForwardRef = useRef(new Vector3());
   const frameRightRef = useRef(new Vector3());
   const frameMoveRef = useRef(new Vector3());
-  const walkClipBox = useMemo(() => createRoomClipBox(), []);
+  const walkClipBox = useMemo(() => createWalkClipBox(walkBounds), [walkBounds]);
   const reportPositionRef = useRef(new Vector3());
   const lastReportedRef = useRef<[number, number, number] | null>(null);
 
@@ -248,6 +254,32 @@ export function TourCamera({
   });
 
   return <CameraControls makeDefault ref={controlsRef} />;
+}
+
+// 실도면 경계가 있으면 벽 안쪽으로 인셋한 박스, 없으면 기존 플레이스홀더 방 박스.
+// 인셋 후 공간이 소멸할 만큼 좁은 도면(폭·깊이 ≤ 2×인셋)은 플레이스홀더로 폴백한다.
+function createWalkClipBox(bounds: PlanBounds | null): SplatClipBox {
+  if (
+    !bounds ||
+    bounds.width <= WALK_BOUNDS_INSET_METERS * 2 ||
+    bounds.depth <= WALK_BOUNDS_INSET_METERS * 2
+  ) {
+    return createRoomClipBox();
+  }
+
+  return {
+    min: {
+      x: bounds.minX + WALK_BOUNDS_INSET_METERS,
+      y: 0.2,
+      z: bounds.minZ + WALK_BOUNDS_INSET_METERS
+    },
+    max: {
+      x: bounds.maxX - WALK_BOUNDS_INSET_METERS,
+      y: Math.max(bounds.height, WALK_EYE_HEIGHT_METERS + 0.2),
+      z: bounds.maxZ - WALK_BOUNDS_INSET_METERS
+    },
+    margin: 0
+  };
 }
 
 function configureControls(controls: TourCameraControls, limits: TourCameraRigLimits, walkMode: boolean) {

@@ -5,7 +5,11 @@ import {
   WALL_CLIP_INSET_METERS
 } from "./splat-walls";
 
-export type PlanWallsSource = "resident-design" | "floor-plan-draft";
+export type PlanWallsSource = "resident-design" | "floor-plan-draft" | "tour-upload";
+
+// register 픽 화면에서 업로드한 도면을 뷰어(벽 대체·걷기 경계·미니맵)와 공유하는 전용 키.
+// 에디터 저장본(floorPlanDraft/residentFloorPlanDesign)을 덮지 않기 위해 별도 키를 쓴다.
+const TOUR_UPLOAD_STORAGE_KEY = "splatTourPlanUpload";
 
 export interface PlanWallsState {
   walls: WheretoputWall3D[];
@@ -35,10 +39,16 @@ const DEFAULT_PLAN_HEIGHT_METERS = 2.4;
 export function resolvePlanWalls(storage: Pick<Storage, "getItem"> | null): PlanWallsState | null {
   if (!storage) return null;
 
-  const candidate = chooseStorageCandidate(
+  const editorCandidate = chooseStorageCandidate(
     readFloorPlanDraft(storage),
     readResidentDesign(storage)
   );
+  const uploadCandidate = readTourUpload(storage);
+  // 업로드는 명시적 행위이므로 savedAt 동률에서도 에디터 저장본을 이긴다.
+  const candidate =
+    uploadCandidate && (!editorCandidate || uploadCandidate.savedAt >= editorCandidate.savedAt)
+      ? uploadCandidate
+      : editorCandidate;
   if (!candidate) return null;
 
   const walls = candidate.walls.filter(isValidPlanWall);
@@ -141,6 +151,31 @@ function readFloorPlanDraft(storage: Pick<Storage, "getItem">): StorageCandidate
   };
 }
 
+function readTourUpload(storage: Pick<Storage, "getItem">): StorageCandidate | null {
+  const payload = readStoragePayload(storage, TOUR_UPLOAD_STORAGE_KEY);
+  if (!payload) return null;
+
+  return {
+    savedAt: readSavedAt(payload.savedAt),
+    source: "tour-upload",
+    walls: readRoom3DWalls(payload)
+  };
+}
+
+/** register 업로드 도면을 뷰어와 공유하도록 저장한다. 실패(용량·차단)해도 조용히 넘어간다. */
+export function persistTourUploadPlanWalls(
+  walls: readonly WheretoputWall3D[],
+  storage: Pick<Storage, "setItem">,
+  savedAt: number
+): boolean {
+  try {
+    storage.setItem(TOUR_UPLOAD_STORAGE_KEY, JSON.stringify({ room3d: { walls }, savedAt }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function readResidentDesign(storage: Pick<Storage, "getItem">): StorageCandidate | null {
   const payload = readStoragePayload(storage, "residentFloorPlanDesign");
   if (!payload) return null;
@@ -180,6 +215,26 @@ function readRoom3DWalls(payload: Record<string, unknown>): unknown[] {
   if (!isRecord(room3d)) return [];
 
   return readArray(room3d.walls);
+}
+
+/**
+ * 업로드된 도면 JSON에서 벽 배열을 뽑는다. 허용 형태(관대한 순서로):
+ * 벽 배열 그대로 | { walls: [...] } | { room3d: { walls: [...] } } (floorPlanDraft/residentFloorPlanDesign 포맷).
+ * 유효한 벽이 하나도 없으면 빈 배열.
+ */
+export function planWallsFromPayload(payload: unknown): WheretoputWall3D[] {
+  const candidates: unknown[] = Array.isArray(payload)
+    ? payload
+    : isRecord(payload)
+      ? [...readArray(payload.walls), ...readRoom3DWalls(payload)]
+      : [];
+
+  return candidates.filter(isValidPlanWall);
+}
+
+/** 벽 하나의 바닥 발자국(XZ) 4모서리 — 도면 SVG 렌더용. */
+export function planWallFootprint(wall: WheretoputWall3D): { x: number; z: number }[] {
+  return wallFootprintCorners(wall);
 }
 
 function isValidPlanWall(value: unknown): value is WheretoputWall3D {

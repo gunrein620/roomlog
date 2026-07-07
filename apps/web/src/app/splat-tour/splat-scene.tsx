@@ -676,10 +676,11 @@ function createDefaultSplatTuning(): SplatTuning {
 function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProfile | null): SplatTuning {
   const base = applyProfileTuning(createDefaultSplatTuning(), profile);
   const injected: SplatTuningSource = "profile"; // 영속 정합값을 profile 소스로 표기
-  // transform 주입 경로는 URL 튜닝을 안 읽으므로, 벽 대체만 예외적으로 URL > profile > 기본ON 순서로 해석한다.
+  // transform 주입 경로는 URL 튜닝을 안 읽으므로, 벽 대체만 예외적으로 URL > profile > 기본OFF 순서로 해석한다.
+  // 기본 OFF(2026-07-07 결정): 도면 벽 패널이 splat을 가리는 게 실사용에서 더 거슬려서, 원하면 ?splatWalls=1로 켠다.
   const search = typeof window === "undefined" ? "" : window.location.search;
   const urlWallReplace = readWallReplaceParam(search);
-  const wallReplace = urlWallReplace ?? profile?.wallReplace ?? true;
+  const wallReplace = urlWallReplace ?? profile?.wallReplace ?? false;
   const wallReplaceSource: SplatTuningSource =
     urlWallReplace !== undefined ? "url" : profile?.wallReplace !== undefined ? "profile" : "default";
   return {
