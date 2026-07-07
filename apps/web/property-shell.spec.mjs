@@ -49,6 +49,8 @@ const unifiedLoginPageSource = readFileSync(new URL("./src/app/login/page.tsx", 
 const sessionLibSource = readFileSync(new URL("./src/lib/session.ts", import.meta.url), "utf8");
 const tradeChatCenterSource = readFileSync(new URL("./src/app/_components/TradeChatCenter.tsx", import.meta.url), "utf8");
 const tradeProxySource = readFileSync(new URL("./src/app/api/trade/[...path]/route.ts", import.meta.url), "utf8");
+const managerHomeTabsSource = readFileSync(new URL("./src/app/manager/home/00/ManagerHomeTabs.tsx", import.meta.url), "utf8");
+const managerHomePageSource = readFileSync(new URL("./src/app/manager/home/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
@@ -497,6 +499,19 @@ test("inquiry center chat hub splits desktop two-pane vs app list with sort and 
   assert.match(cssSource, /\.trade-chat-room\s*\{/);
 });
 
+test("manager contracted-house rows open a resident-style dashboard with a locked tenant chat", () => {
+  // 계약중인 집 행 클릭 → 집·세입자 정보 대시보드, 우측 하단 세입자 채팅은 계약의 문의 스레드에 잠긴다.
+  assert.match(managerHomeTabsSource, /function ContractDashboard/);
+  assert.match(managerHomeTabsSource, /setOpenContractId\(contract\.id\)/);
+  assert.match(managerHomeTabsSource, /세입자 채팅/);
+  assert.match(managerHomeTabsSource, /lockedThreadId=\{contract\.threadId\}/);
+  assert.match(managerHomeTabsSource, /roleFilter="owner"/);
+  // 서버 페이지가 스레드 id와 청구 요약을 내려준다 — 청구는 데모 폴백 없이 실패 시 null(위조 금지).
+  assert.match(managerHomePageSource, /threadId: contract\.threadId/);
+  assert.match(managerHomePageSource, /manager\/bills\/dashboard/);
+  assert.doesNotMatch(managerHomePageSource, /DEMO_DASHBOARD/);
+});
+
 test("switching hub threads never leaks the previous thread's conversation or contract bar", () => {
   // QA 회귀: 계약 체결 스레드를 열었다가 다른 스레드로 직행하면 계약 바가 남던 문제.
   // 1) 스레드 전환 시 이전 대화·계약 상태를 즉시 비운다.
@@ -787,23 +802,20 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "납부할 관리비 없음",
     "예정된 방문 없음",
     "수리 항목을 선택하세요",
-    "집주인 채팅",
-    "내 룸로그",
-    "메시지",
-    "퇴실 정산"
+    "집주인 채팅"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
   assert.match(pageSource, /activeRole === "tenant"/);
-  assert.match(pageSource, /href="\/tenant\/messaging\/00"/);
-  assert.match(pageSource, /href="\/tenant\/moveout\/00"/);
-  assert.match(pageSource, /tenant-domain-test-card/);
+  // 사는집 탭의 "내 룸로그 프로세스" 링크 카드와 "방문 일정" 안내 카드는 제거됐다.
+  assert.doesNotMatch(pageSource, /tenant-domain-test-card|href="\/tenant\/messaging\/00"|href="\/tenant\/moveout\/00"/);
+  assert.doesNotMatch(pageSource, /maintenance-card/);
+  assert.doesNotMatch(cssSource, /\.maintenance-card/);
   assert.match(cssSource, /\.domain-test-card/);
   assert.match(cssSource, /\.domain-test-link-grid/);
   assert.match(cssSource, /\.domain-test-link/);
   assert.match(cssSource, /\.tenant-contract-card/);
-  assert.match(cssSource, /\.maintenance-card/);
   assert.match(pageSource, /tenant-landlord-chat-button/);
   assert.match(pageSource, /tenant-chat-panel/);
   assert.match(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);

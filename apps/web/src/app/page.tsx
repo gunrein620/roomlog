@@ -3382,7 +3382,7 @@ function TenantMyPage({
   const [scheduledVisit] = useState<TenantVisit | null>(null);
   const [selectedIssue, setSelectedIssue] = useState("");
   const [maintenancePaid, setMaintenancePaid] = useState(false);
-  const [visitConfirmed, setVisitConfirmed] = useState(false);
+  const [visitConfirmed] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
   const [tenantToast, setTenantToast] = useState("");
@@ -3604,66 +3604,6 @@ function TenantMyPage({
             )}
           </button>
         </div>
-      </section>
-
-      <section className="domain-test-card tenant-domain-test-card" aria-labelledby="tenant-roomlog-title">
-        <div className="domain-test-heading">
-          <span>내 룸로그</span>
-          <h3 id="tenant-roomlog-title">이 집의 관리 프로세스</h3>
-          <p>계약된 집은 입주부터 퇴실까지 같은 계정의 룸로그에서 이어집니다.</p>
-        </div>
-        <div className="domain-test-link-grid">
-          <Link className="domain-test-link primary" href="/tenant/home/00">
-            룸로그 홈
-          </Link>
-          <Link className="domain-test-link" href="/tenant/movein/00">
-            입주 점검
-          </Link>
-          <Link className="domain-test-link" href="/tenant/contract/00">
-            계약
-          </Link>
-          <Link className="domain-test-link" href="/tenant/defect/00">
-            하자 접수
-          </Link>
-          <Link className="domain-test-link" href="/tenant/payment/00">
-            관리비·납부
-          </Link>
-          <Link className="domain-test-link" href="/tenant/messaging/00">
-            메시지
-          </Link>
-          <Link className="domain-test-link" href="/tenant/moveout/00">
-            퇴실 정산
-          </Link>
-        </div>
-        <small className="domain-test-note">이 계정에 사는 집이 연결되면 이어집니다.</small>
-      </section>
-
-      <section className="maintenance-card" aria-label="방문 일정">
-        <span>{scheduledVisit ? "오늘 방문 일정" : "방문 일정"}</span>
-        <h3>{scheduledVisit ? scheduledVisit.title : "예정된 방문 없음"}</h3>
-        <p>
-          {scheduledVisit
-            ? visitConfirmed
-              ? scheduledVisit.confirmedDescription
-              : scheduledVisit.pendingDescription
-            : "관리인이나 업체가 일정을 확정하면 여기에 표시됩니다."}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            if (!scheduledVisit) {
-              onGoInquiry();
-              return;
-            }
-
-            if (!visitConfirmed) {
-              setVisitConfirmed(true);
-              showToast("방문 일정을 확인했습니다.");
-            }
-          }}
-        >
-          {scheduledVisit ? (visitConfirmed ? "확인 완료" : "방문 확인") : "관리인 문의"}
-        </button>
       </section>
 
       <button
