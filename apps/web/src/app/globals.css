@@ -6557,8 +6557,7 @@ p {
   }
 }
 
-.tenant-contract-card,
-.maintenance-card {
+.tenant-contract-card {
   display: grid;
   gap: 12px;
   margin-top: 14px;
@@ -6574,8 +6573,7 @@ p {
   align-items: center;
 }
 
-.tenant-contract-card span,
-.maintenance-card span {
+.tenant-contract-card span {
   color: var(--blue);
   font-size: 0.72rem;
   font-weight: 900;
@@ -6588,8 +6586,7 @@ p {
   font-size: 1.15rem;
 }
 
-.tenant-contract-card p,
-.maintenance-card p {
+.tenant-contract-card p {
   margin-top: 7px;
   color: var(--muted);
   font-size: 0.8rem;
@@ -6597,8 +6594,7 @@ p {
   line-height: 1.45;
 }
 
-.tenant-contract-card button,
-.maintenance-card button {
+.tenant-contract-card button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6679,26 +6675,6 @@ p {
   font-size: 0.68rem;
   font-weight: 800;
   line-height: 1.3;
-}
-
-.maintenance-card {
-  background: var(--blue);
-  color: #ffffff;
-}
-
-.maintenance-card span,
-.maintenance-card p {
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.maintenance-card h3 {
-  color: #ffffff;
-  font-size: 1.08rem;
-}
-
-.maintenance-card button {
-  background: #ffffff;
-  color: var(--blue);
 }
 
 .filter-sheet-backdrop {
@@ -7621,6 +7597,173 @@ p {
   color: #ffffff;
 }
 
+/* 캔버스 우하단에 떠 있는 줌 컨트롤 — 현재 배율을 캔버스 옆에서 바로 보여준다 */
+.floor-plan-zoom-controls {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid rgba(18, 24, 40, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 30px rgba(18, 24, 40, 0.16);
+  backdrop-filter: blur(6px);
+}
+
+.floor-plan-zoom-controls button {
+  min-width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: transparent;
+  color: #465064;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.floor-plan-zoom-controls button:hover {
+  background: #eef2fb;
+}
+
+.floor-plan-zoom-controls button:disabled {
+  opacity: 0.4;
+}
+
+.floor-plan-zoom-value {
+  min-width: 46px;
+  color: #465064;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.floor-plan-zoom-fit {
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
+/* 문창문·설비 후보 검토함 — 카드 나열 대신 한 줄 행 + 일괄 처리로 압축 */
+.floor-plan-candidate-review {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafd;
+}
+
+.floor-plan-candidate-review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #465064;
+}
+
+.floor-plan-candidate-review-head em {
+  color: #8a91a2;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.floor-plan-candidate-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.floor-plan-candidate-bulk .floor-plan-secondary {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
+.floor-plan-candidate-list {
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.floor-plan-candidate-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.floor-plan-candidate-list li:hover {
+  border-color: rgba(47, 85, 255, 0.35);
+  background: #eef2fb;
+}
+
+.floor-plan-candidate-badge {
+  min-width: 52px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.floor-plan-candidate-badge.is-opening {
+  background: #fff1e0;
+  color: #b45309;
+}
+
+.floor-plan-candidate-badge.is-fixture {
+  background: #efe8ff;
+  color: #6d3fd1;
+}
+
+.floor-plan-candidate-confidence {
+  min-width: 40px;
+  color: #465064;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.floor-plan-candidate-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.floor-plan-candidate-actions button {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #eef2fb;
+  color: #2f55ff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.floor-plan-candidate-actions button:hover {
+  background: #dfe7fb;
+}
+
+.floor-plan-candidate-actions button.is-reject {
+  background: #fbeef0;
+  color: #c2333f;
+}
+
+.floor-plan-candidate-actions button.is-reject:hover {
+  background: #f7dee2;
+}
+
 .floor-plan-toolbar,
 .floor-plan-sidepanel,
 .floor-plan-canvas {
@@ -7701,7 +7844,9 @@ p {
 .floor-plan-canvas > .floor-plan-canvas-stage,
 .floor-plan-canvas > .floor-plan-3d-preview {
   flex: 1 1 auto;
-  height: auto;
+  /* 부모가 콘텐츠 높이라 flex-grow가 채울 공간이 없다 — 2D(콘텐츠 큼)는 상한,
+     3D(콘텐츠 없음)는 하한에 붙어 크기가 달라지므로 높이를 직접 고정한다. */
+  height: min(62vh, 720px);
   min-height: 420px;
   max-height: min(62vh, 720px);
 }
@@ -7725,15 +7870,16 @@ p {
   padding: 0 16px;
 }
 
+/* 축척 미확정 상태는 조용한 회색 안내 — 강조는 축척 확정(is-set) 쪽에만 준다 */
 .floor-plan-scale-banner {
   align-self: flex-start;
-  padding: 9px 14px;
-  border: 1px solid #e6c34d;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff7dd;
-  color: #6b5310;
-  font-size: 0.84rem;
-  font-weight: 800;
+  background: #f6f8fc;
+  color: #6f7787;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .floor-plan-scale-banner.is-set {
@@ -9172,12 +9318,6 @@ p {
     grid-column: span 3;
   }
 
-  .tenant-screen > .maintenance-card {
-    order: 7;
-    grid-column: span 3;
-    align-self: stretch;
-  }
-
   /* 집주인 마이페이지 */
   .owner-screen > .owner-hero {
     grid-column: 1 / -1;
@@ -10082,6 +10222,14 @@ p {
     bottom: 16px;
     min-height: 48px;
     padding: 0 15px;
+  }
+
+  .service-frame.with-bottom-tabs .tenant-screen {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .service-frame.with-bottom-tabs .tenant-landlord-chat-button {
+    bottom: calc(76px + env(safe-area-inset-bottom));
   }
 
   .tenant-chat-panel {

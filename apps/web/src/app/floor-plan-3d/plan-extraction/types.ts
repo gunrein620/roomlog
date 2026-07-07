@@ -18,6 +18,8 @@ export type DetectedLine = {
 };
 
 export type FloorPlanCandidate = {
+  // 캔버스(에디터) 좌표계 기준 실제 크기 — 검출 boundingBox에서 옴. 없으면 점(원)으로 취급.
+  boxPx?: { height: number; width: number };
   confidence?: number;
   id: string;
   label?: string;

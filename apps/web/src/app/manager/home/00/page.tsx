@@ -3,8 +3,14 @@ import { ManagerShell } from "@roomlog/ui";
 import { getUser } from "@/lib/session";
 import { serverFetch } from "@/lib/server-api";
 import { listManagerTickets } from "@/lib/ticket-manager-api";
+import { toManagerDashboard, type TeamDashboardResponse } from "@/lib/billing-manager-mapping";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
-import ManagerHomeTabs, { type ManagerContractRow, type ManagerListingRow, type ManagerTicketRow } from "./ManagerHomeTabs";
+import ManagerHomeTabs, {
+  type ManagerBillingSummary,
+  type ManagerContractRow,
+  type ManagerListingRow,
+  type ManagerTicketRow
+} from "./ManagerHomeTabs";
 
 // 관리 중인 집 홈 — "오늘 할 일/첫 건물/KPI 셸" 대신 실데이터 4탭:
 // 올려놓은 매물(미계약) · 계약중인 집(체결된 계약) · 민원/하자 · AI 관리자.
@@ -87,10 +93,26 @@ export default async function Page() {
         priceLabel: priceLabel(contract),
         acceptedAtLabel: contract.respondedAt
           ? new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(new Date(contract.respondedAt))
-          : ""
+          : "",
+        // 계약 상세 대시보드의 "세입자 채팅"이 이 문의 스레드로 잠긴다.
+        threadId: contract.threadId
       }));
   } catch {
     // 계약 API 일시 오류 — 빈 목록으로 렌더(위조 금지)
+  }
+
+  // 청구 요약 — 계약 상세 대시보드의 관리비·청구 카드용.
+  // getManagerDashboard()의 데모 폴백을 쓰지 않는다: 실패하면 null로 두고 화면에는 실패 사실만 보여준다(위조 금지).
+  let billing: ManagerBillingSummary | null = null;
+  try {
+    const dashboard = toManagerDashboard(await serverFetch<TeamDashboardResponse>("/manager/bills/dashboard"));
+    billing = {
+      total: dashboard.summary.total,
+      pending: dashboard.summary.pending,
+      overdue: dashboard.summary.overdue
+    };
+  } catch {
+    billing = null;
   }
 
   const tickets: ManagerTicketRow[] = (await listManagerTickets())
@@ -109,7 +131,9 @@ export default async function Page() {
         listings={listings}
         contracts={contracts}
         tickets={tickets}
+        billing={billing}
         ticketHubHref={MANAGER_CROSS.ticketDash}
+        billingHref={MANAGER_CROSS.billing}
         realtimeAgentHref={MANAGER_CROSS.realtimeAgent}
       />
     </ManagerShell>
