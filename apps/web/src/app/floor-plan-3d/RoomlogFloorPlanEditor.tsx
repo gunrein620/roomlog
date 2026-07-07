@@ -1687,7 +1687,24 @@ export default function RoomlogFloorPlanEditor() {
         if (!wallBoxes.length) return;
 
         // 문/창문 박스: 벽을 이 자리에서 갈라(gap) 분리한다.
-        const openingCutBoxes = openingOverlayBoxes.map((overlayBox) => normalizeOverlayBox(overlayBox.box));
+        // 살아있는 후보(openingCandidates)가 있으면 그 현재 위치·크기로 뚫는다 — 창문/문을
+        // 드래그로 옮기면 틈이 따라오고, 지우면 벽이 메워지고, 추가하면 새로 뚫리게.
+        // (정적 인식 박스로 뚫으면 옮긴 뒤에도 틈이 옛 자리에 남아 문/창문 편집감이 달라진다.)
+        const liveOpeningCutBoxes = openingCandidates
+          .filter((candidate) => candidate.status !== "REJECTED" && candidate.boxPx && candidate.position)
+          .map((candidate) => {
+            const box = candidate.boxPx!;
+            const position = candidate.position!;
+            return {
+              x1: position.x - box.width / 2,
+              x2: position.x + box.width / 2,
+              y1: position.y - box.height / 2,
+              y2: position.y + box.height / 2
+            };
+          });
+        const openingCutBoxes = liveOpeningCutBoxes.length
+          ? liveOpeningCutBoxes
+          : openingOverlayBoxes.map((overlayBox) => normalizeOverlayBox(overlayBox.box));
 
         const xCoordinates = [...new Set([...wallBoxes, ...openingCutBoxes].flatMap((box) => [box.x1, box.x2]))].sort((left, right) => left - right);
         const yCoordinates = [...new Set([...wallBoxes, ...openingCutBoxes].flatMap((box) => [box.y1, box.y2]))].sort((left, right) => left - right);
