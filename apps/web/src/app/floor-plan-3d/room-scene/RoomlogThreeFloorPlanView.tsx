@@ -15,6 +15,38 @@ Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelU
   (modelUrl) => useGLTF.preload(modelUrl)
 );
 
+function computeWallBoundsXZ(wallsData: WheretoputWall3D[]) {
+  if (wallsData.length === 0) {
+    return { centerX: 0, centerZ: 0, height: 8, width: 8 };
+  }
+
+  const points = wallsData.flatMap((wall) => {
+    const half = wall.dimensions.width / 2;
+    const angle = wall.rotation[1];
+    return [
+      {
+        x: wall.position[0] - Math.cos(angle) * half,
+        z: wall.position[2] - Math.sin(angle) * half
+      },
+      {
+        x: wall.position[0] + Math.cos(angle) * half,
+        z: wall.position[2] + Math.sin(angle) * half
+      }
+    ];
+  });
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minZ = Math.min(...points.map((point) => point.z));
+  const maxZ = Math.max(...points.map((point) => point.z));
+
+  return {
+    centerX: (minX + maxX) / 2,
+    centerZ: (minZ + maxZ) / 2,
+    height: Math.max(0.5, maxZ - minZ - 0.1),
+    width: Math.max(0.5, maxX - minX - 0.1)
+  };
+}
+
 function RoomFloor({
   onFloorPointerDown,
   wallsData
@@ -22,37 +54,7 @@ function RoomFloor({
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   wallsData: WheretoputWall3D[];
 }) {
-  const bounds = useMemo(() => {
-    if (wallsData.length === 0) {
-      return { centerX: 0, centerZ: 0, height: 8, width: 8 };
-    }
-
-    const points = wallsData.flatMap((wall) => {
-      const half = wall.dimensions.width / 2;
-      const angle = wall.rotation[1];
-      return [
-        {
-          x: wall.position[0] - Math.cos(angle) * half,
-          z: wall.position[2] - Math.sin(angle) * half
-        },
-        {
-          x: wall.position[0] + Math.cos(angle) * half,
-          z: wall.position[2] + Math.sin(angle) * half
-        }
-      ];
-    });
-    const minX = Math.min(...points.map((point) => point.x));
-    const maxX = Math.max(...points.map((point) => point.x));
-    const minZ = Math.min(...points.map((point) => point.z));
-    const maxZ = Math.max(...points.map((point) => point.z));
-
-    return {
-      centerX: (minX + maxX) / 2,
-      centerZ: (minZ + maxZ) / 2,
-      height: Math.max(0.5, maxZ - minZ - 0.1),
-      width: Math.max(0.5, maxX - minX - 0.1)
-    };
-  }, [wallsData]);
+  const bounds = useMemo(() => computeWallBoundsXZ(wallsData), [wallsData]);
 
   return (
     <mesh onPointerDown={onFloorPointerDown} position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -211,7 +213,7 @@ function WallMesh({
   );
 }
 
-function RoomOrbitControls() {
+function RoomOrbitControls({ target }: { target: [number, number, number] }) {
   const invalidate = useThree((state) => state.invalidate);
 
   return (
@@ -220,12 +222,33 @@ function RoomOrbitControls() {
       makeDefault
       maxDistance={42}
       maxPolarAngle={Math.PI / 2.05}
-      minDistance={5}
+      minDistance={2}
       minPolarAngle={0.2}
       onChange={() => invalidate()}
-      target={[0, 0, 0]}
+      target={target}
     />
   );
+}
+
+// 방 크기에 맞춰 카메라 거리를 자동 계산 — 고정 카메라로는 작은 방이 점처럼,
+// 큰 방이 화면 밖으로 나가므로, 진입/방 크기 변경 시 전체가 보이는 거리로 재배치한다.
+function RoomCameraAutoFit({ wallsData }: { wallsData: WheretoputWall3D[] }) {
+  const camera = useThree((state) => state.camera);
+  const invalidate = useThree((state) => state.invalidate);
+  const bounds = useMemo(() => computeWallBoundsXZ(wallsData), [wallsData]);
+  // 벽을 조금 옮길 때마다 카메라가 튀지 않게, 0.5m 단위로 반올림한 크기가 바뀔 때만 재배치한다.
+  const boundsKey = `${Math.round(bounds.centerX * 2)}:${Math.round(bounds.centerZ * 2)}:${Math.round(Math.max(bounds.width, bounds.height) * 2)}`;
+
+  useEffect(() => {
+    const longSide = Math.max(bounds.width, bounds.height);
+    const distance = Math.min(40, Math.max(6, longSide * 1.5));
+    camera.position.set(bounds.centerX + distance * 0.55, distance * 0.7, bounds.centerZ + distance * 0.85);
+    camera.lookAt(bounds.centerX, 0, bounds.centerZ);
+    invalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boundsKey, camera, invalidate]);
+
+  return null;
 }
 
 export function RoomlogThreeFloorPlanView({
@@ -253,9 +276,12 @@ export function RoomlogThreeFloorPlanView({
   selectedWallId: string | number | null;
   wallsData: WheretoputWall3D[];
 }) {
+  const wallBounds = computeWallBoundsXZ(wallsData);
+
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
       <Canvas camera={{ fov: 50, position: [14, 12, 18] }} dpr={[1, 2]} frameloop={frameloop}>
+        <RoomCameraAutoFit wallsData={wallsData} />
         <color attach="background" args={["#626260"]} />
         <ambientLight intensity={0.72} />
         <directionalLight intensity={1.4} position={[6, 12, 8]} />
@@ -280,7 +306,7 @@ export function RoomlogThreeFloorPlanView({
           <FurnitureMesh furniture={pendingFurniture} isPending isSelected={false} onPointerDown={onFurniturePointerDown} />
         ) : null}
         <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18} />
-        <RoomOrbitControls />
+        <RoomOrbitControls target={[wallBounds.centerX, 0, wallBounds.centerZ]} />
       </Canvas>
       {hideHint ? null : <span className="floor-3d-hint">벽 클릭 편집 / 화면 드래그 회전</span>}
     </div>

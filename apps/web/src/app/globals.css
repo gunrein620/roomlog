@@ -7591,6 +7591,54 @@ p {
   color: #ffffff;
 }
 
+/* 캔버스 우하단에 떠 있는 줌 컨트롤 — 현재 배율을 캔버스 옆에서 바로 보여준다 */
+.floor-plan-zoom-controls {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid rgba(18, 24, 40, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 30px rgba(18, 24, 40, 0.16);
+  backdrop-filter: blur(6px);
+}
+
+.floor-plan-zoom-controls button {
+  min-width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: transparent;
+  color: #465064;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.floor-plan-zoom-controls button:hover {
+  background: #eef2fb;
+}
+
+.floor-plan-zoom-controls button:disabled {
+  opacity: 0.4;
+}
+
+.floor-plan-zoom-value {
+  min-width: 46px;
+  color: #465064;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.floor-plan-zoom-fit {
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
 .floor-plan-toolbar,
 .floor-plan-sidepanel,
 .floor-plan-canvas {
@@ -7671,7 +7719,9 @@ p {
 .floor-plan-canvas > .floor-plan-canvas-stage,
 .floor-plan-canvas > .floor-plan-3d-preview {
   flex: 1 1 auto;
-  height: auto;
+  /* 부모가 콘텐츠 높이라 flex-grow가 채울 공간이 없다 — 2D(콘텐츠 큼)는 상한,
+     3D(콘텐츠 없음)는 하한에 붙어 크기가 달라지므로 높이를 직접 고정한다. */
+  height: min(62vh, 720px);
   min-height: 420px;
   max-height: min(62vh, 720px);
 }

@@ -806,6 +806,10 @@ export default function RoomlogFloorPlanEditor() {
   const [roomDepthMm, setRoomDepthMm] = useState("");
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
+  // 벽 편집 실행 취소 스냅샷 — setWalls가 항상 새 배열을 만들므로 참조 비교로 변경을 감지한다.
+  const wallHistoryRef = useRef<{ past: Wall[][]; future: Wall[][] }>({ past: [], future: [] });
+  const wallHistorySkipRef = useRef(false);
+  const lastWallsRef = useRef<Wall[]>(walls);
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
   const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
@@ -2430,6 +2434,138 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
+  // 콘텐츠는 캔버스 중앙 기준으로 그려지므로, 셸 스크롤이 좌상단에 있으면
+  // 도면이 화면 밖에 있는 것처럼 보인다. 스크롤을 항상 캔버스 중앙에 맞춘다.
+  const centerCanvasScroll = useCallback(() => {
+    const shell = containerRef.current;
+    if (!shell) return;
+    shell.scrollLeft = Math.max(0, (shell.scrollWidth - shell.clientWidth) / 2);
+    shell.scrollTop = Math.max(0, (shell.scrollHeight - shell.clientHeight) / 2);
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "2d") centerCanvasScroll();
+  }, [viewMode, centerCanvasScroll]);
+
+  function fitViewToWalls(targetWalls: Wall[]) {
+    centerCanvasScroll();
+    const points = targetWalls.flatMap((wall) => [wall.start, wall.end]);
+    if (!points.length) {
+      setViewScale(1);
+      setViewOffset({ x: 0, y: 0 });
+      return;
+    }
+    const minX = Math.min(...points.map((point) => point.x));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxY = Math.max(...points.map((point) => point.y));
+    const padding = 60;
+    const shell = containerRef.current;
+    const viewportWidth = Math.min(shell?.clientWidth || CANVAS_WIDTH, CANVAS_WIDTH);
+    const viewportHeight = Math.min(shell?.clientHeight || CANVAS_HEIGHT, CANVAS_HEIGHT);
+    const contentWidth = Math.max(1, maxX - minX + padding * 2);
+    const contentHeight = Math.max(1, maxY - minY + padding * 2);
+    const nextScale = Math.max(0.1, Math.min(10, Math.min(viewportWidth / contentWidth, viewportHeight / contentHeight)));
+    setViewScale(nextScale);
+    setViewOffset({ x: -(minX + maxX) / 2, y: -(minY + maxY) / 2 });
+    setUploadStatus(`화면 ${Math.round(nextScale * 100)}% — 도면에 맞춤`);
+  }
+
+  function zoomViewBy(factor: number) {
+    const nextScale = Math.max(0.1, Math.min(10, viewScale * factor));
+    setViewScale(nextScale);
+    setUploadStatus(`화면 ${Math.round(nextScale * 100)}%`);
+  }
+
+  // 벽 배열이 바뀔 때마다 이전 상태를 이력에 쌓는다(실행 취소로 인한 변경은 제외).
+  useEffect(() => {
+    if (walls === lastWallsRef.current) return;
+    if (wallHistorySkipRef.current) {
+      wallHistorySkipRef.current = false;
+    } else {
+      const history = wallHistoryRef.current;
+      history.past.push(lastWallsRef.current);
+      if (history.past.length > 100) history.past.shift();
+      history.future = [];
+    }
+    lastWallsRef.current = walls;
+  }, [walls]);
+
+  function clearWallSelectionState() {
+    setSelectedWall(null);
+    setHoveredWall(null);
+    setPartialEraserSelectedWall(null);
+    setSelectedWallRunRects(null);
+  }
+
+  function undoWallEdit() {
+    const history = wallHistoryRef.current;
+    const previous = history.past.pop();
+    if (!previous) {
+      setUploadStatus("되돌릴 편집이 없습니다");
+      return;
+    }
+    history.future.push(lastWallsRef.current);
+    wallHistorySkipRef.current = true;
+    setWalls(previous);
+    clearWallSelectionState();
+    setUploadStatus("실행 취소");
+  }
+
+  function redoWallEdit() {
+    const history = wallHistoryRef.current;
+    const next = history.future.pop();
+    if (!next) {
+      setUploadStatus("다시 실행할 편집이 없습니다");
+      return;
+    }
+    history.past.push(lastWallsRef.current);
+    wallHistorySkipRef.current = true;
+    setWalls(next);
+    clearWallSelectionState();
+    setUploadStatus("다시 실행");
+  }
+
+  // 키보드 단축키: Ctrl+Z 실행 취소, Ctrl+Shift+Z/Ctrl+Y 다시 실행, Esc 취소, Delete 선택 벽 삭제.
+  // 최신 상태를 참조해야 하므로 매 렌더마다 다시 등록한다.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redoWallEdit();
+        else undoWallEdit();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && key === "y") {
+        event.preventDefault();
+        redoWallEdit();
+        return;
+      }
+      if (event.key === "Escape") {
+        setIsDrawing(false);
+        setStartPoint(null);
+        setCurrentPoint(null);
+        setPendingFurniture(null);
+        setSelectedFurnitureId(null);
+        clearWallSelectionState();
+        return;
+      }
+      if ((event.key === "Delete" || event.key === "Backspace") && viewMode === "2d" && selectedWall) {
+        event.preventDefault();
+        const wallId = selectedWall.id;
+        removeWallById(wallId);
+        setUploadStatus(`벽 ${wallId} 삭제 (Delete)`);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
   async function loadImageDataFromUrl(imageUrl: string) {
     const image = await loadImage(imageUrl);
     const canvas = document.createElement("canvas");
@@ -2866,6 +3002,7 @@ export default function RoomlogFloorPlanEditor() {
         });
     }) as unknown as Wall[];
     setWalls(wallsFromDisplayBoxes);
+    fitViewToWalls(wallsFromDisplayBoxes);
 
     setAiAnalysisStatus(`${roboflowDetections.summary} 후처리 완료: 화면 벽 ${cornerAlignedWallBoxes.length}개를 3D 벽으로 변환`);
     setUploadStatus(`벽 후처리 완료 — 3D 벽 ${wallsFromDisplayBoxes.length}개 (화면과 동일)`);
@@ -3338,6 +3475,24 @@ export default function RoomlogFloorPlanEditor() {
                 ref={canvasRef}
               />
             </div>
+            <div className="floor-plan-zoom-controls" role="group" aria-label="화면 배율 조절">
+              <button aria-label="축소" onClick={() => zoomViewBy(1 / 1.2)} title="축소" type="button">
+                −
+              </button>
+              <span className="floor-plan-zoom-value">{Math.round(viewScale * 100)}%</span>
+              <button aria-label="확대" onClick={() => zoomViewBy(1.2)} title="확대" type="button">
+                +
+              </button>
+              <button
+                className="floor-plan-zoom-fit"
+                disabled={walls.length === 0}
+                onClick={() => fitViewToWalls(walls)}
+                title="도면 전체가 보이도록 화면을 맞춥니다"
+                type="button"
+              >
+                맞춤
+              </button>
+            </div>
             {experienceMode === "landlord" && walls.length === 0 && !uploadedImage && !isProcessing ? (
               <div className="floor-plan-empty-guide" aria-label="도면 시작 안내">
                 <strong>도면을 등록해 시작하세요</strong>
@@ -3349,7 +3504,9 @@ export default function RoomlogFloorPlanEditor() {
                   <button
                     className="floor-plan-secondary"
                     onClick={() => {
-                      setWalls(getStarterWalls());
+                      const starterWalls = getStarterWalls();
+                      setWalls(starterWalls);
+                      fitViewToWalls(starterWalls);
                       setUploadStatus("샘플 도면을 불러왔어요 — 자유롭게 수정해보세요");
                     }}
                     type="button"
@@ -3396,12 +3553,14 @@ export default function RoomlogFloorPlanEditor() {
             <button
               className="floor-plan-secondary"
               onClick={() => {
-                setWalls(getStarterWalls());
+                const starterWalls = getStarterWalls();
+                setWalls(starterWalls);
                 setHiddenWallIds(new Set());
                 setPlacedFurnitures([]);
                 setPendingFurniture(null);
                 setSelectedWall(null);
                 setSelectedFurnitureId(null);
+                fitViewToWalls(starterWalls);
                 setUploadStatus("샘플 도면 복원");
               }}
               type="button"
@@ -3410,11 +3569,8 @@ export default function RoomlogFloorPlanEditor() {
             </button>
             <button
               className="floor-plan-secondary"
-              onClick={() => {
-                setViewOffset({ x: 0, y: 0 });
-                setViewScale(1);
-              }}
-              title="화면 이동/확대를 처음 상태로 되돌립니다 (도면은 그대로)"
+              onClick={() => fitViewToWalls(walls)}
+              title="도면 전체가 보이도록 화면을 맞춥니다 (도면은 그대로)"
               type="button"
             >
               화면 초기화
