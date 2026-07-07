@@ -2509,7 +2509,7 @@ function ListingDetailView({
       <button className="tour-banner detail-tour-banner" type="button" onClick={() => setIsTourSheetOpen(true)} aria-label="3D 가상 투어 시작하기">
         <span>
           <small>3D 공간 투어</small>
-          <strong>3D 보기 / 투어 예약</strong>
+          <strong>3D로 미리 보기</strong>
           <em>실측 도면 기반으로 공간을 먼저 확인하세요</em>
         </span>
         <b aria-hidden="true">3D</b>
@@ -2555,7 +2555,7 @@ function ListingDetailView({
               <div>
                 <span>3D 공간 미리보기</span>
                 <h2 id="tour-sheet-title">방문 전 3D로 먼저 보기</h2>
-                <p>방문 전에 구조와 옵션 위치를 확인하고, 원하는 시간에 투어 상담을 예약할 수 있습니다.</p>
+                <p>방문 전에 구조와 옵션 위치를 3D로 미리 확인할 수 있습니다.</p>
               </div>
               <button type="button" onClick={() => setIsTourSheetOpen(false)} aria-label="3D 투어 닫기">×</button>
             </header>
@@ -2583,20 +2583,20 @@ function ListingDetailView({
                 <>
                   <span>실측 도면 기반 3D</span>
                   <span>드래그로 둘러보기</span>
-                  <span>투어 예약 연결</span>
+                  <span>옵션 배치 확인</span>
                 </>
               ) : (
                 <>
                   <span>도면 기반 공간 스캔</span>
                   <span>옵션 배치 확인</span>
-                  <span>투어 예약 연결</span>
+                  <span>집주인이 도면을 올리면 3D 제공</span>
                 </>
               )}
             </div>
 
             <div className="tour-sheet-actions">
               <button type="button" onClick={() => setIsTourSheetOpen(false)}>닫기</button>
-              <a href="#detail-contact" onClick={() => setIsTourSheetOpen(false)}>투어 예약</a>
+              <a href="#detail-contact" onClick={() => setIsTourSheetOpen(false)}>문의하기</a>
             </div>
           </section>
         </div>
