@@ -10,6 +10,7 @@ import {
   createRoomClipBox,
   isInsideClipBox
 } from "./splat-clip";
+import { estimateSplatFloorY } from "./splat-floor";
 import type { SplatTransform } from "./tour-types";
 
 // 약 3m(가로) × 4m(세로), 층고 2.4m 원룸. 바닥 중앙이 원점.
@@ -38,6 +39,7 @@ interface SplatTuning {
   fitMode: SplatFitMode;
   clip: boolean;
   clipMargin: number;
+  floorSnap: boolean;
   sources: {
     scaleMultiplier: SplatTuningSource;
     rotationXDegrees: SplatTuningSource;
@@ -48,6 +50,7 @@ interface SplatTuning {
     fitMode: SplatTuningSource;
     clip: SplatTuningSource;
     clipMargin: SplatTuningSource;
+    floorSnap: SplatTuningSource;
   };
   overrides: {
     scaleMultiplier: boolean;
@@ -59,6 +62,7 @@ interface SplatTuning {
     fitMode: boolean;
     clip: boolean;
     clipMargin: boolean;
+    floorSnap: boolean;
   };
 }
 
@@ -72,6 +76,7 @@ export interface SplatTuningProfile {
   fitMode?: SplatFitMode;
   clip?: boolean;
   clipMargin?: number;
+  floorSnap?: boolean;
 }
 
 interface SplatFitInfo {
@@ -81,6 +86,15 @@ interface SplatFitInfo {
   maxDimension: number | null;
   size: [number, number, number] | null;
   center: [number, number, number] | null;
+}
+
+interface SplatFloorSnapInfo {
+  enabled: boolean;
+  applied: boolean;
+  method: "y-histogram" | "disabled" | "not-native" | "packed-splats-unavailable" | "insufficient-samples";
+  floorY: number | null;
+  correctionY: number;
+  samples: number;
 }
 
 interface SplatClipInfo {
@@ -149,12 +163,14 @@ export function SplatScene({
           ? tuningFromTransform(transform, profile)
           : readSplatTuningFromLocation(profile);
         const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
+        const floorSnapInfo = snapSplatFloor(nextSplatMesh, tuning);
         const clipInfo = applySplatClip(nextSplatMesh, tuning);
         console.info(
           "[splat-tour] applied splat transform " +
             JSON.stringify({
               src,
               fitMode: tuning.fitMode,
+              floorSnap: floorSnapInfo,
               clip: clipInfo,
               rotationXDegrees: tuning.rotationXDegrees,
               rotationYDegrees: tuning.rotationYDegrees,
@@ -292,6 +308,57 @@ function fitSplatToDemoRoom(splatMesh: SplatMeshObject, tuning: SplatTuning): Sp
     maxDimension,
     size: vectorToTuple(size),
     center: vectorToTuple(center)
+  };
+}
+
+// 바닥 스냅: native 배치 후 방 XZ 안 splat들의 바닥 슬래브 높이를 추정해 월드 y=0에 맞춘다.
+// 수동 y 오프셋 오차(정합 스케일로 증폭)로 가구(도면 좌표, 밑면 y=0)가 파묻히는 문제의 보정.
+// auto fit은 스케일 자체가 bbox 추정이라 스냅해도 의미가 없어 건너뛴다.
+function snapSplatFloor(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatFloorSnapInfo {
+  const skipped: Omit<SplatFloorSnapInfo, "method"> = {
+    enabled: tuning.floorSnap,
+    applied: false,
+    floorY: null,
+    correctionY: 0,
+    samples: 0
+  };
+
+  if (!tuning.floorSnap) return { ...skipped, method: "disabled" };
+  if (tuning.fitMode !== "native") return { ...skipped, method: "not-native" };
+
+  const packedSplats = splatMesh.packedSplats;
+  if (!packedSplats) return { ...skipped, method: "packed-splats-unavailable" };
+
+  splatMesh.updateMatrixWorld(true);
+  const clipBox = createRoomClipBox(tuning.clipMargin);
+  const worldCenter = new Vector3();
+  const sampleYs: number[] = [];
+
+  packedSplats.forEachSplat((_index, center) => {
+    worldCenter.copy(center).applyMatrix4(splatMesh.matrixWorld);
+    if (worldCenter.x < clipBox.min.x || worldCenter.x > clipBox.max.x) return;
+    if (worldCenter.z < clipBox.min.z || worldCenter.z > clipBox.max.z) return;
+    sampleYs.push(worldCenter.y);
+  });
+
+  const estimate = estimateSplatFloorY(sampleYs);
+  if (!estimate) {
+    return { ...skipped, method: "insufficient-samples", samples: sampleYs.length };
+  }
+
+  const correctionY = -estimate.floorY;
+  if (Math.abs(correctionY) > 0.005) {
+    splatMesh.position.y += correctionY;
+    splatMesh.updateMatrixWorld(true);
+  }
+
+  return {
+    enabled: true,
+    applied: true,
+    method: "y-histogram",
+    floorY: estimate.floorY,
+    correctionY,
+    samples: estimate.samples
   };
 }
 
@@ -453,6 +520,7 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   const fitMode = readFitModeValue(rawValue.fit);
   const clip = readBooleanValue(rawValue.clip);
   const clipMargin = readNumberValue(rawValue.clipMargin, { minInclusive: 0 });
+  const floorSnap = readBooleanValue(rawValue.floorSnap);
 
   if (scaleMultiplier !== undefined) profile.scaleMultiplier = scaleMultiplier;
   if (rotationXDegrees !== undefined) profile.rotationXDegrees = rotationXDegrees;
@@ -463,6 +531,7 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   if (fitMode !== undefined) profile.fitMode = fitMode;
   if (clip !== undefined) profile.clip = clip;
   if (clipMargin !== undefined) profile.clipMargin = clipMargin;
+  if (floorSnap !== undefined) profile.floorSnap = floorSnap;
 
   return profile;
 }
@@ -478,6 +547,7 @@ function createDefaultSplatTuning(): SplatTuning {
     fitMode: "auto",
     clip: false,
     clipMargin: DEFAULT_SPLAT_CLIP_MARGIN_METERS,
+    floorSnap: true,
     sources: {
       scaleMultiplier: "default",
       rotationXDegrees: "default",
@@ -487,7 +557,8 @@ function createDefaultSplatTuning(): SplatTuning {
       offsetZ: "default",
       fitMode: "default",
       clip: "default",
-      clipMargin: "default"
+      clipMargin: "default",
+      floorSnap: "default"
     },
     overrides: {
       scaleMultiplier: false,
@@ -498,7 +569,8 @@ function createDefaultSplatTuning(): SplatTuning {
       offsetZ: false,
       fitMode: false,
       clip: false,
-      clipMargin: false
+      clipMargin: false,
+      floorSnap: false
     }
   };
 }
@@ -561,6 +633,7 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
   const fitMode = readFitModeValue(params.get("splatFit"));
   const clip = readBooleanParam(params, "splatClip");
   const clipMargin = readNumberParam(params, "splatClipMargin", { minInclusive: 0 });
+  const floorSnap = readBooleanParam(params, "splatFloorSnap");
 
   if (scaleMultiplier !== undefined) {
     tuning.scaleMultiplier = scaleMultiplier;
@@ -607,6 +680,11 @@ function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatT
     tuning.sources.clipMargin = "url";
     tuning.overrides.clipMargin = true;
   }
+  if (floorSnap !== undefined) {
+    tuning.floorSnap = floorSnap;
+    tuning.sources.floorSnap = "url";
+    tuning.overrides.floorSnap = true;
+  }
 
   return tuning;
 }
@@ -649,6 +727,10 @@ function applyProfileTuning(tuning: SplatTuning, profile: SplatTuningProfile | n
   if (profile.clipMargin !== undefined) {
     tuning.clipMargin = profile.clipMargin;
     tuning.sources.clipMargin = "profile";
+  }
+  if (profile.floorSnap !== undefined) {
+    tuning.floorSnap = profile.floorSnap;
+    tuning.sources.floorSnap = "profile";
   }
 
   return tuning;
