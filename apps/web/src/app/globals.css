@@ -7377,6 +7377,8 @@ p {
   max-width: 1380px;
   min-height: calc(100vh - 98px);
   margin: 16px auto 0;
+  /* 요약 드로어(.floor-plan-drawer)의 기준 컨테이너 */
+  position: relative;
 }
 
 .floor-plan-stage-wrap {
@@ -8060,23 +8062,107 @@ p {
   padding: 18px;
 }
 
-/* 도면 요약은 캔버스 아래 가로 배치 — 지표들이 한 줄 카드로 흘러 가독성이 좋아진다 */
-.floor-plan-bottompanel dl {
-  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+/* 요약 패널은 캔버스 오른쪽 위를 덮는 접이식 드로어 — ☰ 버튼으로 여닫는다.
+   캔버스 폭은 그대로 두고, 긴 슬라이드 대신 짧은 페이드+살짝 밀림으로 뜬다. */
+.floor-plan-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  grid-area: auto;
+  width: min(380px, 92vw);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 40;
+  opacity: 0;
+  transform: translateX(16px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s linear 0.18s;
 }
 
-.floor-plan-bottompanel dl div {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 4px;
-  min-height: 64px;
-  padding: 10px 14px;
+.floor-plan-drawer.is-open {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
-.floor-plan-bottompanel a {
-  justify-self: end;
-  min-width: 180px;
+.floor-plan-panel-toggle {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+/* 드로어 내부 섹션 — <details> 드롭다운. 제목(summary)을 클릭해 접고 펼친다 */
+.floor-plan-drawer-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcff;
+}
+
+.floor-plan-drawer-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: var(--muted);
+}
+
+.floor-plan-drawer-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.floor-plan-drawer-section > summary::after {
+  content: "▾";
+  margin-left: auto;
+  color: #8a91a2;
+  transition: transform 0.15s ease;
+}
+
+.floor-plan-drawer-section:not([open]) > summary::after {
+  transform: rotate(-90deg);
+}
+
+.floor-plan-drawer-section > summary em {
+  color: #8a91a2;
+  font-style: normal;
+}
+
+/* .floor-plan-sidepanel strong(1.16rem)이 summary 안 개수 표시를 키우지 않게 */
+.floor-plan-sidepanel .floor-plan-drawer-section > summary strong {
+  font-size: inherit;
+}
+
+.floor-plan-drawer-section-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+/* 섹션 안에 기존 카드 클래스가 겹칠 때 이중 박스가 되지 않게 리셋 */
+.floor-plan-drawer-section-body.floor-plan-furniture-library {
+  border: 0;
+  background: transparent;
+  padding: 0 12px 12px;
+}
+
+/* .floor-plan-sidepanel > div(grid)보다 구체적으로 써서 flex가 이기게 한다 */
+.floor-plan-sidepanel > .floor-plan-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.floor-plan-drawer-head > div {
+  display: grid;
+  gap: 6px;
 }
 
 .floor-plan-sidepanel > div {
@@ -8335,6 +8421,36 @@ p {
   font-weight: 700;
 }
 
+/* 방 크기 측정 바 — '세부 조정' 모드일 때만 툴바 아래에 뜨는 한 줄짜리 입력 UI */
+.floor-plan-interior-measure-strip {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid rgba(33, 118, 255, 0.18);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+}
+
+.floor-plan-interior-measure-strip > span {
+  color: #0f2f61;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.floor-plan-interior-measure-strip > code {
+  font-size: 0.78rem;
+}
+
+.floor-plan-interior-measure-strip > input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  padding: 4px 8px;
+}
+
 .floor-plan-visible-dimension-strip {
   align-items: center;
   background: #f8fbff;
@@ -8370,10 +8486,6 @@ p {
 
   .floor-plan-toolbar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .floor-plan-sidepanel {
-    grid-row: 2;
   }
 }
 

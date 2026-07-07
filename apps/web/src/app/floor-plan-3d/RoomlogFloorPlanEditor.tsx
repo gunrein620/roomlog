@@ -815,6 +815,12 @@ export default function RoomlogFloorPlanEditor() {
   const [interiorCalibrationMm, setInteriorCalibrationMm] = useState("");
   const [roomWidthMm, setRoomWidthMm] = useState("");
   const [roomDepthMm, setRoomDepthMm] = useState("");
+  // 요약/후보/가구 패널 — 캔버스를 덮는 오른쪽 접이식 드로어. 평소엔 닫아 캔버스가 전체 폭을 쓴다.
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  useEffect(() => {
+    // 가구 라이브러리가 드로어 안에 있어서, 가구 작업에 들어가면 자동으로 열어준다.
+    if (tool === "furniture" || experienceMode === "resident") setSidePanelOpen(true);
+  }, [tool, experienceMode]);
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
   // 벽 편집 실행 취소 스냅샷 — setWalls가 항상 새 배열을 만들므로 참조 비교로 변경을 감지한다.
@@ -2507,10 +2513,11 @@ export default function RoomlogFloorPlanEditor() {
         let snappedToWall = false;
         if (candidateDragOperation.layer === "opening" && current?.boxPx) {
           if (candidateDragOperation.mode === "move") {
-            // 이동해서 놓으면 가까운 벽에 자동으로 끼워 넣는다(방향·두께·범위 맞춤).
+            // 이동해서 놓으면 가까운 벽에 자동으로 끼워 넣고(방향·두께·범위 맞춤),
+            // 이웃 벽 끝점·옆벽 면이 가까우면 길이를 유지한 채 끝을 거기 붙인다.
             const geometry = snappedOpeningGeometryOnWall(current.position, current.boxPx);
             if (geometry) {
-              setCandidateGeometry("opening", candidateDragOperation.candidateId, geometry);
+              setCandidateGeometry("opening", candidateDragOperation.candidateId, slideOpeningEdgesToSnap(geometry));
               snappedToWall = true;
             }
           } else {
@@ -2631,7 +2638,6 @@ export default function RoomlogFloorPlanEditor() {
       x: pointerX / nextScale - worldBeforeZoom.x,
       y: pointerY / nextScale - worldBeforeZoom.y
     });
-    setUploadStatus(`화면 ${Math.round(nextScale * 100)}%`);
   }
 
   function handleCanvasAuxClick(event: React.MouseEvent<HTMLCanvasElement>) {
@@ -2674,13 +2680,11 @@ export default function RoomlogFloorPlanEditor() {
     const nextScale = Math.max(0.1, Math.min(10, Math.min(viewportWidth / contentWidth, viewportHeight / contentHeight)));
     setViewScale(nextScale);
     setViewOffset({ x: -(minX + maxX) / 2, y: -(minY + maxY) / 2 });
-    setUploadStatus(`화면 ${Math.round(nextScale * 100)}% — 도면에 맞춤`);
   }
 
   function zoomViewBy(factor: number) {
     const nextScale = Math.max(0.1, Math.min(10, viewScale * factor));
     setViewScale(nextScale);
-    setUploadStatus(`화면 ${Math.round(nextScale * 100)}%`);
   }
 
   // 벽 배열이 바뀔 때마다 이전 상태를 이력에 쌓는다(실행 취소로 인한 변경은 제외).
@@ -3407,43 +3411,105 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   // 문/창문을 벽에 끼워 넣기 — 중심을 벽 중심선에 붙이고, 두께는 벽 두께에,
-  // 방향은 벽 방향에 맞춘다. 벽 범위를 벗어나지 않게 끝 안쪽으로 클램프.
+  // 방향은 벽 방향에 맞춘다.
+  // 벽 탐색은 중심 1점이 아니라 중심+양끝 5점으로 한다: 창문은 벽이 끊긴 '틈'에 놓이는
+  // 경우가 많아, 중심은 양쪽 벽 끝에서 멀어도 후보의 끝은 벽에 닿아 있기 때문.
+  // 벽 구간 안쪽으로 클램프하지 않는다 — 틈에 놓인 창문을 벽 몸통 위로 끌어당기는 부작용이
+  // 있었고, 끝 정렬은 slideOpeningEdgesToSnap이 담당한다.
   function snappedOpeningGeometryOnWall(position: Point, boxPx: { height: number; width: number }) {
-    const wall = findClosestWall(position, 40);
+    const halfWidth = boxPx.width / 2;
+    const halfHeight = boxPx.height / 2;
+    const probes: Point[] = [
+      position,
+      { x: position.x - halfWidth, y: position.y },
+      { x: position.x + halfWidth, y: position.y },
+      { x: position.x, y: position.y - halfHeight },
+      { x: position.x, y: position.y + halfHeight }
+    ];
+    // 포착 판정은 벽 중심선이 아니라 '표면' 기준으로 한다. 고정 반경을 쓰면 두꺼운 벽은
+    // 겉면에 닿아도 중심선이 멀어 포착이 안 되고, 반경을 키우면 일부러 떼어 놓은 후보까지
+    // 빨려 들어간다. 표면에서 12px 이내(=겹치거나 거의 닿음)일 때만 끼운다.
+    const surfaceMargin = 12;
+    let wall: Wall | null = null;
+    let bestSurfaceDistance = Infinity;
+    for (const probe of probes) {
+      for (const candidateWall of walls) {
+        const thickness = Math.max(8, Number(candidateWall.thicknessPx ?? candidateWall.depthPx ?? 0) || 12);
+        const surfaceDistance = distanceToWall(probe, candidateWall as never) - thickness / 2;
+        if (surfaceDistance <= surfaceMargin && surfaceDistance < bestSurfaceDistance) {
+          bestSurfaceDistance = surfaceDistance;
+          wall = candidateWall;
+        }
+      }
+    }
     if (!wall) return null;
     const horizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
     const wallThickness = Math.max(8, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
     const openingLength = Math.max(boxPx.width, boxPx.height);
     if (horizontal) {
       const wallY = (wall.start.y + wall.end.y) / 2;
-      const minX = Math.min(wall.start.x, wall.end.x);
-      const maxX = Math.max(wall.start.x, wall.end.x);
-      const centerX =
-        maxX - minX <= openingLength ? (minX + maxX) / 2 : Math.min(maxX - openingLength / 2, Math.max(minX + openingLength / 2, position.x));
-      return { boxPx: { height: wallThickness, width: openingLength }, position: { x: centerX, y: wallY } };
+      return { boxPx: { height: wallThickness, width: openingLength }, horizontal, position: { x: position.x, y: wallY } };
     }
     const wallX = (wall.start.x + wall.end.x) / 2;
-    const minY = Math.min(wall.start.y, wall.end.y);
-    const maxY = Math.max(wall.start.y, wall.end.y);
-    const centerY =
-      maxY - minY <= openingLength ? (minY + maxY) / 2 : Math.min(maxY - openingLength / 2, Math.max(minY + openingLength / 2, position.y));
-    return { boxPx: { height: openingLength, width: wallThickness }, position: { x: wallX, y: centerY } };
+    return { boxPx: { height: openingLength, width: wallThickness }, horizontal, position: { x: wallX, y: position.y } };
   }
 
-  // 같은 축선 위 벽 끝점 중 edgeValue에 가장 가까운 스냅 대상을 찾는다(허용오차 내 없으면 null).
-  // 문/창문 끝을 늘릴 때 벽 모서리에 자석처럼 붙이는 용도.
+  // 이동해서 놓은 문/창문을, 길이는 유지한 채 가까운 끝이 이웃 벽에 닿도록 미끄러뜨린다.
+  // (리사이즈 핸들뿐 아니라 통째로 옮길 때도 벽에 '착' 붙게.)
+  // 축은 박스 모양으로 추측하지 않는다 — 문 박스는 거의 정사각형(문+회전 호)이라 추측이 틀리기
+  // 쉬우므로, 끼워진 벽의 방향(horizontal)을 그대로 받아 그 축으로만 미끄러뜨린다.
+  function slideOpeningEdgesToSnap(geometry: { boxPx: { height: number; width: number }; horizontal?: boolean; position: Point }) {
+    const horizontal = geometry.horizontal ?? geometry.boxPx.width >= geometry.boxPx.height;
+    const length = horizontal ? geometry.boxPx.width : geometry.boxPx.height;
+    const center = horizontal ? geometry.position.x : geometry.position.y;
+    const cross = horizontal ? geometry.position.y : geometry.position.x;
+    let bestShift: number | null = null;
+    for (const sign of [-1, 1] as const) {
+      const edge = center + sign * (length / 2);
+      const target = findWallEdgeSnapTarget(horizontal, cross, edge);
+      if (target === null) continue;
+      const shift = target - edge;
+      if (bestShift === null || Math.abs(shift) < Math.abs(bestShift)) bestShift = shift;
+    }
+    if (bestShift === null || bestShift === 0) return geometry;
+    const nextCenter = center + bestShift;
+    return {
+      boxPx: geometry.boxPx,
+      position: horizontal ? { x: nextCenter, y: geometry.position.y } : { x: geometry.position.x, y: nextCenter }
+    };
+  }
+
+  // edgeValue에 가장 가까운 스냅 대상을 찾는다(허용오차 내 없으면 null).
+  // 문/창문 끝을 늘릴 때 자석처럼 붙이는 용도. 대상은 두 종류:
+  // 1) 같은 축선 위 벽의 끝점  2) 직교하는 옆벽의 면(face) — 문이 옆벽에 '착' 붙는 경우.
   function findWallEdgeSnapTarget(horizontal: boolean, cross: number, edgeValue: number) {
-    const tolerance = Math.max(18, 18 / viewScale);
+    // 눈으로 '거의 붙었다' 싶은 간격에서도 자석이 걸리게 넉넉히 잡는다.
+    const tolerance = Math.max(36, 36 / viewScale);
     let best: number | null = null;
+    const consider = (target: number) => {
+      const distance = Math.abs(target - edgeValue);
+      if (distance <= tolerance && (best === null || distance < Math.abs(best - edgeValue))) best = target;
+    };
     for (const wall of walls) {
       const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
-      if (wallHorizontal !== horizontal) continue;
-      const wallCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
       const wallThickness = Math.max(14, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
-      if (Math.abs(wallCross - cross) > wallThickness) continue;
-      for (const target of [horizontal ? wall.start.x : wall.start.y, horizontal ? wall.end.x : wall.end.y]) {
-        const distance = Math.abs(target - edgeValue);
-        if (distance <= tolerance && (best === null || distance < Math.abs(best - edgeValue))) best = target;
+      if (wallHorizontal === horizontal) {
+        // 같은 축선 위 벽: cross가 벽 중심선 근처일 때 끝점에 스냅.
+        const wallCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
+        if (Math.abs(wallCross - cross) > wallThickness) continue;
+        consider(horizontal ? wall.start.x : wall.start.y);
+        consider(horizontal ? wall.end.x : wall.end.y);
+      } else {
+        // 직교하는 옆벽: cross가 그 벽의 길이 범위 안일 때, 벽 중심선이 아니라
+        // 양 면(중심 ± 두께/2)에 스냅해야 문 끝이 옆벽 면에 딱 맞는다.
+        const spanA = horizontal ? wall.start.y : wall.start.x;
+        const spanB = horizontal ? wall.end.y : wall.end.x;
+        const spanMin = Math.min(spanA, spanB);
+        const spanMax = Math.max(spanA, spanB);
+        if (cross < spanMin - wallThickness || cross > spanMax + wallThickness) continue;
+        const wallCenter = horizontal ? (wall.start.x + wall.end.x) / 2 : (wall.start.y + wall.end.y) / 2;
+        consider(wallCenter - wallThickness / 2);
+        consider(wallCenter + wallThickness / 2);
       }
     }
     return best;
@@ -3701,8 +3767,79 @@ export default function RoomlogFloorPlanEditor() {
             </button>
           )}
           <span>{uploadStatus}</span>
-          {uploadedImage ? <span>{aiAnalysisStatus}</span> : null}
+          <button
+            aria-label={sidePanelOpen ? "요약 패널 닫기" : "요약 패널 열기"}
+            className={sidePanelOpen ? "floor-plan-secondary floor-plan-panel-toggle active" : "floor-plan-secondary floor-plan-panel-toggle"}
+            onClick={() => setSidePanelOpen((current) => !current)}
+            style={{ marginLeft: "auto" }}
+            title="도면 요약·후보 검토·가구 패널을 열고 닫습니다"
+            type="button"
+          >
+            ☰
+          </button>
         </div>
+
+        {experienceMode === "landlord" && tool === "interior" ? (
+          // 방 크기 측정 바 — '세부 조정' 버튼 바로 아래, 측정 모드일 때만 노출.
+          // 축척(1px=mm)은 여기서 따로 확정하고, 가로/세로 재기는 확정된 축척을 소비만 한다.
+          <div className="floor-plan-interior-measure-strip" aria-label="방 크기 측정">
+            <span>방 크기 측정</span>
+            <button
+              className={interiorMeasureTarget === "scale" ? "floor-plan-secondary active" : "floor-plan-secondary"}
+              onClick={() => startInteriorMeasure("scale")}
+              title="실제 길이를 아는 두 점을 클릭하고 mm를 입력하면 축척이 확정됩니다"
+              type="button"
+            >
+              축척 맞추기 (두 점)
+            </button>
+            <code>{isScaleSet ? `1px = ${pixelToMmRatio.toFixed(2)}mm` : "축척 없음"}</code>
+            {interiorMeasureTarget === "scale" && interiorMeasurePx > 0 ? (
+              <>
+                <code>{Math.round(interiorMeasurePx)}px = ? mm</code>
+                <input
+                  aria-label="측정한 실제 길이"
+                  onChange={(event) => setInteriorCalibrationMm(event.target.value)}
+                  placeholder="이 선의 실제 길이 mm"
+                  style={{ width: 130 }}
+                  type="number"
+                  value={interiorCalibrationMm}
+                />
+                <button className="floor-plan-primary" disabled={!interiorCalibrationMm} onClick={applyInteriorCalibration} type="button">
+                  축척 확정
+                </button>
+              </>
+            ) : null}
+            <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("width")} type="button">
+              가로 재기
+            </button>
+            <input
+              aria-label="방 가로 mm"
+              onChange={(event) => setRoomWidthMm(event.target.value)}
+              placeholder="가로 mm"
+              style={{ width: 90 }}
+              type="number"
+              value={roomWidthMm}
+            />
+            <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("depth")} type="button">
+              세로 재기
+            </button>
+            <input
+              aria-label="방 세로 mm"
+              onChange={(event) => setRoomDepthMm(event.target.value)}
+              placeholder="세로 mm"
+              style={{ width: 90 }}
+              type="number"
+              value={roomDepthMm}
+            />
+            {roomAreaM2 !== null ? (
+              <code style={{ background: "#e6f0ff", padding: "4px 8px", borderRadius: 4, fontWeight: 700 }}>
+                이 방 약 {roomAreaM2.toFixed(1)}㎡ ({roomWidthMm}×{roomDepthMm}mm)
+              </code>
+            ) : (
+              <code>가로·세로 둘 다 재면 면적이 나옵니다</code>
+            )}
+          </div>
+        ) : null}
 
         {wallBoundsMm ? (
           // 축척 확정 전의 mm 수치는 가짜값이라 노출하지 않는다 — 안내 문구만 조용히 보여준다.
@@ -4007,11 +4144,20 @@ export default function RoomlogFloorPlanEditor() {
         </div>
       </section>
 
-      <aside className="floor-plan-sidepanel floor-plan-bottompanel" aria-label="도면 요약">
-        <div>
-          <span>도면 요약</span>
-          <strong>{experienceMode === "landlord" ? "내 도면" : "가구 배치 체험"}</strong>
+      <aside className={`floor-plan-sidepanel floor-plan-drawer${sidePanelOpen ? " is-open" : ""}`} aria-hidden={!sidePanelOpen} aria-label="도면 요약">
+        <div className="floor-plan-drawer-head">
+          <div>
+            <span>도면 요약</span>
+            <strong>{experienceMode === "landlord" ? "내 도면" : "가구 배치 체험"}</strong>
+          </div>
+          <button className="floor-plan-secondary" onClick={() => setSidePanelOpen(false)} type="button">
+            닫기
+          </button>
         </div>
+        {/* 드로어 내부 섹션은 <details> 드롭다운 — 안 보는 섹션은 접어서 스크롤을 줄인다 */}
+        <details className="floor-plan-drawer-section">
+          <summary>요약 지표</summary>
+          <div className="floor-plan-drawer-section-body">
         <dl>
           <div>
             <dt>편집 상태</dt>
@@ -4046,20 +4192,15 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{floorPlanDraftId ? "서버 저장됨" : "로컬 초안"}</dd>
           </div>
         </dl>
+          </div>
+        </details>
 
         {experienceMode === "landlord" ? (
           <>
-            <div className="floor-plan-sim-preview">
-              <span>후보 레이어</span>
-              <code>
-                벽 {summary.wallCount} / 문창문 {openingCandidates.length} / 고정설비 {fixtureCandidates.length}
-              </code>
-              <code>클릭 확정 · Shift+클릭 거절 · 드래그 이동 · Alt+클릭 문↔창문 · 빈 곳 더블클릭 추가</code>
-            </div>
-
             {printedDimensionChips.length ? (
-              <div className="floor-plan-sim-preview">
-                <span>구조 치수</span>
+              <details className="floor-plan-drawer-section">
+                <summary>구조 치수</summary>
+                <div className="floor-plan-drawer-section-body">
                 <div className="floor-plan-furniture-actions">
                   {printedDimensionChips.map((dimension) => (
                     <button
@@ -4076,85 +4217,17 @@ export default function RoomlogFloorPlanEditor() {
                     </button>
                   ))}
                 </div>
-              </div>
-            ) : null}
-
-            {tool === "interior" ? (
-              <div className="floor-plan-sim-preview floor-plan-scale-selected-wall">
-                <span>방 크기 측정 → 면적</span>
-                {/* 축척(1px=mm)은 여기서 따로 확정한다. 아래 가로/세로 재기는 확정된 축척을 소비만 한다. */}
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button
-                    className={interiorMeasureTarget === "scale" ? "floor-plan-secondary active" : "floor-plan-secondary"}
-                    onClick={() => startInteriorMeasure("scale")}
-                    title="실제 길이를 아는 두 점을 클릭하고 mm를 입력하면 축척이 확정됩니다"
-                    type="button"
-                  >
-                    축척 맞추기 (두 점)
-                  </button>
-                  <code>{isScaleSet ? `1px = ${pixelToMmRatio.toFixed(2)}mm` : "축척 없음"}</code>
                 </div>
-
-                {interiorMeasureTarget === "scale" && interiorMeasurePx > 0 ? (
-                  <>
-                    <code>방금 잰 길이: {Math.round(interiorMeasurePx)}px = ? mm</code>
-                    <input
-                      aria-label="측정한 실제 길이"
-                      onChange={(event) => setInteriorCalibrationMm(event.target.value)}
-                      placeholder="이 선의 실제 길이 mm"
-                      type="number"
-                      value={interiorCalibrationMm}
-                    />
-                    <button className="floor-plan-primary" disabled={!interiorCalibrationMm} onClick={applyInteriorCalibration} type="button">
-                      축척 맞추기
-                    </button>
-                  </>
-                ) : null}
-
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("width")} type="button">
-                    가로 재기
-                  </button>
-                  <input
-                    aria-label="방 가로 mm"
-                    onChange={(event) => setRoomWidthMm(event.target.value)}
-                    placeholder="가로 mm"
-                    style={{ width: 90 }}
-                    type="number"
-                    value={roomWidthMm}
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("depth")} type="button">
-                    세로 재기
-                  </button>
-                  <input
-                    aria-label="방 세로 mm"
-                    onChange={(event) => setRoomDepthMm(event.target.value)}
-                    placeholder="세로 mm"
-                    style={{ width: 90 }}
-                    type="number"
-                    value={roomDepthMm}
-                  />
-                </div>
-
-                {roomAreaM2 !== null ? (
-                  <code style={{ background: "#e6f0ff", padding: "4px 8px", borderRadius: 4, fontWeight: 700 }}>
-                    이 방 약 {roomAreaM2.toFixed(1)}㎡ ({roomWidthMm}×{roomDepthMm}mm)
-                  </code>
-                ) : (
-                  <code>가로·세로 둘 다 재면 면적이 나옵니다</code>
-                )}
-              </div>
+              </details>
             ) : null}
 
             {pendingCandidates.length > 0 || reviewedCandidateCount > 0 ? (
-              <div className="floor-plan-candidate-review" aria-label="문창문·설비 후보 검토">
-                <div className="floor-plan-candidate-review-head">
-                  <span>
-                    후보 검토 대기 <strong>{pendingCandidates.length}</strong>개
-                    {reviewedCandidateCount > 0 ? <em> · 처리됨 {reviewedCandidateCount}</em> : null}
-                  </span>
+              <details className="floor-plan-drawer-section" aria-label="문창문·설비 후보 검토">
+                <summary>
+                  후보 검토 대기 <strong>{pendingCandidates.length}</strong>개
+                  {reviewedCandidateCount > 0 ? <em> · 처리됨 {reviewedCandidateCount}</em> : null}
+                </summary>
+                <div className="floor-plan-drawer-section-body">
                   {pendingCandidates.length > 0 ? (
                     <div className="floor-plan-candidate-bulk">
                       <button
@@ -4174,7 +4247,6 @@ export default function RoomlogFloorPlanEditor() {
                       </button>
                     </div>
                   ) : null}
-                </div>
                 {pendingCandidates.length > 0 ? (
                   <ul className="floor-plan-candidate-list">
                     {pendingCandidates.map(([layer, candidate]) => (
@@ -4199,15 +4271,17 @@ export default function RoomlogFloorPlanEditor() {
                 ) : (
                   <code>모든 후보를 검토했어요 — 문창문 도구로 드래그(이동)·Alt+클릭(문↔창문)·더블클릭(추가)으로 계속 수정할 수 있어요</code>
                 )}
-              </div>
+                </div>
+              </details>
             ) : null}
           </>
         ) : null}
 
         {experienceMode === "resident" || tool === "furniture" ? (
           <>
-            <div className="floor-plan-furniture-library">
-              <span>{experienceMode === "landlord" ? "임대인 옵션 가구" : "wheretoput furniture picker"}</span>
+            <details className="floor-plan-drawer-section">
+              <summary>{experienceMode === "landlord" ? "임대인 옵션 가구" : "wheretoput furniture picker"}</summary>
+              <div className="floor-plan-drawer-section-body floor-plan-furniture-library">
               <code>
                 {furnitureCatalogStatus} {filteredFurnitureCatalog.length}/{furnitureCatalog.length} / 옵션 {landlordOptionFurnitures.length} / 내 배치{" "}
                 {residentDesignFurnitures.length}
@@ -4284,10 +4358,12 @@ export default function RoomlogFloorPlanEditor() {
                   );
                 })}
               </div>
-            </div>
+              </div>
+            </details>
 
-            <div className="floor-plan-sim-preview">
-              <span>선택 가구</span>
+            <details className="floor-plan-drawer-section">
+              <summary>선택 가구</summary>
+              <div className="floor-plan-drawer-section-body">
               {selectedFurniture ? (
                 <>
                   <code>
@@ -4338,20 +4414,11 @@ export default function RoomlogFloorPlanEditor() {
               ) : (
                 <code>가구 카드를 선택해주세요</code>
               )}
-            </div>
+              </div>
+            </details>
           </>
         ) : null}
 
-        <div className="floor-plan-sim-preview">
-          <span>position / rotation / dimensions</span>
-          <code>
-            {wheretoputWalls[0]
-              ? `${wheretoputWalls[0].position.join(", ")} / ${wheretoputWalls[0].rotation.join(", ")} / ${
-                  wheretoputWalls[0].dimensions.width
-                }m`
-              : "벽 데이터 없음"}
-          </code>
-        </div>
         <a href="/">마이페이지</a>
       </aside>
     </section>
