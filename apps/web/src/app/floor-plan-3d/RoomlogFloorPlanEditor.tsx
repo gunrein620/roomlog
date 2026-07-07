@@ -2092,7 +2092,7 @@ export default function RoomlogFloorPlanEditor() {
     setSelectedFurnitureId(null);
     setSelectedWall(null);
     setTool("furniture");
-    setViewMode("3d");
+    switchViewMode("3d");
     setUploadStatus(`${item.name} 배치 위치를 3D 바닥에서 클릭`);
   }
 
@@ -3111,9 +3111,12 @@ export default function RoomlogFloorPlanEditor() {
     }
   }
 
-  function convertTo3D() {
+  function switchViewMode(nextMode: ViewMode) {
+    if (nextMode === viewMode) return;
     const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
-    setViewMode((currentMode) => (currentMode === "2d" ? "3d" : "2d"));
+    setViewMode(nextMode);
+    if (nextMode !== "3d") return;
+
     // 3D 변환을 하면 매물 등록 폼이 바로 연결할 수 있게 스냅샷도 갱신한다(저장 전이라도).
     persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
     window.localStorage.setItem(
@@ -3131,6 +3134,10 @@ export default function RoomlogFloorPlanEditor() {
         walls3D: roomWalls3D
       }))
     );
+  }
+
+  function convertTo3D() {
+    switchViewMode("3d");
   }
 
   function saveResidentFurnitureDesign() {
@@ -3278,39 +3285,40 @@ export default function RoomlogFloorPlanEditor() {
         ) : null}
 
         <div className="floor-plan-stage-wrap">
-          {/* 편집 도구는 지도 앱처럼 캔버스 위에 아이콘 툴바로 띄운다 — 맵이 화면 폭을 그대로 쓴다 */}
-          <div className="floor-plan-float-tools" role="toolbar" aria-label="편집 도구">
-            {([
-              ["wall", "드로잉", "벽 그리기", Pencil],
-              ["select", "선택", "벽 선택", MousePointer2],
-              ["eraser", "지우기", "벽 삭제", Eraser],
-              ["partial_eraser", "부분 지우기", "벽 일부 삭제", Scissors],
-              ["hide", "숨기기", "3D 벽 숨기기", EyeOff],
-              ["opening", "문창문", "문/창문 후보 검토", DoorOpen],
-              ["fixture", "설비", "고정 설비 후보 검토", Wrench],
-              ["furniture", "옵션가구", "임대인 옵션 가구 배치", Armchair],
-              ["none", "이동", "화면 이동", Hand]
-            ] as const).map(([toolId, label, hint, ToolIcon]) => (
-              <button
-                className={tool === toolId ? "active" : ""}
-                key={toolId}
-                onClick={() => {
-                  setTool(toolId as EditorTool);
-                  setPartialEraserSelectedWall(null);
-                  if (toolId !== "select") setSelectedWall(null);
-                  if (toolId !== "fixture" && toolId !== "opening") {
-                    setPendingFurniture(null);
-                    setSelectedFurnitureId(null);
-                  }
-                }}
-                title={`${label} — ${hint}`}
-                type="button"
-              >
-                <ToolIcon size={17} strokeWidth={2.2} aria-hidden="true" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
+          {viewMode === "2d" ? (
+            <div className="floor-plan-float-tools" role="toolbar" aria-label="편집 도구">
+              {([
+                ["wall", "드로잉", "벽 그리기", Pencil],
+                ["select", "선택", "벽 선택", MousePointer2],
+                ["eraser", "지우기", "벽 삭제", Eraser],
+                ["partial_eraser", "부분 지우기", "벽 일부 삭제", Scissors],
+                ["hide", "숨기기", "3D 벽 숨기기", EyeOff],
+                ["opening", "문창문", "문/창문 후보 검토", DoorOpen],
+                ["fixture", "설비", "고정 설비 후보 검토", Wrench],
+                ["furniture", "옵션가구", "임대인 옵션 가구 배치", Armchair],
+                ["none", "이동", "화면 이동", Hand]
+              ] as const).map(([toolId, label, hint, ToolIcon]) => (
+                <button
+                  className={tool === toolId ? "active" : ""}
+                  key={toolId}
+                  onClick={() => {
+                    setTool(toolId as EditorTool);
+                    setPartialEraserSelectedWall(null);
+                    if (toolId !== "select") setSelectedWall(null);
+                    if (toolId !== "fixture" && toolId !== "opening") {
+                      setPendingFurniture(null);
+                      setSelectedFurnitureId(null);
+                    }
+                  }}
+                  title={`${label} — ${hint}`}
+                  type="button"
+                >
+                  <ToolIcon size={17} strokeWidth={2.2} aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {viewMode === "2d" ? (
           <div className="floor-plan-canvas-stage">
@@ -3429,9 +3437,27 @@ export default function RoomlogFloorPlanEditor() {
                 {new Date(saveState.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
               </span>
             ) : null}
-            <button className={viewMode === "3d" ? "floor-plan-primary" : "floor-plan-secondary"} onClick={convertTo3D} type="button">
-              {viewMode === "2d" ? "3D 변환" : "2D 편집"}
-            </button>
+            <div className={`floor-plan-view-toggle is-${viewMode}`} role="group" aria-label="도면 보기 전환">
+              <span className="floor-plan-view-toggle-thumb" aria-hidden="true" />
+              <button
+                aria-pressed={viewMode === "3d"}
+                className={viewMode === "3d" ? "active" : ""}
+                onClick={convertTo3D}
+                title="3D 변환"
+                type="button"
+              >
+                3D
+              </button>
+              <button
+                aria-pressed={viewMode === "2d"}
+                className={viewMode === "2d" ? "active" : ""}
+                onClick={() => switchViewMode("2d")}
+                title="2D 편집"
+                type="button"
+              >
+                2D
+              </button>
+            </div>
             {experienceMode === "landlord" ? (
               <>
                 <button
