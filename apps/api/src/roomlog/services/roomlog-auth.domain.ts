@@ -753,6 +753,27 @@ export class RoomlogAuthDomain {
     }
   }
 
+  /**
+   * 매물 직접등록 → 임대인 관계 연결.
+   * LANDLORD capability는 rooms.landlordId에서만 파생되는데, 트레이드 매물 등록은 room을 만들지 않아
+   * 구글 로그인(SEEKER) 계정이 매물을 올려도 "관리 중인 집 연결이 필요합니다" 가드에 막혔다.
+   * 첫 매물 등록 시 매물 정보로 관리용 room을 만들어 그 약속("집을 내놓으면 연결됩니다")을 실체화한다.
+   */
+  ensureLandlordRoomFromListing(userId: string, listing: { title: string; location: string }) {
+    if (this.store.rooms.some((room) => room.landlordId === userId)) {
+      return;
+    }
+
+    this.store.rooms.push({
+      id: id("room"),
+      buildingName: listing.title,
+      roomNo: "101",
+      address: listing.location,
+      landlordId: userId
+    });
+    this.persistStore();
+  }
+
   private findOrCreateRoomForSignup(input: SignupInput, landlordId?: string) {
     const buildingName = input.buildingName?.trim();
     const roomNo = input.roomNo?.trim();
