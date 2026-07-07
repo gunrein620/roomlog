@@ -3401,6 +3401,33 @@ export default function RoomlogFloorPlanEditor() {
     setDetectionBoxes([...cornerAlignedWallBoxes, ...fittedOpeningBoxes]);
     setSelectedWallRunRects(null);
 
+    // 문/창문 후보의 위치·크기를 벽에 맞춰 다듬어진(fitted) 박스로 동기화한다.
+    // 벽 틈(live cut)은 후보 기하에서 뚫리므로, 여기서 맞춰두지 않으면 후처리 직후
+    // 틈 위치가 인식 원본 박스 기준으로 살짝 어긋나 보인다. 편집 시작점도 벽에 딱 맞게 된다.
+    setOpeningCandidates((candidates) =>
+      candidates.map((candidate) => {
+        if (!candidate.position || !candidate.boxPx) return candidate;
+        let bestBox: { x1: number; x2: number; y1: number; y2: number } | null = null;
+        let bestDistance = Infinity;
+        for (const fitted of fittedOpeningBoxes) {
+          if (String(fitted.type).toUpperCase() !== candidate.type.toUpperCase()) continue;
+          const box = normalizeOverlayBox(fitted.box);
+          const distance = Math.hypot((box.x1 + box.x2) / 2 - candidate.position.x, (box.y1 + box.y2) / 2 - candidate.position.y);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestBox = box;
+          }
+        }
+        // 너무 먼 매칭은 다른 후보의 박스일 가능성이 높아 건드리지 않는다.
+        if (!bestBox || bestDistance > 60) return candidate;
+        return {
+          ...candidate,
+          boxPx: { height: bestBox.y2 - bestBox.y1, width: bestBox.x2 - bestBox.x1 },
+          position: { x: (bestBox.x1 + bestBox.x2) / 2, y: (bestBox.y1 + bestBox.y2) / 2 }
+        };
+      })
+    );
+
     // 3D 벽 = 화면에 보이는 벽 박스를 그대로 변환(중심선). 단 문(DOOR) 자리는 잘라서 뚫는다(창문은 이어짐 유지).
     const doorCutBoxes = fittedOpeningBoxes
       .filter((opening) => opening.type === "DOOR")
