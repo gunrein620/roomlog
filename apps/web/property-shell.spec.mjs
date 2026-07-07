@@ -746,6 +746,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "납부할 관리비 없음",
     "예정된 방문 없음",
     "수리 항목을 선택하세요",
+    "집주인 채팅",
     "내 룸로그",
     "메시지",
     "퇴실 정산"
@@ -762,6 +763,11 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.match(cssSource, /\.domain-test-link/);
   assert.match(cssSource, /\.tenant-contract-card/);
   assert.match(cssSource, /\.maintenance-card/);
+  assert.match(pageSource, /tenant-landlord-chat-button/);
+  assert.match(pageSource, /tenant-chat-panel/);
+  assert.match(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
+  assert.match(cssSource, /\.tenant-landlord-chat-button/);
+  assert.match(cssSource, /\.tenant-chat-panel/);
   assert.doesNotMatch(pageSource, /창문 누수|욕실 타일 보수|에어컨 필터|124,000원|오늘 2:30|보일러 온수 불량 접수하기|HVAC|₩124,000|2:30 PM/);
 });
 

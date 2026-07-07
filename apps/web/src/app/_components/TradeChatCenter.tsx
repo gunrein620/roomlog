@@ -94,7 +94,8 @@ export function TradeChatCenter({
   roleFilter,
   emptyText,
   onRequireLogin,
-  focusThreadId
+  focusThreadId,
+  lockedThreadId
 }: {
   /** buyer=보낸 문의만, owner=받은 문의만, 생략=전부 */
   roleFilter?: "buyer" | "owner";
@@ -102,6 +103,8 @@ export function TradeChatCenter({
   onRequireLogin?: () => void;
   /** 값이 바뀌면 해당 스레드를 자동으로 연다(문의 전송 직후 채팅으로 바로 진입). */
   focusThreadId?: string;
+  /** 계약/생활 대시보드처럼 특정 스레드 하나만 보여줄 때 사용한다. */
+  lockedThreadId?: string;
 }) {
   const [threads, setThreads] = useState<TradeThreadSummary[] | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -128,12 +131,13 @@ export function TradeChatCenter({
       }
       if (!res.ok) return;
       const data = (await res.json()) as TradeThreadSummary[];
+      const roleFiltered = roleFilter ? data.filter((item) => item.role === roleFilter) : data;
       setNeedsLogin(false);
-      setThreads(roleFilter ? data.filter((item) => item.role === roleFilter) : data);
+      setThreads(lockedThreadId ? roleFiltered.filter((item) => item.id === lockedThreadId) : roleFiltered);
     } catch {
       // 네트워크 일시 오류는 다음 폴링에서 복구
     }
-  }, [roleFilter]);
+  }, [roleFilter, lockedThreadId]);
 
   const loadOpenThread = useCallback(async (threadId: string) => {
     try {
@@ -158,13 +162,14 @@ export function TradeChatCenter({
     }
   }, []);
 
-  // 외부에서 특정 스레드를 지목하면(문의 전송 직후) 그 대화를 바로 연다.
+  // 외부에서 특정 스레드를 지목하면(문의 전송 직후/계약 대시보드) 그 대화를 바로 연다.
   useEffect(() => {
-    if (focusThreadId) {
-      setOpenThreadId(focusThreadId);
+    const threadId = lockedThreadId || focusThreadId;
+    if (threadId) {
+      setOpenThreadId(threadId);
       loadThreads();
     }
-  }, [focusThreadId, loadThreads]);
+  }, [focusThreadId, lockedThreadId, loadThreads]);
 
   // 내 userId — 말풍선 좌/우 구분용
   useEffect(() => {
@@ -416,13 +421,15 @@ export function TradeChatCenter({
             <div style={{ fontWeight: 900, fontSize: "0.95rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{openThread.listingTitle}</div>
             <div style={{ color: "var(--muted)", fontSize: "0.74rem", fontWeight: 800 }}>{counterpart}님과의 대화</div>
           </div>
-          <button
-            type="button"
-            onClick={() => setOpenThreadId(null)}
-            style={{ flex: "none", minHeight: 32, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line)", background: "#ffffff", fontSize: "0.76rem", fontWeight: 900 }}
-          >
-            목록으로
-          </button>
+          {lockedThreadId ? null : (
+            <button
+              type="button"
+              onClick={() => setOpenThreadId(null)}
+              style={{ flex: "none", minHeight: 32, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line)", background: "var(--paper)", fontSize: "0.76rem", fontWeight: 900 }}
+            >
+              목록으로
+            </button>
+          )}
         </header>
         {contractBar}
         <div ref={scrollRef} style={{ maxHeight: "min(62vh, 560px)", minHeight: 220, overflowY: "auto", padding: 14, display: "grid", gap: 8, background: "var(--canvas)" }}>

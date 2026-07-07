@@ -29,7 +29,8 @@ import {
   Search,
   Share2,
   SlidersHorizontal,
-  UserRound
+  UserRound,
+  X
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -3305,6 +3306,7 @@ function UserMyPage({
 }
 
 type TenantContractSummary = {
+  threadId: string;
   landlordName: string;
   tradeType: "월세" | "전세" | "매매";
   depositManwon: number;
@@ -3395,6 +3397,7 @@ function TenantMyPage({
               landlordId: string;
               landlordName: string;
               status: string;
+              threadId: string;
               tradeType: "월세" | "전세" | "매매";
               depositManwon: number;
               monthlyRentManwon: number;
@@ -3408,6 +3411,7 @@ function TenantMyPage({
             );
             if (accepted) {
               contract = {
+                threadId: accepted.threadId,
                 landlordName: accepted.landlordName,
                 tradeType: accepted.tradeType,
                 depositManwon: accepted.depositManwon,
@@ -3444,6 +3448,7 @@ function TenantMyPage({
   const [maintenancePaid, setMaintenancePaid] = useState(false);
   const [visitConfirmed, setVisitConfirmed] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
+  const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
   const [tenantToast, setTenantToast] = useState("");
   const [isPaying, setIsPaying] = useState(false);
   const [isSubmittingRepair, setIsSubmittingRepair] = useState(false);
@@ -3495,6 +3500,10 @@ function TenantMyPage({
           ["체결일", tenancy.contract?.respondedAt ? tenancyDateLabel(tenancy.contract.respondedAt) : "정보 없음"]
         ]
       : [["안내", "아직 연결된 집이 없습니다. 계약이 체결되면 이 자리에 실제 계약 정보가 표시됩니다."]];
+  const contractThreadId = tenancy && tenancy !== "loading" ? tenancy.contract?.threadId ?? "" : "";
+  const landlordChatTitle = tenancy && tenancy !== "loading" && tenancy.contract?.landlordName
+    ? `${tenancy.contract.landlordName} 집주인`
+    : "계약 집주인";
 
   return (
     <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
@@ -3720,6 +3729,67 @@ function TenantMyPage({
           {scheduledVisit ? (visitConfirmed ? "확인 완료" : "방문 확인") : "관리인 문의"}
         </button>
       </section>
+
+      <button
+        className="tenant-landlord-chat-button"
+        type="button"
+        disabled={!contractThreadId}
+        aria-expanded={isLandlordChatOpen}
+        aria-controls="tenant-landlord-chat-panel"
+        onClick={() => {
+          if (!contractThreadId) {
+            showToast("계약이 체결되면 집주인 채팅을 열 수 있습니다.");
+            return;
+          }
+          setIsLandlordChatOpen(true);
+        }}
+      >
+        <MessageCircle size={18} strokeWidth={2.4} aria-hidden="true" />
+        집주인 채팅
+      </button>
+
+      {isLandlordChatOpen ? (
+        <>
+          <button
+            className="tenant-chat-backdrop"
+            type="button"
+            aria-label="집주인 채팅 닫기"
+            onClick={() => setIsLandlordChatOpen(false)}
+          />
+          <aside
+            className="tenant-chat-panel"
+            id="tenant-landlord-chat-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-landlord-chat-title"
+          >
+            <header className="tenant-chat-panel-head">
+              <div>
+                <span>{landlordChatTitle}</span>
+                <h2 id="tenant-landlord-chat-title">집주인 채팅</h2>
+                <p>{tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "계약한 집"}</p>
+              </div>
+              <button type="button" onClick={() => setIsLandlordChatOpen(false)} aria-label="집주인 채팅 닫기">
+                <X size={18} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            </header>
+            <div className="tenant-chat-panel-body">
+              {tenancy && tenancy !== "loading" && tenancy.contract ? (
+                <TradeChatCenter
+                  roleFilter="buyer"
+                  lockedThreadId={tenancy.contract.threadId}
+                  emptyText="계약한 집주인과의 대화가 아직 준비되지 않았습니다."
+                />
+              ) : (
+                <div className="listing-empty-card" role="status">
+                  <strong>계약 채팅이 없습니다</strong>
+                  <p>계약이 체결되면 집주인과의 대화가 여기에 열립니다.</p>
+                </div>
+              )}
+            </div>
+          </aside>
+        </>
+      ) : null}
 
       {isContractSheetOpen ? (
         <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsContractSheetOpen(false)}>
