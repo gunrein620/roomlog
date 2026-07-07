@@ -1319,7 +1319,7 @@ test("keeps existing wall axes when Roboflow detects only a partial wall segment
 });
 
 test("exposes Roboflow wall post-processing as a separate editor action", () => {
-  for (const label of ["roboflowDetections", "applyRoboflowWallPostProcessing", "벽 후처리 적용", "Roboflow 원본 박스 저장됨"]) {
+  for (const label of ["roboflowDetections", "applyRoboflowWallPostProcessing", "인식 보정", "Roboflow 원본 박스 저장됨"]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
 });
@@ -1729,8 +1729,8 @@ test("renders 3D conversion with the wheretoput React Three Fiber stack", () => 
 test("imports wheretoput-style upload and Roboflow 3D conversion controls", () => {
   for (const label of [
     "도면 등록",
-    "문/창문 탐지",
-    "벽 후처리 적용",
+    "도면 인식",
+    "인식 보정",
     "화면 배율",
     "handleImageUpload",
     "runOpeningDetection",
