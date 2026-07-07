@@ -788,7 +788,7 @@ export default function RoomlogFloorPlanEditor() {
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("도면을 등록하세요");
-  const [aiAnalysisStatus, setAiAnalysisStatus] = useState("문/창문 탐지 대기");
+  const [aiAnalysisStatus, setAiAnalysisStatus] = useState("도면 인식 대기");
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
   // 마지막 저장 결과 — 버튼 옆에 계속 표시해 "저장이 됐는지" 헷갈리지 않게 한다.
   const [saveState, setSaveState] = useState<{ kind: "draft" | "published" | "local"; at: number } | null>(null);
@@ -2471,7 +2471,7 @@ export default function RoomlogFloorPlanEditor() {
       setUploadedImage(imageUrl);
       setUploadedAiImageDataUrl(aiImageDataUrl);
       setUploadedFloorPlanSource(sourceUpload ?? { imageUrl });
-      setAiAnalysisStatus("도면 등록 완료. 문/창문 탐지 버튼으로 Roboflow 탐지를 실행하세요.");
+      setAiAnalysisStatus("도면 등록 완료. 도면 인식 버튼으로 자동 인식을 실행하세요.");
       setFloorPlanDraftId(null);
       setExtractionMeta({
         annotationCandidateCount: 0,
@@ -2672,10 +2672,10 @@ export default function RoomlogFloorPlanEditor() {
       ]);
       setOpeningCandidates((current) => [...current.filter((candidate) => !String(candidate.id).startsWith("rf-")), ...detected]);
       setAiAnalysisStatus(
-        `${result.summary} Roboflow 원본 박스 저장됨: 벽 ${detectedWalls.length}개, 문/창문 ${detectedOpenings.length}개. 벽 후처리 적용을 눌러 3D 변환용 벽으로 정리하세요.`
+        `${result.summary} Roboflow 원본 박스 저장됨: 벽 ${detectedWalls.length}개, 문/창문 ${detectedOpenings.length}개. 인식 보정을 눌러 3D 변환용 벽으로 정리하세요.`
       );
     } catch {
-      setAiAnalysisStatus("문/창문 탐지 실패");
+      setAiAnalysisStatus("도면 인식 실패");
     } finally {
       setIsProcessing(false);
     }
@@ -2747,7 +2747,7 @@ export default function RoomlogFloorPlanEditor() {
 
   async function applyRoboflowWallPostProcessing() {
     if (!roboflowDetections) {
-      setAiAnalysisStatus("먼저 문/창문 탐지로 Roboflow 원본 박스를 가져오세요");
+      setAiAnalysisStatus("먼저 도면 인식으로 Roboflow 원본 박스를 가져오세요");
       return;
     }
 
@@ -2888,7 +2888,7 @@ export default function RoomlogFloorPlanEditor() {
     const boundaries = structuralWallBoundaries;
     const lineCount = boundaries.verticalLineX.length + boundaries.horizontalLineY.length;
     if (!lineCount) {
-      setAiAnalysisStatus("보정할 구조 치수 경계가 없습니다. 문/창문 탐지 → 치수 읽기 → 벽 후처리를 먼저 하세요.");
+      setAiAnalysisStatus("보정할 구조 치수 경계가 없습니다. 도면 인식 → 치수 읽기 → 인식 보정을 먼저 하세요.");
       return;
     }
     if (!walls.length) {
@@ -3175,6 +3175,7 @@ export default function RoomlogFloorPlanEditor() {
           />
           {experienceMode === "landlord" ? (
             <>
+              {/* 작업 순서대로 배치: 도면 등록 → 도면 인식(문/창문 탐지) → 인식 보정(벽 후처리) → 세부 조정(방 크기 재기) */}
               <label
                 aria-disabled={isProcessing}
                 className={`floor-plan-secondary floor-plan-upload-label${isProcessing ? " is-disabled" : ""}`}
@@ -3183,28 +3184,30 @@ export default function RoomlogFloorPlanEditor() {
                 도면 등록
               </label>
               <button
-                className={tool === "interior" ? "floor-plan-secondary active" : "floor-plan-secondary"}
-                onClick={() => startInteriorMeasure(isScaleSet ? "width" : "scale")}
-                title="방 안쪽 두 점을 클릭해 가로/세로(mm)를 재고 면적을 구합니다 (축척이 없으면 축척 맞추기부터 시작)"
-                type="button"
-              >
-                방 크기 재기
-              </button>
-              <button
                 className="floor-plan-secondary"
                 disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
                 onClick={() => runOpeningDetection()}
+                title="Roboflow로 도면의 벽·문/창문을 자동 인식합니다"
                 type="button"
               >
-                문/창문 탐지
+                도면 인식
               </button>
               <button
                 className="floor-plan-secondary"
                 disabled={isProcessing || !roboflowDetections}
                 onClick={applyRoboflowWallPostProcessing}
+                title="인식 결과를 3D 변환용 벽으로 정리합니다"
                 type="button"
               >
-                벽 후처리 적용
+                인식 보정
+              </button>
+              <button
+                className={tool === "interior" ? "floor-plan-secondary active" : "floor-plan-secondary"}
+                onClick={() => startInteriorMeasure(isScaleSet ? "width" : "scale")}
+                title="방 안쪽 두 점을 클릭해 가로/세로(mm)를 재고 축척·면적을 맞춥니다"
+                type="button"
+              >
+                세부 조정
               </button>
             </>
           ) : (
@@ -3219,7 +3222,7 @@ export default function RoomlogFloorPlanEditor() {
         {wallBoundsMm ? (
           <div className={`floor-plan-scale-banner${isScaleSet ? " is-set" : ""}`}>
             📐 전체 {wallBoundsMm.widthMm.toLocaleString()}mm × {wallBoundsMm.heightMm.toLocaleString()}mm{" "}
-            {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '방 내부 재기 → 축척 재기'로 맞추세요"}
+            {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '세부 조정 → 축척 맞추기'로 맞추세요"}
           </div>
         ) : null}
 
@@ -3239,7 +3242,7 @@ export default function RoomlogFloorPlanEditor() {
                     : "AI 선 기준"})
               </code>
             ) : (
-              <code>축척 후보 없음 — 문/창문 탐지를 먼저 실행하세요</code>
+              <code>축척 후보 없음 — 도면 인식을 먼저 실행하세요</code>
             )}
             <div className="floor-plan-visible-dimension-chips">
               {printedDimensionChips.map((dimension) => (
@@ -3473,7 +3476,7 @@ export default function RoomlogFloorPlanEditor() {
                   className="floor-plan-primary"
                   disabled={isProcessing || walls.length === 0 || !isScaleSet}
                   onClick={() => saveFloorPlanDraft("PUBLISHED")}
-                  title={isScaleSet ? "도면을 발행합니다" : "발행하려면 먼저 축척을 맞춰주세요 (방 크기 재기)"}
+                  title={isScaleSet ? "도면을 발행합니다" : "발행하려면 먼저 축척을 맞춰주세요 (세부 조정)"}
                   type="button"
                 >
                   발행
@@ -3508,7 +3511,7 @@ export default function RoomlogFloorPlanEditor() {
           </div>
           <div>
             <dt>축척</dt>
-            <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "미설정 (방 크기 재기)"}</dd>
+            <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "미설정 (세부 조정)"}</dd>
           </div>
           <div>
             <dt>문/창문 확정</dt>
