@@ -3862,6 +3862,7 @@ describe("RoomlogService", () => {
       assert.match(result.instructions, /청구 관리/);
       assert.match(result.instructions, /소통/);
       assert.match(result.instructions, /독촉 발송은 billing\.send_dunning/);
+      assert.doesNotMatch(result.instructions, /확인중 입금 또는 orphan 입금이 있으면 서버가 차단/);
       assert.equal(result.tools.some((tool: any) => tool.name === "run_manager_agent_command"), true);
       assert.match(JSON.stringify(result.tools), /ticket.query/);
       assert.match(JSON.stringify(result.tools), /billing.summary/);
@@ -3982,7 +3983,7 @@ describe("RoomlogService", () => {
       command: "billing.send_dunning",
       text: "411호 미납 독촉 바로 보내줘"
     });
-    const blockedDunningResult = service.runManagerAgentCommand("landlord-demo", {
+    const guardedDunningResult = service.runManagerAgentCommand("landlord-demo", {
       command: "billing.send_dunning",
       billId: "bill-demo-guarded",
       text: "301호 확인중 청구 독촉 보내줘"
@@ -4009,9 +4010,10 @@ describe("RoomlogService", () => {
     assert.match(dunningResult.summary, /411호.*독촉.*발송/);
     assert.equal(dunningResult.navigation?.href, "/manager/billing/dunning/bill-demo-overdue-411?id=bill-demo-overdue-411&send=ok");
 
-    assert.equal(blockedDunningResult.status, "blocked");
-    assert.equal(blockedDunningResult.domain, "billing");
-    assert.match(blockedDunningResult.summary, /입금 확인|미확인 입금|독촉/);
+    assert.equal(guardedDunningResult.status, "executed");
+    assert.equal(guardedDunningResult.domain, "billing");
+    assert.match(guardedDunningResult.summary, /301호.*독촉.*발송/);
+    assert.equal(guardedDunningResult.navigation?.href, "/manager/billing/dunning/bill-demo-guarded?id=bill-demo-guarded&send=ok");
   });
 
   it("sends a manager realtime message into the tenant-visible messaging thread", async () => {
@@ -4057,6 +4059,25 @@ describe("RoomlogService", () => {
 
     assert.equal(lastMessage?.sender, "manager");
     assert.match(lastMessage?.body ?? "", /미납|청구|독촉/);
+  });
+
+  it("sends guarded realtime dunning requests immediately into tenant-visible payment threads", async () => {
+    const service = new RoomlogService();
+
+    const result = service.runManagerAgentCommand("landlord-demo", {
+      command: "billing.send_dunning",
+      text: "302호 독촉 메시지 보내"
+    });
+    const tenantThreads = service.listTenantMessagingThreads("tenant-billing-302");
+    const paymentThread = tenantThreads.find(
+      (thread) => thread.context === "payment" && thread.contextRef === "bill-demo-guarded-302"
+    );
+
+    assert.equal(result.status, "executed");
+    assert.equal(result.domain, "billing");
+    assert.ok(paymentThread, "확인중 청구도 독촉 요청 즉시 임차인 payment 메시지함에 기록되어야 한다.");
+    assert.equal(paymentThread.lastMessage, (result.data as any).text);
+    assert.equal(paymentThread.unreadCount, 1);
   });
 
   it("blocks realtime manager messages that look like payment dunning", async () => {

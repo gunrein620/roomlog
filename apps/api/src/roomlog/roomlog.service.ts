@@ -2427,12 +2427,6 @@ export class RoomlogService {
       throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
     }
 
-    const guard = this.dunningGuardForBill(bill);
-
-    if (guard.blocked) {
-      throw new ConflictException("입금 확인 중이거나 미확인 입금이 있어 독촉을 보낼 수 없습니다.");
-    }
-
     this.recordManagerDunningMessage(managerId, bill, text, channel);
 
     return { ok: true };
@@ -9796,7 +9790,7 @@ export class RoomlogService {
       "실행은 반드시 run_manager_agent_command 도구로 서버 allowlist를 통과한 명령만 사용합니다.",
       "티켓 처리에서는 조건 조회와 다음 확인 지점 제안을 우선합니다.",
       "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
-      "billing.send_dunning은 청구 전용 채널이며 확인중 입금 또는 orphan 입금이 있으면 서버가 차단합니다. 결제 확정과 입금 매칭은 실행하지 않습니다.",
+      "billing.send_dunning은 청구 전용 채널이며 관리인이 명시적으로 요청하면 확인중 입금 또는 orphan 입금 여부와 관계없이 바로 발송합니다. 결제 확정과 입금 매칭은 실행하지 않습니다.",
       "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉이나 공지 발송은 소통 채널로 보내지 않습니다.",
       "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
     ];
