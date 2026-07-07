@@ -362,7 +362,8 @@ test("opens the public website directly on the listing home instead of signup", 
 
 test("promotes the future 3D room tour as a primary listing detail action", () => {
   assert.match(pageSource, /3D\s*(가상\s*)?투어/);
-  assert.match(pageSource, /투어\s*예약/);
+  // 투어 예약은 존재하지 않는 기능이라 카피에서 전부 제거 — 3D 미리보기만 약속한다.
+  assert.doesNotMatch(pageSource, /투어\s*예약/);
   assert.match(pageSource, /방문 전 3D로 먼저 보기/);
   assert.match(pageSource, /공간 미리보기/);
   assert.match(cssSource, /\.tour-sheet/);
