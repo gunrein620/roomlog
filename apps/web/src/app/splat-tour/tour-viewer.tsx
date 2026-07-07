@@ -14,6 +14,8 @@ import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
+import { getSplatAsset } from "@/lib/splat-asset-api";
+import type { SplatTransform } from "./tour-types";
 
 // 임시 조치: splat-transform ≥2.3이 뽑은 SPZ v4를 Spark 2.1.0(v1~3만 지원)이 못 읽어 "Invalid gzip header" 발생.
 // Spark 업그레이드 후 room.spz로 복귀 예정.
@@ -48,6 +50,8 @@ export default function TourViewer() {
     furnitures: [],
     source: "none"
   });
+  // 저장된 정합 결과(SplatAsset.transform). 있으면 SplatScene이 auto-fit 대신 절대 배치를 쓴다.
+  const [assetTransform, setAssetTransform] = useState<SplatTransform | null>(null);
 
   const handleCameraMove = useCallback((position: [number, number, number]) => {
     setMinimapPosition(worldToMinimapPercent(position[0], position[2]));
@@ -66,6 +70,38 @@ export default function TourViewer() {
     setIsLoaded(false);
     setIsLoadingVisible(true);
     setShowHint(true);
+    // 정합값은 asset의 파일에 대한 배치라, 다른 파일을 드롭하면 무의미 — 해제한다.
+    setAssetTransform(null);
+  }, []);
+
+  // ?asset=<id> — 저장된 SplatAsset(fileUrl+정합 transform)을 불러 투어를 연다.
+  // "정합 저장 → 투어 링크 공유"의 뷰어 쪽 진입로. 실패 시 기본 샘플로 폴백.
+  useEffect(() => {
+    const assetId = new URLSearchParams(window.location.search).get("asset");
+    if (!assetId) return;
+
+    let cancelled = false;
+    getSplatAsset(assetId)
+      .then((asset) => {
+        if (cancelled) return;
+        if (asset.fileUrl) {
+          setSrc(asset.fileUrl);
+          setIsLoaded(false);
+          setIsLoadingVisible(true);
+        }
+        setAssetTransform(asset.status === "REGISTERED" ? asset.transform : null);
+        console.info(
+          "[splat-tour] asset " +
+            JSON.stringify({ id: asset.id, status: asset.status, hasTransform: asset.transform !== null, fileUrl: asset.fileUrl })
+        );
+      })
+      .catch((error) => {
+        console.warn("[splat-tour] asset load failed — 기본 샘플로 폴백", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -443,7 +479,7 @@ export default function TourViewer() {
       <Canvas camera={{ fov: 60, position: initialCamera }} shadows>
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
-        <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} />
+        <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} transform={assetTransform} />
         {/* 가구 레이어는 도면 좌표 그대로 월드에 놓인다(월드=도면 프레임) */}
         {showFurniture && furnitureState.furnitures.length > 0 ? (
           <SplatFurnitureLayer furnitures={furnitureState.furnitures} />
