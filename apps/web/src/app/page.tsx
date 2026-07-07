@@ -932,6 +932,18 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const [photoCount, setPhotoCount] = useState(0);
   // 선택한 실제 파일(등록 시 업로드) — 초안 저장 대상은 아니다(파일은 직렬화 불가).
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  // 선택 즉시 보이는 미리보기 URL — photoFiles가 바뀌면 이전 objectURL은 회수한다.
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = photoFiles.map((file) => URL.createObjectURL(file));
+    setPhotoPreviewUrls(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [photoFiles]);
+  const removePhotoAt = (index: number) => {
+    const next = photoFiles.filter((_, i) => i !== index);
+    setPhotoFiles(next);
+    setPhotoCount(next.length);
+  };
   // 주소 지오코딩 결과 — 등록 페이로드의 lat/lng로 실린다(실패/미활성 시 null).
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [has3DRoom, setHas3DRoom] = useState(false);
@@ -1160,6 +1172,17 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
         if (!response.ok) {
           setOwnerToast(isEditing ? "매물 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." : "매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.");
           return;
+        }
+
+        // 서버가 돌려준 매물을 즉시 목록에 반영 — 뒤의 재조회가 늦거나 캐시돼도 "내 매물"에 바로 보인다.
+        const savedListing = (await response.json().catch(() => null)) as TradeListing | null;
+        if (savedListing?.id) {
+          setServerListings((current) => {
+            const base = current ?? [];
+            return isEditing
+              ? base.map((item) => (item.id === savedListing.id ? savedListing : item))
+              : [savedListing, ...base.filter((item) => item.id !== savedListing.id)];
+          });
         }
 
         // 등록/수정 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
@@ -1890,6 +1913,22 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
               }}
             />
           </label>
+
+          {photoPreviewUrls.length > 0 ? (
+            <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
+              {photoPreviewUrls.map((url, index) => (
+                <figure key={url}>
+                  {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={`선택한 사진 ${index + 1}`} />
+                  {index === 0 ? <figcaption>대표 사진</figcaption> : null}
+                  <button type="button" aria-label={`사진 ${index + 1} 빼기`} onClick={() => removePhotoAt(index)}>
+                    ×
+                  </button>
+                </figure>
+              ))}
+            </div>
+          ) : null}
 
           <a
             className={has3DRoom ? "upload-3d-button floor-plan-link active" : "upload-3d-button floor-plan-link"}
@@ -4402,9 +4441,28 @@ export default function Home() {
       setActiveTab(tab);
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
+    } else {
+      // 새로고침이 홈으로 튕기지 않게 — 이 탭에서 마지막으로 보던 탭/역할을 복원한다(딥링크와 같은 취급).
+      const storedTab = normalizeAppTab(window.sessionStorage.getItem("woozuLastTab"));
+      const storedRole = normalizeAppRole(window.sessionStorage.getItem("woozuLastRole"));
+      if (storedRole && storedRole !== "seeker") {
+        urlRoleAppliedRef.current = true;
+        setIsDevRolePreview(true);
+        setActiveRole(storedRole);
+      }
+      if (storedTab && storedTab !== "home") {
+        setActiveTab(storedTab);
+      }
     }
     setIsRouteReady(true);
   }, []);
+
+  // 현재 탭/역할을 세션에 남겨 새로고침 복원에 쓴다 (브라우저 탭 단위 — 새 탭은 홈부터 시작).
+  useEffect(() => {
+    if (!isRouteReady || typeof window === "undefined") return;
+    window.sessionStorage.setItem("woozuLastTab", activeTab);
+    window.sessionStorage.setItem("woozuLastRole", activeRole);
+  }, [activeTab, activeRole, isRouteReady]);
 
   // 로그인 화면이 열려 있는 동안 브라우저 뒤로가기를 누르면 홈으로 돌아가도록 처리.
   useEffect(() => {
