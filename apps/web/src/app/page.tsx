@@ -3304,6 +3304,38 @@ function UserMyPage({
   );
 }
 
+type TenantContractSummary = {
+  landlordName: string;
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  respondedAt?: string;
+};
+
+type TenantTenancy = {
+  buildingName: string;
+  roomNo: string;
+  address: string;
+  contract: TenantContractSummary | null;
+};
+
+// 계약 조건 한 줄 표기 — 실제 연결된 계약이 없으면 위조하지 않고 그 사실을 그대로 알린다.
+function tenancyTermsLabel(contract: TenantContractSummary | null): string {
+  if (!contract) return "계약 조건 정보 없음";
+  const deposit = (contract.depositManwon || 0).toLocaleString("ko-KR");
+  if (contract.tradeType === "월세") {
+    return `보증금 ${deposit}만원 · 월세 ${(contract.monthlyRentManwon || 0).toLocaleString("ko-KR")}만원`;
+  }
+  return `${contract.tradeType} ${deposit}만원`;
+}
+
+function tenancyDateLabel(iso?: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(date);
+}
+
 function TenantMyPage({
   onSelectFlow,
   onGoInquiry,
@@ -3313,6 +3345,79 @@ function TenantMyPage({
   onGoInquiry: () => void;
   onGoHome: () => void;
 }) {
+  // 이 계정에 실제로 연결된 집 — 없으면 null(연결 안내), 확인 전엔 "loading".
+  // 하드코딩된 매물 정보를 보여주던 자리를 실제 계약 데이터로 교체한다(위조 금지).
+  const [tenancy, setTenancy] = useState<TenantTenancy | null | "loading">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!meRes.ok) {
+          if (!cancelled) setTenancy(null);
+          return;
+        }
+        const me = (await meRes.json()) as {
+          userId?: string;
+          room?: { buildingName: string; roomNo: string; address: string; landlordId?: string };
+        };
+        if (!me.userId || !me.room) {
+          if (!cancelled) setTenancy(null);
+          return;
+        }
+
+        let contract: TenantContractSummary | null = null;
+        try {
+          const contractsRes = await fetch("/api/trade/contracts", { cache: "no-store" });
+          if (contractsRes.ok) {
+            const contracts = (await contractsRes.json()) as Array<{
+              tenantId: string;
+              landlordId: string;
+              landlordName: string;
+              status: string;
+              tradeType: "월세" | "전세" | "매매";
+              depositManwon: number;
+              monthlyRentManwon: number;
+              respondedAt?: string;
+            }>;
+            const accepted = contracts.find(
+              (item) =>
+                item.tenantId === me.userId &&
+                item.status === "accepted" &&
+                item.landlordId === me.room?.landlordId
+            );
+            if (accepted) {
+              contract = {
+                landlordName: accepted.landlordName,
+                tradeType: accepted.tradeType,
+                depositManwon: accepted.depositManwon,
+                monthlyRentManwon: accepted.monthlyRentManwon,
+                respondedAt: accepted.respondedAt
+              };
+            }
+          }
+        } catch {
+          // 계약 상세 조회 실패 — 방 정보만으로도 표시는 이어간다
+        }
+
+        if (!cancelled) {
+          setTenancy({
+            buildingName: me.room.buildingName,
+            roomNo: me.room.roomNo,
+            address: me.room.address,
+            contract
+          });
+        }
+      } catch {
+        if (!cancelled) setTenancy(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [repairRequests, setRepairRequests] = useState([
     { id: 1, title: "창문 누수", status: "업체 배정" },
     { id: 2, title: "욕실 타일 보수", status: "접수됨" }
@@ -3347,14 +3452,27 @@ function TenantMyPage({
     }, 600);
   };
 
-  const contractRows = [
-    ["임대인", "김우주"],
-    ["계약 기간", "2025-11-04 ~ 2027-11-03"],
-    ["보증금", "1,000만원"],
-    ["월세", "130만원"],
-    ["관리비", "12만 4,000원"],
-    ["특약", "재계약 시 월세 인상률 5% 이내"]
-  ];
+  // 연결된 집이 없으면 특정 임대인/금액을 지어내지 않고 그 사실 자체를 한 행으로 보여준다.
+  const contractRows: Array<[string, string]> =
+    tenancy && tenancy !== "loading"
+      ? [
+          ["집 주소", `${tenancy.buildingName} ${tenancy.roomNo}호`],
+          ["상세 주소", tenancy.address || "미등록"],
+          ["임대인", tenancy.contract?.landlordName ?? "정보 없음"],
+          ["거래 유형", tenancy.contract?.tradeType ?? "정보 없음"],
+          [
+            "보증금",
+            tenancy.contract ? `${(tenancy.contract.depositManwon || 0).toLocaleString("ko-KR")}만원` : "정보 없음"
+          ],
+          [
+            "월세",
+            tenancy.contract && tenancy.contract.tradeType === "월세"
+              ? `${(tenancy.contract.monthlyRentManwon || 0).toLocaleString("ko-KR")}만원`
+              : "-"
+          ],
+          ["체결일", tenancy.contract?.respondedAt ? tenancyDateLabel(tenancy.contract.respondedAt) : "정보 없음"]
+        ]
+      : [["안내", "아직 연결된 집이 없습니다. 계약이 체결되면 이 자리에 실제 계약 정보가 표시됩니다."]];
 
   return (
     <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
@@ -3376,8 +3494,24 @@ function TenantMyPage({
       <section className="tenant-contract-card" aria-label="계약 상태">
         <div>
           <span>계약 상태</span>
-          <strong>D-124 재계약 예정</strong>
-          <p>방배 루미에르 402호 · 보증금 1,000만원 · 월세 130만원</p>
+          {tenancy === "loading" ? (
+            <>
+              <strong>확인 중…</strong>
+              <p>연결된 집 정보를 불러오고 있어요.</p>
+            </>
+          ) : tenancy ? (
+            <>
+              <strong>{tenancy.contract ? "계약 중" : "집 연결됨 · 계약 정보 없음"}</strong>
+              <p>
+                {tenancy.buildingName} {tenancy.roomNo}호 · {tenancyTermsLabel(tenancy.contract)}
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>연결된 집이 없어요</strong>
+              <p>집주인과 채팅에서 계약이 체결되면 이 화면이 실제 계약 정보로 채워집니다.</p>
+            </>
+          )}
         </div>
         <button type="button" onClick={() => setIsContractSheetOpen(true)}>계약서 보기</button>
       </section>
@@ -3552,8 +3686,14 @@ function TenantMyPage({
             <header>
               <div>
                 <span>전자 계약서</span>
-                <h2 id="contract-sheet-title">방배 루미에르 402호</h2>
-                <p>2025-11-04 체결 · 임대차 표준계약서</p>
+                <h2 id="contract-sheet-title">
+                  {tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "연결된 집 없음"}
+                </h2>
+                <p>
+                  {tenancy && tenancy !== "loading" && tenancy.contract?.respondedAt
+                    ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결 · 임대차 표준계약서`
+                    : "계약이 체결되면 체결일이 여기에 표시됩니다."}
+                </p>
               </div>
               <button type="button" onClick={() => setIsContractSheetOpen(false)} aria-label="계약서 닫기">×</button>
             </header>
