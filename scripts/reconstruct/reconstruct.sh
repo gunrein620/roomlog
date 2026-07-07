@@ -24,8 +24,13 @@ mkdir -p "$ROOT"
 echo "▶ [1/4] 키프레임 추출 + SfM 카메라 포즈 (${SFM_TOOL})  — 수 분"
 # ns-process-data가 ffmpeg 프레임추출 → feature/match/mapper를 한 번에 처리.
 if [ "$SFM_TOOL" = "hloc" ]; then
-  # 실험(2026-07-07~): SIFT가 전멸한 흰벽·반사면 영상에서 학습 기반 특징점(SuperPoint)이
-  # 통하는지 검증. hloc은 nerfstudio 컨테이너에 포함돼 있으나 첫 실행 시 모델 다운로드.
+  # 실측(2026-07-07): SIFT 2/900 전멸 영상에서 SuperPoint+SuperGlue가 718/900 — 저텍스처 구제 확정.
+  # 단 컨테이너 포장 누락 4종(가중치 repo·wget·pycolmap 패치·node) 선행 필요 → setup-container.sh.
+  if [ ! -d "$PWD/SuperGluePretrainedNetwork/models/weights" ]; then
+    echo "✗ SuperGluePretrainedNetwork 없음 — 먼저: bash setup-container.sh"
+    exit 1
+  fi
+  export PYTHONPATH="$PWD:${PYTHONPATH:-}"   # hloc이 SuperGlue repo를 모듈로 import
   ns-process-data video --data "$VIDEO" --output-dir "$DATA" --num-frames-target "$FRAMES" \
     --sfm-tool hloc --feature-type superpoint_aachen --matcher-type superglue
 else

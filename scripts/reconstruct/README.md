@@ -33,7 +33,16 @@ docker run --gpus all -it --rm --shm-size=12gb \
   ghcr.io/nerfstudio-project/nerfstudio:latest bash
 ```
 
-컨테이너 안에는 node가 없을 수 있다 → `.ply`까지만 만들고 `.spz` 변환은 호스트/웹앱에서(아래).
+```sh
+# 4) 컨테이너 안에서 포장 누락 채우기 (멱등 — 컨테이너를 새로 띄우면 다시 실행)
+bash /workspace/setup-container.sh
+```
+
+nerfstudio 이미지는 hloc 코드만 있고 실행 포장 4종이 비어 있다(2026-07-07 실측): SuperGlue
+가중치 repo · wget(NetVLAD 다운로드) · hloc↔pycolmap `verify_matches` API 패치 · node(spz 압축).
+`setup-container.sh`가 전부 처리한다. 가중치 repo는 `/workspace` 마운트에 남아 컨테이너가
+죽어도 유지되고, 나머지 셋은 컨테이너 파일시스템이라 새 컨테이너마다 재실행이 필요하다.
+셋업을 안 돌렸으면 `.spz` 변환만 호스트/웹앱에서 따로 할 수도 있다(아래).
 
 > **native 설치가 필요하면**: conda(py3.10) + 박스 CUDA에 맞는 torch + `pip install nerfstudio` +
 > `pip install gsplat` + COLMAP(apt). Docker보다 취약하니 첫 실행은 Docker 권장.
