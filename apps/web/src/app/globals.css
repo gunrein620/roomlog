@@ -3843,6 +3843,171 @@ p {
   overflow: hidden;
 }
 
+.listing-tour-room3d {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.listing-tour-furniture {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  max-height: calc(100% - 20px);
+  overflow: auto;
+  border: 1px solid rgba(217, 223, 235, 0.92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 36px rgba(18, 24, 40, 0.18);
+  backdrop-filter: blur(8px);
+}
+
+.listing-tour-furniture-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.listing-tour-furniture-head div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.listing-tour-furniture-head strong {
+  color: #172033;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.listing-tour-furniture-head span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listing-tour-furniture-head button,
+.listing-tour-furniture-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(47, 85, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(47, 85, 255, 0.08);
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.listing-tour-furniture-head button:hover,
+.listing-tour-furniture-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(47, 85, 255, 0.12);
+}
+
+.listing-tour-furniture-body {
+  display: grid;
+  gap: 10px;
+}
+
+.listing-tour-furniture-search input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid #d9dfeb;
+  border-radius: 14px;
+  background: #f8faff;
+  color: #172033;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.listing-tour-furniture-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.listing-tour-furniture-grid button {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 4px 9px;
+  align-items: center;
+  min-height: 62px;
+  padding: 9px;
+  border: 1px solid #e2e7f1;
+  border-radius: 16px;
+  background: #fbfcff;
+  color: #172033;
+  text-align: left;
+}
+
+.listing-tour-furniture-grid button.active {
+  border-color: var(--blue);
+  background: rgba(47, 85, 255, 0.08);
+  box-shadow: 0 0 0 2px rgba(47, 85, 255, 0.1);
+}
+
+.listing-tour-furniture-thumb {
+  grid-row: 1 / 3;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(18, 24, 40, 0.08);
+}
+
+.listing-tour-furniture-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.listing-tour-furniture-grid strong,
+.listing-tour-furniture-grid small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listing-tour-furniture-grid strong {
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.listing-tour-furniture-grid small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.listing-tour-furniture-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.listing-tour-furniture-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .tour-room-loading {
   display: grid;
   place-content: center;
