@@ -16,3 +16,7 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .DS_Store
+
+# 대용량 로컬 전용 샘플 — 이미지에 넣지 않는다 (뷰어는 spz만 로드)
+apps/web/public/samples/*.ply
+apps/web/public/samples/ms_home.spz
