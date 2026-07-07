@@ -126,7 +126,8 @@ export default function TourViewer() {
         }
         const transform = asset.status === "REGISTERED" ? asset.transform : null;
         setAssetTransform(transform);
-        setShowPlanWalls(resolveWallReplace(window.location.search, transform !== null));
+        // 벽 패널도 기본 OFF(2026-07-07 결정, splat-scene의 클립 기본값과 일치) — ?splatWalls=1로 옵트인.
+        setShowPlanWalls(resolveWallReplace(window.location.search, false));
         console.info(
           "[splat-tour] asset " +
             JSON.stringify({ id: asset.id, status: asset.status, hasTransform: asset.transform !== null, fileUrl: asset.fileUrl })
