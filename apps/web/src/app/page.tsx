@@ -3319,6 +3319,25 @@ type TenantTenancy = {
   contract: TenantContractSummary | null;
 };
 
+type TenantRepairRequest = {
+  id: number;
+  title: string;
+  status: "접수됨" | "업체 배정";
+};
+
+type TenantMaintenanceBill = {
+  amountLabel: string;
+  summary: string;
+  paidSummary: string;
+};
+
+type TenantVisit = {
+  timeLabel: string;
+  title: string;
+  pendingDescription: string;
+  confirmedDescription: string;
+};
+
 // 계약 조건 한 줄 표기 — 실제 연결된 계약이 없으면 위조하지 않고 그 사실을 그대로 알린다.
 function tenancyTermsLabel(contract: TenantContractSummary | null): string {
   if (!contract) return "계약 조건 정보 없음";
@@ -3418,11 +3437,10 @@ function TenantMyPage({
     };
   }, []);
 
-  const [repairRequests, setRepairRequests] = useState([
-    { id: 1, title: "창문 누수", status: "업체 배정" },
-    { id: 2, title: "욕실 타일 보수", status: "접수됨" }
-  ]);
-  const [selectedIssue, setSelectedIssue] = useState(tenantIssuePresets[0]);
+  const [repairRequests, setRepairRequests] = useState<TenantRepairRequest[]>([]);
+  const [maintenanceBill] = useState<TenantMaintenanceBill | null>(null);
+  const [scheduledVisit] = useState<TenantVisit | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState("");
   const [maintenancePaid, setMaintenancePaid] = useState(false);
   const [visitConfirmed, setVisitConfirmed] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
@@ -3438,6 +3456,10 @@ function TenantMyPage({
     window.setTimeout(() => setTenantToast(""), 2400);
   };
   const addRepairRequest = () => {
+    if (!selectedIssue) {
+      return;
+    }
+
     if (isSubmittingRepairRef.current) {
       return;
     }
@@ -3520,31 +3542,36 @@ function TenantMyPage({
         <article>
           <span>수리요청</span>
           <strong>{String(repairRequests.length).padStart(2, "0")}건</strong>
-          <p>{repairRequests.slice(0, 2).map((item) => item.title).join(" · ")}</p>
+          <p>{repairRequests.length ? repairRequests.slice(0, 2).map((item) => item.title).join(" · ") : "접수된 수리요청 없음"}</p>
         </article>
         <article>
           <span>관리비</span>
-          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
-          <p>{maintenancePaid ? "7월분 납부 확인" : "이번 달 납부 예정"}</p>
+          <strong>{maintenanceBill ? (maintenancePaid ? "납부 완료" : maintenanceBill.amountLabel) : "납부할 관리비 없음"}</strong>
+          <p>{maintenanceBill ? (maintenancePaid ? maintenanceBill.paidSummary : "이번 달 납부 예정") : "청구가 등록되면 표시됩니다."}</p>
         </article>
         <article>
           <span>방문 일정</span>
-          <strong>{visitConfirmed ? "확인 완료" : "오늘 2:30"}</strong>
-          <p>에어컨 필터 점검</p>
+          <strong>{scheduledVisit ? (visitConfirmed ? "확인 완료" : scheduledVisit.timeLabel) : "예정된 방문 없음"}</strong>
+          <p>{scheduledVisit ? scheduledVisit.title : "확정된 일정이 없습니다."}</p>
         </article>
       </div>
 
       <section className="tenant-contract-card" aria-label="관리비 납부">
         <div>
           <span>이번 달 관리비</span>
-          <strong>{maintenancePaid ? "납부 완료" : "124,000원"}</strong>
-          <p>{maintenancePaid ? "7월 관리비 납부가 확인됐습니다." : "수도·인터넷 포함 · 7월 25일까지"}</p>
+          <strong>{maintenanceBill ? (maintenancePaid ? "납부 완료" : maintenanceBill.amountLabel) : "납부할 관리비 없음"}</strong>
+          <p>{maintenanceBill ? (maintenancePaid ? maintenanceBill.paidSummary : maintenanceBill.summary) : "관리인이 청구를 등록하면 납부할 수 있습니다."}</p>
         </div>
         <button
           type="button"
-          disabled={isPaying}
+          disabled={!maintenanceBill || isPaying}
           aria-busy={isPaying}
           onClick={() => {
+            if (!maintenanceBill) {
+              return;
+            }
+            const currentBill = maintenanceBill;
+
             if (maintenancePaid) {
               showToast("영수증이 문자로 발송됐습니다.");
               return;
@@ -3560,7 +3587,7 @@ function TenantMyPage({
               setMaintenancePaid(true);
               isPayingRef.current = false;
               setIsPaying(false);
-              showToast("관리비 124,000원 납부가 완료됐습니다.");
+              showToast(`관리비 ${currentBill.amountLabel} 납부가 완료됐습니다.`);
             }, 700);
           }}
         >
@@ -3571,6 +3598,8 @@ function TenantMyPage({
             </>
           ) : maintenancePaid ? (
             "영수증 보기"
+          ) : !maintenanceBill ? (
+            "납부 대기"
           ) : (
             "납부하기"
           )}
@@ -3586,12 +3615,16 @@ function TenantMyPage({
           <button type="button" onClick={onGoInquiry}>관리인 문의</button>
         </div>
         <div className="tenant-repair-list">
-          {repairRequests.map((item) => (
-            <article key={item.id}>
-              <strong>{item.title}</strong>
-              <em className={item.status === "업체 배정" ? "assigned" : ""}>{item.status}</em>
-            </article>
-          ))}
+          {repairRequests.length ? (
+            repairRequests.map((item) => (
+              <article key={item.id}>
+                <strong>{item.title}</strong>
+                <em className={item.status === "업체 배정" ? "assigned" : ""}>{item.status}</em>
+              </article>
+            ))
+          ) : (
+            <p className="tenant-repair-empty">아직 접수된 수리요청이 없어요</p>
+          )}
         </div>
         <div className="tenant-repair-new">
           <strong>새 수리요청</strong>
@@ -3607,12 +3640,20 @@ function TenantMyPage({
               </button>
             ))}
           </div>
-          <button className="repair-submit" type="button" onClick={addRepairRequest} disabled={isSubmittingRepair} aria-busy={isSubmittingRepair}>
+          <button
+            className="repair-submit"
+            type="button"
+            onClick={addRepairRequest}
+            disabled={isSubmittingRepair || !selectedIssue}
+            aria-busy={isSubmittingRepair}
+          >
             {isSubmittingRepair ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
                 접수 처리 중…
               </>
+            ) : !selectedIssue ? (
+              "수리 항목을 선택하세요"
             ) : (
               `${selectedIssue} 접수하기`
             )}
@@ -3652,24 +3693,31 @@ function TenantMyPage({
         <small className="domain-test-note">이 계정에 사는 집이 연결되면 이어집니다.</small>
       </section>
 
-      <section className="maintenance-card" aria-label="긴급 점검 일정">
-        <span>오늘 방문 일정</span>
-        <h3>에어컨 필터 교체 방문</h3>
+      <section className="maintenance-card" aria-label="방문 일정">
+        <span>{scheduledVisit ? "오늘 방문 일정" : "방문 일정"}</span>
+        <h3>{scheduledVisit ? scheduledVisit.title : "예정된 방문 없음"}</h3>
         <p>
-          {visitConfirmed
-            ? "방문 확인이 완료됐습니다. 기사에게 방문 예정 알림이 전달됐어요."
-            : "관리 기사가 오늘 오후 2시 30분 방문합니다. 현관과 설비실 접근만 확인해주세요."}
+          {scheduledVisit
+            ? visitConfirmed
+              ? scheduledVisit.confirmedDescription
+              : scheduledVisit.pendingDescription
+            : "관리인이나 업체가 일정을 확정하면 여기에 표시됩니다."}
         </p>
         <button
           type="button"
           onClick={() => {
+            if (!scheduledVisit) {
+              onGoInquiry();
+              return;
+            }
+
             if (!visitConfirmed) {
               setVisitConfirmed(true);
               showToast("방문 일정을 확인했습니다.");
             }
           }}
         >
-          {visitConfirmed ? "확인 완료" : "방문 확인"}
+          {scheduledVisit ? (visitConfirmed ? "확인 완료" : "방문 확인") : "관리인 문의"}
         </button>
       </section>
 

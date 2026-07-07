@@ -9764,6 +9764,16 @@ p {
   color: #067a4b;
 }
 
+.tenant-repair-empty {
+  margin: 0;
+  padding: 12px 13px;
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .tenant-repair-new {
   display: grid;
   gap: 9px;

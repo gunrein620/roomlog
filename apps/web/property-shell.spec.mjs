@@ -742,8 +742,10 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "수리요청",
     "관리비",
     "방문 일정",
-    "에어컨 필터 교체 방문",
-    "124,000원",
+    "아직 접수된 수리요청이 없어요",
+    "납부할 관리비 없음",
+    "예정된 방문 없음",
+    "수리 항목을 선택하세요",
     "내 룸로그",
     "메시지",
     "퇴실 정산"
@@ -760,7 +762,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.match(cssSource, /\.domain-test-link/);
   assert.match(cssSource, /\.tenant-contract-card/);
   assert.match(cssSource, /\.maintenance-card/);
-  assert.doesNotMatch(pageSource, /HVAC|₩124,000|2:30 PM/);
+  assert.doesNotMatch(pageSource, /창문 누수|욕실 타일 보수|에어컨 필터|124,000원|오늘 2:30|보일러 온수 불량 접수하기|HVAC|₩124,000|2:30 PM/);
 });
 
 test("shows a landlord my page with property registration fields and media actions", () => {
