@@ -13,9 +13,18 @@ export interface QueueItem {
   href: string;
 }
 
+export interface ManagedRoomSummary {
+  id: string;
+  buildingName: string;
+  roomNo: string;
+  address: string;
+}
+
 export interface ManagerHomeSummary {
   managerName: string;
   managedRoomCount: number;
+  /** 세션 계정이 실제로 소유/관리하는 집 — 건물 요약은 이 목록만 보여준다(데모 금지). */
+  managedRooms: ManagedRoomSummary[];
   todoCount: number; // 오늘 할 일 총합 (홈 primary = 숫자 1 + CTA)
   queues: QueueItem[]; // 미처리 허브 분해 (M-HOME-01)
   kpi: {
@@ -41,9 +50,17 @@ export async function getManagerHomeSummary(sessionUser?: SessionUser): Promise<
     { type: "ticket", label: "처리할 티켓", count: pending.length, href: MANAGER_CROSS.ticketDash },
   ].filter((q) => q.count > 0);
 
+  const managedRooms: ManagedRoomSummary[] = (user?.managedRooms ?? []).map((room) => ({
+    id: room.id,
+    buildingName: room.buildingName || "이름 미입력 건물",
+    roomNo: room.roomNo || "-",
+    address: room.address || "주소 미입력"
+  }));
+
   return {
     managerName: user?.name ?? "관리인",
-    managedRoomCount: user?.managedRooms?.length ?? 0,
+    managedRoomCount: managedRooms.length,
+    managedRooms,
     todoCount: queues.reduce((n, q) => n + q.count, 0),
     queues,
     kpi: {
