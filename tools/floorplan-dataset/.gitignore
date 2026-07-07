@@ -1,0 +1,8 @@
+# dewatermark 전용 가상환경 (opencv 등) — 커밋 금지
+.venv-dewm/
+__pycache__/
+# 생성 산출물(데이터셋/오버레이/평가 리포트) — 대용량, git 금지. 데탑 이관은 파일 복사로.
+export/
+overlays/
+eval/
+.DS_Store
