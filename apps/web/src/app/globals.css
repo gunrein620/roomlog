@@ -7663,6 +7663,49 @@ p {
   flex-direction: column;
   gap: 14px;
   padding: 14px;
+  /* 상태 토스트 스택의 기준 좌표계 */
+  position: relative;
+}
+
+/* 상태 메시지 토스트 — 캔버스 하단 중앙에 최근 몇 개가 쌓였다가 자동으로 사라진다.
+   덮어쓰기·영구 잔류하던 한 줄 span을 대체. */
+.floor-plan-toast-stack {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.floor-plan-toast {
+  max-width: min(520px, 80vw);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(24, 30, 46, 0.86);
+  color: #f4f6fb;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  word-break: keep-all;
+  box-shadow: 0 8px 22px rgba(18, 24, 40, 0.28);
+  animation: floor-plan-toast-in 0.18s ease-out;
+}
+
+@keyframes floor-plan-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .floor-plan-canvas > .floor-plan-stage-wrap {

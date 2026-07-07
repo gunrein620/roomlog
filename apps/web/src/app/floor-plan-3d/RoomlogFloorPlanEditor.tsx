@@ -751,6 +751,9 @@ function findPrintedDimensionLineSpan(
   };
 }
 
+// Ctrl+Z 이력 한 칸 — 벽과 문/창문·설비 후보를 함께 스냅샷해 편집 종류와 무관하게 되돌린다.
+type EditorHistorySnapshot = { fixtures: FloorPlanCandidate[]; openings: FloorPlanCandidate[]; walls: Wall[] };
+
 export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -797,7 +800,28 @@ export default function RoomlogFloorPlanEditor() {
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState("도면을 등록하세요");
+  // 상태 메시지 토스트 — 예전엔 span 하나가 60여 종 피드백(줌·삭제·undo·저장…)을 덮어썼고
+  // 자동으로 사라지지도 않았다. 최근 3개까지 쌓이고 몇 초 뒤 사라지는 토스트로 교체.
+  // 호출부가 매우 많아 setUploadStatus라는 이름은 그대로 둔다.
+  const [statusToasts, setStatusToasts] = useState<Array<{ id: number; text: string }>>([]);
+  const statusToastIdRef = useRef(0);
+  const statusToastTimersRef = useRef<number[]>([]);
+  const setUploadStatus = useCallback((text: string) => {
+    statusToastIdRef.current += 1;
+    const id = statusToastIdRef.current;
+    setStatusToasts((toasts) => [...toasts.slice(-2), { id, text }]);
+    statusToastTimersRef.current.push(
+      window.setTimeout(() => {
+        setStatusToasts((toasts) => toasts.filter((toast) => toast.id !== id));
+      }, 4500)
+    );
+  }, []);
+  useEffect(() => {
+    const timers = statusToastTimersRef.current;
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, []);
   const [aiAnalysisStatus, setAiAnalysisStatus] = useState("도면 인식 대기");
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
   // 마지막 저장 결과 — 버튼 옆에 계속 표시해 "저장이 됐는지" 헷갈리지 않게 한다.
@@ -816,16 +840,22 @@ export default function RoomlogFloorPlanEditor() {
   const [roomDepthMm, setRoomDepthMm] = useState("");
   // 요약/후보/가구 패널 — 캔버스를 덮는 오른쪽 접이식 드로어. 평소엔 닫아 캔버스가 전체 폭을 쓴다.
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  // 방 크기 측정 섹션(드로어 안 <details>) — 세부 조정에 들어가면 자동으로 펼친다.
+  const interiorMeasureSectionRef = useRef<HTMLDetailsElement | null>(null);
   useEffect(() => {
-    // 가구 라이브러리가 드로어 안에 있어서, 가구 작업에 들어가면 자동으로 열어준다.
-    if (tool === "furniture" || experienceMode === "resident") setSidePanelOpen(true);
-  }, [tool, experienceMode]);
+    // 가구 라이브러리·방 크기 측정이 드로어 안에 있어서, 해당 작업(3D 배치 포함)에 들어가면 자동으로 열어준다.
+    if (tool === "furniture" || tool === "interior" || experienceMode === "resident" || viewMode === "3d") setSidePanelOpen(true);
+    if (tool === "interior" && interiorMeasureSectionRef.current) interiorMeasureSectionRef.current.open = true;
+  }, [tool, experienceMode, viewMode]);
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
-  // 벽 편집 실행 취소 스냅샷 — setWalls가 항상 새 배열을 만들므로 참조 비교로 변경을 감지한다.
-  const wallHistoryRef = useRef<{ past: Wall[][]; future: Wall[][] }>({ past: [], future: [] });
-  const wallHistorySkipRef = useRef(false);
-  const lastWallsRef = useRef<Wall[]>(walls);
+  // 편집 실행 취소 스냅샷 — 벽뿐 아니라 문/창문·설비 후보도 함께 담아 Ctrl+Z 한 번으로 되돌린다.
+  // setState가 항상 새 배열을 만들므로 참조 비교로 변경을 감지한다.
+  const editHistoryRef = useRef<{ past: EditorHistorySnapshot[]; future: EditorHistorySnapshot[] }>({ past: [], future: [] });
+  const editHistorySkipRef = useRef(false);
+  // 드래그(이동/크기조절)는 mousemove마다 상태를 갱신하므로, 드래그 시작 시점 한 번만 이력에 쌓는다.
+  const dragHistoryPushedRef = useRef(false);
+  const lastHistorySnapshotRef = useRef<EditorHistorySnapshot>({ fixtures: fixtureCandidates, openings: openingCandidates, walls });
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
   const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
@@ -841,6 +871,8 @@ export default function RoomlogFloorPlanEditor() {
     originalPosition: Point;
     shiftKey: boolean;
   } | null>(null);
+  // Delete 키 삭제 대상 — 문창문/설비 도구에서 마지막으로 잡은(누른) 후보. 캔버스에 파란 링으로 표시.
+  const [selectedCandidate, setSelectedCandidate] = useState<{ id: string; layer: "opening" | "fixture" } | null>(null);
   const [partialEraserSelectedWall, setPartialEraserSelectedWall] = useState<Wall | null>(null);
   const [isSelectingEraseArea, setIsSelectingEraseArea] = useState(false);
   const [eraseAreaStart, setEraseAreaStart] = useState<Point | null>(null);
@@ -1474,7 +1506,9 @@ export default function RoomlogFloorPlanEditor() {
 
     const drawCandidate = (candidate: FloorPlanCandidate, layer: "opening" | "fixture") => {
       const position = candidate.position ?? { x: 0, y: 0 };
-      const isHovered = hoveredCandidateId === candidate.id;
+      // 검토 목록 hover와 캔버스 선택(Delete 대상)을 같은 파란 링으로 강조한다.
+      const isHovered =
+        hoveredCandidateId === candidate.id || (selectedCandidate?.layer === layer && selectedCandidate.id === candidate.id);
       // 색은 종류 기준(문=빨강, 창문=연두 — 기존 인식 오버레이 색), 상태는 채움 농도로 구분한다.
       const color =
         candidate.status === "REJECTED"
@@ -1998,6 +2032,7 @@ export default function RoomlogFloorPlanEditor() {
     printedDimensionChips,
     printedDimensionLineSpans,
     printedDimensionScale,
+    selectedCandidate,
     selectedWallRunRects,
     selectedWall,
     startPoint,
@@ -2314,7 +2349,7 @@ export default function RoomlogFloorPlanEditor() {
 
     const nextFurniture = rotateFurnitureQuarterTurn(pendingFurniture);
     setPendingFurniture(nextFurniture);
-    setUploadStatus(`${nextFurniture.name} 90???뚯쟾`);
+    setUploadStatus(`${nextFurniture.name} 90도 회전`);
   }
 
   function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
@@ -2455,29 +2490,33 @@ export default function RoomlogFloorPlanEditor() {
 
     if (tool === "opening") {
       const hit = findOpeningCandidateHit(coords, candidateGrabRadius);
-      if (hit) {
-        if (event.altKey) {
-          toggleOpeningCandidateType(hit.candidate.id);
-          return;
-        }
-        // 바로 토글하지 않고 드래그 후보로 잡는다 — 떼는 시점에 클릭(토글)/드래그(이동·크기조절)를 가른다.
-        setCandidateDragOperation({
-          axis: hit.axis,
-          candidateId: hit.candidate.id,
-          layer: "opening",
-          mode: hit.mode,
-          moved: false,
-          originPoint: coords,
-          originalBox: hit.candidate.boxPx ? { ...hit.candidate.boxPx } : null,
-          originalPosition: hit.candidate.position ?? { x: 0, y: 0 },
-          shiftKey: event.shiftKey
-        });
+      if (!hit) {
+        setSelectedCandidate(null);
+        return;
       }
+      setSelectedCandidate({ id: hit.candidate.id, layer: "opening" });
+      if (event.altKey) {
+        toggleOpeningCandidateType(hit.candidate.id);
+        return;
+      }
+      // 바로 토글하지 않고 드래그 후보로 잡는다 — 떼는 시점에 클릭(토글)/드래그(이동·크기조절)를 가른다.
+      setCandidateDragOperation({
+        axis: hit.axis,
+        candidateId: hit.candidate.id,
+        layer: "opening",
+        mode: hit.mode,
+        moved: false,
+        originPoint: coords,
+        originalBox: hit.candidate.boxPx ? { ...hit.candidate.boxPx } : null,
+        originalPosition: hit.candidate.position ?? { x: 0, y: 0 },
+        shiftKey: event.shiftKey
+      });
       return;
     }
 
     if (tool === "fixture") {
       const closestCandidate = findClosestCandidate(fixtureCandidates, coords, candidateGrabRadius);
+      setSelectedCandidate(closestCandidate ? { id: closestCandidate.id, layer: "fixture" } : null);
       if (closestCandidate) {
         setCandidateDragOperation({
           axis: "horizontal",
@@ -2622,6 +2661,24 @@ export default function RoomlogFloorPlanEditor() {
             if (geometry) {
               setCandidateGeometry("opening", candidateDragOperation.candidateId, slideOpeningEdgesToSnap(geometry));
               snappedToWall = true;
+            } else {
+              // 벽 몸통 포착에 실패해도(벽이 끊긴 틈 위 등) 끝 정렬 자석은 따로 시도한다 —
+              // "옆으로 당겨서 벽에 붙이기" 제스처가 포착 실패 때문에 통째로 무시되지 않게.
+              // 축선(cross)도 가까운 벽 줄에 맞춰 틈 안에 반듯하게 앉힌다.
+              const horizontal = current.boxPx.width >= current.boxPx.height;
+              const cross = horizontal ? current.position.y : current.position.x;
+              const crossTarget = findWallCenterlineSnap(horizontal, cross, "__none__", Math.max(24, 24 / viewScale));
+              const alignedPosition =
+                crossTarget === null
+                  ? current.position
+                  : horizontal
+                    ? { x: current.position.x, y: crossTarget }
+                    : { x: crossTarget, y: current.position.y };
+              const slid = slideOpeningEdgesToSnap({ boxPx: current.boxPx, horizontal, position: alignedPosition });
+              if (slid.position.x !== current.position.x || slid.position.y !== current.position.y) {
+                setCandidateGeometry("opening", candidateDragOperation.candidateId, slid);
+                snappedToWall = true;
+              }
             }
           } else {
             // 끝을 당겨서 놓으면, 같은 축선 위 벽 끝점에 잡은 쪽 모서리를 딱 붙인다.
@@ -2721,12 +2778,12 @@ export default function RoomlogFloorPlanEditor() {
       type: "DOOR"
     };
     setOpeningCandidates((candidates) => [...candidates, manualCandidate]);
+    setSelectedCandidate({ id: manualCandidate.id, layer: "opening" });
     setUploadStatus("문 수동 추가 — 드래그로 이동, Alt+클릭으로 창문 전환");
   }
 
   function handleWheel(event: React.WheelEvent<HTMLCanvasElement>) {
     event.preventDefault();
-    // Legacy spec marker: Ctrl/Cmd/Alt ?좊줈 ?뺣?
     const rect = event.currentTarget.getBoundingClientRect();
     const pointerX = event.clientX - rect.left - rect.width / 2;
     const pointerY = event.clientY - rect.top - rect.height / 2;
@@ -2790,52 +2847,81 @@ export default function RoomlogFloorPlanEditor() {
     setViewScale(nextScale);
   }
 
-  // 벽 배열이 바뀔 때마다 이전 상태를 이력에 쌓는다(실행 취소로 인한 변경은 제외).
+  // 벽·후보 배열이 바뀔 때마다 이전 상태를 이력에 쌓는다(실행 취소로 인한 변경은 제외).
+  // 드래그 중 연속 갱신은 시작 시점 한 번만 쌓아, Ctrl+Z 한 번이 드래그 한 번을 되돌리게 한다.
   useEffect(() => {
-    if (walls === lastWallsRef.current) return;
-    if (wallHistorySkipRef.current) {
-      wallHistorySkipRef.current = false;
-    } else {
-      const history = wallHistoryRef.current;
-      history.past.push(lastWallsRef.current);
-      if (history.past.length > 100) history.past.shift();
-      history.future = [];
+    const last = lastHistorySnapshotRef.current;
+    const changed = walls !== last.walls || openingCandidates !== last.openings || fixtureCandidates !== last.fixtures;
+    const dragging = wallDragOperation !== null || candidateDragOperation !== null;
+    if (changed) {
+      if (editHistorySkipRef.current) {
+        editHistorySkipRef.current = false;
+      } else if (!dragHistoryPushedRef.current) {
+        const history = editHistoryRef.current;
+        history.past.push(last);
+        if (history.past.length > 100) history.past.shift();
+        history.future = [];
+        // 드래그가 끝나는 프레임(놓으면서 스냅 보정)까지 같은 드래그로 취급한다.
+        if (dragging) dragHistoryPushedRef.current = true;
+      }
+      lastHistorySnapshotRef.current = { fixtures: fixtureCandidates, openings: openingCandidates, walls };
     }
-    lastWallsRef.current = walls;
-  }, [walls]);
+    if (!dragging) dragHistoryPushedRef.current = false;
+  }, [walls, openingCandidates, fixtureCandidates, wallDragOperation, candidateDragOperation]);
 
   function clearWallSelectionState() {
     setSelectedWall(null);
     setHoveredWall(null);
     setPartialEraserSelectedWall(null);
     setSelectedWallRunRects(null);
+    setSelectedCandidate(null);
+  }
+
+  // 도구를 바꾸면 후보 선택도 푼다 — 다른 도구에서 Delete가 엉뚱한 후보를 지우지 않게.
+  useEffect(() => {
+    setSelectedCandidate(null);
+  }, [tool]);
+
+  // 선택된 문/창문/설비 후보를 목록에서 제거한다(Delete 키). Ctrl+Z로 복구 가능.
+  function removeSelectedCandidate(target: { id: string; layer: "opening" | "fixture" }) {
+    const list = target.layer === "opening" ? openingCandidates : fixtureCandidates;
+    const candidate = list.find((entry) => entry.id === target.id);
+    const remove = (candidates: FloorPlanCandidate[]) => candidates.filter((entry) => entry.id !== target.id);
+    if (target.layer === "opening") setOpeningCandidates(remove);
+    else setFixtureCandidates(remove);
+    setSelectedCandidate(null);
+    setUploadStatus(`${candidate ? candidateTypeLabel(candidate.type) : "후보"} 삭제 (Delete)`);
+  }
+
+  function applyHistorySnapshot(snapshot: EditorHistorySnapshot) {
+    editHistorySkipRef.current = true;
+    setWalls(snapshot.walls);
+    setOpeningCandidates(snapshot.openings);
+    setFixtureCandidates(snapshot.fixtures);
+    clearWallSelectionState();
   }
 
   function undoWallEdit() {
-    const history = wallHistoryRef.current;
+    const history = editHistoryRef.current;
     const previous = history.past.pop();
     if (!previous) {
       setUploadStatus("되돌릴 편집이 없습니다");
       return;
     }
-    history.future.push(lastWallsRef.current);
-    wallHistorySkipRef.current = true;
-    setWalls(previous);
-    clearWallSelectionState();
+    history.future.push(lastHistorySnapshotRef.current);
+    applyHistorySnapshot(previous);
     setUploadStatus("실행 취소");
   }
 
   function redoWallEdit() {
-    const history = wallHistoryRef.current;
+    const history = editHistoryRef.current;
     const next = history.future.pop();
     if (!next) {
       setUploadStatus("다시 실행할 편집이 없습니다");
       return;
     }
-    history.past.push(lastWallsRef.current);
-    wallHistorySkipRef.current = true;
-    setWalls(next);
-    clearWallSelectionState();
+    history.past.push(lastHistorySnapshotRef.current);
+    applyHistorySnapshot(next);
     setUploadStatus("다시 실행");
   }
 
@@ -2868,11 +2954,18 @@ export default function RoomlogFloorPlanEditor() {
         clearWallSelectionState();
         return;
       }
-      if ((event.key === "Delete" || event.key === "Backspace") && viewMode === "2d" && selectedWall) {
-        event.preventDefault();
-        const wallId = selectedWall.id;
-        removeWallById(wallId);
-        setUploadStatus(`벽 ${wallId} 삭제 (Delete)`);
+      if ((event.key === "Delete" || event.key === "Backspace") && viewMode === "2d") {
+        if (selectedCandidate) {
+          event.preventDefault();
+          removeSelectedCandidate(selectedCandidate);
+          return;
+        }
+        if (selectedWall) {
+          event.preventDefault();
+          const wallId = selectedWall.id;
+          removeWallById(wallId);
+          setUploadStatus(`벽 ${wallId} 삭제 (Delete)`);
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -3452,17 +3545,11 @@ export default function RoomlogFloorPlanEditor() {
     setIsScaleSet(true);
     setExtractionMeta((currentMeta) => ({ ...currentMeta, scaleConfirmed: true }));
     setInteriorCalibrationMm("");
-    // 연속 측정: 축척이 잡혔으니 남은 방 치수가 비어 있으면 바로 그 측정으로 넘어간다.
-    const nextTarget = !roomWidthMm ? ("width" as const) : !roomDepthMm ? ("depth" as const) : null;
-    if (nextTarget) {
-      setInteriorMeasureTarget(nextTarget);
-      setInteriorMeasurePx(0);
-      setInteriorMeasureStart(null);
-      setInteriorMeasureEnd(null);
-      setUploadStatus(`축척 맞춤: 1px = ${ratio.toFixed(2)}mm — 이어서 방 안쪽 '${nextTarget === "width" ? "가로" : "세로"}' 두 점을 클릭하세요`);
-    } else {
-      setUploadStatus(`축척 맞춤: 1px = ${ratio.toFixed(2)}mm`);
-    }
+    // 측정선은 지운다 — 새 두 점을 찍으면 재교정할 수 있다.
+    setInteriorMeasurePx(0);
+    setInteriorMeasureStart(null);
+    setInteriorMeasureEnd(null);
+    setUploadStatus(`축척 맞춤: 1px = ${ratio.toFixed(2)}mm`);
   }
 
   function applyPrintedDimensionScale(dimension: PrintedDimensionChip) {
@@ -3533,18 +3620,32 @@ export default function RoomlogFloorPlanEditor() {
     // 겉면에 닿아도 중심선이 멀어 포착이 안 되고, 반경을 키우면 일부러 떼어 놓은 후보까지
     // 빨려 들어간다. 표면에서 12px 이내(=겹치거나 거의 닿음)일 때만 끼운다.
     const surfaceMargin = 12;
-    let wall: Wall | null = null;
-    let bestSurfaceDistance = Infinity;
-    for (const probe of probes) {
-      for (const candidateWall of walls) {
-        const thickness = Math.max(8, Number(candidateWall.thicknessPx ?? candidateWall.depthPx ?? 0) || 12);
-        const surfaceDistance = distanceToWall(probe, candidateWall as never) - thickness / 2;
-        if (surfaceDistance <= surfaceMargin && surfaceDistance < bestSurfaceDistance) {
-          bestSurfaceDistance = surfaceDistance;
-          wall = candidateWall;
+    // 뚜렷하게 길쭉한 후보(창문)는 코너에서 직교 벽이 더 가깝게 잡히면 긴 축이 90도
+    // 뒤집혀 버린다 — 1차로 박스의 긴 축과 같은 방향인 벽만 보고, 없을 때만 전체로 넓힌다.
+    // (문 박스는 거의 정사각형이라 방향을 신뢰할 수 없어 이 제한을 걸지 않는다.)
+    const boxHorizontal = boxPx.width >= boxPx.height;
+    const boxElongated = Math.max(boxPx.width, boxPx.height) >= Math.min(boxPx.width, boxPx.height) * 1.4;
+    const findWall = (matchOrientationOnly: boolean) => {
+      let best: Wall | null = null;
+      let bestSurfaceDistance = Infinity;
+      for (const probe of probes) {
+        for (const candidateWall of walls) {
+          if (matchOrientationOnly) {
+            const wallHorizontal =
+              Math.abs(candidateWall.end.x - candidateWall.start.x) >= Math.abs(candidateWall.end.y - candidateWall.start.y);
+            if (wallHorizontal !== boxHorizontal) continue;
+          }
+          const thickness = Math.max(8, Number(candidateWall.thicknessPx ?? candidateWall.depthPx ?? 0) || 12);
+          const surfaceDistance = distanceToWall(probe, candidateWall as never) - thickness / 2;
+          if (surfaceDistance <= surfaceMargin && surfaceDistance < bestSurfaceDistance) {
+            bestSurfaceDistance = surfaceDistance;
+            best = candidateWall;
+          }
         }
       }
-    }
+      return best;
+    };
+    const wall = boxElongated ? findWall(true) ?? findWall(false) : findWall(false);
     if (!wall) return null;
     const horizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
     const wallThickness = Math.max(8, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
@@ -3583,13 +3684,15 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   // edgeValue에 가장 가까운 스냅 대상을 찾는다(허용오차 내 없으면 null).
-  // 문/창문 끝을 늘릴 때 자석처럼 붙이는 용도. 대상은 두 종류:
-  // 1) 같은 축선 위 벽의 끝점  2) 직교하는 옆벽의 면(face) — 문이 옆벽에 '착' 붙는 경우.
+  // 문/창문 끝을 늘릴 때 자석처럼 붙이는 용도. 대상은 세 종류:
+  // 1) 같은 축선 위 벽의 끝점  2) 직교하는 옆벽의 면(face) — 문이 옆벽에 '착' 붙는 경우
+  // 3) (옵션) 같은 축선 위 이웃 문/창문의 가장자리 — 창문이 줄지어 있는 도면에서
+  //    옆이 벽이 아니라 다른 창문이라 스냅이 안 걸리던 문제를 해결한다.
   function findWallEdgeSnapTarget(
     horizontal: boolean,
     cross: number,
     edgeValue: number,
-    options?: { excludeWallId?: Wall["id"]; tolerance?: number }
+    options?: { excludeWallId?: Wall["id"]; snapToOpeningsExcludingId?: string; tolerance?: number }
   ) {
     // 눈으로 '거의 붙었다' 싶은 간격에서도 자석이 걸리게 넉넉히 잡는다.
     // (벽 자체를 편집할 때는 옵션으로 더 좁게 준다 — 후보보다 정밀한 작업이라.)
@@ -3622,6 +3725,24 @@ export default function RoomlogFloorPlanEditor() {
         consider(wallCenter + wallThickness / 2);
       }
     }
+    if (options?.snapToOpeningsExcludingId !== undefined) {
+      for (const candidate of openingCandidates) {
+        if (candidate.id === options.snapToOpeningsExcludingId) continue;
+        if (candidate.status === "REJECTED") continue;
+        const box = candidate.boxPx;
+        const position = candidate.position;
+        if (!box || !position) continue;
+        const candidateHorizontal = box.width >= box.height;
+        if (candidateHorizontal !== horizontal) continue;
+        const candidateCross = horizontal ? position.y : position.x;
+        const candidateThickness = horizontal ? box.height : box.width;
+        if (Math.abs(candidateCross - cross) > Math.max(candidateThickness, 14)) continue;
+        const half = (horizontal ? box.width : box.height) / 2;
+        const center = horizontal ? position.x : position.y;
+        consider(center - half);
+        consider(center + half);
+      }
+    }
     return best;
   }
 
@@ -3649,7 +3770,10 @@ export default function RoomlogFloorPlanEditor() {
       const distance = Math.hypot(outsideX, outsideY);
       if (distance > radius) continue;
       const horizontal = box.width >= box.height;
-      const endGrab = Math.max(10, 10 / viewScale);
+      // 리사이즈 핸들 판정폭 — 짧은 후보(가는 창문)는 고정폭이면 박스 대부분이 핸들이 돼
+      // '옮기려는데 늘어나는' 오조작이 잦다. 긴 축의 1/4로 상한을 둬 가운데 절반은 항상 이동으로 남긴다.
+      const boxLength = horizontal ? box.width : box.height;
+      const endGrab = Math.min(Math.max(10, 10 / viewScale), boxLength / 4);
       let mode: "move" | "resize-start" | "resize-end" = "move";
       if (horizontal) {
         if (Math.abs(point.x - (position.x - halfWidth)) <= endGrab) mode = "resize-start";
@@ -3864,8 +3988,8 @@ export default function RoomlogFloorPlanEditor() {
               </button>
               <button
                 className={tool === "interior" ? "floor-plan-secondary active" : "floor-plan-secondary"}
-                onClick={() => startInteriorMeasure(isScaleSet ? "width" : "scale")}
-                title="방 안쪽 두 점을 클릭해 가로/세로(mm)를 재고 축척·면적을 맞춥니다"
+                onClick={() => startInteriorMeasure("scale")}
+                title="실제 길이를 아는 두 점을 클릭해 축척(1px=mm)을 맞춥니다"
                 type="button"
               >
                 세부 조정
@@ -3876,7 +4000,6 @@ export default function RoomlogFloorPlanEditor() {
               3D 배치 보기
             </button>
           )}
-          <span>{uploadStatus}</span>
           <button
             aria-label={sidePanelOpen ? "요약 패널 닫기" : "요약 패널 열기"}
             className={sidePanelOpen ? "floor-plan-secondary floor-plan-panel-toggle active" : "floor-plan-secondary floor-plan-panel-toggle"}
@@ -3888,68 +4011,6 @@ export default function RoomlogFloorPlanEditor() {
             ☰
           </button>
         </div>
-
-        {experienceMode === "landlord" && tool === "interior" ? (
-          // 방 크기 측정 바 — '세부 조정' 버튼 바로 아래, 측정 모드일 때만 노출.
-          // 축척(1px=mm)은 여기서 따로 확정하고, 가로/세로 재기는 확정된 축척을 소비만 한다.
-          <div className="floor-plan-interior-measure-strip" aria-label="방 크기 측정">
-            <span>방 크기 측정</span>
-            <button
-              className={interiorMeasureTarget === "scale" ? "floor-plan-secondary active" : "floor-plan-secondary"}
-              onClick={() => startInteriorMeasure("scale")}
-              title="실제 길이를 아는 두 점을 클릭하고 mm를 입력하면 축척이 확정됩니다"
-              type="button"
-            >
-              축척 맞추기 (두 점)
-            </button>
-            <code>{isScaleSet ? `1px = ${pixelToMmRatio.toFixed(2)}mm` : "축척 없음"}</code>
-            {interiorMeasureTarget === "scale" && interiorMeasurePx > 0 ? (
-              <>
-                <code>{Math.round(interiorMeasurePx)}px = ? mm</code>
-                <input
-                  aria-label="측정한 실제 길이"
-                  onChange={(event) => setInteriorCalibrationMm(event.target.value)}
-                  placeholder="이 선의 실제 길이 mm"
-                  style={{ width: 130 }}
-                  type="number"
-                  value={interiorCalibrationMm}
-                />
-                <button className="floor-plan-primary" disabled={!interiorCalibrationMm} onClick={applyInteriorCalibration} type="button">
-                  축척 확정
-                </button>
-              </>
-            ) : null}
-            <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("width")} type="button">
-              가로 재기
-            </button>
-            <input
-              aria-label="방 가로 mm"
-              onChange={(event) => setRoomWidthMm(event.target.value)}
-              placeholder="가로 mm"
-              style={{ width: 90 }}
-              type="number"
-              value={roomWidthMm}
-            />
-            <button className="floor-plan-secondary" onClick={() => startInteriorMeasure("depth")} type="button">
-              세로 재기
-            </button>
-            <input
-              aria-label="방 세로 mm"
-              onChange={(event) => setRoomDepthMm(event.target.value)}
-              placeholder="세로 mm"
-              style={{ width: 90 }}
-              type="number"
-              value={roomDepthMm}
-            />
-            {roomAreaM2 !== null ? (
-              <code style={{ background: "#e6f0ff", padding: "4px 8px", borderRadius: 4, fontWeight: 700 }}>
-                이 방 약 {roomAreaM2.toFixed(1)}㎡ ({roomWidthMm}×{roomDepthMm}mm)
-              </code>
-            ) : (
-              <code>가로·세로 둘 다 재면 면적이 나옵니다</code>
-            )}
-          </div>
-        ) : null}
 
         {wallBoundsMm ? (
           // 축척 확정 전의 mm 수치는 가짜값이라 노출하지 않는다 — 안내 문구만 조용히 보여준다.
@@ -4130,62 +4191,8 @@ export default function RoomlogFloorPlanEditor() {
         </div>
 
         <div className="floor-plan-actions">
-          {/* 왼쪽: 캔버스 정리 도구(부수 작업) — 오른쪽: 변환→저장→발행(핵심 흐름). 위계를 시각적으로 분리한다. */}
-          <div className="floor-plan-actions-group" aria-label="캔버스 정리">
-            <button
-              className="floor-plan-secondary floor-plan-danger"
-              disabled={walls.length === 0 && placedFurnitures.length === 0}
-              onClick={() => {
-                setWalls([]);
-                setHiddenWallIds(new Set());
-                setPlacedFurnitures([]);
-                setPendingFurniture(null);
-                setSelectedWall(null);
-                setSelectedFurnitureId(null);
-                setUploadStatus("벽 전체 삭제");
-              }}
-              type="button"
-            >
-              전체 지우기
-            </button>
-            <button
-              className="floor-plan-secondary"
-              onClick={() => {
-                const starterWalls = getStarterWalls();
-                setWalls(starterWalls);
-                setHiddenWallIds(new Set());
-                setPlacedFurnitures([]);
-                setPendingFurniture(null);
-                setSelectedWall(null);
-                setSelectedFurnitureId(null);
-                fitViewToWalls(starterWalls);
-                setUploadStatus("샘플 도면 복원");
-              }}
-              type="button"
-            >
-              샘플 복원
-            </button>
-            <button
-              className="floor-plan-secondary"
-              onClick={() => fitViewToWalls(walls)}
-              title="도면 전체가 보이도록 화면을 맞춥니다 (도면은 그대로)"
-              type="button"
-            >
-              화면 초기화
-            </button>
-            <button
-              className="floor-plan-secondary"
-              disabled={hiddenWallCount === 0}
-              onClick={() => {
-                setHiddenWallIds(new Set());
-                setUploadStatus("숨긴 벽 복원");
-              }}
-              type="button"
-            >
-              숨김 복원
-            </button>
-          </div>
-
+          {/* 캔버스 정리 버튼 줄(전체 지우기/샘플 복원/화면 초기화/숨김 복원)은 안 쓰여서 제거 —
+             변환→저장→발행 핵심 흐름만 남긴다. */}
           <div className="floor-plan-actions-group floor-plan-actions-main" aria-label="변환과 저장">
             {saveState ? (
               <span aria-live="polite" className={`floor-plan-save-state is-${saveState.kind}`}>
@@ -4252,6 +4259,17 @@ export default function RoomlogFloorPlanEditor() {
             )}
           </div>
         </div>
+
+        {statusToasts.length > 0 ? (
+          // 상태 메시지 토스트 스택 — 캔버스 하단 중앙에 최근 3개까지 쌓이고 몇 초 뒤 사라진다.
+          <div className="floor-plan-toast-stack" aria-live="polite">
+            {statusToasts.map((toast) => (
+              <div className="floor-plan-toast" key={toast.id}>
+                {toast.text}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <aside className={`floor-plan-sidepanel floor-plan-drawer${sidePanelOpen ? " is-open" : ""}`} aria-hidden={!sidePanelOpen} aria-label="도면 요약">
@@ -4295,6 +4313,41 @@ export default function RoomlogFloorPlanEditor() {
 
         {experienceMode === "landlord" ? (
           <>
+            {/* 방 크기 측정 — 캔버스 위 가로 스트립에서 드로어 섹션으로 이동. '세부 조정'에 들어가면 자동으로 펼쳐진다.
+                축척(1px=mm)은 여기서 따로 확정하고, 가로/세로 재기는 확정된 축척을 소비만 한다. */}
+            <details className="floor-plan-drawer-section" ref={interiorMeasureSectionRef}>
+              <summary>방 크기 측정</summary>
+              <div className="floor-plan-drawer-section-body">
+                <div className="floor-plan-interior-measure-strip" aria-label="방 크기 측정">
+                  <button
+                    className={interiorMeasureTarget === "scale" ? "floor-plan-secondary active" : "floor-plan-secondary"}
+                    onClick={() => startInteriorMeasure("scale")}
+                    title="실제 길이를 아는 두 점을 클릭하고 mm를 입력하면 축척이 확정됩니다"
+                    type="button"
+                  >
+                    축척 맞추기 (두 점)
+                  </button>
+                  <code>{isScaleSet ? `1px = ${pixelToMmRatio.toFixed(2)}mm` : "축척 없음"}</code>
+                  {interiorMeasureTarget === "scale" && interiorMeasurePx > 0 ? (
+                    <>
+                      <code>{Math.round(interiorMeasurePx)}px = ? mm</code>
+                      <input
+                        aria-label="측정한 실제 길이"
+                        onChange={(event) => setInteriorCalibrationMm(event.target.value)}
+                        placeholder="이 선의 실제 길이 mm"
+                        style={{ width: 130 }}
+                        type="number"
+                        value={interiorCalibrationMm}
+                      />
+                      <button className="floor-plan-primary" disabled={!interiorCalibrationMm} onClick={applyInteriorCalibration} type="button">
+                        축척 확정
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </details>
+
             {printedDimensionChips.length ? (
               <details className="floor-plan-drawer-section">
                 <summary>구조 치수</summary>
@@ -4375,7 +4428,9 @@ export default function RoomlogFloorPlanEditor() {
           </>
         ) : null}
 
-        {experienceMode === "resident" || tool === "furniture" ? (
+        {/* 가구 섹션은 가구 도구뿐 아니라 3D 보기에서도 노출 — 3D에서는 가구 배치가 주 작업인데
+            도구 상태에만 묶여 있으면 '3D 배치 보기'로 바로 들어온 경우 가구 패널이 안 보인다. */}
+        {experienceMode === "resident" || tool === "furniture" || viewMode === "3d" ? (
           <>
             <details className="floor-plan-drawer-section">
               <summary>{experienceMode === "landlord" ? "임대인 옵션 가구" : "wheretoput furniture picker"}</summary>
