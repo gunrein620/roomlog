@@ -4884,6 +4884,30 @@ p {
   line-height: 1.2;
 }
 
+/* 사이드바 접기/펼치기 토글 — 접으면 기능 탭이 숨고 콘텐츠가 폭을 다 쓴다 */
+.owner-sidebar-toggle {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #dfe5f0;
+  border-radius: 14px;
+  background: #f2f5fc;
+  color: #465062;
+}
+
+.owner-sidebar-toggle strong {
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.owner-dashboard-layout.sidebar-collapsed .owner-dashboard-sidebar {
+  padding: 8px;
+}
+
 .owner-dashboard-content {
   display: grid;
   gap: 14px;
@@ -8398,6 +8422,11 @@ p {
     grid-template-columns: 220px minmax(0, 1fr);
     align-items: start;
     gap: 18px;
+    transition: grid-template-columns 0.24s ease;
+  }
+
+  .owner-dashboard-layout.sidebar-collapsed {
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 
   .owner-dashboard-sidebar {
@@ -8411,6 +8440,15 @@ p {
 
   .owner-dashboard-sidebar button {
     flex-basis: auto;
+  }
+
+  /* 접힌 상태: 아이콘만 남는 얇은 핸들 */
+  .owner-dashboard-layout.sidebar-collapsed .owner-sidebar-toggle {
+    padding: 8px;
+  }
+
+  .owner-dashboard-layout.sidebar-collapsed .owner-sidebar-toggle strong {
+    display: none;
   }
 
   /* 홈: 다방식 세로 포털 흐름 */

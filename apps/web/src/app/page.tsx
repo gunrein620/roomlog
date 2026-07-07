@@ -22,6 +22,8 @@ import {
   Layers3,
   MapPinned,
   MessageCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
   Phone,
   Ruler,
   Search,
@@ -929,6 +931,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const [activeOwnerPanel, setActiveOwnerPanel] = useState("dashboard");
+  const [isOwnerSidebarOpen, setIsOwnerSidebarOpen] = useState(true);
   const [isCostReviewCleared, setIsCostReviewCleared] = useState(false);
   const [isDisclosureAcknowledged, setIsDisclosureAcknowledged] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState(DEMO_VENDORS[0]?.id ?? "");
@@ -1246,19 +1249,33 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
       <MyFlowBar activeFlow="listing" onSelectFlow={onSelectFlow} />
 
-      <div className="owner-dashboard-layout">
+      <div className={`owner-dashboard-layout${isOwnerSidebarOpen ? "" : " sidebar-collapsed"}`}>
         <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
-          {ownerDashboardTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
-              onClick={() => setActiveOwnerPanel(tab.id)}
-            >
-              <span>{tab.note}</span>
-              <strong>{tab.label}</strong>
-            </button>
-          ))}
+          <button
+            className="owner-sidebar-toggle"
+            type="button"
+            aria-expanded={isOwnerSidebarOpen}
+            title={isOwnerSidebarOpen ? "메뉴 접기" : "메뉴 펼치기"}
+            onClick={() => setIsOwnerSidebarOpen((open) => !open)}
+          >
+            {isOwnerSidebarOpen
+              ? <PanelLeftClose size={17} strokeWidth={2.4} aria-hidden="true" />
+              : <PanelLeftOpen size={17} strokeWidth={2.4} aria-hidden="true" />}
+            <strong>{isOwnerSidebarOpen ? "메뉴 접기" : "메뉴"}</strong>
+          </button>
+          {isOwnerSidebarOpen
+            ? ownerDashboardTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
+                  onClick={() => setActiveOwnerPanel(tab.id)}
+                >
+                  <span>{tab.note}</span>
+                  <strong>{tab.label}</strong>
+                </button>
+              ))
+            : null}
         </nav>
 
         <div className="owner-dashboard-content">
