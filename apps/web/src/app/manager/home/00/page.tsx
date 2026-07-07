@@ -3,12 +3,6 @@ import { Badge, Card, ManagerShell } from "@roomlog/ui";
 import { getManagerHomeSummary } from "@/lib/manager-home-api";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 
-const buildings = [
-  { name: "연남 스테이", issue: "긴급민원 2건", metric: "수납률 확인 필요", risk: "정밀 검토" },
-  { name: "성수 하우스", issue: "공실 1호", metric: "계약 만료 D-14", risk: "주의" },
-  { name: "도곡 레지던스", issue: "미납 추적", metric: "입금 확인 대기", risk: "주의" },
-];
-
 export default async function Page() {
   const summary = await getManagerHomeSummary();
   const hasKpi = Object.values(summary.kpi).some((value) => value !== null && value !== 0);
@@ -66,19 +60,28 @@ export default async function Page() {
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "var(--space-lg)" }}>
           <Card>
             <SectionHeader title="건물 요약" href={MHOME_ROUTES["M-HOME-03"]} action="전체 건물 관리" />
+            {/* 데모 건물 목록 대신 세션 계정의 실제 관리 중인 집만 보여준다(매물 등록이 만든 연결 포함). */}
             <div style={{ display: "grid", gap: "var(--space-sm)", marginTop: "var(--space-md)" }}>
-              {buildings.map((building) => (
-                <Link key={building.name} href={MHOME_ROUTES["M-HOME-03"]} style={linkReset}>
-                  <div style={rowStyle}>
-                    <div>
-                      <div style={{ fontWeight: 800 }}>{building.name}</div>
-                      <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>{building.issue}</div>
+              {summary.managedRooms.length === 0 ? (
+                <div style={{ padding: "var(--space-lg) 0", color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
+                  아직 관리 중인 집이 없습니다. 매물을 등록하면 이 계정에 관리 중인 집이 연결됩니다.
+                </div>
+              ) : (
+                summary.managedRooms.map((room) => (
+                  <Link key={room.id} href={MHOME_ROUTES["M-HOME-03"]} style={linkReset}>
+                    <div style={rowStyle}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{room.buildingName}</div>
+                        <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>{room.address}</div>
+                      </div>
+                      <Badge>관리 중</Badge>
+                      <span style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
+                        {room.roomNo.endsWith("호") ? room.roomNo : `${room.roomNo}호`}
+                      </span>
                     </div>
-                    <Badge emphasis={building.risk === "정밀 검토"}>{building.risk}</Badge>
-                    <span style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>{building.metric}</span>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                ))
+              )}
             </div>
           </Card>
 
