@@ -1545,7 +1545,7 @@ export default function RoomlogFloorPlanEditor() {
         if (candidate.status !== "REJECTED") {
           context.setLineDash([]);
           const handleSize = 7 / viewScale;
-          const horizontal = box.width >= box.height;
+          const horizontal = openingAxisIsHorizontal(position, box);
           const handlePoints = horizontal
             ? [{ x: position.x - halfWidth, y: position.y }, { x: position.x + halfWidth, y: position.y }]
             : [{ x: position.x, y: position.y - halfHeight }, { x: position.x, y: position.y + halfHeight }];
@@ -1647,10 +1647,18 @@ export default function RoomlogFloorPlanEditor() {
               y2: position.y + box.height / 2
             };
           });
-        const openingCutBoxes = [
-          ...openingOverlayBoxes.map((overlayBox) => normalizeOverlayBox(overlayBox.box)),
-          ...liveOpeningCutBoxes
-        ];
+        // 후처리 직후엔 후보가 fitted 박스에 동기화돼 정적·live가 같은 박스 2벌이 된다 —
+        // 셀 래스터화 비용이 배로 뛰지 않게 live와 사실상 같은 정적 박스는 걸러낸다.
+        const staticCutBoxes = openingOverlayBoxes
+          .map((overlayBox) => normalizeOverlayBox(overlayBox.box))
+          .filter(
+            (box) =>
+              !liveOpeningCutBoxes.some(
+                (live) =>
+                  Math.abs(live.x1 - box.x1) < 2 && Math.abs(live.x2 - box.x2) < 2 && Math.abs(live.y1 - box.y1) < 2 && Math.abs(live.y2 - box.y2) < 2
+              )
+          );
+        const openingCutBoxes = [...staticCutBoxes, ...liveOpeningCutBoxes];
 
         const xCoordinates = [...new Set([...wallBoxes, ...openingCutBoxes].flatMap((box) => [box.x1, box.x2]))].sort((left, right) => left - right);
         const yCoordinates = [...new Set([...wallBoxes, ...openingCutBoxes].flatMap((box) => [box.y1, box.y2]))].sort((left, right) => left - right);
@@ -2034,6 +2042,15 @@ export default function RoomlogFloorPlanEditor() {
     };
   }
 
+  // 벽의 방향·중심선·두께 — 스냅/렌더링 전반에서 공유하는 기본 기하.
+  // (두께 최소값은 용도마다 달라 raw 값을 돌려주고 호출부에서 clamp한다.)
+  function wallGeometryOf(wall: Wall) {
+    const horizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+    const cross = horizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
+    const thickness = Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12;
+    return { cross, horizontal, thickness };
+  }
+
   function findClosestWall(point: Point, maxDistance: number) {
     return walls.reduce<{ distance: number; wall: Wall | null }>(
       (closest, wall) => {
@@ -2044,17 +2061,30 @@ export default function RoomlogFloorPlanEditor() {
     ).wall;
   }
 
+  // 중심선이 아니라 벽 '표면' 기준 거리로 가장 가까운 벽을 찾는다 — 고정 반경을 쓰면
+  // 두꺼운 벽은 겉면에 닿아도 중심선이 멀어 못 잡는다. margin 이내가 없으면 null.
+  function findClosestWallBySurface(point: Point, margin: number) {
+    let best: { surfaceDistance: number; wall: Wall } | null = null;
+    for (const wall of walls) {
+      const thickness = Math.max(8, wallGeometryOf(wall).thickness);
+      const surfaceDistance = distanceToWall(point, wall as never) - thickness / 2;
+      if (surfaceDistance <= margin && (!best || surfaceDistance < best.surfaceDistance)) {
+        best = { surfaceDistance, wall };
+      }
+    }
+    return best;
+  }
+
   // 벽을 통째로 옮길 때, 같은 방향 벽의 중심선(축선)이 가까우면 그 값으로 정렬한다.
   // 어긋난 벽 조각들을 한 줄로 맞추는 용도.
-  function findWallCenterlineSnap(horizontal: boolean, cross: number, excludeWallId: Wall["id"], tolerance: number) {
+  function findWallCenterlineSnap(horizontal: boolean, cross: number, tolerance: number, excludeWallId?: Wall["id"]) {
     let best: number | null = null;
     for (const wall of walls) {
-      if (String(wall.id) === String(excludeWallId)) continue;
-      const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
-      if (wallHorizontal !== horizontal) continue;
-      const wallCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
-      const distance = Math.abs(wallCross - cross);
-      if (distance <= tolerance && (best === null || distance < Math.abs(best - cross))) best = wallCross;
+      if (excludeWallId !== undefined && String(wall.id) === String(excludeWallId)) continue;
+      const geometry = wallGeometryOf(wall);
+      if (geometry.horizontal !== horizontal) continue;
+      const distance = Math.abs(geometry.cross - cross);
+      if (distance <= tolerance && (best === null || distance < Math.abs(best - cross))) best = geometry.cross;
     }
     return best;
   }
@@ -2084,7 +2114,7 @@ export default function RoomlogFloorPlanEditor() {
       }) as Wall;
       // 1) 축선 정렬: 같은 방향 벽의 중심선이 가까우면 줄을 맞춘다.
       const cross = horizontal ? (nextWall.start.y + nextWall.end.y) / 2 : (nextWall.start.x + nextWall.end.x) / 2;
-      const crossTarget = findWallCenterlineSnap(horizontal, cross, operation.wallId, snapTolerance);
+      const crossTarget = findWallCenterlineSnap(horizontal, cross, snapTolerance, operation.wallId);
       const crossShift = crossTarget === null ? 0 : crossTarget - cross;
       // 2) 끝점 정렬: 양 끝 중 다른 벽 끝점·면에 가까운 쪽을 착 붙인다(길이 유지, 통째로 이동).
       const alignedCross = cross + crossShift;
@@ -2628,9 +2658,9 @@ export default function RoomlogFloorPlanEditor() {
               // 벽 몸통 포착에 실패해도(벽이 끊긴 틈 위 등) 끝 정렬 자석은 따로 시도한다 —
               // "옆으로 당겨서 벽에 붙이기" 제스처가 포착 실패 때문에 통째로 무시되지 않게.
               // 축선(cross)도 가까운 벽 줄에 맞춰 틈 안에 반듯하게 앉힌다.
-              const horizontal = current.boxPx.width >= current.boxPx.height;
+              const horizontal = openingAxisIsHorizontal(current.position, current.boxPx);
               const cross = horizontal ? current.position.y : current.position.x;
-              const crossTarget = findWallCenterlineSnap(horizontal, cross, "__none__", Math.max(24, 24 / viewScale));
+              const crossTarget = findWallCenterlineSnap(horizontal, cross, Math.max(24, 24 / viewScale));
               const alignedPosition =
                 crossTarget === null
                   ? current.position
@@ -2646,7 +2676,8 @@ export default function RoomlogFloorPlanEditor() {
           } else {
             // 끝을 당겨서 놓으면, 같은 축선 위 벽 끝점에 잡은 쪽 모서리를 딱 붙인다.
             // (끄는 도중에도 자석 스냅이 걸리므로 여기서는 최종 확인만.)
-            const horizontal = current.boxPx.width >= current.boxPx.height;
+            // 축은 박스 모양으로 재추측하지 않고 드래그 시작 때 판정한 값을 쓴다.
+            const horizontal = candidateDragOperation.axis === "horizontal";
             const half = (horizontal ? current.boxPx.width : current.boxPx.height) / 2;
             const center = horizontal ? current.position.x : current.position.y;
             const cross = horizontal ? current.position.y : current.position.x;
@@ -3759,7 +3790,7 @@ export default function RoomlogFloorPlanEditor() {
       const outsideY = Math.max(Math.abs(point.y - position.y) - halfHeight, 0);
       const distance = Math.hypot(outsideX, outsideY);
       if (distance > radius) continue;
-      const horizontal = box.width >= box.height;
+      const horizontal = openingAxisIsHorizontal(position, box);
       // 리사이즈 핸들 판정폭 — 짧은 후보(가는 창문)는 고정폭이면 박스 대부분이 핸들이 돼
       // '옮기려는데 늘어나는' 오조작이 잦다. 긴 축의 1/4로 상한을 둬 가운데 절반은 항상 이동으로 남긴다.
       const boxLength = horizontal ? box.width : box.height;
@@ -3775,6 +3806,14 @@ export default function RoomlogFloorPlanEditor() {
       }
     }
     return best?.hit ?? null;
+  }
+
+  // 문/창문 후보의 가로/세로 판정. 문 박스는 정사각형에 가까워 모양만으로 판별하면
+  // 두꺼운 벽에서 축이 뒤집힌다 — 몸 붙인 벽(표면 22px 이내)이 있으면 그 방향을 따른다.
+  function openingAxisIsHorizontal(position: Point, box: { height: number; width: number }) {
+    const hit = findClosestWallBySurface(position, Math.max(22, 22 / viewScale));
+    if (hit) return wallGeometryOf(hit.wall).horizontal;
+    return box.width >= box.height;
   }
 
   function toggleOpeningCandidateType(candidateId: string) {
