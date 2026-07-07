@@ -418,11 +418,6 @@ const savedComparisonItems = [
   { label: "방문 후보", value: "오늘 3시", caption: "2개 매물 가능" }
 ];
 
-const inquiryTimelineItems = [
-  { time: "방금", title: "문자문의 작성 가능", body: "매물 상세에서 바로 문의를 보낼 수 있습니다." },
-  { time: "5분 전", title: "중개사 평균 응답 8분", body: "답변이 오면 문의센터에서 상태를 확인합니다." }
-];
-
 const homeWebSummaryItems = [
   { label: "중개사 응답", value: "평균 8분" },
   { label: "오늘 확인", value: "39개" },
@@ -447,12 +442,6 @@ const safetyReportItems = [
   { label: "보증금 비율", value: "권장 범위", status: "양호" },
   { label: "대출·특약", value: "방문 시 확인", status: "확인" },
   { label: "주변 치안", value: "야간 동선 양호", status: "양호" }
-];
-
-const inquiryChannelItems = [
-  { label: "문자문의", value: "로그인 없이 가능", caption: "평균 8분 응답" },
-  { label: "전화문의", value: "중개사 연결", caption: "영업시간 09:00-20:00" },
-  { label: "방문예약", value: "오늘 3시 가능", caption: "3D 투어 먼저 확인" }
 ];
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
@@ -2784,8 +2773,8 @@ function ListingDetailView({
   );
 }
 
-// 통합 문의 작성 sheet — 매물 상세 "문의하기", 홈 카드 "문자문의",
-// 문의 탭 "새 문의"가 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
+// 통합 문의 작성 sheet — 매물 상세 "문의하기"와 홈 카드 "문자문의"가
+// 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
 function InquirySheet({
   listing,
   onClose,
@@ -3005,11 +2994,9 @@ function SavedListingsSection({
 }
 
 function InquiryHubSection({
-  onNewInquiry,
   onRequireLogin,
   focusThreadId
 }: {
-  onNewInquiry: () => void;
   onRequireLogin: () => void;
   focusThreadId?: string;
 }) {
@@ -3020,69 +3007,18 @@ function InquiryHubSection({
           <h2 id="inquiry-title">문의센터</h2>
           <p>보낸 문의와 받은 문의가 모두 채팅으로 이어집니다.</p>
         </div>
-        {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
-        <button type="button" onClick={onNewInquiry}>
-          새 문의
-        </button>
       </div>
 
       {/* 서버 스레드 기반 문의 채팅 — 보낸 문의(구매자)와 받은 문의(집주인)를 한 곳에서 본다.
           QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제.
-          래퍼 클래스는 데스크톱 그리드 배치용 — 채팅이 문의센터의 주인공(좌측 넓은 칸)이 된다. */}
+          variant="hub": 데스크톱 브라우저는 목록+대화 2패널, 앱(PWA·좁은 화면)은 채팅 목록 단일 패널. */}
       <div className="inquiry-chat-panel">
         <TradeChatCenter
-          emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
+          variant="hub"
+          emptyText="매물 상세의 '문자문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
           onRequireLogin={onRequireLogin}
           focusThreadId={focusThreadId}
         />
-      </div>
-
-
-      <section className="inquiry-channel-card" aria-label="문의 채널 상태">
-        <div className="inquiry-channel-head">
-          <span>문의 채널</span>
-          <strong>원하는 방식으로 바로 확인</strong>
-        </div>
-        <div className="inquiry-channel-grid">
-          {inquiryChannelItems.map((item) => (
-            <article key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.caption}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="inquiry-timeline-card" aria-label="문의 타임라인">
-        <div className="inquiry-timeline-head">
-          <span>문의 타임라인</span>
-          <strong>최근 문의 흐름</strong>
-        </div>
-        {inquiryTimelineItems.map((item) => (
-          <article key={item.title}>
-            <span>{item.time}</span>
-            <div>
-              <strong>{item.title}</strong>
-              <p>{item.body}</p>
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <div className="inquiry-mini-grid">
-        <article>
-          <span>최근 응답</span>
-          <strong>8분</strong>
-        </article>
-        <article>
-          <span>예약 가능</span>
-          <strong>오늘 3시</strong>
-        </article>
-        <article>
-          <span>확인매물</span>
-          <strong>126개</strong>
-        </article>
       </div>
     </section>
   );
@@ -4556,7 +4492,7 @@ export default function Home() {
   };
 
   // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
-  // 홈 카드 "문자문의"와 문의 탭 "새 문의"가 모두 이 흐름을 쓴다 (QA 3·4·7).
+  // 홈 카드 "문자문의"가 이 흐름을 쓴다 (QA 3·4·7). 문의 탭의 "새 문의" 버튼은 제거됐다.
   const openInquiryComposer = (listing?: Listing) => {
     if (listing) {
       setInquiryComposeListingNo(listing.listingNo);
@@ -5475,7 +5411,7 @@ export default function Home() {
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onNewInquiry={() => openInquiryComposer()} onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
+          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
           <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
