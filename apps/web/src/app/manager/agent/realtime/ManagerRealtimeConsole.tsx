@@ -93,12 +93,24 @@ export function ManagerRealtimeConsole() {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
 
   useEffect(() => {
     return () => {
       closeVoiceResources();
     };
   }, []);
+
+  useEffect(() => {
+    if (!shouldStickToBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollTranscriptToBottom();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [entries.length, pendingText, voiceStatus]);
 
   const activeOption = commandOptions.find((option) => option.command === activeCommand) ?? commandOptions[0];
 
@@ -110,6 +122,24 @@ export function ManagerRealtimeConsole() {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`
       }
     ]);
+  }
+
+  function updateTranscriptStickiness() {
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
+
+    const distanceFromBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom < 96;
+  }
+
+  function scrollTranscriptToBottom() {
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
+
+    transcript.scrollTo({
+      top: transcript.scrollHeight,
+      behavior: "smooth"
+    });
   }
 
   async function requestRealtimeClientSecret() {
@@ -428,12 +458,23 @@ export function ManagerRealtimeConsole() {
             음성 연결 또는 텍스트 명령으로 티켓 처리, 청구 관리, 소통 작업을 한 화면에서 진행합니다.
           </p>
         </div>
-        <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "end" }}>
+        <div style={agentConnectionControlStyle}>
+          {voiceStatus === "connected" || voiceStatus === "connecting" ? (
+            <span style={agentSessionIndicatorStyle} aria-live="polite">
+              <span style={agentSessionIndicatorDotStyle} />
+              {voiceStatus === "connecting" ? "AI 상담 연결 중" : "AI 상담 중"}
+            </span>
+          ) : null}
           <Button type="button" onClick={connectVoice} disabled={voiceStatus === "connecting" || voiceStatus === "connected"}>
             음성 연결
           </Button>
-          <Button type="button" variant="secondary" onClick={disconnectVoice} disabled={voiceStatus !== "connected"}>
-            연결 종료
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={disconnectVoice}
+            disabled={voiceStatus !== "connected" && voiceStatus !== "connecting"}
+          >
+            {voiceDisconnectButtonLabel(voiceStatus)}
           </Button>
         </div>
       </div>
@@ -473,7 +514,13 @@ export function ManagerRealtimeConsole() {
           })}
         </div>
 
-        <div role="log" aria-live="polite" style={agentChatTranscriptStyle}>
+        <div
+          ref={transcriptRef}
+          role="log"
+          aria-live="polite"
+          style={agentChatTranscriptStyle}
+          onScroll={updateTranscriptStickiness}
+        >
           {entries.map((entry) => {
             const mine = entry.role === "manager";
             return (
@@ -547,6 +594,12 @@ function voiceStatusLabel(status: VoiceStatus) {
   return "음성 대기";
 }
 
+function voiceDisconnectButtonLabel(status: VoiceStatus) {
+  if (status === "connecting") return "AI 상담 취소";
+  if (status === "connected") return "AI 상담 종료";
+  return "연결 종료";
+}
+
 function roleLabel(role: ConsoleEntry["role"]) {
   if (role === "manager") return "관리인";
   if (role === "agent") return "에이전트";
@@ -574,6 +627,36 @@ const quickActionButtonStyle = {
   borderRadius: "var(--radius-btn)",
   fontWeight: 800,
   cursor: "pointer"
+} as const;
+
+const agentConnectionControlStyle = {
+  display: "flex",
+  gap: "var(--space-sm)",
+  flexWrap: "wrap",
+  justifyContent: "end",
+  alignItems: "center"
+} as const;
+
+const agentSessionIndicatorStyle = {
+  minHeight: 36,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "var(--space-xs)",
+  padding: "0 var(--space-md)",
+  borderRadius: "var(--radius-btn)",
+  border: "1.5px solid color-mix(in srgb, var(--primary) 30%, transparent)",
+  background: "color-mix(in srgb, var(--primary) 10%, var(--surface))",
+  color: "var(--primary)",
+  fontWeight: 900,
+  whiteSpace: "nowrap"
+} as const;
+
+const agentSessionIndicatorDotStyle = {
+  width: 9,
+  height: 9,
+  borderRadius: "999px",
+  background: "var(--primary)",
+  boxShadow: "0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent)"
 } as const;
 
 const agentChatTranscriptStyle = {
