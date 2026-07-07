@@ -87,7 +87,6 @@ import {
   convertWallsToWheretoputSimulator,
   distanceToWall,
   moveWall,
-  resizeWall,
   snapToOrthogonal,
   summarizeWalls
 } from "./room-model/wall-model.mjs";
@@ -1456,7 +1455,14 @@ export default function RoomlogFloorPlanEditor() {
 
     walls.forEach((wall) => {
       const isRoboflowPostProcessedWall = wall.source === "roboflow-postprocessed";
-      if (isRoboflowPostProcessedWall) return;
+      if (isRoboflowPostProcessedWall) {
+        // 후처리 벽 몸통은 union 외곽선(overlay)으로 그린다. 여기서는 편집 피드백만 얹는다 —
+        // 이게 없으면 벽 편집 도구로 후처리 벽을 잡아도 선택·이동이 화면에 안 보인다.
+        if (selectedWall?.id === wall.id) drawWall(wall, "selected");
+        else if (partialEraserSelectedWall?.id === wall.id) drawWall(wall, "erase");
+        else if (hoveredWall?.id === wall.id) drawWall(wall, "hover");
+        return;
+      }
       if (selectedWall?.id === wall.id) drawWall(wall, "selected");
       else if (partialEraserSelectedWall?.id === wall.id) drawWall(wall, "erase");
       else if (hoveredWall?.id === wall.id) drawWall(wall, "hover");
@@ -1606,17 +1612,44 @@ export default function RoomlogFloorPlanEditor() {
         drawOverlayConfidenceLabel(box, overlayBox.confidence, color);
       };
       const drawMergedWallOverlayBoxes = () => {
-        const snappedWallBoxes = snapMergedWallOverlayBoxEdges(
-          wallOverlayBoxes.map((overlayBox) => normalizeOverlayBox(overlayBox.box))
-        );
-        const openingAlignedSnappedWallBoxes = alignWallBoxesToFittedOpeningLines(
-          snappedWallBoxes.map((box) => createPostProcessedWallOverlayBox(box)),
-          openingOverlayBoxes
-        );
-        const cornerAlignedSnappedWallBoxes = alignConnectedPerpendicularWallBoxCorners(openingAlignedSnappedWallBoxes);
-        const wallBoxes = cornerAlignedSnappedWallBoxes
-          .map((overlayBox) => overlayBox.box)
-          .filter((box) => box.x2 - box.x1 > 0 && box.y2 - box.y1 > 0);
+        // 후처리 벽이 walls에 있으면 '살아있는' 벽 상태에서 박스를 만든다 — 정적 overlay 박스로
+        // 그리면 벽 편집(이동/길이 조절/삭제)이 화면에 반영되지 않는다.
+        const livePostProcessedWalls = walls.filter((wall) => wall.source === "roboflow-postprocessed");
+        let wallBoxes: Array<{ x1: number; x2: number; y1: number; y2: number }>;
+        if (livePostProcessedWalls.length) {
+          wallBoxes = livePostProcessedWalls
+            .map((wall) => {
+              const thickness = Math.max(4, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
+              const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+              const centerCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
+              return wallHorizontal
+                ? {
+                    x1: Math.min(wall.start.x, wall.end.x),
+                    x2: Math.max(wall.start.x, wall.end.x),
+                    y1: centerCross - thickness / 2,
+                    y2: centerCross + thickness / 2
+                  }
+                : {
+                    x1: centerCross - thickness / 2,
+                    x2: centerCross + thickness / 2,
+                    y1: Math.min(wall.start.y, wall.end.y),
+                    y2: Math.max(wall.start.y, wall.end.y)
+                  };
+            })
+            .filter((box) => box.x2 - box.x1 > 0 && box.y2 - box.y1 > 0);
+        } else {
+          const snappedWallBoxes = snapMergedWallOverlayBoxEdges(
+            wallOverlayBoxes.map((overlayBox) => normalizeOverlayBox(overlayBox.box))
+          );
+          const openingAlignedSnappedWallBoxes = alignWallBoxesToFittedOpeningLines(
+            snappedWallBoxes.map((box) => createPostProcessedWallOverlayBox(box)),
+            openingOverlayBoxes
+          );
+          const cornerAlignedSnappedWallBoxes = alignConnectedPerpendicularWallBoxCorners(openingAlignedSnappedWallBoxes);
+          wallBoxes = cornerAlignedSnappedWallBoxes
+            .map((overlayBox) => overlayBox.box)
+            .filter((box) => box.x2 - box.x1 > 0 && box.y2 - box.y1 > 0);
+        }
         if (!wallBoxes.length) return;
 
         // 문/창문 박스: 벽을 이 자리에서 갈라(gap) 분리한다.
@@ -2013,6 +2046,21 @@ export default function RoomlogFloorPlanEditor() {
     ).wall;
   }
 
+  // 벽을 통째로 옮길 때, 같은 방향 벽의 중심선(축선)이 가까우면 그 값으로 정렬한다.
+  // 어긋난 벽 조각들을 한 줄로 맞추는 용도.
+  function findWallCenterlineSnap(horizontal: boolean, cross: number, excludeWallId: Wall["id"], tolerance: number) {
+    let best: number | null = null;
+    for (const wall of walls) {
+      if (String(wall.id) === String(excludeWallId)) continue;
+      const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+      if (wallHorizontal !== horizontal) continue;
+      const wallCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
+      const distance = Math.abs(wallCross - cross);
+      if (distance <= tolerance && (best === null || distance < Math.abs(best - cross))) best = wallCross;
+    }
+    return best;
+  }
+
   function getWallDragMode(wall: Wall, point: Point): WallDragMode {
     const startDistance = Math.hypot(point.x - wall.start.x, point.y - wall.start.y);
     const endDistance = Math.hypot(point.x - wall.end.x, point.y - wall.end.y);
@@ -2025,13 +2073,68 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function updateDraggedWall(operation: WallDragOperation, point: Point) {
-    const nextWall =
-      operation.mode === "move"
-        ? (moveWall(operation.originalWall as never, {
-            x: point.x - operation.originPoint.x,
-            y: point.y - operation.originPoint.y
-          }) as Wall)
-        : (resizeWall(operation.originalWall as never, operation.mode === "resize-start" ? "start" : "end", point) as Wall);
+    const original = operation.originalWall;
+    const horizontal = Math.abs(original.end.x - original.start.x) >= Math.abs(original.end.y - original.start.y);
+    // 벽 편집 스냅 허용오차 — 후보(36px)보다 좁게. 어긋난 조각 정리가 목적이라 정밀하게.
+    const snapTolerance = Math.max(14, 14 / viewScale);
+    let nextWall: Wall;
+
+    if (operation.mode === "move") {
+      nextWall = moveWall(original as never, {
+        x: point.x - operation.originPoint.x,
+        y: point.y - operation.originPoint.y
+      }) as Wall;
+      // 1) 축선 정렬: 같은 방향 벽의 중심선이 가까우면 줄을 맞춘다.
+      const cross = horizontal ? (nextWall.start.y + nextWall.end.y) / 2 : (nextWall.start.x + nextWall.end.x) / 2;
+      const crossTarget = findWallCenterlineSnap(horizontal, cross, operation.wallId, snapTolerance);
+      const crossShift = crossTarget === null ? 0 : crossTarget - cross;
+      // 2) 끝점 정렬: 양 끝 중 다른 벽 끝점·면에 가까운 쪽을 착 붙인다(길이 유지, 통째로 이동).
+      const alignedCross = cross + crossShift;
+      let alongShift = 0;
+      let bestAlongDistance = Infinity;
+      for (const endpoint of [nextWall.start, nextWall.end]) {
+        const edgeValue = horizontal ? endpoint.x : endpoint.y;
+        const target = findWallEdgeSnapTarget(horizontal, alignedCross, edgeValue, {
+          excludeWallId: operation.wallId,
+          tolerance: snapTolerance
+        });
+        if (target === null) continue;
+        const shift = target - edgeValue;
+        if (Math.abs(shift) < bestAlongDistance) {
+          bestAlongDistance = Math.abs(shift);
+          alongShift = shift;
+        }
+      }
+      const dx = horizontal ? alongShift : crossShift;
+      const dy = horizontal ? crossShift : alongShift;
+      if (dx !== 0 || dy !== 0) {
+        nextWall = {
+          ...nextWall,
+          start: { x: nextWall.start.x + dx, y: nextWall.start.y + dy },
+          end: { x: nextWall.end.x + dx, y: nextWall.end.y + dy }
+        };
+      }
+    } else {
+      // 길이 조절: 벽의 축을 유지한다 — 마우스를 비스듬히 움직여도 벽이 기울지 않는다.
+      const movingKey = operation.mode === "resize-start" ? "start" : "end";
+      const fixedKey = operation.mode === "resize-start" ? "end" : "start";
+      const cross = horizontal ? (original.start.y + original.end.y) / 2 : (original.start.x + original.end.x) / 2;
+      let movingValue = horizontal ? point.x : point.y;
+      // 다른 벽 끝점·직교 옆벽 면에 자석 스냅.
+      const target = findWallEdgeSnapTarget(horizontal, cross, movingValue, {
+        excludeWallId: operation.wallId,
+        tolerance: snapTolerance
+      });
+      if (target !== null) movingValue = target;
+      // 벽이 뒤집히거나 0길이가 되지 않게 최소 길이 확보.
+      const fixedValue = horizontal ? original[fixedKey].x : original[fixedKey].y;
+      const direction = Math.sign(movingValue - fixedValue) || Math.sign((horizontal ? original[movingKey].x : original[movingKey].y) - fixedValue) || 1;
+      if (Math.abs(movingValue - fixedValue) < 8) movingValue = fixedValue + direction * 8;
+      nextWall = {
+        ...original,
+        [movingKey]: horizontal ? { x: movingValue, y: original[movingKey].y } : { x: original[movingKey].x, y: movingValue }
+      } as Wall;
+    }
 
     setWalls((currentWalls) => currentWalls.map((wall) => (String(wall.id) === String(operation.wallId) ? nextWall : wall)));
     setSelectedWall(nextWall);
@@ -3482,15 +3585,22 @@ export default function RoomlogFloorPlanEditor() {
   // edgeValue에 가장 가까운 스냅 대상을 찾는다(허용오차 내 없으면 null).
   // 문/창문 끝을 늘릴 때 자석처럼 붙이는 용도. 대상은 두 종류:
   // 1) 같은 축선 위 벽의 끝점  2) 직교하는 옆벽의 면(face) — 문이 옆벽에 '착' 붙는 경우.
-  function findWallEdgeSnapTarget(horizontal: boolean, cross: number, edgeValue: number) {
+  function findWallEdgeSnapTarget(
+    horizontal: boolean,
+    cross: number,
+    edgeValue: number,
+    options?: { excludeWallId?: Wall["id"]; tolerance?: number }
+  ) {
     // 눈으로 '거의 붙었다' 싶은 간격에서도 자석이 걸리게 넉넉히 잡는다.
-    const tolerance = Math.max(36, 36 / viewScale);
+    // (벽 자체를 편집할 때는 옵션으로 더 좁게 준다 — 후보보다 정밀한 작업이라.)
+    const tolerance = options?.tolerance ?? Math.max(36, 36 / viewScale);
     let best: number | null = null;
     const consider = (target: number) => {
       const distance = Math.abs(target - edgeValue);
       if (distance <= tolerance && (best === null || distance < Math.abs(best - edgeValue))) best = target;
     };
     for (const wall of walls) {
+      if (options?.excludeWallId !== undefined && String(wall.id) === String(options.excludeWallId)) continue;
       const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
       const wallThickness = Math.max(14, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
       if (wallHorizontal === horizontal) {
@@ -4146,23 +4256,16 @@ export default function RoomlogFloorPlanEditor() {
 
       <aside className={`floor-plan-sidepanel floor-plan-drawer${sidePanelOpen ? " is-open" : ""}`} aria-hidden={!sidePanelOpen} aria-label="도면 요약">
         <div className="floor-plan-drawer-head">
-          <div>
-            <span>도면 요약</span>
-            <strong>{experienceMode === "landlord" ? "내 도면" : "가구 배치 체험"}</strong>
-          </div>
+          <strong>{experienceMode === "landlord" ? "내 도면" : "가구 배치 체험"}</strong>
           <button className="floor-plan-secondary" onClick={() => setSidePanelOpen(false)} type="button">
             닫기
           </button>
         </div>
         {/* 드로어 내부 섹션은 <details> 드롭다운 — 안 보는 섹션은 접어서 스크롤을 줄인다 */}
         <details className="floor-plan-drawer-section">
-          <summary>요약 지표</summary>
+          <summary>도면 상태</summary>
           <div className="floor-plan-drawer-section-body">
         <dl>
-          <div>
-            <dt>편집 상태</dt>
-            <dd>{viewMode === "3d" ? "3D 변환됨" : summary.status}</dd>
-          </div>
           <div>
             <dt>벽체</dt>
             <dd>{summary.wallCount}개{hiddenWallCount > 0 ? ` (숨김 ${hiddenWallCount})` : ""}</dd>
@@ -4176,19 +4279,14 @@ export default function RoomlogFloorPlanEditor() {
             <dd>{isScaleSet ? `1px=${pixelToMmRatio.toFixed(2)}mm` : "미설정 (세부 조정)"}</dd>
           </div>
           <div>
-            <dt>문/창문 확정</dt>
-            <dd>{openingCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{openingCandidates.length}개</dd>
+            <dt>문/창문 · 설비 확정</dt>
+            <dd>
+              {openingCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{openingCandidates.length} ·{" "}
+              {fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{fixtureCandidates.length}
+            </dd>
           </div>
           <div>
-            <dt>고정설비 확정</dt>
-            <dd>{fixtureCandidates.filter((candidate) => candidate.status === "CONFIRMED").length}/{fixtureCandidates.length}개</dd>
-          </div>
-          <div>
-            <dt>화면 배율</dt>
-            <dd>{Math.round(viewScale * 100)}%</dd>
-          </div>
-          <div>
-            <dt>저장 위치</dt>
+            <dt>저장</dt>
             <dd>{floorPlanDraftId ? "서버 저장됨" : "로컬 초안"}</dd>
           </div>
         </dl>
