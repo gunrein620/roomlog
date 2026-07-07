@@ -2506,15 +2506,7 @@ function ListingDetailView({
         </div>
       </section>
 
-      <button className="tour-banner detail-tour-banner" type="button" onClick={() => setIsTourSheetOpen(true)} aria-label="3D 가상 투어 시작하기">
-        <span>
-          <small>3D 공간 투어</small>
-          <strong>3D로 미리 보기</strong>
-          <em>실측 도면 기반으로 공간을 먼저 확인하세요</em>
-        </span>
-        <b aria-hidden="true">3D</b>
-      </button>
-
+      {/* 3D 진입은 하단 고정 바의 "3D 둘러보기"가 담당 — 본문 중복 배너는 제거했다. */}
       <section className="detail-map-section" aria-label="상세 위치">
         <div>
           <h2>위치</h2>

@@ -3527,7 +3527,8 @@ p {
   left: 50%;
   z-index: 60;
   display: grid;
-  grid-template-columns: 56px 84px minmax(0, 1fr);
+  /* 3D 둘러보기를 문의 버튼과 비슷한 체급으로 — 본문 3D 배너를 없앤 대신 여기가 주 진입점 */
+  grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1.3fr);
   gap: 8px;
   width: min(100%, 430px);
   padding: 24px 14px 12px;
@@ -3607,9 +3608,14 @@ p {
 }
 
 .detail-contact-tour {
-  border: 1px solid #d9dfee;
-  background: #f7f9ff;
+  border: 1px solid rgba(47, 85, 255, 0.4);
+  background: #f0f4ff;
   color: #193274;
+}
+
+/* 공용 규칙(0.72rem)보다 뒤에 둬서 3D 둘러보기 라벨을 키운다 */
+.detail-contact-tour strong {
+  font-size: 0.92rem;
 }
 
 .detail-contact-tour span {
@@ -9351,7 +9357,7 @@ p {
 
   .detail-contact-bar {
     bottom: 24px;
-    grid-template-columns: 64px 140px minmax(0, 1fr);
+    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr);
     width: min(calc(100vw - 48px), 980px);
     border-radius: 18px;
   }
