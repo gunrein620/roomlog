@@ -32,7 +32,7 @@ import {
   UserRound,
   X
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -61,6 +61,7 @@ import {
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
 
 // 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
@@ -603,6 +604,160 @@ function readListingFloorPlanSnapshot(): ListingFloorPlan3D | null {
   }
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function toPositiveNumber(value: unknown): number | null {
+  const numberValue = toFiniteNumber(value);
+  return numberValue !== null && numberValue > 0 ? numberValue : null;
+}
+
+function toNumberTuple3(value: unknown): [number, number, number] | null {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const numbers = value.map(toFiniteNumber);
+  if (numbers.some((numberValue) => numberValue === null)) return null;
+  return numbers as [number, number, number];
+}
+
+function normalizeUploadedFloorPlanWall(value: unknown, index: number): ListingFloorPlan3D["walls3D"][number] | null {
+  if (!isObjectRecord(value) || !isObjectRecord(value.dimensions)) return null;
+
+  const width = toPositiveNumber(value.dimensions.width);
+  const height = toPositiveNumber(value.dimensions.height);
+  const depth = toPositiveNumber(value.dimensions.depth);
+  const position = toNumberTuple3(value.position);
+  const rotation = toNumberTuple3(value.rotation);
+  if (width === null || height === null || depth === null || !position || !rotation) return null;
+
+  const syntheticId = `up-${index}`;
+  const id = typeof value.id === "string" || typeof value.id === "number" ? String(value.id) : syntheticId;
+  const wallId =
+    typeof value.wall_id === "string" || typeof value.wall_id === "number"
+      ? value.wall_id
+      : syntheticId;
+
+  return {
+    id: id || syntheticId,
+    wall_id: wallId || syntheticId,
+    dimensions: { width, height, depth },
+    position,
+    rotation
+  };
+}
+
+function normalizeUploadedFloorPlanFurniture(
+  value: unknown,
+  index: number
+): ListingFloorPlan3D["furnitures"][number] | null {
+  if (!isObjectRecord(value)) return null;
+
+  const length = toNumberTuple3(value.length);
+  const position = toNumberTuple3(value.position);
+  const rotation = toNumberTuple3(value.rotation);
+  const scale = toPositiveNumber(value.scale);
+  if (!length || !position || !rotation || scale === null) return null;
+
+  const syntheticId = `up-f-${index}`;
+  const id = typeof value.id === "string" || typeof value.id === "number" ? String(value.id) : syntheticId;
+  const furnitureId =
+    typeof value.furniture_id === "string" || typeof value.furniture_id === "number"
+      ? String(value.furniture_id)
+      : syntheticId;
+  const name = typeof value.name === "string" && value.name.trim() ? value.name : "가구";
+  const color = typeof value.color === "string" && value.color.trim() ? value.color : "lightgray";
+  const modelUrl = typeof value.modelUrl === "string" && value.modelUrl.trim() ? value.modelUrl : undefined;
+  const width = isObjectRecord(value.sizeMm) ? toPositiveNumber(value.sizeMm.width) : null;
+  const depth = isObjectRecord(value.sizeMm) ? toPositiveNumber(value.sizeMm.depth) : null;
+  const height = isObjectRecord(value.sizeMm) ? toPositiveNumber(value.sizeMm.height) : null;
+
+  return {
+    id: id || syntheticId,
+    furniture_id: furnitureId || syntheticId,
+    name,
+    color,
+    length,
+    modelUrl,
+    position,
+    rotation,
+    scale,
+    sizeMm: width !== null && depth !== null ? { width, depth, ...(height !== null ? { height } : {}) } : undefined
+  };
+}
+
+function parseUploadedFloorPlanJson(value: unknown): { snapshot: ListingFloorPlan3D; wallCount: number } | { error: string } {
+  let wallsSource: unknown;
+  let furnituresSource: unknown;
+  let nameSource: unknown;
+
+  if (Array.isArray(value)) {
+    wallsSource = value;
+  } else if (isObjectRecord(value)) {
+    if (Array.isArray(value.walls3D)) {
+      wallsSource = value.walls3D;
+      furnituresSource = value.furnitures;
+      nameSource = value.name;
+    } else if (isObjectRecord(value.room3d) && Array.isArray(value.room3d.walls)) {
+      wallsSource = value.room3d.walls;
+      furnituresSource = value.room3d.furnitures;
+      nameSource = value.room3d.name ?? value.name;
+    } else if (Array.isArray(value.walls)) {
+      wallsSource = value.walls;
+      furnituresSource = value.furnitures;
+      nameSource = value.name;
+    }
+  }
+
+  if (!Array.isArray(wallsSource)) return { error: "도면 JSON에서 벽 배열을 찾지 못했습니다." };
+
+  const walls3D = wallsSource
+    .map((wall, index) => normalizeUploadedFloorPlanWall(wall, index))
+    .filter((wall): wall is ListingFloorPlan3D["walls3D"][number] => Boolean(wall));
+
+  if (walls3D.length === 0) return { error: "이 JSON에서 유효한 벽을 못 찾았습니다." };
+
+  const furnitures = Array.isArray(furnituresSource)
+    ? furnituresSource
+        .map((furniture, index) => normalizeUploadedFloorPlanFurniture(furniture, index))
+        .filter((furniture): furniture is ListingFloorPlan3D["furnitures"][number] => Boolean(furniture))
+    : [];
+
+  return {
+    snapshot: {
+      name: typeof nameSource === "string" ? nameSource : undefined,
+      walls3D,
+      furnitures
+    },
+    wallCount: walls3D.length
+  };
+}
+
+function writeListingFloorPlanSnapshot(snapshot: ListingFloorPlan3D) {
+  const storageSnapshot = {
+    name: snapshot.name,
+    savedAt: Date.now(),
+    walls3D: snapshot.walls3D.map((wall) => ({
+      id: String(wall.id),
+      wall_id: wall.wall_id,
+      dimensions: wall.dimensions,
+      position: wall.position,
+      rotation: wall.rotation
+    })),
+    furnitures: snapshot.furnitures
+  };
+  window.localStorage.setItem(LISTING_FLOOR_PLAN_STORAGE_KEY, JSON.stringify(storageSnapshot));
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("ko-KR")}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
 function tradePriceLabel(listing: TradeListing): string {
   if (listing.tradeType === "월세") return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
   if (listing.tradeType === "전세") return `전세 ${listing.depositManwon.toLocaleString("ko-KR")}만`;
@@ -924,6 +1079,8 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   // 선택 즉시 보이는 미리보기 URL — photoFiles가 바뀌면 이전 objectURL은 회수한다.
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  const [tourSourceFile, setTourSourceFile] = useState<File | null>(null);
+  const tourSourceInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     const urls = photoFiles.map((file) => URL.createObjectURL(file));
     setPhotoPreviewUrls(urls);
@@ -933,6 +1090,36 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     const next = photoFiles.filter((_, i) => i !== index);
     setPhotoFiles(next);
     setPhotoCount(next.length);
+  };
+  const handleFloorPlanJsonUpload = (file: File | undefined) => {
+    if (!file) return;
+
+    void file.text().then((text) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        setOwnerToast("도면 JSON을 읽지 못했습니다. 파일 내용을 확인해 주세요.");
+        return;
+      }
+
+      const result = parseUploadedFloorPlanJson(parsed);
+      if ("error" in result) {
+        setOwnerToast(result.error);
+        return;
+      }
+
+      try {
+        writeListingFloorPlanSnapshot(result.snapshot);
+        setHas3DRoom(true);
+        setRegistrationStatus("작성 중");
+        setOwnerToast(`도면 벽 ${result.wallCount}개 연결됨 — 등록하면 상세에서 3D로 보입니다`);
+      } catch {
+        setOwnerToast("도면을 이 브라우저에 저장하지 못했습니다. 파일 용량을 확인해 주세요.");
+      }
+    }).catch(() => {
+      setOwnerToast("도면 JSON을 읽지 못했습니다. 파일 내용을 확인해 주세요.");
+    });
   };
   // 주소 지오코딩 결과 — 등록 페이로드의 lat/lng로 실린다(실패/미활성 시 null).
   const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -958,6 +1145,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
   // 내가 서버에 등록한 실제 매물 — 수정/내리기의 대상. null = 아직 조회 전.
   const [serverListings, setServerListings] = useState<TradeListing[] | null>(null);
+  const [latestSplatAssetByListing, setLatestSplatAssetByListing] = useState<Record<string, SplatAsset | null>>({});
   // 수정 모드: 등록 폼을 재사용해 이 id의 매물을 PATCH 한다.
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
 
@@ -987,6 +1175,32 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     void loadMyServerListings();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 시 1회 조회
   }, []);
+
+  useEffect(() => {
+    if (serverListings === null || serverListings.length === 0) {
+      setLatestSplatAssetByListing({});
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      serverListings.map(async (listing) => {
+        try {
+          const assets = await listSplatAssetsByListing(listing.id);
+          return [listing.id, assets[0] ?? null] as const;
+        } catch {
+          return [listing.id, null] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setLatestSplatAssetByListing(Object.fromEntries(entries) as Record<string, SplatAsset | null>);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [serverListings]);
 
   /** 수정 시작 — 매물 값을 등록 폼에 채우고 폼으로 스크롤한다. */
   const startEditListing = (listing: TradeListing) => {
@@ -1024,6 +1238,42 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     } catch {
       setOwnerToast("매물 내리기에 실패했습니다. 네트워크를 확인해 주세요.");
     }
+  };
+
+  const renderSplatTourChip = (listingId: string) => {
+    const asset = latestSplatAssetByListing[listingId];
+    if (!asset) return null;
+
+    const chipStyle: CSSProperties = {
+      minHeight: 30,
+      padding: "0 10px",
+      borderRadius: 999,
+      border: "1px solid var(--line)",
+      background: "var(--surface)",
+      color: "var(--ink)",
+      fontSize: "0.72rem",
+      fontWeight: 900,
+      textDecoration: "none",
+      display: "inline-flex",
+      alignItems: "center"
+    };
+
+    if (asset.status === "UPLOADED") {
+      return (
+        <Link href={`/splat-tour/register?asset=${encodeURIComponent(asset.id)}`} style={chipStyle}>
+          정합하기
+        </Link>
+      );
+    }
+    if (asset.status === "REGISTERED") {
+      return (
+        <Link href={`/splat-tour?asset=${encodeURIComponent(asset.id)}`} style={chipStyle}>
+          3D 투어 보기
+        </Link>
+      );
+    }
+    if (asset.status === "FAILED") return <em>3D 투어 제작 실패</em>;
+    return <em>3D 투어 제작 중</em>;
   };
 
   // 주소 입력을 디바운스로 지오코딩 — 상세 지도에 실제 매물 좌표를 찍기 위함.
@@ -1176,21 +1426,55 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           });
         }
 
+        let splatIntakeToast = "";
+        let shouldClearTourSourceFile = true;
+        if (savedListing?.id && tourSourceFile) {
+          const latestAsset = latestSplatAssetByListing[savedListing.id] ?? null;
+          const shouldIntakeSplat = !isEditing || !latestAsset || latestAsset.status === "FAILED";
+
+          if (shouldIntakeSplat) {
+            try {
+              const asset = await intakeSplatAsset({
+                listingId: savedListing.id,
+                title: ownerForm.title,
+                address: ownerForm.address,
+                file: tourSourceFile
+              });
+              setLatestSplatAssetByListing((current) => ({ ...current, [savedListing.id]: asset }));
+              splatIntakeToast =
+                asset.status === "UPLOADED"
+                  ? "스플랫 접수 완료 — 정합 대기"
+                  : "3D 투어 제작이 접수됐습니다";
+            } catch {
+              shouldClearTourSourceFile = false;
+              splatIntakeToast = "매물은 저장됐지만 3D 투어 접수에 실패했습니다. 매물 수정에서 같은 파일로 다시 접수할 수 있습니다.";
+            }
+          } else {
+            splatIntakeToast = "이미 3D 자산이 있는 매물입니다 — 기존 자산을 유지합니다";
+          }
+        }
+
         // 등록/수정 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
         //   (로컬 그림자 목록은 만들지 않는다 — 내 매물은 항상 서버 진실(serverListings)만 보여준다.)
         setOwnerForm(emptyOwnerForm);
         setPhotoFiles([]);
         setPhotoCount(0);
+        if (shouldClearTourSourceFile) {
+          setTourSourceFile(null);
+          if (tourSourceInputRef.current) tourSourceInputRef.current.value = "";
+        }
         setHas3DRoom(false);
         setGeoCoords(null);
         if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
+        const listingSuccessToast = isEditing
+          ? "매물이 수정됐습니다. 내 매물과 홈 피드에 바로 반영됩니다."
+          : "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.";
+        // 등록 성공과 투어 접수 결과가 연속으로 덮어쓰기 되지 않게 하나의 토스트로 합친다.
         if (isEditing) {
           setEditingListingId(null);
-          setOwnerToast("매물이 수정됐습니다. 내 매물과 홈 피드에 바로 반영됩니다.");
-        } else {
-          setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
         }
+        setOwnerToast(splatIntakeToast ? `${listingSuccessToast} ${splatIntakeToast}` : listingSuccessToast);
         await loadMyServerListings();
       } catch {
         setOwnerToast("매물 등록에 실패했습니다. 네트워크를 확인해 주세요.");
@@ -1359,6 +1643,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
                   <small>{tradePriceLabel(listing)} · {listing.location}</small>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
+                  {renderSplatTourChip(listing.id)}
                   <em className={listing.status === "노출중" ? "live" : ""}>{listing.status}</em>
                   <button
                     type="button"
@@ -1933,6 +2218,48 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
                 : "도면을 만들고 저장하면 자동으로 연결돼요. 실측 도면 기반 3D 편집 페이지로 이동"}
             </span>
           </a>
+
+          <label className="upload-zone">
+            <strong>도면 JSON 업로드</strong>
+            <span>3D 도면 만들기에서 내려받은 JSON이나 walls3D/walls 배열을 바로 연결합니다.</span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              aria-label="도면 JSON 업로드"
+              onChange={(event) => {
+                handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+
+          <label className="upload-zone">
+            <strong>영상/스플랫 접수</strong>
+            <span>영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
+            <input
+              ref={tourSourceInputRef}
+              type="file"
+              accept="video/*,.spz"
+              aria-label="영상 또는 스플랫 파일 업로드"
+              onChange={(event) => {
+                setTourSourceFile(event.currentTarget.files?.[0] ?? null);
+                setRegistrationStatus("작성 중");
+              }}
+            />
+          </label>
+
+          {tourSourceFile ? (
+            <p
+              style={{
+                margin: 0,
+                color: "var(--muted)",
+                fontSize: "0.8rem",
+                fontWeight: 800
+              }}
+            >
+              선택됨: {tourSourceFile.name} · {formatFileSize(tourSourceFile.size)}
+            </p>
+          ) : null}
         </section>
 
         <section className="owner-submit-summary" aria-label="검수 요청 요약">

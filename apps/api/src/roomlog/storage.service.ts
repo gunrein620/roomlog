@@ -1,5 +1,6 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export type SaveStoredFileInput = {
@@ -25,7 +26,8 @@ export class LocalStorageAdapter implements FileStorageAdapter {
 
   async save(input: SaveStoredFileInput): Promise<StoredFile> {
     mkdirSync(this.uploadDir, { recursive: true });
-    writeFileSync(join(this.uploadDir, input.fileName), input.buffer);
+    // 동기 쓰기는 수백 MB 영상(splat intake) 동안 이벤트 루프를 통째로 세운다 — 반드시 비동기로.
+    await writeFile(join(this.uploadDir, input.fileName), input.buffer);
 
     return {
       fileName: input.fileName,
