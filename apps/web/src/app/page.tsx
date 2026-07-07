@@ -1369,7 +1369,7 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
                   <small>{tradePriceLabel(listing)} · {listing.location}</small>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-                  <em className="live">{listing.status}</em>
+                  <em className={listing.status === "노출중" ? "live" : ""}>{listing.status}</em>
                   <button
                     type="button"
                     onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
@@ -4103,9 +4103,10 @@ export default function Home() {
   }, []);
   // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
   // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
-  const sortedTradeListings = [...tradeListings].sort(
-    (a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0)
-  );
+  // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).
+  const sortedTradeListings = tradeListings
+    .filter((listing) => listing.status !== "계약완료")
+    .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
   const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);

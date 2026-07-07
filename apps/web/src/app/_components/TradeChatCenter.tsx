@@ -31,6 +31,7 @@ type TradeMessage = {
 
 type TradeThread = {
   id: string;
+  listingId: string | null;
   listingTitle: string;
   buyerId: string;
   buyerName: string;
@@ -38,6 +39,48 @@ type TradeThread = {
   ownerName: string;
   messages: TradeMessage[];
 };
+
+type TradeContract = {
+  id: string;
+  listingId: string;
+  listingTitle: string;
+  threadId: string;
+  landlordId: string;
+  tenantId: string;
+  status: "proposed" | "accepted" | "declined" | "cancelled";
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+};
+
+function contractTermsLabel(contract: TradeContract): string {
+  const deposit = (contract.depositManwon || 0).toLocaleString("ko-KR");
+  if (contract.tradeType === "월세") return `월세 ${deposit}/${contract.monthlyRentManwon || 0}`;
+  return `${contract.tradeType} ${deposit}만`;
+}
+
+const contractBarStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  padding: "9px 14px",
+  borderBottom: "1px solid var(--line)",
+  fontSize: "0.8rem",
+  fontWeight: 800
+} as const;
+
+const contractSmallBtnStyle = {
+  flex: "none",
+  minHeight: 32,
+  padding: "0 12px",
+  borderRadius: 999,
+  border: "1px solid var(--line)",
+  background: "#ffffff",
+  fontSize: "0.76rem",
+  fontWeight: 900,
+  cursor: "pointer"
+} as const;
 
 function timeLabel(iso: string): string {
   if (!iso) return "";
@@ -63,8 +106,10 @@ export function TradeChatCenter({
   const [needsLogin, setNeedsLogin] = useState(false);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [openThread, setOpenThread] = useState<TradeThread | null>(null);
+  const [openContract, setOpenContract] = useState<TradeContract | null>(null);
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isContractBusy, setIsContractBusy] = useState(false);
   const [myUserId, setMyUserId] = useState("");
   const [isSocketLive, setIsSocketLive] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -100,6 +145,18 @@ export function TradeChatCenter({
     }
   }, []);
 
+  // 스레드의 최신 계약 상태 — 제안 버튼/수락 카드의 근거
+  const loadOpenContract = useCallback(async (threadId: string) => {
+    try {
+      const res = await fetch(`/api/trade/threads/${threadId}/contract`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json().catch(() => null)) as TradeContract | null;
+      setOpenContract(data && data.id ? data : null);
+    } catch {
+      // 다음 폴링에서 복구
+    }
+  }, []);
+
   // 외부에서 특정 스레드를 지목하면(문의 전송 직후) 그 대화를 바로 연다.
   useEffect(() => {
     if (focusThreadId) {
@@ -126,6 +183,7 @@ export function TradeChatCenter({
       const current = openThreadIdRef.current;
       if (current && (!payload.threadId || payload.threadId === current)) {
         loadOpenThread(current);
+        loadOpenContract(current);
       }
     };
 
@@ -139,7 +197,7 @@ export function TradeChatCenter({
       socket.off("disconnect", onDisconnect);
       socket.off("trade:updated", onTradeUpdated);
     };
-  }, [loadThreads, loadOpenThread]);
+  }, [loadThreads, loadOpenThread, loadOpenContract]);
 
   useEffect(() => {
     loadThreads();
@@ -151,12 +209,17 @@ export function TradeChatCenter({
   useEffect(() => {
     if (!openThreadId) {
       setOpenThread(null);
+      setOpenContract(null);
       return;
     }
     loadOpenThread(openThreadId);
-    const timer = window.setInterval(() => loadOpenThread(openThreadId), isSocketLive ? 30000 : 3000);
+    loadOpenContract(openThreadId);
+    const timer = window.setInterval(() => {
+      loadOpenThread(openThreadId);
+      loadOpenContract(openThreadId);
+    }, isSocketLive ? 30000 : 3000);
     return () => window.clearInterval(timer);
-  }, [openThreadId, loadOpenThread, isSocketLive]);
+  }, [openThreadId, loadOpenThread, loadOpenContract, isSocketLive]);
 
   // 새 메시지가 도착했을 때만 맨 아래로 스크롤
   useEffect(() => {
@@ -166,6 +229,29 @@ export function TradeChatCenter({
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     }
   }, [openThread]);
+
+  // 계약 액션 3종 — 성공/실패와 무관하게 스레드·계약 상태를 다시 읽어 화면을 맞춘다.
+  const runContractAction = async (path: string, body: Record<string, unknown>, confirmText: string) => {
+    if (!openThreadId || isContractBusy) return;
+    if (!window.confirm(confirmText)) return;
+    setIsContractBusy(true);
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const error = (await res.json().catch(() => null)) as { message?: string } | null;
+        window.alert(error?.message ?? "계약 처리에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      }
+      loadOpenThread(openThreadId);
+      loadOpenContract(openThreadId);
+      loadThreads();
+    } finally {
+      setIsContractBusy(false);
+    }
+  };
 
   const sendMessage = async () => {
     if (!openThreadId || !draft.trim() || isSending) return;
@@ -213,7 +299,107 @@ export function TradeChatCenter({
 
   // 열린 대화 화면
   if (openThreadId && openThread) {
+    const iAmOwner = openThread.ownerId === myUserId;
     const counterpart = openThread.buyerId === myUserId ? openThread.ownerName : openThread.buyerName;
+    const contractClosed = openContract?.status === "declined" || openContract?.status === "cancelled";
+    const canPropose = iAmOwner && Boolean(openThread.listingId) && (!openContract || contractClosed);
+
+    const contractBar = (() => {
+      if (openContract?.status === "accepted") {
+        return (
+          <div style={{ ...contractBarStyle, background: "#e8f7ee", color: "#136c34" }} role="status">
+            ✅ 계약 체결됨 — {contractTermsLabel(openContract)}
+            {!iAmOwner ? " · 마이페이지 ‘나의 집’에서 확인하세요" : ""}
+          </div>
+        );
+      }
+      if (openContract?.status === "proposed" && iAmOwner) {
+        return (
+          <div style={{ ...contractBarStyle, background: "#eef2fb", color: "#31406a" }} role="status">
+            <span style={{ minWidth: 0 }}>📋 계약 제안 중 — {contractTermsLabel(openContract)} · {openThread.buyerName}님 수락 대기</span>
+            <button
+              type="button"
+              disabled={isContractBusy}
+              onClick={() =>
+                runContractAction(
+                  `/api/trade/contracts/${openContract.id}/cancel`,
+                  {},
+                  "계약 제안을 취소할까요?"
+                )
+              }
+              style={{ ...contractSmallBtnStyle, color: "#b42222", borderColor: "#e6b3b3" }}
+            >
+              제안 취소
+            </button>
+          </div>
+        );
+      }
+      if (openContract?.status === "proposed" && openContract.tenantId === myUserId) {
+        return (
+          <div style={{ display: "grid", gap: 8, padding: "12px 14px", borderBottom: "1px solid var(--line)", background: "#eef2fb" }} role="status">
+            <strong style={{ fontSize: "0.88rem", color: "#31406a" }}>🤝 집주인이 계약을 제안했어요 — {contractTermsLabel(openContract)}</strong>
+            <span style={{ color: "var(--muted)", fontSize: "0.76rem", fontWeight: 700 }}>
+              수락하면 계약이 체결되고, 이 집이 마이페이지 ‘나의 집’으로 연결됩니다.
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                disabled={isContractBusy}
+                onClick={() =>
+                  runContractAction(
+                    `/api/trade/contracts/${openContract.id}/respond`,
+                    { accept: true },
+                    `'${openContract.listingTitle}' 계약을 수락할까요?\n${contractTermsLabel(openContract)} 조건으로 계약이 체결됩니다.`
+                  )
+                }
+                style={{ flex: 1, minHeight: 40, borderRadius: 10, background: "var(--blue)", color: "#ffffff", fontWeight: 900, fontSize: "0.84rem", opacity: isContractBusy ? 0.5 : 1 }}
+              >
+                수락하기
+              </button>
+              <button
+                type="button"
+                disabled={isContractBusy}
+                onClick={() =>
+                  runContractAction(
+                    `/api/trade/contracts/${openContract.id}/respond`,
+                    { accept: false },
+                    "계약 제안을 거절할까요?"
+                  )
+                }
+                style={{ ...contractSmallBtnStyle, minHeight: 40, padding: "0 16px" }}
+              >
+                거절
+              </button>
+            </div>
+          </div>
+        );
+      }
+      if (canPropose) {
+        return (
+          <div style={{ ...contractBarStyle, background: "var(--paper)" }}>
+            <span style={{ color: "var(--muted)", fontSize: "0.76rem", fontWeight: 700 }}>
+              이 분과 계약을 진행하시겠어요?
+            </span>
+            <button
+              type="button"
+              disabled={isContractBusy}
+              onClick={() =>
+                runContractAction(
+                  "/api/trade/contracts",
+                  { threadId: openThread.id },
+                  `${openThread.buyerName}님에게 '${openThread.listingTitle}' 계약을 제안할까요?\n상대가 수락하면 계약이 체결됩니다.`
+                )
+              }
+              style={{ ...contractSmallBtnStyle, background: "var(--blue)", color: "#ffffff", border: "none" }}
+            >
+              🤝 이 분과 계약하기
+            </button>
+          </div>
+        );
+      }
+      return null;
+    })();
+
     return (
       <section aria-label="문의 대화" style={{ border: "1px solid var(--line)", borderRadius: 18, background: "var(--paper)", overflow: "hidden" }}>
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--line)" }}>
@@ -229,6 +415,7 @@ export function TradeChatCenter({
             목록으로
           </button>
         </header>
+        {contractBar}
         <div ref={scrollRef} style={{ maxHeight: "min(62vh, 560px)", minHeight: 220, overflowY: "auto", padding: 14, display: "grid", gap: 8, background: "var(--canvas)" }}>
           {openThread.messages.map((message) => {
             const mine = message.senderId === myUserId;

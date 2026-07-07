@@ -4,10 +4,10 @@ import { getUser } from "@/lib/session";
 import { serverFetch } from "@/lib/server-api";
 import { listManagerTickets } from "@/lib/ticket-manager-api";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
-import ManagerHomeTabs, { type ManagerListingRow, type ManagerTicketRow } from "./ManagerHomeTabs";
+import ManagerHomeTabs, { type ManagerContractRow, type ManagerListingRow, type ManagerTicketRow } from "./ManagerHomeTabs";
 
 // 관리 중인 집 홈 — "오늘 할 일/첫 건물/KPI 셸" 대신 실데이터 4탭:
-// 올려놓은 매물(미계약) · 계약중인 집(플로우 준비 중) · 민원/하자 · AI 관리자(준비 중).
+// 올려놓은 매물(미계약) · 계약중인 집(체결된 계약) · 민원/하자 · AI 관리자(준비 중).
 
 type TradeListing = {
   id: string;
@@ -17,11 +17,27 @@ type TradeListing = {
   tradeType: "월세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
+  status?: "노출중" | "계약완료";
   images?: string[];
   floorPlan?: unknown;
 };
 
-function priceLabel(listing: TradeListing): string {
+type TradeContract = {
+  id: string;
+  listingTitle: string;
+  threadId: string;
+  landlordId: string;
+  tenantId: string;
+  tenantName: string;
+  status: "proposed" | "accepted" | "declined" | "cancelled";
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  location: string;
+  respondedAt?: string;
+};
+
+function priceLabel(listing: Pick<TradeListing, "tradeType" | "depositManwon" | "monthlyRentManwon">): string {
   const deposit = (listing.depositManwon || 0).toLocaleString("ko-KR");
   if (listing.tradeType === "월세") return `월세 ${deposit}/${listing.monthlyRentManwon || 0}`;
   return `${listing.tradeType} ${deposit}만`;
@@ -44,7 +60,7 @@ export default async function Page() {
   try {
     const all = await serverFetch<TradeListing[]>("/trade/listings");
     listings = all
-      .filter((listing) => listing.ownerId === user?.userId)
+      .filter((listing) => listing.ownerId === user?.userId && listing.status !== "계약완료")
       .map((listing) => ({
         id: listing.id,
         title: listing.title,
@@ -55,6 +71,26 @@ export default async function Page() {
       }));
   } catch {
     // 목록 API 일시 오류 — 빈 목록으로 렌더(위조 금지)
+  }
+
+  // 체결된 계약 — 채팅에서 제안→수락된 것만 계약중인 집으로 표시한다.
+  let contracts: ManagerContractRow[] = [];
+  try {
+    const allContracts = await serverFetch<TradeContract[]>("/trade/contracts");
+    contracts = allContracts
+      .filter((contract) => contract.landlordId === user?.userId && contract.status === "accepted")
+      .map((contract) => ({
+        id: contract.id,
+        listingTitle: contract.listingTitle,
+        location: contract.location,
+        tenantName: contract.tenantName,
+        priceLabel: priceLabel(contract),
+        acceptedAtLabel: contract.respondedAt
+          ? new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(new Date(contract.respondedAt))
+          : ""
+      }));
+  } catch {
+    // 계약 API 일시 오류 — 빈 목록으로 렌더(위조 금지)
   }
 
   const tickets: ManagerTicketRow[] = (await listManagerTickets())
@@ -69,7 +105,7 @@ export default async function Page() {
 
   return (
     <ManagerShell title={`${user?.name ?? "관리인"} 자산현황 대시보드`} context="관리 중인 집 · 대시보드" nav={<HomeNav active="home" />}>
-      <ManagerHomeTabs listings={listings} tickets={tickets} ticketHubHref={MANAGER_CROSS.ticketDash} />
+      <ManagerHomeTabs listings={listings} contracts={contracts} tickets={tickets} ticketHubHref={MANAGER_CROSS.ticketDash} />
     </ManagerShell>
   );
 }
