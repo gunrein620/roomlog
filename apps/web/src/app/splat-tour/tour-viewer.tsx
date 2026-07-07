@@ -17,7 +17,7 @@ import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
-import { getSplatAsset } from "@/lib/splat-asset-api";
+import { getSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
 import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import type { SplatTransform } from "./tour-types";
 
@@ -120,7 +120,7 @@ export default function TourViewer() {
       .then((asset) => {
         if (cancelled) return;
         if (asset.fileUrl) {
-          setSrc(asset.fileUrl);
+          setSrc(resolveAssetFileUrl(asset.fileUrl));
           setIsLoaded(false);
           setIsLoadingVisible(true);
         }

@@ -29,7 +29,7 @@ const DEFAULT_SPLAT_CENTER = { x: 0, y: ROOM.height / 2, z: -0.5 };
 const SPLAT_ROTATION_X_AXIS = new Vector3(1, 0, 0);
 const SPLAT_ROTATION_Y_AXIS = new Vector3(0, 1, 0);
 
-type SplatFitMode = "auto" | "native";
+export type SplatFitMode = "auto" | "native";
 type SplatTuningSource = "default" | "profile" | "url";
 
 interface SplatTuning {
@@ -128,12 +128,15 @@ interface SplatClipInfo {
 export function SplatScene({
   src,
   transform,
+  defaultFitMode,
   planWalls = null,
   onLoaded
 }: {
   src: string;
   // 영속화된 정합 결과. 있으면 URL/프로파일 튜닝 대신 이 절대 배치를 씬에 주입한다.
   transform?: SplatTransform | null;
+  // transform이 없는 자유 배치 경로에서 URL/프로파일이 fit을 지정하지 않았을 때만 쓰는 기본값.
+  defaultFitMode?: SplatFitMode;
   // 실 FloorPlan.walls(월드=도면 프레임). 있으면 wallClip이 플레이스홀더 박스 대신 이걸로 판정한다.
   planWalls?: WheretoputWall3D[] | null;
   onLoaded?: () => void;
@@ -181,6 +184,9 @@ export function SplatScene({
         const tuning = transform
           ? tuningFromTransform(transform, profile)
           : readSplatTuningFromLocation(profile);
+        if (!transform && defaultFitMode && tuning.sources.fitMode === "default") {
+          tuning.fitMode = defaultFitMode;
+        }
         const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
         const floorSnapInfo = snapSplatFloor(nextSplatMesh, tuning);
         const wallClipInfo = applyWallClip(nextSplatMesh, tuning, planWalls);
@@ -243,7 +249,7 @@ export function SplatScene({
       nextSplatMesh?.dispose();
       nextSparkRenderer?.dispose();
     };
-  }, [gl, invalidate, src, transformKey, planWallsKey]);
+  }, [gl, invalidate, src, transformKey, defaultFitMode, planWallsKey]);
 
   if (hasFailed) {
     return <FallbackRoom />;

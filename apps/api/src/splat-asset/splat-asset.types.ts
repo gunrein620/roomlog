@@ -32,6 +32,18 @@ export interface RegisterSplatAssetInput {
   registrationPairs?: RegistrationPointPairInput[];
 }
 
+export interface IntakeSplatAssetInput {
+  listingId: string;
+  title?: string;
+  address?: string;
+}
+
+export interface UpdateSplatAssetFileInput {
+  fileUrl: string;
+  fileKind?: string;
+  sizeBytes?: number;
+}
+
 const TRANSFORM_KEYS: (keyof SplatTransformInput)[] = [
   "rotationXDegrees",
   "rotationYDegrees",
@@ -68,6 +80,35 @@ export function parseCreateInput(body: unknown): CreateSplatAssetInput {
     const iso = requireNonEmptyString(raw.capturedAt, "capturedAt");
     if (Number.isNaN(Date.parse(iso))) throw new BadRequestException("capturedAt는 ISO 8601 날짜여야 합니다.");
     input.capturedAt = iso;
+  }
+
+  return input;
+}
+
+export function parseIntakeInput(body: unknown): IntakeSplatAssetInput {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  const input: IntakeSplatAssetInput = {
+    listingId: requireNonEmptyString(raw.listingId, "listingId")
+  };
+
+  if (typeof raw.title === "string" && raw.title.trim() !== "") input.title = raw.title.trim();
+  if (typeof raw.address === "string" && raw.address.trim() !== "") input.address = raw.address.trim();
+
+  return input;
+}
+
+export function parseUpdateFileInput(body: unknown): UpdateSplatAssetFileInput {
+  const raw = (body ?? {}) as Record<string, unknown>;
+  const input: UpdateSplatAssetFileInput = {
+    fileUrl: requireNonEmptyString(raw.fileUrl, "fileUrl")
+  };
+
+  if (raw.fileKind != null) input.fileKind = requireNonEmptyString(raw.fileKind, "fileKind");
+
+  if (raw.sizeBytes != null) {
+    const n = Number(raw.sizeBytes);
+    if (!Number.isFinite(n) || n < 0) throw new BadRequestException("sizeBytes는 0 이상의 숫자여야 합니다.");
+    input.sizeBytes = Math.trunc(n);
   }
 
   return input;

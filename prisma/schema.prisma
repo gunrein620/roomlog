@@ -368,6 +368,7 @@ enum AiFeedbackStatus {
 }
 
 enum SplatAssetStatus {
+  PROCESSING // 영상만 접수됨 — spz 생성 전. fileUrl 빈 문자열, videoUrl에 원본 영상
   UPLOADED // 파일만 존재, 도면 정합 전
   REGISTERED // 2점 정합 완료 — transform 존재, 하이브리드 기능 해금
   FAILED
@@ -1402,10 +1403,12 @@ model StatusHistory {
 model SplatAsset {
   id          String           @id
   roomId      String
+  listingId   String? // 직접등록 매물(TradeListing, JSON 스토어라 FK 없음) 연결
   floorPlanId String? // 정합 대상 도면. 있으면 미니맵/프리셋/클립 해금
   fileUrl     String // .spz/.sog 경로
   fileKind    String           @default("spz")
   sizeBytes   Int?
+  videoUrl    String? // PROCESSING 접수 시 원본 영상 경로
   status      SplatAssetStatus @default(UPLOADED)
   transform   Json? // SplatTransform (tour-types.ts). null이면 미정합
   registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용
@@ -1417,5 +1420,6 @@ model SplatAsset {
   floorPlan FloorPlan? @relation(fields: [floorPlanId], references: [id])
 
   @@index([roomId])
+  @@index([listingId])
   @@index([status])
 }

@@ -15,7 +15,7 @@ import {
 } from "../splat-plan-shape";
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
-import { registerSplatAsset } from "@/lib/splat-asset-api";
+import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
 
 // ③(b) 도면–splat 2점 정합 도구. 탑다운 정사영으로 splat 바닥 모서리 2곳을 클릭하고,
 // 오른쪽 도면에서 같은 모서리 2곳을 클릭하면 solveSimilarity가 닫힌해로 transform을
@@ -29,6 +29,11 @@ const POINT_COLORS = ["#2563eb", "#dc2626"]; // A, B
 type PickView = "splat" | "plan";
 
 type PlanSource = "placeholder" | "storage" | "upload";
+
+type AssetBanner = {
+  tone: "info" | "warning" | "error";
+  message: string;
+};
 
 export default function Page() {
   const [splatPicks, setSplatPicks] = useState<Point2[]>([]);
@@ -70,18 +75,82 @@ export default function Page() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveMessage, setSaveMessage] = useState("");
   const [pickProfile, setPickProfile] = useState<SplatTuningProfile | null>(null);
+  const [splatSrc, setSplatSrc] = useState(SPLAT_SRC);
+  const [assetBanner, setAssetBanner] = useState<AssetBanner | null>(null);
+
+  // ?asset=<id> — 매물 파이프라인에서 넘어온 자산 id를 프리필하고, 해당 spz가 있으면 정합 대상으로 로드한다.
+  // 조회 실패나 PROCESSING(fileUrl 없음)은 기본 샘플을 유지한다.
+  useEffect(() => {
+    const queryAssetId = new URLSearchParams(window.location.search).get("asset");
+    if (!queryAssetId) return;
+
+    let cancelled = false;
+    setAssetId(queryAssetId);
+    setAssetBanner({ tone: "info", message: `자산 ${queryAssetId} · 조회 중` });
+
+    getSplatAsset(queryAssetId)
+      .then((asset) => {
+        if (cancelled) return;
+
+        const prefix = `자산 ${asset.id} · ${asset.status}`;
+        if (asset.fileUrl) {
+          setSplatSrc(resolveAssetFileUrl(asset.fileUrl));
+        }
+
+        if (!asset.fileUrl) {
+          setAssetBanner({
+            tone: "warning",
+            message: `${prefix} — 아직 spz가 없습니다 — 3D 제작 완료 후 정합할 수 있습니다`
+          });
+          return;
+        }
+
+        if (asset.status === "REGISTERED") {
+          setAssetBanner({
+            tone: "warning",
+            message: `${prefix} — 이미 정합된 자산입니다 — 저장하면 덮어씁니다`
+          });
+          return;
+        }
+
+        setAssetBanner({ tone: "info", message: prefix });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSplatSrc(SPLAT_SRC);
+        setAssetBanner({
+          tone: "error",
+          message: `자산 ${queryAssetId} 조회 실패 — ${
+            error instanceof Error ? error.message : "알 수 없는 오류"
+          } — 기본 샘플로 폴백합니다`
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setSplatPicks([]);
+    setPreview(false);
+    setSaveState("idle");
+    setSaveMessage("");
+    setSplatReady(false);
+  }, [splatSrc]);
 
   // 픽 씬(SplatScene transform=null)이 같은 프로파일로 splat을 배치하므로, 솔버 결과를
   // 원본 메시 기준 절대 transform으로 만들려면 동일 프로파일을 합성해야 한다.
   useEffect(() => {
     let cancelled = false;
-    void loadSplatTuningProfile(SPLAT_SRC).then((profile) => {
+    setPickProfile(null);
+    void loadSplatTuningProfile(splatSrc).then((profile) => {
       if (!cancelled) setPickProfile(profile);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [splatSrc]);
 
   const transform = useMemo<SplatTransform | null>(() => {
     if (splatPicks.length < 2 || planPicks.length < 2) return null;
@@ -148,6 +217,8 @@ export default function Page() {
         </button>
       </header>
 
+      {assetBanner ? <div style={{ ...assetBannerStyle, ...assetBannerTone[assetBanner.tone] }}>{assetBanner.message}</div> : null}
+
       <div style={panes}>
         <section style={pane}>
           <PaneTitle step="1" label="splat 탑다운 — 바닥 모서리 클릭" picks={splatPicks.length} />
@@ -157,7 +228,8 @@ export default function Page() {
               {/* 탑다운 전용 컨트롤: 휠=확대, 드래그=이동. 회전은 잠근다(픽 좌표는 XZ 정사영 전제). */}
               <MapControls enableRotate={false} makeDefault minZoom={40} maxZoom={600} />
               <SplatScene
-                src={SPLAT_SRC}
+                defaultFitMode="native"
+                src={splatSrc}
                 transform={preview ? transform : null}
                 onLoaded={() => setSplatReady(true)}
               />
@@ -238,7 +310,17 @@ export default function Page() {
             {saveState === "saving" ? "저장 중…" : "저장"}
           </button>
           {saveMessage ? (
-            <span style={{ ...muted, color: saveState === "error" ? "#dc2626" : "#16a34a" }}>{saveMessage}</span>
+            <span style={{ ...muted, color: saveState === "error" ? "#dc2626" : "#16a34a" }}>
+              {saveMessage}
+              {saveState === "saved" && assetId.trim() ? (
+                <>
+                  {" "}
+                  <a style={tourLink} href={`/splat-tour?asset=${encodeURIComponent(assetId.trim())}`}>
+                    투어 열기
+                  </a>
+                </>
+              ) : null}
+            </span>
           ) : null}
         </div>
         <pre style={result}>
@@ -373,6 +455,30 @@ const canvasWrap: CSSProperties = {
 };
 const footer: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
 const muted: CSSProperties = { color: "#64748b", fontSize: 13 };
+const assetBannerStyle: CSSProperties = {
+  border: "1px solid",
+  borderRadius: 8,
+  padding: "9px 12px",
+  fontSize: 13,
+  fontWeight: 700
+};
+const assetBannerTone: Record<AssetBanner["tone"], CSSProperties> = {
+  info: {
+    background: "var(--surface-container-lowest)",
+    borderColor: "var(--outline-variant)",
+    color: "var(--on-surface)"
+  },
+  warning: {
+    background: "var(--primary-container)",
+    borderColor: "var(--primary)",
+    color: "var(--on-primary-container)"
+  },
+  error: {
+    background: "var(--error-container)",
+    borderColor: "var(--error)",
+    color: "var(--on-error-container)"
+  }
+};
 const hint: CSSProperties = { position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "#64748b" };
 const loadingOverlay: CSSProperties = {
   position: "absolute",
@@ -415,6 +521,7 @@ const ghostBtn: CSSProperties = {
   fontWeight: 700
 };
 const input: CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 8, padding: "9px 12px", fontSize: 14, minWidth: 220 };
+const tourLink: CSSProperties = { color: "inherit", fontWeight: 800, textDecoration: "underline" };
 const result: CSSProperties = {
   margin: 0,
   background: "#0f172a",
