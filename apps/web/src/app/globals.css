@@ -6092,9 +6092,6 @@ p {
 
 .saved-card,
 .inquiry-status-card,
-.inquiry-channel-card,
-.inquiry-timeline-card,
-.inquiry-mini-grid article,
 .profile-summary-list article {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -6273,143 +6270,6 @@ p {
   font-size: 0.76rem;
   font-weight: 900;
   line-height: 1.4;
-}
-
-.inquiry-channel-card {
-  display: grid;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 14px;
-  background: #fbfcff;
-}
-
-.inquiry-channel-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.inquiry-channel-head span {
-  color: var(--blue);
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
-.inquiry-channel-head strong {
-  color: var(--ink);
-  font-size: 0.94rem;
-}
-
-.inquiry-channel-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.inquiry-channel-grid article {
-  display: grid;
-  min-height: 86px;
-  align-content: center;
-  gap: 4px;
-  padding: 9px;
-  border: 1px solid #dfe5ef;
-  border-radius: 13px;
-  background: #ffffff;
-}
-
-.inquiry-channel-grid span {
-  color: var(--muted);
-  font-size: 0.66rem;
-  font-weight: 900;
-}
-
-.inquiry-channel-grid strong {
-  color: var(--blue);
-  font-size: 0.78rem;
-  line-height: 1.25;
-}
-
-.inquiry-channel-grid small {
-  color: #667085;
-  font-size: 0.62rem;
-  font-weight: 800;
-  line-height: 1.3;
-}
-
-.inquiry-timeline-card {
-  display: grid;
-  gap: 0;
-  margin-top: 12px;
-  overflow: hidden;
-}
-
-.inquiry-timeline-head,
-.inquiry-timeline-card article {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-  min-height: 58px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.inquiry-timeline-card article:last-child {
-  border-bottom: 0;
-}
-
-/* 헤드 라벨("문의 타임라인")은 58px 칸에서 줄바꿈되지 않게 자연 폭 사용 */
-.inquiry-timeline-head {
-  grid-template-columns: auto minmax(0, 1fr);
-}
-
-.inquiry-timeline-head span,
-.inquiry-timeline-card article > span {
-  color: var(--blue);
-  font-size: 0.7rem;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.inquiry-timeline-head strong,
-.inquiry-timeline-card article strong {
-  color: var(--ink);
-  font-size: 0.88rem;
-}
-
-.inquiry-timeline-card article p {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-.inquiry-mini-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.inquiry-mini-grid article {
-  display: grid;
-  min-height: 78px;
-  align-content: center;
-  gap: 5px;
-  padding: 12px;
-}
-
-.inquiry-mini-grid span {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 900;
-}
-
-.inquiry-mini-grid strong {
-  color: var(--ink);
-  font-size: 0.92rem;
 }
 
 .compact-profile {
@@ -9196,46 +9056,10 @@ p {
     grid-column: 1 / -1;
   }
 
-  /* 문의센터: 채팅이 주인공 — 좌 4/6칸 채팅, 우 2/6칸 타임라인·요약, 채널 안내는 하단 보조.
-     (기존: 채팅에 배치 규칙이 없어 1/6칸에 짜부되고, 빈 채널 카드가 stretch로 가운데를 차지하던 문제) */
-  .inquiry-screen > .inquiry-history-list {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px;
-    align-items: start;
-  }
-
-  /* DOM 순서(채널 카드가 타임라인보다 앞)와 무관하게 자리를 고정 — 행 명시(1행 = 제목줄) */
+  /* 문의센터: 채팅 허브가 전체 폭 — 데스크톱 2패널(목록+대화)은 TradeChatCenter variant="hub"가 그린다 */
   .inquiry-screen > .inquiry-chat-panel {
-    grid-column: 1 / span 4;
-    grid-row: 2 / span 2;
-    min-width: 0;
-  }
-
-  .inquiry-screen > .inquiry-timeline-card {
-    grid-column: 5 / span 2;
-    grid-row: 2;
-    margin-top: 0;
-  }
-
-  .inquiry-screen > .inquiry-mini-grid {
-    grid-column: 5 / span 2;
-    grid-row: 3;
-    align-self: start;
-    margin-top: 0;
-  }
-
-  .inquiry-screen > .inquiry-channel-card {
     grid-column: 1 / -1;
-    grid-row: 4;
-    align-self: start;
-    margin-top: 0;
-  }
-
-  /* 채널 카드 = 하단 보조 안내: 3열 그대로, 카드가 늘어나 빈 공간이 생기지 않게 콘텐츠 높이만큼만 */
-  .inquiry-screen .inquiry-channel-grid article {
-    min-height: 0;
-    padding: 14px 16px;
+    min-width: 0;
   }
 
   /* 찜 목록 */
@@ -10114,4 +9938,334 @@ p {
   .tenant-chat-panel-body {
     padding: 12px;
   }
+}
+
+/* ─── 거래 문의 채팅 (TradeChatCenter) ───
+   공용 대화 화면 + 문의센터 허브(variant="hub") 레이아웃.
+   허브: 데스크톱 브라우저 = 목록·대화 2패널(당근채팅 웹 참고),
+        앱(PWA standalone·좁은 화면) = 채팅 목록 단일 패널(당근채팅 앱 참고). */
+
+.trade-chat-room {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+}
+
+.trade-chat-room-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.trade-chat-room-title {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.trade-chat-room-title strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-chat-room-title small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-chat-back {
+  flex: none;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.trade-chat-scroll {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 220px;
+  max-height: min(62vh, 560px);
+  padding: 14px;
+  overflow-y: auto;
+  background: var(--canvas);
+}
+
+.trade-day-chip {
+  justify-self: center;
+  margin: 6px 0 2px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(18, 24, 40, 0.06);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.trade-msg {
+  display: grid;
+  justify-items: start;
+}
+
+.trade-msg.mine {
+  justify-items: end;
+}
+
+.trade-msg-bubble {
+  max-width: 78%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px 14px 14px 4px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.trade-msg.mine .trade-msg-bubble {
+  border: none;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.trade-msg-meta {
+  margin-top: 3px;
+  color: var(--subtle);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.trade-chat-form {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.trade-chat-form input {
+  flex: 1;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #cbd1dd;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.trade-chat-form button {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.trade-chat-form button:disabled {
+  opacity: 0.5;
+}
+
+/* 허브 목록 — 아바타·이름·메타·미리보기·안읽음 뱃지가 한 행 */
+.trade-hub-list {
+  display: grid;
+  align-content: start;
+}
+
+.trade-hub-list.app {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.trade-hub-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trade-hub-item:not(:last-child) {
+  border-bottom: 1px solid var(--line);
+}
+
+.trade-hub-item.active {
+  background: var(--blue-soft);
+}
+
+.trade-hub-avatar {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.trade-hub-item.active .trade-hub-avatar {
+  background: #ffffff;
+}
+
+.trade-hub-item-main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+
+.trade-hub-item-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trade-hub-item-top strong {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-hub-item-top small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--subtle);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-hub-item-listing {
+  overflow: hidden;
+  color: var(--subtle);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-hub-item-preview {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-hub-unread {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+/* 허브 데스크톱 — 좌측 고정 목록 + 우측 대화 한 프레임 */
+.trade-hub-desktop {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  height: min(74vh, 780px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--paper);
+  box-shadow: 0 16px 36px rgba(18, 24, 40, 0.08);
+}
+
+.trade-hub-list.desktop {
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+}
+
+.trade-hub-room {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--paper);
+}
+
+.trade-hub-room .trade-chat-room {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.trade-hub-room .trade-chat-scroll {
+  flex: 1;
+  max-height: none;
+  background: var(--paper);
+}
+
+/* 데스크톱 대화는 흰 배경 — 상대 말풍선은 회색으로 (당근채팅 웹) */
+.trade-hub-room .trade-msg-bubble {
+  border: none;
+  background: var(--canvas);
+}
+
+.trade-hub-room .trade-msg.mine .trade-msg-bubble {
+  background: var(--blue);
+}
+
+.trade-hub-placeholder {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+}
+
+.trade-hub-placeholder strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.trade-hub-placeholder p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }

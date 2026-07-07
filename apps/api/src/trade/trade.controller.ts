@@ -21,9 +21,10 @@ export class TradeController {
   }
 
   /** 스레드 양쪽 참여자에게 실시간 갱신 신호 — 데이터는 클라이언트가 REST로 다시 읽는다. */
-  private notifyThread(thread: TradeThread) {
+  private notifyThread(thread: TradeThread, senderId: string) {
     this.realtime.notifyUsers([thread.buyerId, thread.ownerId], "trade:updated", {
-      threadId: thread.id
+      threadId: thread.id,
+      senderId
     });
   }
 
@@ -82,8 +83,9 @@ export class TradeController {
     @Headers("authorization") authorization: string | undefined,
     @Body() body: { listingId?: string | null; listingTitle: string; message: string; visitTime?: string }
   ) {
-    const thread = this.tradeService.createInquiry(this.user(authorization), body);
-    this.notifyThread(thread);
+    const user = this.user(authorization);
+    const thread = this.tradeService.createInquiry(user, body);
+    this.notifyThread(thread, user.id);
 
     return thread;
   }
@@ -107,8 +109,9 @@ export class TradeController {
     @Param("threadId") threadId: string,
     @Body() body: { body: string }
   ) {
-    const thread = this.tradeService.sendMessage(this.user(authorization), threadId, body.body);
-    this.notifyThread(thread);
+    const user = this.user(authorization);
+    const thread = this.tradeService.sendMessage(user, threadId, body.body);
+    this.notifyThread(thread, user.id);
 
     return thread;
   }
@@ -134,8 +137,9 @@ export class TradeController {
     @Headers("authorization") authorization: string | undefined,
     @Body() body: { threadId: string }
   ) {
-    const { contract, thread } = this.tradeService.proposeContract(this.user(authorization), body?.threadId ?? "");
-    this.notifyThread(thread);
+    const user = this.user(authorization);
+    const { contract, thread } = this.tradeService.proposeContract(user, body?.threadId ?? "");
+    this.notifyThread(thread, user.id);
     return contract;
   }
 
@@ -146,8 +150,9 @@ export class TradeController {
     @Param("contractId") contractId: string,
     @Body() body: { accept: boolean }
   ) {
+    const user = this.user(authorization);
     const { contract, thread } = this.tradeService.respondContract(
-      this.user(authorization),
+      user,
       contractId,
       Boolean(body?.accept)
     );
@@ -157,7 +162,7 @@ export class TradeController {
         location: contract.location
       });
     }
-    this.notifyThread(thread);
+    this.notifyThread(thread, user.id);
     return contract;
   }
 
@@ -167,8 +172,9 @@ export class TradeController {
     @Headers("authorization") authorization: string | undefined,
     @Param("contractId") contractId: string
   ) {
-    const { contract, thread } = this.tradeService.cancelContract(this.user(authorization), contractId);
-    this.notifyThread(thread);
+    const user = this.user(authorization);
+    const { contract, thread } = this.tradeService.cancelContract(user, contractId);
+    this.notifyThread(thread, user.id);
     return contract;
   }
 }
