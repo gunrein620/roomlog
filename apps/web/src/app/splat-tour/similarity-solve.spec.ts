@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { solveSimilarity } from "./similarity-solve";
+import { composeWithPickViewTuning, solveSimilarity, type PickViewTuning } from "./similarity-solve";
 import type { Point2, RegistrationPointPair, SplatTransform } from "./tour-types";
 
 const EPSILON = 1e-9;
@@ -90,6 +90,82 @@ test("passes through rotationXDegrees and offsetY options", () => {
 
   assert.equal(transform.rotationXDegrees, 180);
   assert.equal(transform.offsetY, 1.2);
+});
+
+test("composeWithPickViewTuning returns the solved transform unchanged without a pick profile", () => {
+  const solved: SplatTransform = {
+    rotationXDegrees: 180,
+    rotationYDegrees: 12,
+    scaleMultiplier: 1.4,
+    offsetX: 0.2,
+    offsetY: 0,
+    offsetZ: -0.9
+  };
+
+  assert.deepEqual(composeWithPickViewTuning(solved, null), solved);
+});
+
+test("composeWithPickViewTuning keeps an upright SPZ profile upright and scales its floor offset", () => {
+  const solved: SplatTransform = {
+    rotationXDegrees: 180, // 솔버 기본값(ply 규약) — 픽 화면이 rotX 0이면 덮어써야 한다.
+    rotationYDegrees: 8.5,
+    scaleMultiplier: 1.57,
+    offsetX: -0.08,
+    offsetY: 0,
+    offsetZ: 0.51
+  };
+  const pick: PickViewTuning = { rotationXDegrees: 0, offsetY: 1.3 };
+
+  const total = composeWithPickViewTuning(solved, pick);
+
+  assertTransformApproxEqual(total, {
+    rotationXDegrees: 0,
+    rotationYDegrees: 8.5,
+    scaleMultiplier: 1.57,
+    offsetX: -0.08,
+    offsetY: 1.57 * 1.3,
+    offsetZ: 0.51
+  });
+});
+
+test("composeWithPickViewTuning maps raw splat points to the same plan points as solved ∘ pick placement", () => {
+  const pick: PickViewTuning = {
+    rotationXDegrees: 0,
+    rotationYDegrees: 30,
+    scaleMultiplier: 2,
+    offsetX: 0.3,
+    offsetY: 1.3,
+    offsetZ: -0.7
+  };
+  const solved: SplatTransform = {
+    rotationXDegrees: 180,
+    rotationYDegrees: -45,
+    scaleMultiplier: 1.5,
+    offsetX: 4,
+    offsetY: 0,
+    offsetZ: -2
+  };
+  const raw: Point2 = { x: 1, y: -0.5 };
+
+  // pick.rotationYDegrees는 three.js R_y 규약 — XZ 평면(2D)에서는 −θ 회전과 같다.
+  const placed = applySimilarity(raw, pick.scaleMultiplier ?? 1, -(pick.rotationYDegrees ?? 0), {
+    x: pick.offsetX ?? 0,
+    y: pick.offsetZ ?? 0
+  });
+  const expected = applySimilarity(placed, solved.scaleMultiplier, solved.rotationYDegrees, {
+    x: solved.offsetX,
+    y: solved.offsetZ
+  });
+
+  const total = composeWithPickViewTuning(solved, pick);
+  const actual = applySimilarity(raw, total.scaleMultiplier, total.rotationYDegrees, {
+    x: total.offsetX,
+    y: total.offsetZ
+  });
+
+  assertApproxEqual(actual.x, expected.x);
+  assertApproxEqual(actual.y, expected.y);
+  assertApproxEqual(total.offsetY, 1.5 * 1.3);
 });
 
 function applySimilarity(point: Point2, scale: number, rotationYDegrees: number, translation: Point2): Point2 {

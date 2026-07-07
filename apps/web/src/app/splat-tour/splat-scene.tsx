@@ -62,7 +62,7 @@ interface SplatTuning {
   };
 }
 
-interface SplatTuningProfile {
+export interface SplatTuningProfile {
   scaleMultiplier?: number;
   rotationXDegrees?: number;
   rotationYDegrees?: number;
@@ -398,7 +398,7 @@ function resolveSplatScale(maxDimension: number): {
   return { scale: rawScale, reason: "bbox", rawScale };
 }
 
-async function loadSplatTuningProfile(src: string): Promise<SplatTuningProfile | null> {
+export async function loadSplatTuningProfile(src: string): Promise<SplatTuningProfile | null> {
   const profileUrl = resolveSplatTuningProfileUrl(src);
   if (!profileUrl) return null;
 
@@ -513,7 +513,10 @@ function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProf
     ...base,
     scaleMultiplier: transform.scaleMultiplier,
     rotationXDegrees: transform.rotationXDegrees,
-    rotationYDegrees: transform.rotationYDegrees,
+    // SplatTransform.rotationYDegrees는 2D 계약(plan = s·R(θ)·splat + t, 표준 반시계)이고
+    // three.js R_y(θ)는 XZ 평면에서 그 역방향이다(R_y(−θ) ≡ R_2D(θ)). 3D 진입 경계인
+    // 여기서만 부호를 반전해 미니맵·프리셋 등 2D 소비자와 방향을 일치시킨다.
+    rotationYDegrees: -transform.rotationYDegrees,
     offsetX: transform.offsetX,
     offsetY: transform.offsetY,
     offsetZ: transform.offsetZ,

@@ -2,8 +2,8 @@
 
 import { Canvas, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { SplatScene } from "../splat-scene";
-import { solveSimilarity } from "../similarity-solve";
+import { SplatScene, loadSplatTuningProfile, type SplatTuningProfile } from "../splat-scene";
+import { composeWithPickViewTuning, solveSimilarity } from "../similarity-solve";
 import { SPLAT_CLIP_ROOM } from "../splat-clip";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
 import { registerSplatAsset } from "@/lib/splat-asset-api";
@@ -26,18 +26,34 @@ export default function Page() {
   const [assetId, setAssetId] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveMessage, setSaveMessage] = useState("");
+  const [pickProfile, setPickProfile] = useState<SplatTuningProfile | null>(null);
+
+  // 픽 씬(SplatScene transform=null)이 같은 프로파일로 splat을 배치하므로, 솔버 결과를
+  // 원본 메시 기준 절대 transform으로 만들려면 동일 프로파일을 합성해야 한다.
+  useEffect(() => {
+    let cancelled = false;
+    void loadSplatTuningProfile(SPLAT_SRC).then((profile) => {
+      if (!cancelled) setPickProfile(profile);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const transform = useMemo<SplatTransform | null>(() => {
     if (splatPicks.length < 2 || planPicks.length < 2) return null;
     try {
-      return solveSimilarity([
+      const solved = solveSimilarity([
         { splat: splatPicks[0], plan: planPicks[0] },
         { splat: splatPicks[1], plan: planPicks[1] }
       ]);
+      // 프로파일이 없으면 씬 기본값(rotX 180·scale 1·offset 0)이 픽 씬 배치와 일치하므로
+      // 솔버 기본값 그대로가 맞다. auto-fit 배치는 합성 불가 — native 프로파일 전제(§4).
+      return composeWithPickViewTuning(solved, pickProfile);
     } catch {
       return null; // 두 점이 겹치는 등 degenerate — 안내만
     }
-  }, [splatPicks, planPicks]);
+  }, [splatPicks, planPicks, pickProfile]);
 
   function addPick(view: PickView, point: Point2) {
     const setter = view === "splat" ? setSplatPicks : setPlanPicks;

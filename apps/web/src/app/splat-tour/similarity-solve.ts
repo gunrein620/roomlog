@@ -1,4 +1,5 @@
 import type { Point2, RegistrationPointPair, SplatTransform } from "./tour-types";
+import { projectSplatToPlan } from "./transform-project";
 
 export interface SolveOptions {
   /** Passed through to the returned transform. Defaults to SPZ Y-down to Y-up gravity alignment. */
@@ -42,6 +43,43 @@ export function solveSimilarity(
     offsetX: cleanNegativeZero(offsetX),
     offsetY: options.offsetY ?? DEFAULT_OFFSET_Y,
     offsetZ: cleanNegativeZero(offsetZ)
+  };
+}
+
+export interface PickViewTuning {
+  rotationXDegrees?: number;
+  rotationYDegrees?: number;
+  scaleMultiplier?: number;
+  offsetX?: number;
+  offsetY?: number;
+  offsetZ?: number;
+}
+
+/**
+ * 픽 화면이 튜닝 프로파일로 배치한 splat 위에서 푼 정합 결과를, 원본 splat에 적용 가능한
+ * 절대 transform으로 합성한다. solveSimilarity는 "픽 화면에 보인 splat → 도면"을 풀지만,
+ * 씬 주입(tuningFromTransform)은 결과를 원본 메시에 적용하므로 프로파일 배치(rotX·스케일·
+ * 오프셋)를 잃는다 — 예: 바로 선 SPZ(rotX 0)가 솔버 기본값 180으로 뒤집힘.
+ * total = solved ∘ pick: rotX는 픽 화면 값, rotY는 합, 스케일은 곱, 오프셋은 solved로 투영.
+ * 주의: bbox auto-fit 배치는 재현 불가 — 픽 화면은 native 프로파일을 전제한다.
+ */
+export function composeWithPickViewTuning(
+  solved: SplatTransform,
+  pick: PickViewTuning | null
+): SplatTransform {
+  if (!pick) return solved;
+
+  const offsetXZ = projectSplatToPlan(solved, { x: pick.offsetX ?? 0, y: pick.offsetZ ?? 0 });
+
+  return {
+    rotationXDegrees: pick.rotationXDegrees ?? solved.rotationXDegrees,
+    // pick.rotationYDegrees는 씬 튜닝(three.js R_y) 규약, solved는 2D 계약 규약이라
+    // 부호가 반대다(R_y(−θ) ≡ R_2D(θ)) — 2D 계약 공간에서 합성하므로 빼서 더한다.
+    rotationYDegrees: cleanNegativeZero(solved.rotationYDegrees - (pick.rotationYDegrees ?? 0)),
+    scaleMultiplier: cleanNegativeZero(solved.scaleMultiplier * (pick.scaleMultiplier ?? 1)),
+    offsetX: cleanNegativeZero(offsetXZ.x),
+    offsetY: cleanNegativeZero(solved.offsetY + solved.scaleMultiplier * (pick.offsetY ?? 0)),
+    offsetZ: cleanNegativeZero(offsetXZ.y)
   };
 }
 
