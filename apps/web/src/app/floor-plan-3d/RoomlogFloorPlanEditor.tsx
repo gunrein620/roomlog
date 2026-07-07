@@ -12,10 +12,7 @@ import type {
   ScaleCandidate,
   UploadedFloorPlanSource
 } from "./plan-extraction/types";
-import {
-  moveCandidate,
-  updateCandidateStatus
-} from "./plan-extraction/wall-detection.mjs";
+import { updateCandidateStatus } from "./plan-extraction/wall-detection.mjs";
 import {
   filterRatioSamplesNearExpected,
   inferMissingWallsFromStructuralBoundaries,
@@ -62,7 +59,8 @@ import {
 import {
   buildFloorPlanDraftPayload,
   buildFloorPlanLocalSnapshot,
-  buildResidentDesignPayload
+  buildResidentDesignPayload,
+  buildRoom3DSnapshot
 } from "./room-model/room-payload";
 import type {
   ExperienceMode,
@@ -121,6 +119,17 @@ type PrintedDimensionChip = {
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
+
+// 후보 타입 코드 → 사용자용 한글 라벨. 모르는 타입은 원문 그대로 노출한다.
+const CANDIDATE_TYPE_LABELS: Record<string, string> = {
+  DOOR: "문",
+  SLIDING_DOOR: "미닫이문",
+  WINDOW: "창문"
+};
+
+function candidateTypeLabel(type: string) {
+  return CANDIDATE_TYPE_LABELS[type.toUpperCase()] ?? type;
+}
 const MAX_VISIBLE_PRINTED_DIMENSIONS = 24;
 const WALL_EDIT_HANDLE_RADIUS = 16;
 const AI_IMAGE_MAX_DIMENSION = 1600;
@@ -766,6 +775,8 @@ export default function RoomlogFloorPlanEditor() {
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [openingCandidates, setOpeningCandidates] = useState<FloorPlanCandidate[]>([]);
   const [fixtureCandidates, setFixtureCandidates] = useState<FloorPlanCandidate[]>([]);
+  // 검토 목록에서 hover한 후보 — 캔버스에서 해당 후보를 하이라이트해 "어느 문인지" 연결해준다.
+  const [hoveredCandidateId, setHoveredCandidateId] = useState<string | null>(null);
   const [detectionBoxes, setDetectionBoxes] = useState<RoboflowDetectionOverlayBox[]>([]);
   // 확인용: 클릭한 벽 조각(문/창문 gap으로 끊긴 연결 구간)을 밝게 표시하는 사각들.
   const [selectedWallRunRects, setSelectedWallRunRects] = useState<Array<{ x1: number; x2: number; y1: number; y2: number }> | null>(null);
@@ -813,11 +824,40 @@ export default function RoomlogFloorPlanEditor() {
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
   const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
+  // 문창문/설비 후보 드래그 — 누른 뒤 움직이면 이동/크기조절, 그대로 떼면 확정/거절 토글(클릭과 드래그 구분).
+  const [candidateDragOperation, setCandidateDragOperation] = useState<{
+    axis: "horizontal" | "vertical";
+    candidateId: string;
+    layer: "opening" | "fixture";
+    mode: "move" | "resize-start" | "resize-end";
+    moved: boolean;
+    originPoint: Point;
+    originalBox: { height: number; width: number } | null;
+    originalPosition: Point;
+    shiftKey: boolean;
+  } | null>(null);
   const [partialEraserSelectedWall, setPartialEraserSelectedWall] = useState<Wall | null>(null);
   const [isSelectingEraseArea, setIsSelectingEraseArea] = useState(false);
   const [eraseAreaStart, setEraseAreaStart] = useState<Point | null>(null);
   const [eraseAreaEnd, setEraseAreaEnd] = useState<Point | null>(null);
   const summary = useMemo(() => summarizeWalls(walls) as WallSummary, [walls]);
+  // 후보 검토 대기함 — 아직 판단 안 한 후보만 보여주고, 처리된 것은 개수로만 요약한다.
+  const pendingCandidates = useMemo(
+    () =>
+      [
+        ...openingCandidates.map((candidate) => ["opening", candidate] as const),
+        ...fixtureCandidates.map((candidate) => ["fixture", candidate] as const)
+      ].filter(([, candidate]) => candidate.status === "CANDIDATE"),
+    [fixtureCandidates, openingCandidates]
+  );
+  const reviewedCandidateCount = useMemo(
+    () => [...openingCandidates, ...fixtureCandidates].filter((candidate) => candidate.status !== "CANDIDATE").length,
+    [fixtureCandidates, openingCandidates]
+  );
+  const highConfidencePendingCount = useMemo(
+    () => pendingCandidates.filter(([, candidate]) => (candidate.confidence ?? 0) >= 0.8).length,
+    [pendingCandidates]
+  );
   const visibleWalls = useMemo(() => walls.filter((wall) => !hiddenWallIds.has(String(wall.id))), [hiddenWallIds, walls]);
   // 디버그 표시용이지만 확정된 축척을 넘겨 실치수와 일치시킨다(기본값 10mm/px 고정 방지).
   const wheretoputWalls = useMemo(
@@ -1422,15 +1462,54 @@ export default function RoomlogFloorPlanEditor() {
 
     const drawCandidate = (candidate: FloorPlanCandidate, layer: "opening" | "fixture") => {
       const position = candidate.position ?? { x: 0, y: 0 };
+      const isHovered = hoveredCandidateId === candidate.id;
+      // 색은 종류 기준(문=빨강, 창문=연두 — 기존 인식 오버레이 색), 상태는 채움 농도로 구분한다.
       const color =
-        candidate.status === "CONFIRMED" ? (layer === "opening" ? "#00a36c" : "#7a4fd6") : candidate.status === "REJECTED" ? "#9aa3b2" : "#ff8a00";
+        candidate.status === "REJECTED"
+          ? "#9aa3b2"
+          : layer === "fixture"
+            ? "#7a4fd6"
+            : candidate.type.toUpperCase() === "DOOR"
+              ? "#e11d48"
+              : "#a3b800";
       context.save();
+      // 검토 목록에서 hover 중인 후보는 링을 한 겹 더 그려 위치를 즉시 찾을 수 있게 한다.
+      if (isHovered) {
+        context.strokeStyle = "rgba(47, 85, 255, 0.35)";
+        context.lineWidth = 10 / viewScale;
+        context.beginPath();
+        context.arc(position.x, position.y, 26 / viewScale, 0, Math.PI * 2);
+        context.stroke();
+      }
       context.globalAlpha = candidate.status === "REJECTED" ? 0.38 : 0.9;
-      context.strokeStyle = color;
-      context.fillStyle = color;
-      context.lineWidth = 3 / viewScale;
-      context.setLineDash(candidate.status === "CANDIDATE" ? [6 / viewScale, 4 / viewScale] : []);
-      if (layer === "opening") {
+      context.strokeStyle = isHovered ? "#2f55ff" : color;
+      context.fillStyle = isHovered ? "#2f55ff" : color;
+      context.lineWidth = (isHovered ? 4.5 : 3) / viewScale;
+      const box = candidate.boxPx;
+      let labelAnchorY = position.y - 16 / viewScale;
+      if (layer === "opening" && box) {
+        // 검출된 실제 크기 그대로 벽 위 구간(막대)으로 그린다 — 색 박스 오버레이를 대체.
+        // 검토 대기(CANDIDATE)는 옅게, 확정은 진하게 채워 상태를 구분한다(점선 없음).
+        const halfWidth = box.width / 2;
+        const halfHeight = box.height / 2;
+        context.globalAlpha = candidate.status === "REJECTED" ? 0.14 : candidate.status === "CANDIDATE" ? 0.24 : 0.5;
+        context.fillRect(position.x - halfWidth, position.y - halfHeight, box.width, box.height);
+        context.globalAlpha = candidate.status === "REJECTED" ? 0.38 : 0.95;
+        context.strokeRect(position.x - halfWidth, position.y - halfHeight, box.width, box.height);
+        // 긴 축 양끝 리사이즈 핸들 — 잡고 늘릴 수 있다는 시각적 힌트.
+        if (candidate.status !== "REJECTED") {
+          context.setLineDash([]);
+          const handleSize = 7 / viewScale;
+          const horizontal = box.width >= box.height;
+          const handlePoints = horizontal
+            ? [{ x: position.x - halfWidth, y: position.y }, { x: position.x + halfWidth, y: position.y }]
+            : [{ x: position.x, y: position.y - halfHeight }, { x: position.x, y: position.y + halfHeight }];
+          for (const handlePoint of handlePoints) {
+            context.fillRect(handlePoint.x - handleSize / 2, handlePoint.y - handleSize / 2, handleSize, handleSize);
+          }
+        }
+        labelAnchorY = position.y - halfHeight - 6 / viewScale;
+      } else if (layer === "opening") {
         context.beginPath();
         context.arc(position.x, position.y, 14 / viewScale, 0, Math.PI * 2);
         context.stroke();
@@ -1441,7 +1520,8 @@ export default function RoomlogFloorPlanEditor() {
       context.font = `bold ${11 / viewScale}px Arial, sans-serif`;
       context.textAlign = "center";
       context.textBaseline = "bottom";
-      context.fillText(candidate.type, position.x, position.y - 16 / viewScale);
+      const confidenceSuffix = typeof candidate.confidence === "number" ? ` ${Math.round(candidate.confidence * 100)}%` : "";
+      context.fillText(`${candidateTypeLabel(candidate.type)}${confidenceSuffix}`, position.x, labelAnchorY);
       context.restore();
     };
 
@@ -1588,25 +1668,11 @@ export default function RoomlogFloorPlanEditor() {
         context.stroke();
         context.globalAlpha = 1;
       };
-      const drawOpeningOverlayBox = (overlayBox: RoboflowDetectionOverlayBox) => {
-        const { box, confidence, type } = overlayBox;
-        const color = detectionColors[type];
-        context.strokeStyle = color;
-        context.lineWidth = 2.4 / viewScale;
-        context.globalAlpha = 0.62;
-        context.fillStyle = color;
-        context.fillRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
-        context.globalAlpha = 0.96;
-        context.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
-        context.globalAlpha = 1;
-
-        drawOverlayConfidenceLabel(box, confidence, color);
-      };
-
+      // 문/창문 박스는 그리지 않는다 — 크기를 가진 후보 막대(drawCandidate)가 같은 정보를
+      // 편집 가능한 형태로 보여준다. openingOverlayBoxes는 벽 gap 계산에만 쓴다.
       context.save();
       if (hasPostProcessedWall) drawMergedWallOverlayBoxes();
       else wallOverlayBoxes.forEach(drawRawWallOverlayBox);
-      openingOverlayBoxes.forEach(drawOpeningOverlayBox);
       context.restore();
     };
 
@@ -1886,6 +1952,7 @@ export default function RoomlogFloorPlanEditor() {
     interiorMeasurePx,
     interiorHoverSnap,
     fixtureCandidates,
+    hoveredCandidateId,
     openingCandidates,
     partialEraserSelectedWall,
     pixelToMmRatio,
@@ -2274,18 +2341,46 @@ export default function RoomlogFloorPlanEditor() {
       return;
     }
 
+    // 후보 잡기 반경은 화면 기준으로 — 축소 상태에서도 마커를 쉽게 집을 수 있게 줌을 반영한다.
+    const candidateGrabRadius = Math.max(28, 28 / viewScale);
+
     if (tool === "opening") {
-      const closestCandidate = findClosestCandidate(openingCandidates, coords);
-      if (closestCandidate) {
-        toggleCandidateStatus("opening", closestCandidate.id, event.shiftKey ? "REJECTED" : "CONFIRMED");
+      const hit = findOpeningCandidateHit(coords, candidateGrabRadius);
+      if (hit) {
+        if (event.altKey) {
+          toggleOpeningCandidateType(hit.candidate.id);
+          return;
+        }
+        // 바로 토글하지 않고 드래그 후보로 잡는다 — 떼는 시점에 클릭(토글)/드래그(이동·크기조절)를 가른다.
+        setCandidateDragOperation({
+          axis: hit.axis,
+          candidateId: hit.candidate.id,
+          layer: "opening",
+          mode: hit.mode,
+          moved: false,
+          originPoint: coords,
+          originalBox: hit.candidate.boxPx ? { ...hit.candidate.boxPx } : null,
+          originalPosition: hit.candidate.position ?? { x: 0, y: 0 },
+          shiftKey: event.shiftKey
+        });
       }
       return;
     }
 
     if (tool === "fixture") {
-      const closestCandidate = findClosestCandidate(fixtureCandidates, coords);
+      const closestCandidate = findClosestCandidate(fixtureCandidates, coords, candidateGrabRadius);
       if (closestCandidate) {
-        toggleCandidateStatus("fixture", closestCandidate.id, event.shiftKey ? "REJECTED" : "CONFIRMED");
+        setCandidateDragOperation({
+          axis: "horizontal",
+          candidateId: closestCandidate.id,
+          layer: "fixture",
+          mode: "move",
+          moved: false,
+          originPoint: coords,
+          originalBox: null,
+          originalPosition: closestCandidate.position ?? { x: 0, y: 0 },
+          shiftKey: event.shiftKey
+        });
       }
       return;
     }
@@ -2331,6 +2426,41 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     const coords = getCanvasCoordinates(event);
+    if (candidateDragOperation) {
+      const deltaX = coords.x - candidateDragOperation.originPoint.x;
+      const deltaY = coords.y - candidateDragOperation.originPoint.y;
+      // 손떨림 수준의 이동은 클릭으로 취급 — 임계값을 넘어야 드래그로 승격.
+      if (!candidateDragOperation.moved && Math.hypot(deltaX, deltaY) < 5 / viewScale) return;
+      if (!candidateDragOperation.moved) setCandidateDragOperation({ ...candidateDragOperation, moved: true });
+      const { axis, mode, originalBox, originalPosition } = candidateDragOperation;
+      if (mode === "move" || !originalBox) {
+        setCandidateGeometry(candidateDragOperation.layer, candidateDragOperation.candidateId, {
+          position: { x: originalPosition.x + deltaX, y: originalPosition.y + deltaY }
+        });
+        return;
+      }
+      // 크기 조절: 잡은 끝만 움직이고 반대쪽 끝은 고정한다.
+      const horizontal = axis === "horizontal";
+      const axisDelta = horizontal ? deltaX : deltaY;
+      const originalLength = horizontal ? originalBox.width : originalBox.height;
+      const sign = mode === "resize-end" ? 1 : -1;
+      let nextLength = Math.max(8, originalLength + sign * axisDelta);
+      // 끄는 도중에도 같은 축선 위 벽 끝점에 자석처럼 붙인다.
+      const originalCenter = horizontal ? originalPosition.x : originalPosition.y;
+      const cross = horizontal ? originalPosition.y : originalPosition.x;
+      const fixedEdge = originalCenter - sign * (originalLength / 2);
+      const snapTarget = findWallEdgeSnapTarget(horizontal, cross, fixedEdge + sign * nextLength);
+      if (snapTarget !== null && Math.abs(snapTarget - fixedEdge) >= 8) {
+        nextLength = Math.abs(snapTarget - fixedEdge);
+      }
+      const nextCenter = fixedEdge + (sign * nextLength) / 2;
+      const nextPosition = horizontal ? { x: nextCenter, y: originalPosition.y } : { x: originalPosition.x, y: nextCenter };
+      setCandidateGeometry(candidateDragOperation.layer, candidateDragOperation.candidateId, {
+        boxPx: horizontal ? { ...originalBox, width: nextLength } : { ...originalBox, height: nextLength },
+        position: nextPosition
+      });
+      return;
+    }
     if (wallDragOperation) {
       updateDraggedWall(wallDragOperation, coords);
       return;
@@ -2371,6 +2501,60 @@ export default function RoomlogFloorPlanEditor() {
   function handleMouseUp(event: React.MouseEvent<HTMLCanvasElement>) {
     stopCanvasPan();
 
+    if (candidateDragOperation) {
+      if (candidateDragOperation.moved) {
+        const current = openingCandidates.find((candidate) => candidate.id === candidateDragOperation.candidateId);
+        let snappedToWall = false;
+        if (candidateDragOperation.layer === "opening" && current?.boxPx) {
+          if (candidateDragOperation.mode === "move") {
+            // 이동해서 놓으면 가까운 벽에 자동으로 끼워 넣는다(방향·두께·범위 맞춤).
+            const geometry = snappedOpeningGeometryOnWall(current.position, current.boxPx);
+            if (geometry) {
+              setCandidateGeometry("opening", candidateDragOperation.candidateId, geometry);
+              snappedToWall = true;
+            }
+          } else {
+            // 끝을 당겨서 놓으면, 같은 축선 위 벽 끝점에 잡은 쪽 모서리를 딱 붙인다.
+            // (끄는 도중에도 자석 스냅이 걸리므로 여기서는 최종 확인만.)
+            const horizontal = current.boxPx.width >= current.boxPx.height;
+            const half = (horizontal ? current.boxPx.width : current.boxPx.height) / 2;
+            const center = horizontal ? current.position.x : current.position.y;
+            const cross = horizontal ? current.position.y : current.position.x;
+            const movingSign = candidateDragOperation.mode === "resize-end" ? 1 : -1;
+            const movingEdge = center + movingSign * half;
+            const fixedEdge = center - movingSign * half;
+            const bestTarget = findWallEdgeSnapTarget(horizontal, cross, movingEdge);
+            if (bestTarget !== null && Math.abs(bestTarget - fixedEdge) >= 8) {
+              const nextLength = Math.abs(bestTarget - fixedEdge);
+              const nextCenter = (bestTarget + fixedEdge) / 2;
+              setCandidateGeometry("opening", candidateDragOperation.candidateId, {
+                boxPx: horizontal ? { ...current.boxPx, width: nextLength } : { ...current.boxPx, height: nextLength },
+                position: horizontal ? { x: nextCenter, y: current.position.y } : { x: current.position.x, y: nextCenter }
+              });
+              snappedToWall = true;
+            }
+          }
+        }
+        setUploadStatus(
+          candidateDragOperation.mode !== "move"
+            ? snappedToWall
+              ? "끝이 벽에 딱 맞춰짐"
+              : "후보 크기 조절됨"
+            : snappedToWall
+              ? "벽에 맞춰 배치됨"
+              : "후보 위치 이동됨"
+        );
+      } else {
+        toggleCandidateStatus(
+          candidateDragOperation.layer,
+          candidateDragOperation.candidateId,
+          candidateDragOperation.shiftKey ? "REJECTED" : "CONFIRMED"
+        );
+      }
+      setCandidateDragOperation(null);
+      return;
+    }
+
     if (wallDragOperation) {
       updateDraggedWall(wallDragOperation, getCanvasCoordinates(event));
       setWallDragOperation(null);
@@ -2406,6 +2590,28 @@ export default function RoomlogFloorPlanEditor() {
       stopCanvasPan();
     }
     setWallDragOperation(null);
+    setCandidateDragOperation(null);
+  }
+
+  // 인식이 놓친 문/창문 수동 추가 — 문창문 도구에서 빈 곳 더블클릭.
+  function handleCanvasDoubleClick(event: React.MouseEvent<HTMLCanvasElement>) {
+    if (tool !== "opening") return;
+    const coords = getCanvasCoordinates(event);
+    if (findOpeningCandidateHit(coords, Math.max(28, 28 / viewScale))) return;
+    // 벽 근처에서 추가하면 처음부터 벽에 끼워진 상태로 생성한다.
+    const defaultBox = { height: 14, width: 60 };
+    const snappedGeometry = snappedOpeningGeometryOnWall(coords, defaultBox);
+    const manualCandidate: FloorPlanCandidate = {
+      boxPx: snappedGeometry?.boxPx ?? defaultBox,
+      id: `manual-opening-${Date.now()}`,
+      movable: true,
+      position: snappedGeometry?.position ?? coords,
+      source: "manual",
+      status: "CONFIRMED",
+      type: "DOOR"
+    };
+    setOpeningCandidates((candidates) => [...candidates, manualCandidate]);
+    setUploadStatus("문 수동 추가 — 드래그로 이동, Alt+클릭으로 창문 전환");
   }
 
   function handleWheel(event: React.WheelEvent<HTMLCanvasElement>) {
@@ -2773,6 +2979,10 @@ export default function RoomlogFloorPlanEditor() {
       const detectedOpenings = result.openings.filter((opening) => opening.confidence >= ROBOFLOW_OPENING_CONFIDENCE_THRESHOLD);
       const detected = detectedOpenings.map(
         (opening): FloorPlanCandidate => ({
+          boxPx: {
+            height: (opening.boundingBox.height / 1000) * drawHeight,
+            width: (opening.boundingBox.width / 1000) * drawWidth
+          },
           confidence: opening.confidence,
           id: `rf-${opening.id}`,
           label: `${opening.type === "DOOR" ? "문" : "창문"} 후보 ${Math.round(opening.confidence * 100)}%`,
@@ -3183,11 +3393,120 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(`후보 레이어 ${candidateId} ${status}`);
   }
 
-  function moveCandidateInLayer(layer: "opening" | "fixture", candidateId: string, delta: Point) {
-    const updater = (candidates: FloorPlanCandidate[]) => moveCandidate(candidates, candidateId, delta) as FloorPlanCandidate[];
+  function setCandidateGeometry(
+    layer: "opening" | "fixture",
+    candidateId: string,
+    geometry: { boxPx?: { height: number; width: number }; position: Point }
+  ) {
+    const updater = (candidates: FloorPlanCandidate[]) =>
+      candidates.map((candidate) =>
+        candidate.id === candidateId ? { ...candidate, position: geometry.position, ...(geometry.boxPx ? { boxPx: geometry.boxPx } : {}) } : candidate
+      );
     if (layer === "opening") setOpeningCandidates(updater);
     else setFixtureCandidates(updater);
-    setUploadStatus(`후보 레이어 ${candidateId} 이동`);
+  }
+
+  // 문/창문을 벽에 끼워 넣기 — 중심을 벽 중심선에 붙이고, 두께는 벽 두께에,
+  // 방향은 벽 방향에 맞춘다. 벽 범위를 벗어나지 않게 끝 안쪽으로 클램프.
+  function snappedOpeningGeometryOnWall(position: Point, boxPx: { height: number; width: number }) {
+    const wall = findClosestWall(position, 40);
+    if (!wall) return null;
+    const horizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+    const wallThickness = Math.max(8, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
+    const openingLength = Math.max(boxPx.width, boxPx.height);
+    if (horizontal) {
+      const wallY = (wall.start.y + wall.end.y) / 2;
+      const minX = Math.min(wall.start.x, wall.end.x);
+      const maxX = Math.max(wall.start.x, wall.end.x);
+      const centerX =
+        maxX - minX <= openingLength ? (minX + maxX) / 2 : Math.min(maxX - openingLength / 2, Math.max(minX + openingLength / 2, position.x));
+      return { boxPx: { height: wallThickness, width: openingLength }, position: { x: centerX, y: wallY } };
+    }
+    const wallX = (wall.start.x + wall.end.x) / 2;
+    const minY = Math.min(wall.start.y, wall.end.y);
+    const maxY = Math.max(wall.start.y, wall.end.y);
+    const centerY =
+      maxY - minY <= openingLength ? (minY + maxY) / 2 : Math.min(maxY - openingLength / 2, Math.max(minY + openingLength / 2, position.y));
+    return { boxPx: { height: openingLength, width: wallThickness }, position: { x: wallX, y: centerY } };
+  }
+
+  // 같은 축선 위 벽 끝점 중 edgeValue에 가장 가까운 스냅 대상을 찾는다(허용오차 내 없으면 null).
+  // 문/창문 끝을 늘릴 때 벽 모서리에 자석처럼 붙이는 용도.
+  function findWallEdgeSnapTarget(horizontal: boolean, cross: number, edgeValue: number) {
+    const tolerance = Math.max(18, 18 / viewScale);
+    let best: number | null = null;
+    for (const wall of walls) {
+      const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+      if (wallHorizontal !== horizontal) continue;
+      const wallCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
+      const wallThickness = Math.max(14, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
+      if (Math.abs(wallCross - cross) > wallThickness) continue;
+      for (const target of [horizontal ? wall.start.x : wall.start.y, horizontal ? wall.end.x : wall.end.y]) {
+        const distance = Math.abs(target - edgeValue);
+        if (distance <= tolerance && (best === null || distance < Math.abs(best - edgeValue))) best = target;
+      }
+    }
+    return best;
+  }
+
+  // 문/창문 후보 히트 테스트 — 크기(boxPx)가 있으면 사각형 기준으로 재고,
+  // 긴 축 양끝 근처는 리사이즈 핸들로 판정한다.
+  function findOpeningCandidateHit(
+    point: Point,
+    radius: number
+  ): { axis: "horizontal" | "vertical"; candidate: FloorPlanCandidate; mode: "move" | "resize-start" | "resize-end" } | null {
+    let best: { distance: number; hit: NonNullable<ReturnType<typeof findOpeningCandidateHit>> } | null = null;
+    for (const candidate of openingCandidates) {
+      const position = candidate.position ?? { x: 0, y: 0 };
+      const box = candidate.boxPx;
+      if (!box) {
+        const distance = Math.hypot(position.x - point.x, position.y - point.y);
+        if (distance <= radius && (!best || distance < best.distance)) {
+          best = { distance, hit: { axis: "horizontal", candidate, mode: "move" } };
+        }
+        continue;
+      }
+      const halfWidth = box.width / 2;
+      const halfHeight = box.height / 2;
+      const outsideX = Math.max(Math.abs(point.x - position.x) - halfWidth, 0);
+      const outsideY = Math.max(Math.abs(point.y - position.y) - halfHeight, 0);
+      const distance = Math.hypot(outsideX, outsideY);
+      if (distance > radius) continue;
+      const horizontal = box.width >= box.height;
+      const endGrab = Math.max(10, 10 / viewScale);
+      let mode: "move" | "resize-start" | "resize-end" = "move";
+      if (horizontal) {
+        if (Math.abs(point.x - (position.x - halfWidth)) <= endGrab) mode = "resize-start";
+        else if (Math.abs(point.x - (position.x + halfWidth)) <= endGrab) mode = "resize-end";
+      } else if (Math.abs(point.y - (position.y - halfHeight)) <= endGrab) mode = "resize-start";
+      else if (Math.abs(point.y - (position.y + halfHeight)) <= endGrab) mode = "resize-end";
+      if (!best || distance < best.distance) {
+        best = { distance, hit: { axis: horizontal ? "horizontal" : "vertical", candidate, mode } };
+      }
+    }
+    return best?.hit ?? null;
+  }
+
+  function toggleOpeningCandidateType(candidateId: string) {
+    const target = openingCandidates.find((candidate) => candidate.id === candidateId);
+    if (!target) return;
+    const nextType = target.type.toUpperCase() === "WINDOW" ? "DOOR" : "WINDOW";
+    setOpeningCandidates((candidates) =>
+      candidates.map((candidate) => (candidate.id === candidateId ? { ...candidate, type: nextType } : candidate))
+    );
+    setUploadStatus(`${candidateTypeLabel(target.type)} → ${candidateTypeLabel(nextType)} 전환`);
+  }
+
+  // 검토 대기 후보 일괄 처리 — minConfidence 이상인 CANDIDATE만 대상으로 한다(0이면 전체).
+  function bulkSetCandidateStatus(minConfidence: number, status: CandidateStatus) {
+    const apply = (candidates: FloorPlanCandidate[]) =>
+      candidates.map((candidate) =>
+        candidate.status === "CANDIDATE" && (candidate.confidence ?? 0) >= minConfidence ? { ...candidate, status } : candidate
+      );
+    setOpeningCandidates(apply);
+    setFixtureCandidates(apply);
+    const scopeLabel = minConfidence > 0 ? `신뢰도 ${Math.round(minConfidence * 100)}% 이상` : "대기 중 전체";
+    setUploadStatus(`${scopeLabel} 후보 일괄 ${status === "CONFIRMED" ? "확정" : "삭제"}`);
   }
 
   // 방 내부 재기로 측정/입력한 실측값 — 저장 payload에 실어 가구 fit 판단의 근거로 남긴다.
@@ -3199,6 +3518,35 @@ export default function RoomlogFloorPlanEditor() {
       depthMm: depthMm > 0 ? Math.round(depthMm) : null,
       widthMm: widthMm > 0 ? Math.round(widthMm) : null
     };
+  }
+
+  // 3D 변환 결과를 JSON 파일로 다운로드 — 서버 저장과 별개로 로컬 보관/외부 활용용.
+  function downloadRoom3DJson() {
+    const snapshot = buildRoom3DSnapshot({
+      fixtureCandidates,
+      hiddenWallCount,
+      landlordFurnitures: placedFurnitures.filter(isLandlordOptionFurniture),
+      openingCandidates,
+      walls3D: roomWalls3D
+    });
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      pixelToMmRatio,
+      room3d: snapshot,
+      roomInterior: buildRoomInteriorMeasurement(),
+      scaleConfirmed: isScaleSet,
+      source: "roomlog-floor-plan-editor"
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `roomlog-3d-${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+    setUploadStatus(`3D 데이터 JSON 다운로드 — 벽 ${snapshot.wallCount}개`);
   }
 
   async function saveFloorPlanDraft(nextStatus: "DRAFT" | "PUBLISHED" = "DRAFT") {
@@ -3357,9 +3705,11 @@ export default function RoomlogFloorPlanEditor() {
         </div>
 
         {wallBoundsMm ? (
+          // 축척 확정 전의 mm 수치는 가짜값이라 노출하지 않는다 — 안내 문구만 조용히 보여준다.
           <div className={`floor-plan-scale-banner${isScaleSet ? " is-set" : ""}`}>
-            📐 전체 {wallBoundsMm.widthMm.toLocaleString()}mm × {wallBoundsMm.heightMm.toLocaleString()}mm{" "}
-            {isScaleSet ? "— 도면 외곽 치수와 비교하세요" : "— 축척 미적용, '세부 조정 → 축척 맞추기'로 맞추세요"}
+            {isScaleSet
+              ? `📐 전체 ${wallBoundsMm.widthMm.toLocaleString()}mm × ${wallBoundsMm.heightMm.toLocaleString()}mm`
+              : "축척을 먼저 맞추세요 — '세부 조정 → 축척 맞추기'"}
           </div>
         ) : null}
 
@@ -3428,15 +3778,15 @@ export default function RoomlogFloorPlanEditor() {
           {viewMode === "2d" ? (
             <div className="floor-plan-float-tools" role="toolbar" aria-label="편집 도구">
               {([
-                ["wall", "드로잉", "벽 그리기", Pencil],
-                ["select", "선택", "벽 선택", MousePointer2],
-                ["eraser", "지우기", "벽 삭제", Eraser],
+                ["wall", "벽 그리기", "드래그로 새 벽 추가", Pencil],
+                ["select", "벽 편집", "몸통 드래그=이동 · 끝 드래그=길이 조절", MousePointer2],
+                ["eraser", "지우기", "벽 클릭 삭제", Eraser],
                 ["partial_eraser", "부분 지우기", "벽 일부 삭제", Scissors],
                 ["hide", "숨기기", "3D 벽 숨기기", EyeOff],
-                ["opening", "문창문", "문/창문 후보 검토", DoorOpen],
+                ["opening", "문창문", "드래그 이동 · 끝 늘리기 · 더블클릭 추가", DoorOpen],
                 ["fixture", "설비", "고정 설비 후보 검토", Wrench],
                 ["furniture", "옵션가구", "임대인 옵션 가구 배치", Armchair],
-                ["none", "이동", "화면 이동", Hand]
+                ["none", "화면 이동", "캔버스 화면 끌기", Hand]
               ] as const).map(([toolId, label, hint, ToolIcon]) => (
                 <button
                   className={tool === toolId ? "active" : ""}
@@ -3467,6 +3817,7 @@ export default function RoomlogFloorPlanEditor() {
                 className="floor-plan-drawing-canvas"
                 onAuxClick={handleCanvasAuxClick}
                 onContextMenu={(event) => event.preventDefault()}
+                onDoubleClick={handleCanvasDoubleClick}
                 onMouseDown={handleMouseDown}
                 onMouseLeave={handleCanvasMouseLeave}
                 onMouseMove={handleMouseMove}
@@ -3620,6 +3971,15 @@ export default function RoomlogFloorPlanEditor() {
             {experienceMode === "landlord" ? (
               <>
                 <button
+                  className="floor-plan-secondary"
+                  disabled={roomWalls3D.length === 0}
+                  onClick={downloadRoom3DJson}
+                  title="3D 변환 결과(벽·문창문·설비·가구)를 JSON 파일로 내려받습니다"
+                  type="button"
+                >
+                  JSON 내려받기
+                </button>
+                <button
                   className="floor-plan-primary"
                   disabled={isProcessing || walls.length === 0}
                   onClick={() => saveFloorPlanDraft("DRAFT")}
@@ -3694,7 +4054,7 @@ export default function RoomlogFloorPlanEditor() {
               <code>
                 벽 {summary.wallCount} / 문창문 {openingCandidates.length} / 고정설비 {fixtureCandidates.length}
               </code>
-              <code>일반 클릭 확정, Shift 클릭 거절</code>
+              <code>클릭 확정 · Shift+클릭 거절 · 드래그 이동 · Alt+클릭 문↔창문 · 빈 곳 더블클릭 추가</code>
             </div>
 
             {printedDimensionChips.length ? (
@@ -3788,27 +4148,59 @@ export default function RoomlogFloorPlanEditor() {
               </div>
             ) : null}
 
-            {[...openingCandidates.map((candidate) => ["opening", candidate] as const), ...fixtureCandidates.map((candidate) => ["fixture", candidate] as const)]
-              .slice(0, 6)
-              .map(([layer, candidate]) => (
-                <div className="floor-plan-sim-preview" key={`${layer}-${candidate.id}`}>
-                  <span>{layer === "opening" ? "문창문 후보" : "고정설비 후보"}</span>
-                  <code>
-                    {candidate.type} / {candidate.status} / {Math.round((candidate.confidence ?? 0) * 100)}%
-                  </code>
-                  <div className="floor-plan-furniture-actions">
-                    <button className="floor-plan-secondary" onClick={() => toggleCandidateStatus(layer, candidate.id, "CONFIRMED")} type="button">
-                      확정
-                    </button>
-                    <button className="floor-plan-secondary" onClick={() => toggleCandidateStatus(layer, candidate.id, "REJECTED")} type="button">
-                      삭제
-                    </button>
-                    <button className="floor-plan-secondary" onClick={() => moveCandidateInLayer(layer, candidate.id, { x: 4, y: 0 })} type="button">
-                      이동
-                    </button>
-                  </div>
+            {pendingCandidates.length > 0 || reviewedCandidateCount > 0 ? (
+              <div className="floor-plan-candidate-review" aria-label="문창문·설비 후보 검토">
+                <div className="floor-plan-candidate-review-head">
+                  <span>
+                    후보 검토 대기 <strong>{pendingCandidates.length}</strong>개
+                    {reviewedCandidateCount > 0 ? <em> · 처리됨 {reviewedCandidateCount}</em> : null}
+                  </span>
+                  {pendingCandidates.length > 0 ? (
+                    <div className="floor-plan-candidate-bulk">
+                      <button
+                        className="floor-plan-secondary"
+                        disabled={highConfidencePendingCount === 0}
+                        onClick={() => bulkSetCandidateStatus(0.8, "CONFIRMED")}
+                        title="신뢰도 80% 이상 후보를 한 번에 확정합니다"
+                        type="button"
+                      >
+                        80%↑ 모두 확정 ({highConfidencePendingCount})
+                      </button>
+                      <button className="floor-plan-secondary" onClick={() => bulkSetCandidateStatus(0, "CONFIRMED")} type="button">
+                        전체 확정
+                      </button>
+                      <button className="floor-plan-secondary" onClick={() => bulkSetCandidateStatus(0, "REJECTED")} type="button">
+                        전체 삭제
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              ))}
+                {pendingCandidates.length > 0 ? (
+                  <ul className="floor-plan-candidate-list">
+                    {pendingCandidates.map(([layer, candidate]) => (
+                      <li
+                        key={`${layer}-${candidate.id}`}
+                        onMouseEnter={() => setHoveredCandidateId(candidate.id)}
+                        onMouseLeave={() => setHoveredCandidateId((current) => (current === candidate.id ? null : current))}
+                      >
+                        <span className={`floor-plan-candidate-badge is-${layer}`}>{candidateTypeLabel(candidate.type)}</span>
+                        <span className="floor-plan-candidate-confidence">{Math.round((candidate.confidence ?? 0) * 100)}%</span>
+                        <span className="floor-plan-candidate-actions">
+                          <button onClick={() => toggleCandidateStatus(layer, candidate.id, "CONFIRMED")} type="button">
+                            확정
+                          </button>
+                          <button className="is-reject" onClick={() => toggleCandidateStatus(layer, candidate.id, "REJECTED")} type="button">
+                            삭제
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <code>모든 후보를 검토했어요 — 문창문 도구로 드래그(이동)·Alt+클릭(문↔창문)·더블클릭(추가)으로 계속 수정할 수 있어요</code>
+                )}
+              </div>
+            ) : null}
           </>
         ) : null}
 

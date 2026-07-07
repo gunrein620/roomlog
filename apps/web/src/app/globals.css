@@ -7639,6 +7639,125 @@ p {
   font-size: 0.72rem;
 }
 
+/* 문창문·설비 후보 검토함 — 카드 나열 대신 한 줄 행 + 일괄 처리로 압축 */
+.floor-plan-candidate-review {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafd;
+}
+
+.floor-plan-candidate-review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #465064;
+}
+
+.floor-plan-candidate-review-head em {
+  color: #8a91a2;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.floor-plan-candidate-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.floor-plan-candidate-bulk .floor-plan-secondary {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
+.floor-plan-candidate-list {
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.floor-plan-candidate-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.floor-plan-candidate-list li:hover {
+  border-color: rgba(47, 85, 255, 0.35);
+  background: #eef2fb;
+}
+
+.floor-plan-candidate-badge {
+  min-width: 52px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.floor-plan-candidate-badge.is-opening {
+  background: #fff1e0;
+  color: #b45309;
+}
+
+.floor-plan-candidate-badge.is-fixture {
+  background: #efe8ff;
+  color: #6d3fd1;
+}
+
+.floor-plan-candidate-confidence {
+  min-width: 40px;
+  color: #465064;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.floor-plan-candidate-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.floor-plan-candidate-actions button {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #eef2fb;
+  color: #2f55ff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.floor-plan-candidate-actions button:hover {
+  background: #dfe7fb;
+}
+
+.floor-plan-candidate-actions button.is-reject {
+  background: #fbeef0;
+  color: #c2333f;
+}
+
+.floor-plan-candidate-actions button.is-reject:hover {
+  background: #f7dee2;
+}
+
 .floor-plan-toolbar,
 .floor-plan-sidepanel,
 .floor-plan-canvas {
@@ -7745,15 +7864,16 @@ p {
   padding: 0 16px;
 }
 
+/* 축척 미확정 상태는 조용한 회색 안내 — 강조는 축척 확정(is-set) 쪽에만 준다 */
 .floor-plan-scale-banner {
   align-self: flex-start;
-  padding: 9px 14px;
-  border: 1px solid #e6c34d;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff7dd;
-  color: #6b5310;
-  font-size: 0.84rem;
-  font-weight: 800;
+  background: #f6f8fc;
+  color: #6f7787;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .floor-plan-scale-banner.is-set {

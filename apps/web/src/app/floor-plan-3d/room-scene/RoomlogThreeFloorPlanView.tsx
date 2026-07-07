@@ -278,6 +278,18 @@ export function RoomlogThreeFloorPlanView({
 }) {
   const wallBounds = computeWallBoundsXZ(wallsData);
 
+  // dev(React StrictMode)에서 R3F의 초기 컨테이너 측정이 유실돼 캔버스가 300×150으로
+  // 남고 씬이 그려지지 않는 경우가 있다. 마운트 직후 resize를 쏴서 재측정을 강제한다.
+  useEffect(() => {
+    const kick = () => window.dispatchEvent(new Event("resize"));
+    const raf = window.requestAnimationFrame(kick);
+    const timer = window.setTimeout(kick, 300);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
       <Canvas camera={{ fov: 50, position: [14, 12, 18] }} dpr={[1, 2]} frameloop={frameloop}>
