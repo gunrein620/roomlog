@@ -5843,6 +5843,56 @@ p {
   font-size: 0.78rem;
 }
 
+/* 선택한 사진 미리보기 — 첫 장은 "대표 사진" 배지, × 버튼으로 개별 제외 */
+.upload-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.upload-preview-grid figure {
+  position: relative;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #eef1f8;
+}
+
+.upload-preview-grid img {
+  display: block;
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+}
+
+.upload-preview-grid figcaption {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.upload-preview-grid button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.72);
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1;
+}
+
 .upload-3d-button {
   display: grid;
   gap: 8px;
