@@ -3347,15 +3347,17 @@ p {
 }
 
 .detail-report-head > strong {
-  display: inline-grid;
-  width: 52px;
-  height: 52px;
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 52px;
   flex: 0 0 auto;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
   border-radius: 18px;
   background: var(--blue);
   color: #ffffff;
-  font-size: 1.12rem;
+  font-size: 1.02rem;
 }
 
 .detail-report-grid {
@@ -3390,6 +3392,102 @@ p {
 .detail-report-grid small {
   color: var(--blue);
   font-size: 0.64rem;
+  font-weight: 900;
+}
+
+/* AI 안전분석 요약 배너 — 지킴 진단 리포트와 같은 블루 카드 계열 */
+.safety-analysis-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 20px 18px 0;
+  padding: 16px;
+  border: 1px solid rgba(47, 85, 255, 0.18);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(47, 85, 255, 0.08), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.safety-analysis-card span {
+  color: var(--blue);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.safety-analysis-card h2 {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.32;
+}
+
+.safety-analysis-card p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.safety-analysis-card > strong {
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 1.02rem;
+}
+
+/* 중개사/집주인 요약 카드 */
+.agent-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 18px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.05);
+}
+
+.agent-summary-card span {
+  color: var(--blue);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.agent-summary-card h2 {
+  margin-top: 6px;
+  font-size: 1rem;
+}
+
+.agent-summary-card p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.agent-summary-card button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid #d5dbe8;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #273043;
+  font-size: 0.78rem;
   font-weight: 900;
 }
 
@@ -3429,7 +3527,8 @@ p {
   left: 50%;
   z-index: 60;
   display: grid;
-  grid-template-columns: 56px 84px minmax(0, 1fr);
+  /* 3D 둘러보기를 문의 버튼과 비슷한 체급으로 — 본문 3D 배너를 없앤 대신 여기가 주 진입점 */
+  grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1.3fr);
   gap: 8px;
   width: min(100%, 430px);
   padding: 24px 14px 12px;
@@ -3509,9 +3608,14 @@ p {
 }
 
 .detail-contact-tour {
-  border: 1px solid #d9dfee;
-  background: #f7f9ff;
+  border: 1px solid rgba(47, 85, 255, 0.4);
+  background: #f0f4ff;
   color: #193274;
+}
+
+/* 공용 규칙(0.72rem)보다 뒤에 둬서 3D 둘러보기 라벨을 키운다 */
+.detail-contact-tour strong {
+  font-size: 0.92rem;
 }
 
 .detail-contact-tour span {
@@ -3721,6 +3825,44 @@ p {
     linear-gradient(0deg, rgba(47, 85, 255, 0.09) 1px, transparent 1px),
     #eef3ff;
   background-size: 24px 24px;
+}
+
+/* 실제 3D 도면 뷰 — 편집기와 같은 R3F 캔버스를 상세 시트 크기에 맞춰 채운다. */
+.tour-room-3d {
+  width: 100%;
+  height: min(52vh, 420px);
+}
+
+.tour-room-3d .floor-plan-3d-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.tour-room-loading {
+  display: grid;
+  place-content: center;
+  width: 100%;
+  height: min(52vh, 420px);
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.tour-room-box-empty em {
+  position: absolute;
+  left: 50%;
+  bottom: -56px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-style: normal;
 }
 
 .tour-room-box {
@@ -4748,6 +4890,31 @@ p {
   line-height: 1.2;
 }
 
+/* 사이드바 접기/펼치기 토글 — 상단 흐름 바(my-flow-bar) 왼쪽에 붙는다.
+   .my-flow-bar 하위로 지정해 데스크톱의 .mypage-role-bar button 숨김 규칙을 이긴다. */
+.my-flow-bar .owner-sidebar-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #d8dfec;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #465062;
+}
+
+.my-flow-bar .owner-sidebar-toggle strong {
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.my-flow-bar .owner-sidebar-toggle[aria-expanded="true"] {
+  border-color: rgba(47, 85, 255, 0.55);
+  color: var(--blue);
+}
+
 .owner-dashboard-content {
   display: grid;
   gap: 14px;
@@ -5682,6 +5849,56 @@ p {
   font-size: 0.78rem;
 }
 
+/* 선택한 사진 미리보기 — 첫 장은 "대표 사진" 배지, × 버튼으로 개별 제외 */
+.upload-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.upload-preview-grid figure {
+  position: relative;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #eef1f8;
+}
+
+.upload-preview-grid img {
+  display: block;
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+}
+
+.upload-preview-grid figcaption {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.upload-preview-grid button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.72);
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1;
+}
+
 .upload-3d-button {
   display: grid;
   gap: 8px;
@@ -6142,11 +6359,17 @@ p {
   border-bottom: 0;
 }
 
+/* 헤드 라벨("문의 타임라인")은 58px 칸에서 줄바꿈되지 않게 자연 폭 사용 */
+.inquiry-timeline-head {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .inquiry-timeline-head span,
 .inquiry-timeline-card article > span {
   color: var(--blue);
   font-size: 0.7rem;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .inquiry-timeline-head strong,
@@ -7274,11 +7497,17 @@ p {
 
 .floor-plan-topbar {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 72px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   max-width: 1180px;
   margin: 0 auto;
+}
+
+.floor-plan-topbar-hint {
+  color: #7a8296;
+  font-size: 0.74rem;
+  font-weight: 800;
 }
 
 .floor-plan-topbar a,
@@ -7304,13 +7533,229 @@ p {
   line-height: 1.1;
 }
 
+/* 캔버스가 주인공 — 좌우 레일 없이 한 열로 두고 맵을 최대 폭으로 쓴다 */
 .floor-plan-editor {
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
-  max-width: 1180px;
+  max-width: 1380px;
   min-height: calc(100vh - 98px);
   margin: 16px auto 0;
+}
+
+.floor-plan-stage-wrap {
+  position: relative;
+}
+
+/* 지도 앱처럼 캔버스 위에 떠 있는 아이콘 도구 팔레트 */
+.floor-plan-float-tools {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 12;
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid rgba(18, 24, 40, 0.08);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 30px rgba(18, 24, 40, 0.16);
+  backdrop-filter: blur(6px);
+}
+
+.floor-plan-float-tools button {
+  display: grid;
+  width: 58px;
+  gap: 3px;
+  justify-items: center;
+  padding: 8px 2px 7px;
+  border-radius: 11px;
+  background: transparent;
+  color: #465064;
+  font-weight: 900;
+}
+
+.floor-plan-float-tools button span {
+  font-size: 0.6rem;
+  line-height: 1.15;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.floor-plan-float-tools button:hover {
+  background: #eef2fb;
+}
+
+.floor-plan-float-tools button.active {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+/* 캔버스 우하단에 떠 있는 줌 컨트롤 — 현재 배율을 캔버스 옆에서 바로 보여준다 */
+.floor-plan-zoom-controls {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid rgba(18, 24, 40, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 30px rgba(18, 24, 40, 0.16);
+  backdrop-filter: blur(6px);
+}
+
+.floor-plan-zoom-controls button {
+  min-width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: transparent;
+  color: #465064;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.floor-plan-zoom-controls button:hover {
+  background: #eef2fb;
+}
+
+.floor-plan-zoom-controls button:disabled {
+  opacity: 0.4;
+}
+
+.floor-plan-zoom-value {
+  min-width: 46px;
+  color: #465064;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.floor-plan-zoom-fit {
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
+/* 문창문·설비 후보 검토함 — 카드 나열 대신 한 줄 행 + 일괄 처리로 압축 */
+.floor-plan-candidate-review {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafd;
+}
+
+.floor-plan-candidate-review-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #465064;
+}
+
+.floor-plan-candidate-review-head em {
+  color: #8a91a2;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.floor-plan-candidate-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.floor-plan-candidate-bulk .floor-plan-secondary {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+}
+
+.floor-plan-candidate-list {
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.floor-plan-candidate-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.floor-plan-candidate-list li:hover {
+  border-color: rgba(47, 85, 255, 0.35);
+  background: #eef2fb;
+}
+
+.floor-plan-candidate-badge {
+  min-width: 52px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.floor-plan-candidate-badge.is-opening {
+  background: #fff1e0;
+  color: #b45309;
+}
+
+.floor-plan-candidate-badge.is-fixture {
+  background: #efe8ff;
+  color: #6d3fd1;
+}
+
+.floor-plan-candidate-confidence {
+  min-width: 40px;
+  color: #465064;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.floor-plan-candidate-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.floor-plan-candidate-actions button {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #eef2fb;
+  color: #2f55ff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.floor-plan-candidate-actions button:hover {
+  background: #dfe7fb;
+}
+
+.floor-plan-candidate-actions button.is-reject {
+  background: #fbeef0;
+  color: #c2333f;
+}
+
+.floor-plan-candidate-actions button.is-reject:hover {
+  background: #f7dee2;
 }
 
 .floor-plan-toolbar,
@@ -7329,6 +7774,20 @@ p {
   padding: 10px;
 }
 
+/* 좌측 레일의 "모드 / 도구" 구분 라벨 — 무엇이 상태고 무엇이 도구인지 한눈에 나눈다 */
+.floor-plan-toolbar-label {
+  margin: 2px 2px 0;
+  color: #8a91a2;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.floor-plan-toolbar-label + .floor-plan-mode-switch,
+.floor-plan-toolbar-label + button {
+  margin-top: -2px;
+}
+
 .floor-plan-toolbar button {
   display: grid;
   min-height: 72px;
@@ -7338,6 +7797,7 @@ p {
   background: #f6f8fc;
   color: #465064;
   font-weight: 900;
+  word-break: keep-all;
 }
 
 .floor-plan-toolbar strong {
@@ -7360,20 +7820,115 @@ p {
 }
 
 .floor-plan-canvas {
-  display: grid;
-  grid-template-rows: auto minmax(420px, min(62vh, 720px)) auto;
+  /* 캔버스 컬럼은 flex로 쌓는다 — 배너/치수 스트립이 끼어들어도 캔버스 행 크기를 뺏지 않게. */
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   padding: 14px;
 }
 
+.floor-plan-canvas > .floor-plan-stage-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.floor-plan-stage-wrap > .floor-plan-canvas-stage,
+.floor-plan-stage-wrap > .floor-plan-3d-preview,
+.floor-plan-canvas > .floor-plan-canvas-stage,
+.floor-plan-canvas > .floor-plan-3d-preview {
+  flex: 1 1 auto;
+  /* 부모가 콘텐츠 높이라 flex-grow가 채울 공간이 없다 — 2D(콘텐츠 큼)는 상한,
+     3D(콘텐츠 없음)는 하한에 붙어 크기가 달라지므로 높이를 직접 고정한다. */
+  height: min(62vh, 720px);
+  min-height: 420px;
+  max-height: min(62vh, 720px);
+}
+
+.floor-plan-canvas-stage {
+  position: relative;
+  display: flex;
+}
+
 .floor-plan-upload-row {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(112px, 132px)) minmax(0, 1fr);
-  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 10px;
 }
 
+.floor-plan-upload-row .floor-plan-secondary,
+.floor-plan-upload-row .floor-plan-upload-label {
+  flex: 0 0 auto;
+  min-width: 112px;
+  padding: 0 16px;
+}
+
+/* 축척 미확정 상태는 조용한 회색 안내 — 강조는 축척 확정(is-set) 쪽에만 준다 */
+.floor-plan-scale-banner {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f6f8fc;
+  color: #6f7787;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.floor-plan-scale-banner.is-set {
+  border-color: #9db9ff;
+  background: #ecf2ff;
+  color: #24418f;
+}
+
+.floor-plan-empty-guide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 20px;
+  pointer-events: none;
+}
+
+/* 안내 문구는 클릭을 통과시켜 벽 그리기를 막지 않는다 — 버튼만 상호작용. */
+.floor-plan-empty-guide-actions {
+  pointer-events: auto;
+}
+
+.floor-plan-empty-guide > strong {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--ink);
+  text-align: center;
+}
+
+.floor-plan-empty-guide > p {
+  max-width: 380px;
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.floor-plan-empty-guide-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.floor-plan-empty-guide-actions .floor-plan-primary,
+.floor-plan-empty-guide-actions .floor-plan-secondary {
+  min-width: 150px;
+  padding: 0 18px;
+  box-shadow: 0 10px 24px rgba(18, 24, 40, 0.14);
+}
+
 .floor-plan-upload-row span {
+  flex: 1 1 160px;
+  align-self: center;
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -7521,7 +8076,9 @@ p {
 .floor-3d-hint {
   position: absolute;
   top: 18px;
-  left: 18px;
+  /* 플로팅 도구 팔레트(좌측)와 겹치지 않게 오른쪽에 둔다 */
+  right: 18px;
+  left: auto;
   fill: rgba(255, 255, 255, 0.86);
   color: rgba(255, 255, 255, 0.86);
   font-size: 18px;
@@ -7538,10 +8095,112 @@ p {
   box-shadow: 0 14px 28px rgba(47, 85, 255, 0.22);
 }
 
+/* 조건이 안 갖춰진 저장/발행은 확실히 죽은 색으로 — 파란색 그대로면 눌리는 줄 안다 */
+.floor-plan-primary:disabled {
+  background: #c6cede;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .floor-plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.floor-plan-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.floor-plan-actions-group > button {
+  min-height: 48px;
+  padding: 0 16px;
+}
+
+/* 핵심 흐름(변환→저장→발행)은 오른쪽에 모으고 저장 상태 칩을 곁들인다 */
+.floor-plan-actions-main {
+  margin-left: auto;
+}
+
+.floor-plan-view-toggle {
+  position: relative;
+  isolation: isolate;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(70px, 1fr));
+  align-items: center;
+  min-height: 48px;
+  padding: var(--space-xs);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--canvas);
+}
+
+.floor-plan-view-toggle-thumb {
+  position: absolute;
+  inset: var(--space-xs) auto var(--space-xs) var(--space-xs);
+  z-index: -1;
+  width: calc((100% - (var(--space-xs) * 2)) / 2);
+  border-radius: var(--radius-full);
+  background: var(--blue);
+  box-shadow: var(--shadow);
+  transform: translateX(0);
+  transition: transform 160ms ease-out;
+}
+
+.floor-plan-view-toggle.is-2d .floor-plan-view-toggle-thumb {
+  transform: translateX(100%);
+}
+
+.floor-plan-view-toggle button {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.floor-plan-view-toggle button.active {
+  color: var(--paper);
+}
+
+.floor-plan-view-toggle button:focus-visible {
+  outline: 2px solid var(--blue-dark);
+  outline-offset: 2px;
+}
+
+.floor-plan-save-state {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.floor-plan-save-state.is-draft {
+  background: #e0edff;
+  color: #1e40af;
+}
+
+.floor-plan-save-state.is-local {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.floor-plan-save-state.is-published {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* 파괴적 액션은 색으로 경고 */
+.floor-plan-danger:not(:disabled) {
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .floor-plan-secondary {
@@ -7563,6 +8222,25 @@ p {
   align-content: start;
   gap: 16px;
   padding: 18px;
+}
+
+/* 도면 요약은 캔버스 아래 가로 배치 — 지표들이 한 줄 카드로 흘러 가독성이 좋아진다 */
+.floor-plan-bottompanel dl {
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+}
+
+.floor-plan-bottompanel dl div {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 14px;
+}
+
+.floor-plan-bottompanel a {
+  justify-self: end;
+  min-width: 180px;
 }
 
 .floor-plan-sidepanel > div {
@@ -7876,16 +8554,27 @@ p {
     grid-column: 1 / -1;
   }
 
-  .floor-plan-canvas {
-    grid-template-rows: auto 360px auto;
+  .floor-plan-canvas .floor-plan-canvas-stage,
+  .floor-plan-canvas .floor-plan-3d-preview {
+    min-height: 360px;
   }
 
-  .floor-plan-actions {
-    grid-template-columns: 1fr;
+  .floor-plan-actions,
+  .floor-plan-actions-main {
+    margin-left: 0;
   }
 
-  .floor-plan-upload-row {
-    grid-template-columns: 1fr;
+  .floor-plan-actions-group {
+    width: 100%;
+  }
+
+  .floor-plan-actions-group > button {
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  .floor-plan-upload-row .floor-plan-secondary,
+  .floor-plan-upload-row .floor-plan-upload-label {
+    flex: 1 1 100%;
   }
 
   .floor-plan-toolbar {
@@ -8171,6 +8860,11 @@ p {
     gap: 18px;
   }
 
+  /* 접힘: 사이드바 노드 자체가 빠지므로 콘텐츠가 전체 폭을 쓴다 */
+  .owner-dashboard-layout.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .owner-dashboard-sidebar {
     position: sticky;
     top: 96px;
@@ -8271,14 +8965,19 @@ p {
     overflow: visible;
   }
 
+  /* 카드가 세로로 비대해 빈 공간이 크던 문제 — 아이콘 좌측·텍스트 우측의 컴팩트 가로형으로 */
   .home-screen > .category-strip .category-card {
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 1px;
     justify-items: start;
-    align-content: space-between;
-    gap: 14px;
     min-width: 0;
-    min-height: 128px;
-    padding: 18px 15px;
-    border-radius: 18px;
+    min-height: 74px;
+    padding: 14px 16px;
+    border-radius: 16px;
     background: #ffffff;
     box-shadow: 0 8px 20px rgba(18, 24, 40, 0.05);
     transition: transform 0.14s ease, box-shadow 0.14s ease;
@@ -8290,22 +8989,24 @@ p {
   }
 
   .home-screen > .category-strip .category-card i {
-    width: 44px;
-    height: 44px;
-    border-radius: 13px;
+    grid-row: 1 / span 2;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
   }
 
   .home-screen > .category-strip .category-card i svg {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
   }
 
   .home-screen > .category-strip .category-card span {
-    font-size: 1.02rem;
+    font-size: 0.96rem;
   }
 
   .home-screen > .category-strip .category-card strong {
-    font-size: 0.82rem;
+    color: #8a90a0;
+    font-size: 0.76rem;
   }
 
   .home-screen > .category-strip .category-card.active {
@@ -8665,7 +9366,8 @@ p {
     grid-column: 1 / -1;
   }
 
-  /* 문의센터 */
+  /* 문의센터: 채팅이 주인공 — 좌 4/6칸 채팅, 우 2/6칸 타임라인·요약, 채널 안내는 하단 보조.
+     (기존: 채팅에 배치 규칙이 없어 1/6칸에 짜부되고, 빈 채널 카드가 stretch로 가운데를 차지하던 문제) */
   .inquiry-screen > .inquiry-history-list {
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8673,14 +9375,37 @@ p {
     align-items: start;
   }
 
-  .inquiry-screen > .inquiry-channel-card {
-    grid-column: span 3;
-    align-self: stretch;
+  /* DOM 순서(채널 카드가 타임라인보다 앞)와 무관하게 자리를 고정 — 행 명시(1행 = 제목줄) */
+  .inquiry-screen > .inquiry-chat-panel {
+    grid-column: 1 / span 4;
+    grid-row: 2 / span 2;
+    min-width: 0;
+  }
+
+  .inquiry-screen > .inquiry-timeline-card {
+    grid-column: 5 / span 2;
+    grid-row: 2;
+    margin-top: 0;
   }
 
   .inquiry-screen > .inquiry-mini-grid {
-    grid-column: span 3;
-    align-self: stretch;
+    grid-column: 5 / span 2;
+    grid-row: 3;
+    align-self: start;
+    margin-top: 0;
+  }
+
+  .inquiry-screen > .inquiry-channel-card {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    align-self: start;
+    margin-top: 0;
+  }
+
+  /* 채널 카드 = 하단 보조 안내: 3열 그대로, 카드가 늘어나 빈 공간이 생기지 않게 콘텐츠 높이만큼만 */
+  .inquiry-screen .inquiry-channel-grid article {
+    min-height: 0;
+    padding: 14px 16px;
   }
 
   /* 찜 목록 */
@@ -8802,7 +9527,7 @@ p {
 
   .detail-contact-bar {
     bottom: 24px;
-    grid-template-columns: 64px 140px minmax(0, 1fr);
+    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr);
     width: min(calc(100vw - 48px), 980px);
     border-radius: 18px;
   }
@@ -9126,6 +9851,20 @@ p {
   color: #067a4b;
 }
 
+.owner-my-listings article.owner-my-listings-empty {
+  justify-content: flex-start;
+  border: 1px dashed var(--line);
+  background: transparent;
+}
+
+.owner-my-listings-empty strong {
+  color: var(--ink);
+}
+
+.owner-my-listings-empty small {
+  color: var(--subtle);
+}
+
 .tenant-repair-card {
   padding: 16px;
   border-radius: 18px;
@@ -9270,6 +10009,23 @@ p {
   border-color: var(--blue);
   background: var(--blue);
   color: #ffffff;
+}
+
+/* 흐름 전환 — 바의 빈 공간을 큼직한 탭 4개가 채운다(드롭다운 없이 바로 이동) */
+.my-flow-bar .my-flow-tabs {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.my-flow-bar .my-flow-tabs button {
+  flex: 1 1 0;
+  max-width: 190px;
+  min-height: 46px;
+  justify-content: center;
+  border-radius: 13px;
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .my-roomlog-section {

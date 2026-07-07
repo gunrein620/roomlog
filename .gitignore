@@ -9,7 +9,9 @@ node_modules/
 next-env.d.ts
 dist/
 coverage/
-uploads/
+# 런타임 업로드 출력 디렉토리만 무시 — 전역 uploads/는 소스 라우트(app/api/trade/uploads)까지 잡아먹는다.
+/uploads/
+apps/api/uploads/
 data/furniture-crawl/
 apps/api/src/furniture-catalog/crawl-ikea.ts
 

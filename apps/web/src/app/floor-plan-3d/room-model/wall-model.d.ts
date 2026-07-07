@@ -1,13 +1,9 @@
 import type {
-  ConvertedFloorPlan3D,
   Point,
   RegisteredPlanMetadata,
   Wall,
-  WallBox3D,
-  WallPanel3D,
   WallSummary,
-  WheretoputSimulatorWall,
-  ProjectedPoint
+  WheretoputSimulatorWall
 } from "./types";
 
 export const GRID_SIZE: number;
@@ -55,23 +51,6 @@ export function buildWallsFromDetectionBoxes(input: {
   walls: Wall[];
 };
 export function normalizePlanName(name?: string): string;
-export function projectPointTo3D(
-  point: Point,
-  z?: number,
-  camera?: { yaw?: number; pitch?: number; center?: Point }
-): ProjectedPoint;
-export function convertWallTo3D(
-  wall: Wall,
-  options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
-): WallPanel3D;
-export function convertWallTo3DBox(
-  wall: Wall,
-  options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
-): WallBox3D;
-export function convertWallsTo3D(
-  walls: Wall[],
-  options?: { height?: number; depth?: number; camera?: { yaw?: number; pitch?: number; center?: Point } }
-): ConvertedFloorPlan3D;
 export function convertWallToWheretoputSimulator(
   wall: Wall,
   options?: { height?: number; depth?: number; pixelToMeterRatio?: number; wallOrder?: number | null }

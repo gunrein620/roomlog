@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   Banknote,
@@ -21,6 +22,8 @@ import {
   Layers3,
   MapPinned,
   MessageCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
   Phone,
   Ruler,
   Search,
@@ -28,7 +31,7 @@ import {
   SlidersHorizontal,
   UserRound
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -56,6 +59,14 @@ import {
   type AuthMode,
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
+import { getRealtimeSocket } from "@/lib/realtime-client";
+import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
+
+// 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
+const ListingTourRoom3D = dynamic(() => import("./_components/ListingTourRoom3D"), {
+  ssr: false,
+  loading: () => <div className="tour-room-loading">3D 도면을 불러오는 중…</div>
+});
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
 import {
   pickInquiryTargetNo,
@@ -78,7 +89,8 @@ type MapResultTab = "rooms" | "complexes" | "agents";
 
 type NaverLatLng = unknown;
 type NaverMap = unknown;
-type NaverMarker = unknown;
+// setMap(null) = 마커 제거 — 지도 탭에서 매물 목록이 바뀔 때 마커를 다시 그리는 데 쓴다.
+type NaverMarker = { setMap: (map: NaverMap | null) => void };
 type NaverPoint = unknown;
 type NaverInfoWindow = {
   open: (map: NaverMap, marker: NaverMarker) => void;
@@ -107,6 +119,17 @@ type NaverMapsApi = {
   }) => NaverMarker;
   InfoWindow: new (options: { content: string }) => NaverInfoWindow;
   Point: new (x: number, y: number) => NaverPoint;
+  Service?: {
+    geocode: (
+      options: { query: string },
+      callback: (status: string, response: NaverGeocodeResponse) => void
+    ) => void;
+    Status: { OK: string; ERROR: string };
+  };
+};
+
+type NaverGeocodeResponse = {
+  v2?: { addresses?: Array<{ x: string; y: string; roadAddress?: string; jibunAddress?: string }> };
 };
 
 type MapLoadState = "missing-key" | "loading" | "ready" | "error";
@@ -120,12 +143,82 @@ declare global {
 }
 
 const naverMapClientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID ?? "";
+// 지도 InfoWindow는 HTML 문자열을 받으므로 사용자 입력(매물명)은 이스케이프한다.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      default: return "&#39;";
+    }
+  });
+}
+// 업로드 사진은 절대 URL(API 정적서빙/S3) — next/image 최적화기는 사설 IP(dev의 localhost/api)를
+// 차단하므로 절대 URL 사진은 unoptimized로 브라우저가 직접 로드하게 한다(번들 목업은 그대로 최적화).
+const isRemotePhoto = (src: string) => /^https?:\/\//.test(src);
+// geocoder 서브모듈 포함 — 주소→좌표 변환(naver.maps.Service.geocode)을 쓰기 위함.
+const naverMapScriptUrl = naverMapClientId
+  ? `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${naverMapClientId}&submodules=geocoder`
+  : "";
 
-const roleSwitchOptions: Array<{ id: AppRole; label: string; href: string }> = [
-  { id: "seeker", label: "방 찾는 중", href: "/" },
-  { id: "tenant", label: "내가 사는 집", href: "/?role=tenant&tab=mypage" },
-  { id: "landlord", label: "내가 내놓은 집", href: "/?role=landlord&tab=mypage" }
-];
+// 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
+let naverMapsLoadPromise: Promise<boolean> | null = null;
+function loadNaverMaps(): Promise<boolean> {
+  if (typeof window === "undefined" || !naverMapScriptUrl) return Promise.resolve(false);
+  if (window.naver?.maps?.Service) return Promise.resolve(true);
+  if (naverMapsLoadPromise) return naverMapsLoadPromise;
+  naverMapsLoadPromise = new Promise((resolvePromise) => {
+    const existing = document.getElementById("naver-map-loader") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolvePromise(Boolean(window.naver?.maps)), { once: true });
+      existing.addEventListener("error", () => resolvePromise(false), { once: true });
+      if (window.naver?.maps) resolvePromise(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "naver-map-loader";
+    script.src = naverMapScriptUrl;
+    script.async = true;
+    script.onload = () => resolvePromise(Boolean(window.naver?.maps));
+    script.onerror = () => {
+      naverMapsLoadPromise = null;
+      resolvePromise(false);
+    };
+    document.head.appendChild(script);
+  });
+  return naverMapsLoadPromise;
+}
+
+// 주소 문자열을 좌표로 변환한다. 실패(미활성/무결과)면 null — 호출측은 좌표 없이 진행한다.
+async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  const ready = await loadNaverMaps();
+  const service = window.naver?.maps?.Service;
+  if (!ready || !service) return null;
+  return new Promise((resolvePromise) => {
+    try {
+      service.geocode({ query: trimmed }, (status, response) => {
+        if (status !== service.Status.OK) {
+          resolvePromise(null);
+          return;
+        }
+        const first = response?.v2?.addresses?.[0];
+        const lat = Number(first?.y);
+        const lng = Number(first?.x);
+        if (!first || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+          resolvePromise(null);
+          return;
+        }
+        resolvePromise({ lat, lng });
+      });
+    } catch {
+      resolvePromise(null);
+    }
+  });
+}
 
 // 내 주거 프로세스: 한 계정이 상황에 따라 갖는 집과의 관계(흐름) 단위.
 // "역할 전환"이 아니라 같은 계정에서 여러 흐름을 오간다는 관점으로 표현한다.
@@ -474,7 +567,13 @@ const listings = [
   }
 ];
 
-type Listing = (typeof listings)[number];
+// 데모 매물엔 좌표가 없고, 직접등록 매물은 지오코딩된 lat/lng를 실어 상세 지도에 쓴다(옵셔널).
+type Listing = (typeof listings)[number] & {
+  lat?: number;
+  lng?: number;
+  has3DTour?: boolean;
+  floorPlan3D?: ListingFloorPlan3D;
+};
 
 // 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
 type TradeListing = {
@@ -490,9 +589,29 @@ type TradeListing = {
   description: string;
   status: string;
   createdAt: string;
+  images?: string[];
+  lat?: number;
+  lng?: number;
+  floorPlan?: ListingFloorPlan3D | null;
 };
 
 const TRADE_LISTING_NO_PREFIX = "TRADE-";
+// 도면 에디터가 남긴 3D 스냅샷 키 — RoomlogFloorPlanEditor의 LISTING_FLOOR_PLAN_STORAGE_KEY와 동일해야 한다.
+const LISTING_FLOOR_PLAN_STORAGE_KEY = "roomlogListingFloorPlan3D";
+
+/** 에디터가 저장한 3D 도면 스냅샷을 읽는다(없거나 벽 0개면 null). */
+function readListingFloorPlanSnapshot(): ListingFloorPlan3D | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ListingFloorPlan3D;
+    if (!parsed || !Array.isArray(parsed.walls3D) || parsed.walls3D.length === 0) return null;
+    return { walls3D: parsed.walls3D, furnitures: Array.isArray(parsed.furnitures) ? parsed.furnitures : [], name: parsed.name };
+  } catch {
+    return null;
+  }
+}
 
 function tradePriceLabel(listing: TradeListing): string {
   if (listing.tradeType === "월세") return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
@@ -503,6 +622,14 @@ function tradePriceLabel(listing: TradeListing): string {
 // 직접등록 매물을 홈 카드/상세가 쓰는 쇼케이스 매물 형태로 투영한다.
 // 미확인 값은 "확인 중"으로 두고, 문의는 listingNo의 TRADE- 접두어로 서버 매물임을 식별한다.
 function tradeListingToCard(listing: TradeListing): Listing {
+  // 업로드된 실제 사진이 있으면 그걸 쓰고, 없으면 기존 목업으로 폴백한다(데모 매물 보호).
+  const uploaded = Array.isArray(listing.images) ? listing.images.filter((url) => typeof url === "string" && url) : [];
+  const image = uploaded[0] ?? "/listing-studio.jpg";
+  const gallery = uploaded.length > 0 ? uploaded : ["/listing-studio.jpg", "/listing-bedroom.jpg"];
+  const floorPlan3D =
+    listing.floorPlan && Array.isArray(listing.floorPlan.walls3D) && listing.floorPlan.walls3D.length > 0
+      ? listing.floorPlan
+      : undefined;
   return {
     listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
     detailHeader: `직접등록 매물 · ${listing.title}`,
@@ -519,15 +646,19 @@ function tradeListingToCard(listing: TradeListing): Listing {
     viewCount: "새 매물",
     unitCount: "확인 중",
     complexPrice: "확인 중",
-    image: "/listing-studio.jpg",
-    gallery: ["/listing-studio.jpg", "/listing-bedroom.jpg"],
-    badges: ["집주인 직접"],
-    tags: [listing.tradeType, listing.roomType],
+    image,
+    gallery,
+    badges: floorPlan3D ? ["집주인 직접", "3D 투어"] : ["집주인 직접"],
+    tags: floorPlan3D ? [listing.tradeType, listing.roomType, "3D 투어"] : [listing.tradeType, listing.roomType],
     score: "안심 확인중",
     updated: "방금 등록",
     broker: `${listing.ownerName} (집주인)`,
     verification: "집주인 직접 등록",
-    response: "채팅 문의 가능"
+    response: "채팅 문의 가능",
+    lat: listing.lat,
+    lng: listing.lng,
+    has3DTour: Boolean(floorPlan3D),
+    floorPlan3D
   };
 }
 
@@ -653,6 +784,44 @@ const mapListings = [
 
 const mapDealMarkers = mapListings;
 
+// 지도 탭 패널·마커 공용 아이템 — 데모는 listingNo로 정규화하고, 직접등록 매물은 렌더 시 합류한다.
+// (QA: 지도에 새 매물이 안 찍히고 매물창이 갱신되지 않던 문제의 뿌리 = 하드코딩 mapListings 단독 사용)
+type MapPanelItem = Omit<(typeof mapListings)[number], "listingIndex"> & { listingNo: string };
+
+const demoMapItems: MapPanelItem[] = mapListings.map(({ listingIndex, ...item }) => ({
+  ...item,
+  listingNo: listings[listingIndex].listingNo
+}));
+
+/** 직접등록 매물을 지도 패널 아이템으로 투영 — 좌표 없으면 NaN(마커 제외, 목록에는 노출). */
+function tradeListingToMapItem(listing: TradeListing, index: number, total: number): MapPanelItem {
+  const shortPrice =
+    listing.tradeType === "월세"
+      ? `${listing.depositManwon}/${listing.monthlyRentManwon}`
+      : tradePriceLabel(listing);
+  return {
+    listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
+    title: listing.title,
+    price: tradePriceLabel(listing),
+    meta: `${listing.roomType} · 집주인 직접`,
+    distance: listing.location,
+    updated: "방금 등록",
+    flags: ["집주인 직접"],
+    image: (Array.isArray(listing.images) && listing.images[0]) || "/listing-studio.jpg",
+    lat: typeof listing.lat === "number" ? listing.lat : Number.NaN,
+    lng: typeof listing.lng === "number" ? listing.lng : Number.NaN,
+    mapLabel: shortPrice,
+    clusterLabel: "직접",
+    verifyStatus: "집주인 직접 등록",
+    responseStatus: "채팅 문의 가능",
+    tourStatus: "방문 예약",
+    accuracyRank: 0,
+    recencyRank: index - total, // 서버 목록은 최신순 — 데모(0~2)보다 항상 앞선다
+    monthlyRent: listing.monthlyRentManwon,
+    has3DTour: false
+  };
+}
+
 const getMapFilterSummary = (filter: string) => {
   if (filter === "원룸·투룸") {
     return "원룸·복층 중심";
@@ -717,34 +886,36 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-const initialInquiries: InquiryItem[] = [
-  {
-    id: 1,
-    listingTitle: "방배 루미에르 402호",
-    broker: "내방역 푸른공인중개사",
-    message: "아직 거래 가능한가요?",
-    visitTime: "오늘 3시",
-    status: "답변 완료",
-    reply: "네, 아직 거래 가능합니다. 오늘 3시 방문도 가능해요.",
-    time: "10분 전"
-  }
-];
+// QA: 데모 문의(답변 포함)가 세션마다 "문의 1" 배지를 되살리던 문제 — 실제 문의만 쌓이도록 빈 목록으로 시작.
+const initialInquiries: InquiryItem[] = [];
 
 const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
 
-function MyFlowBar({ activeFlow, onSelectFlow }: { activeFlow: MyFlow; onSelectFlow: (flow: MyFlow) => void }) {
+function MyFlowBar({
+  activeFlow,
+  onSelectFlow,
+  menuSlot
+}: {
+  activeFlow: MyFlow;
+  onSelectFlow: (flow: MyFlow) => void;
+  /** 바 왼쪽에 끼워 넣는 화면별 부가 버튼(예: 집주인 대시보드 메뉴 토글) */
+  menuSlot?: ReactNode;
+}) {
+  // 흐름 전환은 숨기지 않는다 — 바의 빈 공간을 큼직한 탭 4개로 채워 한 번에 눌러 이동한다.
   return (
     <div className="mypage-role-bar my-flow-bar">
+      {menuSlot}
       <span>
         내 주거 프로세스 — 한 계정으로 <b>여러 집과 관계</b>를 이어갑니다
       </span>
-      <div className="my-flow-chips" aria-label="연결된 흐름">
+      <div className="my-flow-chips my-flow-tabs" aria-label="연결된 흐름" role="tablist">
         {myFlowItems.map((flow) => (
           <button
             key={flow.id}
             type="button"
+            role="tab"
+            aria-selected={flow.id === activeFlow}
             className={flow.id === activeFlow ? "active" : ""}
-            aria-current={flow.id === activeFlow ? "true" : undefined}
             onClick={() => onSelectFlow(flow.id)}
           >
             {flow.label}
@@ -759,6 +930,22 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
+  // 선택한 실제 파일(등록 시 업로드) — 초안 저장 대상은 아니다(파일은 직렬화 불가).
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  // 선택 즉시 보이는 미리보기 URL — photoFiles가 바뀌면 이전 objectURL은 회수한다.
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = photoFiles.map((file) => URL.createObjectURL(file));
+    setPhotoPreviewUrls(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [photoFiles]);
+  const removePhotoAt = (index: number) => {
+    const next = photoFiles.filter((_, i) => i !== index);
+    setPhotoFiles(next);
+    setPhotoCount(next.length);
+  };
+  // 주소 지오코딩 결과 — 등록 페이로드의 lat/lng로 실린다(실패/미활성 시 null).
+  const [geoCoords, setGeoCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [has3DRoom, setHas3DRoom] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState("작성 중");
   const [myListings, setMyListings] = useState(initialOwnerListings);
@@ -768,6 +955,8 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const [activeOwnerPanel, setActiveOwnerPanel] = useState("dashboard");
+  // 기능 메뉴는 기본 접힘 — 등록 플로우가 주인공이고, 필요할 때만 상단 "메뉴"로 연다.
+  const [isOwnerSidebarOpen, setIsOwnerSidebarOpen] = useState(false);
   const [isCostReviewCleared, setIsCostReviewCleared] = useState(false);
   const [isDisclosureAcknowledged, setIsDisclosureAcknowledged] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState(DEMO_VENDORS[0]?.id ?? "");
@@ -776,6 +965,95 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
+
+  // 내가 서버에 등록한 실제 매물 — 수정/내리기의 대상. null = 아직 조회 전.
+  const [serverListings, setServerListings] = useState<TradeListing[] | null>(null);
+  // 수정 모드: 등록 폼을 재사용해 이 id의 매물을 PATCH 한다.
+  const [editingListingId, setEditingListingId] = useState<string | null>(null);
+
+  const loadMyServerListings = async () => {
+    try {
+      const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+      // 비로그인 → null(데모 폴백 유지). 로그인 → 실제 배열(0개면 빈 상태). 이 구분이 삭제/수정 진실을 결정한다.
+      if (!meRes.ok) {
+        setServerListings(null);
+        return;
+      }
+      const me = (await meRes.json()) as { userId?: string };
+      if (!me.userId) {
+        setServerListings(null);
+        return;
+      }
+      const res = await fetch("/api/trade/listings", { cache: "no-store" });
+      if (!res.ok) return;
+      const all = (await res.json()) as TradeListing[];
+      setServerListings(all.filter((listing) => listing.ownerId === me.userId));
+    } catch {
+      // 네트워크 일시 오류 — 다음 갱신에서 복구
+    }
+  };
+
+  useEffect(() => {
+    void loadMyServerListings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 마운트 시 1회 조회
+  }, []);
+
+  /** 수정 시작 — 매물 값을 등록 폼에 채우고 폼으로 스크롤한다. */
+  const startEditListing = (listing: TradeListing) => {
+    setEditingListingId(listing.id);
+    setOwnerForm((current) => ({
+      ...current,
+      title: listing.title,
+      address: listing.location === "위치 미입력" ? "" : listing.location,
+      tradeType: listing.tradeType,
+      deposit: listing.tradeType === "전세" ? current.deposit : String(listing.depositManwon || ""),
+      jeonse: listing.tradeType === "전세" ? String(listing.depositManwon || "") : current.jeonse,
+      monthly: String(listing.monthlyRentManwon || "")
+    }));
+    setOwnerToast(`'${listing.title}' 수정 중 — 아래 폼을 고친 뒤 저장을 누르세요.`);
+    continueOwnerRegistration();
+  };
+
+  const cancelEditListing = () => {
+    setEditingListingId(null);
+    setOwnerToast("수정을 취소했습니다.");
+  };
+
+  /** 매물 내리기 — 홈 피드에서 즉시 사라진다(문의 대화 기록은 유지). */
+  const deleteServerListing = async (listing: TradeListing) => {
+    if (!window.confirm(`'${listing.title}' 매물을 내릴까요? 홈 피드에서 바로 사라집니다.`)) return;
+    try {
+      const res = await fetch(`/api/trade/listings/${listing.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setOwnerToast("매물 내리기에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      if (editingListingId === listing.id) setEditingListingId(null);
+      setOwnerToast(`'${listing.title}' 매물을 내렸습니다.`);
+      void loadMyServerListings();
+    } catch {
+      setOwnerToast("매물 내리기에 실패했습니다. 네트워크를 확인해 주세요.");
+    }
+  };
+
+  // 주소 입력을 디바운스로 지오코딩 — 상세 지도에 실제 매물 좌표를 찍기 위함.
+  useEffect(() => {
+    const address = ownerForm.address?.trim();
+    if (!address) {
+      setGeoCoords(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void geocodeAddress(address).then((coords) => {
+        if (!cancelled) setGeoCoords(coords);
+      });
+    }, 700);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [ownerForm.address]);
 
   // 복원: 반드시 마운트 후에만 localStorage 접근 — SSR 초기 렌더와의 hydration 불일치 방지 (QA 8).
   useEffect(() => {
@@ -790,7 +1068,23 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
       setDraftSavedAt(draft.savedAt);
     }
 
+    // 도면 에디터에서 실제로 3D를 만들고 돌아왔는지는 스냅샷 존재로 판단한다(클릭만으론 연결로 치지 않음).
+    if (readListingFloorPlanSnapshot()) setHas3DRoom(true);
+
     setIsDraftLoaded(true);
+  }, []);
+
+  // 에디터 탭에서 3D를 만들고 이 탭으로 돌아오면 "3D방 연결" 상태를 즉시 반영한다.
+  useEffect(() => {
+    const syncFloorPlanConnection = () => {
+      if (document.visibilityState === "visible" && readListingFloorPlanSnapshot()) setHas3DRoom(true);
+    };
+    window.addEventListener("visibilitychange", syncFloorPlanConnection);
+    window.addEventListener("focus", syncFloorPlanConnection);
+    return () => {
+      window.removeEventListener("visibilitychange", syncFloorPlanConnection);
+      window.removeEventListener("focus", syncFloorPlanConnection);
+    };
   }, []);
 
   // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
@@ -821,39 +1115,93 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
     // 문의가 오면 "받은 문의" 채팅으로 이어진다.
     void (async () => {
       try {
-        const response = await fetch("/api/trade/listings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: ownerForm.title,
-            roomType: "원룸",
-            tradeType: ownerForm.tradeType,
-            depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
-            monthlyRentManwon: Number(ownerForm.monthly) || 0,
-            location: ownerForm.address || "위치 미입력",
-            description: [
-              ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
-              ownerForm.floor ? `${ownerForm.floor}층` : "",
-              ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
-            ].filter(Boolean).join(" · ")
-          })
-        });
+        // 1) 사진이 있으면 먼저 업로드해 공개 URL을 확보한다(멀티파트 프록시).
+        let images: string[] = [];
+        if (photoFiles.length > 0) {
+          const form = new FormData();
+          photoFiles.forEach((file) => form.append("files", file));
+          const uploadRes = await fetch("/api/trade/uploads", { method: "POST", body: form });
+          if (uploadRes.status === 401) {
+            setOwnerToast("매물을 등록하려면 WOOZU 계정 로그인이 필요합니다.");
+            return;
+          }
+          if (uploadRes.ok) {
+            const uploaded = (await uploadRes.json()) as { images?: string[] };
+            images = Array.isArray(uploaded.images) ? uploaded.images : [];
+          } else {
+            setOwnerToast("사진 업로드에 실패했습니다. 사진 없이 등록하거나 잠시 후 다시 시도해 주세요.");
+            return;
+          }
+        }
+
+        // 2) 등록 또는 수정 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
+        //    수정(PATCH)일 때 새 사진이 없으면 images를 보내지 않아 기존 사진을 유지한다.
+        const isEditing = Boolean(editingListingId);
+        const payload: Record<string, unknown> = {
+          title: ownerForm.title,
+          roomType: "원룸",
+          tradeType: ownerForm.tradeType,
+          depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
+          monthlyRentManwon: Number(ownerForm.monthly) || 0,
+          location: ownerForm.address || "위치 미입력",
+          description: [
+            ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
+            ownerForm.floor ? `${ownerForm.floor}층` : "",
+            ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
+          ].filter(Boolean).join(" · "),
+          lat: geoCoords?.lat,
+          lng: geoCoords?.lng
+        };
+        if (!isEditing || images.length > 0) payload.images = images;
+        // 3D방 연결 상태이고 에디터 스냅샷이 있으면 매물에 도면을 실어 보낸다 → 상세 "3D 보기"에서 실제 렌더.
+        const floorPlanSnapshot = has3DRoom ? readListingFloorPlanSnapshot() : null;
+        if (floorPlanSnapshot) payload.floorPlan = floorPlanSnapshot;
+
+        const response = await fetch(
+          isEditing ? `/api/trade/listings/${editingListingId}` : "/api/trade/listings",
+          {
+            method: isEditing ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          }
+        );
 
         if (response.status === 401) {
           setOwnerToast("매물을 등록하려면 WOOZU 계정 로그인이 필요합니다.");
           return;
         }
         if (!response.ok) {
-          setOwnerToast("매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+          setOwnerToast(isEditing ? "매물 수정에 실패했습니다. 잠시 후 다시 시도해 주세요." : "매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.");
           return;
         }
 
+        // 서버가 돌려준 매물을 즉시 목록에 반영 — 뒤의 재조회가 늦거나 캐시돼도 "내 매물"에 바로 보인다.
+        const savedListing = (await response.json().catch(() => null)) as TradeListing | null;
+        if (savedListing?.id) {
+          setServerListings((current) => {
+            const base = current ?? [];
+            return isEditing
+              ? base.map((item) => (item.id === savedListing.id ? savedListing : item))
+              : [savedListing, ...base.filter((item) => item.id !== savedListing.id)];
+          });
+        }
+
+        // 등록/수정 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
+        //   (로컬 그림자 목록은 만들지 않는다 — 내 매물은 항상 서버 진실(serverListings)만 보여준다.)
+        setOwnerForm(emptyOwnerForm);
+        setPhotoFiles([]);
+        setPhotoCount(0);
+        setHas3DRoom(false);
+        setGeoCoords(null);
+        if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
-        setMyListings((current) => [
-          { id: Date.now(), title: ownerForm.title, price: ownerPriceLabel, status: "노출중", caption: "방금 노출 시작 · 모든 사용자에게 보입니다" },
-          ...current
-        ]);
-        setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
+        if (isEditing) {
+          setEditingListingId(null);
+          setOwnerToast("매물이 수정됐습니다. 내 매물과 홈 피드에 바로 반영됩니다.");
+        } else {
+          setOwnerToast("매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 여기 채팅으로 이어집니다.");
+        }
+        await loadMyServerListings();
       } catch {
         setOwnerToast("매물 등록에 실패했습니다. 네트워크를 확인해 주세요.");
       } finally {
@@ -935,22 +1283,41 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
-      <MyFlowBar activeFlow="listing" onSelectFlow={onSelectFlow} />
+      <MyFlowBar
+        activeFlow="listing"
+        onSelectFlow={onSelectFlow}
+        menuSlot={
+          <button
+            className="owner-sidebar-toggle"
+            type="button"
+            aria-expanded={isOwnerSidebarOpen}
+            title={isOwnerSidebarOpen ? "기능 메뉴 접기" : "기능 메뉴 펼치기"}
+            onClick={() => setIsOwnerSidebarOpen((open) => !open)}
+          >
+            {isOwnerSidebarOpen
+              ? <PanelLeftClose size={16} strokeWidth={2.4} aria-hidden="true" />
+              : <PanelLeftOpen size={16} strokeWidth={2.4} aria-hidden="true" />}
+            <strong>메뉴</strong>
+          </button>
+        }
+      />
 
-      <div className="owner-dashboard-layout">
-        <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
-          {ownerDashboardTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
-              onClick={() => setActiveOwnerPanel(tab.id)}
-            >
-              <span>{tab.note}</span>
-              <strong>{tab.label}</strong>
-            </button>
-          ))}
-        </nav>
+      <div className={`owner-dashboard-layout${isOwnerSidebarOpen ? "" : " sidebar-collapsed"}`}>
+        {isOwnerSidebarOpen ? (
+          <nav className="owner-dashboard-sidebar" aria-label="집주인 대시보드 기능 탭">
+            {ownerDashboardTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-current={tab.id === activeOwnerPanel ? "page" : undefined}
+                onClick={() => setActiveOwnerPanel(tab.id)}
+              >
+                <span>{tab.note}</span>
+                <strong>{tab.label}</strong>
+              </button>
+            ))}
+          </nav>
+        ) : null}
 
         <div className="owner-dashboard-content">
           {activeOwnerPanel === "dashboard" ? (
@@ -989,18 +1356,57 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
 
       <section className="owner-my-listings" aria-label="내 등록 매물">
         <div className="owner-my-listings-head">
-          <strong>내 매물 {myListings.length}개</strong>
-          <span>검수 통과 시 자동 노출</span>
+          <strong>내 매물 {serverListings ? serverListings.length : myListings.length}개</strong>
+          <span>수정·내리기는 즉시 반영</span>
         </div>
-        {myListings.map((item) => (
-          <article key={item.id}>
-            <div>
-              <strong>{item.title}</strong>
-              <small>{item.price} · {item.caption}</small>
-            </div>
-            <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
-          </article>
-        ))}
+        {serverListings !== null ? (
+          // 로그인 상태 — 서버 진실만 보여준다. 삭제하면 여기서 즉시·영구히 사라진다(데모 폴백으로 되살아나지 않음).
+          serverListings.length > 0 ? (
+            serverListings.map((listing) => (
+              <article key={listing.id}>
+                <div>
+                  <strong>{listing.title}{editingListingId === listing.id ? " · 수정 중" : ""}</strong>
+                  <small>{tradePriceLabel(listing)} · {listing.location}</small>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
+                  <em className="live">{listing.status}</em>
+                  <button
+                    type="button"
+                    onClick={() => (editingListingId === listing.id ? cancelEditListing() : startEditListing(listing))}
+                    style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line)", background: "#ffffff", color: "var(--ink)", fontSize: "0.72rem", fontWeight: 900 }}
+                  >
+                    {editingListingId === listing.id ? "수정 취소" : "수정"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteServerListing(listing)}
+                    style={{ minHeight: 30, padding: "0 10px", borderRadius: 999, border: "1px solid #f1c8c8", background: "#fff6f6", color: "#c03535", fontSize: "0.72rem", fontWeight: 900 }}
+                  >
+                    내리기
+                  </button>
+                </div>
+              </article>
+            ))
+          ) : (
+            <article className="owner-my-listings-empty">
+              <div>
+                <strong>아직 등록한 매물이 없어요</strong>
+                <small>위에서 매물을 등록하면 여기서 수정·내리기를 할 수 있어요.</small>
+              </div>
+            </article>
+          )
+        ) : (
+          // 비로그인/첫 방문 — 데모 쇼케이스 목록(관리 불가)
+          myListings.map((item) => (
+            <article key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <small>{item.price} · {item.caption}</small>
+              </div>
+              <em className={item.status === "노출중" ? "live" : ""}>{item.status}</em>
+            </article>
+          ))
+        )}
       </section>
 
       {/* 내 매물로 들어온 구매 문의 — 문의센터(구매자 쪽)와 같은 스레드를 집주인 시점에서 본다 */}
@@ -1439,7 +1845,14 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
             </label>
             <label>
               입주가능일
-              <input value={ownerForm.moveIn} onChange={(event) => updateOwnerForm("moveIn", event.target.value)} placeholder="예: 즉시, 2026-08-01" />
+              {/* QA: 자유 텍스트 대신 달력에서 선택 — 기존 초안의 비날짜 값("즉시" 등)은 빈 값으로 보이지만 지우지 않는다 */}
+              <input
+                type="date"
+                value={ownerForm.moveIn}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(event) => updateOwnerForm("moveIn", event.target.value)}
+                aria-label="입주가능일 달력 선택"
+              />
             </label>
           </div>
 
@@ -1494,24 +1907,40 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
               accept="image/*"
               aria-label="사진 업로드"
               onChange={(event) => {
-                setPhotoCount(event.target.files?.length ?? 0);
+                const files = event.target.files ? Array.from(event.target.files) : [];
+                setPhotoFiles(files);
+                setPhotoCount(files.length);
                 setRegistrationStatus("작성 중");
               }}
             />
           </label>
 
+          {photoPreviewUrls.length > 0 ? (
+            <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
+              {photoPreviewUrls.map((url, index) => (
+                <figure key={url}>
+                  {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={`선택한 사진 ${index + 1}`} />
+                  {index === 0 ? <figcaption>대표 사진</figcaption> : null}
+                  <button type="button" aria-label={`사진 ${index + 1} 빼기`} onClick={() => removePhotoAt(index)}>
+                    ×
+                  </button>
+                </figure>
+              ))}
+            </div>
+          ) : null}
+
           <a
             className={has3DRoom ? "upload-3d-button floor-plan-link active" : "upload-3d-button floor-plan-link"}
             href="/floor-plan-3d"
-            onClick={() => {
-              setHas3DRoom(true);
-              setRegistrationStatus("작성 중");
-            }}
+            onClick={() => setRegistrationStatus("작성 중")}
           >
             <strong>3D 도면 만들기</strong>
             <span>
-              {has3DRoom ? "3D 방 자료가 연결된 상태입니다." : "3D 방 파일 또는 링크를 등록할 수 있습니다."} 실측 도면 기반
-              3D 편집 페이지로 이동
+              {has3DRoom
+                ? "3D 도면이 연결됐어요. 등록하면 상세 페이지에서 3D로 보여집니다."
+                : "도면을 만들고 저장하면 자동으로 연결돼요. 실측 도면 기반 3D 편집 페이지로 이동"}
             </span>
           </a>
         </section>
@@ -1546,8 +1975,10 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
           {isSubmittingListing ? (
             <>
               <span className="btn-spinner" aria-hidden="true" />
-              등록 처리 중…
+              {editingListingId ? "수정 저장 중…" : "등록 처리 중…"}
             </>
+          ) : editingListingId ? (
+            "수정 내용 저장"
           ) : (
             "매물 등록하기"
           )}
@@ -1561,13 +1992,38 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   );
 }
 
-function NaverMapPreview({ className = "" }: { className?: string }) {
+type MapMarkerInput = {
+  lat: number;
+  lng: number;
+  title: string;
+  price: string;
+  mapLabel: string;
+  clusterLabel: string;
+};
+
+function NaverMapPreview({
+  className = "",
+  center,
+  title,
+  markers
+}: {
+  className?: string;
+  /** 특정 매물 좌표 — 있으면 그 위치를 중심으로 단일 마커를 찍는다(없으면 데모 마커). */
+  center?: { lat: number; lng: number } | null;
+  title?: string;
+  /** 지도 탭용 동적 마커 목록 — 값이 바뀌면 마커를 다시 그린다(직접등록 매물 포함). */
+  markers?: MapMarkerInput[];
+}) {
   const mapRef = useRef<HTMLDivElement>(null);
   const isMapInitializedRef = useRef(false);
+  const mapInstanceRef = useRef<NaverMap | null>(null);
+  const dynamicMarkersRef = useRef<NaverMarker[]>([]);
   const [isScriptReady, setIsScriptReady] = useState(false);
   const [loadState, setLoadState] = useState<MapLoadState>(naverMapClientId ? "loading" : "missing-key");
-  const scriptUrl = naverMapClientId
-    ? `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${naverMapClientId}`
+  const scriptUrl = naverMapScriptUrl;
+  // 좌표 배열이 실제로 달라졌을 때만 마커를 다시 그린다 (렌더마다 새 배열이 와도 무시).
+  const markersKey = markers
+    ? JSON.stringify(markers.map((deal) => [deal.lat, deal.lng, deal.mapLabel]))
     : "";
 
   useEffect(() => {
@@ -1592,32 +2048,45 @@ function NaverMapPreview({ className = "" }: { className?: string }) {
 
     isMapInitializedRef.current = true;
     const maps = window.naver.maps;
-    const center = new maps.LatLng(37.4875, 126.9931);
+    // 매물 좌표가 주어지면 그 위치를, 아니면 기존 데모 중심(방배)을 쓴다.
+    const hasCenter = center && Number.isFinite(center.lat) && Number.isFinite(center.lng);
+    const centerLatLng = hasCenter
+      ? new maps.LatLng(center.lat, center.lng)
+      : new maps.LatLng(37.4875, 126.9931);
     const map = new maps.Map(mapRef.current, {
-      center,
+      center: centerLatLng,
       zoom: 16,
       zoomControl: true
     });
-    mapDealMarkers.forEach((deal, index) => {
-      const position = new maps.LatLng(deal.lat, deal.lng);
-      new maps.Marker({
-        map,
-        position,
-        icon: {
-          content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${deal.title} ${deal.price}"><b>${deal.clusterLabel}</b><strong>${deal.mapLabel}</strong></button>`,
-          anchor: new maps.Point(42, 56)
-        }
-      });
-    });
+    mapInstanceRef.current = map;
 
-    const marker = new maps.Marker({
-      map,
-      position: center
-    });
-    const infoWindow = new maps.InfoWindow({
-      content: '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
-    });
-    infoWindow.open(map, marker);
+    // markers 프롭이 있으면(지도 탭) 마커는 아래 동기화 이펙트가 그린다 — 여기서는 지도만 만든다.
+    if (!hasCenter && !markers) {
+      mapDealMarkers.forEach((deal, index) => {
+        const position = new maps.LatLng(deal.lat, deal.lng);
+        new maps.Marker({
+          map,
+          position,
+          icon: {
+            content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${deal.title} ${deal.price}"><b>${deal.clusterLabel}</b><strong>${deal.mapLabel}</strong></button>`,
+            anchor: new maps.Point(42, 56)
+          }
+        });
+      });
+    }
+
+    if (hasCenter || !markers) {
+      const marker = new maps.Marker({
+        map,
+        position: centerLatLng
+      });
+      const infoWindow = new maps.InfoWindow({
+        content: hasCenter
+          ? `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "이 매물"}</b><strong>현재 위치</strong></div>`
+          : '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
+      });
+      infoWindow.open(map, marker);
+    }
     setLoadState("ready");
 
     window.setTimeout(() => {
@@ -1631,6 +2100,31 @@ function NaverMapPreview({ className = "" }: { className?: string }) {
       }
     }, 600);
   }, [isScriptReady, loadState]);
+
+  // 동적 마커 동기화 — 매물 목록(직접등록 포함)이 바뀌면 기존 마커를 지우고 다시 그린다.
+  useEffect(() => {
+    if (!markersKey || loadState !== "ready") return;
+    const maps = window.naver?.maps;
+    const map = mapInstanceRef.current;
+    if (!maps || !map) return;
+
+    dynamicMarkersRef.current.forEach((marker) => marker.setMap(null));
+    const parsed = JSON.parse(markersKey) as Array<[number, number, string]>;
+    dynamicMarkersRef.current = parsed.map(([lat, lng, mapLabel], index) => {
+      const clusterLabel = escapeHtml(String((markers ?? [])[index]?.clusterLabel ?? ""));
+      const markerTitle = escapeHtml(String((markers ?? [])[index]?.title ?? ""));
+      const price = escapeHtml(String((markers ?? [])[index]?.price ?? ""));
+      return new maps.Marker({
+        map,
+        position: new maps.LatLng(lat, lng),
+        icon: {
+          content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${markerTitle} ${price}"><b>${clusterLabel}</b><strong>${escapeHtml(String(mapLabel))}</strong></button>`,
+          anchor: new maps.Point(42, 56)
+        }
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- markersKey가 markers의 좌표·라벨을 대변한다
+  }, [markersKey, loadState]);
 
   const handleScriptReady = () => {
     requestAnimationFrame(() => {
@@ -1726,6 +2220,9 @@ function ListingDetailView({
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const safetyScore = listing.score.replace("안심 ", "");
+  // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
+  const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
+  const isDirectListing = listing.listingLabel === "집주인 직접등록";
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
   // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
@@ -1789,7 +2286,7 @@ function ListingDetailView({
 
       <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
         <div className="gallery-main">
-          <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority />
+          <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority unoptimized={isRemotePhoto(activePhoto)} />
           <span className="gallery-photo-count">{activePhotoIndex + 1} / {listing.gallery.length}</span>
         </div>
         <div className="gallery-stack">
@@ -1830,7 +2327,7 @@ function ListingDetailView({
             <strong>투어 보기</strong>
           </button>
           <button type="button" onClick={scrollToSafetyReport}>
-            <span>{safetyScore}점</span>
+            <span>{safetyScoreLabel}</span>
             <strong>안심 리포트</strong>
           </button>
           <button type="button" onClick={() => setIsComplexSheetOpen(true)}>
@@ -1924,7 +2421,7 @@ function ListingDetailView({
           <h2>권리관계 특이사항 낮음</h2>
           <p>등기 변동, 보증금 비율, 관리비 수준을 함께 본 결과입니다.</p>
         </div>
-        <strong>{safetyScore}점</strong>
+        <strong>{safetyScoreLabel}</strong>
       </section>
 
       <section className="detail-report-card" aria-label="지킴 진단 리포트">
@@ -1948,9 +2445,13 @@ function ListingDetailView({
 
       <section className="agent-summary-card" aria-label="중개사 정보">
         <div>
-          <span>중개사 평점 4.8</span>
+          <span>{isDirectListing ? "집주인 직접 거래" : "중개사 평점 4.8"}</span>
           <h2>{listing.broker}</h2>
-          <p>{listing.response} · 확인매물 126개 · 헛걸음 보상 참여</p>
+          <p>
+            {isDirectListing
+              ? `${listing.response} · ${listing.verification} · 헛걸음 보상 참여`
+              : `${listing.response} · 확인매물 126개 · 헛걸음 보상 참여`}
+          </p>
         </div>
         <button type="button" onClick={() => setIsAgentSheetOpen(true)}>프로필</button>
       </section>
@@ -2005,21 +2506,21 @@ function ListingDetailView({
         </div>
       </section>
 
-      <button className="tour-banner detail-tour-banner" type="button" onClick={() => setIsTourSheetOpen(true)} aria-label="3D 가상 투어 시작하기">
-        <span>
-          <small>3D 공간 투어</small>
-          <strong>3D 보기 / 투어 예약</strong>
-          <em>실측 도면 기반으로 공간을 먼저 확인하세요</em>
-        </span>
-        <b aria-hidden="true">3D</b>
-      </button>
-
+      {/* 3D 진입은 하단 고정 바의 "3D 둘러보기"가 담당 — 본문 중복 배너는 제거했다. */}
       <section className="detail-map-section" aria-label="상세 위치">
         <div>
           <h2>위치</h2>
           <p>정확한 위치와 주변 생활권을 지도에서 확인하세요.</p>
         </div>
-        <NaverMapPreview className="detail-naver-map" />
+        <NaverMapPreview
+          className="detail-naver-map"
+          center={
+            typeof listing.lat === "number" && typeof listing.lng === "number"
+              ? { lat: listing.lat, lng: listing.lng }
+              : null
+          }
+          title={listing.title}
+        />
       </section>
 
       <div className="detail-contact-bar" id="detail-contact">
@@ -2046,31 +2547,48 @@ function ListingDetailView({
               <div>
                 <span>3D 공간 미리보기</span>
                 <h2 id="tour-sheet-title">방문 전 3D로 먼저 보기</h2>
-                <p>방문 전에 구조와 옵션 위치를 확인하고, 원하는 시간에 투어 상담을 예약할 수 있습니다.</p>
+                <p>방문 전에 구조와 옵션 위치를 3D로 미리 확인할 수 있습니다.</p>
               </div>
               <button type="button" onClick={() => setIsTourSheetOpen(false)} aria-label="3D 투어 닫기">×</button>
             </header>
 
             <div className="tour-preview-stage" aria-label="3D 투어 미리보기">
-              <div className="tour-room-box">
-                <span className="tour-wall wall-left" />
-                <span className="tour-wall wall-right" />
-                <span className="tour-bed" />
-                <span className="tour-desk" />
-                <span className="tour-window" />
-                <strong>공간 미리보기</strong>
-              </div>
+              {listing.floorPlan3D ? (
+                <div className="tour-room-3d">
+                  <ListingTourRoom3D floorPlan={listing.floorPlan3D} />
+                </div>
+              ) : (
+                <div className="tour-room-box tour-room-box-empty">
+                  <span className="tour-wall wall-left" />
+                  <span className="tour-wall wall-right" />
+                  <span className="tour-bed" />
+                  <span className="tour-desk" />
+                  <span className="tour-window" />
+                  <strong>3D 도면 미연결 매물</strong>
+                  <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                </div>
+              )}
             </div>
 
             <div className="tour-step-list">
-              <span>도면 기반 공간 스캔</span>
-              <span>옵션 배치 확인</span>
-              <span>투어 예약 연결</span>
+              {listing.floorPlan3D ? (
+                <>
+                  <span>실측 도면 기반 3D</span>
+                  <span>드래그로 둘러보기</span>
+                  <span>옵션 배치 확인</span>
+                </>
+              ) : (
+                <>
+                  <span>도면 기반 공간 스캔</span>
+                  <span>옵션 배치 확인</span>
+                  <span>집주인이 도면을 올리면 3D 제공</span>
+                </>
+              )}
             </div>
 
             <div className="tour-sheet-actions">
               <button type="button" onClick={() => setIsTourSheetOpen(false)}>닫기</button>
-              <a href="#detail-contact" onClick={() => setIsTourSheetOpen(false)}>투어 예약</a>
+              <a href="#detail-contact" onClick={() => setIsTourSheetOpen(false)}>문의하기</a>
             </div>
           </section>
         </div>
@@ -2461,7 +2979,7 @@ function SavedListingsSection({
           savedListings.map((listing) => (
             <article className="saved-card" key={listing.listingNo}>
               <button type="button" onClick={() => openListing(listing)}>
-                <Image src={listing.image} alt={`${listing.title} 찜한 매물 사진`} width={240} height={180} />
+                <Image src={listing.image} alt={`${listing.title} 찜한 매물 사진`} width={240} height={180} unoptimized={isRemotePhoto(listing.image)} />
                 <span>
                   <b>{listing.price}</b>
                   <strong>{listing.title}</strong>
@@ -2487,17 +3005,19 @@ function SavedListingsSection({
 
 function InquiryHubSection({
   onNewInquiry,
-  onRequireLogin
+  onRequireLogin,
+  focusThreadId
 }: {
   onNewInquiry: () => void;
   onRequireLogin: () => void;
+  focusThreadId?: string;
 }) {
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
       <div className="section-title no-margin">
         <div>
           <h2 id="inquiry-title">문의센터</h2>
-          <p>보낸 문의가 집주인과의 채팅으로 이어집니다.</p>
+          <p>보낸 문의와 받은 문의가 모두 채팅으로 이어집니다.</p>
         </div>
         {/* 새 문의 = 최근 본 매물(없으면 첫 추천 매물)의 문의 sheet를 바로 연다 — 홈으로 튕기지 않는다 (QA 4·7) */}
         <button type="button" onClick={onNewInquiry}>
@@ -2505,12 +3025,16 @@ function InquiryHubSection({
         </button>
       </div>
 
-      {/* 서버 스레드 기반 문의 채팅 — 다른 계정(집주인)이 실제로 받고 답한다 */}
-      <TradeChatCenter
-        roleFilter="buyer"
-        emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요."
-        onRequireLogin={onRequireLogin}
-      />
+      {/* 서버 스레드 기반 문의 채팅 — 보낸 문의(구매자)와 받은 문의(집주인)를 한 곳에서 본다.
+          QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제.
+          래퍼 클래스는 데스크톱 그리드 배치용 — 채팅이 문의센터의 주인공(좌측 넓은 칸)이 된다. */}
+      <div className="inquiry-chat-panel">
+        <TradeChatCenter
+          emptyText="매물 카드의 '문자문의'나 위의 '새 문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
+          onRequireLogin={onRequireLogin}
+          focusThreadId={focusThreadId}
+        />
+      </div>
 
 
       <section className="inquiry-channel-card" aria-label="문의 채널 상태">
@@ -3523,14 +4047,18 @@ export default function Home() {
   const [recentSearches, setRecentSearches] = useState(searchSuggestions.recent);
   const [activeCategory, setActiveCategory] = useState(categories[0].label);
   const [activeQuickFilters, setActiveQuickFilters] = useState<string[]>([]);
+  // 홈 검색창 키워드 — 매물명/위치/스펙/태그를 즉시 필터링한다 (QA: 검색창 직접 입력).
+  const [searchKeyword, setSearchKeyword] = useState("");
   const [activeMapFilter, setActiveMapFilter] = useState("시세");
   const [activeSort, setActiveSort] = useState(sortOptions[0].label);
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
-  const [selectedMapListingIndex, setSelectedMapListingIndex] = useState(mapListings[0].listingIndex);
+  const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
   const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
   const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
   // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
   const [inquiryComposeListingNo, setInquiryComposeListingNo] = useState<string | null>(null);
+  // 문의 전송 직후 채팅으로 바로 진입할 스레드 id (문의센터 TradeChatCenter로 전달)
+  const [buyerFocusThreadId, setBuyerFocusThreadId] = useState<string | undefined>(undefined);
   const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
   const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -3541,6 +4069,8 @@ export default function Home() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isRouteReady, setIsRouteReady] = useState(false);
   const [isDevRolePreview, setIsDevRolePreview] = useState(false);
+  // URL ?role=/flow= 딥링크가 역할을 정했는지 — 정했다면 계정 기반 자동 역할이 덮지 않는다.
+  const urlRoleAppliedRef = useRef(false);
   // 집 내놓기 시작 모드(/?flow=listing) — 관리 콘솔 보호와 분리된 비보호 등록 진입.
   // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
   const [isListingStartMode, setIsListingStartMode] = useState(false);
@@ -3558,12 +4088,25 @@ export default function Home() {
         .catch(() => undefined);
     load();
     const timer = window.setInterval(load, 30000);
+    // 다른 탭/앱에 다녀오면 즉시 갱신 — 30초 폴링만으로는 "새로고침해야 보이는" 답답함이 남는다.
+    const reloadOnReturn = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("focus", reloadOnReturn);
+    document.addEventListener("visibilitychange", reloadOnReturn);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener("focus", reloadOnReturn);
+      document.removeEventListener("visibilitychange", reloadOnReturn);
     };
   }, []);
-  const allListings = [...tradeListings.map(tradeListingToCard), ...listings];
+  // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
+  // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
+  const sortedTradeListings = [...tradeListings].sort(
+    (a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0)
+  );
+  const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
@@ -3578,31 +4121,51 @@ export default function Home() {
           : activeCategory === "투룸"
             ? listing.spec.includes("투룸") || listing.spec.includes("복층")
             : false;
-    const quickFilterMatches = activeQuickFilters.every((filter) => {
-      if (filter === "월세") {
-        return listing.price.includes("월세");
-      }
+    // 거래유형(월세/전세/매매/단기)끼리는 OR — 둘 다 켜면 "월세 또는 전세"다 (QA: every()로 AND 되던 버그).
+    const dealTypeFilters = activeQuickFilters.filter((filter) => ["월세", "전세", "매매", "단기"].includes(filter));
+    const dealTypeMatches =
+      dealTypeFilters.length === 0 || dealTypeFilters.some((filter) => listing.price.includes(filter) || listing.tags.includes(filter));
+    const quickFilterMatches = activeQuickFilters
+      .filter((filter) => !dealTypeFilters.includes(filter))
+      .every((filter) => {
+        if (filter === "관리비 포함") {
+          return listing.maintenanceFee !== "15만원";
+        }
 
-      if (filter === "전세") {
-        return listing.price.includes("전세");
-      }
+        if (filter === "반려동물") {
+          return listing.tags.includes("반려동물");
+        }
 
-      if (filter === "관리비 포함") {
-        return listing.maintenanceFee !== "15만원";
-      }
+        return listing.tags.includes(filter);
+      });
+    const keyword = searchKeyword.trim().toLowerCase();
+    const keywordMatches =
+      !keyword ||
+      [listing.title, listing.location, listing.spec, listing.price, ...listing.tags, ...listing.badges]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword);
 
-      if (filter === "반려동물") {
-        return listing.tags.includes("반려동물");
-      }
-
-      return listing.tags.includes(filter);
-    });
-
-    return categoryMatches && quickFilterMatches;
+    return categoryMatches && dealTypeMatches && quickFilterMatches && keywordMatches;
   });
   const visibleHomeCount = visibleHomeListings.length;
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
-  const visibleMapListings = [...mapListings]
+  // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
+  const allMapItems = [
+    ...tradeListings.map((listing, index) => tradeListingToMapItem(listing, index, tradeListings.length)),
+    ...demoMapItems
+  ];
+  // 지역 검색이 개수·목록에 실제 반영되도록 지역 토큰으로 필터 (QA: 지역 바꿔도 개수가 그대로던 표기이상).
+  // 토큰 = 선택 지역의 마지막 단어에서 동/역/구 접미사 제거(예: "서초구 방배동"→"방배").
+  const areaSearchToken = (selectedAreaTitle.split(" ").pop() ?? "").replace(/(동|역|구)$/, "").trim();
+  const areaMatchedMapItems = areaSearchToken
+    ? allMapItems.filter((listing) =>
+        [listing.title, listing.meta, listing.distance].join(" ").includes(areaSearchToken)
+      )
+    : allMapItems;
+  // 매칭이 하나도 없으면 전체로 폴백 — 데모 데이터 범위 밖 지역을 골라도 지도가 텅 비지 않게.
+  const areaScopedMapItems = areaMatchedMapItems.length > 0 ? areaMatchedMapItems : allMapItems;
+  const visibleMapListings = areaScopedMapItems
     .filter((listing) => {
       if (activeMapFilter === "3D 가능") {
         return listing.has3DTour;
@@ -3637,7 +4200,10 @@ export default function Home() {
 
       return a.accuracyRank - b.accuracyRank;
     });
-  const selectedMapListing = visibleMapListings.find((listing) => listing.listingIndex === selectedMapListingIndex) ?? visibleMapListings[0];
+  const selectedMapListing = visibleMapListings.find((listing) => listing.listingNo === selectedMapListingNo) ?? visibleMapListings[0];
+  // 지도 마커 = 좌표가 유효한 매물만 (직접등록 매물 포함 — QA: 지도에 매물 안 찍힘)
+  const mapMarkers = visibleMapListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
+  const findListingCardByNo = (listingNo: string) => allListings.find((listing) => listing.listingNo === listingNo);
 
   const viewedListings = viewedListingNos
     .map((listingNo) => allListings.find((listing) => listing.listingNo === listingNo))
@@ -3648,6 +4214,32 @@ export default function Home() {
     : null;
 
   const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
+
+  // 실시간 문의 신호 — 웹소켓 trade:updated가 오면 문의 탭 밖에서는 배지를 켠다(탭 진입 시 해제).
+  const [unseenTradeCount, setUnseenTradeCount] = useState(0);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  useEffect(() => {
+    if (!viewer) return; // 소켓 인증 티켓은 로그인 세션 기반 — 비로그인 재연결 루프 방지
+
+    const socket = getRealtimeSocket();
+    const onTradeUpdated = () => {
+      if (activeTabRef.current !== "inquiry") {
+        setUnseenTradeCount((count) => count + 1);
+      }
+    };
+    socket.on("trade:updated", onTradeUpdated);
+    return () => {
+      socket.off("trade:updated", onTradeUpdated);
+    };
+  }, [viewer]);
+
+  useEffect(() => {
+    if (activeTab === "inquiry") setUnseenTradeCount(0);
+  }, [activeTab]);
+
+  const inquiryBadgeCount = unseenReplyCount + unseenTradeCount;
 
   // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
   useEffect(() => {
@@ -3689,6 +4281,14 @@ export default function Home() {
       if (!response.ok) return "error";
       // 로컬 요약 목록에도 즉시 반영 (문의센터 상단 노출 — lib/inquiry-flow 테스트로 고정된 규칙)
       setInquiries((current) => withNewInquiry(current, payload, Date.now()));
+      // 서버가 방금 생성/이어붙인 스레드 id를 돌려주면, 문의센터 채팅으로 바로 진입한다(당근식).
+      const created = (await response.json().catch(() => ({}))) as { id?: string };
+      if (created.id) {
+        setBuyerFocusThreadId(created.id);
+        setSelectedListing(null);
+        setInquiryComposeListingNo(null);
+        activateTab("inquiry");
+      }
       return "ok";
     } catch {
       return "error";
@@ -3826,6 +4426,7 @@ export default function Home() {
     } else if (flow === "listing") {
       // 집 내놓기 시작 — capability 가드를 타지 않는 등록 진입점.
       // /login의 "관리 중인 집 연결 필요" CTA가 여기로 온다 (로그인 루프 방지, QA 2).
+      urlRoleAppliedRef.current = true;
       setActiveRole("landlord");
       setActiveTab("mypage");
       setIsListingStartMode(true);
@@ -3834,6 +4435,7 @@ export default function Home() {
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
     } else if (role) {
+      urlRoleAppliedRef.current = true;
       setActiveRole(role);
       setActiveTab(tab ?? (role === "seeker" ? "home" : "mypage"));
       setSelectedListing(null);
@@ -3845,9 +4447,28 @@ export default function Home() {
       setActiveTab(tab);
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
       resetWindowScrollSoon();
+    } else {
+      // 새로고침이 홈으로 튕기지 않게 — 이 탭에서 마지막으로 보던 탭/역할을 복원한다(딥링크와 같은 취급).
+      const storedTab = normalizeAppTab(window.sessionStorage.getItem("woozuLastTab"));
+      const storedRole = normalizeAppRole(window.sessionStorage.getItem("woozuLastRole"));
+      if (storedRole && storedRole !== "seeker") {
+        urlRoleAppliedRef.current = true;
+        setIsDevRolePreview(true);
+        setActiveRole(storedRole);
+      }
+      if (storedTab && storedTab !== "home") {
+        setActiveTab(storedTab);
+      }
     }
     setIsRouteReady(true);
   }, []);
+
+  // 현재 탭/역할을 세션에 남겨 새로고침 복원에 쓴다 (브라우저 탭 단위 — 새 탭은 홈부터 시작).
+  useEffect(() => {
+    if (!isRouteReady || typeof window === "undefined") return;
+    window.sessionStorage.setItem("woozuLastTab", activeTab);
+    window.sessionStorage.setItem("woozuLastRole", activeRole);
+  }, [activeTab, activeRole, isRouteReady]);
 
   // 로그인 화면이 열려 있는 동안 브라우저 뒤로가기를 누르면 홈으로 돌아가도록 처리.
   useEffect(() => {
@@ -3887,6 +4508,15 @@ export default function Home() {
     };
   }, []);
 
+  // "내 흐름" 셀렉트 제거 이후: 역할은 로그인 계정의 capability에서 자동 결정된다.
+  // (URL 딥링크가 역할을 명시했으면 그 선택을 존중, 이후 전환은 마이페이지 흐름 칩이 담당)
+  useEffect(() => {
+    if (!viewer || urlRoleAppliedRef.current) return;
+    setActiveRole(
+      hasCapability(viewer, "LANDLORD") ? "landlord" : hasCapability(viewer, "TENANT") ? "tenant" : "seeker"
+    );
+  }, [viewer]);
+
   // 집 내놓기 시작 모드는 보호 대상에서 제외 — 등록 시작은 capability가 아니라
   // 매물 등록 자체가 LANDLORD 관계를 만드는 진입점이다. 관리 콘솔(/manager/*)은 계속 서버 가드.
   const protectedConfig =
@@ -3915,17 +4545,6 @@ export default function Home() {
     setSelectedListing(null);
     setAuthMode(null);
     setIsDevRolePreview(false);
-  };
-
-  const navigateRoleHome = (role: AppRole) => {
-    const target = roleSwitchOptions.find((item) => item.id === role);
-    if (!target) return;
-
-    setIsDevRolePreview(true);
-    setActiveRole(role);
-    setActiveTab(role === "seeker" ? "home" : "mypage");
-    window.history.pushState(null, "", target.href);
-    resetWindowScrollSoon();
   };
 
   // 내 룸로그 흐름 전환: 한 계정에서 탐색·임대인·세입자 마이페이지를 오가고,
@@ -4010,21 +4629,13 @@ export default function Home() {
               <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
               <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
                 문의
-                {unseenReplyCount > 0 ? <span className="nav-badge">{unseenReplyCount}</span> : null}
+                {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
-              <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>우리집</button>
+              <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>마이페이지</button>
             </nav>
             <div className="web-topbar-actions">
-              <label className="web-role-select">
-                <span>내 흐름</span>
-                <select value={activeRole} onChange={(event) => navigateRoleHome(event.target.value as AppRole)}>
-                  {roleSwitchOptions.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {/* "내 흐름" 테스트 역할 셀렉트 제거 — 역할은 로그인 계정 capability에서 자동 결정되고,
+                  마이페이지 안의 흐름 칩(MyFlowBar)이 다중 역할 전환을 담당한다. */}
               {viewer ? (
                 <div className="web-profile-menu" aria-label="로그인 사용자">
                   <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
@@ -4061,8 +4672,16 @@ export default function Home() {
           </div>
 
           <label className="search-box">
-            <Search size={20} strokeWidth={2.4} aria-hidden="true" />
-            <input defaultValue="" placeholder="지역, 지하철, 건물명 검색" onFocus={() => setIsSearchSheetOpen(true)} />
+            {/* 아이콘 클릭 = 지역 선택 시트, 입력창 = 바로 타이핑해 매물 필터 (QA: onFocus 시트가 타이핑을 막던 문제) */}
+            <button type="button" aria-label="지역 선택" onClick={() => setIsSearchSheetOpen(true)} style={{ display: "inline-flex", background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit" }}>
+              <Search size={20} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            <input
+              value={searchKeyword}
+              placeholder="매물명, 지역, 조건 검색"
+              aria-label="매물 검색"
+              onChange={(event) => setSearchKeyword(event.target.value)}
+            />
             <button type="button" aria-label="필터" onClick={() => setIsFilterSheetOpen(true)}>
               <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
             </button>
@@ -4125,7 +4744,7 @@ export default function Home() {
                   <article className="listing-card" key={listing.title}>
                     <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
                       <div className="listing-photo">
-                        <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} />
+                        <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />
                         <div className="badge-row">
                           {listing.badges.map((badge) => (
                             <span key={badge}>{badge}</span>
@@ -4401,10 +5020,16 @@ export default function Home() {
           </section>
 
           <div className="map-canvas-stack">
-            <NaverMapPreview className="map-stage" />
+            <NaverMapPreview className="map-stage" markers={mapMarkers} />
             {selectedMapListing ? (
               <article className="map-selected-card" aria-label="지도 선택 매물">
-                <button type="button" onClick={() => openListing(listings[selectedMapListing.listingIndex])}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const card = findListingCardByNo(selectedMapListing.listingNo);
+                    if (card) openListing(card);
+                  }}
+                >
                   <span>{selectedMapListing.clusterLabel} · {selectedMapListing.updated}</span>
                   <strong>{selectedMapListing.title}</strong>
                   <small>{selectedMapListing.price} · {selectedMapListing.distance}</small>
@@ -4451,11 +5076,11 @@ export default function Home() {
             <section className="map-result-summary" aria-label="지도 결과 요약">
               <article>
                 <span>확인매물</span>
-                <strong>39개</strong>
+                <strong>{visibleMapListings.length}개</strong>
               </article>
               <article>
                 <span>3D 가능</span>
-                <strong>12개</strong>
+                <strong>{visibleMapListings.filter((listing) => listing.has3DTour).length}개</strong>
               </article>
               <article>
                 <span>평균 응답</span>
@@ -4471,15 +5096,16 @@ export default function Home() {
 
                 <div className="map-list">
                   {visibleMapListings.map((listing) => (
-                    <article className="map-listing" key={listing.title}>
+                    <article className="map-listing" key={listing.listingNo}>
                       <button
-                        className={selectedMapListing?.listingIndex === listing.listingIndex ? "map-listing-action active" : "map-listing-action"}
+                        className={selectedMapListing?.listingNo === listing.listingNo ? "map-listing-action active" : "map-listing-action"}
                         type="button"
-                        onFocus={() => setSelectedMapListingIndex(listing.listingIndex)}
-                        onMouseEnter={() => setSelectedMapListingIndex(listing.listingIndex)}
+                        onFocus={() => setSelectedMapListingNo(listing.listingNo)}
+                        onMouseEnter={() => setSelectedMapListingNo(listing.listingNo)}
                         onClick={() => {
-                          setSelectedMapListingIndex(listing.listingIndex);
-                          openListing(listings[listing.listingIndex]);
+                          setSelectedMapListingNo(listing.listingNo);
+                          const card = findListingCardByNo(listing.listingNo);
+                          if (card) openListing(card);
                         }}
                       >
                         <div
@@ -4512,12 +5138,12 @@ export default function Home() {
                         </div>
                       </button>
                       <button
-                        className={savedListingNos.includes(listings[listing.listingIndex].listingNo) ? "saved" : ""}
+                        className={savedListingNos.includes(listing.listingNo) ? "saved" : ""}
                         type="button"
                         aria-label={`${listing.title} 저장`}
-                        onClick={() => toggleSavedListing(listings[listing.listingIndex].listingNo)}
+                        onClick={() => toggleSavedListing(listing.listingNo)}
                       >
-                        <Heart size={20} fill={savedListingNos.includes(listings[listing.listingIndex].listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
+                        <Heart size={20} fill={savedListingNos.includes(listing.listingNo) ? "currentColor" : "none"} strokeWidth={2.4} aria-hidden="true" />
                       </button>
                     </article>
                   ))}
@@ -4589,7 +5215,7 @@ export default function Home() {
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onNewInquiry={() => openInquiryComposer()} onRequireLogin={() => openAuthScreen("login")} />
+          <InquiryHubSection onNewInquiry={() => openInquiryComposer()} onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
         ) : null}
         {activeTab === "mypage" && activeRole === "landlord" ? (
           <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
@@ -4631,7 +5257,7 @@ export default function Home() {
             >
               <item.Icon size={22} strokeWidth={2.3} aria-hidden="true" />
               {item.label}
-              {item.key === "inquiry" && unseenReplyCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 답변 ${unseenReplyCount}건`} /> : null}
+              {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 문의 ${inquiryBadgeCount}건`} /> : null}
             </a>
           ))}
         </nav>

@@ -35,9 +35,14 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required for production}
       ROOMLOG_STORE_FILE: ${ROOMLOG_STORE_FILE:-/data/roomlog-store.json}
       LOCAL_UPLOAD_DIR: ${LOCAL_UPLOAD_DIR:-/data/uploads}
-      PUBLIC_UPLOAD_BASE_URL: ${PUBLIC_UPLOAD_BASE_URL:-/api/files}
+      # 브라우저는 www.woo-zu.com에서 이미지를 받는데, /api/files는 api 호스트로 라우팅되므로 절대주소로 준다.
+      # (버킷 준비 후 S3_UPLOADS_ENABLED=true를 켜면 이 값은 무시되고 CloudFront URL이 쓰인다.)
+      PUBLIC_UPLOAD_BASE_URL: ${PUBLIC_UPLOAD_BASE_URL:-https://api.woo-zu.com/api/files}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-roomlog-files}
+      # 버킷 생성 후 아래 두 값만 채우면(=true, CloudFront URL) 코드 변경 없이 S3 저장으로 전환된다.
+      S3_UPLOADS_ENABLED: ${S3_UPLOADS_ENABLED:-}
+      CLOUDFRONT_BASE_URL: ${CLOUDFRONT_BASE_URL:-}
     ports:
       - "4000:4000"
     volumes:

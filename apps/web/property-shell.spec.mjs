@@ -362,7 +362,8 @@ test("opens the public website directly on the listing home instead of signup", 
 
 test("promotes the future 3D room tour as a primary listing detail action", () => {
   assert.match(pageSource, /3D\s*(가상\s*)?투어/);
-  assert.match(pageSource, /투어\s*예약/);
+  // 투어 예약은 존재하지 않는 기능이라 카피에서 전부 제거 — 3D 미리보기만 약속한다.
+  assert.doesNotMatch(pageSource, /투어\s*예약/);
   assert.match(pageSource, /방문 전 3D로 먼저 보기/);
   assert.match(pageSource, /공간 미리보기/);
   assert.match(cssSource, /\.tour-sheet/);
@@ -780,8 +781,8 @@ test("shows a landlord my page with property registration fields and media actio
     "등록 미리보기",
     "입력 계속하기",
     "검수 대기",
-    "3D 방 자료가 연결된 상태",
-    "3D 방 파일 또는 링크를 등록할 수 있습니다.",
+    "3D 도면이 연결됐어요",
+    "도면을 만들고 저장하면 자동으로 연결돼요",
     "집 내놓기 전달 범위",
     "반경 5km",
     "인근 중개사 12곳",
@@ -1022,7 +1023,8 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*position:\s*fixed/s);
   assert.match(cssSource, /\.detail-quick-actions/);
   assert.match(cssSource, /\.detail-quick-actions button:first-child/);
-  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*56px 84px minmax\(0, 1fr\)/s);
+  // 3D 둘러보기를 문의 버튼과 비슷한 체급으로 키운 새 그리드(56px + 1fr + 1.3fr)를 확인한다.
+  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*56px minmax\(0, 1fr\) minmax\(0, 1\.3fr\)/s);
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*padding:\s*24px 14px 12px/s);
   assert.match(cssSource, /\.detail-contact-small,\s*[\s\S]*?\.detail-contact-tour\s*{[^}]*min-height:\s*54px/s);
   assert.match(cssSource, /\.detail-gallery\s*{[^}]*height:\s*clamp\(380px, 48vh, 440px\)/s);
@@ -1076,11 +1078,14 @@ test("uses the Naver Maps SDK path instead of a mock map drawing", () => {
   assert.match(pageSource, /naver-price-marker/);
   assert.match(pageSource, /mapLabel/);
   assert.match(pageSource, /clusterLabel/);
-  assert.match(pageSource, /selectedMapListingIndex/);
+  assert.match(pageSource, /selectedMapListingNo/);
   assert.match(pageSource, /selectedMapListing/);
   assert.match(pageSource, /map-selected-card/);
   assert.match(pageSource, /지도 선택 매물/);
-  assert.match(pageSource, /setSelectedMapListingIndex\(listing\.listingIndex\)/);
+  assert.match(pageSource, /setSelectedMapListingNo\(listing\.listingNo\)/);
+  // 직접등록 매물이 지도 목록·마커에 합류하는 경로 (QA: 지도에 매물 안 찍힘)
+  assert.match(pageSource, /tradeListingToMapItem/);
+  assert.match(pageSource, /markers=\{mapMarkers\}/);
   assert.match(cssSource, /\.naver-price-marker/);
   assert.match(cssSource, /\.map-canvas-stack/);
   assert.match(cssSource, /\.map-selected-card/);
@@ -1213,7 +1218,7 @@ test("links the landlord 3D floor plan action to the dedicated creation page", (
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 
-  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "저장 초안"]) {
+  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "초안 저장"]) {
     assert.match(floorPlanRouteSource, new RegExp(label));
   }
 });
@@ -1314,7 +1319,7 @@ test("keeps existing wall axes when Roboflow detects only a partial wall segment
 });
 
 test("exposes Roboflow wall post-processing as a separate editor action", () => {
-  for (const label of ["roboflowDetections", "applyRoboflowWallPostProcessing", "벽 후처리 적용", "Roboflow 원본 박스 저장됨"]) {
+  for (const label of ["roboflowDetections", "applyRoboflowWallPostProcessing", "인식 보정", "Roboflow 원본 박스 저장됨"]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
 });
@@ -1449,8 +1454,8 @@ test("switches between landlord authoring and resident furniture placement modes
     "experienceMode",
     "landlord",
     "resident",
-    "집주인 모드",
-    "임차인/일반사용자 모드",
+    // 모드 스위치 UI는 제거됐지만(도구는 캔버스 플로팅 툴바로 이동) 세입자 잠금 분기 코드는 유지된다.
+    "세입자 모드",
     "임대인 옵션 가구",
     "wheretoput furniture picker",
     "handleFurnitureSelect",
@@ -1485,8 +1490,8 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   for (const label of [
     "openingCandidates",
     "fixtureCandidates",
-    "확정 문창문",
-    "확정 고정설비",
+    "문/창문 확정",
+    "고정설비 확정",
     "toggleCandidateStatus",
     "moveCandidate",
     "후보 레이어",
@@ -1577,8 +1582,9 @@ test("consumes structural dimensions to correct Roboflow wall positions", () => 
     "structuralWallBoundaries",
     "structuralBoundaryOffsetsMm",
     "snapWallsToStructuralBoundaries",
+    "inferMissingWallsFromStructuralBoundaries",
     "applyStructuralDimensionWallCorrection",
-    "구조 치수로 벽 보정"
+    "applyStructuralDimensionMissingWallInference"
   ]) {
     assert.match(floorPlanContainerSource, new RegExp(label));
   }
@@ -1723,9 +1729,9 @@ test("renders 3D conversion with the wheretoput React Three Fiber stack", () => 
 test("imports wheretoput-style upload and Roboflow 3D conversion controls", () => {
   for (const label of [
     "도면 등록",
-    "문/창문 탐지",
-    "벽 후처리 적용",
-    "배율 조절",
+    "도면 인식",
+    "인식 보정",
+    "화면 배율",
     "handleImageUpload",
     "runOpeningDetection",
     "applyRoboflowWallPostProcessing",
@@ -1776,7 +1782,7 @@ test("saves floor plan drafts through the API while keeping a local fallback", (
     "room3d",
     "localStorage.setItem\\(\"floorPlanDraft\"",
     "저장 완료",
-    "로컬 임시 저장"
+    "이 브라우저에만 임시 저장됨"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
@@ -1879,21 +1885,11 @@ test("floor plan editor model builds closed-loop floor polygon data", async () =
   assert.equal(polygons[0].perimeterMeters, 8);
 });
 
-test("floor plan editor model converts 2D walls into wheretoput-style 3D wall boxes", async () => {
+test("floor plan editor model no longer exposes legacy 2.5D wall box conversion", async () => {
   const model = floorPlanModel;
-  const wall = model.createWall({ x: 0, y: 0 }, { x: 120, y: 0 }, "front");
-  const converted = model.convertWallsTo3D([wall], { height: 96, depth: 8 });
 
-  assert.equal(converted.wallPanels.length, 1);
-  assert.equal(converted.wallBoxes.length, 1);
-  assert.equal(converted.wallBoxes[0].id, "front");
-  assert.equal(converted.wallBoxes[0].height, 96);
-  assert.equal(converted.wallBoxes[0].depth, 8);
-  assert.match(converted.wallBoxes[0].frontPath, /^M /);
-  assert.match(converted.wallBoxes[0].topPath, /^M /);
-  assert.match(converted.wallBoxes[0].endCapPath, /^M /);
-  assert.notEqual(converted.wallBoxes[0].frontPath, converted.wallBoxes[0].topPath);
-  assert.equal(converted.floor.path.includes("L"), true);
+  assert.equal("convertWallsTo3D" in model, false);
+  assert.equal(typeof model.convertWallsToWheretoputRoom3D, "function");
 });
 
 test("floor plan editor model creates wheretoput simulator wall data", async () => {

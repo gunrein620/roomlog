@@ -22,7 +22,7 @@ export interface SessionUser {
   primaryRole?: UserRole;
   roomId?: string;
   room?: { id: string; roomNo?: string; buildingId?: string } | undefined;
-  managedRooms?: Array<{ id: string }> | undefined;
+  managedRooms?: Array<{ id: string; buildingName?: string; roomNo?: string; address?: string }> | undefined;
   vendorId?: string;
   vendor?: unknown;
 }

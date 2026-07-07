@@ -765,9 +765,11 @@ type GeneratedIntakeTurn = {
 
 const ROOM_WALL_HEIGHT_M = 2.5;
 const ROOM_WALL_DEPTH_M = 0.15;
-const DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE = 50;
+const DEFAULT_ROBOFLOW_DETECTION_CONFIDENCE = 20;
 const DEFAULT_ROBOFLOW_DETECTION_OVERLAP = 30;
 const DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE = 0.5;
+const DEFAULT_ROBOFLOW_DOOR_MIN_BOX_CONFIDENCE = 0.15;
+const DEFAULT_ROBOFLOW_WINDOW_MIN_BOX_CONFIDENCE = 0.2;
 const ROBOFLOW_BOX_IOU_DUPLICATE_THRESHOLD = 0.5;
 const ROBOFLOW_BOX_CONTAINMENT_DUPLICATE_THRESHOLD = 0.75;
 export const ROOMLOG_SERVICE_OPTIONS = "ROOMLOG_SERVICE_OPTIONS";
@@ -1728,6 +1730,11 @@ export class RoomlogService {
 
   getMe(authorization?: string) {
     return this.auth.getMe(authorization);
+  }
+
+  /** 매물 직접등록이 만든 임대인 관계 — 소유 room이 없으면 매물 기반 room을 만들어 LANDLORD capability를 연다. */
+  ensureLandlordRoomFromListing(userId: string, listing: { title: string; location: string }) {
+    return this.auth.ensureLandlordRoomFromListing(userId, listing);
   }
 
   getDemoState() {
@@ -4093,12 +4100,11 @@ export class RoomlogService {
   ): FloorPlanOpeningCandidate[] {
     // 클래스별 신뢰도 하한: 문은 실도면에서 15~30%로 낮게 잡혀 후보로는 살리고, 창문은 30% 미만이면 노이즈가 많다.
     const minConfidenceByType: Record<"DOOR" | "WINDOW", number> = {
-      DOOR: envConfidenceRatio("ROBOFLOW_DOOR_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE),
-      WINDOW: envConfidenceRatio("ROBOFLOW_WINDOW_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_MIN_BOX_CONFIDENCE)
+      DOOR: envConfidenceRatio("ROBOFLOW_DOOR_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_DOOR_MIN_BOX_CONFIDENCE),
+      WINDOW: envConfidenceRatio("ROBOFLOW_WINDOW_MIN_CONFIDENCE", DEFAULT_ROBOFLOW_WINDOW_MIN_BOX_CONFIDENCE)
     };
     const mapped = predictions.flatMap((prediction) => {
-      const type: "DOOR" | "WINDOW" | null =
-        prediction.class === "door" ? "DOOR" : prediction.class === "window" ? "WINDOW" : null;
+      const type = this.roboflowOpeningType(prediction.class);
       const confidence = Number(prediction.confidence) || 0;
       const centerX = Number(prediction.x);
       const centerY = Number(prediction.y);
@@ -4127,11 +4133,24 @@ export class RoomlogService {
     const sorted = [...mapped].sort((a, b) => b.confidence - a.confidence);
     const kept: typeof sorted = [];
     for (const candidate of sorted) {
-      const overlapsKept = kept.some((existing) => this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox));
+      const overlapsKept = kept.some(
+        (existing) => existing.type === candidate.type && this.isDuplicateRoboflowBox(existing.boundingBox, candidate.boundingBox)
+      );
       if (!overlapsKept) kept.push(candidate);
     }
 
     return kept.map((candidate, index) => ({ ...candidate, id: `opening-${index + 1}` }));
+  }
+
+  private roboflowOpeningType(className?: string): "DOOR" | "WINDOW" | null {
+    const normalized = String(className ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    if (normalized.includes("door")) return "DOOR";
+    if (normalized.includes("window")) return "WINDOW";
+
+    return null;
   }
 
   private isDuplicateRoboflowBox(

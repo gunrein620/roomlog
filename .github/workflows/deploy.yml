@@ -52,6 +52,12 @@ jobs:
           PORT: "${{ secrets.PORT }}"
           AWS_REGION: "${{ secrets.AWS_REGION }}"
           S3_BUCKET_NAME: "${{ secrets.S3_BUCKET_NAME }}"
+          S3_UPLOADS_ENABLED: "${{ secrets.S3_UPLOADS_ENABLED }}"
+          AWS_ACCESS_KEY_ID: "${{ secrets.AWS_ACCESS_KEY_ID }}"
+          AWS_SECRET_ACCESS_KEY: "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          CLOUDFRONT_BASE_URL: "${{ secrets.CLOUDFRONT_BASE_URL }}"
+          MOLIT_SERVICE_KEY: "${{ secrets.MOLIT_SERVICE_KEY }}"
+          ROBOFLOW_API_KEY: "${{ secrets.ROBOFLOW_API_KEY }}"
         run: |
           set -euo pipefail
 
@@ -109,9 +115,41 @@ jobs:
           AWS_REGION="${AWS_REGION:-ap-northeast-2}"
           S3_BUCKET_NAME="${S3_BUCKET_NAME:-roomlog-files}"
 
+          # 앱 API 키 — 개별 secret 우선, 없으면 PROD_ENV에서 읽는다.
+          MOLIT_SERVICE_KEY="${MOLIT_SERVICE_KEY:-}"
+          if [ -z "$MOLIT_SERVICE_KEY" ] && [ -n "${PROD_ENV:-}" ]; then
+            MOLIT_SERVICE_KEY="$(read_prod_env_key MOLIT_SERVICE_KEY)"
+          fi
+
+          ROBOFLOW_API_KEY="${ROBOFLOW_API_KEY:-}"
+          if [ -z "$ROBOFLOW_API_KEY" ] && [ -n "${PROD_ENV:-}" ]; then
+            ROBOFLOW_API_KEY="$(read_prod_env_key ROBOFLOW_API_KEY)"
+          fi
+
+          # S3 업로드 전환 — secret이 채워진 경우에만 켠다(없으면 로컬 디스크 폴백 유지).
+          S3_UPLOADS_ENABLED="${S3_UPLOADS_ENABLED:-}"
+          if [ -z "$S3_UPLOADS_ENABLED" ] && [ -n "${PROD_ENV:-}" ]; then
+            S3_UPLOADS_ENABLED="$(read_prod_env_key S3_UPLOADS_ENABLED)"
+          fi
+
+          AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] && [ -n "${PROD_ENV:-}" ]; then
+            AWS_ACCESS_KEY_ID="$(read_prod_env_key AWS_ACCESS_KEY_ID)"
+          fi
+
+          AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
+          if [ -z "$AWS_SECRET_ACCESS_KEY" ] && [ -n "${PROD_ENV:-}" ]; then
+            AWS_SECRET_ACCESS_KEY="$(read_prod_env_key AWS_SECRET_ACCESS_KEY)"
+          fi
+
+          CLOUDFRONT_BASE_URL="${CLOUDFRONT_BASE_URL:-}"
+          if [ -z "$CLOUDFRONT_BASE_URL" ] && [ -n "${PROD_ENV:-}" ]; then
+            CLOUDFRONT_BASE_URL="$(read_prod_env_key CLOUDFRONT_BASE_URL)"
+          fi
+
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -131,6 +169,26 @@ jobs:
           AWS_REGION=${AWS_REGION}
           S3_BUCKET_NAME=${S3_BUCKET_NAME}
           EOF
+
+          # 값이 있을 때만 기록 — secret 미등록 상태에서 빈 값으로 덮지 않는다.
+          if [ -n "$MOLIT_SERVICE_KEY" ]; then
+            echo "MOLIT_SERVICE_KEY=${MOLIT_SERVICE_KEY}" >> .env.production
+          fi
+          if [ -n "$ROBOFLOW_API_KEY" ]; then
+            echo "ROBOFLOW_API_KEY=${ROBOFLOW_API_KEY}" >> .env.production
+          fi
+          if [ -n "$S3_UPLOADS_ENABLED" ]; then
+            echo "S3_UPLOADS_ENABLED=${S3_UPLOADS_ENABLED}" >> .env.production
+          fi
+          if [ -n "$AWS_ACCESS_KEY_ID" ]; then
+            echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> .env.production
+          fi
+          if [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> .env.production
+          fi
+          if [ -n "$CLOUDFRONT_BASE_URL" ]; then
+            echo "CLOUDFRONT_BASE_URL=${CLOUDFRONT_BASE_URL}" >> .env.production
+          fi
 
       - name: Deploy to EC2
         env:
