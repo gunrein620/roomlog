@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Badge, Button, Card } from "@roomlog/ui";
 
 type ManagerAgentCommandName =
@@ -179,6 +179,15 @@ export function ManagerRealtimeConsole() {
     } finally {
       setPendingText(false);
     }
+  }
+
+  function submitAgentMessageFromKeyboard(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || pendingText) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
   }
 
   async function connectVoice() {
@@ -419,6 +428,7 @@ export function ManagerRealtimeConsole() {
             <textarea
               value={chatText}
               onChange={(event) => setChatText(event.target.value)}
+              onKeyDown={submitAgentMessageFromKeyboard}
               rows={2}
               placeholder="AI agent에게 처리할 일을 입력하세요"
               style={chatInputStyle}

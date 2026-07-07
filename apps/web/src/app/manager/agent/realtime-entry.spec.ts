@@ -83,3 +83,16 @@ test("manager realtime text surface is a chat with the agent instead of a comman
   assert.doesNotMatch(consoleSource, />텍스트 명령</);
   assert.doesNotMatch(consoleSource, />명령 실행</);
 });
+
+test("manager realtime chat submits on Enter and keeps Shift Enter for new lines", () => {
+  const consoleSource = readFileSync(realtimeConsolePath, "utf8");
+
+  assert.match(consoleSource, /KeyboardEvent/);
+  assert.match(consoleSource, /function submitAgentMessageFromKeyboard\(event: KeyboardEvent<HTMLTextAreaElement>\)/);
+  assert.match(consoleSource, /event\.key !== "Enter"/);
+  assert.match(consoleSource, /event\.shiftKey/);
+  assert.match(consoleSource, /event\.nativeEvent\.isComposing/);
+  assert.match(consoleSource, /event\.preventDefault\(\)/);
+  assert.match(consoleSource, /event\.currentTarget\.form\?\.requestSubmit\(\)/);
+  assert.match(consoleSource, /onKeyDown=\{submitAgentMessageFromKeyboard\}/);
+});
