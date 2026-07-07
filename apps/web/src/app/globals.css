@@ -10055,6 +10055,14 @@ p {
     padding: 0 15px;
   }
 
+  .service-frame.with-bottom-tabs .tenant-screen {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .service-frame.with-bottom-tabs .tenant-landlord-chat-button {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
   .tenant-chat-panel {
     top: auto;
     bottom: 0;
