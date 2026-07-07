@@ -37,7 +37,14 @@ export class TradeController {
     @Headers("authorization") authorization: string | undefined,
     @Body() body: TradeListingInput
   ) {
-    return this.tradeService.createListing(this.user(authorization), body);
+    const user = this.user(authorization);
+    const listing = this.tradeService.createListing(user, body);
+    // 첫 매물 등록이 곧 임대인 관계 생성 — 마이페이지 임대인 가드("관리 중인 집 연결 필요")가 풀린다.
+    this.roomlogService.ensureLandlordRoomFromListing(user.id, {
+      title: listing.title,
+      location: listing.location
+    });
+    return listing;
   }
 
   /** 매물 수정 — 소유자 전용(서비스에서 검증). 전달된 필드만 갱신. */

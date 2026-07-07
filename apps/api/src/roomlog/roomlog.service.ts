@@ -1732,6 +1732,11 @@ export class RoomlogService {
     return this.auth.getMe(authorization);
   }
 
+  /** 매물 직접등록이 만든 임대인 관계 — 소유 room이 없으면 매물 기반 room을 만들어 LANDLORD capability를 연다. */
+  ensureLandlordRoomFromListing(userId: string, listing: { title: string; location: string }) {
+    return this.auth.ensureLandlordRoomFromListing(userId, listing);
+  }
+
   getDemoState() {
     if (!this.seedDemoData) {
       throw new ForbiddenException("데모 상태 조회가 비활성화되어 있습니다.");

@@ -955,7 +955,8 @@ function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlo
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const [activeOwnerPanel, setActiveOwnerPanel] = useState("dashboard");
-  const [isOwnerSidebarOpen, setIsOwnerSidebarOpen] = useState(true);
+  // 기능 메뉴는 기본 접힘 — 등록 플로우가 주인공이고, 필요할 때만 상단 "메뉴"로 연다.
+  const [isOwnerSidebarOpen, setIsOwnerSidebarOpen] = useState(false);
   const [isCostReviewCleared, setIsCostReviewCleared] = useState(false);
   const [isDisclosureAcknowledged, setIsDisclosureAcknowledged] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState(DEMO_VENDORS[0]?.id ?? "");
