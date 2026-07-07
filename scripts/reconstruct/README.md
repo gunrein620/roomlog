@@ -58,10 +58,15 @@ bash /workspace/reconstruct.sh room1.mp4 room1 15000
 컨테이너에 node가 없으면 `.ply`를 호스트로 꺼내거나, 레포에서:
 
 ```sh
-npx @playcanvas/splat-transform runs/room1/export/splat.ply apps/web/public/samples/room.spz
+npx @playcanvas/splat-transform runs/room1/export/splat.ply --spz-version 3 apps/web/public/samples/room.spz
 ```
 
 `@playcanvas/splat-transform`은 ④a 압축 벤치에서 검증된 그 툴이다(`compression-bench.README.md`).
+
+> **`--spz-version 3` 필수**: 기본값(v4, 비압축 "NGSP" 컨테이너)은 뷰어(`@sparkjsdev/spark` 2.1.0 —
+> gzip SPZ v1~3만 읽음, npm 최신이 이 버전이라 업그레이드 불가)가 "Invalid gzip header"로 거부한다.
+> 실측(2026-07-07): splat-transform 2.1.0(.spz 지원 시작)~2.7.1(최신) 전 구간에서 이 플래그가
+> gzip(1f8b) 출력을 낸다 — 버전 고정 불필요. Spark가 v4를 지원하게 되면 플래그 제거.
 
 ---
 

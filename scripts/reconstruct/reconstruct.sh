@@ -64,13 +64,19 @@ echo "  ply: $PLY  ($(du -h "$PLY" | cut -f1))"
 
 echo "▶ [4/4] .spz 압축 (웹 전송용 — 뷰어가 로드하는 포맷)"
 SPZ="${ROOT}/${NAME}.spz"
+# --spz-version 3 필수: splat-transform 기본값(v4, 비압축 "NGSP" 컨테이너)은 뷰어
+# (@sparkjsdev/spark 2.1.0 — gzip SPZ v1~3만 읽음, npm 최신이 이 버전이라 업그레이드 불가)가
+# "Invalid gzip header"로 거부한다. 실측(2026-07-07): splat-transform 2.1.0(.spz 지원 시작)부터
+# 최신 2.7.1까지 전 구간에서 --spz-version 3가 gzip(1f8b) 출력을 낸다 — 버전 고정 불필요,
+# 플래그만 있으면 됨. 업그레이드 조건: Spark가 v4(비압축)를 지원하게 되면 플래그 제거.
 if command -v node >/dev/null 2>&1; then
-  npx --yes @playcanvas/splat-transform "$PLY" "$SPZ"
+  npx --yes @playcanvas/splat-transform "$PLY" --spz-version 3 "$SPZ"
   echo "✓ 완료: $SPZ  ($(du -h "$SPZ" | cut -f1))"
   echo ""
-  echo "다음: 이 파일을 웹앱으로 내려 apps/web/public/samples/room.spz 로 교체 →"
-  echo "      /splat-tour 새로고침. (파일명 유지 시 tour-viewer.tsx 수정 불필요)"
+  echo "다음: 이 파일을 웹앱 apps/web/public/samples/ 에 두고, 같은 basename의 <이름>.tuning.json"
+  echo "      ({ \"fit\": \"native\", \"clip\": false })을 만든 뒤 tour-viewer.tsx의 SPLAT_SRC를"
+  echo "      갱신 → /splat-tour 새로고침. (높이는 뷰어의 바닥 스냅이 자동 보정)"
 else
   echo "⚠ node 없음 — 컨테이너 밖 호스트나 웹앱에서 아래를 실행:"
-  echo "  npx @playcanvas/splat-transform $PLY apps/web/public/samples/room.spz"
+  echo "  npx @playcanvas/splat-transform $PLY --spz-version 3 apps/web/public/samples/room.spz"
 fi

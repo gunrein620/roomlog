@@ -5,31 +5,43 @@
 
 import { Canvas } from "@react-three/fiber";
 import { Armchair, ChevronDown, Footprints, UploadCloud } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
 import { SplatDropzone } from "./splat-dropzone";
 import { loadSplatFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
 import { SplatFurnitureLayer } from "./splat-furniture-layer";
 import { SplatPlanWalls } from "./splat-plan-walls";
+import { loadPlanWallsFromBrowser, wallsToPlanBounds, type PlanBounds } from "./splat-plan-shape";
 import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
 import { DEMO_PRESETS } from "./tour-presets";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset } from "@/lib/splat-asset-api";
+import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import type { SplatTransform } from "./tour-types";
 
-// 임시 조치: splat-transform ≥2.3이 뽑은 SPZ v4를 Spark 2.1.0(v1~3만 지원)이 못 읽어 "Invalid gzip header" 발생.
-// Spark 업그레이드 후 room.spz로 복귀 예정.
-const SPLAT_SRC = "/samples/dryrun.ply";
+// home_clean.spz: Scaniverse 집 스캔의 플로터 제거판을 SPZ v3(gzip)로 압축한 8.7MB 샘플
+// (--spz-version 3 산출 — Spark 2.1.0은 v1~3 gzip만 읽고, v4가 기본값인 splat-transform은
+// 플래그로 해결. 적대검증에서 매직바이트·411K 가우시안 보존 확인). 튜닝은 같은 basename의
+// home_clean.tuning.json(native)이 담당하고 높이는 바닥 스냅이 자동 보정한다.
+// 원본 home_clean.ply(93MB)는 로컬 전용 — git에는 spz만 커밋한다.
+const SPLAT_SRC = "/samples/home_clean.spz";
 
 function clamp01to100(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
 
-// 월드(splat 배치) 바닥좌표 → 미니맵 정규화(%) 좌표. 데모는 방을 원점 중심으로 고정 배치하므로
-// 직접 선형 매핑한다. 실 FloorPlan+정합 모드에선 projectSplatToPlan으로 도면 좌표를 거쳐 매핑(후속).
-function worldToMinimapPercent(x: number, z: number): { x: number; y: number } {
+// 월드(splat 배치) 바닥좌표 → 미니맵 정규화(%) 좌표. 실 도면 벽이 있으면 그 bbox(bounds)를
+// 기준으로 매핑하고, 없으면 데모의 원점 중심 고정 배치(SPLAT_CLIP_ROOM)로 매핑한다.
+function worldToMinimapPercent(x: number, z: number, bounds: PlanBounds | null): { x: number; y: number } {
+  if (bounds && bounds.width > 0 && bounds.depth > 0) {
+    return {
+      x: clamp01to100(((x - bounds.minX) / bounds.width) * 100),
+      y: clamp01to100(((z - bounds.minZ) / bounds.depth) * 100)
+    };
+  }
+
   return {
     x: clamp01to100(((x + SPLAT_CLIP_ROOM.width / 2) / SPLAT_CLIP_ROOM.width) * 100),
     y: clamp01to100(((z + SPLAT_CLIP_ROOM.depth / 2) / SPLAT_CLIP_ROOM.depth) * 100)
@@ -54,12 +66,30 @@ export default function TourViewer() {
   });
   // 저장된 정합 결과(SplatAsset.transform). 있으면 SplatScene이 auto-fit 대신 절대 배치를 쓴다.
   const [assetTransform, setAssetTransform] = useState<SplatTransform | null>(null);
-  // 도면 벽 대체(월드=도면 프레임): assetTransform이 있을 때만 의미가 있다.
-  const [showPlanWalls, setShowPlanWalls] = useState(false);
+  // 도면 벽 대체 렌더 게이트. 씬의 벽 클립 게이트(splat-scene wallReplace: URL splatWalls >
+  // 정합 transform 유무)와 같은 규칙이어야 한다 — 어긋나면 "splat만 지워지고 벽은 안 그려지는"
+  // 구멍이 생긴다(적대검증 실측). URL 명시가 최우선, 아니면 transform 있을 때만 켠다.
+  const [showPlanWalls, setShowPlanWalls] = useState(
+    () => typeof window !== "undefined" && resolveWallReplace(window.location.search, false)
+  );
+  // 실 FloorPlan.walls(localStorage) — 있으면 플레이스홀더 4면 대신 실제 벽 형상을 쓴다.
+  // lazy 초기화(localStorage는 동기): 마운트 후 effect로 채우면 SplatScene의 planWallsKey가
+  // null→값으로 바뀌며 splat 자산을 통째로 두 번 로드한다(적대검증 실측).
+  const [planWallsState] = useState(() =>
+    typeof window === "undefined" ? null : loadPlanWallsFromBrowser()
+  );
+  const planWalls = planWallsState?.walls ?? null;
+  const planBounds = useMemo<PlanBounds | null>(
+    () => (planWalls && planWalls.length > 0 ? wallsToPlanBounds(planWalls) : null),
+    [planWalls]
+  );
 
-  const handleCameraMove = useCallback((position: [number, number, number]) => {
-    setMinimapPosition(worldToMinimapPercent(position[0], position[2]));
-  }, []);
+  const handleCameraMove = useCallback(
+    (position: [number, number, number]) => {
+      setMinimapPosition(worldToMinimapPercent(position[0], position[2], planBounds));
+    },
+    [planBounds]
+  );
 
   const initialCamera: [number, number, number] = DEMO_PRESETS[0]?.camera.position ?? [0, 1.5, 3];
 
@@ -76,7 +106,7 @@ export default function TourViewer() {
     setShowHint(true);
     // 정합값은 asset의 파일에 대한 배치라, 다른 파일을 드롭하면 무의미 — 해제한다.
     setAssetTransform(null);
-    setShowPlanWalls(false);
+    setShowPlanWalls(resolveWallReplace(window.location.search, false));
   }, []);
 
   // ?asset=<id> — 저장된 SplatAsset(fileUrl+정합 transform)을 불러 투어를 연다.
@@ -96,7 +126,7 @@ export default function TourViewer() {
         }
         const transform = asset.status === "REGISTERED" ? asset.transform : null;
         setAssetTransform(transform);
-        setShowPlanWalls(transform !== null && resolveWallReplace(window.location.search, true));
+        setShowPlanWalls(resolveWallReplace(window.location.search, transform !== null));
         console.info(
           "[splat-tour] asset " +
             JSON.stringify({ id: asset.id, status: asset.status, hasTransform: asset.transform !== null, fileUrl: asset.fileUrl })
@@ -136,6 +166,17 @@ export default function TourViewer() {
     setFurnitureState(state);
     console.info("[splat-tour] furniture " + JSON.stringify({ source: state.source, count: state.furnitures.length }));
   }, []);
+
+  useEffect(() => {
+    console.info(
+      "[splat-tour] plan-walls " +
+        JSON.stringify({
+          source: planWallsState?.source ?? "none",
+          count: planWalls?.length ?? 0,
+          bounds: planBounds
+        })
+    );
+  }, [planWallsState, planWalls, planBounds]);
 
   return (
     <div className="tour-viewer-shell">
@@ -486,8 +527,14 @@ export default function TourViewer() {
       <Canvas camera={{ fov: 60, position: initialCamera }} shadows>
         <ambientLight intensity={0.85} />
         <directionalLight castShadow intensity={1.1} position={[3, 6, 4]} />
-        <SplatScene key={src} onLoaded={() => setIsLoaded(true)} src={src} transform={assetTransform} />
-        {showPlanWalls ? <SplatPlanWalls /> : null}
+        <SplatScene
+          key={src}
+          onLoaded={() => setIsLoaded(true)}
+          planWalls={planWalls}
+          src={src}
+          transform={assetTransform}
+        />
+        {showPlanWalls ? <SplatPlanWalls walls={planWalls ?? undefined} /> : null}
         {/* 가구 레이어는 도면 좌표 그대로 월드에 놓인다(월드=도면 프레임) */}
         {showFurniture && furnitureState.furnitures.length > 0 ? (
           <SplatFurnitureLayer furnitures={furnitureState.furnitures} />

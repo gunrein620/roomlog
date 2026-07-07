@@ -11,7 +11,9 @@ import {
   isInsideClipBox
 } from "./splat-clip";
 import { estimateSplatFloorY } from "./splat-floor";
+import { isNearAnyPlanWall, wallsToPlanBounds } from "./splat-plan-shape";
 import { isWallShellPoint, readWallReplaceParam } from "./splat-walls";
+import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import type { SplatTransform } from "./tour-types";
 
 // 약 3m(가로) × 4m(세로), 층고 2.4m 원룸. 바닥 중앙이 원점.
@@ -105,6 +107,7 @@ interface SplatFloorSnapInfo {
 interface SplatWallClipInfo {
   enabled: boolean;
   applied: boolean;
+  mode: "plan-walls" | "placeholder-box";
   totalSplats: number | null;
   removedSplats: number;
 }
@@ -125,11 +128,14 @@ interface SplatClipInfo {
 export function SplatScene({
   src,
   transform,
+  planWalls = null,
   onLoaded
 }: {
   src: string;
   // 영속화된 정합 결과. 있으면 URL/프로파일 튜닝 대신 이 절대 배치를 씬에 주입한다.
   transform?: SplatTransform | null;
+  // 실 FloorPlan.walls(월드=도면 프레임). 있으면 wallClip이 플레이스홀더 박스 대신 이걸로 판정한다.
+  planWalls?: WheretoputWall3D[] | null;
   onLoaded?: () => void;
 }) {
   const gl = useThree((state) => state.gl);
@@ -137,6 +143,7 @@ export function SplatScene({
   const onLoadedRef = useRef(onLoaded);
   // 객체 참조 불안정으로 인한 리로드를 막기 위해 값 기반 키로 effect 의존성을 건다.
   const transformKey = transform ? JSON.stringify(transform) : null;
+  const planWallsKey = planWalls && planWalls.length > 0 ? JSON.stringify(planWalls) : null;
   const [sparkRenderer, setSparkRenderer] = useState<SparkRendererObject | null>(null);
   const [splatMesh, setSplatMesh] = useState<SplatMeshObject | null>(null);
   const [hasFailed, setHasFailed] = useState(false);
@@ -176,7 +183,7 @@ export function SplatScene({
           : readSplatTuningFromLocation(profile);
         const fitInfo = fitSplatToDemoRoom(nextSplatMesh, tuning);
         const floorSnapInfo = snapSplatFloor(nextSplatMesh, tuning);
-        const wallClipInfo = applyWallClip(nextSplatMesh, tuning);
+        const wallClipInfo = applyWallClip(nextSplatMesh, tuning, planWalls);
         const clipInfo = applySplatClip(nextSplatMesh, tuning);
         console.info(
           "[splat-tour] applied splat transform " +
@@ -236,7 +243,7 @@ export function SplatScene({
       nextSplatMesh?.dispose();
       nextSparkRenderer?.dispose();
     };
-  }, [gl, invalidate, src, transformKey]);
+  }, [gl, invalidate, src, transformKey, planWallsKey]);
 
   if (hasFailed) {
     return <FallbackRoom />;
@@ -376,15 +383,23 @@ function snapSplatFloor(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatF
   };
 }
 
-// 도면 벽 대체: 뭉개진 벽 splat을 opacity-mask로 숨겨 SplatPlanWalls의 깨끗한 평면이 대신 보이게 한다.
-// native 정합 배치에서만 유효(auto fit의 bbox 배치는 도면 좌표와 무관).
-function applyWallClip(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatWallClipInfo {
+// 도면 벽 대체: 뭉개진 벽 splat을 opacity-mask로 숨겨 SplatPlanWalls의 깨끗한 형상이 대신 보이게 한다.
+// native 정합 배치에서만 유효(auto fit의 bbox 배치는 도면 좌표와 무관). planWalls(실 FloorPlan.walls)가
+// 있으면 그 실제 벽 형상으로 판정하고, 없으면 기존 3×4m 플레이스홀더 박스 판정으로 폴백한다.
+function applyWallClip(
+  splatMesh: SplatMeshObject,
+  tuning: SplatTuning,
+  planWalls: WheretoputWall3D[] | null
+): SplatWallClipInfo {
   const totalSplats = getSplatCount(splatMesh);
+  const hasPlanWalls = Boolean(planWalls && planWalls.length > 0);
+  const mode: SplatWallClipInfo["mode"] = hasPlanWalls ? "plan-walls" : "placeholder-box";
 
   if (!tuning.wallReplace || tuning.fitMode !== "native") {
     return {
       enabled: false,
       applied: false,
+      mode,
       totalSplats,
       removedSplats: 0
     };
@@ -395,6 +410,7 @@ function applyWallClip(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatWa
     return {
       enabled: true,
       applied: false,
+      mode,
       totalSplats,
       removedSplats: 0
     };
@@ -403,11 +419,16 @@ function applyWallClip(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatWa
   splatMesh.updateMatrixWorld(true);
   const worldCenter = new Vector3();
   let removed = 0;
+  const planRoomHeight = hasPlanWalls ? wallsToPlanBounds(planWalls as WheretoputWall3D[]).height : 0;
 
   packedSplats.forEachSplat((index, center, scales, quaternion, opacity, color) => {
     worldCenter.copy(center).applyMatrix4(splatMesh.matrixWorld);
 
-    if (!isWallShellPoint(worldCenter)) {
+    const isWall = hasPlanWalls
+      ? isNearAnyPlanWall(worldCenter, planWalls as WheretoputWall3D[], planRoomHeight)
+      : isWallShellPoint(worldCenter);
+
+    if (!isWall) {
       return;
     }
 
@@ -425,6 +446,7 @@ function applyWallClip(splatMesh: SplatMeshObject, tuning: SplatTuning): SplatWa
   return {
     enabled: true,
     applied: true,
+    mode,
     totalSplats,
     removedSplats: removed
   };
