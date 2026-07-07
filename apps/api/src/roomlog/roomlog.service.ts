@@ -1737,6 +1737,11 @@ export class RoomlogService {
     return this.auth.ensureLandlordRoomFromListing(userId, listing);
   }
 
+  /** 계약 수락 → 세입자를 매물 room에 연결(tenantRooms) — TENANT capability가 파생된다. */
+  assignTenantRoomFromContract(tenantId: string, landlordId: string, listing: { title: string; location: string }) {
+    return this.auth.assignTenantRoomFromContract(tenantId, landlordId, listing);
+  }
+
   getDemoState() {
     if (!this.seedDemoData) {
       throw new ForbiddenException("데모 상태 조회가 비활성화되어 있습니다.");

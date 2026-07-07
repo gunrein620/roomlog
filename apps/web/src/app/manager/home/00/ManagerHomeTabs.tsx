@@ -15,6 +15,15 @@ export interface ManagerListingRow {
   has3D: boolean;
 }
 
+export interface ManagerContractRow {
+  id: string;
+  listingTitle: string;
+  location: string;
+  tenantName: string;
+  priceLabel: string;
+  acceptedAtLabel: string;
+}
+
 export interface ManagerTicketRow {
   id: string;
   title: string;
@@ -28,10 +37,12 @@ type TabId = (typeof TABS)[number];
 
 export default function ManagerHomeTabs({
   listings,
+  contracts,
   tickets,
   ticketHubHref
 }: {
   listings: ManagerListingRow[];
+  contracts: ManagerContractRow[];
   tickets: ManagerTicketRow[];
   ticketHubHref: string;
 }) {
@@ -41,7 +52,11 @@ export default function ManagerHomeTabs({
     <div style={{ display: "grid", gap: "var(--space-lg)" }}>
       <div role="tablist" aria-label="관리 중인 집 탭" style={tabBarStyle}>
         {TABS.map((tab) => {
-          const count = tab === "올려놓은 매물" ? listings.length : tab === "민원/하자" ? tickets.length : null;
+          const count =
+            tab === "올려놓은 매물" ? listings.length
+            : tab === "계약중인 집" ? contracts.length
+            : tab === "민원/하자" ? tickets.length
+            : null;
           const active = tab === activeTab;
           return (
             <button
@@ -89,10 +104,27 @@ export default function ManagerHomeTabs({
 
       {activeTab === "계약중인 집" ? (
         <section style={panelStyle} aria-label="계약중인 집">
-          <EmptyState
-            title="계약중인 집이 아직 없습니다"
-            body="계약 플로우가 연결되면 임차인·계약 기간·수납 현황이 여기에 표시됩니다. (준비 중)"
-          />
+          {contracts.length === 0 ? (
+            <EmptyState
+              title="계약중인 집이 아직 없습니다"
+              body="문의 채팅에서 '이 분과 계약하기'로 제안하고 상대가 수락하면 여기에 표시됩니다."
+              action={<Link href="/?tab=inquiry" style={actionLinkStyle}>문의 채팅 열기</Link>}
+            />
+          ) : (
+            contracts.map((contract) => (
+              <div key={contract.id} style={rowStyle}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contract.listingTitle}</div>
+                  <div style={rowCaptionStyle}>
+                    임차인 {contract.tenantName}
+                    {contract.acceptedAtLabel ? ` · ${contract.acceptedAtLabel} 체결` : ""}
+                  </div>
+                </div>
+                <strong style={{ whiteSpace: "nowrap" }}>{contract.priceLabel}</strong>
+                <span style={statusChipStyle("#eef2fb", "#31406a")}>계약중</span>
+              </div>
+            ))
+          )}
         </section>
       ) : null}
 
