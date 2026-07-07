@@ -4096,12 +4096,25 @@ export default function Home() {
         .catch(() => undefined);
     load();
     const timer = window.setInterval(load, 30000);
+    // 다른 탭/앱에 다녀오면 즉시 갱신 — 30초 폴링만으로는 "새로고침해야 보이는" 답답함이 남는다.
+    const reloadOnReturn = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("focus", reloadOnReturn);
+    document.addEventListener("visibilitychange", reloadOnReturn);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener("focus", reloadOnReturn);
+      document.removeEventListener("visibilitychange", reloadOnReturn);
     };
   }, []);
-  const allListings = [...tradeListings.map(tradeListingToCard), ...listings];
+  // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
+  // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
+  const sortedTradeListings = [...tradeListings].sort(
+    (a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0)
+  );
+  const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
   const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
