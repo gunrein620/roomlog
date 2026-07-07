@@ -31,7 +31,6 @@ import {
   alignWallBoxesToFittedOpeningLines,
   buildAdjustedWallBoxesFromRawAndGenerated,
   convertRoboflowBoxToEditorBox,
-  createPostProcessedWallOverlayBox,
   fitOpeningBoxesToPostProcessedWalls,
   normalizeOverlayBox,
   ROBOFLOW_OPENING_CONFIDENCE_THRESHOLD,
@@ -1581,47 +1580,6 @@ export default function RoomlogFloorPlanEditor() {
       const wallOverlayBoxes = detectionBoxes.filter((detectionBox) => detectionBox.type === "WALL");
       const openingOverlayBoxes = detectionBoxes.filter((detectionBox) => detectionBox.type !== "WALL");
       const hasPostProcessedWall = wallOverlayBoxes.some((overlayBox) => overlayBox.variant === "postprocessed");
-      const edgeSnapTolerance = 24;
-      const areIntervalsNear = (startA: number, endA: number, startB: number, endB: number) =>
-        Math.max(0, Math.max(startA, startB) - Math.min(endA, endB)) <= edgeSnapTolerance;
-      const snapMergedWallOverlayBoxEdges = (boxes: Array<RoboflowDetectionOverlayBox["box"]>) => {
-        const snappedBoxes = boxes.map((box) => ({ ...box }));
-
-        for (let leftIndex = 0; leftIndex < snappedBoxes.length; leftIndex += 1) {
-          for (let rightIndex = leftIndex + 1; rightIndex < snappedBoxes.length; rightIndex += 1) {
-            const leftBox = snappedBoxes[leftIndex];
-            const rightBox = snappedBoxes[rightIndex];
-
-            if (areIntervalsNear(leftBox.x1, leftBox.x2, rightBox.x1, rightBox.x2)) {
-              if (Math.abs(leftBox.y1 - rightBox.y1) <= edgeSnapTolerance) {
-                const snappedY = Math.min(leftBox.y1, rightBox.y1);
-                leftBox.y1 = snappedY;
-                rightBox.y1 = snappedY;
-              }
-              if (Math.abs(leftBox.y2 - rightBox.y2) <= edgeSnapTolerance) {
-                const snappedY = Math.max(leftBox.y2, rightBox.y2);
-                leftBox.y2 = snappedY;
-                rightBox.y2 = snappedY;
-              }
-            }
-
-            if (areIntervalsNear(leftBox.y1, leftBox.y2, rightBox.y1, rightBox.y2)) {
-              if (Math.abs(leftBox.x1 - rightBox.x1) <= edgeSnapTolerance) {
-                const snappedX = Math.min(leftBox.x1, rightBox.x1);
-                leftBox.x1 = snappedX;
-                rightBox.x1 = snappedX;
-              }
-              if (Math.abs(leftBox.x2 - rightBox.x2) <= edgeSnapTolerance) {
-                const snappedX = Math.max(leftBox.x2, rightBox.x2);
-                leftBox.x2 = snappedX;
-                rightBox.x2 = snappedX;
-              }
-            }
-          }
-        }
-
-        return snappedBoxes;
-      };
       const drawOverlayConfidenceLabel = (box: RoboflowDetectionOverlayBox["box"], confidence: number, color: string) => {
         const labelText = `${Math.round(confidence * 100)}%`;
         const fontSize = 11 / viewScale;
@@ -1646,44 +1604,31 @@ export default function RoomlogFloorPlanEditor() {
         drawOverlayConfidenceLabel(box, overlayBox.confidence, color);
       };
       const drawMergedWallOverlayBoxes = () => {
-        // 후처리 벽이 walls에 있으면 '살아있는' 벽 상태에서 박스를 만든다 — 정적 overlay 박스로
-        // 그리면 벽 편집(이동/길이 조절/삭제)이 화면에 반영되지 않는다.
-        const livePostProcessedWalls = walls.filter((wall) => wall.source === "roboflow-postprocessed");
-        let wallBoxes: Array<{ x1: number; x2: number; y1: number; y2: number }>;
-        if (livePostProcessedWalls.length) {
-          wallBoxes = livePostProcessedWalls
-            .map((wall) => {
-              const thickness = Math.max(4, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
-              const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
-              const centerCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
-              return wallHorizontal
-                ? {
-                    x1: Math.min(wall.start.x, wall.end.x),
-                    x2: Math.max(wall.start.x, wall.end.x),
-                    y1: centerCross - thickness / 2,
-                    y2: centerCross + thickness / 2
-                  }
-                : {
-                    x1: centerCross - thickness / 2,
-                    x2: centerCross + thickness / 2,
-                    y1: Math.min(wall.start.y, wall.end.y),
-                    y2: Math.max(wall.start.y, wall.end.y)
-                  };
-            })
-            .filter((box) => box.x2 - box.x1 > 0 && box.y2 - box.y1 > 0);
-        } else {
-          const snappedWallBoxes = snapMergedWallOverlayBoxEdges(
-            wallOverlayBoxes.map((overlayBox) => normalizeOverlayBox(overlayBox.box))
-          );
-          const openingAlignedSnappedWallBoxes = alignWallBoxesToFittedOpeningLines(
-            snappedWallBoxes.map((box) => createPostProcessedWallOverlayBox(box)),
-            openingOverlayBoxes
-          );
-          const cornerAlignedSnappedWallBoxes = alignConnectedPerpendicularWallBoxCorners(openingAlignedSnappedWallBoxes);
-          wallBoxes = cornerAlignedSnappedWallBoxes
-            .map((overlayBox) => overlayBox.box)
-            .filter((box) => box.x2 - box.x1 > 0 && box.y2 - box.y1 > 0);
-        }
+        // 벽 몸통은 항상 '살아있는' walls 상태에서 박스를 만든다 — 정적 overlay 박스로
+        // 그리면 벽 편집(이동/길이 조절/삭제)이 화면에 반영되지 않고, 벽을 전부 지워도
+        // 유령 벽이 남는다. (정적 박스 재정렬 폴백은 같은 이유로 제거했다 — detectionBoxes에는
+        // 이미 후처리 핸들러가 정렬을 끝낸 박스가 저장되므로 렌더러에서 재계산할 이유도 없다.)
+        const wallBoxes = walls
+          .filter((wall) => wall.source === "roboflow-postprocessed")
+          .map((wall) => {
+            const thickness = Math.max(4, Number(wall.thicknessPx ?? wall.depthPx ?? 0) || 12);
+            const wallHorizontal = Math.abs(wall.end.x - wall.start.x) >= Math.abs(wall.end.y - wall.start.y);
+            const centerCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
+            return wallHorizontal
+              ? {
+                  x1: Math.min(wall.start.x, wall.end.x),
+                  x2: Math.max(wall.start.x, wall.end.x),
+                  y1: centerCross - thickness / 2,
+                  y2: centerCross + thickness / 2
+                }
+              : {
+                  x1: centerCross - thickness / 2,
+                  x2: centerCross + thickness / 2,
+                  y1: Math.min(wall.start.y, wall.end.y),
+                  y2: Math.max(wall.start.y, wall.end.y)
+                };
+          })
+          .filter((box) => box.x2 - box.x1 > 0 && box.y2 - box.y1 > 0);
         if (!wallBoxes.length) return;
 
         // 문/창문 박스: 벽을 이 자리에서 갈라(gap) 분리한다.
