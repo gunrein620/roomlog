@@ -3762,26 +3762,36 @@ p {
   inset: 0;
   z-index: 90;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
+  padding: 24px;
   background: rgba(18, 24, 40, 0.42);
 }
 
 .tour-sheet {
-  width: min(100%, 430px);
-  max-height: min(86vh, 720px);
-  overflow-y: auto;
-  padding: 10px 18px 20px;
-  border-radius: 26px 26px 0 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 80vw;
+  height: 88vh;
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+  padding: 18px 22px 22px;
+  border: 1px solid #d5dceb;
+  border-radius: 6px;
   background: #ffffff;
-  box-shadow: 0 -22px 44px rgba(18, 24, 40, 0.24);
+  box-shadow: 0 18px 48px rgba(18, 24, 40, 0.24);
+}
+
+.tour-sheet > .sheet-handle {
+  display: none;
 }
 
 .tour-sheet header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;
   gap: 14px;
-  padding: 10px 0 14px;
+  padding: 0 0 12px;
 }
 
 .tour-sheet header span {
@@ -3791,12 +3801,12 @@ p {
 }
 
 .tour-sheet header h2 {
-  margin-top: 5px;
+  margin-top: 3px;
   font-size: 1.28rem;
 }
 
 .tour-sheet header p {
-  margin-top: 8px;
+  margin-top: 6px;
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
@@ -3808,7 +3818,7 @@ p {
   width: 42px;
   height: 42px;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 6px;
   background: #f3f5f8;
   color: #1f2632;
   font-size: 1.4rem;
@@ -3816,10 +3826,11 @@ p {
 }
 
 .tour-preview-stage {
+  height: 100%;
   min-height: 240px;
   overflow: hidden;
   border: 1px solid #d9dfeb;
-  border-radius: 18px;
+  border-radius: 6px;
   background:
     linear-gradient(90deg, rgba(47, 85, 255, 0.09) 1px, transparent 1px),
     linear-gradient(0deg, rgba(47, 85, 255, 0.09) 1px, transparent 1px),
@@ -3830,7 +3841,7 @@ p {
 /* 실제 3D 도면 뷰 — 편집기와 같은 R3F 캔버스를 상세 시트 크기에 맞춰 채운다. */
 .tour-room-3d {
   width: 100%;
-  height: min(52vh, 420px);
+  height: 100%;
 }
 
 .tour-room-3d .floor-plan-3d-preview {
@@ -3843,11 +3854,176 @@ p {
   overflow: hidden;
 }
 
+.listing-tour-room3d {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.listing-tour-furniture {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  max-height: calc(100% - 20px);
+  overflow: auto;
+  border: 1px solid rgba(217, 223, 235, 0.92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 36px rgba(18, 24, 40, 0.18);
+  backdrop-filter: blur(8px);
+}
+
+.listing-tour-furniture-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.listing-tour-furniture-head div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.listing-tour-furniture-head strong {
+  color: #172033;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.listing-tour-furniture-head span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listing-tour-furniture-head button,
+.listing-tour-furniture-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(47, 85, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(47, 85, 255, 0.08);
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.listing-tour-furniture-head button:hover,
+.listing-tour-furniture-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(47, 85, 255, 0.12);
+}
+
+.listing-tour-furniture-body {
+  display: grid;
+  gap: 10px;
+}
+
+.listing-tour-furniture-search input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid #d9dfeb;
+  border-radius: 14px;
+  background: #f8faff;
+  color: #172033;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.listing-tour-furniture-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.listing-tour-furniture-grid button {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 4px 9px;
+  align-items: center;
+  min-height: 62px;
+  padding: 9px;
+  border: 1px solid #e2e7f1;
+  border-radius: 16px;
+  background: #fbfcff;
+  color: #172033;
+  text-align: left;
+}
+
+.listing-tour-furniture-grid button.active {
+  border-color: var(--blue);
+  background: rgba(47, 85, 255, 0.08);
+  box-shadow: 0 0 0 2px rgba(47, 85, 255, 0.1);
+}
+
+.listing-tour-furniture-thumb {
+  grid-row: 1 / 3;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(18, 24, 40, 0.08);
+}
+
+.listing-tour-furniture-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.listing-tour-furniture-grid strong,
+.listing-tour-furniture-grid small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listing-tour-furniture-grid strong {
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.listing-tour-furniture-grid small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.listing-tour-furniture-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.listing-tour-furniture-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .tour-room-loading {
   display: grid;
   place-content: center;
   width: 100%;
-  height: min(52vh, 420px);
+  height: 100%;
   color: var(--muted);
   font-weight: 800;
   font-size: 0.9rem;
@@ -3932,26 +4108,6 @@ p {
   transform: rotateZ(28deg) rotateX(-58deg);
 }
 
-.tour-step-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.tour-step-list span {
-  display: grid;
-  min-height: 58px;
-  place-items: center;
-  padding: 8px;
-  border-radius: 14px;
-  background: #f5f7fb;
-  color: #3d4554;
-  font-size: 0.72rem;
-  font-weight: 900;
-  text-align: center;
-}
-
 .tour-sheet-actions {
   display: grid;
   grid-template-columns: 1fr 1.5fr;
@@ -3965,7 +4121,7 @@ p {
   min-height: 54px;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 6px;
   background: #eef2f8;
   color: #1f2632;
   font-weight: 900;
@@ -3974,6 +4130,20 @@ p {
 .tour-sheet-actions a {
   background: var(--blue);
   color: #ffffff;
+}
+
+@media (max-width: 760px) {
+  .tour-sheet-backdrop {
+    padding: 12px;
+  }
+
+  .tour-sheet {
+    width: calc(100vw - 24px);
+    height: min(92vh, 840px);
+    max-height: none;
+    padding: 10px 14px 16px;
+    border-radius: 6px;
+  }
 }
 
 .share-sheet-backdrop {
@@ -9191,7 +9361,6 @@ p {
   }
 
   .filter-sheet,
-  .tour-sheet,
   .share-sheet,
   .inquiry-sheet,
   .complex-sheet,

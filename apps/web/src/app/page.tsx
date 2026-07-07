@@ -2560,22 +2560,6 @@ function ListingDetailView({
               )}
             </div>
 
-            <div className="tour-step-list">
-              {listing.floorPlan3D ? (
-                <>
-                  <span>실측 도면 기반 3D</span>
-                  <span>드래그로 둘러보기</span>
-                  <span>옵션 배치 확인</span>
-                </>
-              ) : (
-                <>
-                  <span>도면 기반 공간 스캔</span>
-                  <span>옵션 배치 확인</span>
-                  <span>집주인이 도면을 올리면 3D 제공</span>
-                </>
-              )}
-            </div>
-
             <div className="tour-sheet-actions">
               <button type="button" onClick={() => setIsTourSheetOpen(false)}>닫기</button>
               <a href="#detail-contact" onClick={() => setIsTourSheetOpen(false)}>문의하기</a>
