@@ -204,12 +204,14 @@ export function TradeChatCenter({
     }
   }, [roleFilter, lockedThreadId]);
 
+  // 응답이 도착했을 때 이미 다른 스레드로 넘어갔다면 버린다 —
+  // 늦게 온 이전 스레드 응답이 현재 대화/계약 상태를 덮어쓰는 레이스 방지.
   const loadOpenThread = useCallback(async (threadId: string) => {
     try {
       const res = await fetch(`/api/trade/threads/${threadId}`, { cache: "no-store" });
       if (!res.ok) return;
       const data = (await res.json()) as TradeThread;
-      setOpenThread(data);
+      if (openThreadIdRef.current === threadId) setOpenThread(data);
     } catch {
       // 다음 폴링에서 복구
     }
@@ -221,7 +223,7 @@ export function TradeChatCenter({
       const res = await fetch(`/api/trade/threads/${threadId}/contract`, { cache: "no-store" });
       if (!res.ok) return;
       const data = (await res.json().catch(() => null)) as TradeContract | null;
-      setOpenContract(data && data.id ? data : null);
+      if (openThreadIdRef.current === threadId) setOpenContract(data && data.id ? data : null);
     } catch {
       // 다음 폴링에서 복구
     }
@@ -317,12 +319,15 @@ export function TradeChatCenter({
     return () => window.clearInterval(timer);
   }, [loadThreads, isSocketLive]);
 
+  // 스레드가 바뀌면 이전 대화·계약 상태를 즉시 비운다 — 데스크톱 허브처럼 목록을
+  // 거치지 않고 스레드 간 직행할 때 이전 스레드의 계약 바가 남던 문제 방지.
   useEffect(() => {
-    if (!openThreadId) {
-      setOpenThread(null);
-      setOpenContract(null);
-      return;
-    }
+    setOpenThread(null);
+    setOpenContract(null);
+  }, [openThreadId]);
+
+  useEffect(() => {
+    if (!openThreadId) return;
     loadOpenThread(openThreadId);
     loadOpenContract(openThreadId);
     const timer = window.setInterval(() => {

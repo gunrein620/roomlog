@@ -48,6 +48,7 @@ const loginScreenSource = readFileSync(new URL("./src/app/_components/WoozuLogin
 const unifiedLoginPageSource = readFileSync(new URL("./src/app/login/page.tsx", import.meta.url), "utf8");
 const sessionLibSource = readFileSync(new URL("./src/lib/session.ts", import.meta.url), "utf8");
 const tradeChatCenterSource = readFileSync(new URL("./src/app/_components/TradeChatCenter.tsx", import.meta.url), "utf8");
+const tradeProxySource = readFileSync(new URL("./src/app/api/trade/[...path]/route.ts", import.meta.url), "utf8");
 const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
@@ -494,6 +495,17 @@ test("inquiry center chat hub splits desktop two-pane vs app list with sort and 
   assert.match(cssSource, /\.trade-hub-list\.app/);
   assert.match(cssSource, /\.trade-hub-unread/);
   assert.match(cssSource, /\.trade-chat-room\s*\{/);
+});
+
+test("switching hub threads never leaks the previous thread's conversation or contract bar", () => {
+  // QA 회귀: 계약 체결 스레드를 열었다가 다른 스레드로 직행하면 계약 바가 남던 문제.
+  // 1) 스레드 전환 시 이전 대화·계약 상태를 즉시 비운다.
+  assert.match(tradeChatCenterSource, /setOpenThread\(null\);\s*\n\s*setOpenContract\(null\);\s*\n\s*\}, \[openThreadId\]\)/);
+  // 2) 늦게 도착한 이전 스레드 응답은 버린다.
+  assert.match(tradeChatCenterSource, /if \(openThreadIdRef\.current === threadId\) setOpenThread/);
+  assert.match(tradeChatCenterSource, /if \(openThreadIdRef\.current === threadId\) setOpenContract/);
+  // 3) 계약 없는 스레드의 contract 조회(업스트림 null 바디)가 프록시에서 500이 되지 않는다.
+  assert.match(tradeProxySource, /NextResponse\.json\(data \?\? null\)/);
 });
 
 test("trade update badge ignores messages sent by the current viewer", () => {

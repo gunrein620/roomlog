@@ -26,7 +26,9 @@ async function forward(request: Request, path: string[], method: "GET" | "POST" 
     return NextResponse.json({ message: message || "요청을 처리하지 못했습니다." }, { status: upstream.status });
   }
 
-  return NextResponse.json(data);
+  // 업스트림이 null을 반환하면(예: 계약 없는 스레드의 contract 조회) 바디가 비어
+  // data가 undefined가 된다 — NextResponse.json(undefined)는 500을 던지므로 null로 정규화.
+  return NextResponse.json(data ?? null);
 }
 
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
