@@ -2146,6 +2146,9 @@ function ListingDetailView({
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const safetyScore = listing.score.replace("안심 ", "");
+  // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
+  const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
+  const isDirectListing = listing.listingLabel === "집주인 직접등록";
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
   // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
@@ -2250,7 +2253,7 @@ function ListingDetailView({
             <strong>투어 보기</strong>
           </button>
           <button type="button" onClick={scrollToSafetyReport}>
-            <span>{safetyScore}점</span>
+            <span>{safetyScoreLabel}</span>
             <strong>안심 리포트</strong>
           </button>
           <button type="button" onClick={() => setIsComplexSheetOpen(true)}>
@@ -2344,7 +2347,7 @@ function ListingDetailView({
           <h2>권리관계 특이사항 낮음</h2>
           <p>등기 변동, 보증금 비율, 관리비 수준을 함께 본 결과입니다.</p>
         </div>
-        <strong>{safetyScore}점</strong>
+        <strong>{safetyScoreLabel}</strong>
       </section>
 
       <section className="detail-report-card" aria-label="지킴 진단 리포트">
@@ -2368,9 +2371,13 @@ function ListingDetailView({
 
       <section className="agent-summary-card" aria-label="중개사 정보">
         <div>
-          <span>중개사 평점 4.8</span>
+          <span>{isDirectListing ? "집주인 직접 거래" : "중개사 평점 4.8"}</span>
           <h2>{listing.broker}</h2>
-          <p>{listing.response} · 확인매물 126개 · 헛걸음 보상 참여</p>
+          <p>
+            {isDirectListing
+              ? `${listing.response} · ${listing.verification} · 헛걸음 보상 참여`
+              : `${listing.response} · 확인매물 126개 · 헛걸음 보상 참여`}
+          </p>
         </div>
         <button type="button" onClick={() => setIsAgentSheetOpen(true)}>프로필</button>
       </section>
