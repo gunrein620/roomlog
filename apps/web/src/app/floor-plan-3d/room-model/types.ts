@@ -21,34 +21,6 @@ export type WallSummary = { wallCount: number; approximateMeters: number; status
 
 export type ExperienceMode = "landlord" | "resident";
 
-export type ProjectedPoint = { x: number; y: number };
-
-export type WallPanel3D = {
-  id: string;
-  height: number;
-  depth: number;
-  path: string;
-  topLine: { start: ProjectedPoint; end: ProjectedPoint };
-};
-
-export type WallBox3D = {
-  id: string;
-  height: number;
-  depth: number;
-  frontPath: string;
-  topPath: string;
-  startCapPath: string;
-  endCapPath: string;
-  sortY: number;
-  topLine: { start: ProjectedPoint; end: ProjectedPoint };
-};
-
-export type ConvertedFloorPlan3D = {
-  wallPanels: WallPanel3D[];
-  wallBoxes: WallBox3D[];
-  floor: { path: string };
-};
-
 export type WheretoputSimulatorWall = {
   id: string;
   wall_id: string;

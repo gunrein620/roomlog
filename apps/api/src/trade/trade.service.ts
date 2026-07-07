@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
 
 /**
  * 거래(매물 직접등록 + 구매 문의 채팅) 도메인.
@@ -17,14 +18,20 @@ export type TradeListingInput = {
   monthlyRentManwon: number;
   location: string;
   description?: string;
+  /** 업로드된 매물 사진 URL 배열(없으면 카드가 목업으로 폴백) */
+  images?: string[];
+  /** 주소 지오코딩 좌표(없으면 상세 지도는 데모/안내 상태 유지) */
+  lat?: number;
+  lng?: number;
 };
 
-export type TradeListing = TradeListingInput & {
+export type TradeListing = Omit<TradeListingInput, "images"> & {
   id: string;
   ownerId: string;
   ownerName: string;
   status: "노출중";
   createdAt: string;
+  images: string[];
 };
 
 export type TradeMessage = {
@@ -70,6 +77,42 @@ type TradeStore = {
 /** 쇼케이스(하드코딩) 매물 문의가 도착할 데모 임대인 계정 */
 const FALLBACK_OWNER = { id: "landlord-demo", name: "박관리" };
 
+const MAX_LISTING_IMAGES = 10;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"];
+
+/** 저장할 사진 URL 배열 정규화 — 문자열만, 최대 10장. */
+function normalizeImages(images?: string[]): string[] {
+  if (!Array.isArray(images)) return [];
+  return images
+    .filter((url): url is string => typeof url === "string")
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0)
+    .slice(0, MAX_LISTING_IMAGES);
+}
+
+/** 지오코딩 좌표 정규화 — 유한수 쌍일 때만 저장(둘 다 없거나 하나만 있으면 미저장). */
+function normalizeCoords(lat?: number, lng?: number): { lat?: number; lng?: number } {
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return {};
+  if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) return {};
+  return { lat: latNum, lng: lngNum };
+}
+
+function extensionForUpload(mimeType: string, originalName: string): string {
+  const extension = extname(originalName).toLowerCase();
+  if (ALLOWED_IMAGE_EXTENSIONS.includes(extension)) return extension;
+  const fallback: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/heic": ".heic"
+  };
+  return fallback[mimeType] ?? ".img";
+}
+
 export const TRADE_STORE_FILE = "TRADE_STORE_FILE";
 
 function defaultStoreFilePath(): string | undefined {
@@ -84,6 +127,12 @@ function defaultStoreFilePath(): string | undefined {
 export class TradeService {
   private store: TradeStore = { listings: [], threads: [] };
   private readonly filePath: string | undefined;
+  // main.ts와 동일한 기본값 — S3_UPLOADS_ENABLED가 켜지면 자동으로 S3 어댑터로 전환된다.
+  private readonly storageAdapter: FileStorageAdapter = createFileStorageAdapter(
+    process.env,
+    resolve(process.env.LOCAL_UPLOAD_DIR || "uploads"),
+    process.env.PUBLIC_UPLOAD_BASE_URL || "/api/files"
+  );
 
   constructor(@Optional() @Inject(TRADE_STORE_FILE) filePath?: string) {
     this.filePath = filePath ?? defaultStoreFilePath();
@@ -95,11 +144,54 @@ export class TradeService {
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as TradeStore;
       if (Array.isArray(parsed?.listings) && Array.isArray(parsed?.threads)) {
+        // 구버전 레코드 후방호환 — images 없으면 빈 배열로 채운다.
+        parsed.listings.forEach((listing) => {
+          listing.images = normalizeImages(listing.images);
+        });
         this.store = parsed;
       }
     } catch {
       // 손상된 파일은 무시하고 빈 스토어로 시작 (데모 데이터 성격)
     }
+  }
+
+  /** 매물 사진 업로드 — 이미지 검증 후 스토리지에 저장하고 공개 URL 배열을 돌려준다. */
+  async saveListingPhotos(
+    files: Array<{ buffer: Buffer; originalname: string; mimetype: string }>
+  ): Promise<{ images: string[] }> {
+    if (!files?.length) throw new BadRequestException("업로드할 이미지 파일이 필요합니다.");
+    if (files.length > MAX_LISTING_IMAGES) {
+      throw new BadRequestException(`사진은 최대 ${MAX_LISTING_IMAGES}장까지 업로드할 수 있습니다.`);
+    }
+
+    const images: string[] = [];
+    for (const file of files) {
+      if (!file.mimetype?.startsWith("image/")) {
+        throw new BadRequestException("이미지 파일만 업로드할 수 있습니다.");
+      }
+      if (!file.buffer?.length) {
+        throw new BadRequestException("업로드할 파일이 비어 있습니다.");
+      }
+      if (file.buffer.length > MAX_UPLOAD_BYTES) {
+        throw new BadRequestException("이미지는 10MB 이하만 업로드할 수 있습니다.");
+      }
+
+      const uploadId = randomUUID().slice(0, 12);
+      const safeBaseName =
+        basename(file.originalname, extname(file.originalname))
+          .replace(/[^a-zA-Z0-9가-힣_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 48) || "listing";
+      const fileName = `listing-${uploadId}-${safeBaseName}${extensionForUpload(file.mimetype, file.originalname)}`;
+      const stored = await this.storageAdapter.save({
+        buffer: file.buffer,
+        fileName,
+        mimeType: file.mimetype
+      });
+      images.push(stored.fileUrl);
+    }
+
+    return { images };
   }
 
   private persist() {
@@ -129,12 +221,54 @@ export class TradeService {
       monthlyRentManwon: Number(input.monthlyRentManwon) || 0,
       location: input.location?.trim() || "위치 미입력",
       description: input.description?.trim() || "",
+      images: normalizeImages(input.images),
+      ...normalizeCoords(input.lat, input.lng),
       status: "노출중",
       createdAt: new Date().toISOString()
     };
     this.store.listings.unshift(listing);
     this.persist();
     return listing;
+  }
+
+  /** 소유자 검증 포함 매물 조회 — 수정/삭제 공용. */
+  private ownedListing(ownerId: string, listingId: string): TradeListing {
+    const listing = this.store.listings.find((item) => item.id === listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    if (listing.ownerId !== ownerId) throw new ForbiddenException("내 매물만 수정하거나 내릴 수 있습니다.");
+    return listing;
+  }
+
+  /** 매물 수정 — 전달된 필드만 갱신(소유자 전용). images는 배열이 오면 통째로 교체. */
+  updateListing(owner: { id: string }, listingId: string, input: Partial<TradeListingInput>): TradeListing {
+    const listing = this.ownedListing(owner.id, listingId);
+
+    if (typeof input.title === "string" && input.title.trim()) listing.title = input.title.trim();
+    if (typeof input.roomType === "string" && input.roomType.trim()) listing.roomType = input.roomType.trim();
+    if (input.tradeType === "월세" || input.tradeType === "전세" || input.tradeType === "매매") {
+      listing.tradeType = input.tradeType;
+    }
+    if (input.depositManwon !== undefined) listing.depositManwon = Number(input.depositManwon) || 0;
+    if (input.monthlyRentManwon !== undefined) listing.monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
+    if (typeof input.location === "string" && input.location.trim()) listing.location = input.location.trim();
+    if (typeof input.description === "string") listing.description = input.description.trim();
+    if (Array.isArray(input.images)) listing.images = normalizeImages(input.images);
+    if (input.lat !== undefined || input.lng !== undefined) {
+      const coords = normalizeCoords(input.lat, input.lng);
+      listing.lat = coords.lat;
+      listing.lng = coords.lng;
+    }
+
+    this.persist();
+    return listing;
+  }
+
+  /** 매물 삭제(내리기) — 소유자 전용. 연결된 문의 스레드는 대화 기록으로 남긴다. */
+  deleteListing(owner: { id: string }, listingId: string): { ok: true } {
+    this.ownedListing(owner.id, listingId);
+    this.store.listings = this.store.listings.filter((item) => item.id !== listingId);
+    this.persist();
+    return { ok: true };
   }
 
   /**

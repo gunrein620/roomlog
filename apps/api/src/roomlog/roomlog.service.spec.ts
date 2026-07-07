@@ -754,9 +754,9 @@ describe("RoomlogService", () => {
 
       assert.match(capturedUrl, /detect\.roboflow\.com\/cubicasa5k-2-qpmsa\/1/);
       assert.match(capturedUrl, /api_key=rf-test-key/);
-      assert.match(capturedUrl, /confidence=50/);
+      assert.match(capturedUrl, /confidence=20/);
       assert.equal(result.status, "ready");
-      assert.equal(result.openings.length, 1);
+      assert.equal(result.openings.length, 3);
       const window = result.openings.find((item) => item.type === "WINDOW");
       const door = result.openings.find((item) => item.type === "DOOR");
       assert.equal(window?.confidence, 0.81);
@@ -765,9 +765,9 @@ describe("RoomlogService", () => {
       assert.equal(window?.boundingBox.y, 44);
       assert.equal(window?.boundingBox.width, 180);
       assert.equal(window?.boundingBox.height, 72);
-      // 겹침 중복은 신뢰도 높은 window(0.31)가 door(0.28)를 이긴다
-      assert.equal(door, undefined);
-      assert.equal(result.openings.filter((item) => item.boundingBox.y > 500).length, 0);
+      // 후보 검토용으로 door/window가 겹쳐도 서로 다른 타입이면 둘 다 남긴다
+      assert.equal(door?.confidence, 0.28);
+      assert.equal(result.openings.some((item) => item.confidence === 0.17), false);
       // wall 클래스는 walls 배열로 분리: 중심 (500,250) 크기 900x20, 이미지 1000x500 → 좌상단 (50,480) 크기 (900,40)
       assert.equal(result.walls.length, 1);
       assert.equal(result.walls[0].confidence, 0.7);

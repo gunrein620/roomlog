@@ -1,7 +1,10 @@
-import { Body, Controller, Get, Headers, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFiles, UseInterceptors } from "@nestjs/common";
+import { FilesInterceptor } from "@nestjs/platform-express";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogService } from "../roomlog/roomlog.service";
 import { TradeService, type TradeListingInput, type TradeThread } from "./trade.service";
+
+type UploadedImageFile = { buffer: Buffer; originalname: string; mimetype: string };
 
 /** 거래(직접등록 매물 + 구매 문의 채팅) API — 인증은 룸로그 토큰을 그대로 쓴다. */
 @Controller("trade")
@@ -35,6 +38,36 @@ export class TradeController {
     @Body() body: TradeListingInput
   ) {
     return this.tradeService.createListing(this.user(authorization), body);
+  }
+
+  /** 매물 수정 — 소유자 전용(서비스에서 검증). 전달된 필드만 갱신. */
+  @Patch("listings/:listingId")
+  updateListing(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("listingId") listingId: string,
+    @Body() body: Partial<TradeListingInput>
+  ) {
+    return this.tradeService.updateListing(this.user(authorization), listingId, body);
+  }
+
+  /** 매물 삭제(내리기) — 소유자 전용. */
+  @Delete("listings/:listingId")
+  deleteListing(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("listingId") listingId: string
+  ) {
+    return this.tradeService.deleteListing(this.user(authorization), listingId);
+  }
+
+  /** 매물 사진 업로드 — 로그인 필수(user()가 토큰 없으면 던짐). 저장된 공개 URL 배열 반환. */
+  @Post("uploads")
+  @UseInterceptors(FilesInterceptor("files", 10, { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadListingPhotos(
+    @Headers("authorization") authorization: string | undefined,
+    @UploadedFiles() files: UploadedImageFile[] | undefined
+  ) {
+    this.user(authorization);
+    return this.tradeService.saveListingPhotos(files ?? []);
   }
 
   @Post("inquiries")
