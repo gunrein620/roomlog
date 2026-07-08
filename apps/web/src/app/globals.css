@@ -9824,7 +9824,8 @@ p {
 
   .detail-contact-bar {
     bottom: 24px;
-    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr);
+    /* 전화 · 3D 둘러보기 · 1인칭 체험 · 문자 문의 — 데스크톱도 4버튼 한 줄 */
+    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
     width: min(calc(100vw - 48px), 980px);
     border-radius: 18px;
   }
