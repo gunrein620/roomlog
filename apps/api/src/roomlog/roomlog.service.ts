@@ -4903,7 +4903,7 @@ export class RoomlogService {
     const model = this.validFloorPlanAiModel(input.model);
     const modelInfo = FLOOR_PLAN_AI_MODELS.find((item) => item.id === model) ?? FLOOR_PLAN_AI_MODELS[0];
     const imageDataUrl = input.sourceAttachmentId
-      ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
+      ? await this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
       : this.validFloorPlanImageDataUrl(input.imageDataUrl);
 
     if (model === "openai/floor-plan-vision") {
@@ -4958,7 +4958,7 @@ export class RoomlogService {
     }
 
     const imageDataUrl = input.sourceAttachmentId
-      ? this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
+      ? await this.floorPlanAttachmentDataUrl(input.sourceAttachmentId, ownerId)
       : this.validFloorPlanImageDataUrl(input.imageDataUrl);
     const base64 = imageDataUrl.slice(imageDataUrl.indexOf(",") + 1);
 
@@ -5132,7 +5132,37 @@ export class RoomlogService {
     );
   }
 
-  private floorPlanAttachmentDataUrl(attachmentId: string, ownerId?: string) {
+  /**
+   * 첨부 원본 바이트 재조회 — 저장소 모드(S3/로컬)와 레코드 세대가 섞여 있어도 읽히도록
+   * ① 현재 어댑터 → ② 로컬 디스크(과거 로컬 저장분) → ③ 공개 fileUrl 순으로 시도한다.
+   * 배포 환경은 S3 어댑터인데 읽기는 로컬 디스크만 봐서 도면 인식이 404 나던 문제의 수정 지점.
+   */
+  private async readAttachmentBytes(attachment: { fileName: string; fileUrl: string }): Promise<Buffer | null> {
+    const fromAdapter = await this.storageAdapter.read(attachment.fileName).catch(() => null);
+    if (fromAdapter) return fromAdapter;
+
+    const localPath = join(this.uploadDir, attachment.fileName);
+    if (existsSync(localPath)) {
+      try {
+        return readFileSync(localPath);
+      } catch {
+        // 다음 폴백으로
+      }
+    }
+
+    if (/^https?:\/\//i.test(attachment.fileUrl)) {
+      try {
+        const response = await fetch(attachment.fileUrl);
+        if (response.ok) return Buffer.from(await response.arrayBuffer());
+      } catch {
+        // 조회 실패 — null 반환
+      }
+    }
+
+    return null;
+  }
+
+  private async floorPlanAttachmentDataUrl(attachmentId: string, ownerId?: string) {
     const attachment = this.store.attachments.find((item) => item.id === attachmentId);
 
     if (!attachment) {
@@ -5147,12 +5177,12 @@ export class RoomlogService {
       throw new BadRequestException("도면 이미지 첨부만 AI 분석에 사용할 수 있습니다.");
     }
 
-    const filePath = join(this.uploadDir, attachment.fileName);
-    if (!existsSync(filePath)) {
+    const bytes = await this.readAttachmentBytes(attachment);
+    if (!bytes) {
       throw new NotFoundException("저장된 도면 이미지 파일을 찾을 수 없습니다.");
     }
 
-    return `data:${attachment.mimeType};base64,${readFileSync(filePath).toString("base64")}`;
+    return `data:${attachment.mimeType};base64,${bytes.toString("base64")}`;
   }
 
   private validFloorPlanAiModel(model?: string): FloorPlanAiModelId {
@@ -7837,7 +7867,7 @@ export class RoomlogService {
           input: [
             {
               role: "user",
-              content: this.buildIntakeResponseContent(session, fallbackDraft)
+              content: await this.buildIntakeResponseContent(session, fallbackDraft)
             }
           ],
           text: {
@@ -8041,13 +8071,13 @@ export class RoomlogService {
     ].join("\n");
   }
 
-  private buildIntakeResponseContent(session: IntakeSession, fallbackDraft: IntakeDraft) {
+  private async buildIntakeResponseContent(session: IntakeSession, fallbackDraft: IntakeDraft) {
     return [
       {
         type: "input_text",
         text: this.buildIntakeResponseInput(session, fallbackDraft)
       },
-      ...this.intakeImageInputs(session)
+      ...(await this.intakeImageInputs(session))
     ];
   }
 
@@ -8066,14 +8096,14 @@ export class RoomlogService {
     ].join("\n");
   }
 
-  private intakeImageInputs(session: IntakeSession) {
+  private async intakeImageInputs(session: IntakeSession) {
     const urls = session.messages
       .filter((message) => message.sender === "TENANT")
       .flatMap((message) => message.attachmentUrls);
     const uniqueUrls = Array.from(new Set(urls));
 
-    return uniqueUrls
-      .map((fileUrl) => {
+    const inputs = await Promise.all(
+      uniqueUrls.map(async (fileUrl) => {
         const attachment = this.store.attachments.find(
           (item) => item.fileUrl === fileUrl && item.uploadedByUserId === session.tenantId
         );
@@ -8082,13 +8112,12 @@ export class RoomlogService {
           return undefined;
         }
 
-        const filePath = join(this.uploadDir, attachment.fileName);
+        // 저장소 모드(S3/로컬) 무관하게 읽는다 — 로컬 경로만 보면 S3 저장분이 조용히 빠진다.
+        const imageBytes = await this.readAttachmentBytes(attachment);
 
-        if (!existsSync(filePath)) {
+        if (!imageBytes) {
           return undefined;
         }
-
-        const imageBytes = readFileSync(filePath);
 
         return {
           type: "input_image",
@@ -8096,6 +8125,9 @@ export class RoomlogService {
           detail: "auto"
         };
       })
+    );
+
+    return inputs
       .filter((item): item is { type: string; image_url: string; detail: string } =>
         Boolean(item)
       )

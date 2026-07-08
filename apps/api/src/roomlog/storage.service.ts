@@ -1,6 +1,6 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { mkdirSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export type SaveStoredFileInput = {
@@ -16,6 +16,8 @@ export type StoredFile = {
 
 export interface FileStorageAdapter {
   save(input: SaveStoredFileInput): Promise<StoredFile>;
+  /** 저장된 파일 재조회 — AI 분석 등이 원본 바이트를 다시 읽을 때 사용. 없으면 null. */
+  read(fileName: string): Promise<Buffer | null>;
 }
 
 export class LocalStorageAdapter implements FileStorageAdapter {
@@ -33,6 +35,14 @@ export class LocalStorageAdapter implements FileStorageAdapter {
       fileName: input.fileName,
       fileUrl: `${this.publicUploadBaseUrl.replace(/\/$/, "")}/${input.fileName}`
     };
+  }
+
+  async read(fileName: string): Promise<Buffer | null> {
+    try {
+      return await readFile(join(this.uploadDir, fileName));
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -66,6 +76,24 @@ export class S3StorageAdapter implements FileStorageAdapter {
       fileName: key,
       fileUrl: `${this.publicBaseUrl}/${key}`
     };
+  }
+
+  async read(fileName: string): Promise<Buffer | null> {
+    // attachment.fileName은 저장 시점의 키 그대로다(S3 저장분은 floor-plans/ 프리픽스 포함).
+    // 로컬 저장 시절 레코드(프리픽스 없음)도 조회할 수 있게 두 키를 모두 시도한다.
+    const keys = fileName.startsWith("floor-plans/") ? [fileName] : [fileName, `floor-plans/${fileName}`];
+
+    for (const key of keys) {
+      try {
+        const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucketName, Key: key }));
+        const bytes = await result.Body?.transformToByteArray();
+        if (bytes) return Buffer.from(bytes);
+      } catch {
+        // 키 없음 — 다음 후보 키 시도
+      }
+    }
+
+    return null;
   }
 }
 
