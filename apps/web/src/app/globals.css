@@ -9703,6 +9703,7 @@ p {
   .inquiry-screen > .inquiry-chat-panel {
     grid-column: 1 / -1;
     min-width: 0;
+    min-height: 0;
   }
 
   /* 찜 목록 */
@@ -10599,6 +10600,8 @@ p {
 .trade-chat-room {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -10607,6 +10610,7 @@ p {
 
 .trade-chat-room-head {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -10651,6 +10655,7 @@ p {
 
 .trade-chat-scroll {
   display: grid;
+  flex: 1 1 auto;
   align-content: start;
   gap: 8px;
   min-height: 220px;
@@ -10709,9 +10714,11 @@ p {
 
 .trade-chat-form {
   display: flex;
+  flex: none;
   gap: 8px;
   padding: 12px;
   border-top: 1px solid var(--line);
+  background: var(--paper);
 }
 
 .trade-chat-form input {
@@ -10858,6 +10865,7 @@ p {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
   height: min(74vh, 780px);
+  min-height: 520px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -10866,6 +10874,7 @@ p {
 }
 
 .trade-hub-list.desktop {
+  min-height: 0;
   overflow-y: auto;
   border-right: 1px solid var(--line);
 }
@@ -10874,11 +10883,14 @@ p {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--paper);
 }
 
 .trade-hub-room .trade-chat-room {
   flex: 1;
+  height: auto;
   min-height: 0;
   border: 0;
   border-radius: 0;
@@ -10886,6 +10898,7 @@ p {
 
 .trade-hub-room .trade-chat-scroll {
   flex: 1;
+  min-height: 0;
   max-height: none;
   background: var(--paper);
 }
