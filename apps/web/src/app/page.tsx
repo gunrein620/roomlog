@@ -3574,9 +3574,10 @@ type TenantTenancy = {
 };
 
 type TenantRepairRequest = {
-  id: number;
+  id: string;
   title: string;
-  status: "접수됨" | "업체 배정";
+  /** 서버 티켓 표시 상태(접수됨/검토중/업체 배정…) 그대로 */
+  status: string;
 };
 
 type TenantMaintenanceBill = {
@@ -3694,6 +3695,35 @@ function TenantMyPage({
   }, []);
 
   const [repairRequests, setRepairRequests] = useState<TenantRepairRequest[]>([]);
+
+  // 접수 내역은 서버가 진실 — 새로고침해도 남고, 관리인이 상태를 바꾸면 여기 라벨도 따라온다.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/tenant/complaints", { cache: "no-store" });
+        if (!res.ok) return; // 비로그인/집 미연결 — 빈 목록 유지
+        const complaints = (await res.json()) as Array<{
+          id: string;
+          title: string;
+          displayStatus?: string;
+          createdAt?: string;
+        }>;
+        if (cancelled || !Array.isArray(complaints)) return;
+        setRepairRequests(
+          complaints
+            .slice()
+            .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+            .map((item) => ({ id: item.id, title: item.title, status: item.displayStatus ?? "접수됨" }))
+        );
+      } catch {
+        // 일시 오류 — 접수 시점에 다시 채워진다
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [maintenanceBill] = useState<TenantMaintenanceBill | null>(null);
   const [scheduledVisit] = useState<TenantVisit | null>(null);
   const [selectedIssue, setSelectedIssue] = useState("");
@@ -3712,7 +3742,9 @@ function TenantMyPage({
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
   };
-  const addRepairRequest = () => {
+  // 수리요청은 실제 민원 API로 접수한다 — 관리인 콘솔 민원/하자 탭과 같은 티켓 스토어를 본다.
+  // (이전엔 로컬 state에만 쌓는 목업이라 관리인 쪽에 아무것도 안 갔다.)
+  const addRepairRequest = async () => {
     if (!selectedIssue) {
       return;
     }
@@ -3723,12 +3755,46 @@ function TenantMyPage({
 
     isSubmittingRepairRef.current = true;
     setIsSubmittingRepair(true);
-    window.setTimeout(() => {
-      setRepairRequests((current) => [{ id: Date.now(), title: selectedIssue, status: "접수됨" }, ...current]);
+    try {
+      const locationLabel =
+        tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "집 안";
+      const response = await fetch("/api/tenant/complaints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: selectedIssue,
+          description: `${selectedIssue} 문제로 수리를 요청합니다. 방문 전 연락 부탁드립니다.`,
+          location: locationLabel
+        })
+      });
+      const saved = (await response.json().catch(() => null)) as
+        | {
+            id?: string;
+            title?: string;
+            displayStatus?: string;
+            message?: string;
+            // 생성 응답은 { complaint, ... } 래핑, 목록 응답은 complaint가 최상위 — 둘 다 받는다.
+            complaint?: { id?: string; title?: string; displayStatus?: string };
+          }
+        | null;
+      const complaint = saved?.complaint ?? saved;
+
+      if (!response.ok || !complaint?.id) {
+        showToast(saved?.message ?? "수리요청 접수에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+
+      setRepairRequests((current) => [
+        { id: complaint.id as string, title: complaint.title ?? selectedIssue, status: complaint.displayStatus ?? "접수됨" },
+        ...current.filter((item) => item.id !== complaint.id)
+      ]);
       showToast("수리요청이 접수됐습니다. 관리인이 확인 후 업체를 배정합니다.");
+    } catch {
+      showToast("네트워크 오류로 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
       isSubmittingRepairRef.current = false;
       setIsSubmittingRepair(false);
-    }, 600);
+    }
   };
 
   // 연결된 집이 없으면 특정 임대인/금액을 지어내지 않고 그 사실 자체를 한 행으로 보여준다.
