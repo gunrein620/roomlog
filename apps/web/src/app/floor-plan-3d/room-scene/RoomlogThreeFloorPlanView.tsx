@@ -181,19 +181,23 @@ function FurnitureGlbMesh({
 
 function FurnitureMesh(props: {
   furniture: PlacedFurniture;
+  verticalScale?: number;
   isPending?: boolean;
   isSelected: boolean;
   onPointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
 }) {
-  if (!props.furniture.modelUrl) {
-    return <FurnitureBoxMesh {...props} />;
-  }
-
-  return (
+  const verticalScale = Math.max(0.1, props.verticalScale ?? 1);
+  const mesh = !props.furniture.modelUrl ? (
+    <FurnitureBoxMesh {...props} />
+  ) : (
     <Suspense fallback={<FurnitureBoxMesh {...props} />}>
       <FurnitureGlbMesh {...props} />
     </Suspense>
   );
+
+  if (verticalScale === 1) return mesh;
+
+  return <group scale={[1, verticalScale, 1]}>{mesh}</group>;
 }
 
 function WallMesh({
@@ -263,6 +267,7 @@ export function RoomlogThreeFloorPlanView({
   cameraPosition = [14, 12, 18],
   frameloop = "demand",
   furnitureData,
+  furnitureVerticalScale = 1,
   hideHint = false,
   horizontalScale = 1,
   orbitMaxDistance = 42,
@@ -280,6 +285,7 @@ export function RoomlogThreeFloorPlanView({
   // 드래그 전에도 방이 보여야 하므로 "always"를 넘겨 즉시·리사이즈 시 계속 렌더한다.
   frameloop?: "demand" | "always";
   furnitureData: PlacedFurniture[];
+  furnitureVerticalScale?: number;
   hideHint?: boolean;
   horizontalScale?: number;
   orbitMaxDistance?: number;
@@ -327,13 +333,20 @@ export function RoomlogThreeFloorPlanView({
           {furnitureData.map((furniture) => (
             <FurnitureMesh
               furniture={furniture}
+              verticalScale={furnitureVerticalScale}
               isSelected={selectedFurnitureId === furniture.id}
               key={furniture.id}
               onPointerDown={onFurniturePointerDown}
             />
           ))}
           {pendingFurniture ? (
-            <FurnitureMesh furniture={pendingFurniture} isPending isSelected={false} onPointerDown={onFurniturePointerDown} />
+            <FurnitureMesh
+              furniture={pendingFurniture}
+              verticalScale={furnitureVerticalScale}
+              isPending
+              isSelected={false}
+              onPointerDown={onFurniturePointerDown}
+            />
           ) : null}
         </group>
         <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18 * sceneHorizontalScale} />
