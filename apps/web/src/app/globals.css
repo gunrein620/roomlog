@@ -7506,7 +7506,9 @@ p {
   grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  max-width: 1180px;
+  /* 아래 에디터 카드(.floor-plan-editor, 1380px 중앙)와 같은 폭으로 —
+     헤더와 카드의 왼쪽 끝이 정확히 맞는다. (기존 1180px은 카드보다 안쪽으로 밀렸음) */
+  max-width: 1380px;
   margin: 0 auto;
 }
 
@@ -7547,6 +7549,8 @@ p {
   max-width: 1380px;
   min-height: calc(100vh - 98px);
   margin: 16px auto 0;
+  /* 요약 드로어(.floor-plan-drawer)의 기준 컨테이너 */
+  position: relative;
 }
 
 .floor-plan-stage-wrap {
@@ -7831,6 +7835,49 @@ p {
   flex-direction: column;
   gap: 14px;
   padding: 14px;
+  /* 상태 토스트 스택의 기준 좌표계 */
+  position: relative;
+}
+
+/* 상태 메시지 토스트 — 캔버스 하단 중앙에 최근 몇 개가 쌓였다가 자동으로 사라진다.
+   덮어쓰기·영구 잔류하던 한 줄 span을 대체. */
+.floor-plan-toast-stack {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.floor-plan-toast {
+  max-width: min(520px, 80vw);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(24, 30, 46, 0.86);
+  color: #f4f6fb;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  word-break: keep-all;
+  box-shadow: 0 8px 22px rgba(18, 24, 40, 0.28);
+  animation: floor-plan-toast-in 0.18s ease-out;
+}
+
+@keyframes floor-plan-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .floor-plan-canvas > .floor-plan-stage-wrap {
@@ -8230,23 +8277,107 @@ p {
   padding: 18px;
 }
 
-/* 도면 요약은 캔버스 아래 가로 배치 — 지표들이 한 줄 카드로 흘러 가독성이 좋아진다 */
-.floor-plan-bottompanel dl {
-  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+/* 요약 패널은 캔버스 오른쪽 위를 덮는 접이식 드로어 — ☰ 버튼으로 여닫는다.
+   캔버스 폭은 그대로 두고, 긴 슬라이드 대신 짧은 페이드+살짝 밀림으로 뜬다. */
+.floor-plan-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  grid-area: auto;
+  width: min(380px, 92vw);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 40;
+  opacity: 0;
+  transform: translateX(16px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s linear 0.18s;
 }
 
-.floor-plan-bottompanel dl div {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 4px;
-  min-height: 64px;
-  padding: 10px 14px;
+.floor-plan-drawer.is-open {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
-.floor-plan-bottompanel a {
-  justify-self: end;
-  min-width: 180px;
+.floor-plan-panel-toggle {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+/* 드로어 내부 섹션 — <details> 드롭다운. 제목(summary)을 클릭해 접고 펼친다 */
+.floor-plan-drawer-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcff;
+}
+
+.floor-plan-drawer-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.floor-plan-drawer-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.floor-plan-drawer-section > summary::after {
+  content: "▾";
+  margin-left: auto;
+  color: #8a91a2;
+  transition: transform 0.15s ease;
+}
+
+.floor-plan-drawer-section:not([open]) > summary::after {
+  transform: rotate(-90deg);
+}
+
+.floor-plan-drawer-section > summary em {
+  color: #8a91a2;
+  font-style: normal;
+}
+
+/* .floor-plan-sidepanel strong(1.16rem)이 summary 안 개수 표시를 키우지 않게 */
+.floor-plan-sidepanel .floor-plan-drawer-section > summary strong {
+  font-size: inherit;
+}
+
+.floor-plan-drawer-section-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+/* 섹션 안에 기존 카드 클래스가 겹칠 때 이중 박스가 되지 않게 리셋 */
+.floor-plan-drawer-section-body.floor-plan-furniture-library {
+  border: 0;
+  background: transparent;
+  padding: 0 12px 12px;
+}
+
+/* .floor-plan-sidepanel > div(grid)보다 구체적으로 써서 flex가 이기게 한다 */
+.floor-plan-sidepanel > .floor-plan-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.floor-plan-drawer-head > div {
+  display: grid;
+  gap: 6px;
 }
 
 .floor-plan-sidepanel > div {
@@ -8257,11 +8388,159 @@ p {
 .floor-plan-sidepanel span {
   color: var(--muted);
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .floor-plan-sidepanel strong {
   font-size: 1.16rem;
+}
+
+/* ── 투어 뷰어(tour-viewer)와 겉모양 통일 ──────────────────────────────
+   투어의 유리 패널 문법을 드로어에 입힌다: 반투명 paper + blur, 알약 버튼,
+   hover는 blue-soft 물들기, active는 blue 채움. 위치·구성은 그대로 두고
+   시각 토큰만 맞춘다. */
+.floor-plan-sidepanel.floor-plan-drawer {
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+}
+
+.floor-plan-drawer .floor-plan-drawer-section {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+}
+
+.floor-plan-drawer .floor-plan-secondary,
+.floor-plan-drawer .floor-plan-primary {
+  min-height: 38px;
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  box-shadow: none;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.floor-plan-drawer .floor-plan-secondary {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.floor-plan-drawer .floor-plan-secondary:hover:not(:disabled) {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.floor-plan-drawer .floor-plan-secondary.active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--paper);
+}
+
+.floor-plan-drawer .floor-plan-primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--paper);
+}
+
+.floor-plan-drawer .floor-plan-primary:disabled {
+  border-color: transparent;
+  background: #c6cede;
+}
+
+/* 치수 칩·후보 확정/삭제 버튼·가구 카드도 같은 라운드 계열로 */
+.floor-plan-drawer .floor-plan-dimension-chip,
+.floor-plan-drawer .floor-plan-candidate-actions button {
+  border-radius: 999px;
+}
+
+.floor-plan-drawer .floor-plan-furniture-grid button {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.floor-plan-drawer .floor-plan-furniture-grid button:hover {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.floor-plan-drawer .floor-plan-furniture-grid button {
+  border-color: var(--line);
+}
+
+/* 선택 가구 조작 줄의 클래스 없는 버튼(배치완료 등)도 투어식 알약으로 —
+   확정 성격의 액션이라 primary(파랑 채움)와 같게 간다. */
+.floor-plan-drawer .floor-plan-furniture-actions button:not(.floor-plan-secondary):not(.floor-plan-primary) {
+  min-height: 38px;
+  padding: 9px 16px;
+  border: 1px solid var(--blue);
+  border-radius: 999px;
+  background: var(--blue);
+  color: var(--paper);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+/* 가구 검색창 — 투어 힌트 배지처럼 알약 + 반투명 */
+.floor-plan-drawer .floor-plan-furniture-search input {
+  border-color: var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  padding: 0 14px;
+}
+
+.floor-plan-drawer .floor-plan-furniture-search input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+/* 카테고리 탭 — 활성 탭을 투어 프리셋 버튼처럼 파랑 채움으로 */
+.floor-plan-drawer .floor-plan-furniture-kind-tabs button {
+  border-color: var(--line);
+  background: transparent;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.floor-plan-drawer .floor-plan-furniture-kind-tabs button:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.floor-plan-drawer .floor-plan-furniture-kind-tabs button.active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--paper);
+}
+
+/* 정리 버튼 줄을 없애 액션 바에 저장 그룹만 남았다 — 원래 자리(오른쪽)를 유지한다 */
+.floor-plan-actions .floor-plan-actions-main {
+  margin-left: auto;
+}
+
+/* 드로어 안 안내·메타 문구는 <code>라 기본 고정폭 글꼴로 렌더된다 —
+   본문과 같은 글꼴로 통일해 글씨체가 섞이지 않게 한다. */
+.floor-plan-drawer code {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .floor-plan-sidepanel dl {
@@ -8284,12 +8563,13 @@ p {
 .floor-plan-sidepanel dt {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 500;
 }
 
 .floor-plan-sidepanel dd {
   margin: 0;
-  font-weight: 900;
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .floor-plan-sidepanel a {
@@ -8299,7 +8579,7 @@ p {
   border-radius: 12px;
   background: #111827;
   color: #ffffff;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .floor-plan-sim-preview {
@@ -8505,6 +8785,56 @@ p {
   font-weight: 700;
 }
 
+/* 방 크기 측정 바 — '세부 조정' 모드일 때만 툴바 아래에 뜨는 한 줄짜리 입력 UI */
+.floor-plan-interior-measure-strip {
+  align-items: center;
+  background: #f8fbff;
+  border: 1px solid rgba(33, 118, 255, 0.18);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+}
+
+.floor-plan-interior-measure-strip > span {
+  color: #0f2f61;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.floor-plan-interior-measure-strip > code {
+  font-size: 0.78rem;
+}
+
+.floor-plan-interior-measure-strip > input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  padding: 4px 8px;
+}
+
+/* 드로어 섹션 안으로 옮긴 뒤에는 섹션 박스가 이미 프레임 역할을 하므로
+   스트립 자체의 배경/테두리는 지우고, 좁은 폭에 맞춰 세로로 쌓는다. */
+.floor-plan-drawer-section-body .floor-plan-interior-measure-strip {
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.floor-plan-drawer-section-body .floor-plan-interior-measure-strip > code {
+  align-self: flex-start;
+  /* 드로어 안 안내 문구는 본문과 같은 글꼴로 — 고정폭이 섞이면 글씨체가 들쭉날쭉해 보인다 */
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .floor-plan-visible-dimension-strip {
   align-items: center;
   background: #f8fbff;
@@ -8540,10 +8870,6 @@ p {
 
   .floor-plan-toolbar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .floor-plan-sidepanel {
-    grid-row: 2;
   }
 }
 

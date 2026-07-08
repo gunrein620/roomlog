@@ -69,6 +69,12 @@ const managerContractApiSource = readFileSync(new URL("./src/lib/contract-manage
 const managerMessagingApiSource = readFileSync(new URL("./src/lib/messaging-manager-api.ts", import.meta.url), "utf8");
 const tradeControllerSource = readFileSync(new URL("../api/src/trade/trade.controller.ts", import.meta.url), "utf8");
 
+function requireSourceMatch(source, pattern, label) {
+  const match = source.match(pattern);
+  assert.ok(match, `${label} should be present`);
+  return match[0];
+}
+
 test("serves role frontends from the single web container on port 3000", () => {
   for (const source of [dockerComposeSource, prodComposeSource]) {
     assert.match(source, /^\s{2}web:/m);
@@ -1391,8 +1397,16 @@ test("extends and merges raw Roboflow wall boxes instead of dropping them from t
 });
 
 test("shows Roboflow post-processed walls as purple boxes instead of black center lines", () => {
-  assert.match(floorPlanEditorSource, /isRoboflowPostProcessedWall/);
-  assert.match(floorPlanEditorSource, /if \(isRoboflowPostProcessedWall\) return/);
+  const postProcessedWallBranch = requireSourceMatch(
+    floorPlanContainerSource,
+    /if \(isRoboflowPostProcessedWall\) \{[\s\S]*?return;\s*\}\s*if \(selectedWall\?\.id === wall\.id\)/,
+    "Roboflow post-processed wall drawing branch"
+  );
+
+  assert.match(postProcessedWallBranch, /if \(selectedWall\?\.id === wall\.id\) drawWall\(wall, "selected"\)/);
+  assert.match(postProcessedWallBranch, /else if \(partialEraserSelectedWall\?\.id === wall\.id\) drawWall\(wall, "erase"\)/);
+  assert.match(postProcessedWallBranch, /else if \(hoveredWall\?\.id === wall\.id\) drawWall\(wall, "hover"\)/);
+  assert.doesNotMatch(postProcessedWallBranch, /drawWall\(wall(?:\)|,\s*"(?:normal|hidden|ai-missing|ai-room)")/);
 });
 
 test("preserves raw Roboflow wall boxes and a stable wall-axis source for post-processing", () => {
@@ -1441,42 +1455,56 @@ test("aligns wall overlay thickness from already fitted Roboflow opening lines",
 });
 
 test("keeps merged Roboflow wall rendering aligned to fitted opening lines after edge snapping", () => {
-  assert.match(floorPlanEditorSource, /const openingAlignedSnappedWallBoxes = alignWallBoxesToFittedOpeningLines/);
-  assert.match(floorPlanEditorSource, /snappedWallBoxes\.map\(\(box\) => createPostProcessedWallOverlayBox\(box\)\)/);
-  assert.match(floorPlanEditorSource, /openingOverlayBoxes/);
-  assert.match(floorPlanEditorSource, /\.map\(\(overlayBox\) => overlayBox\.box\)/);
+  assert.match(
+    floorPlanContainerSource,
+    /const fittedOpeningBoxes = snapOpeningBoxEdgesToNearbyWallBreaks\(\s*fitOpeningBoxesToPostProcessedWalls\(rawOpeningDisplayBoxes, cornerTrimmedWallBoxes\),\s*rawWallDisplayBoxes\s*\);/
+  );
+  assert.match(floorPlanEditorSource, /const openingLineAlignedWallBoxes = alignWallBoxesToFittedOpeningLines\(cornerTrimmedWallBoxes, fittedOpeningBoxes\)/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners\(openingLineAlignedWallBoxes\)/);
+  assert.match(floorPlanEditorSource, /setDetectionBoxes\(\[\.\.\.cornerAlignedWallBoxes, \.\.\.fittedOpeningBoxes\]\)/);
 });
 
 test("propagates fitted Roboflow wall lines across connected perpendicular corner boxes", () => {
   assert.match(floorPlanEditorSource, /alignConnectedPerpendicularWallBoxCorners/);
   assert.match(floorPlanEditorSource, /const perpendicularCornerLineTolerance = 14/);
   assert.match(floorPlanEditorSource, /const perpendicularCornerTouchTolerance = 24/);
-  assert.match(floorPlanEditorSource, /const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
-  assert.match(floorPlanEditorSource, /const cornerAlignedSnappedWallBoxes = alignConnectedPerpendicularWallBoxCorners/);
+  assert.match(floorPlanEditorSource, /const cornerAlignedWallBoxes = alignConnectedPerpendicularWallBoxCorners\(openingLineAlignedWallBoxes\)/);
   assert.match(floorPlanEditorSource, /verticalBox\.y1 = horizontalBox\.y1/);
   assert.match(floorPlanEditorSource, /horizontalBox\.x2 = verticalBox\.x2/);
 });
 
 test("renders raw Roboflow walls as original boxes and merged post-processed walls", () => {
-  assert.match(floorPlanEditorSource, /drawRoboflowDetectionOverlays/);
-  assert.match(floorPlanEditorSource, /const wallOverlayBoxes = detectionBoxes\.filter/);
-  assert.match(floorPlanEditorSource, /const openingOverlayBoxes = detectionBoxes\.filter/);
-  assert.match(floorPlanEditorSource, /drawRawWallOverlayBox/);
-  assert.match(floorPlanEditorSource, /const hasPostProcessedWall = wallOverlayBoxes\.some/);
-  assert.match(floorPlanEditorSource, /if \(hasPostProcessedWall\) drawMergedWallOverlayBoxes\(\)/);
-  assert.match(floorPlanEditorSource, /else wallOverlayBoxes\.forEach\(drawRawWallOverlayBox\)/);
-  assert.match(floorPlanEditorSource, /drawMergedWallOverlayBoxes/);
+  const roboflowOverlayBlock = requireSourceMatch(
+    floorPlanContainerSource,
+    /const drawRoboflowDetectionOverlays = \(\) => \{[\s\S]*?context\.restore\(\);\s*\};/,
+    "Roboflow detection overlay drawing function"
+  );
+  const mergedWallOverlayBlock = requireSourceMatch(
+    roboflowOverlayBlock,
+    /const drawMergedWallOverlayBoxes = \(\) => \{[\s\S]*?context\.globalAlpha = 1;\s*\};/,
+    "merged Roboflow wall overlay drawing branch"
+  );
+
+  assert.match(roboflowOverlayBlock, /const detectionColors = \{ DOOR: "#e11d48", WALL: "#7c3aed", WINDOW: "#a3b800" \}/);
+  assert.match(roboflowOverlayBlock, /const wallOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(roboflowOverlayBlock, /const openingOverlayBoxes = detectionBoxes\.filter/);
+  assert.match(roboflowOverlayBlock, /drawRawWallOverlayBox/);
+  assert.match(roboflowOverlayBlock, /const hasPostProcessedWall = wallOverlayBoxes\.some/);
+  assert.match(roboflowOverlayBlock, /if \(hasPostProcessedWall\) drawMergedWallOverlayBoxes\(\)/);
+  assert.match(roboflowOverlayBlock, /else wallOverlayBoxes\.forEach\(drawRawWallOverlayBox\)/);
+  assert.match(mergedWallOverlayBlock, /context\.strokeStyle = detectionColors\.WALL/);
   assert.doesNotMatch(floorPlanEditorSource, /bridgeTouchingWallOverlayCorners/);
   assert.doesNotMatch(floorPlanEditorSource, /cornerBridgeTolerance/);
-  assert.match(floorPlanEditorSource, /const edgeSnapTolerance = 24/);
   assert.doesNotMatch(floorPlanEditorSource, /const edgeSnapTolerance = 14 \/ viewScale/);
-  assert.match(floorPlanEditorSource, /coveredWallCells/);
-  assert.match(floorPlanEditorSource, /context\.lineCap = "butt"/);
-  assert.doesNotMatch(floorPlanEditorSource, /context\.lineCap = "square"/);
-  assert.match(floorPlanEditorSource, /context\.stroke\(\)/);
+  assert.match(mergedWallOverlayBlock, /coveredWallCells/);
+  assert.match(mergedWallOverlayBlock, /context\.lineCap = "butt"/);
+  assert.doesNotMatch(mergedWallOverlayBlock, /context\.lineCap = "square"/);
+  assert.match(mergedWallOverlayBlock, /context\.stroke\(\)/);
   assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(fillWallOverlayBox\)/);
   assert.doesNotMatch(floorPlanEditorSource, /wallOverlayBoxes\.forEach\(strokeVisibleWallEdges\)/);
-  assert.match(floorPlanEditorSource, /openingOverlayBoxes\.forEach\(drawOpeningOverlayBox\)/);
+  assert.match(mergedWallOverlayBlock, /const staticCutBoxes = openingOverlayBoxes[\s\S]*?const openingCutBoxes = \[\.\.\.staticCutBoxes, \.\.\.liveOpeningCutBoxes\]/);
+  assert.match(mergedWallOverlayBlock, /const insideOpening = openingCutBoxes\.some/);
+  assert.doesNotMatch(roboflowOverlayBlock, /drawOpeningOverlayBox/);
 });
 
 test("lets 3D floor plan walls be selected, erased, partially erased, and hidden", () => {
@@ -1547,16 +1575,68 @@ test("offers commercial candidate layers for openings and fixed fixtures", () =>
   for (const label of [
     "openingCandidates",
     "fixtureCandidates",
-    "문/창문 확정",
-    "고정설비 확정",
+    "pendingCandidates",
+    "floor-plan-candidate-bulk",
+    "floor-plan-candidate-list",
+    "floor-plan-candidate-actions",
+    "candidateTypeLabel",
     "toggleCandidateStatus",
     "moveCandidate",
-    "후보 레이어",
     "CONFIRMED",
     "REJECTED"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
+  for (const label of ["후보 검토 대기", "처리됨", "80%↑ 모두 확정", "전체 확정", "전체 삭제"]) {
+    assert.match(floorPlanContainerSource, new RegExp(label));
+  }
+  assert.match(floorPlanEditorSource, /onClick=\{\(\) => bulkSetCandidateStatus\(0, "CONFIRMED"\)\}/);
+  assert.match(floorPlanEditorSource, /onClick=\{\(\) => bulkSetCandidateStatus\(0, "REJECTED"\)\}/);
+  assert.match(floorPlanEditorSource, /onClick=\{\(\) => toggleCandidateStatus\(layer, candidate\.id, "CONFIRMED"\)\}/);
+  assert.match(floorPlanEditorSource, /onClick=\{\(\) => toggleCandidateStatus\(layer, candidate\.id, "REJECTED"\)\}/);
+});
+
+test("keeps canvas candidate clicks from changing candidate status", () => {
+  const candidateDragStateMatch = floorPlanContainerSource.match(/const \[candidateDragOperation[\s\S]*?\} \| null>\(null\);/);
+  const openingCandidateBranchMatch = floorPlanContainerSource.match(/if \(tool === "opening"\) \{[\s\S]*?if \(tool === "fixture"\)/);
+  const fixtureCandidateBranchMatch = floorPlanContainerSource.match(/if \(tool === "fixture"\) \{[\s\S]*?if \(tool === "eraser"\)/);
+  const mouseUpCandidateBranchMatch = floorPlanContainerSource.match(/function handleMouseUp[\s\S]*?if \(wallDragOperation\)/);
+  const setCandidateGeometryBlockMatch = floorPlanContainerSource.match(
+    /function setCandidateGeometry\([\s\S]*?if \(layer === "opening"\) setOpeningCandidates\(updater\);\s*else setFixtureCandidates\(updater\);\s*\}/
+  );
+
+  assert.ok(candidateDragStateMatch, "candidate drag operation state should be declared");
+  assert.ok(openingCandidateBranchMatch, "opening candidate mouse down branch should be present");
+  assert.ok(fixtureCandidateBranchMatch, "fixture candidate mouse down branch should be present");
+  assert.ok(mouseUpCandidateBranchMatch, "candidate mouse up branch should be present");
+  assert.ok(setCandidateGeometryBlockMatch, "candidate geometry updater should be present");
+
+  const candidateDragStateBlock = candidateDragStateMatch[0];
+  const openingCandidateBranch = openingCandidateBranchMatch[0];
+  const fixtureCandidateBranch = fixtureCandidateBranchMatch[0];
+  const mouseUpCandidateBranch = mouseUpCandidateBranchMatch[0];
+  const setCandidateGeometryBlock = setCandidateGeometryBlockMatch[0];
+  const candidateStatusMutationPattern =
+    /\btoggleCandidateStatus\b|\bbulkSetCandidateStatus\b|\bupdateCandidateStatus\b|\bsetOpeningCandidates\b|\bsetFixtureCandidates\b|\bstatus\s*:/;
+
+  assert.match(openingCandidateBranch, /setSelectedCandidate\(\{ id: hit\.candidate\.id, layer: "opening" \}\)/);
+  assert.match(
+    fixtureCandidateBranch,
+    /setSelectedCandidate\(closestCandidate \? \{ id: closestCandidate\.id, layer: "fixture" \} : null\)/
+  );
+  assert.doesNotMatch(candidateDragStateBlock, /\bshiftKey\b/);
+  assert.doesNotMatch(floorPlanContainerSource, /shiftKey:\s*event\.shiftKey/);
+  assert.match(openingCandidateBranch, /if \(event\.altKey\) \{\s*toggleOpeningCandidateType\(hit\.candidate\.id\);/);
+  assert.doesNotMatch(openingCandidateBranch, candidateStatusMutationPattern);
+  assert.doesNotMatch(fixtureCandidateBranch, candidateStatusMutationPattern);
+  assert.match(mouseUpCandidateBranch, /if \(candidateDragOperation\)/);
+  assert.match(mouseUpCandidateBranch, /if \(candidateDragOperation\.moved\)/);
+  assert.doesNotMatch(mouseUpCandidateBranch, candidateStatusMutationPattern);
+  assert.doesNotMatch(setCandidateGeometryBlock, /\bupdateCandidateStatus\b|\bstatus\s*:/);
+  assert.match(floorPlanContainerSource, /toggleCandidateStatus\(layer, candidate\.id, "CONFIRMED"\)/);
+  assert.match(floorPlanContainerSource, /toggleCandidateStatus\(layer, candidate\.id, "REJECTED"\)/);
+  assert.match(floorPlanContainerSource, /bulkSetCandidateStatus\(0, "CONFIRMED"\)/);
+  assert.match(floorPlanContainerSource, /bulkSetCandidateStatus\(0, "REJECTED"\)/);
 });
 
 test("removes legacy floor plan OpenAI analysis controls", () => {
