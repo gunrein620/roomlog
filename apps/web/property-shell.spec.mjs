@@ -1086,8 +1086,10 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*position:\s*fixed/s);
   assert.match(cssSource, /\.detail-quick-actions/);
   assert.match(cssSource, /\.detail-quick-actions button:first-child/);
-  // 3D 둘러보기를 문의 버튼과 비슷한 체급으로 키운 새 그리드(56px + 1fr + 1.3fr)를 확인한다.
-  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*56px minmax\(0, 1fr\) minmax\(0, 1\.3fr\)/s);
+  // 전화·3D 둘러보기·1인칭 체험·문자 문의 4버튼 그리드(임시 데모).
+  assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*52px minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.35fr\)/s);
+  // 1인칭 체험 버튼은 splat 투어 페이지로 직접 이동한다.
+  assert.match(pageSource, /detail-contact-splat[\s\S]*href="\/splat-tour"/);
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*padding:\s*24px 14px 12px/s);
   assert.match(cssSource, /\.detail-contact-small,\s*[\s\S]*?\.detail-contact-tour\s*{[^}]*min-height:\s*54px/s);
   assert.match(cssSource, /\.detail-gallery\s*{[^}]*height:\s*clamp\(380px, 48vh, 440px\)/s);

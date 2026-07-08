@@ -2850,6 +2850,11 @@ function ListingDetailView({
           <span>3D</span>
           <strong>둘러보기</strong>
         </button>
+        {/* 임시 데모용 — 1인칭 체험은 splat 투어 페이지로 바로 이동한다(woo-zu.com/splat-tour) */}
+        <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
+          <span>1인칭</span>
+          <strong>체험</strong>
+        </a>
         <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
           <strong>문자로 문의하기</strong>
           <span>방문 가능 여부 바로 확인</span>

@@ -3527,9 +3527,9 @@ p {
   left: 50%;
   z-index: 60;
   display: grid;
-  /* 3D 둘러보기를 문의 버튼과 비슷한 체급으로 — 본문 3D 배너를 없앤 대신 여기가 주 진입점 */
-  grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1.3fr);
-  gap: 8px;
+  /* 전화 · 3D 둘러보기 · 1인칭 체험 · 문자 문의 — 4버튼 하단 바(임시 데모) */
+  grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: 7px;
   width: min(100%, 430px);
   padding: 24px 14px 12px;
   border-top: 1px solid #eceef3;
@@ -3611,16 +3611,23 @@ p {
   border: 1px solid rgba(47, 85, 255, 0.4);
   background: #f0f4ff;
   color: #193274;
+  text-decoration: none;
 }
 
 /* 공용 규칙(0.72rem)보다 뒤에 둬서 3D 둘러보기 라벨을 키운다 */
 .detail-contact-tour strong {
-  font-size: 0.92rem;
+  font-size: 0.9rem;
 }
 
 .detail-contact-tour span {
   color: var(--blue);
   font-size: 0.68rem;
+}
+
+/* 1인칭 체험(splat 투어) — 3D 둘러보기와 구분되게 살짝 강조 */
+.detail-contact-splat {
+  border-color: rgba(47, 85, 255, 0.55);
+  background: #e6edff;
 }
 
 .detail-screen {
