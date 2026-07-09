@@ -36,12 +36,12 @@ export default async function TenantIndex({
     }
 
     if (linkError) {
-      redirect(`${unifiedLoginPath("tenant", "/?role=tenant&tab=mypage")}&error=${encodeURIComponent(linkError)}`);
+      redirect(`${unifiedLoginPath("tenant", "/living")}&error=${encodeURIComponent(linkError)}`);
     }
 
-    redirect("/?role=tenant&tab=mypage");
+    redirect("/living");
   }
 
-  await requireUser("TENANT", "/?role=tenant&tab=mypage");
-  redirect("/?role=tenant&tab=mypage");
+  await requireUser("TENANT", "/living");
+  redirect("/living");
 }

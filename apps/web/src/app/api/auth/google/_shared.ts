@@ -64,9 +64,9 @@ export async function runtimeEnv(key: string) {
 }
 
 export function defaultRedirectForRole(role: GoogleOauthRole) {
-  if (role === "LANDLORD") return "/?role=landlord&tab=mypage";
+  if (role === "LANDLORD") return "/sell";
   if (role === "VENDOR") return "/vendor/job/00";
-  if (role === "TENANT") return "/?role=tenant&tab=mypage";
+  if (role === "TENANT") return "/living";
   return "/";
 }
 

@@ -76,9 +76,8 @@ import {
   type MapPanelItem,
   type TradeListing
 } from "../lib/listing-catalog";
-import { MyFlowBar, savedConditions, type MyFlow } from "./my/flows/my-shared";
+import { savedConditions } from "./my/flows/my-shared";
 import LandlordMyPage from "./my/flows/LandlordMyPage";
-import UserMyPage from "./my/flows/UserMyPage";
 import TenantMyPage from "./my/flows/TenantMyPage";
 import {
   naverMapScriptUrl,
@@ -106,7 +105,7 @@ import {
   serializeOwnerDraft
 } from "../lib/owner-draft";
 
-type AppTab = "home" | "map" | "saved" | "inquiry" | "mypage";
+type AppTab = "home" | "map" | "saved" | "inquiry" | "sell" | "living";
 type MapResultTab = "rooms" | "complexes" | "agents";
 
 
@@ -117,12 +116,12 @@ const protectedRoleConfig = {
   tenant: {
     sessionRole: "TENANT",
     intent: "tenant",
-    redirectTo: "/?role=tenant&tab=mypage"
+    redirectTo: "/living"
   },
   landlord: {
     sessionRole: "LANDLORD",
     intent: "landlord",
-    redirectTo: "/?role=landlord&tab=mypage"
+    redirectTo: "/sell"
   }
 } as const;
 
@@ -132,9 +131,11 @@ const normalizeAppRole = (value: string | null): AppRole | null => {
 };
 
 const normalizeAppTab = (value: string | null): AppTab | null => {
-  if (value === "home" || value === "map" || value === "saved" || value === "inquiry" || value === "mypage") {
+  if (value === "home" || value === "map" || value === "saved" || value === "inquiry" || value === "sell" || value === "living") {
     return value;
   }
+  // 레거시 딥링크 하위호환: mypage는 이제 역할별 탭으로 분리됐다.
+  if (value === "mypage") return "sell";
   return null;
 };
 
@@ -259,14 +260,9 @@ const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: st
   { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
   { key: "saved", label: "찜", Icon: Heart, href: "#saved-list" },
   { key: "inquiry", label: "문의", Icon: MessageCircle, href: "#inquiry" },
-  { key: "mypage", label: "마이페이지", Icon: UserRound, href: "#my-page" }
+  { key: "living", label: "세입자", Icon: UserRound, href: "#my-page" },
+  { key: "sell", label: "매물등록", Icon: House, href: "#my-page" }
 ];
-
-const roleDisplayLabels: Record<AppRole, string> = {
-  seeker: "방 찾기",
-  tenant: "세입자",
-  landlord: "집주인"
-};
 
 const mapResultTabs: Array<{ key: MapResultTab; label: string }> = [
   { key: "rooms", label: "전체 방" },
@@ -888,7 +884,8 @@ const TAB_PATHS: Record<AppTab, string> = {
   map: "/map",
   saved: "/saved",
   inquiry: "/inquiry",
-  mypage: "/my"
+  sell: "/sell",
+  living: "/living"
 };
 
 const tabForPathname = (pathname: string): AppTab | null => {
@@ -970,7 +967,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     .filter((listing) => listing.status !== "계약완료")
     .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
   const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
-  const activeRoleLabel = roleDisplayLabels[activeRole];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const visibleHomeListings = allListings.filter((listing) => {
@@ -1067,10 +1063,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // 지도 마커 = 좌표가 유효한 매물만 (직접등록 매물 포함 — QA: 지도에 매물 안 찍힘)
   const mapMarkers = visibleMapListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
   const findListingCardByNo = (listingNo: string) => allListings.find((listing) => listing.listingNo === listingNo);
-
-  const viewedListings = viewedListingNos
-    .map((listingNo) => allListings.find((listing) => listing.listingNo === listingNo))
-    .filter((listing): listing is Listing => Boolean(listing));
 
   const inquiryComposeListing = inquiryComposeListingNo
     ? allListings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
@@ -1202,7 +1194,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setAuthMode(null);
     setIsDevRolePreview(false);
     setActiveRole(nextRole);
-    setActiveTab(nextRole === "seeker" ? "home" : "mypage");
+    // 로그인 직후 도착지: 임대인→매물등록, 세입자→세입자, 그 외→홈.
+    setActiveTab(nextRole === "landlord" ? "sell" : nextRole === "tenant" ? "living" : "home");
     resetWindowScrollSoon();
   };
 
@@ -1259,15 +1252,16 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       // /login의 "관리 중인 집 연결 필요" CTA가 여기로 온다 (로그인 루프 방지, QA 2).
       urlRoleAppliedRef.current = true;
       setActiveRole("landlord");
-      setActiveTab("mypage");
+      setActiveTab("sell");
       setIsListingStartMode(true);
       setAuthMode(null);
-      window.history.replaceState(null, "", TAB_PATHS.mypage + window.location.hash);
+      window.history.replaceState(null, "", TAB_PATHS.sell + window.location.hash);
       resetWindowScrollSoon();
     } else if (role) {
       urlRoleAppliedRef.current = true;
       setActiveRole(role);
-      const nextTab = tab ?? (role === "seeker" ? "home" : "mypage");
+      // 레거시 ?role=&tab=mypage 딥링크 하위호환: 역할별 전용 탭으로 보낸다.
+      const nextTab: AppTab = role === "landlord" ? "sell" : role === "tenant" ? "living" : tab ?? "home";
       setActiveTab(nextTab);
       setAuthMode(null);
       setIsDevRolePreview(false);
@@ -1351,8 +1345,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     };
   }, []);
 
-  // "내 흐름" 셀렉트 제거 이후: 역할은 로그인 계정의 capability에서 자동 결정된다.
-  // (URL 딥링크가 역할을 명시했으면 그 선택을 존중, 이후 전환은 마이페이지 흐름 칩이 담당)
+  // 역할은 로그인 계정의 capability에서 자동 결정된다.
+  // (URL 딥링크가 역할을 명시했으면 그 선택을 존중, 이후 전환은 상단 메뉴 탭이 담당)
   useEffect(() => {
     if (!viewer || urlRoleAppliedRef.current) return;
     setActiveRole(
@@ -1362,12 +1356,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
   // 집 내놓기 시작 모드는 보호 대상에서 제외 — 등록 시작은 capability가 아니라
   // 매물 등록 자체가 LANDLORD 관계를 만드는 진입점이다. 관리 콘솔(/manager/*)은 계속 서버 가드.
+  // 페이지는 이제 탭이 직접 결정한다: 매물등록(sell)=임대인, 세입자(living)=세입자.
   const protectedConfig =
-    activeTab === "mypage" && (activeRole === "tenant" || activeRole === "landlord")
-      ? activeRole === "landlord" && isListingStartMode
+    activeTab === "sell"
+      ? isListingStartMode
         ? null
-        : protectedRoleConfig[activeRole]
-      : null;
+        : protectedRoleConfig.landlord
+      : activeTab === "living"
+        ? protectedRoleConfig.tenant
+        : null;
   const isProtectedRolePage = Boolean(protectedConfig);
   const canAccessProtectedRolePage =
     !protectedConfig ||
@@ -1387,20 +1384,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setActiveTab("home");
     setAuthMode(null);
     setIsDevRolePreview(false);
-  };
-
-  // 내 룸로그 흐름 전환: 한 계정에서 탐색·임대인·세입자 마이페이지를 오가고,
-  // 관리자 흐름은 기존 관리 콘솔 화면으로 이어준다. (데모 미리보기 — 로그인 강제 없음)
-  const openMyFlow = (flow: MyFlow) => {
-    if (flow === "managing") {
-      window.location.href = "/manager/home/00";
-      return;
-    }
-
-    setIsDevRolePreview(true);
-    setActiveRole(flow === "listing" ? "landlord" : flow === "living" ? "tenant" : "seeker");
-    setActiveTab("mypage");
-    resetWindowScrollSoon();
   };
 
   if (authMode) {
@@ -1449,11 +1432,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 문의
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
-              <button className={activeTab === "mypage" ? "active" : ""} type="button" onClick={() => activateTab("mypage")}>마이페이지</button>
+              <button className={activeTab === "living" ? "active" : ""} type="button" onClick={() => activateTab("living")}>세입자</button>
+              <button type="button" onClick={() => { window.location.href = "/manager/home/00"; }}>관리</button>
+              <button className={activeTab === "sell" ? "active" : ""} type="button" onClick={() => activateTab("sell")}>매물등록</button>
             </nav>
             <div className="web-topbar-actions">
-              {/* "내 흐름" 테스트 역할 셀렉트 제거 — 역할은 로그인 계정 capability에서 자동 결정되고,
-                  마이페이지 안의 흐름 칩(MyFlowBar)이 다중 역할 전환을 담당한다. */}
+              {/* 역할은 상단 메뉴(세입자·관리·매물등록)에서 직접 진입한다 — 별도 역할 셀렉트/칩 없음. */}
               {viewer ? (
                 <div className="web-profile-menu" aria-label="로그인 사용자">
                   <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
@@ -1476,7 +1460,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <div>
               <p className="brand-kicker">{selectedAreaTitle} 주변</p>
               <h1 id="home-title">{selectedAreaTitle} 조건에 맞는 방 {visibleHomeCount}개</h1>
-              <span className="role-chip">{activeRoleLabel}</span>
               <span className="active-condition-chip">선택 조건 {activeFilterSummary}</span>
             </div>
             <button className="round-button" type="button" aria-label="알림" onClick={() => setIsNotificationSheetOpen(true)}>
@@ -1727,7 +1710,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                     return;
                   }
 
-                  activateTab("mypage");
+                  // "방 내놓기" → 매물등록
+                  activateTab("sell");
                 }}
               >
                 <span>{action.label}</span>
@@ -2035,29 +2019,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         {activeTab === "inquiry" ? (
           <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
         ) : null}
-        {activeTab === "mypage" && activeRole === "landlord" ? (
-          <LandlordMyPage onSelectFlow={openMyFlow} onGoHome={() => activateTab("home")} />
+        {activeTab === "sell" ? (
+          <LandlordMyPage onGoHome={() => activateTab("home")} />
         ) : null}
-        {activeTab === "mypage" && activeRole === "tenant" ? (
+        {activeTab === "living" ? (
           <TenantMyPage
-            onSelectFlow={openMyFlow}
             onGoInquiry={() => activateTab("inquiry")}
-            onGoHome={() => activateTab("home")}
-          />
-        ) : null}
-        {activeTab === "mypage" && activeRole === "seeker" ? (
-          <UserMyPage
-            roleLabel={activeRoleLabel}
-            savedCount={savedListingNos.length}
-            viewedListings={viewedListings}
-            inquiries={inquiries}
-            onGoSaved={() => activateTab("saved")}
-            onGoInquiry={() => activateTab("inquiry")}
-            onOpenListing={openListing}
-            onOpenFilter={() => setIsFilterSheetOpen(true)}
-            onOpenNotifications={() => setIsNotificationSheetOpen(true)}
-            onApplyCondition={applySavedCondition}
-            onSelectFlow={openMyFlow}
             onGoHome={() => activateTab("home")}
           />
         ) : null}
@@ -2078,6 +2045,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 문의 ${inquiryBadgeCount}건`} /> : null}
             </a>
           ))}
+          <a href="/manager/home/00" onClick={(event) => { event.preventDefault(); window.location.href = "/manager/home/00"; }}>
+            <Building2 size={22} strokeWidth={2.3} aria-hidden="true" />
+            관리
+          </a>
         </nav>
 
         <FilterBottomSheet

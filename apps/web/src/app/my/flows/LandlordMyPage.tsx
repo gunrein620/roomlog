@@ -38,7 +38,6 @@ import {
   DEMO_VENDOR_PERF,
   DEMO_VENDORS
 } from "@/lib/demo-vendor-mgmt";
-import { MyFlowBar, type MyFlow } from "./my-shared";
 
 // 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
 let naverMapsLoadPromise: Promise<boolean> | null = null;
@@ -308,7 +307,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
-export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlow: (flow: MyFlow) => void; onGoHome: () => void }) {
+export default function LandlordMyPage({ onGoHome }: { onGoHome: () => void }) {
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
@@ -793,24 +792,21 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-title">
-      <MyFlowBar
-        activeFlow="listing"
-        onSelectFlow={onSelectFlow}
-        menuSlot={
-          <button
-            className="owner-sidebar-toggle"
-            type="button"
-            aria-expanded={isOwnerSidebarOpen}
-            title={isOwnerSidebarOpen ? "기능 메뉴 접기" : "기능 메뉴 펼치기"}
-            onClick={() => setIsOwnerSidebarOpen((open) => !open)}
-          >
-            {isOwnerSidebarOpen
-              ? <PanelLeftClose size={16} strokeWidth={2.4} aria-hidden="true" />
-              : <PanelLeftOpen size={16} strokeWidth={2.4} aria-hidden="true" />}
-            <strong>메뉴</strong>
-          </button>
-        }
-      />
+      <div className="mypage-role-bar owner-toolbar">
+        <button
+          className="owner-sidebar-toggle"
+          type="button"
+          aria-expanded={isOwnerSidebarOpen}
+          title={isOwnerSidebarOpen ? "기능 메뉴 접기" : "기능 메뉴 펼치기"}
+          onClick={() => setIsOwnerSidebarOpen((open) => !open)}
+        >
+          {isOwnerSidebarOpen
+            ? <PanelLeftClose size={16} strokeWidth={2.4} aria-hidden="true" />
+            : <PanelLeftOpen size={16} strokeWidth={2.4} aria-hidden="true" />}
+          <strong>메뉴</strong>
+        </button>
+        <span>매물 등록 · 관리</span>
+      </div>
 
       <div className={`owner-dashboard-layout${isOwnerSidebarOpen ? "" : " sidebar-collapsed"}`}>
         {isOwnerSidebarOpen ? (

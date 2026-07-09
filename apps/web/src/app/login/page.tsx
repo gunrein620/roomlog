@@ -138,7 +138,7 @@ export default function UnifiedLoginPage() {
             </span>
           ) : null}
           <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap", justifyContent: "center" }}>
-            {/* landlord는 보호된 마이페이지(/?role=landlord)가 아니라 비보호 등록 시작(flow=listing)으로 —
+            {/* landlord는 보호된 매물등록(/sell)이 아니라 비보호 등록 시작(flow=listing)으로 —
                 capability 없는 계정이 CTA를 눌러 다시 /login으로 돌아오는 루프 방지 (QA 2) */}
             <a
               href={state.intent === "landlord" ? "/?flow=listing" : "/"}

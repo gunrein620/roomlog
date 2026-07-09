@@ -66,14 +66,14 @@ test("google_state regression: the oauth context round-trips with safe redirect 
   const encoded = encodeGoogleOauthContext({
     role: "LANDLORD",
     flow: "login",
-    redirectTo: "/?role=landlord&tab=mypage",
+    redirectTo: "/sell",
     errorRedirectTo: "/login?intent=landlord",
     inviteToken: undefined
   });
   const decoded = decodeGoogleOauthContext(encoded);
 
   assert.equal(decoded?.role, "LANDLORD");
-  assert.equal(decoded?.redirectTo, "/?role=landlord&tab=mypage");
+  assert.equal(decoded?.redirectTo, "/sell");
   assert.equal(decoded?.errorRedirectTo, "/login?intent=landlord");
 });
 
@@ -87,7 +87,7 @@ test("google_state regression: unsafe redirect targets fall back to the unified 
   const decoded = decodeGoogleOauthContext(encoded);
 
   // 외부 URL은 차단되고 intent 기본 경로/통합 로그인으로 폴백한다.
-  assert.equal(decoded?.redirectTo, "/?role=tenant&tab=mypage");
+  assert.equal(decoded?.redirectTo, "/living");
   assert.equal(decoded?.errorRedirectTo, "/login?intent=tenant");
 });
 
