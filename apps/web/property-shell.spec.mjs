@@ -1293,7 +1293,9 @@ test("links the landlord 3D floor plan action to the dedicated creation page", (
   for (const label of ["3D 도면", "123123", "FloorPlanEditor", "초안 저장", "등록"]) {
     assert.match(floorPlanRouteSource, new RegExp(label));
   }
-  assert.match(floorPlanRouteSource, /href="\/my\?flow=listing#my-page"/);
+  // 뒤로가기는 매물등록(/sell)으로 — /my는 삭제된 라우트라 404가 났었다(회귀 방지).
+  assert.match(floorPlanRouteSource, /href="\/sell\?flow=listing#my-page"/);
+  assert.doesNotMatch(floorPlanRouteSource, /href="\/my\?flow=listing/);
   assert.match(floorPlanEditorSource, /FLOOR_PLAN_LISTING_RETURN_PATH/);
   assert.match(floorPlanEditorSource, /window\.location\.href = FLOOR_PLAN_LISTING_RETURN_PATH/);
   assert.match(floorPlanEditorSource, /disabled=\{isProcessing \|\| roomWalls3D\.length === 0\}/);

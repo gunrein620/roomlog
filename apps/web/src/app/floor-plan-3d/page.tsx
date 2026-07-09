@@ -9,7 +9,7 @@ export default function FloorPlan3DPage() {
       data-editor-component="FloorPlanEditor"
     >
       <header className="floor-plan-topbar">
-        <a href="/my?flow=listing#my-page" aria-label="매물 등록으로 돌아가기">
+        <a href="/sell?flow=listing#my-page" aria-label="매물 등록으로 돌아가기">
           ←
         </a>
         <div>
