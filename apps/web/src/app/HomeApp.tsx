@@ -943,12 +943,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
   const [isListingStartMode, setIsListingStartMode] = useState(false);
   const isAuthHistoryPushedRef = useRef(false);
-  // 집주인이 직접 등록한 서버 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
+  // 공개 검수된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
   const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
   useEffect(() => {
     let cancelled = false;
     const load = () =>
-      fetch("/api/trade/listings", { cache: "no-store" })
+      fetch("/api/trade/listings/public", { cache: "no-store" })
         .then((res) => (res.ok ? res.json() : []))
         .then((data: TradeListing[]) => {
           if (!cancelled && Array.isArray(data)) setTradeListings(data);
@@ -1565,7 +1565,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             {visibleHomeListings.length > 0 ? (
               <>
                 {visibleHomeListings.map((listing) => (
-                  <article className="listing-card" key={listing.title}>
+                  <article className="listing-card" key={listing.listingNo}>
                     <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
                       <div className="listing-photo">
                         <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />

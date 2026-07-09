@@ -57,11 +57,15 @@ export type TradeListingInput = {
   floorPlan?: ListingFloorPlan | null;
 };
 
+export type TradeListingReviewStatus = "pending" | "approved" | "rejected";
+
 export type TradeListing = Omit<TradeListingInput, "images"> & {
   id: string;
   ownerId: string;
   ownerName: string;
   status: "노출중" | "계약완료";
+  reviewStatus: TradeListingReviewStatus;
+  publishedAt?: string;
   createdAt: string;
   images: string[];
 };
@@ -148,6 +152,10 @@ function normalizeImages(images?: string[]): string[] {
     .map((url) => url.trim())
     .filter((url) => url.length > 0)
     .slice(0, MAX_LISTING_IMAGES);
+}
+
+function normalizeReviewStatus(value: unknown): TradeListingReviewStatus {
+  return value === "approved" || value === "rejected" ? value : "pending";
 }
 
 /** 지오코딩 좌표 정규화 — 유한수 쌍일 때만 저장(둘 다 없거나 하나만 있으면 미저장). */
@@ -275,6 +283,8 @@ export class TradeService {
           listing.images = normalizeImages(listing.images);
           listing.floorPlan = normalizeFloorPlan(listing.floorPlan);
           if (listing.status !== "계약완료") listing.status = "노출중";
+          listing.reviewStatus = normalizeReviewStatus(listing.reviewStatus);
+          if (listing.reviewStatus !== "approved") listing.publishedAt = undefined;
         });
         parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
         this.store = parsed;
@@ -337,6 +347,12 @@ export class TradeService {
     return [...this.store.listings].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  listPublicListings(): TradeListing[] {
+    return this.listListings().filter(
+      (listing) => listing.status === "노출중" && listing.reviewStatus === "approved"
+    );
+  }
+
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
     const listing: TradeListing = {
@@ -354,9 +370,27 @@ export class TradeService {
       ...normalizeCoords(input.lat, input.lng),
       ...(normalizeFloorPlan(input.floorPlan) ? { floorPlan: normalizeFloorPlan(input.floorPlan) } : {}),
       status: "노출중",
+      reviewStatus: "pending",
       createdAt: new Date().toISOString()
     };
     this.store.listings.unshift(listing);
+    this.persist();
+    return listing;
+  }
+
+  setListingReviewStatus(listingId: string, reviewStatus: TradeListingReviewStatus): TradeListing {
+    const listing = this.store.listings.find((item) => item.id === listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    listing.reviewStatus = reviewStatus;
+    listing.publishedAt = reviewStatus === "approved" ? new Date().toISOString() : undefined;
+    this.persist();
+    return listing;
+  }
+
+  markListingContracted(listingId: string): TradeListing {
+    const listing = this.store.listings.find((item) => item.id === listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    listing.status = "계약완료";
     this.persist();
     return listing;
   }
@@ -577,8 +611,7 @@ export class TradeService {
     contract.respondedAt = new Date().toISOString();
 
     if (accept) {
-      const listing = this.store.listings.find((item) => item.id === contract.listingId);
-      if (listing) listing.status = "계약완료";
+      this.markListingContracted(contract.listingId);
       this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
     } else {
       this.pushMessage(thread, user, "계약 제안을 거절했어요.");
