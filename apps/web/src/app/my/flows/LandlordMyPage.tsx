@@ -4,7 +4,7 @@
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
@@ -65,6 +65,78 @@ function loadNaverMaps(): Promise<boolean> {
     document.head.appendChild(script);
   });
   return naverMapsLoadPromise;
+}
+
+type KakaoPostcodeData = {
+  address: string;
+  roadAddress: string;
+  jibunAddress: string;
+  userSelectedType: "R" | "J";
+  zonecode: string;
+};
+
+type KakaoPostcodeOptions = {
+  oncomplete: (data: KakaoPostcodeData) => void;
+  width?: string;
+  height?: string;
+};
+
+type KakaoPostcodeInstance = {
+  embed: (element: HTMLElement) => void;
+};
+
+type KakaoPostcodeLoadState = "idle" | "loading" | "ready" | "error";
+
+declare global {
+  interface Window {
+    daum?: {
+      Postcode?: new (options: KakaoPostcodeOptions) => KakaoPostcodeInstance;
+    };
+  }
+}
+
+const kakaoPostcodeScriptUrl = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+let kakaoPostcodeLoadPromise: Promise<boolean> | null = null;
+
+function loadKakaoPostcode(): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (window.daum?.Postcode) return Promise.resolve(true);
+  if (kakaoPostcodeLoadPromise) return kakaoPostcodeLoadPromise;
+
+  kakaoPostcodeLoadPromise = new Promise((resolvePromise) => {
+    let settled = false;
+    const finish = (isReady: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (!isReady) kakaoPostcodeLoadPromise = null;
+      resolvePromise(isReady);
+    };
+    const existing = document.getElementById("kakao-postcode-loader") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => finish(Boolean(window.daum?.Postcode)), { once: true });
+      existing.addEventListener("error", () => finish(false), { once: true });
+      window.setTimeout(() => finish(Boolean(window.daum?.Postcode)), 10000);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "kakao-postcode-loader";
+    script.src = kakaoPostcodeScriptUrl;
+    script.async = true;
+    script.onload = () => finish(Boolean(window.daum?.Postcode));
+    script.onerror = () => finish(false);
+    document.head.appendChild(script);
+  });
+
+  return kakaoPostcodeLoadPromise;
+}
+
+function selectedKakaoAddress(data: KakaoPostcodeData): string {
+  const selectedAddress =
+    data.userSelectedType === "R"
+      ? data.roadAddress || data.address || data.jibunAddress
+      : data.jibunAddress || data.address || data.roadAddress;
+  return selectedAddress.trim();
 }
 
 // 주소 문자열을 좌표로 변환한다. 실패(미활성/무결과)면 null — 호출측은 좌표 없이 진행한다.
@@ -368,6 +440,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome: () => void }) {
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const [activeOwnerPanel, setActiveOwnerPanel] = useState("dashboard");
+  const postcodeEmbedRef = useRef<HTMLDivElement | null>(null);
+  const [isPostcodeSearchOpen, setIsPostcodeSearchOpen] = useState(false);
+  const [postcodeLoadState, setPostcodeLoadState] = useState<KakaoPostcodeLoadState>("idle");
   // 기능 메뉴는 기본 접힘 — 등록 플로우가 주인공이고, 필요할 때만 상단 "메뉴"로 연다.
   const [isOwnerSidebarOpen, setIsOwnerSidebarOpen] = useState(false);
   const [isCostReviewCleared, setIsCostReviewCleared] = useState(false);
@@ -378,6 +453,60 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome: () => void }) {
     setOwnerForm((current) => ({ ...current, [key]: value }));
     setRegistrationStatus("작성 중");
   };
+
+  useEffect(() => {
+    if (!isPostcodeSearchOpen) return;
+
+    let cancelled = false;
+    setPostcodeLoadState("loading");
+
+    void loadKakaoPostcode().then((isReady) => {
+      if (cancelled) return;
+      const target = postcodeEmbedRef.current;
+      const Postcode = window.daum?.Postcode;
+      if (!isReady || !target || !Postcode) {
+        setPostcodeLoadState("error");
+        return;
+      }
+
+      target.innerHTML = "";
+      const postcode = new Postcode({
+        width: "100%",
+        height: "100%",
+        oncomplete: (data) => {
+          const address = selectedKakaoAddress(data);
+          if (!address) {
+            setOwnerToast("선택한 주소를 읽지 못했습니다. 다시 검색해 주세요.");
+            return;
+          }
+          updateOwnerForm("address", address);
+          setOwnerToast(data.zonecode ? `우편번호 ${data.zonecode} 주소가 입력되었습니다.` : "주소가 입력되었습니다.");
+          setIsPostcodeSearchOpen(false);
+        }
+      });
+      postcode.embed(target);
+      setPostcodeLoadState("ready");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPostcodeSearchOpen]);
+
+  useEffect(() => {
+    if (!isPostcodeSearchOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsPostcodeSearchOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPostcodeSearchOpen]);
+
+  useEffect(() => {
+    if (!ownerToast) return;
+    const timer = window.setTimeout(() => setOwnerToast(""), 3500);
+    return () => window.clearTimeout(timer);
+  }, [ownerToast]);
 
   // 내가 서버에 등록한 실제 매물 — 수정/내리기의 대상. null = 아직 조회 전.
   const [serverListings, setServerListings] = useState<TradeListing[] | null>(null);
@@ -1287,7 +1416,13 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome: () => void }) {
 
           <label>
             주소
-            <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
+            <div className="owner-address-row">
+              <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
+              <button className="owner-address-search-button" type="button" onClick={() => setIsPostcodeSearchOpen(true)}>
+                <Search aria-hidden="true" size={16} />
+                주소 검색
+              </button>
+            </div>
           </label>
 
           <div className="form-grid">
@@ -1482,6 +1617,37 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome: () => void }) {
           )}
         </button>
       </form>
+      {isPostcodeSearchOpen ? (
+        <div className="postcode-sheet-backdrop" role="presentation" onClick={() => setIsPostcodeSearchOpen(false)}>
+          <section
+            className="postcode-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="postcode-sheet-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>주소 검색</span>
+                <h2 id="postcode-sheet-title">도로명·지번 주소 찾기</h2>
+              </div>
+              <button type="button" aria-label="주소 검색 닫기" onClick={() => setIsPostcodeSearchOpen(false)}>
+                <X aria-hidden="true" size={18} />
+              </button>
+            </header>
+            <div className="postcode-search-frame">
+              <div className="postcode-search-embed" ref={postcodeEmbedRef} />
+              {postcodeLoadState === "loading" ? (
+                <p className="postcode-search-status">주소 검색창을 불러오는 중입니다.</p>
+              ) : null}
+              {postcodeLoadState === "error" ? (
+                <p className="postcode-search-status error">주소 검색창을 불러오지 못했습니다. 네트워크 상태를 확인해 주세요.</p>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
             </>
           ) : null}
         </div>
