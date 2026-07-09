@@ -296,7 +296,7 @@ export default function TenantMyPage({
   const handleAiSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextMessage = aiDraft.trim();
-    if (!nextMessage || aiStage !== "text" || aiMode !== "text") return;
+    if (!nextMessage || aiStage === "choose" || aiMode !== "text") return;
 
     const timestamp = Date.now();
     setAiMessages((messages) => [
@@ -490,11 +490,6 @@ export default function TenantMyPage({
               <Bot size={18} strokeWidth={2.4} aria-hidden="true" />
               <h3 id="tenant-ai-title">Woo-zu AI Assistant</h3>
             </div>
-            {aiStage !== "choose" ? (
-              <button className="tenant-ai-change-mode" type="button" onClick={() => setAiStage("choose")}>
-                Mode
-              </button>
-            ) : null}
             <button
               className="tenant-ai-close-button"
               type="button"
@@ -543,7 +538,7 @@ export default function TenantMyPage({
               </div>
             </div>
           ) : null}
-          {aiStage === "text" ? (
+          {aiStage !== "choose" ? (
             <>
               <div className="tenant-ai-messages" aria-live="polite">
                 {aiMessages.map((message) => (
@@ -556,37 +551,50 @@ export default function TenantMyPage({
                     <p className="tenant-ai-bubble">{message.text}</p>
                   </div>
                 ))}
+                {aiMode === "call" ? (
+                  <p className="tenant-ai-call-note" role="status">
+                    통화 모드에서는 메시지 입력 대신 음성 상담 상태를 이어서 확인합니다.
+                  </p>
+                ) : null}
               </div>
               <form className="tenant-ai-composer" onSubmit={handleAiSubmit}>
                 <input
                   type="text"
                   value={aiDraft}
                   onChange={(event) => setAiDraft(event.target.value)}
-                  placeholder="메시지를 입력하세요..."
+                  placeholder={aiMode === "call" ? "통화 모드로 연결 준비 중..." : "메시지를 입력하세요..."}
                   aria-label="AI 어시스턴트 메시지 입력"
+                  disabled={aiMode === "call"}
                 />
+                <button
+                  className="tenant-ai-mode-toggle"
+                  type="button"
+                  role="switch"
+                  aria-label="AI 상담 모드 전환"
+                  aria-checked={aiMode === "call"}
+                  onClick={() => {
+                    const nextMode: TenantAiMode = aiMode === "text" ? "call" : "text";
+                    setAiMode(nextMode);
+                    setAiStage(nextMode === "text" ? "text" : "voice");
+                    if (nextMode === "call") setAiDraft("");
+                  }}
+                >
+                  <span>text</span>
+                  <span className="tenant-ai-switch" aria-hidden="true">
+                    <span />
+                  </span>
+                  <span>call</span>
+                </button>
                 <button
                   className="tenant-ai-send-button"
                   type="submit"
-                  disabled={!aiDraft.trim()}
+                  disabled={aiMode === "call" || !aiDraft.trim()}
                   aria-label="AI 어시스턴트 메시지 보내기"
                 >
                   <Send size={22} strokeWidth={2.3} aria-hidden="true" />
                 </button>
               </form>
             </>
-          ) : null}
-          {aiStage === "voice" ? (
-            <div className="tenant-ai-voice-panel" aria-live="polite">
-              <span className="tenant-ai-voice-orb" aria-hidden="true">
-                <Headphones size={50} strokeWidth={2.15} />
-              </span>
-              <strong>Voice Call</strong>
-              <p>음성 상담 연결을 준비하고 있습니다. 상담이 시작되면 이 화면에서 통화 상태를 확인할 수 있습니다.</p>
-              <button className="tenant-ai-voice-button" type="button" onClick={() => setAiStage("choose")}>
-                다시 선택하기
-              </button>
-            </div>
           ) : null}
         </aside>
       ) : null}

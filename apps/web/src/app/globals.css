@@ -7036,7 +7036,7 @@ p {
 
 .tenant-ai-panel-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   min-height: 66px;
@@ -7061,33 +7061,29 @@ p {
   white-space: nowrap;
 }
 
-.tenant-ai-change-mode {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--paper) 28%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 14%, transparent);
-  color: var(--paper);
-  font-size: 0.88rem;
-  font-weight: 900;
-  padding: 0 14px;
-}
-
-.tenant-ai-change-mode:hover {
-  background: color-mix(in srgb, var(--paper) 22%, transparent);
-}
-
 .tenant-ai-mode-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
-  background: transparent;
-  color: color-mix(in srgb, var(--paper) 76%, transparent);
-  font-size: 0.88rem;
-  font-weight: 800;
+  min-height: 54px;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--canvas) 86%, var(--paper));
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 900;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.tenant-ai-mode-toggle > span:not(.tenant-ai-switch) {
+  min-width: 30px;
+  text-align: center;
+}
+
+.tenant-ai-mode-toggle[aria-checked="false"] > span:first-child,
+.tenant-ai-mode-toggle[aria-checked="true"] > span:last-child {
+  color: var(--blue);
 }
 
 .tenant-ai-switch {
@@ -7097,7 +7093,7 @@ p {
   height: 22px;
   align-items: center;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 22%, transparent);
+  background: color-mix(in srgb, var(--blue) 18%, var(--line));
 }
 
 .tenant-ai-switch span {
@@ -7107,6 +7103,7 @@ p {
   height: 18px;
   border-radius: 999px;
   background: var(--paper);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--ink) 16%, transparent);
   transition: transform 180ms ease;
 }
 
@@ -7282,65 +7279,10 @@ p {
   text-align: center;
 }
 
-.tenant-ai-voice-panel {
-  display: grid;
-  flex: 1 1 auto;
-  place-items: center;
-  align-content: center;
-  gap: 22px;
-  min-height: 0;
-  padding: 48px 34px;
-  background: var(--paper);
-  color: var(--ink);
-  text-align: center;
-}
-
-.tenant-ai-voice-orb {
-  display: inline-grid;
-  width: 116px;
-  height: 116px;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--blue-soft);
-  color: var(--blue);
-}
-
-.tenant-ai-voice-panel strong {
-  font-size: 1.52rem;
-  font-weight: 850;
-  line-height: 1.2;
-}
-
-.tenant-ai-voice-panel p {
-  max-width: 460px;
-  margin: 0;
-  color: var(--muted);
-  font-size: 1.05rem;
-  font-weight: 760;
-  line-height: 1.55;
-}
-
-.tenant-ai-voice-button {
-  display: inline-flex;
-  min-height: 52px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  background: var(--blue);
-  color: var(--paper);
-  font-size: 0.98rem;
-  font-weight: 900;
-  padding: 0 24px;
-}
-
-.tenant-ai-voice-button:hover {
-  background: var(--blue-dark);
-}
-
 .tenant-ai-composer {
   display: grid;
   flex: none;
-  grid-template-columns: minmax(0, 1fr) 56px;
+  grid-template-columns: minmax(0, 1fr) auto 56px;
   gap: 12px;
   padding: 18px 20px;
   border-top: 1px solid var(--line);
@@ -7366,6 +7308,11 @@ p {
 
 .tenant-ai-composer input:focus {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 42%, transparent);
+}
+
+.tenant-ai-composer input:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .tenant-ai-send-button {
@@ -11465,12 +11412,6 @@ p {
     font-size: 0.96rem;
   }
 
-  .tenant-ai-change-mode {
-    min-height: 32px;
-    font-size: 0.78rem;
-    padding: 0 11px;
-  }
-
   .tenant-ai-mode-picker {
     gap: 30px;
     padding: 68px 18px 36px;
@@ -11511,23 +11452,6 @@ p {
     font-size: 0.8rem;
   }
 
-  .tenant-ai-voice-panel {
-    padding: 36px 20px;
-  }
-
-  .tenant-ai-voice-orb {
-    width: 92px;
-    height: 92px;
-  }
-
-  .tenant-ai-voice-panel strong {
-    font-size: 1.26rem;
-  }
-
-  .tenant-ai-voice-panel p {
-    font-size: 0.94rem;
-  }
-
   .tenant-ai-messages {
     padding: 18px 14px;
   }
@@ -11538,13 +11462,39 @@ p {
   }
 
   .tenant-ai-composer {
-    grid-template-columns: minmax(0, 1fr) 50px;
+    grid-template-columns: minmax(0, 1fr) auto 50px;
+    gap: 8px;
     padding: 14px 14px;
   }
 
   .tenant-ai-composer input {
     min-height: 50px;
     font-size: 0.9rem;
+  }
+
+  .tenant-ai-mode-toggle {
+    min-height: 50px;
+    gap: 5px;
+    font-size: 0.76rem;
+    padding: 0 8px;
+  }
+
+  .tenant-ai-mode-toggle > span:not(.tenant-ai-switch) {
+    min-width: 24px;
+  }
+
+  .tenant-ai-switch {
+    width: 32px;
+    height: 20px;
+  }
+
+  .tenant-ai-switch span {
+    width: 16px;
+    height: 16px;
+  }
+
+  .tenant-ai-mode-toggle[aria-checked="true"] .tenant-ai-switch span {
+    transform: translateX(12px);
   }
 
   .tenant-ai-send-button {
