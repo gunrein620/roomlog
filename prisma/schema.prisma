@@ -1423,3 +1423,30 @@ model SplatAsset {
   @@index([listingId])
   @@index([status])
 }
+
+// 직접등록 매물(집 내놓기). trade 도메인은 JSON 스토어를 런타임 truth로 두고
+// DATABASE_URL이 있으면 TradeStoreProjector가 이 테이블로 write-through 프로젝션한다.
+// 데모 계정(landlord-demo 등)이 UserAccount에 없을 수 있어 ownerId는 FK 없는 평문 문자열로 둔다.
+// 스레드/계약은 Phase 2 — 지금은 매물(listing)만 DB화한다.
+model TradeListing {
+  id                String   @id
+  ownerId           String
+  ownerName         String
+  title             String
+  roomType          String
+  tradeType         String // "월세" | "전세" | "매매"
+  depositManwon     Int      @default(0)
+  monthlyRentManwon Int      @default(0)
+  location          String
+  description       String   @default("")
+  images            String[] @default([])
+  lat               Float?
+  lng               Float?
+  floorPlan         Json? // ListingFloorPlan 스냅샷(walls3D/furnitures)
+  status            String   @default("노출중") // "노출중" | "계약완료"
+  createdAt         DateTime
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  @@index([status, createdAt])
+  @@index([ownerId])
+}
