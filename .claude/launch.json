@@ -3,18 +3,18 @@
   "configurations": [
     {
       "name": "api",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-lc", "set -a; [ -f ../../.env ] && . ../../.env; set +a; exec ./node_modules/.bin/nest start"],
-      "cwd": "apps/api",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "--build", "api"],
+      "cwd": ".",
       "port": 4000,
       "autoPort": false
     },
     {
       "name": "web",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-lc", "set -a; [ -f ../../.env ] && . ../../.env; set +a; exec ./node_modules/.bin/next dev -p 3005"],
-      "cwd": "apps/web",
-      "port": 3005,
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "--build", "web"],
+      "cwd": ".",
+      "port": 3000,
       "autoPort": false
     }
   ]
