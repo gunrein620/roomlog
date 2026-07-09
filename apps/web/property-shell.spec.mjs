@@ -1318,9 +1318,14 @@ test("links the landlord 3D floor plan action to the dedicated creation page", (
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");
 
-  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "초안 저장"]) {
+  for (const label of ["3D 도면", "123123", "FloorPlanEditor", "초안 저장", "등록"]) {
     assert.match(floorPlanRouteSource, new RegExp(label));
   }
+  assert.match(floorPlanRouteSource, /href="\/my\?flow=listing#my-page"/);
+  assert.match(floorPlanEditorSource, /FLOOR_PLAN_LISTING_RETURN_PATH/);
+  assert.match(floorPlanEditorSource, /window\.location\.href = FLOOR_PLAN_LISTING_RETURN_PATH/);
+  assert.match(floorPlanEditorSource, /disabled=\{isProcessing \|\| roomWalls3D\.length === 0\}/);
+  assert.doesNotMatch(floorPlanEditorSource, /disabled=\{isProcessing \|\| walls\.length === 0 \|\| !isScaleSet\}/);
 });
 
 test("copies the wheretoput canvas-based 2D drawing workflow", () => {
@@ -1876,7 +1881,7 @@ test("stores extraction metadata, openings, and fixtures through the floor plan 
     "openings",
     "fixtures",
     "PUBLISHED",
-    "발행"
+    "등록"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }

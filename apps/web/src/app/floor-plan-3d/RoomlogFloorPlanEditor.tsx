@@ -117,6 +117,7 @@ type PrintedDimensionChip = {
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
+const FLOOR_PLAN_LISTING_RETURN_PATH = "/my?flow=listing#my-page";
 
 // 후보 타입 코드 → 사용자용 한글 라벨. 모르는 타입은 원문 그대로 노출한다.
 const CANDIDATE_TYPE_LABELS: Record<string, string> = {
@@ -3880,6 +3881,7 @@ export default function RoomlogFloorPlanEditor() {
 
   async function saveFloorPlanDraft(nextStatus: "DRAFT" | "PUBLISHED" = "DRAFT") {
     const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
+    const isRegistering = nextStatus === "PUBLISHED";
     const payload = buildFloorPlanDraftPayload({
       extractionMeta,
       fixtureCandidates,
@@ -3897,12 +3899,17 @@ export default function RoomlogFloorPlanEditor() {
       walls3D: roomWalls3D
     });
 
+    if (isRegistering && roomWalls3D.length === 0) {
+      setUploadStatus("등록하려면 먼저 3D 변환 데이터가 필요합니다");
+      return;
+    }
+
+    if (isRegistering) {
+      persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
+    }
+
     try {
-      if (nextStatus === "PUBLISHED" && (!isScaleSet || roomWalls3D.length === 0 || walls.length === 0)) {
-        setUploadStatus("발행 전 축척 확인과 3D 변환이 필요합니다");
-        return;
-      }
-      setUploadStatus(nextStatus === "PUBLISHED" ? "도면 발행중" : "도면 저장중");
+      setUploadStatus(isRegistering ? "도면 등록중" : "도면 저장중");
       const endpoint = floorPlanDraftId ? apiUrl(`/floor-plans/${floorPlanDraftId}`) : apiUrl("/floor-plans");
       const response = await floorPlanAuthorizedFetch(endpoint, {
         body: JSON.stringify(payload),
@@ -3916,12 +3923,14 @@ export default function RoomlogFloorPlanEditor() {
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, id: saved.id, savedAt: Date.now() }));
       // 매물 등록 폼이 읽어 갈 3D 스냅샷을 남긴다 — 이걸로 상세 "3D 보기"가 실제 도면을 렌더한다.
       persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
-      setSaveState({ kind: nextStatus === "PUBLISHED" ? "published" : "draft", at: Date.now() });
-      setUploadStatus(nextStatus === "PUBLISHED" ? "발행 완료" : "저장 완료");
+      setSaveState({ kind: isRegistering ? "published" : "draft", at: Date.now() });
+      setUploadStatus(isRegistering ? "등록 준비 완료" : "저장 완료");
     } catch {
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, savedAt: Date.now(), status: "LOCAL_DRAFT" }));
       setSaveState({ kind: "local", at: Date.now() });
-      setUploadStatus("서버 저장 실패 — 이 브라우저에만 임시 저장됨");
+      setUploadStatus(isRegistering ? "서버 저장 실패 — 매물 등록 화면에서 로컬 도면으로 이어갑니다" : "서버 저장 실패 — 이 브라우저에만 임시 저장됨");
+    } finally {
+      if (isRegistering) window.location.href = FLOOR_PLAN_LISTING_RETURN_PATH;
     }
   }
 
@@ -4221,11 +4230,11 @@ export default function RoomlogFloorPlanEditor() {
 
         <div className="floor-plan-actions">
           {/* 캔버스 정리 버튼 줄(전체 지우기/샘플 복원/화면 초기화/숨김 복원)은 안 쓰여서 제거 —
-             변환→저장→발행 핵심 흐름만 남긴다. */}
+             변환→저장→등록 핵심 흐름만 남긴다. */}
           <div className="floor-plan-actions-group floor-plan-actions-main" aria-label="변환과 저장">
             {saveState ? (
               <span aria-live="polite" className={`floor-plan-save-state is-${saveState.kind}`}>
-                {saveState.kind === "published" ? "📢 발행됨" : saveState.kind === "local" ? "⚠️ 로컬에만 저장됨" : "💾 초안 저장됨"}
+                {saveState.kind === "published" ? "📢 등록 준비됨" : saveState.kind === "local" ? "⚠️ 로컬에만 저장됨" : "💾 초안 저장됨"}
                 {" · "}
                 {new Date(saveState.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
               </span>
@@ -4273,12 +4282,12 @@ export default function RoomlogFloorPlanEditor() {
                 </button>
                 <button
                   className="floor-plan-primary"
-                  disabled={isProcessing || walls.length === 0 || !isScaleSet}
+                  disabled={isProcessing || roomWalls3D.length === 0}
                   onClick={() => saveFloorPlanDraft("PUBLISHED")}
-                  title={isScaleSet ? "도면을 발행합니다" : "발행하려면 먼저 축척을 맞춰주세요 (세부 조정)"}
+                  title={roomWalls3D.length > 0 ? "도면을 매물 등록 화면에 연결합니다" : "등록하려면 먼저 3D 변환 데이터가 필요합니다"}
                   type="button"
                 >
-                  발행
+                  등록
                 </button>
               </>
             ) : (
@@ -4601,7 +4610,7 @@ export default function RoomlogFloorPlanEditor() {
           </>
         ) : null}
 
-        <a href="/">마이페이지</a>
+        <a href={FLOOR_PLAN_LISTING_RETURN_PATH}>마이페이지</a>
       </aside>
     </section>
   );

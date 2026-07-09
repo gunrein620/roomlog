@@ -8155,7 +8155,7 @@ p {
   box-shadow: 0 14px 28px rgba(47, 85, 255, 0.22);
 }
 
-/* 조건이 안 갖춰진 저장/발행은 확실히 죽은 색으로 — 파란색 그대로면 눌리는 줄 안다 */
+/* 조건이 안 갖춰진 저장/등록은 확실히 죽은 색으로 — 파란색 그대로면 눌리는 줄 안다 */
 .floor-plan-primary:disabled {
   background: #c6cede;
   box-shadow: none;
@@ -8182,7 +8182,7 @@ p {
   padding: 0 16px;
 }
 
-/* 핵심 흐름(변환→저장→발행)은 왼쪽에 두고 저장 상태 칩을 곁들인다 */
+/* 핵심 흐름(변환→저장→등록)은 왼쪽에 두고 저장 상태 칩을 곁들인다 */
 .floor-plan-actions-main {
   margin-left: 0;
   margin-right: auto;
