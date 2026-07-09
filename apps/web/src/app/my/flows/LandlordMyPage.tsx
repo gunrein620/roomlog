@@ -732,16 +732,23 @@ export default function LandlordMyPage() {
                 <span className="upload-tile-desc">대표 사진, 거실, 주방, 욕실 이미지를 순서대로 등록합니다.</span>
                 <span className="upload-tile-status">{photoCount > 0 ? `${photoCount}장 선택됨` : "선택된 파일 없음"}</span>
               </span>
-              <span className="upload-tile-cta">{photoCount > 0 ? "변경" : "파일 선택"}</span>
+              <span className="upload-tile-cta">{photoCount > 0 ? "추가" : "파일 선택"}</span>
               <input
                 type="file"
                 multiple
                 accept="image/*"
                 aria-label="사진 업로드"
                 onChange={(event) => {
-                  const files = event.target.files ? Array.from(event.target.files) : [];
-                  setPhotoFiles(files);
-                  setPhotoCount(files.length);
+                  const added = event.target.files ? Array.from(event.target.files) : [];
+                  // 같은 파일을 다시 고를 수 있도록 인풋 값을 비운다(초기화 안 하면 동일 파일 재선택이 안 먹는다).
+                  event.target.value = "";
+                  if (added.length === 0) return;
+                  // 기존 선택에 덧붙인다 — 다시 고를 때 이전 사진이 사라지지 않도록. 동일 파일은 중복 제거.
+                  const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
+                  const seen = new Set(photoFiles.map(fileKey));
+                  const merged = [...photoFiles, ...added.filter((file) => !seen.has(fileKey(file)))];
+                  setPhotoFiles(merged);
+                  setPhotoCount(merged.length);
                   setRegistrationStatus("작성 중");
                 }}
               />
