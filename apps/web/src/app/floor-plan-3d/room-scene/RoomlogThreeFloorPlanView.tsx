@@ -3,7 +3,7 @@
 // room-model이 계산한 3D 벽/가구 데이터를 React Three Fiber로 렌더링하고,
 // 클릭 등 인터랙션 이벤트를 props 콜백으로 컨테이너에 돌려준다.
 
-import { ContactShadows, OrbitControls, useGLTF } from "@react-three/drei";
+import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo } from "react";
@@ -49,15 +49,22 @@ function computeWallBoundsXZ(wallsData: WheretoputWall3D[]) {
 
 function RoomFloor({
   onFloorPointerDown,
+  onFloorPointerMove,
   wallsData
 }: {
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
+  onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   wallsData: WheretoputWall3D[];
 }) {
   const bounds = useMemo(() => computeWallBoundsXZ(wallsData), [wallsData]);
 
   return (
-    <mesh onPointerDown={onFloorPointerDown} position={[bounds.centerX, 0, bounds.centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh
+      onPointerDown={onFloorPointerDown}
+      onPointerMove={onFloorPointerMove}
+      position={[bounds.centerX, 0, bounds.centerZ]}
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
       <planeGeometry args={[bounds.width, bounds.height]} />
       <meshLambertMaterial color="#f3d9a0" />
     </mesh>
@@ -78,7 +85,13 @@ function FurnitureBoxMesh({
   const dimensions = getFurnitureDimensions(furniture);
 
   return (
-    <mesh onPointerDown={(event) => onPointerDown(furniture, event)} position={furniture.position} rotation={furniture.rotation}>
+    <mesh
+      onPointerDown={(event) => onPointerDown(furniture, event)}
+      position={furniture.position}
+      // 배치 대기(드래그 추적 중) 가구는 커서 아래 바닥의 pointer 이벤트를 가리지 않게 레이캐스트를 끈다.
+      raycast={isPending ? () => null : undefined}
+      rotation={furniture.rotation}
+    >
       <boxGeometry args={[dimensions.width, dimensions.height, dimensions.depth]} />
       <meshLambertMaterial
         color={isSelected ? "#2f55ff" : furniture.color}
@@ -158,6 +171,8 @@ function FurnitureGlbMesh({
         material.opacity = isPending ? 0.48 : 1;
         material.needsUpdate = true;
       });
+      // 배치 대기 가구는 커서를 따라다니므로 바닥 pointer 이벤트를 가리지 않게 레이캐스트를 끈다.
+      child.raycast = isPending ? () => undefined : THREE.Mesh.prototype.raycast;
     });
     invalidate();
   }, [invalidate, isPending, scene]);
@@ -218,10 +233,12 @@ function WallMesh({
 }
 
 function RoomOrbitControls({
+  enabled = true,
   maxDistance = 42,
   minDistance = 5,
   target
 }: {
+  enabled?: boolean;
   maxDistance?: number;
   minDistance?: number;
   target: [number, number, number];
@@ -231,6 +248,7 @@ function RoomOrbitControls({
   return (
     <OrbitControls
       enableDamping
+      enabled={enabled}
       makeDefault
       maxDistance={maxDistance}
       maxPolarAngle={Math.PI / 2.05}
@@ -265,6 +283,7 @@ function RoomCameraAutoFit({ wallsData }: { wallsData: WheretoputWall3D[] }) {
 
 export function RoomlogThreeFloorPlanView({
   cameraPosition = [14, 12, 18],
+  controlsEnabled = true,
   frameloop = "demand",
   furnitureData,
   furnitureVerticalScale = 1,
@@ -273,7 +292,12 @@ export function RoomlogThreeFloorPlanView({
   orbitMaxDistance = 42,
   orbitMinDistance = 5,
   onFloorPointerDown,
+  onFloorPointerMove,
   onFurniturePointerDown,
+  onPendingCancel,
+  onPendingConfirm,
+  onPendingDelete,
+  onPendingRotate,
   onWallPointerDown,
   pendingFurniture,
   selectedFurnitureId,
@@ -281,6 +305,8 @@ export function RoomlogThreeFloorPlanView({
   wallsData
 }: {
   cameraPosition?: [number, number, number];
+  // 가구 드래그 중 카메라 회전이 같이 돌지 않게 끄는 용도.
+  controlsEnabled?: boolean;
   // 편집기는 "demand"(입력 시에만 렌더)로 효율적이지만, 읽기 전용 뷰어는
   // 드래그 전에도 방이 보여야 하므로 "always"를 넘겨 즉시·리사이즈 시 계속 렌더한다.
   frameloop?: "demand" | "always";
@@ -291,7 +317,14 @@ export function RoomlogThreeFloorPlanView({
   orbitMaxDistance?: number;
   orbitMinDistance?: number;
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
+  // 가구 드래그 이동용 — 바닥 위 커서 이동을 컨테이너에 전달한다.
+  onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
+  // 배치 대기 가구 머리 위 ✓/⟳/✕/삭제 버튼 — 필수 셋이 넘어올 때만 표시한다.
+  onPendingCancel?: () => void;
+  onPendingConfirm?: () => void;
+  onPendingDelete?: () => void;
+  onPendingRotate?: () => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
   pendingFurniture: PlacedFurniture | null;
   selectedFurnitureId: string | null;
@@ -321,7 +354,7 @@ export function RoomlogThreeFloorPlanView({
         <ambientLight intensity={0.72} />
         <directionalLight intensity={1.4} position={[6, 12, 8]} />
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
-          <RoomFloor onFloorPointerDown={onFloorPointerDown} wallsData={wallsData} />
+          <RoomFloor onFloorPointerDown={onFloorPointerDown} onFloorPointerMove={onFloorPointerMove} wallsData={wallsData} />
           {wallsData.map((wall) => (
             <WallMesh
               isSelected={String(selectedWallId ?? "") === String(wall.wall_id)}
@@ -348,9 +381,38 @@ export function RoomlogThreeFloorPlanView({
               onPointerDown={onFurniturePointerDown}
             />
           ) : null}
+          {pendingFurniture && onPendingConfirm && onPendingRotate && onPendingCancel ? (
+            <Html
+              center
+              position={[
+                pendingFurniture.position[0],
+                pendingFurniture.position[1] + getFurnitureDimensions(pendingFurniture).height * furnitureVerticalScale + 0.5,
+                pendingFurniture.position[2]
+              ]}
+              zIndexRange={[30, 0]}
+            >
+              <div className="floor-plan-pending-actions">
+                <button aria-label="배치완료" className="is-confirm" onClick={onPendingConfirm} title="배치완료" type="button">
+                  ✓
+                </button>
+                <button aria-label="90도 회전" onClick={onPendingRotate} title="90도 회전" type="button">
+                  ⟳
+                </button>
+                <button aria-label="배치 취소" className="is-cancel" onClick={onPendingCancel} title="취소 (재편집이면 원위치)" type="button">
+                  ✕
+                </button>
+                {onPendingDelete ? (
+                  <button aria-label="가구 삭제" className="is-delete" onClick={onPendingDelete} title="가구 삭제" type="button">
+                    🗑
+                  </button>
+                ) : null}
+              </div>
+            </Html>
+          ) : null}
         </group>
         <ContactShadows blur={2.4} far={6} opacity={0.28} position={[0, 0.015, 0]} resolution={512} scale={18 * sceneHorizontalScale} />
         <RoomOrbitControls
+          enabled={controlsEnabled}
           maxDistance={orbitMaxDistance}
           minDistance={orbitMinDistance}
           target={[wallBounds.centerX * sceneHorizontalScale, 0, wallBounds.centerZ * sceneHorizontalScale]}
