@@ -596,7 +596,7 @@ test("opens the dedicated signup page from signup actions and social fallback", 
   assert.match(signupRouteSource, /apiUrl\("\/auth\/signup"/);
   assert.match(signupRouteSource, /AUTH_COOKIE/);
   assert.match(pageSource, /className="web-login"[^>]*onClick=\{\(\) => openAuthScreen\("login"\)\}/);
-  assert.match(pageSource, /className="web-cta"[^>]*onClick=\{\(\) => openAuthScreen\("broker"\)\}/);
+  assert.doesNotMatch(pageSource, /중개사 가입/);
   assert.doesNotMatch(pageSource, /className="web-signup"[^>]*activateTab\("mypage"\)/);
 });
 

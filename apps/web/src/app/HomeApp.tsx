@@ -149,7 +149,7 @@ const normalizeAppTab = (value: string | null): AppTab | null => {
 };
 
 const normalizeAuthMode = (value: string | null): AuthMode | null => {
-  if (value === "login" || value === "signup" || value === "broker") return value;
+  if (value === "login" || value === "signup") return value;
   return null;
 };
 
@@ -1734,7 +1734,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 <>
                   <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
                   <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup"; }}>회원가입</button>
-                  <button className="web-cta" type="button" onClick={() => openAuthScreen("broker")}>중개사 가입</button>
                 </>
               )}
             </div>

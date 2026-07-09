@@ -6,7 +6,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 
 export type AppRole = "seeker" | "tenant" | "landlord";
-export type AuthMode = "login" | "signup" | "broker";
+export type AuthMode = "login" | "signup";
 
 export type ViewerProfile = {
   userId: string;

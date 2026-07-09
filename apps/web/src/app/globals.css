@@ -9066,14 +9066,6 @@ p {
     font-weight: 800;
   }
 
-  .web-topbar-actions .web-cta {
-    padding: 9px 16px;
-    border-radius: 10px;
-    background: var(--blue);
-    color: #ffffff;
-    font-weight: 800;
-  }
-
   .web-role-select {
     display: inline-flex;
     min-height: 40px;
