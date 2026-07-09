@@ -52,33 +52,10 @@ export const socialProvidersForMode = (
   }
 ];
 
-export const devRoles: Array<{
-  id: AppRole;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "seeker",
-    label: "일반 집보는 사람",
-    description: "지도와 매물 상세를 둘러보는 기본 탐색 모드"
-  },
-  {
-    id: "tenant",
-    label: "세입자",
-    description: "관심 매물과 입주 예정 방을 확인하는 임차인 모드"
-  },
-  {
-    id: "landlord",
-    label: "집주인",
-    description: "마이페이지에서 내 집을 등록하는 임대인 모드"
-  }
-];
-
 const loginFeaturePills = ["3D투어", "입주관리AI", "업체연결"] as const;
 
 export function WoozuLoginScreen({
   mode,
-  setActiveRole,
   onAuthenticated,
   onGoHome,
   googleRedirectTo,
@@ -86,7 +63,6 @@ export function WoozuLoginScreen({
   initialError
 }: {
   mode: AuthMode;
-  setActiveRole: (role: AppRole) => void;
   onAuthenticated: (viewer: ViewerProfile) => void;
   onGoHome: () => void;
   googleRedirectTo?: string;
@@ -252,20 +228,6 @@ export function WoozuLoginScreen({
             <a className="service-signup-link" href="/signup">일반 회원가입</a>
           </div>
 
-          <div className="dev-login-panel" aria-label="개발용 로그인">
-            <div>
-              <strong>개발용 로그인</strong>
-              <span>역할을 골라 바로 입장</span>
-            </div>
-            {devRoles.map((role) => (
-              <button className="dev-role-button" type="button" key={role.id} onClick={() => setActiveRole(role.id)}>
-                <strong>{role.label}</strong>
-                <span>{role.description}</span>
-              </button>
-            ))}
-          </div>
-
-          <small>일반 계정 로그인은 제공하지 않습니다.</small>
         </div>
       </section>
     </main>

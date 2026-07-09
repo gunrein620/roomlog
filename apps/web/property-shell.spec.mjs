@@ -406,12 +406,11 @@ test("promotes the future 3D room tour as a primary listing detail action", () =
   assert.doesNotMatch(pageSource, /3D ENGINE SLOT|다른 팀의 3D 엔진|연결될 위치/);
 });
 
-test("offers a clean white social sign-in limited to Naver and Google with a developer shortcut", () => {
+test("offers a clean white social sign-in limited to Naver and Google", () => {
   // 로그인 화면은 WoozuLoginScreen으로 추출되어 /?auth=login과 /login이 공유한다.
   for (const label of [
     "네이버",
     "Google",
-    "개발용 로그인",
     "집우집주",
     "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다",
     "3D투어",
@@ -430,7 +429,6 @@ test("offers a clean white social sign-in limited to Naver and Google with a dev
   assert.doesNotMatch(loginScreenSource, /expectedRole/);
   assert.doesNotMatch(loginRouteSource, /expectedRole/);
   assert.match(loginScreenSource, /\/api\/auth\/me/);
-  assert.match(loginScreenSource, /setActiveRole/);
   assert.match(loginScreenSource, /login-brandmark/);
   assert.match(loginScreenSource, /brand-mark-icon/);
   assert.match(pageSource, /WoozuLoginScreen/);
@@ -803,19 +801,18 @@ test("makes filters and saved listings behave like interactive app state", () =>
   assert.match(cssSource, /\.recent-empty/);
 });
 
-test("offers three developer login roles for seekers, tenants, and landlords", () => {
-  for (const label of ["일반 집보는 사람", "세입자", "집주인"]) {
-    assert.match(loginScreenSource, new RegExp(label));
-  }
+test("removes the developer role login panel — roles derive from the signed-in account", () => {
+  // 개발용 역할 입장은 제거됐다 — 역할은 로그인 계정 capability에서만 파생된다.
+  assert.doesNotMatch(loginScreenSource, /개발용 로그인/);
+  assert.doesNotMatch(loginScreenSource, /dev-role-button/);
+  assert.doesNotMatch(loginScreenSource, /역할을 골라 바로 입장/);
+  assert.doesNotMatch(pageSource, /startRoleSession/);
 
   assert.match(loginScreenSource, /type AppRole/);
+  assert.match(loginScreenSource, /function WoozuLoginScreen/);
   assert.match(pageSource, /roleDisplayLabels/);
   assert.match(pageSource, /seeker:\s*"방 찾기"/);
   assert.match(pageSource, /roleLabel\} 활동에 맞춘 검색 조건/);
-  assert.match(loginScreenSource, /setActiveRole\(role\.id\)/);
-  assert.match(pageSource, /startRoleSession/);
-  assert.match(pageSource, /setActiveTab\(role === "seeker" \? "home" : "mypage"\)/);
-  assert.match(loginScreenSource, /function WoozuLoginScreen/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
   assert.match(pageSource, /\[activeRole, activeTab, authMode\]/);
