@@ -8182,9 +8182,10 @@ p {
   padding: 0 16px;
 }
 
-/* 핵심 흐름(변환→저장→발행)은 오른쪽에 모으고 저장 상태 칩을 곁들인다 */
+/* 핵심 흐름(변환→저장→발행)은 왼쪽에 두고 저장 상태 칩을 곁들인다 */
 .floor-plan-actions-main {
-  margin-left: auto;
+  margin-left: 0;
+  margin-right: auto;
 }
 
 .floor-plan-view-toggle {
@@ -8536,9 +8537,10 @@ p {
   color: var(--paper);
 }
 
-/* 정리 버튼 줄을 없애 액션 바에 저장 그룹만 남았다 — 원래 자리(오른쪽)를 유지한다 */
+/* 정리 버튼 줄을 없애 액션 바에 저장 그룹만 남았다 — 하단 왼쪽에서 시작한다 */
 .floor-plan-actions .floor-plan-actions-main {
-  margin-left: auto;
+  margin-left: 0;
+  margin-right: auto;
 }
 
 /* 드로어 안 안내·메타 문구는 <code>라 기본 고정폭 글꼴로 렌더된다 —
