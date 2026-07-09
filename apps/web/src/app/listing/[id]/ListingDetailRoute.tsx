@@ -30,8 +30,8 @@ export function ListingDetailRoute({ listing }: { listing: Listing }) {
   const submitInquiry = async (payload: InquiryPayload, listingNo?: string): Promise<"ok" | "auth" | "error"> => {
     const result = await submitTradeInquiry(payload, listingNo);
     if (result.status === "ok" && result.threadId) {
-      // 문의 성공 → 문의센터 채팅으로 바로 진입(당근식). SPA가 thread 파라미터로 대화를 연다.
-      router.push(`/?tab=inquiry&thread=${encodeURIComponent(result.threadId)}`);
+      // 문의 성공 → 문의센터 채팅으로 바로 진입(당근식). 문의 탭이 thread 파라미터로 대화를 연다.
+      router.push(`/inquiry?thread=${encodeURIComponent(result.threadId)}`);
     }
     return result.status;
   };
@@ -43,7 +43,7 @@ export function ListingDetailRoute({ listing }: { listing: Listing }) {
       onBack={goBack}
       onToggleSaved={(listingNo) => setSavedListingNos((current) => toggleSavedListingNo(current, listingNo))}
       onSubmitInquiry={submitInquiry}
-      onViewInquiryCenter={() => router.push("/?tab=inquiry")}
+      onViewInquiryCenter={() => router.push("/inquiry")}
       onRequireLogin={() => router.push(`/login?redirectTo=${encodeURIComponent(`/listing/${listing.listingNo}`)}`)}
     />
   );

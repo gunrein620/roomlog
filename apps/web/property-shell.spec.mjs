@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
-// 매물 상세가 /listing/[id] 라우트로 분리됨(1단계 라우트 분리) — 소비자 앱 검증은
-// SPA(page.tsx) + 상세 라우트 + 공용 모듈(카탈로그/지도/상세 뷰)을 합친 코퍼스로 본다.
-const spaSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
+// 라우트 분리 1·2단계 — 상세는 /listing/[id], 탭은 /map /saved /inquiry /my 라우트가 됐고
+// 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
+const spaSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
 const listingDetailViewSource = readFileSync(new URL("./src/app/_components/ListingDetailView.tsx", import.meta.url), "utf8");
 const naverMapPreviewSource = readFileSync(new URL("./src/app/_components/NaverMapPreview.tsx", import.meta.url), "utf8");
 const listingCatalogSource = readFileSync(new URL("./src/lib/listing-catalog.ts", import.meta.url), "utf8");
@@ -977,7 +977,9 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   assert.match(pageSource, /<Search/);
   assert.match(pageSource, /<SlidersHorizontal/);
   assert.match(pageSource, /<item\.Icon/);
-  assert.match(pageSource, /useState<AppTab>\("home"\)/);
+  // 탭 초기값은 라우트(/, /map, /saved, /inquiry, /my)가 내려주는 initialTab이다(2단계 라우트 분리).
+  assert.match(pageSource, /useState<AppTab>\(initialTab\)/);
+  assert.match(pageSource, /TAB_PATHS/);
   assert.match(pageSource, /activeTab === item\.key/);
   assert.match(pageSource, /activeTab === "home"/);
   assert.match(pageSource, /activeTab === "map"/);
