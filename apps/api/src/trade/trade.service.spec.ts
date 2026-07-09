@@ -19,36 +19,35 @@ const input = {
   depositManwon: 1000,
   monthlyRentManwon: 50,
   location: "서울 서초구 방배동",
-  description: "검수 전 매물",
+  description: "등록 매물",
   images: ["https://example.test/listing.jpg"]
 };
 
 describe("TradeService public listings", () => {
-  it("keeps newly created direct listings out of the public recommended feed until approved", () => {
+  it("exposes newly created direct listings in the public feed immediately", () => {
     const service = serviceWithTempStore();
 
     const created = service.createListing(owner, input);
 
     assert.equal(created.status, "노출중");
-    assert.equal(created.reviewStatus, "pending");
     assert.equal(service.listListings().length, 1);
-    assert.deepEqual(service.listPublicListings(), []);
+    assert.deepEqual(
+      service.listPublicListings().map((listing) => listing.title),
+      [input.title]
+    );
   });
 
-  it("returns only approved, non-contracted listings from the public feed", () => {
+  it("excludes contracted listings from the public feed", () => {
     const service = serviceWithTempStore();
-    const pending = service.createListing(owner, { ...input, title: "대기 매물" });
-    const approved = service.createListing(owner, { ...input, title: "승인 매물" });
+    const live = service.createListing(owner, { ...input, title: "노출 매물" });
     const contracted = service.createListing(owner, { ...input, title: "계약 매물" });
 
-    service.setListingReviewStatus(approved.id, "approved");
-    service.setListingReviewStatus(contracted.id, "approved");
     service.markListingContracted(contracted.id);
 
     assert.deepEqual(
       service.listPublicListings().map((listing) => listing.title),
-      ["승인 매물"]
+      ["노출 매물"]
     );
-    assert.equal(service.listListings().some((listing) => listing.id === pending.id), true);
+    assert.equal(service.listListings().some((listing) => listing.id === live.id), true);
   });
 });

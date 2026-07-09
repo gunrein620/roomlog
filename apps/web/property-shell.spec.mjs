@@ -7,9 +7,8 @@ import { test } from "node:test";
 const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
 const spaSource = [
   homeAppSource,
-  // 3단계 — 마이페이지 역할 흐름은 my/flows/로 물리 분리됐다(분업 단위).
+  // 역할 흐름은 my/flows/로 물리 분리됐다(분업 단위). 세입자(living)=TenantMyPage, 매물등록(sell)=LandlordMyPage.
   "./src/app/my/flows/my-shared.tsx",
-  "./src/app/my/flows/UserMyPage.tsx",
   "./src/app/my/flows/TenantMyPage.tsx",
   "./src/app/my/flows/LandlordMyPage.tsx"
 ]
@@ -162,8 +161,8 @@ test("keeps tenant, manager, and vendor entry routes available", () => {
   // KAN-130 1-E: 거대 단일-page 뷰 셸은 은퇴하고, 역할 진입 인덱스는 App Router
   // 도메인 첫 화면으로 리다이렉트한다(화면 = app/<role>/<domain>/<screen>).
   const redirectTargets = {
-    tenant: "/?role=tenant&tab=mypage",
-    manager: "/?role=landlord&tab=mypage",
+    tenant: "/living",
+    manager: "/sell",
     vendor: "/vendor/job/00"
   };
   for (const route of ["tenant", "manager", "vendor"]) {
@@ -494,8 +493,8 @@ test("landlord link-required CTA starts the unprotected listing flow instead of 
   assert.doesNotMatch(unifiedLoginPageSource, /"\/(\?role=landlord&tab=mypage)"/);
   assert.match(pageSource, /flow === "listing"/);
   assert.match(pageSource, /isListingStartMode/);
-  // 등록 시작 모드에서는 landlord 마이페이지가 보호 대상에서 빠진다.
-  assert.match(pageSource, /activeRole === "landlord" && isListingStartMode\s*\?\s*null/);
+  // 등록 시작 모드에서는 매물등록(sell) 탭이 보호 대상에서 빠진다.
+  assert.match(pageSource, /activeTab === "sell"\s*\?\s*isListingStartMode\s*\?\s*null/);
 });
 
 test("every inquiry entry point opens the same composer sheet and feeds the inquiry center", () => {
@@ -658,7 +657,6 @@ test("borrows mature Zigbang and Dabang product patterns for trust and map searc
     "알림센터",
     "새 매물",
     "답변 대기",
-    "집주인 등록 매물",
     "내 조건 요약",
     "보증금 1,000만 · 월세 130만 이하",
     "실거주 체크",
@@ -724,7 +722,7 @@ test("makes filters and saved listings behave like interactive app state", () =>
   assert.match(pageSource, /filter-range-panel/);
   assert.match(pageSource, /가격 범위/);
   assert.match(pageSource, /filter-priority-grid/);
-  assert.match(pageSource, /입주·검수/);
+  assert.match(pageSource, /입주 조건/);
   assert.match(pageSource, /조건 적용하고 \{resultCount\}개 보기/);
   assert.match(pageSource, /resultCount=\{activeTab === "map" \? visibleMapListings\.length : visibleHomeCount\}/);
   assert.doesNotMatch(pageSource, /조건 적용하고 42개 보기/);
@@ -815,9 +813,6 @@ test("removes the developer role login panel — roles derive from the signed-in
 
   assert.match(loginScreenSource, /type AppRole/);
   assert.match(loginScreenSource, /function WoozuLoginScreen/);
-  assert.match(pageSource, /roleDisplayLabels/);
-  assert.match(pageSource, /seeker:\s*"방 찾기"/);
-  assert.match(pageSource, /roleLabel\} 활동에 맞춘 검색 조건/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
   assert.match(pageSource, /\[activeRole, activeTab, authMode\]/);
@@ -839,7 +834,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     assert.match(pageSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /activeRole === "tenant"/);
+  assert.match(pageSource, /activeTab === "living"/);
   // 사는집 탭의 "내 룸로그 프로세스" 링크 카드와 "방문 일정" 안내 카드는 제거됐다.
   assert.doesNotMatch(pageSource, /tenant-domain-test-card|href="\/tenant\/messaging\/00"|href="\/tenant\/moveout\/00"/);
   assert.doesNotMatch(pageSource, /maintenance-card/);
@@ -860,7 +855,7 @@ test("shows a landlord my page with property registration fields and media actio
   for (const label of [
     "집주인 마이페이지",
     "등록 매물 현황",
-    "검수 상태",
+    "매물 정보",
     "매물 등록 단계",
     "내 집 등록",
     "사진 업로드",
@@ -873,18 +868,10 @@ test("shows a landlord my page with property registration fields and media actio
     "매물 등록하기",
     "등록 미리보기",
     "입력 계속하기",
-    "검수 대기",
     "3D 도면이 연결됐어요",
     "도면을 만들고 저장하면 자동으로 연결돼요",
-    "집 내놓기 전달 범위",
-    "반경 5km",
-    "인근 중개사 12곳",
-    "검수 준비 체크리스트",
-    "등록 완료 전에 빠진 항목을 확인하세요",
-    "검수 요청 요약",
-    "92%",
-    "예상 검수",
-    "확인매물·3D 투어 배지",
+    "등록 요약",
+    "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
     "비용 정산",
     "비용 원장과 영수증 검토",
     "이번 달 지출",
@@ -911,7 +898,6 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(pageSource, /href="\/manager\/messaging\/00"/);
   assert.match(pageSource, /href="\/manager\/moveout\/00"/);
   assert.match(pageSource, /landlord-domain-test-card/);
-  assert.match(pageSource, /ownerReviewItems/);
   assert.match(pageSource, /DEMO_COSTS/);
   assert.match(pageSource, /DEMO_MONTHLY_SUMMARY/);
   assert.match(pageSource, /DEMO_RECEIPTS/);
@@ -923,9 +909,6 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(pageSource, /selectedVendorId/);
   assert.match(pageSource, /ownerPendingCostReviews/);
   assert.match(pageSource, /ownerOpenDuplicateCount/);
-  assert.match(pageSource, /ownerCompletionRate/);
-  assert.match(pageSource, /ownerCompletionRate = photoCount >= 3 && has3DRoom \? 92 : 68/);
-  assert.match(pageSource, /owner-readiness-card/);
   assert.match(pageSource, /owner-submit-summary/);
   assert.match(pageSource, /ownerForm/);
   assert.match(pageSource, /setOwnerForm/);
@@ -941,10 +924,6 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(cssSource, /\.owner-preview-card/);
   assert.match(cssSource, /\.owner-preview-actions/);
   assert.match(cssSource, /\.owner-preview-actions button/);
-  assert.match(cssSource, /\.owner-exposure-card/);
-  assert.match(cssSource, /\.owner-exposure-grid/);
-  assert.match(cssSource, /\.owner-readiness-card/);
-  assert.match(cssSource, /\.owner-readiness-list/);
   assert.match(cssSource, /\.owner-submit-summary/);
   assert.match(cssSource, /\.owner-submit-grid/);
   assert.match(cssSource, /\.owner-ops-grid/);
@@ -963,17 +942,14 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   for (const label of [
     "찜한 매물",
     "문의센터",
-    "마이페이지",
+    "세입자",
+    "관리",
+    "매물등록",
     "저장 조건",
-    "매물 상세에서 문자문의를 보내면 여기에 표시됩니다",
     "찜한 매물 비교 요약",
     "가격 변동",
     "방문 후보",
-    "문의 흐름",
-    "문의 진행",
-    "검색 조건 관리",
-    "최근 본 방",
-    "문의 확인"
+    "최근 본 방"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
@@ -988,7 +964,7 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   assert.match(pageSource, /<Search/);
   assert.match(pageSource, /<SlidersHorizontal/);
   assert.match(pageSource, /<item\.Icon/);
-  // 탭 초기값은 라우트(/, /map, /saved, /inquiry, /my)가 내려주는 initialTab이다(2단계 라우트 분리).
+  // 탭 초기값은 라우트(/, /map, /saved, /inquiry, /sell, /living)가 내려주는 initialTab이다.
   assert.match(pageSource, /useState<AppTab>\(initialTab\)/);
   assert.match(pageSource, /TAB_PATHS/);
   assert.match(pageSource, /activeTab === item\.key/);
@@ -996,7 +972,8 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   assert.match(pageSource, /activeTab === "map"/);
   assert.match(pageSource, /activeTab === "saved"/);
   assert.match(pageSource, /activeTab === "inquiry"/);
-  assert.match(pageSource, /activeTab === "mypage"/);
+  assert.match(pageSource, /activeTab === "sell"/);
+  assert.match(pageSource, /activeTab === "living"/);
   assert.match(pageSource, /window\.scrollTo\(\{ top: 0, left: 0, behavior: "auto" \}\)/);
   assert.match(pageSource, /querySelectorAll<HTMLElement>\("\.service-frame, \.screen, \.home-screen, \.map-screen, \.listing-detail-screen"\)/);
   assert.doesNotMatch(pageSource, /onClick=\{\(event\) => \{[\s\S]*scrollIntoView[\s\S]*activateTab\(item\.key\)/);
@@ -1061,12 +1038,12 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
     "3D 투어 먼저 보고 싶어요",
     "방문 희망 시간",
     "문의 보내기",
-    "검수 대기 상태"
+    "안내 배지가 함께 표시됩니다"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
-  for (const label of ["안심 거래 정보", "문의 가능", "등록 사진", "중개사 검수", "방배동 · 내방역 도보 5분"]) {
+  for (const label of ["안심 거래 정보", "문의 가능", "등록 사진", "중개사 확인", "방배동 · 내방역 도보 5분"]) {
     assert.match(pageSource, new RegExp(label));
   }
 
@@ -1240,15 +1217,8 @@ test("renders a Dabang-style desktop web portal beyond the phone frame", () => {
 });
 
 test("is configured as an installable PWA shell", () => {
-  for (const label of ["집우집주를 앱처럼 빠르게 열기", "최근 본 방과 문의 흐름", "재방문 준비", "앱 설치"]) {
-    assert.match(pageSource, new RegExp(label));
-  }
-
-  assert.match(pageSource, /beforeinstallprompt/);
-  assert.match(pageSource, /appinstalled/);
-  assert.match(pageSource, /installPrompt\.prompt\(\)/);
-  assert.match(cssSource, /\.pwa-install-card/);
-  assert.match(cssSource, /\.pwa-status-grid/);
+  // 인앱 설치 카드(PwaInstallCard)는 방찾는중 페이지와 함께 제거됐다 —
+  // 설치 가능성은 manifest/서비스워커/레이아웃 메타로 유지된다(브라우저 기본 설치 UX).
   assert.match(layoutSource, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(layoutSource, /appleWebApp/);
   assert.match(layoutSource, /apple-touch-icon\.png/);

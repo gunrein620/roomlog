@@ -12,9 +12,9 @@ const sampleState = {
   ownerForm: { ...emptyOwnerForm, title: "성수 아뜰리에 501호", deposit: "2000", monthly: "90" },
   photoCount: 4,
   has3DRoom: true,
-  registrationStatus: "검수 대기",
+  registrationStatus: "노출중",
   myListings: [
-    { id: 1749990000000, title: "성수 아뜰리에 501호", price: "월세 2000/90", status: "검수 대기", caption: "실매물 확인 후 노출됩니다" },
+    { id: 1749990000000, title: "성수 아뜰리에 501호", price: "월세 2000/90", status: "노출중", caption: "조회 12 · 문의 2건" },
     ...initialOwnerListings
   ]
 };
@@ -30,7 +30,7 @@ describe("owner listing draft persistence", () => {
     assert.equal(restored.ownerForm.title, "성수 아뜰리에 501호");
     assert.equal(restored.photoCount, 4);
     assert.equal(restored.has3DRoom, true);
-    assert.equal(restored.registrationStatus, "검수 대기");
+    assert.equal(restored.registrationStatus, "노출중");
     assert.equal(restored.myListings.length, 2);
     assert.equal(restored.myListings[0].title, "성수 아뜰리에 501호");
   });

@@ -5,7 +5,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, X } from "lucide-react";
 import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
-import { MyFlowBar, type MyFlow } from "./my-shared";
 
 const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
 
@@ -63,11 +62,9 @@ function tenancyDateLabel(iso?: string): string {
 }
 
 export default function TenantMyPage({
-  onSelectFlow,
   onGoInquiry,
   onGoHome
 }: {
-  onSelectFlow: (flow: MyFlow) => void;
   onGoInquiry: () => void;
   onGoHome: () => void;
 }) {
@@ -277,8 +274,6 @@ export default function TenantMyPage({
 
   return (
     <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
-      <MyFlowBar activeFlow="living" onSelectFlow={onSelectFlow} />
-
       <div className="owner-hero compact-profile tenant-hero">
         <div>
           <p className="brand-kicker">입주 생활</p>
