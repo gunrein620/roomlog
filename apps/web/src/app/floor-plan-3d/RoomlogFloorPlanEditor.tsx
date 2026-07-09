@@ -50,19 +50,17 @@ import {
   furnitureImageUrl,
   isFurnitureCatalogItem,
   isLandlordOptionFurniture,
-  isLockedFurnitureForResident,
   moveFurnitureDraftToPoint,
   normalizeCatalogItem,
+  reopenFurnitureDraft,
   rotateFurnitureQuarterTurn
 } from "./furniture-placement";
 import {
   buildFloorPlanDraftPayload,
   buildFloorPlanLocalSnapshot,
-  buildResidentDesignPayload,
   buildRoom3DSnapshot
 } from "./room-model/room-payload";
 import type {
-  ExperienceMode,
   FurnitureCatalogItem,
   PlacedFurniture,
   Point,
@@ -757,7 +755,6 @@ type EditorHistorySnapshot = { fixtures: FloorPlanCandidate[]; openings: FloorPl
 export default function RoomlogFloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("landlord");
   const [tool, setTool] = useState<EditorTool>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   // 빈 캔버스에서 시작 — 샘플 벽은 '샘플 도면 체험'/'샘플 복원'과 세입자 체험 진입 시에만 채운다.
@@ -844,9 +841,9 @@ export default function RoomlogFloorPlanEditor() {
   const interiorMeasureSectionRef = useRef<HTMLDetailsElement | null>(null);
   useEffect(() => {
     // 가구 라이브러리·방 크기 측정이 드로어 안에 있어서, 해당 작업(3D 배치 포함)에 들어가면 자동으로 열어준다.
-    if (tool === "furniture" || tool === "interior" || experienceMode === "resident" || viewMode === "3d") setSidePanelOpen(true);
+    if (tool === "furniture" || tool === "interior" || viewMode === "3d") setSidePanelOpen(true);
     if (tool === "interior" && interiorMeasureSectionRef.current) interiorMeasureSectionRef.current.open = true;
-  }, [tool, experienceMode, viewMode]);
+  }, [tool, viewMode]);
   const [viewScale, setViewScale] = useState(1);
   const [viewOffset, setViewOffset] = useState<Point>({ x: 0, y: 0 });
   // 편집 실행 취소 스냅샷 — 벽뿐 아니라 문/창문·설비 후보도 함께 담아 Ctrl+Z 한 번으로 되돌린다.
@@ -901,9 +898,41 @@ export default function RoomlogFloorPlanEditor() {
     () => convertWallsToWheretoputSimulator(walls, { pixelToMeterRatio: pixelToMmRatio / 1000 }) as WheretoputWall3D[],
     [pixelToMmRatio, walls]
   );
+  // 3D 변환용 벽 — 2D에서는 편집(스냅)을 위해 문·창문 자리를 모두 갈라놨지만,
+  // 3D에서는 창문 자리를 후보 박스 크기의 벽 조각으로 도로 메워 문 자리만 뚫린 채 남긴다.
+  // 문 후보 드래그 등 창문과 무관한 후보 변경마다 전체 벽 3D 변환이 다시 돌지 않게,
+  // 창문 후보의 기하만 추린 값을 메모 키로 쓴다.
+  const windowFillWalls = useMemo(
+    () =>
+      openingCandidates
+        .filter(
+          (candidate) =>
+            candidate.status !== "REJECTED" && candidate.type.toUpperCase() === "WINDOW" && candidate.boxPx && candidate.position
+        )
+        .map((candidate) => {
+          const box = candidate.boxPx!;
+          const position = candidate.position!;
+          const horizontal = box.width >= box.height;
+          const thickness = Math.max(4, horizontal ? box.height : box.width);
+          return {
+            id: `window-fill-${candidate.id}`,
+            start: horizontal ? { x: position.x - box.width / 2, y: position.y } : { x: position.x, y: position.y - box.height / 2 },
+            end: horizontal ? { x: position.x + box.width / 2, y: position.y } : { x: position.x, y: position.y + box.height / 2 },
+            depthPx: thickness,
+            thicknessPx: thickness
+          } as unknown as Wall;
+        }),
+    [openingCandidates]
+  );
+  const windowFillKey = useMemo(
+    () => windowFillWalls.map((wall) => `${wall.id}:${wall.start.x},${wall.start.y}-${wall.end.x},${wall.end.y}:${wall.thicknessPx}`).join("|"),
+    [windowFillWalls]
+  );
   const roomWalls3D = useMemo(
-    () => convertWallsToWheretoputRoom3D(visibleWalls, { pixelToMmRatio }) as WheretoputWall3D[],
-    [pixelToMmRatio, visibleWalls]
+    () => convertWallsToWheretoputRoom3D([...visibleWalls, ...windowFillWalls], { pixelToMmRatio }) as WheretoputWall3D[],
+    // windowFillWalls 배열 참조는 후보가 바뀔 때마다 새로 만들어지므로, 기하 서명(windowFillKey)으로만 재계산한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pixelToMmRatio, visibleWalls, windowFillKey]
   );
   // 전체 벽 외곽 크기(mm) — 축척이 실제 도면과 맞는지 한눈에 비교용.
   const wallBoundsMm = useMemo(() => {
@@ -1310,15 +1339,7 @@ export default function RoomlogFloorPlanEditor() {
   }, [cachedBackgroundImage, detectionBoxes, isScaleSet, pixelToMmRatio, printedDimensionLineSpans, printedDimensionScale, structuralDimensionChips, uploadedImage]);
 
   const hiddenWallCount = hiddenWallIds.size;
-  const selectedFurniture = useMemo(
-    () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
-    [placedFurnitures, selectedFurnitureId]
-  );
   const landlordOptionFurnitures = useMemo(() => placedFurnitures.filter(isLandlordOptionFurniture), [placedFurnitures]);
-  const residentDesignFurnitures = useMemo(
-    () => placedFurnitures.filter((furniture) => !isLandlordOptionFurniture(furniture)),
-    [placedFurnitures]
-  );
   const furnitureKindCounts = useMemo(
     () =>
       furnitureCatalog.reduce<Record<string, number>>((counts, item) => {
@@ -1376,12 +1397,6 @@ export default function RoomlogFloorPlanEditor() {
     };
   }, []);
 
-  useEffect(() => {
-    if (experienceMode === "resident" && (tool === "opening" || tool === "fixture")) {
-      setTool("furniture");
-      setSelectedWall(null);
-    }
-  }, [experienceMode, tool]);
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -2262,6 +2277,7 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function handle3DWallPointerDown(wallData: WheretoputWall3D, event: ThreeEvent<PointerEvent>) {
+    if (event.button !== 0) return;
     event.stopPropagation();
     const wall = wallData.original2D;
     const wallId = wall?.id ?? wallData.wall_id;
@@ -2296,7 +2312,10 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
+    // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
+    restorePendingFurnitureOrigin();
     const previewFurniture = createFurnitureModel(item);
+    pendingFurniturePlacedOnceRef.current = false;
     setPendingFurniture(previewFurniture);
     setSelectedFurnitureId(null);
     setSelectedWall(null);
@@ -2305,37 +2324,87 @@ export default function RoomlogFloorPlanEditor() {
     setUploadStatus(`${item.name} 배치 위치를 3D 바닥에서 클릭`);
   }
 
+  // 가구 드래그 이동 — 좌클릭을 누른 채 끌면 가구가 커서를 따라오고, 떼면 그 자리에 멈춘다(확정은 ✓).
+  const [isFurnitureDragging, setIsFurnitureDragging] = useState(false);
+  useEffect(() => {
+    if (!isFurnitureDragging) return;
+    const endDrag = () => setIsFurnitureDragging(false);
+    window.addEventListener("pointerup", endDrag);
+    return () => window.removeEventListener("pointerup", endDrag);
+  }, [isFurnitureDragging]);
+
   function handle3DFloorPointerDown(event: ThreeEvent<PointerEvent>) {
+    // 우클릭/휠클릭은 카메라 조작용 — 좌클릭일 때만 가구를 옮긴다.
+    if (event.button !== 0) return;
     if (tool !== "furniture") return;
     event.stopPropagation();
+    placeFurnitureAtPoint(event.point);
+    if (pendingFurniture) setIsFurnitureDragging(true);
+  }
+
+  function handle3DFloorPointerMove(event: ThreeEvent<PointerEvent>) {
+    if (!isFurnitureDragging || !pendingFurniture) return;
     placeFurnitureAtPoint(event.point);
   }
 
   function placeFurnitureAtPoint(point: { x: number; z: number }) {
     if (!pendingFurniture) return;
 
-    const nextFurniture = moveFurnitureDraftToPoint(pendingFurniture, point, roomWalls3D);
+    // 카탈로그에서 갓 꺼낸 가구의 현재 위치(원점)는 이동 경로가 아니다 —
+    // 첫 배치는 벽 통과 검사를 끄고, 그 뒤부터(드래그) 경로 기준으로 벽에 막는다.
+    const nextFurniture = moveFurnitureDraftToPoint(pendingFurniture, point, roomWalls3D, {
+      ignoreCrossing: !pendingFurniturePlacedOnceRef.current
+    });
+    pendingFurniturePlacedOnceRef.current = true;
+    // 벽에 막혀 위치가 그대로면 상태 업데이트를 건너뛴다 — 드래그 중 무의미한 리렌더 방지.
+    if (nextFurniture.position[0] === pendingFurniture.position[0] && nextFurniture.position[2] === pendingFurniture.position[2]) return;
     setPendingFurniture(nextFurniture);
     setUploadStatus(`${nextFurniture.name} 위치 지정, 배치완료를 눌러 확정하세요`);
+  }
+
+  // 배치된 가구를 다시 집어들었을 때(재편집) 취소하면 되돌릴 원래 상태.
+  const pendingFurnitureOriginRef = useRef<PlacedFurniture | null>(null);
+  // 집고 있는 가구가 사용자 위치를 한 번이라도 받았는지 — 첫 배치는 벽 통과 검사를 끄기 위함.
+  const pendingFurniturePlacedOnceRef = useRef(false);
+
+  function restorePendingFurnitureOrigin() {
+    const original = pendingFurnitureOriginRef.current;
+    if (!original) return false;
+    pendingFurnitureOriginRef.current = null;
+    setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, original]);
+    return true;
   }
 
   function confirmPendingFurniturePlacement() {
     if (!pendingFurniture) return;
 
-    const nextFurniture = finalizeFurnitureDraft(pendingFurniture, experienceMode);
+    pendingFurnitureOriginRef.current = null;
+    const nextFurniture = finalizeFurnitureDraft(pendingFurniture, "landlord");
     setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
     setPendingFurniture(null);
     setSelectedFurnitureId(null);
-    setUploadStatus(experienceMode === "landlord" ? `${nextFurniture.name} 임대인 옵션 가구 배치 완료` : `${nextFurniture.name} 배치 완료`);
+    setUploadStatus(`${nextFurniture.name} 임대인 옵션 가구 배치 완료`);
   }
 
   function cancelPendingFurniturePlacement() {
     if (!pendingFurniture) return;
 
     const targetName = pendingFurniture.name;
+    const restored = restorePendingFurnitureOrigin();
     setPendingFurniture(null);
     setSelectedFurnitureId(null);
-    setUploadStatus(`${targetName} 배치 취소`);
+    setUploadStatus(restored ? `${targetName} 원래 자리로 되돌림` : `${targetName} 배치 취소`);
+  }
+
+  // 재편집 중이든 새 배치든, 집고 있는 가구를 완전히 없앤다(원위치 복구 없음).
+  function deletePendingFurniture() {
+    if (!pendingFurniture) return;
+
+    const targetName = pendingFurniture.name;
+    pendingFurnitureOriginRef.current = null;
+    setPendingFurniture(null);
+    setSelectedFurnitureId(null);
+    setUploadStatus(`${targetName} 삭제`);
   }
 
   function rotatePendingFurniture() {
@@ -2347,49 +2416,25 @@ export default function RoomlogFloorPlanEditor() {
   }
 
   function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
+    if (event.button !== 0) return;
     event.stopPropagation();
     if (tool === "furniture" && pendingFurniture) {
       placeFurnitureAtPoint(event.point);
+      setIsFurnitureDragging(true);
       return;
     }
 
-    setSelectedFurnitureId(furniture.id);
-    setSelectedWall(null);
-    setPendingFurniture(null);
-    setTool("furniture");
-    setUploadStatus(
-      isLockedFurnitureForResident(furniture, experienceMode)
-        ? "임대인 옵션 가구는 세입자 모드에서 고정됩니다"
-        : `${furniture.name} 선택`
-    );
-  }
-
-  function rotateSelectedFurniture() {
-    if (!selectedFurnitureId) return;
-    if (selectedFurniture && isLockedFurnitureForResident(selectedFurniture, experienceMode)) {
-      setUploadStatus("세입자는 임대인 옵션 가구를 변경할 수 없습니다");
-      return;
-    }
-    setPlacedFurnitures((currentFurnitures) =>
-      currentFurnitures.map((furniture) =>
-        furniture.id === selectedFurnitureId
-          ? rotateFurnitureQuarterTurn(furniture)
-          : furniture
-      )
-    );
-    setUploadStatus(`${selectedFurniture?.name ?? "가구"} 90도 회전`);
-  }
-
-  function removeSelectedFurniture() {
-    if (!selectedFurnitureId) return;
-    if (selectedFurniture && isLockedFurnitureForResident(selectedFurniture, experienceMode)) {
-      setUploadStatus("세입자는 임대인 옵션 가구를 변경할 수 없습니다");
-      return;
-    }
-    const targetName = selectedFurniture?.name ?? "가구";
-    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((furniture) => furniture.id !== selectedFurnitureId));
+    // 배치 완료된 가구를 클릭하면 다시 집어들어 재편집 모드로 — 취소(✕)하면 원래 자리로 돌아간다.
+    // 확정 표시(source)가 붙은 채로는 이동이 막히므로 초안 상태로 되돌려서 집는다.
+    pendingFurnitureOriginRef.current = furniture;
+    pendingFurniturePlacedOnceRef.current = true;
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
+    setPendingFurniture(reopenFurnitureDraft(furniture));
     setSelectedFurnitureId(null);
-    setUploadStatus(`${targetName} 삭제`);
+    setSelectedWall(null);
+    setTool("furniture");
+    setIsFurnitureDragging(true);
+    setUploadStatus(`${furniture.name} 재편집 — 끌어서 옮기고 ✓로 확정하세요`);
   }
 
   function handleMouseDown(event: React.MouseEvent<HTMLCanvasElement>) {
@@ -2591,6 +2636,9 @@ export default function RoomlogFloorPlanEditor() {
       const cross = horizontal ? originalPosition.y : originalPosition.x;
       const fixedEdge = originalCenter - sign * (originalLength / 2);
       const snapTarget = findWallEdgeSnapTarget(horizontal, cross, fixedEdge + sign * nextLength, {
+        // 창문은 검출 박스가 두꺼워 중심이 벽 중심선에서 살짝 벗어나 있다 —
+        // 박스 두께의 절반까지는 같은 벽으로 인정해야 문처럼 스냅이 걸린다.
+        crossTolerancePx: (horizontal ? originalBox.height : originalBox.width) / 2,
         snapToOpeningsExcludingId: candidateDragOperation.candidateId
       });
       if (snapTarget !== null && Math.abs(snapTarget - fixedEdge) >= 8) {
@@ -2941,6 +2989,8 @@ export default function RoomlogFloorPlanEditor() {
         setIsDrawing(false);
         setStartPoint(null);
         setCurrentPoint(null);
+        // 재편집 중이던 가구는 조용히 사라지지 않게 원위치로 되돌린다.
+        restorePendingFurnitureOrigin();
         setPendingFurniture(null);
         setSelectedFurnitureId(null);
         clearWallSelectionState();
@@ -2994,6 +3044,7 @@ export default function RoomlogFloorPlanEditor() {
       setHiddenWallIds(new Set());
       setSelectedWall(null);
       setHoveredWall(null);
+      restorePendingFurnitureOrigin();
       setPendingFurniture(null);
       setSelectedFurnitureId(null);
       setOpeningCandidates([]);
@@ -3296,7 +3347,8 @@ export default function RoomlogFloorPlanEditor() {
     });
     const fusionSourceWalls = roboflowWallPostProcessSourceWalls.length ? roboflowWallPostProcessSourceWalls : fallbackSourceWalls;
 
-    // 파란 벽 박스 + (벽 라인에 정렬한) 노란 창문 박스를 벽 생성 기준으로. 창문 자리도 벽으로 이어짐. 문(DOOR)만 gap.
+    // 파란 벽 박스 + (벽 라인에 정렬한) 노란 창문 박스를 벽 생성 기준으로 — 창문 구간의 벽 검출
+    // 구멍을 메워 벽 라인 연속성을 확보한다. 최종 벽 데이터에서는 문·창문 자리 모두 되뚫는다(아래 참고).
     const rawWallBoundingBoxes = roboflowDetections.walls.map((wallBox) => wallBox.boundingBox);
     const alignedWindowWallBoxes = roboflowDetections.openings
       .filter((opening) => opening.type === "WINDOW")
@@ -3403,18 +3455,18 @@ export default function RoomlogFloorPlanEditor() {
       })
     );
 
-    // 3D 벽 = 화면에 보이는 벽 박스를 그대로 변환(중심선). 단 문(DOOR) 자리는 잘라서 뚫는다(창문은 이어짐 유지).
-    const doorCutBoxes = fittedOpeningBoxes
-      .filter((opening) => opening.type === "DOOR")
-      .map((opening) => normalizeOverlayBox(opening.box));
+    // 3D 벽 = 화면에 보이는 벽 박스를 그대로 변환(중심선). 문·창문 자리 모두 잘라서 뚫는다 —
+    // 창문만 벽이 이어져 있으면 늘릴 때 스냅할 벽 끝점이 없어 문과 편집감이 달라진다.
+    // (창문 검출 박스는 벽 라인 합성 단계에서 벽 연속성 확보용으로만 쓰고, 여기서 정확한 자리를 되뚫는다.)
+    const openingCutBoxes = fittedOpeningBoxes.map((opening) => normalizeOverlayBox(opening.box));
     const wallsFromDisplayBoxes = cornerAlignedWallBoxes.flatMap((overlayBox, boxIndex) => {
       const box = normalizeOverlayBox(overlayBox.box);
       const horizontal = box.x2 - box.x1 >= box.y2 - box.y1;
       const thickness = Math.max(4, horizontal ? box.y2 - box.y1 : box.x2 - box.x1);
-      const overlappingDoors = doorCutBoxes.filter(
-        (door) => door.x1 < box.x2 && door.x2 > box.x1 && door.y1 < box.y2 && door.y2 > box.y1
+      const overlappingOpenings = openingCutBoxes.filter(
+        (opening) => opening.x1 < box.x2 && opening.x2 > box.x1 && opening.y1 < box.y2 && opening.y2 > box.y1
       );
-      const pieces = overlappingDoors.length ? splitEditorBoxAtOpenings(box, overlappingDoors, horizontal) : [box];
+      const pieces = overlappingOpenings.length ? splitEditorBoxAtOpenings(box, overlappingOpenings, horizontal) : [box];
       return pieces
         .filter((piece) => (horizontal ? piece.x2 - piece.x1 : piece.y2 - piece.y1) > 2)
         .map((piece, pieceIndex) => {
@@ -3692,7 +3744,10 @@ export default function RoomlogFloorPlanEditor() {
     let bestShift: number | null = null;
     for (const sign of [-1, 1] as const) {
       const edge = center + sign * (length / 2);
-      const target = findWallEdgeSnapTarget(horizontal, cross, edge, { snapToOpeningsExcludingId: excludeCandidateId });
+      const target = findWallEdgeSnapTarget(horizontal, cross, edge, {
+        crossTolerancePx: (horizontal ? geometry.boxPx.height : geometry.boxPx.width) / 2,
+        snapToOpeningsExcludingId: excludeCandidateId
+      });
       if (target === null) continue;
       const shift = target - edge;
       if (bestShift === null || Math.abs(shift) < Math.abs(bestShift)) bestShift = shift;
@@ -3714,11 +3769,14 @@ export default function RoomlogFloorPlanEditor() {
     horizontal: boolean,
     cross: number,
     edgeValue: number,
-    options?: { excludeWallId?: Wall["id"]; snapToOpeningsExcludingId?: string; tolerance?: number }
+    options?: { crossTolerancePx?: number; excludeWallId?: Wall["id"]; snapToOpeningsExcludingId?: string; tolerance?: number }
   ) {
     // 눈으로 '거의 붙었다' 싶은 간격에서도 자석이 걸리게 넉넉히 잡는다.
     // (벽 자체를 편집할 때는 옵션으로 더 좁게 준다 — 후보보다 정밀한 작업이라.)
     const tolerance = options?.tolerance ?? Math.max(36, 36 / viewScale);
+    // cross 게이트 여유 — 창문처럼 검출 박스가 두꺼워 중심이 벽 중심선에서 벗어난 후보도
+    // 자기 두께의 절반만큼은 같은 벽으로 인정해 스냅이 걸리게 한다.
+    const extraCross = options?.crossTolerancePx ?? 0;
     let best: number | null = null;
     const consider = (target: number) => {
       const distance = Math.abs(target - edgeValue);
@@ -3731,7 +3789,7 @@ export default function RoomlogFloorPlanEditor() {
       if (wallHorizontal === horizontal) {
         // 같은 축선 위 벽: cross가 벽 중심선 근처일 때 끝점에 스냅.
         const wallCross = wallHorizontal ? (wall.start.y + wall.end.y) / 2 : (wall.start.x + wall.end.x) / 2;
-        if (Math.abs(wallCross - cross) > wallThickness) continue;
+        if (Math.abs(wallCross - cross) > wallThickness + extraCross) continue;
         consider(horizontal ? wall.start.x : wall.start.y);
         consider(horizontal ? wall.end.x : wall.end.y);
       } else {
@@ -3741,7 +3799,7 @@ export default function RoomlogFloorPlanEditor() {
         const spanB = horizontal ? wall.end.y : wall.end.x;
         const spanMin = Math.min(spanA, spanB);
         const spanMax = Math.max(spanA, spanB);
-        if (cross < spanMin - wallThickness || cross > spanMax + wallThickness) continue;
+        if (cross < spanMin - wallThickness - extraCross || cross > spanMax + wallThickness + extraCross) continue;
         const wallCenter = horizontal ? (wall.start.x + wall.end.x) / 2 : (wall.start.y + wall.end.y) / 2;
         consider(wallCenter - wallThickness / 2);
         consider(wallCenter + wallThickness / 2);
@@ -3963,29 +4021,10 @@ export default function RoomlogFloorPlanEditor() {
     switchViewMode("3d");
   }
 
-  function saveResidentFurnitureDesign() {
-    const landlordOptionFurnitures = placedFurnitures.filter(isLandlordOptionFurniture);
-    const residentDesignFurnitures = placedFurnitures.filter((furniture) => !isLandlordOptionFurniture(furniture));
-    const payload = buildResidentDesignPayload({
-      fixtureCandidates,
-      floorPlanDraftId,
-      hiddenWallIds: Array.from(hiddenWallIds),
-      landlordOptionFurnitures,
-      openingCandidates,
-      pixelToMmRatio,
-      residentDesignFurnitures,
-      savedAt: Date.now(),
-      walls,
-      walls3D: roomWalls3D
-    });
-    window.localStorage.setItem("residentFloorPlanDesign", JSON.stringify(payload));
-    setUploadStatus("세입자용 배치 저장 완료");
-  }
-
   return (
     <section className="floor-plan-editor wheretoput-floor-plan-editor" aria-label="도면 캔버스">
       {/* 예전 좌측 레일(모드 스위치 + 도구 목록)은 제거 — 도구는 캔버스 위 플로팅 툴바로 이동해
-          맵이 화면 폭을 온전히 쓴다. 세입자 체험 분기(experienceMode)는 코드로는 유지한다. */}
+          맵이 화면 폭을 온전히 쓴다. */}
       <section className="floor-plan-canvas wheretoput-floor-plan-canvas" aria-label="도면 캔버스">
         <div className="floor-plan-upload-row">
           <input
@@ -3996,48 +4035,40 @@ export default function RoomlogFloorPlanEditor() {
             onChange={handleImageUpload}
             type="file"
           />
-          {experienceMode === "landlord" ? (
-            <>
-              {/* 작업 순서대로 배치: 도면 등록 → 도면 인식(문/창문 탐지) → 인식 보정(벽 후처리) → 세부 조정(방 크기 재기) */}
-              <label
-                aria-disabled={isProcessing}
-                className={`floor-plan-secondary floor-plan-upload-label${isProcessing ? " is-disabled" : ""}`}
-                htmlFor="floor-plan-source-input"
-              >
-                도면 등록
-              </label>
-              <button
-                className="floor-plan-secondary"
-                disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
-                onClick={() => runOpeningDetection()}
-                title="Roboflow로 도면의 벽·문/창문을 자동 인식합니다"
-                type="button"
-              >
-                도면 인식
-              </button>
-              <button
-                className="floor-plan-secondary"
-                disabled={isProcessing || !roboflowDetections}
-                onClick={applyRoboflowWallPostProcessing}
-                title="인식 결과를 3D 변환용 벽으로 정리합니다"
-                type="button"
-              >
-                인식 보정
-              </button>
-              <button
-                className={tool === "interior" ? "floor-plan-secondary active" : "floor-plan-secondary"}
-                onClick={() => startInteriorMeasure("scale")}
-                title="실제 길이를 아는 두 점을 클릭해 축척(1px=mm)을 맞춥니다"
-                type="button"
-              >
-                세부 조정
-              </button>
-            </>
-          ) : (
-            <button className="floor-plan-secondary" onClick={() => setViewMode("3d")} type="button">
-              3D 배치 보기
-            </button>
-          )}
+          {/* 작업 순서대로 배치: 도면 등록 → 도면 인식(문/창문 탐지) → 인식 보정(벽 후처리) → 세부 조정(방 크기 재기) */}
+          <label
+            aria-disabled={isProcessing}
+            className={`floor-plan-secondary floor-plan-upload-label${isProcessing ? " is-disabled" : ""}`}
+            htmlFor="floor-plan-source-input"
+          >
+            도면 등록
+          </label>
+          <button
+            className="floor-plan-secondary"
+            disabled={isProcessing || (!uploadedFloorPlanSource?.attachmentId && !uploadedAiImageDataUrl)}
+            onClick={() => runOpeningDetection()}
+            title="Roboflow로 도면의 벽·문/창문을 자동 인식합니다"
+            type="button"
+          >
+            도면 인식
+          </button>
+          <button
+            className="floor-plan-secondary"
+            disabled={isProcessing || !roboflowDetections}
+            onClick={applyRoboflowWallPostProcessing}
+            title="인식 결과를 3D 변환용 벽으로 정리합니다"
+            type="button"
+          >
+            인식 보정
+          </button>
+          <button
+            className={tool === "interior" ? "floor-plan-secondary active" : "floor-plan-secondary"}
+            onClick={() => startInteriorMeasure("scale")}
+            title="실제 길이를 아는 두 점을 클릭해 축척(1px=mm)을 맞춥니다"
+            type="button"
+          >
+            세부 조정
+          </button>
           <button
             aria-label={sidePanelOpen ? "요약 패널 닫기" : "요약 패널 열기"}
             className={sidePanelOpen ? "floor-plan-secondary floor-plan-panel-toggle active" : "floor-plan-secondary floor-plan-panel-toggle"}
@@ -4142,6 +4173,7 @@ export default function RoomlogFloorPlanEditor() {
                     setPartialEraserSelectedWall(null);
                     if (toolId !== "select") setSelectedWall(null);
                     if (toolId !== "fixture" && toolId !== "opening") {
+                      restorePendingFurnitureOrigin();
                       setPendingFurniture(null);
                       setSelectedFurnitureId(null);
                     }
@@ -4190,7 +4222,7 @@ export default function RoomlogFloorPlanEditor() {
                 맞춤
               </button>
             </div>
-            {experienceMode === "landlord" && walls.length === 0 && !uploadedImage && !isProcessing ? (
+            {walls.length === 0 && !uploadedImage && !isProcessing ? (
               <div className="floor-plan-empty-guide" aria-label="도면 시작 안내">
                 <strong>도면을 등록해 시작하세요</strong>
                 <p>도면 이미지를 올리면 벽·문/창문을 자동으로 인식해요. 도면이 없다면 왼쪽 드로잉 도구로 벽을 직접 그릴 수 있어요.</p>
@@ -4216,9 +4248,15 @@ export default function RoomlogFloorPlanEditor() {
           </div>
         ) : (
           <RoomlogThreeFloorPlanView
+            controlsEnabled={!isFurnitureDragging}
             furnitureData={placedFurnitures}
             onFloorPointerDown={handle3DFloorPointerDown}
+            onFloorPointerMove={handle3DFloorPointerMove}
             onFurniturePointerDown={handleFurniturePointerDown}
+            onPendingCancel={cancelPendingFurniturePlacement}
+            onPendingConfirm={confirmPendingFurniturePlacement}
+            onPendingDelete={deletePendingFurniture}
+            onPendingRotate={rotatePendingFurniture}
             onWallPointerDown={handle3DWallPointerDown}
             pendingFurniture={pendingFurniture}
             selectedFurnitureId={selectedFurnitureId}
@@ -4260,41 +4298,33 @@ export default function RoomlogFloorPlanEditor() {
                 2D
               </button>
             </div>
-            {experienceMode === "landlord" ? (
-              <>
-                <button
-                  className="floor-plan-secondary"
-                  disabled={roomWalls3D.length === 0}
-                  onClick={downloadRoom3DJson}
-                  title="3D 변환 결과(벽·문창문·설비·가구)를 JSON 파일로 내려받습니다"
-                  type="button"
-                >
-                  JSON 내려받기
-                </button>
-                <button
-                  className="floor-plan-primary"
-                  disabled={isProcessing || walls.length === 0}
-                  onClick={() => saveFloorPlanDraft("DRAFT")}
-                  title="지금까지 그린 도면을 초안으로 저장합니다"
-                  type="button"
-                >
-                  초안 저장
-                </button>
-                <button
-                  className="floor-plan-primary"
-                  disabled={isProcessing || roomWalls3D.length === 0}
-                  onClick={() => saveFloorPlanDraft("PUBLISHED")}
-                  title={roomWalls3D.length > 0 ? "도면을 매물 등록 화면에 연결합니다" : "등록하려면 먼저 3D 변환 데이터가 필요합니다"}
-                  type="button"
-                >
-                  등록
-                </button>
-              </>
-            ) : (
-              <button className="floor-plan-primary" disabled={residentDesignFurnitures.length === 0} onClick={saveResidentFurnitureDesign} type="button">
-                배치 저장
-              </button>
-            )}
+            <button
+              className="floor-plan-secondary"
+              disabled={roomWalls3D.length === 0}
+              onClick={downloadRoom3DJson}
+              title="3D 변환 결과(벽·문창문·설비·가구)를 JSON 파일로 내려받습니다"
+              type="button"
+            >
+              JSON 내려받기
+            </button>
+            <button
+              className="floor-plan-primary"
+              disabled={isProcessing || walls.length === 0}
+              onClick={() => saveFloorPlanDraft("DRAFT")}
+              title="지금까지 그린 도면을 초안으로 저장합니다"
+              type="button"
+            >
+              초안 저장
+            </button>
+            <button
+              className="floor-plan-primary"
+              disabled={isProcessing || roomWalls3D.length === 0}
+              onClick={() => saveFloorPlanDraft("PUBLISHED")}
+              title={roomWalls3D.length > 0 ? "도면을 매물 등록 화면에 연결합니다" : "등록하려면 먼저 3D 변환 데이터가 필요합니다"}
+              type="button"
+            >
+              등록
+            </button>
           </div>
         </div>
 
@@ -4312,7 +4342,7 @@ export default function RoomlogFloorPlanEditor() {
 
       <aside className={`floor-plan-sidepanel floor-plan-drawer${sidePanelOpen ? " is-open" : ""}`} aria-hidden={!sidePanelOpen} aria-label="도면 요약">
         <div className="floor-plan-drawer-head">
-          <strong>{experienceMode === "landlord" ? "내 도면" : "가구 배치 체험"}</strong>
+          <strong>내 도면</strong>
           <button className="floor-plan-secondary" onClick={() => setSidePanelOpen(false)} type="button">
             닫기
           </button>
@@ -4349,8 +4379,7 @@ export default function RoomlogFloorPlanEditor() {
           </div>
         </details>
 
-        {experienceMode === "landlord" ? (
-          <>
+        <>
             {/* 방 크기 측정 — 캔버스 위 가로 스트립에서 드로어 섹션으로 이동. '세부 조정'에 들어가면 자동으로 펼쳐진다.
                 축척(1px=mm)은 여기서 따로 확정하고, 가로/세로 재기는 확정된 축척을 소비만 한다. */}
             <details className="floor-plan-drawer-section" ref={interiorMeasureSectionRef}>
@@ -4463,19 +4492,17 @@ export default function RoomlogFloorPlanEditor() {
                 </div>
               </details>
             ) : null}
-          </>
-        ) : null}
+        </>
 
         {/* 가구 섹션은 가구 도구뿐 아니라 3D 보기에서도 노출 — 3D에서는 가구 배치가 주 작업인데
             도구 상태에만 묶여 있으면 '3D 배치 보기'로 바로 들어온 경우 가구 패널이 안 보인다. */}
-        {experienceMode === "resident" || tool === "furniture" || viewMode === "3d" ? (
+        {tool === "furniture" || viewMode === "3d" ? (
           <>
             <details className="floor-plan-drawer-section">
-              <summary>{experienceMode === "landlord" ? "임대인 옵션 가구" : "wheretoput furniture picker"}</summary>
+              <summary>임대인 옵션 가구</summary>
               <div className="floor-plan-drawer-section-body floor-plan-furniture-library">
               <code>
-                {furnitureCatalogStatus} {filteredFurnitureCatalog.length}/{furnitureCatalog.length} / 옵션 {landlordOptionFurnitures.length} / 내 배치{" "}
-                {residentDesignFurnitures.length}
+                {furnitureCatalogStatus} {filteredFurnitureCatalog.length}/{furnitureCatalog.length} / 옵션 {landlordOptionFurnitures.length}
               </code>
               <div className="floor-plan-furniture-search">
                 <input
@@ -4552,61 +4579,6 @@ export default function RoomlogFloorPlanEditor() {
               </div>
             </details>
 
-            <details className="floor-plan-drawer-section">
-              <summary>선택 가구</summary>
-              <div className="floor-plan-drawer-section-body">
-              {selectedFurniture ? (
-                <>
-                  <code>
-                    {selectedFurniture.name} / {selectedFurniture.position.map((value) => value.toFixed(2)).join(", ")}
-                  </code>
-                  <div className="floor-plan-furniture-actions">
-                    <button
-                      className="floor-plan-secondary"
-                      disabled={isLockedFurnitureForResident(selectedFurniture, experienceMode)}
-                      onClick={rotateSelectedFurniture}
-                      type="button"
-                    >
-                      90도 회전
-                    </button>
-                    <button
-                      className="floor-plan-secondary"
-                      disabled={isLockedFurnitureForResident(selectedFurniture, experienceMode)}
-                      onClick={removeSelectedFurniture}
-                      type="button"
-                    >
-                      삭제
-                    </button>
-                  </div>
-                  <code>
-                    {isLockedFurnitureForResident(selectedFurniture, experienceMode)
-                      ? "임대인 옵션 가구는 세입자 모드에서 고정됩니다"
-                      : "배치완료된 가구는 바닥 클릭으로 이동하지 않습니다"}
-                  </code>
-                </>
-              ) : pendingFurniture ? (
-                <>
-                  <code>
-                    {pendingFurniture.name} / {pendingFurniture.position.map((value) => value.toFixed(2)).join(", ")}
-                  </code>
-                  <div className="floor-plan-furniture-actions">
-                    <button onClick={confirmPendingFurniturePlacement} type="button">
-                      배치완료
-                    </button>
-                    <button className="floor-plan-secondary" onClick={rotatePendingFurniture} type="button">
-                      90도 회전
-                    </button>
-                    <button className="floor-plan-secondary" onClick={cancelPendingFurniturePlacement} type="button">
-                      취소
-                    </button>
-                  </div>
-                  <code>3D 바닥을 클릭해 위치를 잡고 배치완료를 눌러 확정</code>
-                </>
-              ) : (
-                <code>가구 카드를 선택해주세요</code>
-              )}
-              </div>
-            </details>
           </>
         ) : null}
 
