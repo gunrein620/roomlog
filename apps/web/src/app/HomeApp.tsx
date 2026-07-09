@@ -1195,14 +1195,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     resetWindowScrollSoon();
   };
 
-  const startRoleSession = (role: AppRole) => {
-    setAuthMode(null);
-    setIsDevRolePreview(true);
-    setActiveRole(role);
-    setActiveTab(role === "seeker" ? "home" : "mypage");
-    resetWindowScrollSoon();
-  };
-
   const completeServiceAuth = (profile: ViewerProfile) => {
     // 로그인 화면을 열 때 push한 히스토리 엔트리를 여기서도 소비한다 —
     // 성공 후 뒤로가기가 로그인 화면으로 되돌아가지 않게 (closeAuthScreen과 동일 원칙, QA 5).
@@ -1421,7 +1413,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     return (
       <WoozuLoginScreen
         mode={authMode}
-        setActiveRole={startRoleSession}
         onAuthenticated={completeServiceAuth}
         onGoHome={closeAuthScreen}
       />

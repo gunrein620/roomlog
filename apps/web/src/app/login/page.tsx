@@ -105,11 +105,6 @@ export default function UnifiedLoginPage() {
     setState({ kind: "link-required", intent: destination.intent, viewer });
   };
 
-  // 개발용 역할 버튼: /login에는 HomePage 미리보기 상태가 없으므로 홈으로 이어준다.
-  const openDevRole = (role: AppRole) => {
-    router.push(role === "seeker" ? "/" : `/?role=${role}&tab=mypage`);
-  };
-
   const logoutAndRetry = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setState({ kind: "login-form" });
@@ -182,7 +177,6 @@ export default function UnifiedLoginPage() {
   return (
     <WoozuLoginScreen
       mode="login"
-      setActiveRole={openDevRole}
       onAuthenticated={onAuthenticated}
       onGoHome={() => router.push("/")}
       googleRedirectTo={redirectTo ?? defaultRedirectForIntent(intent)}
