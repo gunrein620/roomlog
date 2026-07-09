@@ -4,15 +4,20 @@ import { test } from "node:test";
 
 // 라우트 분리 1·2단계 — 상세는 /listing/[id], 탭은 /map /saved /inquiry /my 라우트가 됐고
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
+const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
 const spaSource = [
-  "./src/app/HomeApp.tsx",
+  homeAppSource,
   // 3단계 — 마이페이지 역할 흐름은 my/flows/로 물리 분리됐다(분업 단위).
   "./src/app/my/flows/my-shared.tsx",
   "./src/app/my/flows/UserMyPage.tsx",
   "./src/app/my/flows/TenantMyPage.tsx",
   "./src/app/my/flows/LandlordMyPage.tsx"
 ]
-  .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+  .map((sourceOrPath) =>
+    sourceOrPath.startsWith("./")
+      ? readFileSync(new URL(sourceOrPath, import.meta.url), "utf8")
+      : sourceOrPath
+  )
   .join("\n");
 const listingDetailViewSource = readFileSync(new URL("./src/app/_components/ListingDetailView.tsx", import.meta.url), "utf8");
 const naverMapPreviewSource = readFileSync(new URL("./src/app/_components/NaverMapPreview.tsx", import.meta.url), "utf8");
@@ -1190,6 +1195,12 @@ test("uses the Naver Maps SDK path instead of a mock map drawing", () => {
   assert.doesNotMatch(pageSource, />NAVER Maps API</);
   assert.doesNotMatch(pageSource, /naver-map-fallback|map-entry-visual|map-mini-pin|draw-line/);
   assert.doesNotMatch(cssSource, /naver-map-fallback|map-entry-visual|map-mini-pin|draw-line|naver-place-label/);
+});
+
+test("home recommendations use only the public trade listing feed", () => {
+  assert.match(homeAppSource, /fetch\("\/api\/trade\/listings\/public", \{ cache: "no-store" \}\)/);
+  assert.doesNotMatch(homeAppSource, /fetch\("\/api\/trade\/listings", \{ cache: "no-store" \}\)/);
+  assert.match(homeAppSource, /key=\{listing\.listingNo\}/);
 });
 
 test("keeps the bottom app tabs fixed to the viewport", () => {
