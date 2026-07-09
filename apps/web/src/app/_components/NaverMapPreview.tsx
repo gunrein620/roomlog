@@ -6,8 +6,31 @@ import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 import { mapListings } from "@/lib/listing-catalog";
 
-type NaverLatLng = unknown;
-type NaverMap = { setCenter?: (center: NaverLatLng) => void };
+type NaverLatLng = {
+  lat?: () => number;
+  lng?: () => number;
+  x?: number;
+  y?: number;
+  _lat?: number;
+  _lng?: number;
+};
+type NaverBounds = {
+  getNE?: () => NaverLatLng;
+  getSW?: () => NaverLatLng;
+  getMax?: () => NaverLatLng;
+  getMin?: () => NaverLatLng;
+  max?: NaverLatLng;
+  min?: NaverLatLng;
+  _max?: NaverLatLng;
+  _min?: NaverLatLng;
+  _ne?: NaverLatLng;
+  _sw?: NaverLatLng;
+};
+type NaverMap = {
+  getBounds?: () => NaverBounds;
+  getZoom?: () => number;
+  setCenter?: (center: NaverLatLng) => void;
+};
 // setMap(null) = 마커 제거 — 지도 탭에서 매물 목록이 바뀔 때 마커를 다시 그리는 데 쓴다.
 type NaverMarker = {
   setMap: (map: NaverMap | null) => void;
@@ -17,6 +40,7 @@ type NaverPoint = unknown;
 type NaverInfoWindow = {
   open: (map: NaverMap, marker: NaverMarker) => void;
 };
+type NaverMapListener = { remove?: () => void };
 type NaverMapsApi = {
   LatLng: new (lat: number, lng: number) => NaverLatLng;
   Map: new (
@@ -37,6 +61,10 @@ type NaverMapsApi = {
   }) => NaverMarker;
   InfoWindow: new (options: { content: string }) => NaverInfoWindow;
   Point: new (x: number, y: number) => NaverPoint;
+  Event?: {
+    addListener: (target: unknown, eventName: string, listener: () => void) => NaverMapListener;
+    removeListener?: (listener: NaverMapListener) => void;
+  };
   Service?: {
     geocode: (
       options: { query: string },
@@ -89,14 +117,50 @@ export type MapMarkerInput = {
   price: string;
 };
 
+export type NaverMapViewport = {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+  zoom: number | null;
+};
+
 const mapDealMarkers = mapListings;
+
+function coordinateValue(point: NaverLatLng | undefined, axis: "lat" | "lng") {
+  if (!point) return NaN;
+  const methodValue = point[axis]?.();
+  if (typeof methodValue === "number" && Number.isFinite(methodValue)) return methodValue;
+  const propertyValue = axis === "lat" ? point._lat ?? point.y : point._lng ?? point.x;
+  return Number.isFinite(propertyValue) ? Number(propertyValue) : NaN;
+}
+
+function readMapViewport(map: NaverMap): NaverMapViewport | null {
+  const bounds = map.getBounds?.();
+  const ne = bounds?.getNE?.() ?? bounds?.getMax?.() ?? bounds?._ne ?? bounds?._max ?? bounds?.max;
+  const sw = bounds?.getSW?.() ?? bounds?.getMin?.() ?? bounds?._sw ?? bounds?._min ?? bounds?.min;
+  const north = coordinateValue(ne, "lat");
+  const south = coordinateValue(sw, "lat");
+  const east = coordinateValue(ne, "lng");
+  const west = coordinateValue(sw, "lng");
+  if (![north, south, east, west].every(Number.isFinite)) return null;
+  const zoom = map.getZoom?.();
+  return {
+    north,
+    south,
+    east,
+    west,
+    zoom: Number.isFinite(zoom) ? Number(zoom) : null
+  };
+}
 
 export function NaverMapPreview({
   className = "",
   center,
   showCenterMarker = true,
   title,
-  markers
+  markers,
+  onViewportChange
 }: {
   className?: string;
   /** 특정 매물 좌표 — 있으면 그 위치를 중심으로 단일 마커를 찍는다(없으면 데모 마커). */
@@ -106,12 +170,17 @@ export function NaverMapPreview({
   title?: string;
   /** 지도 탭용 동적 마커 목록 — 값이 바뀌면 마커를 다시 그린다(직접등록 매물 포함). */
   markers?: MapMarkerInput[];
+  /** 현재 지도 화면 범위를 부모에 알려 매물 팝업 노출 범위를 제한한다. */
+  onViewportChange?: (viewport: NaverMapViewport | null) => void;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const isMapInitializedRef = useRef(false);
   const mapInstanceRef = useRef<NaverMap | null>(null);
   const centerMarkerRef = useRef<NaverMarker | null>(null);
   const dynamicMarkersRef = useRef<NaverMarker[]>([]);
+  const viewportListenersRef = useRef<NaverMapListener[]>([]);
+  const viewportPollTimerRef = useRef<number | null>(null);
+  const onViewportChangeRef = useRef(onViewportChange);
   const [isScriptReady, setIsScriptReady] = useState(false);
   const [loadState, setLoadState] = useState<MapLoadState>(naverMapClientId ? "loading" : "missing-key");
   const scriptUrl = naverMapScriptUrl;
@@ -123,6 +192,28 @@ export function NaverMapPreview({
     center && Number.isFinite(center.lat) && Number.isFinite(center.lng)
       ? `${center.lat}:${center.lng}`
       : "";
+
+  useEffect(() => {
+    onViewportChangeRef.current = onViewportChange;
+  }, [onViewportChange]);
+
+  useEffect(() => {
+    return () => {
+      const maps = window.naver?.maps;
+      viewportListenersRef.current.forEach((listener) => {
+        if (listener.remove) {
+          listener.remove();
+          return;
+        }
+        maps?.Event?.removeListener?.(listener);
+      });
+      viewportListenersRef.current = [];
+      if (viewportPollTimerRef.current !== null) {
+        window.clearInterval(viewportPollTimerRef.current);
+        viewportPollTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (window.naver?.maps) {
@@ -157,6 +248,15 @@ export function NaverMapPreview({
       zoomControl: true
     });
     mapInstanceRef.current = map;
+    const emitViewport = () => {
+      onViewportChangeRef.current?.(readMapViewport(map));
+    };
+    emitViewport();
+    const viewportListeners = ["idle", "dragend", "zoom_changed", "bounds_changed"]
+      .map((eventName) => maps.Event?.addListener(map, eventName, emitViewport))
+      .filter((listener): listener is NaverMapListener => Boolean(listener));
+    viewportListenersRef.current = viewportListeners;
+    viewportPollTimerRef.current = window.setInterval(emitViewport, 500);
 
     // markers 프롭이 있으면(지도 탭) 마커는 아래 동기화 이펙트가 그린다 — 여기서는 지도만 만든다.
     if (!hasCenter && !markers) {
@@ -237,6 +337,7 @@ export function NaverMapPreview({
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     const nextCenter = new maps.LatLng(lat, lng);
     map.setCenter(nextCenter);
+    onViewportChangeRef.current?.(readMapViewport(map));
 
     if (!showCenterMarker) {
       centerMarkerRef.current?.setMap(null);

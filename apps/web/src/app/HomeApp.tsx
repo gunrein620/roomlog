@@ -31,7 +31,15 @@ import {
   UserRound,
   X
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent,
+  type ReactNode
+} from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   formatManwon,
@@ -83,7 +91,8 @@ import {
   naverMapScriptUrl,
   NaverMapPreview,
   type MapMarkerInput,
-  type NaverGeocodeResponse
+  type NaverGeocodeResponse,
+  type NaverMapViewport
 } from "./_components/NaverMapPreview";
 import { InquirySheet } from "./_components/ListingDetailView";
 import { loadSavedListingNos, toggleSavedListingNo } from "../lib/saved-listings";
@@ -108,11 +117,24 @@ import {
 type AppTab = "home" | "map" | "saved" | "inquiry" | "sell" | "living";
 type MapResultTab = "rooms" | "complexes" | "agents";
 type MapPoint = { lat: number; lng: number };
+type MapQueryType = "neighborhood" | "address" | "road" | "building" | "station";
+type MapQueryPrecision = "neighborhood" | "address" | "point";
 type MapSearchContext = {
   source: "default" | "search" | "user-location";
   label: string;
   center: MapPoint;
   radiusM: number;
+  queryType?: MapQueryType;
+  precision?: MapQueryPrecision;
+  addressText?: string;
+  description?: string;
+};
+type MapResolvedQuery = MapSearchContext & {
+  source: "search";
+  queryType: MapQueryType;
+  precision: MapQueryPrecision;
+  addressText: string;
+  description: string;
 };
 type MapLocationStatus = "idle" | "requesting" | "granted" | "denied" | "unavailable";
 type MapQueryStatus = "idle" | "resolving" | "resolved" | "fallback";
@@ -264,9 +286,23 @@ const DEFAULT_MAP_CONTEXT: MapSearchContext = {
   source: "default",
   label: "서초구 방배동",
   center: { lat: 37.4875, lng: 126.9931 },
-  radiusM: 2500
+  radiusM: 2500,
+  queryType: "neighborhood",
+  precision: "neighborhood"
 };
 const MAP_SEARCH_RADIUS_M = 2500;
+const MAP_SEARCH_RADIUS_BY_PRECISION: Record<MapQueryPrecision, number> = {
+  neighborhood: MAP_SEARCH_RADIUS_M,
+  address: 800,
+  point: 1000
+};
+const MAP_QUERY_TYPE_LABELS: Record<MapQueryType, string> = {
+  neighborhood: "동네",
+  address: "주소",
+  road: "도로명",
+  building: "장소",
+  station: "역"
+};
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
 
@@ -326,12 +362,58 @@ function loadNaverMapService(): Promise<boolean> {
   return naverMapServiceLoadPromise;
 }
 
+type NaverGeocodeAddress = NonNullable<NonNullable<NaverGeocodeResponse["v2"]>["addresses"]>[number];
+
+function compactAddressLabel(value: string) {
+  return value.trim().replace(/^대한민국\s*/, "").replace(/^서울특별시\s*/, "");
+}
+
+function addressParts(address?: { roadAddress?: string; jibunAddress?: string }) {
+  const addressText = (address?.jibunAddress || address?.roadAddress || "").trim();
+  return addressText.split(/\s+/).filter(Boolean);
+}
+
+function isStationMapQuery(query: string) {
+  return /역(\s|$)/.test(query.trim());
+}
+
+function isNeighborhoodMapQuery(query: string) {
+  return /(동|가|읍|면|리)$/.test(query.trim());
+}
+
+function hasAddressNumberSignal(query: string) {
+  return /\d/.test(query);
+}
+
+function hasRoadNameSignal(query: string) {
+  return /(로|길)\s*\d*/.test(query);
+}
+
+function inferMapQueryType(query: string, address?: { roadAddress?: string; jibunAddress?: string }): MapQueryType {
+  const compactQuery = query.trim().replace(/\s+/g, " ");
+  if (isStationMapQuery(compactQuery)) return "station";
+  if (isNeighborhoodMapQuery(compactQuery)) return "neighborhood";
+  if (hasRoadNameSignal(compactQuery) && address?.roadAddress) return "road";
+  if (hasAddressNumberSignal(compactQuery)) return address?.roadAddress ? "road" : "address";
+  return address?.roadAddress || address?.jibunAddress ? "building" : "neighborhood";
+}
+
+function precisionForMapQueryType(type: MapQueryType): MapQueryPrecision {
+  if (type === "neighborhood") return "neighborhood";
+  if (type === "station" || type === "building") return "point";
+  return "address";
+}
+
 function mapQueryLabelFromAddress(query: string, address?: { roadAddress?: string; jibunAddress?: string }) {
   const compactQuery = query.trim().replace(/\s+/g, " ");
-  if (/역$/.test(compactQuery)) return compactQuery;
+  const queryType = inferMapQueryType(compactQuery, address);
+  if (queryType === "station") return compactQuery;
+  if (queryType === "building") return compactQuery;
+  if ((queryType === "road" || queryType === "address") && (address?.roadAddress || address?.jibunAddress)) {
+    return compactAddressLabel(address.roadAddress || address.jibunAddress || compactQuery);
+  }
 
-  const addressText = (address?.jibunAddress || address?.roadAddress || "").trim();
-  const parts = addressText.split(/\s+/).filter(Boolean);
+  const parts = addressParts(address);
   const district = [...parts].reverse().find((part) => /(구|군)$/.test(part));
   const neighborhood = [...parts].reverse().find((part) => /(동|가|읍|면|리)$/.test(part));
 
@@ -340,39 +422,64 @@ function mapQueryLabelFromAddress(query: string, address?: { roadAddress?: strin
   return compactQuery;
 }
 
-async function resolveMapQuery(query: string): Promise<MapSearchContext | null> {
+function mapQueryDescription(queryType: MapQueryType, precision: MapQueryPrecision, addressText: string) {
+  const radius = MAP_SEARCH_RADIUS_BY_PRECISION[precision];
+  return `${MAP_QUERY_TYPE_LABELS[queryType]} 기준 · 반경 ${formatDistanceLabel(radius)} · ${addressText}`;
+}
+
+function resolvedMapQueryFromAddress(query: string, address?: NaverGeocodeAddress): MapResolvedQuery | null {
+  const lat = Number(address?.y);
+  const lng = Number(address?.x);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const queryType = inferMapQueryType(query, address);
+  const precision = precisionForMapQueryType(queryType);
+  const addressText = compactAddressLabel(address?.roadAddress || address?.jibunAddress || query);
+  const label = mapQueryLabelFromAddress(query, address);
+
+  return {
+    source: "search",
+    label,
+    center: { lat, lng },
+    radiusM: MAP_SEARCH_RADIUS_BY_PRECISION[precision],
+    queryType,
+    precision,
+    addressText,
+    description: mapQueryDescription(queryType, precision, addressText)
+  };
+}
+
+async function resolveMapQueryCandidates(query: string): Promise<MapResolvedQuery[]> {
   const keyword = query.trim();
-  if (!keyword) return null;
+  if (!keyword) return [];
 
   const isReady = await loadNaverMapService();
   const service = window.naver?.maps?.Service;
-  if (!isReady || !service) return null;
+  if (!isReady || !service) return [];
 
   return new Promise((resolve) => {
     try {
       service.geocode({ query: keyword }, (status: string, response: NaverGeocodeResponse) => {
         if (status !== service.Status.OK) {
-          resolve(null);
+          resolve([]);
           return;
         }
 
-        const address = response.v2?.addresses?.[0];
-        const lat = Number(address?.y);
-        const lng = Number(address?.x);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          resolve(null);
-          return;
-        }
-
-        resolve({
-          source: "search",
-          label: mapQueryLabelFromAddress(keyword, address),
-          center: { lat, lng },
-          radiusM: MAP_SEARCH_RADIUS_M
-        });
+        const seen = new Set<string>();
+        const candidates = (response.v2?.addresses ?? [])
+          .map((address) => resolvedMapQueryFromAddress(keyword, address))
+          .filter((candidate): candidate is MapResolvedQuery => Boolean(candidate))
+          .filter((candidate) => {
+            const key = `${candidate.label}|${candidate.center.lat.toFixed(6)}|${candidate.center.lng.toFixed(6)}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .slice(0, 5);
+        resolve(candidates);
       });
     } catch {
-      resolve(null);
+      resolve([]);
     }
   });
 }
@@ -394,6 +501,41 @@ const formatDistanceLabel = (meters: number) => {
   if (!Number.isFinite(meters)) return "";
   if (meters < 1000) return `${Math.max(10, Math.round(meters / 10) * 10)}m`;
   return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)}km`;
+};
+
+const MAP_POPUP_VIEWPORT_SCOPE_MULTIPLIER = 2.4;
+
+const midpointLongitude = (west: number, east: number) => {
+  if (west <= east) return (west + east) / 2;
+  const midpoint = (west + east + 360) / 2;
+  return midpoint > 180 ? midpoint - 360 : midpoint;
+};
+
+const isLongitudeWithinBounds = (lng: number, west: number, east: number) =>
+  west <= east ? lng >= west && lng <= east : lng >= west || lng <= east;
+
+const isMapPointInsideViewport = (point: MapPoint, viewport: NaverMapViewport | null) => {
+  if (!viewport) return true;
+  return (
+    point.lat >= viewport.south &&
+    point.lat <= viewport.north &&
+    isLongitudeWithinBounds(point.lng, viewport.west, viewport.east)
+  );
+};
+
+const mapViewportMaxSpanMeters = (viewport: NaverMapViewport | null) => {
+  if (!viewport) return 0;
+  const centerLat = (viewport.north + viewport.south) / 2;
+  const centerLng = midpointLongitude(viewport.west, viewport.east);
+  const widthM = distanceBetweenMeters(
+    { lat: centerLat, lng: viewport.west },
+    { lat: centerLat, lng: viewport.east }
+  );
+  const heightM = distanceBetweenMeters(
+    { lat: viewport.south, lng: centerLng },
+    { lat: viewport.north, lng: centerLng }
+  );
+  return Math.max(widthM, heightM);
 };
 
 
@@ -790,18 +932,24 @@ function SearchBottomSheet({
   isOpen,
   currentArea,
   isResolving = false,
+  queryCandidates = [],
+  candidateKeyword = "",
   recentSearches,
   onClose,
   onClearRecentSearches,
-  onSelectArea
+  onSelectArea,
+  onSelectCandidate
 }: {
   isOpen: boolean;
   currentArea: string;
   isResolving?: boolean;
+  queryCandidates?: MapResolvedQuery[];
+  candidateKeyword?: string;
   recentSearches: string[];
   onClose: () => void;
   onClearRecentSearches: () => void;
   onSelectArea: (area: string) => void | Promise<void>;
+  onSelectCandidate?: (keyword: string, candidate: MapResolvedQuery) => void;
 }) {
   const [searchValue, setSearchValue] = useState(currentArea);
 
@@ -872,6 +1020,29 @@ function SearchBottomSheet({
             {isResolving ? "위치 확인 중" : <>지도에서 {normalizedSearchValue} 보기</>}
           </button>
         </section>
+
+        {queryCandidates.length > 0 ? (
+          <section className="search-result-candidates" aria-label="주소 검색 결과">
+            <div>
+              <strong>검색 결과</strong>
+              <span>{candidateKeyword} 기준 {queryCandidates.length}곳</span>
+            </div>
+            <div className="search-candidate-list">
+              {queryCandidates.map((candidate) => (
+                <button
+                  type="button"
+                  key={`${candidate.label}-${candidate.center.lat}-${candidate.center.lng}`}
+                  onClick={() => onSelectCandidate?.(candidateKeyword || candidate.label, candidate)}
+                  disabled={isResolving}
+                >
+                  <span>{MAP_QUERY_TYPE_LABELS[candidate.queryType]}</span>
+                  <strong>{candidate.label}</strong>
+                  <small>{candidate.description}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="search-condition-strip" aria-label="추천 검색 조건">
           {savedConditions.slice(0, 3).map((condition) => (
@@ -1047,10 +1218,21 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const [selectedArea, setSelectedArea] = useState(DEFAULT_MAP_CONTEXT.label);
   const [mapSearchContext, setMapSearchContext] = useState<MapSearchContext>(DEFAULT_MAP_CONTEXT);
+  const [mapViewport, setMapViewport] = useState<NaverMapViewport | null>(null);
   const [mapLocationStatus, setMapLocationStatus] = useState<MapLocationStatus>("idle");
   const [mapQueryStatus, setMapQueryStatus] = useState<MapQueryStatus>("idle");
+  const [mapQueryCandidates, setMapQueryCandidates] = useState<MapResolvedQuery[]>([]);
+  const [mapQueryCandidateKeyword, setMapQueryCandidateKeyword] = useState("");
   const mapLocationRequestedRef = useRef(false);
   const mapContextRequestIdRef = useRef(0);
+  const categoryStripRef = useRef<HTMLElement | null>(null);
+  const categoryDragStateRef = useRef({
+    didMove: false,
+    isDragging: false,
+    pointerId: -1,
+    scrollLeft: 0,
+    startX: 0
+  });
   const [recentSearches, setRecentSearches] = useState(searchSuggestions.recent);
   const [activeCategory, setActiveCategory] = useState(categories[0].label);
   const [activeQuickFilters, setActiveQuickFilters] = useState<string[]>([]);
@@ -1124,6 +1306,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
     const requestId = ++mapContextRequestIdRef.current;
     mapLocationRequestedRef.current = true;
+    setMapQueryCandidates([]);
+    setMapQueryCandidateKeyword("");
     setMapQueryStatus("idle");
     setMapLocationStatus("requesting");
     navigator.geolocation.getCurrentPosition(
@@ -1296,7 +1480,11 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
       return a.accuracyRank - b.accuracyRank;
     });
-  const mapScopeLabel = isLocationScopedMap ? "현재 위치" : "검색";
+  const mapScopeLabel = isLocationScopedMap
+    ? "현재 위치"
+    : mapSearchContext.queryType
+      ? MAP_QUERY_TYPE_LABELS[mapSearchContext.queryType]
+      : "검색";
   const mapLocationSummary =
     mapQueryStatus === "resolving"
       ? "검색 위치 확인 중"
@@ -1305,9 +1493,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       : isDistanceScopedMap
         ? isRadiusEmptyMap
           ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 내 매물 없음`
-          : isLocationScopedMap
-            ? `현재 위치 반경 ${formatDistanceLabel(mapSearchContext.radiusM)}`
-            : `검색 반경 ${formatDistanceLabel(mapSearchContext.radiusM)}`
+          : `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)}`
         : mapQueryStatus === "fallback"
           ? "주소 확인 실패 · 문자열 기준"
         : mapLocationStatus === "denied"
@@ -1319,7 +1505,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             : "지역 검색 기준";
   const mapListingDistanceLabel = (listing: { distance: string; distanceFromCenterM?: number }) =>
     isDistanceScopedMap && Number.isFinite(listing.distanceFromCenterM)
-      ? `${isLocationScopedMap ? "현재 위치" : "검색 위치"} ${formatDistanceLabel(listing.distanceFromCenterM ?? 0)} · ${listing.distance}`
+      ? `${isLocationScopedMap ? "현재 위치" : `${mapScopeLabel} 위치`} ${formatDistanceLabel(listing.distanceFromCenterM ?? 0)} · ${listing.distance}`
       : listing.distance;
   const mapRoomsFeedback = isRadiusEmptyMap
     ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
@@ -1332,9 +1518,19 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const mapEmptyDescription = isRadiusEmptyMap
     ? `${isLocationScopedMap ? "현재 위치" : selectedAreaTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : `${activeSort} · ${mapFilterSummary} 조건에 맞는 매물이 없습니다.`;
-  const selectedMapListing = visibleMapListings.find((listing) => listing.listingNo === selectedMapListingNo) ?? visibleMapListings[0];
+  const mapViewportSpanM = mapViewportMaxSpanMeters(mapViewport);
+  const mapPopupScopeRadiusM = isDistanceScopedMap ? mapSearchContext.radiusM : MAP_SEARCH_RADIUS_M;
+  const isMapViewportOutsidePopupScope =
+    mapViewport !== null &&
+    mapViewportSpanM > mapPopupScopeRadiusM * MAP_POPUP_VIEWPORT_SCOPE_MULTIPLIER;
+  const mapOverlayListings = isMapViewportOutsidePopupScope ? [] : visibleMapListings;
+  const mapPopupCandidates = mapOverlayListings.filter((listing) => {
+    if (!Number.isFinite(listing.lat) || !Number.isFinite(listing.lng)) return false;
+    return isMapPointInsideViewport({ lat: listing.lat, lng: listing.lng }, mapViewport);
+  });
+  const selectedMapListing = mapPopupCandidates.find((listing) => listing.listingNo === selectedMapListingNo) ?? mapPopupCandidates[0];
   // 지도 마커 = 좌표가 유효한 매물만 (직접등록 매물 포함 — QA: 지도에 매물 안 찍힘)
-  const mapMarkers = visibleMapListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
+  const mapMarkers = mapOverlayListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
   const findListingCardByNo = (listingNo: string) => allListings.find((listing) => listing.listingNo === listingNo);
 
   const inquiryComposeListing = inquiryComposeListingNo
@@ -1478,6 +1674,61 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     );
   };
 
+  const beginCategoryDrag = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    const strip = categoryStripRef.current;
+    if (!strip || strip.scrollWidth <= strip.clientWidth) return;
+
+    categoryDragStateRef.current = {
+      didMove: false,
+      isDragging: true,
+      pointerId: event.pointerId,
+      scrollLeft: strip.scrollLeft,
+      startX: event.clientX
+    };
+    strip.setPointerCapture?.(event.pointerId);
+  };
+
+  const moveCategoryDrag = (event: PointerEvent<HTMLElement>) => {
+    const dragState = categoryDragStateRef.current;
+    if (!dragState.isDragging || dragState.pointerId !== event.pointerId) return;
+
+    const strip = categoryStripRef.current;
+    if (!strip) return;
+
+    const deltaX = event.clientX - dragState.startX;
+    if (Math.abs(deltaX) > 4) {
+      dragState.didMove = true;
+      event.preventDefault();
+    }
+    strip.scrollLeft = dragState.scrollLeft - deltaX;
+  };
+
+  const endCategoryDrag = (event: PointerEvent<HTMLElement>) => {
+    const dragState = categoryDragStateRef.current;
+    if (!dragState.isDragging || dragState.pointerId !== event.pointerId) return;
+
+    categoryStripRef.current?.releasePointerCapture?.(event.pointerId);
+    dragState.isDragging = false;
+    dragState.pointerId = -1;
+
+    if (dragState.didMove) {
+      window.setTimeout(() => {
+        categoryDragStateRef.current.didMove = false;
+      }, 0);
+    }
+  };
+
+  const selectCategory = (category: string) => {
+    if (categoryDragStateRef.current.didMove) {
+      categoryDragStateRef.current.didMove = false;
+      return;
+    }
+
+    setActiveCategory(category);
+  };
+
   const toggleSavedListing = (listingNo: string) => {
     setSavedListingNos((current) => toggleSavedListingNo(current, listingNo));
   };
@@ -1485,6 +1736,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const applyMapAreaSelection = (area: string, context: MapSearchContext) => {
     setSelectedArea(area);
     setMapSearchContext(context);
+    setMapQueryCandidates([]);
+    setMapQueryCandidateKeyword("");
+  };
+
+  const applyResolvedMapCandidate = (keyword: string, candidate: MapResolvedQuery) => {
+    applyMapAreaSelection(candidate.label, candidate);
+    setMapQueryStatus("resolved");
+    setRecentSearches((current) => [keyword, ...current.filter((item) => item !== keyword)].slice(0, 5));
+    setIsSearchSheetOpen(false);
+    setActiveMapResultTab("rooms");
+    activateTab("map");
   };
 
   const selectSearchArea = async (area: string) => {
@@ -1492,13 +1754,26 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     if (!keyword) return;
 
     const requestId = ++mapContextRequestIdRef.current;
+    setMapQueryCandidates([]);
+    setMapQueryCandidateKeyword(keyword);
     setMapQueryStatus("resolving");
-    const resolvedContext = await resolveMapQuery(keyword);
+    const candidates = await resolveMapQueryCandidates(keyword);
     if (requestId !== mapContextRequestIdRef.current) return;
 
-    const nextArea = resolvedContext?.label ?? keyword;
-    applyMapAreaSelection(nextArea, resolvedContext ?? { ...DEFAULT_MAP_CONTEXT, label: keyword });
-    setMapQueryStatus(resolvedContext ? "resolved" : "fallback");
+    if (candidates.length > 1) {
+      setMapQueryCandidates(candidates);
+      setMapQueryStatus("resolved");
+      return;
+    }
+
+    const resolvedContext = candidates[0];
+    if (resolvedContext) {
+      applyResolvedMapCandidate(keyword, resolvedContext);
+      return;
+    }
+
+    applyMapAreaSelection(keyword, { ...DEFAULT_MAP_CONTEXT, label: keyword });
+    setMapQueryStatus("fallback");
     setRecentSearches((current) => [keyword, ...current.filter((item) => item !== keyword)].slice(0, 5));
     setIsSearchSheetOpen(false);
     setActiveMapResultTab("rooms");
@@ -1773,7 +2048,16 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             </button>
           </label>
 
-          <nav className="category-strip" aria-label="매물 유형">
+          <nav
+            ref={categoryStripRef}
+            className="category-strip"
+            aria-label="매물 유형"
+            onPointerDown={beginCategoryDrag}
+            onPointerMove={moveCategoryDrag}
+            onPointerUp={endCategoryDrag}
+            onPointerCancel={endCategoryDrag}
+            onPointerLeave={endCategoryDrag}
+          >
             {categories.map((category) => {
               const CategoryIcon = category.Icon;
 
@@ -1782,7 +2066,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                   className={activeCategory === category.label ? "category-card active" : "category-card"}
                   type="button"
                   key={category.label}
-                  onClick={() => setActiveCategory(category.label)}
+                  onClick={() => selectCategory(category.label)}
                 >
                   <i aria-hidden="true">
                     <CategoryIcon size={18} strokeWidth={2.4} />
@@ -2120,9 +2404,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <NaverMapPreview
               className="map-stage"
               center={mapSearchContext.center}
-              showCenterMarker={isLocationScopedMap}
+              showCenterMarker={isDistanceScopedMap}
               title={isLocationScopedMap ? "현재 위치" : selectedAreaTitle}
               markers={mapMarkers}
+              onViewportChange={setMapViewport}
             />
             {selectedMapListing ? (
               <article className="map-selected-card" aria-label="지도 선택 매물">
@@ -2371,10 +2656,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           isOpen={isSearchSheetOpen}
           currentArea={selectedArea}
           isResolving={mapQueryStatus === "resolving"}
+          queryCandidates={mapQueryCandidates}
+          candidateKeyword={mapQueryCandidateKeyword}
           recentSearches={recentSearches}
-          onClose={() => setIsSearchSheetOpen(false)}
+          onClose={() => {
+            setIsSearchSheetOpen(false);
+            setMapQueryCandidates([]);
+            setMapQueryCandidateKeyword("");
+          }}
           onClearRecentSearches={() => setRecentSearches([])}
           onSelectArea={selectSearchArea}
+          onSelectCandidate={applyResolvedMapCandidate}
         />
         <SortBottomSheet
           isOpen={isSortSheetOpen}
