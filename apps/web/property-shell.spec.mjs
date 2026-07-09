@@ -978,7 +978,7 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(cssSource, /\.owner-vendor-list/);
   assert.match(cssSource, /\.owner-perf-gate/);
   assert.match(cssSource, /\.owner-duplicate-strip/);
-  assert.match(cssSource, /\.upload-3d-button\.active/);
+  assert.match(cssSource, /\.upload-tile--action\.is-connected/);
 });
 
 test("adds real bottom-tab destinations for saved listings, inquiries, and profile", () => {

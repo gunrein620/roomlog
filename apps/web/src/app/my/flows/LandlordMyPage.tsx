@@ -3,7 +3,7 @@
 // 내놓은 집(임대인) 등록 폼 — 사진 업로드, 3D 도면 연결, 매물 등록.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import { useEffect, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Box, Braces, Camera, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
 import {
@@ -722,97 +722,116 @@ export default function LandlordMyPage() {
             </div>
           </div>
 
-          <label className="upload-zone">
-            <strong>사진 업로드</strong>
-            <span>대표 사진, 거실, 주방, 욕실 이미지를 순서대로 등록합니다. 현재 {photoCount}장 선택</span>
-            <input
-              type="file"
-              multiple
-              accept="image/*"
-              aria-label="사진 업로드"
-              onChange={(event) => {
-                const files = event.target.files ? Array.from(event.target.files) : [];
-                setPhotoFiles(files);
-                setPhotoCount(files.length);
-                setRegistrationStatus("작성 중");
-              }}
-            />
-          </label>
+          <div className="upload-tile-list">
+            <label className={photoCount > 0 ? "upload-tile is-connected" : "upload-tile"}>
+              <span className="upload-tile-icon" aria-hidden="true">
+                <Camera size={20} strokeWidth={2.2} />
+              </span>
+              <span className="upload-tile-main">
+                <strong>사진 업로드</strong>
+                <span className="upload-tile-desc">대표 사진, 거실, 주방, 욕실 이미지를 순서대로 등록합니다.</span>
+                <span className="upload-tile-status">{photoCount > 0 ? `${photoCount}장 선택됨` : "선택된 파일 없음"}</span>
+              </span>
+              <span className="upload-tile-cta">{photoCount > 0 ? "변경" : "파일 선택"}</span>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                aria-label="사진 업로드"
+                onChange={(event) => {
+                  const files = event.target.files ? Array.from(event.target.files) : [];
+                  setPhotoFiles(files);
+                  setPhotoCount(files.length);
+                  setRegistrationStatus("작성 중");
+                }}
+              />
+            </label>
 
-          {photoPreviewUrls.length > 0 ? (
-            <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
-              {photoPreviewUrls.map((url, index) => (
-                <figure key={url}>
-                  {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt={`선택한 사진 ${index + 1}`} />
-                  {index === 0 ? <figcaption>대표 사진</figcaption> : null}
-                  <button type="button" aria-label={`사진 ${index + 1} 빼기`} onClick={() => removePhotoAt(index)}>
-                    ×
-                  </button>
-                </figure>
-              ))}
-            </div>
-          ) : null}
+            {photoPreviewUrls.length > 0 ? (
+              <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
+                {photoPreviewUrls.map((url, index) => (
+                  <figure key={url}>
+                    {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt={`선택한 사진 ${index + 1}`} />
+                    {index === 0 ? <figcaption>대표 사진</figcaption> : null}
+                    <button type="button" aria-label={`사진 ${index + 1} 빼기`} onClick={() => removePhotoAt(index)}>
+                      ×
+                    </button>
+                  </figure>
+                ))}
+              </div>
+            ) : null}
 
-          {/* 새 탭으로 연다 — 같은 탭 이동은 폼을 언마운트시켜 선택한 사진(File, 직렬화 불가)이 날아간다.
-              에디터에서 저장 후 이 탭으로 돌아오면 위 focus/visibilitychange 동기화가 자동 연결한다. */}
-          <a
-            className={has3DRoom ? "upload-3d-button floor-plan-link active" : "upload-3d-button floor-plan-link"}
-            href="/floor-plan-3d"
-            target="_blank"
-            rel="noopener"
-            onClick={() => setRegistrationStatus("작성 중")}
-          >
-            <strong>3D 도면 만들기</strong>
-            <span>
-              {has3DRoom
-                ? "3D 도면이 연결됐어요. 등록하면 상세 페이지에서 3D로 보여집니다."
-                : "도면을 만들고 저장하면 자동으로 연결돼요. 실측 도면 3D 편집이 새 탭에서 열려 작성 중인 사진·입력이 그대로 유지됩니다."}
-            </span>
-          </a>
-
-          <label className="upload-zone">
-            <strong>도면 JSON 업로드</strong>
-            <span>3D 도면 만들기에서 내려받은 JSON이나 walls3D/walls 배열을 바로 연결합니다.</span>
-            <input
-              type="file"
-              accept=".json,application/json"
-              aria-label="도면 JSON 업로드"
-              onChange={(event) => {
-                handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-
-          <label className="upload-zone">
-            <strong>영상/스플랫 접수</strong>
-            <span>영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
-            <input
-              ref={tourSourceInputRef}
-              type="file"
-              accept="video/*,.spz"
-              aria-label="영상 또는 스플랫 파일 업로드"
-              onChange={(event) => {
-                setTourSourceFile(event.currentTarget.files?.[0] ?? null);
-                setRegistrationStatus("작성 중");
-              }}
-            />
-          </label>
-
-          {tourSourceFile ? (
-            <p
-              style={{
-                margin: 0,
-                color: "var(--muted)",
-                fontSize: "0.8rem",
-                fontWeight: 800
-              }}
+            {/* 새 탭으로 연다 — 같은 탭 이동은 폼을 언마운트시켜 선택한 사진(File, 직렬화 불가)이 날아간다.
+                에디터에서 저장 후 이 탭으로 돌아오면 위 focus/visibilitychange 동기화가 자동 연결한다. */}
+            <a
+              className={has3DRoom ? "upload-tile upload-tile--action is-connected" : "upload-tile upload-tile--action"}
+              href="/floor-plan-3d"
+              target="_blank"
+              rel="noopener"
+              onClick={() => setRegistrationStatus("작성 중")}
             >
-              선택됨: {tourSourceFile.name} · {formatFileSize(tourSourceFile.size)}
-            </p>
-          ) : null}
+              <span className="upload-tile-icon" aria-hidden="true">
+                <Box size={20} strokeWidth={2.2} />
+              </span>
+              <span className="upload-tile-main">
+                <strong>3D 도면 만들기</strong>
+                <span className="upload-tile-desc">
+                  {has3DRoom
+                    ? "3D 도면이 연결됐어요. 등록하면 상세 페이지에서 3D로 보여집니다."
+                    : "도면을 만들면 자동 연결돼요. 새 탭에서 열려 작성 중인 사진·입력은 그대로 유지됩니다."}
+                </span>
+                <span className="upload-tile-status">{has3DRoom ? "연결됨" : "미연결"}</span>
+              </span>
+              <span className="upload-tile-cta">{has3DRoom ? "다시 열기 ↗" : "만들기 ↗"}</span>
+            </a>
+
+            <label className="upload-tile">
+              <span className="upload-tile-icon" aria-hidden="true">
+                <Braces size={20} strokeWidth={2.2} />
+              </span>
+              <span className="upload-tile-main">
+                <strong>도면 JSON 업로드</strong>
+                <span className="upload-tile-desc">3D 도면 만들기에서 내려받은 JSON이나 walls3D/walls 배열을 바로 연결합니다.</span>
+                <span className="upload-tile-status">업로드하면 3D로 바로 연결</span>
+              </span>
+              <span className="upload-tile-cta">파일 선택</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                aria-label="도면 JSON 업로드"
+                onChange={(event) => {
+                  handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+
+            <label className={tourSourceFile ? "upload-tile is-connected" : "upload-tile"}>
+              <span className="upload-tile-icon" aria-hidden="true">
+                <Video size={20} strokeWidth={2.2} />
+              </span>
+              <span className="upload-tile-main">
+                <strong>영상/스플랫 접수</strong>
+                <span className="upload-tile-desc">영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
+                <span className="upload-tile-status">
+                  {tourSourceFile ? `${tourSourceFile.name} · ${formatFileSize(tourSourceFile.size)}` : "선택된 파일 없음"}
+                </span>
+              </span>
+              <span className="upload-tile-cta">{tourSourceFile ? "변경" : "파일 선택"}</span>
+              <input
+                ref={tourSourceInputRef}
+                type="file"
+                accept="video/*,.spz"
+                aria-label="영상 또는 스플랫 파일 업로드"
+                onChange={(event) => {
+                  setTourSourceFile(event.currentTarget.files?.[0] ?? null);
+                  setRegistrationStatus("작성 중");
+                }}
+              />
+            </label>
+          </div>
         </section>
 
         <section className="owner-submit-summary" aria-label="등록 요약">
