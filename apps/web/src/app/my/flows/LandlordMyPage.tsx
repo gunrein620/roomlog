@@ -1456,16 +1456,20 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
             </div>
           ) : null}
 
+          {/* 새 탭으로 연다 — 같은 탭 이동은 폼을 언마운트시켜 선택한 사진(File, 직렬화 불가)이 날아간다.
+              에디터에서 저장 후 이 탭으로 돌아오면 위 focus/visibilitychange 동기화가 자동 연결한다. */}
           <a
             className={has3DRoom ? "upload-3d-button floor-plan-link active" : "upload-3d-button floor-plan-link"}
             href="/floor-plan-3d"
+            target="_blank"
+            rel="noopener"
             onClick={() => setRegistrationStatus("작성 중")}
           >
             <strong>3D 도면 만들기</strong>
             <span>
               {has3DRoom
                 ? "3D 도면이 연결됐어요. 등록하면 상세 페이지에서 3D로 보여집니다."
-                : "도면을 만들고 저장하면 자동으로 연결돼요. 실측 도면 기반 3D 편집 페이지로 이동"}
+                : "도면을 만들고 저장하면 자동으로 연결돼요. 실측 도면 3D 편집이 새 탭에서 열려 작성 중인 사진·입력이 그대로 유지됩니다."}
             </span>
           </a>
 
