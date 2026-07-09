@@ -187,12 +187,6 @@ const notificationItems = [
     title: "내방역 푸른공인중개사 답변 대기",
     body: "평균 응답 8분 기준으로 문자 답변이 접수됐습니다.",
     time: "5분 전"
-  },
-  {
-    label: "검수",
-    title: "집주인 등록 매물 실매물 확인 필요",
-    body: "사진과 3D방 자료 연결 후 검수 요청을 보낼 수 있습니다.",
-    time: "오늘"
   }
 ];
 
@@ -629,11 +623,11 @@ function FilterBottomSheet({
         </div>
 
         <div className="filter-sheet-section compact">
-          <strong>입주·검수</strong>
+          <strong>입주 조건</strong>
           <div className="filter-priority-grid">
             {[
               ["즉시입주", "오늘 방문 가능"],
-              ["확인매물", "실매물 검수"],
+              ["확인매물", "실제 방문 확인"],
               ["3D 투어", "방문 전 구조 확인"],
               ["안심분석", "권리관계 요약"]
             ].map(([label, caption]) => (
@@ -861,7 +855,7 @@ function NotificationSheet({
           <div>
             <span>알림센터</span>
             <h2 id="notification-sheet-title">알림</h2>
-            <p>새 매물, 문의, 검수 상태를 한 번에 확인합니다.</p>
+            <p>새 매물, 문의를 한 번에 확인합니다.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="알림 닫기">×</button>
         </header>
@@ -943,7 +937,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
   const [isListingStartMode, setIsListingStartMode] = useState(false);
   const isAuthHistoryPushedRef = useRef(false);
-  // 공개 검수된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
+  // 공개된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
   const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -1954,7 +1948,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                               <em key={flag}>{flag}</em>
                             ))}
                           </div>
-                          <div className="map-verification-row" aria-label={`${listing.title} 검수 상태`}>
+                          <div className="map-verification-row" aria-label={`${listing.title} 확인 상태`}>
                             <span>{listing.verifyStatus}</span>
                             <span>{listing.responseStatus}</span>
                             <span>{listing.tourStatus}</span>

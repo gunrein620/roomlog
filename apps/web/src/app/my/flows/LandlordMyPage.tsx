@@ -97,19 +97,6 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
   });
 }
 
-const ownerExposureItems = [
-  { label: "전달 범위", value: "반경 5km", caption: "인근 중개사 12곳" },
-  { label: "예상 검수", value: "2시간", caption: "사진 등록 후 요청" },
-  { label: "노출 배지", value: "3D 투어", caption: "3D방 연결 시 표시" }
-];
-
-const ownerReviewItems = [
-  { label: "기본정보", caption: "주소와 가격 확인" },
-  { label: "사진자료", caption: "대표 사진 3장 권장" },
-  { label: "3D방", caption: "투어 자료 연결" },
-  { label: "중개전달", caption: "반경 5km 우선" }
-];
-
 const ownerCostTypeLabels: Record<string, string> = {
   repair: "수리비",
   maintenance: "관리비",
@@ -758,7 +745,6 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
   const ownerPriceLabel = ownerForm.tradeType === "전세"
     ? `전세 ${ownerForm.jeonse || "0"}만원`
     : `${ownerForm.tradeType} ${ownerForm.deposit || "0"}/${ownerForm.monthly || "0"}`;
-  const ownerCompletionRate = photoCount >= 3 && has3DRoom ? 92 : 68;
   const confirmedOwnerCosts = DEMO_COSTS.filter((cost) => cost.status === "confirmed" || cost.status === "amended");
   const ownerCostReviewItems = DEMO_COSTS.filter((cost) => cost.status === "draft" && cost.reviewReason);
   const ownerPendingCostReviews = isCostReviewCleared ? 0 : DEMO_COST_QUEUE_SUMMARY.total;
@@ -866,15 +852,9 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
           <p>사진 {photoCount}장 · 3D방 {has3DRoom ? "연결됨" : "미등록"}</p>
         </article>
         <article>
-          <span>검수 상태</span>
-          <strong>
-            {registrationStatus === "검수 대기"
-              ? "실매물 확인 요청"
-              : registrationStatus === "노출중"
-                ? "확인 완료 · 노출중"
-                : "실매물 확인 전"}
-          </strong>
-          <p>{ownerForm.address} · {ownerPriceLabel}</p>
+          <span>매물 정보</span>
+          <strong>{ownerForm.address || "주소 미입력"}</strong>
+          <p>{ownerPriceLabel}</p>
         </article>
       </section>
 
@@ -989,51 +969,6 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
         <small className="domain-test-note">이 계정에 관리 중인 집이 연결되면 이어집니다.</small>
       </section>
 
-      <section className="owner-exposure-card" aria-label="집 내놓기 전달 범위">
-        <div className="owner-exposure-head">
-          <div>
-            <span>집 내놓기 전달 범위</span>
-            <h3>검수 후 주변 중개사에게 매물 정보를 보냅니다</h3>
-          </div>
-          <strong>{ownerCompletionRate}% 완성</strong>
-        </div>
-        <div className="owner-exposure-grid">
-          {ownerExposureItems.map((item) => (
-            <article key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.caption}</small>
-            </article>
-          ))}
-        </div>
-        <p className="owner-exposure-note">
-          사진 3장 이상과 3D방 자료를 연결하면 확인매물·3D 투어 배지가 함께 노출됩니다.
-        </p>
-      </section>
-
-      <section className="owner-readiness-card" aria-label="검수 준비 체크리스트">
-        <div className="owner-readiness-head">
-          <div>
-            <span>검수 준비 체크리스트</span>
-            <h3>등록 완료 전에 빠진 항목을 확인하세요</h3>
-          </div>
-          <strong>{ownerCompletionRate}%</strong>
-        </div>
-        <div className="owner-readiness-list">
-          {ownerReviewItems.map((item, index) => {
-            const done = index === 0 || (index === 1 && photoCount >= 3) || (index === 2 && has3DRoom);
-
-            return (
-              <article className={done ? "done" : ""} key={item.label}>
-                <span>{item.label}</span>
-                <strong>{done ? "완료" : "필요"}</strong>
-                <p>{item.caption}</p>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
       <section className="owner-progress-card" aria-label="매물 등록 단계">
         <div>
           <span className="progress-dot done" />
@@ -1041,9 +976,9 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
           <em>완료</em>
         </div>
         <div>
-          <span className="progress-dot done" />
+          <span className={photoCount > 0 ? "progress-dot done" : "progress-dot"} />
           <strong>사진 업로드</strong>
-          <em>검수중</em>
+          <em>{photoCount > 0 ? `${photoCount}장 등록` : "등록 전"}</em>
         </div>
         <div>
           <span className="progress-dot" />
@@ -1516,9 +1451,9 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
           ) : null}
         </section>
 
-        <section className="owner-submit-summary" aria-label="검수 요청 요약">
+        <section className="owner-submit-summary" aria-label="등록 요약">
           <div>
-            <span>검수 요청 요약</span>
+            <span>등록 요약</span>
             <h3>{ownerForm.title || "매물명을 입력해주세요"}</h3>
             <p>
               {ownerPriceLabel} · 관리비 {ownerForm.maintenance || "0"}만원 · {ownerForm.area || "-"}m² ·{" "}
@@ -1534,12 +1469,8 @@ export default function LandlordMyPage({ onSelectFlow, onGoHome }: { onSelectFlo
               <b>{has3DRoom ? "연결" : "대기"}</b>
               3D방
             </span>
-            <span>
-              <b>2시간</b>
-              예상 검수
-            </span>
           </div>
-          <p>검수 요청 후 주변 중개사 12곳에 매물 정보가 전달되고, 확인매물 여부가 표시됩니다.</p>
+          <p>등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
         </section>
 
         <button className="submit-listing" type="button" onClick={submitOwnerListing} disabled={isSubmittingListing} aria-busy={isSubmittingListing}>

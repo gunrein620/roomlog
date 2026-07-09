@@ -39,7 +39,7 @@ describe("TradeController realtime notifications", () => {
 });
 
 describe("TradeController public listings", () => {
-  it("delegates public listing reads to the reviewed public feed", () => {
+  it("delegates public listing reads to the public feed", () => {
     const publicListings: TradeListing[] = [
       {
         id: "listing-1",
@@ -54,8 +54,6 @@ describe("TradeController public listings", () => {
         description: "",
         images: [],
         status: "노출중",
-        reviewStatus: "approved",
-        publishedAt: "2026-07-09T00:00:00.000Z",
         createdAt: "2026-07-09T00:00:00.000Z"
       }
     ];
