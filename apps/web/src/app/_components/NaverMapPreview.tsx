@@ -7,9 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import { mapListings } from "@/lib/listing-catalog";
 
 type NaverLatLng = unknown;
-type NaverMap = unknown;
+type NaverMap = { setCenter?: (center: NaverLatLng) => void };
 // setMap(null) = 마커 제거 — 지도 탭에서 매물 목록이 바뀔 때 마커를 다시 그리는 데 쓴다.
-type NaverMarker = { setMap: (map: NaverMap | null) => void };
+type NaverMarker = {
+  setMap: (map: NaverMap | null) => void;
+  setPosition?: (position: NaverLatLng) => void;
+};
 type NaverPoint = unknown;
 type NaverInfoWindow = {
   open: (map: NaverMap, marker: NaverMarker) => void;
@@ -91,12 +94,15 @@ const mapDealMarkers = mapListings;
 export function NaverMapPreview({
   className = "",
   center,
+  showCenterMarker = true,
   title,
   markers
 }: {
   className?: string;
   /** 특정 매물 좌표 — 있으면 그 위치를 중심으로 단일 마커를 찍는다(없으면 데모 마커). */
   center?: { lat: number; lng: number } | null;
+  /** 지도 탭은 중심 이동만 필요할 수 있어 현재 위치/상세 마커 표시를 분리한다. */
+  showCenterMarker?: boolean;
   title?: string;
   /** 지도 탭용 동적 마커 목록 — 값이 바뀌면 마커를 다시 그린다(직접등록 매물 포함). */
   markers?: MapMarkerInput[];
@@ -104,6 +110,7 @@ export function NaverMapPreview({
   const mapRef = useRef<HTMLDivElement>(null);
   const isMapInitializedRef = useRef(false);
   const mapInstanceRef = useRef<NaverMap | null>(null);
+  const centerMarkerRef = useRef<NaverMarker | null>(null);
   const dynamicMarkersRef = useRef<NaverMarker[]>([]);
   const [isScriptReady, setIsScriptReady] = useState(false);
   const [loadState, setLoadState] = useState<MapLoadState>(naverMapClientId ? "loading" : "missing-key");
@@ -112,6 +119,10 @@ export function NaverMapPreview({
   const markersKey = markers
     ? JSON.stringify(markers.map((deal) => [deal.lat, deal.lng, deal.mapLabel]))
     : "";
+  const centerKey =
+    center && Number.isFinite(center.lat) && Number.isFinite(center.lng)
+      ? `${center.lat}:${center.lng}`
+      : "";
 
   useEffect(() => {
     if (window.naver?.maps) {
@@ -162,11 +173,13 @@ export function NaverMapPreview({
       });
     }
 
-    if (hasCenter || !markers) {
+    const shouldShowCenterMarker = hasCenter ? showCenterMarker : !markers;
+    if (shouldShowCenterMarker) {
       const marker = new maps.Marker({
         map,
         position: centerLatLng
       });
+      centerMarkerRef.current = marker;
       const infoWindow = new maps.InfoWindow({
         content: hasCenter
           ? `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "이 매물"}</b><strong>현재 위치</strong></div>`
@@ -212,6 +225,36 @@ export function NaverMapPreview({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- markersKey가 markers의 좌표·라벨을 대변한다
   }, [markersKey, loadState]);
+
+  // 지도 탭에서 사용자 위치가 뒤늦게 들어오면 이미 생성된 네이버 지도 중심을 이동한다.
+  useEffect(() => {
+    if (!centerKey || loadState !== "ready") return;
+    const maps = window.naver?.maps;
+    const map = mapInstanceRef.current;
+    if (!maps || !map?.setCenter) return;
+
+    const [lat, lng] = centerKey.split(":").map(Number);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const nextCenter = new maps.LatLng(lat, lng);
+    map.setCenter(nextCenter);
+
+    if (!showCenterMarker) {
+      centerMarkerRef.current?.setMap(null);
+      centerMarkerRef.current = null;
+      return;
+    }
+
+    if (centerMarkerRef.current?.setPosition) {
+      centerMarkerRef.current.setPosition(nextCenter);
+      return;
+    }
+
+    centerMarkerRef.current?.setMap(null);
+    centerMarkerRef.current = new maps.Marker({
+      map,
+      position: nextCenter
+    });
+  }, [centerKey, loadState, showCenterMarker]);
 
   const handleScriptReady = () => {
     requestAnimationFrame(() => {
