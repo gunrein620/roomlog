@@ -5843,6 +5843,121 @@ p {
   gap: 8px;
 }
 
+/* 등록 요약 미디어 — 왼쪽 사진 캐러셀 / 오른쪽 3D 도면 프리뷰 반반 */
+.owner-summary-media {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.summary-media-card {
+  position: relative;
+  margin: 0;
+  height: 220px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #eef1f8;
+}
+
+.summary-media-photos img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.summary-media-3d {
+  background: #0f1420;
+}
+
+.summary-media-3d .floor-plan-3d-preview {
+  width: 100%;
+  height: 100%;
+}
+
+.summary-media-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.summary-media-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.55);
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.summary-media-nav.prev {
+  left: 8px;
+}
+
+.summary-media-nav.next {
+  right: 8px;
+}
+
+.summary-media-nav:hover {
+  background: rgba(17, 24, 39, 0.82);
+}
+
+.summary-media-count {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.62);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.summary-media-empty,
+.summary-media-loading {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.summary-media-loading {
+  color: #cbd5e1;
+}
+
+@media (max-width: 640px) {
+  .owner-summary-media {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-media-card {
+    height: 200px;
+  }
+}
+
 .owner-submit-grid span {
   display: grid;
   min-height: 72px;

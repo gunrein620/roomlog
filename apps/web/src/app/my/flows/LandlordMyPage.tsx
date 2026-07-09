@@ -3,9 +3,17 @@
 // 내놓은 집(임대인) 등록 폼 — 사진 업로드, 3D 도면 연결, 매물 등록.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Box, Braces, Camera, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
+import type { PlacedFurniture, WheretoputWall3D } from "@/app/floor-plan-3d/room-model/types";
+
+// 등록 요약의 3D 프리뷰 — Three.js라 클라이언트에서만(ssr:false) 읽기 전용으로 렌더한다.
+const FloorPlan3DPreview = dynamic(
+  () => import("@/app/floor-plan-3d/room-scene/RoomlogThreeFloorPlanView").then((mod) => mod.RoomlogThreeFloorPlanView),
+  { ssr: false, loading: () => <div className="summary-media-loading">3D 도면 불러오는 중…</div> }
+);
 import {
   OWNER_DRAFT_STORAGE_KEY,
   emptyOwnerForm,
@@ -324,6 +332,9 @@ export default function LandlordMyPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   // 선택 즉시 보이는 미리보기 URL — photoFiles가 바뀌면 이전 objectURL은 회수한다.
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  // 등록 요약 사진 캐러셀의 현재 인덱스, 3D 도면 스냅샷.
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const [floorPlan3D, setFloorPlan3D] = useState<ListingFloorPlan3D | null>(null);
   const [tourSourceFile, setTourSourceFile] = useState<File | null>(null);
   const tourSourceInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -331,6 +342,10 @@ export default function LandlordMyPage() {
     setPhotoPreviewUrls(urls);
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [photoFiles]);
+  // 사진이 줄면 캐러셀 인덱스가 범위를 벗어나지 않게 클램프.
+  useEffect(() => {
+    setPhotoIndex((index) => (photoPreviewUrls.length === 0 ? 0 : Math.min(index, photoPreviewUrls.length - 1)));
+  }, [photoPreviewUrls.length]);
   const removePhotoAt = (index: number) => {
     const next = photoFiles.filter((_, i) => i !== index);
     setPhotoFiles(next);
@@ -471,7 +486,11 @@ export default function LandlordMyPage() {
     }
 
     // 도면 에디터에서 실제로 3D를 만들고 돌아왔는지는 스냅샷 존재로 판단한다(클릭만으론 연결로 치지 않음).
-    if (readListingFloorPlanSnapshot()) setHas3DRoom(true);
+    const bootSnapshot = readListingFloorPlanSnapshot();
+    if (bootSnapshot) {
+      setHas3DRoom(true);
+      setFloorPlan3D(bootSnapshot);
+    }
 
     setIsDraftLoaded(true);
   }, []);
@@ -479,7 +498,12 @@ export default function LandlordMyPage() {
   // 에디터 탭에서 3D를 만들고 이 탭으로 돌아오면 "3D방 연결" 상태를 즉시 반영한다.
   useEffect(() => {
     const syncFloorPlanConnection = () => {
-      if (document.visibilityState === "visible" && readListingFloorPlanSnapshot()) setHas3DRoom(true);
+      if (document.visibilityState !== "visible") return;
+      const snapshot = readListingFloorPlanSnapshot();
+      if (snapshot) {
+        setHas3DRoom(true);
+        setFloorPlan3D(snapshot);
+      }
     };
     window.addEventListener("visibilitychange", syncFloorPlanConnection);
     window.addEventListener("focus", syncFloorPlanConnection);
@@ -850,15 +874,74 @@ export default function LandlordMyPage() {
               {ownerForm.floor || "층수 미입력"}
             </p>
           </div>
-          <div className="owner-submit-grid">
-            <span>
-              <b>{photoCount}장</b>
-              사진
-            </span>
-            <span>
-              <b>{has3DRoom ? "연결" : "대기"}</b>
-              3D방
-            </span>
+          <div className="owner-summary-media">
+            <figure className="summary-media-card summary-media-photos" aria-label="등록한 사진 미리보기">
+              {photoPreviewUrls.length > 0 ? (
+                <>
+                  {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photoPreviewUrls[Math.min(photoIndex, photoPreviewUrls.length - 1)]}
+                    alt={`매물 사진 ${Math.min(photoIndex, photoPreviewUrls.length - 1) + 1}`}
+                  />
+                  <span className="summary-media-label">사진</span>
+                  {photoPreviewUrls.length > 1 ? (
+                    <>
+                      <button
+                        type="button"
+                        className="summary-media-nav prev"
+                        aria-label="이전 사진"
+                        onClick={() => setPhotoIndex((index) => (index - 1 + photoPreviewUrls.length) % photoPreviewUrls.length)}
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        className="summary-media-nav next"
+                        aria-label="다음 사진"
+                        onClick={() => setPhotoIndex((index) => (index + 1) % photoPreviewUrls.length)}
+                      >
+                        ›
+                      </button>
+                      <span className="summary-media-count">
+                        {Math.min(photoIndex, photoPreviewUrls.length - 1) + 1} / {photoPreviewUrls.length}
+                      </span>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <div className="summary-media-empty">
+                  <Camera size={22} aria-hidden="true" />
+                  <span>사진을 추가하면 여기에서 넘겨볼 수 있어요</span>
+                </div>
+              )}
+            </figure>
+
+            <div className="summary-media-card summary-media-3d" aria-label="3D 도면 미리보기">
+              {floorPlan3D ? (
+                <>
+                  <FloorPlan3DPreview
+                    controlsEnabled
+                    frameloop="always"
+                    furnitureData={floorPlan3D.furnitures as unknown as PlacedFurniture[]}
+                    hideHint
+                    pendingFurniture={null}
+                    selectedFurnitureId={null}
+                    selectedWallId={null}
+                    wallsData={floorPlan3D.walls3D as unknown as WheretoputWall3D[]}
+                    onFloorPointerDown={() => {}}
+                    onFurniturePointerDown={() => {}}
+                    onWallPointerDown={() => {}}
+                  />
+                  <span className="summary-media-label">3D 도면</span>
+                </>
+              ) : (
+                <div className="summary-media-empty">
+                  <Box size={22} aria-hidden="true" />
+                  <span>3D 도면을 만들면 여기에서 돌려볼 수 있어요</span>
+                </div>
+              )}
+            </div>
           </div>
           <p>등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
         </section>
