@@ -2,11 +2,21 @@
 
 // 사는 집(세입자) 마이페이지 — 계약 상태, 수리요청(실제 민원 API), 관리비, 집주인 채팅.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
+import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X } from "lucide-react";
+import { Bath, Bot, ChevronRight, FileText, Headphones, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
 
-const tenantIssuePresets = ["보일러 온수 불량", "콘센트 교체", "방충망 보수", "곰팡이 점검"];
+const DEFAULT_MONTHLY_RENT_KRW = 850000;
+const DEFAULT_MAINTENANCE_FEE_KRW = 120000;
+const DEFAULT_NEXT_PAYMENT_DATE = "2024.12.15";
+const DEFAULT_CONTRACT_PERIOD = "2024.01.15 ~ 2026.01.14";
+const TENANT_AI_GREETING = "안녕하세요! 우주(Woo-zu) AI 어시스턴트입니다. 무엇을 도와드릴까요?";
+
+const demoTenantRepairHistory = [
+  { id: "demo-aircon", title: "에어컨 수리", status: "완료", date: "2024.08.12", Icon: Snowflake, tone: "warm" },
+  { id: "demo-sink", title: "세면대 교체", status: "처리 중", date: "2024.11.02", Icon: Bath, tone: "neutral" }
+];
 
 type TenantContractSummary = {
   threadId: string;
@@ -29,19 +39,16 @@ type TenantRepairRequest = {
   title: string;
   /** 서버 티켓 표시 상태(접수됨/검토중/업체 배정…) 그대로 */
   status: string;
+  date?: string;
 };
 
-type TenantMaintenanceBill = {
-  amountLabel: string;
-  summary: string;
-  paidSummary: string;
-};
+type TenantAiMode = "text" | "call";
+type TenantAiStage = "choose" | "text" | "voice";
 
-type TenantVisit = {
-  timeLabel: string;
-  title: string;
-  pendingDescription: string;
-  confirmedDescription: string;
+type TenantAiMessage = {
+  id: string;
+  sender: "assistant" | "tenant";
+  text: string;
 };
 
 // 계약 조건 한 줄 표기 — 실제 연결된 계약이 없으면 위조하지 않고 그 사실을 그대로 알린다.
@@ -59,6 +66,39 @@ function tenancyDateLabel(iso?: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(date);
+}
+
+function formatKrw(amount: number): string {
+  return `${amount.toLocaleString("ko-KR")} KRW`;
+}
+
+function formatNumber(amount: number): string {
+  return amount.toLocaleString("ko-KR");
+}
+
+function TenantFloorPlanPreview() {
+  return (
+    <div className="tenant-floorplan-card" aria-label="세입자 평면도 미리보기">
+      <svg className="tenant-floorplan-svg" viewBox="0 0 420 240" role="img" aria-label="우주빌리지 401호 평면도">
+        <rect x="62" y="34" width="296" height="172" rx="2" />
+        <path d="M62 88h296M172 34v172M262 88v118M62 144h110M262 146h96" />
+        <path d="M172 122c22 0 40 18 40 40M262 122c-22 0-40 18-40 40M172 88c22 0 40-18 40-40" />
+        <rect x="82" y="55" width="70" height="26" rx="4" />
+        <rect x="82" y="104" width="54" height="32" rx="4" />
+        <rect x="84" y="158" width="68" height="28" rx="4" />
+        <rect x="192" y="54" width="44" height="28" rx="4" />
+        <circle cx="226" cy="154" r="16" />
+        <rect x="286" y="104" width="48" height="26" rx="4" />
+        <rect x="286" y="160" width="46" height="26" rx="4" />
+        <text x="99" y="71">BEDROOM</text>
+        <text x="98" y="122">KITCHEN</text>
+        <text x="196" y="71">BATH</text>
+        <text x="286" y="121">STUDIO</text>
+        <text x="294" y="177">BALCONY</text>
+        <path className="tenant-floorplan-measure" d="M62 22h296M48 34v172M372 34v172" />
+      </svg>
+    </div>
+  );
 }
 
 export default function TenantMyPage({
@@ -163,7 +203,7 @@ export default function TenantMyPage({
           complaints
             .slice()
             .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
-            .map((item) => ({ id: item.id, title: item.title, status: item.displayStatus ?? "접수됨" }))
+            .map((item) => ({ id: item.id, title: item.title, status: item.displayStatus ?? "접수됨", date: item.createdAt?.slice(0, 10).replaceAll("-", ".") }))
         );
       } catch {
         // 일시 오류 — 접수 시점에 다시 채워진다
@@ -173,77 +213,24 @@ export default function TenantMyPage({
       cancelled = true;
     };
   }, []);
-  const [maintenanceBill] = useState<TenantMaintenanceBill | null>(null);
-  const [scheduledVisit] = useState<TenantVisit | null>(null);
-  const [selectedIssue, setSelectedIssue] = useState("");
   const [maintenancePaid, setMaintenancePaid] = useState(false);
-  const [visitConfirmed] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
+  const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
+  const [aiMode, setAiMode] = useState<TenantAiMode>("text");
+  const [aiDraft, setAiDraft] = useState("");
+  const [aiMessages, setAiMessages] = useState<TenantAiMessage[]>([
+    { id: "tenant-ai-welcome", sender: "assistant", text: TENANT_AI_GREETING }
+  ]);
   const [tenantToast, setTenantToast] = useState("");
   const [isPaying, setIsPaying] = useState(false);
-  const [isSubmittingRepair, setIsSubmittingRepair] = useState(false);
   // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
   const isPayingRef = useRef(false);
-  const isSubmittingRepairRef = useRef(false);
 
   const showToast = (message: string) => {
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
-  };
-  // 수리요청은 실제 민원 API로 접수한다 — 관리인 콘솔 민원/하자 탭과 같은 티켓 스토어를 본다.
-  // (이전엔 로컬 state에만 쌓는 목업이라 관리인 쪽에 아무것도 안 갔다.)
-  const addRepairRequest = async () => {
-    if (!selectedIssue) {
-      return;
-    }
-
-    if (isSubmittingRepairRef.current) {
-      return;
-    }
-
-    isSubmittingRepairRef.current = true;
-    setIsSubmittingRepair(true);
-    try {
-      const locationLabel =
-        tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "집 안";
-      const response = await fetch("/api/tenant/complaints", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: selectedIssue,
-          description: `${selectedIssue} 문제로 수리를 요청합니다. 방문 전 연락 부탁드립니다.`,
-          location: locationLabel
-        })
-      });
-      const saved = (await response.json().catch(() => null)) as
-        | {
-            id?: string;
-            title?: string;
-            displayStatus?: string;
-            message?: string;
-            // 생성 응답은 { complaint, ... } 래핑, 목록 응답은 complaint가 최상위 — 둘 다 받는다.
-            complaint?: { id?: string; title?: string; displayStatus?: string };
-          }
-        | null;
-      const complaint = saved?.complaint ?? saved;
-
-      if (!response.ok || !complaint?.id) {
-        showToast(saved?.message ?? "수리요청 접수에 실패했습니다. 잠시 후 다시 시도해주세요.");
-        return;
-      }
-
-      setRepairRequests((current) => [
-        { id: complaint.id as string, title: complaint.title ?? selectedIssue, status: complaint.displayStatus ?? "접수됨" },
-        ...current.filter((item) => item.id !== complaint.id)
-      ]);
-      showToast("수리요청이 접수됐습니다. 관리인이 확인 후 업체를 배정합니다.");
-    } catch {
-      showToast("네트워크 오류로 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
-    } finally {
-      isSubmittingRepairRef.current = false;
-      setIsSubmittingRepair(false);
-    }
   };
 
   // 연결된 집이 없으면 특정 임대인/금액을 지어내지 않고 그 사실 자체를 한 행으로 보여준다.
@@ -271,187 +258,346 @@ export default function TenantMyPage({
   const landlordChatTitle = tenancy && tenancy !== "loading" && tenancy.contract?.landlordName
     ? `${tenancy.contract.landlordName} 집주인`
     : "계약 집주인";
+  const tenantRoomTitle =
+    tenancy === "loading"
+      ? "입주 정보 확인 중"
+      : tenancy
+        ? `${tenancy.buildingName} ${tenancy.roomNo}호`
+        : "연결된 집이 없습니다";
+  const tenantAddress =
+    tenancy === "loading"
+      ? "연결된 집 정보를 불러오고 있습니다."
+      : tenancy
+        ? tenancy.address || "상세 주소 미등록"
+        : "계약이 체결되면 입주 주소가 표시됩니다.";
+  const monthlyRentKrw =
+    tenancy && tenancy !== "loading" && tenancy.contract?.tradeType === "월세" && tenancy.contract.monthlyRentManwon > 0
+      ? tenancy.contract.monthlyRentManwon * 10000
+      : DEFAULT_MONTHLY_RENT_KRW;
+  const maintenanceFeeKrw = DEFAULT_MAINTENANCE_FEE_KRW;
+  const monthlyTotalKrw = monthlyRentKrw + maintenanceFeeKrw;
+  const contractPeriodLabel =
+    tenancy === "loading"
+      ? "확인 중"
+      : tenancy?.contract?.respondedAt
+        ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결`
+        : DEFAULT_CONTRACT_PERIOD;
+  const repairHistory = repairRequests.length
+    ? repairRequests.slice(0, 4).map((item, index) => ({
+        id: item.id,
+        title: item.title,
+        status: item.status,
+        date: item.date ?? "일자 확인 중",
+        Icon: index % 2 === 0 ? Snowflake : Bath,
+        tone: index % 2 === 0 ? "warm" : "neutral"
+      }))
+    : demoTenantRepairHistory;
+
+  const handleAiSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextMessage = aiDraft.trim();
+    if (!nextMessage || aiStage === "choose" || aiMode !== "text") return;
+
+    const timestamp = Date.now();
+    setAiMessages((messages) => [
+      ...messages,
+      { id: `tenant-ai-user-${timestamp}`, sender: "tenant", text: nextMessage },
+      {
+        id: `tenant-ai-reply-${timestamp}`,
+        sender: "assistant",
+        text: "현재는 데모 상담 화면입니다. 실제 AI 응답이 연결되면 이 대화에서 이어서 도와드릴게요."
+      }
+    ]);
+    setAiDraft("");
+  };
 
   return (
-    <section className="screen tenant-screen" id="my-page" aria-labelledby="tenant-title">
-      <div className="owner-hero compact-profile tenant-hero">
-        <div>
-          <p className="brand-kicker">입주 생활</p>
-          <h2 id="tenant-title">세입자 마이페이지</h2>
-          <p>계약, 관리비, 수리요청, 방문 일정을 한 화면에서 확인합니다.</p>
-        </div>
-        <button className="mypage-main-button" type="button" onClick={onGoHome}>
-          메인으로
-        </button>
-      </div>
+    <section className="screen tenant-screen tenant-portal-screen" id="my-page" aria-labelledby="tenant-title">
+      <h2 id="tenant-title" className="visually-hidden">세입자 마이페이지</h2>
 
       {tenantToast ? <p className="mypage-toast" role="status">{tenantToast}</p> : null}
 
-      <section className="tenant-contract-card" aria-label="계약 상태">
-        <div>
-          <span>계약 상태</span>
-          {tenancy === "loading" ? (
-            <>
-              <strong>확인 중…</strong>
-              <p>연결된 집 정보를 불러오고 있어요.</p>
-            </>
-          ) : tenancy ? (
-            <>
-              <strong>{tenancy.contract ? "계약 중" : "집 연결됨 · 계약 정보 없음"}</strong>
-              <p>
-                {tenancy.buildingName} {tenancy.roomNo}호 · {tenancyTermsLabel(tenancy.contract)}
-              </p>
-            </>
-          ) : (
-            <>
-              <strong>연결된 집이 없어요</strong>
-              <p>집주인과 채팅에서 계약이 체결되면 이 화면이 실제 계약 정보로 채워집니다.</p>
-            </>
-          )}
+      <section className="tenant-announcement-card" aria-label="집주인 공지사항">
+        <div className="tenant-card-icon" aria-hidden="true">
+          <Megaphone size={28} strokeWidth={2.5} />
         </div>
-        <button type="button" onClick={() => setIsContractSheetOpen(true)}>계약서 보기</button>
+        <div>
+          <h3>집주인 공지사항</h3>
+          <p>임대인으로부터 전달된 새로운 소식이 없습니다.</p>
+        </div>
+        <Megaphone className="tenant-announcement-watermark" size={128} strokeWidth={2.1} aria-hidden="true" />
       </section>
 
-      <div className="tenant-task-grid" aria-label="세입자 할 일">
-        <article>
-          <span>수리요청</span>
-          <strong>{String(repairRequests.length).padStart(2, "0")}건</strong>
-          <p>{repairRequests.length ? repairRequests.slice(0, 2).map((item) => item.title).join(" · ") : "접수된 수리요청 없음"}</p>
-        </article>
-        <article>
-          <span>관리비</span>
-          <strong>{maintenanceBill ? (maintenancePaid ? "납부 완료" : maintenanceBill.amountLabel) : "납부할 관리비 없음"}</strong>
-          <p>{maintenanceBill ? (maintenancePaid ? maintenanceBill.paidSummary : "이번 달 납부 예정") : "청구가 등록되면 표시됩니다."}</p>
-        </article>
-        <article>
-          <span>방문 일정</span>
-          <strong>{scheduledVisit ? (visitConfirmed ? "확인 완료" : scheduledVisit.timeLabel) : "예정된 방문 없음"}</strong>
-          <p>{scheduledVisit ? scheduledVisit.title : "확정된 일정이 없습니다."}</p>
-        </article>
-      </div>
-
-      <section className="tenant-contract-card" aria-label="관리비 납부">
-        <div>
-          <span>이번 달 관리비</span>
-          <strong>{maintenanceBill ? (maintenancePaid ? "납부 완료" : maintenanceBill.amountLabel) : "납부할 관리비 없음"}</strong>
-          <p>{maintenanceBill ? (maintenancePaid ? maintenanceBill.paidSummary : maintenanceBill.summary) : "관리인이 청구를 등록하면 납부할 수 있습니다."}</p>
-        </div>
-        <button
-          type="button"
-          disabled={!maintenanceBill || isPaying}
-          aria-busy={isPaying}
-          onClick={() => {
-            if (!maintenanceBill) {
-              return;
-            }
-            const currentBill = maintenanceBill;
-
-            if (maintenancePaid) {
-              showToast("영수증이 문자로 발송됐습니다.");
-              return;
-            }
-
-            if (isPayingRef.current) {
-              return;
-            }
-
-            isPayingRef.current = true;
-            setIsPaying(true);
-            window.setTimeout(() => {
-              setMaintenancePaid(true);
-              isPayingRef.current = false;
-              setIsPaying(false);
-              showToast(`관리비 ${currentBill.amountLabel} 납부가 완료됐습니다.`);
-            }, 700);
-          }}
-        >
-          {isPaying ? (
-            <>
-              <span className="btn-spinner" aria-hidden="true" />
-              처리 중…
-            </>
-          ) : maintenancePaid ? (
-            "영수증 보기"
-          ) : !maintenanceBill ? (
-            "납부 대기"
-          ) : (
-            "납부하기"
-          )}
-        </button>
-      </section>
-
-      <section className="tenant-repair-card" aria-label="수리요청">
-        <div className="tenant-repair-head">
-          <div>
-            <span>수리요청</span>
-            <strong>진행 중 {repairRequests.length}건</strong>
+      <section className="tenant-residence-card" aria-label="입주 정보">
+        <TenantFloorPlanPreview />
+        <div className="tenant-residence-details">
+          <span className="tenant-pill">입주 정보</span>
+          <h3>{tenantRoomTitle}</h3>
+          <p>{tenantAddress}</p>
+          <dl className="tenant-residence-meta">
+            <div>
+              <dt>계약 기간</dt>
+              <dd>{contractPeriodLabel}</dd>
+            </div>
+            <div>
+              <dt>차기 결제일</dt>
+              <dd>{DEFAULT_NEXT_PAYMENT_DATE}</dd>
+            </div>
+            <div>
+              <dt>월세</dt>
+              <dd className="tenant-primary-value">{formatKrw(monthlyRentKrw)}</dd>
+            </div>
+            <div>
+              <dt>관리비</dt>
+              <dd>{formatKrw(maintenanceFeeKrw)}</dd>
+            </div>
+          </dl>
+          <div className="tenant-residence-actions">
+            <button className="tenant-primary-button" type="button" onClick={() => setIsContractSheetOpen(true)}>
+              <FileText size={18} strokeWidth={2.5} aria-hidden="true" />
+              임대차 계약서 보기
+            </button>
+            <button
+              className="tenant-secondary-button"
+              type="button"
+              onClick={() => {
+                if (!contractThreadId) {
+                  showToast("계약이 체결되면 임대인 문의를 열 수 있습니다.");
+                  return;
+                }
+                setIsLandlordChatOpen(true);
+              }}
+            >
+              <MessageCircle size={18} strokeWidth={2.5} aria-hidden="true" />
+              임대인에게 문의하기
+            </button>
           </div>
-          <button type="button" onClick={onGoInquiry}>관리인 문의</button>
         </div>
-        <div className="tenant-repair-list">
-          {repairRequests.length ? (
-            repairRequests.map((item) => (
-              <article key={item.id}>
-                <strong>{item.title}</strong>
-                <em className={item.status === "업체 배정" ? "assigned" : ""}>{item.status}</em>
-              </article>
-            ))
-          ) : (
-            <p className="tenant-repair-empty">아직 접수된 수리요청이 없어요</p>
-          )}
-        </div>
-        <div className="tenant-repair-new">
-          <strong>새 수리요청</strong>
-          <div className="repair-issue-chips">
-            {tenantIssuePresets.map((issue) => (
-              <button
-                className={selectedIssue === issue ? "active" : ""}
-                type="button"
-                key={issue}
-                onClick={() => setSelectedIssue(issue)}
-              >
-                {issue}
+      </section>
+
+      <section className="tenant-history-card" aria-label="민원/하자 이력">
+        <header className="tenant-section-head">
+          <h3>민원/하자 이력</h3>
+          <button type="button" onClick={onGoInquiry}>
+            신규 요청하기
+            <span aria-hidden="true">+</span>
+          </button>
+        </header>
+        <div className="tenant-history-list">
+          {repairHistory.map((item, index) => {
+            const ItemIcon = item.Icon;
+            return (
+              <button className="tenant-history-row" type="button" key={item.id} onClick={onGoInquiry}>
+                <span className={`tenant-history-icon ${item.tone}`} aria-hidden="true">
+                  <ItemIcon size={20} strokeWidth={2.4} />
+                </span>
+                <span className="tenant-history-copy">
+                  <strong>{index + 1}. {item.title}</strong>
+                  <small>{item.status} · {item.date}</small>
+                </span>
+                <ChevronRight size={24} strokeWidth={2.2} aria-hidden="true" />
               </button>
-            ))}
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="tenant-payment-card" aria-label="이번 달 합계">
+        <div className="tenant-payment-content">
+          <h3>이번 달 합계</h3>
+          <div className="tenant-payment-total">
+            <strong>{formatNumber(monthlyTotalKrw)}</strong>
+            <span>KRW</span>
           </div>
+          <dl className="tenant-payment-breakdown">
+            <div>
+              <dt>기본 월세</dt>
+              <dd>{formatNumber(monthlyRentKrw)}</dd>
+            </div>
+            <div>
+              <dt>고정 관리비</dt>
+              <dd>{formatNumber(maintenanceFeeKrw)}</dd>
+            </div>
+            <div>
+              <dt>납부 상태</dt>
+              <dd>{maintenancePaid ? "납부 완료" : "납부 대기"}</dd>
+            </div>
+          </dl>
           <button
-            className="repair-submit"
+            className="tenant-payment-button"
             type="button"
-            onClick={addRepairRequest}
-            disabled={isSubmittingRepair || !selectedIssue}
-            aria-busy={isSubmittingRepair}
+            disabled={isPaying || maintenancePaid}
+            aria-busy={isPaying}
+            onClick={() => {
+              if (maintenancePaid) {
+                showToast("영수증이 문자로 발송됐습니다.");
+                return;
+              }
+
+              if (isPayingRef.current) {
+                return;
+              }
+
+              isPayingRef.current = true;
+              setIsPaying(true);
+              window.setTimeout(() => {
+                setMaintenancePaid(true);
+                isPayingRef.current = false;
+                setIsPaying(false);
+                showToast(`이번 달 합계 ${formatKrw(monthlyTotalKrw)} 납부가 완료됐습니다.`);
+              }, 700);
+            }}
           >
-            {isSubmittingRepair ? (
+            {isPaying ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
-                접수 처리 중…
+                처리 중…
               </>
-            ) : !selectedIssue ? (
-              "수리 항목을 선택하세요"
+            ) : maintenancePaid ? (
+              "영수증 보기"
             ) : (
-              `${selectedIssue} 접수하기`
+              "즉시 납부하기"
             )}
           </button>
         </div>
+        <div className="tenant-payment-watermark" aria-hidden="true" />
       </section>
 
       <button
-        className="tenant-landlord-chat-button"
+        className="tenant-ai-assist-button"
         type="button"
-        disabled={!contractThreadId}
-        aria-expanded={isLandlordChatOpen}
-        aria-controls="tenant-landlord-chat-panel"
         onClick={() => {
-          if (!contractThreadId) {
-            showToast("계약이 체결되면 집주인 채팅을 열 수 있습니다.");
-            return;
-          }
-          setIsLandlordChatOpen(true);
+          setAiStage("choose");
+          setIsAiAssistantOpen((isOpen) => !isOpen);
         }}
+        aria-label={isAiAssistantOpen ? "AI 생활 도우미 닫기" : "AI 생활 도우미 열기"}
+        aria-controls="tenant-ai-assistant-panel"
+        aria-expanded={isAiAssistantOpen}
       >
-        <MessageCircle size={18} strokeWidth={2.4} aria-hidden="true" />
-        집주인 채팅
+        <Bot size={30} strokeWidth={2.3} aria-hidden="true" />
       </button>
+
+      {isAiAssistantOpen ? (
+        <aside
+          className="tenant-ai-panel"
+          id="tenant-ai-assistant-panel"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="tenant-ai-title"
+        >
+          <header className="tenant-ai-panel-head">
+            <div className="tenant-ai-brand">
+              <Bot size={18} strokeWidth={2.4} aria-hidden="true" />
+              <h3 id="tenant-ai-title">Woo-zu AI Assistant</h3>
+            </div>
+            <button
+              className="tenant-ai-close-button"
+              type="button"
+              onClick={() => setIsAiAssistantOpen(false)}
+              aria-label="AI 생활 도우미 닫기"
+            >
+              <X size={20} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+          </header>
+          {aiStage === "choose" ? (
+            <div className="tenant-ai-mode-picker" aria-label="AI 상담 모드 선택">
+              <div className="tenant-ai-mode-picker-copy">
+                <h4>Choose your consultation mode</h4>
+                <p>How would you like to talk with Woo-zu AI?</p>
+              </div>
+              <div className="tenant-ai-mode-cards">
+                <button
+                  className="tenant-ai-mode-card"
+                  type="button"
+                  onClick={() => {
+                    setAiMode("text");
+                    setAiStage("text");
+                  }}
+                >
+                  <span className="tenant-ai-mode-icon" aria-hidden="true">
+                    <MessageSquare size={38} strokeWidth={2.2} />
+                  </span>
+                  <strong>Text Chat</strong>
+                  <small>TEXT</small>
+                </button>
+                <button
+                  className="tenant-ai-mode-card"
+                  type="button"
+                  onClick={() => {
+                    setAiMode("call");
+                    setAiStage("voice");
+                    setAiDraft("");
+                  }}
+                >
+                  <span className="tenant-ai-mode-icon" aria-hidden="true">
+                    <Headphones size={40} strokeWidth={2.2} />
+                  </span>
+                  <strong>Voice Call</strong>
+                  <small>CALL</small>
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {aiStage !== "choose" ? (
+            <>
+              <div className="tenant-ai-messages" aria-live="polite">
+                {aiMessages.map((message) => (
+                  <div className={`tenant-ai-message ${message.sender}`} key={message.id}>
+                    {message.sender === "assistant" ? (
+                      <span className="tenant-ai-avatar" aria-hidden="true">
+                        <Bot size={15} strokeWidth={2.4} />
+                      </span>
+                    ) : null}
+                    <p className="tenant-ai-bubble">{message.text}</p>
+                  </div>
+                ))}
+                {aiMode === "call" ? (
+                  <p className="tenant-ai-call-note" role="status">
+                    통화 모드에서는 메시지 입력 대신 음성 상담 상태를 이어서 확인합니다.
+                  </p>
+                ) : null}
+              </div>
+              <form className="tenant-ai-composer" onSubmit={handleAiSubmit}>
+                <input
+                  type="text"
+                  value={aiDraft}
+                  onChange={(event) => setAiDraft(event.target.value)}
+                  placeholder={aiMode === "call" ? "통화 모드로 연결 준비 중..." : "메시지를 입력하세요..."}
+                  aria-label="AI 어시스턴트 메시지 입력"
+                  disabled={aiMode === "call"}
+                />
+                <button
+                  className="tenant-ai-mode-toggle"
+                  type="button"
+                  role="switch"
+                  aria-label="AI 상담 모드 전환"
+                  aria-checked={aiMode === "call"}
+                  onClick={() => {
+                    const nextMode: TenantAiMode = aiMode === "text" ? "call" : "text";
+                    setAiMode(nextMode);
+                    setAiStage(nextMode === "text" ? "text" : "voice");
+                    if (nextMode === "call") setAiDraft("");
+                  }}
+                >
+                  <span>text</span>
+                  <span className="tenant-ai-switch" aria-hidden="true">
+                    <span />
+                  </span>
+                  <span>call</span>
+                </button>
+                <button
+                  className="tenant-ai-send-button"
+                  type="submit"
+                  disabled={aiMode === "call" || !aiDraft.trim()}
+                  aria-label="AI 어시스턴트 메시지 보내기"
+                >
+                  <Send size={22} strokeWidth={2.3} aria-hidden="true" />
+                </button>
+              </form>
+            </>
+          ) : null}
+        </aside>
+      ) : null}
 
       {isLandlordChatOpen ? (
         <>

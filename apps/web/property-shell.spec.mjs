@@ -821,15 +821,31 @@ test("removes the developer role login panel — roles derive from the signed-in
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
   for (const label of [
     "세입자 마이페이지",
-    "계약 상태",
-    "수리요청",
+    "집주인 공지사항",
+    "임대인으로부터 전달된 새로운 소식이 없습니다.",
+    "입주 정보",
+    "우주빌리지 401호",
+    "계약 기간",
+    "차기 결제일",
+    "월세",
     "관리비",
-    "방문 일정",
-    "아직 접수된 수리요청이 없어요",
-    "납부할 관리비 없음",
-    "예정된 방문 없음",
-    "수리 항목을 선택하세요",
-    "집주인 채팅"
+    "임대차 계약서 보기",
+    "임대인에게 문의하기",
+    "민원/하자 이력",
+    "신규 요청하기",
+    "에어컨 수리",
+    "세면대 교체",
+    "이번 달 합계",
+    "즉시 납부하기",
+    "Woo-zu AI Assistant",
+    "Choose your consultation mode",
+    "How would you like to talk with Woo-zu AI?",
+    "Text Chat",
+    "Voice Call",
+    "TEXT",
+    "CALL",
+    "안녕하세요! 우주\\(Woo-zu\\) AI 어시스턴트입니다. 무엇을 도와드릴까요\\?",
+    "메시지를 입력하세요..."
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
@@ -839,16 +855,43 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.doesNotMatch(pageSource, /tenant-domain-test-card|href="\/tenant\/messaging\/00"|href="\/tenant\/moveout\/00"/);
   assert.doesNotMatch(pageSource, /maintenance-card/);
   assert.doesNotMatch(cssSource, /\.maintenance-card/);
-  assert.match(cssSource, /\.domain-test-card/);
-  assert.match(cssSource, /\.domain-test-link-grid/);
-  assert.match(cssSource, /\.domain-test-link/);
-  assert.match(cssSource, /\.tenant-contract-card/);
-  assert.match(pageSource, /tenant-landlord-chat-button/);
+  assert.match(cssSource, /\.tenant-portal-screen/);
+  assert.match(cssSource, /\.tenant-announcement-card/);
+  assert.match(cssSource, /\.tenant-residence-card/);
+  assert.match(cssSource, /\.tenant-history-card/);
+  assert.match(cssSource, /\.tenant-payment-card/);
+  assert.match(cssSource, /\.tenant-ai-assist-button/);
+  assert.match(cssSource, /\.tenant-ai-panel/);
+  assert.match(cssSource, /\.tenant-ai-mode-picker/);
+  assert.match(cssSource, /\.tenant-ai-mode-card/);
+  assert.match(cssSource, /\.tenant-ai-mode-toggle/);
+  assert.match(cssSource, /\.tenant-ai-switch/);
+  assert.match(cssSource, /\.tenant-ai-call-note/);
+  assert.match(cssSource, /\.tenant-ai-composer/);
+  assert.match(cssSource, /\.tenant-ai-composer\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+56px/);
+  assert.doesNotMatch(cssSource, /\.tenant-ai-change-mode/);
+  assert.doesNotMatch(cssSource, /\.tenant-ai-voice-panel/);
+  assert.match(cssSource, /width:\s*min\(820px,\s*calc\(100vw - 48px\)\)/);
+  assert.match(cssSource, /height:\s*min\(980px,\s*calc\(100dvh - 160px\)\)/);
+  assert.match(cssSource, /\.tenant-ai-bubble\s*\{[^}]*font-size:\s*20px/);
+  assert.match(pageSource, /setIsAiAssistantOpen\(\(isOpen\) => !isOpen\)/);
+  assert.match(pageSource, /setAiStage\("choose"\)/);
+  assert.match(pageSource, /setAiStage\("text"\)/);
+  assert.match(pageSource, /setAiStage\("voice"\)/);
+  assert.match(pageSource, /aria-label="AI 상담 모드 전환"/);
+  assert.match(pageSource, /aria-checked=\{aiMode === "call"\}/);
+  assert.match(pageSource, /통화 모드에서는 메시지 입력 대신 음성 상담 상태를 이어서 확인합니다\./);
+  assert.match(pageSource, /aiStage !== "choose"/);
+  assert.doesNotMatch(pageSource, /tenant-ai-change-mode/);
+  assert.doesNotMatch(pageSource, /tenant-ai-voice-panel/);
+  assert.doesNotMatch(pageSource, />Mode</);
+  assert.match(pageSource, /handleAiSubmit/);
+  assert.doesNotMatch(pageSource, /AI 생활 도우미는 곧 연결됩니다/);
   assert.match(pageSource, /tenant-chat-panel/);
+  assert.match(pageSource, /setIsLandlordChatOpen\(true\)/);
   assert.match(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
-  assert.match(cssSource, /\.tenant-landlord-chat-button/);
   assert.match(cssSource, /\.tenant-chat-panel/);
-  assert.doesNotMatch(pageSource, /창문 누수|욕실 타일 보수|에어컨 필터|124,000원|오늘 2:30|보일러 온수 불량 접수하기|HVAC|₩124,000|2:30 PM/);
+  assert.doesNotMatch(pageSource, /창문 누수|욕실 타일 보수|에어컨 필터|오늘 2:30|보일러 온수 불량 접수하기|HVAC|2:30 PM/);
 });
 
 test("shows a landlord my page with property registration fields and media actions", () => {
