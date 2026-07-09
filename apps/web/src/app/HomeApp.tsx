@@ -2611,7 +2611,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
         ) : null}
         {activeTab === "sell" ? (
-          <LandlordMyPage onGoHome={() => activateTab("home")} />
+          <LandlordMyPage />
         ) : null}
         {activeTab === "living" ? (
           <TenantMyPage
