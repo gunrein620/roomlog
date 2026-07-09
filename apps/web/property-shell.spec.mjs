@@ -2,7 +2,22 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
-const pageSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
+// 매물 상세가 /listing/[id] 라우트로 분리됨(1단계 라우트 분리) — 소비자 앱 검증은
+// SPA(page.tsx) + 상세 라우트 + 공용 모듈(카탈로그/지도/상세 뷰)을 합친 코퍼스로 본다.
+const spaSource = readFileSync(new URL("./src/app/page.tsx", import.meta.url), "utf8");
+const listingDetailViewSource = readFileSync(new URL("./src/app/_components/ListingDetailView.tsx", import.meta.url), "utf8");
+const naverMapPreviewSource = readFileSync(new URL("./src/app/_components/NaverMapPreview.tsx", import.meta.url), "utf8");
+const listingCatalogSource = readFileSync(new URL("./src/lib/listing-catalog.ts", import.meta.url), "utf8");
+const listingRoutePageSource = readFileSync(new URL("./src/app/listing/[id]/page.tsx", import.meta.url), "utf8");
+const listingRouteClientSource = readFileSync(new URL("./src/app/listing/[id]/ListingDetailRoute.tsx", import.meta.url), "utf8");
+const pageSource = [
+  spaSource,
+  listingDetailViewSource,
+  naverMapPreviewSource,
+  listingCatalogSource,
+  listingRoutePageSource,
+  listingRouteClientSource
+].join("\n");
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
 const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
@@ -794,7 +809,7 @@ test("offers three developer login roles for seekers, tenants, and landlords", (
   assert.match(loginScreenSource, /function WoozuLoginScreen/);
   assert.match(pageSource, /resetWindowScrollSoon/);
   assert.match(pageSource, /window\.setTimeout\(resetWindowScroll, 320\)/);
-  assert.match(pageSource, /\[activeRole, activeTab, selectedListing, authMode\]/);
+  assert.match(pageSource, /\[activeRole, activeTab, authMode\]/);
 });
 
 test("gives tenants a real resident dashboard instead of the generic profile", () => {
@@ -1062,11 +1077,12 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(pageSource, /selectedVisitTime/);
   assert.match(pageSource, /inquiryMemo/);
   assert.match(pageSource, /inquirySent/);
-  assert.match(pageSource, /setSelectedListing\(listing\)/);
+  // 상세는 /listing/[id] 라우트 — 카드 클릭은 상태 대신 라우터 이동, 찜은 localStorage 공유 스토어.
+  assert.match(pageSource, /router\.push\(`\/listing\/\$\{encodeURIComponent\(listing\.listingNo\)\}`\)/);
   assert.match(pageSource, /listing-card-action/);
   assert.match(pageSource, /setIsShareSheetOpen\(true\)/);
-  assert.match(pageSource, /isSaved=\{savedListingNos\.includes\(selectedListing\.listingNo\)\}/);
-  assert.match(pageSource, /onToggleSaved=\{toggleSavedListing\}/);
+  assert.match(pageSource, /isSaved=\{savedListingNos\.includes\(listing\.listingNo\)\}/);
+  assert.match(pageSource, /toggleSavedListingNo/);
   assert.match(pageSource, /onToggleSaved\(listing\.listingNo\)/);
   assert.doesNotMatch(pageSource, /const \[isSaved, setIsSaved\]/);
   assert.match(pageSource, /navigator\.clipboard\.writeText/);
