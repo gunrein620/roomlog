@@ -91,7 +91,8 @@ import {
   naverMapScriptUrl,
   NaverMapPreview,
   type MapMarkerInput,
-  type NaverGeocodeResponse
+  type NaverGeocodeResponse,
+  type NaverMapViewport
 } from "./_components/NaverMapPreview";
 import { InquirySheet } from "./_components/ListingDetailView";
 import { loadSavedListingNos, toggleSavedListingNo } from "../lib/saved-listings";
@@ -500,6 +501,41 @@ const formatDistanceLabel = (meters: number) => {
   if (!Number.isFinite(meters)) return "";
   if (meters < 1000) return `${Math.max(10, Math.round(meters / 10) * 10)}m`;
   return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)}km`;
+};
+
+const MAP_POPUP_VIEWPORT_SCOPE_MULTIPLIER = 2.4;
+
+const midpointLongitude = (west: number, east: number) => {
+  if (west <= east) return (west + east) / 2;
+  const midpoint = (west + east + 360) / 2;
+  return midpoint > 180 ? midpoint - 360 : midpoint;
+};
+
+const isLongitudeWithinBounds = (lng: number, west: number, east: number) =>
+  west <= east ? lng >= west && lng <= east : lng >= west || lng <= east;
+
+const isMapPointInsideViewport = (point: MapPoint, viewport: NaverMapViewport | null) => {
+  if (!viewport) return true;
+  return (
+    point.lat >= viewport.south &&
+    point.lat <= viewport.north &&
+    isLongitudeWithinBounds(point.lng, viewport.west, viewport.east)
+  );
+};
+
+const mapViewportMaxSpanMeters = (viewport: NaverMapViewport | null) => {
+  if (!viewport) return 0;
+  const centerLat = (viewport.north + viewport.south) / 2;
+  const centerLng = midpointLongitude(viewport.west, viewport.east);
+  const widthM = distanceBetweenMeters(
+    { lat: centerLat, lng: viewport.west },
+    { lat: centerLat, lng: viewport.east }
+  );
+  const heightM = distanceBetweenMeters(
+    { lat: viewport.south, lng: centerLng },
+    { lat: viewport.north, lng: centerLng }
+  );
+  return Math.max(widthM, heightM);
 };
 
 
@@ -1182,6 +1218,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const [selectedArea, setSelectedArea] = useState(DEFAULT_MAP_CONTEXT.label);
   const [mapSearchContext, setMapSearchContext] = useState<MapSearchContext>(DEFAULT_MAP_CONTEXT);
+  const [mapViewport, setMapViewport] = useState<NaverMapViewport | null>(null);
   const [mapLocationStatus, setMapLocationStatus] = useState<MapLocationStatus>("idle");
   const [mapQueryStatus, setMapQueryStatus] = useState<MapQueryStatus>("idle");
   const [mapQueryCandidates, setMapQueryCandidates] = useState<MapResolvedQuery[]>([]);
@@ -1481,9 +1518,19 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const mapEmptyDescription = isRadiusEmptyMap
     ? `${isLocationScopedMap ? "현재 위치" : selectedAreaTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : `${activeSort} · ${mapFilterSummary} 조건에 맞는 매물이 없습니다.`;
-  const selectedMapListing = visibleMapListings.find((listing) => listing.listingNo === selectedMapListingNo) ?? visibleMapListings[0];
+  const mapViewportSpanM = mapViewportMaxSpanMeters(mapViewport);
+  const mapPopupScopeRadiusM = isDistanceScopedMap ? mapSearchContext.radiusM : MAP_SEARCH_RADIUS_M;
+  const isMapViewportOutsidePopupScope =
+    mapViewport !== null &&
+    mapViewportSpanM > mapPopupScopeRadiusM * MAP_POPUP_VIEWPORT_SCOPE_MULTIPLIER;
+  const mapOverlayListings = isMapViewportOutsidePopupScope ? [] : visibleMapListings;
+  const mapPopupCandidates = mapOverlayListings.filter((listing) => {
+    if (!Number.isFinite(listing.lat) || !Number.isFinite(listing.lng)) return false;
+    return isMapPointInsideViewport({ lat: listing.lat, lng: listing.lng }, mapViewport);
+  });
+  const selectedMapListing = mapPopupCandidates.find((listing) => listing.listingNo === selectedMapListingNo) ?? mapPopupCandidates[0];
   // 지도 마커 = 좌표가 유효한 매물만 (직접등록 매물 포함 — QA: 지도에 매물 안 찍힘)
-  const mapMarkers = visibleMapListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
+  const mapMarkers = mapOverlayListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
   const findListingCardByNo = (listingNo: string) => allListings.find((listing) => listing.listingNo === listingNo);
 
   const inquiryComposeListing = inquiryComposeListingNo
@@ -2361,6 +2408,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               showCenterMarker={isDistanceScopedMap}
               title={isLocationScopedMap ? "현재 위치" : selectedAreaTitle}
               markers={mapMarkers}
+              onViewportChange={setMapViewport}
             />
             {selectedMapListing ? (
               <article className="map-selected-card" aria-label="지도 선택 매물">
