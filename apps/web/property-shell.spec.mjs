@@ -1257,6 +1257,8 @@ test("keeps local development free from stale service worker caches", () => {
   assert.match(pwaRegisterSource, /\.unregister\(\)/);
   assert.match(pwaRegisterSource, /caches\.keys\(\)/);
   assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/_next\/"\)/);
+  // 회귀 방지: API 응답은 서비스워커 캐시-우선에서 제외돼야 최신 매물이 즉시 보인다.
+  assert.match(serviceWorkerSource, /url\.pathname\.startsWith\("\/api\/"\)/);
   assert.match(serviceWorkerSource, /request\.mode === "navigate"/);
   assert.match(serviceWorkerSource, /new URL\(request\.url\)/);
   assert.match(nextConfigSource, /allowedDevOrigins:\s*\[\s*"127\.0\.0\.1"\s*\]/);
