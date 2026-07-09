@@ -28,6 +28,11 @@ export class TradeController {
     });
   }
 
+  @Get("listings/public")
+  listPublicListings() {
+    return this.tradeService.listPublicListings();
+  }
+
   @Get("listings")
   listListings() {
     return this.tradeService.listListings();
