@@ -45,8 +45,8 @@ export function safeRedirectPath(value: string | null | undefined, fallback: str
 
 /** intent별 기본 도착지 — 기존 역할별 로그인 페이지의 성공 리다이렉트와 동일하게 유지. */
 export function defaultRedirectForIntent(intent?: LoginIntent) {
-  if (intent === "tenant") return "/?role=tenant&tab=mypage";
-  if (intent === "landlord") return "/?role=landlord&tab=mypage";
+  if (intent === "tenant") return "/living";
+  if (intent === "landlord") return "/sell";
   if (intent === "vendor") return "/vendor/job/00";
   return "/";
 }

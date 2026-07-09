@@ -52,7 +52,7 @@ export const demoListings = [
     score: "안심 88",
     updated: "방금확인",
     broker: "성수온도공인중개사",
-    verification: "중개사 검수",
+    verification: "중개사 확인",
     response: "즉시 문의 가능"
   },
   {

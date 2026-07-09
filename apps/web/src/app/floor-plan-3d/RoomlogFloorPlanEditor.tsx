@@ -115,7 +115,7 @@ type PrintedDimensionChip = {
 
 const CANVAS_WIDTH = 1600;
 const CANVAS_HEIGHT = 1200;
-const FLOOR_PLAN_LISTING_RETURN_PATH = "/my?flow=listing#my-page";
+const FLOOR_PLAN_LISTING_RETURN_PATH = "/sell?flow=listing#my-page";
 
 // 후보 타입 코드 → 사용자용 한글 라벨. 모르는 타입은 원문 그대로 노출한다.
 const CANDIDATE_TYPE_LABELS: Record<string, string> = {
@@ -4582,7 +4582,7 @@ export default function RoomlogFloorPlanEditor() {
           </>
         ) : null}
 
-        <a href={FLOOR_PLAN_LISTING_RETURN_PATH}>마이페이지</a>
+        <a href={FLOOR_PLAN_LISTING_RETURN_PATH}>매물등록</a>
       </aside>
     </section>
   );

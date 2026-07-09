@@ -744,7 +744,7 @@ export function InquirySheet({
 
         <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
           <strong>허위매물 차단</strong>
-          <p>계약불가 또는 미답변 매물은 검수 대기 상태로 전환됩니다.</p>
+          <p>계약불가 또는 미답변 매물은 안내 배지가 함께 표시됩니다.</p>
         </div>
 
         <div className="inquiry-sheet-actions">
