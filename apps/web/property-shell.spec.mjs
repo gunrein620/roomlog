@@ -1972,7 +1972,7 @@ test("saves floor plan drafts through the API while keeping a local fallback", (
     "floorPlanDraftId",
     "room3d",
     "localStorage.setItem\\(\"floorPlanDraft\"",
-    "저장 완료",
+    "초안 저장됨",
     "이 브라우저에만 임시 저장됨"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));

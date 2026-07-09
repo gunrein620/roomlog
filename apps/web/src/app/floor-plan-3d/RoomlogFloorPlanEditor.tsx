@@ -822,7 +822,6 @@ export default function RoomlogFloorPlanEditor() {
   const [aiAnalysisStatus, setAiAnalysisStatus] = useState("도면 인식 대기");
   const [floorPlanDraftId, setFloorPlanDraftId] = useState<string | null>(null);
   // 마지막 저장 결과 — 버튼 옆에 계속 표시해 "저장이 됐는지" 헷갈리지 않게 한다.
-  const [saveState, setSaveState] = useState<{ kind: "draft" | "published" | "local"; at: number } | null>(null);
   const [pixelToMmRatio, setPixelToMmRatio] = useState(DEFAULT_PIXEL_TO_MM_RATIO);
   const [isScaleSet, setIsScaleSet] = useState(false);
   // 방 내부 재기: 두 점 측정으로 방 가로/세로(mm)와 면적(㎡)을 구한다.
@@ -3981,12 +3980,11 @@ export default function RoomlogFloorPlanEditor() {
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, id: saved.id, savedAt: Date.now() }));
       // 매물 등록 폼이 읽어 갈 3D 스냅샷을 남긴다 — 이걸로 상세 "3D 보기"가 실제 도면을 렌더한다.
       persistListingFloorPlanSnapshot(roomWalls3D, landlordOptionFurnitures);
-      setSaveState({ kind: isRegistering ? "published" : "draft", at: Date.now() });
-      setUploadStatus(isRegistering ? "등록 준비 완료" : "저장 완료");
+      const savedAtLabel = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+      setUploadStatus(isRegistering ? "📢 등록 준비 완료" : `💾 초안 저장됨 · ${savedAtLabel}`);
     } catch {
       window.localStorage.setItem("floorPlanDraft", JSON.stringify({ ...payload, savedAt: Date.now(), status: "LOCAL_DRAFT" }));
-      setSaveState({ kind: "local", at: Date.now() });
-      setUploadStatus(isRegistering ? "서버 저장 실패 — 매물 등록 화면에서 로컬 도면으로 이어갑니다" : "서버 저장 실패 — 이 브라우저에만 임시 저장됨");
+      setUploadStatus(isRegistering ? "서버 저장 실패 — 매물 등록 화면에서 로컬 도면으로 이어갑니다" : "⚠️ 서버 저장 실패 — 이 브라우저에만 임시 저장됨");
     } finally {
       if (isRegistering) window.location.href = FLOOR_PLAN_LISTING_RETURN_PATH;
     }
@@ -4269,14 +4267,8 @@ export default function RoomlogFloorPlanEditor() {
         <div className="floor-plan-actions">
           {/* 캔버스 정리 버튼 줄(전체 지우기/샘플 복원/화면 초기화/숨김 복원)은 안 쓰여서 제거 —
              변환→저장→등록 핵심 흐름만 남긴다. */}
+          {/* 저장 결과는 인라인 라벨 대신 잠깐 떴다 사라지는 토스트로 알린다(버튼 밀림 방지). */}
           <div className="floor-plan-actions-group floor-plan-actions-main" aria-label="변환과 저장">
-            {saveState ? (
-              <span aria-live="polite" className={`floor-plan-save-state is-${saveState.kind}`}>
-                {saveState.kind === "published" ? "📢 등록 준비됨" : saveState.kind === "local" ? "⚠️ 로컬에만 저장됨" : "💾 초안 저장됨"}
-                {" · "}
-                {new Date(saveState.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            ) : null}
             <div className={`floor-plan-view-toggle is-${viewMode}`} role="group" aria-label="도면 보기 전환">
               <span className="floor-plan-view-toggle-thumb" aria-hidden="true" />
               <button
