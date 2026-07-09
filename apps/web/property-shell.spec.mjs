@@ -1576,20 +1576,18 @@ test("keeps the 2D floor plan canvas scrollable inside its editor shell", () => 
     assert.ok(`${floorPlanEditorSource}\n${globalsCssSource}`.includes(label));
   }
 });
-test("switches between landlord authoring and resident furniture placement modes", () => {
+test("keeps landlord furniture authoring wiring and resident placement model", () => {
+  // 편집기의 세입자 모드 UI 분기는 제거됐지만, 세입자 가구 배치는 매물 3D 투어(ListingTourRoom3D)에서
+  // 살아 있고 그 모델 함수(placement/room-payload)는 floor-plan-3d 코퍼스에 그대로 남는다.
   for (const label of [
-    "experienceMode",
     "landlord",
     "resident",
-    // 모드 스위치 UI는 제거됐지만(도구는 캔버스 플로팅 툴바로 이동) 세입자 잠금 분기 코드는 유지된다.
-    "세입자 모드",
     "임대인 옵션 가구",
-    "wheretoput furniture picker",
     "handleFurnitureSelect",
     "placeFurnitureAtPoint",
     "createLandlordOptionFurniture",
     "isLockedFurnitureForResident",
-    "saveResidentFurnitureDesign"
+    "finalizeFurnitureDraft"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
@@ -1598,16 +1596,13 @@ test("switches between landlord authoring and resident furniture placement modes
   assert.match(floorPlanEditorSource, /locked:\s*true/);
   assert.match(floorPlanEditorSource, /editableBy:\s*\["LANDLORD"\]/);
   assert.match(floorPlanEditorSource, /visibleToTenant:\s*true/);
-  assert.match(floorPlanEditorSource, /localStorage\.setItem\("residentFloorPlanDesign"/);
 });
 
 test("keeps landlord option furniture locked away from resident furniture designs", () => {
   for (const label of [
     "landlordOptionFurnitures",
     "residentDesignFurnitures",
-    "lockedFurnitures",
-    "세입자는 임대인 옵션 가구를 변경할 수 없습니다",
-    "임대인 옵션 가구는 세입자 모드에서 고정됩니다"
+    "lockedFurnitures"
   ]) {
     assert.match(floorPlanEditorSource, new RegExp(label));
   }
@@ -1970,8 +1965,7 @@ test("saves floor plan drafts through the API while keeping a local fallback", (
 test("floor plan editor container wires room-model payload helpers", () => {
   for (const label of [
     "buildFloorPlanDraftPayload",
-    "buildFloorPlanLocalSnapshot",
-    "buildResidentDesignPayload"
+    "buildFloorPlanLocalSnapshot"
   ]) {
     assert.match(floorPlanContainerSource, new RegExp(label));
   }

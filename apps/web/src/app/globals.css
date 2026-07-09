@@ -3878,7 +3878,8 @@ p {
   display: grid;
   gap: 10px;
   padding: 12px;
-  max-height: calc(100% - 20px);
+  /* 하단 시트로 제한 — 열려도 3D 상단 절반은 보이게 해서 가구를 끌어 놓을 수 있다. */
+  max-height: min(52%, 380px);
   overflow: auto;
   border: 1px solid rgba(217, 223, 235, 0.92);
   border-radius: 18px;
@@ -3955,7 +3956,7 @@ p {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  max-height: 180px;
+  max-height: 140px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -4017,8 +4018,15 @@ p {
 
 .listing-tour-furniture-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.listing-tour-furniture-hint {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .listing-tour-furniture-actions button:disabled {
@@ -8315,6 +8323,52 @@ p {
 .floor-plan-panel-toggle {
   font-size: 1.05rem;
   line-height: 1;
+}
+
+/* 3D 배치 대기 가구 머리 위 액션 버튼(✓ 확정 / ⟳ 회전 / ✕ 취소) */
+.floor-plan-pending-actions {
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 20px rgba(18, 24, 40, 0.18);
+  white-space: nowrap;
+}
+
+.floor-plan-pending-actions button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2f9;
+  color: #384252;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.floor-plan-pending-actions button:hover {
+  background: #dde5f2;
+}
+
+.floor-plan-pending-actions button.is-confirm {
+  background: #2f55ff;
+  color: #ffffff;
+}
+
+.floor-plan-pending-actions button.is-confirm:hover {
+  background: #2242d9;
+}
+
+.floor-plan-pending-actions button.is-cancel {
+  color: #b91c1c;
+}
+
+.floor-plan-pending-actions button.is-delete {
+  font-size: 0.85rem;
 }
 
 /* 드로어 내부 섹션 — <details> 드롭다운. 제목(summary)을 클릭해 접고 펼친다 */

@@ -1,13 +1,14 @@
 "use client";
 
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createFurnitureModel,
   finalizeFurnitureDraft,
   FURNITURE_CATALOG,
   furnitureImageUrl,
   moveFurnitureDraftToPoint,
+  reopenFurnitureDraft,
   rotateFurnitureQuarterTurn
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
@@ -75,10 +76,12 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
   const [pendingFurniture, setPendingFurniture] = useState<PlacedFurniture | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState("가구 배치 편집을 열어 옵션 위치를 확인할 수 있습니다.");
-  const selectedFurniture = useMemo(
-    () => placedFurnitures.find((furniture) => furniture.id === selectedFurnitureId) ?? null,
-    [placedFurnitures, selectedFurnitureId]
-  );
+  // 가구 드래그 이동 — 좌클릭을 누른 채 끌면 커서를 따라오고, 떼면 그 자리에 멈춘다(확정은 ✓).
+  const [isFurnitureDragging, setIsFurnitureDragging] = useState(false);
+  // 배치된 가구를 다시 집어들 때(재편집) 취소하면 되돌릴 원래 상태 + 원본 분류(source) 보존용.
+  const pendingFurnitureOriginRef = useRef<PlacedFurniture | null>(null);
+  // 집고 있는 가구가 사용자 위치를 한 번이라도 받았는지 — 첫 배치는 벽 통과 검사를 끈다.
+  const pendingFurniturePlacedOnceRef = useRef(false);
   const filteredCatalog = useMemo(() => {
     const normalizedQuery = catalogQuery.trim().toLowerCase();
     const catalog = normalizedQuery
@@ -105,6 +108,21 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
     };
   }, []);
 
+  useEffect(() => {
+    if (!isFurnitureDragging) return;
+    const endDrag = () => setIsFurnitureDragging(false);
+    window.addEventListener("pointerup", endDrag);
+    return () => window.removeEventListener("pointerup", endDrag);
+  }, [isFurnitureDragging]);
+
+  function restorePendingFurnitureOrigin() {
+    const original = pendingFurnitureOriginRef.current;
+    if (!original) return false;
+    pendingFurnitureOriginRef.current = null;
+    setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, original]);
+    return true;
+  }
+
   function normalizedScenePoint(point: { x: number; z: number }) {
     return {
       x: point.x / TOUR_HORIZONTAL_SCALE,
@@ -113,70 +131,103 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
   }
 
   function handleFurnitureSelect(item: FurnitureCatalogItem) {
+    // 재편집 중이던 가구가 있으면 원위치로 되돌려 놓고 새 가구를 집는다.
+    restorePendingFurnitureOrigin();
+    pendingFurniturePlacedOnceRef.current = false;
     setPendingFurniture(createFurnitureModel(item));
     setSelectedFurnitureId(null);
     setIsPlacementOpen(true);
-    setSaveMessage(`${item.name}을 선택했습니다. 3D 바닥을 눌러 위치를 잡아주세요.`);
+    setSaveMessage(`${item.name}을 선택했습니다. 3D 바닥을 눌러 위치를 잡고 끌어서 옮기세요.`);
   }
 
   function placePendingFurniture(point: { x: number; z: number }) {
     if (!pendingFurniture) return;
-    const nextFurniture = moveFurnitureDraftToPoint(pendingFurniture, normalizedScenePoint(point), wallsData);
+    // 카탈로그에서 갓 꺼낸 가구의 현재 위치(원점)는 이동 경로가 아니다 —
+    // 첫 배치는 벽 통과 검사를 끄고, 그 뒤부터(드래그) 경로 기준으로 벽에 막는다.
+    const nextFurniture = moveFurnitureDraftToPoint(pendingFurniture, normalizedScenePoint(point), wallsData, {
+      ignoreCrossing: !pendingFurniturePlacedOnceRef.current
+    });
+    pendingFurniturePlacedOnceRef.current = true;
+    // 벽에 막혀 위치가 그대로면 상태 업데이트를 건너뛴다 — 드래그 중 무의미한 리렌더 방지.
+    if (nextFurniture.position[0] === pendingFurniture.position[0] && nextFurniture.position[2] === pendingFurniture.position[2]) return;
     setPendingFurniture(nextFurniture);
-    setSaveMessage(`${nextFurniture.name} 위치를 잡았습니다. 배치 확정으로 추가하세요.`);
+    setSaveMessage(`${nextFurniture.name} 위치를 잡았습니다. ✓로 배치를 확정하세요.`);
   }
 
   function handleFloorPointerDown(event: ThreeEvent<PointerEvent>) {
-    if (!pendingFurniture) return;
+    if (event.button !== 0 || !pendingFurniture) return;
     event.stopPropagation();
+    placePendingFurniture(event.point);
+    setIsFurnitureDragging(true);
+  }
+
+  function handleFloorPointerMove(event: ThreeEvent<PointerEvent>) {
+    if (!isFurnitureDragging || !pendingFurniture) return;
     placePendingFurniture(event.point);
   }
 
   function handleWallPointerDown(_wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) {
-    if (!pendingFurniture) return;
+    if (event.button !== 0 || !pendingFurniture) return;
     event.stopPropagation();
     placePendingFurniture(event.point);
+    setIsFurnitureDragging(true);
   }
 
   function handleFurniturePointerDown(furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) {
+    if (event.button !== 0) return;
     event.stopPropagation();
     if (pendingFurniture) {
       placePendingFurniture(event.point);
+      setIsFurnitureDragging(true);
       return;
     }
 
-    setSelectedFurnitureId((currentId) => (currentId === furniture.id ? null : furniture.id));
-    setSaveMessage(`${furniture.name}을 선택했습니다.`);
+    // 배치된 가구를 클릭하면 다시 집어들어 재편집 모드로 — 취소(✕)하면 원래 자리로 돌아간다.
+    // 확정 표시(source)가 붙은 채로는 이동이 막히므로 초안 상태로 되돌려서 집는다.
+    pendingFurnitureOriginRef.current = furniture;
+    pendingFurniturePlacedOnceRef.current = true;
+    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((item) => item.id !== furniture.id));
+    setPendingFurniture(reopenFurnitureDraft(furniture));
+    setSelectedFurnitureId(null);
+    setIsFurnitureDragging(true);
+    setSaveMessage(`${furniture.name} 재편집 — 끌어서 옮기고 ✓로 확정하세요.`);
   }
 
   function confirmPendingFurniturePlacement() {
     if (!pendingFurniture) return;
-    const nextFurniture = finalizeFurnitureDraft(pendingFurniture, "resident");
+    // 재편집이면 원본 분류(source)를 보존한다 — 임대인 옵션 가구가 세입자 배치로 둔갑하지 않게.
+    const origin = pendingFurnitureOriginRef.current;
+    pendingFurnitureOriginRef.current = null;
+    const finalized = finalizeFurnitureDraft(pendingFurniture, "resident");
+    const nextFurniture = origin ? { ...finalized, source: origin.source } : finalized;
     setPlacedFurnitures((currentFurnitures) => [...currentFurnitures, nextFurniture]);
     setPendingFurniture(null);
-    setSelectedFurnitureId(nextFurniture.id);
-    setSaveMessage(`${nextFurniture.name} 배치를 추가했습니다.`);
+    setSelectedFurnitureId(null);
+    setSaveMessage(`${nextFurniture.name} 배치를 확정했습니다.`);
+  }
+
+  function cancelPendingFurniturePlacement() {
+    if (!pendingFurniture) return;
+    const targetName = pendingFurniture.name;
+    const restored = restorePendingFurnitureOrigin();
+    setPendingFurniture(null);
+    setSelectedFurnitureId(null);
+    setSaveMessage(restored ? `${targetName} 원래 자리로 되돌렸습니다.` : `${targetName} 배치를 취소했습니다.`);
+  }
+
+  function deletePendingFurniture() {
+    if (!pendingFurniture) return;
+    const targetName = pendingFurniture.name;
+    pendingFurnitureOriginRef.current = null;
+    setPendingFurniture(null);
+    setSelectedFurnitureId(null);
+    setSaveMessage(`${targetName}을 삭제했습니다.`);
   }
 
   function rotatePendingFurniture() {
     if (!pendingFurniture) return;
     setPendingFurniture(rotateFurnitureQuarterTurn(pendingFurniture));
-    setSaveMessage("선택 중인 가구를 90도 회전했습니다.");
-  }
-
-  function rotateSelectedFurniture() {
-    if (!selectedFurnitureId) return;
-    setPlacedFurnitures((currentFurnitures) =>
-      currentFurnitures.map((furniture) => (furniture.id === selectedFurnitureId ? rotateFurnitureQuarterTurn(furniture) : furniture))
-    );
-    setSaveMessage("선택한 가구를 90도 회전했습니다.");
-  }
-
-  function removeSelectedFurniture() {
-    if (!selectedFurnitureId) return;
-    setPlacedFurnitures((currentFurnitures) => currentFurnitures.filter((furniture) => furniture.id !== selectedFurnitureId));
-    setSelectedFurnitureId(null);
-    setSaveMessage("선택한 가구를 삭제했습니다.");
+    setSaveMessage("집고 있는 가구를 90도 회전했습니다.");
   }
 
   function saveFurnitureLayout() {
@@ -208,6 +259,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
 
   function resetFurnitureLayout() {
     window.localStorage.removeItem(floorPlanFurnitureStorageKey(floorPlan));
+    pendingFurnitureOriginRef.current = null;
     setPlacedFurnitures(floorPlan.furnitures as unknown as PlacedFurniture[]);
     setPendingFurniture(null);
     setSelectedFurnitureId(null);
@@ -218,6 +270,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
     <div className="listing-tour-room3d">
       <RoomlogThreeFloorPlanView
         cameraPosition={[9, 7.5, 11]}
+        controlsEnabled={!isFurnitureDragging}
         frameloop="always"
         furnitureData={placedFurnitures}
         furnitureVerticalScale={TOUR_HORIZONTAL_SCALE}
@@ -225,7 +278,12 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
         horizontalScale={TOUR_HORIZONTAL_SCALE}
         orbitMinDistance={1.6}
         onFloorPointerDown={handleFloorPointerDown}
+        onFloorPointerMove={handleFloorPointerMove}
         onFurniturePointerDown={handleFurniturePointerDown}
+        onPendingCancel={cancelPendingFurniturePlacement}
+        onPendingConfirm={confirmPendingFurniturePlacement}
+        onPendingDelete={deletePendingFurniture}
+        onPendingRotate={rotatePendingFurniture}
         onWallPointerDown={handleWallPointerDown}
         pendingFurniture={pendingFurniture}
         selectedFurnitureId={selectedFurnitureId}
@@ -285,19 +343,10 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
                 );
               })}
             </div>
+            <p className="listing-tour-furniture-hint">
+              가구를 놓거나 배치된 가구를 클릭해 끌어서 옮기고, 가구 위 버튼으로 ✓확정·⟳회전·✕취소·🗑삭제하세요.
+            </p>
             <div className="listing-tour-furniture-actions">
-              <button disabled={!pendingFurniture} onClick={confirmPendingFurniturePlacement} type="button">
-                배치 확정
-              </button>
-              <button disabled={!pendingFurniture} onClick={rotatePendingFurniture} type="button">
-                선택 회전
-              </button>
-              <button disabled={!selectedFurniture} onClick={rotateSelectedFurniture} type="button">
-                가구 회전
-              </button>
-              <button disabled={!selectedFurniture} onClick={removeSelectedFurniture} type="button">
-                삭제
-              </button>
               <button onClick={saveFurnitureLayout} type="button">
                 저장
               </button>
