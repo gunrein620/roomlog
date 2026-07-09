@@ -348,9 +348,7 @@ export class TradeService {
   }
 
   listPublicListings(): TradeListing[] {
-    return this.listListings().filter(
-      (listing) => listing.status === "노출중" && listing.reviewStatus === "approved"
-    );
+    return this.listListings().filter((listing) => listing.status === "노출중");
   }
 
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {

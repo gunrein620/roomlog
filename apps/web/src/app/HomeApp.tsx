@@ -943,7 +943,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // LANDLORD capability가 없는 계정도 등록 폼까지는 로그인 루프 없이 접근한다.
   const [isListingStartMode, setIsListingStartMode] = useState(false);
   const isAuthHistoryPushedRef = useRef(false);
-  // 공개 검수된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
+  // 집주인이 직접 등록한 서버 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
   const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
   useEffect(() => {
     let cancelled = false;

@@ -39,7 +39,7 @@ describe("TradeController realtime notifications", () => {
 });
 
 describe("TradeController public listings", () => {
-  it("delegates public listing reads to the reviewed public feed", () => {
+  it("delegates public listing reads to the public feed", () => {
     const publicListings: TradeListing[] = [
       {
         id: "listing-1",
