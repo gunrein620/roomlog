@@ -4,7 +4,16 @@ import { test } from "node:test";
 
 // 라우트 분리 1·2단계 — 상세는 /listing/[id], 탭은 /map /saved /inquiry /my 라우트가 됐고
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
-const spaSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
+const spaSource = [
+  "./src/app/HomeApp.tsx",
+  // 3단계 — 마이페이지 역할 흐름은 my/flows/로 물리 분리됐다(분업 단위).
+  "./src/app/my/flows/my-shared.tsx",
+  "./src/app/my/flows/UserMyPage.tsx",
+  "./src/app/my/flows/TenantMyPage.tsx",
+  "./src/app/my/flows/LandlordMyPage.tsx"
+]
+  .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+  .join("\n");
 const listingDetailViewSource = readFileSync(new URL("./src/app/_components/ListingDetailView.tsx", import.meta.url), "utf8");
 const naverMapPreviewSource = readFileSync(new URL("./src/app/_components/NaverMapPreview.tsx", import.meta.url), "utf8");
 const listingCatalogSource = readFileSync(new URL("./src/lib/listing-catalog.ts", import.meta.url), "utf8");
