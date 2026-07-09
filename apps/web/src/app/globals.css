@@ -2491,6 +2491,29 @@ p {
   margin-top: 12px;
 }
 
+.map-empty-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid #dce4f8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.map-empty-card strong {
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.map-empty-card p {
+  margin: 0;
+  color: #60708a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .map-listing {
   position: relative;
   min-height: 132px;
