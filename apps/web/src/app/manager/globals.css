@@ -1476,3 +1476,273 @@ dd {
   }
 }
 /* manager-app-shell:end */
+
+/* manager-defect-dashboard:start */
+.manager-defect-dashboard {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.manager-defect-dashboard h2 {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-defect-dashboard__status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.manager-defect-dashboard__status-filters button {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+  background: var(--surface-container-lowest);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.manager-defect-dashboard__status-filters button[aria-pressed="true"] {
+  border-color: var(--primary);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-defect-dashboard__filter-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-defect-dashboard__filter-panel label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-defect-dashboard__filter-panel select {
+  min-width: 0;
+  min-height: var(--touch-target);
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0 var(--space-md);
+  color: var(--input-text);
+  background: var(--surface-container-low);
+  font: inherit;
+}
+
+.manager-defect-dashboard__table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-defect-dashboard__table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+}
+
+.manager-defect-dashboard__table th,
+.manager-defect-dashboard__table td {
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.manager-defect-dashboard__table th {
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+  white-space: nowrap;
+}
+
+.manager-defect-dashboard__table tbody tr:hover {
+  background: var(--surface-container-low);
+}
+
+.manager-defect-dashboard__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.manager-defect-dashboard__job-link {
+  color: var(--on-surface);
+  font-weight: var(--fw-subtitle);
+  text-decoration: none;
+}
+
+.manager-defect-dashboard__job-link:hover {
+  color: var(--primary);
+}
+
+.manager-defect-dashboard__muted-cell {
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+.manager-defect-dashboard__amount {
+  font-weight: var(--fw-subtitle);
+  white-space: nowrap;
+}
+
+.manager-defect-dashboard__type-badge,
+.manager-defect-dashboard__status-badge {
+  display: inline-flex;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-defect-dashboard__type-badge {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-defect-dashboard__type-badge[data-ticket-type="complaint"] {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-defect-dashboard__status-badge {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-defect-dashboard__status-badge[data-status="completed"] {
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-defect-dashboard__status-badge[data-status="cancelled"] {
+  color: var(--on-error-container);
+  background: var(--error-container);
+}
+
+.manager-defect-dashboard__status-badge[data-status="waiting"] {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-defect-dashboard__action {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.manager-defect-dashboard__action a {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  color: var(--on-primary);
+  background: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-defect-dashboard__action button {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--on-surface-variant);
+  background: transparent;
+}
+
+.manager-defect-dashboard__action svg,
+.manager-defect-dashboard__pagination svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-defect-dashboard__empty {
+  height: calc(var(--touch-target) * 2);
+  color: var(--on-surface-variant);
+  text-align: center !important;
+}
+
+.manager-defect-dashboard__pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-defect-dashboard__pagination nav {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.manager-defect-dashboard__pagination button {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--on-surface-variant);
+  background: transparent;
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.manager-defect-dashboard__pagination button[aria-current="page"] {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-defect-dashboard__pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.manager-defect-dashboard__status-filters button:focus-visible,
+.manager-defect-dashboard__filter-panel select:focus-visible,
+.manager-defect-dashboard__job-link:focus-visible,
+.manager-defect-dashboard__action a:focus-visible,
+.manager-defect-dashboard__action button:focus-visible,
+.manager-defect-dashboard__pagination button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 860px) {
+  .manager-defect-dashboard__filter-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-defect-dashboard__pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+/* manager-defect-dashboard:end */
