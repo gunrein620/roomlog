@@ -83,6 +83,18 @@ test("manager defect dashboard matches the approved body without changing the si
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,
   )?.[0];
   assert.ok(dashboardCss);
+  assert.match(
+    dashboardCss,
+    /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+minmax\(0,\s*1fr\)/,
+  );
+  assert.match(
+    dashboardCss,
+    /manager-defect-dashboard__pagination\s*>\s*span[\s\S]*?grid-column:\s*1/,
+  );
+  assert.match(
+    dashboardCss,
+    /manager-defect-dashboard__pagination nav[\s\S]*?grid-column:\s*2[\s\S]*?justify-self:\s*center/,
+  );
   assert.doesNotMatch(dashboardCss, /#[\da-f]{3,8}/i);
 
   assert.doesNotMatch(sidebarSource, /민원 대시보드|민원 대응|하자 관리/);
