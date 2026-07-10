@@ -1438,6 +1438,7 @@ model TradeListing {
   depositManwon     Int      @default(0)
   monthlyRentManwon Int      @default(0)
   location          String
+  detailAddress     String?
   description       String   @default("")
   images            String[] @default([])
   lat               Float?

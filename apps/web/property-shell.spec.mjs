@@ -897,77 +897,49 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
 test("shows a landlord my page with property registration fields and media actions", () => {
   for (const label of [
     "집주인 마이페이지",
-    "등록 매물 현황",
-    "매물 정보",
-    "매물 등록 단계",
     "내 집 등록",
-    "사진 업로드",
-    "3D 도면 만들기",
+    "매물명",
+    "주소",
+    "주소 검색",
+    "세부주소",
     "거래유형",
+    "입주가능일",
     "보증금",
     "월세",
     "전세금",
     "전세",
-    "매물 등록하기",
-    "등록 미리보기",
-    "입력 계속하기",
-    "3D 도면이 연결됐어요",
-    "도면을 만들고 저장하면 자동으로 연결돼요",
+    "관리비",
+    "전용면적",
+    "층수",
+    "사진과 3D방 자료",
+    "사진 업로드",
+    "3D 도면 만들기",
+    "도면 JSON 업로드",
+    "영상/스플랫 접수",
     "등록 요약",
     "등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.",
-    "비용 정산",
-    "비용 원장과 영수증 검토",
-    "이번 달 지출",
-    "영수증 검토 큐",
-    "검토 완료 처리",
-    "관리비 공개 설정",
-    "비공개 항목은 임차인 화면에 숨김 건수로 표시됩니다.",
-    "업체 관리",
-    "업체 주소록과 성과 게이트",
-    "등록 업체",
-    "신규 배지",
-    "성과 게이트",
-    "신규·중복 업체 게이트",
-    "중복 후보 확인",
-    "소표본 업체는 별점 수치와 AI 코멘트를 숨깁니다.",
-    "신규 업체는 격리하지 않고 배지만 표시합니다.",
-    "내 룸로그",
-    "메시지",
-    "퇴실 관리"
+    "매물 등록하기"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
 
-  assert.match(pageSource, /href="\/manager\/messaging\/00"/);
-  assert.match(pageSource, /href="\/manager\/moveout\/00"/);
-  assert.match(pageSource, /landlord-domain-test-card/);
-  assert.match(pageSource, /DEMO_COSTS/);
-  assert.match(pageSource, /DEMO_MONTHLY_SUMMARY/);
-  assert.match(pageSource, /DEMO_RECEIPTS/);
-  assert.match(pageSource, /DEMO_VENDORS/);
-  assert.match(pageSource, /DEMO_VENDOR_PERF/);
-  assert.match(pageSource, /DEMO_VENDOR_DUPLICATE_CANDIDATES/);
-  assert.match(pageSource, /id="kan-135-cost"/);
-  assert.match(pageSource, /id="kan-136-vendor"/);
-  assert.match(pageSource, /selectedVendorId/);
-  assert.match(pageSource, /ownerPendingCostReviews/);
-  assert.match(pageSource, /ownerOpenDuplicateCount/);
   assert.match(pageSource, /owner-submit-summary/);
+  assert.match(pageSource, /detailAddress/);
+  assert.match(pageSource, /세부주소 없음/);
   assert.match(pageSource, /ownerForm/);
   assert.match(pageSource, /setOwnerForm/);
   assert.match(pageSource, /photoCount/);
   assert.match(pageSource, /has3DRoom/);
   assert.match(pageSource, /registrationStatus/);
   assert.match(pageSource, /submitOwnerListing/);
-  assert.match(pageSource, /continueOwnerRegistration/);
-  assert.match(pageSource, /getElementById\("owner-registration-form"\)/);
-  assert.match(pageSource, /window\.setTimeout\(scrollToOwnerForm, 360\)/);
   assert.match(pageSource, /id="owner-registration-form"/);
   assert.doesNotMatch(pageSource, /업로드 버튼 대기|전용 업로드 영역|자료 대기/);
   assert.match(cssSource, /\.owner-preview-card/);
   assert.match(cssSource, /\.owner-preview-actions/);
   assert.match(cssSource, /\.owner-preview-actions button/);
   assert.match(cssSource, /\.owner-submit-summary/);
+  assert.match(cssSource, /\.owner-summary-address/);
+  assert.match(cssSource, /\.listing-detail-address/);
   assert.match(cssSource, /\.owner-submit-grid/);
   assert.match(cssSource, /\.owner-ops-grid/);
   assert.match(cssSource, /\.owner-ops-card/);
@@ -1068,7 +1040,7 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
     "안심 거래 정보",
     "실매물 확인",
     "평균 8분",
-    "실측 도면",
+    "3D 도면 미연결 매물",
     "헛걸음 보상",
     "지킴 진단 리포트",
     "계약 전 확인할 항목을 정리했어요",

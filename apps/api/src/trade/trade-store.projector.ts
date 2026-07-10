@@ -20,23 +20,27 @@ export class TradeStoreProjector {
   async load(): Promise<TradeListing[] | undefined> {
     try {
       const rows = await this.prisma.tradeListing.findMany({ orderBy: { createdAt: "desc" } });
-      return rows.map((row) => ({
-        id: row.id,
-        ownerId: row.ownerId,
-        ownerName: row.ownerName,
-        title: row.title,
-        roomType: row.roomType,
-        tradeType: normalizeTradeType(row.tradeType),
-        depositManwon: row.depositManwon,
-        monthlyRentManwon: row.monthlyRentManwon,
-        location: row.location,
-        description: row.description,
-        images: Array.isArray(row.images) ? row.images : [],
-        ...(row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : {}),
-        ...(row.floorPlan ? { floorPlan: row.floorPlan as unknown as ListingFloorPlan } : {}),
-        status: row.status === "계약완료" ? "계약완료" : "노출중",
-        createdAt: row.createdAt.toISOString()
-      }));
+      return rows.map((row) => {
+        const detailAddress = (row as unknown as { detailAddress?: string | null }).detailAddress?.trim();
+        return {
+          id: row.id,
+          ownerId: row.ownerId,
+          ownerName: row.ownerName,
+          title: row.title,
+          roomType: row.roomType,
+          tradeType: normalizeTradeType(row.tradeType),
+          depositManwon: row.depositManwon,
+          monthlyRentManwon: row.monthlyRentManwon,
+          location: row.location,
+          ...(detailAddress ? { detailAddress } : {}),
+          description: row.description,
+          images: Array.isArray(row.images) ? row.images : [],
+          ...(row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : {}),
+          ...(row.floorPlan ? { floorPlan: row.floorPlan as unknown as ListingFloorPlan } : {}),
+          status: row.status === "계약완료" ? "계약완료" : "노출중",
+          createdAt: row.createdAt.toISOString()
+        };
+      });
     } catch {
       return undefined; // DB 미연결/오류 시 JSON 스토어로 폴백
     }
@@ -63,6 +67,7 @@ export class TradeStoreProjector {
           depositManwon: Math.trunc(listing.depositManwon) || 0,
           monthlyRentManwon: Math.trunc(listing.monthlyRentManwon) || 0,
           location: listing.location,
+          detailAddress: listing.detailAddress?.trim() || null,
           description: listing.description ?? "",
           images: listing.images ?? [],
           lat: listing.lat ?? null,

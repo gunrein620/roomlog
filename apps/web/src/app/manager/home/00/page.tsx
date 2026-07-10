@@ -20,6 +20,7 @@ type TradeListing = {
   ownerId: string;
   title: string;
   location: string;
+  detailAddress?: string;
   tradeType: "월세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
@@ -71,6 +72,7 @@ export default async function Page() {
         id: listing.id,
         title: listing.title,
         location: listing.location,
+        detailAddress: listing.detailAddress,
         priceLabel: priceLabel(listing),
         photoCount: listing.images?.length ?? 0,
         has3D: Boolean(listing.floorPlan)

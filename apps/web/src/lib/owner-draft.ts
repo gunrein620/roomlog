@@ -8,6 +8,7 @@ const OWNER_DRAFT_VERSION = 1 as const;
 export type OwnerFormValues = {
   title: string;
   address: string;
+  detailAddress: string;
   tradeType: string;
   moveIn: string;
   deposit: string;
@@ -41,6 +42,7 @@ export type OwnerListingDraft = {
 export const emptyOwnerForm: OwnerFormValues = {
   title: "",
   address: "",
+  detailAddress: "",
   tradeType: "월세",
   moveIn: "",
   deposit: "",
@@ -100,6 +102,12 @@ export function parseOwnerDraft(raw: string | null): OwnerListingDraft | null {
   if (!ownerFormKeys.every((key) => typeof (form as Record<string, unknown>)[key] === "string")) {
     return null;
   }
+  const normalizedForm = {
+    ...(form as OwnerFormValues),
+    detailAddress: typeof (form as Record<string, unknown>).detailAddress === "string"
+      ? (form as Record<string, string>).detailAddress
+      : ""
+  };
 
   if (!Array.isArray(draft.myListings)) return null;
   const listings = draft.myListings.filter(
@@ -123,7 +131,7 @@ export function parseOwnerDraft(raw: string | null): OwnerListingDraft | null {
   return {
     version: OWNER_DRAFT_VERSION,
     savedAt: draft.savedAt,
-    ownerForm: form as OwnerFormValues,
+    ownerForm: normalizedForm,
     photoCount: draft.photoCount,
     has3DRoom: draft.has3DRoom,
     registrationStatus: draft.registrationStatus,
