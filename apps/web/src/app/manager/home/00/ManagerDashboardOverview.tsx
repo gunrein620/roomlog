@@ -5,6 +5,10 @@ import ManagerHomeTabs, {
   type ManagerListingRow,
   type ManagerTicketRow,
 } from "./ManagerHomeTabs";
+import {
+  managerDashboardTicketHref,
+  selectManagerCurrentTickets,
+} from "./manager-dashboard-overview";
 
 export interface ManagerDashboardOverviewProps {
   listingCount: number;
@@ -39,7 +43,7 @@ export default function ManagerDashboardOverview({
     { label: "진행 중 티켓", value: ticketCount, href: "/manager/ticket/dash/00" },
     { label: "수납 대기·연체", value: billingOutstanding, href: "/manager/billing/overdue" },
   ] as const;
-  const currentTickets = tickets.slice(0, 3);
+  const currentTickets = selectManagerCurrentTickets(tickets);
 
   return (
     <div style={overviewStyle}>
@@ -74,7 +78,7 @@ export default function ManagerDashboardOverview({
         ) : (
           <div style={workListStyle}>
             {currentTickets.map((ticket) => (
-              <article key={ticket.id} style={workRowStyle}>
+              <Link key={ticket.id} href={managerDashboardTicketHref(ticket.id)} style={workRowStyle}>
                 <div style={workCopyStyle}>
                   <strong style={workTitleStyle}>{ticket.title}</strong>
                   <span style={workCaptionStyle}>{ticket.unitId}</span>
@@ -83,7 +87,7 @@ export default function ManagerDashboardOverview({
                   {ticket.urgent ? <span style={urgentChipStyle}>긴급</span> : null}
                   <span style={statusChipStyle}>{ticket.statusLabel}</span>
                 </div>
-              </article>
+              </Link>
             ))}
           </div>
         )}
@@ -209,6 +213,8 @@ const workRowStyle = {
   gap: "var(--space-md)",
   padding: "var(--space-sm) 0",
   borderTop: "1px solid var(--border)",
+  color: "inherit",
+  textDecoration: "none",
 } as const;
 
 const workCopyStyle = {

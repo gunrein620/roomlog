@@ -961,6 +961,7 @@ dd {
 }
 
 .manager-workspace__title {
+  margin: 0;
   font-size: var(--fs-title);
   font-weight: var(--fw-title);
   line-height: var(--lh-title);
@@ -1158,7 +1159,7 @@ dd {
 }
 
 .manager-sidebar__child {
-  min-height: 40px;
+  min-height: var(--touch-target);
   min-width: 0;
   justify-content: space-between;
   padding: 0 var(--space-sm);
@@ -1213,7 +1214,7 @@ dd {
 }
 
 .manager-section-nav a {
-  min-height: 40px;
+  min-height: var(--touch-target);
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);

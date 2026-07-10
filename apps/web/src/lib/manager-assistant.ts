@@ -7,8 +7,10 @@ export interface ManagerAssistantBriefingItem {
   tone?: "default" | "attention";
 }
 
-export function normalizeManagerPrompt(prompt: string): string {
-  return prompt.trim().slice(0, MAX_MANAGER_PROMPT_LENGTH);
+export function normalizeManagerPrompt(prompt: string | string[] | undefined): string {
+  const candidates = Array.isArray(prompt) ? prompt : [prompt ?? ""];
+  const selected = candidates.find((candidate) => candidate.trim()) ?? "";
+  return selected.trim().slice(0, MAX_MANAGER_PROMPT_LENGTH);
 }
 
 export function managerAgentHref(prompt: string): string {

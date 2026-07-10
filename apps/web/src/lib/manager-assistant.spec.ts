@@ -13,6 +13,14 @@ describe("manager assistant prompt", () => {
     assert.equal(normalizeManagerPrompt("가".repeat(1200)).length, MAX_MANAGER_PROMPT_LENGTH);
   });
 
+  it("selects the first non-empty repeated query prompt and normalizes it", () => {
+    assert.equal(
+      normalizeManagerPrompt(["   ", "  첫 번째 질문  ", "두 번째 질문"]),
+      "첫 번째 질문",
+    );
+    assert.equal(normalizeManagerPrompt([]), "");
+  });
+
   it("creates an encoded prefill URL without an execution flag", () => {
     assert.equal(
       managerAgentHref("  411호 연체 내역?  "),

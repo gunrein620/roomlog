@@ -67,6 +67,19 @@ test("manager shell exposes navigation, subnav, actions, and right rail slots", 
   assert.doesNotMatch(shellSource, /100vh/);
 });
 
+test("manager shell exposes one page heading and token-sized navigation targets", () => {
+  assert.match(shellSource, /<h1 className="manager-workspace__title">\{title\}<\/h1>/);
+  assert.match(managerCss, /\.manager-workspace__title\s*\{[^}]*margin:\s*0;/);
+  assert.match(
+    managerCss,
+    /\.manager-sidebar__child\s*\{[^}]*min-height:\s*var\(--touch-target\);/,
+  );
+  assert.match(
+    managerCss,
+    /\.manager-section-nav a\s*\{[^}]*min-height:\s*var\(--touch-target\);/,
+  );
+});
+
 test("manager workspace uses canonical tokens without manager-local collisions", () => {
   assert.match(tokenSource, /--manager-sidebar-width:/);
   assert.match(tokenSource, /--manager-assistant-width:/);

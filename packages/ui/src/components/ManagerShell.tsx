@@ -25,7 +25,7 @@ export function ManagerShell({
       <section className="manager-workspace__content">
         <header className="manager-workspace__header">
           <div className="manager-workspace__heading">
-            <div className="manager-workspace__title">{title}</div>
+            <h1 className="manager-workspace__title">{title}</h1>
             {context ? <div className="manager-workspace__context">{context}</div> : null}
           </div>
           {headerActions ? <div className="manager-workspace__header-actions">{headerActions}</div> : null}

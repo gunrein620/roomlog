@@ -4,7 +4,7 @@ import { normalizeManagerPrompt } from "@/lib/manager-assistant";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 import { ManagerRealtimeConsole } from "./ManagerRealtimeConsole";
 
-type SearchParams = Promise<{ prompt?: string }>;
+type SearchParams = Promise<{ prompt?: string | string[] }>;
 
 const domains = [
   { label: "티켓 처리", href: MANAGER_CROSS.ticketDash, body: "긴급도, 사진 필요 여부, 업체 배정 후보를 확인합니다." },
@@ -13,7 +13,7 @@ const domains = [
 ];
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { prompt = "" } = await searchParams;
+  const { prompt } = await searchParams;
   const initialPrompt = normalizeManagerPrompt(prompt);
 
   return (

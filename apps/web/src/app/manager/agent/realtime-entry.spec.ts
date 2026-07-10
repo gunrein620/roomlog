@@ -21,7 +21,9 @@ test("manager realtime prompt is prefilled once and never auto-submitted", () =>
   const pageSource = readFileSync(realtimePagePath, "utf8");
   const consoleSource = readFileSync(realtimeConsolePath, "utf8");
   assert.match(pageSource, /searchParams/);
+  assert.match(pageSource, /prompt\?: string \| string\[\]/);
   assert.match(pageSource, /normalizeManagerPrompt/);
+  assert.match(pageSource, /normalizeManagerPrompt\(prompt\)/);
   assert.match(pageSource, /initialPrompt=\{initialPrompt\}/);
   assert.match(consoleSource, /initialPrompt\?: string/);
   assert.match(consoleSource, /useState\(\(\) => normalizeManagerPrompt\(initialPrompt\)\)/);
