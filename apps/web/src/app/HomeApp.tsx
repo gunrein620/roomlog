@@ -67,6 +67,7 @@ import {
   type AuthMode,
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
+import { MobileRoleMenu } from "./_components/MobileRoleMenu";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
@@ -544,9 +545,7 @@ const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: st
   { key: "home", label: "홈", Icon: HomeIcon, href: "#home-title" },
   { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
   { key: "saved", label: "찜", Icon: Heart, href: "#saved-list" },
-  { key: "inquiry", label: "문의", Icon: MessageCircle, href: "#inquiry" },
-  { key: "living", label: "세입자", Icon: UserRound, href: "#my-page" },
-  { key: "sell", label: "매물등록", Icon: House, href: "#my-page" }
+  { key: "inquiry", label: "문의", Icon: MessageCircle, href: "#inquiry" }
 ];
 
 const mapResultTabs: Array<{ key: MapResultTab; label: string }> = [
@@ -2636,10 +2635,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 문의 ${inquiryBadgeCount}건`} /> : null}
             </a>
           ))}
-          <a href="/manager/home/00" onClick={(event) => { event.preventDefault(); window.location.href = "/manager/home/00"; }}>
-            <Building2 size={22} strokeWidth={2.3} aria-hidden="true" />
-            관리
-          </a>
+          <MobileRoleMenu
+            activeTab={activeTab === "living" || activeTab === "sell" ? activeTab : null}
+            onSelectTenant={() => activateTab("living")}
+            onSelectListing={() => activateTab("sell")}
+            onSelectManager={() => { window.location.href = "/manager/home/00"; }}
+          />
         </nav>
 
         <FilterBottomSheet
