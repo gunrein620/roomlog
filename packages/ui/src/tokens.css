@@ -34,6 +34,13 @@
   --on-error: #ffffff;
   --error-container: #ffdad6;
   --on-error-container: #93000a;
+  --success: #137a46;
+  --on-success: #ffffff;
+  --success-container: #e8f7ee;
+  --on-success-container: #136c34;
+  --warning: #8a5200;
+  --warning-container: #fff1d6;
+  --on-warning-container: #6d4100;
 
   /* --- color: chip/badge --- */
   --chip-bg: #eef2f8;
@@ -54,6 +61,7 @@
 
   /* --- elevation (WOOZU 카드 그림자) --- */
   --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
+  --focus-ring: 0 0 0 3px rgba(47, 85, 255, 0.28);
 
   /* --- spacing (4/8/12/16/24/32) --- */
   --space-xs: 4px;
@@ -77,6 +85,16 @@
   --touch-target: 52px; /* 버튼·입력 기본 높이 */
   --header-height: 56px;
   --list-item-min: 64px;
+
+  /* --- manager workspace --- */
+  --manager-sidebar-width: 256px;
+  --manager-assistant-width: 320px;
+  --manager-assistant-compact-width: 280px;
+  --manager-content-max: 1600px;
+
+  /* --- stacking --- */
+  --z-floating: 20;
+  --z-overlay: 30;
 
   /* --- phone frame --- */
   --phone-w: 390px;

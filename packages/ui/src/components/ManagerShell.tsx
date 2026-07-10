@@ -1,108 +1,41 @@
 import type { ReactNode } from "react";
 
 export interface ManagerShellProps {
-  /** 상단 타이틀 (화면명) */
   title: ReactNode;
-  /** 우상단 컨텍스트(관리 대상 건물/호실 등) */
   context?: ReactNode;
-  /** 좌측 네비 영역(선택) — 없으면 콘텐츠만 */
   nav?: ReactNode;
+  subnav?: ReactNode;
+  headerActions?: ReactNode;
+  rightRail?: ReactNode;
   children: ReactNode;
 }
 
-/**
- * 관리인 데스크탑 셸 (적응형 도메인의 데스크탑 표면 공용 크롬).
- * 임차인=PhoneFrame(390×844)과 대비되는 넓은 대시보드 레이아웃.
- * topbar(타이틀·역할·컨텍스트) + (선택)좌측 네비 + max-width 콘텐츠.
- */
-export function ManagerShell({ title, context, nav, children }: ManagerShellProps) {
+export function ManagerShell({
+  title,
+  context,
+  nav,
+  subnav,
+  headerActions,
+  rightRail,
+  children,
+}: ManagerShellProps) {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "var(--surface)",
-        color: "var(--on-surface)",
-        fontFamily: "var(--font-sans)",
-      }}
-    >
-      <header
-        style={{
-          height: "var(--header-height)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 var(--page-margin)",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--surface-container-lowest)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* 집우집주 복귀 동선 — 관리 콘솔도 같은 WOOZU 계정의 한 표면이다 */}
-          <a
-            href="/"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              color: "var(--on-surface)",
-              fontSize: "var(--fs-caption)",
-              fontWeight: 800,
-              textDecoration: "none",
-            }}
-          >
-            집우집주
-            <span style={{ color: "var(--primary)" }}>WOOZU</span>
-          </a>
-          <span aria-hidden="true" style={{ color: "var(--border)" }}>|</span>
-          <span
-            style={{
-              fontSize: "var(--fs-caption)",
-              fontWeight: 700,
-              color: "var(--on-primary)",
-              background: "var(--primary)",
-              borderRadius: "var(--radius-full)",
-              padding: "3px 10px",
-            }}
-          >
-            관리인
-          </span>
-          <span style={{ fontSize: "var(--fs-header)", fontWeight: 700 }}>{title}</span>
+    <div className={rightRail ? "manager-workspace manager-workspace--with-rail" : "manager-workspace"}>
+      {nav ? <aside className="manager-workspace__sidebar">{nav}</aside> : null}
+      <section className="manager-workspace__content">
+        <header className="manager-workspace__header">
+          <div className="manager-workspace__heading">
+            <div className="manager-workspace__title">{title}</div>
+            {context ? <div className="manager-workspace__context">{context}</div> : null}
+          </div>
+          {headerActions ? <div className="manager-workspace__header-actions">{headerActions}</div> : null}
+        </header>
+        {subnav ? <div className="manager-workspace__subnav">{subnav}</div> : null}
+        <div className="manager-workspace__body">
+          <main className="manager-workspace__main">{children}</main>
+          {rightRail ? <aside className="manager-workspace__rail">{rightRail}</aside> : null}
         </div>
-        {context ? (
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)" }}>
-            {context}
-          </span>
-        ) : null}
-      </header>
-
-      <div style={{ display: "flex", alignItems: "stretch" }}>
-        {nav ? (
-          <aside
-            style={{
-              width: 220,
-              flex: "none",
-              borderRight: "1px solid var(--border)",
-              padding: "var(--space-lg)",
-              minHeight: "calc(100vh - var(--header-height))",
-              background: "var(--surface-container-low)",
-            }}
-          >
-            {nav}
-          </aside>
-        ) : null}
-        <main
-          style={{
-            flex: 1,
-            minWidth: 0, // 넓은 표(가로 스크롤 카드)가 페이지 전체를 밀어내지 않게
-            padding: "var(--space-xl)",
-            maxWidth: 1200,
-            width: "100%",
-            margin: "0 auto",
-          }}
-        >
-          {children}
-        </main>
-      </div>
+      </section>
     </div>
   );
 }
