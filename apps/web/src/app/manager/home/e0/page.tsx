@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Card, ManagerShell } from "@roomlog/ui";
+import { Card } from "@roomlog/ui";
 import { MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { ManagerHomeShell } from "../_components";
 
 export default function Page() {
   return (
-    <ManagerShell title="로드 오류" context="관리 중인 집">
+    <ManagerHomeShell title="로드 오류" context="관리 중인 집">
       <div style={{ minHeight: "calc(100vh - var(--header-height) - var(--space-xl) * 2)", display: "grid", placeItems: "center" }}>
         <Card style={{ width: "min(560px, 100%)", display: "grid", gap: "var(--space-lg)", textAlign: "center" }}>
           <div>
@@ -19,7 +20,7 @@ export default function Page() {
           </div>
         </Card>
       </div>
-    </ManagerShell>
+    </ManagerHomeShell>
   );
 }
 

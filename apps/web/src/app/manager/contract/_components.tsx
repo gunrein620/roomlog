@@ -1,18 +1,13 @@
 import Link from "next/link";
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { ContractExtraction, DeletionState, ExtractionGroup } from "@roomlog/types";
-import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
-import { MANAGER_CONTRACT_ROUTES, type ManagerContractRoute } from "@/lib/contract-manager-nav";
-
-export const screenMeta = {
-  "M-DOC-00": ["검토 대시보드", MANAGER_CONTRACT_ROUTES["M-DOC-00"]],
-  "M-DOC-01": ["OCR 검토", MANAGER_CONTRACT_ROUTES["M-DOC-01"]],
-  "M-DOC-02": ["계약서 등록", MANAGER_CONTRACT_ROUTES["M-DOC-02"]],
-  "M-DOC-03": ["호실·타임라인", MANAGER_CONTRACT_ROUTES["M-DOC-03"]],
-  "M-DOC-04": ["임차인 초대", MANAGER_CONTRACT_ROUTES["M-DOC-04"]],
-  "M-DOC-05": ["보관·삭제", MANAGER_CONTRACT_ROUTES["M-DOC-05"]],
-  "M-DOC-E0": ["로드 오류", MANAGER_CONTRACT_ROUTES["M-DOC-E0"]],
-} as const;
+import { Badge, Button, Card } from "@roomlog/ui";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
+import {
+  MANAGER_CONTRACT_ROUTES,
+  type ManagerContractRoute,
+  type ManagerContractScreenId,
+} from "@/lib/contract-manager-nav";
 
 export const deletionLabel: Record<DeletionState, string> = {
   none: "요청 없음",
@@ -33,57 +28,12 @@ export function ContractShell({
   title,
   children,
 }: {
-  id: keyof typeof screenMeta;
-  title: string;
-  children: React.ReactNode;
+  id: ManagerContractScreenId;
+  title: ReactNode;
+  children: ReactNode;
 }) {
-  return (
-    <ManagerShell title={title} context="관리 중인 집 · 계약서" nav={<ContractNav active={id} />}>
-      {children}
-    </ManagerShell>
-  );
-}
-
-function ContractNav({ active }: { active: keyof typeof screenMeta }) {
-  return (
-    <nav aria-label="관리인 계약 화면" style={{ display: "grid", gap: "var(--space-sm)" }}>
-      {Object.entries(screenMeta)
-        .filter(([id]) => id !== "M-DOC-E0")
-        .map(([id, [label, href]]) => (
-        <Link
-          key={id}
-          href={href}
-          style={{
-            minHeight: 42,
-            display: "flex",
-            alignItems: "center",
-            padding: "0 var(--space-md)",
-            borderRadius: "var(--radius)",
-            color: "var(--on-surface)",
-            textDecoration: "none",
-            fontSize: "var(--fs-caption)",
-            fontWeight: 800,
-            background: active === id ? "var(--surface-container-high)" : "var(--surface-container-lowest)",
-            border: active === id ? "1.5px solid var(--primary)" : "1px solid var(--border)",
-          }}
-        >
-          {label}
-        </Link>
-      ))}
-      <Card
-        style={{
-          marginTop: "var(--space-md)",
-          padding: "var(--space-md)",
-          fontSize: "var(--fs-caption)",
-          color: "var(--on-surface-variant)",
-          lineHeight: "var(--lh-body)",
-        }}
-      >
-        계약 OCR 원문 대조는 정밀 검토 모드입니다. clean 계약의 모바일 1탭 확정은 허용하지만,
-        확인 필요·삭제·병합은 데스크탑에서 처리합니다.
-      </Card>
-    </nav>
-  );
+  void id;
+  return <ManagerAppShell title={title} context="관리 중인 집 · 계약서">{children}</ManagerAppShell>;
 }
 
 export function PageStack({ children }: { children: React.ReactNode }) {

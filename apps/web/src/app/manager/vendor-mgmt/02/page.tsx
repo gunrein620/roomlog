@@ -1,9 +1,8 @@
-import { ManagerShell } from "@roomlog/ui";
 import { getVendorPerf } from "@/lib/vendor-mgmt-api";
 import {
   JobRows,
   LinkButton,
-  ManagerVendorMgmtNav,
+  ManagerVendorMgmtShell,
   MetricCard,
   NoticeCard,
   PageStack,
@@ -23,7 +22,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const showRating = perf.ratingVisible && perf.satisfactionAvg != null;
 
   return (
-    <ManagerShell title="성과 기록" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
+    <ManagerVendorMgmtShell title="성과 기록">
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-02"
@@ -67,6 +66,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           {perf.mirrorNotice}
         </NoticeCard>
       </PageStack>
-    </ManagerShell>
+    </ManagerVendorMgmtShell>
   );
 }

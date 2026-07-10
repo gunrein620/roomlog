@@ -10,39 +10,16 @@ import type {
   ReportSource,
   ReportStatus,
 } from "@roomlog/types";
-import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
-import { actionHref, MANAGER_REPORT_ROUTES, reportHref, sourceHref } from "@/lib/report-nav";
+import { Badge, Button, Card } from "@roomlog/ui";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
+import { actionHref, reportHref, sourceHref } from "@/lib/report-nav";
 import { stripScreenId } from "@/lib/screen-id";
-
-const navItems = [
-  ["허브", MANAGER_REPORT_ROUTES["M-RPT-00"]],
-  ["새 생성", MANAGER_REPORT_ROUTES["M-RPT-01"]],
-  ["상세", MANAGER_REPORT_ROUTES["M-RPT-02"]],
-  ["임대인 보고", MANAGER_REPORT_ROUTES["M-RPT-03"]],
-  ["챗봇", MANAGER_REPORT_ROUTES["M-RPT-04"]],
-  ["빠른 조회", MANAGER_REPORT_ROUTES["M-RPT-05"]],
-] as const;
 
 export function ReportShell({ children }: { children: ReactNode }) {
   return (
-    <ManagerShell title="운영 보고" context="관리 중인 집 · 임대인 보고" nav={<ReportNav />}>
+    <ManagerAppShell title="운영 보고" context="관리 중인 집 · 임대인 보고">
       {children}
-    </ManagerShell>
-  );
-}
-
-function ReportNav() {
-  return (
-    <nav aria-label="관리 리포트 화면" style={{ display: "grid", gap: "var(--space-sm)" }}>
-      {navItems.map(([label, href]) => (
-        <Link key={href} href={href} style={navLinkStyle}>
-          {label}
-        </Link>
-      ))}
-      <div style={navNoteStyle}>
-        챗봇 답변은 조회와 초안 제안까지만 제공합니다. 독촉·공지 발송은 원본 행 대조 후 각 발송 화면에서 확정합니다.
-      </div>
-    </nav>
+    </ManagerAppShell>
   );
 }
 
@@ -300,19 +277,6 @@ const sourceKindLabel = {
   messaging: "M-MSG",
 } satisfies Record<ReportKpi["formulaSource"], string>;
 
-const navLinkStyle = {
-  minHeight: 42,
-  display: "flex",
-  alignItems: "center",
-  padding: "0 var(--space-md)",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid var(--border)",
-  background: "var(--surface-container-lowest)",
-  color: "var(--on-surface)",
-  textDecoration: "none",
-  fontWeight: 800,
-} as const;
-const navNoteStyle = { marginTop: "var(--space-md)", padding: "var(--space-md)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: "var(--lh-body)" } as const;
 const captionStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", fontWeight: 800 } as const;
 const mutedTextStyle = { margin: "var(--space-xs) 0 0", color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" } as const;
 const mutedSmallStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: "var(--lh-body)" } as const;

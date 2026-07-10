@@ -4,12 +4,31 @@ import { join } from "node:path";
 import test from "node:test";
 
 const root = process.cwd();
+const managerIndexSource = readFileSync(join(root, "src/app/manager/page.tsx"), "utf8");
 const homeSource = readFileSync(join(root, "src/app/manager/home/00/page.tsx"), "utf8");
 const homeTabsSource = readFileSync(join(root, "src/app/manager/home/00/ManagerHomeTabs.tsx"), "utf8");
 const layoutPath = join(root, "src/app/manager/agent/layout.tsx");
 const realtimePagePath = join(root, "src/app/manager/agent/realtime/page.tsx");
 const realtimeConsolePath = join(root, "src/app/manager/agent/realtime/ManagerRealtimeConsole.tsx");
 const managerProxyPath = join(root, "src/app/api/manager/[...path]/route.ts");
+
+test("manager root opens the unified dashboard", () => {
+  assert.match(managerIndexSource, /redirect\("\/manager\/home\/00"\)/);
+  assert.doesNotMatch(managerIndexSource, /redirect\("\/sell"\)/);
+});
+
+test("manager realtime prompt is prefilled once and never auto-submitted", () => {
+  const pageSource = readFileSync(realtimePagePath, "utf8");
+  const consoleSource = readFileSync(realtimeConsolePath, "utf8");
+  assert.match(pageSource, /searchParams/);
+  assert.match(pageSource, /prompt\?: string \| string\[\]/);
+  assert.match(pageSource, /normalizeManagerPrompt/);
+  assert.match(pageSource, /normalizeManagerPrompt\(prompt\)/);
+  assert.match(pageSource, /initialPrompt=\{initialPrompt\}/);
+  assert.match(consoleSource, /initialPrompt\?: string/);
+  assert.match(consoleSource, /useState\(\(\) => normalizeManagerPrompt\(initialPrompt\)\)/);
+  assert.doesNotMatch(consoleSource, /useEffect\([^)]*submitAgentMessage/);
+});
 
 test("manager home exposes an OpenAI Realtime agent entry point", () => {
   assert.match(homeSource, /realtimeAgentHref=\{MANAGER_CROSS\.realtimeAgent\}/);
@@ -32,7 +51,7 @@ test("manager realtime agent route is guarded and renders the initial operation 
   const routeSurfaceSource = `${pageSource}\n${consoleSource}`;
 
   assert.match(layoutSource, /await requireUser\("LANDLORD"\)/);
-  assert.match(layoutSource, /ManagerShell/);
+  assert.match(layoutSource, /ManagerAppShell/);
   assert.match(routeSurfaceSource, /OpenAI Realtime/);
   assert.match(routeSurfaceSource, /음성 연결/);
   assert.match(routeSurfaceSource, /텍스트 명령/);

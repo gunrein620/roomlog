@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Badge, Button, Card } from "@roomlog/ui";
+import { normalizeManagerPrompt } from "@/lib/manager-assistant";
 
 type ManagerAgentCommandName =
   | "ticket.query"
@@ -76,9 +77,9 @@ const commandOptions: Array<{
   }
 ];
 
-export function ManagerRealtimeConsole() {
+export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?: string }) {
   const [activeCommand, setActiveCommand] = useState<ManagerAgentCommandName>("ticket.query");
-  const [chatText, setChatText] = useState("");
+  const [chatText, setChatText] = useState(() => normalizeManagerPrompt(initialPrompt));
   const [pendingText, setPendingText] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [session, setSession] = useState<ManagerRealtimeClientSecretResult | null>(null);
