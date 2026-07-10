@@ -14,6 +14,8 @@ const appShellPath = join(root, "src/app/manager/_components/ManagerAppShell.tsx
 const appShellSource = readFileSync(appShellPath, "utf8");
 const sectionNavSource = readFileSync(sectionNavPath, "utf8");
 const navigationSource = readFileSync(join(root, "src/lib/manager-navigation.ts"), "utf8");
+const managerHomePath = join(root, "src/app/manager/home/00/page.tsx");
+const managerOverviewPath = join(root, "src/app/manager/home/00/ManagerDashboardOverview.tsx");
 
 const migratedShellFiles = [
   "src/app/manager/agent/layout.tsx",
@@ -77,6 +79,35 @@ test("every manager desktop domain composes ManagerAppShell", () => {
   for (const file of migratedShellFiles) {
     const source = readFileSync(join(root, file), "utf8");
     assert.match(source, /ManagerAppShell/, file);
+  }
+});
+
+test("manager home composes the integrated dashboard in the shared workspace", () => {
+  const homeSource = readFileSync(managerHomePath, "utf8");
+  const overviewSource = existsSync(managerOverviewPath)
+    ? readFileSync(managerOverviewPath, "utf8")
+    : "";
+
+  assert.match(homeSource, /import \{ ManagerAppShell \}/);
+  assert.match(homeSource, /<ManagerAppShell/);
+  assert.doesNotMatch(homeSource, /import \{ ManagerShell \}/);
+  assert.doesNotMatch(homeSource, /<ManagerShell/);
+  assert.match(homeSource, /title="통합 대시보드"/);
+  assert.match(homeSource, /showAssistantRail/);
+  assert.match(homeSource, /assistantBriefing=\{assistantBriefing\}/);
+  assert.doesNotMatch(homeSource, /function HomeNav/);
+
+  assert.equal(existsSync(managerOverviewPath), true, managerOverviewPath);
+  for (const label of ["미계약 매물", "계약중인 집", "진행 중 티켓", "수납 대기·연체"]) {
+    assert.match(overviewSource, new RegExp(label));
+  }
+  for (const href of [
+    "/sell",
+    "/manager/contract/00",
+    "/manager/ticket/dash/00",
+    "/manager/billing/overdue",
+  ]) {
+    assert.match(overviewSource, new RegExp(href.replaceAll("/", "\\/")));
   }
 });
 

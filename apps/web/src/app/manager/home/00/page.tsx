@@ -1,19 +1,19 @@
-import Link from "next/link";
-import { ManagerShell } from "@roomlog/ui";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
+import { MANAGER_BILLING_ROUTES } from "@/lib/billing-manager-nav";
 import { getUser } from "@/lib/session";
 import { serverFetch } from "@/lib/server-api";
 import { listManagerTickets } from "@/lib/ticket-manager-api";
 import { toManagerDashboard, type TeamDashboardResponse } from "@/lib/billing-manager-mapping";
-import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
-import ManagerHomeTabs, {
-  type ManagerBillingSummary,
-  type ManagerContractRow,
-  type ManagerListingRow,
-  type ManagerTicketRow
+import { MANAGER_CROSS } from "@/lib/manager-home-nav";
+import ManagerDashboardOverview from "./ManagerDashboardOverview";
+import type {
+  ManagerBillingSummary,
+  ManagerContractRow,
+  ManagerListingRow,
+  ManagerTicketRow,
 } from "./ManagerHomeTabs";
 
-// 관리 중인 집 홈 — "오늘 할 일/첫 건물/KPI 셸" 대신 실데이터 4탭:
-// 올려놓은 매물(미계약) · 계약중인 집(체결된 계약) · 민원/하자 · AI 관리자.
+// 관리 중인 집 홈 — 실데이터 운영 요약과 기존 상세 4탭을 함께 보여준다.
 
 type TradeListing = {
   id: string;
@@ -125,9 +125,40 @@ export default async function Page() {
       urgent: ticket.urgency <= 1
     }));
 
+  const billingOutstanding = billing ? billing.pending + billing.overdue : "—";
+  const assistantBriefing = [
+    {
+      label: "진행 중 티켓",
+      value: `${tickets.length}건`,
+      href: MANAGER_CROSS.ticketDash,
+      tone: tickets.some((ticket) => ticket.urgent) ? "attention" : "default",
+    },
+    {
+      label: "수납 대기·연체",
+      value: typeof billingOutstanding === "number" ? `${billingOutstanding}건` : billingOutstanding,
+      href: MANAGER_BILLING_ROUTES.overdue,
+      tone: billing && billing.pending + billing.overdue > 0 ? "attention" : "default",
+    },
+    {
+      label: "계약중인 집",
+      value: `${contracts.length}건`,
+      href: MANAGER_CROSS.contract,
+    },
+  ] as const;
+
   return (
-    <ManagerShell title={`${user?.name ?? "관리인"} 자산현황 대시보드`} context="관리 중인 집 · 대시보드" nav={<HomeNav active="home" />}>
-      <ManagerHomeTabs
+    <ManagerAppShell
+      title="통합 대시보드"
+      context="관리 중인 집 · 오늘의 운영 현황"
+      managerName={user?.name ?? "관리인"}
+      showAssistantRail
+      assistantBriefing={assistantBriefing}
+    >
+      <ManagerDashboardOverview
+        listingCount={listings.length}
+        contractCount={contracts.length}
+        ticketCount={tickets.length}
+        billingOutstanding={billingOutstanding}
         listings={listings}
         contracts={contracts}
         tickets={tickets}
@@ -136,27 +167,6 @@ export default async function Page() {
         billingHref={MANAGER_CROSS.billing}
         realtimeAgentHref={MANAGER_CROSS.realtimeAgent}
       />
-    </ManagerShell>
+    </ManagerAppShell>
   );
 }
-
-function HomeNav({ active }: { active: "home" | "settings" }) {
-  const items = [
-    ["홈", MHOME_ROUTES["M-HOME-00"], active === "home"],
-    ["티켓 처리", MANAGER_CROSS.ticketDash, false],
-    ["청구", MANAGER_CROSS.billing, false],
-    ["소통", MANAGER_CROSS.messaging, false],
-    ["설정", MHOME_ROUTES["M-HOME-06"], active === "settings"],
-  ] as const;
-  return (
-    <nav aria-label="관리인 자산현황" style={{ display: "grid", gap: "var(--space-sm)" }}>
-      {items.map(([label, href, current]) => (
-        <Link key={href} href={href} style={{ ...navLinkStyle, background: current ? "var(--surface-container-high)" : "var(--surface-container-lowest)", border: current ? "1.5px solid var(--primary)" : "1px solid var(--border)" }}>
-          {label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
-const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800 } as const;
