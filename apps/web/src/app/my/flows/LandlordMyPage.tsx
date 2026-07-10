@@ -884,7 +884,6 @@ export default function LandlordMyPage() {
                     src={photoPreviewUrls[Math.min(photoIndex, photoPreviewUrls.length - 1)]}
                     alt={`매물 사진 ${Math.min(photoIndex, photoPreviewUrls.length - 1) + 1}`}
                   />
-                  <span className="summary-media-label">사진</span>
                   {photoPreviewUrls.length > 1 ? (
                     <>
                       <button
@@ -933,7 +932,6 @@ export default function LandlordMyPage() {
                     onFurniturePointerDown={() => {}}
                     onWallPointerDown={() => {}}
                   />
-                  <span className="summary-media-label">3D 도면</span>
                 </>
               ) : (
                 <div className="summary-media-empty">

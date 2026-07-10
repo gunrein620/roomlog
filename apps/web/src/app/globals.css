@@ -5843,17 +5843,19 @@ p {
   gap: 8px;
 }
 
-/* 등록 요약 미디어 — 왼쪽 사진 캐러셀 / 오른쪽 3D 도면 프리뷰 반반 */
+/* 등록 요약 미디어 — 왼쪽 사진 캐러셀 / 오른쪽 3D 도면 프리뷰 반반.
+   너무 넓어지지 않게 폭을 제한하고, 카드는 정사각형 비율로 둔다(사진 잘림 완화). */
 .owner-summary-media {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  max-width: 680px;
 }
 
 .summary-media-card {
   position: relative;
   margin: 0;
-  height: 220px;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -5874,19 +5876,6 @@ p {
 .summary-media-3d .floor-plan-3d-preview {
   width: 100%;
   height: 100%;
-}
-
-.summary-media-label {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 2;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--blue);
-  color: #ffffff;
-  font-size: 0.68rem;
-  font-weight: 900;
 }
 
 .summary-media-nav {
@@ -5951,10 +5940,7 @@ p {
 @media (max-width: 640px) {
   .owner-summary-media {
     grid-template-columns: 1fr;
-  }
-
-  .summary-media-card {
-    height: 200px;
+    max-width: none;
   }
 }
 
