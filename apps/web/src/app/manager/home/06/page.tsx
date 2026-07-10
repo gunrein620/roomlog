@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Badge, Card, ManagerShell } from "@roomlog/ui";
+import { Badge, Card } from "@roomlog/ui";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { ManagerHomeShell } from "../_components";
 
 const settings = [
   { title: "프로필", body: "워크스페이스 이름, 관리자 표시명", href: MHOME_ROUTES["M-HOME-06"] },
@@ -13,7 +14,7 @@ const settings = [
 
 export default function Page() {
   return (
-    <ManagerShell title="설정" context="관리 중인 집" nav={<HomeNav />}>
+    <ManagerHomeShell title="설정" context="관리 중인 집">
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header>
           <h1 style={{ margin: "var(--space-sm) 0", fontSize: "var(--fs-title)" }}>설정</h1>
@@ -36,13 +37,8 @@ export default function Page() {
           ))}
         </section>
       </div>
-    </ManagerShell>
+    </ManagerHomeShell>
   );
 }
 
-function HomeNav() {
-  return <nav aria-label="관리인 자산현황" style={{ display: "grid", gap: "var(--space-sm)" }}>{[["홈", MHOME_ROUTES["M-HOME-00"]], ["소통", MANAGER_CROSS.messaging], ["설정", MHOME_ROUTES["M-HOME-06"]]].map(([label, href]) => <Link key={href} href={href} style={{ ...navLinkStyle, border: label === "설정" ? "1.5px solid var(--primary)" : "1px solid var(--border)" }}>{label}</Link>)}</nav>;
-}
-
 const linkReset = { color: "inherit", textDecoration: "none" } as const;
-const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800, background: "var(--surface-container-lowest)" } as const;

@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Badge, Card, Input, ManagerShell } from "@roomlog/ui";
+import { Badge, Card, Input } from "@roomlog/ui";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { ManagerHomeShell } from "../_components";
 
 export default function Page() {
   return (
-    <ManagerShell title="건물·호실 등록 / CSV" context="관리 중인 집 · 등록" nav={<HomeNav />}>
+    <ManagerHomeShell title="건물·호실 등록 / CSV" context="관리 중인 집 · 등록" demo>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
           <div>
@@ -62,7 +63,7 @@ export default function Page() {
           <Link href={MHOME_ROUTES["M-HOME-03"]} style={inlineLink}>전체 건물로 돌아가기</Link>
         </Card>
       </div>
-    </ManagerShell>
+    </ManagerHomeShell>
   );
 }
 
@@ -79,9 +80,4 @@ function LinkButton({ href, children }: { href: string; children: React.ReactNod
   return <Link href={href} style={{ minHeight: "var(--touch-target)", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-btn)", background: "var(--primary)", color: "var(--on-primary)", textDecoration: "none", fontWeight: 800 }}>{children}</Link>;
 }
 
-function HomeNav() {
-  return <nav aria-label="관리인 자산현황" style={{ display: "grid", gap: "var(--space-sm)" }}>{[["전체 건물", MHOME_ROUTES["M-HOME-03"]], ["건물 상세", MHOME_ROUTES["M-HOME-04"]], ["홈", MHOME_ROUTES["M-HOME-00"]]].map(([label, href]) => <Link key={href} href={href} style={navLinkStyle}>{label}</Link>)}</nav>;
-}
-
 const inlineLink = { color: "var(--primary)", fontWeight: 800, textDecoration: "none" } as const;
-const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800, background: "var(--surface-container-lowest)", border: "1px solid var(--border)" } as const;

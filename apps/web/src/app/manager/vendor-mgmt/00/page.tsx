@@ -1,9 +1,9 @@
-import { Input, ManagerShell } from "@roomlog/ui";
+import { Input } from "@roomlog/ui";
 import { listVendors } from "@/lib/vendor-mgmt-api";
 import { MANAGER_VENDOR_MGMT_ROUTES } from "@/lib/vendor-mgmt-nav";
 import {
   LinkButton,
-  ManagerVendorMgmtNav,
+  ManagerVendorMgmtShell,
   NoticeCard,
   PageStack,
   ScreenHeader,
@@ -20,7 +20,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const vendors = await listVendors({ q, trade: trade as never, sort: "trade_recent" });
 
   return (
-    <ManagerShell title="업체 주소록" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
+    <ManagerVendorMgmtShell title="업체 주소록">
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-00"
@@ -59,6 +59,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           신규 업체는 같은 행 높이로 목록에 섞고 '신규' 배지만 표시합니다. 성과순 정렬과 목록 별점은 제공하지 않습니다.
         </NoticeCard>
       </PageStack>
-    </ManagerShell>
+    </ManagerVendorMgmtShell>
   );
 }

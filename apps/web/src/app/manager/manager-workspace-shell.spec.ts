@@ -11,15 +11,29 @@ const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx")
 const sectionNavPath = join(root, "src/app/manager/_components/ManagerSectionNav.tsx");
 const assistantPath = join(root, "src/app/manager/_components/ManagerAssistant.tsx");
 const appShellPath = join(root, "src/app/manager/_components/ManagerAppShell.tsx");
+const appShellSource = readFileSync(appShellPath, "utf8");
+const sectionNavSource = readFileSync(sectionNavPath, "utf8");
+const navigationSource = readFileSync(join(root, "src/lib/manager-navigation.ts"), "utf8");
+
+const migratedShellFiles = [
+  "src/app/manager/agent/layout.tsx",
+  "src/app/manager/cost/layout.tsx",
+  "src/app/manager/messaging/layout.tsx",
+  "src/app/manager/moveout/layout.tsx",
+  "src/app/manager/report/_components.tsx",
+  "src/app/manager/ticket/dash/layout.tsx",
+  "src/app/manager/billing/_components.tsx",
+  "src/app/manager/contract/_components.tsx",
+  "src/app/manager/vendor-mgmt/_components.tsx",
+  "src/app/manager/home/_components.tsx",
+];
 
 test("manager app shell exposes accessible sidebar and assistant dialogs", () => {
   for (const path of [sidebarPath, sectionNavPath, assistantPath, appShellPath]) {
     assert.equal(existsSync(path), true, path);
   }
   const sidebar = readFileSync(sidebarPath, "utf8");
-  const sectionNav = readFileSync(sectionNavPath, "utf8");
   const assistant = readFileSync(assistantPath, "utf8");
-  const appShell = readFileSync(appShellPath, "utf8");
   assert.match(sidebar, /onNavigate\?:/);
   assert.match(sidebar, /showCloseButton\?:/);
   assert.match(sidebar, /getManagerCurrentHref/);
@@ -27,16 +41,17 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(sidebar, /item\.external/);
   assert.match(sidebar, /관리자 워크스페이스 밖으로 이동/);
   assert.doesNotMatch(sidebar, /target="_blank"/);
-  assert.match(sectionNav, /aria-current/);
+  assert.match(sectionNavSource, /item\.children\.map/);
+  assert.match(sectionNavSource, /aria-current/);
   assert.match(assistant, /showModal\(\)/);
   assert.match(assistant, /aria-label="AI 관리 비서 닫기"/);
   assert.match(assistant, /getBoundingClientRect\(\)/);
   assert.match(assistant, /isDialogBackdropPoint/);
-  assert.match(appShell, /aria-haspopup="dialog"/);
-  assert.match(appShell, /<ManagerSectionNav/);
-  assert.match(appShell, /!fullAssistant/);
-  assert.match(appShell, /getBoundingClientRect\(\)/);
-  assert.match(appShell, /isDialogBackdropPoint/);
+  assert.match(appShellSource, /aria-haspopup="dialog"/);
+  assert.match(appShellSource, /subnav \?\? <ManagerSectionNav/);
+  assert.match(appShellSource, /!fullAssistant/);
+  assert.match(appShellSource, /getBoundingClientRect\(\)/);
+  assert.match(appShellSource, /isDialogBackdropPoint/);
 });
 
 test("manager shell exposes navigation, subnav, actions, and right rail slots", () => {
@@ -56,4 +71,31 @@ test("manager workspace uses canonical tokens without manager-local collisions",
   assert.match(tokenSource, /--focus-ring:/);
   assert.doesNotMatch(managerCss, /^\s*--border:/m);
   assert.doesNotMatch(managerCss, /^\s*--shadow:/m);
+});
+
+test("every manager desktop domain composes ManagerAppShell", () => {
+  for (const file of migratedShellFiles) {
+    const source = readFileSync(join(root, file), "utf8");
+    assert.match(source, /ManagerAppShell/, file);
+  }
+});
+
+test("mobile manager surfaces remain outside ManagerAppShell", () => {
+  for (const file of ["src/app/manager/vox/layout.tsx", "src/app/manager/ticket/call/layout.tsx"]) {
+    assert.doesNotMatch(readFileSync(join(root, file), "utf8"), /ManagerAppShell/, file);
+  }
+});
+
+test("record-bound manager routes stay out of global navigation", () => {
+  for (const contextualPath of [
+    "/manager/contract/01",
+    "/manager/ticket/dash/01",
+    "/manager/vendor-mgmt/01",
+    "/manager/report/02",
+  ]) {
+    assert.doesNotMatch(
+      navigationSource,
+      new RegExp(`href:\\s*["']${contextualPath.replaceAll("/", "\\/")}`),
+    );
+  }
 });

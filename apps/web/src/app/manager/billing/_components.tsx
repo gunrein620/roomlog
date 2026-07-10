@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import type { BillStatus, Deposit, ManagerBillRow, OverdueCase, OverdueStage } from "@roomlog/types";
-import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
+import { Badge, Button, Card } from "@roomlog/ui";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
 import {
   MANAGER_BILLING_ROUTES,
   managerBillHref,
@@ -14,13 +15,6 @@ export const routes = {
   bill: managerBillHref,
 };
 
-const navItems = [
-  ["대시보드", routes.dashboard],
-  ["수금 현황", routes.collection],
-  ["입금 매칭", routes.matching],
-  ["연체 관리", routes.overdue],
-] as const;
-
 export function BillingShell({
   title,
   active,
@@ -30,49 +24,8 @@ export function BillingShell({
   active: string;
   children: ReactNode;
 }) {
-  return (
-    <ManagerShell title={title} context="청구·수금·연체" nav={<BillingNav active={active} />}>
-      {children}
-    </ManagerShell>
-  );
-}
-
-function BillingNav({ active }: { active: string }) {
-  return (
-    <nav style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-      {navItems.map(([label, href]) => (
-        <Link
-          key={href}
-          href={href}
-          style={{
-            textDecoration: "none",
-            color: active === href ? "var(--primary)" : "var(--on-surface-variant)",
-            background: active === href ? "var(--surface-container-high)" : "transparent",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius-md)",
-            padding: "10px 12px",
-            fontSize: "var(--fs-body)",
-            fontWeight: active === href ? 700 : 600,
-          }}
-        >
-          {label}
-        </Link>
-      ))}
-      <div
-        style={{
-          marginTop: "var(--space-md)",
-          padding: "var(--space-md)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-md)",
-          color: "var(--on-surface-variant)",
-          fontSize: "var(--fs-caption)",
-          lineHeight: "var(--lh-body)",
-        }}
-      >
-        독촉 발송은 M-BILL-05에서만 처리합니다. 확인중·orphan 가드 통과 전에는 발송할 수 없습니다.
-      </div>
-    </nav>
-  );
+  void active;
+  return <ManagerAppShell title={title} context="청구·수금·연체">{children}</ManagerAppShell>;
 }
 
 export function PageStack({ children }: { children: ReactNode }) {

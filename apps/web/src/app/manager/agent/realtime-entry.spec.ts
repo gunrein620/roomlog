@@ -49,7 +49,7 @@ test("manager realtime agent route is guarded and renders the initial operation 
   const routeSurfaceSource = `${pageSource}\n${consoleSource}`;
 
   assert.match(layoutSource, /await requireUser\("LANDLORD"\)/);
-  assert.match(layoutSource, /ManagerShell/);
+  assert.match(layoutSource, /ManagerAppShell/);
   assert.match(routeSurfaceSource, /OpenAI Realtime/);
   assert.match(routeSurfaceSource, /음성 연결/);
   assert.match(routeSurfaceSource, /텍스트 명령/);

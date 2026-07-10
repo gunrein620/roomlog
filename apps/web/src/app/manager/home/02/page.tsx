@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Badge, Card, ManagerShell } from "@roomlog/ui";
+import { Badge, Card } from "@roomlog/ui";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { ManagerHomeShell } from "../_components";
 
 const kpis = [
   ["총 보증금", "8.4억", "계약 원장 기준"],
@@ -18,7 +19,7 @@ const charts = [
 
 export default function Page() {
   return (
-    <ManagerShell title="임대 현황 리포트" context="관리 중인 집 · 리포트" nav={<HomeNav />}>
+    <ManagerHomeShell title="임대 현황 리포트" context="관리 중인 집 · 리포트" demo>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)" }}>
           <div>
@@ -69,7 +70,7 @@ export default function Page() {
           <Drill href={MHOME_ROUTES["M-HOME-00"]}>대시보드로</Drill>
         </Card>
       </div>
-    </ManagerShell>
+    </ManagerHomeShell>
   );
 }
 
@@ -77,20 +78,4 @@ function Drill({ href, children }: { href: string; children: React.ReactNode }) 
   return <Link href={href} style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>{children}</Link>;
 }
 
-function HomeNav() {
-  return (
-    <nav aria-label="관리인 자산현황" style={{ display: "grid", gap: "var(--space-sm)" }}>
-      {[
-        ["홈", MHOME_ROUTES["M-HOME-00"]],
-        ["청구", MANAGER_CROSS.billing],
-        ["소통", MANAGER_CROSS.messaging],
-        ["설정", MHOME_ROUTES["M-HOME-06"]],
-      ].map(([label, href]) => (
-        <Link key={href} href={href} style={navLinkStyle}>{label}</Link>
-      ))}
-    </nav>
-  );
-}
-
 const captionStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", fontWeight: 700 } as const;
-const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800, background: "var(--surface-container-lowest)", border: "1px solid var(--border)" } as const;

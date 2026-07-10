@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Card, ManagerShell } from "@roomlog/ui";
+import { Card } from "@roomlog/ui";
 import {
   createVendorProfile,
   getVendorDetail,
@@ -9,7 +9,7 @@ import {
 import { MANAGER_VENDOR_MGMT_ROUTES } from "@/lib/vendor-mgmt-nav";
 import {
   LinkButton,
-  ManagerVendorMgmtNav,
+  ManagerVendorMgmtShell,
   MetaRow,
   NoticeCard,
   PageStack,
@@ -50,7 +50,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const cancelHref = vendor ? vendorHref("M-VEND-01", vendor.id) : MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"];
 
   return (
-    <ManagerShell title="업체 등록/편집" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
+    <ManagerVendorMgmtShell title="업체 등록/편집">
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-03"
@@ -129,7 +129,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </div>
         </form>
       </PageStack>
-    </ManagerShell>
+    </ManagerVendorMgmtShell>
   );
 }
 
