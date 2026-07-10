@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { Card } from "@roomlog/ui";
+import { normalizeManagerPrompt } from "@/lib/manager-assistant";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 import { ManagerRealtimeConsole } from "./ManagerRealtimeConsole";
+
+type SearchParams = Promise<{ prompt?: string }>;
 
 const domains = [
   { label: "티켓 처리", href: MANAGER_CROSS.ticketDash, body: "긴급도, 사진 필요 여부, 업체 배정 후보를 확인합니다." },
@@ -9,10 +12,13 @@ const domains = [
   { label: "소통", href: MANAGER_CROSS.messaging, body: "임차인 문의 맥락을 보고 답장 초안을 준비합니다." },
 ];
 
-export default function Page() {
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { prompt = "" } = await searchParams;
+  const initialPrompt = normalizeManagerPrompt(prompt);
+
   return (
     <div style={{ display: "grid", gap: "var(--space-xl)" }}>
-      <ManagerRealtimeConsole />
+      <ManagerRealtimeConsole initialPrompt={initialPrompt} />
 
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-md)" }}>
         {domains.map((domain) => (
