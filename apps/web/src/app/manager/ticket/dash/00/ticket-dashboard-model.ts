@@ -11,12 +11,14 @@ export type DefectStatusFilter =
 export type DefectDashboardRow = {
   ticket: Ticket;
   repair?: RepairJob;
+  buildingName?: string;
+  isDemo?: boolean;
 };
 
 export type DefectDashboardFilters = {
   status: DefectStatusFilter;
   worker: "all" | string;
-  building: "all" | "missing";
+  building: string;
   template: "all" | Ticket["type"];
 };
 
@@ -68,7 +70,11 @@ export function filterDefectRows(
       filters.status === "all" || ticketStatusGroup(row.ticket.status) === filters.status;
     const workerMatches =
       filters.worker === "all" || row.repair?.vendorName === filters.worker;
-    const buildingMatches = filters.building === "all" || filters.building === "missing";
+    const buildingMatches =
+      filters.building === "all" ||
+      (filters.building === "missing"
+        ? !row.buildingName
+        : row.buildingName === filters.building);
     const templateMatches =
       filters.template === "all" || row.ticket.type === filters.template;
 

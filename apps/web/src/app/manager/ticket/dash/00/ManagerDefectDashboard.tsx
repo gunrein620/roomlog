@@ -68,14 +68,22 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
         </span>
       </td>
       <td>
-        <Link
-          className="manager-defect-dashboard__job-link"
-          href={ticketDashHref("01", row.ticket.id)}
-        >
-          {row.ticket.title}
-        </Link>
+        {row.isDemo ? (
+          <span className="manager-defect-dashboard__job-link" data-demo="true">
+            {row.ticket.title}
+          </span>
+        ) : (
+          <Link
+            className="manager-defect-dashboard__job-link"
+            href={ticketDashHref("01", row.ticket.id)}
+          >
+            {row.ticket.title}
+          </Link>
+        )}
       </td>
-      <td className="manager-defect-dashboard__muted-cell">—</td>
+      <td className="manager-defect-dashboard__muted-cell">
+        {row.buildingName ?? "—"}
+      </td>
       <td className="manager-defect-dashboard__muted-cell">{row.ticket.unitId || "—"}</td>
       <td className="manager-defect-dashboard__muted-cell">
         {row.repair?.vendorName ?? "미배정"}
@@ -96,19 +104,41 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
       </td>
       <td>
         <div className="manager-defect-dashboard__action">
-          <Link
-            className="manager-defect-dashboard__primary-action"
-            href={ticketDashHref("01", row.ticket.id)}
-          >
-            정보입력
-          </Link>
-          <Link
-            className="manager-defect-dashboard__more-action"
-            href={ticketDashHref("01", row.ticket.id)}
-            aria-label={`${row.ticket.title} 추가 작업`}
-          >
-            <EllipsisVertical aria-hidden="true" />
-          </Link>
+          {row.isDemo ? (
+            <>
+              <button
+                type="button"
+                className="manager-defect-dashboard__primary-action"
+                disabled
+              >
+                정보입력
+              </button>
+              <button
+                type="button"
+                className="manager-defect-dashboard__more-action"
+                disabled
+                aria-label={`${row.ticket.title} 더미 작업 비활성`}
+              >
+                <EllipsisVertical aria-hidden="true" />
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                className="manager-defect-dashboard__primary-action"
+                href={ticketDashHref("01", row.ticket.id)}
+              >
+                정보입력
+              </Link>
+              <Link
+                className="manager-defect-dashboard__more-action"
+                href={ticketDashHref("01", row.ticket.id)}
+                aria-label={`${row.ticket.title} 추가 작업`}
+              >
+                <EllipsisVertical aria-hidden="true" />
+              </Link>
+            </>
+          )}
         </div>
       </td>
     </tr>
@@ -136,6 +166,15 @@ export function ManagerDefectDashboard({
           rows.flatMap((row) =>
             row.repair?.vendorName ? [row.repair.vendorName] : [],
           ),
+        ),
+      ).sort((left, right) => left.localeCompare(right, "ko")),
+    [rows],
+  );
+  const buildings = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          rows.flatMap((row) => (row.buildingName ? [row.buildingName] : [])),
         ),
       ).sort((left, right) => left.localeCompare(right, "ko")),
     [rows],
@@ -193,13 +232,14 @@ export function ManagerDefectDashboard({
           <select
             id="manager-defect-building"
             value={filters.building}
-            onChange={(event) =>
-              updateFilters({
-                building: event.target.value as DefectDashboardFilters["building"],
-              })
-            }
+            onChange={(event) => updateFilters({ building: event.target.value })}
           >
             <option value="all">전체</option>
+            {buildings.map((building) => (
+              <option key={building} value={building}>
+                {building}
+              </option>
+            ))}
             <option value="missing">정보 없음</option>
           </select>
         </label>

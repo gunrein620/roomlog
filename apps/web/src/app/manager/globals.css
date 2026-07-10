@@ -1654,11 +1654,13 @@ dd {
 
 .manager-defect-dashboard__primary-action {
   padding: var(--space-sm) var(--space-md);
+  border: 0;
   border-radius: var(--radius);
   color: var(--on-primary);
   background: var(--primary);
   text-decoration: none;
   white-space: nowrap;
+  font: inherit;
   font-size: var(--fs-caption);
   font-weight: var(--fw-subtitle);
 }
@@ -1673,6 +1675,16 @@ dd {
   color: var(--on-surface-variant);
   background: transparent;
   text-decoration: none;
+}
+
+.manager-defect-dashboard__action button:disabled,
+.manager-defect-dashboard__job-link[data-demo="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.manager-defect-dashboard__job-link[data-demo="true"] {
+  color: var(--on-surface-variant);
 }
 
 .manager-defect-dashboard__action svg,

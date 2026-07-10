@@ -10,6 +10,7 @@ import {
   ticketStatusGroup,
   type DefectDashboardRow,
 } from "./ticket-dashboard-model";
+import { MANAGER_DEFECT_DASHBOARD_DEMO_ROWS } from "./manager-defect-dashboard-demo";
 
 const ticket = (id: string, status: Ticket["status"]): Ticket => ({
   id,
@@ -83,6 +84,18 @@ describe("manager defect dashboard model", () => {
       totalPages: 2,
       rows: rows.slice(2),
     });
+  });
+
+  it("filters rows by their displayed building name", () => {
+    assert.deepEqual(
+      filterDefectRows(MANAGER_DEFECT_DASHBOARD_DEMO_ROWS, {
+        status: "all",
+        worker: "all",
+        building: "세움타워",
+        template: "all",
+      }).map((row) => row.ticket.id),
+      ["demo-defect-01", "demo-defect-02", "demo-defect-06", "demo-defect-08"],
+    );
   });
 
   it("formats scheduled dates and quote amounts without inventing missing values", () => {

@@ -58,7 +58,14 @@ test("manager defect dashboard matches the approved body without changing the si
   assert.match(componentSource, /ticketDashHref\("01",\s*row\.ticket\.id\)/);
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\}/);
+  assert.match(pageSource, /\.\.\.MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
+  assert.match(componentSource, /row\.isDemo/);
+  assert.match(componentSource, /disabled/);
+  assert.match(componentSource, /row\.buildingName \?\? "—"/);
+  assert.match(componentSource, /const buildings/);
   assert.match(cssSource, /\/\* manager-defect-dashboard:start \*\//);
+  assert.match(cssSource, /button:disabled/);
+  assert.match(cssSource, /\[data-demo="true"\]/);
 
   const dashboardCss = cssSource.match(
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,
