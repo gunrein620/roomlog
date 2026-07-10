@@ -11,7 +11,11 @@ const managerApiSource = readFileSync(join(__dirname, "ticket-manager-api.ts"), 
 
 describe("manager defect dashboard shared demo records", () => {
   it("resolves every dashboard demo id to matching detail data", () => {
-    assert.equal(MANAGER_DEFECT_DASHBOARD_DEMO_RECORDS.length, 10);
+    assert.equal(MANAGER_DEFECT_DASHBOARD_DEMO_RECORDS.length, 50);
+    assert.equal(
+      MANAGER_DEFECT_DASHBOARD_DEMO_RECORDS.at(-1)?.ticket.id,
+      "demo-defect-50",
+    );
 
     for (const record of MANAGER_DEFECT_DASHBOARD_DEMO_RECORDS) {
       const resolved = managerDefectDashboardDemoRecord(record.ticket.id);
