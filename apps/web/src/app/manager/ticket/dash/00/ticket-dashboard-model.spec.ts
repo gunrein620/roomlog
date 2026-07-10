@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import type { Ticket } from "@roomlog/types";
 import {
   countDefectStatuses,
+  defectDisplayStatus,
   filterDefectRows,
   formatDefectDate,
   formatDefectMoney,
@@ -47,6 +48,28 @@ describe("manager defect dashboard model", () => {
     assert.equal(ticketStatusGroup("processing"), "in_progress");
     assert.equal(ticketStatusGroup("resolved"), "completed");
     assert.equal(ticketStatusGroup("cancelled"), "cancelled");
+  });
+
+  it("derives the table display status from ticket and repair progress", () => {
+    assert.equal(defectDisplayStatus({ ticket: ticket("done", "resolved") }), "completed");
+    assert.equal(
+      defectDisplayStatus({
+        ticket: ticket("vendor", "reviewing"),
+        repair: { id: "r-vendor", ticketId: "vendor", stage: "quoted" },
+      }),
+      "vendor_selected",
+    );
+    assert.equal(
+      defectDisplayStatus({
+        ticket: ticket("repairing", "processing"),
+        repair: { id: "r-repairing", ticketId: "repairing", stage: "in_progress" },
+      }),
+      "incomplete",
+    );
+    assert.equal(
+      defectDisplayStatus({ ticket: ticket("cancelled", "cancelled") }),
+      "cancelled",
+    );
   });
 
   it("counts and filters live rows without fabricating periodic rows", () => {

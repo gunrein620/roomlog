@@ -7,13 +7,14 @@ import { ticketDashHref } from "../../_components/ticket-manager-ui";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
+  defectDisplayStatus,
   filterDefectRows,
   formatDefectDate,
   formatDefectMoney,
   paginateDefectRows,
-  ticketStatusGroup,
   type DefectDashboardFilters,
   type DefectDashboardRow,
+  type DefectDisplayStatus,
   type DefectStatusFilter,
 } from "./ticket-dashboard-model";
 
@@ -44,18 +45,15 @@ const ticketTypeLabel = {
   complaint: "일반 민원",
 } as const;
 
-const ticketStateLabel = {
-  received: "대기",
-  reviewing: "대기",
-  info_requested: "대기",
-  processing: "진행중",
-  resolved: "완료",
-  reopened: "대기",
+const displayStatusLabel: Record<DefectDisplayStatus, string> = {
+  completed: "완료",
+  vendor_selected: "업체 선정",
+  incomplete: "미완료",
   cancelled: "취소",
-} as const;
+};
 
 function DashboardRow({ row }: { row: DefectDashboardRow }) {
-  const statusGroup = ticketStatusGroup(row.ticket.status);
+  const displayStatus = defectDisplayStatus(row);
 
   return (
     <tr>
@@ -68,18 +66,12 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
         </span>
       </td>
       <td>
-        {row.isDemo ? (
-          <span className="manager-defect-dashboard__job-link" data-demo="true">
-            {row.ticket.title}
-          </span>
-        ) : (
-          <Link
-            className="manager-defect-dashboard__job-link"
-            href={ticketDashHref("01", row.ticket.id)}
-          >
-            {row.ticket.title}
-          </Link>
-        )}
+        <Link
+          className="manager-defect-dashboard__job-link"
+          href={ticketDashHref("01", row.ticket.id)}
+        >
+          {row.ticket.title}
+        </Link>
       </td>
       <td className="manager-defect-dashboard__muted-cell">
         {row.buildingName ?? "—"}
@@ -97,48 +89,38 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
       <td>
         <span
           className="manager-defect-dashboard__status-badge"
-          data-status={statusGroup}
+          data-status={displayStatus}
         >
-          {ticketStateLabel[row.ticket.status]}
+          {displayStatusLabel[displayStatus]}
         </span>
       </td>
       <td>
         <div className="manager-defect-dashboard__action">
-          {row.isDemo ? (
-            <>
-              <button
-                type="button"
-                className="manager-defect-dashboard__primary-action"
-                disabled
-              >
-                정보입력
-              </button>
-              <button
-                type="button"
-                className="manager-defect-dashboard__more-action"
-                disabled
-                aria-label={`${row.ticket.title} 더미 작업 비활성`}
-              >
-                <EllipsisVertical aria-hidden="true" />
-              </button>
-            </>
-          ) : (
-            <>
-              <Link
-                className="manager-defect-dashboard__primary-action"
-                href={ticketDashHref("01", row.ticket.id)}
-              >
-                정보입력
+          <Link
+            className="manager-defect-dashboard__primary-action"
+            href={ticketDashHref("01", row.ticket.id)}
+          >
+            정보입력
+          </Link>
+          <details className="manager-defect-dashboard__more-menu">
+            <summary
+              className="manager-defect-dashboard__more-action"
+              aria-label={`${row.ticket.title} 작업 메뉴`}
+            >
+              <EllipsisVertical aria-hidden="true" />
+            </summary>
+            <div className="manager-defect-dashboard__more-menu-list" role="menu">
+              <Link role="menuitem" href={ticketDashHref("01", row.ticket.id)}>
+                상세·정보입력
               </Link>
-              <Link
-                className="manager-defect-dashboard__more-action"
-                href={ticketDashHref("01", row.ticket.id)}
-                aria-label={`${row.ticket.title} 추가 작업`}
-              >
-                <EllipsisVertical aria-hidden="true" />
+              <Link role="menuitem" href={ticketDashHref("04", row.ticket.id)}>
+                업체 선정·견적
               </Link>
-            </>
-          )}
+              <Link role="menuitem" href={ticketDashHref("05", row.ticket.id)}>
+                결제·비용 승인
+              </Link>
+            </div>
+          </details>
         </div>
       </td>
     </tr>

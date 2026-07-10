@@ -15,6 +15,12 @@ export type DefectDashboardRow = {
   isDemo?: boolean;
 };
 
+export type DefectDisplayStatus =
+  | "completed"
+  | "vendor_selected"
+  | "incomplete"
+  | "cancelled";
+
 export type DefectDashboardFilters = {
   status: DefectStatusFilter;
   worker: "all" | string;
@@ -40,6 +46,24 @@ export function ticketStatusGroup(status: TicketStatus): TicketStatusGroup {
   if (status === "processing") return "in_progress";
   if (status === "resolved") return "completed";
   return "cancelled";
+}
+
+export function defectDisplayStatus(row: DefectDashboardRow): DefectDisplayStatus {
+  if (row.ticket.status === "cancelled") return "cancelled";
+  if (
+    row.ticket.status === "resolved" ||
+    row.repair?.stage === "completed" ||
+    row.repair?.stage === "paid"
+  ) {
+    return "completed";
+  }
+  if (
+    row.repair &&
+    ["vendor_assigned", "quoted", "scheduled"].includes(row.repair.stage)
+  ) {
+    return "vendor_selected";
+  }
+  return "incomplete";
 }
 
 export function countDefectStatuses(rows: readonly DefectDashboardRow[]) {

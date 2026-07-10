@@ -55,17 +55,29 @@ test("manager defect dashboard matches the approved body without changing the si
   }
 
   assert.match(componentSource, /aria-pressed/);
+  assert.match(componentSource, /defectDisplayStatus/);
+  assert.match(componentSource, /업체 선정/);
+  assert.match(componentSource, /미완료/);
   assert.match(componentSource, /ticketDashHref\("01",\s*row\.ticket\.id\)/);
+  assert.match(componentSource, /ticketDashHref\("04",\s*row\.ticket\.id\)/);
+  assert.match(componentSource, /ticketDashHref\("05",\s*row\.ticket\.id\)/);
+  assert.match(componentSource, /<details/);
+  assert.match(componentSource, /<summary/);
+  assert.match(componentSource, /상세·정보입력/);
+  assert.match(componentSource, /업체 선정·견적/);
+  assert.match(componentSource, /결제·비용 승인/);
+  assert.doesNotMatch(componentSource, /박지훈/);
+  assert.doesNotMatch(componentSource, /row\.isDemo/);
+  assert.doesNotMatch(componentSource, /더미 작업 비활성/);
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\}/);
   assert.match(pageSource, /\.\.\.MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
-  assert.match(componentSource, /row\.isDemo/);
   assert.match(componentSource, /disabled/);
   assert.match(componentSource, /row\.buildingName \?\? "—"/);
   assert.match(componentSource, /const buildings/);
   assert.match(cssSource, /\/\* manager-defect-dashboard:start \*\//);
   assert.match(cssSource, /button:disabled/);
-  assert.match(cssSource, /\[data-demo="true"\]/);
+  assert.match(cssSource, /manager-defect-dashboard__more-menu-list/);
 
   const dashboardCss = cssSource.match(
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,

@@ -1635,14 +1635,19 @@ dd {
   background: var(--success-container);
 }
 
+.manager-defect-dashboard__status-badge[data-status="vendor_selected"] {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-defect-dashboard__status-badge[data-status="incomplete"] {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
 .manager-defect-dashboard__status-badge[data-status="cancelled"] {
   color: var(--on-error-container);
   background: var(--error-container);
-}
-
-.manager-defect-dashboard__status-badge[data-status="waiting"] {
-  color: var(--on-warning-container);
-  background: var(--warning-container);
 }
 
 .manager-defect-dashboard__action {
@@ -1675,16 +1680,61 @@ dd {
   color: var(--on-surface-variant);
   background: transparent;
   text-decoration: none;
+  cursor: pointer;
 }
 
-.manager-defect-dashboard__action button:disabled,
-.manager-defect-dashboard__job-link[data-demo="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
+.manager-defect-dashboard__more-menu {
+  position: relative;
 }
 
-.manager-defect-dashboard__job-link[data-demo="true"] {
-  color: var(--on-surface-variant);
+.manager-defect-dashboard__more-menu > summary {
+  list-style: none;
+}
+
+.manager-defect-dashboard__more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.manager-defect-dashboard__more-menu[open] > summary {
+  color: var(--primary);
+  background: var(--primary-container);
+}
+
+.manager-defect-dashboard__more-menu-list {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  z-index: 10;
+  min-width: calc(var(--touch-target) * 4);
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-defect-dashboard__more-menu-list a {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  color: var(--on-surface);
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-defect-dashboard__more-menu-list a:hover,
+.manager-defect-dashboard__more-menu-list a:focus-visible {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-defect-dashboard__table tbody tr:nth-last-child(-n + 3)
+  .manager-defect-dashboard__more-menu-list {
+  top: auto;
+  bottom: calc(100% + var(--space-xs));
 }
 
 .manager-defect-dashboard__action svg,
@@ -1743,6 +1793,7 @@ dd {
 .manager-defect-dashboard__job-link:focus-visible,
 .manager-defect-dashboard__primary-action:focus-visible,
 .manager-defect-dashboard__more-action:focus-visible,
+.manager-defect-dashboard__more-menu-list a:focus-visible,
 .manager-defect-dashboard__pagination button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
