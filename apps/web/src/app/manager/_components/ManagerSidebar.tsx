@@ -7,6 +7,7 @@ import {
   Bot,
   Building2,
   ContactRound,
+  ExternalLink,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   MANAGER_NAV_GROUPS,
+  getManagerCurrentHref,
   getManagerNavState,
   type ManagerNavItemId,
 } from "@/lib/manager-navigation";
@@ -45,7 +47,9 @@ export interface ManagerSidebarProps {
 }
 
 export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerSidebarProps) {
-  const state = getManagerNavState(usePathname());
+  const pathname = usePathname();
+  const state = getManagerNavState(pathname);
+  const currentHref = getManagerCurrentHref(pathname);
 
   return (
     <div className="manager-sidebar">
@@ -76,6 +80,7 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
             <div className="manager-sidebar__items">
               {group.items.map((item) => {
                 const active = state.activeItemId === item.id;
+                const parentCurrent = currentHref === item.href && state.activeChildHref === null;
                 const Icon = MANAGER_NAV_ICONS[item.icon];
 
                 return (
@@ -83,16 +88,22 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
                     <Link
                       href={item.href}
                       onClick={onNavigate}
-                      aria-current={active ? "page" : undefined}
+                      aria-current={parentCurrent ? "page" : undefined}
                       className={`manager-sidebar__link${active ? " is-active" : ""}`}
                     >
                       <Icon aria-hidden="true" />
                       <span>{item.label}</span>
+                      {item.external ? (
+                        <span className="manager-sidebar__external">
+                          <ExternalLink aria-hidden="true" />
+                          <span className="manager-sidebar__sr-only">관리자 워크스페이스 밖으로 이동</span>
+                        </span>
+                      ) : null}
                     </Link>
                     {active ? (
                       <div className="manager-sidebar__children">
                         {item.children.map((child) => {
-                          const childActive = state.activeChildHref === child.href;
+                          const childActive = currentHref === child.href;
                           return (
                             <Link
                               key={child.href}

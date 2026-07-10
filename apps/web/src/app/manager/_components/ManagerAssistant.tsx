@@ -7,6 +7,7 @@ import { useId, useRef, useState, type FormEvent, type MouseEvent } from "react"
 import { MANAGER_BILLING_ROUTES } from "@/lib/billing-manager-nav";
 import {
   MAX_MANAGER_PROMPT_LENGTH,
+  isDialogBackdropPoint,
   managerAgentHref,
   type ManagerAssistantBriefingItem,
 } from "@/lib/manager-assistant";
@@ -109,7 +110,9 @@ export function ManagerAssistantLauncher({
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   function closeOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
-    if (event.target === event.currentTarget) event.currentTarget.close();
+    if (event.target !== event.currentTarget) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (isDialogBackdropPoint(event, bounds)) event.currentTarget.close();
   }
 
   return (

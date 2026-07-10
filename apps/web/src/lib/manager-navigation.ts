@@ -208,3 +208,16 @@ export function getManagerNavState(pathname: string): ManagerNavState {
   const child = item.children.find((candidate) => cleanPathname(candidate.href) === path);
   return { activeItemId: item.id, activeChildHref: child?.href ?? null };
 }
+
+export function getManagerCurrentHref(pathname: string): string | null {
+  const path = cleanPathname(pathname);
+  const items = MANAGER_NAV_GROUPS.flatMap((group) => group.items);
+
+  for (const item of items) {
+    const child = item.children.find((candidate) => cleanPathname(candidate.href) === path);
+    if (child) return child.href;
+    if (cleanPathname(item.href) === path) return item.href;
+  }
+
+  return null;
+}

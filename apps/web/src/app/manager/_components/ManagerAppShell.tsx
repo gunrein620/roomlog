@@ -5,7 +5,10 @@ import { useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { ManagerShell } from "@roomlog/ui";
-import type { ManagerAssistantBriefingItem } from "@/lib/manager-assistant";
+import {
+  isDialogBackdropPoint,
+  type ManagerAssistantBriefingItem,
+} from "@/lib/manager-assistant";
 import { ManagerAssistantLauncher, ManagerAssistantPanel } from "./ManagerAssistant";
 import { ManagerSectionNav } from "./ManagerSectionNav";
 import { ManagerSidebar } from "./ManagerSidebar";
@@ -45,7 +48,9 @@ export function ManagerAppShell({
   }
 
   function closeMobileNavigationOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
-    if (event.target === event.currentTarget) closeMobileNavigation();
+    if (event.target !== event.currentTarget) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (isDialogBackdropPoint(event, bounds)) closeMobileNavigation();
   }
 
   const action = (

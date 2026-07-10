@@ -16,3 +16,15 @@ export function managerAgentHref(prompt: string): string {
   if (!normalized) return "/manager/agent/realtime";
   return `/manager/agent/realtime?${new URLSearchParams({ prompt: normalized }).toString()}`;
 }
+
+export function isDialogBackdropPoint(
+  point: { clientX: number; clientY: number },
+  bounds: { left: number; right: number; top: number; bottom: number },
+): boolean {
+  return (
+    point.clientX < bounds.left ||
+    point.clientX > bounds.right ||
+    point.clientY < bounds.top ||
+    point.clientY > bounds.bottom
+  );
+}

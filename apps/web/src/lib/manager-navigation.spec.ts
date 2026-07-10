@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   MANAGER_NAV_GROUPS,
+  getManagerCurrentHref,
   getManagerNavState,
   type ManagerNavItem,
 } from "./manager-navigation";
@@ -34,6 +35,13 @@ describe("manager workspace navigation", () => {
       activeItemId: "contract",
       activeChildHref: "/manager/contract/00",
     });
+  });
+
+  it("selects only an exact permanent href as the semantic current page", () => {
+    assert.equal(getManagerCurrentHref("/manager/contract/02?from=dashboard"), "/manager/contract/02");
+    assert.equal(getManagerCurrentHref("/manager/billing/"), "/manager/billing");
+    assert.equal(getManagerCurrentHref("/manager/contract/01?id=doc"), null);
+    assert.equal(getManagerCurrentHref("/manager/billing/bill-1"), null);
   });
 
   it("marks prototype home links and the external listing link", () => {

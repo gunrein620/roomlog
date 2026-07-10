@@ -22,12 +22,21 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   const appShell = readFileSync(appShellPath, "utf8");
   assert.match(sidebar, /onNavigate\?:/);
   assert.match(sidebar, /showCloseButton\?:/);
+  assert.match(sidebar, /getManagerCurrentHref/);
+  assert.match(sidebar, /parentCurrent/);
+  assert.match(sidebar, /item\.external/);
+  assert.match(sidebar, /관리자 워크스페이스 밖으로 이동/);
+  assert.doesNotMatch(sidebar, /target="_blank"/);
   assert.match(sectionNav, /aria-current/);
   assert.match(assistant, /showModal\(\)/);
   assert.match(assistant, /aria-label="AI 관리 비서 닫기"/);
+  assert.match(assistant, /getBoundingClientRect\(\)/);
+  assert.match(assistant, /isDialogBackdropPoint/);
   assert.match(appShell, /aria-haspopup="dialog"/);
   assert.match(appShell, /<ManagerSectionNav/);
   assert.match(appShell, /!fullAssistant/);
+  assert.match(appShell, /getBoundingClientRect\(\)/);
+  assert.match(appShell, /isDialogBackdropPoint/);
 });
 
 test("manager shell exposes navigation, subnav, actions, and right rail slots", () => {
