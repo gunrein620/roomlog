@@ -2,14 +2,16 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import type { BillStatus, Deposit, ManagerBillRow, OverdueCase, OverdueStage } from "@roomlog/types";
 import { Badge, Button, Card, ManagerShell } from "@roomlog/ui";
+import {
+  MANAGER_BILLING_ROUTES,
+  managerBillHref,
+  managerDunningHref,
+} from "@/lib/billing-manager-nav";
 
 export const routes = {
-  dashboard: "/manager/billing",
-  collection: "/manager/billing/collection",
-  matching: "/manager/billing/matching",
-  overdue: "/manager/billing/overdue",
-  dunning: (billId: string) => withId(`/manager/billing/dunning/${encodeURIComponent(billId)}`, billId),
-  bill: (billId: string) => withId(`/manager/billing/${encodeURIComponent(billId)}`, billId),
+  ...MANAGER_BILLING_ROUTES,
+  dunning: managerDunningHref,
+  bill: managerBillHref,
 };
 
 const navItems = [
@@ -18,10 +20,6 @@ const navItems = [
   ["입금 매칭", routes.matching],
   ["연체 관리", routes.overdue],
 ] as const;
-
-function withId(path: string, id: string) {
-  return `${path}?id=${encodeURIComponent(id)}`;
-}
 
 export function BillingShell({
   title,
