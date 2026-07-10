@@ -8540,6 +8540,73 @@ p {
   color: var(--blue);
 }
 
+.mobile-role-menu {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.mobile-role-menu__trigger {
+  display: grid;
+  width: 100%;
+  min-height: 62px;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  padding: 0;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.mobile-role-menu__trigger.active {
+  color: var(--primary);
+}
+
+.mobile-role-menu__trigger:focus-visible,
+.mobile-role-menu__item:focus-visible {
+  outline: 3px solid var(--primary-container);
+  outline-offset: -3px;
+}
+
+.mobile-role-menu__dropup {
+  position: absolute;
+  right: var(--space-sm);
+  bottom: calc(100% + var(--space-sm));
+  display: grid;
+  width: 168px;
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.mobile-role-menu__item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  min-height: var(--touch-target);
+  align-items: center;
+  gap: var(--space-md);
+  padding: 0 var(--space-md);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--on-surface);
+  text-align: left;
+  font-weight: 800;
+}
+
+.mobile-role-menu__item:hover,
+.mobile-role-menu__item:focus-visible {
+  background: var(--surface-container);
+}
+
+.mobile-role-menu__item.active {
+  background: var(--primary-container);
+  color: var(--primary);
+}
+
 .floor-plan-page {
   min-height: 100vh;
   padding: 18px;

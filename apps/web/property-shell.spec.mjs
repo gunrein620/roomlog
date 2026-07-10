@@ -5,8 +5,10 @@ import { test } from "node:test";
 // 라우트 분리 1·2단계 — 상세는 /listing/[id], 탭은 /map /saved /inquiry /my 라우트가 됐고
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
 const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
+const mobileRoleMenuSource = readFileSync(new URL("./src/app/_components/MobileRoleMenu.tsx", import.meta.url), "utf8");
 const spaSource = [
   homeAppSource,
+  mobileRoleMenuSource,
   // 역할 흐름은 my/flows/로 물리 분리됐다(분업 단위). 세입자(living)=TenantMyPage, 매물등록(sell)=LandlordMyPage.
   "./src/app/my/flows/my-shared.tsx",
   "./src/app/my/flows/TenantMyPage.tsx",
@@ -981,7 +983,7 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(cssSource, /\.upload-tile--action\.is-connected/);
 });
 
-test("adds real bottom-tab destinations for saved listings, inquiries, and profile", () => {
+test("adds real bottom-tab destinations and a labeled role menu", () => {
   for (const label of [
     "찜한 매물",
     "문의센터",
@@ -1002,7 +1004,9 @@ test("adds real bottom-tab destinations for saved listings, inquiries, and profi
   assert.match(pageSource, /Icon: MapPinned/);
   assert.match(pageSource, /Icon: Heart/);
   assert.match(pageSource, /Icon: MessageCircle/);
-  assert.match(pageSource, /Icon: UserRound/);
+  assert.match(pageSource, /className="mobile-role-menu__icon"/);
+  assert.match(pageSource, /<\/svg>\s*메뉴\s*<\/button>/);
+  assert.match(pageSource, /<UserRound\s/);
   assert.match(pageSource, /<Bell/);
   assert.match(pageSource, /<Search/);
   assert.match(pageSource, /<SlidersHorizontal/);
