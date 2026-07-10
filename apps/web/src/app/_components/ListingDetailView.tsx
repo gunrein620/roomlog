@@ -28,6 +28,7 @@ import {
   getListingBuildingRows,
   getListingPriceRows,
   isRemotePhoto,
+  listingDetailAddressLabel,
   neighborhoodItems,
   optionItems,
   safetyReportItems,
@@ -70,6 +71,7 @@ export function ListingDetailView({
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
+  const detailAddressLabel = listingDetailAddressLabel(listing);
   const safetyScore = listing.score.replace("안심 ", "");
   // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
   const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
@@ -172,6 +174,7 @@ export function ListingDetailView({
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>{listing.location}</span>
         </div>
+        <div className="detail-address-detail">세부주소: {detailAddressLabel}</div>
         <div className="detail-quick-actions" aria-label="상세 빠른 액션">
           <button type="button" onClick={() => setIsTourSheetOpen(true)}>
             <span>3D</span>
@@ -450,7 +453,7 @@ export function ListingDetailView({
             <div className="share-listing-preview">
               <span>{listing.price}</span>
               <strong>{listing.title}</strong>
-              <p>{listing.location} · {listing.spec}</p>
+              <p>{listing.location} · {detailAddressLabel} · {listing.spec}</p>
             </div>
 
             <div className="share-action-grid" aria-label="공유 방법">

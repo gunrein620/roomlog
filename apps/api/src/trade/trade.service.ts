@@ -48,6 +48,7 @@ export type TradeListingInput = {
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
+  detailAddress?: string;
   description?: string;
   /** 업로드된 매물 사진 URL 배열(없으면 카드가 목업으로 폴백) */
   images?: string[];
@@ -158,6 +159,15 @@ function normalizeCoords(lat?: number, lng?: number): { lat?: number; lng?: numb
   if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return {};
   if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) return {};
   return { lat: latNum, lng: lngNum };
+}
+
+function normalizeDetailAddress(value?: string): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || undefined;
+}
+
+function fullListingLocation(listing: { location: string; detailAddress?: string }): string {
+  return [listing.location, listing.detailAddress].filter(Boolean).join(" ");
 }
 
 function finiteTriple(value: unknown): [number, number, number] | null {
@@ -333,6 +343,9 @@ export class TradeService implements OnModuleDestroy {
         parsed.listings.forEach((listing) => {
           listing.images = normalizeImages(listing.images);
           listing.floorPlan = normalizeFloorPlan(listing.floorPlan);
+          const detailAddress = normalizeDetailAddress(listing.detailAddress);
+          if (detailAddress) listing.detailAddress = detailAddress;
+          else delete listing.detailAddress;
           if (listing.status !== "계약완료") listing.status = "노출중";
         });
         parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
@@ -402,6 +415,7 @@ export class TradeService implements OnModuleDestroy {
 
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
+    const detailAddress = normalizeDetailAddress(input.detailAddress);
     const listing: TradeListing = {
       id: randomUUID().slice(0, 8),
       ownerId: owner.id,
@@ -412,6 +426,7 @@ export class TradeService implements OnModuleDestroy {
       depositManwon: Number(input.depositManwon) || 0,
       monthlyRentManwon: Number(input.monthlyRentManwon) || 0,
       location: input.location?.trim() || "위치 미입력",
+      ...(detailAddress ? { detailAddress } : {}),
       description: input.description?.trim() || "",
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
@@ -454,6 +469,11 @@ export class TradeService implements OnModuleDestroy {
     if (input.depositManwon !== undefined) listing.depositManwon = Number(input.depositManwon) || 0;
     if (input.monthlyRentManwon !== undefined) listing.monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
     if (typeof input.location === "string" && input.location.trim()) listing.location = input.location.trim();
+    if (typeof input.detailAddress === "string") {
+      const detailAddress = normalizeDetailAddress(input.detailAddress);
+      if (detailAddress) listing.detailAddress = detailAddress;
+      else delete listing.detailAddress;
+    }
     if (typeof input.description === "string") listing.description = input.description.trim();
     if (Array.isArray(input.images)) listing.images = normalizeImages(input.images);
     if (input.lat !== undefined || input.lng !== undefined) {
@@ -631,7 +651,7 @@ export class TradeService implements OnModuleDestroy {
       tradeType: listing.tradeType,
       depositManwon: listing.depositManwon,
       monthlyRentManwon: listing.monthlyRentManwon,
-      location: listing.location,
+      location: fullListingLocation(listing),
       proposedAt: new Date().toISOString()
     };
     this.store.contracts.unshift(contract);

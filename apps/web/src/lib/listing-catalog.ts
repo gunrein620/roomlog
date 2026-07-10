@@ -85,6 +85,7 @@ export const demoListings = [
 
 // 데모 매물엔 좌표가 없고, 직접등록 매물은 지오코딩된 lat/lng를 실어 상세 지도에 쓴다(옵셔널).
 export type Listing = (typeof demoListings)[number] & {
+  detailAddress?: string;
   lat?: number;
   lng?: number;
   has3DTour?: boolean;
@@ -102,6 +103,7 @@ export type TradeListing = {
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
+  detailAddress?: string;
   description: string;
   status: string;
   createdAt: string;
@@ -112,6 +114,12 @@ export type TradeListing = {
 };
 
 export const TRADE_LISTING_NO_PREFIX = "TRADE-";
+export const DETAIL_ADDRESS_FALLBACK = "세부주소 없음";
+
+export function listingDetailAddressLabel(listing: object & { detailAddress?: string | null }): string {
+  const detailAddress = listing.detailAddress?.trim();
+  return detailAddress || DETAIL_ADDRESS_FALLBACK;
+}
 
 export function tradePriceLabel(listing: TradeListing): string {
   if (listing.tradeType === "월세") return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
@@ -136,6 +144,7 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     listingLabel: "집주인 직접등록",
     title: listing.title,
     location: listing.location,
+    detailAddress: listing.detailAddress?.trim() || undefined,
     price: tradePriceLabel(listing),
     headline: listing.description || "집주인이 직접 등록한 매물입니다.",
     spec: `${listing.roomType} · 집주인 직접`,
@@ -189,6 +198,7 @@ export const getListingPriceRows = (listing: Listing) => {
 
 export const getListingBuildingRows = (listing: Listing) => [
   ["건물유형", listing.roomType],
+  ["세부주소", listingDetailAddressLabel(listing)],
   ["면적", listing.sizeLabel],
   ["해당층/전체층", listing.floorLabel],
   ["주차", listing.tags.includes("주차") ? "가능" : "문의"],
@@ -285,7 +295,7 @@ export const mapListings = [
 ];
 
 // 지도 탭 패널·마커 공용 아이템 — 데모는 listingNo로 정규화하고, 직접등록 매물은 렌더 시 합류한다.
-export type MapPanelItem = Omit<(typeof mapListings)[number], "listingIndex"> & { listingNo: string };
+export type MapPanelItem = Omit<(typeof mapListings)[number], "listingIndex"> & { listingNo: string; detailAddress?: string };
 
 export const demoMapItems: MapPanelItem[] = mapListings.map(({ listingIndex, ...item }) => ({
   ...item,

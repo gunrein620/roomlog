@@ -19,6 +19,7 @@ const input = {
   depositManwon: 1000,
   monthlyRentManwon: 50,
   location: "서울 서초구 방배동",
+  detailAddress: "402호",
   description: "등록 매물",
   images: ["https://example.test/listing.jpg"]
 };
@@ -30,6 +31,7 @@ describe("TradeService public listings", () => {
     const created = service.createListing(owner, input);
 
     assert.equal(created.status, "노출중");
+    assert.equal(created.detailAddress, "402호");
     assert.equal(service.listListings().length, 1);
     assert.deepEqual(
       service.listPublicListings().map((listing) => listing.title),
@@ -49,5 +51,13 @@ describe("TradeService public listings", () => {
       ["노출 매물"]
     );
     assert.equal(service.listListings().some((listing) => listing.id === live.id), true);
+  });
+
+  it("keeps detail address optional for existing direct listings", () => {
+    const service = serviceWithTempStore();
+
+    const created = service.createListing(owner, { ...input, detailAddress: "   " });
+
+    assert.equal(created.detailAddress, undefined);
   });
 });

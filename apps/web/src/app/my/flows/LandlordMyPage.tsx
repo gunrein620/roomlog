@@ -561,6 +561,7 @@ export default function LandlordMyPage() {
         }
 
         // 2) 매물 등록 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
+        const detailAddress = ownerForm.detailAddress.trim();
         const payload: Record<string, unknown> = {
           title: ownerForm.title,
           roomType: "원룸",
@@ -568,6 +569,7 @@ export default function LandlordMyPage() {
           depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
           monthlyRentManwon: Number(ownerForm.monthly) || 0,
           location: ownerForm.address || "위치 미입력",
+          detailAddress,
           description: [
             ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
             ownerForm.floor ? `${ownerForm.floor}층` : "",
@@ -605,7 +607,7 @@ export default function LandlordMyPage() {
             const asset = await intakeSplatAsset({
               listingId: savedListing.id,
               title: ownerForm.title,
-              address: ownerForm.address,
+              address: [ownerForm.address, detailAddress].filter(Boolean).join(" "),
               file: tourSourceFile
             });
             splatIntakeToast =
@@ -680,6 +682,15 @@ export default function LandlordMyPage() {
                 주소 검색
               </button>
             </div>
+          </label>
+
+          <label>
+            세부주소
+            <input
+              value={ownerForm.detailAddress}
+              onChange={(event) => updateOwnerForm("detailAddress", event.target.value)}
+              placeholder="예: 402호, A동 1203호"
+            />
           </label>
 
           <div className="form-grid">
@@ -873,6 +884,9 @@ export default function LandlordMyPage() {
               {ownerPriceLabel} · 관리비 {ownerForm.maintenance || "0"}만원 · {ownerForm.area || "-"}m² ·{" "}
               {ownerForm.floor || "층수 미입력"}
             </p>
+            <small className="owner-summary-address">
+              {[ownerForm.address || "주소 미입력", ownerForm.detailAddress.trim() || "세부주소 없음"].join(" · ")}
+            </small>
           </div>
           <div className="owner-summary-media">
             <figure className="summary-media-card summary-media-photos" aria-label="등록한 사진 미리보기">
