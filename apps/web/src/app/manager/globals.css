@@ -1652,7 +1652,7 @@ dd {
   gap: var(--space-xs);
 }
 
-.manager-defect-dashboard__action a {
+.manager-defect-dashboard__primary-action {
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius);
   color: var(--on-primary);
@@ -1663,7 +1663,7 @@ dd {
   font-weight: var(--fw-subtitle);
 }
 
-.manager-defect-dashboard__action button {
+.manager-defect-dashboard__more-action {
   width: var(--touch-target);
   height: var(--touch-target);
   display: grid;
@@ -1672,6 +1672,7 @@ dd {
   border-radius: var(--radius);
   color: var(--on-surface-variant);
   background: transparent;
+  text-decoration: none;
 }
 
 .manager-defect-dashboard__action svg,
@@ -1728,8 +1729,8 @@ dd {
 .manager-defect-dashboard__status-filters button:focus-visible,
 .manager-defect-dashboard__filter-panel select:focus-visible,
 .manager-defect-dashboard__job-link:focus-visible,
-.manager-defect-dashboard__action a:focus-visible,
-.manager-defect-dashboard__action button:focus-visible,
+.manager-defect-dashboard__primary-action:focus-visible,
+.manager-defect-dashboard__more-action:focus-visible,
 .manager-defect-dashboard__pagination button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);

@@ -18,6 +18,17 @@ import {
 } from "./ticket-dashboard-model";
 
 const PAGE_SIZE = 10;
+const TABLE_COLUMNS = [
+  "유형",
+  "작업명",
+  "건물",
+  "호실",
+  "작업자",
+  "예정일시",
+  "청구 금액",
+  "상태",
+  "작업",
+] as const;
 
 const statusFilterLabel: Record<DefectStatusFilter, string> = {
   all: "전체",
@@ -85,10 +96,19 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
       </td>
       <td>
         <div className="manager-defect-dashboard__action">
-          <Link href={ticketDashHref("01", row.ticket.id)}>정보입력</Link>
-          <button type="button" aria-label={`${row.ticket.title} 추가 작업`}>
+          <Link
+            className="manager-defect-dashboard__primary-action"
+            href={ticketDashHref("01", row.ticket.id)}
+          >
+            정보입력
+          </Link>
+          <Link
+            className="manager-defect-dashboard__more-action"
+            href={ticketDashHref("01", row.ticket.id)}
+            aria-label={`${row.ticket.title} 추가 작업`}
+          >
             <EllipsisVertical aria-hidden="true" />
-          </button>
+          </Link>
         </div>
       </td>
     </tr>
@@ -206,17 +226,7 @@ export function ManagerDefectDashboard({
         <table className="manager-defect-dashboard__table">
           <thead>
             <tr>
-              {[
-                "유형",
-                "작업명",
-                "건물",
-                "호실",
-                "작업자",
-                "예정일시",
-                "청구 금액",
-                "상태",
-                "작업",
-              ].map((column) => (
+              {TABLE_COLUMNS.map((column) => (
                 <th key={column} scope="col">
                   {column}
                 </th>
