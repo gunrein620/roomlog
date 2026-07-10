@@ -5843,13 +5843,12 @@ p {
   gap: 8px;
 }
 
-/* 등록 요약 미디어 — 왼쪽 사진 캐러셀 / 오른쪽 3D 도면 프리뷰 반반.
-   너무 넓어지지 않게 폭을 제한하고, 카드는 정사각형 비율로 둔다(사진 잘림 완화). */
+/* 등록 요약 미디어 — 왼쪽 사진 캐러셀 / 오른쪽 3D 도면 프리뷰.
+   컨테이너 폭을 정확히 2등분하고, 각 카드는 정사각형 비율(사진 잘림 완화). */
 .owner-summary-media {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  max-width: 680px;
 }
 
 .summary-media-card {
@@ -5940,7 +5939,6 @@ p {
 @media (max-width: 640px) {
   .owner-summary-media {
     grid-template-columns: 1fr;
-    max-width: none;
   }
 }
 
