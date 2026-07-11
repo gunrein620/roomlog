@@ -307,6 +307,11 @@
   gap: var(--space-sm);
 }
 
+.translationFields {
+  display: grid;
+  gap: var(--space-md);
+}
+
 .languageLabel {
   color: var(--primary);
   font-size: var(--fs-caption);

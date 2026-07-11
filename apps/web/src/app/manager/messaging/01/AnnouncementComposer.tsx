@@ -15,6 +15,7 @@ import {
   buildAnnouncementTarget,
   invalidateReviewedTranslations,
   roomDisplayLabel,
+  shouldExpandAnnouncementTranslation,
   validateAnnouncementCompose,
   type AnnouncementManagedRoom,
 } from "@/lib/announcement-compose-state";
@@ -77,6 +78,7 @@ export function AnnouncementComposer({
     firstTargetRoom?.buildingName ?? managedRooms[0]?.buildingName ?? "",
   );
   const [translating, setTranslating] = useState<AnnouncementLanguage | null>(null);
+  const [expandedLanguages, setExpandedLanguages] = useState<AnnouncementLanguage[]>([]);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [feedback, setFeedback] = useState("");
@@ -118,6 +120,7 @@ export function AnnouncementComposer({
   }
 
   async function handleTranslate(lang: AnnouncementLanguage, label: string) {
+    setExpandedLanguages((current) => current.includes(lang) ? current : [...current, lang]);
     const sourceErrors = [
       !title.trim() ? "번역 전에 공지 제목을 입력해 주세요." : "",
       !body.trim() ? "번역 전에 상세 내용을 입력해 주세요." : "",
@@ -347,6 +350,12 @@ export function AnnouncementComposer({
           <div className={styles.translationList}>
             {ANNOUNCEMENT_TRANSLATION_LANGUAGES.map(({ lang, label }) => {
               const translation = translationFor(lang, label);
+              const panelId = `translation-panel-${lang}`;
+              const isExpanded = shouldExpandAnnouncementTranslation(
+                translation,
+                expandedLanguages.includes(lang),
+                translating === lang,
+              );
               return (
                 <article
                   key={lang}
@@ -358,42 +367,48 @@ export function AnnouncementComposer({
                       className={styles.translateButton}
                       type="button"
                       disabled={translating !== null}
+                      aria-expanded={isExpanded}
+                      aria-controls={panelId}
                       onClick={() => handleTranslate(lang, label)}
                     >
                       {translating === lang ? "번역 중..." : `${label} 번역`}
                     </button>
                   </div>
-                  <input
-                    className={styles.translationInput}
-                    aria-label={`${label} 공지 제목`}
-                    value={translation.title}
-                    onChange={(event) => updateTranslation(lang, label, {
-                      title: event.target.value,
-                      reviewed: false,
-                    })}
-                    placeholder={`${label} 제목`}
-                  />
-                  <textarea
-                    className={styles.translationTextarea}
-                    aria-label={`${label} 공지 본문`}
-                    value={translation.body}
-                    onChange={(event) => updateTranslation(lang, label, {
-                      body: event.target.value,
-                      reviewed: false,
-                    })}
-                    placeholder={`${label} 본문`}
-                  />
-                  <label className={styles.reviewRow}>
-                    <input
-                      type="checkbox"
-                      checked={translation.reviewed}
-                      disabled={!translation.title.trim() || !translation.body.trim()}
-                      onChange={(event) => updateTranslation(lang, label, {
-                        reviewed: event.target.checked,
-                      })}
-                    />
-                    검수 완료
-                  </label>
+                  {isExpanded ? (
+                    <div id={panelId} className={styles.translationFields}>
+                      <input
+                        className={styles.translationInput}
+                        aria-label={`${label} 공지 제목`}
+                        value={translation.title}
+                        onChange={(event) => updateTranslation(lang, label, {
+                          title: event.target.value,
+                          reviewed: false,
+                        })}
+                        placeholder={`${label} 제목`}
+                      />
+                      <textarea
+                        className={styles.translationTextarea}
+                        aria-label={`${label} 공지 본문`}
+                        value={translation.body}
+                        onChange={(event) => updateTranslation(lang, label, {
+                          body: event.target.value,
+                          reviewed: false,
+                        })}
+                        placeholder={`${label} 본문`}
+                      />
+                      <label className={styles.reviewRow}>
+                        <input
+                          type="checkbox"
+                          checked={translation.reviewed}
+                          disabled={!translation.title.trim() || !translation.body.trim()}
+                          onChange={(event) => updateTranslation(lang, label, {
+                            reviewed: event.target.checked,
+                          })}
+                        />
+                        검수 완료
+                      </label>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}

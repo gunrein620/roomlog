@@ -6,6 +6,7 @@ import {
   buildAnnouncementTarget,
   invalidateReviewedTranslations,
   prepareAnnouncementDraftForCompose,
+  shouldExpandAnnouncementTranslation,
   validateAnnouncementCompose,
 } from "./announcement-compose-state";
 
@@ -41,6 +42,15 @@ const draftWithTranslations: AnnouncementDraft = {
 };
 
 describe("manager announcement compose state", () => {
+  it("expands translation cards only after opening, during translation, or with saved content", () => {
+    const empty = { ...translations[0], title: "", body: "", reviewed: false };
+
+    assert.equal(shouldExpandAnnouncementTranslation(empty, false, false), false);
+    assert.equal(shouldExpandAnnouncementTranslation(empty, true, false), true);
+    assert.equal(shouldExpandAnnouncementTranslation(empty, false, true), true);
+    assert.equal(shouldExpandAnnouncementTranslation(translations[0], false, false), true);
+  });
+
   it("clears demo translations for a new announcement", () => {
     const prepared = prepareAnnouncementDraftForCompose(draftWithTranslations, false);
 

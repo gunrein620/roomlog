@@ -13,6 +13,14 @@ export function prepareAnnouncementDraftForCompose(
   return hasPersistedId ? draft : { ...draft, translations: [] };
 }
 
+export function shouldExpandAnnouncementTranslation(
+  translation: AnnouncementTranslation,
+  wasOpened: boolean,
+  isTranslating: boolean,
+): boolean {
+  return wasOpened || isTranslating || Boolean(translation.title.trim() || translation.body.trim());
+}
+
 export interface AnnouncementManagedRoom {
   id: string;
   buildingName?: string;

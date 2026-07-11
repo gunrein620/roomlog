@@ -422,6 +422,11 @@ test("manager announcement compose edits targets and translates each language be
     /right: calc\(var\(--space-lg\) \+ 10px\)/,
   );
   assert.match(managerMessagingComposeFeatureSource, /pointer-events: none/);
+  assert.match(managerMessagingComposeFeatureSource, /aria-expanded=\{isExpanded\}/);
+  assert.match(managerMessagingComposeFeatureSource, /aria-controls=\{panelId\}/);
+  assert.match(managerMessagingComposeFeatureSource, /id=\{panelId\}/);
+  assert.match(managerMessagingComposeFeatureSource, /isExpanded \? \(/);
+  assert.match(managerMessagingComposeFeatureSource, /setExpandedLanguages/);
   assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
   assert.match(managerMessagingApiSource, /updateAnnouncementDraft/);
   assert.match(managerMessagingApiSource, /translateAnnouncement/);
