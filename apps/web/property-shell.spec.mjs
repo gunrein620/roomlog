@@ -417,6 +417,15 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposerSource, /nextScope === "unit"/);
   assert.match(managerMessagingComposerSource, /setSelectedRoomIds\(\[\]\)/);
   assert.match(managerMessagingComposerSource, /선택 가능한 호실이 없습니다\./);
+  assert.match(managerMessagingComposerSource, /className=\{styles\.unitInput\}/);
+  assert.match(managerMessagingComposerSource, /className=\{styles\.unitChip\}/);
+  assert.match(managerMessagingComposerSource, /room\.roomNo \?\? roomDisplayLabel\(room\)/);
+  assert.match(managerMessagingComposerSource, /styles\.unitCheck/);
+  assert.match(
+    managerMessagingComposeFeatureSource,
+    /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(managerMessagingComposeFeatureSource, /\.unitInput:checked \+ \.unitChip/);
   assert.match(managerMessagingComposeFeatureSource, /lang: "en", label: "English"/);
   assert.match(managerMessagingComposeFeatureSource, /lang: "zh", label: "中文"/);
   assert.match(managerMessagingComposeFeatureSource, /lang: "vi", label: "Tiếng Việt"/);

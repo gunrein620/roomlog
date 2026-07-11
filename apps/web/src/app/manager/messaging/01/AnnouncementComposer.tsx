@@ -307,11 +307,15 @@ export function AnnouncementComposer({
                     ? selectableRooms.map((room) => (
                         <label key={room.id} className={styles.unitChoice}>
                           <input
+                            className={styles.unitInput}
                             type="checkbox"
                             checked={selectedRoomIds.includes(room.id)}
                             onChange={() => toggleRoom(room.id)}
                           />
-                          {roomDisplayLabel(room)}
+                          <span className={styles.unitChip}>
+                            <span>{room.roomNo ?? roomDisplayLabel(room)}</span>
+                            <span className={styles.unitCheck} aria-hidden="true">✓</span>
+                          </span>
                         </label>
                       ))
                     : <span>선택 가능한 호실이 없습니다.</span>}

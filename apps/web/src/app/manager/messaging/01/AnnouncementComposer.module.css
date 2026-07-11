@@ -159,21 +159,57 @@
 
 .unitList {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-sm);
   max-height: 190px;
   overflow: auto;
 }
 
 .unitChoice {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.unitInput {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.unitChip {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  min-height: 42px;
-  padding: 0 var(--space-md);
+  justify-content: space-between;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-lg);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font-weight: 800;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.unitCheck {
+  opacity: 0;
+}
+
+.unitInput:focus-visible + .unitChip {
+  box-shadow: var(--focus-ring);
+}
+
+.unitInput:checked + .unitChip {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.unitInput:checked + .unitChip .unitCheck {
+  opacity: 1;
 }
 
 .targetHint {
@@ -374,6 +410,10 @@
   .rightColumn {
     position: static;
   }
+
+  .unitList {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -384,6 +424,10 @@
 
   .categoryPill {
     padding: 0 var(--space-lg);
+  }
+
+  .unitList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .actionRow {
