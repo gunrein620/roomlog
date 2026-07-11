@@ -1641,6 +1641,12 @@ export type PaymentBadge = "NONE" | "DUE" | "CONFIRMING" | "PARTIAL" | "PAID" | 
 
 export type PaymentReportStatus = "CONFIRMING" | "MATCHED" | "MISMATCH";
 
+export type BillLineItemKind = "RENT" | "MAINTENANCE" | "OTHER";
+
+export type BillLineItemStatus = "UNPAID" | "PARTIAL" | "PAID";
+
+export type BillPaymentTransactionStatus = "READY" | "APPROVED" | "FAILED";
+
 export type DepositMatchStatus = "UNMATCHED" | "MATCHED" | "ORPHAN" | "MISMATCH";
 
 export type OverdueStage = "MINOR" | "WARNING" | "SEVERE";
@@ -1648,7 +1654,9 @@ export type OverdueStage = "MINOR" | "WARNING" | "SEVERE";
 export type BillLineItem = {
   id?: string;
   label: string;
+  kind?: BillLineItemKind;
   amount: number;
+  paidAmount?: number;
 };
 
 export type PaymentAccount = {
@@ -1659,6 +1667,7 @@ export type PaymentAccount = {
 
 export type Bill = {
   id: string;
+  roomId?: string;
   unitId: string;
   billingMonth: string;
   status: BillStatus;
@@ -1695,6 +1704,34 @@ export type Deposit = {
   matchStatus: DepositMatchStatus;
   matchedBillId?: string;
   guessedUnitId?: string;
+  paymentTransactionId?: string;
+};
+
+export type BillPaymentAllocation = {
+  id: string;
+  transactionId: string;
+  billLineItemId: string;
+  kind: BillLineItemKind;
+  amount: number;
+};
+
+export type BillPaymentTransaction = {
+  id: string;
+  billId: string;
+  tenantId: string;
+  orderId: string;
+  orderName: string;
+  amount: number;
+  itemKinds: BillLineItemKind[];
+  status: BillPaymentTransactionStatus;
+  paymentKey?: string;
+  method?: string;
+  requestedAt: string;
+  approvedAt?: string;
+  failedAt?: string;
+  failureMessage?: string;
+  rawResponse?: unknown;
+  allocations: BillPaymentAllocation[];
 };
 
 export type MaintenanceFeeItem = {
@@ -1723,13 +1760,77 @@ export type TeamBill = Omit<
   Bill,
   "items" | "bankName" | "accountNumber" | "accountHolder"
 > & {
-  items: Array<Pick<BillLineItem, "label" | "amount">>;
+  items: Array<{
+    label: string;
+    kind: BillLineItemKind;
+    amount: number;
+    paidAmount: number;
+    status: BillLineItemStatus;
+  }>;
   account: PaymentAccount;
+};
+
+export type TeamTenantBillSummary = {
+  bill: TeamBill;
+  payableFrom: string;
+  isUpcoming: boolean;
+  canPay: boolean;
+  remainingAmount: number;
+};
+
+export type TeamTenantBillingOverview = {
+  current: TeamTenantBillSummary | null;
+  upcoming: TeamTenantBillSummary | null;
+  previousUnpaid: TeamTenantBillSummary[];
+  asOf: string;
+};
+
+export type TeamTenantPaymentHistoryEventType =
+  | "TOSS"
+  | "DEPOSIT"
+  | "REPORT"
+  | "BILL_DUE";
+
+export type TeamTenantPaymentHistoryEventStatus = "CONFIRMED" | "CONFIRMING" | "DUE";
+
+export type TeamTenantPaymentHistoryEvent = {
+  id: string;
+  type: TeamTenantPaymentHistoryEventType;
+  activityDate: string;
+  amount: number;
+  status: TeamTenantPaymentHistoryEventStatus;
+  receiptAvailable: boolean;
+};
+
+export type TeamTenantPaymentHistoryRecord = {
+  billId: string;
+  billingMonth: string;
+  activityDate: string;
+  status: BillStatus;
+  totalAmount: number;
+  paidAmount: number;
+  payments: TeamTenantPaymentHistoryEvent[];
+};
+
+export type TeamTenantPaymentHistory = {
+  range: { from: string; to: string };
+  bounds: { min: string; max: string; maxDays: 366 };
+  records: TeamTenantPaymentHistoryRecord[];
 };
 
 export type TeamReport = PaymentReport;
 
 export type TeamDeposit = Deposit;
+
+export type TeamBillPaymentOrder = {
+  billId: string;
+  orderId: string;
+  orderName: string;
+  amount: number;
+  itemKinds: BillLineItemKind[];
+  customerKey: string;
+  clientKey?: string;
+};
 
 export type TeamMaintenance = Omit<MaintenanceFee, "items"> & {
   items: Array<Pick<MaintenanceFeeItem, "label" | "amount" | "receiptAvailable">>;
@@ -1737,14 +1838,19 @@ export type TeamMaintenance = Omit<MaintenanceFee, "items"> & {
 
 export type TeamBillRow = {
   billId: string;
+  roomId?: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
   billingMonth: string;
   totalAmount: number;
   paidAmount: number;
+  unpaidAmount?: number;
+  daysOverdue?: number;
   status: BillStatus;
   dueDate: string;
   badge?: PaymentBadge;
+  guard?: DunningGuard;
 };
 
 export type TeamDashSummary = {
@@ -1754,8 +1860,73 @@ export type TeamDashSummary = {
   overdue: number;
 };
 
-export type TeamCollection = {
+export type TeamBillingScopeOption = {
+  buildingName: string;
+  address: string;
+  roomCount: number;
+};
+
+export type TeamBillingScope = {
+  buildings: TeamBillingScopeOption[];
+  selectedBuilding?: string;
+};
+
+export type TeamBillingDashboardSummary = TeamDashSummary & {
+  billedAmount: number;
+  collectedAmount: number;
+  unpaidAmount: number;
+  collectionRate: number;
+  overdueUnits: number;
+};
+
+export type TeamBillingRecentDeposit = TeamDeposit & {
+  buildingName?: string;
+  unitId?: string;
+  needsBuildingReview: boolean;
+};
+
+export type TeamBillingDashboard = {
+  scope: TeamBillingScope;
   billingMonth: string;
+  summary: TeamBillingDashboardSummary;
+  recentDeposits: TeamBillingRecentDeposit[];
+  overduePreview: TeamOverdue[];
+  bills: TeamBillRow[];
+};
+
+export type TeamCollectionBrief = {
+  billedAmount: number;
+  collectedAmount: number;
+  unpaidAmount: number;
+  collectionRate: number;
+  previousCollectionRate?: number;
+  rateDelta?: number;
+  confirmingAmount: number;
+};
+
+export type TeamCollectionPoint = {
+  billingMonth: string;
+  billedAmount: number;
+  collectedAmount: number;
+  unpaidAmount: number;
+  collectionRate: number;
+};
+
+export type TeamCollectionBuildingRow = TeamCollectionPoint & {
+  buildingName: string;
+  address: string;
+  roomCount: number;
+  previousCollectionRate?: number;
+  rateDelta?: number;
+  bills: TeamBillRow[];
+};
+
+export type TeamCollection = {
+  scope: TeamBillingScope;
+  billingMonth: string;
+  brief: TeamCollectionBrief;
+  trend: TeamCollectionPoint[];
+  buildings: TeamCollectionBuildingRow[];
   collectionRate: number;
   collectedAmount: number;
   unpaidAmount: number;
@@ -1767,13 +1938,72 @@ export type TeamCollection = {
 
 export type TeamOverdue = {
   billId: string;
+  roomId?: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
+  billingMonth?: string;
+  totalAmount?: number;
+  paidAmount?: number;
   unpaidAmount: number;
   daysOverdue: number;
   stage: OverdueStage;
   dueDate: string;
   guard: DunningGuard;
+};
+
+export type TeamOverdueWorkspace = {
+  scope: TeamBillingScope;
+  asOf: string;
+  summary: {
+    activeUnpaidAmount: number;
+    activeCount: number;
+    severeCount: number;
+    waitingCount: number;
+  };
+  activeCases: TeamOverdue[];
+  waitingCases: TeamOverdue[];
+};
+
+export type TeamBillCreationOption = {
+  roomId: string;
+  buildingName: string;
+  unitId: string;
+  tenantName: string;
+  contractId: string;
+  monthlyRent: number;
+  maintenanceFee: number;
+  dueDate: string;
+  duplicateBillId?: string;
+};
+
+export type TeamBillCreationData = {
+  scope: TeamBillingScope;
+  billingMonth: string;
+  account: PaymentAccount;
+  options: TeamBillCreationOption[];
+};
+
+export type CreateManagerBillRowInput = {
+  roomId: string;
+  contractId: string;
+  monthlyRent: number;
+  maintenanceFee: number;
+  dueDate: string;
+};
+
+export type CreateManagerBillsInput = {
+  buildingName: string;
+  billingMonth: string;
+  account: PaymentAccount;
+  rows: CreateManagerBillRowInput[];
+};
+
+export type CreateManagerBillsResult = {
+  createdCount: number;
+  billIds: string[];
+  billingMonth: string;
+  buildingName: string;
 };
 
 export type TeamDunning = {
@@ -1789,6 +2019,33 @@ export type TeamDunning = {
 export type CreatePaymentReportInput = {
   amount: number;
   depositorName?: string;
+};
+
+export type CreateBillPaymentOrderInput = {
+  itemKinds: BillLineItemKind[];
+};
+
+export type ConfirmBillPaymentInput = {
+  orderId: string;
+  paymentKey: string;
+  amount: number;
+};
+
+export type TossConfirmPaymentInput = {
+  paymentKey: string;
+  orderId: string;
+  amount: number;
+};
+
+export type TossConfirmPaymentResult = TossConfirmPaymentInput & {
+  method?: string;
+  approvedAt?: string;
+  status?: string;
+  raw?: unknown;
+};
+
+export type TossPaymentGateway = {
+  confirmPayment(input: TossConfirmPaymentInput): Promise<TossConfirmPaymentResult>;
 };
 
 export type MatchDepositInput = {

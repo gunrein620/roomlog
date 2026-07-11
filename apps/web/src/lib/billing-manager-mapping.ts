@@ -7,7 +7,16 @@ import type {
   DepositMatchStatus,
   DunningDraft,
   DunningGuard,
+  ManagerBillCreationData,
+  ManagerBillCreationOption,
   ManagerBillRow,
+  ManagerBillingDashboardData,
+  ManagerBillingRecentDeposit,
+  ManagerBillingScope,
+  ManagerCollectionAnalytics,
+  ManagerCollectionBuildingRow,
+  ManagerCollectionPoint,
+  ManagerOverdueWorkspace,
   OverdueCase,
   OverdueStage,
   PaymentBadge,
@@ -18,6 +27,7 @@ import type {
 
 export interface TeamBill {
   id: string;
+  roomId?: string;
   unitId: string;
   billingMonth: string;
   status: string;
@@ -45,6 +55,20 @@ export interface TeamDashSummary {
   confirmNeeded: number;
   pending: number;
   overdue: number;
+  billedAmount?: number;
+  collectedAmount?: number;
+  unpaidAmount?: number;
+  collectionRate?: number;
+  overdueUnits?: number;
+}
+
+export interface TeamBillingScope {
+  buildings?: Array<{
+    buildingName?: string;
+    address?: string;
+    roomCount?: number;
+  }>;
+  selectedBuilding?: string;
 }
 
 export interface TeamBillRow {
@@ -53,14 +77,19 @@ export interface TeamBillRow {
   reportId?: string;
   paymentReportId?: string;
   report?: { id?: string };
+  roomId?: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
   billingMonth: string;
   totalAmount: number;
   paidAmount: number;
+  unpaidAmount?: number;
+  daysOverdue?: number;
   status: string;
   dueDate: string;
   badge?: string;
+  guard?: Partial<DunningGuard>;
 }
 
 export interface TeamDeposit {
@@ -71,10 +100,25 @@ export interface TeamDeposit {
   matchStatus: string;
   matchedBillId?: string;
   guessedUnitId?: string;
+  buildingName?: string;
+  unitId?: string;
+  needsBuildingReview?: boolean;
 }
 
 export interface TeamCollection {
+  scope?: TeamBillingScope;
   billingMonth: string;
+  brief?: {
+    billedAmount?: number;
+    collectedAmount?: number;
+    unpaidAmount?: number;
+    collectionRate?: number;
+    previousCollectionRate?: number;
+    rateDelta?: number;
+    confirmingAmount?: number;
+  };
+  trend?: TeamCollectionPoint[];
+  buildings?: TeamCollectionBuildingRow[];
   collectionRate: number;
   collectedAmount: number;
   unpaidAmount: number;
@@ -86,8 +130,13 @@ export interface TeamCollection {
 
 export interface TeamOverdue {
   billId: string;
+  roomId?: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
+  billingMonth?: string;
+  totalAmount?: number;
+  paidAmount?: number;
   unpaidAmount: number;
   daysOverdue: number;
   stage: string;
@@ -106,8 +155,63 @@ export interface TeamDunning {
 }
 
 export interface TeamDashboardResponse {
+  scope?: TeamBillingScope;
+  billingMonth?: string;
   summary: TeamDashSummary;
+  recentDeposits?: TeamDeposit[];
+  overduePreview?: TeamOverdue[];
   bills: TeamBillRow[];
+}
+
+export interface TeamCollectionPoint {
+  billingMonth?: string;
+  billedAmount?: number;
+  collectedAmount?: number;
+  unpaidAmount?: number;
+  collectionRate?: number;
+}
+
+export interface TeamCollectionBuildingRow extends TeamCollectionPoint {
+  buildingName?: string;
+  address?: string;
+  roomCount?: number;
+  previousCollectionRate?: number;
+  rateDelta?: number;
+  bills?: TeamBillRow[];
+}
+
+export interface TeamOverdueResponse {
+  scope?: TeamBillingScope;
+  asOf?: string;
+  summary?: {
+    activeUnpaidAmount?: number;
+    activeCount?: number;
+    severeCount?: number;
+    waitingCount?: number;
+  };
+  activeCases?: TeamOverdue[];
+  waitingCases?: TeamOverdue[];
+}
+
+export interface TeamBillCreationData {
+  scope?: TeamBillingScope;
+  billingMonth?: string;
+  account?: {
+    bankName?: string;
+    accountNumber?: string;
+    accountHolder?: string;
+  };
+  options?: Array<{
+    roomId?: string;
+    buildingName?: string;
+    unitId?: string;
+    tenantName?: string;
+    contractId?: string;
+    monthlyRent?: number;
+    maintenanceFee?: number;
+    dueDate?: string;
+    duplicateBillId?: string;
+  }>;
 }
 
 export interface TeamDepositsResponse {
@@ -217,6 +321,7 @@ function mapGuard(guard?: Partial<DunningGuard>): DunningGuard {
 export function toBill(team: TeamBill): Bill {
   return {
     id: stringOr(team.id),
+    roomId: team.roomId ? stringOr(team.roomId) : undefined,
     unitId: normalizeUnitId(team.unitId),
     billingMonth: stringOr(team.billingMonth),
     status: mapBillStatus(team.status),
@@ -256,14 +361,19 @@ export function toDashSummary(summary: TeamDashSummary): BillDashboardSummary {
 export function toManagerBillRow(row: TeamBillRow): ManagerBillRow {
   return {
     billId: stringOr(row.billId ?? row.id),
+    roomId: row.roomId ? stringOr(row.roomId) : undefined,
+    buildingName: row.buildingName ? stringOr(row.buildingName) : undefined,
     unitId: normalizeUnitId(row.unitId),
     tenantName: stringOr(row.tenantName, "임차인"),
     billingMonth: stringOr(row.billingMonth),
     totalAmount: numberOr(row.totalAmount),
     paidAmount: numberOr(row.paidAmount),
+    unpaidAmount: numberOr(row.unpaidAmount, Math.max(0, numberOr(row.totalAmount) - numberOr(row.paidAmount))),
+    daysOverdue: numberOr(row.daysOverdue),
     status: mapBillStatus(row.status),
     dueDate: stringOr(row.dueDate),
     badge: row.badge ? mapPaymentBadge(row.badge) : undefined,
+    guard: mapGuard(row.guard),
   };
 }
 
@@ -303,8 +413,13 @@ export function toCollectionSummary(collection: TeamCollection): CollectionSumma
 export function toOverdueCase(item: TeamOverdue): OverdueCase {
   return {
     billId: stringOr(item.billId),
+    roomId: item.roomId ? stringOr(item.roomId) : undefined,
+    buildingName: item.buildingName ? stringOr(item.buildingName) : undefined,
     unitId: normalizeUnitId(item.unitId),
     tenantName: stringOr(item.tenantName, "임차인"),
+    billingMonth: item.billingMonth ? stringOr(item.billingMonth) : undefined,
+    totalAmount: item.totalAmount === undefined ? undefined : numberOr(item.totalAmount),
+    paidAmount: item.paidAmount === undefined ? undefined : numberOr(item.paidAmount),
     unpaidAmount: numberOr(item.unpaidAmount),
     daysOverdue: numberOr(item.daysOverdue),
     stage: mapOverdueStage(item.stage),
@@ -326,10 +441,22 @@ export function toDunningDraft(draft: TeamDunning): DunningDraft {
 }
 
 export function toManagerDashboard(data: TeamDashboardResponse) {
+  const summary = toDashSummary(data.summary);
   return {
-    summary: toDashSummary(data.summary),
+    scope: toBillingScope(data.scope),
+    billingMonth: stringOr(data.billingMonth),
+    summary: {
+      ...summary,
+      billedAmount: numberOr(data.summary.billedAmount),
+      collectedAmount: numberOr(data.summary.collectedAmount),
+      unpaidAmount: numberOr(data.summary.unpaidAmount),
+      collectionRate: numberOr(data.summary.collectionRate),
+      overdueUnits: numberOr(data.summary.overdueUnits, summary.overdue),
+    },
+    recentDeposits: (data.recentDeposits ?? []).map(toManagerRecentDeposit),
+    overduePreview: (data.overduePreview ?? []).map(toOverdueCase),
     bills: (data.bills ?? []).map(toManagerBillRow),
-  };
+  } satisfies ManagerBillingDashboardData & { summary: BillDashboardSummary };
 }
 
 export function toManagerDepositsData(data: TeamDepositsResponse) {
@@ -338,5 +465,132 @@ export function toManagerDepositsData(data: TeamDepositsResponse) {
     deposits: (data.deposits ?? []).map(toDeposit),
     orphanDeposits: (data.orphanDeposits ?? []).map(toDeposit),
     mismatchDeposits: (data.mismatchDeposits ?? []).map(toDeposit),
+  };
+}
+
+export function toBillingScope(scope?: TeamBillingScope): ManagerBillingScope {
+  return {
+    buildings: (scope?.buildings ?? []).map((building) => ({
+      buildingName: stringOr(building.buildingName),
+      address: stringOr(building.address),
+      roomCount: numberOr(building.roomCount),
+    })),
+    selectedBuilding: scope?.selectedBuilding
+      ? stringOr(scope.selectedBuilding)
+      : undefined,
+  };
+}
+
+export function toManagerRecentDeposit(deposit: TeamDeposit): ManagerBillingRecentDeposit {
+  return {
+    ...toDeposit(deposit),
+    buildingName: deposit.buildingName ? stringOr(deposit.buildingName) : undefined,
+    unitId: deposit.unitId ? normalizeUnitId(deposit.unitId) : undefined,
+    needsBuildingReview: Boolean(deposit.needsBuildingReview),
+  };
+}
+
+function toCollectionPoint(point: TeamCollectionPoint): ManagerCollectionPoint {
+  return {
+    billingMonth: stringOr(point.billingMonth),
+    billedAmount: numberOr(point.billedAmount),
+    collectedAmount: numberOr(point.collectedAmount),
+    unpaidAmount: numberOr(point.unpaidAmount),
+    collectionRate: numberOr(point.collectionRate),
+  };
+}
+
+function toCollectionBuildingRow(
+  row: TeamCollectionBuildingRow,
+): ManagerCollectionBuildingRow {
+  return {
+    ...toCollectionPoint(row),
+    buildingName: stringOr(row.buildingName),
+    address: stringOr(row.address),
+    roomCount: numberOr(row.roomCount),
+    previousCollectionRate:
+      row.previousCollectionRate === undefined
+        ? undefined
+        : numberOr(row.previousCollectionRate),
+    rateDelta: row.rateDelta === undefined ? undefined : numberOr(row.rateDelta),
+    bills: (row.bills ?? []).map(toManagerBillRow),
+  };
+}
+
+export function toManagerCollection(data: TeamCollection): ManagerCollectionAnalytics {
+  const brief = data.brief;
+  return {
+    scope: toBillingScope(data.scope),
+    billingMonth: stringOr(data.billingMonth),
+    brief: {
+      billedAmount: numberOr(brief?.billedAmount),
+      collectedAmount: numberOr(brief?.collectedAmount, data.collectedAmount),
+      unpaidAmount: numberOr(brief?.unpaidAmount, data.unpaidAmount),
+      collectionRate: numberOr(brief?.collectionRate, data.collectionRate),
+      previousCollectionRate:
+        brief?.previousCollectionRate === undefined
+          ? undefined
+          : numberOr(brief.previousCollectionRate),
+      rateDelta: brief?.rateDelta === undefined ? undefined : numberOr(brief.rateDelta),
+      confirmingAmount: numberOr(brief?.confirmingAmount, data.confirmingAmount),
+    },
+    trend: (data.trend ?? []).map(toCollectionPoint),
+    buildings: (data.buildings ?? []).map(toCollectionBuildingRow),
+  };
+}
+
+export function toManagerOverdue(data: TeamOverdueResponse): ManagerOverdueWorkspace {
+  const activeCases = (data.activeCases ?? []).map(toOverdueCase);
+  const waitingCases = (data.waitingCases ?? []).map(toOverdueCase);
+  return {
+    scope: toBillingScope(data.scope),
+    asOf: stringOr(data.asOf),
+    summary: {
+      activeUnpaidAmount: numberOr(
+        data.summary?.activeUnpaidAmount,
+        activeCases.reduce((sum, item) => sum + item.unpaidAmount, 0),
+      ),
+      activeCount: numberOr(data.summary?.activeCount, activeCases.length),
+      severeCount: numberOr(
+        data.summary?.severeCount,
+        activeCases.filter((item) => item.daysOverdue >= 31).length,
+      ),
+      waitingCount: numberOr(data.summary?.waitingCount, waitingCases.length),
+    },
+    activeCases,
+    waitingCases,
+  };
+}
+
+function toBillCreationOption(
+  option: NonNullable<TeamBillCreationData["options"]>[number],
+): ManagerBillCreationOption {
+  return {
+    roomId: stringOr(option.roomId),
+    buildingName: stringOr(option.buildingName),
+    unitId: normalizeUnitId(option.unitId),
+    tenantName: stringOr(option.tenantName, "미연결 임차인"),
+    contractId: stringOr(option.contractId),
+    monthlyRent: numberOr(option.monthlyRent),
+    maintenanceFee: numberOr(option.maintenanceFee),
+    dueDate: stringOr(option.dueDate),
+    duplicateBillId: option.duplicateBillId
+      ? stringOr(option.duplicateBillId)
+      : undefined,
+  };
+}
+
+export function toManagerBillCreationData(
+  data: TeamBillCreationData,
+): ManagerBillCreationData {
+  return {
+    scope: toBillingScope(data.scope),
+    billingMonth: stringOr(data.billingMonth),
+    account: {
+      bankName: stringOr(data.account?.bankName),
+      accountNumber: stringOr(data.account?.accountNumber),
+      accountHolder: stringOr(data.account?.accountHolder),
+    },
+    options: (data.options ?? []).map(toBillCreationOption),
   };
 }

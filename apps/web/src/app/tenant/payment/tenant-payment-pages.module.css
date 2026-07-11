@@ -1,0 +1,673 @@
+.pageHeader,
+.overviewHeader {
+  flex: none;
+  min-height: var(--header-height);
+  padding: 0 var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-container-lowest);
+}
+
+.pageHeader {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.overviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.backLink {
+  justify-self: start;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  text-decoration: none;
+}
+
+.pageTitle,
+.overviewTitle {
+  margin: 0;
+  color: var(--on-surface);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-header);
+  line-height: var(--lh-caption);
+}
+
+.headerSpacer {
+  width: var(--space-xxl);
+  justify-self: end;
+}
+
+.brand {
+  margin-top: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.alertIcon {
+  width: var(--control-compact-size);
+  height: var(--control-compact-size);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-container-lowest);
+}
+
+.pageBody,
+.overviewBody,
+.checkoutBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: var(--space-lg);
+  background: var(--surface);
+}
+
+.pageBody,
+.overviewBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.sectionLabel {
+  margin: 0 0 var(--space-sm);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-header);
+  line-height: var(--lh-caption);
+  letter-spacing: 0.04em;
+}
+
+.emptyState {
+  min-height: var(--empty-state-min-height);
+  padding: var(--space-xl);
+  border: 1px dashed var(--outline-variant);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.emptyState strong {
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+}
+
+.emptyState span,
+.conditionBanner span,
+.previousCard span,
+.upcomingCard span {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.summaryCard,
+.upcomingCard,
+.detailCard,
+.checkoutCard,
+.checkoutSummaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.summaryTopline,
+.summaryRow,
+.previousCard,
+.detailRow,
+.itemRow,
+.accountRow,
+.selectionSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.summaryTopline {
+  align-items: flex-start;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.summaryTopline > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.summaryTopline strong {
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+}
+
+.summaryAmount {
+  color: var(--on-surface);
+  font-size: calc(var(--fs-title) + var(--space-xs));
+  font-weight: var(--fw-title);
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryRow {
+  padding-top: var(--space-sm);
+  border-top: 1px dashed var(--border);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.summaryRow strong {
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryRow em {
+  margin-left: var(--space-sm);
+  color: var(--primary);
+  font-style: normal;
+}
+
+.conditionBanner {
+  padding: var(--space-md);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  background: var(--surface-container-high);
+}
+
+.conditionBanner strong {
+  font-size: var(--fs-caption);
+}
+
+.conditionBanner span {
+  color: var(--on-surface-variant);
+}
+
+.previousList {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.previousCard > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.previousCard span {
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.upcomingAmount {
+  color: var(--on-surface);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-subtitle);
+  font-variant-numeric: tabular-nums;
+}
+
+.inlineDetailLink {
+  min-height: var(--control-compact-size);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  box-sizing: border-box;
+  background: var(--surface-container-lowest);
+  color: var(--primary);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-header);
+  text-decoration: none;
+}
+
+.overviewFooter,
+.pageFooter {
+  flex: none;
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border);
+  background: var(--surface-container-lowest);
+}
+
+.overviewFooter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.primaryAction,
+.primaryDisabled {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-header);
+  text-decoration: none;
+}
+
+.primaryAction {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.primaryDisabled {
+  border: 1px dashed var(--outline-variant);
+  background: var(--surface-container);
+  color: var(--on-surface-variant);
+  cursor: not-allowed;
+}
+
+.secondaryActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.secondaryLink,
+.secondaryDisabled {
+  min-height: var(--control-secondary-size);
+  padding: var(--space-sm);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-btn);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-header);
+  text-decoration: none;
+}
+
+.secondaryLink {
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.secondaryDisabled {
+  border-style: dashed;
+  background: var(--surface-container);
+  color: var(--on-surface-variant);
+}
+
+.detailCard > span:first-child {
+  align-self: flex-start;
+}
+
+.correctionHistory {
+  margin: 0;
+  padding-left: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+}
+
+.itemRow,
+.detailRow,
+.accountRow {
+  min-height: var(--control-compact-size);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.itemRow + .itemRow,
+.detailRow + .detailRow,
+.accountRow + .accountRow {
+  border-top: 1px solid var(--border);
+}
+
+.itemRow strong,
+.detailRow strong,
+.accountRow strong {
+  color: var(--on-surface);
+  font-weight: var(--fw-header);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.itemTotal {
+  border-top: 1px solid var(--outline);
+  color: var(--on-surface);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-header);
+}
+
+.languageHint {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  text-align: center;
+}
+
+.checkoutGrid,
+.checkoutMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.checkoutGrid {
+  width: 100%;
+}
+
+.checkoutMain {
+  min-width: 0;
+}
+
+.paymentItemList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.paymentItem {
+  width: 100%;
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  box-sizing: border-box;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.paymentItem[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-container);
+}
+
+.paymentItem:disabled {
+  color: var(--on-surface-variant);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.paymentItemCopy,
+.paymentItemAmount {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.paymentItemCopy span,
+.paymentItemAmount span,
+.fieldHint,
+.paymentMessage {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.paymentItemAmount {
+  flex: none;
+  align-items: flex-end;
+}
+
+.paymentItemAmount strong,
+.selectionSummary strong {
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.selectionSummary {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.widgetRegion {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.manualFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.fieldLabel {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-header);
+}
+
+.fieldHint {
+  margin: 0;
+}
+
+.accountDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.checkoutSummary {
+  min-width: 0;
+}
+
+.checkoutManual {
+  min-width: 0;
+}
+
+.checkoutSummaryCard {
+  background: var(--surface-container-lowest);
+}
+
+.checkoutSummaryTitle {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-header);
+}
+
+.checkoutSummaryAmount {
+  color: var(--on-surface);
+  font-size: calc(var(--fs-title) + var(--space-xs));
+  font-weight: var(--fw-title);
+  font-variant-numeric: tabular-nums;
+}
+
+.checkoutSummaryDetails {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-sm) var(--space-md);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.checkoutSummaryDetails dt,
+.checkoutSummaryDetails dd {
+  margin: 0;
+}
+
+.checkoutSummaryDetails dd {
+  color: var(--on-surface);
+  font-weight: var(--fw-header);
+  text-align: right;
+}
+
+.resultBody {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.resultIcon {
+  width: var(--status-icon-size);
+  height: var(--status-icon-size);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--primary);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+}
+
+.resultErrorIcon {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.resultTitle {
+  margin: 0;
+  color: var(--on-surface);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-subtitle);
+  line-height: var(--lh-subtitle);
+}
+
+.resultMessage {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.resultNotice {
+  width: min(100%, var(--content-narrow-max));
+  box-sizing: border-box;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  text-align: left;
+}
+
+.backLink:focus-visible,
+.primaryAction:focus-visible,
+.secondaryLink:focus-visible,
+.inlineDetailLink:focus-visible,
+.paymentItem:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (min-width: 768px) {
+  .pageBody,
+  .overviewBody,
+  .checkoutBody {
+    padding: var(--space-xl);
+  }
+
+  .detailBody,
+  .resultBody {
+    width: min(100%, var(--content-readable-max));
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pageHeader,
+  .overviewHeader {
+    padding-right: var(--space-xl);
+    padding-left: var(--space-xl);
+  }
+
+  .overviewBody,
+  .pageBody,
+  .checkoutBody {
+    overflow: visible;
+  }
+
+  .overviewBody {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(var(--content-aside-min), var(--content-aside-max));
+    align-content: start;
+    align-items: start;
+    gap: var(--space-xl);
+  }
+
+  .currentSection,
+  .previousSection,
+  .overviewBody > .emptyState,
+  .overviewBody > .conditionBanner {
+    grid-column: 1;
+  }
+
+  .upcomingSection {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+  }
+
+  .overviewFooter,
+  .pageFooter {
+    padding-right: var(--space-xl);
+    padding-left: var(--space-xl);
+  }
+
+  .checkoutGrid {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(var(--content-aside-min), var(--content-aside-max));
+    align-items: start;
+    gap: var(--space-xl);
+  }
+
+  .checkoutMain {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .checkoutSummary {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-xl));
+  }
+
+  .checkoutManual {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .resultBody {
+    min-height: var(--content-result-min-height);
+  }
+}

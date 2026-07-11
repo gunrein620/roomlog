@@ -28,10 +28,17 @@ export type PaymentReportStatus =
   | "matched" // 실제 입금 매칭 확정
   | "mismatch"; // 불일치 → 확인 요청
 
+export type BillLineItemKind = "rent" | "maintenance" | "other";
+
+export type BillLineItemStatus = "unpaid" | "partial" | "paid";
+
 /** 청구 항목 한 줄 */
 export interface BillLineItem {
   label: string;
+  kind?: BillLineItemKind;
   amount: number; // 원
+  paidAmount?: number;
+  status?: BillLineItemStatus;
 }
 
 /** 입금 계좌 안내 (복사 대상) */
@@ -44,6 +51,7 @@ export interface PaymentAccount {
 /** 청구서 — 한 호실·한 달의 청구. 관리인 M-BILL 발송 → 임차인 T-PAY 표시. */
 export interface Bill {
   id: string;
+  roomId?: string;
   unitId: string; // 호실
   billingMonth: string; // 청구월 YYYY-MM
   status: BillStatus;
@@ -69,6 +77,16 @@ export interface PaymentReport {
   status: PaymentReportStatus;
   etaHours: number; // 확인 중 ETA(시간)
   reportedAt: string;
+}
+
+export interface BillPaymentOrder {
+  billId: string;
+  orderId: string;
+  orderName: string;
+  amount: number;
+  itemKinds: BillLineItemKind[];
+  customerKey: string;
+  clientKey?: string;
 }
 
 /** 관리비 사용 내역 항목 — 항목별 투명 공개 */
@@ -131,14 +149,89 @@ export interface DunningGuard {
 /** 청구 목록 행(관리인 뷰) — 대시보드/연체 표에 임차인명 포함. Bill의 표시용 파생. */
 export interface ManagerBillRow {
   billId: string;
+  roomId?: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
   billingMonth: string;
   totalAmount: number;
   paidAmount: number; // 확정 수납액(확인중·orphan 제외)
+  unpaidAmount?: number;
+  daysOverdue?: number;
   status: BillStatus;
   dueDate: string;
   badge?: PaymentBadge; // 임차인 배지 매핑(참고용)
+  guard?: DunningGuard;
+}
+
+export interface ManagerBillingScopeOption {
+  buildingName: string;
+  address: string;
+  roomCount: number;
+}
+
+export interface ManagerBillingScope {
+  buildings: ManagerBillingScopeOption[];
+  selectedBuilding?: string;
+}
+
+export interface ManagerBillingDashboardSummary {
+  billedAmount: number;
+  collectedAmount: number;
+  unpaidAmount: number;
+  collectionRate: number;
+  overdueUnits: number;
+  confirmNeeded: number;
+}
+
+export interface ManagerBillingRecentDeposit extends Deposit {
+  buildingName?: string;
+  unitId?: string;
+  needsBuildingReview: boolean;
+}
+
+export interface ManagerBillingDashboardData {
+  scope: ManagerBillingScope;
+  billingMonth: string;
+  summary: ManagerBillingDashboardSummary;
+  recentDeposits: ManagerBillingRecentDeposit[];
+  overduePreview: OverdueCase[];
+  bills: ManagerBillRow[];
+}
+
+export interface ManagerCollectionBrief {
+  billedAmount: number;
+  collectedAmount: number;
+  unpaidAmount: number;
+  collectionRate: number;
+  previousCollectionRate?: number;
+  rateDelta?: number;
+  confirmingAmount: number;
+}
+
+export interface ManagerCollectionPoint {
+  billingMonth: string;
+  billedAmount: number;
+  collectedAmount: number;
+  unpaidAmount: number;
+  collectionRate: number;
+}
+
+export interface ManagerCollectionBuildingRow extends ManagerCollectionPoint {
+  buildingName: string;
+  address: string;
+  roomCount: number;
+  previousCollectionRate?: number;
+  rateDelta?: number;
+  bills: ManagerBillRow[];
+}
+
+export interface ManagerCollectionAnalytics {
+  scope: ManagerBillingScope;
+  billingMonth: string;
+  brief: ManagerCollectionBrief;
+  trend: ManagerCollectionPoint[];
+  buildings: ManagerCollectionBuildingRow[];
 }
 
 /** 청구 관리 대시보드 요약 — M-BILL-00 헤더 카운트 */
@@ -170,13 +263,72 @@ export interface CollectionSummary {
  */
 export interface OverdueCase {
   billId: string;
+  roomId?: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
+  billingMonth?: string;
+  totalAmount?: number;
+  paidAmount?: number;
   unpaidAmount: number; // 미납 잔액(총액 − 확정수납액)
   daysOverdue: number; // 연체일 = 원 납부기한 기준
   stage: OverdueStage; // 관리인 전용 라벨
   dueDate: string;
   guard: DunningGuard; // blocked면 자동 제외
+}
+
+export interface ManagerOverdueWorkspace {
+  scope: ManagerBillingScope;
+  asOf: string;
+  summary: {
+    activeUnpaidAmount: number;
+    activeCount: number;
+    severeCount: number;
+    waitingCount: number;
+  };
+  activeCases: OverdueCase[];
+  waitingCases: OverdueCase[];
+}
+
+export interface ManagerBillCreationOption {
+  roomId: string;
+  buildingName: string;
+  unitId: string;
+  tenantName: string;
+  contractId: string;
+  monthlyRent: number;
+  maintenanceFee: number;
+  dueDate: string;
+  duplicateBillId?: string;
+}
+
+export interface ManagerBillCreationData {
+  scope: ManagerBillingScope;
+  billingMonth: string;
+  account: PaymentAccount;
+  options: ManagerBillCreationOption[];
+}
+
+export interface CreateManagerBillRowInput {
+  roomId: string;
+  contractId: string;
+  monthlyRent: number;
+  maintenanceFee: number;
+  dueDate: string;
+}
+
+export interface CreateManagerBillsInput {
+  buildingName: string;
+  billingMonth: string;
+  account: PaymentAccount;
+  rows: CreateManagerBillRowInput[];
+}
+
+export interface CreateManagerBillsResult {
+  createdCount: number;
+  billIds: string[];
+  billingMonth: string;
+  buildingName: string;
 }
 
 /**
@@ -191,4 +343,118 @@ export interface DunningDraft {
   draftText: string; // AI 초안(편집 대상)
   channel: string; // 발송 채널(단일)
   guard: DunningGuard; // blocked면 발송 차단
+}
+
+export type TenantPaymentPeriodPreset = 1 | 3 | 6;
+
+export interface TenantBillSummary {
+  bill: Bill;
+  payableFrom: string;
+  isUpcoming: boolean;
+  canPay: boolean;
+  remainingAmount: number;
+}
+
+export interface TenantBillingOverview {
+  current: TenantBillSummary | null;
+  upcoming: TenantBillSummary | null;
+  previousUnpaid: TenantBillSummary[];
+  asOf: string;
+}
+
+export type TenantPaymentHistoryEventType = "toss" | "deposit" | "report" | "bill_due";
+export type TenantPaymentHistoryEventStatus = "confirmed" | "confirming" | "due";
+
+export interface TenantPaymentHistoryEvent {
+  id: string;
+  type: TenantPaymentHistoryEventType;
+  activityDate: string;
+  amount: number;
+  status: TenantPaymentHistoryEventStatus;
+  receiptAvailable: boolean;
+}
+
+export interface TenantPaymentHistoryRecord {
+  billId: string;
+  billingMonth: string;
+  activityDate: string;
+  status: BillStatus;
+  totalAmount: number;
+  paidAmount: number;
+  payments: TenantPaymentHistoryEvent[];
+}
+
+export interface TenantPaymentHistory {
+  range: { from: string; to: string };
+  bounds: { min: string; max: string; maxDays: 366 };
+  records: TenantPaymentHistoryRecord[];
+}
+
+function seoulDateParts(now: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return { year: value("year"), month: value("month"), day: value("day") };
+}
+
+export function billingMonthInSeoul(now: Date = new Date()): string {
+  const { year, month } = seoulDateParts(now);
+  return `${year}-${month}`;
+}
+
+export function billingDateInSeoul(value: Date | string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error("date must be ISO-compatible");
+  const { year, month, day } = seoulDateParts(date);
+  return `${year}-${month}-${day}`;
+}
+
+export function billingTodayInSeoul(now: Date = new Date()): string {
+  return billingDateInSeoul(now);
+}
+
+export function billPayableFrom(dueDate: string): string {
+  const dueDay = billingDateInSeoul(dueDate);
+  const [year, month, day] = dueDay.split("-").map(Number);
+  const targetMonth = new Date(Date.UTC(year, month - 2, 1));
+  const targetYear = targetMonth.getUTCFullYear();
+  const targetMonthIndex = targetMonth.getUTCMonth();
+  const lastDay = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0)).getUTCDate();
+  const targetDay = Math.min(day, lastDay);
+  const date = `${targetYear}-${String(targetMonthIndex + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
+  return `${date}T00:00:00+09:00`;
+}
+
+export function isBillPaymentOpen(dueDate: string, now: Date = new Date()): boolean {
+  return now.getTime() >= new Date(billPayableFrom(dueDate)).getTime();
+}
+
+export function paymentHistoryPresetRange(
+  preset: TenantPaymentPeriodPreset,
+  now: Date = new Date(),
+) {
+  const today = billingTodayInSeoul(now);
+  const [year, month] = today.slice(0, 7).split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - preset, 1));
+  const from = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  return { from, to: today };
+}
+
+export function paymentHistoryInclusiveDays(from: string, to: string): number {
+  const pattern = /^\d{4}-\d{2}-\d{2}$/u;
+  if (!pattern.test(from) || !pattern.test(to)) throw new Error("range must use YYYY-MM-DD");
+  const start = Date.parse(`${from}T00:00:00.000Z`);
+  const end = Date.parse(`${to}T00:00:00.000Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) throw new Error("range is invalid");
+  const validFrom = new Date(start).toISOString().slice(0, 10) === from;
+  const validTo = new Date(end).toISOString().slice(0, 10) === to;
+  if (!validFrom || !validTo || start > end) {
+    throw new Error("range is invalid");
+  }
+  return Math.floor((end - start) / 86_400_000) + 1;
 }

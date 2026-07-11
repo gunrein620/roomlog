@@ -1,42 +1,58 @@
+import Link from "next/link";
 import { getManagerCollection } from "@/lib/billing-manager-api";
-import {
-  BillingShell,
-  DepositTable,
-  Grid,
-  MetricCard,
-  PageStack,
-  Section,
-  TextButtonLink,
-  percent,
-  routes,
-  won,
-} from "../_components";
+import { buildBillingScopeHref } from "@/lib/billing-manager-workspace";
+import { MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { BillingShell, routes } from "../_components";
+import { BillingWorkspaceHeader } from "../BillingWorkspaceHeader";
+import { CollectionWorkspace } from "../CollectionWorkspace";
+import styles from "../billing-workspace.module.css";
 
-export default async function Page() {
-  const summary = await getManagerCollection();
+type SearchParams = Promise<{
+  building?: string | string[];
+  month?: string | string[];
+}>;
+
+function single(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const data = await getManagerCollection({
+    building: single(params.building),
+    month: single(params.month),
+  });
+  const createHref = buildBillingScopeHref("/manager/billing/new", {
+    building: data.scope.selectedBuilding,
+    month: data.billingMonth,
+  });
+  const hasBuildings = data.scope.buildings.length > 0;
 
   return (
-    <BillingShell title="수금 현황" active={routes.collection}>
-      <PageStack>
-        <Grid columns={4}>
-          <MetricCard label="수금률" value={percent(summary.collectionRate)} note="확정 수납 기준" />
-          <MetricCard label="확정 수납" value={won(summary.collectedAmount)} note="확인중·orphan 제외" />
-          <MetricCard label="미납" value={won(summary.unpaidAmount)} note="확정 기준 잔액" />
-          <MetricCard label="공실 손실" value={won(summary.vacancyLoss)} note="재무 표기 분리" />
-        </Grid>
-
-        <Grid columns={2}>
-          <MetricCard label="확인중 금액" value={won(summary.confirmingAmount)} note="납부 신고 큐, 확정 수납 제외" />
-          <MetricCard label="orphan 금액" value={won(summary.orphanAmount)} note="미연결 실제 입금, 미납 판정 제외" />
-        </Grid>
-
-        <Section
-          title="최근 입금"
-          action={<TextButtonLink href={routes.matching}>입금 매칭 확인</TextButtonLink>}
-        >
-          <DepositTable deposits={summary.recentDeposits} emptyText="최근 입금이 없습니다." />
-        </Section>
-      </PageStack>
+    <BillingShell title="청구·수납 관리" active={routes.collection}>
+      <div className={styles.workspace}>
+        <BillingWorkspaceHeader
+          eyebrow="성과 분석"
+          title="수금 현황"
+          description="기간 추이와 건물별 성과를 비교해 수금이 떨어진 지점을 찾습니다. 월세와 관리비를 억지로 비교하지 않습니다."
+          basePath="/manager/billing/collection"
+          scope={data.scope}
+          month={data.billingMonth}
+          actionHref={hasBuildings ? createHref : MHOME_ROUTES["M-HOME-05"]}
+          actionLabel={hasBuildings ? "청구서 생성" : "건물·호실 등록"}
+        />
+        {hasBuildings ? (
+          <CollectionWorkspace data={data} />
+        ) : (
+          <section className={styles.section}>
+            <div className={styles.emptyState}>
+              <h2 className={styles.sectionTitle}>분석할 건물이 없습니다.</h2>
+              <p>건물과 호실을 등록하면 월별·건물별 수금 성과를 확인할 수 있습니다.</p>
+              <Link className={styles.primaryLink} href={MHOME_ROUTES["M-HOME-05"]}>건물·호실 등록</Link>
+            </div>
+          </section>
+        )}
+      </div>
     </BillingShell>
   );
 }

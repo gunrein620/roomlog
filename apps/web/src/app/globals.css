@@ -7306,6 +7306,64 @@ p {
   opacity: 0.84;
 }
 
+.tenant-payment-empty {
+  margin: 0;
+  color: color-mix(in srgb, var(--paper) 82%, var(--blue-soft));
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.tenant-payment-previous,
+.tenant-payment-upcoming {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid color-mix(in srgb, var(--paper) 22%, transparent);
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.tenant-payment-previous {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 26px;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.tenant-payment-previous::after {
+  content: "›";
+  color: color-mix(in srgb, var(--paper) 72%, var(--blue-soft));
+  font-size: 1.15rem;
+}
+
+.tenant-payment-upcoming {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  padding: 17px 26px 20px;
+  background: color-mix(in srgb, var(--paper) 8%, transparent);
+}
+
+.tenant-payment-upcoming strong,
+.tenant-payment-upcoming span {
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.tenant-payment-upcoming span {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tenant-payment-upcoming small {
+  grid-column: 1 / -1;
+  color: color-mix(in srgb, var(--paper) 72%, var(--blue-soft));
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .tenant-payment-watermark {
   position: absolute;
   right: -38px;
@@ -11839,6 +11897,12 @@ p {
 
   .tenant-payment-content {
     padding: 24px 20px;
+  }
+
+  .tenant-payment-previous,
+  .tenant-payment-upcoming {
+    padding-right: 20px;
+    padding-left: 20px;
   }
 
   .tenant-ai-panel {

@@ -1,14 +1,16 @@
 import Link from "next/link";
-import type { Bill, BillStatus, PaymentBadge } from "@roomlog/types";
+import {
+  billingDateInSeoul,
+  type Bill,
+  type BillStatus,
+  type PaymentBadge,
+  type TenantBillSummary,
+} from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
+import { getTenantBillingOverview } from "@/lib/payment-api";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
-import { listBills } from "@/lib/payment-api";
+import styles from "../tenant-payment-pages.module.css";
 
-// T-PAY-00 · 이번 달 청구/납부 홈 (center)
-// 이번 달 낼 돈·상태를 한눈에 + 납부 단일 primary(→02). 점진 공개: 상세·기록·관리비·연체는 보조.
-// 원칙: 조건 배너는 우선순위 1개만(연체>일부납부>확인중, stacking 금지). 입금 확인 응답은 별개 슬롯.
-
-// 청구 상태머신 → 임차인 배지 매핑(D1). 연체 존엄: 관리인 단계 라벨은 비노출.
 const STATUS_TO_BADGE: Record<BillStatus, PaymentBadge> = {
   draft: "none",
   sent: "due",
@@ -29,376 +31,249 @@ const BADGE_LABEL: Record<PaymentBadge, string> = {
   overdue: "연체",
 };
 
-const labelStyle = {
-  fontSize: "var(--fs-caption)",
-  color: "var(--on-surface-variant)",
-  fontWeight: 700,
-  letterSpacing: "0.04em",
-  marginBottom: 8,
-} as const;
-
-function won(n: number): string {
-  return `${n.toLocaleString("ko-KR")}원`;
+function won(value: number): string {
+  return `${value.toLocaleString("ko-KR")}원`;
 }
 
 function ddayOf(dueIso: string): number {
-  const due = new Date(dueIso);
-  const now = new Date();
-  const diff = due.getTime() - now.getTime();
-  return Math.ceil(diff / 86_400_000);
+  const difference = new Date(dueIso).getTime() - Date.now();
+  return Math.ceil(difference / 86_400_000);
 }
 
-function withBillId(route: string, billId?: string): string {
-  return billId ? `${route}?id=${encodeURIComponent(billId)}` : route;
+function withBillId(route: string, billId: string): string {
+  return `${route}?id=${encodeURIComponent(billId)}`;
+}
+
+function upcomingStatusLabel(summary: TenantBillSummary): string {
+  if (summary.bill.status === "paid" || summary.remainingAmount <= 0) return "납부 완료";
+  if (summary.bill.status === "confirming") return "납부 확인 중";
+  if (summary.canPay) return "미리 납부 가능";
+  return "예정";
+}
+
+function upcomingPaymentDate(dueDate: string, suffix: "납부 기한" | "결제 예정"): string {
+  const [, monthValue, dayValue] = billingDateInSeoul(dueDate).split("-");
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  return `${month}월 ${day}일 ${suffix}`;
+}
+
+function upcomingSupportingLabel(summary: TenantBillSummary): string {
+  const paymentClosed =
+    summary.bill.status === "paid" ||
+    summary.remainingAmount <= 0 ||
+    summary.bill.status === "confirming";
+
+  return upcomingPaymentDate(
+    summary.bill.dueDate,
+    paymentClosed ? "납부 기한" : "결제 예정",
+  );
 }
 
 export default async function Page() {
-  const bills = await listBills();
-  // 청구월 내림차순 → 이번 달(center)이 맨 위.
-  const sorted = [...bills].sort((a, b) => b.billingMonth.localeCompare(a.billingMonth));
-  const current = sorted[0];
-  const recentDone = sorted.find((b) => b.id !== current?.id && b.status === "paid");
-  const unit = current?.unitId ?? "내 호실";
+  const { current, previousUnpaid, upcoming } = await getTenantBillingOverview();
+  const unit = current?.bill.unitId ?? upcoming?.bill.unitId ?? previousUnpaid[0]?.bill.unitId;
 
   return (
     <>
-      {/* Header: 호실·이번 달 + 알림 벨 */}
-      <header
-        style={{
-          flex: "none",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          padding: "16px 14px",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
+      <header className={styles.overviewHeader}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>
-            {current ? `${unit}호` : unit} · 이번 달
-          </div>
-          <div style={{ fontSize: 11, color: "var(--on-surface-variant)", marginTop: 2 }}>
-            룸로그 · 납부
-          </div>
+          <div className={styles.overviewTitle}>{unit ? `${unit}호` : "내 호실"} · 이번 달</div>
+          <div className={styles.brand}>집우집주 · 납부</div>
         </div>
-        <span
-          aria-label="알림"
-          style={{
-            width: 38,
-            height: 38,
-            border: "1.5px solid var(--outline-variant)",
-            borderRadius: 10,
-            background: "var(--surface-container-lowest)",
-            fontSize: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
+        <span className={styles.alertIcon} aria-label="알림">
           🔔
         </span>
       </header>
 
-      {/* Body */}
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "16px 14px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-        }}
-      >
+      <main className={styles.overviewBody}>
         {current ? (
           <>
-            {/* ①②③ 총액 + 상태 배지 + 기한 D-day + 합계 1줄 */}
-            <BillSummary bill={current} />
-
-            {/* ④ 조건 배너 — 우선순위 1개만 (연체>일부>확인중) */}
-            <ConditionBanner bill={current} />
-
-            {/* ⑤ 입금 확인 응답 배너 — 위 우선순위와 별개 슬롯 */}
-            {current.depositConfirmationRequested && (
-              <div
-                style={{
-                  border: "1.5px solid var(--primary)",
-                  borderRadius: 10,
-                  padding: 12,
-                  background: "var(--surface-container-high)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 700 }}>입금 확인 응답 요청</div>
-                <div style={{ fontSize: 12, color: "var(--on-surface-variant)" }}>
-                  관리자가 입금 확인을 요청했어요 · 입금자명·이체일·금액을 알려주세요.
-                </div>
+            <BillSummary summary={current} />
+            <ConditionBanner bill={current.bill} />
+            {current.bill.depositConfirmationRequested ? (
+              <div className={styles.conditionBanner}>
+                <strong>입금 확인 응답 요청</strong>
+                <span>관리자가 입금 확인을 요청했어요 · 입금자명·이체일·금액을 알려주세요.</span>
               </div>
-            )}
-
-            {/* 최근 완료(보조) */}
-            {recentDone && (
-              <section>
-                <div style={labelStyle}>최근 완료</div>
-                <Card
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: 12,
-                  }}
-                >
-                  <span style={{ fontSize: 13, color: "var(--on-surface-variant)" }}>
-                    {recentDone.billingMonth} 청구
-                  </span>
-                  <span style={{ fontSize: 12, color: "var(--on-surface-variant)" }}>완료</span>
-                </Card>
-              </section>
-            )}
+            ) : null}
           </>
         ) : (
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              textAlign: "center",
-              padding: "40px 16px",
-              border: "1.5px dashed var(--outline-variant)",
-              borderRadius: "var(--radius-md)",
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--on-surface-variant)" }}>
-              이번 달 청구가 없어요
-            </div>
+          <div className={styles.emptyState}>
+            <strong>이번 달 청구가 없어요</strong>
+            <span>다음 결제 예정 청구는 아래에서 따로 확인할 수 있어요.</span>
           </div>
         )}
-      </div>
 
-      {/* Footer: 납부하기 FAB + 보조 묶음 메뉴 */}
-      <footer
-        style={{
-          flex: "none",
-          padding: "12px 14px",
-          borderTop: "1px solid var(--border)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {current ? (
-          <Link
-            href={withBillId(PAYMENT_ROUTES["T-PAY-02"], current.id)}
-            style={{
-              display: "flex",
-              width: "100%",
-              boxSizing: "border-box",
-              height: "var(--touch-target)",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "none",
-              background: "var(--primary)",
-              color: "var(--on-primary)",
-              borderRadius: "var(--radius-btn)",
-              fontSize: "var(--fs-body)",
-              fontWeight: 700,
-              textDecoration: "none",
-            }}
-          >
-            납부하기
+        {previousUnpaid.length > 0 ? (
+          <section className={styles.previousSection} aria-labelledby="previous-unpaid-title">
+            <div id="previous-unpaid-title" className={styles.sectionLabel}>
+              이전 미납 {previousUnpaid.length}건
+            </div>
+            <div className={styles.previousList}>
+              {previousUnpaid.map((summary) => (
+                <Card key={summary.bill.id} className={styles.previousCard}>
+                  <div>
+                    <strong>{summary.bill.billingMonth} 청구</strong>
+                    <span>남은 금액 {won(summary.remainingAmount)}</span>
+                  </div>
+                  <Link
+                    className={styles.inlineDetailLink}
+                    href={withBillId(PAYMENT_ROUTES["T-PAY-01"], summary.bill.id)}
+                  >
+                    청구 상세
+                  </Link>
+                </Card>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {upcoming ? <UpcomingBill summary={upcoming} /> : null}
+      </main>
+
+      <footer className={styles.overviewFooter}>
+        <CurrentPrimaryAction current={current} />
+        <nav className={styles.secondaryActions} aria-label="납부 메뉴">
+          {current ? (
+            <Link
+              className={styles.secondaryLink}
+              href={withBillId(PAYMENT_ROUTES["T-PAY-01"], current.bill.id)}
+            >
+              청구 상세
+            </Link>
+          ) : (
+            <span className={styles.secondaryDisabled} aria-disabled="true">
+              청구 상세
+            </span>
+          )}
+          <Link className={styles.secondaryLink} href={PAYMENT_ROUTES["T-PAY-03"]}>
+            납부 기록
           </Link>
-        ) : (
-          <span
-            aria-disabled="true"
-            style={{
-              display: "flex",
-              width: "100%",
-              boxSizing: "border-box",
-              height: "var(--touch-target)",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px dashed var(--outline-variant)",
-              background: "var(--surface-container)",
-              color: "var(--on-surface-variant)",
-              borderRadius: "var(--radius-btn)",
-              fontSize: "var(--fs-body)",
-              fontWeight: 700,
-            }}
-          >
-            납부할 청구가 없어요
-          </span>
-        )}
-
-        <nav style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-          {current ? (
-            <SecondaryLink
-              href={withBillId(PAYMENT_ROUTES["T-PAY-01"], current.id)}
-              label="청구 상세"
-            />
-          ) : (
-            <SecondaryDisabled label="청구 상세" />
-          )}
-          <SecondaryLink href={PAYMENT_ROUTES["T-PAY-03"]} label="납부 기록" />
-          {current?.maintenanceFeeId ? (
-            <SecondaryLink
-              href={withBillId(PAYMENT_ROUTES["T-PAY-04"], current.id)}
-              label="관리비 내역"
-            />
-          ) : (
-            <SecondaryDisabled label="관리비 내역" />
-          )}
-          {current ? (
-            <SecondaryLink
-              href={withBillId(PAYMENT_ROUTES["T-PAY-05"], current.id)}
-              label="연체 안내"
-            />
-          ) : (
-            <SecondaryDisabled label="연체 안내" />
-          )}
         </nav>
       </footer>
     </>
   );
 }
 
-function BillSummary({ bill }: { bill: Bill }) {
+function CurrentPrimaryAction({ current }: { current: TenantBillSummary | null }) {
+  const paymentBlockedByStatus =
+    current?.bill.status === "paid" || current?.bill.status === "confirming";
+
+  if (current && !paymentBlockedByStatus && current.canPay && current.remainingAmount > 0) {
+    return (
+      <Link
+        className={styles.primaryAction}
+        href={withBillId(PAYMENT_ROUTES["T-PAY-02"], current.bill.id)}
+      >
+        납부하기
+      </Link>
+    );
+  }
+
+  let label = "납부할 청구가 없어요";
+  if (current?.bill.status === "paid") label = "납부 완료";
+  else if (current?.bill.status === "confirming") label = "납부 확인 중";
+  else if (current && current.remainingAmount <= 0) label = "납부할 잔액이 없어요";
+  else if (current) label = "납부 준비 중";
+
+  return (
+    <button
+      className={styles.primaryDisabled}
+      type="button"
+      disabled
+      aria-disabled="true"
+    >
+      {label}
+    </button>
+  );
+}
+
+function BillSummary({ summary }: { summary: TenantBillSummary }) {
+  const { bill, remainingAmount } = summary;
   const badge = STATUS_TO_BADGE[bill.status];
   const dday = ddayOf(bill.dueDate);
-  const remaining = bill.totalAmount - bill.paidAmount;
+
   return (
-    <section>
-      <Card style={{ display: "flex", flexDirection: "column", gap: 12, padding: 16 }}>
-        {/* ① 총액 + 납부 상태 배지 */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 12, color: "var(--on-surface-variant)" }}>
-            {bill.billingMonth} 청구 총액
-          </div>
+    <section className={styles.currentSection} aria-labelledby="current-bill-title">
+      <Card className={styles.summaryCard}>
+        <div className={styles.summaryTopline}>
+          <span id="current-bill-title">{bill.billingMonth} 청구 총액</span>
           <Badge emphasis>{BADGE_LABEL[badge]}</Badge>
         </div>
-        <div style={{ fontSize: 26, fontWeight: 800 }}>{won(bill.totalAmount)}</div>
-
-        {/* ② 기한 D-day */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            borderTop: "1px dashed var(--border)",
-            paddingTop: 10,
-          }}
-        >
-          <span style={{ fontSize: 13, color: "var(--on-surface-variant)" }}>납부 기한</span>
-          <span style={{ fontSize: 13, fontWeight: 700 }}>
+        <strong className={styles.summaryAmount}>{won(bill.totalAmount)}</strong>
+        <div className={styles.summaryRow}>
+          <span>납부 기한</span>
+          <strong>
             {bill.dueDate.slice(0, 10)}
-            <span style={{ marginLeft: 8, color: "var(--primary)" }}>
-              {dday >= 0 ? `D-${dday}` : `D+${-dday}`}
-            </span>
-          </span>
+            <em>{dday >= 0 ? `D-${dday}` : `D+${-dday}`}</em>
+          </strong>
         </div>
-
-        {/* ③ 합계 1줄 (일부 납부 시 잔액) */}
-        {bill.paidAmount > 0 && remaining > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-            <span style={{ color: "var(--on-surface-variant)" }}>남은 금액</span>
-            <span style={{ fontWeight: 700 }}>{won(remaining)}</span>
+        {remainingAmount < bill.totalAmount ? (
+          <div className={styles.summaryRow}>
+            <span>남은 금액</span>
+            <strong>{won(remainingAmount)}</strong>
           </div>
-        )}
+        ) : null}
       </Card>
     </section>
   );
 }
 
-// 조건 배너 — 동시 발생 시 상위 1개만(연체 > 일부 납부 > 확인 중). stacking 금지.
+function UpcomingBill({ summary }: { summary: TenantBillSummary }) {
+  const { bill } = summary;
+
+  return (
+    <section className={styles.upcomingSection} aria-labelledby="upcoming-bill-title">
+      <div id="upcoming-bill-title" className={styles.sectionLabel}>
+        다음 결제 예정
+      </div>
+      <Card className={styles.upcomingCard}>
+        <div className={styles.summaryTopline}>
+          <div>
+            <strong>{bill.billingMonth} 청구</strong>
+            <span>{upcomingSupportingLabel(summary)}</span>
+          </div>
+          <Badge emphasis>{upcomingStatusLabel(summary)}</Badge>
+        </div>
+        <strong className={styles.upcomingAmount}>{won(summary.remainingAmount)}</strong>
+        <Link
+          className={styles.inlineDetailLink}
+          href={withBillId(PAYMENT_ROUTES["T-PAY-01"], bill.id)}
+        >
+          청구 상세
+        </Link>
+      </Card>
+    </section>
+  );
+}
+
 function ConditionBanner({ bill }: { bill: Bill }) {
-  let tone: "overdue" | "partial" | "confirming" | null = null;
-  if (bill.status === "overdue") tone = "overdue";
-  else if (bill.status === "partially_paid") tone = "partial";
-  else if (bill.status === "confirming") tone = "confirming";
+  let copy: { title: string; body: string } | null = null;
 
-  if (!tone) return null;
-
-  const COPY: Record<NonNullable<typeof tone>, { title: string; body: string }> = {
-    overdue: {
+  if (bill.status === "overdue") {
+    copy = {
       title: "납부 기한이 지났어요",
       body: "지금 납부하거나 분할·사정 상담을 받을 수 있어요.",
-    },
-    partial: {
+    };
+  } else if (bill.status === "partially_paid") {
+    copy = {
       title: "일부만 납부되었어요",
       body: `남은 금액 ${won(bill.totalAmount - bill.paidAmount)}을 마저 납부해 주세요.`,
-    },
-    confirming: {
+    };
+  } else if (bill.status === "confirming") {
+    copy = {
       title: "입금 확인 중이에요",
       body: "관리자가 입금을 확인하고 있어요. 보통 24시간 이내에 반영돼요.",
-    },
-  };
-  const { title, body } = COPY[tone];
+    };
+  }
+
+  if (!copy) return null;
 
   return (
-    <div
-      style={{
-        border: "1.5px solid var(--primary)",
-        borderRadius: 10,
-        padding: 12,
-        background: "var(--surface-container-high)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-      }}
-    >
-      <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
-      <div style={{ fontSize: 12, color: "var(--on-surface-variant)" }}>{body}</div>
+    <div className={styles.conditionBanner}>
+      <strong>{copy.title}</strong>
+      <span>{copy.body}</span>
     </div>
-  );
-}
-
-function SecondaryLink({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: 44,
-        border: "1px solid var(--outline-variant)",
-        borderRadius: "var(--radius-btn)",
-        background: "var(--surface-container-lowest)",
-        fontSize: 13,
-        fontWeight: 600,
-        color: "var(--on-surface)",
-        textDecoration: "none",
-      }}
-    >
-      {label}
-    </Link>
-  );
-}
-
-// 관리자 미입력 시 관리비 진입 비활성(E2).
-function SecondaryDisabled({ label }: { label: string }) {
-  return (
-    <span
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: 44,
-        border: "1px dashed var(--outline-variant)",
-        borderRadius: "var(--radius-btn)",
-        background: "var(--surface-container)",
-        fontSize: 13,
-        fontWeight: 600,
-        color: "var(--on-surface-variant)",
-        cursor: "not-allowed",
-      }}
-    >
-      {label} · 준비 중
-    </span>
   );
 }

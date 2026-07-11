@@ -4,6 +4,8 @@ import { Store, StoreProjector } from "./roomlog.service";
 import { IntakeDraft, MessageSenderRole, PhotoAnalysis, TicketMessage } from "./roomlog.types";
 import type {
   BillStatus as PrismaBillStatus,
+  BillLineItemKind as PrismaBillLineItemKind,
+  BillPaymentTransactionStatus as PrismaBillPaymentTransactionStatus,
   ContractDeletionState as PrismaContractDeletionState,
   ContractDocumentOrigin as PrismaContractDocumentOrigin,
   ContractLifecycle as PrismaContractLifecycle,
@@ -107,6 +109,8 @@ export class PrismaStoreProjector implements StoreProjector {
       contractInvites,
       bills,
       billLineItems,
+      billPaymentTransactions,
+      billPaymentAllocations,
       paymentReports,
       deposits,
       maintenanceFees,
@@ -157,6 +161,8 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.contractInvite.findMany(),
       this.prisma.bill.findMany(),
       this.prisma.billLineItem.findMany(),
+      this.prisma.billPaymentTransaction.findMany(),
+      this.prisma.billPaymentAllocation.findMany(),
       this.prisma.paymentReport.findMany(),
       this.prisma.deposit.findMany(),
       this.prisma.maintenanceFee.findMany(),
@@ -374,6 +380,7 @@ export class PrismaStoreProjector implements StoreProjector {
       })),
       bills: bills.map((bill) => ({
         id: bill.id,
+        roomId: optional(bill.roomId),
         unitId: bill.unitId,
         billingMonth: bill.billingMonth,
         status: bill.status,
@@ -391,7 +398,9 @@ export class PrismaStoreProjector implements StoreProjector {
           .map((item) => ({
             id: item.id,
             label: item.label,
-            amount: item.amount
+            kind: item.kind,
+            amount: item.amount,
+            paidAmount: item.paidAmount
           })),
         createdAt: asIso(bill.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(bill.updatedAt) ?? new Date().toISOString()
@@ -413,7 +422,34 @@ export class PrismaStoreProjector implements StoreProjector {
         depositedAt: asIso(deposit.depositedAt) ?? new Date().toISOString(),
         matchStatus: deposit.matchStatus,
         matchedBillId: optional(deposit.matchedBillId),
-        guessedUnitId: optional(deposit.guessedUnitId)
+        guessedUnitId: optional(deposit.guessedUnitId),
+        paymentTransactionId: optional(deposit.paymentTransactionId)
+      })),
+      paymentTransactions: billPaymentTransactions.map((transaction) => ({
+        id: transaction.id,
+        billId: transaction.billId,
+        tenantId: transaction.tenantId,
+        orderId: transaction.orderId,
+        orderName: transaction.orderName,
+        amount: transaction.amount,
+        itemKinds: transaction.itemKinds,
+        status: transaction.status,
+        paymentKey: optional(transaction.paymentKey),
+        method: optional(transaction.method),
+        requestedAt: asIso(transaction.requestedAt) ?? new Date().toISOString(),
+        approvedAt: asIso(transaction.approvedAt),
+        failedAt: asIso(transaction.failedAt),
+        failureMessage: optional(transaction.failureMessage),
+        rawResponse: transaction.rawResponse ?? undefined,
+        allocations: billPaymentAllocations
+          .filter((allocation) => allocation.transactionId === transaction.id)
+          .map((allocation) => ({
+            id: allocation.id,
+            transactionId: allocation.transactionId,
+            billLineItemId: allocation.billLineItemId,
+            kind: allocation.kind,
+            amount: allocation.amount
+          }))
       })),
       maintenanceFees: maintenanceFees.map((fee) => ({
         id: fee.id,
@@ -1318,6 +1354,7 @@ export class PrismaStoreProjector implements StoreProjector {
           where: { id: bill.id },
           create: {
             id: bill.id,
+            roomId: bill.roomId,
             unitId: bill.unitId,
             billingMonth: bill.billingMonth,
             status: toUpperEnum<PrismaBillStatus>(bill.status) ?? "DRAFT",
@@ -1334,6 +1371,7 @@ export class PrismaStoreProjector implements StoreProjector {
             updatedAt: asDate(bill.updatedAt)
           },
           update: {
+            roomId: bill.roomId,
             unitId: bill.unitId,
             billingMonth: bill.billingMonth,
             status: toUpperEnum<PrismaBillStatus>(bill.status) ?? "DRAFT",
@@ -1359,12 +1397,82 @@ export class PrismaStoreProjector implements StoreProjector {
               id: itemId,
               billId: bill.id,
               label: item.label,
-              amount: item.amount
+              kind: toUpperEnum<PrismaBillLineItemKind>(item.kind) ?? "OTHER",
+              amount: item.amount,
+              paidAmount: item.paidAmount ?? 0
             },
             update: {
               billId: bill.id,
               label: item.label,
-              amount: item.amount
+              kind: toUpperEnum<PrismaBillLineItemKind>(item.kind) ?? "OTHER",
+              amount: item.amount,
+              paidAmount: item.paidAmount ?? 0
+            }
+          });
+        }
+      }
+
+      for (const transaction of store.paymentTransactions) {
+        await tx.billPaymentTransaction.upsert({
+          where: { id: transaction.id },
+          create: {
+            id: transaction.id,
+            billId: transaction.billId,
+            tenantId: transaction.tenantId,
+            orderId: transaction.orderId,
+            orderName: transaction.orderName,
+            amount: transaction.amount,
+            itemKinds: transaction.itemKinds.map(
+              (kind) => toUpperEnum<PrismaBillLineItemKind>(kind) ?? "OTHER"
+            ),
+            status:
+              toUpperEnum<PrismaBillPaymentTransactionStatus>(transaction.status) ?? "READY",
+            paymentKey: transaction.paymentKey,
+            method: transaction.method,
+            requestedAt: asDate(transaction.requestedAt),
+            approvedAt: asDate(transaction.approvedAt),
+            failedAt: asDate(transaction.failedAt),
+            failureMessage: transaction.failureMessage,
+            rawResponse:
+              transaction.rawResponse === undefined ? undefined : asJson(transaction.rawResponse)
+          },
+          update: {
+            billId: transaction.billId,
+            tenantId: transaction.tenantId,
+            orderId: transaction.orderId,
+            orderName: transaction.orderName,
+            amount: transaction.amount,
+            itemKinds: transaction.itemKinds.map(
+              (kind) => toUpperEnum<PrismaBillLineItemKind>(kind) ?? "OTHER"
+            ),
+            status:
+              toUpperEnum<PrismaBillPaymentTransactionStatus>(transaction.status) ?? "READY",
+            paymentKey: transaction.paymentKey,
+            method: transaction.method,
+            requestedAt: asDate(transaction.requestedAt),
+            approvedAt: asDate(transaction.approvedAt),
+            failedAt: asDate(transaction.failedAt),
+            failureMessage: transaction.failureMessage,
+            rawResponse:
+              transaction.rawResponse === undefined ? undefined : asJson(transaction.rawResponse)
+          }
+        });
+
+        for (const allocation of transaction.allocations) {
+          await tx.billPaymentAllocation.upsert({
+            where: { id: allocation.id },
+            create: {
+              id: allocation.id,
+              transactionId: transaction.id,
+              billLineItemId: allocation.billLineItemId,
+              kind: toUpperEnum<PrismaBillLineItemKind>(allocation.kind) ?? "OTHER",
+              amount: allocation.amount
+            },
+            update: {
+              transactionId: transaction.id,
+              billLineItemId: allocation.billLineItemId,
+              kind: toUpperEnum<PrismaBillLineItemKind>(allocation.kind) ?? "OTHER",
+              amount: allocation.amount
             }
           });
         }
@@ -1405,7 +1513,8 @@ export class PrismaStoreProjector implements StoreProjector {
             depositedAt: asDate(deposit.depositedAt) ?? new Date(),
             matchStatus: toUpperEnum<PrismaDepositMatchStatus>(deposit.matchStatus) ?? "UNMATCHED",
             matchedBillId: deposit.matchedBillId,
-            guessedUnitId: deposit.guessedUnitId
+            guessedUnitId: deposit.guessedUnitId,
+            paymentTransactionId: deposit.paymentTransactionId
           },
           update: {
             depositorName: deposit.depositorName,
@@ -1413,7 +1522,8 @@ export class PrismaStoreProjector implements StoreProjector {
             depositedAt: asDate(deposit.depositedAt) ?? new Date(),
             matchStatus: toUpperEnum<PrismaDepositMatchStatus>(deposit.matchStatus) ?? "UNMATCHED",
             matchedBillId: deposit.matchedBillId,
-            guessedUnitId: deposit.guessedUnitId
+            guessedUnitId: deposit.guessedUnitId,
+            paymentTransactionId: deposit.paymentTransactionId
           }
         });
       }

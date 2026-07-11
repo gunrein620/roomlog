@@ -1,0 +1,434 @@
+.pageHeader {
+  flex: none;
+  min-height: var(--header-height);
+  padding: 0 var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  background: var(--surface-container-lowest);
+}
+
+.backLink {
+  justify-self: start;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  text-decoration: none;
+}
+
+.pageTitle {
+  margin: 0;
+  color: var(--on-surface);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-header);
+  line-height: var(--lh-caption);
+}
+
+.headerSpacer {
+  width: var(--space-xxl);
+  justify-self: end;
+}
+
+.pageBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  background: var(--surface);
+}
+
+.filterShell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.filterBar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+
+.periodButton {
+  min-height: 40px;
+  padding: var(--space-sm) var(--space-xs);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-full);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.periodButton[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.periodButton:focus-visible,
+.closeButton:focus-visible,
+.applyButton:focus-visible,
+.receiptButton:focus-visible,
+.detailLink:focus-visible,
+.dateField input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.rangeSummary {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.rangeSummary strong {
+  color: var(--on-surface);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rangeOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+}
+
+.rangeOverlay::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: var(--inverse-surface);
+  opacity: 0.38;
+}
+
+.rangePanel {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 1;
+  max-height: calc(100dvh - var(--space-xl));
+  overflow: auto;
+  padding: var(--space-xl) var(--space-lg) calc(var(--space-xl) + env(safe-area-inset-bottom));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow);
+}
+
+.rangeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.rangeTitle {
+  margin: 0;
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-subtitle);
+  line-height: var(--lh-subtitle);
+}
+
+.rangeHint {
+  margin: var(--space-xs) 0 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.closeButton {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-full);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: var(--fs-title);
+  cursor: pointer;
+}
+
+.dateFields {
+  margin-top: var(--space-lg);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+.dateField {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+
+.dateField input {
+  width: 100%;
+  min-width: 0;
+  height: var(--touch-target);
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-btn);
+  background: var(--surface-container-lowest);
+  color: var(--input-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.dateField input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.rangeError {
+  margin: var(--space-md) 0 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  background: var(--error-container);
+  color: var(--on-error-container);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.applyButton {
+  width: 100%;
+  min-height: var(--touch-target);
+  margin-top: var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-btn);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.historyList {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.recordCard {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.recordHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.recordMonth {
+  margin: 0;
+  color: var(--on-surface);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.recordActivity,
+.eventDate,
+.paymentSummary {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.recordActivity {
+  margin: var(--space-xs) 0 0;
+}
+
+.recordTotals {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.totalLabel {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.totalAmount {
+  color: var(--on-surface);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-subtitle);
+  font-variant-numeric: tabular-nums;
+}
+
+.paymentSummary {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.eventList {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  list-style: none;
+}
+
+.eventItem {
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container-low);
+}
+
+.eventTopline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.eventName {
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.eventStatus {
+  flex: none;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+}
+
+.eventAmount {
+  margin-top: var(--space-xs);
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.eventDate {
+  margin-top: 2px;
+}
+
+.eventActions {
+  margin-top: var(--space-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.receiptButton,
+.detailLink {
+  min-height: 40px;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-btn);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.detailLink {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+}
+
+.receiptNotice {
+  margin: var(--space-sm) 0 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px dashed var(--outline-variant);
+  border-radius: var(--radius);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.emptyState {
+  margin: 0;
+  padding: 40px var(--space-lg);
+  border: 1px dashed var(--outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  text-align: center;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 768px) {
+  .pageBody {
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: var(--space-xl);
+  }
+
+  .filterBar {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .periodButton {
+    min-width: 92px;
+    padding-inline: var(--space-lg);
+  }
+
+  .rangeSummary {
+    position: absolute;
+    right: 0;
+    top: 10px;
+  }
+
+  .rangeOverlay::before {
+    display: none;
+  }
+
+  .rangePanel {
+    position: absolute;
+    inset: auto;
+    top: calc(var(--header-height) + var(--space-xl) + var(--touch-target) + var(--space-xs));
+    right: max(var(--space-xl), calc(50vw - 560px + var(--space-xl)));
+    width: min(440px, calc(100vw - (var(--space-xl) * 2)));
+    max-height: calc(100dvh - var(--header-height) - var(--touch-target) - (var(--space-xl) * 2));
+    padding: var(--space-lg);
+    border-radius: var(--radius-md);
+  }
+
+  .historyList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}

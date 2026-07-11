@@ -1,11 +1,16 @@
 import Link from "next/link";
-import type { BillStatus } from "@roomlog/types";
-import { Badge, Button, Card } from "@roomlog/ui";
+import { notFound } from "next/navigation";
+import type { Bill, BillStatus, TenantBillingOverview } from "@roomlog/types";
+import { Badge, Card } from "@roomlog/ui";
+import {
+  DEMO_BILL_ID,
+  getBill,
+  getTenantBillingOverview,
+  tenantBillSummaryForId,
+} from "@/lib/payment-api";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
-import { getBill } from "@/lib/payment-api";
-
-// T-PAY-01 · 청구 상세
-// 항목 분해 + 계좌·기한 + 청구 상태(정정 이력). primary=납부하기(→02). 관리비 세부·과거는 미룸.
+import { ApiError } from "@/lib/server-api";
+import styles from "../tenant-payment-pages.module.css";
 
 const STATUS_LABEL: Record<BillStatus, string> = {
   draft: "작성 중",
@@ -18,20 +23,12 @@ const STATUS_LABEL: Record<BillStatus, string> = {
   canceled: "취소됨",
 };
 
-const sectionLabel = {
-  fontSize: "var(--fs-caption)",
-  color: "var(--on-surface-variant)",
-  fontWeight: 700,
-  letterSpacing: "0.04em",
-  marginBottom: 7,
-} as const;
-
-function won(n: number): string {
-  return `${n.toLocaleString("ko-KR")}원`;
+function won(value: number): string {
+  return `${value.toLocaleString("ko-KR")}원`;
 }
 
-function withBillId(route: string, billId?: string): string {
-  return billId ? `${route}?id=${encodeURIComponent(billId)}` : route;
+function withBillId(route: string, billId: string): string {
+  return `${route}?id=${encodeURIComponent(billId)}`;
 }
 
 export default async function Page({
@@ -40,138 +37,116 @@ export default async function Page({
   searchParams: Promise<{ id?: string }>;
 }) {
   const { id } = await searchParams;
-  const bill = await getBill(id);
+  let bill: Bill;
+  let overview: TenantBillingOverview;
+
+  try {
+    [bill, overview] = await Promise.all([getBill(id), getTenantBillingOverview()]);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) notFound();
+    throw error;
+  }
+
+  const requestedBillId = id?.trim();
+  const summaryBillId =
+    requestedBillId && requestedBillId !== DEMO_BILL_ID ? requestedBillId : bill.id;
+  const summary = tenantBillSummaryForId(overview, summaryBillId);
+  const remainingAmount = summary?.remainingAmount ?? Math.max(0, bill.totalAmount - bill.paidAmount);
+  const canPay = summary?.canPay === true;
 
   return (
     <>
-      <header
-        style={{
-          flex: "none",
-          padding: 14,
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <Link
-          href={PAYMENT_ROUTES["T-PAY-00"]}
-          style={{ fontSize: 13, color: "var(--on-surface-variant)", textDecoration: "none" }}
-        >
+      <header className={styles.pageHeader}>
+        <Link className={styles.backLink} href={PAYMENT_ROUTES["T-PAY-00"]}>
           ‹ 뒤로
         </Link>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{bill.billingMonth} 청구 상세</div>
-        <div style={{ width: 34 }} />
+        <h1 className={styles.pageTitle}>{bill.billingMonth} 청구 상세</h1>
+        <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
 
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: 14,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        {/* ④ 청구 상태 + 정정 이력 */}
-        <section>
-          <div style={sectionLabel}>청구 상태</div>
-          <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Badge emphasis style={{ alignSelf: "flex-start" }}>
-              {STATUS_LABEL[bill.status]}
-            </Badge>
-            {bill.correctionHistory && bill.correctionHistory.length > 0 && (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 16,
-                  fontSize: 12,
-                  color: "var(--on-surface-variant)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                }}
-              >
-                {bill.correctionHistory.map((h) => (
-                  <li key={h}>{h}</li>
+      <main className={`${styles.pageBody} ${styles.detailBody}`}>
+        <section aria-labelledby="bill-status-title">
+          <h2 id="bill-status-title" className={styles.sectionLabel}>
+            청구 상태
+          </h2>
+          <Card className={styles.detailCard}>
+            <Badge emphasis>{STATUS_LABEL[bill.status]}</Badge>
+            {bill.correctionHistory?.length ? (
+              <ul className={styles.correctionHistory}>
+                {bill.correctionHistory.map((entry) => (
+                  <li key={entry}>{entry}</li>
                 ))}
               </ul>
-            )}
+            ) : null}
           </Card>
         </section>
 
-        {/* ① 항목 분해 */}
-        <section>
-          <div style={sectionLabel}>청구 항목</div>
-          <Card style={{ padding: 0 }}>
-            {bill.items.map((item, i) => (
-              <div
-                key={item.label}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "12px 16px",
-                  borderBottom: i < bill.items.length - 1 ? "1px solid var(--border)" : "none",
-                  fontSize: 14,
-                }}
-              >
-                <span style={{ color: "var(--on-surface-variant)" }}>{item.label}</span>
-                <span style={{ fontWeight: 600 }}>{won(item.amount)}</span>
+        <section aria-labelledby="bill-items-title">
+          <h2 id="bill-items-title" className={styles.sectionLabel}>
+            청구 항목
+          </h2>
+          <Card className={styles.detailCard}>
+            <div className={styles.itemList}>
+              {bill.items.map((item) => (
+                <div className={styles.itemRow} key={`${item.kind}-${item.label}`}>
+                  <span>{item.label}</span>
+                  <strong>{won(item.amount)}</strong>
+                </div>
+              ))}
+              <div className={`${styles.itemRow} ${styles.itemTotal}`}>
+                <span>합계</span>
+                <strong>{won(bill.totalAmount)}</strong>
               </div>
-            ))}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "12px 16px",
-                borderTop: "1.5px solid var(--border)",
-                fontSize: 15,
-                fontWeight: 800,
-              }}
-            >
-              <span>합계</span>
-              <span>{won(bill.totalAmount)}</span>
+              {remainingAmount < bill.totalAmount ? (
+                <div className={styles.itemRow}>
+                  <span>남은 금액</span>
+                  <strong>{won(remainingAmount)}</strong>
+                </div>
+              ) : null}
             </div>
           </Card>
         </section>
 
-        {/* ② 계좌·예금주 · ③ 기한 */}
-        <section>
-          <div style={sectionLabel}>납부 정보</div>
-          <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <section aria-labelledby="payment-information-title">
+          <h2 id="payment-information-title" className={styles.sectionLabel}>
+            납부 정보
+          </h2>
+          <Card className={styles.detailCard}>
             <Row label="입금 계좌" value={`${bill.account.bankName} ${bill.account.accountNumber}`} />
             <Row label="예금주" value={bill.account.accountHolder} />
             <Row label="납부 기한" value={bill.dueDate.slice(0, 10)} />
           </Card>
         </section>
 
-        {/* ⑤ 번역 토글 (인-스크린 · 셸 정적 표시) */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            fontSize: 12,
-            color: "var(--on-surface-variant)",
-          }}
-        >
-          🌐 다른 언어로 보기
-        </div>
-      </div>
+        <p className={styles.languageHint}>🌐 다른 언어로 보기</p>
+      </main>
 
-      <footer
-        style={{
-          flex: "none",
-          padding: "12px 14px",
-          borderTop: "1px solid var(--border)",
-        }}
-      >
-        <Link
-          href={withBillId(PAYMENT_ROUTES["T-PAY-02"], bill.id)}
-          style={{ textDecoration: "none", display: "block" }}
-        >
-          <Button fullWidth>납부하기</Button>
-        </Link>
+      <footer className={styles.pageFooter}>
+        {bill.status === "paid" ? (
+          <Link className={styles.primaryAction} href={PAYMENT_ROUTES["T-PAY-03"]}>
+            납부 기록
+          </Link>
+        ) : canPay ? (
+          <Link
+            className={styles.primaryAction}
+            href={withBillId(PAYMENT_ROUTES["T-PAY-02"], bill.id)}
+          >
+            납부하기
+          </Link>
+        ) : (
+          <button
+            className={styles.primaryDisabled}
+            type="button"
+            disabled
+            aria-disabled="true"
+          >
+            {bill.status === "confirming"
+              ? "납부 확인 중"
+              : remainingAmount <= 0
+                ? "납부할 잔액이 없어요"
+                : "납부 준비 중"}
+          </button>
+        )}
       </footer>
     </>
   );
@@ -179,9 +154,9 @@ export default async function Page({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
-      <span style={{ color: "var(--on-surface-variant)" }}>{label}</span>
-      <span style={{ fontWeight: 600 }}>{value}</span>
+    <div className={styles.detailRow}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }

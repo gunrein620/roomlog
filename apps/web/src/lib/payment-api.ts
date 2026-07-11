@@ -1,15 +1,31 @@
 import "server-only";
 
-import type { Bill, MaintenanceFee, PaymentReport } from "@roomlog/types";
-import { DEMO_BILL, DEMO_BILLS, DEMO_MAINTENANCE } from "./demo-payment";
-import { serverFetch } from "./server-api";
+import type {
+  Bill,
+  BillLineItemKind,
+  BillPaymentOrder as SharedBillPaymentOrder,
+  PaymentReport,
+  TenantBillSummary,
+  TenantBillingOverview,
+  TenantPaymentHistory,
+} from "@roomlog/types";
+import {
+  DEMO_BILL,
+  DEMO_BILLS,
+  demoTenantBillingOverview,
+  demoTenantPaymentHistory,
+} from "./demo-payment";
+import { buildDemoBillPaymentOrder, isDemoBillId } from "./payment-demo-fallback";
+import { ApiError, serverFetch } from "./server-api";
 import {
   toBill,
-  toMaintenance,
   toReport,
+  toTenantBillingOverview,
+  toTenantPaymentHistory,
   type TeamBill,
-  type TeamMaintenance,
   type TeamReport,
+  type TeamTenantBillingOverview,
+  type TeamTenantPaymentHistory,
 } from "./payment-mapping";
 
 // 룸로그 납부 슬라이스 API 클라이언트 — 팀 실 백엔드(/tenant/bills)에 쿠키 인증으로 연결.
@@ -22,6 +38,44 @@ import {
 export interface CreatePaymentReportInput {
   amount: number;
   depositorName?: string;
+}
+
+export type BillPaymentOrder = SharedBillPaymentOrder;
+
+export interface CreateBillPaymentOrderInput {
+  itemKinds: BillLineItemKind[];
+}
+
+export interface ConfirmBillPaymentInput {
+  orderId: string;
+  paymentKey: string;
+  amount: number;
+}
+
+interface TeamBillPaymentOrder {
+  billId: string;
+  orderId: string;
+  orderName: string;
+  amount: number;
+  itemKinds: string[];
+  customerKey: string;
+  clientKey?: string;
+}
+
+const TEAM_ITEM_KIND: Record<BillLineItemKind, string> = {
+  rent: "RENT",
+  maintenance: "MAINTENANCE",
+  other: "OTHER",
+};
+
+const ITEM_KIND: Record<string, BillLineItemKind> = {
+  RENT: "rent",
+  MAINTENANCE: "maintenance",
+  OTHER: "other",
+};
+
+function canUseReadOnlyDemoFallback(error: unknown): boolean {
+  return !(error instanceof ApiError) || error.status >= 500;
 }
 
 async function listTeamBills(): Promise<TeamBill[]> {
@@ -42,6 +96,7 @@ async function getTeamBillById(id: string): Promise<TeamBill | null> {
   try {
     return await serverFetch<TeamBill>(`/tenant/bills/${encodeURIComponent(id)}`);
   } catch (error) {
+    if (!canUseReadOnlyDemoFallback(error)) throw error;
     console.warn(`[tenant/payment-api] /tenant/bills/${id} 조회 실패:`, error);
     return null;
   }
@@ -60,9 +115,39 @@ export async function listBills(): Promise<Bill[]> {
     const list = await listTeamBills();
     return list.map(toBill);
   } catch (error) {
+    if (!canUseReadOnlyDemoFallback(error)) throw error;
     console.warn("[tenant/payment-api] listBills 실패 → 데모 청구 폴백:", error);
     return DEMO_BILLS;
   }
+}
+
+export async function getTenantBillingOverview(): Promise<TenantBillingOverview> {
+  let overview: TeamTenantBillingOverview;
+  try {
+    overview = await serverFetch<TeamTenantBillingOverview>("/tenant/bills/overview");
+  } catch (error) {
+    if (!canUseReadOnlyDemoFallback(error)) throw error;
+    console.warn("[tenant/payment-api] overview 실패 → 읽기 전용 데모:", error);
+    return demoTenantBillingOverview();
+  }
+  return toTenantBillingOverview(overview);
+}
+
+export async function getTenantPaymentHistory(
+  range: { from: string; to: string },
+): Promise<TenantPaymentHistory> {
+  const params = new URLSearchParams(range);
+  let history: TeamTenantPaymentHistory;
+  try {
+    history = await serverFetch<TeamTenantPaymentHistory>(
+      `/tenant/bills/history?${params.toString()}`,
+    );
+  } catch (error) {
+    if (!canUseReadOnlyDemoFallback(error)) throw error;
+    console.warn("[tenant/payment-api] history 실패 → 읽기 전용 데모:", error);
+    return demoTenantPaymentHistory(range);
+  }
+  return toTenantPaymentHistory(history);
 }
 
 export async function getBill(id?: string): Promise<Bill> {
@@ -72,28 +157,23 @@ export async function getBill(id?: string): Promise<Bill> {
   return DEMO_BILL;
 }
 
-export async function getMaintenance(id?: string): Promise<MaintenanceFee> {
-  const bill = await resolveBill(id);
-  if (!bill) {
-    console.warn("[tenant/payment-api] 실제 청구 없음 → 데모 관리비 폴백");
-    return DEMO_MAINTENANCE;
+export async function getBillForMutation(id?: string): Promise<Bill> {
+  const billId = id?.trim() || DEMO_BILL_ID;
+
+  if (isDemoBillId(billId)) {
+    return getBill(billId);
   }
 
-  const mappedBill = toBill(bill);
-  if (!mappedBill.maintenanceFeeId) return unavailableMaintenance(mappedBill);
+  const bill = await serverFetch<TeamBill>(`/tenant/bills/${encodeURIComponent(billId)}`);
+  return toBill(bill);
+}
 
-  try {
-    const maintenance = await serverFetch<TeamMaintenance>(
-      `/tenant/bills/${encodeURIComponent(mappedBill.id)}/maintenance`,
-    );
-    return toMaintenance(maintenance);
-  } catch (error) {
-    console.warn(
-      `[tenant/payment-api] /tenant/bills/${mappedBill.id}/maintenance 조회 실패 → 데모 관리비 폴백:`,
-      error,
-    );
-    return DEMO_MAINTENANCE;
-  }
+export function tenantBillSummaryForId(
+  overview: TenantBillingOverview,
+  billId: string,
+): TenantBillSummary | null {
+  const summaries = [overview.current, overview.upcoming, ...overview.previousUnpaid];
+  return summaries.find((summary) => summary?.bill.id === billId) ?? null;
 }
 
 export async function createReport(
@@ -110,20 +190,56 @@ export async function createReport(
     );
     return toReport(report);
   } catch (error) {
-    console.warn(`[tenant/payment-api] /tenant/bills/${billId}/reports 실패 → 데모 신고 폴백:`, error);
-    return demoReport(billId, dto);
+    if (isDemoBillId(billId)) {
+      console.warn(`[tenant/payment-api] /tenant/bills/${billId}/reports 실패 → 데모 신고:`, error);
+      return demoReport(billId, dto);
+    }
+    throw error;
   }
 }
 
-function unavailableMaintenance(bill: Bill): MaintenanceFee {
-  return {
-    id: bill.maintenanceFeeId ?? `${bill.id}-maintenance`,
-    unitId: bill.unitId,
-    billingMonth: bill.billingMonth,
-    items: [],
-    totalAmount: 0,
-    available: false,
-  };
+export async function createBillPaymentOrder(
+  billId: string,
+  dto: CreateBillPaymentOrderInput,
+): Promise<BillPaymentOrder> {
+  try {
+    const order = await serverFetch<TeamBillPaymentOrder>(
+      `/tenant/bills/${encodeURIComponent(billId)}/payment-orders`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          itemKinds: dto.itemKinds.map((kind) => TEAM_ITEM_KIND[kind]),
+        }),
+      },
+    );
+
+    return {
+      ...order,
+      itemKinds: order.itemKinds
+        .map((kind) => ITEM_KIND[kind.trim().toUpperCase()])
+        .filter((kind): kind is BillLineItemKind => Boolean(kind)),
+    };
+  } catch (error) {
+    if (isDemoBillId(billId)) {
+      console.warn(`[tenant/payment-api] /tenant/bills/${billId}/payment-orders 실패 → 데모 주문:`, error);
+      return buildDemoBillPaymentOrder(billId, dto);
+    }
+    throw error;
+  }
+}
+
+export async function confirmBillPayment(
+  billId: string,
+  dto: ConfirmBillPaymentInput,
+): Promise<Bill> {
+  const bill = await serverFetch<TeamBill>(
+    `/tenant/bills/${encodeURIComponent(billId)}/payment-orders/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify(dto),
+    },
+  );
+  return toBill(bill);
 }
 
 function demoReport(billId: string, dto: CreatePaymentReportInput): PaymentReport {

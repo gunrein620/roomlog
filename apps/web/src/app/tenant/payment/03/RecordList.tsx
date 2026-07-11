@@ -2,146 +2,147 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type {
+  BillStatus,
+  TenantPaymentHistoryEvent,
+  TenantPaymentHistoryRecord,
+} from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
+import styles from "./payment-history.module.css";
 
-// T-PAY-03 기록 리스트 — 기간(1·3·6개월) 필터는 인-스크린(클라이언트). 항목 → 01, 영수증 → 인-스크린.
-
-export type RecordRow = {
-  billId: string;
-  billingMonth: string; // YYYY-MM
-  totalAmount: number;
-  statusLabel: string;
-  paid: boolean; // 완료 건만 영수증/납부확인서
+const STATUS_LABEL: Record<BillStatus, string> = {
+  draft: "작성 중",
+  sent: "납부 예정",
+  confirming: "확인 중",
+  partially_paid: "일부 납부",
+  paid: "완납",
+  overdue: "연체",
+  corrected: "정정됨",
+  canceled: "취소됨",
 };
 
-const PERIODS = [1, 3, 6] as const;
-type Period = (typeof PERIODS)[number];
+const EVENT_LABEL: Record<TenantPaymentHistoryEvent["type"], string> = {
+  toss: "Toss 결제",
+  deposit: "계좌 입금",
+  report: "납부 신고",
+  bill_due: "납부 기한",
+};
 
-function won(n: number): string {
-  return `${n.toLocaleString("ko-KR")}원`;
+const EVENT_STATUS_LABEL: Record<TenantPaymentHistoryEvent["status"], string> = {
+  confirmed: "확정",
+  confirming: "확인 중",
+  due: "미납",
+};
+
+function won(amount: number): string {
+  return `${amount.toLocaleString("ko-KR")}원`;
 }
 
-function withBillId(route: string, billId?: string): string {
-  return billId ? `${route}?id=${encodeURIComponent(billId)}` : route;
+function withBillId(route: string, billId: string): string {
+  return `${route}?id=${encodeURIComponent(billId)}`;
 }
 
-// billingMonth(YYYY-MM)가 기준월로부터 N개월 이내인지.
-function withinMonths(month: string, n: number): boolean {
-  const [y, m] = month.split("-").map(Number);
-  const now = new Date();
-  const monthsAgo = (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - m);
-  return monthsAgo >= 0 && monthsAgo < n;
+function activityDateLabel(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
-export function RecordList({ records }: { records: RecordRow[] }) {
-  const [period, setPeriod] = useState<Period>(6);
-  const [receiptOpen, setReceiptOpen] = useState<string | null>(null);
+function paymentSummary(record: TenantPaymentHistoryRecord): string {
+  const remaining = Math.max(0, record.totalAmount - record.paidAmount);
+  if (record.paidAmount <= 0) return `${won(remaining)} 미납`;
+  if (remaining === 0) return `${won(record.paidAmount)} 납부`;
+  return `${won(record.paidAmount)} 납부 · ${won(remaining)} 남음`;
+}
 
-  const visible = records.filter((r) => withinMonths(r.billingMonth, period));
+export function RecordList({ records }: { records: TenantPaymentHistoryRecord[] }) {
+  const [openReceiptKey, setOpenReceiptKey] = useState<string | null>(null);
+
+  if (records.length === 0) {
+    return <p className={styles.emptyState}>이 기간에는 납부 기록이 없어요</p>;
+  }
 
   return (
-    <>
-      {/* 기간 선택 (인-스크린) */}
-      <div style={{ display: "flex", gap: 8 }}>
-        {PERIODS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPeriod(p)}
-            style={{
-              flex: 1,
-              height: 40,
-              border:
-                period === p ? "1.5px solid var(--primary)" : "1px solid var(--outline-variant)",
-              borderRadius: "var(--radius-full)",
-              background: "var(--surface-container-lowest)",
-              fontSize: 13,
-              fontWeight: 600,
-              color: period === p ? "var(--on-surface)" : "var(--on-surface-variant)",
-              cursor: "pointer",
-            }}
-          >
-            최근 {p}개월
-          </button>
-        ))}
-      </div>
+    <section className={styles.historyList} aria-label="기간 내 납부 기록">
+      {records.map((record) => (
+        <Card key={record.billId} className={styles.recordCard}>
+          <div className={styles.recordHeader}>
+            <div>
+              <h2 className={styles.recordMonth}>{record.billingMonth} 청구</h2>
+              <p className={styles.recordActivity}>
+                최근 활동{" "}
+                <time dateTime={record.activityDate}>{activityDateLabel(record.activityDate)}</time>
+              </p>
+            </div>
+            <Badge emphasis={record.status === "paid"}>{STATUS_LABEL[record.status]}</Badge>
+          </div>
 
-      {visible.length === 0 ? (
-        <div
-          style={{
-            padding: "40px 16px",
-            textAlign: "center",
-            fontSize: 13,
-            color: "var(--on-surface-variant)",
-            border: "1.5px dashed var(--outline-variant)",
-            borderRadius: "var(--radius-md)",
-          }}
-        >
-          이 기간에는 기록이 없어요
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {visible.map((r) => (
-            <Card key={r.billId} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <Link
-                href={withBillId(PAYMENT_ROUTES["T-PAY-01"], r.billId)}
-                style={{ textDecoration: "none", color: "inherit" }}
-              >
-                <div
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-                >
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{r.billingMonth} 청구</div>
-                    <div
-                      style={{ fontSize: 12, color: "var(--on-surface-variant)", marginTop: 2 }}
-                    >
-                      {won(r.totalAmount)}
-                    </div>
+          <div className={styles.recordTotals}>
+            <div>
+              <div className={styles.totalLabel}>청구 합계</div>
+              <div className={styles.totalAmount}>{won(record.totalAmount)}</div>
+            </div>
+            <div className={styles.paymentSummary}>{paymentSummary(record)}</div>
+          </div>
+
+          <ul className={styles.eventList} aria-label={`${record.billingMonth} 활동 내역`}>
+            {record.payments.map((event) => {
+              const receiptKey = `${record.billId}:${event.id}`;
+              const receiptOpen = openReceiptKey === receiptKey;
+              const receiptId = `receipt-${receiptKey.replace(/[^a-zA-Z0-9_-]/gu, "-")}`;
+
+              return (
+                <li key={event.id} className={styles.eventItem}>
+                  <div className={styles.eventTopline}>
+                    <span className={styles.eventName}>{EVENT_LABEL[event.type]}</span>
+                    <span className={styles.eventStatus}>{EVENT_STATUS_LABEL[event.status]}</span>
                   </div>
-                  <Badge emphasis={r.paid}>{r.statusLabel}</Badge>
-                </div>
-              </Link>
+                  <div className={styles.eventAmount}>{won(event.amount)}</div>
+                  <div className={styles.eventDate}>
+                    활동일{" "}
+                    <time dateTime={event.activityDate}>{activityDateLabel(event.activityDate)}</time>
+                  </div>
 
-              {r.paid && (
-                <button
-                  type="button"
-                  onClick={() => setReceiptOpen(receiptOpen === r.billId ? null : r.billId)}
-                  style={{
-                    height: 40,
-                    border: "1px solid var(--outline-variant)",
-                    borderRadius: "var(--radius-btn)",
-                    background: "var(--surface-container-lowest)",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "var(--on-surface-variant)",
-                    cursor: "pointer",
-                  }}
-                >
-                  {receiptOpen === r.billId ? "닫기" : "영수증 · 납부확인서"}
-                </button>
-              )}
+                  {event.receiptAvailable && (
+                    <>
+                      <div className={styles.eventActions}>
+                        <button
+                          type="button"
+                          className={styles.receiptButton}
+                          aria-expanded={receiptOpen}
+                          aria-controls={receiptId}
+                          onClick={() => setOpenReceiptKey(receiptOpen ? null : receiptKey)}
+                        >
+                          {receiptOpen ? "영수증 닫기" : "영수증 · 납부확인서"}
+                        </button>
+                      </div>
+                      {receiptOpen && (
+                        <p id={receiptId} className={styles.receiptNotice} role="status">
+                          PDF 다운로드 준비 중이에요. 확정된 거래 정보는 그대로 유지됩니다.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
 
-              {receiptOpen === r.billId && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--on-surface-variant)",
-                    border: "1px dashed var(--outline-variant)",
-                    borderRadius: 8,
-                    padding: 10,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {r.billingMonth} 납부확인서 · 발급 준비됨
-                  <br />
-                  PDF 다운로드는 준비 중이에요.
-                </div>
-              )}
-            </Card>
-          ))}
-        </div>
-      )}
-    </>
+          <Link
+            href={withBillId(PAYMENT_ROUTES["T-PAY-01"], record.billId)}
+            className={styles.detailLink}
+          >
+            납부 상세
+          </Link>
+        </Card>
+      ))}
+    </section>
   );
 }

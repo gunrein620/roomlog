@@ -18,6 +18,14 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  billingDateInSeoul,
+  billingMonthInSeoul,
+  billingTodayInSeoul,
+  billPayableFrom,
+  isBillPaymentOpen,
+  paymentHistoryInclusiveDays
+} from "@roomlog/types/payment";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
   hasRequiredPasswordMix,
@@ -52,6 +60,10 @@ import {
   AssignVendorInput,
   Attachment,
   Bill,
+  BillLineItem,
+  BillLineItemKind,
+  BillLineItemStatus,
+  BillPaymentTransaction,
   BillStatus,
   CallbotTicketContext,
   Complaint,
@@ -69,6 +81,8 @@ import {
   CostType,
   CreateManagerContractInput,
   CreateManagerContractInviteInput,
+  CreateManagerBillsInput,
+  CreateManagerBillsResult,
   CreateAnnouncementDraftInput,
   CreateManagerReportExternalShareInput,
   CreateManagerReportFollowUpInput,
@@ -81,6 +95,7 @@ import {
   CreateMessagingThreadInput,
   CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateBillPaymentOrderInput,
   CreatePaymentReportInput,
   CreateTenantContractInput,
   CreateTenantMessagingThreadInput,
@@ -182,18 +197,32 @@ import {
   SubmitTenantAiFeedbackInput,
   SubmitEstimateInput,
   TeamBill,
+  TeamBillCreationData,
+  TeamBillPaymentOrder,
   TeamBillRow,
+  TeamBillingDashboard,
+  TeamBillingScope,
   TeamCollection,
+  TeamCollectionBuildingRow,
+  TeamCollectionPoint,
   TeamDashSummary,
   TeamDeposit,
   TeamDunning,
   TeamMaintenance,
   TeamOverdue,
+  TeamOverdueWorkspace,
   TeamReport,
+  TeamTenantBillingOverview,
+  TeamTenantPaymentHistory,
+  TeamTenantPaymentHistoryEvent,
   Ticket,
   TicketMessage,
   TicketStatus,
   SocialAccount,
+  TossConfirmPaymentInput,
+  TossConfirmPaymentResult,
+  TossPaymentGateway,
+  ConfirmBillPaymentInput,
   UpdateManagerContractInventoryInput,
   UpdateManagerContractInviteInput,
   UpdateManagerContractManualValuesInput,
@@ -651,6 +680,7 @@ export type RoomlogServiceOptions = {
   seedDemoData?: boolean;
   initialStore?: Store;
   storeProjector?: StoreProjector;
+  paymentGateway?: TossPaymentGateway;
 };
 
 export type AuthResult = {
@@ -721,6 +751,7 @@ export type Store = {
   bills: Bill[];
   paymentReports: PaymentReport[];
   deposits: Deposit[];
+  paymentTransactions: BillPaymentTransaction[];
   maintenanceFees: MaintenanceFee[];
   attachments: Attachment[];
   floorPlans: FloorPlanDraft[];
@@ -957,6 +988,7 @@ function createDemoStore(): Store {
 
     return {
       id: input.id,
+      roomId: `room-${input.unit}`,
       unitId: `${input.unit}호`,
       billingMonth: input.billingMonth,
       status: input.status,
@@ -1518,6 +1550,7 @@ function createDemoStore(): Store {
     bills: managerBillingBills,
     paymentReports: managerBillingPaymentReports,
     deposits: managerBillingDeposits,
+    paymentTransactions: [],
     maintenanceFees: managerBillingMaintenanceFees,
     attachments: [],
     floorPlans: [],
@@ -1869,6 +1902,7 @@ function createEmptyStore(): Store {
     bills: [],
     paymentReports: [],
     deposits: [],
+    paymentTransactions: [],
     maintenanceFees: [],
     attachments: [],
     floorPlans: [],
@@ -1935,6 +1969,56 @@ function shouldSeedDemoData(option?: boolean) {
   return process.env.NODE_ENV !== "production";
 }
 
+class TossPaymentsGateway implements TossPaymentGateway {
+  constructor(
+    private readonly secretKey = process.env.TOSS_SECRET_KEY,
+    private readonly apiBase = process.env.TOSS_API_BASE_URL ?? "https://api.tosspayments.com"
+  ) {}
+
+  async confirmPayment(input: TossConfirmPaymentInput): Promise<TossConfirmPaymentResult> {
+    const secretKey = this.secretKey?.trim();
+
+    if (!secretKey) {
+      throw new BadGatewayException("TOSS_SECRET_KEY가 설정되어 있지 않습니다.");
+    }
+
+    const response = await fetch(`${this.apiBase.replace(/\/$/, "")}/v1/payments/confirm`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${secretKey}:`, "utf8").toString("base64")}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(input)
+    });
+    const data = await response.json().catch(() => undefined) as
+      | {
+          paymentKey?: string;
+          orderId?: string;
+          amount?: number;
+          totalAmount?: number;
+          method?: string;
+          approvedAt?: string;
+          status?: string;
+          message?: string;
+        }
+      | undefined;
+
+    if (!response.ok) {
+      throw new BadGatewayException(data?.message ?? "토스페이먼츠 결제 승인에 실패했습니다.");
+    }
+
+    return {
+      paymentKey: data?.paymentKey ?? input.paymentKey,
+      orderId: data?.orderId ?? input.orderId,
+      amount: Number(data?.totalAmount ?? data?.amount ?? input.amount),
+      method: data?.method,
+      approvedAt: data?.approvedAt,
+      status: data?.status,
+      raw: data
+    };
+  }
+}
+
 @Injectable()
 export class RoomlogService {
   private readonly store: Store;
@@ -1944,6 +2028,7 @@ export class RoomlogService {
   private readonly storageAdapter: FileStorageAdapter;
   private readonly seedDemoData: boolean;
   private readonly storeProjector?: StoreProjector;
+  private readonly paymentGateway: TossPaymentGateway;
   private pendingPersistence = Promise.resolve();
   private persistenceError: unknown;
   private readonly auth: RoomlogAuthDomain;
@@ -1967,6 +2052,7 @@ export class RoomlogService {
     this.uploadDir = options.uploadDir ?? process.env.LOCAL_UPLOAD_DIR ?? "uploads";
     this.seedDemoData = shouldSeedDemoData(options.seedDemoData);
     this.storeProjector = options.storeProjector;
+    this.paymentGateway = options.paymentGateway ?? new TossPaymentsGateway();
     this.publicUploadBaseUrl = (
       options.publicUploadBaseUrl ??
       process.env.PUBLIC_UPLOAD_BASE_URL ??
@@ -2145,6 +2231,7 @@ export class RoomlogService {
       bills: this.store.bills,
       paymentReports: this.store.paymentReports,
       deposits: this.store.deposits,
+      paymentTransactions: this.store.paymentTransactions,
       maintenanceFees: this.store.maintenanceFees,
       complaints: this.store.complaints,
       intakeSessions: this.store.intakeSessions,
@@ -2181,18 +2268,127 @@ export class RoomlogService {
     };
   }
 
-  listTenantBills(tenantId: string): TeamBill[] {
+  listTenantBills(tenantId: string, at: Date = new Date()): TeamBill[] {
     return this.tenantBills(tenantId)
-      .filter((bill) => this.deriveBillStatus(bill) !== "DRAFT")
+      .filter((bill) => this.billIsVisibleToTenant(bill, at))
       .map((bill) => this.presentBill(bill));
   }
 
-  getTenantBill(tenantId: string, billId: string): TeamBill {
-    return this.presentBill(this.findTenantBill(tenantId, billId));
+  getTenantBillingOverview(
+    tenantId: string,
+    at: Date = new Date()
+  ): TeamTenantBillingOverview {
+    const currentMonth = billingMonthInSeoul(at);
+    const bills = this.tenantBills(tenantId).filter((bill) =>
+      this.billIsVisibleToTenant(bill, at)
+    );
+    const summary = (bill: Bill) => ({
+      bill: this.presentBill(bill),
+      payableFrom: billPayableFrom(bill.dueDate),
+      isUpcoming: bill.billingMonth > currentMonth,
+      canPay: this.billCanAcceptPayment(bill),
+      remainingAmount: this.unpaidAmount(bill)
+    });
+    const current = bills.find((bill) => bill.billingMonth === currentMonth) ?? null;
+    const upcoming =
+      bills
+        .filter((bill) => bill.billingMonth > currentMonth)
+        .sort((left, right) => left.billingMonth.localeCompare(right.billingMonth))[0] ?? null;
+    const previousUnpaid = bills
+      .filter(
+        (bill) => bill.billingMonth < currentMonth && this.unpaidAmount(bill) > 0
+      )
+      .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+
+    return {
+      current: current ? summary(current) : null,
+      upcoming: upcoming ? summary(upcoming) : null,
+      previousUnpaid: previousUnpaid.map(summary),
+      asOf: billingTodayInSeoul(at)
+    };
   }
 
-  getTenantBillMaintenance(tenantId: string, billId: string): TeamMaintenance {
-    const bill = this.findTenantBill(tenantId, billId);
+  getTenantPaymentHistory(
+    tenantId: string,
+    from?: string,
+    to?: string,
+    at: Date = new Date()
+  ): TeamTenantPaymentHistory {
+    if (!from || !to) {
+      throw new BadRequestException("조회 시작일과 종료일이 모두 필요합니다.");
+    }
+
+    let inclusiveDays: number;
+    try {
+      inclusiveDays = paymentHistoryInclusiveDays(from, to);
+    } catch {
+      throw new BadRequestException("조회 기간은 올바른 YYYY-MM-DD 형식이어야 합니다.");
+    }
+
+    const today = billingTodayInSeoul(at);
+    const bills = this.tenantBills(tenantId).filter((bill) =>
+      this.billIsRetainedInTenantHistory(bill, at)
+    );
+    const min = this.tenantPaymentHistoryMinimum(tenantId, bills, today);
+
+    if (from < min || to > today || inclusiveDays > 366) {
+      throw new BadRequestException(
+        `조회 기간은 ${min}부터 ${today}까지, 최대 366일이어야 합니다.`
+      );
+    }
+
+    const records = bills
+      .flatMap((bill) => {
+        const payments = this.tenantPaymentHistoryEvents(bill)
+          .filter((event) => {
+            const activityDay = billingDateInSeoul(event.activityDate);
+            return from <= activityDay && activityDay <= to;
+          })
+          .sort(
+            (left, right) =>
+              Date.parse(right.activityDate) - Date.parse(left.activityDate) ||
+              right.id.localeCompare(left.id)
+          );
+
+        if (payments.length === 0) {
+          return [];
+        }
+
+        return [
+          {
+            billId: bill.id,
+            billingMonth: bill.billingMonth,
+            activityDate: payments[0].activityDate,
+            status: this.deriveBillStatus(bill),
+            totalAmount: bill.totalAmount,
+            paidAmount: bill.paidAmount,
+            payments
+          }
+        ];
+      })
+      .sort(
+        (left, right) =>
+          Date.parse(right.activityDate) - Date.parse(left.activityDate) ||
+          right.billId.localeCompare(left.billId)
+      );
+
+    return {
+      range: { from, to },
+      bounds: { min, max: today, maxDays: 366 },
+      records
+    };
+  }
+
+  getTenantBill(tenantId: string, billId: string, at: Date = new Date()): TeamBill {
+    return this.presentBill(this.findTenantBill(tenantId, billId, at));
+  }
+
+  getTenantBillMaintenance(
+    tenantId: string,
+    billId: string,
+    at: Date = new Date()
+  ): TeamMaintenance {
+    const bill = this.findTenantBill(tenantId, billId, at);
 
     return this.presentMaintenanceFee(this.resolveMaintenanceFeeForBill(bill));
   }
@@ -2200,18 +2396,16 @@ export class RoomlogService {
   createTenantPaymentReport(
     tenantId: string,
     billId: string,
-    input: CreatePaymentReportInput
+    input: CreatePaymentReportInput,
+    at: Date = new Date()
   ): TeamReport {
-    const bill = this.findTenantBill(tenantId, billId);
+    const bill = this.findTenantBillForMutation(tenantId, billId);
+    this.assertBillPaymentOpen(bill, at);
+    this.assertBillCanAcceptPayment(bill);
     const amount = Number(input.amount);
-    const status = this.deriveBillStatus(bill);
 
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException("신고 금액은 0보다 커야 합니다.");
-    }
-
-    if (["PAID", "CORRECTED", "CANCELED"].includes(status)) {
-      throw new BadRequestException("이 청구서에는 납부 신고를 접수할 수 없습니다.");
     }
 
     const report: PaymentReport = {
@@ -2234,24 +2428,214 @@ export class RoomlogService {
     return this.presentPaymentReport(report);
   }
 
-  getManagerBillDashboard(managerId: string): { summary: TeamDashSummary; bills: TeamBillRow[] } {
-    const bills = this.managerBills(managerId);
-    const overdue = bills.filter((bill) => this.isBillInActiveOverdue(bill)).length;
-    const confirmNeeded = bills.filter((bill) => this.dunningGuardForBill(bill).blocked).length;
-    const pending = bills.filter((bill) => {
-      const status = this.deriveBillStatus(bill);
+  createTenantBillPaymentOrder(
+    tenantId: string,
+    billId: string,
+    input: CreateBillPaymentOrderInput,
+    at: Date = new Date()
+  ): TeamBillPaymentOrder {
+    const bill = this.findTenantBillForMutation(tenantId, billId);
+    this.assertBillPaymentOpen(bill, at);
+    this.assertBillCanAcceptPayment(bill);
+    const allowedKinds: BillLineItemKind[] = ["RENT", "MAINTENANCE", "OTHER"];
+    const requestedKinds = Array.isArray(input.itemKinds) ? input.itemKinds : [];
+    const itemKinds = allowedKinds.filter((kind) => requestedKinds.includes(kind));
 
-      return ["SENT", "PARTIALLY_PAID"].includes(status) && !this.isBillPastDue(bill);
-    }).length;
+    if (itemKinds.length === 0) {
+      throw new BadRequestException("결제할 항목을 선택해야 합니다.");
+    }
+
+    const normalizedItems = this.normalizeBillItems(bill.items, bill.paidAmount);
+    bill.items = normalizedItems;
+    const selectedItems = this.billItemsByKind(bill, itemKinds);
+
+    if (selectedItems.length === 0) {
+      throw new BadRequestException("선택한 결제 항목을 찾을 수 없습니다.");
+    }
+
+    const transactionId = id("billpay");
+    const allocations = selectedItems
+      .map((item) => {
+        const index = normalizedItems.findIndex((candidate) => candidate === item);
+        return {
+          id: id("payalloc"),
+          transactionId,
+          billLineItemId: this.billLineItemId(bill, item, index),
+          kind: item.kind ?? "OTHER",
+          amount: Math.max(0, item.amount - (item.paidAmount ?? 0))
+        };
+      })
+      .filter((allocation) => allocation.amount > 0);
+    const amount = allocations.reduce((sum, allocation) => sum + allocation.amount, 0);
+
+    if (amount <= 0) {
+      throw new BadRequestException("선택한 항목은 이미 완납되었습니다.");
+    }
+
+    const transaction: BillPaymentTransaction = {
+      id: transactionId,
+      billId: bill.id,
+      tenantId,
+      orderId: `roomlog_${transactionId}`,
+      orderName: `${bill.billingMonth} ${bill.unitId} ${selectedItems.map((item) => item.label).join("·")}`,
+      amount,
+      itemKinds,
+      status: "READY",
+      requestedAt: now(),
+      allocations
+    };
+
+    this.store.paymentTransactions.unshift(transaction);
+    this.persistStore();
 
     return {
+      billId: bill.id,
+      orderId: transaction.orderId,
+      orderName: transaction.orderName,
+      amount: transaction.amount,
+      itemKinds: transaction.itemKinds,
+      customerKey: this.paymentCustomerKey(tenantId),
+      clientKey: process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY ?? process.env.TOSS_CLIENT_KEY
+    };
+  }
+
+  async confirmTenantBillPayment(
+    tenantId: string,
+    billId: string,
+    input: ConfirmBillPaymentInput
+  ): Promise<TeamBill> {
+    const bill = this.findTenantBillForMutation(tenantId, billId);
+    const transaction = this.store.paymentTransactions.find(
+      (item) =>
+        item.orderId === input.orderId &&
+        item.billId === bill.id &&
+        item.tenantId === tenantId
+    );
+
+    if (!transaction) {
+      throw new NotFoundException("결제 주문을 찾을 수 없습니다.");
+    }
+
+    if (transaction.status === "APPROVED") {
+      return this.presentBill(bill);
+    }
+
+    if (Number(input.amount) !== transaction.amount) {
+      transaction.status = "FAILED";
+      transaction.failedAt = now();
+      transaction.failureMessage = "결제 금액이 청구 항목 합계와 일치하지 않습니다.";
+      this.persistStore();
+      throw new BadRequestException(transaction.failureMessage);
+    }
+
+    try {
+      const confirmed = await this.paymentGateway.confirmPayment({
+        paymentKey: input.paymentKey,
+        orderId: input.orderId,
+        amount: input.amount
+      });
+
+      if (
+        confirmed.orderId !== transaction.orderId ||
+        Number(confirmed.amount) !== transaction.amount
+      ) {
+        throw new BadGatewayException("토스페이먼츠 승인 응답이 결제 주문과 일치하지 않습니다.");
+      }
+
+      transaction.status = "APPROVED";
+      transaction.paymentKey = confirmed.paymentKey;
+      transaction.method = confirmed.method;
+      transaction.approvedAt = confirmed.approvedAt ?? now();
+      transaction.rawResponse = confirmed.raw ?? confirmed;
+      this.applyConfirmedPaymentToItems(bill, transaction);
+      this.refreshBillStatusAfterPaymentChange(bill);
+      this.store.deposits.unshift({
+        id: id("dep"),
+        depositorName: this.tenantNameForBill(bill),
+        amount: transaction.amount,
+        depositedAt: transaction.approvedAt,
+        matchStatus: "MATCHED",
+        matchedBillId: bill.id,
+        guessedUnitId: bill.unitId,
+        paymentTransactionId: transaction.id
+      });
+      this.persistStore();
+
+      return this.presentBill(bill);
+    } catch (error) {
+      transaction.status = "FAILED";
+      transaction.failedAt = now();
+      transaction.failureMessage = error instanceof Error ? error.message : "결제 승인 실패";
+      this.persistStore();
+      throw error;
+    }
+  }
+
+  getManagerBillDashboard(
+    managerId: string,
+    buildingName?: string,
+    billingMonth?: string,
+    allMonths = false
+  ): TeamBillingDashboard {
+    const month = this.validateBillingMonth(billingMonth);
+    const { scope, rooms } = this.resolveManagerBillingScope(managerId, buildingName);
+    const roomIds = new Set(rooms.map((room) => room.id));
+    const bills = this.managerBills(managerId).filter((bill) => {
+      const room = this.roomForManagerBill(managerId, bill);
+      return (
+        (allMonths || bill.billingMonth === month) &&
+        (room ? roomIds.has(room.id) : !scope.selectedBuilding)
+      );
+    });
+    const billedAmount = bills.reduce((sum, bill) => sum + bill.totalAmount, 0);
+    const collectedAmount = bills.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    const activeOverdue = bills.filter((bill) => this.isBillInActiveOverdue(bill));
+    const confirmNeededIds = new Set(
+      bills
+        .filter((bill) => {
+          const overdue = this.presentOverdueCase(bill, managerId);
+          return this.dunningGuardForBill(bill).blocked || overdue.stage === "SEVERE";
+        })
+        .map((bill) => bill.id)
+    );
+    const pending = bills.filter((bill) => {
+      const status = this.deriveBillStatus(bill);
+      return ["SENT", "PARTIALLY_PAID"].includes(status) && !this.isBillPastDue(bill);
+    }).length;
+    const overduePreview = bills
+      .filter((bill) => this.canAutoOverdue(bill))
+      .map((bill) => this.presentOverdueCase(bill, managerId))
+      .sort((left, right) => right.daysOverdue - left.daysOverdue)
+      .slice(0, 5);
+    const recentDeposits = this.managerRelevantDeposits(managerId)
+      .filter((deposit) => {
+        const room = this.roomForManagerDeposit(managerId, deposit);
+        return (
+          (allMonths || this.monthKey(deposit.depositedAt) === month) &&
+          (room ? roomIds.has(room.id) : !scope.selectedBuilding)
+        );
+      })
+      .sort((left, right) => right.depositedAt.localeCompare(left.depositedAt))
+      .slice(0, 5)
+      .map((deposit) => this.presentManagerBillingDeposit(managerId, deposit));
+
+    return {
+      scope,
+      billingMonth: month,
       summary: {
         total: bills.length,
-        confirmNeeded,
+        confirmNeeded: confirmNeededIds.size,
         pending,
-        overdue
+        overdue: activeOverdue.length,
+        billedAmount,
+        collectedAmount,
+        unpaidAmount: Math.max(0, billedAmount - collectedAmount),
+        collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
+        overdueUnits: new Set(activeOverdue.map((bill) => bill.roomId ?? bill.unitId)).size
       },
-      bills: bills.map((bill) => this.presentManagerBillRow(bill))
+      recentDeposits,
+      overduePreview,
+      bills: bills.map((bill) => this.presentManagerBillRow(bill, managerId))
     };
   }
 
@@ -2259,36 +2643,133 @@ export class RoomlogService {
     return this.presentBill(this.findManagerBill(managerId, billId));
   }
 
-  getManagerCollection(managerId: string): TeamCollection {
-    const bills = this.managerBills(managerId);
-    const billingMonth =
-      [...new Set(bills.map((bill) => bill.billingMonth))].sort().at(-1) ??
-      new Date().toISOString().slice(0, 7);
-    const scopedBills = bills.filter((bill) => bill.billingMonth === billingMonth);
-    const billedAmount = scopedBills.reduce((sum, bill) => sum + bill.totalAmount, 0);
-    const collectedAmount = scopedBills.reduce((sum, bill) => sum + bill.paidAmount, 0);
-    const confirmingAmount = scopedBills.reduce(
+  publishManagerBill(managerId: string, billId: string): TeamBill {
+    const bill = this.findManagerBill(managerId, billId);
+
+    if (bill.status !== "DRAFT") {
+      throw new ConflictException("작성 중인 청구서만 확정할 수 있습니다.");
+    }
+
+    if (
+      bill.totalAmount <= 0 ||
+      !bill.bankName ||
+      !bill.accountNumber ||
+      !bill.accountHolder ||
+      Number.isNaN(new Date(bill.dueDate).getTime())
+    ) {
+      throw new BadRequestException("청구 금액과 수납 계좌를 확인해주세요.");
+    }
+
+    bill.status = "SENT";
+    bill.updatedAt = now();
+    this.persistStore();
+
+    return this.presentBill(bill);
+  }
+
+  getManagerCollection(
+    managerId: string,
+    buildingName?: string,
+    billingMonth?: string
+  ): TeamCollection {
+    const month = this.validateBillingMonth(billingMonth);
+    const { scope, rooms } = this.resolveManagerBillingScope(managerId, buildingName);
+    const scopedRoomIds = new Set(rooms.map((room) => room.id));
+    const scopedBills = this.managerBills(managerId).filter((bill) => {
+      const room = this.roomForManagerBill(managerId, bill);
+      return room && scopedRoomIds.has(room.id);
+    });
+    const selectedBills = scopedBills.filter((bill) => bill.billingMonth === month);
+    const currentPoint = this.collectionPointForBills(month, selectedBills);
+    const previousMonth = this.shiftBillingMonth(month, -1);
+    const previousPoint = this.collectionPointForBills(
+      previousMonth,
+      scopedBills.filter((bill) => bill.billingMonth === previousMonth)
+    );
+    const confirmingAmount = selectedBills.reduce(
       (sum, bill) => sum + this.confirmingAmountForBill(bill),
       0
     );
     const orphanAmount = this.managerRelevantDeposits(managerId)
-      .filter(
-        (deposit) =>
+      .filter((deposit) => {
+        const room = this.roomForManagerDeposit(managerId, deposit);
+        return (
           deposit.matchStatus === "ORPHAN" &&
-          scopedBills.some((bill) => this.orphanDepositAppliesToBill(deposit, bill))
-      )
+          room &&
+          scopedRoomIds.has(room.id) &&
+          this.monthKey(deposit.depositedAt) === month
+        );
+      })
       .reduce((sum, deposit) => sum + deposit.amount, 0);
-    const grossUnpaid = scopedBills.reduce((sum, bill) => sum + this.unpaidAmount(bill), 0);
+    const grossUnpaid = selectedBills.reduce((sum, bill) => sum + this.unpaidAmount(bill), 0);
     const recentDeposits = this.managerRelevantDeposits(managerId)
+      .filter((deposit) => {
+        const room = this.roomForManagerDeposit(managerId, deposit);
+        return room && scopedRoomIds.has(room.id);
+      })
       .sort((left, right) => right.depositedAt.localeCompare(left.depositedAt))
       .slice(0, 5)
       .map((deposit) => this.presentDeposit(deposit));
+    const trend = Array.from({ length: 12 }, (_, index) => this.shiftBillingMonth(month, index - 11))
+      .map((trendMonth) =>
+        this.collectionPointForBills(
+          trendMonth,
+          scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+        )
+      );
+    const buildings: TeamCollectionBuildingRow[] = scope.buildings
+      .filter((building) => !scope.selectedBuilding || building.buildingName === scope.selectedBuilding)
+      .map((building) => {
+        const buildingRoomIds = new Set(
+          rooms
+            .filter((room) => room.buildingName === building.buildingName)
+            .map((room) => room.id)
+        );
+        const buildingBills = scopedBills.filter((bill) => {
+          const room = this.roomForManagerBill(managerId, bill);
+          return room && buildingRoomIds.has(room.id) && bill.billingMonth === month;
+        });
+        const buildingPreviousBills = scopedBills.filter((bill) => {
+          const room = this.roomForManagerBill(managerId, bill);
+          return (
+            room &&
+            buildingRoomIds.has(room.id) &&
+            bill.billingMonth === previousMonth
+          );
+        });
+        const point = this.collectionPointForBills(month, buildingBills);
+        const previous = this.collectionPointForBills(previousMonth, buildingPreviousBills);
+
+        return {
+          ...point,
+          buildingName: building.buildingName,
+          address: building.address,
+          roomCount: building.roomCount,
+          previousCollectionRate: previous.collectionRate,
+          rateDelta: point.collectionRate - previous.collectionRate,
+          bills: buildingBills.map((bill) => this.presentManagerBillRow(bill, managerId))
+        };
+      });
+    const unpaidAmount = Math.max(0, grossUnpaid - confirmingAmount - orphanAmount);
+    const rateDelta = currentPoint.collectionRate - previousPoint.collectionRate;
 
     return {
-      billingMonth,
-      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
-      collectedAmount,
-      unpaidAmount: Math.max(0, grossUnpaid - confirmingAmount - orphanAmount),
+      scope,
+      billingMonth: month,
+      brief: {
+        billedAmount: currentPoint.billedAmount,
+        collectedAmount: currentPoint.collectedAmount,
+        unpaidAmount,
+        collectionRate: currentPoint.collectionRate,
+        previousCollectionRate: previousPoint.collectionRate,
+        rateDelta,
+        confirmingAmount
+      },
+      trend,
+      buildings,
+      collectionRate: currentPoint.collectionRate,
+      collectedAmount: currentPoint.collectedAmount,
+      unpaidAmount,
       vacancyLoss: 0,
       confirmingAmount,
       orphanAmount,
@@ -2315,7 +2796,7 @@ export class RoomlogService {
 
     const paymentReports = this.managerBills(managerId)
       .filter((bill) => billIdsWithReports.has(bill.id))
-      .map((bill) => this.presentManagerBillRow(bill));
+      .map((bill) => this.presentManagerBillRow(bill, managerId));
     const deposits = this.managerRelevantDeposits(managerId);
 
     return {
@@ -2395,14 +2876,209 @@ export class RoomlogService {
     return this.presentBill(bill);
   }
 
-  listManagerOverdueCases(managerId: string): { activeCases: TeamOverdue[]; waitingCases: TeamOverdue[] } {
+  listManagerOverdueCases(
+    managerId: string,
+    buildingName?: string
+  ): TeamOverdueWorkspace {
+    const { scope, rooms } = this.resolveManagerBillingScope(managerId, buildingName);
+    const roomIds = new Set(rooms.map((room) => room.id));
     const cases = this.managerBills(managerId)
-      .filter((bill) => this.canAutoOverdue(bill))
-      .map((bill) => this.presentOverdueCase(bill));
+      .filter((bill) => {
+        const room = this.roomForManagerBill(managerId, bill);
+        return room && roomIds.has(room.id) && this.canAutoOverdue(bill);
+      })
+      .map((bill) => this.presentOverdueCase(bill, managerId))
+      .sort((left, right) => right.daysOverdue - left.daysOverdue);
+    const activeCases = cases.filter((item) => !item.guard.blocked);
+    const waitingCases = cases.filter((item) => item.guard.blocked);
 
     return {
-      activeCases: cases.filter((item) => !item.guard.blocked),
-      waitingCases: cases.filter((item) => item.guard.blocked)
+      scope,
+      asOf: this.todayInSeoul(),
+      summary: {
+        activeUnpaidAmount: activeCases.reduce((sum, item) => sum + item.unpaidAmount, 0),
+        activeCount: activeCases.length,
+        severeCount: activeCases.filter((item) => item.stage === "SEVERE").length,
+        waitingCount: waitingCases.length
+      },
+      activeCases,
+      waitingCases
+    };
+  }
+
+  getManagerBillCreationOptions(
+    managerId: string,
+    buildingName?: string,
+    billingMonth?: string
+  ): TeamBillCreationData {
+    const month = this.validateBillingMonth(billingMonth);
+    const { scope, rooms } = this.resolveManagerBillingScope(managerId, buildingName);
+    const roomIds = new Set(rooms.map((room) => room.id));
+    const accountSource = this.managerBills(managerId)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const options = this.store.contracts
+      .filter(
+        (contract) =>
+          roomIds.has(contract.roomId) &&
+          (!contract.managerId || contract.managerId === managerId) &&
+          contract.lifecycle === "active" &&
+          contract.review === "confirmed" &&
+          contract.valueSource === "confirmed"
+      )
+      .map((contract) => {
+        const room = rooms.find((candidate) => candidate.id === contract.roomId)!;
+        const duplicate = this.store.bills.find(
+          (bill) =>
+            this.roomForBill(bill)?.id === room.id &&
+            bill.billingMonth === month &&
+            bill.status !== "CANCELED"
+        );
+
+        return {
+          roomId: room.id,
+          buildingName: room.buildingName,
+          unitId: room.roomNo,
+          tenantName: this.tenantNameForRoom(room.id),
+          contractId: contract.id,
+          monthlyRent: contract.monthlyRent ?? 0,
+          maintenanceFee: contract.maintenanceFee ?? 0,
+          dueDate: this.billingDueDate(month, contract.paymentDay ?? 25),
+          duplicateBillId: duplicate?.id
+        };
+      })
+      .sort((left, right) =>
+        `${left.buildingName}-${left.unitId}`.localeCompare(
+          `${right.buildingName}-${right.unitId}`,
+          "ko"
+        )
+      );
+
+    return {
+      scope,
+      billingMonth: month,
+      account: {
+        bankName: accountSource?.bankName ?? "",
+        accountNumber: accountSource?.accountNumber ?? "",
+        accountHolder: accountSource?.accountHolder ?? ""
+      },
+      options
+    };
+  }
+
+  createManagerBills(
+    managerId: string,
+    input: CreateManagerBillsInput
+  ): CreateManagerBillsResult {
+    const buildingName = input.buildingName?.trim();
+    const month = this.validateBillingMonth(input.billingMonth);
+    if (!buildingName) {
+      throw new BadRequestException("청구서를 생성할 건물을 선택해주세요.");
+    }
+    const { rooms } = this.resolveManagerBillingScope(managerId, buildingName);
+    const roomById = new Map(rooms.map((room) => [room.id, room]));
+    const rows = Array.isArray(input.rows) ? input.rows : [];
+    if (rows.length === 0) {
+      throw new BadRequestException("청구서를 생성할 호실을 하나 이상 선택해주세요.");
+    }
+    const account = {
+      bankName: input.account?.bankName?.trim(),
+      accountNumber: input.account?.accountNumber?.trim(),
+      accountHolder: input.account?.accountHolder?.trim()
+    };
+    if (!account.bankName || !account.accountNumber || !account.accountHolder) {
+      throw new BadRequestException("입금 계좌 정보를 모두 입력해주세요.");
+    }
+    const seenRoomIds = new Set<string>();
+    const validated = rows.map((row) => {
+      const room = roomById.get(row.roomId);
+      if (!room) {
+        throw new ForbiddenException("선택한 건물의 담당 호실만 청구할 수 있습니다.");
+      }
+      if (seenRoomIds.has(room.id)) {
+        throw new BadRequestException(`${room.roomNo}가 두 번 선택되었습니다.`);
+      }
+      seenRoomIds.add(room.id);
+      const contract = this.store.contracts.find(
+        (candidate) =>
+          candidate.id === row.contractId &&
+          candidate.roomId === room.id &&
+          (!candidate.managerId || candidate.managerId === managerId) &&
+          candidate.lifecycle === "active" &&
+          candidate.review === "confirmed" &&
+          candidate.valueSource === "confirmed"
+      );
+      if (!contract) {
+        throw new BadRequestException(`${room.roomNo}의 확정된 활성 계약을 찾을 수 없습니다.`);
+      }
+      const monthlyRent = this.validateBillAmount(row.monthlyRent, "월세");
+      const maintenanceFee = this.validateBillAmount(row.maintenanceFee, "관리비");
+      if (monthlyRent + maintenanceFee <= 0) {
+        throw new BadRequestException(`${room.roomNo}의 청구 금액을 입력해주세요.`);
+      }
+      const dueDate = this.validateBillDueDate(row.dueDate, month);
+      const duplicate = this.store.bills.find(
+        (bill) =>
+          this.roomForBill(bill)?.id === room.id &&
+          bill.billingMonth === month &&
+          bill.status !== "CANCELED"
+      );
+      if (duplicate) {
+        throw new ConflictException(`${room.roomNo}에 이미 청구서가 있습니다. (${month})`);
+      }
+
+      return { room, contract, monthlyRent, maintenanceFee, dueDate };
+    });
+    const timestamp = now();
+    const bills = validated.map(({ room, monthlyRent, maintenanceFee, dueDate }) => {
+      const billId = id("bill");
+      const items: BillLineItem[] = [];
+      if (monthlyRent > 0) {
+        items.push({
+          id: `${billId}-rent`,
+          label: "월세",
+          kind: "RENT",
+          amount: monthlyRent,
+          paidAmount: 0
+        });
+      }
+      if (maintenanceFee > 0) {
+        items.push({
+          id: `${billId}-maintenance`,
+          label: "관리비",
+          kind: "MAINTENANCE",
+          amount: maintenanceFee,
+          paidAmount: 0
+        });
+      }
+
+      return {
+        id: billId,
+        roomId: room.id,
+        unitId: room.roomNo,
+        billingMonth: month,
+        status: "DRAFT" as const,
+        items,
+        totalAmount: monthlyRent + maintenanceFee,
+        paidAmount: 0,
+        dueDate: `${dueDate}T23:59:59+09:00`,
+        bankName: account.bankName,
+        accountNumber: account.accountNumber,
+        accountHolder: account.accountHolder,
+        correctionHistory: [],
+        depositConfirmationRequested: false,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      } satisfies Bill;
+    });
+
+    this.store.bills.push(...bills);
+    this.persistStore();
+
+    return {
+      createdCount: bills.length,
+      billIds: bills.map((bill) => bill.id),
+      billingMonth: month,
+      buildingName
     };
   }
 
@@ -6508,14 +7184,316 @@ export class RoomlogService {
     const room = this.findRoom(roomId);
 
     return this.store.bills
-      .filter((bill) => this.unitMatchesRoom(bill.unitId, room))
+      .filter((bill) => this.roomForBill(bill)?.id === room.id)
       .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  private billIsVisibleToTenant(bill: Bill, at: Date) {
+    const status = this.deriveBillStatus(bill);
+
+    return (
+      !["DRAFT", "CORRECTED", "CANCELED"].includes(status) &&
+      isBillPaymentOpen(bill.dueDate, at)
+    );
+  }
+
+  private billCanAcceptPayment(bill: Bill) {
+    const status = this.deriveBillStatus(bill);
+
+    return (
+      !["DRAFT", "CONFIRMING", "PAID", "CORRECTED", "CANCELED"].includes(status) &&
+      this.unpaidAmount(bill) > 0 &&
+      !this.dunningGuardForBill(bill).blocked
+    );
+  }
+
+  private assertBillPaymentOpen(bill: Bill, at: Date) {
+    const payableFrom = billPayableFrom(bill.dueDate);
+
+    if (!isBillPaymentOpen(bill.dueDate, at)) {
+      const [year, month, day] = payableFrom.slice(0, 10).split("-");
+      throw new ConflictException({
+        code: "BILL_NOT_PAYABLE_YET",
+        message: `결제일 한 달 전인 ${year}년 ${Number(month)}월 ${Number(day)}일부터 납부할 수 있습니다.`,
+        billingMonth: bill.billingMonth,
+        payableFrom
+      });
+    }
+  }
+
+  private assertBillCanAcceptPayment(bill: Bill) {
+    if (!this.billCanAcceptPayment(bill)) {
+      throw new ConflictException({
+        code: "BILL_PAYMENT_NOT_AVAILABLE",
+        message: "현재 이 청구서에는 납부를 진행할 수 없습니다."
+      });
+    }
+  }
+
+  private billIsRetainedInTenantHistory(bill: Bill, at: Date) {
+    return (
+      !["DRAFT", "CORRECTED", "CANCELED"].includes(bill.status) &&
+      isBillPaymentOpen(bill.dueDate, at)
+    );
+  }
+
+  private tenantPaymentHistoryMinimum(tenantId: string, bills: Bill[], today: string) {
+    const roomId = this.store.tenantRooms[tenantId];
+    const matchingContracts = roomId
+      ? this.store.contracts.filter(
+          (contract) =>
+            contract.roomId === roomId &&
+            contract.review === "confirmed" &&
+            contract.valueSource === "confirmed" &&
+            Boolean(contract.startDate) &&
+            (contract.tenantId === tenantId || contract.tenantId === undefined)
+        )
+      : [];
+    const tenantContracts = matchingContracts.filter(
+      (contract) => contract.tenantId === tenantId
+    );
+    const contracts = tenantContracts.length > 0 ? tenantContracts : matchingContracts;
+    const contractStart = contracts
+      .map((contract) => billingDateInSeoul(contract.startDate!))
+      .sort((left, right) => left.localeCompare(right))[0];
+
+    if (contractStart) {
+      return contractStart;
+    }
+
+    return (
+      bills
+        .map((bill) => billingDateInSeoul(bill.dueDate))
+        .sort((left, right) => left.localeCompare(right))[0] ?? today
+    );
+  }
+
+  private tenantPaymentHistoryEvents(bill: Bill): TeamTenantPaymentHistoryEvent[] {
+    const events: TeamTenantPaymentHistoryEvent[] = [
+      ...this.store.paymentTransactions
+        .filter(
+          (item) => item.billId === bill.id && item.status === "APPROVED" && item.approvedAt
+        )
+        .map((item) => ({
+          id: item.id,
+          type: "TOSS" as const,
+          activityDate: item.approvedAt!,
+          amount: item.amount,
+          status: "CONFIRMED" as const,
+          receiptAvailable: true
+        })),
+      ...this.store.deposits
+        .filter(
+          (item) =>
+            item.matchedBillId === bill.id &&
+            item.matchStatus === "MATCHED" &&
+            !item.paymentTransactionId
+        )
+        .map((item) => ({
+          id: item.id,
+          type: "DEPOSIT" as const,
+          activityDate: item.depositedAt,
+          amount: item.amount,
+          status: "CONFIRMED" as const,
+          receiptAvailable: true
+        })),
+      ...this.store.paymentReports
+        .filter((item) => item.billId === bill.id && item.status !== "MATCHED")
+        .map((item) => ({
+          id: item.id,
+          type: "REPORT" as const,
+          activityDate: item.reportedAt,
+          amount: item.amount,
+          status: "CONFIRMING" as const,
+          receiptAvailable: false
+        }))
+    ];
+
+    if (events.length === 0 && this.unpaidAmount(bill) > 0) {
+      events.push({
+        id: `${bill.id}-due`,
+        type: "BILL_DUE",
+        activityDate: bill.dueDate,
+        amount: this.unpaidAmount(bill),
+        status: "DUE",
+        receiptAvailable: false
+      });
+    }
+
+    return events;
   }
 
   private managerBills(managerId: string) {
     return this.store.bills
       .filter((bill) => this.canManagerAccessBill(managerId, bill))
       .sort((left, right) => right.billingMonth.localeCompare(left.billingMonth));
+  }
+
+  private managerRooms(managerId: string) {
+    return this.store.rooms
+      .filter((room) => room.landlordId === managerId)
+      .sort((left, right) =>
+        `${left.buildingName}-${left.roomNo}`.localeCompare(
+          `${right.buildingName}-${right.roomNo}`,
+          "ko"
+        )
+      );
+  }
+
+  private resolveManagerBillingScope(managerId: string, buildingName?: string): {
+    scope: TeamBillingScope;
+    rooms: Room[];
+  } {
+    const allRooms = this.managerRooms(managerId);
+    const normalizedBuilding = buildingName?.trim() || undefined;
+    const grouped = new Map<string, Room[]>();
+    for (const room of allRooms) {
+      grouped.set(room.buildingName, [...(grouped.get(room.buildingName) ?? []), room]);
+    }
+    if (normalizedBuilding && !grouped.has(normalizedBuilding)) {
+      throw new ForbiddenException("담당 건물만 조회할 수 있습니다.");
+    }
+    const buildings = [...grouped.entries()]
+      .map(([name, rooms]) => ({
+        buildingName: name,
+        address: rooms[0]?.address ?? "",
+        roomCount: rooms.length
+      }))
+      .sort((left, right) => left.buildingName.localeCompare(right.buildingName, "ko"));
+
+    return {
+      scope: {
+        buildings,
+        selectedBuilding: normalizedBuilding
+      },
+      rooms: normalizedBuilding
+        ? allRooms.filter((room) => room.buildingName === normalizedBuilding)
+        : allRooms
+    };
+  }
+
+  private candidateRoomsForBill(bill: Bill) {
+    if (bill.roomId) {
+      const room = this.store.rooms.find((candidate) => candidate.id === bill.roomId);
+      return room ? [room] : [];
+    }
+
+    return this.store.rooms.filter((room) => this.unitMatchesRoom(bill.unitId, room));
+  }
+
+  private roomForBill(bill: Bill) {
+    const candidates = this.candidateRoomsForBill(bill);
+    return candidates.length === 1 ? candidates[0] : undefined;
+  }
+
+  private roomForManagerBill(managerId: string, bill: Bill) {
+    const room = this.roomForBill(bill);
+    return room?.landlordId === managerId ? room : undefined;
+  }
+
+  private roomForManagerDeposit(managerId: string, deposit: Deposit) {
+    if (deposit.matchedBillId) {
+      const bill = this.store.bills.find((item) => item.id === deposit.matchedBillId);
+      return bill ? this.roomForManagerBill(managerId, bill) : undefined;
+    }
+    if (!deposit.guessedUnitId) {
+      return undefined;
+    }
+
+    const candidates = this.store.rooms.filter((room) =>
+      this.unitMatchesRoom(deposit.guessedUnitId, room)
+    );
+    const room = candidates.length === 1 ? candidates[0] : undefined;
+    return room?.landlordId === managerId ? room : undefined;
+  }
+
+  private validateBillingMonth(value?: string) {
+    const month = value?.trim() || this.currentBillingMonthInSeoul();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/u.test(month)) {
+      throw new BadRequestException("청구 월은 YYYY-MM 형식이어야 합니다.");
+    }
+    return month;
+  }
+
+  private currentBillingMonthInSeoul() {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit"
+    }).formatToParts(new Date());
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    return `${year}-${month}`;
+  }
+
+  private todayInSeoul() {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(new Date());
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((candidate) => candidate.type === type)?.value;
+    return `${part("year")}-${part("month")}-${part("day")}`;
+  }
+
+  private shiftBillingMonth(month: string, offset: number) {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const shifted = new Date(Date.UTC(year, monthNumber - 1 + offset, 1));
+    return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+
+  private billingDueDate(month: string, paymentDay: number) {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const day = Math.min(lastDay, Math.max(1, Math.round(paymentDay)));
+    return `${month}-${String(day).padStart(2, "0")}`;
+  }
+
+  private validateBillAmount(value: number, label: string) {
+    if (!Number.isInteger(value) || value < 0) {
+      throw new BadRequestException(`${label}는 0 이상의 원 단위 정수여야 합니다.`);
+    }
+    return value;
+  }
+
+  private validateBillDueDate(value: string, billingMonth: string) {
+    const dueDate = value?.trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u.test(dueDate ?? "")) {
+      throw new BadRequestException("납부 기한은 YYYY-MM-DD 형식이어야 합니다.");
+    }
+    if (!dueDate.startsWith(`${billingMonth}-`)) {
+      throw new BadRequestException("납부 기한은 청구 월 안에서 선택해주세요.");
+    }
+    const [year, month, day] = dueDate.split("-").map(Number);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (
+      parsed.getUTCFullYear() !== year ||
+      parsed.getUTCMonth() !== month - 1 ||
+      parsed.getUTCDate() !== day
+    ) {
+      throw new BadRequestException("유효한 납부 기한을 입력해주세요.");
+    }
+    return dueDate;
+  }
+
+  private collectionPointForBills(
+    billingMonth: string,
+    bills: Bill[]
+  ): TeamCollectionPoint {
+    const included = bills.filter(
+      (bill) => !["CANCELED", "CORRECTED"].includes(bill.status)
+    );
+    const billedAmount = included.reduce((sum, bill) => sum + bill.totalAmount, 0);
+    const collectedAmount = included.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    return {
+      billingMonth,
+      billedAmount,
+      collectedAmount,
+      unpaidAmount: Math.max(0, billedAmount - collectedAmount),
+      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0
+    };
   }
 
   private findBill(billId: string) {
@@ -6528,17 +7506,33 @@ export class RoomlogService {
     return bill;
   }
 
-  private findTenantBill(tenantId: string, billId: string) {
+  private findTenantBill(tenantId: string, billId: string, at: Date) {
+    const bill = this.findTenantBillInScope(tenantId, billId);
+
+    if (!this.billIsVisibleToTenant(bill, at)) {
+      throw new NotFoundException("청구서를 찾을 수 없습니다.");
+    }
+
+    return bill;
+  }
+
+  private findTenantBillForMutation(tenantId: string, billId: string) {
+    const bill = this.findTenantBillInScope(tenantId, billId);
+
+    if (this.deriveBillStatus(bill) === "DRAFT") {
+      throw new NotFoundException("청구서를 찾을 수 없습니다.");
+    }
+
+    return bill;
+  }
+
+  private findTenantBillInScope(tenantId: string, billId: string) {
     const bill = this.findBill(billId);
     const roomId = this.store.tenantRooms[tenantId];
     const room = roomId ? this.findRoom(roomId) : undefined;
 
-    if (!room || !this.unitMatchesRoom(bill.unitId, room)) {
+    if (!room || this.roomForBill(bill)?.id !== room.id) {
       throw new ForbiddenException("본인 호실의 청구서만 조회할 수 있습니다.");
-    }
-
-    if (this.deriveBillStatus(bill) === "DRAFT") {
-      throw new NotFoundException("청구서를 찾을 수 없습니다.");
     }
 
     return bill;
@@ -6563,8 +7557,10 @@ export class RoomlogService {
   }
 
   private canManagerAccessBill(managerId: string, bill: Bill) {
-    return this.store.rooms.some(
-      (room) => room.landlordId === managerId && this.unitMatchesRoom(bill.unitId, room)
+    const candidates = this.candidateRoomsForBill(bill);
+    return (
+      candidates.length > 0 &&
+      candidates.every((room) => room.landlordId === managerId)
     );
   }
 
@@ -6596,6 +7592,52 @@ export class RoomlogService {
 
   private unpaidAmount(bill: Bill) {
     return Math.max(0, bill.totalAmount - bill.paidAmount);
+  }
+
+  private normalizeBillItems(items: BillLineItem[], billPaidAmount = 0): BillLineItem[] {
+    let remainingPaidAmount = Math.max(0, billPaidAmount);
+    const shouldDistributeAggregate =
+      remainingPaidAmount > 0 && items.every((item) => (item.paidAmount ?? 0) === 0);
+
+    return items.map((item, index) => {
+      const amount = Math.max(0, Math.round(Number(item.amount) || 0));
+      const paidAmount =
+        item.paidAmount !== undefined && !shouldDistributeAggregate
+          ? Math.min(amount, Math.max(0, Math.round(Number(item.paidAmount) || 0)))
+          : Math.min(amount, remainingPaidAmount);
+
+      remainingPaidAmount = Math.max(0, remainingPaidAmount - paidAmount);
+
+      return {
+        ...item,
+        amount,
+        kind: item.kind ?? this.inferBillLineItemKind(item.label, index),
+        paidAmount
+      };
+    });
+  }
+
+  private inferBillLineItemKind(label: string, index = 0): BillLineItemKind {
+    if (/월세|임대료|rent/i.test(label)) return "RENT";
+    if (/관리비|maintenance/i.test(label)) return "MAINTENANCE";
+    return index === 0 ? "RENT" : "OTHER";
+  }
+
+  private lineItemStatus(item: BillLineItem): BillLineItemStatus {
+    const paidAmount = Math.min(item.amount, Math.max(0, item.paidAmount ?? 0));
+
+    if (paidAmount >= item.amount && item.amount > 0) return "PAID";
+    if (paidAmount > 0) return "PARTIAL";
+    return "UNPAID";
+  }
+
+  private billLineItemId(bill: Bill, item: BillLineItem, index: number) {
+    return item.id ?? `${bill.id}-line-${index + 1}`;
+  }
+
+  private billItemsByKind(bill: Bill, kinds: BillLineItemKind[]) {
+    const requestedKinds = new Set(kinds);
+    return bill.items.filter((item) => requestedKinds.has(item.kind ?? "OTHER"));
   }
 
   private isBillPastDue(bill: Bill) {
@@ -6650,7 +7692,59 @@ export class RoomlogService {
   }
 
   private applyConfirmedPayment(bill: Bill, amount: number) {
-    bill.paidAmount = Math.min(bill.totalAmount, Math.max(0, bill.paidAmount + amount));
+    const items = this.normalizeBillItems(bill.items, bill.paidAmount);
+
+    if (amount >= 0) {
+      let remaining = amount;
+      for (const item of items) {
+        const currentPaid = Math.min(item.amount, item.paidAmount ?? 0);
+        const addition = Math.min(Math.max(0, item.amount - currentPaid), remaining);
+        item.paidAmount = currentPaid + addition;
+        remaining -= addition;
+        if (remaining <= 0) break;
+      }
+    } else {
+      let remaining = Math.abs(amount);
+      for (const item of [...items].reverse()) {
+        const currentPaid = Math.min(item.amount, item.paidAmount ?? 0);
+        const subtraction = Math.min(currentPaid, remaining);
+        item.paidAmount = currentPaid - subtraction;
+        remaining -= subtraction;
+        if (remaining <= 0) break;
+      }
+    }
+
+    bill.items = items;
+    bill.paidAmount = Math.min(
+      bill.totalAmount,
+      items.reduce((sum, item) => sum + Math.min(item.amount, item.paidAmount ?? 0), 0)
+    );
+    bill.updatedAt = now();
+  }
+
+  private applyConfirmedPaymentToItems(
+    bill: Bill,
+    transaction: BillPaymentTransaction
+  ) {
+    const items = this.normalizeBillItems(bill.items, bill.paidAmount);
+
+    for (const allocation of transaction.allocations) {
+      const item = items.find(
+        (candidate, index) =>
+          this.billLineItemId(bill, candidate, index) === allocation.billLineItemId
+      );
+      if (!item) continue;
+      item.paidAmount = Math.min(
+        item.amount,
+        Math.max(0, (item.paidAmount ?? 0) + allocation.amount)
+      );
+    }
+
+    bill.items = items;
+    bill.paidAmount = Math.min(
+      bill.totalAmount,
+      items.reduce((sum, item) => sum + Math.min(item.amount, item.paidAmount ?? 0), 0)
+    );
     bill.updatedAt = now();
   }
 
@@ -6679,6 +7773,8 @@ export class RoomlogService {
   // orphan 입금은 입금월 또는 그 이전의 같은 호실 미납 청구를 가드한다.
   // 미래 청구월은 가드하지 않아 다음 달 청구의 과잉 차단을 막는다.
   private orphanDepositAppliesToBill(deposit: Deposit, bill: Bill) {
+    // 건물이 확정되지 않은 입금은 같은 호수의 모든 후보를 보수적으로 가드한다.
+    // 임의 귀속은 하지 않되, 실제 납부자가 독촉 대상이 되는 피해를 우선 차단한다.
     return (
       this.unitsEqual(deposit.guessedUnitId, bill.unitId) &&
       bill.billingMonth <= this.monthKey(deposit.depositedAt)
@@ -6711,23 +7807,20 @@ export class RoomlogService {
   }
 
   private canManagerAccessDeposit(managerId: string, deposit: Deposit) {
-    if (!deposit.matchedBillId && !deposit.guessedUnitId) {
-      return false;
-    }
-
     if (deposit.matchedBillId) {
       const bill = this.store.bills.find((item) => item.id === deposit.matchedBillId);
-
       return Boolean(bill && this.canManagerAccessBill(managerId, bill));
     }
-
-    if (deposit.guessedUnitId) {
-      return this.store.rooms.some(
-        (room) => room.landlordId === managerId && this.unitMatchesRoom(deposit.guessedUnitId, room)
-      );
+    if (!deposit.guessedUnitId) {
+      return false;
     }
-
-    return false;
+    const candidates = this.store.rooms.filter((room) =>
+      this.unitMatchesRoom(deposit.guessedUnitId, room)
+    );
+    return (
+      candidates.length > 0 &&
+      candidates.every((room) => room.landlordId === managerId)
+    );
   }
 
   private resolveMaintenanceFeeForBill(bill: Bill): MaintenanceFee {
@@ -6752,12 +7845,19 @@ export class RoomlogService {
   }
 
   private tenantNameForBill(bill: Bill) {
-    const room = this.store.rooms.find((item) => this.unitMatchesRoom(bill.unitId, item));
-    const tenantId = room
-      ? Object.entries(this.store.tenantRooms).find(([, roomId]) => roomId === room.id)?.[0]
-      : undefined;
+    const room = this.roomForBill(bill);
+    return room ? this.tenantNameForRoom(room.id) : "미연결 임차인";
+  }
 
+  private tenantNameForRoom(roomId: string) {
+    const tenantId = Object.entries(this.store.tenantRooms).find(
+      ([, linkedRoomId]) => linkedRoomId === roomId
+    )?.[0];
     return this.store.users.find((user) => user.id === tenantId)?.name ?? "미연결 임차인";
+  }
+
+  private paymentCustomerKey(tenantId: string) {
+    return `roomlog-${createHash("sha256").update(tenantId).digest("hex").slice(0, 24)}`;
   }
 
   private paymentBadgeForBill(bill: Bill): PaymentBadge {
@@ -6777,14 +7877,20 @@ export class RoomlogService {
   }
 
   private presentBill(bill: Bill): TeamBill {
+    const items = this.normalizeBillItems(bill.items, bill.paidAmount);
+
     return {
       id: bill.id,
+      roomId: bill.roomId,
       unitId: bill.unitId,
       billingMonth: bill.billingMonth,
       status: this.deriveBillStatus(bill),
-      items: bill.items.map((item) => ({
+      items: items.map((item) => ({
         label: item.label,
-        amount: item.amount
+        kind: item.kind ?? "OTHER",
+        amount: item.amount,
+        paidAmount: item.paidAmount ?? 0,
+        status: this.lineItemStatus(item)
       })),
       totalAmount: bill.totalAmount,
       paidAmount: bill.paidAmount,
@@ -6825,35 +7931,62 @@ export class RoomlogService {
     };
   }
 
-  private presentManagerBillRow(bill: Bill): TeamBillRow {
+  private presentManagerBillRow(bill: Bill, managerId?: string): TeamBillRow {
+    const room = managerId ? this.roomForManagerBill(managerId, bill) : this.roomForBill(bill);
+    const daysOverdue = this.daysOverdueForBill(bill);
     return {
       billId: bill.id,
+      roomId: room?.id,
+      buildingName: room?.buildingName,
       unitId: bill.unitId,
       tenantName: this.tenantNameForBill(bill),
       billingMonth: bill.billingMonth,
       totalAmount: bill.totalAmount,
       paidAmount: bill.paidAmount,
+      unpaidAmount: this.unpaidAmount(bill),
+      daysOverdue,
       status: this.deriveBillStatus(bill),
       dueDate: bill.dueDate,
-      badge: this.paymentBadgeForBill(bill)
+      badge: this.paymentBadgeForBill(bill),
+      guard: this.dunningGuardForBill(bill)
     };
   }
 
-  private presentOverdueCase(bill: Bill): TeamOverdue {
-    const daysOverdue = Math.max(
+  private daysOverdueForBill(bill: Bill) {
+    return Math.max(
       0,
       Math.floor((Date.now() - Date.parse(bill.dueDate)) / (24 * 60 * 60 * 1000))
     );
+  }
+
+  private presentOverdueCase(bill: Bill, managerId?: string): TeamOverdue {
+    const daysOverdue = this.daysOverdueForBill(bill);
+    const room = managerId ? this.roomForManagerBill(managerId, bill) : this.roomForBill(bill);
 
     return {
       billId: bill.id,
+      roomId: room?.id,
+      buildingName: room?.buildingName,
       unitId: bill.unitId,
       tenantName: this.tenantNameForBill(bill),
+      billingMonth: bill.billingMonth,
+      totalAmount: bill.totalAmount,
+      paidAmount: bill.paidAmount,
       unpaidAmount: this.unpaidAmount(bill),
       daysOverdue,
       stage: this.stageForDaysOverdue(daysOverdue),
       dueDate: bill.dueDate,
       guard: this.dunningGuardForBill(bill)
+    };
+  }
+
+  private presentManagerBillingDeposit(managerId: string, deposit: Deposit) {
+    const room = this.roomForManagerDeposit(managerId, deposit);
+    return {
+      ...this.presentDeposit(deposit),
+      buildingName: room?.buildingName,
+      unitId: room?.roomNo ?? deposit.guessedUnitId,
+      needsBuildingReview: !room
     };
   }
 
@@ -6918,6 +8051,10 @@ export class RoomlogService {
       })),
       paymentReports: parsed.paymentReports ?? [],
       deposits: parsed.deposits ?? [],
+      paymentTransactions: (parsed.paymentTransactions ?? []).map((transaction) => ({
+        ...transaction,
+        allocations: transaction.allocations ?? []
+      })),
       maintenanceFees: (parsed.maintenanceFees ?? []).map((fee) => ({
         ...fee,
         items: fee.items ?? []
@@ -7040,6 +8177,10 @@ export class RoomlogService {
       bills: mergeMissingById(snapshot.bills, demo.bills),
       paymentReports: mergeMissingById(snapshot.paymentReports, demo.paymentReports),
       deposits: mergeMissingById(snapshot.deposits, demo.deposits),
+      paymentTransactions: mergeMissingById(
+        snapshot.paymentTransactions,
+        demo.paymentTransactions
+      ),
       maintenanceFees: mergeMissingById(snapshot.maintenanceFees, demo.maintenanceFees),
       attachments: mergeMissingById(snapshot.attachments, demo.attachments),
       floorPlans: mergeMissingById(snapshot.floorPlans, demo.floorPlans),
@@ -7137,6 +8278,7 @@ export class RoomlogService {
         (snapshot.bills === undefined || Array.isArray(snapshot.bills)) &&
         (snapshot.paymentReports === undefined || Array.isArray(snapshot.paymentReports)) &&
         (snapshot.deposits === undefined || Array.isArray(snapshot.deposits)) &&
+        (snapshot.paymentTransactions === undefined || Array.isArray(snapshot.paymentTransactions)) &&
         (snapshot.maintenanceFees === undefined || Array.isArray(snapshot.maintenanceFees)) &&
         (snapshot.attachments === undefined || Array.isArray(snapshot.attachments)) &&
         (snapshot.floorPlans === undefined || Array.isArray(snapshot.floorPlans)) &&
