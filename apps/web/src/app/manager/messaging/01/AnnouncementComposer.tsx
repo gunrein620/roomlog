@@ -24,6 +24,10 @@ import {
   saveAnnouncementComposeAction,
   translateAnnouncementAction,
 } from "./actions";
+import {
+  buildAttachedTranslations,
+  findAttachedTranslation,
+} from "./attachment-state";
 import styles from "./AnnouncementComposer.module.css";
 
 const CATEGORY_OPTIONS: ReadonlyArray<{
@@ -79,6 +83,9 @@ export function AnnouncementComposer({
   );
   const [translating, setTranslating] = useState<AnnouncementLanguage | null>(null);
   const [expandedLanguages, setExpandedLanguages] = useState<AnnouncementLanguage[]>([]);
+  const [attachedLabel, setAttachedLabel] = useState(
+    findAttachedTranslation(initialDraft)?.langLabel ?? null,
+  );
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [feedback, setFeedback] = useState("");
@@ -97,6 +104,7 @@ export function AnnouncementComposer({
     if (field === "title") setTitle(value);
     else setBody(value);
     setTranslations((current) => invalidateReviewedTranslations(current));
+    setAttachedLabel(null);
     setFeedback("");
   }
 
@@ -116,6 +124,7 @@ export function AnnouncementComposer({
         ? current.map((translation) => (translation.lang === lang ? next : translation))
         : [...current, next];
     });
+    setAttachedLabel(null);
     setFeedback("");
   }
 
@@ -139,12 +148,23 @@ export function AnnouncementComposer({
         ...current.filter((translation) => translation.lang !== lang),
         translated,
       ]);
-      setFeedback(`${label} 번역이 완료되었습니다. 내용을 확인한 뒤 검수 완료를 체크해 주세요.`);
+      setAttachedLabel(null);
+      setFeedback(`${label} 번역이 완료되었습니다. 내용을 확인한 뒤 첨부해 주세요.`);
     } catch (error) {
       setErrors([errorMessage(error)]);
     } finally {
       setTranslating(null);
     }
+  }
+
+  function handleAttach(translation: AnnouncementTranslation, label: string) {
+    const attached = { ...translation, langLabel: label };
+    setTitle(attached.title);
+    setBody(attached.body);
+    setTranslations(buildAttachedTranslations(attached));
+    setAttachedLabel(label);
+    setErrors([]);
+    setFeedback(`${label} 번역을 공지 제목과 상세 내용에 첨부했습니다.`);
   }
 
   function toggleRoom(roomId: string) {
@@ -156,6 +176,15 @@ export function AnnouncementComposer({
   }
 
   async function handleSave(intent: "save" | "review") {
+    if (
+      intent === "review"
+      && category === "urgent"
+      && !findAttachedTranslation({ title, body, translations })
+    ) {
+      setErrors(["번역 후 첨부할 언어를 선택해 주세요."]);
+      return;
+    }
+
     const validationErrors = validateAnnouncementCompose(
       { category, title, body, targetRoomIds: target.targetRoomIds, translations },
       { requireUrgentReviews: intent === "review" },
@@ -183,6 +212,7 @@ export function AnnouncementComposer({
       });
       setCurrentDraftId(saved.id);
       setTranslations(saved.translations ?? []);
+      setAttachedLabel(findAttachedTranslation(saved)?.langLabel ?? null);
 
       if (intent === "review") {
         router.push(`${MANAGER_MESSAGING_ROUTES["M-MSG-02"]}?id=${encodeURIComponent(saved.id)}`);
@@ -359,7 +389,7 @@ export function AnnouncementComposer({
               return (
                 <article
                   key={lang}
-                  className={`${styles.translationCard} ${translation.reviewed ? styles.translationCardReviewed : ""}`}
+                  className={`${styles.translationCard} ${attachedLabel === label ? styles.translationCardReviewed : ""}`}
                 >
                   <div className={styles.translationTop}>
                     <span className={styles.languageLabel}>{label} 검수</span>
@@ -396,17 +426,15 @@ export function AnnouncementComposer({
                         })}
                         placeholder={`${label} 본문`}
                       />
-                      <label className={styles.reviewRow}>
-                        <input
-                          type="checkbox"
-                          checked={translation.reviewed}
-                          disabled={!translation.title.trim() || !translation.body.trim()}
-                          onChange={(event) => updateTranslation(lang, label, {
-                            reviewed: event.target.checked,
-                          })}
-                        />
-                        검수 완료
-                      </label>
+                      {translation.title.trim() && translation.body.trim() ? (
+                        <button
+                          className={`${styles.attachButton} ${attachedLabel === label ? styles.attachedButton : ""}`}
+                          type="button"
+                          onClick={() => handleAttach(translation, label)}
+                        >
+                          {attachedLabel === label ? "첨부됨" : "첨부하기"}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </article>

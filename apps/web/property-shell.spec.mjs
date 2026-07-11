@@ -409,7 +409,16 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposeFeatureSource, /lang: "zh", label: "中文"/);
   assert.match(managerMessagingComposeFeatureSource, /lang: "vi", label: "Tiếng Việt"/);
   assert.match(managerMessagingComposeFeatureSource, /`\$\{label\} 번역`/);
-  assert.match(managerMessagingComposeFeatureSource, /검수 완료/);
+  assert.match(managerMessagingComposerSource, /buildAttachedTranslations/);
+  assert.match(managerMessagingComposerSource, /findAttachedTranslation/);
+  assert.match(managerMessagingComposerSource, /첨부하기/);
+  assert.match(managerMessagingComposerSource, /첨부됨/);
+  assert.match(managerMessagingComposerSource, /번역 후 첨부할 언어를 선택해 주세요/);
+  assert.doesNotMatch(managerMessagingComposerSource, /검수 완료/);
+  assert.doesNotMatch(
+    managerMessagingComposerSource,
+    /type="checkbox"\s+checked=\{translation\.reviewed\}/,
+  );
   assert.doesNotMatch(managerMessagingComposeFeatureSource, />⌄</);
   assert.match(
     managerMessagingComposeFeatureSource,

@@ -312,6 +312,22 @@
   gap: var(--space-md);
 }
 
+.attachButton {
+  min-height: var(--touch-target);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-btn);
+  background: var(--surface-container-lowest);
+  color: var(--primary);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.attachedButton {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
 .languageLabel {
   color: var(--primary);
   font-size: var(--fs-caption);
