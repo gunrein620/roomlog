@@ -92,6 +92,16 @@ const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
 const managerMessagingListSource = readFileSync(new URL("./src/app/manager/messaging/00/page.tsx", import.meta.url), "utf8");
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
 const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
+const managerMessagingComposerPath = new URL("./src/app/manager/messaging/01/AnnouncementComposer.tsx", import.meta.url);
+const managerMessagingActionsPath = new URL("./src/app/manager/messaging/01/actions.ts", import.meta.url);
+const managerMessagingComposerSource = existsSync(managerMessagingComposerPath)
+  ? readFileSync(managerMessagingComposerPath, "utf8")
+  : "";
+const managerMessagingActionsSource = existsSync(managerMessagingActionsPath)
+  ? readFileSync(managerMessagingActionsPath, "utf8")
+  : "";
+const managerMessagingComposeStateSource = readFileSync(new URL("./src/lib/announcement-compose-state.ts", import.meta.url), "utf8");
+const managerMessagingComposeFeatureSource = `${managerMessagingComposeSource}\n${managerMessagingComposerSource}\n${managerMessagingActionsSource}\n${managerMessagingComposeStateSource}`;
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
@@ -377,17 +387,26 @@ test("auto-refreshes open messaging thread details without infrastructure change
   assert.match(managerMessagingThreadSource, /<MessageAutoRefresh /);
 });
 
-test("manager announcement compose creates editable drafts before review", () => {
-  assert.match(managerMessagingComposeSource, /createAnnouncementDraft/);
-  assert.match(managerMessagingComposeSource, /action=\{createDraftAction\}/);
-  assert.match(managerMessagingComposeSource, /name="title"/);
-  assert.match(managerMessagingComposeSource, /name="body"/);
-  assert.match(managerMessagingComposeSource, /name="category"/);
-  assert.match(managerMessagingComposeSource, /name="scope"/);
+test("manager announcement compose edits targets and translates each language before review", () => {
+  assert.match(managerMessagingComposeFeatureSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingComposeFeatureSource, /updateAnnouncementDraft/);
+  assert.match(managerMessagingComposeFeatureSource, /translateAnnouncement/);
+  assert.match(managerMessagingComposeFeatureSource, /name="title"/);
+  assert.match(managerMessagingComposeFeatureSource, /name="body"/);
+  assert.match(managerMessagingComposeFeatureSource, /name="category"/);
+  assert.match(managerMessagingComposeFeatureSource, /name="scope"/);
+  assert.match(managerMessagingComposeFeatureSource, /targetRoomIds/);
+  assert.match(managerMessagingComposeFeatureSource, /lang: "en", label: "English"/);
+  assert.match(managerMessagingComposeFeatureSource, /lang: "zh", label: "中文"/);
+  assert.match(managerMessagingComposeFeatureSource, /lang: "vi", label: "Tiếng Việt"/);
+  assert.match(managerMessagingComposeFeatureSource, /`\$\{label\} 번역`/);
+  assert.match(managerMessagingComposeFeatureSource, /검수 완료/);
   assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingApiSource, /updateAnnouncementDraft/);
+  assert.match(managerMessagingApiSource, /translateAnnouncement/);
   assert.match(managerMessagingApiSource, /method: "POST"/);
-  assert.doesNotMatch(managerMessagingComposeSource, /value=\{draft\.title\} readOnly/);
-  assert.doesNotMatch(managerMessagingComposeSource, /<StaticButton>임시 저장<\/StaticButton>/);
+  assert.doesNotMatch(managerMessagingComposeFeatureSource, /value=\{draft\.title\} readOnly/);
+  assert.doesNotMatch(managerMessagingComposeFeatureSource, /<StaticButton>임시 저장<\/StaticButton>/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {

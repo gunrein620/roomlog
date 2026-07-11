@@ -3827,6 +3827,44 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("keeps translations reviewed when they were regenerated for the changed source", () => {
+    const service = new RoomlogService();
+    const title = "긴급 점검 안내";
+    const body = "오늘 18시에 긴급 점검합니다.";
+    const created = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "unit",
+      targetLabel: "301호",
+      targetRoomIds: ["room-301"],
+      title,
+      body,
+      translations: [
+        { lang: "en", title: "Emergency inspection", body: "Inspection at 18:00.", reviewed: true, sourceHash: announcementSourceHash(title, body) },
+        { lang: "zh", title: "紧急检查", body: "18时检查。", reviewed: true, sourceHash: announcementSourceHash(title, body) },
+        { lang: "vi", title: "Kiểm tra khẩn cấp", body: "Kiểm tra lúc 18:00.", reviewed: true, sourceHash: announcementSourceHash(title, body) }
+      ]
+    });
+    const nextBody = "오늘 19시에 긴급 점검합니다.";
+    const nextSourceHash = announcementSourceHash(title, nextBody);
+
+    const updated = service.updateManagerAnnouncementDraft("landlord-demo", created.id, {
+      category: "urgent",
+      scope: "unit",
+      targetLabel: "301호",
+      targetRoomIds: ["room-301"],
+      title,
+      body: nextBody,
+      translations: created.translations.map((translation) => ({
+        ...translation,
+        reviewed: true,
+        sourceHash: nextSourceHash
+      }))
+    });
+
+    assert.equal(updated.translations.every((translation) => translation.reviewed), true);
+    assert.doesNotThrow(() => service.sendManagerAnnouncementDraft("landlord-demo", created.id));
+  });
+
   it("updates manager announcement drafts without duplicating them and enforces target ownership", () => {
     const service = new RoomlogService();
     const created = service.createManagerAnnouncementDraft("landlord-demo", {

@@ -270,6 +270,7 @@ export class RoomlogMessagingDomain {
     const targetRooms = this.targetRoomsFor(managerId, input);
     const sourceChanged =
       draft.title.trim() !== input.title.trim() || draft.body.trim() !== input.body.trim();
+    const updatedSourceHash = announcementSourceHash(input.title, input.body);
     draft.category = input.category;
     draft.scope = input.scope;
     draft.targetLabel = input.targetLabel.trim();
@@ -278,7 +279,10 @@ export class RoomlogMessagingDomain {
     draft.body = input.body.trim();
     draft.translations = input.translations.map((translation) => ({
       ...translation,
-      reviewed: sourceChanged ? false : translation.reviewed
+      reviewed:
+        sourceChanged && translation.sourceHash !== updatedSourceHash
+          ? false
+          : translation.reviewed
     }));
     draft.confirmRequired = input.category === "urgent";
     draft.updatedAt = now();
