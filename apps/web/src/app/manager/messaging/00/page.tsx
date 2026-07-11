@@ -177,7 +177,24 @@ function ThreadCard({ thread }: { thread: Thread }) {
           <Badge emphasis={needsReply}>{locationLabel}</Badge>
           <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
         </div>
-        {needsReply ? <Badge emphasis>답장 필요</Badge> : null}
+        {needsReply ? (
+          <Badge emphasis>
+            <span
+              aria-label="답장 필요"
+              style={{
+                display: "inline-flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                lineHeight: 1.25,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>답장</span>
+              <span>필요</span>
+            </span>
+          </Badge>
+        ) : null}
       </div>
       <div style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>
       <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: 1.5 }}>

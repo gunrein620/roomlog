@@ -41,3 +41,10 @@ test("uses the shared location label on manager messaging list and detail pages"
   assert.match(detailPage, /\{locationLabel\}<\/Badge>/);
   assert.match(detailPage, /aria-label=\{`\$\{locationLabel\}/);
 });
+
+test("keeps the reply-needed badge balanced on exactly two accessible lines", () => {
+  assert.match(listPage, /aria-label="답장 필요"/);
+  assert.match(listPage, /<span>답장<\/span>/);
+  assert.match(listPage, /<span>필요<\/span>/);
+  assert.match(listPage, /whiteSpace: "nowrap"/);
+});
