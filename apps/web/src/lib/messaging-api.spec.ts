@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { tenantMessagingPaths } from "./messaging-api";
-import { managerMessagingPaths } from "./messaging-manager-api";
+import { managerMessagingPaths, updateAnnouncementDraft } from "./messaging-manager-api";
 
 describe("messaging api path contracts", () => {
   it("routes tenant messaging reads and mutations through the real roomlog API", () => {
@@ -44,6 +44,11 @@ describe("messaging api path contracts", () => {
       managerMessagingPaths.announcementDrafts(),
       "/manager/messaging/announcement-drafts"
     );
+    assert.equal(
+      managerMessagingPaths.announcementDraft("draft_1"),
+      "/manager/messaging/announcement-drafts/draft_1"
+    );
+    assert.equal(typeof updateAnnouncementDraft, "function");
     assert.equal(
       managerMessagingPaths.announcementRecipients("draft_1"),
       "/manager/messaging/announcement-drafts/draft_1/recipients"

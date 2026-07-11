@@ -28,16 +28,15 @@ async function createDraftAction(formData: FormData) {
   const targetLabel = String(formData.get("targetLabel") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
-  const confirmRequired = formData.get("confirmRequired") === "on";
-
   try {
     const draft = await createAnnouncementDraft({
       category,
       scope,
       targetLabel: targetLabel || SCOPE_LABEL[scope],
+      targetRoomIds: [],
       title,
       body,
-      confirmRequired,
+      translations: [],
     });
 
     redirect(`${MANAGER_MESSAGING_ROUTES["M-MSG-02"]}?id=${encodeURIComponent(draft.id)}`);

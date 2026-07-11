@@ -92,6 +92,7 @@ export interface AnnouncementDraft {
   category: AnnouncementCategory;
   scope: AnnouncementScope;
   targetLabel: string; // 사람이 읽는 타깃 라벨 (예: "전체" · "A동" · "302호")
+  targetRoomIds: string[]; // 실제 서버 권한 검증·수신자 산정에 사용하는 호실 ID
   title: string;
   body: string;
   translations?: AnnouncementTranslation[]; // 긴급=다국어 검수(D21)
@@ -99,6 +100,18 @@ export interface AnnouncementDraft {
   status: "draft" | "sent";
   updatedAt: string;
 }
+
+export interface AnnouncementDraftInput {
+  category: AnnouncementCategory;
+  scope: AnnouncementScope;
+  targetLabel: string;
+  targetRoomIds: string[];
+  title: string;
+  body: string;
+  translations: AnnouncementTranslation[];
+}
+
+export type UpdateAnnouncementDraftInput = AnnouncementDraftInput;
 
 /** 발송 검토 명단의 개별 수신 세대 (M-MSG-02). 대량 명단=데스크탑 본체(D17). */
 export interface AnnouncementRecipient {

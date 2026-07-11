@@ -216,6 +216,16 @@ export type CreateAnnouncementDraftInput = {
   confirmRequired?: boolean;
 };
 
+export type UpdateAnnouncementDraftInput = {
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  targetRoomIds: string[];
+  title: string;
+  body: string;
+  translations: MessagingAnnouncementTranslation[];
+};
+
 export type MessagingAnnouncement = {
   id: string;
   draftId?: string;

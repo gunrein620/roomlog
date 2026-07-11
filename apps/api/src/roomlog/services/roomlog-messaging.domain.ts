@@ -16,6 +16,7 @@ import type {
   MessagingThread,
   MessagingThreadContext,
   Room,
+  UpdateAnnouncementDraftInput,
   UserAccount
 } from "../roomlog.types";
 import type { Store } from "../roomlog.service";
@@ -229,7 +230,7 @@ export class RoomlogMessagingDomain {
       title: input.title.trim(),
       body: input.body.trim(),
       translations: input.translations ?? [],
-      confirmRequired: input.confirmRequired ?? input.category === "urgent",
+      confirmRequired: input.category === "urgent",
       status: "draft",
       createdByManagerId: managerId,
       createdAt,
@@ -251,6 +252,33 @@ export class RoomlogMessagingDomain {
 
   getManagerAnnouncementDraft(managerId: string, draftId: string): MessagingAnnouncementDraft {
     return this.presentDraft(this.findManagerDraft(managerId, draftId));
+  }
+
+  updateManagerAnnouncementDraft(
+    managerId: string,
+    draftId: string,
+    input: UpdateAnnouncementDraftInput
+  ): MessagingAnnouncementDraft {
+    const draft = this.findManagerDraft(managerId, draftId);
+
+    if (draft.status === "sent") {
+      throw new BadRequestException("발송된 공지는 수정할 수 없습니다.");
+    }
+
+    this.assertAnnouncementContent(input.title, input.body, input.targetLabel);
+    const targetRooms = this.targetRoomsFor(managerId, input);
+    draft.category = input.category;
+    draft.scope = input.scope;
+    draft.targetLabel = input.targetLabel.trim();
+    draft.targetRoomIds = targetRooms.map((room) => room.id);
+    draft.title = input.title.trim();
+    draft.body = input.body.trim();
+    draft.translations = input.translations.map((translation) => ({ ...translation }));
+    draft.confirmRequired = input.category === "urgent";
+    draft.updatedAt = now();
+    this.persistStore();
+
+    return this.presentDraft(draft);
   }
 
   listManagerAnnouncementRecipients(managerId: string, draftId: string) {
@@ -525,8 +553,24 @@ export class RoomlogMessagingDomain {
       throw new ForbiddenException("관리 중인 호실이 없습니다.");
     }
 
+    const requestedRoomIds = input.targetRoomIds;
+
+    if (input.scope === "all") {
+      if (requestedRoomIds === undefined) {
+        return managedRooms;
+      }
+
+      const requested = new Set(requestedRoomIds);
+      const managed = new Set(managedRooms.map((room) => room.id));
+      if (requested.size !== managed.size || [...requested].some((roomId) => !managed.has(roomId))) {
+        throw new BadRequestException("전체 공지는 관리 중인 전체 호실을 대상으로 선택해야 합니다.");
+      }
+
+      return managedRooms;
+    }
+
     if (input.scope === "unit") {
-      const targetRoomIds = input.targetRoomIds ?? [];
+      const targetRoomIds = requestedRoomIds ?? [];
 
       if (targetRoomIds.length === 0) {
         throw new BadRequestException("호실 공지는 대상 호실이 필요합니다.");
@@ -538,8 +582,12 @@ export class RoomlogMessagingDomain {
       });
     }
 
-    if (input.targetRoomIds?.length) {
-      return input.targetRoomIds.map((roomId) => {
+    if (requestedRoomIds !== undefined && requestedRoomIds.length === 0) {
+      throw new BadRequestException("건물 공지는 대상 호실이 필요합니다.");
+    }
+
+    if (requestedRoomIds?.length) {
+      return requestedRoomIds.map((roomId) => {
         this.assertManagerCanAccessRoom(managerId, roomId);
         return this.findRoom(roomId);
       });

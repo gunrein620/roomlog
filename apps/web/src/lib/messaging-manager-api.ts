@@ -1,8 +1,10 @@
 import type {
   AnnouncementDelivery,
   AnnouncementDraft,
+  AnnouncementDraftInput,
   AnnouncementRecipient,
   AnnouncementResult,
+  UpdateAnnouncementDraftInput,
   Thread,
   ThreadContext,
 } from "@roomlog/types";
@@ -19,6 +21,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
     category: "urgent",
     scope: "building",
     targetLabel: "A동 전체 42세대",
+    targetRoomIds: ["room-301", "room-302", "room-303"],
     title: "[긴급] 오늘 14~16시 단수 안내",
     body: "노후 배관 교체로 오늘 14:00~16:00 단수됩니다. 미리 물을 받아두세요.",
     translations: [
@@ -53,6 +56,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
     category: "life",
     scope: "all",
     targetLabel: "전체 118세대",
+    targetRoomIds: ["room-301", "room-302", "room-303"],
     title: "공용 계단 청소 안내",
     body: "매주 화요일 오전 공용 계단 청소가 진행됩니다. 복도 적치물을 정리해 주세요.",
     confirmRequired: false,
@@ -269,16 +273,19 @@ export function listAnnouncementDrafts(): Promise<AnnouncementDraft[]> {
   );
 }
 
-export function createAnnouncementDraft(input: {
-  category: AnnouncementDraft["category"];
-  scope: AnnouncementDraft["scope"];
-  targetLabel: string;
-  title: string;
-  body: string;
-  confirmRequired?: boolean;
-}): Promise<AnnouncementDraft> {
+export function createAnnouncementDraft(input: AnnouncementDraftInput): Promise<AnnouncementDraft> {
   return serverFetch<AnnouncementDraft>(managerMessagingPaths.announcementDrafts(), {
     method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAnnouncementDraft(
+  id: string,
+  input: UpdateAnnouncementDraftInput,
+): Promise<AnnouncementDraft> {
+  return serverFetch<AnnouncementDraft>(managerMessagingPaths.announcementDraft(id), {
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }

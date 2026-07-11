@@ -3771,6 +3771,116 @@ describe("RoomlogService", () => {
     assert.equal(service.listManagerAnnouncementResults("landlord-demo")[0].counts.confirmed, 1);
   });
 
+  it("updates manager announcement drafts without duplicating them and enforces target ownership", () => {
+    const service = new RoomlogService();
+    const created = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "life",
+      scope: "unit",
+      targetLabel: "301호",
+      targetRoomIds: ["room-301"],
+      title: "점검 안내",
+      body: "내일 점검합니다.",
+      translations: []
+    });
+    const beforeCount = service.listManagerAnnouncementDrafts("landlord-demo").length;
+
+    const updated = service.updateManagerAnnouncementDraft("landlord-demo", created.id, {
+      category: "life",
+      scope: "building",
+      targetLabel: "정글빌라 2세대",
+      targetRoomIds: ["room-301", "room-302"],
+      title: "점검 시간 변경",
+      body: "내일 14시에 점검합니다.",
+      translations: []
+    });
+
+    assert.equal(updated.id, created.id);
+    assert.equal(updated.title, "점검 시간 변경");
+    assert.deepEqual(updated.targetRoomIds, ["room-301", "room-302"]);
+    assert.equal(service.listManagerAnnouncementDrafts("landlord-demo").length, beforeCount);
+    assert.throws(
+      () =>
+        service.updateManagerAnnouncementDraft("manager-outside", created.id, {
+          category: "life",
+          scope: "unit",
+          targetLabel: "301호",
+          targetRoomIds: ["room-301"],
+          title: "권한 없는 수정",
+          body: "수정하면 안 됩니다.",
+          translations: []
+        }),
+      /초안|권한|찾을 수/
+    );
+  });
+
+  it("rejects sent draft updates and derives confirmation from category", () => {
+    const service = new RoomlogService();
+    const created = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "unit",
+      targetLabel: "301호",
+      targetRoomIds: ["room-301"],
+      title: "긴급 점검 안내",
+      body: "오늘 18시에 긴급 점검합니다.",
+      confirmRequired: false,
+      translations: [
+        {
+          lang: "en",
+          title: "Emergency inspection",
+          body: "An emergency inspection starts at 18:00 today.",
+          reviewed: true
+        }
+      ]
+    });
+
+    assert.equal(created.confirmRequired, true);
+    service.sendManagerAnnouncementDraft("landlord-demo", created.id);
+    assert.throws(
+      () =>
+        service.updateManagerAnnouncementDraft("landlord-demo", created.id, {
+          category: "urgent",
+          scope: "unit",
+          targetLabel: "301호",
+          targetRoomIds: ["room-301"],
+          title: "수정 시도",
+          body: "발송 후에는 수정할 수 없습니다.",
+          translations: []
+        }),
+      /발송|수정/
+    );
+  });
+
+  it("rejects announcement scope and target room mismatches", () => {
+    const service = new RoomlogService();
+
+    assert.throws(
+      () =>
+        service.createManagerAnnouncementDraft("landlord-demo", {
+          category: "life",
+          scope: "all",
+          targetLabel: "전체",
+          targetRoomIds: ["room-301"],
+          title: "전체 공지",
+          body: "전체 세대에 전달할 내용입니다.",
+          translations: []
+        }),
+      /전체|대상/
+    );
+    assert.throws(
+      () =>
+        service.createManagerAnnouncementDraft("landlord-demo", {
+          category: "life",
+          scope: "building",
+          targetLabel: "정글빌라",
+          targetRoomIds: [],
+          title: "건물 공지",
+          body: "건물 대상 공지입니다.",
+          translations: []
+        }),
+      /건물|대상/
+    );
+  });
+
   it("answers manager natural-language ticket queries from scoped operational data", async () => {
     const originalApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

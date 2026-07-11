@@ -154,6 +154,7 @@ import {
   MoveoutSettlementEstimate,
   MoveoutSummary,
   UpdateTenantMoveoutDisputeInput,
+  UpdateAnnouncementDraftInput,
   UpdateMoveoutChecklistInput,
   PhotoAnalysis,
   PhotoComparisonStatus,
@@ -6412,6 +6413,14 @@ export class RoomlogService {
 
   getManagerAnnouncementDraft(managerId: string, draftId: string) {
     return this.messaging.getManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  updateManagerAnnouncementDraft(
+    managerId: string,
+    draftId: string,
+    input: UpdateAnnouncementDraftInput
+  ) {
+    return this.messaging.updateManagerAnnouncementDraft(managerId, draftId, input);
   }
 
   listManagerAnnouncementRecipients(managerId: string, draftId: string) {
