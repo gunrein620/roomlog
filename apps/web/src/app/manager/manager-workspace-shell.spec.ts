@@ -43,6 +43,13 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(sidebar, /item\.external/);
   assert.match(sidebar, /관리자 워크스페이스 밖으로 이동/);
   assert.doesNotMatch(sidebar, /target="_blank"/);
+  assert.match(sidebar, /aria-expanded=\{ticketExpanded\}/);
+  assert.match(sidebar, /aria-controls="manager-ticket-subnav"/);
+  assert.match(sidebar, /민원·하자 메뉴 접기/);
+  assert.match(sidebar, /민원·하자 메뉴 펼치기/);
+  assert.match(sidebar, /id=\{isTicket \? "manager-ticket-subnav" : undefined\}/);
+  assert.match(sidebar, /item\.id === "ticket"/);
+  assert.match(managerCss, /manager-sidebar__ticket-toggle/);
   assert.match(sectionNavSource, /item\.children\.map/);
   assert.match(sectionNavSource, /aria-current/);
   assert.match(assistant, /showModal\(\)/);
@@ -54,6 +61,12 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(appShellSource, /!fullAssistant/);
   assert.match(appShellSource, /getBoundingClientRect\(\)/);
   assert.match(appShellSource, /isDialogBackdropPoint/);
+  assert.match(appShellSource, /import \{ Suspense, useRef, useState \} from "react"/);
+  assert.match(appShellSource, /<Suspense fallback=\{null\}><ManagerSidebar \/><\/Suspense>/);
+  assert.match(
+    appShellSource,
+    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton \/><\/Suspense>/,
+  );
 });
 
 test("manager shell exposes navigation, subnav, actions, and right rail slots", () => {

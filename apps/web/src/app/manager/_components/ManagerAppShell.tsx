@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { ManagerShell } from "@roomlog/ui";
@@ -79,7 +79,7 @@ export function ManagerAppShell({
       <ManagerShell
         title={title}
         context={context}
-        nav={<ManagerSidebar />}
+        nav={<Suspense fallback={null}><ManagerSidebar /></Suspense>}
         subnav={subnav ?? <ManagerSectionNav />}
         headerActions={action}
         rightRail={rail}
@@ -94,7 +94,7 @@ export function ManagerAppShell({
         onClick={closeMobileNavigationOnBackdrop}
         onClose={() => setMobileOpen(false)}
       >
-        <ManagerSidebar onNavigate={closeMobileNavigation} showCloseButton />
+        <Suspense fallback={null}><ManagerSidebar onNavigate={closeMobileNavigation} showCloseButton /></Suspense>
       </dialog>
       {!showAssistantRail && !fullAssistant ? (
         <ManagerAssistantLauncher
