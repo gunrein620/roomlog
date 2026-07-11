@@ -14,6 +14,7 @@ const complaintDashboardPath = join(
   "src/app/manager/ticket/dash/00/ComplaintDashboard.tsx",
 );
 const pagePath = join(root, "src/app/manager/ticket/dash/00/page.tsx");
+const layoutPath = join(root, "src/app/manager/ticket/dash/layout.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
 const navigationPath = join(root, "src/lib/manager-navigation.ts");
@@ -27,6 +28,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   const componentSource = readFileSync(componentPath, "utf8");
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
   const pageSource = readFileSync(pagePath, "utf8");
+  const layoutSource = readFileSync(layoutPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
   const navigationSource = readFileSync(navigationPath, "utf8");
@@ -122,6 +124,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.doesNotMatch(dashboardCss, /#[\da-f]{3,8}/i);
 
   assert.match(sidebarSource, /child\.active \?\? currentHref === child\.href/);
+  assert.match(layoutSource, /<ManagerAppShell[\s\S]*?subnav=\{false\}/);
   assert.match(navigationSource, /민원 대시보드/);
   assert.match(navigationSource, /민원 대응/);
   assert.match(navigationSource, /하자 관리/);
