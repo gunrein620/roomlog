@@ -20,6 +20,7 @@ import type {
   UserAccount
 } from "../roomlog.types";
 import type { Store } from "../roomlog.service";
+import { ANNOUNCEMENT_LANGUAGES, announcementSourceHash } from "./roomlog-announcement-support";
 
 type InitialThreadMessage = NonNullable<CreateMessagingThreadInput["initialMessage"]>;
 
@@ -267,13 +268,18 @@ export class RoomlogMessagingDomain {
 
     this.assertAnnouncementContent(input.title, input.body, input.targetLabel);
     const targetRooms = this.targetRoomsFor(managerId, input);
+    const sourceChanged =
+      draft.title.trim() !== input.title.trim() || draft.body.trim() !== input.body.trim();
     draft.category = input.category;
     draft.scope = input.scope;
     draft.targetLabel = input.targetLabel.trim();
     draft.targetRoomIds = targetRooms.map((room) => room.id);
     draft.title = input.title.trim();
     draft.body = input.body.trim();
-    draft.translations = input.translations.map((translation) => ({ ...translation }));
+    draft.translations = input.translations.map((translation) => ({
+      ...translation,
+      reviewed: sourceChanged ? false : translation.reviewed
+    }));
     draft.confirmRequired = input.category === "urgent";
     draft.updatedAt = now();
     this.persistStore();
@@ -601,10 +607,23 @@ export class RoomlogMessagingDomain {
       return;
     }
 
-    const unreviewed = draft.translations.filter((translation) => !translation.reviewed);
+    const currentSourceHash = announcementSourceHash(draft.title, draft.body);
+    for (const required of ANNOUNCEMENT_LANGUAGES) {
+      const matches = draft.translations.filter((translation) => translation.lang === required.lang);
+      if (matches.length !== 1) {
+        throw new BadRequestException(`긴급 공지는 ${required.label} 번역이 정확히 하나 필요합니다.`);
+      }
 
-    if (unreviewed.length > 0) {
-      throw new BadRequestException("긴급 공지는 모든 번역 검수 완료 후 발송할 수 있습니다.");
+      const translation = matches[0];
+      if (!translation.title.trim() || !translation.body.trim()) {
+        throw new BadRequestException(`긴급 공지 ${required.label} 번역 내용을 입력해주세요.`);
+      }
+      if (translation.sourceHash !== currentSourceHash) {
+        throw new BadRequestException(`긴급 공지 ${required.label} 번역이 현재 원문과 다릅니다.`);
+      }
+      if (!translation.reviewed) {
+        throw new BadRequestException(`긴급 공지 ${required.label} 번역 검수를 완료해주세요.`);
+      }
     }
   }
 

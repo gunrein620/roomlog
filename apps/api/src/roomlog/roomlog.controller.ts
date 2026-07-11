@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   AddMessagingThreadMessageInput,
+  AnnouncementTranslationRequest,
   AttachmentCategory,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
@@ -1199,6 +1200,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.updateManagerAnnouncementDraft(user.id, draftId, body);
+  }
+
+  @Post("manager/messaging/announcement-translations")
+  translateManagerAnnouncement(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: AnnouncementTranslationRequest
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.translateManagerAnnouncement(user.id, body);
   }
 
   @Get("manager/messaging/announcement-drafts/:draftId/recipients")

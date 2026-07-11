@@ -4,6 +4,8 @@ import type {
   AnnouncementDraftInput,
   AnnouncementRecipient,
   AnnouncementResult,
+  AnnouncementTranslationRequest,
+  AnnouncementTranslationResponse,
   UpdateAnnouncementDraftInput,
   Thread,
   ThreadContext,
@@ -31,6 +33,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
         title: "[Urgent] Water outage today 14:00-16:00",
         body: "Water supply will be suspended today from 14:00 to 16:00 for pipe replacement. Please prepare water in advance.",
         reviewed: true,
+        sourceHash: "demo-urgent-water-v1",
       },
       {
         lang: "zh",
@@ -38,6 +41,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
         title: "[紧急] 今日14:00-16:00停水通知",
         body: "因更换老化管道，今日14:00至16:00将停水。请提前储水。",
         reviewed: true,
+        sourceHash: "demo-urgent-water-v1",
       },
       {
         lang: "vi",
@@ -45,6 +49,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
         title: "[Khẩn cấp] Ngừng cấp nước hôm nay 14:00-16:00",
         body: "Nước sẽ tạm ngừng hôm nay từ 14:00 đến 16:00 để thay ống cũ. Vui lòng chuẩn bị nước trước.",
         reviewed: true,
+        sourceHash: "demo-urgent-water-v1",
       },
     ],
     confirmRequired: true,
@@ -216,6 +221,7 @@ export const managerMessagingPaths = {
   announcementDrafts: () => "/manager/messaging/announcement-drafts",
   announcementDraft: (id: string) =>
     `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}`,
+  announcementTranslations: () => "/manager/messaging/announcement-translations",
   announcementRecipients: (id: string) =>
     `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}/recipients`,
   sendAnnouncementDraft: (id: string) =>
@@ -286,6 +292,15 @@ export function updateAnnouncementDraft(
 ): Promise<AnnouncementDraft> {
   return serverFetch<AnnouncementDraft>(managerMessagingPaths.announcementDraft(id), {
     method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function translateAnnouncement(
+  input: AnnouncementTranslationRequest,
+): Promise<AnnouncementTranslationResponse> {
+  return serverFetch<AnnouncementTranslationResponse>(managerMessagingPaths.announcementTranslations(), {
+    method: "POST",
     body: JSON.stringify(input),
   });
 }

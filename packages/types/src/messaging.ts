@@ -53,6 +53,7 @@ export interface CreateTenantMessagingThreadInput {
 /** 공지 카테고리 — 긴급만 확인 게이트 + 다국어 검수(D21) */
 export type AnnouncementCategory = "urgent" | "life" | "event";
 export type AnnouncementScope = "all" | "building" | "unit";
+export type AnnouncementLanguage = "en" | "zh" | "vi";
 /** 읽음 ≠ 확인 (긴급/법정만 확인 게이트, 일반은 읽음) */
 export type AnnouncementReadState = "unread" | "read" | "confirmed";
 
@@ -76,11 +77,12 @@ export interface Announcement {
 
 /** 다국어 검수 번역 — 긴급 공지 안전(D21). 미검수 기계번역만으로 새는 것 차단. */
 export interface AnnouncementTranslation {
-  lang: string; // "en" | "zh" | "vi" ...
+  lang: AnnouncementLanguage;
   langLabel: string; // "English" | "中文" | "Tiếng Việt" ...
   title: string;
   body: string;
   reviewed: boolean; // 검수 완료 여부 (긴급은 전부 true여야 발송 게이트 통과)
+  sourceHash: string; // 번역·검수 당시 한국어 원문 식별자
 }
 
 /**
@@ -112,6 +114,14 @@ export interface AnnouncementDraftInput {
 }
 
 export type UpdateAnnouncementDraftInput = AnnouncementDraftInput;
+
+export interface AnnouncementTranslationRequest {
+  title: string;
+  body: string;
+  targetLang: AnnouncementLanguage;
+}
+
+export type AnnouncementTranslationResponse = AnnouncementTranslation;
 
 /** 발송 검토 명단의 개별 수신 세대 (M-MSG-02). 대량 명단=데스크탑 본체(D17). */
 export interface AnnouncementRecipient {

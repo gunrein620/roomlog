@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
 import { RoomlogController } from "./roomlog.controller";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { announcementSourceHash } from "./services/roomlog-announcement-support";
 
 function createMoveoutTestService() {
   const createdAt = "2026-07-01T00:00:00.000Z";
@@ -3709,20 +3710,24 @@ describe("RoomlogService", () => {
 
   it("requires reviewed urgent announcement translations before send and separates read from confirmation", () => {
     const service = new RoomlogService();
+    const sourceTitle = "긴급 단수 안내";
+    const sourceBody = "오늘 18시부터 긴급 단수가 있습니다.";
+    const sourceHash = announcementSourceHash(sourceTitle, sourceBody);
 
     const unsafeDraft = service.createManagerAnnouncementDraft("landlord-demo", {
       category: "urgent",
       scope: "building",
       targetLabel: "정글빌라 전체",
-      title: "긴급 단수 안내",
-      body: "오늘 18시부터 긴급 단수가 있습니다.",
+      title: sourceTitle,
+      body: sourceBody,
       confirmRequired: true,
       translations: [
         {
           lang: "en",
           title: "Emergency water outage",
           body: "Emergency water outage starts at 18:00.",
-          reviewed: false
+          reviewed: true,
+          sourceHash
         }
       ]
     });
@@ -3736,15 +3741,30 @@ describe("RoomlogService", () => {
       category: "urgent",
       scope: "building",
       targetLabel: "정글빌라 전체",
-      title: "긴급 단수 안내",
-      body: "오늘 18시부터 긴급 단수가 있습니다.",
+      title: sourceTitle,
+      body: sourceBody,
       confirmRequired: true,
       translations: [
         {
           lang: "en",
           title: "Emergency water outage",
           body: "Emergency water outage starts at 18:00.",
-          reviewed: true
+          reviewed: true,
+          sourceHash
+        },
+        {
+          lang: "zh",
+          title: "紧急停水通知",
+          body: "今天18时开始紧急停水。",
+          reviewed: true,
+          sourceHash
+        },
+        {
+          lang: "vi",
+          title: "Thông báo cắt nước khẩn cấp",
+          body: "Việc cắt nước khẩn cấp bắt đầu lúc 18:00 hôm nay.",
+          reviewed: true,
+          sourceHash
         }
       ]
     });
@@ -3769,6 +3789,42 @@ describe("RoomlogService", () => {
     );
     assert.equal(tenantAnnouncement.state, "confirmed");
     assert.equal(service.listManagerAnnouncementResults("landlord-demo")[0].counts.confirmed, 1);
+  });
+
+  it("invalidates reviewed translations when the Korean announcement source changes", () => {
+    const service = new RoomlogService();
+    const title = "긴급 점검 안내";
+    const body = "오늘 18시에 긴급 점검합니다.";
+    const sourceHash = announcementSourceHash(title, body);
+    const created = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "unit",
+      targetLabel: "301호",
+      targetRoomIds: ["room-301"],
+      title,
+      body,
+      translations: [
+        { lang: "en", title: "Emergency inspection", body: "Inspection at 18:00.", reviewed: true, sourceHash },
+        { lang: "zh", title: "紧急检查", body: "18时检查。", reviewed: true, sourceHash },
+        { lang: "vi", title: "Kiểm tra khẩn cấp", body: "Kiểm tra lúc 18:00.", reviewed: true, sourceHash }
+      ]
+    });
+
+    const updated = service.updateManagerAnnouncementDraft("landlord-demo", created.id, {
+      category: "urgent",
+      scope: "unit",
+      targetLabel: "301호",
+      targetRoomIds: ["room-301"],
+      title,
+      body: "오늘 19시에 긴급 점검합니다.",
+      translations: created.translations
+    });
+
+    assert.equal(updated.translations.every((translation) => !translation.reviewed), true);
+    assert.throws(
+      () => service.sendManagerAnnouncementDraft("landlord-demo", created.id),
+      /검수|원문|번역/
+    );
   });
 
   it("updates manager announcement drafts without duplicating them and enforces target ownership", () => {
@@ -3815,6 +3871,7 @@ describe("RoomlogService", () => {
 
   it("rejects sent draft updates and derives confirmation from category", () => {
     const service = new RoomlogService();
+    const sourceHash = announcementSourceHash("긴급 점검 안내", "오늘 18시에 긴급 점검합니다.");
     const created = service.createManagerAnnouncementDraft("landlord-demo", {
       category: "urgent",
       scope: "unit",
@@ -3828,7 +3885,22 @@ describe("RoomlogService", () => {
           lang: "en",
           title: "Emergency inspection",
           body: "An emergency inspection starts at 18:00 today.",
-          reviewed: true
+          reviewed: true,
+          sourceHash
+        },
+        {
+          lang: "zh",
+          title: "紧急检查通知",
+          body: "今天18:00进行紧急检查。",
+          reviewed: true,
+          sourceHash
+        },
+        {
+          lang: "vi",
+          title: "Thông báo kiểm tra khẩn cấp",
+          body: "Hôm nay sẽ kiểm tra khẩn cấp lúc 18:00.",
+          reviewed: true,
+          sourceHash
         }
       ]
     });
@@ -3879,6 +3951,71 @@ describe("RoomlogService", () => {
         }),
       /건물|대상/
     );
+  });
+
+  it("translates one announcement language with strict structured output", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalTranslationModel = process.env.OPENAI_TRANSLATION_MODEL;
+    const originalFetch = globalThis.fetch;
+    let capturedBody: Record<string, unknown> | undefined;
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_TRANSLATION_MODEL = "gpt-5.4-mini";
+    globalThis.fetch = (async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({
+            title: "[Urgent] Water outage",
+            body: "Water will be unavailable from 14:00 to 16:00."
+          })
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const service = new RoomlogService();
+      const translated = await service.translateManagerAnnouncement("landlord-demo", {
+        title: "[긴급] 단수 안내",
+        body: "14시부터 16시까지 단수됩니다.",
+        targetLang: "en"
+      });
+
+      assert.equal(translated.lang, "en");
+      assert.equal(translated.langLabel, "English");
+      assert.equal(translated.reviewed, false);
+      assert.match(translated.sourceHash, /^[a-f0-9]{64}$/);
+      assert.equal(capturedBody?.model, "gpt-5.4-mini");
+      assert.equal((capturedBody?.text as { format?: { type?: string } })?.format?.type, "json_schema");
+      assert.equal((capturedBody?.text as { format?: { strict?: boolean } })?.format?.strict, true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalTranslationModel) process.env.OPENAI_TRANSLATION_MODEL = originalTranslationModel;
+      else delete process.env.OPENAI_TRANSLATION_MODEL;
+    }
+  });
+
+  it("rejects announcement auto translation when the OpenAI key is missing", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    try {
+      const service = new RoomlogService();
+      await assert.rejects(
+        () =>
+          service.translateManagerAnnouncement("landlord-demo", {
+            title: "단수 안내",
+            body: "오늘 단수됩니다.",
+            targetLang: "vi"
+          }),
+        /자동 번역|사용할 수/
+      );
+    } finally {
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+    }
   });
 
   it("answers manager natural-language ticket queries from scoped operational data", async () => {

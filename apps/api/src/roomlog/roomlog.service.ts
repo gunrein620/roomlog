@@ -38,10 +38,12 @@ import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
 import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
 import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
 import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
+import { RoomlogAnnouncementTranslationService } from "./services/roomlog-announcement-translation.service";
 import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
 import { RoomlogReportDomain } from "./services/roomlog-report.domain";
 import {
   AddMessagingThreadMessageInput,
+  AnnouncementTranslationRequest,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
   AskManagerReportChatInput,
@@ -1955,6 +1957,7 @@ export class RoomlogService {
   private readonly vendorMgmt: RoomlogVendorMgmtDomain;
   private readonly vendorRepair: RoomlogVendorRepairDomain;
   private readonly messaging: RoomlogMessagingDomain;
+  private readonly announcementTranslation: RoomlogAnnouncementTranslationService;
   private readonly moveout: RoomlogMoveoutDomain;
   private readonly report: RoomlogReportDomain;
 
@@ -2054,6 +2057,7 @@ export class RoomlogService {
       (room) => this.displayUnitId(room),
       (iso) => this.timeOf(iso)
     );
+    this.announcementTranslation = new RoomlogAnnouncementTranslationService();
     this.report = new RoomlogReportDomain(
       this.store,
       () => this.persistStore(),
@@ -6421,6 +6425,10 @@ export class RoomlogService {
     input: UpdateAnnouncementDraftInput
   ) {
     return this.messaging.updateManagerAnnouncementDraft(managerId, draftId, input);
+  }
+
+  translateManagerAnnouncement(managerId: string, input: AnnouncementTranslationRequest) {
+    return this.announcementTranslation.translate(managerId, input);
   }
 
   listManagerAnnouncementRecipients(managerId: string, draftId: string) {
