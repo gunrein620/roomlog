@@ -1,9 +1,17 @@
 import type {
   AnnouncementCategory,
+  AnnouncementDraft,
   AnnouncementLanguage,
   AnnouncementScope,
   AnnouncementTranslation,
 } from "@roomlog/types";
+
+export function prepareAnnouncementDraftForCompose(
+  draft: AnnouncementDraft,
+  hasPersistedId: boolean,
+): AnnouncementDraft {
+  return hasPersistedId ? draft : { ...draft, translations: [] };
+}
 
 export interface AnnouncementManagedRoom {
   id: string;

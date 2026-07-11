@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AnnouncementTranslation } from "@roomlog/types";
+import type { AnnouncementDraft, AnnouncementTranslation } from "@roomlog/types";
 import {
   ANNOUNCEMENT_TRANSLATION_LANGUAGES,
   buildAnnouncementTarget,
   invalidateReviewedTranslations,
+  prepareAnnouncementDraftForCompose,
   validateAnnouncementCompose,
 } from "./announcement-compose-state";
 
@@ -25,7 +26,34 @@ const translations: AnnouncementTranslation[] = ANNOUNCEMENT_TRANSLATION_LANGUAG
   }),
 );
 
+const draftWithTranslations: AnnouncementDraft = {
+  id: "announcement-draft",
+  category: "urgent",
+  scope: "building",
+  targetLabel: "A동 전체 2세대",
+  targetRoomIds: ["room-a-101", "room-a-102"],
+  title: "긴급 안내",
+  body: "긴급 안내 본문",
+  translations,
+  confirmRequired: true,
+  status: "draft",
+  updatedAt: "2026-07-11T00:00:00.000Z",
+};
+
 describe("manager announcement compose state", () => {
+  it("clears demo translations for a new announcement", () => {
+    const prepared = prepareAnnouncementDraftForCompose(draftWithTranslations, false);
+
+    assert.deepEqual(prepared.translations, []);
+    assert.notEqual(prepared, draftWithTranslations);
+  });
+
+  it("preserves translations for a persisted announcement", () => {
+    const prepared = prepareAnnouncementDraftForCompose(draftWithTranslations, true);
+
+    assert.deepEqual(prepared.translations, draftWithTranslations.translations);
+  });
+
   it("derives exact room ids and labels for all, building, and unit targets", () => {
     assert.deepEqual(buildAnnouncementTarget(rooms, "all", "", []), {
       targetRoomIds: ["room-a-101", "room-a-102", "room-b-201"],

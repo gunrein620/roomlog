@@ -392,6 +392,11 @@ test("auto-refreshes open messaging thread details without infrastructure change
 });
 
 test("manager announcement compose edits targets and translates each language before review", () => {
+  assert.match(
+    managerMessagingComposeSource,
+    /prepareAnnouncementDraftForCompose\(draft, Boolean\(id\)\)/,
+  );
+  assert.match(managerMessagingComposeSource, /initialDraft=\{initialDraft\}/);
   assert.match(managerMessagingComposeFeatureSource, /createAnnouncementDraft/);
   assert.match(managerMessagingComposeFeatureSource, /updateAnnouncementDraft/);
   assert.match(managerMessagingComposeFeatureSource, /translateAnnouncement/);
