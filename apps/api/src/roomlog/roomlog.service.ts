@@ -2029,6 +2029,7 @@ export class RoomlogService {
   private readonly seedDemoData: boolean;
   private readonly storeProjector?: StoreProjector;
   private readonly paymentGateway: TossPaymentGateway;
+  private readonly billsWithPaymentConfirmation = new Set<string>();
   private pendingPersistence = Promise.resolve();
   private persistenceError: unknown;
   private readonly auth: RoomlogAuthDomain;
@@ -2400,6 +2401,7 @@ export class RoomlogService {
     at: Date = new Date()
   ): TeamReport {
     const bill = this.findTenantBillForMutation(tenantId, billId);
+    this.assertNoPaymentConfirmationInProgress(bill);
     this.assertBillPaymentOpen(bill, at);
     this.assertBillCanAcceptPayment(bill);
     const amount = Number(input.amount);
@@ -2435,6 +2437,7 @@ export class RoomlogService {
     at: Date = new Date()
   ): TeamBillPaymentOrder {
     const bill = this.findTenantBillForMutation(tenantId, billId);
+    this.assertNoPaymentConfirmationInProgress(bill);
     this.assertBillPaymentOpen(bill, at);
     this.assertBillCanAcceptPayment(bill);
     const allowedKinds: BillLineItemKind[] = ["RENT", "MAINTENANCE", "OTHER"];
@@ -2520,6 +2523,15 @@ export class RoomlogService {
       return this.presentBill(bill);
     }
 
+    if (transaction.status !== "READY") {
+      throw new ConflictException({
+        code: "PAYMENT_ORDER_NOT_ACTIVE",
+        message: "이미 종료된 결제 주문입니다. 납부 화면에서 다시 시도해주세요."
+      });
+    }
+
+    this.assertNoPaymentConfirmationInProgress(bill);
+
     if (Number(input.amount) !== transaction.amount) {
       transaction.status = "FAILED";
       transaction.failedAt = now();
@@ -2527,6 +2539,24 @@ export class RoomlogService {
       this.persistStore();
       throw new BadRequestException(transaction.failureMessage);
     }
+
+    this.assertBillPaymentOpen(bill, new Date());
+    this.assertBillCanAcceptPayment(bill);
+
+    if (!this.paymentAllocationsRemainOutstanding(bill, transaction)) {
+      transaction.status = "FAILED";
+      transaction.failedAt = now();
+      transaction.failureMessage = "청구 잔액이 변경되어 기존 결제 주문을 사용할 수 없습니다.";
+      this.persistStore();
+      throw new ConflictException({
+        code: "PAYMENT_ORDER_STALE",
+        message: `${transaction.failureMessage} 납부 화면에서 금액을 다시 확인해주세요.`
+      });
+    }
+
+    // 외부 승인 요청이 진행되는 동안 같은 청구서의 새 주문/중복 승인을 막는다.
+    // 단일 서비스 프로세스의 동기 상태 변경이므로 두 요청이 gateway await 전에 경합하지 않는다.
+    this.billsWithPaymentConfirmation.add(bill.id);
 
     try {
       const confirmed = await this.paymentGateway.confirmPayment({
@@ -2568,6 +2598,8 @@ export class RoomlogService {
       transaction.failureMessage = error instanceof Error ? error.message : "결제 승인 실패";
       this.persistStore();
       throw error;
+    } finally {
+      this.billsWithPaymentConfirmation.delete(bill.id);
     }
   }
 
@@ -2817,6 +2849,8 @@ export class RoomlogService {
     const bill = this.findManagerBill(managerId, input.billId);
     const deposit = this.findDeposit(depositId);
 
+    this.assertNoPaymentConfirmationInProgress(bill);
+
     if (!this.canManagerAccessDeposit(managerId, deposit)) {
       throw new ForbiddenException("담당 호실의 입금 내역만 매칭할 수 있습니다.");
     }
@@ -2827,6 +2861,7 @@ export class RoomlogService {
         : undefined;
 
     if (previousBill && previousBill.id !== bill.id) {
+      this.assertNoPaymentConfirmationInProgress(previousBill);
       this.applyConfirmedPayment(previousBill, -deposit.amount);
       this.refreshBillStatusAfterPaymentChange(previousBill);
     }
@@ -2857,6 +2892,7 @@ export class RoomlogService {
 
   confirmManagerPaymentReport(managerId: string, billId: string, reportId: string): TeamBill {
     const bill = this.findManagerBill(managerId, billId);
+    this.assertNoPaymentConfirmationInProgress(bill);
     const report = this.store.paymentReports.find(
       (item) => item.id === reportId && item.billId === bill.id
     );
@@ -7230,6 +7266,15 @@ export class RoomlogService {
     }
   }
 
+  private assertNoPaymentConfirmationInProgress(bill: Bill) {
+    if (this.billsWithPaymentConfirmation.has(bill.id)) {
+      throw new ConflictException({
+        code: "PAYMENT_CONFIRMATION_IN_PROGRESS",
+        message: "결제 승인을 처리 중입니다. 잠시 후 납부 상태를 다시 확인해주세요."
+      });
+    }
+  }
+
   private billIsRetainedInTenantHistory(bill: Bill, at: Date) {
     return (
       !["DRAFT", "CORRECTED", "CANCELED"].includes(bill.status) &&
@@ -7746,6 +7791,39 @@ export class RoomlogService {
       items.reduce((sum, item) => sum + Math.min(item.amount, item.paidAmount ?? 0), 0)
     );
     bill.updatedAt = now();
+  }
+
+  private paymentAllocationsRemainOutstanding(
+    bill: Bill,
+    transaction: BillPaymentTransaction
+  ) {
+    const items = this.normalizeBillItems(bill.items, bill.paidAmount);
+    const outstandingByItemId = new Map(
+      items.map((item, index) => [
+        this.billLineItemId(bill, item, index),
+        Math.max(0, item.amount - (item.paidAmount ?? 0))
+      ])
+    );
+    const allocatedByItemId = new Map<string, number>();
+
+    for (const allocation of transaction.allocations) {
+      allocatedByItemId.set(
+        allocation.billLineItemId,
+        (allocatedByItemId.get(allocation.billLineItemId) ?? 0) + allocation.amount
+      );
+    }
+
+    return (
+      transaction.allocations.length > 0 &&
+      transaction.allocations.reduce((sum, allocation) => sum + allocation.amount, 0) ===
+        transaction.amount &&
+      [...allocatedByItemId.entries()].every(
+        ([itemId, allocated]) =>
+          allocated > 0 &&
+          outstandingByItemId.has(itemId) &&
+          allocated <= (outstandingByItemId.get(itemId) ?? 0)
+      )
+    );
   }
 
   private dunningGuardForBill(bill: Bill) {
