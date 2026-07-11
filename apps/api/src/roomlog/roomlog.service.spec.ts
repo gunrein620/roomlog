@@ -3694,7 +3694,12 @@ describe("RoomlogService", () => {
 
     const tenantThreads = service.listTenantMessagingThreads("tenant-demo");
     const managerThreads = service.listManagerMessagingThreads("landlord-demo");
+    const listedOwnThread = managerThreads.find((thread) => thread.id === ownThread.id);
 
+    assert.equal(ownThread.buildingName, "정글빌라");
+    assert.equal(ownThread.unitId, "301");
+    assert.equal(listedOwnThread?.buildingName, "정글빌라");
+    assert.equal(listedOwnThread?.unitId, "301");
     assert.equal(tenantThreads.some((thread) => thread.id === ownThread.id), true);
     assert.equal(tenantThreads.some((thread) => thread.id === otherThread.id), false);
     assert.equal(managerThreads.some((thread) => thread.id === ownThread.id), true);

@@ -28,6 +28,7 @@ export interface Message {
 
 export interface Thread {
   id: string;
+  buildingName?: string;
   unitId: string;
   tenantId: string; // 권한 스코프: 임차인은 본인 tenant_id 스레드만
   context: ThreadContext;

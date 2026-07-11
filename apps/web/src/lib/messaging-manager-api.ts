@@ -121,6 +121,7 @@ export const DEMO_MANAGER_RESULTS: AnnouncementResult[] = [
 export const DEMO_MANAGER_THREADS: Thread[] = [
   {
     id: "th_mgr_302",
+    buildingName: "테스트 건물1",
     unitId: "302",
     tenantId: "tn_302",
     context: "defect",
@@ -152,6 +153,7 @@ export const DEMO_MANAGER_THREADS: Thread[] = [
   },
   {
     id: "th_mgr_405",
+    buildingName: "테스트 건물2",
     unitId: "405",
     tenantId: "tn_405",
     context: "payment",
@@ -175,6 +177,7 @@ export const DEMO_MANAGER_THREADS: Thread[] = [
   },
   {
     id: "th_mgr_201",
+    buildingName: "테스트 건물3",
     unitId: "201",
     tenantId: "tn_201",
     context: "announcement",

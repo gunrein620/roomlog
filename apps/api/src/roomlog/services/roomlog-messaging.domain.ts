@@ -501,8 +501,12 @@ export class RoomlogMessagingDomain {
   }
 
   private presentThread(thread: MessagingThread, includeMessages = false): MessagingThread {
+    const room = this.findRoom(thread.roomId);
+
     return {
       ...thread,
+      buildingName: room.buildingName,
+      unitId: this.displayUnitId(room),
       messages: includeMessages
         ? this.store.messagingMessages
             .filter((message) => message.threadId === thread.id)

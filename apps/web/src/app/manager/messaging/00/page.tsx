@@ -9,6 +9,7 @@ import {
   listManagerThreads,
 } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { formatThreadLocation } from "@/lib/messaging-thread-location";
 import { ApiError } from "@/lib/server-api";
 import {
   Badge,
@@ -160,6 +161,7 @@ function TabLink({ href, active, children }: { href: string; active: boolean; ch
 
 function ThreadCard({ thread }: { thread: Thread }) {
   const needsReply = thread.unreadCount > 0 || thread.pendingRequest;
+  const locationLabel = formatThreadLocation(thread);
   return (
     <Card
       style={{
@@ -172,7 +174,7 @@ function ThreadCard({ thread }: { thread: Thread }) {
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)" }}>
         <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-          <Badge emphasis={needsReply}>{thread.unitId}호</Badge>
+          <Badge emphasis={needsReply}>{locationLabel}</Badge>
           <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
         </div>
         {needsReply ? <Badge emphasis>답장 필요</Badge> : null}
@@ -207,7 +209,7 @@ function ThreadCard({ thread }: { thread: Thread }) {
           <Button
             type="submit"
             variant="ghost"
-            aria-label={`${thread.unitId}호 ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+            aria-label={`${locationLabel} ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
             style={{ height: 40, padding: "0 var(--space-md)" }}
           >
             삭제

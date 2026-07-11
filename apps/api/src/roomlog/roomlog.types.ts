@@ -139,6 +139,7 @@ export type MessagingMessage = {
 export type MessagingThread = {
   id: string;
   roomId: string;
+  buildingName?: string;
   unitId: string;
   tenantId: string;
   context: MessagingThreadContext;
