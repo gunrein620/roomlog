@@ -18,6 +18,7 @@ export interface ManagerShellProps {
 export function ManagerShell({ title, context, nav, children }: ManagerShellProps) {
   return (
     <div
+      className="manager-shell"
       style={{
         minHeight: "100vh",
         background: "var(--surface)",
@@ -26,8 +27,9 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
       }}
     >
       <header
+        className="manager-shell-header"
         style={{
-          height: "var(--header-height)",
+          minHeight: "var(--header-height)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -36,14 +38,14 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
           background: "var(--surface-container-lowest)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="manager-shell-identity" style={{ display: "flex", alignItems: "center", gap: "var(--space-md)", minWidth: 0 }}>
           {/* 집우집주 복귀 동선 — 관리 콘솔도 같은 WOOZU 계정의 한 표면이다 */}
           <a
             href="/"
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 4,
+              gap: "var(--space-xs)",
               color: "var(--on-surface)",
               fontSize: "var(--fs-caption)",
               fontWeight: 800,
@@ -66,18 +68,32 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
           >
             관리인
           </span>
-          <span style={{ fontSize: "var(--fs-header)", fontWeight: 700 }}>{title}</span>
+          <h1
+            style={{
+              minWidth: 0,
+              margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: "var(--fs-header)",
+              lineHeight: "var(--lh-header)",
+              fontWeight: 700,
+            }}
+          >
+            {title}
+          </h1>
         </div>
         {context ? (
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)" }}>
+          <span className="manager-shell-context" style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", whiteSpace: "nowrap" }}>
             {context}
           </span>
         ) : null}
       </header>
 
-      <div style={{ display: "flex", alignItems: "stretch" }}>
+      <div className="manager-shell-body" style={{ display: "flex", alignItems: "stretch" }}>
         {nav ? (
           <aside
+            className="manager-shell-nav"
             style={{
               width: 220,
               flex: "none",
@@ -91,6 +107,7 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
           </aside>
         ) : null}
         <main
+          className="manager-shell-main"
           style={{
             flex: 1,
             minWidth: 0, // 넓은 표(가로 스크롤 카드)가 페이지 전체를 밀어내지 않게
@@ -103,6 +120,52 @@ export function ManagerShell({ title, context, nav, children }: ManagerShellProp
           {children}
         </main>
       </div>
+      <style>{`
+        .manager-shell :is(a, button, input, select, textarea):focus-visible {
+          outline: 3px solid color-mix(in srgb, var(--primary) 58%, transparent);
+          outline-offset: 2px;
+        }
+
+        @media (max-width: 720px) {
+          .manager-shell-header {
+            align-items: flex-start !important;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-md) !important;
+          }
+
+          .manager-shell-identity {
+            flex-wrap: wrap;
+          }
+
+          .manager-shell-context {
+            display: none;
+          }
+
+          .manager-shell-body {
+            display: block !important;
+          }
+
+          .manager-shell-nav {
+            width: 100% !important;
+            min-height: auto !important;
+            overflow-x: auto;
+            padding: var(--space-sm) var(--space-md) !important;
+            border-right: 0 !important;
+            border-bottom: 1px solid var(--border);
+          }
+
+          .manager-shell-nav > nav {
+            display: flex !important;
+            gap: var(--space-xs) !important;
+            width: max-content;
+          }
+
+          .manager-shell-main {
+            max-width: none !important;
+            padding: var(--space-md) !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

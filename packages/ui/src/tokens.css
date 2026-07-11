@@ -39,6 +39,25 @@
   --chip-bg: #eef2f8;
   --chip-on: #47506a;
 
+  /* --- color: muted pastel accents (운영 정보의 유형 구분용) --- */
+  --pastel-peach: #f5ded2;
+  --on-pastel-peach: #74402d;
+  --pastel-mint: #dcefe7;
+  --on-pastel-mint: #245d4b;
+  --pastel-lilac: #e8e2f4;
+  --on-pastel-lilac: #564578;
+  --pastel-blue: #dce8f5;
+  --on-pastel-blue: #315a7d;
+  --pastel-pink: #f3ddea;
+  --on-pastel-pink: #7a3f61;
+  --pastel-yellow: #f3e7bd;
+  --on-pastel-yellow: #68571f;
+
+  /* --- color: manager navigation --- */
+  --nav-surface: #1b1b1d;
+  --nav-on-surface: #f7f7f5;
+  --nav-on-surface-muted: #a9a9b0;
+
   /* --- color: input --- */
   --input-border: #e3e6ed;
   --input-placeholder: #9aa1af;
@@ -54,6 +73,7 @@
 
   /* --- elevation (WOOZU 카드 그림자) --- */
   --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
+  --shadow-soft: 0 8px 24px rgba(18, 24, 40, 0.08);
 
   /* --- spacing (4/8/12/16/24/32) --- */
   --space-xs: 4px;

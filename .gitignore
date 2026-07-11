@@ -28,3 +28,6 @@ worktrees/
 
 # 임시 데모 산출물 (GPU 재구성 드라이런, ~20MB — 좋은 캡처 나오면 room.spz로 대체)
 apps/web/public/samples/dryrun.ply
+
+# Claude Code 개인 로컬 설정 (커밋 금지)
+.claude/settings.local.json
