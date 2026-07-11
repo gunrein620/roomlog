@@ -1367,11 +1367,26 @@ dd {
   background: var(--surface-container-lowest);
 }
 
-.manager-assistant-launcher {
+.manager-assistant-launcher-frame {
   position: fixed;
-  right: calc(var(--space-xl) + env(safe-area-inset-right));
+  right: 0;
+  left: var(--manager-sidebar-width);
   bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
   z-index: var(--z-floating);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.manager-assistant-launcher-frame__inner {
+  width: min(100%, var(--manager-content-max));
+  display: flex;
+  justify-content: flex-end;
+  padding-right: calc(var(--space-xl) + env(safe-area-inset-right));
+  padding-left: var(--space-xl);
+}
+
+.manager-assistant-launcher {
   min-height: var(--touch-target);
   max-width: calc(100% - var(--space-xxl));
   display: inline-flex;
@@ -1384,6 +1399,7 @@ dd {
   color: var(--on-primary);
   background: var(--primary);
   font-weight: var(--fw-subtitle);
+  pointer-events: auto;
 }
 
 .manager-mobile-menu {
@@ -1464,15 +1480,23 @@ dd {
     position: static;
   }
 
+  .manager-assistant-launcher-frame {
+    left: 0;
+  }
+
   .manager-mobile-menu {
     display: grid;
   }
 }
 
 @media (max-width: 480px) {
-  .manager-assistant-launcher {
-    right: calc(var(--space-lg) + env(safe-area-inset-right));
+  .manager-assistant-launcher-frame {
     bottom: calc(var(--space-lg) + env(safe-area-inset-bottom));
+  }
+
+  .manager-assistant-launcher-frame__inner {
+    padding-right: calc(var(--space-lg) + env(safe-area-inset-right));
+    padding-left: var(--space-lg);
   }
 }
 /* manager-app-shell:end */

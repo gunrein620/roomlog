@@ -117,17 +117,21 @@ export function ManagerAssistantLauncher({
 
   return (
     <>
-      <button
-        type="button"
-        className="manager-assistant-launcher"
-        aria-label="AI 관리 비서 열기"
-        aria-haspopup="dialog"
-        aria-controls="manager-assistant-dialog"
-        onClick={() => dialogRef.current?.showModal()}
-      >
-        <Bot aria-hidden="true" />
-        <span>AI 비서</span>
-      </button>
+      <div className="manager-assistant-launcher-frame">
+        <div className="manager-assistant-launcher-frame__inner">
+          <button
+            type="button"
+            className="manager-assistant-launcher"
+            aria-label="AI 관리 비서 열기"
+            aria-haspopup="dialog"
+            aria-controls="manager-assistant-dialog"
+            onClick={() => dialogRef.current?.showModal()}
+          >
+            <Bot aria-hidden="true" />
+            <span>AI 비서</span>
+          </button>
+        </div>
+      </div>
       <dialog
         ref={dialogRef}
         id="manager-assistant-dialog"
