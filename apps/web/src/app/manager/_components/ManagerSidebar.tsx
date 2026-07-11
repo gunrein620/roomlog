@@ -103,7 +103,7 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
                     {active ? (
                       <div className="manager-sidebar__children">
                         {item.children.map((child) => {
-                          const childActive = currentHref === child.href;
+                          const childActive = child.active ?? currentHref === child.href;
                           return (
                             <Link
                               key={child.href}

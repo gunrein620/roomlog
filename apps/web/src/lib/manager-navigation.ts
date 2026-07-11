@@ -12,7 +12,7 @@ export type ManagerNavItemId =
   | "dashboard" | "listing" | "contract" | "billing" | "cost" | "ticket"
   | "messaging" | "moveout" | "vendor" | "report" | "assistant" | "settings";
 
-export interface ManagerNavChild { label: string; href: string; demo?: true }
+export interface ManagerNavChild { label: string; href: string; demo?: true; active?: boolean }
 export interface ManagerNavItem {
   id: ManagerNavItemId;
   label: string;
@@ -110,9 +110,11 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         label: "민원·하자",
         href: MANAGER_TICKET_ROUTES["M-DASH-00"],
         icon: "ticket",
-        activePrefixes: ["/manager/ticket/dash"],
+        activePrefixes: ["/manager/ticket/dash", "/manager/ticket/call"],
         children: [
-          { label: "티켓 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"] },
+          { label: "민원 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"], active: false },
+          { label: "민원 대응", href: MANAGER_TICKET_ROUTES["M-CALL-00"] },
+          { label: "하자 관리", href: MANAGER_TICKET_ROUTES["M-DASH-00"], active: true },
         ],
       },
       {

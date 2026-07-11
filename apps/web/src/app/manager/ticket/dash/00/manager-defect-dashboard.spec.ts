@@ -16,7 +16,7 @@ const navigationPath = join(root, "src/lib/manager-navigation.ts");
 
 const sha256 = (source: string) => createHash("sha256").update(source).digest("hex");
 
-test("manager defect dashboard matches the approved body without changing the sidebar", () => {
+test("manager defect dashboard matches the approved body with the ticket sidebar tabs", () => {
   assert.equal(existsSync(componentPath), true, componentPath);
 
   const componentSource = readFileSync(componentPath, "utf8");
@@ -105,13 +105,16 @@ test("manager defect dashboard matches the approved body without changing the si
   );
   assert.doesNotMatch(dashboardCss, /#[\da-f]{3,8}/i);
 
-  assert.doesNotMatch(sidebarSource, /민원 대시보드|민원 대응|하자 관리/);
+  assert.match(sidebarSource, /child\.active \?\? currentHref === child\.href/);
+  assert.match(navigationSource, /민원 대시보드/);
+  assert.match(navigationSource, /민원 대응/);
+  assert.match(navigationSource, /하자 관리/);
   assert.equal(
     sha256(sidebarSource),
-    "41234fc1e7a78647c95c80805b031994c957f56438e19fe5d994a28097ff31c6",
+    "df629be985faf80a2434a23a88eaade79d9b3c14583d9574a6955052d8a372b7",
   );
   assert.equal(
     sha256(navigationSource),
-    "c23b406f4d043f6bd0d769cb0e4011cd9e3dc09c84064b411c68371021bc089e",
+    "09dd22b43991b3c7502eba4383a3d2db22a193b447a439980c13002fc49b3e04",
   );
 });
