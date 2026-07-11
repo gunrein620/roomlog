@@ -1983,8 +1983,7 @@ dd {
 }
 
 .manager-complaint-dashboard__calendar-header,
-.manager-complaint-dashboard__calendar-weekdays,
-.manager-complaint-dashboard__calendar-days {
+.manager-complaint-dashboard__calendar-months {
   display: grid;
   align-items: center;
 }
@@ -1997,7 +1996,7 @@ dd {
 }
 
 .manager-complaint-dashboard__calendar-header button,
-.manager-complaint-dashboard__calendar-days button {
+.manager-complaint-dashboard__calendar-months button {
   display: grid;
   place-items: center;
   border: 0;
@@ -2012,41 +2011,29 @@ dd {
   height: calc(var(--touch-target) - var(--space-md));
 }
 
-.manager-complaint-dashboard__calendar-weekdays,
-.manager-complaint-dashboard__calendar-days {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+.manager-complaint-dashboard__calendar-months {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
 }
 
-.manager-complaint-dashboard__calendar-weekdays span {
-  padding: var(--space-xs);
-  color: var(--on-surface-variant);
-  text-align: center;
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-subtitle);
-}
-
-.manager-complaint-dashboard__calendar-days button {
+.manager-complaint-dashboard__calendar-months button {
   min-height: calc(var(--touch-target) - var(--space-sm));
   font: inherit;
 }
 
-.manager-complaint-dashboard__calendar-days button[data-outside="true"] {
-  color: var(--outline);
-}
-
 .manager-complaint-dashboard__calendar-header button:hover,
-.manager-complaint-dashboard__calendar-days button:hover {
+.manager-complaint-dashboard__calendar-months button:hover {
   background: var(--surface-container-high);
 }
 
-.manager-complaint-dashboard__calendar-days button[aria-pressed="true"] {
+.manager-complaint-dashboard__calendar-months button[aria-pressed="true"] {
   color: var(--on-primary);
   background: var(--primary);
   font-weight: var(--fw-subtitle);
 }
 
 .manager-complaint-dashboard__calendar-header button:focus-visible,
-.manager-complaint-dashboard__calendar-days button:focus-visible {
+.manager-complaint-dashboard__calendar-months button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }

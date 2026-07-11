@@ -103,11 +103,17 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(complaintDashboardSource, /최근 민원 접수 내역/);
   assert.match(complaintDashboardSource, /aria-label="이전 달"/);
   assert.match(complaintDashboardSource, /\?type=complaint/);
-  assert.match(complaintDashboardSource, /aria-label="조회 날짜 선택"/);
+  assert.match(complaintDashboardSource, /aria-label="조회 월 선택"/);
   assert.match(complaintDashboardSource, /role="dialog"/);
-  assert.match(complaintDashboardSource, /aria-label="조회 날짜 달력"/);
-  assert.match(complaintDashboardSource, /buildComplaintCalendar/);
-  assert.match(complaintDashboardSource, /setSelectedDate\(day\.date\)/);
+  assert.match(complaintDashboardSource, /aria-label="조회 연월 선택"/);
+  assert.match(complaintDashboardSource, /Array\.from\(\{ length: 12 \}/);
+  assert.match(complaintDashboardSource, /setPickerYear\(\(year\) => year - 1\)/);
+  assert.match(complaintDashboardSource, /setPickerYear\(\(year\) => year \+ 1\)/);
+  assert.match(
+    complaintDashboardSource,
+    /setMonth\(new Date\(Date\.UTC\(pickerYear, monthIndex, 1, 12\)\)\)/,
+  );
+  assert.doesNotMatch(complaintDashboardSource, /calendar-weekdays|calendar-days|setSelectedDate/);
   assert.match(complaintDashboardSource, /event\.key === "Escape"/);
   assert.match(cssSource, /\/\* manager-complaint-dashboard:start \*\//);
   assert.match(cssSource, /manager-complaint-dashboard__calendar-popover/);
