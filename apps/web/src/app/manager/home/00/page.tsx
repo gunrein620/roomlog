@@ -1,141 +1,328 @@
 import Link from "next/link";
+import { Bot, Home, MessageSquareText, ReceiptText, Settings, Wrench } from "lucide-react";
 import { ManagerShell } from "@roomlog/ui";
 import { getUser } from "@/lib/session";
-import { serverFetch } from "@/lib/server-api";
-import { listManagerTickets } from "@/lib/ticket-manager-api";
-import { toManagerDashboard, type TeamDashboardResponse } from "@/lib/billing-manager-mapping";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
-import ManagerHomeTabs, {
-  type ManagerBillingSummary,
-  type ManagerContractRow,
-  type ManagerListingRow,
-  type ManagerTicketRow
-} from "./ManagerHomeTabs";
-
-// 관리 중인 집 홈 — "오늘 할 일/첫 건물/KPI 셸" 대신 실데이터 4탭:
-// 올려놓은 매물(미계약) · 계약중인 집(체결된 계약) · 민원/하자 · AI 관리자.
-
-type TradeListing = {
-  id: string;
-  ownerId: string;
-  title: string;
-  location: string;
-  tradeType: "월세" | "전세" | "매매";
-  depositManwon: number;
-  monthlyRentManwon: number;
-  status?: "노출중" | "계약완료";
-  images?: string[];
-  floorPlan?: unknown;
-};
-
-type TradeContract = {
-  id: string;
-  listingTitle: string;
-  threadId: string;
-  landlordId: string;
-  tenantId: string;
-  tenantName: string;
-  status: "proposed" | "accepted" | "declined" | "cancelled";
-  tradeType: "월세" | "전세" | "매매";
-  depositManwon: number;
-  monthlyRentManwon: number;
-  location: string;
-  respondedAt?: string;
-};
-
-function priceLabel(listing: Pick<TradeListing, "tradeType" | "depositManwon" | "monthlyRentManwon">): string {
-  const deposit = (listing.depositManwon || 0).toLocaleString("ko-KR");
-  if (listing.tradeType === "월세") return `월세 ${deposit}/${listing.monthlyRentManwon || 0}`;
-  return `${listing.tradeType} ${deposit}만`;
-}
-
-const ticketStatusLabels: Record<string, string> = {
-  received: "접수",
-  reviewing: "검토중",
-  info_requested: "정보 요청",
-  processing: "처리 중",
-  resolved: "완료",
-  reopened: "재요청",
-  cancelled: "취소됨"
-};
+import { CopilotPanel } from "./CopilotPanel";
+import { DepositGauge } from "./DepositGauge";
+import { HomeCards } from "./HomeCards";
+import { OccupancyCard } from "./OccupancyCard";
+import { TodayTasksCard } from "./TodayTasksCard";
+import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
+import { assembleManagerDashboard } from "./dashboard-data";
 
 export default async function Page() {
   const user = await getUser();
-
-  let listings: ManagerListingRow[] = [];
-  try {
-    const all = await serverFetch<TradeListing[]>("/trade/listings");
-    listings = all
-      .filter((listing) => listing.ownerId === user?.userId && listing.status !== "계약완료")
-      .map((listing) => ({
-        id: listing.id,
-        title: listing.title,
-        location: listing.location,
-        priceLabel: priceLabel(listing),
-        photoCount: listing.images?.length ?? 0,
-        has3D: Boolean(listing.floorPlan)
-      }));
-  } catch {
-    // 목록 API 일시 오류 — 빈 목록으로 렌더(위조 금지)
-  }
-
-  // 체결된 계약 — 채팅에서 제안→수락된 것만 계약중인 집으로 표시한다.
-  let contracts: ManagerContractRow[] = [];
-  try {
-    const allContracts = await serverFetch<TradeContract[]>("/trade/contracts");
-    contracts = allContracts
-      .filter((contract) => contract.landlordId === user?.userId && contract.status === "accepted")
-      .map((contract) => ({
-        id: contract.id,
-        listingTitle: contract.listingTitle,
-        location: contract.location,
-        tenantName: contract.tenantName,
-        priceLabel: priceLabel(contract),
-        acceptedAtLabel: contract.respondedAt
-          ? new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric" }).format(new Date(contract.respondedAt))
-          : "",
-        // 계약 상세 대시보드의 "세입자 채팅"이 이 문의 스레드로 잠긴다.
-        threadId: contract.threadId
-      }));
-  } catch {
-    // 계약 API 일시 오류 — 빈 목록으로 렌더(위조 금지)
-  }
-
-  // 청구 요약 — 계약 상세 대시보드의 관리비·청구 카드용.
-  // getManagerDashboard()의 데모 폴백을 쓰지 않는다: 실패하면 null로 두고 화면에는 실패 사실만 보여준다(위조 금지).
-  let billing: ManagerBillingSummary | null = null;
-  try {
-    const dashboard = toManagerDashboard(await serverFetch<TeamDashboardResponse>("/manager/bills/dashboard"));
-    billing = {
-      total: dashboard.summary.total,
-      pending: dashboard.summary.pending,
-      overdue: dashboard.summary.overdue
-    };
-  } catch {
-    billing = null;
-  }
-
-  const tickets: ManagerTicketRow[] = (await listManagerTickets())
-    .filter((ticket) => ticket.status !== "resolved" && ticket.status !== "cancelled")
-    .map((ticket) => ({
-      id: ticket.id,
-      title: ticket.title,
-      unitId: ticket.unitId,
-      statusLabel: ticketStatusLabels[ticket.status] ?? ticket.status,
-      urgent: ticket.urgency <= 1
-    }));
+  const dashboard = await assembleManagerDashboard(user);
+  const managerName = user?.name ?? "관리인";
 
   return (
-    <ManagerShell title={`${user?.name ?? "관리인"} 자산현황 대시보드`} context="관리 중인 집 · 대시보드" nav={<HomeNav active="home" />}>
-      <ManagerHomeTabs
-        listings={listings}
-        contracts={contracts}
-        tickets={tickets}
-        billing={billing}
-        ticketHubHref={MANAGER_CROSS.ticketDash}
-        billingHref={MANAGER_CROSS.billing}
-        realtimeAgentHref={MANAGER_CROSS.realtimeAgent}
-      />
+    <ManagerShell
+      title="관리 홈"
+      context={`관리 중 ${dashboard.homeCards.length}곳`}
+      nav={<HomeNav active="home" />}
+    >
+      <div className="manager-home-dashboard">
+        <header className="manager-home-intro">
+          <div>
+            <p>오늘의 운영 현황</p>
+            <strong>{managerName}님, 우선 업무 {dashboard.todayTasks.length}건을 확인해주세요.</strong>
+          </div>
+        </header>
+
+        <div data-copilot-slot>
+          <CopilotPanel briefingInput={dashboard.briefingInput} />
+        </div>
+
+        {dashboard.sourceFailures.length > 0 ? (
+          <div role="status" className="manager-home-source-alert">
+            <strong>일부 데이터를 불러오지 못했습니다.</strong>
+            <span>
+              {dashboard.sourceFailures.map((key) => DASHBOARD_SOURCE_LABELS[key]).join(", ")} 항목은 연결된 메뉴에서 다시 확인해주세요.
+            </span>
+          </div>
+        ) : null}
+
+        <div className="manager-home-primary-grid">
+          <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
+          <div className="manager-home-side-stack">
+            <DepositGauge
+              depositRatePct={dashboard.depositRatePct}
+              monthLabel={dashboard.depositRateMonthLabel}
+              payerCounts={dashboard.depositPayerCounts}
+              failed={dashboard.sourceFailures.includes("billing")}
+            />
+            <OccupancyCard
+              contractedCount={dashboard.homeCards.length}
+              vacantCount={dashboard.uncontractedListings.length}
+              failed={
+                dashboard.sourceFailures.includes("listings") ||
+                dashboard.sourceFailures.includes("tradeContracts")
+              }
+            />
+          </div>
+        </div>
+
+        <HomeCards
+          homeCards={dashboard.homeCards}
+          uncontractedListings={dashboard.uncontractedListings}
+        />
+      </div>
+
+      <style>{`
+        /* 둥근 한글 서체 — 나눔스퀘어라운드 (네이버 한글 정적 CDN).
+           원본 CSS는 웨이트별 패밀리명이 분리되어 있어 가짜 볼드가 생기므로
+           woff2를 직접 선언해 font-weight 400/700/800에 매핑한다. */
+        @font-face {
+          font-family: "NanumSquareRound";
+          src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundR.woff2) format("woff2");
+          font-weight: 400;
+          font-display: swap;
+        }
+        @font-face {
+          font-family: "NanumSquareRound";
+          src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundB.woff2) format("woff2");
+          font-weight: 700;
+          font-display: swap;
+        }
+        @font-face {
+          font-family: "NanumSquareRound";
+          src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundEB.woff2) format("woff2");
+          font-weight: 800;
+          font-display: swap;
+        }
+
+        /* ── 집우집주(宇宙) 코스믹 스킨 — M-HOME-00 한정 토큰 오버라이드.
+           컴포넌트는 시맨틱 토큰만 소비하므로 여기서 팔레트만 갈아끼운다.
+           검증 후 packages/ui/tokens.css(theme v1)로 승격 예정. ── */
+        .manager-shell:has(.manager-home-dashboard) {
+          /* surface: 새벽빛 라벤더 캔버스 — 보더 없이도 흰 카드가 읽히도록 캔버스를 한 톤 깊게 */
+          --surface: #f1eef9;
+          --surface-dim: #e8e3f3;
+          --surface-container-lowest: #ffffff;
+          --surface-container-low: #f5f2fb;
+          --surface-container: #efebf8;
+          --surface-container-high: #e8e3f3;
+          --surface-container-highest: #e1dcef;
+          --on-surface: #211c33;
+          --on-surface-variant: #6b6584;
+          --inverse-surface: #262040;
+          --inverse-on-surface: #f7f5fc;
+
+          /* 선 대신 면 — 보더 완전 제거. 구분은 캔버스-카드 톤 차이와 그림자만 맡는다 */
+          --outline: #9a93b6;
+          --outline-variant: transparent;
+          --border: transparent;
+
+          /* primary: 우주 인디고 */
+          --primary: #5747cf;
+          --on-primary: #ffffff;
+          --primary-container: #e9e5ff;
+          --on-primary-container: #3a2ba8;
+
+          --chip-bg: #f0edf9;
+          --chip-on: #4c4570;
+
+          /* pastel: 성운 팔레트 — 유형 구분 의미는 유지, 색축만 보라 계열로 */
+          --pastel-peach: #f9e0d3;
+          --on-pastel-peach: #86432a;
+          --pastel-mint: #daefe6;
+          --on-pastel-mint: #1f6a52;
+          --pastel-lilac: #e9e2fa;
+          --on-pastel-lilac: #4f3d9e;
+          --pastel-blue: #e1e6fb;
+          --on-pastel-blue: #3a4894;
+          --pastel-pink: #fadeee;
+          --on-pastel-pink: #963f6d;
+          --pastel-yellow: #f7ebc4;
+          --on-pastel-yellow: #6d581a;
+
+          /* nav: 심야 우주 */
+          --nav-surface: #201a3f;
+          --nav-on-surface: #f4f1fd;
+          --nav-on-surface-muted: #a79ed6;
+
+          --input-border: #e6e1f2;
+          --input-placeholder: #9a93b6;
+          --input-text: #211c33;
+
+          /* 서체: 둥근 한글 — 모서리 곡률과 같은 이야기를 글자에서도 */
+          --font-sans: "NanumSquareRound", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+
+          /* elevation: 남보라 그림자 — 레퍼런스처럼 있는 듯 없는 듯, 넓게 퍼진 저농도로 */
+          --shadow: 0 24px 56px rgba(35, 27, 74, 0.09);
+          --shadow-soft: 0 14px 36px rgba(35, 27, 74, 0.05);
+
+          /* 곡률 — 크기에 비례해 radius 확대 (카드 20 / 버튼 16) */
+          --radius-sm: 10px;
+          --radius: 14px;
+          --radius-md: 20px;
+          --radius-btn: 16px;
+          --radius-lg: 26px;
+        }
+
+        .manager-home-dashboard {
+          display: grid;
+          gap: var(--space-xl);
+        }
+
+        /* ── 레퍼런스 정렬 — 박스를 줄이고 톤으로 말하기 ── */
+
+        /* 활성 필터 '전체': 진한 단색 필 → 옅은 틴트 + 유색 텍스트 (레퍼런스의 Recent 탭 스타일).
+           유형별 필터(연체·긴급 등)는 원래 틴트 방식이라 그대로 둔다. */
+        .manager-home-dashboard .manager-task-filter--selected {
+          border-color: transparent;
+          background: var(--primary-container);
+          color: var(--on-primary-container);
+        }
+
+        .manager-home-intro {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: var(--space-lg);
+        }
+
+        .manager-home-intro p,
+        .manager-home-intro strong {
+          margin: 0;
+        }
+
+        /* 아이브로우 — 발표자료의 宇→宙 그라데이션(페리윙클→핑크)과 ✦ 스파클을 미세하게 인용 */
+        .manager-home-intro p {
+          margin-bottom: var(--space-xs);
+          font-size: 15px;
+          line-height: 22px;
+          font-weight: 800;
+          letter-spacing: 0.14em;
+          background: linear-gradient(92deg, #5a68d8, #b8508a);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+        }
+
+        .manager-home-intro p::before {
+          content: "\\2726  ";
+        }
+
+        .manager-home-intro strong {
+          display: block;
+          font-size: var(--fs-title);
+          line-height: var(--lh-title);
+        }
+
+        .manager-home-source-alert {
+          display: flex;
+          align-items: baseline;
+          gap: var(--space-sm);
+          padding: var(--space-sm) var(--space-md);
+          border: 1px solid color-mix(in srgb, var(--error) 32%, var(--border));
+          border-radius: var(--radius-md);
+          background: var(--error-container);
+          color: var(--on-error-container);
+          font-size: var(--fs-caption);
+          line-height: var(--lh-caption);
+        }
+
+        .manager-home-primary-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.72fr);
+          align-items: start;
+          gap: var(--space-lg);
+        }
+
+        .manager-home-side-stack {
+          min-width: 0;
+          display: grid;
+          gap: var(--space-lg);
+        }
+
+        .manager-home-nav-link {
+          min-height: 48px;
+          display: flex;
+          align-items: center;
+          gap: var(--space-sm);
+          padding: 0 var(--space-md);
+          border: 1px solid transparent;
+          border-radius: var(--radius-btn);
+          background: transparent;
+          color: var(--nav-on-surface);
+          text-decoration: none;
+          font-weight: 800;
+          white-space: nowrap;
+          transition: background-color 0.16s ease, color 0.16s ease;
+        }
+
+        /* 활성 메뉴 = 밤하늘에 뜬 별: 밝은 라일락 필 + 페리윙클 글로우 */
+        .manager-home-nav-link[aria-current="page"] {
+          border-color: transparent;
+          background: linear-gradient(120deg, #ece7ff, #fbe7f3);
+          color: #43338f;
+          box-shadow:
+            0 0 0 1px rgba(255, 255, 255, 0.14),
+            0 0 22px rgba(160, 146, 255, 0.35),
+            0 6px 18px rgba(10, 6, 32, 0.4);
+        }
+
+        .manager-home-nav-link:not([aria-current="page"]):hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .manager-home-nav-link > svg {
+          flex: none;
+          color: var(--nav-on-surface-muted);
+        }
+
+        .manager-home-nav-link[aria-current="page"] > svg {
+          color: #5747cf;
+        }
+
+        /* 시그니처 — 심야 우주 네비: 별무리(radial dot 레이어) + 궤도 링 + 성운 코너.
+           전부 background 레이어라 DOM 추가·리플로 비용 없음. */
+        .manager-shell-nav:has(.manager-home-nav) {
+          border-right-color: #2c2454 !important;
+          background:
+            radial-gradient(1.5px 1.5px at 18% 9%, rgba(255, 255, 255, 0.9), transparent 55%),
+            radial-gradient(1px 1px at 72% 5%, rgba(255, 255, 255, 0.7), transparent 55%),
+            radial-gradient(1px 1px at 44% 16%, rgba(214, 205, 255, 0.8), transparent 55%),
+            radial-gradient(1.5px 1.5px at 84% 27%, rgba(255, 255, 255, 0.55), transparent 55%),
+            radial-gradient(1px 1px at 24% 38%, rgba(214, 205, 255, 0.6), transparent 55%),
+            radial-gradient(1px 1px at 64% 49%, rgba(255, 255, 255, 0.5), transparent 55%),
+            radial-gradient(1.5px 1.5px at 36% 63%, rgba(255, 255, 255, 0.6), transparent 55%),
+            radial-gradient(1px 1px at 80% 74%, rgba(214, 205, 255, 0.55), transparent 55%),
+            radial-gradient(1px 1px at 16% 86%, rgba(255, 255, 255, 0.45), transparent 55%),
+            radial-gradient(1px 1px at 58% 94%, rgba(214, 205, 255, 0.5), transparent 55%),
+            radial-gradient(circle 130px at 86% 5%, transparent 100px, rgba(160, 146, 255, 0.3) 101px, transparent 103px),
+            radial-gradient(circle 380px at 115% -6%, rgba(242, 123, 169, 0.14), transparent 68%),
+            radial-gradient(circle 360px at -25% 106%, rgba(102, 88, 214, 0.3), transparent 70%),
+            linear-gradient(172deg, #292153 0%, #1e1840 52%, #241d4e 100%) !important;
+        }
+
+        .manager-shell-nav:has(.manager-home-nav) + .manager-shell-main {
+          background: var(--surface);
+        }
+
+        @media (max-width: 1120px) {
+          .manager-home-primary-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 620px) {
+          .manager-home-intro,
+          .manager-home-source-alert {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .manager-home-nav-link {
+            transition: none;
+          }
+        }
+      `}</style>
     </ManagerShell>
   );
 }
@@ -146,17 +333,33 @@ function HomeNav({ active }: { active: "home" | "settings" }) {
     ["티켓 처리", MANAGER_CROSS.ticketDash, false],
     ["청구", MANAGER_CROSS.billing, false],
     ["소통", MANAGER_CROSS.messaging, false],
-    ["설정", MHOME_ROUTES["M-HOME-06"], active === "settings"],
+    ["AI 관리자", MANAGER_CROSS.realtimeAgent, false],
+    ["설정", MHOME_ROUTES["M-HOME-06"], active === "settings"]
   ] as const;
+
   return (
-    <nav aria-label="관리인 자산현황" style={{ display: "grid", gap: "var(--space-sm)" }}>
+    <nav className="manager-home-nav" aria-label="관리인 주요 메뉴" style={{ display: "grid", gap: "var(--space-sm)" }}>
       {items.map(([label, href, current]) => (
-        <Link key={href} href={href} style={{ ...navLinkStyle, background: current ? "var(--surface-container-high)" : "var(--surface-container-lowest)", border: current ? "1.5px solid var(--primary)" : "1px solid var(--border)" }}>
-          {label}
+        <Link
+          key={href}
+          href={href}
+          className="manager-home-nav-link"
+          aria-current={current ? "page" : undefined}
+        >
+          <NavIcon label={label} />
+          <span>{label}</span>
         </Link>
       ))}
     </nav>
   );
 }
 
-const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800 } as const;
+function NavIcon({ label }: { label: string }) {
+  const props = { size: 17, strokeWidth: 2.2, "aria-hidden": true } as const;
+  if (label === "홈") return <Home {...props} />;
+  if (label === "티켓 처리") return <Wrench {...props} />;
+  if (label === "청구") return <ReceiptText {...props} />;
+  if (label === "소통") return <MessageSquareText {...props} />;
+  if (label === "AI 관리자") return <Bot {...props} />;
+  return <Settings {...props} />;
+}
