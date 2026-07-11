@@ -27,6 +27,7 @@ import {
 import {
   buildAttachedTranslations,
   findAttachedTranslation,
+  findVisibleTranslation,
 } from "./attachment-state";
 import styles from "./AnnouncementComposer.module.css";
 
@@ -109,7 +110,7 @@ export function AnnouncementComposer({
   }
 
   function translationFor(lang: AnnouncementLanguage, label: string): AnnouncementTranslation {
-    return translations.find((translation) => translation.lang === lang) ?? emptyTranslation(lang, label);
+    return findVisibleTranslation(translations, lang, label) ?? emptyTranslation(lang, label);
   }
 
   function updateTranslation(

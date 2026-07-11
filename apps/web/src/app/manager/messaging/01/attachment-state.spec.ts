@@ -4,6 +4,7 @@ import type { AnnouncementTranslation } from "@roomlog/types";
 import {
   buildAttachedTranslations,
   findAttachedTranslation,
+  findVisibleTranslation,
 } from "./attachment-state";
 
 const english: AnnouncementTranslation = {
@@ -47,5 +48,13 @@ describe("manager announcement single-language attachment", () => {
         index === 0 ? { ...translation, reviewed: false } : translation
       )),
     }), undefined);
+  });
+
+  it("shows a compatibility projection only in the selected language card", () => {
+    const projected = buildAttachedTranslations(english);
+
+    assert.equal(findVisibleTranslation(projected, "en", "English")?.title, english.title);
+    assert.equal(findVisibleTranslation(projected, "zh", "中文"), undefined);
+    assert.equal(findVisibleTranslation(projected, "vi", "Tiếng Việt"), undefined);
   });
 });

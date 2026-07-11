@@ -1,4 +1,8 @@
-import type { AnnouncementDraft, AnnouncementTranslation } from "@roomlog/types";
+import type {
+  AnnouncementDraft,
+  AnnouncementLanguage,
+  AnnouncementTranslation,
+} from "@roomlog/types";
 import { ANNOUNCEMENT_TRANSLATION_LANGUAGES } from "../../../../lib/announcement-compose-state";
 
 export function buildAttachedTranslations(
@@ -28,4 +32,14 @@ export function findAttachedTranslation(
   );
 
   return matchesFinalContent && allProjected ? first : undefined;
+}
+
+export function findVisibleTranslation(
+  translations: AnnouncementTranslation[],
+  lang: AnnouncementLanguage,
+  label: string,
+): AnnouncementTranslation | undefined {
+  return translations.find(
+    (translation) => translation.lang === lang && translation.langLabel === label,
+  );
 }

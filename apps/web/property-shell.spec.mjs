@@ -411,6 +411,7 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposeFeatureSource, /`\$\{label\} 번역`/);
   assert.match(managerMessagingComposerSource, /buildAttachedTranslations/);
   assert.match(managerMessagingComposerSource, /findAttachedTranslation/);
+  assert.match(managerMessagingComposerSource, /findVisibleTranslation/);
   assert.match(managerMessagingComposerSource, /첨부하기/);
   assert.match(managerMessagingComposerSource, /첨부됨/);
   assert.match(managerMessagingComposerSource, /번역 후 첨부할 언어를 선택해 주세요/);
