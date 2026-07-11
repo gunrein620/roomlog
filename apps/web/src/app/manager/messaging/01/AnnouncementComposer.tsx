@@ -243,16 +243,18 @@ export function AnnouncementComposer({
 
             <div className={styles.targetControls}>
               {scope === "building" ? (
-                <select
-                  className={styles.select}
-                  aria-label="공지 대상 건물"
-                  value={selectedBuilding}
-                  onChange={(event) => setSelectedBuilding(event.target.value)}
-                >
-                  {buildings.map((building) => (
-                    <option key={building} value={building}>{building}</option>
-                  ))}
-                </select>
+                <div className={styles.selectWrap}>
+                  <select
+                    className={styles.select}
+                    aria-label="공지 대상 건물"
+                    value={selectedBuilding}
+                    onChange={(event) => setSelectedBuilding(event.target.value)}
+                  >
+                    {buildings.map((building) => (
+                      <option key={building} value={building}>{building}</option>
+                    ))}
+                  </select>
+                </div>
               ) : null}
 
               {scope === "unit" ? (

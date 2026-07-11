@@ -153,10 +153,28 @@
   gap: var(--space-md);
 }
 
+.selectWrap {
+  position: relative;
+}
+
+.selectWrap::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: calc(var(--space-lg) + 10px);
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid var(--on-surface);
+  border-bottom: 1.5px solid var(--on-surface);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+
 .select {
+  appearance: none;
   width: 100%;
   min-height: var(--touch-target);
-  padding: 0 var(--space-lg);
+  padding: 0 calc(var(--space-xxl) + 10px) 0 var(--space-lg);
   border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
   background: var(--surface-container-low);

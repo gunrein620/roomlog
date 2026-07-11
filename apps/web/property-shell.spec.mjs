@@ -94,6 +94,10 @@ const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/mes
 const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
 const managerMessagingComposerPath = new URL("./src/app/manager/messaging/01/AnnouncementComposer.tsx", import.meta.url);
 const managerMessagingActionsPath = new URL("./src/app/manager/messaging/01/actions.ts", import.meta.url);
+const managerMessagingComposerCssSource = readFileSync(
+  new URL("./src/app/manager/messaging/01/AnnouncementComposer.module.css", import.meta.url),
+  "utf8",
+);
 const managerMessagingComposerSource = existsSync(managerMessagingComposerPath)
   ? readFileSync(managerMessagingComposerPath, "utf8")
   : "";
@@ -101,7 +105,7 @@ const managerMessagingActionsSource = existsSync(managerMessagingActionsPath)
   ? readFileSync(managerMessagingActionsPath, "utf8")
   : "";
 const managerMessagingComposeStateSource = readFileSync(new URL("./src/lib/announcement-compose-state.ts", import.meta.url), "utf8");
-const managerMessagingComposeFeatureSource = `${managerMessagingComposeSource}\n${managerMessagingComposerSource}\n${managerMessagingActionsSource}\n${managerMessagingComposeStateSource}`;
+const managerMessagingComposeFeatureSource = `${managerMessagingComposeSource}\n${managerMessagingComposerSource}\n${managerMessagingActionsSource}\n${managerMessagingComposeStateSource}\n${managerMessagingComposerCssSource}`;
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
@@ -406,6 +410,13 @@ test("manager announcement compose edits targets and translates each language be
     managerMessagingComposeFeatureSource,
     /<div className=\{styles\.targetBox\}>\s*<span>\{target\.targetLabel\}<\/span>\s*<\/div>/,
   );
+  assert.match(managerMessagingComposeFeatureSource, /className=\{styles\.selectWrap\}/);
+  assert.match(managerMessagingComposeFeatureSource, /appearance: none/);
+  assert.match(
+    managerMessagingComposeFeatureSource,
+    /right: calc\(var\(--space-lg\) \+ 10px\)/,
+  );
+  assert.match(managerMessagingComposeFeatureSource, /pointer-events: none/);
   assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
   assert.match(managerMessagingApiSource, /updateAnnouncementDraft/);
   assert.match(managerMessagingApiSource, /translateAnnouncement/);
