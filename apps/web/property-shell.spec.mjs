@@ -106,6 +106,11 @@ const managerMessagingActionsSource = existsSync(managerMessagingActionsPath)
   : "";
 const managerMessagingComposeStateSource = readFileSync(new URL("./src/lib/announcement-compose-state.ts", import.meta.url), "utf8");
 const managerMessagingComposeFeatureSource = `${managerMessagingComposeSource}\n${managerMessagingComposerSource}\n${managerMessagingActionsSource}\n${managerMessagingComposeStateSource}\n${managerMessagingComposerCssSource}`;
+const managerMessagingLayoutSource = readFileSync(new URL("./src/app/manager/messaging/layout.tsx", import.meta.url), "utf8");
+const managerMessagingShellTitlePath = new URL("./src/app/manager/messaging/MessagingShellTitle.tsx", import.meta.url);
+const managerMessagingShellTitleSource = existsSync(managerMessagingShellTitlePath)
+  ? readFileSync(managerMessagingShellTitlePath, "utf8")
+  : "";
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
@@ -366,10 +371,14 @@ test("opens manager message compose only from real API thread ids", () => {
   assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
 });
 
-test("manager messaging thread exposes a single top-left link back to the hub", () => {
-  assert.match(managerMessagingThreadSource, /aria-label="소통 허브로 돌아가기"/);
-  assert.match(managerMessagingThreadSource, /href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\}/);
-  assert.doesNotMatch(managerMessagingThreadSource, />허브<\/LinkButton>/);
+test("manager messaging thread places its back link beside the shell title", () => {
+  assert.equal(existsSync(managerMessagingShellTitlePath), true);
+  assert.match(managerMessagingLayoutSource, /title=\{<MessagingShellTitle \/>\}/);
+  assert.match(managerMessagingShellTitleSource, /usePathname/);
+  assert.match(managerMessagingShellTitleSource, /pathname === MANAGER_MESSAGING_ROUTES\["M-MSG-04"\]/);
+  assert.match(managerMessagingShellTitleSource, /aria-label="소통 허브로 돌아가기"/);
+  assert.match(managerMessagingShellTitleSource, /href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\}/);
+  assert.doesNotMatch(managerMessagingThreadSource, /aria-label="소통 허브로 돌아가기"/);
 });
 
 test("redirects messaging detail auth failures instead of rendering a Next error boundary", () => {
