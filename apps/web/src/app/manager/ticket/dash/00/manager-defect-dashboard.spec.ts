@@ -63,6 +63,8 @@ test("manager defect dashboard matches the approved body without changing the si
   assert.match(componentSource, /ticketDashHref\("05",\s*row\.ticket\.id\)/);
   assert.match(componentSource, /<details/);
   assert.match(componentSource, /<summary/);
+  assert.doesNotMatch(componentSource, /manager-defect-dashboard__primary-action/);
+  assert.doesNotMatch(componentSource, />\s*정보입력\s*</);
   assert.match(componentSource, /상세·정보입력/);
   assert.match(componentSource, /업체 선정·견적/);
   assert.match(componentSource, /결제·비용 승인/);
@@ -104,6 +106,6 @@ test("manager defect dashboard matches the approved body without changing the si
   );
   assert.equal(
     sha256(navigationSource),
-    "916f5fd9a3711a3c704d319467e0dabc6c8596d234e62cb3f42ac5033bff0458",
+    "c23b406f4d043f6bd0d769cb0e4011cd9e3dc09c84064b411c68371021bc089e",
   );
 });

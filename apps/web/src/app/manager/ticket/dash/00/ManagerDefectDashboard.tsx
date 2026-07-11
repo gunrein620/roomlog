@@ -96,12 +96,6 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
       </td>
       <td>
         <div className="manager-defect-dashboard__action">
-          <Link
-            className="manager-defect-dashboard__primary-action"
-            href={ticketDashHref("01", row.ticket.id)}
-          >
-            정보입력
-          </Link>
           <details className="manager-defect-dashboard__more-menu">
             <summary
               className="manager-defect-dashboard__more-action"
