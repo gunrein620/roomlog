@@ -12,7 +12,8 @@ const realtimeConsolePath = join(root, "src/app/manager/agent/realtime/ManagerRe
 const managerProxyPath = join(root, "src/app/api/manager/[...path]/route.ts");
 
 test("manager home exposes an OpenAI Realtime agent entry point", () => {
-  assert.match(homeSource, /realtimeAgentHref=\{MANAGER_CROSS\.realtimeAgent\}/);
+  // 대시보드 개편 후 진입점은 홈 내비의 "AI 관리자" 링크다 (기존 탭의 realtimeAgentHref 프롭 대체).
+  assert.match(homeSource, /\["AI 관리자", MANAGER_CROSS\.realtimeAgent, false\]/);
   assert.match(homeTabsSource, /href=\{realtimeAgentHref\}/);
   assert.match(homeTabsSource, /AI agent/);
   assert.match(homeTabsSource, /실시간 AI 운영 에이전트/);
