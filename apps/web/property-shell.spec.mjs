@@ -442,6 +442,12 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingApiSource, /method: "POST"/);
   assert.doesNotMatch(managerMessagingComposeFeatureSource, /value=\{draft\.title\} readOnly/);
   assert.doesNotMatch(managerMessagingComposeFeatureSource, /<StaticButton>임시 저장<\/StaticButton>/);
+  assert.match(managerMessagingReviewSource, /findAttachedTranslation/);
+  assert.match(managerMessagingReviewSource, /최종 첨부 번역/);
+  assert.match(managerMessagingReviewSource, /최종 언어/);
+  assert.doesNotMatch(managerMessagingReviewSource, /D21 주요 언어 번역 미리보기/);
+  assert.doesNotMatch(managerMessagingReviewSource, /주요 언어 검수 완료/);
+  assert.doesNotMatch(managerMessagingReviewSource, /label="번역 검수"/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
