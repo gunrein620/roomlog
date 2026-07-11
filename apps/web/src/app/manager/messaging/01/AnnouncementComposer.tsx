@@ -280,9 +280,7 @@ export function AnnouncementComposer({
                     checked={scope === option.value}
                     onChange={() => changeScope(option.value)}
                   />
-                  <span className={styles.scopeLabel}>
-                    <span className={styles.radioMark} /> {option.label}
-                  </span>
+                  <span className={styles.categoryPill}>{option.label}</span>
                 </label>
               ))}
             </div>

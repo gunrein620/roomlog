@@ -404,6 +404,11 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposeFeatureSource, /name="body"/);
   assert.match(managerMessagingComposeFeatureSource, /name="category"/);
   assert.match(managerMessagingComposeFeatureSource, /name="scope"/);
+  assert.match(
+    managerMessagingComposerSource,
+    /name="scope"[\s\S]*?<span className=\{styles\.categoryPill\}>\s*\{option\.label\}\s*<\/span>/,
+  );
+  assert.doesNotMatch(managerMessagingComposerSource, /styles\.radioMark/);
   assert.match(managerMessagingComposeFeatureSource, /targetRoomIds/);
   assert.match(managerMessagingComposerSource, /roomsForBuilding/);
   assert.match(managerMessagingComposerSource, /공지 대상 호실 건물/);
