@@ -20,7 +20,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   MANAGER_NAV_GROUPS,
   getManagerCurrentHref,
@@ -46,9 +46,11 @@ const MANAGER_NAV_ICONS: Record<ManagerNavItemId, LucideIcon> = {
 export interface ManagerSidebarProps {
   onNavigate?: () => void;
   showCloseButton?: boolean;
+  /** 사이드바 우측 상단 액션 슬롯 (예: 데스크톱 접기 토글) — 모바일 닫기 버튼과 같은 자리. */
+  headerAction?: ReactNode;
 }
 
-export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerSidebarProps) {
+export function ManagerSidebar({ onNavigate, showCloseButton = false, headerAction }: ManagerSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const state = getManagerNavState(pathname);
@@ -84,7 +86,9 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
           >
             <X aria-hidden="true" />
           </button>
-        ) : null}
+        ) : (
+          headerAction ?? null
+        )}
       </header>
 
       <nav aria-label="관리자 전체 메뉴" className="manager-sidebar__nav">

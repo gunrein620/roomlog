@@ -1,8 +1,5 @@
-import Link from "next/link";
-import { Bot, Home, MessageSquareText, ReceiptText, Settings, Wrench } from "lucide-react";
-import { ManagerShell } from "@roomlog/ui";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
 import { getUser } from "@/lib/session";
-import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 import { CopilotPanel } from "./CopilotPanel";
 import { DepositGauge } from "./DepositGauge";
 import { HomeCards } from "./HomeCards";
@@ -17,10 +14,13 @@ export default async function Page() {
   const managerName = user?.name ?? "관리인";
 
   return (
-    <ManagerShell
+    // 워크스페이스 셸(글로벌 사이드바)을 따르되, 홈은 자체 코파일럿을 내장하므로
+    // 공용 AI 비서 플로팅 런처는 숨긴다 — AI 표면 통일 방향은 PR에서 논의.
+    <ManagerAppShell
       title="관리 홈"
       context={`관리 중 ${dashboard.homeCards.length}곳`}
-      nav={<HomeNav active="home" />}
+      managerName={managerName}
+      hideAssistantLauncher
     >
       <div className="manager-home-dashboard">
         <header className="manager-home-intro">
@@ -237,49 +237,20 @@ export default async function Page() {
           gap: var(--space-lg);
         }
 
-        .manager-home-nav-link {
-          min-height: 48px;
-          display: flex;
-          align-items: center;
-          gap: var(--space-sm);
-          padding: 0 var(--space-md);
-          border: 1px solid transparent;
-          border-radius: var(--radius-btn);
-          background: transparent;
-          color: var(--nav-on-surface);
-          text-decoration: none;
-          font-weight: 800;
-          white-space: nowrap;
-          transition: background-color 0.16s ease, color 0.16s ease;
-        }
-
-        /* 활성 메뉴 = 밤하늘에 뜬 별: 밝은 라일락 필 + 페리윙클 글로우 */
-        .manager-home-nav-link[aria-current="page"] {
-          border-color: transparent;
-          background: linear-gradient(120deg, #ece7ff, #fbe7f3);
-          color: #43338f;
-          box-shadow:
-            0 0 0 1px rgba(255, 255, 255, 0.14),
-            0 0 22px rgba(160, 146, 255, 0.35),
-            0 6px 18px rgba(10, 6, 32, 0.4);
-        }
-
-        .manager-home-nav-link:not([aria-current="page"]):hover {
-          background: rgba(255, 255, 255, 0.08);
-        }
-
-        .manager-home-nav-link > svg {
-          flex: none;
-          color: var(--nav-on-surface-muted);
-        }
-
-        .manager-home-nav-link[aria-current="page"] > svg {
-          color: #5747cf;
-        }
-
         /* 시그니처 — 심야 우주 네비: 별무리(radial dot 레이어) + 궤도 링 + 성운 코너.
-           전부 background 레이어라 DOM 추가·리플로 비용 없음. */
-        .manager-workspace__sidebar:has(.manager-home-nav) {
+           전부 background 레이어라 DOM 추가·리플로 비용 없음.
+           글로벌 사이드바(ManagerSidebar)는 토큰을 소비하므로, 이 스코프에서
+           표면·글자 토큰을 어두운 배경용으로 재반전시켜 가독성을 지킨다. */
+        .manager-workspace:has(.manager-home-dashboard) .manager-workspace__sidebar {
+          --surface-container-lowest: transparent;
+          --surface-container-low: rgba(255, 255, 255, 0.06);
+          --surface-container: rgba(255, 255, 255, 0.08);
+          --surface-container-high: rgba(255, 255, 255, 0.12);
+          --on-surface: #f4f1fd;
+          --on-surface-variant: #a79ed6;
+          --border: rgba(160, 146, 255, 0.22);
+          --primary-container: rgba(233, 229, 255, 0.94);
+          --on-primary-container: #43338f;
           border-right-color: #2c2454 !important;
           background:
             radial-gradient(1.5px 1.5px at 18% 9%, rgba(255, 255, 255, 0.9), transparent 55%),
@@ -298,7 +269,7 @@ export default async function Page() {
             linear-gradient(172deg, #292153 0%, #1e1840 52%, #241d4e 100%) !important;
         }
 
-        .manager-workspace__sidebar:has(.manager-home-nav) + .manager-workspace__content {
+        .manager-workspace:has(.manager-home-dashboard) .manager-workspace__content {
           background: var(--surface);
         }
 
@@ -317,49 +288,7 @@ export default async function Page() {
 
         }
 
-        @media (prefers-reduced-motion: reduce) {
-          .manager-home-nav-link {
-            transition: none;
-          }
-        }
       `}</style>
-    </ManagerShell>
+    </ManagerAppShell>
   );
-}
-
-function HomeNav({ active }: { active: "home" | "settings" }) {
-  const items = [
-    ["홈", MHOME_ROUTES["M-HOME-00"], active === "home"],
-    ["티켓 처리", MANAGER_CROSS.ticketDash, false],
-    ["청구", MANAGER_CROSS.billing, false],
-    ["소통", MANAGER_CROSS.messaging, false],
-    ["AI 관리자", MANAGER_CROSS.realtimeAgent, false],
-    ["설정", MHOME_ROUTES["M-HOME-06"], active === "settings"]
-  ] as const;
-
-  return (
-    <nav className="manager-home-nav" aria-label="관리인 주요 메뉴" style={{ display: "grid", gap: "var(--space-sm)" }}>
-      {items.map(([label, href, current]) => (
-        <Link
-          key={href}
-          href={href}
-          className="manager-home-nav-link"
-          aria-current={current ? "page" : undefined}
-        >
-          <NavIcon label={label} />
-          <span>{label}</span>
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
-function NavIcon({ label }: { label: string }) {
-  const props = { size: 17, strokeWidth: 2.2, "aria-hidden": true } as const;
-  if (label === "홈") return <Home {...props} />;
-  if (label === "티켓 처리") return <Wrench {...props} />;
-  if (label === "청구") return <ReceiptText {...props} />;
-  if (label === "소통") return <MessageSquareText {...props} />;
-  if (label === "AI 관리자") return <Bot {...props} />;
-  return <Settings {...props} />;
 }

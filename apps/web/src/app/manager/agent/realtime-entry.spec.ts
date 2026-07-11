@@ -5,7 +5,6 @@ import test from "node:test";
 
 const root = process.cwd();
 const managerIndexSource = readFileSync(join(root, "src/app/manager/page.tsx"), "utf8");
-const homeSource = readFileSync(join(root, "src/app/manager/home/00/page.tsx"), "utf8");
 const homeTabsSource = readFileSync(join(root, "src/app/manager/home/00/ManagerHomeTabs.tsx"), "utf8");
 const layoutPath = join(root, "src/app/manager/agent/layout.tsx");
 const realtimePagePath = join(root, "src/app/manager/agent/realtime/page.tsx");
@@ -31,8 +30,10 @@ test("manager realtime prompt is prefilled once and never auto-submitted", () =>
 });
 
 test("manager home exposes an OpenAI Realtime agent entry point", () => {
-  // 대시보드 개편 후 진입점은 홈 내비의 "AI 관리자" 링크다 (기존 탭의 realtimeAgentHref 프롭 대체).
-  assert.match(homeSource, /\["AI 관리자", MANAGER_CROSS\.realtimeAgent, false\]/);
+  // 워크스페이스 이주 후 진입점은 글로벌 사이드바(manager-navigation)의 "AI 비서" 항목이다.
+  const navigationSource = readFileSync(join(root, "src/lib/manager-navigation.ts"), "utf8");
+  assert.match(navigationSource, /"AI 비서"/);
+  assert.match(navigationSource, /MANAGER_CROSS\.realtimeAgent/);
   assert.match(homeTabsSource, /href=\{realtimeAgentHref\}/);
   assert.match(homeTabsSource, /AI agent/);
   assert.match(homeTabsSource, /실시간 AI 운영 에이전트/);

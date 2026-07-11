@@ -348,7 +348,7 @@ export function CopilotPanel({ briefingInput }: { briefingInput: BriefingInput }
           transform: translateY(0);
         }
 
-        .manager-shell .manager-copilot-briefing:focus-visible {
+        .manager-workspace .manager-copilot-briefing:focus-visible {
           outline: 3px solid #ffffff;
           outline-offset: 2px;
         }
