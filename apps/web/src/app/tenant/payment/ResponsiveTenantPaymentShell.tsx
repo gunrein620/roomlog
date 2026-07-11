@@ -1,12 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { TenantPaymentWebHeader } from "./TenantPaymentWebHeader";
 import styles from "./tenant-payment-shell.module.css";
 
 export function ResponsiveTenantPaymentShell({ children }: { children: ReactNode }) {
   return (
     <div className={styles.canvas}>
-      <TenantPaymentWebHeader />
       <div className={styles.mobileBrand}>
         <Link href="/living">
           <span aria-hidden="true">←</span>
