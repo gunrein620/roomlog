@@ -54,6 +54,12 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(appShellSource, /!fullAssistant/);
   assert.match(appShellSource, /getBoundingClientRect\(\)/);
   assert.match(appShellSource, /isDialogBackdropPoint/);
+  assert.match(appShellSource, /import \{ Suspense, useRef, useState \} from "react"/);
+  assert.match(appShellSource, /<Suspense fallback=\{null\}><ManagerSidebar \/><\/Suspense>/);
+  assert.match(
+    appShellSource,
+    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton \/><\/Suspense>/,
+  );
 });
 
 test("manager shell exposes navigation, subnav, actions, and right rail slots", () => {

@@ -78,8 +78,11 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.doesNotMatch(componentSource, /row\.isDemo/);
   assert.doesNotMatch(componentSource, /더미 작업 비활성/);
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
-  assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\}/);
+  assert.match(pageSource, /searchParams/);
+  assert.match(pageSource, /type === "complaint" \|\| type === "defect"/);
+  assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
   assert.match(pageSource, /\.\.\.MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
+  assert.match(componentSource, /initialTemplate/);
   assert.match(componentSource, /disabled/);
   assert.match(componentSource, /row\.buildingName \?\? "—"/);
   assert.match(componentSource, /const buildings/);
@@ -111,10 +114,10 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(navigationSource, /하자 관리/);
   assert.equal(
     sha256(sidebarSource),
-    "df629be985faf80a2434a23a88eaade79d9b3c14583d9574a6955052d8a372b7",
+    "b7a73c4e18add5c178028c50f5293b7f1925ed90c147455f64d21cea0cfde5b0",
   );
   assert.equal(
     sha256(navigationSource),
-    "09dd22b43991b3c7502eba4383a3d2db22a193b447a439980c13002fc49b3e04",
+    "7b7381cee476b2e2f635a9682301ed4265e4a71eb8db89306e6b6eebcb7c2fb4",
   );
 });

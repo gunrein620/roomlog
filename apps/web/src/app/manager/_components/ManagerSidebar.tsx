@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Bot,
@@ -48,8 +48,14 @@ export interface ManagerSidebarProps {
 
 export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerSidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const state = getManagerNavState(pathname);
   const currentHref = getManagerCurrentHref(pathname);
+  const ticketTypeFilter = searchParams.get("type") === "complaint"
+    ? "complaint"
+    : searchParams.get("type") === "defect"
+      ? "defect"
+      : "all";
 
   return (
     <div className="manager-sidebar">
@@ -103,7 +109,9 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
                     {active ? (
                       <div className="manager-sidebar__children">
                         {item.children.map((child) => {
-                          const childActive = child.active ?? currentHref === child.href;
+                          const childActive = child.typeFilter
+                            ? child.typeFilter === ticketTypeFilter
+                            : child.active ?? currentHref === child.href;
                           return (
                             <Link
                               key={child.href}

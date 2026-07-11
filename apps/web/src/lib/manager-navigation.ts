@@ -12,7 +12,14 @@ export type ManagerNavItemId =
   | "dashboard" | "listing" | "contract" | "billing" | "cost" | "ticket"
   | "messaging" | "moveout" | "vendor" | "report" | "assistant" | "settings";
 
-export interface ManagerNavChild { label: string; href: string; demo?: true; active?: boolean }
+export type ManagerTicketTypeFilter = "all" | "complaint" | "defect";
+export interface ManagerNavChild {
+  label: string;
+  href: string;
+  demo?: true;
+  active?: boolean;
+  typeFilter?: ManagerTicketTypeFilter;
+}
 export interface ManagerNavItem {
   id: ManagerNavItemId;
   label: string;
@@ -108,13 +115,13 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
       {
         id: "ticket",
         label: "민원·하자",
-        href: MANAGER_TICKET_ROUTES["M-DASH-00"],
+        href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=defect`,
         icon: "ticket",
-        activePrefixes: ["/manager/ticket/dash", "/manager/ticket/call"],
+        activePrefixes: ["/manager/ticket/dash"],
         children: [
-          { label: "민원 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"], active: false },
-          { label: "민원 대응", href: MANAGER_TICKET_ROUTES["M-CALL-00"] },
-          { label: "하자 관리", href: MANAGER_TICKET_ROUTES["M-DASH-00"], active: true },
+          { label: "민원 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"], typeFilter: "all" },
+          { label: "민원 대응", href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=complaint`, typeFilter: "complaint" },
+          { label: "하자 관리", href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=defect`, typeFilter: "defect" },
         ],
       },
       {
@@ -196,6 +203,17 @@ function cleanPathname(pathname: string): string {
   return path.length > 1 ? path.replace(/\/+$/, "") : path;
 }
 
+function childMatches(pathname: string, candidate: string): boolean {
+  const [path, query = ""] = pathname.split("?", 2);
+  const [candidatePath, candidateQuery = ""] = candidate.split("?", 2);
+  return cleanPathname(path) === cleanPathname(candidatePath) && query === candidateQuery;
+}
+
+function currentChild(item: ManagerNavItem, pathname: string): ManagerNavChild | undefined {
+  return item.children.find((candidate) => childMatches(pathname, candidate.href))
+    ?? item.children.find((candidate) => cleanPathname(candidate.href) === cleanPathname(pathname));
+}
+
 function pathMatches(pathname: string, candidate: string): boolean {
   return pathname === candidate || pathname.startsWith(`${candidate}/`);
 }
@@ -207,7 +225,7 @@ export function getManagerNavState(pathname: string): ManagerNavState {
     candidate.activePrefixes.some((prefix) => pathMatches(path, prefix)),
   );
   if (!item) return { activeItemId: null, activeChildHref: null };
-  const child = item.children.find((candidate) => cleanPathname(candidate.href) === path);
+  const child = currentChild(item, pathname);
   return { activeItemId: item.id, activeChildHref: child?.href ?? null };
 }
 
@@ -216,7 +234,7 @@ export function getManagerCurrentHref(pathname: string): string | null {
   const items = MANAGER_NAV_GROUPS.flatMap((group) => group.items);
 
   for (const item of items) {
-    const child = item.children.find((candidate) => cleanPathname(candidate.href) === path);
+    const child = currentChild(item, pathname);
     if (child) return child.href;
     if (cleanPathname(item.href) === path) return item.href;
   }

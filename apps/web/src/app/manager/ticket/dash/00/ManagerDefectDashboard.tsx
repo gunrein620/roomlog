@@ -123,14 +123,16 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
 
 export function ManagerDefectDashboard({
   rows,
+  initialTemplate = "all",
 }: {
   rows: readonly DefectDashboardRow[];
+  initialTemplate?: DefectDashboardFilters["template"];
 }) {
   const [filters, setFilters] = useState<DefectDashboardFilters>({
     status: "all",
     worker: "all",
     building: "all",
-    template: "all",
+    template: initialTemplate,
   });
   const [page, setPage] = useState(1);
 
@@ -167,7 +169,9 @@ export function ManagerDefectDashboard({
 
   return (
     <section className="manager-defect-dashboard" aria-labelledby="manager-defect-title">
-      <h2 id="manager-defect-title">하자 관리</h2>
+      <h2 id="manager-defect-title">
+        {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원 대시보드"}
+      </h2>
 
       <div
         className="manager-defect-dashboard__status-filters"
