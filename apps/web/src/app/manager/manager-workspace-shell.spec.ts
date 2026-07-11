@@ -49,7 +49,16 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(sidebar, /민원·하자 메뉴 펼치기/);
   assert.match(sidebar, /id=\{isTicket \? "manager-ticket-subnav" : undefined\}/);
   assert.match(sidebar, /item\.id === "ticket"/);
+  assert.match(sidebar, /const showChildren = isTicket \? ticketExpanded : active/);
+  assert.match(
+    sidebar,
+    /isTicket \? \(\s*<button[\s\S]*?className=\{`manager-sidebar__ticket-toggle\$\{active \? " is-active" : ""\}`\}[\s\S]*?<Icon aria-hidden="true" \/>[\s\S]*?<span>\{item\.label\}<\/span>[\s\S]*?<ChevronDown aria-hidden="true" \/>/,
+  );
   assert.match(managerCss, /manager-sidebar__ticket-toggle/);
+  assert.match(
+    managerCss,
+    /\.manager-sidebar__ticket-toggle\s*\{[^}]*width:\s*100%;[^}]*display:\s*flex;/,
+  );
   assert.match(sectionNavSource, /item\.children\.map/);
   assert.match(sectionNavSource, /aria-current/);
   assert.match(assistant, /showModal\(\)/);

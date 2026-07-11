@@ -97,40 +97,43 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
                 const parentCurrent = currentHref === item.href && state.activeChildHref === null;
                 const Icon = MANAGER_NAV_ICONS[item.icon];
                 const isTicket = item.id === "ticket";
-                const showChildren = active && (!isTicket || ticketExpanded);
+                const showChildren = isTicket ? ticketExpanded : active;
 
                 return (
                   <div key={item.id} className="manager-sidebar__item">
-                    <div className={`manager-sidebar__link-row${active ? " is-active" : ""}`}>
-                      <Link
-                        href={item.href}
-                        onClick={onNavigate}
-                        aria-current={parentCurrent ? "page" : undefined}
-                        className={`manager-sidebar__link${active ? " is-active" : ""}`}
+                    {isTicket ? (
+                      <button
+                        type="button"
+                        className={`manager-sidebar__ticket-toggle${active ? " is-active" : ""}`}
+                        aria-expanded={ticketExpanded}
+                        aria-controls="manager-ticket-subnav"
+                        aria-label={ticketExpanded ? "민원·하자 메뉴 접기" : "민원·하자 메뉴 펼치기"}
+                        data-expanded={ticketExpanded}
+                        onClick={() => setTicketExpanded((expanded) => !expanded)}
                       >
                         <Icon aria-hidden="true" />
                         <span>{item.label}</span>
-                        {item.external ? (
-                          <span className="manager-sidebar__external">
-                            <ExternalLink aria-hidden="true" />
-                            <span className="manager-sidebar__sr-only">관리자 워크스페이스 밖으로 이동</span>
-                          </span>
-                        ) : null}
-                      </Link>
-                      {isTicket ? (
-                        <button
-                          type="button"
-                          className="manager-sidebar__ticket-toggle"
-                          aria-expanded={ticketExpanded}
-                          aria-controls="manager-ticket-subnav"
-                          aria-label={ticketExpanded ? "민원·하자 메뉴 접기" : "민원·하자 메뉴 펼치기"}
-                          data-expanded={ticketExpanded}
-                          onClick={() => setTicketExpanded((expanded) => !expanded)}
+                        <ChevronDown aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <div className={`manager-sidebar__link-row${active ? " is-active" : ""}`}>
+                        <Link
+                          href={item.href}
+                          onClick={onNavigate}
+                          aria-current={parentCurrent ? "page" : undefined}
+                          className={`manager-sidebar__link${active ? " is-active" : ""}`}
                         >
-                          <ChevronDown aria-hidden="true" />
-                        </button>
-                      ) : null}
-                    </div>
+                          <Icon aria-hidden="true" />
+                          <span>{item.label}</span>
+                          {item.external ? (
+                            <span className="manager-sidebar__external">
+                              <ExternalLink aria-hidden="true" />
+                              <span className="manager-sidebar__sr-only">관리자 워크스페이스 밖으로 이동</span>
+                            </span>
+                          ) : null}
+                        </Link>
+                      </div>
+                    )}
                     {showChildren ? (
                       <div
                         id={isTicket ? "manager-ticket-subnav" : undefined}

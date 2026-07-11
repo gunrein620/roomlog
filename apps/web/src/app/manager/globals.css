@@ -1168,26 +1168,45 @@ dd {
 }
 
 .manager-sidebar__ticket-toggle {
-  width: var(--touch-target);
+  width: 100%;
   min-height: var(--touch-target);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-md);
   border: 0;
   border-radius: var(--radius);
-  color: inherit;
+  color: var(--on-surface);
   background: transparent;
+  font: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  text-align: left;
   cursor: pointer;
+}
+
+.manager-sidebar__ticket-toggle span {
+  min-width: 0;
+  flex: 1;
 }
 
 .manager-sidebar__ticket-toggle svg {
   width: var(--space-xl);
   height: var(--space-xl);
+  flex: 0 0 auto;
+}
+
+.manager-sidebar__ticket-toggle svg:last-child {
   transition: transform 160ms ease;
 }
 
-.manager-sidebar__ticket-toggle[data-expanded="true"] svg {
+.manager-sidebar__ticket-toggle[data-expanded="true"] svg:last-child {
   transform: rotate(180deg);
+}
+
+.manager-sidebar__ticket-toggle.is-active {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
 }
 
 .manager-sidebar__ticket-toggle:hover {
