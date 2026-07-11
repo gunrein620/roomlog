@@ -143,7 +143,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(navigationSource, /하자 관리/);
   assert.equal(
     sha256(sidebarSource),
-    "3745d5ee62e93583453111d496ff7f2ffe263bcc58dd81b3ce50c637df99ef2d",
+    "007959a05d7a55ba967c10bd2fa506ce11b57925036f280f5a56752f133b5922",
   );
   assert.equal(
     sha256(navigationSource),

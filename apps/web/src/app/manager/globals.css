@@ -1167,7 +1167,7 @@ dd {
   background: transparent;
 }
 
-.manager-sidebar__ticket-toggle {
+.manager-sidebar__parent-toggle {
   width: 100%;
   min-height: var(--touch-target);
   display: flex;
@@ -1185,31 +1185,31 @@ dd {
   cursor: pointer;
 }
 
-.manager-sidebar__ticket-toggle span {
+.manager-sidebar__parent-toggle span {
   min-width: 0;
   flex: 1;
 }
 
-.manager-sidebar__ticket-toggle svg {
+.manager-sidebar__parent-toggle svg {
   width: var(--space-xl);
   height: var(--space-xl);
   flex: 0 0 auto;
 }
 
-.manager-sidebar__ticket-toggle svg:last-child {
+.manager-sidebar__parent-toggle svg:last-child {
   transition: transform 160ms ease;
 }
 
-.manager-sidebar__ticket-toggle[data-expanded="true"] svg:last-child {
+.manager-sidebar__parent-toggle[data-expanded="true"] svg:last-child {
   transform: rotate(180deg);
 }
 
-.manager-sidebar__ticket-toggle.is-active {
+.manager-sidebar__parent-toggle.is-active {
   color: var(--on-primary-container);
   background: var(--primary-container);
 }
 
-.manager-sidebar__ticket-toggle:hover {
+.manager-sidebar__parent-toggle:hover {
   background: var(--surface-container-high);
 }
 
@@ -1255,7 +1255,7 @@ dd {
   height: var(--space-lg);
 }
 
-.manager-sidebar__ticket-toggle:focus-visible {
+.manager-sidebar__parent-toggle:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }

@@ -54,7 +54,9 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
   const state = getManagerNavState(pathname);
   const currentHref = getManagerCurrentHref(pathname);
   const ticketActive = state.activeItemId === "ticket";
+  const messagingActive = state.activeItemId === "messaging";
   const [ticketExpanded, setTicketExpanded] = useState(ticketActive);
+  const [messagingExpanded, setMessagingExpanded] = useState(messagingActive);
   const ticketTypeFilter = searchParams.get("type") === "complaint"
     ? "complaint"
     : searchParams.get("type") === "defect"
@@ -64,6 +66,10 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
   useEffect(() => {
     if (ticketActive) setTicketExpanded(true);
   }, [pathname, ticketActive]);
+
+  useEffect(() => {
+    if (messagingActive) setMessagingExpanded(true);
+  }, [pathname, messagingActive]);
 
   return (
     <div className="manager-sidebar">
@@ -97,19 +103,24 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
                 const parentCurrent = currentHref === item.href && state.activeChildHref === null;
                 const Icon = MANAGER_NAV_ICONS[item.icon];
                 const isTicket = item.id === "ticket";
-                const showChildren = isTicket ? ticketExpanded : active;
+                const isMessaging = item.id === "messaging";
+                const isCollapsible = isTicket || isMessaging;
+                const expanded = isTicket ? ticketExpanded : messagingExpanded;
+                const subnavId = isTicket ? "manager-ticket-subnav" : "manager-messaging-subnav";
+                const setExpanded = isTicket ? setTicketExpanded : setMessagingExpanded;
+                const showChildren = isCollapsible ? expanded : active;
 
                 return (
                   <div key={item.id} className="manager-sidebar__item">
-                    {isTicket ? (
+                    {isCollapsible ? (
                       <button
                         type="button"
-                        className={`manager-sidebar__ticket-toggle${active ? " is-active" : ""}`}
-                        aria-expanded={ticketExpanded}
-                        aria-controls="manager-ticket-subnav"
-                        aria-label={ticketExpanded ? "민원·하자 메뉴 접기" : "민원·하자 메뉴 펼치기"}
-                        data-expanded={ticketExpanded}
-                        onClick={() => setTicketExpanded((expanded) => !expanded)}
+                        className={`manager-sidebar__parent-toggle${active ? " is-active" : ""}`}
+                        aria-expanded={expanded}
+                        aria-controls={subnavId}
+                        aria-label={`${item.label} 메뉴 ${expanded ? "접기" : "펼치기"}`}
+                        data-expanded={expanded}
+                        onClick={() => setExpanded((current) => !current)}
                       >
                         <Icon aria-hidden="true" />
                         <span>{item.label}</span>
@@ -136,7 +147,7 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
                     )}
                     {showChildren ? (
                       <div
-                        id={isTicket ? "manager-ticket-subnav" : undefined}
+                        id={isCollapsible ? subnavId : undefined}
                         className="manager-sidebar__children"
                       >
                         {item.children.map((child) => {
