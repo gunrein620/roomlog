@@ -33,12 +33,18 @@ test("manager defect dashboard matches the approved body without changing the si
     "완료",
     "취소",
     "정기점검",
+    "유형",
     "담당자",
     "건물",
-    "템플릿",
   ]) {
     assert.match(componentSource, new RegExp(label));
   }
+
+  assert.doesNotMatch(componentSource, /<span>템플릿<\/span>/);
+  assert.ok(
+    componentSource.indexOf('htmlFor="manager-defect-template"') <
+      componentSource.indexOf('htmlFor="manager-defect-worker"'),
+  );
 
   for (const column of [
     "유형",

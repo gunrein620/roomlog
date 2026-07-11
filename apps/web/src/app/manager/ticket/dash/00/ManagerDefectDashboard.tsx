@@ -187,6 +187,23 @@ export function ManagerDefectDashboard({
       </div>
 
       <div className="manager-defect-dashboard__filter-panel">
+        <label htmlFor="manager-defect-template">
+          <span>유형</span>
+          <select
+            id="manager-defect-template"
+            value={filters.template}
+            onChange={(event) =>
+              updateFilters({
+                template: event.target.value as DefectDashboardFilters["template"],
+              })
+            }
+          >
+            <option value="all">전체</option>
+            <option value="defect">하자 민원</option>
+            <option value="complaint">일반 민원</option>
+          </select>
+        </label>
+
         <label htmlFor="manager-defect-worker">
           <span>담당자</span>
           <select
@@ -220,22 +237,6 @@ export function ManagerDefectDashboard({
           </select>
         </label>
 
-        <label htmlFor="manager-defect-template">
-          <span>템플릿</span>
-          <select
-            id="manager-defect-template"
-            value={filters.template}
-            onChange={(event) =>
-              updateFilters({
-                template: event.target.value as DefectDashboardFilters["template"],
-              })
-            }
-          >
-            <option value="all">전체</option>
-            <option value="defect">하자 민원</option>
-            <option value="complaint">일반 민원</option>
-          </select>
-        </label>
       </div>
 
       <div className="manager-defect-dashboard__table-scroll">
