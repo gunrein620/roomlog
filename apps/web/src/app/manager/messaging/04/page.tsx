@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import type { Message, Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
 import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
@@ -9,7 +11,6 @@ import {
   Badge,
   Card,
   CONTEXT_LABEL,
-  LinkButton,
   NoticeCard,
   ScreenHeader,
   StaticButton,
@@ -89,12 +90,29 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   return (
     <>
       <MessageAutoRefresh intervalMs={3000} />
-      <ScreenHeader
-        eyebrow="M-MSG-04"
-        title={`${thread.unitId}호 채팅 스레드`}
-        actions={
-          <>
-            <LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-sm)" }}>
+        <Link
+          href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]}
+          aria-label="소통 허브로 돌아가기"
+          style={{
+            width: "var(--touch-target)",
+            height: "var(--touch-target)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            borderRadius: "var(--radius-btn)",
+            color: "var(--on-surface)",
+            textDecoration: "none",
+          }}
+        >
+          <ArrowLeft aria-hidden="true" />
+        </Link>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ScreenHeader
+            eyebrow="M-MSG-04"
+            title={`${thread.unitId}호 채팅 스레드`}
+            actions={
             <form action={deleteManagerThreadAction}>
               <input type="hidden" name="threadId" value={thread.id} />
               <Button
@@ -105,9 +123,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 삭제
               </Button>
             </form>
-          </>
-        }
-      />
+            }
+          />
+        </div>
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: "var(--space-lg)", alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>

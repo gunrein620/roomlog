@@ -366,6 +366,12 @@ test("opens manager message compose only from real API thread ids", () => {
   assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
 });
 
+test("manager messaging thread exposes a single top-left link back to the hub", () => {
+  assert.match(managerMessagingThreadSource, /aria-label="소통 허브로 돌아가기"/);
+  assert.match(managerMessagingThreadSource, /href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\}/);
+  assert.doesNotMatch(managerMessagingThreadSource, />허브<\/LinkButton>/);
+});
+
 test("redirects messaging detail auth failures instead of rendering a Next error boundary", () => {
   for (const [source, loginPath] of [
     [tenantMessagingThreadSource, "/tenant/login"],
