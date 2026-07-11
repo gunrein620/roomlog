@@ -14,6 +14,7 @@ export interface ManagerListingRow {
   id: string;
   title: string;
   location: string;
+  detailAddress?: string;
   priceLabel: string;
   photoCount: number;
   has3D: boolean;
@@ -113,7 +114,9 @@ export default function ManagerHomeTabs({
               <div key={listing.id} style={rowStyle}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{listing.title}</div>
-                  <div style={rowCaptionStyle}>{listing.location} · 사진 {listing.photoCount}장{listing.has3D ? " · 3D 연결" : ""}</div>
+                  <div style={rowCaptionStyle}>
+                    {listing.location} · 세부주소 {listing.detailAddress?.trim() || "없음"} · 사진 {listing.photoCount}장{listing.has3D ? " · 3D 연결" : ""}
+                  </div>
                 </div>
                 <strong style={{ whiteSpace: "nowrap" }}>{listing.priceLabel}</strong>
                 <span style={statusChipStyle("#e8f7ee", "#136c34")}>노출중 · 미계약</span>

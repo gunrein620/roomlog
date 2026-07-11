@@ -84,7 +84,7 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         children: [
           { label: "대시보드", href: MANAGER_BILLING_ROUTES.dashboard },
           { label: "수금 현황", href: MANAGER_BILLING_ROUTES.collection },
-          { label: "입금 매칭", href: MANAGER_BILLING_ROUTES.matching },
+          { label: "입출금 내역", href: MANAGER_BILLING_ROUTES.matching },
           { label: "연체 관리", href: MANAGER_BILLING_ROUTES.overdue },
         ],
       },

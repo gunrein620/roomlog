@@ -76,6 +76,7 @@ import {
   demoMapItems,
   getListingPriceRows,
   isRemotePhoto,
+  listingDetailAddressLabel,
   mapListings,
   neighborhoodItems,
   tradeListingToCard,
@@ -589,6 +590,7 @@ function tradeListingToMapItem(listing: TradeListing, index: number, total: numb
     price: tradePriceLabel(listing),
     meta: `${listing.roomType} · 집주인 직접`,
     distance: listing.location,
+    detailAddress: listing.detailAddress,
     updated: "방금 등록",
     flags: ["집주인 직접"],
     image: (Array.isArray(listing.images) && listing.images[0]) || "/listing-studio.jpg",
@@ -720,6 +722,7 @@ function SavedListingsSection({
                   <b>{listing.price}</b>
                   <strong>{listing.title}</strong>
                   <em>{listing.location}</em>
+                  <em>세부주소: {listingDetailAddressLabel(listing)}</em>
                 </span>
               </button>
               <div>
@@ -1392,7 +1395,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     const keyword = searchKeyword.trim().toLowerCase();
     const keywordMatches =
       !keyword ||
-      [listing.title, listing.location, listing.spec, listing.price, ...listing.tags, ...listing.badges]
+      [listing.title, listing.location, listingDetailAddressLabel(listing), listing.spec, listing.price, ...listing.tags, ...listing.badges]
         .join(" ")
         .toLowerCase()
         .includes(keyword);
@@ -1411,7 +1414,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const areaSearchToken = (selectedAreaTitle.split(" ").pop() ?? "").replace(/(동|역|구)$/, "").trim();
   const areaMatchedMapItems = areaSearchToken
     ? allMapItems.filter((listing) =>
-        [listing.title, listing.meta, listing.distance].join(" ").includes(areaSearchToken)
+        [listing.title, listing.meta, listing.distance, listing.detailAddress ?? ""].join(" ").includes(areaSearchToken)
       )
     : allMapItems;
   // 매칭이 하나도 없으면 전체로 폴백 — 데모 데이터 범위 밖 지역을 골라도 지도가 텅 비지 않게.
@@ -2132,6 +2135,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                         <h3>{listing.title}</h3>
                         <p>{listing.spec}</p>
                         <small>{listing.location}</small>
+                        <small className="listing-detail-address">세부주소: {listingDetailAddressLabel(listing)}</small>
                         <small className="listing-broker">{listing.broker}</small>
                         <div className="listing-meta-row">
                           <span>{listing.verification}</span>
@@ -2420,6 +2424,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                   <span>{selectedMapListing.clusterLabel} · {selectedMapListing.updated}</span>
                   <strong>{selectedMapListing.title}</strong>
                   <small>{selectedMapListing.price} · {mapListingDistanceLabel(selectedMapListing)}</small>
+                  <small>세부주소: {listingDetailAddressLabel(selectedMapListing)}</small>
                 </button>
                 <div>
                   <em>{selectedMapListing.flags[0]}</em>
@@ -2517,6 +2522,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                           <strong>{listing.price}</strong>
                           <p>{listing.meta}</p>
                           <small>{mapListingDistanceLabel(listing)}</small>
+                          <small>세부주소: {listingDetailAddressLabel(listing)}</small>
                           <div className="map-card-tags">
                             {listing.flags.map((flag) => (
                               <em key={flag}>{flag}</em>

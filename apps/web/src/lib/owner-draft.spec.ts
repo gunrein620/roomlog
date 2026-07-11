@@ -33,6 +33,16 @@ describe("owner listing draft persistence", () => {
     assert.equal(restored.registrationStatus, "노출중");
     assert.equal(restored.myListings.length, 2);
     assert.equal(restored.myListings[0].title, "성수 아뜰리에 501호");
+    assert.equal(restored.ownerForm.detailAddress, "");
+  });
+
+  it("fills detailAddress for legacy drafts that do not have it yet", () => {
+    const { detailAddress: _detailAddress, ...legacyOwnerForm } = sampleState.ownerForm;
+    const raw = JSON.stringify({ version: 1, savedAt: "2026-07-05T12:34:56.000Z", ...sampleState, ownerForm: legacyOwnerForm });
+    const restored = parseOwnerDraft(raw);
+
+    assert.ok(restored);
+    assert.equal(restored.ownerForm.detailAddress, "");
   });
 
   it("rejects unknown versions and corrupted payloads", () => {
@@ -64,6 +74,7 @@ describe("owner listing draft persistence", () => {
   it("starts user-editable fields empty (no fake prefilled values)", () => {
     assert.equal(emptyOwnerForm.title, "");
     assert.equal(emptyOwnerForm.address, "");
+    assert.equal(emptyOwnerForm.detailAddress, "");
     assert.equal(emptyOwnerForm.deposit, "");
     assert.equal(emptyOwnerForm.tradeType, "월세");
   });

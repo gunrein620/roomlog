@@ -1969,6 +1969,10 @@ p {
   font-weight: 900;
 }
 
+.listing-detail-address {
+  color: #6b7280;
+}
+
 .listing-meta-row {
   display: flex;
   flex-wrap: wrap;
@@ -3080,6 +3084,13 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.detail-address-detail {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .detail-quick-actions {
@@ -5958,6 +5969,14 @@ p {
   font-size: 0.62rem;
   font-weight: 850;
   line-height: 1.28;
+}
+
+.owner-summary-address {
+  display: block;
+  margin-top: 5px;
+  color: #5d6472;
+  font-size: 0.72rem;
+  font-weight: 850;
 }
 
 .owner-card {
