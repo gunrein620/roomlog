@@ -41,6 +41,14 @@ export function roomDisplayLabel(room: AnnouncementManagedRoom): string {
   return [room.buildingName, room.roomNo].filter(Boolean).join(" ") || room.id;
 }
 
+export function roomsForBuilding(
+  rooms: AnnouncementManagedRoom[],
+  buildingName: string,
+): AnnouncementManagedRoom[] {
+  if (!buildingName) return [];
+  return rooms.filter((room) => room.buildingName === buildingName);
+}
+
 export function buildAnnouncementTarget(
   rooms: AnnouncementManagedRoom[],
   scope: AnnouncementScope,

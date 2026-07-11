@@ -405,6 +405,13 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposeFeatureSource, /name="category"/);
   assert.match(managerMessagingComposeFeatureSource, /name="scope"/);
   assert.match(managerMessagingComposeFeatureSource, /targetRoomIds/);
+  assert.match(managerMessagingComposerSource, /roomsForBuilding/);
+  assert.match(managerMessagingComposerSource, /공지 대상 호실 건물/);
+  assert.match(managerMessagingComposerSource, /changeSelectedBuilding/);
+  assert.match(managerMessagingComposerSource, /changeScope/);
+  assert.match(managerMessagingComposerSource, /nextScope === "unit"/);
+  assert.match(managerMessagingComposerSource, /setSelectedRoomIds\(\[\]\)/);
+  assert.match(managerMessagingComposerSource, /선택 가능한 호실이 없습니다\./);
   assert.match(managerMessagingComposeFeatureSource, /lang: "en", label: "English"/);
   assert.match(managerMessagingComposeFeatureSource, /lang: "zh", label: "中文"/);
   assert.match(managerMessagingComposeFeatureSource, /lang: "vi", label: "Tiếng Việt"/);

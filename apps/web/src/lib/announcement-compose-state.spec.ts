@@ -6,6 +6,7 @@ import {
   buildAnnouncementTarget,
   invalidateReviewedTranslations,
   prepareAnnouncementDraftForCompose,
+  roomsForBuilding,
   shouldExpandAnnouncementTranslation,
   validateAnnouncementCompose,
 } from "./announcement-compose-state";
@@ -77,6 +78,15 @@ describe("manager announcement compose state", () => {
       targetRoomIds: ["room-b-201"],
       targetLabel: "B동 201호",
     });
+  });
+
+  it("lists only rooms in the selected building", () => {
+    assert.deepEqual(
+      roomsForBuilding(rooms, "A동").map((room) => room.id),
+      ["room-a-101", "room-a-102"],
+    );
+    assert.deepEqual(roomsForBuilding(rooms, "없는 건물"), []);
+    assert.deepEqual(roomsForBuilding(rooms, ""), []);
   });
 
   it("invalidates every reviewed translation when the Korean source changes", () => {

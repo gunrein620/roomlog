@@ -15,6 +15,7 @@ import {
   buildAnnouncementTarget,
   invalidateReviewedTranslations,
   roomDisplayLabel,
+  roomsForBuilding,
   shouldExpandAnnouncementTranslation,
   validateAnnouncementCompose,
   type AnnouncementManagedRoom,
@@ -94,6 +95,7 @@ export function AnnouncementComposer({
   const buildings = Array.from(
     new Set(managedRooms.map((room) => room.buildingName).filter(Boolean)),
   ) as string[];
+  const selectableRooms = roomsForBuilding(managedRooms, selectedBuilding);
   const target = buildAnnouncementTarget(
     managedRooms,
     scope,
@@ -174,6 +176,16 @@ export function AnnouncementComposer({
         ? current.filter((id) => id !== roomId)
         : [...current, roomId],
     );
+  }
+
+  function changeSelectedBuilding(buildingName: string) {
+    setSelectedBuilding(buildingName);
+    setSelectedRoomIds([]);
+  }
+
+  function changeScope(nextScope: AnnouncementScope) {
+    setScope(nextScope);
+    if (nextScope === "unit") setSelectedRoomIds([]);
   }
 
   async function handleSave(intent: "save" | "review") {
@@ -266,7 +278,7 @@ export function AnnouncementComposer({
                     name="scope"
                     value={option.value}
                     checked={scope === option.value}
-                    onChange={() => setScope(option.value)}
+                    onChange={() => changeScope(option.value)}
                   />
                   <span className={styles.scopeLabel}>
                     <span className={styles.radioMark} /> {option.label}
@@ -276,13 +288,13 @@ export function AnnouncementComposer({
             </div>
 
             <div className={styles.targetControls}>
-              {scope === "building" ? (
+              {scope === "building" || scope === "unit" ? (
                 <div className={styles.selectWrap}>
                   <select
                     className={styles.select}
-                    aria-label="공지 대상 건물"
+                    aria-label={scope === "unit" ? "공지 대상 호실 건물" : "공지 대상 건물"}
                     value={selectedBuilding}
-                    onChange={(event) => setSelectedBuilding(event.target.value)}
+                    onChange={(event) => changeSelectedBuilding(event.target.value)}
                   >
                     {buildings.map((building) => (
                       <option key={building} value={building}>{building}</option>
@@ -293,16 +305,18 @@ export function AnnouncementComposer({
 
               {scope === "unit" ? (
                 <div className={styles.unitList} role="group" aria-label="공지 대상 호실">
-                  {managedRooms.map((room) => (
-                    <label key={room.id} className={styles.unitChoice}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRoomIds.includes(room.id)}
-                        onChange={() => toggleRoom(room.id)}
-                      />
-                      {roomDisplayLabel(room)}
-                    </label>
-                  ))}
+                  {selectableRooms.length > 0
+                    ? selectableRooms.map((room) => (
+                        <label key={room.id} className={styles.unitChoice}>
+                          <input
+                            type="checkbox"
+                            checked={selectedRoomIds.includes(room.id)}
+                            onChange={() => toggleRoom(room.id)}
+                          />
+                          {roomDisplayLabel(room)}
+                        </label>
+                      ))
+                    : <span>선택 가능한 호실이 없습니다.</span>}
                 </div>
               ) : null}
 
