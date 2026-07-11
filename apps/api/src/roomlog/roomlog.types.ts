@@ -144,6 +144,7 @@ export type MessagingThread = {
   contextRef?: string;
   contextLabel?: string;
   lastMessage: string;
+  lastMessageSender?: MessagingMessageSender; // 목록 응답에도 포함 — 관리인 미응답 판정용 (presentThread에서 채움)
   unreadCount: number;
   pendingRequest: boolean;
   archivedNotice: boolean;
@@ -1189,6 +1190,22 @@ export type ManagerAgentCommandResult = {
     href: string;
   };
   requiresConfirmation?: boolean;
+};
+
+export type CopilotChatRequest = {
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  confirmActionId?: string;
+};
+
+export type CopilotChatResponse = {
+  mode: "openai" | "not_configured";
+  reply: string;
+  pendingAction?: {
+    id: string;
+    kind: "billing.send_dunning" | "messaging.send_reply";
+    summary: string;
+  };
+  receipts?: Array<{ kind: string; summary: string }>;
 };
 
 export type ManagerReplyIntent =

@@ -3525,12 +3525,19 @@ describe("RoomlogService", () => {
 
     const managerThreads = service.listManagerMessagingThreads(manager.userId);
     assert.equal(managerThreads.some((thread) => thread.id === started.id), true);
+    // 목록 응답의 마지막 발신자 — 대시보드 "미응답" 판정이 이 필드에 의존한다.
+    assert.equal(managerThreads.find((thread) => thread.id === started.id)?.lastMessageSender, "tenant");
 
     const managerReply = service.addManagerMessagingThreadMessage(manager.userId, started.id, {
       body: "오늘 점검하겠습니다."
     });
     const replyMessages = managerReply.messages ?? [];
     assert.equal(replyMessages[replyMessages.length - 1]?.sender, "manager");
+    assert.equal(
+      service.listManagerMessagingThreads(manager.userId).find((thread) => thread.id === started.id)
+        ?.lastMessageSender,
+      "manager"
+    );
     assert.equal(replyMessages[replyMessages.length - 1]?.body, "오늘 점검하겠습니다.");
 
     const tenantView = service.getTenantMessagingThread(tenant.userId, started.id);

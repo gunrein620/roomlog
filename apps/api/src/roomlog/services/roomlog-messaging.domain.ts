@@ -463,13 +463,17 @@ export class RoomlogMessagingDomain {
   }
 
   private presentThread(thread: MessagingThread, includeMessages = false): MessagingThread {
+    const threadMessages = this.store.messagingMessages
+      .filter((message) => message.threadId === thread.id)
+      .sort((a, b) => this.timeOf(a.createdAt) - this.timeOf(b.createdAt));
+
     return {
       ...thread,
+      // 목록 응답에는 messages가 빠지므로, "마지막 발신자"만 별도로 실어
+      // 관리인 미응답(마지막 발신자=세입자) 판정을 목록만으로 가능하게 한다.
+      lastMessageSender: threadMessages.at(-1)?.sender,
       messages: includeMessages
-        ? this.store.messagingMessages
-            .filter((message) => message.threadId === thread.id)
-            .sort((a, b) => this.timeOf(a.createdAt) - this.timeOf(b.createdAt))
-            .map((message) => ({ ...message, attachmentUrls: [...message.attachmentUrls] }))
+        ? threadMessages.map((message) => ({ ...message, attachmentUrls: [...message.attachmentUrls] }))
         : undefined
     };
   }
