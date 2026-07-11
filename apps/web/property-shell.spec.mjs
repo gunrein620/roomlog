@@ -401,6 +401,11 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposeFeatureSource, /lang: "vi", label: "Tiếng Việt"/);
   assert.match(managerMessagingComposeFeatureSource, /`\$\{label\} 번역`/);
   assert.match(managerMessagingComposeFeatureSource, /검수 완료/);
+  assert.doesNotMatch(managerMessagingComposeFeatureSource, />⌄</);
+  assert.match(
+    managerMessagingComposeFeatureSource,
+    /<div className=\{styles\.targetBox\}>\s*<span>\{target\.targetLabel\}<\/span>\s*<\/div>/,
+  );
   assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
   assert.match(managerMessagingApiSource, /updateAnnouncementDraft/);
   assert.match(managerMessagingApiSource, /translateAnnouncement/);

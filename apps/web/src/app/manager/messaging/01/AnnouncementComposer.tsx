@@ -272,7 +272,6 @@ export function AnnouncementComposer({
 
               <div className={styles.targetBox}>
                 <span>{target.targetLabel}</span>
-                <span aria-hidden="true">⌄</span>
               </div>
               <div className={styles.targetHint}>
                 공지 대상을 선택하세요.<br />

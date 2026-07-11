@@ -142,8 +142,6 @@
 .targetBox {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
   min-height: var(--touch-target);
   padding: var(--space-md) var(--space-lg);
   border: 1px solid var(--border);
