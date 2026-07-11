@@ -1146,10 +1146,62 @@ dd {
   line-height: var(--lh-body);
 }
 
+.manager-sidebar__link-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius);
+}
+
+.manager-sidebar__link-row > .manager-sidebar__link {
+  min-width: 0;
+  flex: 1;
+}
+
+.manager-sidebar__link-row.is-active {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-sidebar__link-row.is-active > .manager-sidebar__link.is-active {
+  background: transparent;
+}
+
+.manager-sidebar__ticket-toggle {
+  width: var(--touch-target);
+  min-height: var(--touch-target);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.manager-sidebar__ticket-toggle svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+  transition: transform 160ms ease;
+}
+
+.manager-sidebar__ticket-toggle[data-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.manager-sidebar__ticket-toggle:hover {
+  background: var(--surface-container-high);
+}
+
 .manager-sidebar__link.is-active,
 .manager-sidebar__child.is-active {
   background: var(--primary-container);
   color: var(--on-primary-container);
+}
+
+.manager-sidebar__link-row.is-active > .manager-sidebar__link.is-active {
+  background: transparent;
 }
 
 .manager-sidebar__children {
@@ -1182,6 +1234,11 @@ dd {
 .manager-sidebar__external svg {
   width: var(--space-lg);
   height: var(--space-lg);
+}
+
+.manager-sidebar__ticket-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .manager-sidebar__sr-only {
