@@ -95,7 +95,7 @@ export default async function Page() {
         /* ── 집우집주(宇宙) 코스믹 스킨 — M-HOME-00 한정 토큰 오버라이드.
            컴포넌트는 시맨틱 토큰만 소비하므로 여기서 팔레트만 갈아끼운다.
            검증 후 packages/ui/tokens.css(theme v1)로 승격 예정. ── */
-        .manager-shell:has(.manager-home-dashboard) {
+        .manager-workspace:has(.manager-home-dashboard) {
           /* surface: 새벽빛 라벤더 캔버스 — 보더 없이도 흰 카드가 읽히도록 캔버스를 한 톤 깊게 */
           --surface: #f1eef9;
           --surface-dim: #e8e3f3;
@@ -279,7 +279,7 @@ export default async function Page() {
 
         /* 시그니처 — 심야 우주 네비: 별무리(radial dot 레이어) + 궤도 링 + 성운 코너.
            전부 background 레이어라 DOM 추가·리플로 비용 없음. */
-        .manager-shell-nav:has(.manager-home-nav) {
+        .manager-workspace__sidebar:has(.manager-home-nav) {
           border-right-color: #2c2454 !important;
           background:
             radial-gradient(1.5px 1.5px at 18% 9%, rgba(255, 255, 255, 0.9), transparent 55%),
@@ -298,7 +298,7 @@ export default async function Page() {
             linear-gradient(172deg, #292153 0%, #1e1840 52%, #241d4e 100%) !important;
         }
 
-        .manager-shell-nav:has(.manager-home-nav) + .manager-shell-main {
+        .manager-workspace__sidebar:has(.manager-home-nav) + .manager-workspace__content {
           background: var(--surface);
         }
 

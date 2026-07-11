@@ -1,8 +1,7 @@
-import { ManagerShell } from "@roomlog/ui";
 import { MANAGER_VENDOR_MGMT_ROUTES } from "@/lib/vendor-mgmt-nav";
 import {
   LinkButton,
-  ManagerVendorMgmtNav,
+  ManagerVendorMgmtShell,
   NoticeCard,
   PageStack,
   ScreenHeader,
@@ -19,7 +18,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     : MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"];
 
   return (
-    <ManagerShell title="빈 상태 / 오류" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
+    <ManagerVendorMgmtShell title="빈 상태 / 오류">
       <PageStack>
         <ScreenHeader eyebrow="M-VEND-E0" title="빈 상태 / 로드 오류" />
 
@@ -40,6 +39,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </div>
         </Section>
       </PageStack>
-    </ManagerShell>
+    </ManagerVendorMgmtShell>
   );
 }

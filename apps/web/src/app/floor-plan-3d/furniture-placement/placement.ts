@@ -16,13 +16,14 @@ export function createFurnitureModel(item: FurnitureCatalogItem, position: [numb
 export function moveFurnitureDraftToPoint(
   furniture: PlacedFurniture,
   point: { x: number; z: number },
-  wallsData: WheretoputWall3D[] = []
+  wallsData: WheretoputWall3D[] = [],
+  options: { ignoreCrossing?: boolean } = {}
 ): PlacedFurniture {
   if (isFinalizedFurniture(furniture)) {
     return furniture;
   }
 
-  const constrainedPoint = constrainFurniturePointToWalls(furniture, point, wallsData);
+  const constrainedPoint = constrainFurniturePointToWalls(furniture, point, wallsData, options.ignoreCrossing === true);
 
   return {
     ...furniture,
@@ -39,6 +40,12 @@ export function rotateFurnitureQuarterTurn(furniture: PlacedFurniture): PlacedFu
 
 export function finalizeFurnitureDraft(furniture: PlacedFurniture, experienceMode: ExperienceMode): PlacedFurniture {
   return experienceMode === "landlord" ? createLandlordOptionFurniture(furniture) : createResidentDesignFurniture(furniture);
+}
+
+// 배치 완료된 가구를 다시 집어들 때 초안으로 되돌린다 — 확정 표시(source/locked)가
+// 남아 있으면 moveFurnitureDraftToPoint가 이동을 거부하므로 반드시 풀어줘야 한다.
+export function reopenFurnitureDraft(furniture: PlacedFurniture): PlacedFurniture {
+  return { ...furniture, editableBy: undefined, includedInLease: undefined, locked: undefined, source: undefined };
 }
 
 export function createLandlordOptionFurniture(furniture: PlacedFurniture): PlacedFurniture {
@@ -76,11 +83,15 @@ function isFinalizedFurniture(furniture: PlacedFurniture) {
 function constrainFurniturePointToWalls(
   furniture: PlacedFurniture,
   point: { x: number; z: number },
-  wallsData: WheretoputWall3D[]
+  wallsData: WheretoputWall3D[],
+  ignoreCrossing = false
 ) {
   const footprint = getFurnitureFootprint(furniture);
+  // 이동 경로가 벽을 가로지르는지 판정할 기준점 — 가구의 현재 위치.
+  // 첫 배치처럼 현재 위치가 의미 없는 기본값일 때는 경로 검사를 끈다(겹침 방지만 적용).
+  const fromPoint = ignoreCrossing ? undefined : { x: furniture.position[0], z: furniture.position[2] };
 
-  return wallsData.reduce((currentPoint, wall) => constrainPointAwayFromWall(currentPoint, footprint, wall), point);
+  return wallsData.reduce((currentPoint, wall) => constrainPointAwayFromWall(currentPoint, footprint, wall, fromPoint), point);
 }
 
 function getFurnitureFootprint(furniture: PlacedFurniture) {
@@ -100,7 +111,8 @@ function getFurnitureFootprint(furniture: PlacedFurniture) {
 function constrainPointAwayFromWall(
   point: { x: number; z: number },
   footprint: { halfX: number; halfZ: number },
-  wall: WheretoputWall3D
+  wall: WheretoputWall3D,
+  fromPoint?: { x: number; z: number }
 ) {
   const angle = wall.rotation[1] ?? 0;
   const cos = Math.cos(angle);
@@ -118,11 +130,27 @@ function constrainPointAwayFromWall(
   const intersectsWall = localZDistance < limitZ;
   const isNearWallFace = localZDistance <= limitZ + WALL_SNAP_TOLERANCE_M;
 
-  if (!isAlongWall || (!intersectsWall && !isNearWallFace)) {
+  // 목표점이 벽 너머(겹치지도 않는 반대편)면 기존 검사로는 그냥 통과됐다 —
+  // 현재 위치 → 목표점 선분이 이 벽을 가로지르면 통과로 보고 출발한 쪽 면에 세운다.
+  let crossedWall = false;
+  let fromLocalZ = 0;
+  if (fromPoint) {
+    const fromDx = fromPoint.x - wall.position[0];
+    const fromDz = fromPoint.z - wall.position[2];
+    const fromLocalX = fromDx * cos + fromDz * sin;
+    fromLocalZ = -fromDx * sin + fromDz * cos;
+    if (fromLocalZ !== localZ && Math.sign(fromLocalZ) !== Math.sign(localZ)) {
+      const crossT = fromLocalZ / (fromLocalZ - localZ);
+      const crossLocalX = fromLocalX + (localX - fromLocalX) * crossT;
+      crossedWall = Math.abs(crossLocalX) <= limitX;
+    }
+  }
+
+  if (!crossedWall && (!isAlongWall || (!intersectsWall && !isNearWallFace))) {
     return point;
   }
 
-  const side = localZ < 0 ? -1 : 1;
+  const side = crossedWall ? (fromLocalZ < 0 ? -1 : 1) : localZ < 0 ? -1 : 1;
   const correctedLocalZ = side * limitZ;
 
   return {

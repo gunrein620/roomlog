@@ -1,10 +1,10 @@
-import { Badge, ManagerShell } from "@roomlog/ui";
+import { Badge } from "@roomlog/ui";
 import { getVendorDetail } from "@/lib/vendor-mgmt-api";
 import { MANAGER_VENDOR_MGMT_ROUTES } from "@/lib/vendor-mgmt-nav";
 import {
   JobRows,
   LinkButton,
-  ManagerVendorMgmtNav,
+  ManagerVendorMgmtShell,
   MetaRow,
   NoticeCard,
   PageStack,
@@ -26,7 +26,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const { vendor, jobs, perf } = await getVendorDetail(id);
 
   return (
-    <ManagerShell title="업체 상세" context="관리 중인 집 · 업체" nav={<ManagerVendorMgmtNav />}>
+    <ManagerVendorMgmtShell title="업체 상세">
       <PageStack>
         <ScreenHeader
           eyebrow="M-VEND-01"
@@ -79,6 +79,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           연락처·주소는 관리인 전용입니다. ticket_id와 vendor_job_id를 분리하고 호실은 공개 비대칭이 생기지 않도록 마스킹합니다.
         </NoticeCard>
       </PageStack>
-    </ManagerShell>
+    </ManagerVendorMgmtShell>
   );
 }

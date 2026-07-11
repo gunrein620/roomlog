@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Badge, Card, Input, ManagerShell } from "@roomlog/ui";
+import { Badge, Card, Input } from "@roomlog/ui";
 import { MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { ManagerHomeShell } from "../_components";
 
 // D-table 2: risk_score 산식 미확정(수납률 "확인 중") → 임의 라벨 금지. 원시 지표만 노출.
 const buildings = [
@@ -12,7 +13,7 @@ const buildings = [
 
 export default function Page() {
   return (
-    <ManagerShell title="전체 건물 관리" context="관리 중인 집 · 전체 건물" nav={<HomeNav />}>
+    <ManagerHomeShell title="전체 건물 관리" context="관리 중인 집 · 전체 건물" demo>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-lg)", alignItems: "end" }}>
           <div>
@@ -53,7 +54,7 @@ export default function Page() {
           ))}
         </section>
       </div>
-    </ManagerShell>
+    </ManagerHomeShell>
   );
 }
 
@@ -70,10 +71,5 @@ function LinkButton({ href, children }: { href: string; children: React.ReactNod
   return <Link href={href} style={{ minHeight: "var(--touch-target)", padding: "0 var(--space-lg)", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-btn)", background: "var(--primary)", color: "var(--on-primary)", textDecoration: "none", fontWeight: 800 }}>{children}</Link>;
 }
 
-function HomeNav() {
-  return <nav aria-label="관리인 자산현황" style={{ display: "grid", gap: "var(--space-sm)" }}>{[["홈", MHOME_ROUTES["M-HOME-00"]], ["리포트", MHOME_ROUTES["M-HOME-02"]], ["설정", MHOME_ROUTES["M-HOME-06"]]].map(([label, href]) => <Link key={href} href={href} style={navLinkStyle}>{label}</Link>)}</nav>;
-}
-
 const linkReset = { color: "inherit", textDecoration: "none" } as const;
 const captionStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", fontWeight: 700 } as const;
-const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800, background: "var(--surface-container-lowest)", border: "1px solid var(--border)" } as const;

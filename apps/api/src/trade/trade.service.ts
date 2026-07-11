@@ -1,8 +1,9 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleDestroy, Optional } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
+import type { TradeStoreProjector } from "./trade-store.projector";
 
 /**
  * 거래(매물 직접등록 + 구매 문의 채팅) 도메인.
@@ -47,6 +48,7 @@ export type TradeListingInput = {
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
+  detailAddress?: string;
   description?: string;
   /** 업로드된 매물 사진 URL 배열(없으면 카드가 목업으로 폴백) */
   images?: string[];
@@ -159,6 +161,15 @@ function normalizeCoords(lat?: number, lng?: number): { lat?: number; lng?: numb
   return { lat: latNum, lng: lngNum };
 }
 
+function normalizeDetailAddress(value?: string): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || undefined;
+}
+
+function fullListingLocation(listing: { location: string; detailAddress?: string }): string {
+  return [listing.location, listing.detailAddress].filter(Boolean).join(" ");
+}
+
 function finiteTriple(value: unknown): [number, number, number] | null {
   if (!Array.isArray(value) || value.length < 3) return null;
   const nums = value.slice(0, 3).map((item) => Number(item));
@@ -240,6 +251,17 @@ function extensionForUpload(mimeType: string, originalName: string): string {
 }
 
 export const TRADE_STORE_FILE = "TRADE_STORE_FILE";
+export const TRADE_SERVICE_OPTIONS = "TRADE_SERVICE_OPTIONS";
+
+/**
+ * DB(RDS) 연동 옵션 — trade.module이 DATABASE_URL이 있을 때 채워 주입한다.
+ * 없으면(로컬 dev/테스트) 매물은 JSON 스토어로만 동작한다(그레이스풀 디그레이드).
+ */
+export type TradeServiceOptions = {
+  storeProjector?: TradeStoreProjector;
+  /** 부팅 시 DB에서 미리 로드한 매물(비동기 로드는 모듈 팩토리가 처리). */
+  initialListings?: TradeListing[];
+};
 
 function defaultStoreFilePath(): string | undefined {
   const explicit = process.env.ROOMLOG_TRADE_FILE?.trim();
@@ -250,9 +272,14 @@ function defaultStoreFilePath(): string | undefined {
 }
 
 @Injectable()
-export class TradeService {
+export class TradeService implements OnModuleDestroy {
   private store: TradeStore = { listings: [], threads: [], contracts: [] };
   private readonly filePath: string | undefined;
+  // DATABASE_URL이 있을 때만 주입됨 — 매물(listing)을 RDS로 write-through 프로젝션한다.
+  private readonly storeProjector?: TradeStoreProjector;
+  // 프로젝션은 순차 큐로 직렬화해 동시 트랜잭션 경합을 피한다(roomlog 패턴과 동일).
+  private pendingProjection: Promise<unknown> = Promise.resolve();
+  private projectionError?: unknown;
   // main.ts와 동일한 기본값 — S3_UPLOADS_ENABLED가 켜지면 자동으로 S3 어댑터로 전환된다.
   private readonly storageAdapter: FileStorageAdapter = createFileStorageAdapter(
     process.env,
@@ -260,9 +287,51 @@ export class TradeService {
     process.env.PUBLIC_UPLOAD_BASE_URL || "/api/files"
   );
 
-  constructor(@Optional() @Inject(TRADE_STORE_FILE) filePath?: string) {
+  constructor(
+    @Optional() @Inject(TRADE_STORE_FILE) filePath?: string,
+    @Optional() @Inject(TRADE_SERVICE_OPTIONS) options?: TradeServiceOptions
+  ) {
     this.filePath = filePath ?? defaultStoreFilePath();
-    this.load();
+    this.storeProjector = options?.storeProjector;
+    this.load(); // JSON: 스레드/계약 + (DB 없을 때의) 매물 폴백
+    this.hydrateListingsFromDb(options?.initialListings);
+  }
+
+  /**
+   * DB가 매물의 진실원천 — 부팅 시 DB에서 로드한 매물로 JSON 매물을 대체한다.
+   * DB가 비어 있고 JSON에 기존 매물이 있으면 일회성 백필(DB로 이관)해 기존 게시물 유실을 막는다.
+   */
+  private hydrateListingsFromDb(initialListings?: TradeListing[]) {
+    if (!this.storeProjector) return;
+    // undefined = DB 로드 실패(미도달) — JSON 상태를 유지하고 DB는 건드리지 않는다(기존 DB 매물 보호).
+    if (initialListings === undefined) return;
+    if (initialListings.length > 0) {
+      this.store.listings = initialListings; // DB가 매물의 진실원천
+      return;
+    }
+    // DB에 도달했고 비어 있음 — 기존 JSON 매물이 있으면 일회성 백필(유실 방지).
+    if (this.store.listings.length > 0) this.projectListings();
+  }
+
+  async onModuleDestroy() {
+    await this.pendingProjection.catch(() => undefined);
+    await this.storeProjector?.disconnect?.();
+  }
+
+  /** 매물 스냅샷을 DB로 프로젝션(순차 큐). DB 미연동이면 no-op. */
+  private projectListings() {
+    if (!this.storeProjector) return;
+    const snapshot = this.store.listings.map((listing) => ({ ...listing }));
+    this.pendingProjection = this.pendingProjection
+      .then(() => this.storeProjector?.persist(snapshot))
+      .then(
+        () => {
+          this.projectionError = undefined;
+        },
+        (error) => {
+          this.projectionError = error; // 실패해도 메모리/JSON 상태로 계속 동작
+        }
+      );
   }
 
   private load() {
@@ -274,6 +343,9 @@ export class TradeService {
         parsed.listings.forEach((listing) => {
           listing.images = normalizeImages(listing.images);
           listing.floorPlan = normalizeFloorPlan(listing.floorPlan);
+          const detailAddress = normalizeDetailAddress(listing.detailAddress);
+          if (detailAddress) listing.detailAddress = detailAddress;
+          else delete listing.detailAddress;
           if (listing.status !== "계약완료") listing.status = "노출중";
         });
         parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
@@ -337,8 +409,13 @@ export class TradeService {
     return [...this.store.listings].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  listPublicListings(): TradeListing[] {
+    return this.listListings().filter((listing) => listing.status === "노출중");
+  }
+
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
+    const detailAddress = normalizeDetailAddress(input.detailAddress);
     const listing: TradeListing = {
       id: randomUUID().slice(0, 8),
       ownerId: owner.id,
@@ -349,6 +426,7 @@ export class TradeService {
       depositManwon: Number(input.depositManwon) || 0,
       monthlyRentManwon: Number(input.monthlyRentManwon) || 0,
       location: input.location?.trim() || "위치 미입력",
+      ...(detailAddress ? { detailAddress } : {}),
       description: input.description?.trim() || "",
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
@@ -358,6 +436,16 @@ export class TradeService {
     };
     this.store.listings.unshift(listing);
     this.persist();
+    this.projectListings();
+    return listing;
+  }
+
+  markListingContracted(listingId: string): TradeListing {
+    const listing = this.store.listings.find((item) => item.id === listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    listing.status = "계약완료";
+    this.persist();
+    this.projectListings();
     return listing;
   }
 
@@ -381,6 +469,11 @@ export class TradeService {
     if (input.depositManwon !== undefined) listing.depositManwon = Number(input.depositManwon) || 0;
     if (input.monthlyRentManwon !== undefined) listing.monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
     if (typeof input.location === "string" && input.location.trim()) listing.location = input.location.trim();
+    if (typeof input.detailAddress === "string") {
+      const detailAddress = normalizeDetailAddress(input.detailAddress);
+      if (detailAddress) listing.detailAddress = detailAddress;
+      else delete listing.detailAddress;
+    }
     if (typeof input.description === "string") listing.description = input.description.trim();
     if (Array.isArray(input.images)) listing.images = normalizeImages(input.images);
     if (input.lat !== undefined || input.lng !== undefined) {
@@ -392,6 +485,7 @@ export class TradeService {
     if (input.floorPlan !== undefined) listing.floorPlan = normalizeFloorPlan(input.floorPlan);
 
     this.persist();
+    this.projectListings();
     return listing;
   }
 
@@ -400,6 +494,7 @@ export class TradeService {
     this.ownedListing(owner.id, listingId);
     this.store.listings = this.store.listings.filter((item) => item.id !== listingId);
     this.persist();
+    this.projectListings();
     return { ok: true };
   }
 
@@ -556,7 +651,7 @@ export class TradeService {
       tradeType: listing.tradeType,
       depositManwon: listing.depositManwon,
       monthlyRentManwon: listing.monthlyRentManwon,
-      location: listing.location,
+      location: fullListingLocation(listing),
       proposedAt: new Date().toISOString()
     };
     this.store.contracts.unshift(contract);
@@ -577,8 +672,7 @@ export class TradeService {
     contract.respondedAt = new Date().toISOString();
 
     if (accept) {
-      const listing = this.store.listings.find((item) => item.id === contract.listingId);
-      if (listing) listing.status = "계약완료";
+      this.markListingContracted(contract.listingId);
       this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
     } else {
       this.pushMessage(thread, user, "계약 제안을 거절했어요.");

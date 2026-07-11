@@ -105,11 +105,6 @@ export default function UnifiedLoginPage() {
     setState({ kind: "link-required", intent: destination.intent, viewer });
   };
 
-  // 개발용 역할 버튼: /login에는 HomePage 미리보기 상태가 없으므로 홈으로 이어준다.
-  const openDevRole = (role: AppRole) => {
-    router.push(role === "seeker" ? "/" : `/?role=${role}&tab=mypage`);
-  };
-
   const logoutAndRetry = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setState({ kind: "login-form" });
@@ -143,7 +138,7 @@ export default function UnifiedLoginPage() {
             </span>
           ) : null}
           <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap", justifyContent: "center" }}>
-            {/* landlord는 보호된 마이페이지(/?role=landlord)가 아니라 비보호 등록 시작(flow=listing)으로 —
+            {/* landlord는 보호된 매물등록(/sell)이 아니라 비보호 등록 시작(flow=listing)으로 —
                 capability 없는 계정이 CTA를 눌러 다시 /login으로 돌아오는 루프 방지 (QA 2) */}
             <a
               href={state.intent === "landlord" ? "/?flow=listing" : "/"}
@@ -182,7 +177,6 @@ export default function UnifiedLoginPage() {
   return (
     <WoozuLoginScreen
       mode="login"
-      setActiveRole={openDevRole}
       onAuthenticated={onAuthenticated}
       onGoHome={() => router.push("/")}
       googleRedirectTo={redirectTo ?? defaultRedirectForIntent(intent)}

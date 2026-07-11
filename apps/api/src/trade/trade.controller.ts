@@ -28,6 +28,11 @@ export class TradeController {
     });
   }
 
+  @Get("listings/public")
+  listPublicListings() {
+    return this.tradeService.listPublicListings();
+  }
+
   @Get("listings")
   listListings() {
     return this.tradeService.listListings();
@@ -40,10 +45,11 @@ export class TradeController {
   ) {
     const user = this.user(authorization);
     const listing = this.tradeService.createListing(user, body);
+    const listingLocation = [listing.location, listing.detailAddress].filter(Boolean).join(" ");
     // 첫 매물 등록이 곧 임대인 관계 생성 — 마이페이지 임대인 가드("관리 중인 집 연결 필요")가 풀린다.
     this.roomlogService.ensureLandlordRoomFromListing(user.id, {
       title: listing.title,
-      location: listing.location
+      location: listingLocation
     });
     return listing;
   }

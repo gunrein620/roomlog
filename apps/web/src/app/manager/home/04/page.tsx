@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Badge, Card, ManagerShell } from "@roomlog/ui";
+import { Badge, Card } from "@roomlog/ui";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { ManagerHomeShell } from "../_components";
 
 const rooms = [
   { room: "201", state: "긴급민원", issue: "누수 확인", person: "계약자 표시", tone: "정밀 검토" },
@@ -13,7 +14,7 @@ const rooms = [
 
 export default function Page() {
   return (
-    <ManagerShell title="건물 상세" context="관리 중인 집 · 건물 상세" nav={<HomeNav />}>
+    <ManagerHomeShell title="건물 상세" context="관리 중인 집 · 건물 상세" demo>
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-lg)", alignItems: "flex-start" }}>
           <div>
@@ -67,7 +68,7 @@ export default function Page() {
           <ActionCard href={MHOME_ROUTES["M-HOME-02"]} title="리포트" body="기간별 지표와 차트 보기" />
         </div>
       </div>
-    </ManagerShell>
+    </ManagerHomeShell>
   );
 }
 
@@ -79,10 +80,5 @@ function LinkButton({ href, children }: { href: string; children: React.ReactNod
   return <Link href={href} style={{ minHeight: "var(--touch-target)", padding: "0 var(--space-lg)", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-btn)", background: "var(--primary)", color: "var(--on-primary)", textDecoration: "none", fontWeight: 800 }}>{children}</Link>;
 }
 
-function HomeNav() {
-  return <nav aria-label="관리인 자산현황" style={{ display: "grid", gap: "var(--space-sm)" }}>{[["전체 건물", MHOME_ROUTES["M-HOME-03"]], ["등록", MHOME_ROUTES["M-HOME-05"]], ["홈", MHOME_ROUTES["M-HOME-00"]]].map(([label, href]) => <Link key={href} href={href} style={navLinkStyle}>{label}</Link>)}</nav>;
-}
-
 const linkReset = { color: "inherit", textDecoration: "none" } as const;
 const captionStyle = { color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", fontWeight: 700 } as const;
-const navLinkStyle = { minHeight: 42, display: "flex", alignItems: "center", padding: "0 var(--space-md)", borderRadius: "var(--radius)", color: "var(--on-surface)", textDecoration: "none", fontWeight: 800, background: "var(--surface-container-lowest)", border: "1px solid var(--border)" } as const;

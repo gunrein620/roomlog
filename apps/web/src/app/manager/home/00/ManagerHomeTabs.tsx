@@ -14,6 +14,7 @@ export interface ManagerListingRow {
   id: string;
   title: string;
   location: string;
+  detailAddress?: string;
   priceLabel: string;
   photoCount: number;
   has3D: boolean;
@@ -105,15 +106,17 @@ export default function ManagerHomeTabs({
           {listings.length === 0 ? (
             <EmptyState
               title="아직 올려놓은 매물이 없어요"
-              body="마이페이지에서 매물을 등록하면 계약 전 매물이 여기에 모입니다."
-              action={<Link href="/?tab=mypage" style={actionLinkStyle}>매물 등록하러 가기</Link>}
+              body="매물등록에서 매물을 올리면 계약 전 매물이 여기에 모입니다."
+              action={<Link href="/sell" style={actionLinkStyle}>매물 등록하러 가기</Link>}
             />
           ) : (
             listings.map((listing) => (
               <div key={listing.id} style={rowStyle}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{listing.title}</div>
-                  <div style={rowCaptionStyle}>{listing.location} · 사진 {listing.photoCount}장{listing.has3D ? " · 3D 연결" : ""}</div>
+                  <div style={rowCaptionStyle}>
+                    {listing.location} · 세부주소 {listing.detailAddress?.trim() || "없음"} · 사진 {listing.photoCount}장{listing.has3D ? " · 3D 연결" : ""}
+                  </div>
                 </div>
                 <strong style={{ whiteSpace: "nowrap" }}>{listing.priceLabel}</strong>
                 <span style={statusChipStyle("#e8f7ee", "#136c34")}>노출중 · 미계약</span>

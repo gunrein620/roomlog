@@ -9,6 +9,7 @@ node_modules/
 next-env.d.ts
 dist/
 coverage/
+*.tsbuildinfo
 # 런타임 업로드 출력 디렉토리만 무시 — 전역 uploads/는 소스 라우트(app/api/trade/uploads)까지 잡아먹는다.
 /uploads/
 apps/api/uploads/

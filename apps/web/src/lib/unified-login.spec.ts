@@ -16,8 +16,8 @@ describe("unified login path", () => {
     assert.equal(unifiedLoginPath(), "/login");
     assert.equal(unifiedLoginPath("tenant"), "/login?intent=tenant");
     assert.equal(
-      unifiedLoginPath("landlord", "/?role=landlord&tab=mypage"),
-      "/login?intent=landlord&redirectTo=%2F%3Frole%3Dlandlord%26tab%3Dmypage"
+      unifiedLoginPath("landlord", "/sell"),
+      "/login?intent=landlord&redirectTo=%2Fsell"
     );
   });
 
@@ -51,8 +51,8 @@ describe("legacy login compatibility redirects", () => {
 
   it("preserves a safe redirectTo and error message", () => {
     assert.equal(
-      legacyLoginRedirectTarget("tenant", { redirectTo: "/?role=tenant&tab=mypage" }),
-      "/login?intent=tenant&redirectTo=%2F%3Frole%3Dtenant%26tab%3Dmypage"
+      legacyLoginRedirectTarget("tenant", { redirectTo: "/living" }),
+      "/login?intent=tenant&redirectTo=%2Fliving"
     );
     assert.equal(
       legacyLoginRedirectTarget("landlord", { redirectTo: "https://evil.test", error: "google_state" }),

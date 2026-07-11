@@ -151,7 +151,6 @@ export type Listing = {
   contactPhone: string;
   responseMinutes: number;
   verified: boolean;
-  reviewStatus: string;
   safetyScore: number;
 };
 

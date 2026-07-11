@@ -9,6 +9,7 @@ import type {
 } from "@roomlog/types";
 import { VENDOR_PERF_MIN_N } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
 import { MANAGER_VENDOR_MGMT_ROUTES } from "@/lib/vendor-mgmt-nav";
 import { stripScreenId } from "@/lib/screen-id";
 
@@ -49,6 +50,16 @@ export const grid3Style: CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "var(--space-md)",
 };
+
+export function ManagerVendorMgmtShell({
+  title,
+  children,
+}: {
+  title: ReactNode;
+  children: ReactNode;
+}) {
+  return <ManagerAppShell title={title} context="관리 중인 집 · 업체">{children}</ManagerAppShell>;
+}
 
 export function PageStack({ children }: { children: ReactNode }) {
   return <div style={{ display: "grid", gap: "var(--space-lg)" }}>{children}</div>;
@@ -132,41 +143,6 @@ export function LinkButton({
     >
       {children}
     </Link>
-  );
-}
-
-export function ManagerVendorMgmtNav() {
-  const items = [
-    ["주소록", MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"]],
-    ["상세", `${MANAGER_VENDOR_MGMT_ROUTES["M-VEND-01"]}?id=vnd_0001`],
-    ["성과", `${MANAGER_VENDOR_MGMT_ROUTES["M-VEND-02"]}?id=vnd_0001`],
-    ["등록/편집", MANAGER_VENDOR_MGMT_ROUTES["M-VEND-03"]],
-  ] as const;
-
-  return (
-    <nav aria-label="관리인 업체관리 화면" style={{ display: "grid", gap: "var(--space-sm)" }}>
-      {items.map(([label, href]) => (
-        <Link
-          key={href}
-          href={href}
-          style={{
-            minHeight: 40,
-            display: "flex",
-            alignItems: "center",
-            padding: "0 var(--space-md)",
-            borderRadius: "var(--radius)",
-            color: "var(--on-surface)",
-            textDecoration: "none",
-            fontSize: "var(--fs-caption)",
-            fontWeight: 800,
-            background: "var(--surface-container-lowest)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          {label}
-        </Link>
-      ))}
-    </nav>
   );
 }
 
