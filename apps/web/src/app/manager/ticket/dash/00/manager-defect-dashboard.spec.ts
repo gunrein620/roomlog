@@ -9,6 +9,10 @@ const componentPath = join(
   root,
   "src/app/manager/ticket/dash/00/ManagerDefectDashboard.tsx",
 );
+const complaintDashboardPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/ComplaintDashboard.tsx",
+);
 const pagePath = join(root, "src/app/manager/ticket/dash/00/page.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
@@ -18,8 +22,10 @@ const sha256 = (source: string) => createHash("sha256").update(source).digest("h
 
 test("manager defect dashboard matches the approved body with the ticket sidebar tabs", () => {
   assert.equal(existsSync(componentPath), true, componentPath);
+  assert.equal(existsSync(complaintDashboardPath), true, complaintDashboardPath);
 
   const componentSource = readFileSync(componentPath, "utf8");
+  const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
   const pageSource = readFileSync(pagePath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
@@ -80,6 +86,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
   assert.match(pageSource, /searchParams/);
   assert.match(pageSource, /type === "complaint" \|\| type === "defect"/);
+  assert.match(pageSource, /initialTemplate === "all"/);
+  assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
   assert.match(pageSource, /\.\.\.MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(componentSource, /initialTemplate/);
@@ -89,6 +97,11 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(cssSource, /\/\* manager-defect-dashboard:start \*\//);
   assert.match(cssSource, /button:disabled/);
   assert.match(cssSource, /manager-defect-dashboard__more-menu-list/);
+  assert.match(complaintDashboardSource, /보고서 다운로드/);
+  assert.match(complaintDashboardSource, /최근 민원 접수 내역/);
+  assert.match(complaintDashboardSource, /aria-label="이전 달"/);
+  assert.match(complaintDashboardSource, /\?type=complaint/);
+  assert.match(cssSource, /\/\* manager-complaint-dashboard:start \*\//);
 
   const dashboardCss = cssSource.match(
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,

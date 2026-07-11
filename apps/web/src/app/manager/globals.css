@@ -1823,3 +1823,419 @@ dd {
   }
 }
 /* manager-defect-dashboard:end */
+
+/* manager-complaint-dashboard:start */
+.manager-complaint-dashboard {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.manager-complaint-dashboard__header,
+.manager-complaint-dashboard__header-actions,
+.manager-complaint-dashboard__period,
+.manager-complaint-dashboard__panel-heading {
+  display: flex;
+  align-items: center;
+}
+
+.manager-complaint-dashboard__header,
+.manager-complaint-dashboard__panel-heading {
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.manager-complaint-dashboard__header h2,
+.manager-complaint-dashboard__panel-heading h3 {
+  margin: 0;
+  color: var(--on-surface);
+}
+
+.manager-complaint-dashboard__header h2 {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-complaint-dashboard__header p {
+  margin: var(--space-xs) 0 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-complaint-dashboard__header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.manager-complaint-dashboard__period,
+.manager-complaint-dashboard__download {
+  min-height: var(--touch-target);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__period {
+  gap: var(--space-xs);
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--border);
+  color: var(--on-surface-variant);
+  background: var(--surface-container-lowest);
+}
+
+.manager-complaint-dashboard__period svg,
+.manager-complaint-dashboard__download svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-complaint-dashboard__period button {
+  width: calc(var(--touch-target) - var(--space-md));
+  height: calc(var(--touch-target) - var(--space-md));
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.manager-complaint-dashboard__period button:hover,
+.manager-complaint-dashboard__period button:focus-visible {
+  background: var(--surface-container-high);
+}
+
+.manager-complaint-dashboard__download {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
+  border: 0;
+  color: var(--on-primary);
+  background: var(--primary);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.manager-complaint-dashboard__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+.manager-complaint-dashboard__metric,
+.manager-complaint-dashboard__panel,
+.manager-complaint-dashboard__recent {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-complaint-dashboard__metric {
+  min-height: calc(var(--touch-target) * 3);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: start;
+  column-gap: var(--space-sm);
+  padding: var(--space-xl);
+}
+
+.manager-complaint-dashboard__metric-icon {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-complaint-dashboard__metric[data-metric="waiting"] .manager-complaint-dashboard__metric-icon {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-complaint-dashboard__metric[data-metric="completed"] .manager-complaint-dashboard__metric-icon {
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-complaint-dashboard__metric-icon svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-complaint-dashboard__metric-label,
+.manager-complaint-dashboard__metric-change {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-complaint-dashboard__metric strong {
+  color: var(--on-surface);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-title);
+}
+
+.manager-complaint-dashboard__metric-change {
+  grid-column: 1 / -1;
+  margin-top: var(--space-md);
+  color: var(--success);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__metric-change[data-positive="false"] {
+  color: var(--error);
+}
+
+.manager-complaint-dashboard__chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: var(--space-lg);
+}
+
+.manager-complaint-dashboard__panel {
+  min-height: calc(var(--touch-target) * 7);
+  padding: var(--space-xl);
+}
+
+.manager-complaint-dashboard__panel-heading h3,
+.manager-complaint-dashboard__recent h3 {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__panel-heading > span {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-complaint-dashboard__trend {
+  height: calc(var(--touch-target) * 4);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+}
+
+.manager-complaint-dashboard__trend-item {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  gap: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-complaint-dashboard__trend-count {
+  color: var(--on-surface);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__trend-bar {
+  width: min(100%, calc(var(--touch-target) - var(--space-xl)));
+  min-height: var(--space-xs);
+  align-self: end;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--primary-container);
+}
+
+.manager-complaint-dashboard__trend-bar[data-current="true"] {
+  background: var(--primary);
+}
+
+.manager-complaint-dashboard__distribution {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-xl);
+  margin-top: var(--space-xl);
+}
+
+.manager-complaint-dashboard__donut {
+  width: calc(var(--touch-target) * 3);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+}
+
+.manager-complaint-dashboard__donut > div {
+  width: calc(100% - var(--space-xxl));
+  aspect-ratio: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border-radius: var(--radius-full);
+  background: var(--surface-container-lowest);
+}
+
+.manager-complaint-dashboard__donut strong {
+  color: var(--on-surface);
+  font-size: var(--fs-subtitle);
+}
+
+.manager-complaint-dashboard__donut span,
+.manager-complaint-dashboard__legend {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-complaint-dashboard__legend {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.manager-complaint-dashboard__legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.manager-complaint-dashboard__legend li > span {
+  width: var(--space-sm);
+  height: var(--space-sm);
+  flex: none;
+  border-radius: var(--radius-full);
+}
+
+.manager-complaint-dashboard__recent {
+  overflow: hidden;
+}
+
+.manager-complaint-dashboard__recent .manager-complaint-dashboard__panel-heading {
+  padding: var(--space-xl);
+}
+
+.manager-complaint-dashboard__panel-heading a {
+  color: var(--primary);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+  text-decoration: none;
+}
+
+.manager-complaint-dashboard__recent-scroll {
+  overflow-x: auto;
+}
+
+.manager-complaint-dashboard__recent table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.manager-complaint-dashboard__recent th,
+.manager-complaint-dashboard__recent td {
+  padding: var(--space-lg) var(--space-xl);
+  border-top: 1px solid var(--border);
+  color: var(--on-surface);
+  text-align: left;
+  font-size: var(--fs-caption);
+}
+
+.manager-complaint-dashboard__recent th {
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__category,
+.manager-complaint-dashboard__status {
+  display: inline-flex;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-full);
+  font-weight: var(--fw-subtitle);
+  white-space: nowrap;
+}
+
+.manager-complaint-dashboard__category {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-complaint-dashboard__category[data-category="noise"] {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-complaint-dashboard__category[data-category="billing"],
+.manager-complaint-dashboard__category[data-category="other"] {
+  color: var(--chip-on);
+  background: var(--chip-bg);
+}
+
+.manager-complaint-dashboard__status[data-status="완료"] {
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-complaint-dashboard__status[data-status="대기"] {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-complaint-dashboard__status[data-status="취소"] {
+  color: var(--on-error-container);
+  background: var(--error-container);
+}
+
+.manager-complaint-dashboard__empty {
+  height: calc(var(--touch-target) * 2);
+  color: var(--on-surface-variant) !important;
+  text-align: center !important;
+}
+
+.manager-complaint-dashboard__period button:focus-visible,
+.manager-complaint-dashboard__download:focus-visible,
+.manager-complaint-dashboard__panel-heading a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 1060px) {
+  .manager-complaint-dashboard__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manager-complaint-dashboard__chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .manager-complaint-dashboard__header,
+  .manager-complaint-dashboard__header-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .manager-complaint-dashboard__header-actions {
+    justify-content: stretch;
+  }
+
+  .manager-complaint-dashboard__download {
+    justify-content: center;
+  }
+
+  .manager-complaint-dashboard__metrics,
+  .manager-complaint-dashboard__legend {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-complaint-dashboard__panel,
+  .manager-complaint-dashboard__metric,
+  .manager-complaint-dashboard__recent .manager-complaint-dashboard__panel-heading {
+    padding: var(--space-lg);
+  }
+}
+/* manager-complaint-dashboard:end */

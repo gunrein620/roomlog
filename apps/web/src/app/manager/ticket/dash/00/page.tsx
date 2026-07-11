@@ -1,4 +1,5 @@
 import { getManagerRepair, listManagerTickets } from "@/lib/ticket-manager-api";
+import { ComplaintDashboard } from "./ComplaintDashboard";
 import { ManagerDefectDashboard } from "./ManagerDefectDashboard";
 import { MANAGER_DEFECT_DASHBOARD_DEMO_ROWS } from "./manager-defect-dashboard-demo";
 
@@ -14,6 +15,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     repair: repairs[index],
   }));
   const rows = [...liveRows, ...MANAGER_DEFECT_DASHBOARD_DEMO_ROWS];
+
+  if (initialTemplate === "all") return <ComplaintDashboard rows={rows} />;
 
   return <ManagerDefectDashboard rows={rows} initialTemplate={initialTemplate} key={initialTemplate} />;
 }
