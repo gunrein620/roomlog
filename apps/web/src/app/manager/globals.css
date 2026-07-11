@@ -1941,6 +1941,10 @@ dd {
   background: var(--surface-container-lowest);
 }
 
+.manager-complaint-dashboard__calendar-anchor {
+  position: relative;
+}
+
 .manager-complaint-dashboard__period svg,
 .manager-complaint-dashboard__download svg {
   width: var(--space-xl);
@@ -1962,6 +1966,89 @@ dd {
 .manager-complaint-dashboard__period button:hover,
 .manager-complaint-dashboard__period button:focus-visible {
   background: var(--surface-container-high);
+}
+
+.manager-complaint-dashboard__calendar-popover {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + var(--space-sm));
+  right: 0;
+  width: calc(var(--touch-target) * 6);
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-complaint-dashboard__calendar-header,
+.manager-complaint-dashboard__calendar-weekdays,
+.manager-complaint-dashboard__calendar-days {
+  display: grid;
+  align-items: center;
+}
+
+.manager-complaint-dashboard__calendar-header {
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  text-align: center;
+}
+
+.manager-complaint-dashboard__calendar-header button,
+.manager-complaint-dashboard__calendar-days button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.manager-complaint-dashboard__calendar-header button {
+  width: calc(var(--touch-target) - var(--space-md));
+  height: calc(var(--touch-target) - var(--space-md));
+}
+
+.manager-complaint-dashboard__calendar-weekdays,
+.manager-complaint-dashboard__calendar-days {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.manager-complaint-dashboard__calendar-weekdays span {
+  padding: var(--space-xs);
+  color: var(--on-surface-variant);
+  text-align: center;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__calendar-days button {
+  min-height: calc(var(--touch-target) - var(--space-sm));
+  font: inherit;
+}
+
+.manager-complaint-dashboard__calendar-days button[data-outside="true"] {
+  color: var(--outline);
+}
+
+.manager-complaint-dashboard__calendar-header button:hover,
+.manager-complaint-dashboard__calendar-days button:hover {
+  background: var(--surface-container-high);
+}
+
+.manager-complaint-dashboard__calendar-days button[aria-pressed="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__calendar-header button:focus-visible,
+.manager-complaint-dashboard__calendar-days button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .manager-complaint-dashboard__download {

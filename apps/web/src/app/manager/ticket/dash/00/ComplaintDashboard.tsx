@@ -11,8 +11,9 @@ import {
   Hourglass,
   ListChecks,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  buildComplaintCalendar,
   buildComplaintDashboard,
   complaintCategory,
   complaintStatusLabel,
@@ -40,8 +41,21 @@ function moveMonth(month: Date, amount: number) {
   return new Date(month.getFullYear(), month.getMonth() + amount, 1, 12);
 }
 
-function downloadCsv(rows: readonly DefectDashboardRow[], month: Date, monthLabel: string) {
-  const content = `\uFEFF${serializeComplaintDashboardCsv(rows, month)}`;
+function calendarMonthLabel(month: Date) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "long",
+    timeZone: "Asia/Seoul",
+  }).format(month);
+}
+
+function downloadCsv(
+  rows: readonly DefectDashboardRow[],
+  month: Date,
+  selectedDate: Date | null,
+  monthLabel: string,
+) {
+  const content = `\uFEFF${serializeComplaintDashboardCsv(rows, month, selectedDate)}`;
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
@@ -52,7 +66,15 @@ function downloadCsv(rows: readonly DefectDashboardRow[], month: Date, monthLabe
 
 export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow[] }) {
   const [month, setMonth] = useState(() => latestComplaintMonth(rows));
-  const dashboard = useMemo(() => buildComplaintDashboard(rows, month), [rows, month]);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => latestComplaintMonth(rows));
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const dashboard = useMemo(
+    () => buildComplaintDashboard(rows, month, selectedDate),
+    [rows, month, selectedDate],
+  );
+  const calendarDays = useMemo(() => buildComplaintCalendar(calendarMonth), [calendarMonth]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
   const donutSegments = dashboard.categories.reduce<string[]>((segments, category, index) => {
     const start = dashboard.categories.slice(0, index).reduce((total, item) => total + item.percent, 0);
@@ -60,6 +82,33 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     segments.push(`${CATEGORY_COLORS[index]} ${start}% ${end}%`);
     return segments;
   }, []).join(", ");
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!calendarRef.current?.contains(event.target as Node)) setCalendarOpen(false);
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setCalendarOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [calendarOpen]);
+
+  function changeMonth(amount: number) {
+    const nextMonth = moveMonth(month, amount);
+    setMonth(nextMonth);
+    setCalendarMonth(nextMonth);
+    setSelectedDate(null);
+    setCalendarOpen(false);
+  }
 
   return (
     <section className="manager-complaint-dashboard" aria-labelledby="manager-complaint-title">
@@ -69,20 +118,86 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
           <p>민원 현황을 한눈에 확인하고 관리하세요.</p>
         </div>
         <div className="manager-complaint-dashboard__header-actions">
-          <div className="manager-complaint-dashboard__period" aria-label="조회 기간">
-            <CalendarDays aria-hidden="true" />
-            <button type="button" aria-label="이전 달" onClick={() => setMonth((current) => moveMonth(current, -1))}>
-              <ChevronLeft aria-hidden="true" />
-            </button>
-            <span>{dashboard.monthLabel}</span>
-            <button type="button" aria-label="다음 달" onClick={() => setMonth((current) => moveMonth(current, 1))}>
-              <ChevronRight aria-hidden="true" />
-            </button>
+          <div className="manager-complaint-dashboard__calendar-anchor" ref={calendarRef}>
+            <div className="manager-complaint-dashboard__period" aria-label="조회 기간">
+              <button
+                type="button"
+                aria-label="조회 날짜 선택"
+                aria-expanded={calendarOpen}
+                onClick={() => {
+                  setCalendarMonth(month);
+                  setCalendarOpen((open) => !open);
+                }}
+              >
+                <CalendarDays aria-hidden="true" />
+              </button>
+              <button type="button" aria-label="이전 달" onClick={() => changeMonth(-1)}>
+                <ChevronLeft aria-hidden="true" />
+              </button>
+              <span>{dashboard.monthLabel}</span>
+              <button type="button" aria-label="다음 달" onClick={() => changeMonth(1)}>
+                <ChevronRight aria-hidden="true" />
+              </button>
+            </div>
+            {calendarOpen ? (
+              <div
+                className="manager-complaint-dashboard__calendar-popover"
+                role="dialog"
+                aria-label="조회 날짜 달력"
+              >
+                <div className="manager-complaint-dashboard__calendar-header">
+                  <button
+                    type="button"
+                    aria-label="달력 이전 달"
+                    onClick={() => setCalendarMonth((current) => moveMonth(current, -1))}
+                  >
+                    <ChevronLeft aria-hidden="true" />
+                  </button>
+                  <strong>{calendarMonthLabel(calendarMonth)}</strong>
+                  <button
+                    type="button"
+                    aria-label="달력 다음 달"
+                    onClick={() => setCalendarMonth((current) => moveMonth(current, 1))}
+                  >
+                    <ChevronRight aria-hidden="true" />
+                  </button>
+                </div>
+                <div className="manager-complaint-dashboard__calendar-weekdays" aria-hidden="true">
+                  {(["일", "월", "화", "수", "목", "금", "토"] as const).map((weekday) => (
+                    <span key={weekday}>{weekday}</span>
+                  ))}
+                </div>
+                <div className="manager-complaint-dashboard__calendar-days">
+                  {calendarDays.map((day) => {
+                    const selected = selectedDate
+                      ? dashboard.monthLabel === day.key.replaceAll("-", ".")
+                      : false;
+                    return (
+                      <button
+                        key={day.key}
+                        type="button"
+                        aria-label={`${day.key} 선택`}
+                        aria-pressed={selected}
+                        data-outside={!day.inCurrentMonth}
+                        onClick={() => {
+                          setSelectedDate(day.date);
+                          setMonth(day.date);
+                          setCalendarMonth(day.date);
+                          setCalendarOpen(false);
+                        }}
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
             className="manager-complaint-dashboard__download"
-            onClick={() => downloadCsv(rows, month, dashboard.monthLabel)}
+            onClick={() => downloadCsv(rows, month, selectedDate, dashboard.monthLabel)}
           >
             <Download aria-hidden="true" />
             보고서 다운로드
@@ -100,7 +215,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
               <strong>{value}</strong>
               {id === "total" ? (
                 <span className="manager-complaint-dashboard__metric-change" data-positive={dashboard.summary.change >= 0}>
-                  {dashboard.summary.change >= 0 ? "↗" : "↘"} {Math.abs(dashboard.summary.change)}% 지난 달 대비
+                  {dashboard.summary.change >= 0 ? "↗" : "↘"} {Math.abs(dashboard.summary.change)}% {dashboard.comparisonLabel}
                 </span>
               ) : null}
             </article>

@@ -3,8 +3,16 @@ import { ticketStatusGroup, type DefectDashboardRow } from "./ticket-dashboard-m
 
 export type ComplaintCategoryId = "repair" | "noise" | "billing" | "other";
 
+export type ComplaintCalendarDay = {
+  date: Date;
+  key: string;
+  label: number;
+  inCurrentMonth: boolean;
+};
+
 export type ComplaintDashboard = {
   monthLabel: string;
+  comparisonLabel: "지난 달 대비" | "전일 대비";
   summary: {
     total: number;
     inProgress: number;
@@ -29,15 +37,25 @@ const CATEGORY_LABEL: Record<ComplaintCategoryId, string> = {
   other: "기타",
 };
 
-function monthParts(month: Date) {
+function dateParts(date: Date) {
   const parts = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "2-digit",
+    day: "2-digit",
     timeZone: "Asia/Seoul",
-  }).formatToParts(month);
+  }).formatToParts(date);
   const get = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "";
-  return { year: Number(get("year")), month: Number(get("month")) };
+  return {
+    year: Number(get("year")),
+    month: Number(get("month")),
+    day: Number(get("day")),
+  };
+}
+
+function monthParts(month: Date) {
+  const { year, month: monthNumber } = dateParts(month);
+  return { year, month: monthNumber };
 }
 
 function monthKey(month: Date) {
@@ -51,7 +69,16 @@ function shiftMonth(month: Date, amount: number) {
 }
 
 function ticketMonthKey(ticket: Ticket) {
-  return ticket.createdAt.slice(0, 7);
+  return monthKey(new Date(ticket.createdAt));
+}
+
+function dateKey(date: Date) {
+  const parts = dateParts(date);
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function ticketDateKey(ticket: Ticket) {
+  return dateKey(new Date(ticket.createdAt));
 }
 
 function rowsForMonth(rows: readonly DefectDashboardRow[], month: Date) {
@@ -59,6 +86,35 @@ function rowsForMonth(rows: readonly DefectDashboardRow[], month: Date) {
   return rows.filter(
     (row) => row.ticket.type === "complaint" && ticketMonthKey(row.ticket) === key,
   );
+}
+
+function rowsForDate(rows: readonly DefectDashboardRow[], date: Date) {
+  const key = dateKey(date);
+  return rows.filter(
+    (row) => row.ticket.type === "complaint" && ticketDateKey(row.ticket) === key,
+  );
+}
+
+function previousDate(date: Date) {
+  const parts = dateParts(date);
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day - 1, 12));
+}
+
+export function buildComplaintCalendar(month: Date): ComplaintCalendarDay[] {
+  const parts = monthParts(month);
+  const firstDay = new Date(Date.UTC(parts.year, parts.month - 1, 1, 12));
+  const startDay = 1 - firstDay.getUTCDay();
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(Date.UTC(parts.year, parts.month - 1, startDay + index, 12));
+    const cellParts = dateParts(date);
+    return {
+      date,
+      key: dateKey(date),
+      label: cellParts.day,
+      inCurrentMonth: cellParts.year === parts.year && cellParts.month === parts.month,
+    };
+  });
 }
 
 export function complaintCategory(ticket: Ticket): ComplaintCategoryId {
@@ -93,9 +149,12 @@ export function formatComplaintDate(value: string) {
 export function buildComplaintDashboard(
   rows: readonly DefectDashboardRow[],
   month: Date,
+  selectedDate: Date | null = null,
 ): ComplaintDashboard {
-  const currentRows = rowsForMonth(rows, month);
-  const previousRows = rowsForMonth(rows, shiftMonth(month, -1));
+  const currentRows = selectedDate ? rowsForDate(rows, selectedDate) : rowsForMonth(rows, month);
+  const previousRows = selectedDate
+    ? rowsForDate(rows, previousDate(selectedDate))
+    : rowsForMonth(rows, shiftMonth(month, -1));
   const total = currentRows.length;
   const previousTotal = previousRows.length;
   const byStatus = (group: "waiting" | "in_progress" | "completed") =>
@@ -125,7 +184,10 @@ export function buildComplaintDashboard(
   });
 
   return {
-    monthLabel: `${monthParts(month).year}.${String(monthParts(month).month).padStart(2, "0")}`,
+    monthLabel: selectedDate
+      ? dateKey(selectedDate).replaceAll("-", ".")
+      : `${monthParts(month).year}.${String(monthParts(month).month).padStart(2, "0")}`,
+    comparisonLabel: selectedDate ? "전일 대비" : "지난 달 대비",
     summary: {
       total,
       inProgress: byStatus("in_progress"),
@@ -146,8 +208,12 @@ function csvCell(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
-export function serializeComplaintDashboardCsv(rows: readonly DefectDashboardRow[], month: Date) {
-  const dashboard = buildComplaintDashboard(rows, month);
+export function serializeComplaintDashboardCsv(
+  rows: readonly DefectDashboardRow[],
+  month: Date,
+  selectedDate: Date | null = null,
+) {
+  const dashboard = buildComplaintDashboard(rows, month, selectedDate);
   const headers = ["유형", "내용", "건물/호실", "접수일", "상태"];
   const records = dashboard.recent.map((row) => [
     CATEGORY_LABEL[complaintCategory(row.ticket)],

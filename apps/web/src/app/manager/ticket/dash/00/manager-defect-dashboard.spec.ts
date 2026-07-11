@@ -103,7 +103,14 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(complaintDashboardSource, /최근 민원 접수 내역/);
   assert.match(complaintDashboardSource, /aria-label="이전 달"/);
   assert.match(complaintDashboardSource, /\?type=complaint/);
+  assert.match(complaintDashboardSource, /aria-label="조회 날짜 선택"/);
+  assert.match(complaintDashboardSource, /role="dialog"/);
+  assert.match(complaintDashboardSource, /aria-label="조회 날짜 달력"/);
+  assert.match(complaintDashboardSource, /buildComplaintCalendar/);
+  assert.match(complaintDashboardSource, /setSelectedDate\(day\.date\)/);
+  assert.match(complaintDashboardSource, /event\.key === "Escape"/);
   assert.match(cssSource, /\/\* manager-complaint-dashboard:start \*\//);
+  assert.match(cssSource, /manager-complaint-dashboard__calendar-popover/);
 
   const dashboardCss = cssSource.match(
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,

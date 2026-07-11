@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import type { Ticket } from "@roomlog/types";
 import {
+  buildComplaintCalendar,
   buildComplaintDashboard,
   serializeComplaintDashboardCsv,
 } from "./complaint-dashboard-model";
@@ -69,5 +70,22 @@ describe("complaint dashboard model", () => {
     assert.match(serializeComplaintDashboardCsv(rows, month), /유형,내용,건물\/호실,접수일,상태/);
     assert.match(serializeComplaintDashboardCsv(rows, month), /소음 민원/);
     assert.doesNotMatch(serializeComplaintDashboardCsv(rows, month), /누수 하자/);
+  });
+
+  it("builds a six-week calendar and summarizes a selected day", () => {
+    const days = buildComplaintCalendar(month);
+    assert.equal(days.length, 42);
+    assert.equal(days.filter((day) => day.inCurrentMonth).length, 31);
+
+    const selectedDate = new Date("2026-07-28T12:00:00+09:00");
+    const dashboard = buildComplaintDashboard(rows, month, selectedDate);
+
+    assert.equal(dashboard.monthLabel, "2026.07.28");
+    assert.equal(dashboard.summary.total, 1);
+    assert.deepEqual(dashboard.recent.map((row) => row.ticket.id), ["new"]);
+    assert.equal(dashboard.comparisonLabel, "전일 대비");
+    assert.equal(dashboard.trend.at(-1)?.count, 2);
+    assert.match(serializeComplaintDashboardCsv(rows, month, selectedDate), /소음 민원/);
+    assert.doesNotMatch(serializeComplaintDashboardCsv(rows, month, selectedDate), /수전 수리 요청/);
   });
 });
