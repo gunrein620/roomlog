@@ -1,20 +1,23 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { AnnouncementResult, Thread } from "@roomlog/types";
+import type { Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
 import {
   deleteManagerThread,
-  listAnnouncementDrafts,
-  listAnnouncementResults,
   listManagerThreads,
 } from "@/lib/messaging-manager-api";
+import {
+  filterThreadsByBuilding,
+  getBuildingOptions,
+  hasUnassignedBuilding,
+  resolveBuildingFilter,
+} from "@/lib/messaging-building-filter";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { formatThreadLocation } from "@/lib/messaging-thread-location";
 import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
-  CATEGORY_LABEL,
   CONTEXT_LABEL,
   LinkButton,
   ScreenHeader,
@@ -22,10 +25,11 @@ import {
   gridStyle,
   sectionTitleStyle,
 } from "../_components";
+import { BuildingFilter } from "./BuildingFilter";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ tab?: string }>;
+type SearchParams = Promise<{ building?: string }>;
 
 async function deleteManagerThreadAction(formData: FormData) {
   "use server";
@@ -52,19 +56,20 @@ async function deleteManagerThreadAction(formData: FormData) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const [{ tab }, threads, drafts, results] = await Promise.all([
+  const [{ building }, threads] = await Promise.all([
     searchParams,
     listManagerThreads(),
-    listAnnouncementDrafts(),
-    listAnnouncementResults(),
   ]);
-  const activeTab = tab === "announcements" ? "announcements" : "threads";
-  const sortedThreads = [...threads].sort((a, b) => {
+  const buildingOptions = getBuildingOptions(threads);
+  const showUnassigned = hasUnassignedBuilding(threads);
+  const activeBuilding = resolveBuildingFilter(building, buildingOptions, showUnassigned);
+  const filteredThreads = filterThreadsByBuilding(threads, activeBuilding);
+  const sortedThreads = [...filteredThreads].sort((a, b) => {
     const urgentA = a.unreadCount + Number(a.pendingRequest);
     const urgentB = b.unreadCount + Number(b.pendingRequest);
     return urgentB - urgentA || b.updatedAt.localeCompare(a.updatedAt);
   });
-  const needsReply = threads.filter((thread) => thread.unreadCount > 0 || thread.pendingRequest).length;
+  const needsReply = filteredThreads.filter((thread) => thread.unreadCount > 0 || thread.pendingRequest).length;
 
   return (
     <>
@@ -89,73 +94,27 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Input aria-label="대화 내 검색" placeholder="대화 내 검색" readOnly />
       </Card>
 
-      <nav aria-label="채팅 공지 탭" style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-lg)" }}>
-        <TabLink href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} active={activeTab === "threads"}>
-          채팅
-        </TabLink>
-        <TabLink href={`${MANAGER_MESSAGING_ROUTES["M-MSG-00"]}?tab=announcements`} active={activeTab === "announcements"}>
-          공지
-        </TabLink>
-      </nav>
+      <BuildingFilter
+        activeBuilding={activeBuilding}
+        buildingOptions={buildingOptions}
+        showUnassigned={showUnassigned}
+      />
 
-      {activeTab === "threads" ? (
-        <section>
-          <div style={sectionTitleStyle}>호실별 · 답장 필요 상단</div>
+      <section>
+          <div style={sectionTitleStyle}>건물별 · 답장 필요 상단</div>
+          {sortedThreads.length > 0 ? (
           <div style={gridStyle}>
             {sortedThreads.map((thread) => (
               <ThreadCard key={thread.id} thread={thread} />
             ))}
           </div>
-        </section>
-      ) : (
-        <section>
-          <div style={sectionTitleStyle}>초안 · 발송 이력</div>
-          <div style={gridStyle}>
-            {drafts.map((draft) => (
-              <Link key={draft.id} href={`${MANAGER_MESSAGING_ROUTES["M-MSG-01"]}?id=${draft.id}`} style={{ color: "inherit", textDecoration: "none" }}>
-                <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-                  <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-                    <Badge emphasis={draft.category === "urgent"}>{CATEGORY_LABEL[draft.category]}</Badge>
-                    <Badge>{draft.targetLabel}</Badge>
-                    <Badge>초안</Badge>
-                  </div>
-                  <div style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>{draft.title}</div>
-                  <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
-                    수정 {formatDateTime(draft.updatedAt)}
-                  </div>
-                </Card>
-              </Link>
-            ))}
-            {results.map((result) => (
-              <ResultCard key={result.announcementId} result={result} />
-            ))}
-          </div>
-        </section>
-      )}
+          ) : (
+            <Card style={{ color: "var(--on-surface-variant)", textAlign: "center" }}>
+              선택한 건물의 티켓이 없습니다.
+            </Card>
+          )}
+      </section>
     </>
-  );
-}
-
-function TabLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      style={{
-        minHeight: 44,
-        minWidth: 132,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: "var(--radius-btn)",
-        border: active ? "1.5px solid var(--primary)" : "1px solid var(--border)",
-        background: active ? "var(--surface-container-high)" : "var(--surface-container-lowest)",
-        color: "var(--on-surface)",
-        textDecoration: "none",
-        fontWeight: 800,
-      }}
-    >
-      {children}
-    </Link>
   );
 }
 
@@ -234,24 +193,5 @@ function ThreadCard({ thread }: { thread: Thread }) {
         </form>
       </div>
     </Card>
-  );
-}
-
-function ResultCard({ result }: { result: AnnouncementResult }) {
-  const readRate = Math.round((result.counts.read / result.counts.total) * 100);
-  return (
-    <Link href={`${MANAGER_MESSAGING_ROUTES["M-MSG-03"]}?id=${result.announcementId}`} style={{ color: "inherit", textDecoration: "none" }}>
-      <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-        <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-          <Badge emphasis={result.category === "urgent"}>{CATEGORY_LABEL[result.category]}</Badge>
-          <Badge>발송 이력</Badge>
-          <Badge>읽음률 {readRate}%</Badge>
-        </div>
-        <div style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>{result.title}</div>
-        <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
-          확인 {result.counts.confirmed} · 미확인 {result.counts.unconfirmed} · 실패 {result.counts.failed}
-        </div>
-      </Card>
-    </Link>
   );
 }

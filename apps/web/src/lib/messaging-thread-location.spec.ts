@@ -48,3 +48,11 @@ test("keeps the reply-needed badge balanced on exactly two accessible lines", ()
   assert.match(listPage, /<span>필요<\/span>/);
   assert.match(listPage, /whiteSpace: "nowrap"/);
 });
+
+test("replaces messaging tabs with the building ticket filter", () => {
+  assert.doesNotMatch(listPage, /function TabLink/);
+  assert.doesNotMatch(listPage, /listAnnouncementDrafts|listAnnouncementResults/);
+  assert.match(listPage, /<BuildingFilter/);
+  assert.match(listPage, /건물별 · 답장 필요 상단/);
+  assert.match(listPage, /선택한 건물의 티켓이 없습니다\./);
+});
