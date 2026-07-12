@@ -127,7 +127,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(navigationSource, /하자 관리/);
   assert.equal(
     sha256(sidebarSource),
-    "f0e55eb958ca9a67ec9d2461bdf1772dec139ae9d30e7f7b00378060348b9cea",
+    // 2026-07-11 headerAction 슬롯(데스크톱 접기 토글) 추가로 갱신 — PR #51
+    "a038846774e68e2964d6f21cc8a3f53a082f53d4281c2fa1c97a416bed0e5a55",
   );
   assert.equal(
     sha256(navigationSource),

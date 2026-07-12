@@ -40,6 +40,11 @@ import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.doma
 import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
 import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
 import { RoomlogReportDomain } from "./services/roomlog-report.domain";
+import { RoomlogCopilotDomain } from "./services/roomlog-copilot.domain";
+import {
+  buildManagerRealtimeInstructions,
+  toRealtimeTools
+} from "./services/manager-agent-persona";
 import {
   AddMessagingThreadMessageInput,
   AddTenantComplaintMessageInput,
@@ -67,6 +72,8 @@ import {
   Cost,
   CostReviewQueueSummary,
   CostType,
+  CopilotChatRequest,
+  CopilotChatResponse,
   CreateManagerContractInput,
   CreateManagerContractInviteInput,
   CreateAnnouncementDraftInput,
@@ -1956,6 +1963,7 @@ export class RoomlogService {
   private readonly messaging: RoomlogMessagingDomain;
   private readonly moveout: RoomlogMoveoutDomain;
   private readonly report: RoomlogReportDomain;
+  private readonly copilot: RoomlogCopilotDomain;
 
   constructor(
     @Optional()
@@ -2076,6 +2084,11 @@ export class RoomlogService {
         this.messaging.addTenantMessagingThreadMessage(tenantId, threadId, input),
       (managerId, threadId, input) =>
         this.messaging.addManagerMessagingThreadMessage(managerId, threadId, input)
+    );
+    this.copilot = new RoomlogCopilotDomain(
+      (managerId, input) => this.runManagerAgentCommand(managerId, input),
+      (managerId, kind, input) => this.resolveManagerAgentPendingCommand(managerId, kind, input),
+      (managerId, sessionId) => this.safetyIdentifier(managerId, sessionId)
     );
   }
 
@@ -3400,6 +3413,87 @@ export class RoomlogService {
     };
   }
 
+  async chatManagerCopilot(
+    managerId: string,
+    input: CopilotChatRequest = { messages: [] }
+  ): Promise<CopilotChatResponse> {
+    return await this.copilot.chat(managerId, input);
+  }
+
+  private resolveManagerAgentPendingCommand(
+    managerId: string,
+    kind: NonNullable<CopilotChatResponse["pendingAction"]>["kind"],
+    input: ManagerAgentCommandInput
+  ) {
+    if (kind === "billing.send_dunning") {
+      try {
+        const bill = this.findManagerAgentDunningBill(managerId, input);
+        const draft = this.presentDunningDraft(bill);
+        const channel = input.channel?.trim() || draft.channel;
+        const messageText = input.body?.trim() || draft.draftText;
+
+        return {
+          status: "ready" as const,
+          commandInput: {
+            ...input,
+            command: "billing.send_dunning",
+            billId: bill.id,
+            channel,
+            body: messageText
+          },
+          summary: this.managerAgentDunningPendingSummary(managerId, bill, draft)
+        };
+      } catch (error) {
+        return {
+          status: "blocked" as const,
+          domain: "billing" as const,
+          summary:
+            error instanceof Error
+              ? `${error.message} 다시 대상을 지정해주세요.`
+              : "독촉 대상 연체 청구서를 확인하지 못했습니다. 다시 대상을 지정해주세요.",
+          requiresConfirmation: true
+        };
+      }
+    }
+
+    const threadId = input.threadId?.trim() || this.defaultManagerMessagingThreadId(managerId);
+
+    if (!threadId) {
+      return {
+        status: "blocked" as const,
+        domain: "messaging" as const,
+        summary: "답장을 보낼 임차인 메시지 스레드를 찾을 수 없습니다. 대상 대화를 지정해주세요.",
+        requiresConfirmation: true
+      };
+    }
+
+    try {
+      const thread = this.getManagerMessagingThread(managerId, threadId);
+      const replyBody = input.body?.trim() || input.text?.trim() || "";
+
+      return {
+        status: "ready" as const,
+        commandInput: {
+          ...input,
+          command: "messaging.send_reply",
+          threadId: thread.id,
+          body: replyBody
+        },
+        summary: this.managerAgentMessagePendingSummary(thread)
+      };
+    } catch (error) {
+      return {
+        status: "blocked" as const,
+        domain: "messaging" as const,
+        summary:
+          error instanceof Error
+            ? `${error.message} 답장 대상을 확정하지 못했습니다.`
+            : "답장 대상 메시지 스레드를 확인하지 못했습니다.",
+        requiresConfirmation: true
+      };
+    }
+  }
+
   runManagerAgentCommand(
     managerId: string,
     input: ManagerAgentCommandInput
@@ -3751,6 +3845,58 @@ export class RoomlogService {
       .trim();
 
     return cleaned.slice(0, 1200);
+  }
+
+  private managerAgentDunningPendingSummary(
+    managerId: string,
+    bill: Bill,
+    draft: TeamDunning
+  ) {
+    const room = this.store.rooms.find(
+      (item) => item.landlordId === managerId && this.unitMatchesRoom(bill.unitId, item)
+    );
+    const locationLabel = this.managerAgentLocationLabel(room, draft.unitId);
+    const tenantName = draft.tenantName === "미연결 임차인" ? undefined : draft.tenantName;
+    const targetLabel =
+      tenantName && locationLabel
+        ? `${tenantName}(${locationLabel})`
+        : tenantName ?? locationLabel ?? `${draft.billId} 청구`;
+    const billingMonthLabel = this.managerAgentBillingMonthLabel(bill.billingMonth);
+    const billLabel = billingMonthLabel ? `${billingMonthLabel}분 청구` : "청구";
+
+    return `${targetLabel} ${billLabel}에 독촉 발송`;
+  }
+
+  private managerAgentMessagePendingSummary(thread: MessagingThread) {
+    const room = this.store.rooms.find((item) => item.id === thread.roomId);
+    const locationLabel = this.managerAgentLocationLabel(room, thread.unitId);
+    const tenantName = this.store.users.find((user) => user.id === thread.tenantId)?.name;
+    const targetLabel =
+      tenantName && locationLabel
+        ? `${tenantName}(${locationLabel})`
+        : tenantName ?? locationLabel ?? `${thread.id} 스레드`;
+    const contextLabel = thread.contextLabel?.trim()
+      ? `${thread.contextLabel.trim()} 스레드`
+      : "메시지 스레드";
+
+    return `${targetLabel} ${contextLabel}에 답장 발송`;
+  }
+
+  private managerAgentLocationLabel(room: Room | undefined, unitId?: string) {
+    const normalizedUnitId = (room ? this.displayUnitId(room) : unitId?.replace(/호$/u, "").trim()) || undefined;
+    const unitLabel = normalizedUnitId ? `${normalizedUnitId}호` : undefined;
+
+    return [room?.buildingName, unitLabel].filter(Boolean).join(" ") || undefined;
+  }
+
+  private managerAgentBillingMonthLabel(billingMonth?: string) {
+    const match = billingMonth?.match(/^\d{4}-(\d{2})$/u);
+
+    if (match) {
+      return `${Number(match[1])}월`;
+    }
+
+    return billingMonth?.trim() || undefined;
   }
 
   private defaultManagerMessagingThreadId(managerId: string) {
@@ -9815,69 +9961,11 @@ export class RoomlogService {
   }
 
   private buildManagerRealtimeInstructions(input: RealtimeClientSecretInput) {
-    const customInstructions = input.instructions?.trim();
-    const base = [
-      "당신은 룸로그 관리인 운영 에이전트입니다.",
-      "관리인이 티켓 처리, 청구 관리, 소통 업무를 음성 또는 텍스트로 빠르게 조회하고 조작하도록 돕습니다.",
-      "실행은 반드시 run_manager_agent_command 도구로 서버 allowlist를 통과한 명령만 사용합니다.",
-      "티켓 처리에서는 조건 조회와 다음 확인 지점 제안을 우선합니다.",
-      "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
-      "billing.send_dunning은 청구 전용 채널이며 관리인이 명시적으로 요청하면 확인중 입금 또는 orphan 입금 여부와 관계없이 바로 발송합니다. 결제 확정과 입금 매칭은 실행하지 않습니다.",
-      "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉이나 공지 발송은 소통 채널로 보내지 않습니다.",
-      "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
-    ];
-
-    return customInstructions ? `${base.join("\n")}\n\n추가 지시:\n${customInstructions}` : base.join("\n");
+    return buildManagerRealtimeInstructions(input);
   }
 
   private managerRealtimeTools(): Array<Record<string, unknown>> {
-    return [
-      {
-        type: "function",
-        name: "run_manager_agent_command",
-        description:
-          "룸로그 관리인 업무 명령을 서버 allowlist로 실행합니다. 티켓 조회, 청구 요약, 청구 전용 독촉 발송, 소통 조회, 답장 초안, 일반 답장 발송만 안전하게 처리합니다.",
-        parameters: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            command: {
-              type: "string",
-              enum: [
-                "ticket.query",
-                "billing.summary",
-                "billing.send_dunning",
-                "messaging.list_threads",
-                "messaging.draft_reply",
-                "messaging.send_reply"
-              ],
-              description: "실행할 관리인 업무 명령"
-            },
-            text: {
-              type: "string",
-              description: "사용자의 자연어 요청 또는 조회 조건"
-            },
-            billId: {
-              type: "string",
-              description: "독촉을 보낼 청구서 id. 없으면 자연어의 호실 또는 접근 가능한 첫 연체 청구서를 사용합니다."
-            },
-            channel: {
-              type: "string",
-              description: "독촉 발송 채널. 없으면 청구서의 기본 독촉 채널을 사용합니다."
-            },
-            threadId: {
-              type: "string",
-              description: "답장을 보낼 메시징 스레드 id. 없으면 관리인이 접근 가능한 최신 스레드를 사용합니다."
-            },
-            body: {
-              type: "string",
-              description: "관리인이 확인한 답장 본문 또는 초안 기준 문장"
-            }
-          },
-          required: ["command"]
-        }
-      }
-    ];
+    return toRealtimeTools();
   }
 
   private managerAgentBlockedCommand(command: string, text: string) {

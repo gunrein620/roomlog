@@ -2296,3 +2296,90 @@ dd {
   }
 }
 /* manager-complaint-dashboard:end */
+
+/* manager-workspace nav collapse:start — 데스크톱 사이드바 접기 (헤더의 PanelLeft 토글) */
+.manager-workspace {
+  transition: grid-template-columns 0.22s ease;
+}
+
+.manager-workspace--nav-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.manager-workspace--nav-collapsed .manager-workspace__sidebar {
+  min-width: 0;
+  overflow: hidden;
+  border-right: 0;
+}
+
+/* 접기 토글 — 사이드바 우측 상단(브랜드 옆) 상주. 토큰만 소비하므로
+   홈의 코스믹 사이드바에서는 자동으로 반투명 라일락 톤이 된다. */
+.manager-nav-collapse {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-container);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+}
+
+.manager-nav-collapse:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+
+.manager-nav-collapse svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* 접힌 상태의 펼치기 — 사이드바가 사라진 자리(좌상단)에 떠 있는 복귀 손잡이 */
+.manager-nav-expand {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: var(--z-floating);
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.manager-nav-expand:hover {
+  background: var(--surface-container);
+}
+
+.manager-nav-expand svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* 플로팅 손잡이가 헤더 제목을 가리지 않게 접힘 상태에선 헤더를 밀어준다 */
+.manager-workspace--nav-collapsed .manager-workspace__header {
+  padding-left: 62px;
+}
+
+/* 모바일(사이드바가 다이얼로그로 대체되는 구간)에서는 접기 UI 무의미 — 숨김 */
+@media (max-width: 860px) {
+  .manager-nav-collapse,
+  .manager-nav-expand {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manager-workspace {
+    transition: none;
+  }
+}
+/* manager-workspace nav collapse:end */

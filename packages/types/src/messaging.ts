@@ -34,6 +34,7 @@ export interface Thread {
   contextRef?: string; // 연결된 티켓/청구 id 등 (맥락 카드 source)
   contextLabel?: string; // 맥락 배지 표시용
   lastMessage: string;
+  lastMessageSender?: MessageSender; // 목록 응답에도 포함 — 관리인 미응답(마지막 발신자=세입자) 판정용
   unreadCount: number; // 단일 미읽음 소스
   pendingRequest: boolean; // 추가 사진/설명 요청 대기
   archivedNotice: boolean; // "이 대화는 관리 기록에 보관돼요" 고지

@@ -61,8 +61,10 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(appShellSource, /!fullAssistant/);
   assert.match(appShellSource, /getBoundingClientRect\(\)/);
   assert.match(appShellSource, /isDialogBackdropPoint/);
-  assert.match(appShellSource, /import \{ Suspense, useRef, useState \} from "react"/);
-  assert.match(appShellSource, /<Suspense fallback=\{null\}><ManagerSidebar \/><\/Suspense>/);
+  // useEffect는 사이드바 접힘 상태(localStorage) 복원용.
+  assert.match(appShellSource, /import \{ Suspense, useEffect, useRef, useState \} from "react"/);
+  // 데스크톱 사이드바에는 접기 토글이 헤더 액션으로 꽂힌다.
+  assert.match(appShellSource, /<Suspense fallback=\{null\}><ManagerSidebar headerAction=\{collapseAction\} \/><\/Suspense>/);
   assert.match(
     appShellSource,
     /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton \/><\/Suspense>/,
@@ -108,7 +110,10 @@ test("every manager desktop domain composes ManagerAppShell", () => {
   }
 });
 
-test("manager home composes the integrated dashboard in the shared workspace", () => {
+// PR #51: 홈 콘텐츠가 통합 오버뷰 → 코스믹 대시보드+코파일럿으로 교체됨.
+// 셸 계약(공용 워크스페이스 사용)은 유지하고, 콘텐츠 계약만 새 구성으로 갱신한다.
+// 공용 AI 런처 대신 홈 내장 코파일럿을 쓰는 방향은 PR에서 논의 중 — hideAssistantLauncher가 그 표식.
+test("manager home composes the cosmic dashboard in the shared workspace", () => {
   const homeSource = readFileSync(managerHomePath, "utf8");
   const overviewSource = existsSync(managerOverviewPath)
     ? readFileSync(managerOverviewPath, "utf8")
@@ -117,23 +122,16 @@ test("manager home composes the integrated dashboard in the shared workspace", (
   assert.match(homeSource, /import \{ ManagerAppShell \}/);
   assert.match(homeSource, /<ManagerAppShell/);
   assert.doesNotMatch(homeSource, /import \{ ManagerShell \}/);
-  assert.doesNotMatch(homeSource, /<ManagerShell/);
-  assert.match(homeSource, /title="통합 대시보드"/);
-  assert.match(homeSource, /showAssistantRail/);
-  assert.match(homeSource, /assistantBriefing=\{assistantBriefing\}/);
+  assert.doesNotMatch(homeSource, /<ManagerShell[\s\n]/);
+  assert.match(homeSource, /hideAssistantLauncher/);
+  assert.match(homeSource, /manager-home-dashboard/);
+  assert.match(homeSource, /<CopilotPanel briefingInput=\{dashboard\.briefingInput\}/);
   assert.doesNotMatch(homeSource, /function HomeNav/);
 
+  // 통합 오버뷰 산출물은 보존 — 홈 구성 최종안이 결정될 때까지 삭제하지 않는다.
   assert.equal(existsSync(managerOverviewPath), true, managerOverviewPath);
   for (const label of ["미계약 매물", "계약중인 집", "진행 중 티켓", "수납 대기·연체"]) {
     assert.match(overviewSource, new RegExp(label));
-  }
-  for (const href of [
-    "/sell",
-    "/manager/contract/00",
-    "/manager/ticket/dash/00",
-    "/manager/billing/overdue",
-  ]) {
-    assert.match(overviewSource, new RegExp(href.replaceAll("/", "\\/")));
   }
 });
 

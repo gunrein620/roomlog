@@ -44,6 +44,7 @@ import {
   AskManagerReportChatInput,
   CreateRoomInput,
   FloorPlanAiAnalysisInput,
+  CopilotChatRequest,
   ManagerAgentCommandInput,
   ManagerAssistantQueryInput,
   ManagerReplyDraftInput,
@@ -1103,6 +1104,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.runManagerAgentCommandForRealtime(user.id, body);
+  }
+
+  @Post("manager/copilot/chat")
+  chatManagerCopilot(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CopilotChatRequest
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.chatManagerCopilot(user.id, body);
   }
 
   @Get("manager/messaging/threads")
