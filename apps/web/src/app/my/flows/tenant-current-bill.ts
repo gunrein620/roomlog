@@ -3,9 +3,11 @@ import type { TenantBillingOverview, TenantBillSummary } from "@roomlog/types";
 export interface TenantBillingCurrentCardModel {
   id: string;
   billingMonth: string;
+  dueDate: string;
   totalAmount: number;
   rentAmount: number;
   maintenanceAmount: number;
+  isPaid: boolean;
   stateLabel: string;
   actionLabel: string;
   actionHref: string;
@@ -14,6 +16,9 @@ export interface TenantBillingCurrentCardModel {
 export interface TenantBillingUpcomingCardModel {
   id: string;
   billingMonth: string;
+  dueDate: string;
+  rentAmount: number;
+  maintenanceAmount: number;
   monthLabel: string;
   amountLabel: string;
   availabilityLabel: string;
@@ -50,9 +55,11 @@ function currentCard(summary: TenantBillSummary): TenantBillingCurrentCardModel 
   return {
     id: bill.id,
     billingMonth: bill.billingMonth,
+    dueDate: bill.dueDate,
     totalAmount: bill.totalAmount,
     rentAmount: itemAmount(summary, "rent"),
     maintenanceAmount: itemAmount(summary, "maintenance"),
+    isPaid,
     stateLabel: currentStateLabel(summary),
     actionLabel: action.label,
     actionHref: action.href,
@@ -64,6 +71,9 @@ function upcomingCard(summary: TenantBillSummary): TenantBillingUpcomingCardMode
   return {
     id: bill.id,
     billingMonth: bill.billingMonth,
+    dueDate: bill.dueDate,
+    rentAmount: itemAmount(summary, "rent"),
+    maintenanceAmount: itemAmount(summary, "maintenance"),
     monthLabel: billingMonthLabel(bill.billingMonth),
     amountLabel: `${bill.totalAmount.toLocaleString("ko-KR")} KRW`,
     availabilityLabel: paymentDateLabel(bill.dueDate),
@@ -115,5 +125,5 @@ function paymentDateLabel(dueDate: string): string {
   }).formatToParts(date);
   const month = parts.find((part) => part.type === "month")?.value;
   const day = parts.find((part) => part.type === "day")?.value;
-  return month && day ? `${month}월 ${day}일 결제 예정` : "결제 예정";
+  return month && day ? `${month}월 ${day}일까지 납부` : "납부일 확인 필요";
 }

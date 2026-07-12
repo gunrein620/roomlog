@@ -114,6 +114,9 @@
   inset-inline: 0;
   bottom: 0;
   z-index: 1;
+  width: min(100%, var(--phone-w));
+  margin-inline: auto;
+  box-sizing: border-box;
   max-height: calc(100dvh - var(--space-xl));
   overflow: auto;
   padding: var(--space-xl) var(--space-lg) calc(var(--space-xl) + env(safe-area-inset-bottom));

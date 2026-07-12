@@ -13,10 +13,6 @@ import {
   type TenantBillingCardModel,
 } from "./tenant-current-bill";
 
-const DEFAULT_MONTHLY_RENT_KRW = 850000;
-const DEFAULT_MAINTENANCE_FEE_KRW = 120000;
-const DEFAULT_NEXT_PAYMENT_DATE = "2024.12.15";
-const DEFAULT_CONTRACT_PERIOD = "2024.01.15 ~ 2026.01.14";
 const TENANT_AI_GREETING = "안녕하세요! 우주(Woo-zu) AI 어시스턴트입니다. 무엇을 도와드릴까요?";
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   current: null,
@@ -81,6 +77,23 @@ function tenancyDateLabel(iso?: string): string {
 
 function formatKrw(amount: number): string {
   return `${amount.toLocaleString("ko-KR")} KRW`;
+}
+
+function billingDateLabel(iso?: string): string {
+  if (!iso) return "정보 없음";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "정보 없음";
+
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return year && month && day ? `${year}.${month}.${day}` : "정보 없음";
 }
 
 function formatNumber(amount: number): string {
@@ -309,17 +322,29 @@ export default function TenantMyPage({
       : tenancy
         ? tenancy.address || "상세 주소 미등록"
         : "계약이 체결되면 입주 주소가 표시됩니다.";
-  const monthlyRentKrw =
-    tenancy && tenancy !== "loading" && tenancy.contract?.tradeType === "월세" && tenancy.contract.monthlyRentManwon > 0
-      ? tenancy.contract.monthlyRentManwon * 10000
-      : DEFAULT_MONTHLY_RENT_KRW;
-  const maintenanceFeeKrw = DEFAULT_MAINTENANCE_FEE_KRW;
+  const residenceBilling = billingCard.current ?? billingCard.upcoming;
+  const nextPaymentBilling = billingCard.current?.isPaid
+    ? billingCard.upcoming
+    : residenceBilling;
+  const monthlyRentKrw = residenceBilling?.rentAmount ?? null;
+  const maintenanceFeeKrw = residenceBilling?.maintenanceAmount ?? null;
+  const residenceAmountLabel = (amount: number | null) =>
+    isBillLoading
+      ? "확인 중"
+      : billingError || amount === null
+        ? "정보 없음"
+        : formatKrw(amount);
+  const nextPaymentDateLabel = isBillLoading
+    ? "확인 중"
+    : billingError
+      ? "정보 없음"
+      : billingDateLabel(nextPaymentBilling?.dueDate);
   const contractPeriodLabel =
     tenancy === "loading"
       ? "확인 중"
       : tenancy?.contract?.respondedAt
         ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결`
-        : DEFAULT_CONTRACT_PERIOD;
+        : "정보 없음";
   const repairHistory = repairRequests.length
     ? repairRequests.slice(0, 4).map((item, index) => ({
         id: item.id,
@@ -379,15 +404,15 @@ export default function TenantMyPage({
             </div>
             <div>
               <dt>차기 결제일</dt>
-              <dd>{DEFAULT_NEXT_PAYMENT_DATE}</dd>
+              <dd>{nextPaymentDateLabel}</dd>
             </div>
             <div>
               <dt>월세</dt>
-              <dd className="tenant-primary-value">{formatKrw(monthlyRentKrw)}</dd>
+              <dd className="tenant-primary-value">{residenceAmountLabel(monthlyRentKrw)}</dd>
             </div>
             <div>
               <dt>관리비</dt>
-              <dd>{formatKrw(maintenanceFeeKrw)}</dd>
+              <dd>{residenceAmountLabel(maintenanceFeeKrw)}</dd>
             </div>
           </dl>
           <div className="tenant-residence-actions">

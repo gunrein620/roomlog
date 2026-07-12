@@ -51,11 +51,13 @@ function upcomingStatusLabel(summary: TenantBillSummary): string {
   return "예정";
 }
 
-function upcomingPaymentDate(dueDate: string, suffix: "납부 기한" | "결제 예정"): string {
+function upcomingPaymentDate(dueDate: string, paymentClosed: boolean): string {
   const [, monthValue, dayValue] = billingDateInSeoul(dueDate).split("-");
   const month = Number(monthValue);
   const day = Number(dayValue);
-  return `${month}월 ${day}일 ${suffix}`;
+  return paymentClosed
+    ? `${month}월 ${day}일 납부 기한`
+    : `${month}월 ${day}일까지 납부`;
 }
 
 function upcomingSupportingLabel(summary: TenantBillSummary): string {
@@ -64,10 +66,7 @@ function upcomingSupportingLabel(summary: TenantBillSummary): string {
     summary.remainingAmount <= 0 ||
     summary.bill.status === "confirming";
 
-  return upcomingPaymentDate(
-    summary.bill.dueDate,
-    paymentClosed ? "납부 기한" : "결제 예정",
-  );
+  return upcomingPaymentDate(summary.bill.dueDate, paymentClosed);
 }
 
 export default async function Page() {
@@ -81,9 +80,6 @@ export default async function Page() {
           <div className={styles.overviewTitle}>{unit ? `${unit}호` : "내 호실"} · 이번 달</div>
           <div className={styles.brand}>집우집주 · 납부</div>
         </div>
-        <span className={styles.alertIcon} aria-label="알림">
-          🔔
-        </span>
       </header>
 
       <main className={styles.overviewBody}>

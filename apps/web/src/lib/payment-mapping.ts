@@ -178,9 +178,11 @@ function toItems(items: TeamBillLineItem[] | undefined): BillLineItem[] {
   return (items ?? []).map((item, index) => {
     const amount = Math.max(0, Number(item.amount) || 0);
     const paidAmount = Math.min(amount, Math.max(0, Number(item.paidAmount) || 0));
-    const kind = item.kind
-      ? ITEM_KIND[normalizeEnum(item.kind)] ?? inferItemKind(item.label, index)
-      : inferItemKind(item.label, index);
+    const inferredKind = inferItemKind(item.label, index);
+    const mappedKind = item.kind ? ITEM_KIND[normalizeEnum(item.kind)] : undefined;
+    const kind = mappedKind === "other" && inferredKind !== "other"
+      ? inferredKind
+      : mappedKind ?? inferredKind;
     const status = item.status
       ? ITEM_STATUS[normalizeEnum(item.status)] ?? itemStatus(amount, paidAmount)
       : itemStatus(amount, paidAmount);

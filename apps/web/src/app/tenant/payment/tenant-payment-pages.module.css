@@ -47,17 +47,6 @@
   font-size: var(--fs-caption);
 }
 
-.alertIcon {
-  width: var(--control-compact-size);
-  height: var(--control-compact-size);
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-container-lowest);
-}
-
 .pageBody,
 .overviewBody,
 .checkoutBody {
