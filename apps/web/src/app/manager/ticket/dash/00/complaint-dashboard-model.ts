@@ -51,7 +51,7 @@ function shiftMonth(month: Date, amount: number) {
 }
 
 function ticketMonthKey(ticket: Ticket) {
-  return ticket.createdAt.slice(0, 7);
+  return monthKey(new Date(ticket.createdAt));
 }
 
 function rowsForMonth(rows: readonly DefectDashboardRow[], month: Date) {
@@ -146,7 +146,10 @@ function csvCell(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
-export function serializeComplaintDashboardCsv(rows: readonly DefectDashboardRow[], month: Date) {
+export function serializeComplaintDashboardCsv(
+  rows: readonly DefectDashboardRow[],
+  month: Date,
+) {
   const dashboard = buildComplaintDashboard(rows, month);
   const headers = ["유형", "내용", "건물/호실", "접수일", "상태"];
   const records = dashboard.recent.map((row) => [

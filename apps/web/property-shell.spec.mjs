@@ -92,6 +92,25 @@ const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
 const managerMessagingListSource = readFileSync(new URL("./src/app/manager/messaging/00/page.tsx", import.meta.url), "utf8");
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
 const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
+const managerMessagingComposerPath = new URL("./src/app/manager/messaging/01/AnnouncementComposer.tsx", import.meta.url);
+const managerMessagingActionsPath = new URL("./src/app/manager/messaging/01/actions.ts", import.meta.url);
+const managerMessagingComposerCssSource = readFileSync(
+  new URL("./src/app/manager/messaging/01/AnnouncementComposer.module.css", import.meta.url),
+  "utf8",
+);
+const managerMessagingComposerSource = existsSync(managerMessagingComposerPath)
+  ? readFileSync(managerMessagingComposerPath, "utf8")
+  : "";
+const managerMessagingActionsSource = existsSync(managerMessagingActionsPath)
+  ? readFileSync(managerMessagingActionsPath, "utf8")
+  : "";
+const managerMessagingComposeStateSource = readFileSync(new URL("./src/lib/announcement-compose-state.ts", import.meta.url), "utf8");
+const managerMessagingComposeFeatureSource = `${managerMessagingComposeSource}\n${managerMessagingComposerSource}\n${managerMessagingActionsSource}\n${managerMessagingComposeStateSource}\n${managerMessagingComposerCssSource}`;
+const managerMessagingLayoutSource = readFileSync(new URL("./src/app/manager/messaging/layout.tsx", import.meta.url), "utf8");
+const managerMessagingShellTitlePath = new URL("./src/app/manager/messaging/MessagingShellTitle.tsx", import.meta.url);
+const managerMessagingShellTitleSource = existsSync(managerMessagingShellTitlePath)
+  ? readFileSync(managerMessagingShellTitlePath, "utf8")
+  : "";
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
@@ -352,6 +371,16 @@ test("opens manager message compose only from real API thread ids", () => {
   assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
 });
 
+test("manager messaging thread places its back link beside the shell title", () => {
+  assert.equal(existsSync(managerMessagingShellTitlePath), true);
+  assert.match(managerMessagingLayoutSource, /title=\{<MessagingShellTitle \/>\}/);
+  assert.match(managerMessagingShellTitleSource, /usePathname/);
+  assert.match(managerMessagingShellTitleSource, /pathname === MANAGER_MESSAGING_ROUTES\["M-MSG-04"\]/);
+  assert.match(managerMessagingShellTitleSource, /aria-label="소통 허브로 돌아가기"/);
+  assert.match(managerMessagingShellTitleSource, /href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\}/);
+  assert.doesNotMatch(managerMessagingThreadSource, /aria-label="소통 허브로 돌아가기"/);
+});
+
 test("redirects messaging detail auth failures instead of rendering a Next error boundary", () => {
   for (const [source, loginPath] of [
     [tenantMessagingThreadSource, "/tenant/login"],
@@ -377,17 +406,85 @@ test("auto-refreshes open messaging thread details without infrastructure change
   assert.match(managerMessagingThreadSource, /<MessageAutoRefresh /);
 });
 
-test("manager announcement compose creates editable drafts before review", () => {
-  assert.match(managerMessagingComposeSource, /createAnnouncementDraft/);
-  assert.match(managerMessagingComposeSource, /action=\{createDraftAction\}/);
-  assert.match(managerMessagingComposeSource, /name="title"/);
-  assert.match(managerMessagingComposeSource, /name="body"/);
-  assert.match(managerMessagingComposeSource, /name="category"/);
-  assert.match(managerMessagingComposeSource, /name="scope"/);
+test("manager announcement compose edits targets and translates each language before review", () => {
+  assert.match(
+    managerMessagingComposeSource,
+    /prepareAnnouncementDraftForCompose\(draft, Boolean\(id\)\)/,
+  );
+  assert.match(managerMessagingComposeSource, /initialDraft=\{initialDraft\}/);
+  assert.match(managerMessagingComposeFeatureSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingComposeFeatureSource, /updateAnnouncementDraft/);
+  assert.match(managerMessagingComposeFeatureSource, /translateAnnouncement/);
+  assert.match(managerMessagingComposeFeatureSource, /name="title"/);
+  assert.match(managerMessagingComposeFeatureSource, /name="body"/);
+  assert.match(managerMessagingComposeFeatureSource, /name="category"/);
+  assert.match(managerMessagingComposeFeatureSource, /name="scope"/);
+  assert.match(
+    managerMessagingComposerSource,
+    /name="scope"[\s\S]*?<span className=\{styles\.categoryPill\}>\s*\{option\.label\}\s*<\/span>/,
+  );
+  assert.doesNotMatch(managerMessagingComposerSource, /styles\.radioMark/);
+  assert.match(managerMessagingComposeFeatureSource, /targetRoomIds/);
+  assert.match(managerMessagingComposerSource, /roomsForBuilding/);
+  assert.match(managerMessagingComposerSource, /공지 대상 호실 건물/);
+  assert.match(managerMessagingComposerSource, /changeSelectedBuilding/);
+  assert.match(managerMessagingComposerSource, /changeScope/);
+  assert.match(managerMessagingComposerSource, /nextScope === "unit"/);
+  assert.match(managerMessagingComposerSource, /setSelectedRoomIds\(\[\]\)/);
+  assert.match(managerMessagingComposerSource, /선택 가능한 호실이 없습니다\./);
+  assert.match(managerMessagingComposerSource, /className=\{styles\.unitInput\}/);
+  assert.match(managerMessagingComposerSource, /className=\{styles\.unitChip\}/);
+  assert.match(managerMessagingComposerSource, /room\.roomNo \?\? roomDisplayLabel\(room\)/);
+  assert.match(managerMessagingComposerSource, /styles\.unitCheck/);
+  assert.match(
+    managerMessagingComposeFeatureSource,
+    /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(managerMessagingComposeFeatureSource, /\.unitInput:checked \+ \.unitChip/);
+  assert.match(managerMessagingComposeFeatureSource, /lang: "en", label: "English"/);
+  assert.match(managerMessagingComposeFeatureSource, /lang: "zh", label: "中文"/);
+  assert.match(managerMessagingComposeFeatureSource, /lang: "vi", label: "Tiếng Việt"/);
+  assert.match(managerMessagingComposeFeatureSource, /`\$\{label\} 번역`/);
+  assert.match(managerMessagingComposerSource, /buildAttachedTranslations/);
+  assert.match(managerMessagingComposerSource, /findAttachedTranslation/);
+  assert.match(managerMessagingComposerSource, /findVisibleTranslation/);
+  assert.match(managerMessagingComposerSource, /첨부하기/);
+  assert.match(managerMessagingComposerSource, /첨부됨/);
+  assert.match(managerMessagingComposerSource, /번역 후 첨부할 언어를 선택해 주세요/);
+  assert.doesNotMatch(managerMessagingComposerSource, /검수 완료/);
+  assert.doesNotMatch(
+    managerMessagingComposerSource,
+    /type="checkbox"\s+checked=\{translation\.reviewed\}/,
+  );
+  assert.doesNotMatch(managerMessagingComposeFeatureSource, />⌄</);
+  assert.match(
+    managerMessagingComposeFeatureSource,
+    /<div className=\{styles\.targetBox\}>\s*<span>\{target\.targetLabel\}<\/span>\s*<\/div>/,
+  );
+  assert.match(managerMessagingComposeFeatureSource, /className=\{styles\.selectWrap\}/);
+  assert.match(managerMessagingComposeFeatureSource, /appearance: none/);
+  assert.match(
+    managerMessagingComposeFeatureSource,
+    /right: calc\(var\(--space-lg\) \+ 10px\)/,
+  );
+  assert.match(managerMessagingComposeFeatureSource, /pointer-events: none/);
+  assert.match(managerMessagingComposeFeatureSource, /aria-expanded=\{isExpanded\}/);
+  assert.match(managerMessagingComposeFeatureSource, /aria-controls=\{panelId\}/);
+  assert.match(managerMessagingComposeFeatureSource, /id=\{panelId\}/);
+  assert.match(managerMessagingComposeFeatureSource, /isExpanded \? \(/);
+  assert.match(managerMessagingComposeFeatureSource, /setExpandedLanguages/);
   assert.match(managerMessagingApiSource, /createAnnouncementDraft/);
+  assert.match(managerMessagingApiSource, /updateAnnouncementDraft/);
+  assert.match(managerMessagingApiSource, /translateAnnouncement/);
   assert.match(managerMessagingApiSource, /method: "POST"/);
-  assert.doesNotMatch(managerMessagingComposeSource, /value=\{draft\.title\} readOnly/);
-  assert.doesNotMatch(managerMessagingComposeSource, /<StaticButton>임시 저장<\/StaticButton>/);
+  assert.doesNotMatch(managerMessagingComposeFeatureSource, /value=\{draft\.title\} readOnly/);
+  assert.doesNotMatch(managerMessagingComposeFeatureSource, /<StaticButton>임시 저장<\/StaticButton>/);
+  assert.match(managerMessagingReviewSource, /findAttachedTranslation/);
+  assert.match(managerMessagingReviewSource, /최종 첨부 번역/);
+  assert.match(managerMessagingReviewSource, /최종 언어/);
+  assert.doesNotMatch(managerMessagingReviewSource, /D21 주요 언어 번역 미리보기/);
+  assert.doesNotMatch(managerMessagingReviewSource, /주요 언어 검수 완료/);
+  assert.doesNotMatch(managerMessagingReviewSource, /label="번역 검수"/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {

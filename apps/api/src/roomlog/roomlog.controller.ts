@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   AddMessagingThreadMessageInput,
+  AnnouncementTranslationRequest,
   AttachmentCategory,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
@@ -54,6 +55,7 @@ import {
   MoveoutCompleteReviewInput,
   MoveoutRespondDisputeInput,
   UpdateTenantMoveoutDisputeInput,
+  UpdateAnnouncementDraftInput,
   UpdateMoveoutChecklistInput,
   ManagerTicketReplyInput,
   MatchDepositInput,
@@ -1198,6 +1200,27 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.getManagerAnnouncementDraft(user.id, draftId);
+  }
+
+  @Patch("manager/messaging/announcement-drafts/:draftId")
+  updateManagerAnnouncementDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("draftId") draftId: string,
+    @Body() body: UpdateAnnouncementDraftInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.updateManagerAnnouncementDraft(user.id, draftId, body);
+  }
+
+  @Post("manager/messaging/announcement-translations")
+  translateManagerAnnouncement(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: AnnouncementTranslationRequest
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.translateManagerAnnouncement(user.id, body);
   }
 
   @Get("manager/messaging/announcement-drafts/:draftId/recipients")

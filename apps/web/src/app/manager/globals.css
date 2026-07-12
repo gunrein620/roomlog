@@ -1167,30 +1167,49 @@ dd {
   background: transparent;
 }
 
-.manager-sidebar__ticket-toggle {
-  width: var(--touch-target);
+.manager-sidebar__parent-toggle {
+  width: 100%;
   min-height: var(--touch-target);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-md);
   border: 0;
   border-radius: var(--radius);
-  color: inherit;
+  color: var(--on-surface);
   background: transparent;
+  font: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  text-align: left;
   cursor: pointer;
 }
 
-.manager-sidebar__ticket-toggle svg {
+.manager-sidebar__parent-toggle span {
+  min-width: 0;
+  flex: 1;
+}
+
+.manager-sidebar__parent-toggle svg {
   width: var(--space-xl);
   height: var(--space-xl);
+  flex: 0 0 auto;
+}
+
+.manager-sidebar__parent-toggle svg:last-child {
   transition: transform 160ms ease;
 }
 
-.manager-sidebar__ticket-toggle[data-expanded="true"] svg {
+.manager-sidebar__parent-toggle[data-expanded="true"] svg:last-child {
   transform: rotate(180deg);
 }
 
-.manager-sidebar__ticket-toggle:hover {
+.manager-sidebar__parent-toggle.is-active {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-sidebar__parent-toggle:hover {
   background: var(--surface-container-high);
 }
 
@@ -1236,7 +1255,7 @@ dd {
   height: var(--space-lg);
 }
 
-.manager-sidebar__ticket-toggle:focus-visible {
+.manager-sidebar__parent-toggle:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -1941,6 +1960,10 @@ dd {
   background: var(--surface-container-lowest);
 }
 
+.manager-complaint-dashboard__calendar-anchor {
+  position: relative;
+}
+
 .manager-complaint-dashboard__period svg,
 .manager-complaint-dashboard__download svg {
   width: var(--space-xl);
@@ -1962,6 +1985,76 @@ dd {
 .manager-complaint-dashboard__period button:hover,
 .manager-complaint-dashboard__period button:focus-visible {
   background: var(--surface-container-high);
+}
+
+.manager-complaint-dashboard__calendar-popover {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + var(--space-sm));
+  right: 0;
+  width: calc(var(--touch-target) * 6);
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-complaint-dashboard__calendar-header,
+.manager-complaint-dashboard__calendar-months {
+  display: grid;
+  align-items: center;
+}
+
+.manager-complaint-dashboard__calendar-header {
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  text-align: center;
+}
+
+.manager-complaint-dashboard__calendar-header button,
+.manager-complaint-dashboard__calendar-months button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.manager-complaint-dashboard__calendar-header button {
+  width: calc(var(--touch-target) - var(--space-md));
+  height: calc(var(--touch-target) - var(--space-md));
+}
+
+.manager-complaint-dashboard__calendar-months {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.manager-complaint-dashboard__calendar-months button {
+  min-height: calc(var(--touch-target) - var(--space-sm));
+  font: inherit;
+}
+
+.manager-complaint-dashboard__calendar-header button:hover,
+.manager-complaint-dashboard__calendar-months button:hover {
+  background: var(--surface-container-high);
+}
+
+.manager-complaint-dashboard__calendar-months button[aria-pressed="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-complaint-dashboard__calendar-header button:focus-visible,
+.manager-complaint-dashboard__calendar-months button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .manager-complaint-dashboard__download {

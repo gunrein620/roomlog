@@ -122,6 +122,7 @@ export type MessagingAnnouncementCategory = "urgent" | "life" | "event";
 export type MessagingAnnouncementScope = "all" | "building" | "unit";
 export type MessagingAnnouncementReadState = "unread" | "read" | "confirmed";
 export type MessagingAnnouncementDraftStatus = "draft" | "sent";
+export type MessagingAnnouncementLanguage = "en" | "zh" | "vi";
 
 export type MessagingMessage = {
   id: string;
@@ -138,6 +139,7 @@ export type MessagingMessage = {
 export type MessagingThread = {
   id: string;
   roomId: string;
+  buildingName?: string;
   unitId: string;
   tenantId: string;
   context: MessagingThreadContext;
@@ -183,11 +185,12 @@ export type AddMessagingThreadMessageInput = {
 };
 
 export type MessagingAnnouncementTranslation = {
-  lang: string;
+  lang: MessagingAnnouncementLanguage;
   langLabel?: string;
   title: string;
   body: string;
   reviewed: boolean;
+  sourceHash?: string;
 };
 
 export type MessagingAnnouncementDraft = {
@@ -215,6 +218,27 @@ export type CreateAnnouncementDraftInput = {
   body: string;
   translations?: MessagingAnnouncementTranslation[];
   confirmRequired?: boolean;
+};
+
+export type UpdateAnnouncementDraftInput = {
+  category: MessagingAnnouncementCategory;
+  scope: MessagingAnnouncementScope;
+  targetLabel: string;
+  targetRoomIds: string[];
+  title: string;
+  body: string;
+  translations: MessagingAnnouncementTranslation[];
+};
+
+export type AnnouncementTranslationRequest = {
+  title: string;
+  body: string;
+  targetLang: MessagingAnnouncementLanguage;
+};
+
+export type AnnouncementTranslationResponse = MessagingAnnouncementTranslation & {
+  langLabel: string;
+  sourceHash: string;
 };
 
 export type MessagingAnnouncement = {

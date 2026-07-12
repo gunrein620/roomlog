@@ -9,7 +9,11 @@ export default async function DashLayout({ children }: { children: ReactNode }) 
   // [레퍼런스 가드] 관리인(LANDLORD) 전용. 미인증/타역할이면 관리인 로그인으로.
   await requireUser("LANDLORD");
   return (
-    <ManagerAppShell title="하자/민원 티켓 처리" context="관리 중인 집 · 하자·민원">
+    <ManagerAppShell
+      title="하자/민원 티켓 처리"
+      context="관리 중인 집 · 하자·민원"
+      subnav={false}
+    >
       {children}
     </ManagerAppShell>
   );

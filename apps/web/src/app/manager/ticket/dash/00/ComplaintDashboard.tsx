@@ -11,7 +11,7 @@ import {
   Hourglass,
   ListChecks,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildComplaintDashboard,
   complaintCategory,
@@ -40,7 +40,22 @@ function moveMonth(month: Date, amount: number) {
   return new Date(month.getFullYear(), month.getMonth() + amount, 1, 12);
 }
 
-function downloadCsv(rows: readonly DefectDashboardRow[], month: Date, monthLabel: string) {
+function monthParts(month: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "numeric",
+    timeZone: "Asia/Seoul",
+  }).formatToParts(month);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return { year: value("year"), monthIndex: value("month") - 1 };
+}
+
+function downloadCsv(
+  rows: readonly DefectDashboardRow[],
+  month: Date,
+  monthLabel: string,
+) {
   const content = `\uFEFF${serializeComplaintDashboardCsv(rows, month)}`;
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
@@ -52,6 +67,9 @@ function downloadCsv(rows: readonly DefectDashboardRow[], month: Date, monthLabe
 
 export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow[] }) {
   const [month, setMonth] = useState(() => latestComplaintMonth(rows));
+  const [pickerYear, setPickerYear] = useState(() => monthParts(latestComplaintMonth(rows)).year);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
   const dashboard = useMemo(() => buildComplaintDashboard(rows, month), [rows, month]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
   const donutSegments = dashboard.categories.reduce<string[]>((segments, category, index) => {
@@ -61,6 +79,32 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     return segments;
   }, []).join(", ");
 
+  useEffect(() => {
+    if (!calendarOpen) return;
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!calendarRef.current?.contains(event.target as Node)) setCalendarOpen(false);
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setCalendarOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [calendarOpen]);
+
+  function changeMonth(amount: number) {
+    const nextMonth = moveMonth(month, amount);
+    setMonth(nextMonth);
+    setPickerYear(monthParts(nextMonth).year);
+    setCalendarOpen(false);
+  }
+
   return (
     <section className="manager-complaint-dashboard" aria-labelledby="manager-complaint-title">
       <header className="manager-complaint-dashboard__header">
@@ -69,15 +113,72 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
           <p>민원 현황을 한눈에 확인하고 관리하세요.</p>
         </div>
         <div className="manager-complaint-dashboard__header-actions">
-          <div className="manager-complaint-dashboard__period" aria-label="조회 기간">
-            <CalendarDays aria-hidden="true" />
-            <button type="button" aria-label="이전 달" onClick={() => setMonth((current) => moveMonth(current, -1))}>
-              <ChevronLeft aria-hidden="true" />
-            </button>
-            <span>{dashboard.monthLabel}</span>
-            <button type="button" aria-label="다음 달" onClick={() => setMonth((current) => moveMonth(current, 1))}>
-              <ChevronRight aria-hidden="true" />
-            </button>
+          <div className="manager-complaint-dashboard__calendar-anchor" ref={calendarRef}>
+            <div className="manager-complaint-dashboard__period" aria-label="조회 기간">
+              <button
+                type="button"
+                aria-label="조회 월 선택"
+                aria-expanded={calendarOpen}
+                onClick={() => {
+                  setPickerYear(monthParts(month).year);
+                  setCalendarOpen((open) => !open);
+                }}
+              >
+                <CalendarDays aria-hidden="true" />
+              </button>
+              <button type="button" aria-label="이전 달" onClick={() => changeMonth(-1)}>
+                <ChevronLeft aria-hidden="true" />
+              </button>
+              <span>{dashboard.monthLabel}</span>
+              <button type="button" aria-label="다음 달" onClick={() => changeMonth(1)}>
+                <ChevronRight aria-hidden="true" />
+              </button>
+            </div>
+            {calendarOpen ? (
+              <div
+                className="manager-complaint-dashboard__calendar-popover"
+                role="dialog"
+                aria-label="조회 연월 선택"
+              >
+                <div className="manager-complaint-dashboard__calendar-header">
+                  <button
+                    type="button"
+                    aria-label="이전 연도"
+                    onClick={() => setPickerYear((year) => year - 1)}
+                  >
+                    <ChevronLeft aria-hidden="true" />
+                  </button>
+                  <strong>{pickerYear}년</strong>
+                  <button
+                    type="button"
+                    aria-label="다음 연도"
+                    onClick={() => setPickerYear((year) => year + 1)}
+                  >
+                    <ChevronRight aria-hidden="true" />
+                  </button>
+                </div>
+                <div className="manager-complaint-dashboard__calendar-months">
+                  {Array.from({ length: 12 }, (_, monthIndex) => {
+                    const selected = pickerYear === monthParts(month).year
+                      && monthIndex === monthParts(month).monthIndex;
+                    return (
+                      <button
+                        key={monthIndex}
+                        type="button"
+                        aria-label={`${monthIndex + 1}월 선택`}
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setMonth(new Date(Date.UTC(pickerYear, monthIndex, 1, 12)));
+                          setCalendarOpen(false);
+                        }}
+                      >
+                        {monthIndex + 1}월
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
           <button
             type="button"

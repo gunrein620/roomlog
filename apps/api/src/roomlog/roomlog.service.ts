@@ -38,6 +38,7 @@ import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
 import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
 import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
 import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
+import { RoomlogAnnouncementTranslationService } from "./services/roomlog-announcement-translation.service";
 import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
 import { RoomlogReportDomain } from "./services/roomlog-report.domain";
 import { RoomlogCopilotDomain } from "./services/roomlog-copilot.domain";
@@ -47,6 +48,7 @@ import {
 } from "./services/manager-agent-persona";
 import {
   AddMessagingThreadMessageInput,
+  AnnouncementTranslationRequest,
   AddTenantComplaintMessageInput,
   AddVendorRepairMessageInput,
   AskManagerReportChatInput,
@@ -161,6 +163,7 @@ import {
   MoveoutSettlementEstimate,
   MoveoutSummary,
   UpdateTenantMoveoutDisputeInput,
+  UpdateAnnouncementDraftInput,
   UpdateMoveoutChecklistInput,
   PhotoAnalysis,
   PhotoComparisonStatus,
@@ -1961,6 +1964,7 @@ export class RoomlogService {
   private readonly vendorMgmt: RoomlogVendorMgmtDomain;
   private readonly vendorRepair: RoomlogVendorRepairDomain;
   private readonly messaging: RoomlogMessagingDomain;
+  private readonly announcementTranslation: RoomlogAnnouncementTranslationService;
   private readonly moveout: RoomlogMoveoutDomain;
   private readonly report: RoomlogReportDomain;
   private readonly copilot: RoomlogCopilotDomain;
@@ -2061,6 +2065,7 @@ export class RoomlogService {
       (room) => this.displayUnitId(room),
       (iso) => this.timeOf(iso)
     );
+    this.announcementTranslation = new RoomlogAnnouncementTranslationService();
     this.report = new RoomlogReportDomain(
       this.store,
       () => this.persistStore(),
@@ -6558,6 +6563,18 @@ export class RoomlogService {
 
   getManagerAnnouncementDraft(managerId: string, draftId: string) {
     return this.messaging.getManagerAnnouncementDraft(managerId, draftId);
+  }
+
+  updateManagerAnnouncementDraft(
+    managerId: string,
+    draftId: string,
+    input: UpdateAnnouncementDraftInput
+  ) {
+    return this.messaging.updateManagerAnnouncementDraft(managerId, draftId, input);
+  }
+
+  translateManagerAnnouncement(managerId: string, input: AnnouncementTranslationRequest) {
+    return this.announcementTranslation.translate(managerId, input);
   }
 
   listManagerAnnouncementRecipients(managerId: string, draftId: string) {

@@ -14,6 +14,7 @@ const complaintDashboardPath = join(
   "src/app/manager/ticket/dash/00/ComplaintDashboard.tsx",
 );
 const pagePath = join(root, "src/app/manager/ticket/dash/00/page.tsx");
+const layoutPath = join(root, "src/app/manager/ticket/dash/layout.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
 const navigationPath = join(root, "src/lib/manager-navigation.ts");
@@ -27,6 +28,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   const componentSource = readFileSync(componentPath, "utf8");
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
   const pageSource = readFileSync(pagePath, "utf8");
+  const layoutSource = readFileSync(layoutPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
   const navigationSource = readFileSync(navigationPath, "utf8");
@@ -101,7 +103,20 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(complaintDashboardSource, /최근 민원 접수 내역/);
   assert.match(complaintDashboardSource, /aria-label="이전 달"/);
   assert.match(complaintDashboardSource, /\?type=complaint/);
+  assert.match(complaintDashboardSource, /aria-label="조회 월 선택"/);
+  assert.match(complaintDashboardSource, /role="dialog"/);
+  assert.match(complaintDashboardSource, /aria-label="조회 연월 선택"/);
+  assert.match(complaintDashboardSource, /Array\.from\(\{ length: 12 \}/);
+  assert.match(complaintDashboardSource, /setPickerYear\(\(year\) => year - 1\)/);
+  assert.match(complaintDashboardSource, /setPickerYear\(\(year\) => year \+ 1\)/);
+  assert.match(
+    complaintDashboardSource,
+    /setMonth\(new Date\(Date\.UTC\(pickerYear, monthIndex, 1, 12\)\)\)/,
+  );
+  assert.doesNotMatch(complaintDashboardSource, /calendar-weekdays|calendar-days|setSelectedDate/);
+  assert.match(complaintDashboardSource, /event\.key === "Escape"/);
   assert.match(cssSource, /\/\* manager-complaint-dashboard:start \*\//);
+  assert.match(cssSource, /manager-complaint-dashboard__calendar-popover/);
 
   const dashboardCss = cssSource.match(
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,
@@ -122,13 +137,14 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.doesNotMatch(dashboardCss, /#[\da-f]{3,8}/i);
 
   assert.match(sidebarSource, /child\.active \?\? currentHref === child\.href/);
+  assert.match(layoutSource, /<ManagerAppShell[\s\S]*?subnav=\{false\}/);
   assert.match(navigationSource, /민원 대시보드/);
   assert.match(navigationSource, /민원 대응/);
   assert.match(navigationSource, /하자 관리/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-11 headerAction 슬롯(데스크톱 접기 토글) 추가로 갱신 — PR #51
-    "a038846774e68e2964d6f21cc8a3f53a082f53d4281c2fa1c97a416bed0e5a55",
+    // 2026-07-12 PR #51(headerAction 슬롯)·#52(소통 관리) 사이드바 변경 병합으로 갱신
+    "40d535b64543fbe2658d9d9a77fe3fcdeac73c323025e72ba7302686dd462ea2",
   );
   assert.equal(
     sha256(navigationSource),

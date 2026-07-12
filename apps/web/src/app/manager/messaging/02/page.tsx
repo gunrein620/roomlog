@@ -8,6 +8,7 @@ import {
 } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { ApiError } from "@/lib/server-api";
+import { findAttachedTranslation } from "../01/attachment-state";
 import {
   Badge,
   Card,
@@ -18,7 +19,6 @@ import {
   SCOPE_LABEL,
   ScreenHeader,
   StaticButton,
-  gridStyle,
   sectionTitleStyle,
 } from "../_components";
 
@@ -63,6 +63,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     throw error;
   }
   const isUrgent = draft.category === "urgent";
+  const attachedTranslation = findAttachedTranslation(draft);
 
   return (
     <>
@@ -113,18 +114,22 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
           {isUrgent ? (
             <Card>
-              <div style={sectionTitleStyle}>D21 주요 언어 번역 미리보기</div>
-              <div style={gridStyle}>
-                {(draft.translations ?? []).map((translation) => (
-                  <Card key={translation.lang} style={{ background: "var(--surface-container)" }}>
-                    <Badge emphasis={translation.reviewed}>{translation.langLabel}</Badge>
-                    <div style={{ marginTop: "var(--space-sm)", fontWeight: 800 }}>{translation.title}</div>
-                    <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-                      {translation.body}
-                    </div>
-                  </Card>
-                ))}
-              </div>
+              <div style={sectionTitleStyle}>최종 첨부 번역</div>
+              {attachedTranslation ? (
+                <Card style={{ background: "var(--surface-container)" }}>
+                  <Badge emphasis>{attachedTranslation.langLabel}</Badge>
+                  <div style={{ marginTop: "var(--space-sm)", fontWeight: 800 }}>
+                    {attachedTranslation.title}
+                  </div>
+                  <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+                    {attachedTranslation.body}
+                  </div>
+                </Card>
+              ) : (
+                <NoticeCard title="첨부 번역 없음">
+                  공지 작성 화면에서 최종 번역을 첨부해 주세요.
+                </NoticeCard>
+              )}
             </Card>
           ) : null}
         </div>
@@ -138,7 +143,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <MetaRow label="미납 타깃" value="없음" />
             <MetaRow label="독촉 문구" value="없음" />
             <MetaRow label="확인 정책" value={draft.confirmRequired ? "확인 게이트" : "읽음"} />
-            <MetaRow label="번역 검수" value={isUrgent ? "주요 언어 검수 완료" : "해당 없음"} />
+            <MetaRow label="최종 언어" value={attachedTranslation?.langLabel ?? "첨부 없음"} />
           </Card>
           <NoticeCard title="확인 게이트" emphasis>
             발송은 이 화면의 승인 이후에만 진행됩니다. 작성 화면에서 자동 발송하지 않습니다.

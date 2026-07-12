@@ -70,4 +70,5 @@ describe("complaint dashboard model", () => {
     assert.match(serializeComplaintDashboardCsv(rows, month), /소음 민원/);
     assert.doesNotMatch(serializeComplaintDashboardCsv(rows, month), /누수 하자/);
   });
+
 });

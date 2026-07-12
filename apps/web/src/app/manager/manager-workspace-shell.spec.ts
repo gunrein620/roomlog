@@ -43,13 +43,33 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(sidebar, /item\.external/);
   assert.match(sidebar, /관리자 워크스페이스 밖으로 이동/);
   assert.doesNotMatch(sidebar, /target="_blank"/);
-  assert.match(sidebar, /aria-expanded=\{ticketExpanded\}/);
-  assert.match(sidebar, /aria-controls="manager-ticket-subnav"/);
-  assert.match(sidebar, /민원·하자 메뉴 접기/);
-  assert.match(sidebar, /민원·하자 메뉴 펼치기/);
-  assert.match(sidebar, /id=\{isTicket \? "manager-ticket-subnav" : undefined\}/);
+  assert.match(sidebar, /aria-expanded=\{expanded\}/);
+  assert.match(sidebar, /aria-controls=\{subnavId\}/);
+  assert.match(sidebar, /id=\{isCollapsible \? subnavId : undefined\}/);
   assert.match(sidebar, /item\.id === "ticket"/);
-  assert.match(managerCss, /manager-sidebar__ticket-toggle/);
+  assert.match(sidebar, /const messagingActive = state\.activeItemId === "messaging"/);
+  assert.match(
+    sidebar,
+    /const \[messagingExpanded, setMessagingExpanded\] = useState\(messagingActive\)/,
+  );
+  assert.match(sidebar, /const isCollapsible = isTicket \|\| isMessaging/);
+  assert.match(sidebar, /const expanded = isTicket \? ticketExpanded : messagingExpanded/);
+  assert.match(sidebar, /manager-messaging-subnav/);
+  assert.match(
+    sidebar,
+    /aria-label=\{`\$\{item\.label\} 메뉴 \$\{expanded \? "접기" : "펼치기"\}`\}/,
+  );
+  assert.match(sidebar, /const showChildren = isCollapsible \? expanded : active/);
+  assert.match(
+    sidebar,
+    /isCollapsible \? \(\s*<button[\s\S]*?className=\{`manager-sidebar__parent-toggle\$\{active \? " is-active" : ""\}`\}[\s\S]*?<Icon aria-hidden="true" \/>[\s\S]*?<span>\{item\.label\}<\/span>[\s\S]*?<ChevronDown aria-hidden="true" \/>/,
+  );
+  assert.match(managerCss, /manager-sidebar__parent-toggle/);
+  assert.doesNotMatch(managerCss, /manager-sidebar__ticket-toggle/);
+  assert.match(
+    managerCss,
+    /\.manager-sidebar__parent-toggle\s*\{[^}]*width:\s*100%;[^}]*display:\s*flex;/,
+  );
   assert.match(sectionNavSource, /item\.children\.map/);
   assert.match(sectionNavSource, /aria-current/);
   assert.match(assistant, /showModal\(\)/);
