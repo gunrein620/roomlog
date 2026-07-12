@@ -15,7 +15,16 @@ const listings: TradeListing[] = [
     monthlyRentManwon: 65,
     status: "노출중",
     images: ["/listing-studio.jpg"],
-    floorPlan: { rooms: [] },
+    floorPlan: {
+      walls3D: [{
+        id: "wall-1",
+        wall_id: 1,
+        dimensions: { width: 3, height: 2.4, depth: 0.15 },
+        position: [0, 1.2, 0],
+        rotation: [0, 0, 0],
+      }],
+      furnitures: [],
+    },
     description: "채광 좋은 원룸입니다.",
     createdAt: "2026-07-12T00:00:00.000Z",
   },
@@ -54,6 +63,17 @@ test("maps only the signed-in landlord listings to manager rows", () => {
       location: "서울 성동구 성수동",
       detailAddress: "101호",
       description: "채광 좋은 원룸입니다.",
+      images: ["/listing-studio.jpg"],
+      floorPlan: {
+        walls3D: [{
+          id: "wall-1",
+          wall_id: 1,
+          dimensions: { width: 3, height: 2.4, depth: 0.15 },
+          position: [0, 1.2, 0],
+          rotation: [0, 0, 0],
+        }],
+        furnitures: [],
+      },
     },
   ]);
 });
@@ -65,4 +85,6 @@ test("maps one API listing to the editable manager detail row", () => {
   assert.equal(row.location, "서울 성동구 성수동");
   assert.equal(row.detailAddress, "101호");
   assert.equal(row.description, "채광 좋은 원룸입니다.");
+  assert.deepEqual(row.images, ["/listing-studio.jpg"]);
+  assert.equal(row.floorPlan?.walls3D.length, 1);
 });

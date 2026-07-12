@@ -1,3 +1,8 @@
+import {
+  normalizeManagerListingFloorPlan,
+  type ManagerListingFloorPlan,
+} from "./manager-listing-media";
+
 export interface TradeListing {
   id: string;
   ownerId: string;
@@ -32,6 +37,8 @@ export interface ManagerListingRow {
   location: string;
   detailAddress: string;
   description: string;
+  images: string[];
+  floorPlan: ManagerListingFloorPlan | null;
 }
 
 function priceLabel(listing: TradeListing): string {
@@ -53,15 +60,17 @@ export function toManagerListingRows(
 }
 
 export function toManagerListingRow(listing: TradeListing): ManagerListingRow {
+  const floorPlan = normalizeManagerListingFloorPlan(listing.floorPlan);
+  const images = Array.isArray(listing.images) ? listing.images.filter(Boolean) : [];
   return {
     id: listing.id,
     title: listing.title,
     address: [listing.location, listing.detailAddress].filter(Boolean).join(" "),
     priceLabel: priceLabel(listing),
     statusLabel: listing.status === "계약완료" ? "계약완료" : "노출중",
-    coverImage: listing.images?.[0],
-    photoCount: listing.images?.length ?? 0,
-    has3D: Boolean(listing.floorPlan),
+    coverImage: images[0],
+    photoCount: images.length,
+    has3D: Boolean(floorPlan),
     createdAt: listing.createdAt,
     roomType: listing.roomType,
     tradeType: listing.tradeType,
@@ -70,5 +79,7 @@ export function toManagerListingRow(listing: TradeListing): ManagerListingRow {
     location: listing.location,
     detailAddress: listing.detailAddress ?? "",
     description: listing.description,
+    images,
+    floorPlan,
   };
 }
