@@ -2,6 +2,7 @@ export interface TradeListing {
   id: string;
   ownerId: string;
   title: string;
+  roomType: string;
   location: string;
   detailAddress?: string;
   tradeType: "월세" | "전세" | "매매";
@@ -10,6 +11,7 @@ export interface TradeListing {
   status?: "노출중" | "계약완료";
   images?: string[];
   floorPlan?: unknown;
+  description: string;
   createdAt: string;
 }
 
@@ -23,6 +25,13 @@ export interface ManagerListingRow {
   photoCount: number;
   has3D: boolean;
   createdAt: string;
+  roomType: string;
+  tradeType: "월세" | "전세" | "매매";
+  depositManwon: number;
+  monthlyRentManwon: number;
+  location: string;
+  detailAddress: string;
+  description: string;
 }
 
 function priceLabel(listing: TradeListing): string {
@@ -39,16 +48,27 @@ export function toManagerListingRows(
 ): ManagerListingRow[] {
   return listings
     .filter((listing) => listing.ownerId === ownerId)
-    .map<ManagerListingRow>((listing) => ({
-      id: listing.id,
-      title: listing.title,
-      address: [listing.location, listing.detailAddress].filter(Boolean).join(" "),
-      priceLabel: priceLabel(listing),
-      statusLabel: listing.status === "계약완료" ? "계약완료" : "노출중",
-      coverImage: listing.images?.[0],
-      photoCount: listing.images?.length ?? 0,
-      has3D: Boolean(listing.floorPlan),
-      createdAt: listing.createdAt,
-    }))
+    .map(toManagerListingRow)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function toManagerListingRow(listing: TradeListing): ManagerListingRow {
+  return {
+    id: listing.id,
+    title: listing.title,
+    address: [listing.location, listing.detailAddress].filter(Boolean).join(" "),
+    priceLabel: priceLabel(listing),
+    statusLabel: listing.status === "계약완료" ? "계약완료" : "노출중",
+    coverImage: listing.images?.[0],
+    photoCount: listing.images?.length ?? 0,
+    has3D: Boolean(listing.floorPlan),
+    createdAt: listing.createdAt,
+    roomType: listing.roomType,
+    tradeType: listing.tradeType,
+    depositManwon: listing.depositManwon,
+    monthlyRentManwon: listing.monthlyRentManwon,
+    location: listing.location,
+    detailAddress: listing.detailAddress ?? "",
+    description: listing.description,
+  };
 }
