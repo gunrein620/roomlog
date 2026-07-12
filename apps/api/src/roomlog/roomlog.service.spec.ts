@@ -5416,6 +5416,96 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("uses OpenAI contract OCR when an API key is configured", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    const originalContractOcrModel = process.env.OPENAI_CONTRACT_OCR_MODEL;
+    const originalFetch = globalThis.fetch;
+    const uploadDir = mkdtempSync(join(tmpdir(), "roomlog-contract-ocr-"));
+    let capturedUrl = "";
+    let capturedBody: Record<string, any> = {};
+
+    process.env.OPENAI_API_KEY = "sk-test-roomlog";
+    process.env.OPENAI_CONTRACT_OCR_MODEL = "gpt-contract-ocr-test";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      capturedUrl = String(input);
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, any>;
+
+      return new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({
+            summary: "계약서 원문에서 금액과 기간을 추출했습니다.",
+            highlights: ["보증금 2천만원", "월세 80만원"],
+            items: [
+              {
+                label: "보증금",
+                value: "20,000,000원",
+                group: "money",
+                needsCheck: false,
+                evidence: "보증금은 금 이천만원정",
+                masked: false
+              },
+              {
+                label: "상세 주소",
+                value: "서울시 성동구 성수동 301호",
+                group: "term",
+                needsCheck: true,
+                evidence: "목적물 소재지",
+                masked: true
+              }
+            ],
+            helpNotes: [
+              {
+                clause: "관리자 확인",
+                plain: "원문과 금액을 한 번 더 대조하세요.",
+                source: "OpenAI OCR"
+              }
+            ]
+          })
+        }),
+        { headers: { "Content-Type": "application/json" }, status: 200 }
+      );
+    }) as typeof fetch;
+
+    try {
+      const service = new RoomlogService({ uploadDir });
+      const upload = await service.saveManagerContractUpload("landlord-demo", {
+        buffer: Buffer.from("fake-contract-image"),
+        originalName: "contract.png",
+        mimeType: "image/png"
+      });
+      const created = service.createManagerContract("landlord-demo", {
+        unitId: "301",
+        fileName: upload.fileName,
+        fileUrl: upload.fileUrl
+      });
+      const result = await service.runManagerContractOcr("landlord-demo", created.row.contract.id);
+
+      assert.equal(capturedUrl, "https://api.openai.com/v1/responses");
+      assert.equal(capturedBody.model, "gpt-contract-ocr-test");
+      assert.equal(
+        capturedBody.input?.[0]?.content?.some((part: Record<string, unknown>) => part.type === "input_image"),
+        true
+      );
+      assert.match(result.extraction.highlights.join("\n"), /실제 OCR/);
+      assert.equal(
+        result.extraction.items.find((item) => item.label === "보증금")?.value,
+        "20,000,000원"
+      );
+      assert.equal(
+        result.extraction.items.find((item) => item.label === "상세 주소")?.masked,
+        true
+      );
+      assert.equal(result.row.contract.valueSource, "unverified");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+      if (originalContractOcrModel) process.env.OPENAI_CONTRACT_OCR_MODEL = originalContractOcrModel;
+      else delete process.env.OPENAI_CONTRACT_OCR_MODEL;
+      rmSync(uploadDir, { force: true, recursive: true });
+    }
+  });
+
   it("lets a tenant read only their own moveout request", () => {
     const service = createMoveoutTestService() as any;
 

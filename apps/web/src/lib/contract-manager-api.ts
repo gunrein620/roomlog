@@ -1,5 +1,8 @@
 import type { Contract, ContractExtraction, ContractPrivacy, DeletionState } from "@roomlog/types";
-import { serverFetch } from "./server-api";
+import { cookies } from "next/headers";
+import { apiUrl } from "./api-url";
+import { AUTH_COOKIE } from "./auth-cookie";
+import { ApiError, serverFetch } from "./server-api";
 
 export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
 
@@ -94,6 +97,13 @@ export interface ManagerConflictCandidate {
   decision: string;
 }
 
+export interface ManagerContractUpload {
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 export function getManagerContractDashboard(): Promise<ManagerContractDashboard> {
   return serverFetch("/contracts/manager");
 }
@@ -115,6 +125,40 @@ export function requestManagerContractInfo(id: string): Promise<ManagerContractD
   return serverFetch<ManagerContractDetail>(`/contracts/manager/${encodeURIComponent(id)}/request-info`, {
     method: "POST",
   });
+}
+
+export function runManagerContractOcr(id: string): Promise<ManagerContractDetail> {
+  return serverFetch<ManagerContractDetail>(`/contracts/manager/${encodeURIComponent(id)}/ocr`, {
+    method: "POST",
+  });
+}
+
+export async function uploadManagerContractDocument(file: File): Promise<ManagerContractUpload> {
+  const token = (await cookies()).get(AUTH_COOKIE)?.value;
+  if (!token) {
+    throw new ApiError(401, "로그인이 필요합니다.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(apiUrl("/contracts/manager/uploads"), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+    cache: "no-store",
+  });
+  const data = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    const message = Array.isArray(data?.message) ? data.message.join(", ") : data?.message;
+    throw new ApiError(response.status, message || "계약서 파일 업로드에 실패했습니다.");
+  }
+
+  return data as ManagerContractUpload;
 }
 
 export function createManagerContract(input: {
