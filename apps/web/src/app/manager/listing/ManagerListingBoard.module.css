@@ -216,6 +216,121 @@
   font-weight: 800;
 }
 
+.mediaEditor {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container-low);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.sectionHeader h3,
+.sectionHeader p,
+.mediaNotice {
+  margin: 0;
+}
+
+.sectionHeader p,
+.mediaNotice {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.fileButton,
+.mediaLink {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 var(--space-md);
+  color: var(--primary);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-btn);
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fileButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.fileButton:focus-within,
+.mediaLink:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--space-xs);
+}
+
+.photoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-sm);
+}
+
+.photoItem {
+  position: relative;
+  min-height: 120px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+}
+
+.photoItem img {
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  object-fit: cover;
+}
+
+.photoItem figcaption {
+  position: absolute;
+  left: var(--space-xs);
+  bottom: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--on-primary);
+  background: var(--primary);
+  border-radius: var(--radius-btn);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+}
+
+.photoItem button {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-xs);
+  min-height: var(--touch-target);
+  padding: 0 var(--space-sm);
+  color: var(--error);
+  background: var(--error-container);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-btn);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mediaActions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
 .empty {
   display: grid;
   justify-items: start;
@@ -237,5 +352,10 @@
 
   .fullWidth {
     grid-column: auto;
+  }
+
+  .mediaActions > *,
+  .sectionHeader .fileButton {
+    width: 100%;
   }
 }

@@ -2,14 +2,22 @@
 
 import Link from "next/link";
 import { X } from "lucide-react";
-import { type FormEvent, type MouseEvent, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import { Badge, Card } from "@roomlog/ui";
 import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import {
   removeManagerListing,
   updateManagerListing,
+  uploadManagerListingPhotos,
   type ManagerListingUpdateInput,
 } from "./manager-listing-api";
+import {
+  MAX_MANAGER_LISTING_PHOTOS,
+  mergeManagerListingPhotos,
+  parseManagerListingFloorPlan,
+  readManagerListingFloorPlanSnapshot,
+  type ManagerListingFloorPlan,
+} from "./manager-listing-media";
 import { toManagerListingRow, type ManagerListingRow } from "./manager-listing-model";
 import styles from "./ManagerListingBoard.module.css";
 
@@ -70,8 +78,37 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
   const [mode, setMode] = useState<DialogMode>("view");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
+  const [newPhotoFiles, setNewPhotoFiles] = useState<File[]>([]);
+  const [newPhotoPreviewUrls, setNewPhotoPreviewUrls] = useState<string[]>([]);
+  const [floorPlanDraft, setFloorPlanDraft] = useState<ManagerListingFloorPlan | null>(null);
+  const [mediaMessage, setMediaMessage] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const selected = listings.find((listing) => listing.id === selectedId) ?? null;
+
+  useEffect(() => {
+    const urls = newPhotoFiles.map((file) => URL.createObjectURL(file));
+    setNewPhotoPreviewUrls(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [newPhotoFiles]);
+
+  useEffect(() => {
+    if (mode !== "edit") return;
+    const syncFloorPlan = () => {
+      if (document.visibilityState !== "visible") return;
+      const snapshot = readManagerListingFloorPlanSnapshot();
+      if (!snapshot) return;
+      setFloorPlanDraft(snapshot);
+      setMediaMessage(`3D 도면 ${snapshot.walls3D.length}개 벽을 연결했습니다.`);
+      setError(null);
+    };
+    window.addEventListener("focus", syncFloorPlan);
+    document.addEventListener("visibilitychange", syncFloorPlan);
+    return () => {
+      window.removeEventListener("focus", syncFloorPlan);
+      document.removeEventListener("visibilitychange", syncFloorPlan);
+    };
+  }, [mode]);
 
   function openListing(listingId: string) {
     setSelectedId(listingId);
@@ -85,6 +122,65 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
     setMode("view");
     setPending(false);
     setError(null);
+    setExistingImages([]);
+    setNewPhotoFiles([]);
+    setFloorPlanDraft(null);
+    setMediaMessage(null);
+  }
+
+  function beginEdit() {
+    if (!selected) return;
+    setExistingImages([...selected.images]);
+    setNewPhotoFiles([]);
+    setFloorPlanDraft(selected.floorPlan);
+    setMediaMessage(null);
+    setError(null);
+    setMode("edit");
+  }
+
+  function cancelEdit() {
+    setMode("view");
+    setError(null);
+    setMediaMessage(null);
+  }
+
+  function addPhotos(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (selectedFiles.length === 0) return;
+    try {
+      const merged = mergeManagerListingPhotos(existingImages, [...newPhotoFiles, ...selectedFiles]);
+      setNewPhotoFiles(merged.newFiles);
+      setError(null);
+      setMediaMessage(`사진 ${merged.existingUrls.length + merged.newFiles.length}장을 저장할 예정입니다.`);
+    } catch (photoError) {
+      setError(photoError instanceof Error ? photoError.message : "사진을 추가하지 못했습니다.");
+    }
+  }
+
+  function removePhoto(index: number) {
+    if (index < existingImages.length) {
+      setExistingImages((current) => current.filter((_, photoIndex) => photoIndex !== index));
+    } else {
+      const newPhotoIndex = index - existingImages.length;
+      setNewPhotoFiles((current) => current.filter((_, photoIndex) => photoIndex !== newPhotoIndex));
+    }
+    setError(null);
+    setMediaMessage("사진 변경사항은 저장 버튼을 눌러야 반영됩니다.");
+  }
+
+  async function replaceFloorPlanFromJson(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    const floorPlan = parseManagerListingFloorPlan(await file.text());
+    if (!floorPlan) {
+      setError("도면 JSON에서 유효한 3D 벽을 찾지 못했습니다.");
+      return;
+    }
+    setFloorPlanDraft(floorPlan);
+    setError(null);
+    setMediaMessage(`3D 도면 ${floorPlan.walls3D.length}개 벽을 연결했습니다.`);
   }
 
   function closeDialog() {
@@ -102,20 +198,22 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
     if (!selected || pending) return;
 
     const data = new FormData(event.currentTarget);
-    const payload: ManagerListingUpdateInput = {
-      title: String(data.get("title") ?? ""),
-      roomType: String(data.get("roomType") ?? ""),
-      tradeType: String(data.get("tradeType") ?? "월세") as ManagerListingUpdateInput["tradeType"],
-      depositManwon: Number(data.get("depositManwon")) || 0,
-      monthlyRentManwon: Number(data.get("monthlyRentManwon")) || 0,
-      location: String(data.get("location") ?? ""),
-      detailAddress: String(data.get("detailAddress") ?? ""),
-      description: String(data.get("description") ?? ""),
-    };
-
     setPending(true);
     setError(null);
     try {
+      const uploadedImages = await uploadManagerListingPhotos(newPhotoFiles);
+      const payload: ManagerListingUpdateInput = {
+        title: String(data.get("title") ?? ""),
+        roomType: String(data.get("roomType") ?? ""),
+        tradeType: String(data.get("tradeType") ?? "월세") as ManagerListingUpdateInput["tradeType"],
+        depositManwon: Number(data.get("depositManwon")) || 0,
+        monthlyRentManwon: Number(data.get("monthlyRentManwon")) || 0,
+        location: String(data.get("location") ?? ""),
+        detailAddress: String(data.get("detailAddress") ?? ""),
+        description: String(data.get("description") ?? ""),
+        images: [...existingImages, ...uploadedImages],
+        floorPlan: floorPlanDraft,
+      };
       const updatedRow = toManagerListingRow(await updateManagerListing(selected.id, payload));
       setListings((current) => current.map((item) => item.id === updatedRow.id ? updatedRow : item));
       setMode("view");
@@ -207,7 +305,7 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
                     <button type="button" className={styles.dangerButton} onClick={() => { setMode("remove"); setError(null); }}>
                       매물 내리기
                     </button>
-                    <button type="button" className={styles.actionButton} data-primary="true" onClick={() => { setMode("edit"); setError(null); }}>
+                    <button type="button" className={styles.actionButton} data-primary="true" onClick={beginEdit}>
                       수정
                     </button>
                   </div>
@@ -252,9 +350,77 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
                       <textarea name="description" defaultValue={selected.description} />
                     </label>
                   </div>
+                  <section className={styles.mediaEditor} aria-labelledby="manager-listing-photo-title">
+                    <div className={styles.sectionHeader}>
+                      <div>
+                        <h3 id="manager-listing-photo-title">사진</h3>
+                        <p>첫 번째 사진이 대표 사진입니다. 최대 {MAX_MANAGER_LISTING_PHOTOS}장까지 등록할 수 있습니다.</p>
+                      </div>
+                      <label className={styles.fileButton}>
+                        사진 추가
+                        <input type="file" accept="image/*" multiple onChange={addPhotos} disabled={pending} />
+                      </label>
+                    </div>
+                    {existingImages.length + newPhotoPreviewUrls.length > 0 ? (
+                      <div className={styles.photoGrid} aria-label="수정할 매물 사진">
+                        {[...existingImages, ...newPhotoPreviewUrls].map((url, index) => (
+                          <figure className={styles.photoItem} key={`${url}-${index}`}>
+                            <img src={url} alt={`매물 사진 ${index + 1}`} />
+                            {index === 0 ? <figcaption>대표 사진</figcaption> : null}
+                            <button
+                              type="button"
+                              aria-label={`사진 ${index + 1} 삭제`}
+                              onClick={() => removePhoto(index)}
+                              disabled={pending}
+                            >
+                              삭제
+                            </button>
+                          </figure>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className={styles.mediaNotice}>저장하면 사진 없는 매물로 변경됩니다.</p>
+                    )}
+                  </section>
+
+                  <section className={styles.mediaEditor} aria-labelledby="manager-listing-floor-plan-title">
+                    <div className={styles.sectionHeader}>
+                      <div>
+                        <h3 id="manager-listing-floor-plan-title">3D 도면</h3>
+                        <p>{floorPlanDraft ? `${floorPlanDraft.walls3D.length}개 벽 연결됨` : "연결된 3D 도면이 없습니다."}</p>
+                      </div>
+                    </div>
+                    <div className={styles.mediaActions}>
+                      <Link href="/floor-plan-3d" target="_blank" rel="noopener" className={styles.mediaLink}>
+                        3D 도면 다시 열기
+                      </Link>
+                      <label className={styles.fileButton}>
+                        도면 JSON 업로드
+                        <input
+                          type="file"
+                          accept=".json,application/json"
+                          onChange={(event) => void replaceFloorPlanFromJson(event)}
+                          disabled={pending}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className={styles.dangerButton}
+                        onClick={() => {
+                          setFloorPlanDraft(null);
+                          setError(null);
+                          setMediaMessage("저장하면 3D 도면 연결이 해제됩니다.");
+                        }}
+                        disabled={pending || !floorPlanDraft}
+                      >
+                        3D 연결 해제
+                      </button>
+                    </div>
+                  </section>
+                  {mediaMessage ? <p className={styles.mediaNotice} role="status">{mediaMessage}</p> : null}
                   {error ? <p className={styles.error} role="alert">{error}</p> : null}
                   <div className={styles.actions}>
-                    <button type="button" className={styles.actionButton} onClick={() => { setMode("view"); setError(null); }} disabled={pending}>
+                    <button type="button" className={styles.actionButton} onClick={cancelEdit} disabled={pending}>
                       수정 취소
                     </button>
                     <button type="submit" className={styles.actionButton} data-primary="true" disabled={pending}>

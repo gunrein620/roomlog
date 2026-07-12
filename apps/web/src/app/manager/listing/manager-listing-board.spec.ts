@@ -26,6 +26,27 @@ test("detail dialog exposes edit and confirmed removal flows", () => {
   assert.match(component, /setListings\(\(current\) => current\.filter/);
 });
 
+test("edit mode exposes individual photo and 3D floor plan controls", () => {
+  for (const text of ["사진 추가", "대표 사진", "3D 도면 다시 열기", "도면 JSON 업로드", "3D 연결 해제"]) {
+    assert.match(component, new RegExp(text));
+  }
+  assert.match(component, /accept="image\/\*"/);
+  assert.match(component, /multiple/);
+  assert.match(component, /aria-label=\{`사진 \$\{index \+ 1\} 삭제`\}/);
+  assert.match(component, /accept="\.json,application\/json"/);
+  assert.match(component, /target="_blank"/);
+  assert.match(component, /readManagerListingFloorPlanSnapshot/);
+});
+
+test("save uploads new photos before patching the final listing media", () => {
+  const uploadPosition = component.indexOf("await uploadManagerListingPhotos");
+  const updatePosition = component.indexOf("await updateManagerListing");
+  assert.ok(uploadPosition >= 0);
+  assert.ok(updatePosition > uploadPosition);
+  assert.match(component, /images: \[\.\.\.existingImages, \.\.\.uploadedImages\]/);
+  assert.match(component, /floorPlan: floorPlanDraft/);
+});
+
 test("dialog styles use shared tokens without raw colors", () => {
   assert.match(css, /var\(--error\)/);
   assert.match(css, /var\(--surface-container-lowest\)/);
