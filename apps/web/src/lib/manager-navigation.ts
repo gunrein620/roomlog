@@ -32,6 +32,8 @@ export interface ManagerNavItem {
 export interface ManagerNavGroup { label: string; items: readonly ManagerNavItem[] }
 export interface ManagerNavState { activeItemId: ManagerNavItemId | null; activeChildHref: string | null }
 
+export const MANAGER_LISTING_PATH = "/manager/listing";
+
 export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
   {
     label: "워크스페이스",
@@ -65,11 +67,10 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
       {
         id: "listing",
         label: "매물 관리",
-        href: "/sell",
+        href: MANAGER_LISTING_PATH,
         icon: "listing",
-        activePrefixes: ["/sell"],
+        activePrefixes: [MANAGER_LISTING_PATH],
         children: [],
-        external: true,
       },
       {
         id: "contract",

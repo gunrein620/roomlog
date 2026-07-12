@@ -44,11 +44,19 @@ describe("manager workspace navigation", () => {
     assert.equal(getManagerCurrentHref("/manager/billing/bill-1"), null);
   });
 
-  it("marks prototype home links and the external listing link", () => {
+  it("marks prototype home links", () => {
     const dashboard = items.find((item) => item.id === "dashboard");
-    const listing = items.find((item) => item.id === "listing");
     assert.equal(dashboard?.children.find((child) => child.href === "/manager/home/03")?.demo, true);
-    assert.equal(listing?.external, true);
+  });
+
+  it("keeps listing management inside the manager workspace", () => {
+    const listing = items.find((item) => item.id === "listing");
+    assert.equal(listing?.href, "/manager/listing");
+    assert.equal(listing?.external, undefined);
+    assert.deepEqual(getManagerNavState("/manager/listing"), {
+      activeItemId: "listing",
+      activeChildHref: null,
+    });
   });
 
   it("routes ticket child tabs to their matching dashboard type filters", () => {
@@ -72,7 +80,7 @@ describe("manager workspace navigation", () => {
       }
     }
     assert.deepEqual(getManagerNavState("/manager/home/06"), { activeItemId: "settings", activeChildHref: null });
-    assert.deepEqual(getManagerNavState("/sell"), { activeItemId: "listing", activeChildHref: null });
+    assert.deepEqual(getManagerNavState("/manager/listing"), { activeItemId: "listing", activeChildHref: null });
     assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: "assistant", activeChildHref: null });
   });
 

@@ -131,6 +131,6 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   );
   assert.equal(
     sha256(navigationSource),
-    "7b7381cee476b2e2f635a9682301ed4265e4a71eb8db89306e6b6eebcb7c2fb4",
+    "84798e571e84c833346faf928b46cad08dd7c14195c8894e22ac2d59db1bb002",
   );
 });

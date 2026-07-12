@@ -1,0 +1,121 @@
+import Link from "next/link";
+import { Badge, Card } from "@roomlog/ui";
+import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
+import { requireUser } from "@/lib/session";
+import { serverFetch } from "@/lib/server-api";
+import {
+  toManagerListingRows,
+  type ManagerListingRow,
+  type TradeListing,
+} from "./manager-listing-model";
+
+export const dynamic = "force-dynamic";
+
+const linkStyle = {
+  minHeight: "var(--touch-target)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 var(--space-lg)",
+  borderRadius: "var(--radius-btn)",
+  background: "var(--primary)",
+  color: "var(--on-primary)",
+  textDecoration: "none",
+  fontWeight: 800,
+} as const;
+
+function ListingCard({ listing }: { listing: ManagerListingRow }) {
+  return (
+    <Card
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(120px, 180px) 1fr",
+        gap: "var(--space-lg)",
+      }}
+    >
+      <div
+        style={{
+          minHeight: 120,
+          borderRadius: "var(--radius)",
+          overflow: "hidden",
+          background: "var(--surface-container-high)",
+        }}
+      >
+        {listing.coverImage ? (
+          <img
+            src={listing.coverImage}
+            alt=""
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : null}
+      </div>
+      <div style={{ display: "grid", gap: "var(--space-sm)", alignContent: "center" }}>
+        <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
+          <Badge emphasis={listing.statusLabel === "노출중"}>{listing.statusLabel}</Badge>
+          <Badge>사진 {listing.photoCount}장</Badge>
+          <Badge>{listing.has3D ? "3D 연결" : "3D 미연결"}</Badge>
+        </div>
+        <strong style={{ fontSize: "var(--fs-subtitle)" }}>{listing.title}</strong>
+        <span style={{ color: "var(--on-surface-variant)" }}>{listing.address}</span>
+        <span style={{ fontWeight: 800 }}>{listing.priceLabel}</span>
+      </div>
+    </Card>
+  );
+}
+
+export default async function ManagerListingPage() {
+  const user = await requireUser("LANDLORD");
+  let rows: ManagerListingRow[] = [];
+  let listingError = false;
+
+  try {
+    const listings = await serverFetch<TradeListing[]>("/trade/listings");
+    rows = toManagerListingRows(listings, user.userId);
+  } catch {
+    listingError = true;
+  }
+
+  return (
+    <ManagerAppShell title="매물 관리" context="관리 중인 집 · 매물">
+      <div style={{ display: "grid", gap: "var(--space-lg)" }}>
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "var(--space-lg)",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h1 style={{ margin: 0, fontSize: "var(--fs-title)" }}>등록한 매물</h1>
+            <p style={{ color: "var(--on-surface-variant)" }}>
+              현재 노출 상태와 등록 정보를 한곳에서 확인합니다.
+            </p>
+          </div>
+          <Link href="/sell" style={linkStyle}>새 매물 등록</Link>
+        </header>
+
+        {listingError ? (
+          <Card>
+            <strong>매물 목록을 불러오지 못했습니다</strong>
+            <p>잠시 후 다시 시도해 주세요.</p>
+          </Card>
+        ) : rows.length === 0 ? (
+          <Card>
+            <strong>등록된 매물이 없습니다</strong>
+            <p>새 매물을 등록하면 이곳에서 관리할 수 있습니다.</p>
+            <Link href="/sell" style={linkStyle}>새 매물 등록</Link>
+          </Card>
+        ) : (
+          <section
+            aria-label="등록한 매물 목록"
+            style={{ display: "grid", gap: "var(--space-md)" }}
+          >
+            {rows.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
+          </section>
+        )}
+      </div>
+    </ManagerAppShell>
+  );
+}

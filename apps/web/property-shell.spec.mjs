@@ -164,7 +164,7 @@ test("keeps tenant, manager, and vendor entry routes available", () => {
   // 도메인 첫 화면으로 리다이렉트한다(화면 = app/<role>/<domain>/<screen>).
   const redirectTargets = {
     tenant: "/living",
-    manager: "/sell",
+    manager: "/manager/home/00",
     vendor: "/vendor/job/00"
   };
   for (const route of ["tenant", "manager", "vendor"]) {
@@ -175,6 +175,8 @@ test("keeps tenant, manager, and vendor entry routes available", () => {
     assert.match(routePageSource, /redirect\(/);
     assert.match(routePageSource, new RegExp(redirectTargets[route]));
   }
+
+  assert.equal(existsSync(new URL("./src/app/manager/listing/page.tsx", import.meta.url)), true);
 });
 
 test("wires moveout screens to backend mutations instead of static links", () => {
