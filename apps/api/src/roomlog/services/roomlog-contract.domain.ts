@@ -268,7 +268,7 @@ export class RoomlogContractDomain {
       timeline: this.contractTimeline(contract, room),
       auditLogs: this.contractAuditLogs(contract, extraction),
       deletionRequests,
-      inviteLinks: this.contractInviteLinks(managerId),
+      inviteLinks: this.contractInviteLinks(managerId, contract.id),
       conflictCandidates: this.contractConflictCandidates(contract)
     };
   }
@@ -1081,9 +1081,12 @@ export class RoomlogContractDomain {
     ];
   }
 
-  private contractInviteLinks(managerId: string) {
+  private contractInviteLinks(managerId: string, contractId: string) {
     return this.store.contractInvites
-      .filter((invite) => invite.invitedByManagerId === managerId)
+      .filter(
+        (invite) =>
+          invite.invitedByManagerId === managerId && invite.contractId === contractId
+      )
       .map((invite) => ({
         id: invite.id,
         unitId: this.displayUnitId(this.findRoom(invite.roomId)),

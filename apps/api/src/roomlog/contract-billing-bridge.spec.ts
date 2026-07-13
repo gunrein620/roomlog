@@ -69,6 +69,26 @@ function storedContract(service: RoomlogService, contractId: string) {
 }
 
 describe("trade contract billing bridge", () => {
+  it("scopes manager contract invite links to the exact selected contract", () => {
+    const service = new RoomlogService();
+    const first = createManagerDraft(service, "invite-scope-first").contract;
+    const second = createManagerDraft(service, "invite-scope-second").contract;
+    const firstInvite = service.createManagerContractInvite("landlord-demo", first.id, {
+      tenantName: "첫 계약 임차인",
+      phone: "010-1111-0001",
+    }).invite;
+    const secondInvite = service.createManagerContractInvite("landlord-demo", second.id, {
+      tenantName: "둘째 계약 임차인",
+      phone: "010-2222-0002",
+    }).invite;
+
+    const firstDetail = service.getManagerContractDetail("landlord-demo", first.id);
+    const secondDetail = service.getManagerContractDetail("landlord-demo", second.id);
+
+    assert.deepEqual(firstDetail.inviteLinks.map((invite) => invite.id), [firstInvite.id]);
+    assert.deepEqual(secondDetail.inviteLinks.map((invite) => invite.id), [secondInvite.id]);
+  });
+
   it("creates one unverified billing contract draft on the exact assigned room", () => {
     const service = new RoomlogService();
     const room = createTradeRoom(service);
