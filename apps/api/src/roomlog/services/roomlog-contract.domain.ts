@@ -1,6 +1,11 @@
 // 계약(contract)·문서 도메인 협력 클래스 — roomlog.service.ts에서 추출(동작 불변).
 // 자기완결(contract* 헬퍼 통째). 공유 헬퍼는 동명 필드로 주입해 본문 verbatim 유지.
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException
+} from "@nestjs/common";
 import { id, now } from "../roomlog-support";
 import type {
   Contract,
@@ -12,6 +17,7 @@ import type {
   CreateManagerContractInviteInput,
   CreateTenantContractInput,
   DeletionState,
+  EnsureTradeContractDraftInput,
   ExtractionGroup,
   Room,
   UpdateManagerContractInventoryInput,
@@ -116,6 +122,69 @@ export class RoomlogContractDomain {
       extraction: this.presentContractExtraction(this.findContractExtraction(contract)),
       privacy: this.presentContractPrivacy(this.findContractPrivacy(contract))
     };
+  }
+
+  ensureTradeContractDraft(input: EnsureTradeContractDraftInput): Contract {
+    const room = this.findRoom(input.roomId);
+    if (room.landlordId !== input.landlordId) {
+      throw new ForbiddenException("거래 계약 임대인의 호실만 계약으로 연결할 수 있습니다.");
+    }
+
+    const contractId = `ct_trade_${input.tradeContractId}`;
+    const deterministic = this.store.contracts.find((contract) => contract.id === contractId);
+    const active = this.store.contracts.find(
+      (contract) =>
+        contract.id !== deterministic?.id &&
+        contract.roomId === room.id &&
+        contract.lifecycle === "active"
+    );
+    if (active?.tenantId === input.tenantId) return this.presentContract(active);
+    if (active) {
+      throw new ConflictException("해당 호실에 다른 임차인의 활성 계약이 있습니다.");
+    }
+    if (deterministic) {
+      if (
+        deterministic.roomId !== room.id ||
+        deterministic.managerId !== input.landlordId ||
+        deterministic.tenantId !== input.tenantId
+      ) {
+        throw new ConflictException("동일한 거래 계약 ID가 다른 계약 관계에 연결돼 있습니다.");
+      }
+      return this.presentContract(deterministic);
+    }
+
+    const createdAt = now();
+    const contract: Contract = {
+      id: contractId,
+      roomId: room.id,
+      tenantId: input.tenantId,
+      managerId: input.landlordId,
+      unitId: this.displayUnitId(room).replace(/호$/, ""),
+      landlordName: input.landlordName.trim() || "관리자",
+      lifecycle: "analyzing",
+      review: "pending",
+      deletion: "none",
+      valueSource: "unverified",
+      monthlyRent: this.requireNonNegativeInteger(input.monthlyRent, "월세"),
+      optionInventory: [],
+      createdAt,
+      updatedAt: createdAt
+    };
+
+    this.store.contracts.push(contract);
+    const extraction = this.ensureContractExtraction(contract);
+    this.upsertExtractionItem(
+      extraction,
+      "보증금",
+      `${this.requireNonNegativeInteger(input.depositKrw, "보증금").toLocaleString("ko-KR")}원`,
+      "money",
+      false,
+      "거래 계약 수락값"
+    );
+    contract.extractionId = extraction.id;
+    this.ensureContractPrivacy(contract);
+    this.persistStore();
+    return this.presentContract(contract);
   }
 
   getManagerContractDashboard(managerId: string) {
@@ -715,7 +784,8 @@ export class RoomlogContractDomain {
     label: string,
     value: string | undefined,
     group: ExtractionGroup,
-    masked = false
+    masked = false,
+    evidence = "관리자 수동 입력"
   ) {
     const nextValue = value?.trim();
     if (!nextValue) return;
@@ -726,7 +796,7 @@ export class RoomlogContractDomain {
       existing.group = group;
       existing.masked = masked || existing.masked;
       existing.needsCheck = true;
-      existing.evidence = existing.evidence ?? "관리자 수동 입력";
+      existing.evidence = existing.evidence ?? evidence;
       return;
     }
 
@@ -736,7 +806,7 @@ export class RoomlogContractDomain {
       group,
       needsCheck: true,
       masked,
-      evidence: "관리자 수동 입력"
+      evidence
     });
   }
 
@@ -762,6 +832,14 @@ export class RoomlogContractDomain {
     const parsed = Math.floor(Number(value));
 
     return parsed >= 0 ? parsed : undefined;
+  }
+
+  private requireNonNegativeInteger(value: number, field: string) {
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+      throw new BadRequestException(`${field}는 0 이상의 원 단위 정수여야 합니다.`);
+    }
+
+    return value;
   }
 
   private paymentDay(value: number | undefined) {
@@ -791,6 +869,7 @@ export class RoomlogContractDomain {
   }
 
   private contractOrigin(contract: Contract): ManagerContractOrigin {
+    if (contract.id.startsWith("ct_trade_")) return "trade_acceptance";
     const document = this.store.contractDocuments.find(
       (item) => item.id === contract.documentId || item.contractId === contract.id
     );

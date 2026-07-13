@@ -98,6 +98,7 @@ import {
   CreateManagerReportInput,
   DeletionState,
   EscalateMoveoutDisputeInput,
+  EnsureTradeContractDraftInput,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
@@ -662,7 +663,11 @@ export type VendorMgmtListFilters = {
   sort?: string;
 };
 
-export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
+export type ManagerContractOrigin =
+  | "tenant_upload"
+  | "manager_upload"
+  | "manual"
+  | "trade_acceptance";
 
 export type ManagerContractRow = {
   contract: Contract;
@@ -3249,6 +3254,10 @@ export class RoomlogService {
 
   createTenantContract(tenantId: string, input: CreateTenantContractInput) {
     return this.contract.createTenantContract(tenantId, input);
+  }
+
+  ensureTradeContractDraft(input: EnsureTradeContractDraftInput) {
+    return this.contract.ensureTradeContractDraft(input);
   }
 
   getManagerContractDashboard(managerId: string) {

@@ -840,6 +840,16 @@ export type CreateTenantContractInput = {
   storageConsent: boolean;
 };
 
+export type EnsureTradeContractDraftInput = {
+  tradeContractId: string;
+  roomId: string;
+  tenantId: string;
+  landlordId: string;
+  landlordName: string;
+  depositKrw: number;
+  monthlyRent: number;
+};
+
 export type CreateManagerContractInput = {
   roomId?: string;
   unitId?: string;
