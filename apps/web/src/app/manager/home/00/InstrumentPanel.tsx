@@ -1,6 +1,12 @@
 import Link from "next/link";
-import { CircleDollarSign } from "lucide-react";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
+
+// 세 계기 아크의 코스믹 팔레트 — 배경 은하수(연블루 별·보라 성운)와 같은 계열에서 미묘하게 차등.
+// 히어로인 납부 게이지가 가장 밝은 라벤더-화이트, 입주율은 페리윙클, 티켓은 연바이올렛.
+// % 숫자·트랙은 흰색 계열 유지 (가독성). 셋 다 은하 배경 대비 9:1 이상.
+const ARC_OCCUPANCY = "#a9c4ff";
+const ARC_GAUGE = "#f2edff";
+const ARC_TICKET = "#d9b8f5";
 
 const GAUGE_TICK_COUNT = 11; // 0%~100%, 10% 간격
 const GAUGE_TICK_MAJOR_INDEXES = new Set([0, 5, 10]); // 0 / 50 / 100 위치만 주눈금
@@ -42,59 +48,55 @@ export function InstrumentPanel({
   return (
     <section aria-label={`${monthLabel} 운영 계기판`} className="manager-instrument-panel">
       <div className="manager-instrument-top">
-        <div className="manager-instrument-title">
-          <span className="manager-instrument-icon-tile" aria-hidden="true">
-            <CircleDollarSign size={40} strokeWidth={2} />
-          </span>
-          <div className="manager-instrument-title-copy">
-            <span className="manager-instrument-eyebrow">납부 게이지</span>
-            <h2>{monthLabel} 납부 현황</h2>
-          </div>
-        </div>
         <Link href={MANAGER_CROSS.billing} className="manager-instrument-chip">
           청구 관리
         </Link>
       </div>
 
       <div className="manager-instrument-gauges">
-        <InstrumentRing label="입주율" pct={occupancyPct} sub={occupancySub} href={occupancyHref} />
+        <InstrumentRing label="입주율" pct={occupancyPct} sub={occupancySub} href={occupancyHref} accent={ARC_OCCUPANCY} />
 
-        <div
-          className="manager-instrument-gauge"
-          role="meter"
-          aria-label={`${monthLabel} 납부율`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={pct ?? undefined}
-          aria-valuetext={pct == null ? "납부율을 확인할 수 없음" : `${pct}%`}
-        >
-          <div className="manager-instrument-gauge-face" aria-hidden="true">
-            <span
-              className="manager-instrument-gauge-arc"
-              style={{
-                background: `conic-gradient(from 270deg, #ffffff 0 ${(pct ?? 0) / 2}%, rgba(255, 255, 255, 0.22) ${(pct ?? 0) / 2}% 50%, transparent 50%)`
-              }}
-            />
-            {Array.from({ length: GAUGE_TICK_COUNT }, (_, i) => (
+        <div className="manager-instrument-gauge-column">
+          {/* 좌우 링 라벨과 같은 급으로 통일 — 접근성 이름은 아래 role=meter의 aria-label이 맡는다 */}
+          <span className="manager-instrument-gauge-label" aria-hidden="true">{monthLabel} 납부 현황</span>
+
+          <div
+            className="manager-instrument-gauge"
+            role="meter"
+            aria-label={`${monthLabel} 납부율`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct ?? undefined}
+            aria-valuetext={pct == null ? "납부율을 확인할 수 없음" : `${pct}%`}
+          >
+            <div className="manager-instrument-gauge-face" aria-hidden="true">
               <span
-                key={i}
-                className={
-                  GAUGE_TICK_MAJOR_INDEXES.has(i)
-                    ? "manager-instrument-gauge-tick manager-instrument-gauge-tick--major"
-                    : "manager-instrument-gauge-tick"
-                }
-                style={{ transform: `rotate(${-90 + i * 18}deg)` }}
+                className="manager-instrument-gauge-arc"
+                style={{
+                  background: `conic-gradient(from 270deg, ${ARC_GAUGE} 0 ${(pct ?? 0) / 2}%, rgba(255, 255, 255, 0.22) ${(pct ?? 0) / 2}% 50%, transparent 50%)`
+                }}
               />
-            ))}
-            <span className="manager-instrument-gauge-endcap">0</span>
-          </div>
-          <div className="manager-instrument-gauge-copy" aria-hidden="true">
-            <strong>{pct == null ? "—" : `${pct}%`}</strong>
-            <span>{payerCounts ? `${payerCounts.paid} / ${payerCounts.total}명 납부` : "확인 필요"}</span>
+              {Array.from({ length: GAUGE_TICK_COUNT }, (_, i) => (
+                <span
+                  key={i}
+                  className={
+                    GAUGE_TICK_MAJOR_INDEXES.has(i)
+                      ? "manager-instrument-gauge-tick manager-instrument-gauge-tick--major"
+                      : "manager-instrument-gauge-tick"
+                  }
+                  style={{ transform: `rotate(${-90 + i * 18}deg)` }}
+                />
+              ))}
+              <span className="manager-instrument-gauge-endcap">0</span>
+            </div>
+            <div className="manager-instrument-gauge-copy" aria-hidden="true">
+              <strong>{pct == null ? "—" : `${pct}%`}</strong>
+              <span>{payerCounts ? `${payerCounts.paid} / ${payerCounts.total}명 납부` : "확인 필요"}</span>
+            </div>
           </div>
         </div>
 
-        <InstrumentRing label="티켓 처리율" pct={ticketPct} sub={ticketSub} href={ticketHref} />
+        <InstrumentRing label="티켓 처리율" pct={ticketPct} sub={ticketSub} href={ticketHref} accent={ARC_TICKET} />
       </div>
 
       <div className="manager-instrument-bottom">
@@ -131,62 +133,27 @@ export function InstrumentPanel({
       </div>
 
       <style>{`
+        /* 심야 은하수 — SVG 텍스처 한 장(별 ~311개 4층위 + 은하수 띠 + 성운 + 코어 벌지, 절반 감쇠판).
+           은하 중심부는 우상단 모서리에 앉고 띠가 좌하단 보라 성운으로 대각선으로 흐른다.
+           중앙(게이지·링·숫자 자리)은 텍스처에 구운 역-비네트로 항상 어둡다 —
+           실측 대비: 칩 자리 ~11:1, 게이지 뒤 17:1+. 밝은 별·헤일로는 중앙 존 생성 배제.
+           아래 linear-gradient는 텍스처 로딩 전 fallback (SVG 하늘 그라데이션과 동일 톤). */
         .manager-instrument-panel {
           position: relative;
           display: grid;
           gap: var(--space-lg);
           padding: var(--space-xl);
           border-radius: var(--radius-lg);
-          background: linear-gradient(140deg, #6455e2 0%, #5747cf 55%, #4b3cba 100%);
+          background:
+            url("/textures/cosmic-panel.svg") center / cover no-repeat,
+            linear-gradient(168deg, #0a0c24 0%, #171040 45%, #281b52 75%, #3a2a6a 100%);
           color: #ffffff;
-          box-shadow: 0 18px 44px rgba(87, 71, 207, 0.35);
+          box-shadow: 0 24px 56px rgba(30, 24, 64, 0.4);
         }
 
         .manager-instrument-top {
           display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: var(--space-md);
-        }
-
-        .manager-instrument-title {
-          min-width: 0;
-          display: flex;
-          align-items: center;
-          gap: var(--space-md);
-        }
-
-        .manager-instrument-icon-tile {
-          width: 64px;
-          height: 64px;
-          flex: none;
-          display: grid;
-          place-items: center;
-          border-radius: var(--radius);
-          background: #ffffff;
-          color: #5747cf;
-        }
-
-        .manager-instrument-title-copy {
-          min-width: 0;
-          display: grid;
-          gap: 2px;
-        }
-
-        /* 계기 이름표 — 자간 넓힌 마이크로 라벨 */
-        .manager-instrument-eyebrow {
-          color: rgba(255, 255, 255, 0.65);
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.1em;
-        }
-
-        .manager-instrument-title-copy h2 {
-          margin: 0;
-          color: #ffffff;
-          font-size: var(--fs-title);
-          line-height: var(--lh-title);
-          font-weight: 800;
+          justify-content: flex-end;
         }
 
         .manager-instrument-chip {
@@ -210,22 +177,40 @@ export function InstrumentPanel({
           background: rgba(255, 255, 255, 0.2);
         }
 
-        /* ── 3열: 입주율 링 | 반원 게이지 | 티켓 처리율 링 ── */
+        /* ── 3열: 입주율 링 | 반원 게이지 | 티켓 처리율 링 — 라벨이 셋 다 같은 줄에서 시작하도록 상단 정렬 ── */
         .manager-instrument-gauges {
           display: grid;
           grid-template-columns: 1fr auto 1fr;
-          align-items: center;
+          align-items: start;
           gap: var(--space-lg);
         }
 
-        /* ── 링(입주율·티켓 처리율) — 흰색-온-인디고 변주, 카드 안 부분 링크 ── */
+        /* 가운데 게이지 컬럼 — 라벨은 좌우 링 라벨과 같은 줄(상단), 게이지는 바닥 정렬.
+           반원 게이지가 링보다 짧아 상단만 맞추면 아래가 떠서, 게이지를 컬럼 하단에 붙인다. */
+        .manager-instrument-gauge-column {
+          display: grid;
+          grid-template-rows: auto 1fr;
+          justify-items: center;
+          height: 100%;
+        }
+
+        .manager-instrument-gauge-label {
+          color: #ffffff;
+          font-size: 27px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          margin-bottom: var(--space-lg);
+        }
+
+        /* ── 링(입주율·티켓 처리율) — 아크 색·글로우는 accent를 따라 인라인, 카드 안 부분 링크 ── */
         .manager-instrument-ring-link {
           display: grid;
           grid-template-rows: auto 1fr auto;
           justify-items: center;
           gap: var(--space-sm);
           height: 100%;
-          padding: var(--space-md);
+          /* 상단 패딩 제거 — 링 라벨을 가운데 게이지 라벨(이번 달 납부 현황) 줄에 맞춘다 */
+          padding: 0 var(--space-md) var(--space-md);
           border-radius: var(--radius-md);
           color: inherit;
           text-decoration: none;
@@ -233,18 +218,20 @@ export function InstrumentPanel({
           transition: background-color 0.16s ease;
         }
 
+        /* 다크 은하 배경엔 각진 흰 박스가 튄다 — 링 모양을 따라가는 부드러운 원형 글로우로 */
         .manager-instrument-ring-link:hover {
-          background: rgba(255, 255, 255, 0.08);
+          background: radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.11), transparent 60%);
         }
 
         .manager-instrument-ring-label {
           color: #ffffff;
-          font-size: 18px;
+          font-size: 27px;
           font-weight: 800;
           letter-spacing: 0.1em;
         }
 
         .manager-instrument-ring-sub {
+          margin-top: var(--space-sm);
           color: rgba(255, 255, 255, 0.65);
           font-size: var(--fs-body);
         }
@@ -264,7 +251,6 @@ export function InstrumentPanel({
           border-radius: var(--radius-full);
           -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 16px), #000 calc(100% - 15px));
           mask: radial-gradient(farthest-side, transparent calc(100% - 16px), #000 calc(100% - 15px));
-          filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
         }
 
         /* 12/3/6/9시 미세 눈금 — 링 중심(100px)을 피벗으로 회전 배치 */
@@ -308,10 +294,16 @@ export function InstrumentPanel({
           }
         }
 
-        /* ── 반원 게이지(납부율) ── */
+        /* ── 반원 게이지(납부율) — 링 상단정렬과 하단정렬의 중간(가운데) 높이에 둔다 ── */
         .manager-instrument-gauge {
           display: grid;
           justify-items: center;
+          align-self: center;
+        }
+
+        /* 게이지 아래 캡션(2/5명 납부)에 윗 여백 — 숫자와 붙지 않게 */
+        .manager-instrument-gauge-copy span {
+          margin-top: var(--space-sm);
         }
 
         .manager-instrument-gauge-face {
@@ -327,7 +319,7 @@ export function InstrumentPanel({
           border-radius: var(--radius-full);
           -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 17px), #000 calc(100% - 16px));
           mask: radial-gradient(farthest-side, transparent calc(100% - 17px), #000 calc(100% - 16px));
-          filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.35));
+          filter: drop-shadow(0 0 12px rgba(242, 237, 255, 0.35));
         }
 
         /* 미세 눈금 — 반지름 스팬을 회전시키고 바깥 끝 몇 px만 칠한다(정밀 계기 표현) */
@@ -474,7 +466,7 @@ export function InstrumentPanel({
   );
 }
 
-function InstrumentRing({ label, pct, sub, href }: { label: string; pct: number | null; sub: string; href: string }) {
+function InstrumentRing({ label, pct, sub, href, accent }: { label: string; pct: number | null; sub: string; href: string; accent: string }) {
   const clamped = pct == null ? null : Math.max(0, Math.min(100, pct));
 
   return (
@@ -492,7 +484,10 @@ function InstrumentRing({ label, pct, sub, href }: { label: string; pct: number 
       >
         <span
           className="manager-instrument-ring-arc"
-          style={{ background: `conic-gradient(#ffffff ${clamped ?? 0}%, rgba(255, 255, 255, 0.22) 0)` }}
+          style={{
+            background: `conic-gradient(${accent} ${clamped ?? 0}%, rgba(255, 255, 255, 0.22) 0)`,
+            filter: `drop-shadow(0 0 8px ${accent}55)`
+          }}
           aria-hidden="true"
         />
         {RING_TICK_DEGREES.map((deg) => (
