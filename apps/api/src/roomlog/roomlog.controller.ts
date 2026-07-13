@@ -694,14 +694,16 @@ export class RoomlogController {
   }
 
   @Post("contracts/manager/:contractId/confirm")
-  confirmManagerContract(
+  async confirmManagerContract(
     @Headers("authorization") authorization: string | undefined,
     @Param("contractId") contractId: string,
     @Body() body: { confirmNeedsCheck?: boolean; note?: string }
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.confirmManagerContractReview(user.id, contractId, body);
+    const result = this.roomlogService.confirmManagerContractReview(user.id, contractId, body);
+    await this.roomlogService.ensurePersistenceDurability();
+    return result;
   }
 
   @Post("contracts/manager/:contractId/request-info")

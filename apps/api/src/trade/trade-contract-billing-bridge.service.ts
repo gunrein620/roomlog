@@ -15,6 +15,7 @@ export class TradeContractBillingBridge implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     for (const contract of this.tradeService.listAcceptedContracts()) {
       try {
+        await this.tradeService.ensureAcceptedListingDurability(contract);
         await this.ensure(contract);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

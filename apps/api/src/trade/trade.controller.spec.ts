@@ -203,6 +203,10 @@ describe("TradeController contract acceptance", () => {
           events.push("trade-persisted");
           return { contract: accepted, thread };
         },
+        ensureAcceptedListingDurability: async (contract: TradeContract) => {
+          assert.equal(contract, accepted);
+          events.push("trade-listing-durable");
+        },
       } as any,
       { getUserFromToken: () => ({ id: accepted.tenantId, name: accepted.tenantName }) } as any,
       { notifyUsers: () => undefined } as any,
@@ -221,7 +225,12 @@ describe("TradeController contract acceptance", () => {
     const result = await controller.respondContract("Bearer token", accepted.id, { accept: true });
 
     assert.equal(result, accepted);
-    assert.deepEqual(events, ["roomlog-preflight", "trade-persisted", "roomlog-applied"]);
+    assert.deepEqual(events, [
+      "roomlog-preflight",
+      "trade-persisted",
+      "trade-listing-durable",
+      "roomlog-applied",
+    ]);
   });
 
   it("keeps Trade durably accepted when Roomlog apply fails and repairs it on retry", async () => {
@@ -344,5 +353,83 @@ describe("TradeController contract acceptance", () => {
       successfulSnapshots[0].contracts.some((contract) => contract.id === `ct_trade_${proposed.id}`),
       true,
     );
+  });
+
+  it("awaits accepted listing projection before Roomlog and repairs the same acceptance on retry", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-trade-listing-projector-"));
+    const tradeFilePath = join(dir, "trade.json");
+    let failAcceptedProjection = true;
+    let acceptedProjectionAttempts = 0;
+    const projectedListings: TradeListing[][] = [];
+    const tradeService = new TradeService(tradeFilePath, {
+      storeProjector: {
+        load: async () => [],
+        persist: async (listings) => {
+          if (listings.some((listing) => listing.status === "계약완료")) {
+            acceptedProjectionAttempts += 1;
+            if (failAcceptedProjection) {
+              failAcceptedProjection = false;
+              throw new Error("trade listing projector unavailable");
+            }
+          }
+          projectedListings.push(structuredClone(listings));
+        },
+      } as any,
+    });
+    const roomlogService = new RoomlogService({ seedDemoData: false });
+    const landlord = { id: "landlord-listing-projector", name: "매물프로젝터 임대인" };
+    const tenant = { id: "tenant-listing-projector", name: "매물프로젝터 임차인" };
+    const listing = tradeService.createListing(landlord, {
+      title: "매물프로젝터복구빌라",
+      roomType: "원룸",
+      tradeType: "월세",
+      depositManwon: 1000,
+      monthlyRentManwon: 65,
+      location: "서울 서초구 매물복구로 1",
+      detailAddress: "801호",
+    });
+    const thread = tradeService.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "매물 프로젝션 복구를 검증해요",
+    });
+    const proposed = tradeService.proposeContract(landlord, thread.id).contract;
+    const roomlogBefore = structuredClone((roomlogService as unknown as { store: Store }).store);
+    let notifications = 0;
+    const controller = new TradeController(
+      tradeService,
+      { getUserFromToken: () => tenant } as any,
+      { notifyUsers: () => { notifications += 1; } } as any,
+      new TradeContractBillingBridge(tradeService, roomlogService),
+    );
+
+    await assert.rejects(
+      () => controller.respondContract("Bearer token", proposed.id, { accept: true }),
+      /trade listing projector unavailable/,
+    );
+
+    const acceptedAfterFailure = tradeService.contractForThread(tenant.id, thread.id)!;
+    const acceptanceMessages = tradeService.getThread(tenant.id, thread.id).messages
+      .filter((message) => message.body.includes("계약 제안을 수락"));
+    assert.equal(acceptedAfterFailure.status, "accepted");
+    assert.equal(tradeService.listListings()[0].status, "계약완료");
+    assert.deepEqual((roomlogService as unknown as { store: Store }).store, roomlogBefore);
+    assert.equal(acceptanceMessages.length, 1);
+    assert.equal(notifications, 0);
+
+    const repaired = await controller.respondContract("Bearer token", proposed.id, { accept: true });
+    const roomlogStore = (roomlogService as unknown as { store: Store }).store;
+
+    assert.equal(repaired.respondedAt, acceptedAfterFailure.respondedAt);
+    assert.equal(
+      tradeService.getThread(tenant.id, thread.id).messages
+        .filter((message) => message.body.includes("계약 제안을 수락")).length,
+      1,
+    );
+    assert.equal(acceptedProjectionAttempts, 2);
+    assert.equal(projectedListings.at(-1)?.find((item) => item.id === listing.id)?.status, "계약완료");
+    assert.equal(roomlogStore.tenantRooms[tenant.id] !== undefined, true);
+    assert.equal(roomlogStore.contracts.some((contract) => contract.id === `ct_trade_${proposed.id}`), true);
+    assert.equal(notifications, 1);
   });
 });

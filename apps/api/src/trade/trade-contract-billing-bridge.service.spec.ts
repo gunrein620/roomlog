@@ -190,4 +190,34 @@ describe("TradeContractBillingBridge", () => {
       true,
     );
   });
+
+  it("continues with a newer startup generation without a redundant retry after an older failure", async () => {
+    const tradeService = tradeServiceWithTempStore();
+    acceptContract(tradeService, "다중기동첫빌라", "801호");
+    const second = acceptContract(tradeService, "다중기동둘빌라", "802호");
+    let attempts = 0;
+    const successfulStores: Array<{
+      contracts: Array<{ id: string }>;
+    }> = [];
+    const roomlogService = new RoomlogService({
+      seedDemoData: false,
+      storeProjector: {
+        persist: async (store) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("older startup generation failed");
+          successfulStores.push(structuredClone(store));
+        },
+      },
+    });
+    const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
+
+    await bridge.onModuleInit();
+
+    assert.equal(attempts, 2);
+    assert.equal(successfulStores.length, 1);
+    assert.equal(
+      successfulStores[0].contracts.some((contract) => contract.id === `ct_trade_${second.id}`),
+      true,
+    );
+  });
 });

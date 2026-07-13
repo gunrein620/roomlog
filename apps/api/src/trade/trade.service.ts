@@ -275,12 +275,15 @@ function defaultStoreFilePath(): string | undefined {
 @Injectable()
 export class TradeService implements OnModuleDestroy {
   private store: TradeStore = { listings: [], threads: [], contracts: [] };
+  private committedStore: TradeStore = { listings: [], threads: [], contracts: [] };
   private readonly filePath: string | undefined;
   // DATABASE_URL이 있을 때만 주입됨 — 매물(listing)을 RDS로 write-through 프로젝션한다.
   private readonly storeProjector?: TradeStoreProjector;
   // 프로젝션은 순차 큐로 직렬화해 동시 트랜잭션 경합을 피한다(roomlog 패턴과 동일).
   private pendingProjection: Promise<unknown> = Promise.resolve();
-  private projectionError?: unknown;
+  private projectionGeneration = 0;
+  private completedProjectionGeneration = 0;
+  private projectionFailure?: { generation: number; error: unknown };
   // main.ts와 동일한 기본값 — S3_UPLOADS_ENABLED가 켜지면 자동으로 S3 어댑터로 전환된다.
   private readonly storageAdapter: FileStorageAdapter = createFileStorageAdapter(
     process.env,
@@ -296,6 +299,7 @@ export class TradeService implements OnModuleDestroy {
     this.storeProjector = options?.storeProjector;
     this.load(); // JSON: 스레드/계약 + (DB 없을 때의) 매물 폴백
     this.hydrateListingsFromDb(options?.initialListings);
+    this.committedStore = this.cloneStore(this.store);
   }
 
   /**
@@ -320,19 +324,52 @@ export class TradeService implements OnModuleDestroy {
   }
 
   /** 매물 스냅샷을 DB로 프로젝션(순차 큐). DB 미연동이면 no-op. */
-  private projectListings() {
-    if (!this.storeProjector) return;
+  private projectListings(): number {
+    if (!this.storeProjector) return this.projectionGeneration;
+    const generation = ++this.projectionGeneration;
     const snapshot = this.store.listings.map((listing) => ({ ...listing }));
     this.pendingProjection = this.pendingProjection
-      .then(() => this.storeProjector?.persist(snapshot))
+      .then(() => this.storeProjector!.persist(snapshot))
       .then(
         () => {
-          this.projectionError = undefined;
+          this.completedProjectionGeneration = Math.max(this.completedProjectionGeneration, generation);
+          if ((this.projectionFailure?.generation ?? -1) <= generation) {
+            this.projectionFailure = undefined;
+          }
         },
         (error) => {
-          this.projectionError = error; // 실패해도 메모리/JSON 상태로 계속 동작
+          if (generation >= (this.projectionFailure?.generation ?? -1)) {
+            this.projectionFailure = { generation, error };
+          }
         }
       );
+    return generation;
+  }
+
+  async ensureAcceptedListingDurability(contract: TradeContract): Promise<void> {
+    if (contract.status !== "accepted") return;
+    const listing = this.store.listings.find((item) => item.id === contract.listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+
+    const failedGenerationAtEntry = this.projectionFailure?.generation;
+    if (listing.status !== "계약완료") {
+      listing.status = "계약완료";
+      this.persist();
+      this.projectListings();
+    } else if (
+      this.storeProjector &&
+      failedGenerationAtEntry === this.projectionGeneration &&
+      this.completedProjectionGeneration < this.projectionGeneration
+    ) {
+      this.projectListings();
+    }
+
+    if (!this.storeProjector) return;
+    const requiredGeneration = this.projectionGeneration;
+    await this.pendingProjection;
+    if (this.completedProjectionGeneration < requiredGeneration) {
+      throw this.projectionFailure?.error ?? new Error("매물 저장을 완료하지 못했습니다.");
+    }
   }
 
   private load() {
@@ -397,31 +434,30 @@ export class TradeService implements OnModuleDestroy {
   }
 
   private persist() {
-    if (!this.filePath) return;
-    try {
-      mkdirSync(dirname(this.filePath), { recursive: true });
-      writeFileSync(this.filePath, JSON.stringify(this.store), "utf8");
-    } catch {
-      // 기존 거래 흐름은 데모용 메모리 상태를 계속 사용한다.
+    const snapshot = this.cloneStore(this.store);
+    if (!this.filePath) {
+      this.committedStore = snapshot;
+      return;
     }
-  }
-
-  /** 계약 수락만 파일 저장 성공을 보장한 뒤 후속 청구 연결을 진행한다. */
-  private persistAcceptance() {
-    if (!this.filePath) return;
     const tempFilePath = `${this.filePath}.tmp`;
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
-      writeFileSync(tempFilePath, JSON.stringify(this.store), "utf8");
+      writeFileSync(tempFilePath, JSON.stringify(snapshot), "utf8");
       renameSync(tempFilePath, this.filePath);
+      this.committedStore = snapshot;
     } catch (error) {
       try {
         unlinkSync(tempFilePath);
       } catch {
         // temp path may be a directory or may not have been created
       }
+      this.store = this.cloneStore(this.committedStore);
       throw error;
     }
+  }
+
+  private cloneStore(store: TradeStore): TradeStore {
+    return structuredClone(store);
   }
 
   listListings(): TradeListing[] {
@@ -711,34 +747,15 @@ export class TradeService implements OnModuleDestroy {
       ? this.store.listings.find((item) => item.id === contract.listingId)
       : undefined;
     if (accept && !listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
-    const previous = {
-      contractStatus: contract.status,
-      respondedAt: contract.respondedAt,
-      listingStatus: listing?.status,
-      messageCount: thread.messages.length,
-      threadUpdatedAt: thread.updatedAt
-    };
-
-    try {
-      contract.status = response.status;
-      contract.respondedAt = respondedAt;
-      if (accept) {
-        listing!.status = "계약완료";
-        this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
-      } else {
-        this.pushMessage(thread, user, "계약 제안을 거절했어요.");
-      }
-      if (accept) this.persistAcceptance();
-      else this.persist();
-    } catch (error) {
-      contract.status = previous.contractStatus;
-      if (previous.respondedAt === undefined) delete contract.respondedAt;
-      else contract.respondedAt = previous.respondedAt;
-      if (listing && previous.listingStatus) listing.status = previous.listingStatus;
-      thread.messages.splice(previous.messageCount);
-      thread.updatedAt = previous.threadUpdatedAt;
-      throw error;
+    contract.status = response.status;
+    contract.respondedAt = respondedAt;
+    if (accept) {
+      listing!.status = "계약완료";
+      this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
+    } else {
+      this.pushMessage(thread, user, "계약 제안을 거절했어요.");
     }
+    this.persist();
     if (accept) this.projectListings();
     return { contract, thread };
   }
