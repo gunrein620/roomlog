@@ -749,7 +749,7 @@ export default function LandlordMyPage() {
           </div>
         </section>
 
-        <section className="owner-card">
+        <section className="owner-card owner-submit-summary" aria-label="사진과 3D방 자료">
           <div className="form-heading">
             <div>
               <span>STEP 02</span>
@@ -757,99 +757,157 @@ export default function LandlordMyPage() {
             </div>
           </div>
 
-          <div className="upload-tile-list">
-            <label className={photoCount > 0 ? "upload-tile is-connected" : "upload-tile"}>
-              <span className="upload-tile-icon" aria-hidden="true">
-                <Camera size={20} strokeWidth={2.2} />
-              </span>
-              <span className="upload-tile-main">
-                <strong>사진 업로드</strong>
-                <span className="upload-tile-desc">대표 사진, 거실, 주방, 욕실 이미지를 순서대로 등록합니다.</span>
-                <span className="upload-tile-status">{photoCount > 0 ? `${photoCount}장 선택됨` : "선택된 파일 없음"}</span>
-              </span>
-              <span className="upload-tile-cta">{photoCount > 0 ? "추가" : "파일 선택"}</span>
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                aria-label="사진 업로드"
-                onChange={(event) => {
-                  const added = event.target.files ? Array.from(event.target.files) : [];
-                  // 같은 파일을 다시 고를 수 있도록 인풋 값을 비운다(초기화 안 하면 동일 파일 재선택이 안 먹는다).
-                  event.target.value = "";
-                  if (added.length === 0) return;
-                  // 기존 선택에 덧붙인다 — 다시 고를 때 이전 사진이 사라지지 않도록. 동일 파일은 중복 제거.
-                  const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
-                  const seen = new Set(photoFiles.map(fileKey));
-                  const merged = [...photoFiles, ...added.filter((file) => !seen.has(fileKey(file)))];
-                  setPhotoFiles(merged);
-                  setPhotoCount(merged.length);
-                  setRegistrationStatus("작성 중");
-                }}
-              />
-            </label>
-
-            {photoPreviewUrls.length > 0 ? (
-              <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
-                {photoPreviewUrls.map((url, index) => (
-                  <figure key={url}>
+          <div className="owner-summary-media">
+            <div className="summary-media-col">
+              <figure className="summary-media-card summary-media-photos" aria-label="등록한 사진 미리보기">
+                {photoPreviewUrls.length > 0 ? (
+                  <>
                     {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt={`선택한 사진 ${index + 1}`} />
-                    {index === 0 ? <figcaption>대표 사진</figcaption> : null}
-                    <button type="button" aria-label={`사진 ${index + 1} 빼기`} onClick={() => removePhotoAt(index)}>
-                      ×
-                    </button>
-                  </figure>
-                ))}
+                    <img
+                      src={photoPreviewUrls[Math.min(photoIndex, photoPreviewUrls.length - 1)]}
+                      alt={`매물 사진 ${Math.min(photoIndex, photoPreviewUrls.length - 1) + 1}`}
+                    />
+                    {photoPreviewUrls.length > 1 ? (
+                      <>
+                        <button
+                          type="button"
+                          className="summary-media-nav prev"
+                          aria-label="이전 사진"
+                          onClick={() => setPhotoIndex((index) => (index - 1 + photoPreviewUrls.length) % photoPreviewUrls.length)}
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          className="summary-media-nav next"
+                          aria-label="다음 사진"
+                          onClick={() => setPhotoIndex((index) => (index + 1) % photoPreviewUrls.length)}
+                        >
+                          ›
+                        </button>
+                        <span className="summary-media-count">
+                          {Math.min(photoIndex, photoPreviewUrls.length - 1) + 1} / {photoPreviewUrls.length}
+                        </span>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="summary-media-empty">
+                    <Camera size={22} aria-hidden="true" />
+                    <span>사진을 추가하면 여기에서 넘겨볼 수 있어요</span>
+                  </div>
+                )}
+              </figure>
+
+              {/* 미리보기 바로 아래에서 사진을 추가한다 */}
+              <label className="summary-media-btn">
+                <Camera size={16} strokeWidth={2.2} aria-hidden="true" />
+                {photoCount > 0 ? `사진 추가 (${photoCount}장)` : "사진 업로드"}
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  aria-label="사진 업로드"
+                  onChange={(event) => {
+                    const added = event.target.files ? Array.from(event.target.files) : [];
+                    // 같은 파일을 다시 고를 수 있도록 인풋 값을 비운다(초기화 안 하면 동일 파일 재선택이 안 먹는다).
+                    event.target.value = "";
+                    if (added.length === 0) return;
+                    // 기존 선택에 덧붙인다 — 다시 고를 때 이전 사진이 사라지지 않도록. 동일 파일은 중복 제거.
+                    const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
+                    const seen = new Set(photoFiles.map(fileKey));
+                    const merged = [...photoFiles, ...added.filter((file) => !seen.has(fileKey(file)))];
+                    setPhotoFiles(merged);
+                    setPhotoCount(merged.length);
+                    setRegistrationStatus("작성 중");
+                  }}
+                />
+              </label>
+
+              {photoPreviewUrls.length > 0 ? (
+                <div className="upload-preview-grid" aria-label="선택한 사진 미리보기">
+                  {photoPreviewUrls.map((url, index) => (
+                    <figure key={url}>
+                      {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt={`선택한 사진 ${index + 1}`} />
+                      {index === 0 ? <figcaption>대표 사진</figcaption> : null}
+                      <button type="button" aria-label={`사진 ${index + 1} 빼기`} onClick={() => removePhotoAt(index)}>
+                        ×
+                      </button>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="summary-media-col">
+              <div className="summary-media-card summary-media-3d" aria-label="3D 도면 미리보기">
+                {floorPlan3D ? (
+                  <FloorPlan3DPreview
+                    controlsEnabled
+                    frameloop="always"
+                    furnitureData={floorPlan3D.furnitures as unknown as PlacedFurniture[]}
+                    hideHint
+                    pendingFurniture={null}
+                    selectedFurnitureId={null}
+                    selectedWallId={null}
+                    wallsData={floorPlan3D.walls3D as unknown as WheretoputWall3D[]}
+                    onFloorPointerDown={() => {}}
+                    onFurniturePointerDown={() => {}}
+                    onWallPointerDown={() => {}}
+                  />
+                ) : (
+                  <div className="summary-media-empty">
+                    <Box size={22} aria-hidden="true" />
+                    <span>3D 도면을 만들면 여기에서 돌려볼 수 있어요</span>
+                  </div>
+                )}
               </div>
-            ) : null}
 
-            {/* 새 탭으로 연다 — 같은 탭 이동은 폼을 언마운트시켜 선택한 사진(File, 직렬화 불가)이 날아간다.
-                에디터에서 저장 후 이 탭으로 돌아오면 위 focus/visibilitychange 동기화가 자동 연결한다. */}
-            <a
-              className={has3DRoom ? "upload-tile upload-tile--action is-connected" : "upload-tile upload-tile--action"}
-              href="/floor-plan-3d"
-              target="_blank"
-              rel="noopener"
-              onClick={() => setRegistrationStatus("작성 중")}
-            >
-              <span className="upload-tile-icon" aria-hidden="true">
-                <Box size={20} strokeWidth={2.2} />
-              </span>
-              <span className="upload-tile-main">
-                <strong>3D 도면 만들기</strong>
-                <span className="upload-tile-desc">
-                  {has3DRoom
-                    ? "3D 도면이 연결됐어요. 등록하면 상세 페이지에서 3D로 보여집니다."
-                    : "도면을 만들면 자동 연결돼요. 새 탭에서 열려 작성 중인 사진·입력은 그대로 유지됩니다."}
-                </span>
-                <span className="upload-tile-status">{has3DRoom ? "연결됨" : "미연결"}</span>
-              </span>
-              <span className="upload-tile-cta">{has3DRoom ? "다시 열기 ↗" : "만들기 ↗"}</span>
-            </a>
+              {/* 미리보기 아래 2개 버튼 — 도면 만들기(에디터로 이동) / 도면 JSON 업로드 */}
+              <div className="summary-media-actions">
+                {/* 새 탭으로 연다 — 같은 탭 이동은 폼을 언마운트시켜 선택한 사진(File, 직렬화 불가)이 날아간다.
+                    에디터에서 저장 후 이 탭으로 돌아오면 focus/visibilitychange 동기화가 자동 연결한다. */}
+                <a
+                  className="summary-media-btn"
+                  href="/floor-plan-3d"
+                  target="_blank"
+                  rel="noopener"
+                  onClick={() => setRegistrationStatus("작성 중")}
+                >
+                  <Box size={16} strokeWidth={2.2} aria-hidden="true" />
+                  {has3DRoom ? "다시 열기 ↗" : "3D 도면 만들기 ↗"}
+                </a>
+                <label className="summary-media-btn summary-media-btn--ghost">
+                  <Braces size={16} strokeWidth={2.2} aria-hidden="true" />
+                  도면 JSON 업로드
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    aria-label="도면 JSON 업로드"
+                    onChange={(event) => {
+                      handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+          <p>등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
+        </section>
 
-            <label className="upload-tile">
-              <span className="upload-tile-icon" aria-hidden="true">
-                <Braces size={20} strokeWidth={2.2} />
-              </span>
-              <span className="upload-tile-main">
-                <strong>도면 JSON 업로드</strong>
-                <span className="upload-tile-desc">3D 도면 만들기에서 내려받은 JSON이나 walls3D/walls 배열을 바로 연결합니다.</span>
-                <span className="upload-tile-status">업로드하면 3D로 바로 연결</span>
-              </span>
-              <span className="upload-tile-cta">파일 선택</span>
-              <input
-                type="file"
-                accept=".json,application/json"
-                aria-label="도면 JSON 업로드"
-                onChange={(event) => {
-                  handleFloorPlanJsonUpload(event.currentTarget.files?.[0]);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
+        <section className="owner-card">
+          <div className="form-heading">
+            <div>
+              <span>STEP 03</span>
+              <h3>영상·스플랫 접수</h3>
+            </div>
+          </div>
 
+          <div className="upload-tile-list">
             <label className={tourSourceFile ? "upload-tile is-connected" : "upload-tile"}>
               <span className="upload-tile-icon" aria-hidden="true">
                 <Video size={20} strokeWidth={2.2} />
@@ -874,88 +932,6 @@ export default function LandlordMyPage() {
               />
             </label>
           </div>
-        </section>
-
-        <section className="owner-submit-summary" aria-label="등록 요약">
-          <div>
-            <span>등록 요약</span>
-            <h3>{ownerForm.title || "매물명을 입력해주세요"}</h3>
-            <p>
-              {ownerPriceLabel} · 관리비 {ownerForm.maintenance || "0"}만원 · {ownerForm.area || "-"}m² ·{" "}
-              {ownerForm.floor || "층수 미입력"}
-            </p>
-            <small className="owner-summary-address">
-              {[ownerForm.address || "주소 미입력", ownerForm.detailAddress.trim() || "세부주소 없음"].join(" · ")}
-            </small>
-          </div>
-          <div className="owner-summary-media">
-            <figure className="summary-media-card summary-media-photos" aria-label="등록한 사진 미리보기">
-              {photoPreviewUrls.length > 0 ? (
-                <>
-                  {/* objectURL 미리보기 — next/image 최적화 대상이 아니라 일반 img를 쓴다 */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photoPreviewUrls[Math.min(photoIndex, photoPreviewUrls.length - 1)]}
-                    alt={`매물 사진 ${Math.min(photoIndex, photoPreviewUrls.length - 1) + 1}`}
-                  />
-                  {photoPreviewUrls.length > 1 ? (
-                    <>
-                      <button
-                        type="button"
-                        className="summary-media-nav prev"
-                        aria-label="이전 사진"
-                        onClick={() => setPhotoIndex((index) => (index - 1 + photoPreviewUrls.length) % photoPreviewUrls.length)}
-                      >
-                        ‹
-                      </button>
-                      <button
-                        type="button"
-                        className="summary-media-nav next"
-                        aria-label="다음 사진"
-                        onClick={() => setPhotoIndex((index) => (index + 1) % photoPreviewUrls.length)}
-                      >
-                        ›
-                      </button>
-                      <span className="summary-media-count">
-                        {Math.min(photoIndex, photoPreviewUrls.length - 1) + 1} / {photoPreviewUrls.length}
-                      </span>
-                    </>
-                  ) : null}
-                </>
-              ) : (
-                <div className="summary-media-empty">
-                  <Camera size={22} aria-hidden="true" />
-                  <span>사진을 추가하면 여기에서 넘겨볼 수 있어요</span>
-                </div>
-              )}
-            </figure>
-
-            <div className="summary-media-card summary-media-3d" aria-label="3D 도면 미리보기">
-              {floorPlan3D ? (
-                <>
-                  <FloorPlan3DPreview
-                    controlsEnabled
-                    frameloop="always"
-                    furnitureData={floorPlan3D.furnitures as unknown as PlacedFurniture[]}
-                    hideHint
-                    pendingFurniture={null}
-                    selectedFurnitureId={null}
-                    selectedWallId={null}
-                    wallsData={floorPlan3D.walls3D as unknown as WheretoputWall3D[]}
-                    onFloorPointerDown={() => {}}
-                    onFurniturePointerDown={() => {}}
-                    onWallPointerDown={() => {}}
-                  />
-                </>
-              ) : (
-                <div className="summary-media-empty">
-                  <Box size={22} aria-hidden="true" />
-                  <span>3D 도면을 만들면 여기에서 돌려볼 수 있어요</span>
-                </div>
-              )}
-            </div>
-          </div>
-          <p>등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
         </section>
 
         <button className="submit-listing" type="button" onClick={submitOwnerListing} disabled={isSubmittingListing} aria-busy={isSubmittingListing}>

@@ -5947,6 +5947,52 @@ p {
   color: #cbd5e1;
 }
 
+/* 미리보기 + 그 아래 업로드 버튼을 한 세로 묶음으로 */
+.summary-media-col {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.summary-media-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.owner-form .summary-media-btn {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.owner-form .summary-media-btn:hover {
+  filter: brightness(0.96);
+}
+
+.owner-form .summary-media-btn--ghost {
+  border: 1px solid var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.summary-media-btn input[type="file"] {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .owner-summary-media {
     grid-template-columns: 1fr;

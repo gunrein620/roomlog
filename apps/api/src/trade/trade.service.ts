@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleDestroy, Optional } from "@nestjs/common";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
@@ -88,6 +88,7 @@ export type TradeContract = {
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
+  roomNo?: string;
   proposedAt: string;
   respondedAt?: string;
 };
@@ -274,12 +275,15 @@ function defaultStoreFilePath(): string | undefined {
 @Injectable()
 export class TradeService implements OnModuleDestroy {
   private store: TradeStore = { listings: [], threads: [], contracts: [] };
+  private committedStore: TradeStore = { listings: [], threads: [], contracts: [] };
   private readonly filePath: string | undefined;
   // DATABASE_URL이 있을 때만 주입됨 — 매물(listing)을 RDS로 write-through 프로젝션한다.
   private readonly storeProjector?: TradeStoreProjector;
   // 프로젝션은 순차 큐로 직렬화해 동시 트랜잭션 경합을 피한다(roomlog 패턴과 동일).
   private pendingProjection: Promise<unknown> = Promise.resolve();
-  private projectionError?: unknown;
+  private projectionGeneration = 0;
+  private completedProjectionGeneration = 0;
+  private projectionFailure?: { generation: number; error: unknown };
   // main.ts와 동일한 기본값 — S3_UPLOADS_ENABLED가 켜지면 자동으로 S3 어댑터로 전환된다.
   private readonly storageAdapter: FileStorageAdapter = createFileStorageAdapter(
     process.env,
@@ -295,6 +299,7 @@ export class TradeService implements OnModuleDestroy {
     this.storeProjector = options?.storeProjector;
     this.load(); // JSON: 스레드/계약 + (DB 없을 때의) 매물 폴백
     this.hydrateListingsFromDb(options?.initialListings);
+    this.committedStore = this.cloneStore(this.store);
   }
 
   /**
@@ -319,19 +324,52 @@ export class TradeService implements OnModuleDestroy {
   }
 
   /** 매물 스냅샷을 DB로 프로젝션(순차 큐). DB 미연동이면 no-op. */
-  private projectListings() {
-    if (!this.storeProjector) return;
+  private projectListings(): number {
+    if (!this.storeProjector) return this.projectionGeneration;
+    const generation = ++this.projectionGeneration;
     const snapshot = this.store.listings.map((listing) => ({ ...listing }));
     this.pendingProjection = this.pendingProjection
-      .then(() => this.storeProjector?.persist(snapshot))
+      .then(() => this.storeProjector!.persist(snapshot))
       .then(
         () => {
-          this.projectionError = undefined;
+          this.completedProjectionGeneration = Math.max(this.completedProjectionGeneration, generation);
+          if ((this.projectionFailure?.generation ?? -1) <= generation) {
+            this.projectionFailure = undefined;
+          }
         },
         (error) => {
-          this.projectionError = error; // 실패해도 메모리/JSON 상태로 계속 동작
+          if (generation >= (this.projectionFailure?.generation ?? -1)) {
+            this.projectionFailure = { generation, error };
+          }
         }
       );
+    return generation;
+  }
+
+  async ensureAcceptedListingDurability(contract: TradeContract): Promise<void> {
+    if (contract.status !== "accepted") return;
+    const listing = this.store.listings.find((item) => item.id === contract.listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+
+    const failedGenerationAtEntry = this.projectionFailure?.generation;
+    if (listing.status !== "계약완료") {
+      listing.status = "계약완료";
+      this.persist();
+      this.projectListings();
+    } else if (
+      this.storeProjector &&
+      failedGenerationAtEntry === this.projectionGeneration &&
+      this.completedProjectionGeneration < this.projectionGeneration
+    ) {
+      this.projectListings();
+    }
+
+    if (!this.storeProjector) return;
+    const requiredGeneration = this.projectionGeneration;
+    await this.pendingProjection;
+    if (this.completedProjectionGeneration < requiredGeneration) {
+      throw this.projectionFailure?.error ?? new Error("매물 저장을 완료하지 못했습니다.");
+    }
   }
 
   private load() {
@@ -396,13 +434,30 @@ export class TradeService implements OnModuleDestroy {
   }
 
   private persist() {
-    if (!this.filePath) return;
+    const snapshot = this.cloneStore(this.store);
+    if (!this.filePath) {
+      this.committedStore = snapshot;
+      return;
+    }
+    const tempFilePath = `${this.filePath}.tmp`;
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
-      writeFileSync(this.filePath, JSON.stringify(this.store), "utf8");
-    } catch {
-      // 영속화 실패는 치명적이지 않다 — 메모리 상태로 계속 동작
+      writeFileSync(tempFilePath, JSON.stringify(snapshot), "utf8");
+      renameSync(tempFilePath, this.filePath);
+      this.committedStore = snapshot;
+    } catch (error) {
+      try {
+        unlinkSync(tempFilePath);
+      } catch {
+        // temp path may be a directory or may not have been created
+      }
+      this.store = this.cloneStore(this.committedStore);
+      throw error;
     }
+  }
+
+  private cloneStore(store: TradeStore): TradeStore {
+    return structuredClone(store);
   }
 
   listListings(): TradeListing[] {
@@ -652,6 +707,7 @@ export class TradeService implements OnModuleDestroy {
       depositManwon: listing.depositManwon,
       monthlyRentManwon: listing.monthlyRentManwon,
       location: fullListingLocation(listing),
+      ...(listing.detailAddress ? { roomNo: listing.detailAddress } : {}),
       proposedAt: new Date().toISOString()
     };
     this.store.contracts.unshift(contract);
@@ -661,23 +717,46 @@ export class TradeService implements OnModuleDestroy {
   }
 
   /** 계약 응답 — 제안받은 문의자(예비 세입자)만. 수락하면 매물이 계약완료로 전환된다. */
-  respondContract(user: { id: string; name: string }, contractId: string, accept: boolean): { contract: TradeContract; thread: TradeThread } {
+  respondContract(
+    user: { id: string; name: string },
+    contractId: string,
+    accept: boolean,
+    beforeAccept?: (contract: TradeContract) => void
+  ): { contract: TradeContract; thread: TradeThread } {
+    if (typeof accept !== "boolean") {
+      throw new BadRequestException("계약 수락 여부는 true 또는 false boolean이어야 합니다.");
+    }
     const contract = this.store.contracts.find((item) => item.id === contractId);
     if (!contract) throw new NotFoundException("계약 제안을 찾을 수 없습니다.");
     if (contract.tenantId !== user.id) throw new ForbiddenException("제안받은 사람만 응답할 수 있습니다.");
+    const thread = this.getThread(user.id, contract.threadId);
+    if (accept && contract.status === "accepted") {
+      beforeAccept?.({ ...contract });
+      return { contract, thread };
+    }
     if (contract.status !== "proposed") throw new BadRequestException("이미 처리된 계약 제안입니다.");
 
-    const thread = this.getThread(user.id, contract.threadId);
-    contract.status = accept ? "accepted" : "declined";
-    contract.respondedAt = new Date().toISOString();
-
+    const respondedAt = new Date().toISOString();
+    const response: TradeContract = {
+      ...contract,
+      status: accept ? "accepted" : "declined",
+      respondedAt
+    };
+    if (accept) beforeAccept?.(response);
+    const listing = accept
+      ? this.store.listings.find((item) => item.id === contract.listingId)
+      : undefined;
+    if (accept && !listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    contract.status = response.status;
+    contract.respondedAt = respondedAt;
     if (accept) {
-      this.markListingContracted(contract.listingId);
+      listing!.status = "계약완료";
       this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
     } else {
       this.pushMessage(thread, user, "계약 제안을 거절했어요.");
     }
     this.persist();
+    if (accept) this.projectListings();
     return { contract, thread };
   }
 
@@ -701,6 +780,12 @@ export class TradeService implements OnModuleDestroy {
     return this.store.contracts
       .filter((item) => item.landlordId === userId || item.tenantId === userId)
       .sort((a, b) => b.proposedAt.localeCompare(a.proposedAt));
+  }
+
+  listAcceptedContracts(): TradeContract[] {
+    return this.store.contracts
+      .filter((contract) => contract.status === "accepted")
+      .map((contract) => ({ ...contract }));
   }
 
   /** 스레드의 최신 계약(참여자 전용) — 채팅 화면의 제안 버튼/수락 카드 상태 판단용. */
