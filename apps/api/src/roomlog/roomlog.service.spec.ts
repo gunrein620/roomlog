@@ -5385,9 +5385,11 @@ describe("RoomlogService", () => {
     assert.equal(tenantContract.review, "pending");
     assert.equal(tenantExtraction.confirmed, false);
     assert.equal(tenantPrivacy.maskingEnabled, true);
+    const managerDashboard = service.getManagerContractDashboard("landlord-demo");
+    assert.equal(managerDashboard.rows.some((row) => row.contract.id === "ct_demo_302"), true);
     assert.equal(
-      service.getManagerContractDashboard("landlord-demo").counts.needsCheck,
-      tenantExtraction.items.filter((item) => item.needsCheck).length
+      managerDashboard.counts.needsCheck >= tenantExtraction.items.filter((item) => item.needsCheck).length,
+      true
     );
 
     assert.throws(

@@ -251,8 +251,12 @@ export class RoomlogContractDomain {
     const document = this.currentContractDocument(contract);
     const executedAt = now();
     const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
+    let openAiFailureReason: string | undefined;
     const openAiResult = openAiApiKey
-      ? await this.runOpenAiContractOcr(managerId, contract, extraction, room, document, openAiApiKey).catch(() => undefined)
+      ? await this.runOpenAiContractOcr(managerId, contract, extraction, room, document, openAiApiKey).catch((error) => {
+          openAiFailureReason = this.openAiOcrFailureReason(error);
+          return undefined;
+        })
       : undefined;
     const result =
       openAiResult ??
@@ -262,8 +266,8 @@ export class RoomlogContractDomain {
         room,
         document,
         openAiApiKey
-          ? "실제 OCR 호출에 실패해 mock 결과로 대체했습니다."
-          : "OPENAI_API_KEY가 없어 mock OCR 결과를 사용했습니다."
+          ? `OpenAI OCR 호출에 실패했습니다.${openAiFailureReason ? ` (${openAiFailureReason})` : ""}`
+          : "OPENAI_API_KEY가 없어 실제 OCR을 실행하지 못했습니다."
       );
 
     this.applyContractOcrResult(contract, extraction, result, executedAt);
@@ -272,109 +276,60 @@ export class RoomlogContractDomain {
     return this.getManagerContractDetail(managerId, contract.id);
   }
 
+  private openAiOcrFailureReason(error: unknown) {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message.trim().slice(0, 180);
+    }
+
+    return "원인 미상";
+  }
+
   private buildMockContractOcrResult(
-    contract: Contract,
-    extraction: ContractExtraction,
-    room: Room,
+    _contract: Contract,
+    _extraction: ContractExtraction,
+    _room: Room,
     document: ContractDocument | undefined,
     summary: string
   ): ContractOcrResult {
-    const existingDeposit = this.extractionValue(extraction, "보증금");
-    const deposit = existingDeposit ?? "10,000,000원";
-    const rent = this.currencyLabel(contract.monthlyRent) ?? this.extractionValue(extraction, "월세") ?? "미확인";
-    const maintenanceFee =
-      this.currencyLabel(contract.maintenanceFee) ?? this.extractionValue(extraction, "관리비") ?? "미확인";
-    const paymentDay = contract.paymentDay
-      ? `매월 ${contract.paymentDay}일`
-      : this.extractionValue(extraction, "납부일") ?? "미확인";
-    const contractTerm = `${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`;
-    const unitAddress = `${room.address} ${this.displayUnitId(room)}`.trim();
+    const missingItem = (label: string, group: ExtractionGroup, masked = false) => ({
+      label,
+      value: "미확인",
+      group,
+      needsCheck: true,
+      masked,
+      evidence: "실제 OCR 실패/미설정으로 원문에서 값을 추출하지 못했습니다."
+    });
 
     return {
       source: "mock",
       summary,
       highlights: [
         `${summary} · ${document?.fileName ?? "계약서 원본"} 기준`,
-        `월세 ${rent} · 납부일 ${paymentDay}`,
-        "실제 OCR 연동 전까지는 관리자 검토용 추출값입니다."
+        "실제 OCR 값은 추출되지 않았습니다.",
+        "기존 DB 계약값 불러오기 또는 수동 입력으로 보강하세요."
       ],
       helpNotes: [
         {
-          clause: "mock OCR 결과",
-          plain: "현재 단계에서는 업로드된 계약서와 등록 필드를 기준으로 OCR 결과 형태를 미리 채웁니다.",
+          clause: "OCR 실행 실패",
+          plain: "OpenAI 키가 없거나 OCR 호출이 실패해 원문에서 계약값을 읽지 못했습니다.",
           source: "M-DOC-01 OCR 실행"
         },
         {
           clause: "관리자 확정 필요",
-          plain: "확정 전에는 원문과 금액, 기간, 특약 문구를 한 번 더 대조해야 합니다.",
+          plain: "기존 DB 계약값을 불러오거나 원문을 보며 직접 입력한 뒤 확정해야 합니다.",
           source: "계약서 검토 워크플로"
         }
       ],
       items: [
-        {
-          label: "보증금",
-          value: deposit,
-          group: "money",
-          needsCheck: !existingDeposit || deposit === "미확인",
-          evidence: "mock OCR: 보증금 조항 후보를 추출했습니다."
-        },
-        {
-          label: "월세",
-          value: rent,
-          group: "money",
-          needsCheck: rent === "미확인",
-          evidence: "mock OCR: 차임 또는 월세 금액 후보를 추출했습니다."
-        },
-        {
-          label: "관리비",
-          value: maintenanceFee,
-          group: "money",
-          needsCheck: maintenanceFee === "미확인",
-          evidence: "mock OCR: 관리비 항목 후보를 추출했습니다."
-        },
-        {
-          label: "납부일",
-          value: paymentDay,
-          group: "money",
-          needsCheck: paymentDay === "미확인",
-          evidence: "mock OCR: 납부일 문구 후보를 추출했습니다."
-        },
-        {
-          label: "계약 기간",
-          value: contractTerm,
-          group: "term",
-          needsCheck: contractTerm.includes("미확인"),
-          evidence: "mock OCR: 임대차 기간 후보를 추출했습니다."
-        },
-        {
-          label: "상세 주소",
-          value: unitAddress,
-          group: "term",
-          needsCheck: false,
-          masked: true,
-          evidence: "mock OCR: 목적물 소재지 후보를 등록 호실 정보와 대조했습니다."
-        },
-        {
-          label: "자동연장",
-          value: "만료 1개월 전 별도 통지 없으면 갱신 검토",
-          group: "term",
-          needsCheck: true,
-          evidence: "mock OCR: 자동연장 또는 갱신 특약 후보가 있어 원문 확인이 필요합니다."
-        },
-        {
-          label: "원상복구",
-          value: "퇴거 시 원상복구 의무",
-          group: "responsibility",
-          needsCheck: true,
-          evidence: "mock OCR: 원상복구 조항 후보를 추출했습니다."
-        },
-        {
-          label: "수선 책임",
-          value: "소모품·경미한 수선 임차인 부담 후보",
-          group: "responsibility",
-          needsCheck: true,
-          evidence: "mock OCR: 수선 책임 특약 후보가 있어 관리자 확인이 필요합니다."
-        }
+        missingItem("보증금", "money"),
+        missingItem("월세", "money"),
+        missingItem("관리비", "money"),
+        missingItem("납부일", "money"),
+        missingItem("계약 기간", "term"),
+        missingItem("상세 주소", "term", true),
+        missingItem("자동연장", "term"),
+        missingItem("원상복구", "responsibility"),
+        missingItem("수선 책임", "responsibility")
       ]
     };
   }
@@ -385,12 +340,15 @@ export class RoomlogContractDomain {
     result: ContractOcrResult,
     executedAt: string
   ) {
-    const sourceLabel = result.source === "openai" ? "실제 OCR" : "mock OCR";
+    const sourceLine =
+      result.source === "openai"
+        ? `실제 OCR 완료 · ${result.summary}`
+        : `실제 OCR 실패 · ${result.summary}`;
 
     extraction.confirmed = false;
     extraction.createdAt = executedAt;
     extraction.highlights = [
-      `${sourceLabel} 완료 · ${result.summary}`,
+      sourceLine,
       ...result.highlights.filter(Boolean)
     ].slice(0, 6);
     extraction.helpNotes = result.helpNotes.length
@@ -403,7 +361,7 @@ export class RoomlogContractDomain {
           }
         ];
 
-    result.items.slice(0, 16).forEach((item) => this.setExtractionItem(extraction, item));
+    result.items.slice(0, 16).forEach((item) => this.setOcrExtractionItem(extraction, item, result.source));
 
     contract.review = "pending";
     if (contract.lifecycle === "unregistered") {
@@ -430,7 +388,7 @@ export class RoomlogContractDomain {
     const documentPart = this.openAiContractDocumentPart(document, bytes, mimeType);
     if (!documentPart) return undefined;
 
-    const model = process.env.OPENAI_CONTRACT_OCR_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const model = process.env.OPENAI_CONTRACT_OCR_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.6-luna";
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -471,7 +429,11 @@ export class RoomlogContractDomain {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI contract OCR failed with ${response.status}`);
+      const errorBody = await response.text().catch(() => "");
+      const detail = errorBody.trim().replace(/\s+/g, " ").slice(0, 260);
+      throw new Error(
+        `OpenAI contract OCR failed with ${response.status}${detail ? `: ${detail}` : ""}`
+      );
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
@@ -593,6 +555,8 @@ export class RoomlogContractDomain {
     contract.monthlyRent = this.positiveInteger(input.monthlyRent) ?? contract.monthlyRent;
     contract.maintenanceFee = this.positiveInteger(input.maintenanceFee) ?? contract.maintenanceFee;
     contract.paymentDay = this.paymentDay(input.paymentDay) ?? contract.paymentDay;
+    contract.startDate = input.startDate || contract.startDate;
+    contract.endDate = input.endDate || contract.endDate;
     contract.valueSource = "manual";
     contract.updatedAt = now();
 
@@ -614,6 +578,14 @@ export class RoomlogContractDomain {
       "납부일",
       contract.paymentDay ? `매월 ${contract.paymentDay}일` : undefined,
       "money"
+    );
+    this.upsertExtractionItem(
+      extraction,
+      "계약 기간",
+      input.startDate || input.endDate
+        ? `${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`
+        : undefined,
+      "term"
     );
     this.upsertExtractionItem(extraction, "임대인 계좌", input.account, "money", true);
     this.persistStore();
@@ -1028,7 +1000,7 @@ export class RoomlogContractDomain {
       existing.group = group;
       existing.masked = masked || existing.masked;
       existing.needsCheck = true;
-      existing.evidence = existing.evidence ?? "관리자 수동 입력";
+      existing.evidence = "관리자 수동 입력";
       return;
     }
 
@@ -1057,6 +1029,43 @@ export class RoomlogContractDomain {
     }
 
     extraction.items.push(item);
+  }
+
+  private setOcrExtractionItem(
+    extraction: ContractExtraction,
+    item: ContractExtraction["items"][number],
+    source: ContractOcrResult["source"] = "openai"
+  ) {
+    const existing = extraction.items.find((candidate) => candidate.label === item.label);
+
+    if (
+      existing &&
+      this.isMissingExtractionValue(item.value) &&
+      !this.isMissingExtractionValue(existing.value) &&
+      (source === "openai" || !this.isMockExtractionEvidence(existing.evidence))
+    ) {
+      this.setExtractionItem(extraction, {
+        ...item,
+        value: existing.value,
+        needsCheck: true,
+        masked: item.masked || existing.masked,
+        evidence: item.evidence
+          ? `${item.evidence} · OCR 미확인으로 기존 DB 계약값 유지`
+          : "OCR 미확인으로 기존 DB 계약값 유지"
+      });
+      return;
+    }
+
+    this.setExtractionItem(extraction, item);
+  }
+
+  private isMissingExtractionValue(value?: string) {
+    const normalized = value?.trim();
+    return !normalized || normalized === "미확인" || normalized === "원문 확인 필요" || normalized === "관리자 수동값 없음";
+  }
+
+  private isMockExtractionEvidence(evidence?: string) {
+    return /mock OCR|OCR 미확인으로 기존 DB 계약값 유지|실제 OCR 실패\/미설정/i.test(evidence ?? "");
   }
 
   // 통합 계정 모델: 초대는 "기존 로그인 계정에 관계를 붙이는 루트"이므로
@@ -1327,6 +1336,7 @@ export class RoomlogContractDomain {
   private contractOcrJsonSchema() {
     return {
       type: "object",
+      additionalProperties: false,
       properties: {
         summary: { type: "string" },
         highlights: {
@@ -1345,7 +1355,8 @@ export class RoomlogContractDomain {
               evidence: { type: "string" },
               masked: { type: "boolean" }
             },
-            required: ["label", "value", "group", "needsCheck", "evidence", "masked"]
+            required: ["label", "value", "group", "needsCheck", "evidence", "masked"],
+            additionalProperties: false
           }
         },
         helpNotes: {
@@ -1357,7 +1368,8 @@ export class RoomlogContractDomain {
               plain: { type: "string" },
               source: { type: "string" }
             },
-            required: ["clause", "plain", "source"]
+            required: ["clause", "plain", "source"],
+            additionalProperties: false
           }
         }
       },

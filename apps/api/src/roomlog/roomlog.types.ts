@@ -860,6 +860,8 @@ export type UpdateManagerContractManualValuesInput = {
   maintenanceFee?: number;
   paymentDay?: number;
   account?: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 export type UpdateManagerContractInventoryInput = {
