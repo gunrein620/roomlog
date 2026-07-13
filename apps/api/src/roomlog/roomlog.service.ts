@@ -83,6 +83,7 @@ import {
   ContractExtraction,
   ContractInvite,
   ContractPrivacy,
+  ConnectAcceptedTradeContractInput,
   Cost,
   CostReviewQueueSummary,
   CostType,
@@ -2984,11 +2985,12 @@ export class RoomlogService {
           contract.review === "confirmed" &&
           contract.valueSource === "confirmed" &&
           contract.monthlyRent !== undefined &&
-          Number.isInteger(contract.monthlyRent) &&
+          Number.isSafeInteger(contract.monthlyRent) &&
           contract.monthlyRent >= 0 &&
           contract.maintenanceFee !== undefined &&
-          Number.isInteger(contract.maintenanceFee) &&
+          Number.isSafeInteger(contract.maintenanceFee) &&
           contract.maintenanceFee >= 0 &&
+          Number.isSafeInteger(contract.monthlyRent + contract.maintenanceFee) &&
           contract.monthlyRent + contract.maintenanceFee > 0 &&
           contract.paymentDay !== undefined &&
           Number.isInteger(contract.paymentDay) &&
@@ -3082,7 +3084,11 @@ export class RoomlogService {
       }
       const monthlyRent = this.validateBillAmount(row.monthlyRent, "월세");
       const maintenanceFee = this.validateBillAmount(row.maintenanceFee, "관리비");
-      if (monthlyRent + maintenanceFee <= 0) {
+      const totalAmount = monthlyRent + maintenanceFee;
+      if (!Number.isSafeInteger(totalAmount)) {
+        throw new BadRequestException(`${room.roomNo}의 청구 합계는 안전한 원 단위 정수여야 합니다.`);
+      }
+      if (totalAmount <= 0) {
         throw new BadRequestException(`${room.roomNo}의 청구 금액을 입력해주세요.`);
       }
       const dueDate = this.validateBillDueDate(row.dueDate, month);
@@ -3269,6 +3275,10 @@ export class RoomlogService {
 
   ensureTradeContractDraft(input: EnsureTradeContractDraftInput) {
     return this.contract.ensureTradeContractDraft(input);
+  }
+
+  connectAcceptedTradeContract(input: ConnectAcceptedTradeContractInput) {
+    return this.contract.connectAcceptedTradeContract(input);
   }
 
   getManagerContractDashboard(managerId: string) {
@@ -7680,7 +7690,7 @@ export class RoomlogService {
   }
 
   private validateBillAmount(value: number, label: string) {
-    if (!Number.isInteger(value) || value < 0) {
+    if (!Number.isSafeInteger(value) || value < 0) {
       throw new BadRequestException(`${label}는 0 이상의 원 단위 정수여야 합니다.`);
     }
     return value;

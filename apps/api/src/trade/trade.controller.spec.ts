@@ -1,7 +1,13 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { BadRequestException } from "@nestjs/common";
+import { RoomlogService, type Store } from "../roomlog/roomlog.service";
+import { TradeContractBillingBridge } from "./trade-contract-billing-bridge.service";
 import { TradeController } from "./trade.controller";
-import type { TradeContract, TradeListing, TradeThread } from "./trade.service";
+import { TradeService, type TradeContract, type TradeListing, type TradeThread } from "./trade.service";
 
 describe("TradeController realtime notifications", () => {
   it("includes the sender id so clients do not badge their own sent messages", () => {
@@ -72,6 +78,85 @@ describe("TradeController public listings", () => {
 });
 
 describe("TradeController contract acceptance", () => {
+  it("rejects missing, string, numeric, and null accept values before any collaborator is called", () => {
+    const calls = { trade: 0, bridge: 0, notify: 0 };
+    const controller = new TradeController(
+      {
+        respondContract: () => {
+          calls.trade += 1;
+          throw new Error("must not be called");
+        },
+      } as any,
+      {
+        getUserFromToken: () => ({ id: "tenant-demo", name: "김민수" }),
+      } as any,
+      {
+        notifyUsers: () => {
+          calls.notify += 1;
+        },
+      } as any,
+      {
+        ensure: () => {
+          calls.bridge += 1;
+        },
+      } as any,
+    );
+
+    for (const accept of [undefined, "false", 0, null]) {
+      assert.throws(
+        () => controller.respondContract("Bearer token", "contract-1", { accept } as any),
+        BadRequestException,
+      );
+    }
+    assert.deepEqual(calls, { trade: 0, bridge: 0, notify: 0 });
+  });
+
+  it("rejects an unresolved interactive unit without accepting trade or mutating Roomlog", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-trade-controller-atomic-"));
+    const tradeService = new TradeService(join(dir, "trade.json"));
+    const roomlogService = new RoomlogService({ seedDemoData: false, storeFilePath: join(dir, "roomlog.json") });
+    const landlord = { id: "landlord-no-unit", name: "호실없는 임대인" };
+    const tenant = { id: "tenant-no-unit", name: "호실없는 임차인" };
+    const listing = tradeService.createListing(landlord, {
+      title: "호실 미확인 매물",
+      roomType: "원룸",
+      tradeType: "월세",
+      depositManwon: 1000,
+      monthlyRentManwon: 65,
+      location: "서울 서초구 방배로 99",
+    });
+    const thread = tradeService.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "계약하고 싶어요",
+    });
+    const proposed = tradeService.proposeContract(landlord, thread.id).contract;
+    const tradeBefore = {
+      contract: structuredClone(tradeService.contractForThread(tenant.id, thread.id)),
+      listing: structuredClone(tradeService.listListings()),
+      thread: structuredClone(tradeService.getThread(tenant.id, thread.id)),
+    };
+    const roomlogBefore = structuredClone((roomlogService as unknown as { store: Store }).store);
+    let notifications = 0;
+    const controller = new TradeController(
+      tradeService,
+      { getUserFromToken: () => tenant } as any,
+      { notifyUsers: () => { notifications += 1; } } as any,
+      new TradeContractBillingBridge(tradeService, roomlogService),
+    );
+
+    assert.throws(
+      () => controller.respondContract("Bearer token", proposed.id, { accept: true }),
+      /호실.*확인|정확한 호실/,
+    );
+
+    assert.deepEqual(tradeService.contractForThread(tenant.id, thread.id), tradeBefore.contract);
+    assert.deepEqual(tradeService.listListings(), tradeBefore.listing);
+    assert.deepEqual(tradeService.getThread(tenant.id, thread.id), tradeBefore.thread);
+    assert.deepEqual((roomlogService as unknown as { store: Store }).store, roomlogBefore);
+    assert.equal(notifications, 0);
+  });
+
   it("ensures billing once when the trade service returns an accepted contract", () => {
     const accepted: TradeContract = {
       id: "contract-1",
@@ -104,7 +189,17 @@ describe("TradeController contract acceptance", () => {
     };
     const ensured: TradeContract[] = [];
     const controller = new TradeController(
-      { respondContract: () => ({ contract: accepted, thread }) } as any,
+      {
+        respondContract: (
+          _user: unknown,
+          _contractId: string,
+          _accept: boolean,
+          beforeAccept?: (contract: TradeContract) => void,
+        ) => {
+          beforeAccept?.(accepted);
+          return { contract: accepted, thread };
+        },
+      } as any,
       { getUserFromToken: () => ({ id: accepted.tenantId, name: accepted.tenantName }) } as any,
       { notifyUsers: () => undefined } as any,
       { ensure: (contract: TradeContract) => ensured.push(contract) } as any

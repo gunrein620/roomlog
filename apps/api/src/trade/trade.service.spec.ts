@@ -77,6 +77,50 @@ describe("TradeService public listings", () => {
 });
 
 describe("TradeService contract acceptance", () => {
+  it("snapshots the listing exact unit on the contract and preserves it after restart", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-trade-unit-snapshot-"));
+    const filePath = join(dir, "trade-store.json");
+    const service = new TradeService(filePath);
+
+    const { accepted } = acceptContract(service);
+    const restarted = new TradeService(filePath);
+    const acceptedWithUnit = accepted as typeof accepted & { roomNo?: string };
+    const restored = restarted.listAcceptedContracts().find((contract) => contract.id === accepted.id) as
+      | (typeof accepted & { roomNo?: string })
+      | undefined;
+
+    assert.equal(acceptedWithUnit.roomNo, "402호");
+    assert.equal(restored?.roomNo, "402호");
+    assert.equal(restored?.location, "서울 서초구 방배동 402호");
+  });
+
+  it("rejects every non-boolean response without changing contract, listing, or messages", () => {
+    const service = serviceWithTempStore();
+    const listing = service.createListing(owner, input);
+    const tenant = { id: "tenant-boundary", name: "경계 세입자" };
+    const thread = service.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "계약 경계를 확인해요",
+    });
+    const proposed = service.proposeContract(owner, thread.id).contract;
+    const before = {
+      contracts: structuredClone(service.listContracts(tenant.id)),
+      listings: structuredClone(service.listListings()),
+      thread: structuredClone(service.getThread(tenant.id, thread.id)),
+    };
+
+    for (const value of [undefined, "false", 0, null]) {
+      assert.throws(
+        () => service.respondContract(tenant, proposed.id, value as any),
+        /boolean|true.*false|수락 여부/,
+      );
+      assert.deepEqual(service.listContracts(tenant.id), before.contracts);
+      assert.deepEqual(service.listListings(), before.listings);
+      assert.deepEqual(service.getThread(tenant.id, thread.id), before.thread);
+    }
+  });
+
   it("returns an already accepted contract without duplicating its acceptance message", () => {
     const service = serviceWithTempStore();
     const { tenant, thread, accepted: first } = acceptContract(service);

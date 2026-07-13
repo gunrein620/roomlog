@@ -27,11 +27,11 @@ export default async function Page() {
   });
 
   return (
-    <ContractShell id="M-DOC-00" title="계약서 검토·확정 대시보드">
+    <ContractShell id="M-DOC-00" title="계약 검토·확정 대시보드">
       <PageStack>
         <Grid columns={4}>
-          <MetricCard label="검토 대기" value={`${dashboard.counts.pending}건`} note="임차인·관리자 업로드 유입" />
-          <MetricCard label="확인 필요" value={`${dashboard.counts.needsCheck}개`} note="OCR 원문 대조 필요" />
+          <MetricCard label="검토 대기" value={`${dashboard.counts.pending}건`} note="문서 등록·거래 수락 유입" />
+          <MetricCard label="확인 필요" value={`${dashboard.counts.needsCheck}개`} note="계약 조건 관리자 확인 필요" />
           <MetricCard label="SLA 초과" value={`${dashboard.counts.slaOverdue}건`} note="장기 미확정 출구 표시" />
           <MetricCard label="미등록 호실" value={`${dashboard.counts.unregistered}호`} note="수동값 또는 초대 필요" />
         </Grid>

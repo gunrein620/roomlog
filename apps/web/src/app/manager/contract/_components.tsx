@@ -41,7 +41,7 @@ export function ContractShell({
   children: ReactNode;
 }) {
   void id;
-  return <ManagerAppShell title={title} context="관리 중인 집 · 계약서">{children}</ManagerAppShell>;
+  return <ManagerAppShell title={title} context="관리 중인 집 · 계약">{children}</ManagerAppShell>;
 }
 
 export function PageStack({ children }: { children: React.ReactNode }) {

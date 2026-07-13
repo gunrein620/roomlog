@@ -183,6 +183,12 @@ describe("trade contract billing bridge", () => {
     assert.equal(confirmed.row.contract.lifecycle, "active");
     assert.equal(confirmed.row.contract.review, "confirmed");
     assert.equal(confirmed.row.contract.valueSource, "confirmed");
+    assert.equal(confirmed.extraction.confirmed, true);
+    assert.equal(confirmed.extraction.items.some((item) => item.needsCheck), false);
+    const confirmedDashboardRow = service.getManagerContractDashboard("landlord-demo").rows
+      .find((row) => row.contract.id === first.id);
+    assert.equal(confirmedDashboardRow?.needsCheckCount, 0);
+    assert.notEqual(confirmedDashboardRow?.statusLabel, "확인 필요");
 
     const option = service.getManagerBillCreationOptions(
       "landlord-demo",
@@ -405,6 +411,7 @@ describe("trade contract billing bridge", () => {
       { name: "NaN", value: Number.NaN },
       { name: "positive infinity", value: Number.POSITIVE_INFINITY },
       { name: "negative infinity", value: Number.NEGATIVE_INFINITY },
+      { name: "unsafe integer", value: Number.MAX_SAFE_INTEGER + 1 },
     ];
 
     for (const field of ["monthlyRent", "maintenanceFee"] as const) {
@@ -453,6 +460,40 @@ describe("trade contract billing bridge", () => {
         );
       }
     }
+  });
+
+  it("rejects an unsafe stored money sum before confirmation and bill-option exposure", () => {
+    const service = new RoomlogService();
+    const { room, contract } = createTradeDraft(service, "unsafe-money-sum");
+    service.updateManagerContractManualValues("landlord-demo", contract.id, {
+      monthlyRent: Number.MAX_SAFE_INTEGER,
+      maintenanceFee: 1,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    });
+    const before = service.getManagerContractDetail("landlord-demo", contract.id);
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: true,
+      }),
+      /합계.*안전한|합계.*정수/,
+    );
+    const after = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.equal(after.row.contract.lifecycle, before.row.contract.lifecycle);
+    assert.equal(after.row.contract.review, before.row.contract.review);
+    assert.equal(after.extraction.confirmed, false);
+
+    const legacyContract = storedContract(service, contract.id);
+    legacyContract.lifecycle = "active";
+    legacyContract.review = "confirmed";
+    legacyContract.valueSource = "confirmed";
+    assert.equal(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .options.some((option) => option.contractId === contract.id),
+      false,
+    );
   });
 
   it("requires literal true to acknowledge needs-check extraction items", () => {

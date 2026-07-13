@@ -10,6 +10,8 @@ const review = read("src/app/manager/contract/01/page.tsx");
 const detail = read("src/app/manager/contract/03/page.tsx");
 const invite = read("src/app/manager/contract/04/page.tsx");
 const privacy = read("src/app/manager/contract/05/page.tsx");
+const tenantDetail = read("src/app/tenant/contract/02/page.tsx");
+const tenantPrivacy = read("src/app/tenant/contract/04/PrivacyPanel.tsx");
 
 const countOccurrences = (source: string, needle: string) => source.split(needle).length - 1;
 
@@ -36,8 +38,47 @@ test("requires an explicit review confirmation instead of hard-coding true", () 
 test("shows the no-original explanation only for trade contract drafts", () => {
   assert.match(
     review,
-    /detail\.row\.origin === "trade_acceptance"[\s\S]*업로드된 원본 파일은 없습니다\.[\s\S]*<Badge>원본 뷰어<\/Badge>/,
+    /isTradeAcceptance[\s\S]*거래 당사자가 수락한 조건을 바탕으로 만든 검토 초안입니다\.[\s\S]*<Badge>원본 뷰어<\/Badge>/,
   );
+});
+
+test("uses trade-acceptance wording throughout the real trade review branch", () => {
+  assert.match(review, /const isTradeAcceptance = detail\.row\.origin === "trade_acceptance"/);
+  assert.match(
+    review,
+    /title=\{isTradeAcceptance \? "거래 계약 조건 검토·확정" : "계약서 OCR 검토·확정"\}/,
+  );
+  assert.match(review, /isTradeAcceptance \? "거래 수락 조건 정밀 검토 모드" : "원문 대조 정밀 검토 모드"/);
+  assert.match(review, /isTradeAcceptance \? "거래 수락 조건" : "추출 10항목 · 인라인 수정"/);
+  assert.match(review, /isTradeAcceptance \? "거래 계약 근거" : "원본·OCR 전문"/);
+  assert.match(review, /거래 수락 조건을 관리자 검토로 확정/);
+});
+
+test("does not offer an original file or document deletion on tenant trade-detail surfaces", () => {
+  assert.match(tenantDetail, /const isTradeAcceptance = contract\.id\.startsWith\("ct_trade_"\)/);
+  assert.match(tenantDetail, /!isTradeAcceptance && \([\s\S]*원본 보기[\s\S]*\)\}/);
+  assert.match(tenantPrivacy, /const isTradeAcceptance = contractId\.startsWith\("ct_trade_"\)/);
+  assert.match(tenantPrivacy, /isTradeAcceptance \? "계약 기록 삭제" : "계약서 삭제"/);
+  assert.match(tenantPrivacy, /isTradeAcceptance \? "계약 기록 삭제 요청" : "계약서 삭제 요청"/);
+});
+
+test("keeps missing contract dates unconfirmed and uses strict form-value helpers", () => {
+  assert.match(
+    detail,
+    /contract\.startDate \? formatDate\(contract\.startDate\) : "미확인"/,
+  );
+  assert.match(
+    detail,
+    /contract\.endDate \? formatDate\(contract\.endDate\) : "미확인"/,
+  );
+  assert.doesNotMatch(detail, /contract\.startDate \?\? contract\.createdAt/);
+  assert.doesNotMatch(detail, /contract\.endDate \?\? contract\.updatedAt/);
+  assert.match(detail, /parseOptionalSafeNonNegativeInteger\(formData\.get\("monthlyRent"\)\)/);
+  assert.match(detail, /parseOptionalSafeNonNegativeInteger\(formData\.get\("maintenanceFee"\)\)/);
+  assert.match(detail, /parseOptionalSafeNonNegativeInteger\(formData\.get\("paymentDay"\)\)/);
+  assert.match(detail, /editableManualTextValue\(detail\.manualValues\.deposit\)/);
+  assert.match(detail, /editableManualTextValue\(detail\.manualValues\.account\)/);
+  assert.doesNotMatch(detail, /function numberValue/);
 });
 
 test("keeps the selected contract id while editing dates and returning to review", () => {

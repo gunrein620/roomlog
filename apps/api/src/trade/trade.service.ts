@@ -88,6 +88,7 @@ export type TradeContract = {
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
+  roomNo?: string;
   proposedAt: string;
   respondedAt?: string;
 };
@@ -652,6 +653,7 @@ export class TradeService implements OnModuleDestroy {
       depositManwon: listing.depositManwon,
       monthlyRentManwon: listing.monthlyRentManwon,
       location: fullListingLocation(listing),
+      ...(listing.detailAddress ? { roomNo: listing.detailAddress } : {}),
       proposedAt: new Date().toISOString()
     };
     this.store.contracts.unshift(contract);
@@ -661,16 +663,34 @@ export class TradeService implements OnModuleDestroy {
   }
 
   /** 계약 응답 — 제안받은 문의자(예비 세입자)만. 수락하면 매물이 계약완료로 전환된다. */
-  respondContract(user: { id: string; name: string }, contractId: string, accept: boolean): { contract: TradeContract; thread: TradeThread } {
+  respondContract(
+    user: { id: string; name: string },
+    contractId: string,
+    accept: boolean,
+    beforeAccept?: (contract: TradeContract) => void
+  ): { contract: TradeContract; thread: TradeThread } {
+    if (typeof accept !== "boolean") {
+      throw new BadRequestException("계약 수락 여부는 true 또는 false boolean이어야 합니다.");
+    }
     const contract = this.store.contracts.find((item) => item.id === contractId);
     if (!contract) throw new NotFoundException("계약 제안을 찾을 수 없습니다.");
     if (contract.tenantId !== user.id) throw new ForbiddenException("제안받은 사람만 응답할 수 있습니다.");
     const thread = this.getThread(user.id, contract.threadId);
-    if (accept && contract.status === "accepted") return { contract, thread };
+    if (accept && contract.status === "accepted") {
+      beforeAccept?.({ ...contract });
+      return { contract, thread };
+    }
     if (contract.status !== "proposed") throw new BadRequestException("이미 처리된 계약 제안입니다.");
 
-    contract.status = accept ? "accepted" : "declined";
-    contract.respondedAt = new Date().toISOString();
+    const respondedAt = new Date().toISOString();
+    const response: TradeContract = {
+      ...contract,
+      status: accept ? "accepted" : "declined",
+      respondedAt
+    };
+    if (accept) beforeAccept?.(response);
+    contract.status = response.status;
+    contract.respondedAt = respondedAt;
 
     if (accept) {
       this.markListingContracted(contract.listingId);

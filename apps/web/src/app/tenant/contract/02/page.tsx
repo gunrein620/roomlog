@@ -27,6 +27,7 @@ export default async function Page() {
     getExtraction(contractId),
   ]);
   const confirmed = extraction.confirmed;
+  const isTradeAcceptance = contract.id.startsWith("ct_trade_");
 
   return (
     <>
@@ -114,22 +115,23 @@ export default async function Page() {
           <ExtractionView extraction={extraction} />
         </section>
 
-        {/* 원본 보기 (스텁) */}
-        <button
-          type="button"
-          style={{
-            alignSelf: "flex-start",
-            fontSize: 12,
-            color: "var(--on-surface-variant)",
-            background: "transparent",
-            border: "1px solid var(--outline-variant)",
-            borderRadius: "var(--radius-full)",
-            padding: "6px 14px",
-            cursor: "pointer",
-          }}
-        >
-          원본 보기
-        </button>
+        {!isTradeAcceptance && (
+          <button
+            type="button"
+            style={{
+              alignSelf: "flex-start",
+              fontSize: 12,
+              color: "var(--on-surface-variant)",
+              background: "transparent",
+              border: "1px solid var(--outline-variant)",
+              borderRadius: "var(--radius-full)",
+              padding: "6px 14px",
+              cursor: "pointer",
+            }}
+          >
+            원본 보기
+          </button>
+        )}
       </div>
 
       <footer

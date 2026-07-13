@@ -13,6 +13,7 @@ import type {
   ContractExtraction,
   ContractInvite,
   ContractPrivacy,
+  ConnectAcceptedTradeContractInput,
   CreateManagerContractInput,
   CreateManagerContractInviteInput,
   CreateTenantContractInput,
@@ -122,6 +123,151 @@ export class RoomlogContractDomain {
       extraction: this.presentContractExtraction(this.findContractExtraction(contract)),
       privacy: this.presentContractPrivacy(this.findContractPrivacy(contract))
     };
+  }
+
+  connectAcceptedTradeContract(input: ConnectAcceptedTradeContractInput): Contract {
+    const resolved = this.resolveExactTradeRoom(input);
+    const tradeContractId = typeof input.tradeContractId === "string"
+      ? input.tradeContractId.trim()
+      : "";
+    if (!tradeContractId) {
+      throw new BadRequestException("거래 계약 ID를 확인할 수 없습니다.");
+    }
+    if (typeof input.landlordId !== "string" || !input.landlordId.trim()) {
+      throw new BadRequestException("거래 계약 임대인을 확인할 수 없습니다.");
+    }
+    if (typeof input.tenantId !== "string" || !input.tenantId.trim()) {
+      throw new BadRequestException("거래 계약 임차인을 확인할 수 없습니다.");
+    }
+    const monthlyRent = this.requireNonNegativeInteger(input.monthlyRent, "월세");
+    const depositKrw = this.requireNonNegativeInteger(input.depositKrw, "보증금");
+    const acceptedAt = this.requireAcceptedEventTime(input.acceptedAt);
+    const contractId = `ct_trade_${tradeContractId}`;
+    const deterministic = this.store.contracts.find((contract) => contract.id === contractId);
+    const room: Room = resolved.room ?? {
+      id: id("room"),
+      buildingName: input.listingTitle.trim() || resolved.address,
+      roomNo: resolved.unit,
+      address: resolved.address,
+      landlordId: input.landlordId
+    };
+
+    if (
+      deterministic &&
+      (
+        deterministic.roomId !== room.id ||
+        deterministic.managerId !== input.landlordId ||
+        deterministic.tenantId !== input.tenantId
+      )
+    ) {
+      throw new ConflictException("동일한 거래 계약 ID가 다른 계약 관계에 연결돼 있습니다.");
+    }
+    if (deterministic?.tradeAcceptedAt && deterministic.tradeAcceptedAt !== acceptedAt) {
+      throw new ConflictException("동일한 거래 계약 ID의 수락 이벤트 시각이 일치하지 않습니다.");
+    }
+
+    const active = this.store.contracts.find(
+      (contract) =>
+        contract.id !== deterministic?.id &&
+        contract.roomId === room.id &&
+        contract.lifecycle === "active"
+    );
+    if (active && active.tenantId !== input.tenantId) {
+      throw new ConflictException("해당 호실에 다른 임차인의 활성 계약이 있습니다.");
+    }
+
+    const currentRoomId = this.store.tenantRooms[input.tenantId];
+    const newerCurrent = currentRoomId
+      ? this.store.contracts
+          .filter(
+            (contract) =>
+              contract.id !== deterministic?.id &&
+              contract.id.startsWith("ct_trade_") &&
+              contract.tenantId === input.tenantId &&
+              contract.roomId === currentRoomId &&
+              this.tradeAcceptedTime(contract) > this.timeOf(acceptedAt)
+          )
+          .sort((left, right) => this.tradeAcceptedTime(right) - this.tradeAcceptedTime(left))[0]
+      : undefined;
+    if (newerCurrent) {
+      return this.presentContract(deterministic ?? newerCurrent);
+    }
+
+    if (active && !deterministic) {
+      if (currentRoomId === room.id) return this.presentContract(active);
+      this.store.tenantRooms[input.tenantId] = room.id;
+      try {
+        this.persistStore();
+      } catch (error) {
+        this.restoreTenantRoom(input.tenantId, currentRoomId);
+        throw error;
+      }
+      return this.presentContract(active);
+    }
+
+    if (deterministic) {
+      const previousAcceptedAt = deterministic.tradeAcceptedAt;
+      const previousCreatedAt = deterministic.createdAt;
+      const relationChanged = currentRoomId !== room.id;
+      const eventChanged = previousAcceptedAt === undefined;
+      if (!relationChanged && !eventChanged) return this.presentContract(deterministic);
+
+      deterministic.tradeAcceptedAt = acceptedAt;
+      if (eventChanged) deterministic.createdAt = acceptedAt;
+      this.store.tenantRooms[input.tenantId] = room.id;
+      try {
+        this.persistStore();
+      } catch (error) {
+        deterministic.tradeAcceptedAt = previousAcceptedAt;
+        deterministic.createdAt = previousCreatedAt;
+        this.restoreTenantRoom(input.tenantId, currentRoomId);
+        throw error;
+      }
+      return this.presentContract(deterministic);
+    }
+
+    const contract: Contract = {
+      id: contractId,
+      roomId: room.id,
+      tenantId: input.tenantId,
+      managerId: input.landlordId,
+      unitId: resolved.unit,
+      landlordName: input.landlordName.trim() || "관리자",
+      lifecycle: "analyzing",
+      review: "pending",
+      deletion: "none",
+      valueSource: "unverified",
+      monthlyRent,
+      optionInventory: [],
+      createdAt: acceptedAt,
+      updatedAt: acceptedAt,
+      tradeAcceptedAt: acceptedAt
+    };
+    const extraction = this.createTradeContractExtraction(contract, depositKrw);
+    contract.extractionId = extraction.id;
+    const privacy = this.createTradeContractPrivacy(contract);
+    const roomCount = this.store.rooms.length;
+    const contractCount = this.store.contracts.length;
+    const extractionCount = this.store.contractExtractions.length;
+    const privacyCount = this.store.contractPrivacies.length;
+
+    if (!resolved.room) this.store.rooms.push(room);
+    this.store.contracts.push(contract);
+    this.store.contractExtractions.push(extraction);
+    this.store.contractPrivacies.push(privacy);
+    this.store.tenantRooms[input.tenantId] = room.id;
+    try {
+      this.persistStore();
+    } catch (error) {
+      this.store.rooms.splice(roomCount);
+      this.store.contracts.splice(contractCount);
+      this.store.contractExtractions.splice(extractionCount);
+      this.store.contractPrivacies.splice(privacyCount);
+      this.restoreTenantRoom(input.tenantId, currentRoomId);
+      throw error;
+    }
+
+    return this.presentContract(contract);
   }
 
   ensureTradeContractDraft(input: EnsureTradeContractDraftInput): Contract {
@@ -252,7 +398,7 @@ export class RoomlogContractDomain {
         residentState: contract.lifecycle === "expired" ? "퇴실" : "거주 중"
       },
       manualValues: {
-        deposit: this.extractionValue(extraction, "보증금") ?? "관리자 수동값 없음",
+        deposit: this.extractionValue(extraction, "보증금") ?? "",
         rent: contract.monthlyRent !== undefined
           ? `${contract.monthlyRent.toLocaleString("ko-KR")}원`
           : "관리자 수동값 없음",
@@ -260,7 +406,7 @@ export class RoomlogContractDomain {
           ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
           : "관리자 수동값 없음",
         paymentDay: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "관리자 수동값 없음",
-        account: this.extractionValue(extraction, "임대인 계좌") ?? "관리자 수동값 없음"
+        account: this.extractionValue(extraction, "임대인 계좌") ?? ""
       },
       inventory: contract.optionInventory?.length
         ? [...contract.optionInventory]
@@ -312,6 +458,9 @@ export class RoomlogContractDomain {
     }
 
     const totalAmount = monthlyRent + maintenanceFee;
+    if (!Number.isSafeInteger(totalAmount)) {
+      throw new BadRequestException("월세와 관리비 합계는 안전한 원 단위 정수여야 합니다.");
+    }
     if (totalAmount > 0) {
       if (contract.paymentDay === undefined) {
         throw new BadRequestException("납부일을 입력해주세요.");
@@ -326,6 +475,9 @@ export class RoomlogContractDomain {
     contract.confirmedByManagerId = managerId;
     contract.updatedAt = contract.confirmedAt;
     extraction.confirmed = true;
+    extraction.items.forEach((item) => {
+      item.needsCheck = false;
+    });
     this.persistStore();
 
     return this.getManagerContractDetail(managerId, contract.id);
@@ -626,6 +778,9 @@ export class RoomlogContractDomain {
     );
 
     if (!extraction) {
+      if (contract.id.startsWith("ct_trade_")) {
+        return this.createTradeContractExtraction(contract);
+      }
       return {
         id: `cx_${contract.id}`,
         contractId: contract.id,
@@ -644,6 +799,9 @@ export class RoomlogContractDomain {
     const privacy = this.store.contractPrivacies.find((item) => item.contractId === contract.id);
 
     if (!privacy) {
+      if (contract.id.startsWith("ct_trade_")) {
+        return this.createTradeContractPrivacy(contract);
+      }
       return {
         contractId: contract.id,
         maskingEnabled: true,
@@ -666,6 +824,13 @@ export class RoomlogContractDomain {
     );
 
     if (existing) return existing;
+
+    if (contract.id.startsWith("ct_trade_")) {
+      const extraction = this.createTradeContractExtraction(contract);
+      this.store.contractExtractions.push(extraction);
+      contract.extractionId = extraction.id;
+      return extraction;
+    }
 
     const createdAt = now();
     const extraction: ContractExtraction = {
@@ -704,6 +869,12 @@ export class RoomlogContractDomain {
     const existing = this.store.contractPrivacies.find((item) => item.contractId === contract.id);
     if (existing) return existing;
 
+    if (contract.id.startsWith("ct_trade_")) {
+      const privacy = this.createTradeContractPrivacy(contract);
+      this.store.contractPrivacies.push(privacy);
+      return privacy;
+    }
+
     const privacy: ContractPrivacy = {
       contractId: contract.id,
       maskingEnabled: true,
@@ -720,6 +891,103 @@ export class RoomlogContractDomain {
     this.store.contractPrivacies.push(privacy);
 
     return privacy;
+  }
+
+  private createTradeContractExtraction(
+    contract: Contract,
+    depositKrw?: number
+  ): ContractExtraction {
+    const extraction: ContractExtraction = {
+      id: id("cx"),
+      contractId: contract.id,
+      confirmed: contract.review === "confirmed",
+      highlights: [
+        "거래 계약 수락 조건으로 생성한 관리자 검토 초안입니다.",
+        "보증금과 월세는 당사자가 수락한 조건이며 관리자 확정 전 참고값입니다.",
+        "관리비·납부일·기간 등 누락 조건은 관리자가 확인해야 합니다."
+      ],
+      items: [
+        {
+          label: "월세",
+          value: contract.monthlyRent !== undefined
+            ? `${contract.monthlyRent.toLocaleString("ko-KR")}원`
+            : "미확인",
+          group: "money",
+          needsCheck: true,
+          evidence: "거래 계약 수락 조건"
+        },
+        {
+          label: "관리비",
+          value: contract.maintenanceFee !== undefined
+            ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
+            : "미확인",
+          group: "money",
+          needsCheck: true,
+          evidence: "거래 계약에서 확인되지 않은 조건"
+        },
+        {
+          label: "납부일",
+          value: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미확인",
+          group: "money",
+          needsCheck: true,
+          evidence: "거래 계약에서 확인되지 않은 조건"
+        },
+        {
+          label: "계약 기간",
+          value: `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`,
+          group: "term",
+          needsCheck: true,
+          evidence: "거래 계약에서 확인되지 않은 조건"
+        },
+        {
+          label: "책임 조건",
+          value: "미확인",
+          group: "responsibility",
+          needsCheck: true,
+          evidence: "거래 계약에서 확인되지 않은 조건"
+        }
+      ],
+      helpNotes: [
+        {
+          clause: "거래 수락 조건 검토",
+          plain: "당사자가 수락한 거래 조건도 관리자가 확인하고 확정하기 전에는 참고용입니다.",
+          source: "거래 계약 수락 이벤트"
+        }
+      ],
+      createdAt: contract.tradeAcceptedAt ?? contract.createdAt
+    };
+
+    if (depositKrw !== undefined) {
+      this.upsertExtractionItem(
+        extraction,
+        "보증금",
+        `${depositKrw.toLocaleString("ko-KR")}원`,
+        "money",
+        false,
+        "거래 계약 수락 조건"
+      );
+    }
+
+    return extraction;
+  }
+
+  private createTradeContractPrivacy(contract: Contract): ContractPrivacy {
+    return {
+      contractId: contract.id,
+      maskingEnabled: true,
+      retention: [
+        {
+          label: "거래 계약 수락 조건·관리자 확정값",
+          reason: "정산·분쟁 대비",
+          until: "계약 종료 후 5년"
+        },
+        { label: "삭제 요청 이력", reason: "처리 감사로그", until: "3년" }
+      ],
+      forwardingConsent: false,
+      deletion: contract.deletion,
+      deletionSlaHours: 72,
+      deletable: contract.lifecycle === "expired"
+    };
   }
 
   private findManagerRoom(managerId: string, roomId?: string, unitId?: string) {
@@ -896,14 +1164,121 @@ export class RoomlogContractDomain {
   }
 
   private positiveInteger(value: number | undefined) {
-    if (value === undefined || value === null || Number.isNaN(Number(value))) return undefined;
-    const parsed = Math.floor(Number(value));
+    if (value === undefined || value === null) return undefined;
+    return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+  }
 
-    return parsed >= 0 ? parsed : undefined;
+  private resolveExactTradeRoom(input: ConnectAcceptedTradeContractInput): {
+    room?: Room;
+    unit: string;
+    address: string;
+  } {
+    const location = this.normalizePhysicalAddress(input.location);
+    if (!location || location === "위치 미입력") {
+      throw new BadRequestException("정확한 건물 주소와 호실을 확인해주세요.");
+    }
+
+    const explicitRoomNo = typeof input.roomNo === "string" ? input.roomNo.trim() : "";
+    const explicitUnits = this.unitCandidates(explicitRoomNo);
+    if (explicitRoomNo && explicitUnits.length !== 1) {
+      throw new BadRequestException("정확한 호실 하나를 확인해주세요.");
+    }
+    const trailing = this.trailingUnit(location);
+    const locationUnits = this.unitCandidates(location);
+    if (locationUnits.length > 1) {
+      throw new BadRequestException("정확한 호실 하나를 확인해주세요.");
+    }
+
+    const unit = explicitUnits[0] ?? trailing?.unit;
+    if (!unit) {
+      throw new BadRequestException("정확한 호실을 확인해주세요.");
+    }
+    if (trailing && trailing.unit !== unit) {
+      throw new BadRequestException("상세 호실과 주소의 호실이 일치하지 않습니다.");
+    }
+
+    const address = this.normalizePhysicalAddress(trailing ? location.slice(0, trailing.index) : location);
+    if (!address || address === "위치 미입력") {
+      throw new BadRequestException("정확한 건물 주소를 확인해주세요.");
+    }
+    const candidates = this.store.rooms.filter(
+      (room) =>
+        room.landlordId === input.landlordId &&
+        this.normalizeUnit(room.roomNo) === unit &&
+        this.roomPhysicalAddress(room) === address
+    );
+    if (candidates.length > 1) {
+      throw new ConflictException("동일 주소와 호실에 중복된 Roomlog 호실이 있어 연결할 수 없습니다.");
+    }
+
+    return { room: candidates[0], unit, address };
+  }
+
+  private unitCandidates(value: string): string[] {
+    if (!value) return [];
+    const matches = Array.from(value.matchAll(/([\p{L}\p{N}-]+)\s*호/gu))
+      .map((match) => this.normalizeUnit(match[1]))
+      .filter(Boolean);
+    if (matches.length === 0 && /^[\p{L}\p{N}-]+$/u.test(value.trim())) {
+      matches.push(this.normalizeUnit(value));
+    }
+    return Array.from(new Set(matches));
+  }
+
+  private trailingUnit(value: string): { unit: string; index: number } | undefined {
+    const match = /(?:^|[\s,])([\p{L}\p{N}-]+)\s*호\s*$/u.exec(value);
+    if (!match || match.index === undefined) return undefined;
+    const tokenOffset = match[0].search(/[\p{L}\p{N}-]/u);
+    return {
+      unit: this.normalizeUnit(match[1]),
+      index: match.index + Math.max(0, tokenOffset)
+    };
+  }
+
+  private normalizeUnit(value: string): string {
+    return value.normalize("NFKC").replace(/\s+/gu, "").replace(/호$/u, "").toLowerCase();
+  }
+
+  private normalizePhysicalAddress(value: string): string {
+    return typeof value === "string"
+      ? value.normalize("NFKC").trim().replace(/[\s,]+$/gu, "").replace(/\s+/gu, " ")
+      : "";
+  }
+
+  private roomPhysicalAddress(room: Room): string {
+    const normalized = this.normalizePhysicalAddress(room.address);
+    const trailing = this.trailingUnit(normalized);
+    if (trailing && trailing.unit === this.normalizeUnit(room.roomNo)) {
+      return this.normalizePhysicalAddress(normalized.slice(0, trailing.index));
+    }
+    return normalized;
+  }
+
+  private requireAcceptedEventTime(value: string): string {
+    if (typeof value !== "string" || !value.trim()) {
+      throw new BadRequestException("거래 계약 수락 시각을 확인할 수 없습니다.");
+    }
+    const timestamp = Date.parse(value);
+    if (!Number.isFinite(timestamp)) {
+      throw new BadRequestException("거래 계약 수락 시각을 확인할 수 없습니다.");
+    }
+    return new Date(timestamp).toISOString();
+  }
+
+  private tradeAcceptedTime(contract: Contract): number {
+    return this.timeOf(contract.tradeAcceptedAt ?? contract.createdAt);
+  }
+
+  private restoreTenantRoom(tenantId: string, roomId: string | undefined) {
+    if (roomId === undefined) {
+      delete this.store.tenantRooms[tenantId];
+      return;
+    }
+    this.store.tenantRooms[tenantId] = roomId;
   }
 
   private requireNonNegativeInteger(value: number, field: string) {
-    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+    if (!Number.isSafeInteger(value) || value < 0) {
       throw new BadRequestException(`${field}는 0 이상의 원 단위 정수여야 합니다.`);
     }
 
@@ -1031,6 +1406,28 @@ export class RoomlogContractDomain {
   }
 
   private contractTimeline(contract: Contract, room: Room) {
+    if (this.contractOrigin(contract) === "trade_acceptance") {
+      return [
+        {
+          at: contract.updatedAt,
+          kind: "거래 계약",
+          title: contract.review === "confirmed" ? "관리자 검토 확정" : "거래 수락 조건 검토 대기",
+          detail: `${room.buildingName} ${room.roomNo} 거래 계약 초안`
+        },
+        {
+          at: contract.tradeAcceptedAt ?? contract.createdAt,
+          kind: "거래 계약",
+          title: "거래 계약 수락",
+          detail: "당사자가 수락한 보증금·월세 조건으로 관리자 검토 초안 생성"
+        },
+        {
+          at: contract.startDate ?? contract.createdAt,
+          kind: "입주",
+          title: "계약 시작일",
+          detail: contract.startDate ? contract.startDate.slice(0, 10) : "계약 시작일 미등록"
+        }
+      ];
+    }
     return [
       {
         at: contract.updatedAt,
@@ -1057,6 +1454,30 @@ export class RoomlogContractDomain {
     const manager = contract.confirmedByManagerId
       ? this.store.users.find((user) => user.id === contract.confirmedByManagerId)
       : undefined;
+
+    if (this.contractOrigin(contract) === "trade_acceptance") {
+      return [
+        contract.confirmedAt
+          ? {
+              at: contract.confirmedAt,
+              actor: manager?.name ?? "관리자",
+              action: "거래 계약값 확정",
+              detail: "거래 수락 조건을 관리자 검토로 확정"
+            }
+          : {
+              at: extraction.createdAt,
+              actor: "Roomlog",
+              action: "관리자 확인 필요 표시",
+              detail: `${extraction.items.filter((item) => item.needsCheck).length}개 거래 조건 관리자 확인 필요`
+            },
+        {
+          at: contract.tradeAcceptedAt ?? contract.createdAt,
+          actor: this.contractTenant(contract)?.name ?? "임차인",
+          action: "거래 계약 수락",
+          detail: "수락된 거래 조건으로 관리자 검토 초안 생성"
+        }
+      ];
+    }
 
     return [
       contract.confirmedAt
@@ -1099,6 +1520,17 @@ export class RoomlogContractDomain {
 
   private contractConflictCandidates(contract: Contract) {
     const documents = this.store.contractDocuments.filter((document) => document.contractId === contract.id);
+
+    if (this.contractOrigin(contract) === "trade_acceptance") {
+      return [
+        {
+          source: "trade" as const,
+          uploadedAt: contract.tradeAcceptedAt ?? contract.createdAt,
+          summary: "거래 계약 수락 조건 · 중복 연결 없음",
+          decision: "당사자 수락 조건을 관리자 검토 후 확정"
+        }
+      ];
+    }
 
     if (documents.length <= 1) {
       return [

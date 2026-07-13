@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFiles, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFiles, UseInterceptors } from "@nestjs/common";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogService } from "../roomlog/roomlog.service";
@@ -158,13 +158,16 @@ export class TradeController {
     @Param("contractId") contractId: string,
     @Body() body: { accept: boolean }
   ) {
+    if (typeof body?.accept !== "boolean") {
+      throw new BadRequestException("계약 수락 여부는 true 또는 false boolean이어야 합니다.");
+    }
     const user = this.user(authorization);
     const { contract, thread } = this.tradeService.respondContract(
       user,
       contractId,
-      Boolean(body?.accept)
+      body.accept,
+      body.accept ? (accepted) => this.contractBillingBridge.ensure(accepted) : undefined
     );
-    if (contract.status === "accepted") this.contractBillingBridge.ensure(contract);
     this.notifyThread(thread, user.id);
     return contract;
   }

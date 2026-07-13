@@ -763,6 +763,7 @@ export type Contract = {
   documentId?: string;
   confirmedAt?: string;
   confirmedByManagerId?: string;
+  tradeAcceptedAt?: string;
 };
 
 export type ContractDocument = {
@@ -848,6 +849,19 @@ export type EnsureTradeContractDraftInput = {
   landlordName: string;
   depositKrw: number;
   monthlyRent: number;
+};
+
+export type ConnectAcceptedTradeContractInput = {
+  tradeContractId: string;
+  listingTitle: string;
+  location: string;
+  roomNo?: string;
+  tenantId: string;
+  landlordId: string;
+  landlordName: string;
+  depositKrw: number;
+  monthlyRent: number;
+  acceptedAt: string;
 };
 
 export type CreateManagerContractInput = {

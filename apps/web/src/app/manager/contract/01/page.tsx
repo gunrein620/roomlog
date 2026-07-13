@@ -47,9 +47,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const { id } = await searchParams;
   const detail = await getManagerContractDetail(id);
   const needsCheck = detail.extraction.items.filter((item) => item.needsCheck);
+  const isTradeAcceptance = detail.row.origin === "trade_acceptance";
 
   return (
-    <ContractShell id="M-DOC-01" title="계약서 OCR 검토·확정">
+    <ContractShell id="M-DOC-01" title={isTradeAcceptance ? "거래 계약 조건 검토·확정" : "계약서 OCR 검토·확정"}>
       <PageStack>
         <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-lg)", alignItems: "start" }}>
           <div style={{ display: "grid", gap: "var(--space-sm)" }}>
@@ -61,10 +62,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               <SourceBadge origin={detail.row.origin} />
             </div>
             <h1 style={{ margin: 0, fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
-              원문 대조 정밀 검토 모드
+              {isTradeAcceptance ? "거래 수락 조건 정밀 검토 모드" : "원문 대조 정밀 검토 모드"}
             </h1>
             <p style={{ margin: 0, color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-              AI 추출은 확정하지 않습니다. 확인 필요 항목을 원문 근거와 대조하고, 잔존 항목이 있으면 확정 게이트에서 재확인합니다.
+              {isTradeAcceptance
+                ? "거래 당사자가 수락한 조건은 관리자 검토 전 참고값입니다. 누락 조건을 확인하고 확정 게이트에서 다시 확인합니다."
+                : "AI 추출은 확정하지 않습니다. 확인 필요 항목을 원문 근거와 대조하고, 잔존 항목이 있으면 확정 게이트에서 재확인합니다."}
             </p>
           </div>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -72,7 +75,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               <input type="hidden" name="contractId" value={detail.row.contract.id} />
               <label style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center", fontSize: "var(--fs-caption)" }}>
                 <input type="checkbox" name="confirmNeedsCheck" required />
-                확인 필요 항목을 거래 계약/원문과 대조했습니다.
+                {isTradeAcceptance
+                  ? "확인 필요 항목과 거래 수락 조건을 관리자 검토로 확정합니다."
+                  : "확인 필요 항목을 원문과 대조했습니다."}
               </label>
               <StaticButton type="submit">검토 확정</StaticButton>
             </form>
@@ -90,16 +95,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </Card>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 0.85fr)", gap: "var(--space-lg)", alignItems: "start" }}>
-          <Section title="추출 10항목 · 인라인 수정">
+          <Section title={isTradeAcceptance ? "거래 수락 조건" : "추출 10항목 · 인라인 수정"}>
             <ExtractionTable extraction={detail.extraction} />
           </Section>
 
           <div style={{ display: "grid", gap: "var(--space-lg)" }}>
-            <Section title="원본·OCR 전문">
-              {detail.row.origin === "trade_acceptance" ? (
+            <Section title={isTradeAcceptance ? "거래 계약 근거" : "원본·OCR 전문"}>
+              {isTradeAcceptance ? (
                 <Card>
                   <p style={{ margin: 0, color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-                    거래 계약 수락 조건을 기반으로 만든 초안이며 업로드된 원본 파일은 없습니다.
+                    거래 당사자가 수락한 조건을 바탕으로 만든 검토 초안입니다.
                   </p>
                 </Card>
               ) : (
@@ -130,8 +135,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
             <Section title="임차인 의견·보완 요청 스레드">
               <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
-                <MetaRow label="상태" value="의견접수 -> 보완요청 -> 재업로드 -> 해결" />
-                <MetaRow label="최근 의견" value="자동연장 특약 문구가 실제 계약서와 다른지 확인 요청" />
+                <MetaRow
+                  label="상태"
+                  value={isTradeAcceptance ? "의견접수 -> 조건확인 -> 해결" : "의견접수 -> 보완요청 -> 재업로드 -> 해결"}
+                />
+                <MetaRow
+                  label="최근 의견"
+                  value={isTradeAcceptance ? "거래 수락 조건 중 누락된 기간 확인 요청" : "자동연장 특약 문구가 실제 계약서와 다른지 확인 요청"}
+                />
                 <MetaRow label="SLA" value="보완 요청 후 임차인 알림 및 무응답 출구 유지" />
                 <Link href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "none" }}>
                   메시징 허브 열기
@@ -144,7 +155,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 {detail.conflictCandidates.map((candidate) => (
                   <div key={`${candidate.source}-${candidate.uploadedAt}`} style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--space-sm)" }}>
                     <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-                      <Badge>{candidate.source === "tenant" ? "임차인본" : "관리자본"}</Badge>
+                      <Badge>{candidate.source === "trade" ? "거래 수락" : candidate.source === "tenant" ? "임차인본" : "관리자본"}</Badge>
                       <span style={captionStyle}>{candidate.uploadedAt}</span>
                     </div>
                     <div style={{ marginTop: "var(--space-xs)", fontWeight: 800 }}>{candidate.summary}</div>

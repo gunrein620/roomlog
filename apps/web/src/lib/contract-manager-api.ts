@@ -92,7 +92,7 @@ export interface ManagerInviteLink {
 }
 
 export interface ManagerConflictCandidate {
-  source: "tenant" | "manager";
+  source: "tenant" | "manager" | "trade";
   uploadedAt: string;
   summary: string;
   decision: string;
