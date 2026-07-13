@@ -2,11 +2,11 @@
 
 // 사는 집(세입자) 마이페이지 — 계약 상태, 수리요청(실제 민원 API), 관리비, 집주인 채팅.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
-import type { FormEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Announcement } from "@roomlog/types";
-import { Bath, Bot, ChevronRight, FileText, Headphones, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
+import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
@@ -22,8 +22,15 @@ const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   upcoming: null,
   previousUnpaidLabel: null,
 };
+const EMPTY_REQUEST_DRAFT = {
+  category: "민원" as "민원" | "하자",
+  title: "",
+  occurredAt: "",
+  description: ""
+};
 
 type TenantContractSummary = {
+  listingId?: string;
   threadId: string;
   landlordName: string;
   tradeType: "월세" | "전세" | "매매";
@@ -36,7 +43,18 @@ type TenantTenancy = {
   buildingName: string;
   roomNo: string;
   address: string;
+  imageUrl?: string;
   contract: TenantContractSummary | null;
+};
+
+type TenantListingPhotoSummary = {
+  id: string;
+  title?: string;
+  location?: string;
+  detailAddress?: string;
+  images?: string[];
+  coverImage?: string;
+  gallery?: string[];
 };
 
 type TenantRepairRequest = {
@@ -45,6 +63,12 @@ type TenantRepairRequest = {
   /** 서버 티켓 표시 상태(접수됨/검토중/업체 배정…) 그대로 */
   status: string;
   date?: string;
+};
+
+type RequestImagePreview = {
+  id: string;
+  file: File;
+  url: string;
 };
 
 type TenantAnnouncementState =
@@ -102,27 +126,70 @@ function formatNumber(amount: number): string {
   return amount.toLocaleString("ko-KR");
 }
 
-function TenantFloorPlanPreview() {
+function firstListingImage(listing?: TenantListingPhotoSummary): string | undefined {
+  if (!listing) return undefined;
+  const candidates = [
+    ...(Array.isArray(listing.images) ? listing.images : []),
+    listing.coverImage,
+    ...(Array.isArray(listing.gallery) ? listing.gallery : [])
+  ];
+  return candidates.find((image): image is string => typeof image === "string" && image.trim().length > 0);
+}
+
+function findTenantListingImage(
+  listings: TenantListingPhotoSummary[],
+  listingId: string | undefined,
+  room: { buildingName: string; roomNo: string; address: string }
+): string | undefined {
+  const listing =
+    listings.find((item) => item.id === listingId) ??
+    listings.find((item) => {
+      const detailAddress = item.detailAddress ?? "";
+      return (
+        item.title === room.buildingName ||
+        item.location === room.address ||
+        detailAddress.includes(room.roomNo) ||
+        `${item.location ?? ""} ${detailAddress}`.includes(room.address)
+      );
+    });
+
+  return firstListingImage(listing);
+}
+
+function TenantFloorPlanPreview({
+  imageUrl,
+  title
+}: {
+  imageUrl?: string;
+  title: string;
+}) {
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setImageLoadFailed(false);
+  }, [imageUrl]);
+
+  if (imageUrl && !imageLoadFailed) {
+    return (
+      <div className="tenant-floorplan-card tenant-residence-photo-card" aria-label="입주 매물 사진">
+        <img
+          className="tenant-residence-photo"
+          src={imageUrl}
+          alt={`${title} 매물 사진`}
+          onError={() => setImageLoadFailed(true)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="tenant-floorplan-card" aria-label="세입자 평면도 미리보기">
-      <svg className="tenant-floorplan-svg" viewBox="0 0 420 240" role="img" aria-label="우주빌리지 401호 평면도">
-        <rect x="62" y="34" width="296" height="172" rx="2" />
-        <path d="M62 88h296M172 34v172M262 88v118M62 144h110M262 146h96" />
-        <path d="M172 122c22 0 40 18 40 40M262 122c-22 0-40 18-40 40M172 88c22 0 40-18 40-40" />
-        <rect x="82" y="55" width="70" height="26" rx="4" />
-        <rect x="82" y="104" width="54" height="32" rx="4" />
-        <rect x="84" y="158" width="68" height="28" rx="4" />
-        <rect x="192" y="54" width="44" height="28" rx="4" />
-        <circle cx="226" cy="154" r="16" />
-        <rect x="286" y="104" width="48" height="26" rx="4" />
-        <rect x="286" y="160" width="46" height="26" rx="4" />
-        <text x="99" y="71">BEDROOM</text>
-        <text x="98" y="122">KITCHEN</text>
-        <text x="196" y="71">BATH</text>
-        <text x="286" y="121">STUDIO</text>
-        <text x="294" y="177">BALCONY</text>
-        <path className="tenant-floorplan-measure" d="M62 22h296M48 34v172M372 34v172" />
-      </svg>
+    <div className="tenant-floorplan-card tenant-residence-empty-card" role="status" aria-live="polite">
+      <strong>이미지를 불러올 수 없습니다</strong>
+      <span>
+        {imageUrl
+          ? "매물 이미지 주소가 만료되었거나 파일을 불러오지 못했습니다."
+          : "등록된 매물 이미지가 없습니다."}
+      </span>
     </div>
   );
 }
@@ -157,6 +224,7 @@ export default function TenantMyPage({
         }
 
         let contract: TenantContractSummary | null = null;
+        let residenceImageUrl: string | undefined;
         try {
           const contractsRes = await fetch("/api/trade/contracts", { cache: "no-store" });
           if (contractsRes.ok) {
@@ -165,6 +233,7 @@ export default function TenantMyPage({
               landlordId: string;
               landlordName: string;
               status: string;
+              listingId?: string;
               threadId: string;
               tradeType: "월세" | "전세" | "매매";
               depositManwon: number;
@@ -179,6 +248,7 @@ export default function TenantMyPage({
             );
             if (accepted) {
               contract = {
+                listingId: accepted.listingId,
                 threadId: accepted.threadId,
                 landlordName: accepted.landlordName,
                 tradeType: accepted.tradeType,
@@ -186,6 +256,18 @@ export default function TenantMyPage({
                 monthlyRentManwon: accepted.monthlyRentManwon,
                 respondedAt: accepted.respondedAt
               };
+
+              try {
+                const listingsRes = await fetch("/api/trade/listings", { cache: "no-store" });
+                if (listingsRes.ok) {
+                  const listings = (await listingsRes.json()) as TenantListingPhotoSummary[];
+                  if (Array.isArray(listings)) {
+                    residenceImageUrl = findTenantListingImage(listings, accepted.listingId, me.room);
+                  }
+                }
+              } catch {
+                residenceImageUrl = undefined;
+              }
             }
           }
         } catch {
@@ -197,6 +279,7 @@ export default function TenantMyPage({
             buildingName: me.room.buildingName,
             roomNo: me.room.roomNo,
             address: me.room.address,
+            imageUrl: residenceImageUrl,
             contract
           });
         }
@@ -300,7 +383,9 @@ export default function TenantMyPage({
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
   const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
-  const [requestDraft, setRequestDraft] = useState({ title: "", location: "", description: "" });
+  const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
+  const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
+  const requestImagesRef = useRef<RequestImagePreview[]>([]);
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
@@ -423,9 +508,63 @@ export default function TenantMyPage({
         : "임대인으로부터 전달된 새로운 소식이 없습니다.";
 
   const openRequestSheet = () => {
-    setRequestDraft({ title: "", location: "", description: "" });
     setRequestError("");
     setIsRequestSheetOpen(true);
+  };
+
+  useEffect(() => {
+    requestImagesRef.current = requestImages;
+  }, [requestImages]);
+
+  useEffect(() => {
+    return () => {
+      requestImagesRef.current.forEach((image) => URL.revokeObjectURL(image.url));
+    };
+  }, []);
+
+  const clearRequestImages = () => {
+    requestImagesRef.current.forEach((image) => URL.revokeObjectURL(image.url));
+    requestImagesRef.current = [];
+    setRequestImages([]);
+  };
+
+  const closeRequestSheet = (resetDraft = false) => {
+    setIsRequestSheetOpen(false);
+    setRequestError("");
+    if (resetDraft) {
+      setRequestDraft(EMPTY_REQUEST_DRAFT);
+      clearRequestImages();
+    }
+  };
+
+  const handleRequestImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (selectedFiles.length === 0) return;
+
+    setRequestImages((current) => {
+      const remainingSlots = Math.max(0, 6 - current.length);
+      const nextImages = selectedFiles.slice(0, remainingSlots).map((file) => ({
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        file,
+        url: URL.createObjectURL(file)
+      }));
+      return [...current, ...nextImages];
+    });
+    event.target.value = "";
+  };
+
+  const removeRequestImage = (imageId: string) => {
+    setRequestImages((current) => {
+      const target = current.find((image) => image.id === imageId);
+      if (target) URL.revokeObjectURL(target.url);
+      return current.filter((image) => image.id !== imageId);
+    });
+  };
+
+  const handleRequestDraftSave = () => {
+    setRequestError("");
+    setIsRequestSheetOpen(false);
+    showToast("민원/하자 요청이 임시 저장되었습니다.");
   };
 
   // 신규 민원/하자 접수 — 실제 민원 API(POST /tenant/complaints)로 보내 관리자 대시보드와 연결된다.
@@ -440,8 +579,15 @@ export default function TenantMyPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: requestDraft.title.trim(),
-          location: requestDraft.location.trim(),
-          description: requestDraft.description.trim()
+          location: tenantRoomTitle,
+          occurredAt: requestDraft.occurredAt ? new Date(requestDraft.occurredAt).toISOString() : undefined,
+          description: [
+            `[${requestDraft.category}]`,
+            requestDraft.description.trim(),
+            requestImages.length > 0
+              ? `첨부 이미지: ${requestImages.map((image) => image.file.name).join(", ")}`
+              : ""
+          ].filter(Boolean).join("\n\n")
         })
       });
       if (!res.ok) {
@@ -450,6 +596,8 @@ export default function TenantMyPage({
         return;
       }
       setIsRequestSheetOpen(false);
+      setRequestDraft(EMPTY_REQUEST_DRAFT);
+      clearRequestImages();
       showToast("민원/하자 요청이 접수되었습니다.");
       void loadRepairRequests();
     } catch {
@@ -509,7 +657,10 @@ export default function TenantMyPage({
       </section>
 
       <section className="tenant-residence-card" aria-label="입주 정보">
-        <TenantFloorPlanPreview />
+        <TenantFloorPlanPreview
+          imageUrl={tenancy && tenancy !== "loading" ? tenancy.imageUrl : undefined}
+          title={tenantRoomTitle}
+        />
         <div className="tenant-residence-details">
           <span className="tenant-pill">입주 정보</span>
           <h3>{tenantRoomTitle}</h3>
@@ -869,7 +1020,7 @@ export default function TenantMyPage({
       ) : null}
 
       {isRequestSheetOpen ? (
-        <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsRequestSheetOpen(false)}>
+        <div className="notification-sheet-backdrop" role="presentation" onClick={() => closeRequestSheet()}>
           <section
             className="notification-sheet tenant-request-sheet"
             role="dialog"
@@ -884,47 +1035,87 @@ export default function TenantMyPage({
                 <h2 id="tenant-request-sheet-title">어떤 불편이 있으신가요?</h2>
                 <p>접수하면 관리자에게 바로 전달되고, 처리 상태를 이 화면에서 확인할 수 있습니다.</p>
               </div>
-              <button type="button" onClick={() => setIsRequestSheetOpen(false)} aria-label="신규 요청 닫기">×</button>
+              <button type="button" onClick={() => closeRequestSheet()} aria-label="신규 요청 닫기">×</button>
             </header>
 
             <form className="tenant-request-form" onSubmit={handleRequestSubmit}>
-              <label>
-                <span>제목</span>
-                <input
-                  type="text"
-                  value={requestDraft.title}
-                  onChange={(event) => setRequestDraft((draft) => ({ ...draft, title: event.target.value }))}
-                  placeholder="예: 에어컨에서 물이 새요"
-                  maxLength={80}
-                  required
-                />
-              </label>
-              <label>
-                <span>발생 위치</span>
-                <input
-                  type="text"
-                  value={requestDraft.location}
-                  onChange={(event) => setRequestDraft((draft) => ({ ...draft, location: event.target.value }))}
-                  placeholder="예: 거실 에어컨 아래"
-                  maxLength={60}
-                  required
-                />
-              </label>
-              <label>
-                <span>상세 설명</span>
+              <div className="tenant-request-type-toggle" role="group" aria-label="요청 유형">
+                {(["민원", "하자"] as const).map((category) => (
+                  <button
+                    key={category}
+                    className={requestDraft.category === category ? "active" : ""}
+                    type="button"
+                    onClick={() => setRequestDraft((draft) => ({ ...draft, category }))}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+
+              <div className="tenant-request-row">
+                <label className="tenant-request-title-field">
+                  <span>제목</span>
+                  <input
+                    type="text"
+                    value={requestDraft.title}
+                    onChange={(event) => setRequestDraft((draft) => ({ ...draft, title: event.target.value }))}
+                    placeholder="제목"
+                    maxLength={80}
+                    required
+                  />
+                </label>
+                <label className="tenant-request-date-field">
+                  <span>발생일시</span>
+                  <input
+                    type="datetime-local"
+                    value={requestDraft.occurredAt}
+                    onChange={(event) => setRequestDraft((draft) => ({ ...draft, occurredAt: event.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <label className="tenant-request-body-field">
+                <span>본문 내용</span>
                 <textarea
                   value={requestDraft.description}
                   onChange={(event) => setRequestDraft((draft) => ({ ...draft, description: event.target.value }))}
-                  placeholder="언제부터, 어떤 증상이 있는지 적어주시면 처리가 빨라져요."
-                  rows={4}
+                  placeholder="본문 내용"
+                  rows={6}
                   maxLength={1000}
                   required
                 />
               </label>
+
+              <div className="tenant-request-image-strip" aria-label="이미지 첨부">
+                <label className="tenant-request-image-input">
+                  <ImagePlus size={24} strokeWidth={2.4} aria-hidden="true" />
+                  <span>이미지<br />(입력)</span>
+                  <input type="file" accept="image/*" multiple onChange={handleRequestImageChange} />
+                </label>
+                {requestImages.map((image) => (
+                  <div className="tenant-request-image-preview" key={image.id}>
+                    <img src={image.url} alt={`${image.file.name} 미리보기`} />
+                    <button type="button" onClick={() => removeRequestImage(image.id)} aria-label={`${image.file.name} 제거`}>
+                      <X size={14} strokeWidth={2.5} aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+                {Array.from({ length: Math.max(0, 2 - requestImages.length) }).map((_, index) => (
+                  <div className="tenant-request-image-placeholder" key={`request-placeholder-${index}`} aria-hidden="true" />
+                ))}
+              </div>
               {requestError ? <p className="tenant-request-error" role="alert">{requestError}</p> : null}
-              <button className="notification-action" type="submit" disabled={isSubmittingRequest}>
-                {isSubmittingRequest ? "접수 중…" : "요청 접수하기"}
-              </button>
+              <div className="tenant-request-actions">
+                <button type="button" onClick={() => closeRequestSheet(true)}>
+                  취소
+                </button>
+                <button type="button" onClick={handleRequestDraftSave}>
+                  임시 저장
+                </button>
+                <button className="primary" type="submit" disabled={isSubmittingRequest}>
+                  {isSubmittingRequest ? "접수 중" : "요청 접수"}
+                </button>
+              </div>
             </form>
           </section>
         </div>
