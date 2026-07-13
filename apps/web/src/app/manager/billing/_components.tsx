@@ -8,6 +8,7 @@ import {
   managerBillHref,
   managerDunningHref,
 } from "@/lib/billing-manager-nav";
+import styles from "./billing-workspace.module.css";
 
 export const routes = {
   ...MANAGER_BILLING_ROUTES,
@@ -25,7 +26,11 @@ export function BillingShell({
   children: ReactNode;
 }) {
   void active;
-  return <ManagerAppShell title={title} context="청구·수금·연체">{children}</ManagerAppShell>;
+  return (
+    <ManagerAppShell title={title} context="청구·수금·연체">
+      <div className={styles.billingContent}>{children}</div>
+    </ManagerAppShell>
+  );
 }
 
 export function PageStack({ children }: { children: ReactNode }) {

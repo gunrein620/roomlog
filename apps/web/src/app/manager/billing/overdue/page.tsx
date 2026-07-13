@@ -1,37 +1,47 @@
+import Link from "next/link";
 import { getManagerOverdue } from "@/lib/billing-manager-api";
-import {
-  BillingShell,
-  Grid,
-  MetricCard,
-  OverdueTable,
-  PageStack,
-  Section,
-  routes,
-  won,
-} from "../_components";
+import { MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { BillingShell, routes } from "../_components";
+import { BillingWorkspaceHeader } from "../BillingWorkspaceHeader";
+import { OverdueWorkspace } from "../OverdueWorkspace";
+import styles from "../billing-workspace.module.css";
 
-export default async function Page() {
-  const data = await getManagerOverdue();
-  const activeTotal = data.activeCases.reduce((sum, item) => sum + item.unpaidAmount, 0);
-  const waitingTotal = data.waitingCases.reduce((sum, item) => sum + item.unpaidAmount, 0);
+type SearchParams = Promise<{ building?: string | string[] }>;
+
+function single(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { building } = await searchParams;
+  const data = await getManagerOverdue(single(building));
+  const hasBuildings = data.scope.buildings.length > 0;
 
   return (
-    <BillingShell title="연체 관리" active={routes.overdue}>
-      <PageStack>
-        <Grid columns={3}>
-          <MetricCard label="총 미수금" value={won(activeTotal)} note="확인중·orphan 자동 제외" />
-          <MetricCard label="연체 세대" value={`${data.activeCases.length}건`} note="관리인 단계 triage 대상" />
-          <MetricCard label="확인 대기" value={won(waitingTotal)} note="M-BILL-03 처리 전 보류" />
-        </Grid>
-
-        <Section title="연체 세대 목록">
-          <OverdueTable cases={data.activeCases} />
-        </Section>
-
-        <Section title="확인 대기">
-          <OverdueTable cases={data.waitingCases} waiting />
-        </Section>
-      </PageStack>
+    <BillingShell title="청구·수납 관리" active={routes.overdue}>
+      <div className={styles.workspace}>
+        <BillingWorkspaceHeader
+          eyebrow="케이스 관리"
+          title="연체 관리"
+          description="실제 경과일과 납부 확인 가드를 기준으로 한 건씩 검토합니다. 독촉은 화면에서 바로 발송하지 않습니다."
+          basePath="/manager/billing/overdue"
+          scope={data.scope}
+          asOf={data.asOf}
+          actionHref={hasBuildings ? undefined : MHOME_ROUTES["M-HOME-05"]}
+          actionLabel={hasBuildings ? undefined : "건물·호실 등록"}
+        />
+        {hasBuildings ? (
+          <OverdueWorkspace data={data} />
+        ) : (
+          <section className={styles.section}>
+            <div className={styles.emptyState}>
+              <h2 className={styles.sectionTitle}>관리할 건물이 없습니다.</h2>
+              <p>건물과 호실을 등록하면 연체 케이스를 청구서와 안전하게 연결할 수 있습니다.</p>
+              <Link className={styles.primaryLink} href={MHOME_ROUTES["M-HOME-05"]}>건물·호실 등록</Link>
+            </div>
+          </section>
+        )}
+      </div>
     </BillingShell>
   );
 }

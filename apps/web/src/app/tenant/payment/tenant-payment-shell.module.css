@@ -1,0 +1,49 @@
+.canvas {
+  min-height: 100vh;
+  padding: var(--page-margin) 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--surface-dim);
+  color: var(--on-surface);
+  font-family: var(--font-sans);
+}
+
+.mobileBrand {
+  width: min(100%, var(--phone-w));
+  margin-bottom: calc(var(--space-sm) + (var(--space-xs) / 2));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.mobileBrand a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--on-surface);
+  font-weight: var(--fw-title);
+  white-space: nowrap;
+}
+
+.mobileBrand b {
+  color: var(--primary);
+  font-weight: var(--fw-title);
+}
+
+.frame {
+  width: min(100%, var(--phone-w));
+  height: var(--phone-h);
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius-lg) + (var(--space-xs) / 2));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}

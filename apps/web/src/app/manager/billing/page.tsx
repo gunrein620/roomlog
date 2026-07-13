@@ -1,65 +1,66 @@
+import Link from "next/link";
+import { CircleCheck } from "lucide-react";
 import { getManagerDashboard } from "@/lib/billing-manager-api";
-import {
-  BillTable,
-  BillingShell,
-  Grid,
-  MetricCard,
-  PageStack,
-  Section,
-  TextButtonLink,
-  routes,
-} from "./_components";
+import { buildBillingScopeHref } from "@/lib/billing-manager-workspace";
+import { MHOME_ROUTES } from "@/lib/manager-home-nav";
+import { BillingShell, routes } from "./_components";
+import { BillingWorkspaceHeader } from "./BillingWorkspaceHeader";
+import { BillingDashboardWorkspace } from "./BillingDashboardWorkspace";
+import styles from "./billing-workspace.module.css";
 
-export default async function Page() {
-  const { summary, bills } = await getManagerDashboard();
-  const prioritized = [...bills].sort((a, b) => {
-    const weight = (status: string) => (status === "overdue" ? 0 : status === "confirming" ? 1 : status === "draft" ? 2 : 3);
-    return weight(a.status) - weight(b.status);
+type SearchParams = Promise<{
+  building?: string | string[];
+  month?: string | string[];
+  created?: string | string[];
+}>;
+
+function single(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const building = single(params.building);
+  const month = single(params.month);
+  const created = Number(single(params.created));
+  const data = await getManagerDashboard({ building, month });
+  const hasBuildings = data.scope.buildings.length > 0;
+  const createHref = buildBillingScopeHref("/manager/billing/new", {
+    building: data.scope.selectedBuilding,
+    month: data.billingMonth,
   });
 
   return (
-    <BillingShell title="청구 관리" active={routes.dashboard}>
-      <PageStack>
-        <Grid columns={4}>
-          <MetricCard label="전체 청구" value={summary.total} note="이번 기간 청구서" />
-          <MetricCard label="확인 필요" value={summary.confirmNeeded} note="신고·불일치·orphan" />
-          <MetricCard label="대기" value={summary.pending} note="발송완료·수납대기" />
-          <MetricCard label="연체" value={summary.overdue} note="가드 통과분만" />
-        </Grid>
-
-        <Section
-          title="청구 목록"
-          action={
-            <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-              <TextButtonLink href={routes.collection} variant="secondary">
-                수금 현황
-              </TextButtonLink>
-              <TextButtonLink href={routes.overdue} variant="secondary">
-                연체 관리
-              </TextButtonLink>
-              <TextButtonLink href={routes.bill("new")}>월 청구서 생성</TextButtonLink>
-            </div>
-          }
-        >
-          <BillTable bills={prioritized} />
-        </Section>
-
-        <Section title="승인 게이트">
-          <div
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-md)",
-              padding: "var(--space-md)",
-              background: "var(--surface-container-lowest)",
-              color: "var(--on-surface-variant)",
-              lineHeight: "var(--lh-body)",
-            }}
-          >
-            청구서는 초안 생성 후 관리인이 상세 화면에서 금액·계좌·안내문을 확인하고 승인해야 발송됩니다.
-            일괄 독촉은 제공하지 않으며, 독촉은 각 청구서의 M-BILL-05 흐름에서만 작성합니다.
+    <BillingShell title="청구·수납 관리" active={routes.dashboard}>
+      <div className={styles.workspace}>
+        <BillingWorkspaceHeader
+          eyebrow="종합 업무 화면"
+          title="청구 대시보드"
+          description="선택한 달의 수금, 최근 입금, 연체를 빠르게 확인하고 아래 원장에서 처리 대상을 찾습니다."
+          basePath="/manager/billing"
+          scope={data.scope}
+          month={data.billingMonth}
+          actionHref={hasBuildings ? createHref : MHOME_ROUTES["M-HOME-05"]}
+          actionLabel={hasBuildings ? "청구서 생성" : "건물·호실 등록"}
+        />
+        {created > 0 ? (
+          <div className={styles.successNotice} role="status">
+            <CircleCheck aria-hidden="true" size={18} />
+            {created}건의 청구 초안을 저장했습니다. 자동 발송되지 않았습니다.
           </div>
-        </Section>
-      </PageStack>
+        ) : null}
+        {hasBuildings ? (
+          <BillingDashboardWorkspace data={data} />
+        ) : (
+          <section className={styles.section}>
+            <div className={styles.emptyState}>
+              <h2 className={styles.sectionTitle}>첫 건물 등록이 필요합니다.</h2>
+              <p>건물과 호실을 등록하면 청구 범위와 계약 후보를 정확히 연결할 수 있습니다.</p>
+              <Link className={styles.primaryLink} href={MHOME_ROUTES["M-HOME-05"]}>건물·호실 등록</Link>
+            </div>
+          </section>
+        )}
+      </div>
     </BillingShell>
   );
 }

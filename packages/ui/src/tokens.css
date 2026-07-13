@@ -103,8 +103,17 @@
 
   /* --- touch / sizing --- */
   --touch-target: 52px; /* 버튼·입력 기본 높이 */
+  --control-compact-size: 40px;
+  --control-secondary-size: 44px;
+  --status-icon-size: 56px;
   --header-height: 56px;
   --list-item-min: 64px;
+  --empty-state-min-height: 180px;
+  --content-aside-min: 280px;
+  --content-aside-max: 360px;
+  --content-result-min-height: 480px;
+  --content-narrow-max: 560px;
+  --content-readable-max: 760px;
 
   /* --- manager workspace --- */
   --manager-sidebar-width: 256px;

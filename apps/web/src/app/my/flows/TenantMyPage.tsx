@@ -3,15 +3,22 @@
 // 사는 집(세입자) 마이페이지 — 계약 상태, 수리요청(실제 민원 API), 관리비, 집주인 채팅.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import type { FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Bath, Bot, ChevronRight, FileText, Headphones, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
+import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
+import {
+  tenantBillingCardModel,
+  type TenantBillingCardModel,
+} from "./tenant-current-bill";
 
-const DEFAULT_MONTHLY_RENT_KRW = 850000;
-const DEFAULT_MAINTENANCE_FEE_KRW = 120000;
-const DEFAULT_NEXT_PAYMENT_DATE = "2024.12.15";
-const DEFAULT_CONTRACT_PERIOD = "2024.01.15 ~ 2026.01.14";
 const TENANT_AI_GREETING = "안녕하세요! 우주(Woo-zu) AI 어시스턴트입니다. 무엇을 도와드릴까요?";
+const EMPTY_BILLING_CARD: TenantBillingCardModel = {
+  current: null,
+  upcoming: null,
+  previousUnpaidLabel: null,
+};
 
 const demoTenantRepairHistory = [
   { id: "demo-aircon", title: "에어컨 수리", status: "완료", date: "2024.08.12", Icon: Snowflake, tone: "warm" },
@@ -70,6 +77,23 @@ function tenancyDateLabel(iso?: string): string {
 
 function formatKrw(amount: number): string {
   return `${amount.toLocaleString("ko-KR")} KRW`;
+}
+
+function billingDateLabel(iso?: string): string {
+  if (!iso) return "정보 없음";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "정보 없음";
+
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return year && month && day ? `${year}.${month}.${day}` : "정보 없음";
 }
 
 function formatNumber(amount: number): string {
@@ -213,7 +237,9 @@ export default function TenantMyPage({
       cancelled = true;
     };
   }, []);
-  const [maintenancePaid, setMaintenancePaid] = useState(false);
+  const [billingCard, setBillingCard] = useState<TenantBillingCardModel>(EMPTY_BILLING_CARD);
+  const [isBillLoading, setIsBillLoading] = useState(true);
+  const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
@@ -224,14 +250,40 @@ export default function TenantMyPage({
     { id: "tenant-ai-welcome", sender: "assistant", text: TENANT_AI_GREETING }
   ]);
   const [tenantToast, setTenantToast] = useState("");
-  const [isPaying, setIsPaying] = useState(false);
-  // state는 리렌더 이후에야 반영되므로, 연타가 재렌더보다 빠르면 state 체크만으론 막지 못한다 — ref로 즉시 잠근다.
-  const isPayingRef = useRef(false);
 
   const showToast = (message: string) => {
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setIsBillLoading(true);
+      setBillingError(false);
+      try {
+        const response = await fetch("/api/tenant/bills/overview", { cache: "no-store" });
+        if (!response.ok) throw new Error("청구 조회 실패");
+        const overview = (await response.json()) as TeamTenantBillingOverview;
+        if (!cancelled) {
+          setBillingCard(tenantBillingCardModel(toTenantBillingOverview(overview)));
+          setBillingError(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setBillingCard(EMPTY_BILLING_CARD);
+          setBillingError(true);
+        }
+      } finally {
+        if (!cancelled) setIsBillLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 연결된 집이 없으면 특정 임대인/금액을 지어내지 않고 그 사실 자체를 한 행으로 보여준다.
   const contractRows: Array<[string, string]> =
@@ -270,18 +322,29 @@ export default function TenantMyPage({
       : tenancy
         ? tenancy.address || "상세 주소 미등록"
         : "계약이 체결되면 입주 주소가 표시됩니다.";
-  const monthlyRentKrw =
-    tenancy && tenancy !== "loading" && tenancy.contract?.tradeType === "월세" && tenancy.contract.monthlyRentManwon > 0
-      ? tenancy.contract.monthlyRentManwon * 10000
-      : DEFAULT_MONTHLY_RENT_KRW;
-  const maintenanceFeeKrw = DEFAULT_MAINTENANCE_FEE_KRW;
-  const monthlyTotalKrw = monthlyRentKrw + maintenanceFeeKrw;
+  const residenceBilling = billingCard.current ?? billingCard.upcoming;
+  const nextPaymentBilling = billingCard.current?.isPaid
+    ? billingCard.upcoming
+    : residenceBilling;
+  const monthlyRentKrw = residenceBilling?.rentAmount ?? null;
+  const maintenanceFeeKrw = residenceBilling?.maintenanceAmount ?? null;
+  const residenceAmountLabel = (amount: number | null) =>
+    isBillLoading
+      ? "확인 중"
+      : billingError || amount === null
+        ? "정보 없음"
+        : formatKrw(amount);
+  const nextPaymentDateLabel = isBillLoading
+    ? "확인 중"
+    : billingError
+      ? "정보 없음"
+      : billingDateLabel(nextPaymentBilling?.dueDate);
   const contractPeriodLabel =
     tenancy === "loading"
       ? "확인 중"
       : tenancy?.contract?.respondedAt
         ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결`
-        : DEFAULT_CONTRACT_PERIOD;
+        : "정보 없음";
   const repairHistory = repairRequests.length
     ? repairRequests.slice(0, 4).map((item, index) => ({
         id: item.id,
@@ -341,15 +404,15 @@ export default function TenantMyPage({
             </div>
             <div>
               <dt>차기 결제일</dt>
-              <dd>{DEFAULT_NEXT_PAYMENT_DATE}</dd>
+              <dd>{nextPaymentDateLabel}</dd>
             </div>
             <div>
               <dt>월세</dt>
-              <dd className="tenant-primary-value">{formatKrw(monthlyRentKrw)}</dd>
+              <dd className="tenant-primary-value">{residenceAmountLabel(monthlyRentKrw)}</dd>
             </div>
             <div>
               <dt>관리비</dt>
-              <dd>{formatKrw(maintenanceFeeKrw)}</dd>
+              <dd>{residenceAmountLabel(maintenanceFeeKrw)}</dd>
             </div>
           </dl>
           <div className="tenant-residence-actions">
@@ -402,64 +465,64 @@ export default function TenantMyPage({
         </div>
       </section>
 
-      <section className="tenant-payment-card" aria-label="이번 달 합계">
-        <div className="tenant-payment-content">
-          <h3>이번 달 합계</h3>
-          <div className="tenant-payment-total">
-            <strong>{formatNumber(monthlyTotalKrw)}</strong>
-            <span>KRW</span>
+      <section id="monthly-payment" className="tenant-payment-card" aria-label="이번 달 합계">
+        {isBillLoading ? (
+          <div className="tenant-payment-content">
+            <h3>이번 달 합계</h3>
+            <p className="tenant-payment-empty">청구 확인 중</p>
           </div>
-          <dl className="tenant-payment-breakdown">
-            <div>
-              <dt>기본 월세</dt>
-              <dd>{formatNumber(monthlyRentKrw)}</dd>
+        ) : billingError ? (
+          <div className="tenant-payment-content" role="alert">
+            <h3>이번 달 합계</h3>
+            <p className="tenant-payment-empty">청구 정보를 불러오지 못했어요</p>
+          </div>
+        ) : billingCard.current ? (
+          <div className="tenant-payment-content">
+            <h3>이번 달 합계</h3>
+            <div className="tenant-payment-total">
+              <strong>{formatNumber(billingCard.current.totalAmount)}</strong>
+              <span>KRW</span>
             </div>
-            <div>
-              <dt>고정 관리비</dt>
-              <dd>{formatNumber(maintenanceFeeKrw)}</dd>
-            </div>
-            <div>
-              <dt>납부 상태</dt>
-              <dd>{maintenancePaid ? "납부 완료" : "납부 대기"}</dd>
-            </div>
-          </dl>
-          <button
-            className="tenant-payment-button"
-            type="button"
-            disabled={isPaying || maintenancePaid}
-            aria-busy={isPaying}
-            onClick={() => {
-              if (maintenancePaid) {
-                showToast("영수증이 문자로 발송됐습니다.");
-                return;
-              }
-
-              if (isPayingRef.current) {
-                return;
-              }
-
-              isPayingRef.current = true;
-              setIsPaying(true);
-              window.setTimeout(() => {
-                setMaintenancePaid(true);
-                isPayingRef.current = false;
-                setIsPaying(false);
-                showToast(`이번 달 합계 ${formatKrw(monthlyTotalKrw)} 납부가 완료됐습니다.`);
-              }, 700);
-            }}
+            <dl className="tenant-payment-breakdown">
+              <div>
+                <dt>기본 월세</dt>
+                <dd>{formatNumber(billingCard.current.rentAmount)}</dd>
+              </div>
+              <div>
+                <dt>고정 관리비</dt>
+                <dd>{formatNumber(billingCard.current.maintenanceAmount)}</dd>
+              </div>
+              <div>
+                <dt>납부 상태</dt>
+                <dd>{billingCard.current.stateLabel}</dd>
+              </div>
+            </dl>
+            <Link className="tenant-payment-button" href={billingCard.current.actionHref}>
+              {billingCard.current.actionLabel}
+            </Link>
+          </div>
+        ) : (
+          <div className="tenant-payment-content">
+            <h3>이번 달 합계</h3>
+            <p className="tenant-payment-empty">이번 달 청구가 없어요</p>
+          </div>
+        )}
+        {billingCard.previousUnpaidLabel ? (
+          <Link href="/tenant/payment/00?view=previous" className="tenant-payment-previous">
+            {billingCard.previousUnpaidLabel}
+          </Link>
+        ) : null}
+        {billingCard.upcoming ? (
+          <Link
+            href={billingCard.upcoming.actionHref}
+            className="tenant-payment-upcoming"
+            aria-label="다음 결제 예정 상세"
           >
-            {isPaying ? (
-              <>
-                <span className="btn-spinner" aria-hidden="true" />
-                처리 중…
-              </>
-            ) : maintenancePaid ? (
-              "영수증 보기"
-            ) : (
-              "즉시 납부하기"
-            )}
-          </button>
-        </div>
+            <strong>{billingCard.upcoming.monthLabel} 청구 예정</strong>
+            <span>{billingCard.upcoming.amountLabel}</span>
+            <small>{billingCard.upcoming.availabilityLabel}</small>
+          </Link>
+        ) : null}
         <div className="tenant-payment-watermark" aria-hidden="true" />
       </section>
 

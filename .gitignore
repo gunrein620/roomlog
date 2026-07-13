@@ -21,6 +21,7 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .run/
+.superpowers/
 
 .DS_Store
 .cursor/

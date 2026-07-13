@@ -1,51 +1,66 @@
-import type { Bill, CollectionSummary, Deposit, DunningDraft } from "@roomlog/types";
-import { serverFetch } from "./server-api";
+import type {
+  Bill,
+  CreateManagerBillsInput,
+  CreateManagerBillsResult,
+  Deposit,
+  DunningDraft,
+  ManagerBillCreationData,
+  ManagerCollectionAnalytics,
+} from "@roomlog/types";
+import { ApiError, serverFetch } from "./server-api";
 import {
-  DEMO_COLLECTION,
-  DEMO_DASHBOARD,
   DEMO_DEPOSITS_DATA,
   DEMO_DUNNING,
-  DEMO_MANAGER_BILL_ID,
   DEMO_NEW_BILL,
-  DEMO_OVERDUE,
+  demoManagerBillCreation,
+  demoManagerCollection,
+  demoManagerDashboard,
+  demoManagerOverdue,
   demoBillFallback,
+  type ManagerBillingDemoQuery,
   type ManagerDashboardData,
   type ManagerDepositsData,
   type ManagerOverdueData,
 } from "./billing-manager-demo";
 import {
   toBill,
-  toCollectionSummary,
   toDeposit,
   toDunningDraft,
   toManagerDashboard,
+  toManagerBillCreationData,
+  toManagerCollection,
   toManagerDepositsData,
-  toOverdueCase,
+  toManagerOverdue,
   type TeamBill,
   type TeamCollection,
+  type TeamBillCreationData,
   type TeamDashboardResponse,
   type TeamDeposit,
   type TeamDepositsResponse,
   type TeamDunning,
-  type TeamOverdue,
+  type TeamOverdueResponse,
 } from "./billing-manager-mapping";
 
 export type { ManagerDashboardData, ManagerDepositsData, ManagerOverdueData } from "./billing-manager-demo";
-
-interface TeamOverdueResponse {
-  activeCases?: TeamOverdue[];
-  waitingCases?: TeamOverdue[];
-}
 
 export interface SendDunningInput {
   text: string;
   channel: string;
 }
 
+function billingPath(path: string, query: ManagerBillingDemoQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.building) params.set("building", query.building);
+  if (query.month) params.set("month", query.month);
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+}
+
 async function getTeamBillById(billId: string): Promise<TeamBill | null> {
   try {
     return await serverFetch<TeamBill>(`/manager/bills/${encodeURIComponent(billId)}`);
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     console.error(`[manager/billing-api] /manager/bills/${billId} 조회 실패:`, error);
     return null;
   }
@@ -59,17 +74,27 @@ async function resolveTeamBill(billId?: string): Promise<TeamBill | null> {
     const firstBillId = data.bills?.[0]?.billId ?? data.bills?.[0]?.id;
     return firstBillId ? getTeamBillById(firstBillId) : null;
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     console.error("[manager/billing-api] 활성 청구서 조회 실패:", error);
     return null;
   }
 }
 
-export async function getManagerDashboard(): Promise<ManagerDashboardData> {
+export async function getManagerDashboard(
+  query?: ManagerBillingDemoQuery,
+): Promise<ManagerDashboardData> {
   try {
-    return toManagerDashboard(await serverFetch<TeamDashboardResponse>("/manager/bills/dashboard"));
+    return toManagerDashboard(
+      await serverFetch<TeamDashboardResponse>(
+        query
+          ? billingPath("/manager/bills/dashboard", query)
+          : "/manager/bills/dashboard?allMonths=true",
+      ),
+    );
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     console.error("[manager/billing-api] 대시보드 조회 실패 → 데모 폴백:", error);
-    return DEMO_DASHBOARD;
+    return demoManagerDashboard(query ?? {});
   }
 }
 
@@ -83,12 +108,26 @@ export async function getManagerBill(billId?: string): Promise<Bill> {
   return demoBillFallback(billId);
 }
 
-export async function getManagerCollection(): Promise<CollectionSummary> {
+export async function publishManagerBill(billId: string): Promise<Bill> {
+  return toBill(
+    await serverFetch<TeamBill>(
+      `/manager/bills/${encodeURIComponent(billId)}/publish`,
+      { method: "POST" },
+    ),
+  );
+}
+
+export async function getManagerCollection(
+  query: ManagerBillingDemoQuery = {},
+): Promise<ManagerCollectionAnalytics> {
   try {
-    return toCollectionSummary(await serverFetch<TeamCollection>("/manager/bills/collection"));
+    return toManagerCollection(
+      await serverFetch<TeamCollection>(billingPath("/manager/bills/collection", query)),
+    );
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     console.error("[manager/billing-api] 수금 현황 조회 실패 → 데모 폴백:", error);
-    return DEMO_COLLECTION;
+    return demoManagerCollection(query);
   }
 }
 
@@ -96,22 +135,48 @@ export async function getManagerDeposits(): Promise<ManagerDepositsData> {
   try {
     return toManagerDepositsData(await serverFetch<TeamDepositsResponse>("/manager/bills/deposits"));
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     console.error("[manager/billing-api] 입금 매칭 조회 실패 → 데모 폴백:", error);
     return DEMO_DEPOSITS_DATA;
   }
 }
 
-export async function getManagerOverdue(): Promise<ManagerOverdueData> {
+export async function getManagerOverdue(building?: string): Promise<ManagerOverdueData> {
   try {
-    const data = await serverFetch<TeamOverdueResponse>("/manager/bills/overdue");
-    return {
-      activeCases: (data.activeCases ?? []).map(toOverdueCase),
-      waitingCases: (data.waitingCases ?? []).map(toOverdueCase),
-    };
+    const data = await serverFetch<TeamOverdueResponse>(
+      billingPath("/manager/bills/overdue", { building }),
+    );
+    return toManagerOverdue(data);
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     console.error("[manager/billing-api] 연체 목록 조회 실패 → 데모 폴백:", error);
-    return DEMO_OVERDUE;
+    return demoManagerOverdue(building);
   }
+}
+
+export async function getManagerBillCreationOptions(
+  query: ManagerBillingDemoQuery = {},
+): Promise<ManagerBillCreationData> {
+  try {
+    return toManagerBillCreationData(
+      await serverFetch<TeamBillCreationData>(
+        billingPath("/manager/bills/creation-options", query),
+      ),
+    );
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    console.error("[manager/billing-api] 청구 생성 옵션 조회 실패 → 데모 폴백:", error);
+    return demoManagerBillCreation(query);
+  }
+}
+
+export async function createManagerBills(
+  input: CreateManagerBillsInput,
+): Promise<CreateManagerBillsResult> {
+  return serverFetch<CreateManagerBillsResult>("/manager/bills", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getManagerDunning(billId: string): Promise<DunningDraft> {
@@ -133,6 +198,7 @@ export async function getManagerDunning(billId: string): Promise<DunningDraft> {
   try {
     return toDunningDraft(await serverFetch<TeamDunning>(`/manager/bills/${encodeURIComponent(billId)}/dunning`));
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     console.error(`[manager/billing-api] /manager/bills/${billId}/dunning 조회 실패 → 데모 폴백:`, error);
     return fallback;
   }

@@ -1,14 +1,10 @@
 import type { ReactNode } from "react";
-import { PhoneFrame } from "@roomlog/ui";
+import { requireUser } from "@/lib/session";
+import { ResponsiveTenantPaymentShell } from "./ResponsiveTenantPaymentShell";
 
-// 납부 슬라이스 공용 폰 크롬. @roomlog/ui PhoneFrame(390×844)이 테두리를 제공하고,
-// 각 화면 page.tsx는 프레임 "내부 콘텐츠"(헤더/본문/푸터)만 렌더한다.
-export default function PaymentLayout({ children }: { children: ReactNode }) {
-  return (
-    <PhoneFrame
-      label={<span>사는 집 · 관리비·납부</span>}
-    >
-      {children}
-    </PhoneFrame>
-  );
+// 결제 콘텐츠는 한 번만 렌더하고, 공용 셸이 화면 폭에 맞는 크롬을 제공한다.
+export default async function PaymentLayout({ children }: { children: ReactNode }) {
+  await requireUser("TENANT", "/tenant/payment/00");
+
+  return <ResponsiveTenantPaymentShell>{children}</ResponsiveTenantPaymentShell>;
 }

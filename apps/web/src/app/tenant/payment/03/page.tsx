@@ -1,69 +1,88 @@
 import Link from "next/link";
-import type { BillStatus } from "@roomlog/types";
+import {
+  paymentHistoryPresetRange,
+  type TenantPaymentHistory,
+  type TenantPaymentPeriodPreset,
+} from "@roomlog/types";
 import { PAYMENT_ROUTES } from "@/lib/payment-nav";
-import { listBills } from "@/lib/payment-api";
-import { RecordList, type RecordRow } from "./RecordList";
+import { getTenantPaymentHistory } from "@/lib/payment-api";
+import { ApiError } from "@/lib/server-api";
+import { PaymentPeriodFilter } from "./PaymentPeriodFilter";
+import { RecordList } from "./RecordList";
+import styles from "./payment-history.module.css";
+
+type PaymentHistorySearchParams = Promise<{
+  preset?: string;
+  from?: string;
+  to?: string;
+}>;
+
+function sameRange(
+  left: TenantPaymentHistory["range"],
+  right: TenantPaymentHistory["range"],
+) {
+  return left.from === right.from && left.to === right.to;
+}
 
 // T-PAY-03 · 납부/청구 기록
-// 과거 내역 기간별 조회 + 증빙. 기간 필터·영수증은 인-스크린(RecordList). 항목 → 01.
+// URL이 조회 기간의 단일 진실이며 서버가 실제 활동일 기준 기록을 반환한다.
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: PaymentHistorySearchParams;
+}) {
+  const params = await searchParams;
+  const requestedPreset = params.preset ?? "1";
+  const preset: TenantPaymentPeriodPreset =
+    requestedPreset === "3" || requestedPreset === "6" ? Number(requestedPreset) as 3 | 6 : 1;
+  const isCustomRange = Boolean(params.from && params.to);
+  let history: TenantPaymentHistory;
 
-const STATUS_LABEL: Record<BillStatus, string> = {
-  draft: "작성 중",
-  sent: "납부예정",
-  confirming: "확인 중",
-  partially_paid: "일부 납부",
-  paid: "완료",
-  overdue: "연체",
-  corrected: "정정됨",
-  canceled: "취소됨",
-};
+  if (params.from && params.to) {
+    // Complete hand-written ranges go straight to the API so its 400 remains authoritative.
+    history = await getTenantPaymentHistory({
+      from: params.from,
+      to: params.to,
+    });
+  } else {
+    const requested = paymentHistoryPresetRange(preset);
 
-export default async function Page() {
-  const bills = await listBills();
-  const records: RecordRow[] = [...bills]
-    .sort((a, b) => b.billingMonth.localeCompare(a.billingMonth))
-    .map((b) => ({
-      billId: b.id,
-      billingMonth: b.billingMonth,
-      totalAmount: b.totalAmount,
-      statusLabel: STATUS_LABEL[b.status],
-      paid: b.status === "paid",
-    }));
+    try {
+      history = await getTenantPaymentHistory(requested);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 400) throw error;
+
+      const probeRange = { from: requested.to, to: requested.to };
+      const probe = await getTenantPaymentHistory(probeRange);
+      const clampedRange = {
+        from: requested.from < probe.bounds.min ? probe.bounds.min : requested.from,
+        to: requested.to > probe.bounds.max ? probe.bounds.max : requested.to,
+      };
+
+      history = sameRange(clampedRange, probeRange)
+        ? probe
+        : await getTenantPaymentHistory(clampedRange);
+    }
+  }
 
   return (
     <>
-      <header
-        style={{
-          flex: "none",
-          padding: 14,
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <Link
-          href={PAYMENT_ROUTES["T-PAY-00"]}
-          style={{ fontSize: 13, color: "var(--on-surface-variant)", textDecoration: "none" }}
-        >
+      <header className={styles.pageHeader}>
+        <Link href={PAYMENT_ROUTES["T-PAY-00"]} className={styles.backLink}>
           ‹ 뒤로
         </Link>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>납부 기록</div>
-        <div style={{ width: 34 }} />
+        <h1 className={styles.pageTitle}>납부 기록</h1>
+        <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
 
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: 14,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        <RecordList records={records} />
-      </div>
+      <main className={styles.pageBody}>
+        <PaymentPeriodFilter
+          bounds={history.bounds}
+          range={history.range}
+          selectedPreset={isCustomRange ? null : preset}
+        />
+        <RecordList records={history.records} />
+      </main>
     </>
   );
 }

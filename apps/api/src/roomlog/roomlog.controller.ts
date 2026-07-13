@@ -22,6 +22,7 @@ import {
   AddVendorRepairMessageInput,
   ApproveRepairEstimateInput,
   ConfirmTenantCompletionInput,
+  ConfirmBillPaymentInput,
   CreateAnnouncementDraftInput,
   CreateManagerReportExternalShareInput,
   CreateManagerReportFollowUpInput,
@@ -32,8 +33,10 @@ import {
   CreateMessagingThreadInput,
   CreateManagerContractInput,
   CreateManagerContractInviteInput,
+  CreateManagerBillsInput,
   CreateMoveoutDisputeInput,
   CreateMoveInChecklistItemInput,
+  CreateBillPaymentOrderInput,
   CreatePaymentReportInput,
   CreateTenantContractInput,
   CreateTenantMessagingThreadInput,
@@ -337,6 +340,24 @@ export class RoomlogController {
     return this.roomlogService.listTenantBills(user.id);
   }
 
+  @Get("tenant/bills/overview")
+  getTenantBillingOverview(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantBillingOverview(user.id);
+  }
+
+  @Get("tenant/bills/history")
+  getTenantPaymentHistory(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("from") from?: string,
+    @Query("to") to?: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantPaymentHistory(user.id, from, to);
+  }
+
   @Get("tenant/bills/:billId/maintenance")
   getTenantBillMaintenance(
     @Headers("authorization") authorization: string | undefined,
@@ -356,6 +377,28 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.createTenantPaymentReport(user.id, billId, body);
+  }
+
+  @Post("tenant/bills/:billId/payment-orders")
+  createTenantBillPaymentOrder(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string,
+    @Body() body: CreateBillPaymentOrderInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.createTenantBillPaymentOrder(user.id, billId, body);
+  }
+
+  @Post("tenant/bills/:billId/payment-orders/confirm")
+  confirmTenantBillPayment(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string,
+    @Body() body: ConfirmBillPaymentInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.confirmTenantBillPayment(user.id, billId, body);
   }
 
   @Get("tenant/bills/:billId")
@@ -1027,17 +1070,31 @@ export class RoomlogController {
   }
 
   @Get("manager/bills/dashboard")
-  getManagerBillDashboard(@Headers("authorization") authorization?: string) {
+  getManagerBillDashboard(
+    @Headers("authorization") authorization?: string,
+    @Query("building") building?: string,
+    @Query("month") month?: string,
+    @Query("allMonths") allMonths?: string
+  ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getManagerBillDashboard(user.id);
+    return this.roomlogService.getManagerBillDashboard(
+      user.id,
+      building,
+      month,
+      allMonths === "true"
+    );
   }
 
   @Get("manager/bills/collection")
-  getManagerCollection(@Headers("authorization") authorization?: string) {
+  getManagerCollection(
+    @Headers("authorization") authorization?: string,
+    @Query("building") building?: string,
+    @Query("month") month?: string
+  ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getManagerCollection(user.id);
+    return this.roomlogService.getManagerCollection(user.id, building, month);
   }
 
   @Get("manager/bills/deposits")
@@ -1059,10 +1116,44 @@ export class RoomlogController {
   }
 
   @Get("manager/bills/overdue")
-  listManagerOverdueCases(@Headers("authorization") authorization?: string) {
+  listManagerOverdueCases(
+    @Headers("authorization") authorization?: string,
+    @Query("building") building?: string
+  ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.listManagerOverdueCases(user.id);
+    return this.roomlogService.listManagerOverdueCases(user.id, building);
+  }
+
+  @Get("manager/bills/creation-options")
+  getManagerBillCreationOptions(
+    @Headers("authorization") authorization?: string,
+    @Query("building") building?: string,
+    @Query("month") month?: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.getManagerBillCreationOptions(user.id, building, month);
+  }
+
+  @Post("manager/bills")
+  createManagerBills(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: CreateManagerBillsInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.createManagerBills(user.id, body);
+  }
+
+  @Post("manager/bills/:billId/publish")
+  publishManagerBill(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("billId") billId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.publishManagerBill(user.id, billId);
   }
 
   @Get("manager/bills/:billId/dunning")

@@ -111,6 +111,18 @@ enum PaymentReportStatus {
   MISMATCH
 }
 
+enum BillLineItemKind {
+  RENT
+  MAINTENANCE
+  OTHER
+}
+
+enum BillPaymentTransactionStatus {
+  READY
+  APPROVED
+  FAILED
+}
+
 enum DepositMatchStatus {
   UNMATCHED
   MATCHED
@@ -434,6 +446,7 @@ model Room {
   moveoutRequests      MoveoutRequest[]
   intakeSessions       IntakeSession[]
   moveInChecklistItems MoveInChecklistItem[]
+  bills                Bill[]
 
   @@index([landlordId])
   @@unique([buildingName, roomNo])
@@ -472,6 +485,7 @@ model TenantRoom {
 
 model Bill {
   id                             String         @id
+  roomId                         String?
   unitId                         String
   billingMonth                   String
   status                         BillStatus     @default(DRAFT)
@@ -487,22 +501,29 @@ model Bill {
   items                          BillLineItem[]
   reports                        PaymentReport[]
   deposits                       Deposit[]
+  paymentTransactions            BillPaymentTransaction[]
+  room                           Room?          @relation(fields: [roomId], references: [id], onDelete: SetNull)
   createdAt                      DateTime       @default(now())
   updatedAt                      DateTime       @updatedAt
 
   @@index([unitId, billingMonth])
+  @@index([roomId, billingMonth])
   @@index([status])
 }
 
 model BillLineItem {
-  id     String @id
-  billId String
-  label  String
-  amount Int
+  id         String           @id
+  billId     String
+  label      String
+  kind       BillLineItemKind @default(OTHER)
+  amount     Int
+  paidAmount Int              @default(0)
 
-  bill Bill @relation(fields: [billId], references: [id])
+  bill        Bill                    @relation(fields: [billId], references: [id])
+  allocations BillPaymentAllocation[]
 
   @@index([billId])
+  @@index([kind])
 }
 
 model PaymentReport {
@@ -529,11 +550,53 @@ model Deposit {
   matchStatus   DepositMatchStatus @default(UNMATCHED)
   matchedBillId String?
   guessedUnitId String?
+  paymentTransactionId String?
 
-  bill Bill? @relation(fields: [matchedBillId], references: [id])
+  bill               Bill?                    @relation(fields: [matchedBillId], references: [id])
+  paymentTransaction BillPaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
 
   @@index([matchStatus])
   @@index([guessedUnitId])
+  @@index([paymentTransactionId])
+}
+
+model BillPaymentTransaction {
+  id             String                       @id
+  billId         String
+  tenantId       String
+  orderId        String                       @unique
+  orderName      String
+  amount         Int
+  itemKinds      BillLineItemKind[]
+  status         BillPaymentTransactionStatus @default(READY)
+  paymentKey     String?
+  method         String?
+  requestedAt    DateTime                     @default(now())
+  approvedAt     DateTime?
+  failedAt       DateTime?
+  failureMessage String?
+  rawResponse    Json?
+
+  bill        Bill                    @relation(fields: [billId], references: [id])
+  allocations BillPaymentAllocation[]
+  deposits    Deposit[]
+
+  @@index([billId, tenantId])
+  @@index([status])
+}
+
+model BillPaymentAllocation {
+  id             String           @id
+  transactionId  String
+  billLineItemId String
+  kind           BillLineItemKind
+  amount         Int
+
+  transaction BillPaymentTransaction @relation(fields: [transactionId], references: [id])
+  billLineItem BillLineItem           @relation(fields: [billLineItemId], references: [id])
+
+  @@index([transactionId])
+  @@index([billLineItemId])
 }
 
 model MaintenanceFee {

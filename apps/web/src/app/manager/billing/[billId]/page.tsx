@@ -1,4 +1,5 @@
 import { Button, Card } from "@roomlog/ui";
+import type { BillStatus } from "@roomlog/types";
 import { getManagerBill } from "@/lib/billing-manager-api";
 import {
   BillingShell,
@@ -11,12 +12,24 @@ import {
   routes,
   won,
 } from "../_components";
+import { publishBillAction } from "./actions";
 
 type Params = Promise<{ billId: string }>;
-type SearchParams = Promise<{ id?: string }>;
+type SearchParams = Promise<{ id?: string; published?: string; publishError?: string }>;
+
+const billStatusLabel: Record<BillStatus, string> = {
+  draft: "초안",
+  sent: "수납 대기",
+  confirming: "납부 확인 중",
+  partially_paid: "일부 수납",
+  paid: "수납 완료",
+  overdue: "연체",
+  corrected: "정정",
+  canceled: "취소",
+};
 
 export default async function Page({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
-  const [{ billId }, { id }] = await Promise.all([params, searchParams]);
+  const [{ billId }, { id, published, publishError }] = await Promise.all([params, searchParams]);
   const targetBillId = id || billId;
   const bill = await getManagerBill(targetBillId);
   const isNew = targetBillId === "new";
@@ -36,6 +49,24 @@ export default async function Page({ params, searchParams }: { params: Params; s
             <MetricCard label="기한" value={bill.dueDate} />
           </Grid>
         </Section>
+
+        {published === "1" ? (
+          <Card
+            role="status"
+            style={{ background: "var(--success-container)", color: "var(--success)" }}
+          >
+            청구가 확정됐습니다. 결제일 한 달 전부터 세입자에게 공개되고 납부할 수 있습니다.
+          </Card>
+        ) : null}
+
+        {publishError ? (
+          <Card
+            role="alert"
+            style={{ background: "var(--error-container)", color: "var(--error)" }}
+          >
+            {publishError}
+          </Card>
+        ) : null}
 
         <GuardBanner blocked={guardBlocked} hasConfirming={guardBlocked} hasOrphan={false} />
 
@@ -83,7 +114,16 @@ export default async function Page({ params, searchParams }: { params: Params; s
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
           <Button variant="secondary">정정·취소 기록</Button>
           <Button variant="secondary">상태 변경</Button>
-          <Button>관리인 승인 후 청구서 발송</Button>
+          {bill.status === "draft" ? (
+            <form action={publishBillAction} style={{ display: "contents" }}>
+              <input type="hidden" name="billId" value={bill.id} />
+              <Button type="submit">청구 확정</Button>
+            </form>
+          ) : (
+            <span style={{ alignSelf: "center", color: "var(--on-surface-variant)" }}>
+              현재 상태: {billStatusLabel[bill.status]}
+            </span>
+          )}
         </div>
       </PageStack>
     </BillingShell>

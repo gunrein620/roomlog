@@ -6,7 +6,13 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./ticket": "./src/ticket.ts"
+    "./ticket": "./src/ticket.ts",
+    "./payment": "./src/payment.ts"
+  },
+  "typesVersions": {
+    "*": {
+      "payment": ["src/payment.ts"]
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
