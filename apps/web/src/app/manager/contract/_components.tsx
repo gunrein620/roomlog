@@ -3,6 +3,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { ContractExtraction, DeletionState, ExtractionGroup } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
+import type { ManagerContractOrigin } from "@/lib/contract-manager-api";
 import {
   MANAGER_CONTRACT_ROUTES,
   type ManagerContractRoute,
@@ -21,6 +22,13 @@ export const groupLabel: Record<ExtractionGroup, string> = {
   money: "돈",
   term: "기간",
   responsibility: "책임",
+};
+
+const sourceLabel: Record<ManagerContractOrigin, string> = {
+  tenant_upload: "임차인 업로드",
+  manager_upload: "관리자 업로드",
+  manual: "관리자 수동값",
+  trade_acceptance: "거래 계약",
 };
 
 export function ContractShell({
@@ -204,9 +212,8 @@ export function ExtractionTable({ extraction }: { extraction: ContractExtraction
   );
 }
 
-export function SourceBadge({ origin }: { origin: "tenant_upload" | "manager_upload" | "manual" }) {
-  const label = origin === "tenant_upload" ? "임차인 업로드" : origin === "manager_upload" ? "관리자 업로드" : "관리자 수동값";
-  return <Badge emphasis={origin !== "manual"}>{label}</Badge>;
+export function SourceBadge({ origin }: { origin: ManagerContractOrigin }) {
+  return <Badge emphasis={origin !== "manual"}>{sourceLabel[origin]}</Badge>;
 }
 
 export function formatDate(iso: string): string {

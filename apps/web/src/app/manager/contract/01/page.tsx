@@ -30,7 +30,8 @@ async function confirmContractAction(formData: FormData) {
   "use server";
 
   const contractId = String(formData.get("contractId") ?? "");
-  await confirmManagerContract(contractId);
+  const confirmNeedsCheck = formData.get("confirmNeedsCheck") === "on";
+  await confirmManagerContract(contractId, confirmNeedsCheck);
   redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`);
 }
 
@@ -67,14 +68,24 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             </p>
           </div>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <form action={confirmContractAction}>
+            <form action={confirmContractAction} style={{ display: "grid", gap: "var(--space-sm)" }}>
               <input type="hidden" name="contractId" value={detail.row.contract.id} />
+              <label style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center", fontSize: "var(--fs-caption)" }}>
+                <input type="checkbox" name="confirmNeedsCheck" required />
+                확인 필요 항목을 거래 계약/원문과 대조했습니다.
+              </label>
               <StaticButton type="submit">검토 확정</StaticButton>
             </form>
             <form action={requestInfoAction}>
               <input type="hidden" name="contractId" value={detail.row.contract.id} />
               <StaticButton type="submit" variant="secondary">임차인에게 보완 요청</StaticButton>
             </form>
+            <LinkButton
+              href={`${MANAGER_CONTRACT_ROUTES["M-DOC-03"]}?id=${encodeURIComponent(detail.row.contract.id)}`}
+              variant="secondary"
+            >
+              계약값 입력
+            </LinkButton>
           </div>
         </Card>
 
@@ -85,28 +96,36 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
           <div style={{ display: "grid", gap: "var(--space-lg)" }}>
             <Section title="원본·OCR 전문">
-              <Card style={{ display: "grid", gap: "var(--space-md)", minHeight: 360 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)" }}>
-                  <Badge>원본 뷰어</Badge>
-                  <Badge>근거 하이라이트 동기화</Badge>
-                </div>
-                <div
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                    background: "var(--surface-container-low)",
-                    padding: "var(--space-lg)",
-                    lineHeight: "var(--lh-body)",
-                    color: "var(--on-surface-variant)",
-                  }}
-                >
-                  {detail.extraction.items.slice(0, 5).map((item) => (
-                    <p key={item.label} style={{ margin: "0 0 var(--space-sm)" }}>
-                      {item.evidence}
-                    </p>
-                  ))}
-                </div>
-              </Card>
+              {detail.row.origin === "trade_acceptance" ? (
+                <Card>
+                  <p style={{ margin: 0, color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
+                    거래 계약 수락 조건을 기반으로 만든 초안이며 업로드된 원본 파일은 없습니다.
+                  </p>
+                </Card>
+              ) : (
+                <Card style={{ display: "grid", gap: "var(--space-md)", minHeight: 360 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-sm)" }}>
+                    <Badge>원본 뷰어</Badge>
+                    <Badge>근거 하이라이트 동기화</Badge>
+                  </div>
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-md)",
+                      background: "var(--surface-container-low)",
+                      padding: "var(--space-lg)",
+                      lineHeight: "var(--lh-body)",
+                      color: "var(--on-surface-variant)",
+                    }}
+                  >
+                    {detail.extraction.items.slice(0, 5).map((item) => (
+                      <p key={item.label} style={{ margin: "0 0 var(--space-sm)" }}>
+                        {item.evidence}
+                      </p>
+                    ))}
+                  </div>
+                </Card>
+              )}
             </Section>
 
             <Section title="임차인 의견·보완 요청 스레드">
@@ -141,7 +160,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <div style={{ color: "var(--on-surface-variant)" }}>
             확정하면 T-DOC 확정본과 납부·하자·퇴실의 선택 prefill 근거로 흐릅니다.
           </div>
-          <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-03"]} variant="secondary">확정 후 타임라인</LinkButton>
+          <LinkButton
+            href={`${MANAGER_CONTRACT_ROUTES["M-DOC-03"]}?id=${encodeURIComponent(detail.row.contract.id)}`}
+            variant="secondary"
+          >
+            확정 후 타임라인
+          </LinkButton>
         </Card>
       </PageStack>
     </ContractShell>

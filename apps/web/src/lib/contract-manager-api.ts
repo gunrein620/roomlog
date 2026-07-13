@@ -1,7 +1,11 @@
 import type { Contract, ContractExtraction, ContractPrivacy, DeletionState } from "@roomlog/types";
 import { serverFetch } from "./server-api";
 
-export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
+export type ManagerContractOrigin =
+  | "tenant_upload"
+  | "manager_upload"
+  | "manual"
+  | "trade_acceptance";
 
 export interface ManagerContractRow {
   contract: Contract;
@@ -104,10 +108,10 @@ export function getManagerContractDetail(id?: string): Promise<ManagerContractDe
   return serverFetch(`/contracts/manager/${encodeURIComponent(contractId)}`);
 }
 
-export function confirmManagerContract(id: string): Promise<ManagerContractDetail> {
+export function confirmManagerContract(id: string, confirmNeedsCheck: boolean): Promise<ManagerContractDetail> {
   return serverFetch<ManagerContractDetail>(`/contracts/manager/${encodeURIComponent(id)}/confirm`, {
     method: "POST",
-    body: JSON.stringify({ confirmNeedsCheck: true }),
+    body: JSON.stringify({ confirmNeedsCheck }),
   });
 }
 
@@ -143,6 +147,8 @@ export function updateManagerContractManualValues(
     monthlyRent?: number;
     maintenanceFee?: number;
     paymentDay?: number;
+    startDate?: string;
+    endDate?: string;
     account?: string;
   },
 ): Promise<ManagerContractDetail> {

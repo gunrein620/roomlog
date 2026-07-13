@@ -24,6 +24,8 @@ import {
   linkReset,
 } from "../_components";
 
+type SearchParams = Promise<{ id?: string }>;
+
 export const dynamic = "force-dynamic";
 
 async function saveManualValuesAction(formData: FormData) {
@@ -35,9 +37,12 @@ async function saveManualValuesAction(formData: FormData) {
     monthlyRent: numberValue(formData.get("monthlyRent")),
     maintenanceFee: numberValue(formData.get("maintenanceFee")),
     paymentDay: numberValue(formData.get("paymentDay")),
+    startDate: String(formData.get("startDate") ?? ""),
+    endDate: String(formData.get("endDate") ?? ""),
     account: String(formData.get("account") ?? ""),
   });
-  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-03"]);
+  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-03"]}?id=${encodeURIComponent(contractId)}`;
+  redirect(contractHref);
 }
 
 async function saveInventoryAction(formData: FormData) {
@@ -49,11 +54,13 @@ async function saveInventoryAction(formData: FormData) {
     .map((item) => item.trim())
     .filter(Boolean);
   await updateManagerContractInventory(contractId, items);
-  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-03"]);
+  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-03"]}?id=${encodeURIComponent(contractId)}`;
+  redirect(contractHref);
 }
 
-export default async function Page() {
-  const detail = await getManagerContractDetail();
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const detail = await getManagerContractDetail(id);
   const contract = detail.row.contract;
 
   return (
@@ -95,6 +102,8 @@ export default async function Page() {
             <form action={saveManualValuesAction} style={{ display: "grid", gap: "var(--space-sm)" }}>
               <input type="hidden" name="contractId" value={contract.id} />
               <Field name="deposit" label="보증금" defaultValue={detail.manualValues.deposit} />
+              <Field name="startDate" label="계약 시작일" type="date" defaultValue={contract.startDate?.slice(0, 10) ?? ""} />
+              <Field name="endDate" label="계약 종료일" type="date" defaultValue={contract.endDate?.slice(0, 10) ?? ""} />
               <Field name="monthlyRent" label="월세" defaultValue={contract.monthlyRent ?? ""} inputMode="numeric" />
               <Field name="maintenanceFee" label="관리비" defaultValue={contract.maintenanceFee ?? ""} inputMode="numeric" />
               <Field name="paymentDay" label="납부일" defaultValue={contract.paymentDay ?? ""} inputMode="numeric" />
@@ -151,9 +160,9 @@ export default async function Page() {
 
         <Card style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center" }}>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-01"]}>계약서 열기</LinkButton>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-04"]} variant="secondary">임차인 초대</LinkButton>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-05"]} variant="secondary">보관·삭제 처리</LinkButton>
+            <LinkButton href={`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contract.id)}`}>계약서 열기</LinkButton>
+            <LinkButton href={`${MANAGER_CONTRACT_ROUTES["M-DOC-04"]}?id=${encodeURIComponent(contract.id)}`} variant="secondary">임차인 초대</LinkButton>
+            <LinkButton href={`${MANAGER_CONTRACT_ROUTES["M-DOC-05"]}?id=${encodeURIComponent(contract.id)}`} variant="secondary">보관·삭제 처리</LinkButton>
           </div>
           <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]} variant="secondary">계약서 추가 등록</LinkButton>
         </Card>
@@ -167,16 +176,18 @@ function Field({
   label,
   defaultValue,
   inputMode,
+  type,
 }: {
   name: string;
   label: string;
   defaultValue: string | number;
   inputMode?: "numeric";
+  type?: "text" | "date";
 }) {
   return (
     <label style={{ display: "grid", gap: 4 }}>
       <span style={captionStyle}>{label}</span>
-      <input name={name} defaultValue={defaultValue} inputMode={inputMode} style={fieldStyle} />
+      <input name={name} type={type} defaultValue={defaultValue} inputMode={inputMode} style={fieldStyle} />
     </label>
   );
 }
