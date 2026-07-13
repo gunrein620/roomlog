@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 
 // 세 계기 아크의 코스믹 팔레트 — 배경 은하수(연블루 별·보라 성운)와 같은 계열에서 미묘하게 차등.
@@ -88,6 +89,16 @@ export function InstrumentPanel({
                 />
               ))}
               <span className="manager-instrument-gauge-endcap">0</span>
+              {pct != null ? (
+                <>
+                  <span
+                    className="manager-instrument-gauge-needle"
+                    style={{ transform: `rotate(${(pct / 100) * 180 - 90}deg)` }}
+                    aria-hidden="true"
+                  />
+                  <span className="manager-instrument-gauge-hub" aria-hidden="true" />
+                </>
+              ) : null}
             </div>
             <div className="manager-instrument-gauge-copy" aria-hidden="true">
               <strong>{pct == null ? "—" : `${pct}%`}</strong>
@@ -245,6 +256,16 @@ export function InstrumentPanel({
           place-items: center;
         }
 
+        /* 각 링을 다크 은하 위 '별'처럼 — accent 색 저농도 원형 헤일로(DOM상 아크보다 먼저라 뒤에 깔림) */
+        .manager-instrument-ring::before {
+          content: "";
+          position: absolute;
+          inset: -12px;
+          border-radius: 50%;
+          background: radial-gradient(circle, color-mix(in srgb, var(--accent, #ffffff) 26%, transparent) 0%, transparent 68%);
+          pointer-events: none;
+        }
+
         .manager-instrument-ring-arc {
           position: absolute;
           inset: 0;
@@ -296,9 +317,27 @@ export function InstrumentPanel({
 
         /* ── 반원 게이지(납부율) — 링 상단정렬과 하단정렬의 중간(가운데) 높이에 둔다 ── */
         .manager-instrument-gauge {
+          position: relative;
           display: grid;
           justify-items: center;
           align-self: center;
+        }
+
+        .manager-instrument-gauge::before {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 34px;
+          width: 230px;
+          height: 150px;
+          transform: translateX(-50%);
+          background: radial-gradient(ellipse at 50% 100%, rgba(242, 237, 255, 0.22) 0%, transparent 68%);
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .manager-instrument-gauge > * {
+          position: relative;
         }
 
         /* 게이지 아래 캡션(2/5명 납부)에 윗 여백 — 숫자와 붙지 않게 */
@@ -346,6 +385,36 @@ export function InstrumentPanel({
           color: rgba(255, 255, 255, 0.5);
           font-size: 10px;
           font-weight: 700;
+        }
+
+        /* 납부율 바늘 — 밑변 중앙 피벗, 톤을 안 깨는 옅은 금빛에 은은한 글로우.
+           길이 100은 반지름 120에서 아크 안쪽(≈103)에 팁이 살짝 못 미치게. */
+        .manager-instrument-gauge-needle {
+          position: absolute;
+          left: 50%;
+          bottom: 0;
+          width: 3px;
+          height: 100px;
+          margin-left: -1.5px;
+          transform-origin: 50% 100%;
+          border-radius: 2px 2px 0 0;
+          background: linear-gradient(to top, rgba(255, 214, 130, 0) 8%, #ffd76b 55%, #fff2c6 100%);
+          box-shadow: 0 0 8px rgba(255, 208, 110, 0.75), 0 0 16px rgba(255, 196, 84, 0.4);
+          pointer-events: none;
+        }
+
+        /* 바늘 회전축 허브 — 밑변 중앙의 작은 금빛 점(반원 밖 아래쪽은 overflow로 잘려 반쪽만 보임) */
+        .manager-instrument-gauge-hub {
+          position: absolute;
+          left: 50%;
+          bottom: 0;
+          width: 13px;
+          height: 13px;
+          transform: translate(-50%, 45%);
+          border-radius: 50%;
+          background: radial-gradient(circle, #fff2c6 0%, #ffcf6b 55%, rgba(255, 190, 90, 0) 100%);
+          box-shadow: 0 0 8px rgba(255, 205, 110, 0.7);
+          pointer-events: none;
         }
 
         /* 반원 안쪽 빈 공간에 겹치도록 음수 마진으로 끌어올린다 */
@@ -470,7 +539,7 @@ function InstrumentRing({ label, pct, sub, href, accent }: { label: string; pct:
   const clamped = pct == null ? null : Math.max(0, Math.min(100, pct));
 
   return (
-    <Link href={href} className="manager-instrument-ring-link">
+    <Link href={href} className="manager-instrument-ring-link" style={{ ["--accent"]: accent } as CSSProperties}>
       <span className="manager-instrument-ring-label">{label}</span>
 
       <div
