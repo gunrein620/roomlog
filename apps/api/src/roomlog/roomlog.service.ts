@@ -182,6 +182,7 @@ import {
   RoomWall,
   RoomTimelineEntry,
   SaveAttachmentInput,
+  SaveContractDocumentUploadInput,
   SaveFloorPlanDraftInput,
   SaveRoomWallsInput,
   SimulatorWallData,
@@ -2019,6 +2020,7 @@ export class RoomlogService {
     );
     this.contract = new RoomlogContractDomain(
       this.store,
+      this.storageAdapter,
       () => this.persistStore(),
       (roomId) => this.findRoom(roomId),
       (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
@@ -2557,6 +2559,10 @@ export class RoomlogService {
 
   requestManagerContractInfo(managerId: string, contractId: string) {
     return this.contract.requestManagerContractInfo(managerId, contractId);
+  }
+
+  runManagerContractOcr(managerId: string, contractId: string) {
+    return this.contract.runManagerContractOcr(managerId, contractId);
   }
 
   createManagerContract(managerId: string, input: CreateManagerContractInput) {
@@ -4948,6 +4954,10 @@ export class RoomlogService {
 
   async saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
     return this.floorPlan.saveAttachment(uploadedByUserId, input);
+  }
+
+  async saveManagerContractUpload(managerId: string, input: SaveContractDocumentUploadInput) {
+    return this.contract.saveManagerContractUpload(managerId, input);
   }
 
   createFloorPlanDraft(ownerId: string, input: SaveFloorPlanDraftInput) {

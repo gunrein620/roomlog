@@ -611,6 +611,25 @@ export class RoomlogController {
     return this.roomlogService.getManagerContractDashboard(user.id);
   }
 
+  @Post("contracts/manager/uploads")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }))
+  uploadManagerContractDocument(
+    @Headers("authorization") authorization: string | undefined,
+    @UploadedFile() file: UploadedImageFile | undefined
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    if (!file?.buffer) {
+      throw new BadRequestException("업로드할 계약서 파일이 필요합니다.");
+    }
+
+    return this.roomlogService.saveManagerContractUpload(user.id, {
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mimeType: file.mimetype
+    });
+  }
+
   @Get("contracts/manager/:contractId")
   getManagerContractDetail(
     @Headers("authorization") authorization: string | undefined,
@@ -619,6 +638,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.getManagerContractDetail(user.id, contractId);
+  }
+
+  @Post("contracts/manager/:contractId/ocr")
+  runManagerContractOcr(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("contractId") contractId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.runManagerContractOcr(user.id, contractId);
   }
 
   @Post("contracts/manager/:contractId/confirm")

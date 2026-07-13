@@ -1,7 +1,9 @@
 // 계약(contract)·문서 도메인 협력 클래스 — roomlog.service.ts에서 추출(동작 불변).
 // 자기완결(contract* 헬퍼 통째). 공유 헬퍼는 동명 필드로 주입해 본문 verbatim 유지.
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { basename, extname } from "node:path";
 import { id, now } from "../roomlog-support";
+import type { FileStorageAdapter } from "../storage.service";
 import type {
   Contract,
   ContractDocument,
@@ -14,6 +16,7 @@ import type {
   DeletionState,
   ExtractionGroup,
   Room,
+  SaveContractDocumentUploadInput,
   UpdateManagerContractInventoryInput,
   UpdateManagerContractInviteInput,
   UpdateManagerContractManualValuesInput,
@@ -27,9 +30,19 @@ import type {
   Store
 } from "../roomlog.service";
 
+type ContractOcrResult = {
+  source: "openai" | "mock";
+  summary: string;
+  highlights: string[];
+  items: ContractExtraction["items"];
+  helpNotes: ContractExtraction["helpNotes"];
+  rawText?: string;
+};
+
 export class RoomlogContractDomain {
   constructor(
     private readonly store: Store,
+    private readonly storageAdapter: FileStorageAdapter,
     private readonly persistStore: () => void,
     private readonly findRoom: (roomId: string) => Room,
     private readonly canManagerAccessRoom: (managerId: string, roomId: string) => boolean,
@@ -231,6 +244,254 @@ export class RoomlogContractDomain {
     return this.getManagerContractDetail(managerId, contract.id);
   }
 
+  async runManagerContractOcr(managerId: string, contractId: string) {
+    const contract = this.findManagerContract(managerId, contractId);
+    const extraction = this.ensureContractExtraction(contract);
+    const room = this.findRoom(contract.roomId);
+    const document = this.currentContractDocument(contract);
+    const executedAt = now();
+    const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
+    const openAiResult = openAiApiKey
+      ? await this.runOpenAiContractOcr(managerId, contract, extraction, room, document, openAiApiKey).catch(() => undefined)
+      : undefined;
+    const result =
+      openAiResult ??
+      this.buildMockContractOcrResult(
+        contract,
+        extraction,
+        room,
+        document,
+        openAiApiKey
+          ? "실제 OCR 호출에 실패해 mock 결과로 대체했습니다."
+          : "OPENAI_API_KEY가 없어 mock OCR 결과를 사용했습니다."
+      );
+
+    this.applyContractOcrResult(contract, extraction, result, executedAt);
+    this.persistStore();
+
+    return this.getManagerContractDetail(managerId, contract.id);
+  }
+
+  private buildMockContractOcrResult(
+    contract: Contract,
+    extraction: ContractExtraction,
+    room: Room,
+    document: ContractDocument | undefined,
+    summary: string
+  ): ContractOcrResult {
+    const existingDeposit = this.extractionValue(extraction, "보증금");
+    const deposit = existingDeposit ?? "10,000,000원";
+    const rent = this.currencyLabel(contract.monthlyRent) ?? this.extractionValue(extraction, "월세") ?? "미확인";
+    const maintenanceFee =
+      this.currencyLabel(contract.maintenanceFee) ?? this.extractionValue(extraction, "관리비") ?? "미확인";
+    const paymentDay = contract.paymentDay
+      ? `매월 ${contract.paymentDay}일`
+      : this.extractionValue(extraction, "납부일") ?? "미확인";
+    const contractTerm = `${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`;
+    const unitAddress = `${room.address} ${this.displayUnitId(room)}`.trim();
+
+    return {
+      source: "mock",
+      summary,
+      highlights: [
+        `${summary} · ${document?.fileName ?? "계약서 원본"} 기준`,
+        `월세 ${rent} · 납부일 ${paymentDay}`,
+        "실제 OCR 연동 전까지는 관리자 검토용 추출값입니다."
+      ],
+      helpNotes: [
+        {
+          clause: "mock OCR 결과",
+          plain: "현재 단계에서는 업로드된 계약서와 등록 필드를 기준으로 OCR 결과 형태를 미리 채웁니다.",
+          source: "M-DOC-01 OCR 실행"
+        },
+        {
+          clause: "관리자 확정 필요",
+          plain: "확정 전에는 원문과 금액, 기간, 특약 문구를 한 번 더 대조해야 합니다.",
+          source: "계약서 검토 워크플로"
+        }
+      ],
+      items: [
+        {
+          label: "보증금",
+          value: deposit,
+          group: "money",
+          needsCheck: !existingDeposit || deposit === "미확인",
+          evidence: "mock OCR: 보증금 조항 후보를 추출했습니다."
+        },
+        {
+          label: "월세",
+          value: rent,
+          group: "money",
+          needsCheck: rent === "미확인",
+          evidence: "mock OCR: 차임 또는 월세 금액 후보를 추출했습니다."
+        },
+        {
+          label: "관리비",
+          value: maintenanceFee,
+          group: "money",
+          needsCheck: maintenanceFee === "미확인",
+          evidence: "mock OCR: 관리비 항목 후보를 추출했습니다."
+        },
+        {
+          label: "납부일",
+          value: paymentDay,
+          group: "money",
+          needsCheck: paymentDay === "미확인",
+          evidence: "mock OCR: 납부일 문구 후보를 추출했습니다."
+        },
+        {
+          label: "계약 기간",
+          value: contractTerm,
+          group: "term",
+          needsCheck: contractTerm.includes("미확인"),
+          evidence: "mock OCR: 임대차 기간 후보를 추출했습니다."
+        },
+        {
+          label: "상세 주소",
+          value: unitAddress,
+          group: "term",
+          needsCheck: false,
+          masked: true,
+          evidence: "mock OCR: 목적물 소재지 후보를 등록 호실 정보와 대조했습니다."
+        },
+        {
+          label: "자동연장",
+          value: "만료 1개월 전 별도 통지 없으면 갱신 검토",
+          group: "term",
+          needsCheck: true,
+          evidence: "mock OCR: 자동연장 또는 갱신 특약 후보가 있어 원문 확인이 필요합니다."
+        },
+        {
+          label: "원상복구",
+          value: "퇴거 시 원상복구 의무",
+          group: "responsibility",
+          needsCheck: true,
+          evidence: "mock OCR: 원상복구 조항 후보를 추출했습니다."
+        },
+        {
+          label: "수선 책임",
+          value: "소모품·경미한 수선 임차인 부담 후보",
+          group: "responsibility",
+          needsCheck: true,
+          evidence: "mock OCR: 수선 책임 특약 후보가 있어 관리자 확인이 필요합니다."
+        }
+      ]
+    };
+  }
+
+  private applyContractOcrResult(
+    contract: Contract,
+    extraction: ContractExtraction,
+    result: ContractOcrResult,
+    executedAt: string
+  ) {
+    const sourceLabel = result.source === "openai" ? "실제 OCR" : "mock OCR";
+
+    extraction.confirmed = false;
+    extraction.createdAt = executedAt;
+    extraction.highlights = [
+      `${sourceLabel} 완료 · ${result.summary}`,
+      ...result.highlights.filter(Boolean)
+    ].slice(0, 6);
+    extraction.helpNotes = result.helpNotes.length
+      ? result.helpNotes
+      : [
+          {
+            clause: "관리자 확정 필요",
+            plain: "OCR 결과는 자동 확정되지 않습니다. 원문과 대조한 뒤 확정하세요.",
+            source: "M-DOC-01 OCR 실행"
+          }
+        ];
+
+    result.items.slice(0, 16).forEach((item) => this.setExtractionItem(extraction, item));
+
+    contract.review = "pending";
+    if (contract.lifecycle === "unregistered") {
+      contract.lifecycle = "analyzing";
+    }
+    contract.valueSource = "unverified";
+    contract.updatedAt = executedAt;
+  }
+
+  private async runOpenAiContractOcr(
+    managerId: string,
+    contract: Contract,
+    extraction: ContractExtraction,
+    room: Room,
+    document: ContractDocument | undefined,
+    openAiApiKey: string
+  ): Promise<ContractOcrResult | undefined> {
+    if (!document?.fileName) return undefined;
+
+    const bytes = await this.readContractDocumentBytes(document);
+    if (!bytes) return undefined;
+
+    const mimeType = this.contractDocumentMimeType(document.fileName);
+    const documentPart = this.openAiContractDocumentPart(document, bytes, mimeType);
+    if (!documentPart) return undefined;
+
+    const model = process.env.OPENAI_CONTRACT_OCR_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.4-mini";
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openAiApiKey}`,
+        "Content-Type": "application/json",
+        "OpenAI-Safety-Identifier": `contract-ocr-${managerId}-${contract.id}`
+      },
+      body: JSON.stringify({
+        model,
+        instructions: [
+          "너는 한국 주택 임대차 계약서 OCR 검토 보조자다.",
+          "계약서 이미지나 PDF에서 보증금, 월세, 관리비, 납부일, 계약 기간, 주소, 자동연장, 원상복구, 수선 책임을 추출한다.",
+          "불확실하거나 원문 재확인이 필요한 항목은 needsCheck를 true로 둔다.",
+          "민감한 계좌번호, 상세주소 일부는 masked=true로 표시한다.",
+          "반드시 한국어 JSON만 반환한다."
+        ].join("\n"),
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: this.contractOcrPrompt(contract, extraction, room, document)
+              },
+              documentPart
+            ]
+          }
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "roomlog_contract_ocr",
+            strict: true,
+            schema: this.contractOcrJsonSchema()
+          }
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI contract OCR failed with ${response.status}`);
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    const rawText = this.extractOpenAiResponseText(payload);
+    const parsed = this.parseOpenAiContractOcr(rawText);
+
+    if (parsed.items.length === 0) {
+      throw new Error("OpenAI contract OCR returned no items");
+    }
+
+    return {
+      source: "openai",
+      summary: parsed.summary || `${document.fileName}에서 계약 핵심 항목을 추출했습니다.`,
+      highlights: parsed.highlights,
+      items: parsed.items,
+      helpNotes: parsed.helpNotes,
+      rawText
+    };
+  }
+
   createManagerContract(managerId: string, input: CreateManagerContractInput) {
     const room = this.findManagerRoom(managerId, input.roomId, input.unitId);
     const unitId = input.unitId?.trim() || this.displayUnitId(room).replace(/호$/, "");
@@ -278,6 +539,47 @@ export class RoomlogContractDomain {
     this.persistStore();
 
     return this.getManagerContractDetail(managerId, contract.id);
+  }
+
+  async saveManagerContractUpload(managerId: string, input: SaveContractDocumentUploadInput) {
+    const user = this.store.users.find((account) => account.id === managerId);
+
+    if (!user) {
+      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
+    }
+
+    if (!input.buffer.length) {
+      throw new BadRequestException("업로드할 계약서 파일이 비어 있습니다.");
+    }
+
+    if (input.buffer.length > 20 * 1024 * 1024) {
+      throw new BadRequestException("계약서는 20MB 이하만 업로드할 수 있습니다.");
+    }
+
+    const mimeType = input.mimeType || "application/octet-stream";
+    if (mimeType !== "application/pdf" && !mimeType.startsWith("image/")) {
+      throw new BadRequestException("계약서는 PDF 또는 이미지 파일만 업로드할 수 있습니다.");
+    }
+
+    const uploadId = id("cdocu");
+    const safeBaseName =
+      basename(input.originalName, extname(input.originalName))
+        .replace(/[^a-zA-Z0-9가-힣_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48) || "contract";
+    const fileName = `${uploadId}-${safeBaseName}${this.contractDocumentExtension(mimeType, input.originalName)}`;
+    const storedFile = await this.storageAdapter.save({
+      buffer: input.buffer,
+      fileName,
+      mimeType
+    });
+
+    return {
+      fileName: storedFile.fileName,
+      fileUrl: storedFile.fileUrl,
+      mimeType,
+      sizeBytes: input.buffer.length
+    };
   }
 
   updateManagerContractManualValues(
@@ -740,6 +1042,23 @@ export class RoomlogContractDomain {
     });
   }
 
+  private setExtractionItem(
+    extraction: ContractExtraction,
+    item: ContractExtraction["items"][number]
+  ) {
+    const index = extraction.items.findIndex((existing) => existing.label === item.label);
+
+    if (index >= 0) {
+      extraction.items[index] = {
+        ...extraction.items[index],
+        ...item
+      };
+      return;
+    }
+
+    extraction.items.push(item);
+  }
+
   // 통합 계정 모델: 초대는 "기존 로그인 계정에 관계를 붙이는 루트"이므로
   // 이메일/휴대폰 같은 강한 식별자는 role과 무관하게 매칭한다.
   // 이름 단독 일치는 약한 신호라 이미 임차 관계가 있는 계정으로 한정(오연결 방지).
@@ -791,9 +1110,7 @@ export class RoomlogContractDomain {
   }
 
   private contractOrigin(contract: Contract): ManagerContractOrigin {
-    const document = this.store.contractDocuments.find(
-      (item) => item.id === contract.documentId || item.contractId === contract.id
-    );
+    const document = this.currentContractDocument(contract);
 
     return document?.origin ?? (contract.valueSource === "manual" ? "manual" : "tenant_upload");
   }
@@ -915,6 +1232,306 @@ export class RoomlogContractDomain {
 
   private extractionValue(extraction: ContractExtraction, label: string) {
     return extraction.items.find((item) => item.label === label)?.value;
+  }
+
+  private currentContractDocument(contract: Contract) {
+    const byId = contract.documentId
+      ? this.store.contractDocuments.find((item) => item.id === contract.documentId)
+      : undefined;
+
+    if (byId) return byId;
+
+    return this.store.contractDocuments
+      .filter((item) => item.contractId === contract.id)
+      .sort((a, b) => this.timeOf(b.uploadedAt) - this.timeOf(a.uploadedAt))[0];
+  }
+
+  private currencyLabel(value: number | undefined) {
+    return value === undefined ? undefined : `${value.toLocaleString("ko-KR")}원`;
+  }
+
+  private dateLabel(iso?: string) {
+    return iso?.slice(0, 10).replace(/-/g, ".") ?? "미확인";
+  }
+
+  private async readContractDocumentBytes(document: ContractDocument) {
+    if (document.fileName) {
+      const fromAdapter = await this.storageAdapter.read(document.fileName).catch(() => null);
+      if (fromAdapter) return fromAdapter;
+    }
+
+    if (document.fileUrl && /^https?:\/\//i.test(document.fileUrl)) {
+      try {
+        const response = await fetch(document.fileUrl);
+        if (response.ok) return Buffer.from(await response.arrayBuffer());
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  private openAiContractDocumentPart(
+    document: ContractDocument,
+    bytes: Buffer,
+    mimeType: string
+  ): Record<string, unknown> | undefined {
+    const fileData = `data:${mimeType};base64,${bytes.toString("base64")}`;
+
+    if (mimeType.startsWith("image/")) {
+      return {
+        type: "input_image",
+        image_url: fileData,
+        detail: "high"
+      };
+    }
+
+    if (mimeType === "application/pdf") {
+      return {
+        type: "input_file",
+        filename: basename(document.fileName || "contract.pdf"),
+        file_data: fileData
+      };
+    }
+
+    return undefined;
+  }
+
+  private contractOcrPrompt(
+    contract: Contract,
+    extraction: ContractExtraction,
+    room: Room,
+    document: ContractDocument
+  ) {
+    const knownItems = extraction.items
+      .map((item) => `${item.label}: ${item.value}`)
+      .join(", ") || "없음";
+
+    return [
+      "첨부된 임대차 계약서 원본에서 Roomlog 계약 검토 테이블에 넣을 항목을 추출해줘.",
+      `파일명: ${document.fileName ?? "계약서 원본"}`,
+      `관리 호실: ${room.buildingName} ${this.displayUnitId(room)}`,
+      `등록 주소: ${room.address}`,
+      `등록 월세: ${this.currencyLabel(contract.monthlyRent) ?? "미등록"}`,
+      `등록 관리비: ${this.currencyLabel(contract.maintenanceFee) ?? "미등록"}`,
+      `등록 납부일: ${contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미등록"}`,
+      `등록 계약기간: ${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`,
+      `기존 추출값: ${knownItems}`,
+      "권장 label은 보증금, 월세, 관리비, 납부일, 임대인 계좌, 계약 기간, 상세 주소, 자동연장, 원상복구, 수선 책임이다.",
+      "금액은 원 단위 문자열로, 날짜는 YYYY.MM.DD 형식으로 정리해줘.",
+      "원문에서 근거 문장을 evidence에 짧게 넣어줘."
+    ].join("\n");
+  }
+
+  private contractOcrJsonSchema() {
+    return {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        highlights: {
+          type: "array",
+          items: { type: "string" }
+        },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string" },
+              value: { type: "string" },
+              group: { enum: ["money", "term", "responsibility"], type: "string" },
+              needsCheck: { type: "boolean" },
+              evidence: { type: "string" },
+              masked: { type: "boolean" }
+            },
+            required: ["label", "value", "group", "needsCheck", "evidence", "masked"]
+          }
+        },
+        helpNotes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              clause: { type: "string" },
+              plain: { type: "string" },
+              source: { type: "string" }
+            },
+            required: ["clause", "plain", "source"]
+          }
+        }
+      },
+      required: ["summary", "highlights", "items", "helpNotes"]
+    };
+  }
+
+  private extractOpenAiResponseText(payload: Record<string, unknown>) {
+    if (typeof payload.output_text === "string") {
+      return payload.output_text;
+    }
+
+    const output = payload.output;
+    if (!Array.isArray(output)) {
+      throw new Error("OpenAI response did not include output_text");
+    }
+
+    for (const message of output) {
+      if (!this.isRecord(message) || !Array.isArray(message.content)) continue;
+      for (const part of message.content) {
+        if (!this.isRecord(part)) continue;
+        if (typeof part.text === "string") return part.text;
+        if (typeof part.output_text === "string") return part.output_text;
+      }
+    }
+
+    throw new Error("OpenAI response text was empty");
+  }
+
+  private parseOpenAiContractOcr(rawText: string): Omit<ContractOcrResult, "source"> {
+    const parsed = JSON.parse(this.extractJsonObjectText(rawText)) as Record<string, unknown>;
+
+    return {
+      summary: this.stringValue(parsed.summary) || "계약 OCR 분석 완료",
+      highlights: this.stringArray(parsed.highlights).slice(0, 5),
+      items: this.normalizeOpenAiOcrItems(parsed.items),
+      helpNotes: this.normalizeOpenAiHelpNotes(parsed.helpNotes)
+    };
+  }
+
+  private normalizeOpenAiOcrItems(value: unknown): ContractExtraction["items"] {
+    if (!Array.isArray(value)) return [];
+
+    const items: ContractExtraction["items"] = [];
+
+    for (const rawItem of value) {
+      if (!this.isRecord(rawItem)) continue;
+
+      const label = this.normalizeOcrLabel(this.stringValue(rawItem.label));
+      const itemValue = this.stringValue(rawItem.value);
+      if (!label || !itemValue) continue;
+
+      items.push({
+        label,
+        value: itemValue,
+        group: this.normalizeOcrGroup(this.stringValue(rawItem.group), label),
+        needsCheck: typeof rawItem.needsCheck === "boolean" ? rawItem.needsCheck : true,
+        evidence: this.stringValue(rawItem.evidence) || "OpenAI OCR 추출",
+        masked: typeof rawItem.masked === "boolean" ? rawItem.masked : this.shouldMaskOcrLabel(label)
+      });
+    }
+
+    return items;
+  }
+
+  private normalizeOpenAiHelpNotes(value: unknown): ContractExtraction["helpNotes"] {
+    if (!Array.isArray(value)) return [];
+
+    const notes: ContractExtraction["helpNotes"] = [];
+
+    for (const rawNote of value) {
+      if (!this.isRecord(rawNote)) continue;
+      const clause = this.stringValue(rawNote.clause);
+      const plain = this.stringValue(rawNote.plain);
+      if (!clause || !plain) continue;
+
+      notes.push({
+        clause,
+        plain,
+        source: this.stringValue(rawNote.source) || "OpenAI OCR"
+      });
+    }
+
+    return notes.slice(0, 6);
+  }
+
+  private normalizeOcrLabel(label: string) {
+    const compact = label.replace(/\s+/g, "");
+
+    if (/보증|보증금|임대보증금/.test(compact)) return "보증금";
+    if (/월세|차임|임대료/.test(compact)) return "월세";
+    if (/관리비|공용관리/.test(compact)) return "관리비";
+    if (/납부|지급일|입금일/.test(compact)) return "납부일";
+    if (/계좌|입금계좌/.test(compact)) return "임대인 계좌";
+    if (/기간|계약기간|임대차기간/.test(compact)) return "계약 기간";
+    if (/주소|소재지|목적물/.test(compact)) return "상세 주소";
+    if (/연장|갱신/.test(compact)) return "자동연장";
+    if (/원상|복구/.test(compact)) return "원상복구";
+    if (/수선|수리|보수/.test(compact)) return "수선 책임";
+
+    return label.trim().slice(0, 32);
+  }
+
+  private normalizeOcrGroup(group: string, label: string): ExtractionGroup {
+    if (group === "money" || group === "term" || group === "responsibility") return group;
+    if (["보증금", "월세", "관리비", "납부일", "임대인 계좌"].includes(label)) return "money";
+    if (["계약 기간", "상세 주소", "자동연장"].includes(label)) return "term";
+
+    return "responsibility";
+  }
+
+  private shouldMaskOcrLabel(label: string) {
+    return label === "임대인 계좌" || label === "상세 주소";
+  }
+
+  private extractJsonObjectText(rawText: string) {
+    const trimmed = rawText.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const firstBrace = trimmed.indexOf("{");
+    const lastBrace = trimmed.lastIndexOf("}");
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return trimmed.slice(firstBrace, lastBrace + 1);
+    }
+
+    return trimmed;
+  }
+
+  private stringArray(value: unknown) {
+    return Array.isArray(value)
+      ? value.map((item) => this.stringValue(item)).filter(Boolean)
+      : [];
+  }
+
+  private stringValue(value: unknown) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+
+  private contractDocumentMimeType(fileName: string) {
+    const extension = extname(fileName).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      ".pdf": "application/pdf",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".webp": "image/webp",
+      ".gif": "image/gif",
+      ".heic": "image/heic"
+    };
+
+    return mimeTypes[extension] ?? "application/octet-stream";
+  }
+
+  private contractDocumentExtension(mimeType: string, originalName: string) {
+    const extension = extname(originalName).toLowerCase();
+    const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"];
+
+    if (allowedExtensions.includes(extension)) {
+      return extension;
+    }
+
+    const fallback: Record<string, string> = {
+      "application/pdf": ".pdf",
+      "image/jpeg": ".jpg",
+      "image/png": ".png",
+      "image/webp": ".webp",
+      "image/gif": ".gif",
+      "image/heic": ".heic"
+    };
+
+    return fallback[mimeType] ?? ".bin";
   }
 
   private presentContract(contract: Contract): Contract {
