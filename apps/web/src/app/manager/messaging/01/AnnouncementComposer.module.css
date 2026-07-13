@@ -229,6 +229,20 @@
   font-weight: 700;
 }
 
+.deliveryModeFieldset {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.deliveryModeGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
 .input,
 .textarea,
 .translationInput,

@@ -451,6 +451,11 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposerSource, /buildAttachedTranslations/);
   assert.match(managerMessagingComposerSource, /findAttachedTranslation/);
   assert.match(managerMessagingComposerSource, /findVisibleTranslation/);
+  assert.match(managerMessagingComposerSource, /announcementDeliveryMode/);
+  assert.match(managerMessagingComposerSource, /translationsForDelivery/);
+  assert.match(managerMessagingComposerSource, /name="deliveryMode"/);
+  assert.match(managerMessagingComposerSource, /한국어 원문으로 발송/);
+  assert.match(managerMessagingComposerSource, /번역본으로 발송/);
   assert.match(managerMessagingComposerSource, /첨부하기/);
   assert.match(managerMessagingComposerSource, /첨부됨/);
   assert.match(managerMessagingComposerSource, /번역 후 첨부할 언어를 선택해 주세요/);
@@ -483,7 +488,8 @@ test("manager announcement compose edits targets and translates each language be
   assert.doesNotMatch(managerMessagingComposeFeatureSource, /value=\{draft\.title\} readOnly/);
   assert.doesNotMatch(managerMessagingComposeFeatureSource, /<StaticButton>임시 저장<\/StaticButton>/);
   assert.match(managerMessagingReviewSource, /findAttachedTranslation/);
-  assert.match(managerMessagingReviewSource, /최종 첨부 번역/);
+  assert.match(managerMessagingReviewSource, /최종 발송 언어/);
+  assert.match(managerMessagingReviewSource, /attachedTranslation\?\.langLabel \?\? "한국어"/);
   assert.match(managerMessagingReviewSource, /최종 언어/);
   assert.doesNotMatch(managerMessagingReviewSource, /D21 주요 언어 번역 미리보기/);
   assert.doesNotMatch(managerMessagingReviewSource, /주요 언어 검수 완료/);
