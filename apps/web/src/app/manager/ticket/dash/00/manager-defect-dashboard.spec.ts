@@ -87,8 +87,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.doesNotMatch(componentSource, /더미 작업 비활성/);
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
   assert.match(pageSource, /searchParams/);
-  assert.match(pageSource, /type === "complaint" \|\| type === "defect"/);
-  assert.match(pageSource, /initialTemplate === "all"/);
+  assert.match(pageSource, /resolveTicketDashboardView/);
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
   // 더미 행 혼합 금지 — 대시보드는 실제 접수 티켓만 보여준다(세입자 신규 요청과 직결).
@@ -138,18 +137,20 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   );
   assert.doesNotMatch(dashboardCss, /#[\da-f]{3,8}/i);
 
-  assert.match(sidebarSource, /child\.active \?\? currentHref === child\.href/);
+  assert.match(sidebarSource, /child\.ticketView/);
   assert.match(layoutSource, /<ManagerAppShell[\s\S]*?subnav=\{false\}/);
   assert.match(navigationSource, /민원 대시보드/);
-  assert.match(navigationSource, /민원 대응/);
-  assert.match(navigationSource, /하자 관리/);
+  assert.match(navigationSource, /민원\/하자 관리/);
+  assert.doesNotMatch(navigationSource, /label: "민원 대응"/);
+  assert.doesNotMatch(navigationSource, /label: "하자 관리"/);
+  assert.match(componentSource, /"민원\/하자 관리"/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-13 브랜드를 집우집주(WOOZU) 로고+홈 링크로 교체, 접기 토글을 브랜드 왼쪽으로 이동
-    "644d549ee8f6eedca8db572d09508c90c81060350f28571f77a869d1017e036f",
+    // 2026-07-13 통합 관리 화면 상태에 맞춰 티켓 하위 메뉴 활성 계약을 변경.
+    "2e28e29afb35527181fa314081864353e34fc71fee2bbdfa4e53e37343facefb",
   );
   assert.equal(
     sha256(navigationSource),
-    "84798e571e84c833346faf928b46cad08dd7c14195c8894e22ac2d59db1bb002",
+    "e8dfb3d30d932b41ebad8c29fe0d38987505c7004032bec4a6415fba9ed81e2a",
   );
 });
