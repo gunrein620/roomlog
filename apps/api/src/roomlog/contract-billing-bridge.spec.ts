@@ -3,6 +3,8 @@ import { strict as assert } from "node:assert";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { RoomlogController } from "./roomlog.controller";
 import { RoomlogService } from "./roomlog.service";
 
 function createTradeRoom(service: RoomlogService, title = "거래연결빌라") {
@@ -72,6 +74,62 @@ function storedContract(service: RoomlogService, contractId: string) {
 }
 
 describe("trade contract billing bridge", () => {
+  it("awaits manager confirmation projection and reprojects confirmed state on retry", async () => {
+    let rejectConfirmedSnapshot = true;
+    let targetContractId: string | undefined;
+    const successfulStores: Array<{
+      contracts: Array<{ id: string; review: string }>;
+      contractExtractions: Array<{
+        contractId: string;
+        confirmed: boolean;
+        items: Array<{ needsCheck: boolean }>;
+      }>;
+    }> = [];
+    const service = new RoomlogService({
+      storeProjector: {
+        persist: async (store) => {
+          const hasConfirmedContract = store.contracts.some(
+            (contract) => contract.id === targetContractId && contract.review === "confirmed",
+          );
+          if (hasConfirmedContract && rejectConfirmedSnapshot) {
+            rejectConfirmedSnapshot = false;
+            throw new Error("confirmation projector unavailable");
+          }
+          successfulStores.push(structuredClone(store));
+        },
+      },
+    });
+    const { contract } = createTradeDraft(service, "manager-confirmation-projector");
+    targetContractId = contract.id;
+    service.updateManagerContractManualValues("landlord-demo", contract.id, {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    });
+    const auth = service.login({ email: "manager@roomlog.test", password: "password123!" });
+    const controller = new RoomlogController(service, new RealtimeGateway());
+    const header = `Bearer ${auth.accessToken}`;
+
+    await assert.rejects(
+      async () => controller.confirmManagerContract(header, contract.id, { confirmNeedsCheck: true }),
+      /confirmation projector unavailable/,
+    );
+
+    const confirmedAfterFailure = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.equal(confirmedAfterFailure.row.contract.review, "confirmed");
+    assert.equal(confirmedAfterFailure.extraction.confirmed, true);
+    assert.equal(confirmedAfterFailure.extraction.items.some((item) => item.needsCheck), false);
+
+    await controller.confirmManagerContract(header, contract.id, { confirmNeedsCheck: true });
+
+    const projected = successfulStores.at(-1)!;
+    assert.equal(projected.contracts.find((item) => item.id === contract.id)?.review, "confirmed");
+    const extraction = projected.contractExtractions.find((item) => item.contractId === contract.id);
+    assert.equal(extraction?.confirmed, true);
+    assert.equal(extraction?.items.some((item) => item.needsCheck), false);
+  });
+
   it("scopes manager contract invite links to the exact selected contract", () => {
     const service = new RoomlogService();
     const first = createManagerDraft(service, "invite-scope-first").contract;

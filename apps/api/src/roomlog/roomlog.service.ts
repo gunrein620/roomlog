@@ -2048,7 +2048,9 @@ export class RoomlogService {
   private readonly paymentGateway: TossPaymentGateway;
   private readonly billsWithPaymentConfirmation = new Set<string>();
   private pendingPersistence = Promise.resolve();
-  private persistenceError: unknown;
+  private persistenceGeneration = 0;
+  private completedPersistenceGeneration = 0;
+  private persistenceFailure?: { generation: number; error: unknown };
   private readonly auth: RoomlogAuthDomain;
   private readonly floorPlan: RoomlogFloorPlanDomain;
   private readonly cost: RoomlogCostDomain;
@@ -2193,18 +2195,26 @@ export class RoomlogService {
   }
 
   async flushPersistence() {
+    const requiredGeneration = this.persistenceGeneration;
     await this.pendingPersistence;
 
-    if (this.persistenceError !== undefined) {
-      throw this.persistenceError;
+    if (this.completedPersistenceGeneration < requiredGeneration) {
+      throw this.persistenceFailure?.error ?? new Error("저장을 완료하지 못했습니다.");
     }
   }
 
+  async ensurePersistenceDurability() {
+    await this.flushPersistence();
+  }
+
   async ensureTradeContractDurability() {
-    if (this.persistenceError !== undefined) {
+    if (
+      this.persistenceFailure?.generation === this.persistenceGeneration &&
+      this.completedPersistenceGeneration < this.persistenceGeneration
+    ) {
       this.projectStore();
     }
-    await this.flushPersistence();
+    await this.ensurePersistenceDurability();
   }
 
   signup(input: SignupInput): AuthResult {
@@ -8531,22 +8541,32 @@ export class RoomlogService {
     this.projectStore();
   }
 
-  private projectStore() {
+  private projectStore(): number {
     if (!this.storeProjector) {
-      return;
+      return this.persistenceGeneration;
     }
 
+    const generation = ++this.persistenceGeneration;
     const snapshot = JSON.parse(JSON.stringify(this.store)) as Store;
     this.pendingPersistence = this.pendingPersistence
-      .then(() => this.storeProjector?.persist(snapshot))
+      .then(() => this.storeProjector!.persist(snapshot))
       .then(
         () => {
-          this.persistenceError = undefined;
+          this.completedPersistenceGeneration = Math.max(
+            this.completedPersistenceGeneration,
+            generation
+          );
+          if ((this.persistenceFailure?.generation ?? -1) <= generation) {
+            this.persistenceFailure = undefined;
+          }
         },
         (error) => {
-          this.persistenceError = error;
+          if (generation >= (this.persistenceFailure?.generation ?? -1)) {
+            this.persistenceFailure = { generation, error };
+          }
         }
       );
+    return generation;
   }
 
   private isStoreSnapshot(value: unknown): value is Store {

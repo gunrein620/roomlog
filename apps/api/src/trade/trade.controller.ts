@@ -168,7 +168,10 @@ export class TradeController {
       body.accept,
       body.accept ? (accepted) => this.contractBillingBridge.preflight(accepted) : undefined
     );
-    if (body.accept) await this.contractBillingBridge.ensure(contract);
+    if (body.accept) {
+      await this.tradeService.ensureAcceptedListingDurability(contract);
+      await this.contractBillingBridge.ensure(contract);
+    }
     this.notifyThread(thread, user.id);
     return contract;
   }

@@ -280,7 +280,9 @@ export class TradeService implements OnModuleDestroy {
   private readonly storeProjector?: TradeStoreProjector;
   // 프로젝션은 순차 큐로 직렬화해 동시 트랜잭션 경합을 피한다(roomlog 패턴과 동일).
   private pendingProjection: Promise<unknown> = Promise.resolve();
-  private projectionError?: unknown;
+  private projectionGeneration = 0;
+  private completedProjectionGeneration = 0;
+  private projectionFailure?: { generation: number; error: unknown };
   // main.ts와 동일한 기본값 — S3_UPLOADS_ENABLED가 켜지면 자동으로 S3 어댑터로 전환된다.
   private readonly storageAdapter: FileStorageAdapter = createFileStorageAdapter(
     process.env,
@@ -320,19 +322,52 @@ export class TradeService implements OnModuleDestroy {
   }
 
   /** 매물 스냅샷을 DB로 프로젝션(순차 큐). DB 미연동이면 no-op. */
-  private projectListings() {
-    if (!this.storeProjector) return;
+  private projectListings(): number {
+    if (!this.storeProjector) return this.projectionGeneration;
+    const generation = ++this.projectionGeneration;
     const snapshot = this.store.listings.map((listing) => ({ ...listing }));
     this.pendingProjection = this.pendingProjection
-      .then(() => this.storeProjector?.persist(snapshot))
+      .then(() => this.storeProjector!.persist(snapshot))
       .then(
         () => {
-          this.projectionError = undefined;
+          this.completedProjectionGeneration = Math.max(this.completedProjectionGeneration, generation);
+          if ((this.projectionFailure?.generation ?? -1) <= generation) {
+            this.projectionFailure = undefined;
+          }
         },
         (error) => {
-          this.projectionError = error; // 실패해도 메모리/JSON 상태로 계속 동작
+          if (generation >= (this.projectionFailure?.generation ?? -1)) {
+            this.projectionFailure = { generation, error };
+          }
         }
       );
+    return generation;
+  }
+
+  async ensureAcceptedListingDurability(contract: TradeContract): Promise<void> {
+    if (contract.status !== "accepted") return;
+    const listing = this.store.listings.find((item) => item.id === contract.listingId);
+    if (!listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+
+    const failedGenerationAtEntry = this.projectionFailure?.generation;
+    if (listing.status !== "계약완료") {
+      listing.status = "계약완료";
+      this.persistAcceptance();
+      this.projectListings();
+    } else if (
+      this.storeProjector &&
+      failedGenerationAtEntry === this.projectionGeneration &&
+      this.completedProjectionGeneration < this.projectionGeneration
+    ) {
+      this.projectListings();
+    }
+
+    if (!this.storeProjector) return;
+    const requiredGeneration = this.projectionGeneration;
+    await this.pendingProjection;
+    if (this.completedProjectionGeneration < requiredGeneration) {
+      throw this.projectionFailure?.error ?? new Error("매물 저장을 완료하지 못했습니다.");
+    }
   }
 
   private load() {
