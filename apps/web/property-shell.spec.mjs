@@ -81,6 +81,7 @@ const tradeChatCenterSource = readFileSync(new URL("./src/app/_components/TradeC
 const tradeProxySource = readFileSync(new URL("./src/app/api/trade/[...path]/route.ts", import.meta.url), "utf8");
 const managerHomeTabsSource = readFileSync(new URL("./src/app/manager/home/00/ManagerHomeTabs.tsx", import.meta.url), "utf8");
 const managerHomePageSource = readFileSync(new URL("./src/app/manager/home/00/page.tsx", import.meta.url), "utf8");
+const managerHomeDashboardDataSource = readFileSync(new URL("./src/app/manager/home/00/dashboard-data.ts", import.meta.url), "utf8");
 const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
@@ -640,9 +641,9 @@ test("manager contracted-house rows open a resident-style dashboard with a locke
   assert.match(managerHomeTabsSource, /lockedThreadId=\{contract\.threadId\}/);
   assert.match(managerHomeTabsSource, /roleFilter="owner"/);
   // 서버 페이지가 스레드 id와 청구 요약을 내려준다 — 청구는 데모 폴백 없이 실패 시 null(위조 금지).
-  assert.match(managerHomePageSource, /threadId: contract\.threadId/);
-  assert.match(managerHomePageSource, /manager\/bills\/dashboard/);
-  assert.doesNotMatch(managerHomePageSource, /DEMO_DASHBOARD/);
+  assert.match(managerHomeDashboardDataSource, /threadId: contract\.threadId/);
+  assert.match(managerHomeDashboardDataSource, /manager\/bills\/dashboard/);
+  assert.doesNotMatch(managerHomeDashboardDataSource, /DEMO_DASHBOARD/);
 });
 
 test("switching hub threads never leaks the previous thread's conversation or contract bar", () => {
@@ -934,10 +935,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "임대인에게 문의하기",
     "민원/하자 이력",
     "신규 요청하기",
-    "에어컨 수리",
-    "세면대 교체",
     "이번 달 합계",
-    "즉시 납부하기",
     "Woo-zu AI Assistant",
     "Choose your consultation mode",
     "How would you like to talk with Woo-zu AI?",
@@ -950,6 +948,14 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
+
+  assert.match(pageSource, /\/api\/tenant\/messaging\/announcements/);
+  assert.match(pageSource, /roomlog:activity/);
+  assert.match(pageSource, /공지사항을 확인하고 있습니다\./);
+  assert.match(pageSource, /임대인으로부터 전달된 새로운 소식이 없습니다\./);
+  assert.match(pageSource, /공지사항을 불러오지 못했습니다\. 잠시 후 다시 확인해 주세요\./);
+  assert.match(pageSource, /\/tenant\/messaging\/02\?id=/);
+  assert.doesNotMatch(pageSource, /"에어컨 수리"|"세면대 교체"/);
 
   assert.match(pageSource, /activeTab === "living"/);
   // 사는집 탭의 "내 룸로그 프로세스" 링크 카드와 "방문 일정" 안내 카드는 제거됐다.

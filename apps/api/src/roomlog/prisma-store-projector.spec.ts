@@ -15,6 +15,7 @@ const emptyDomainCollections = (): Pick<
   | "contractExtractions"
   | "contractPrivacies"
   | "contractInvites"
+  | "paymentTransactions"
   | "costs"
   | "receipts"
   | "receiptOcrs"
@@ -25,6 +26,7 @@ const emptyDomainCollections = (): Pick<
   contractExtractions: [],
   contractPrivacies: [],
   contractInvites: [],
+  paymentTransactions: [],
   costs: [],
   receipts: [],
   receiptOcrs: []
