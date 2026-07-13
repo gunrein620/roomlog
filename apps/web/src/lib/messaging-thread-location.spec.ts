@@ -54,5 +54,11 @@ test("replaces messaging tabs with the building ticket filter", () => {
   assert.doesNotMatch(listPage, /listAnnouncementDrafts|listAnnouncementResults/);
   assert.match(listPage, /<BuildingFilter/);
   assert.match(listPage, /건물별 · 답장 필요 상단/);
-  assert.match(listPage, /선택한 건물의 티켓이 없습니다\./);
+  assert.match(listPage, /이 건물에는 아직 시작된 대화가 없습니다\./);
+});
+
+test("loads contract recipients and mounts the new conversation form", () => {
+  assert.match(listPage, /listManagerMessagingRecipients/);
+  assert.match(listPage, /getBuildingOptions\(threads, recipients\)/);
+  assert.match(listPage, /<NewConversationForm/);
 });

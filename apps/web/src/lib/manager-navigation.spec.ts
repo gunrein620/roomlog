@@ -59,18 +59,21 @@ describe("manager workspace navigation", () => {
     });
   });
 
-  it("routes ticket child tabs to their matching dashboard type filters", () => {
+  it("routes ticket children to the dashboard and combined management view", () => {
     const ticket = items.find((item) => item.id === "ticket");
 
     assert.deepEqual(ticket?.children.map((child) => child.label), [
       "민원 대시보드",
-      "민원 대응",
-      "하자 관리",
+      "민원/하자 관리",
     ]);
-    assert.equal(ticket?.children.find((child) => child.label === "민원 대응")?.href, "/manager/ticket/dash/00?type=complaint");
-    assert.equal(ticket?.children.find((child) => child.label === "민원 대응")?.typeFilter, "complaint");
-    assert.equal(ticket?.children.find((child) => child.label === "하자 관리")?.href, "/manager/ticket/dash/00?type=defect");
-    assert.equal(ticket?.children.find((child) => child.label === "하자 관리")?.typeFilter, "defect");
+    assert.equal(
+      ticket?.children.find((child) => child.label === "민원/하자 관리")?.href,
+      "/manager/ticket/dash/00?view=management",
+    );
+    assert.equal(
+      ticket?.children.find((child) => child.label === "민원/하자 관리")?.ticketView,
+      "management",
+    );
   });
 
   it("matches every permanent child and keeps settings separate from dashboard", () => {

@@ -1,4 +1,4 @@
-import type { Thread } from "@roomlog/types";
+import type { ManagerMessagingRecipient, Thread } from "@roomlog/types";
 
 export const UNASSIGNED_BUILDING_FILTER = "__roomlog_unassigned__";
 
@@ -6,9 +6,15 @@ function normalizedBuildingName(thread: Pick<Thread, "buildingName">): string {
   return thread.buildingName?.trim() ?? "";
 }
 
-export function getBuildingOptions(threads: Thread[]): string[] {
+export function getBuildingOptions(
+  threads: Thread[],
+  recipients: ManagerMessagingRecipient[] = [],
+): string[] {
   return Array.from(
-    new Set(threads.map(normalizedBuildingName).filter(Boolean)),
+    new Set([
+      ...threads.map(normalizedBuildingName),
+      ...recipients.map((recipient) => recipient.buildingName.trim()),
+    ].filter(Boolean)),
   ).sort((a, b) => a.localeCompare(b, "ko"));
 }
 
