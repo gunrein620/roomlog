@@ -5,6 +5,8 @@ import type {
 } from "@roomlog/types";
 import { ANNOUNCEMENT_TRANSLATION_LANGUAGES } from "../../../../lib/announcement-compose-state";
 
+export type AnnouncementDeliveryMode = "korean" | "translated";
+
 export function buildAttachedTranslations(
   translation: AnnouncementTranslation,
 ): AnnouncementTranslation[] {
@@ -42,4 +44,17 @@ export function findVisibleTranslation(
   return translations.find(
     (translation) => translation.lang === lang && translation.langLabel === label,
   );
+}
+
+export function announcementDeliveryMode(
+  draft: Pick<AnnouncementDraft, "title" | "body" | "translations">,
+): AnnouncementDeliveryMode {
+  return findAttachedTranslation(draft) ? "translated" : "korean";
+}
+
+export function translationsForDelivery(
+  mode: AnnouncementDeliveryMode,
+  translations: AnnouncementTranslation[],
+): AnnouncementTranslation[] {
+  return mode === "korean" ? [] : translations;
 }

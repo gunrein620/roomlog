@@ -14,6 +14,10 @@ const complaintDashboardPath = join(
   "src/app/manager/ticket/dash/00/ComplaintDashboard.tsx",
 );
 const pagePath = join(root, "src/app/manager/ticket/dash/00/page.tsx");
+const autoRefreshPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/TicketDashboardAutoRefresh.tsx",
+);
 const layoutPath = join(root, "src/app/manager/ticket/dash/layout.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
@@ -28,6 +32,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   const componentSource = readFileSync(componentPath, "utf8");
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
   const pageSource = readFileSync(pagePath, "utf8");
+  assert.equal(existsSync(autoRefreshPath), true, autoRefreshPath);
+  const autoRefreshSource = readFileSync(autoRefreshPath, "utf8");
   const layoutSource = readFileSync(layoutPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
@@ -92,6 +98,16 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(pageSource, /appendLocalTicketDemoRows/);
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
+  assert.match(autoRefreshSource, /getRealtimeSocket/);
+  assert.match(autoRefreshSource, /isTicketActivity/);
+  assert.match(autoRefreshSource, /router\.refresh\(\)/);
+  assert.match(autoRefreshSource, /window\.setInterval/);
+  assert.match(autoRefreshSource, /30000/);
+  assert.match(autoRefreshSource, /visibilitychange/);
+  assert.match(
+    pageSource,
+    /dashboardView === "management"[\s\S]*<TicketDashboardAutoRefresh/,
+  );
   // 과거 추적 데모 상수는 사용하지 않고, Git 비추적 로컬 파일만 서버 로더로 추가한다.
   assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(pageSource, /listManagerTicketRows/);

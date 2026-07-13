@@ -1,6 +1,7 @@
 export type {
   ManagerMessagingRecipient,
-  StartManagerConversationInput
+  StartManagerConversationInput,
+  TenantLandlordConversation
 } from "@roomlog/types";
 
 export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";

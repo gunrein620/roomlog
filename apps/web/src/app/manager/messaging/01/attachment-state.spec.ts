@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AnnouncementTranslation } from "@roomlog/types";
 import {
+  announcementDeliveryMode,
   buildAttachedTranslations,
   findAttachedTranslation,
   findVisibleTranslation,
+  translationsForDelivery,
 } from "./attachment-state";
 
 const english: AnnouncementTranslation = {
@@ -17,6 +19,31 @@ const english: AnnouncementTranslation = {
 };
 
 describe("manager announcement single-language attachment", () => {
+  it("defaults drafts without an attached translation to Korean delivery", () => {
+    assert.equal(announcementDeliveryMode({
+      title: "한국어 공지",
+      body: "한국어 본문",
+      translations: [],
+    }), "korean");
+  });
+
+  it("restores translated delivery only for a complete attached projection", () => {
+    const projected = buildAttachedTranslations(english);
+
+    assert.equal(announcementDeliveryMode({
+      title: english.title,
+      body: english.body,
+      translations: projected,
+    }), "translated");
+  });
+
+  it("persists no translations for Korean delivery", () => {
+    const projected = buildAttachedTranslations(english);
+
+    assert.deepEqual(translationsForDelivery("korean", projected), []);
+    assert.deepEqual(translationsForDelivery("translated", projected), projected);
+  });
+
   it("projects one selected translation into all required language slots", () => {
     const projected = buildAttachedTranslations(english);
 

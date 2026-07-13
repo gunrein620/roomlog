@@ -418,8 +418,9 @@ export class RoomlogController {
     @Body() body: CreateComplaintInput
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
-
-    return this.roomlogService.createComplaint(user.id, body);
+    const result = this.roomlogService.createComplaint(user.id, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    return result;
   }
 
   @Post("tenant/complaints/from-call")
@@ -428,8 +429,9 @@ export class RoomlogController {
     @Body() body: CreateComplaintFromCallInput
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
-
-    return this.roomlogService.createComplaintFromCall(user.id, body);
+    const result = this.roomlogService.createComplaintFromCall(user.id, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    return result;
   }
 
   @Post("tenant/complaints/intake/sessions")
@@ -568,6 +570,13 @@ export class RoomlogController {
     this.realtime.broadcast("roomlog:activity", { kind: "messaging" });
 
     return result;
+  }
+
+  @Get("tenant/messaging/landlord-conversation")
+  getTenantLandlordConversation(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantLandlordConversation(user.id);
   }
 
   @Get("tenant/messaging/threads")

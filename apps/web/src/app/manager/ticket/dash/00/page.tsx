@@ -3,6 +3,7 @@ import { listManagerTicketRows } from "@/lib/ticket-manager-api";
 import { ComplaintDashboard } from "./ComplaintDashboard";
 import { appendLocalTicketDemoRows } from "./local-ticket-demo";
 import { ManagerDefectDashboard } from "./ManagerDefectDashboard";
+import { TicketDashboardAutoRefresh } from "./TicketDashboardAutoRefresh";
 import { resolveTicketDashboardView } from "./ticket-dashboard-view";
 
 type SearchParams = Promise<{ type?: string; view?: string }>;
@@ -17,5 +18,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   if (dashboardView === "dashboard") return <ComplaintDashboard rows={rows} />;
 
   const initialTemplate = dashboardView === "management" ? "all" : dashboardView;
-  return <ManagerDefectDashboard rows={rows} initialTemplate={initialTemplate} key={initialTemplate} />;
+  return (
+    <>
+      {dashboardView === "management" ? (
+        <TicketDashboardAutoRefresh intervalMs={3000} />
+      ) : null}
+      <ManagerDefectDashboard rows={rows} initialTemplate={initialTemplate} key={initialTemplate} />
+    </>
+  );
 }

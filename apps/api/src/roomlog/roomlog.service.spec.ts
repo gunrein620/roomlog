@@ -3563,6 +3563,39 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("links tenant landlord inquiry to the manager messaging thread", () => {
+    const service = new RoomlogService();
+    const existing = service
+      .listTenantMessagingThreads("tenant-demo")
+      .find((thread) => thread.context === "general" && !thread.contextRef);
+
+    const conversation = service.getTenantLandlordConversation("tenant-demo");
+    assert.equal(conversation.buildingName, "정글빌라");
+    assert.equal(conversation.unitId, "301");
+    assert.equal(conversation.landlordName, "박관리");
+    assert.equal(conversation.threadId, existing?.id);
+
+    const before = service.getDemoState().messagingThreads.length;
+    const result = service.createTenantMessagingThread("tenant-demo", {
+      context: "general",
+      contextLabel: "일반 문의",
+      body: "임대인에게 문의드립니다."
+    });
+
+    if (existing) {
+      assert.equal(result.id, existing.id);
+    }
+    assert.equal(
+      service.getDemoState().messagingThreads.length,
+      existing ? before : before + 1
+    );
+    assert.equal(result.messages?.at(-1)?.body, "임대인에게 문의드립니다.");
+    assert.equal(
+      service.listManagerMessagingThreads("landlord-demo").some((thread) => thread.id === result.id),
+      true
+    );
+  });
+
   it("lets tenants and managers delete only scoped messaging threads", () => {
     const service = new RoomlogService();
 
@@ -3772,6 +3805,28 @@ describe("RoomlogService", () => {
     const sourceBody = "오늘 18시부터 긴급 단수가 있습니다.";
     const sourceHash = announcementSourceHash(sourceTitle, sourceBody);
 
+    const koreanOnlyDraft = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "building",
+      targetLabel: "정글빌라 전체",
+      title: sourceTitle,
+      body: sourceBody,
+      confirmRequired: true,
+      translations: []
+    });
+
+    const koreanOnlySent = service.sendManagerAnnouncementDraft(
+      "landlord-demo",
+      koreanOnlyDraft.id
+    );
+    const koreanOnlyAnnouncement = service.getTenantMessagingAnnouncement(
+      "tenant-demo",
+      koreanOnlySent.announcementId
+    );
+    assert.equal(koreanOnlyAnnouncement.title, sourceTitle);
+    assert.equal(koreanOnlyAnnouncement.body, sourceBody);
+    assert.equal(koreanOnlyAnnouncement.confirmRequired, true);
+
     const unsafeDraft = service.createManagerAnnouncementDraft("landlord-demo", {
       category: "urgent",
       scope: "building",
@@ -3834,9 +3889,12 @@ describe("RoomlogService", () => {
     );
     const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
     const tenantAnnouncements = service.listTenantMessagingAnnouncements("tenant-demo");
+    const deliveredAnnouncement = tenantAnnouncements.find(
+      (announcement) => announcement.id === sent.announcementId
+    );
 
-    assert.equal(tenantAnnouncements[0]?.id, sent.announcementId);
-    assert.equal(tenantAnnouncements[0]?.title, reviewedDraft.title);
+    assert.equal(deliveredAnnouncement?.id, sent.announcementId);
+    assert.equal(deliveredAnnouncement?.title, reviewedDraft.title);
 
     let tenantAnnouncement = service.getTenantMessagingAnnouncement(
       "tenant-demo",
@@ -3856,7 +3914,10 @@ describe("RoomlogService", () => {
       sent.announcementId
     );
     assert.equal(tenantAnnouncement.state, "confirmed");
-    assert.equal(service.listManagerAnnouncementResults("landlord-demo")[0].counts.confirmed, 1);
+    assert.equal(
+      service.getManagerAnnouncementResult("landlord-demo", sent.announcementId).counts.confirmed,
+      1
+    );
   });
 
   it("invalidates reviewed translations when the Korean announcement source changes", () => {

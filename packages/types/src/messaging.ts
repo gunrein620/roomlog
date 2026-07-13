@@ -52,6 +52,14 @@ export interface CreateTenantMessagingThreadInput {
   attachmentUrls?: string[];
 }
 
+/** 세입자의 입주 연결을 기준으로 계산한 임대인 일반 대화 진입 정보. */
+export interface TenantLandlordConversation {
+  threadId?: string;
+  buildingName: string;
+  unitId: string;
+  landlordName: string;
+}
+
 /** 관리인이 실제 호실 연결을 기준으로 대화를 시작할 수 있는 임차인. */
 export interface ManagerMessagingRecipient {
   roomId: string;
