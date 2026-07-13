@@ -81,6 +81,7 @@ const tradeChatCenterSource = readFileSync(new URL("./src/app/_components/TradeC
 const tradeProxySource = readFileSync(new URL("./src/app/api/trade/[...path]/route.ts", import.meta.url), "utf8");
 const managerHomeTabsSource = readFileSync(new URL("./src/app/manager/home/00/ManagerHomeTabs.tsx", import.meta.url), "utf8");
 const managerHomePageSource = readFileSync(new URL("./src/app/manager/home/00/page.tsx", import.meta.url), "utf8");
+const managerHomeDashboardDataSource = readFileSync(new URL("./src/app/manager/home/00/dashboard-data.ts", import.meta.url), "utf8");
 const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
 const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
@@ -640,9 +641,9 @@ test("manager contracted-house rows open a resident-style dashboard with a locke
   assert.match(managerHomeTabsSource, /lockedThreadId=\{contract\.threadId\}/);
   assert.match(managerHomeTabsSource, /roleFilter="owner"/);
   // 서버 페이지가 스레드 id와 청구 요약을 내려준다 — 청구는 데모 폴백 없이 실패 시 null(위조 금지).
-  assert.match(managerHomePageSource, /threadId: contract\.threadId/);
-  assert.match(managerHomePageSource, /manager\/bills\/dashboard/);
-  assert.doesNotMatch(managerHomePageSource, /DEMO_DASHBOARD/);
+  assert.match(managerHomeDashboardDataSource, /threadId: contract\.threadId/);
+  assert.match(managerHomeDashboardDataSource, /manager\/bills\/dashboard/);
+  assert.doesNotMatch(managerHomeDashboardDataSource, /DEMO_DASHBOARD/);
 });
 
 test("switching hub threads never leaks the previous thread's conversation or contract bar", () => {
