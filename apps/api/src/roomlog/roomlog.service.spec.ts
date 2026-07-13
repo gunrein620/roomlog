@@ -5492,9 +5492,11 @@ describe("RoomlogService", () => {
     assert.equal(tenantContract.review, "pending");
     assert.equal(tenantExtraction.confirmed, false);
     assert.equal(tenantPrivacy.maskingEnabled, true);
+    const managerDashboard = service.getManagerContractDashboard("landlord-demo");
+    assert.equal(managerDashboard.rows.some((row) => row.contract.id === "ct_demo_302"), true);
     assert.equal(
-      service.getManagerContractDashboard("landlord-demo").counts.needsCheck,
-      tenantExtraction.items.filter((item) => item.needsCheck).length
+      managerDashboard.counts.needsCheck >= tenantExtraction.items.filter((item) => item.needsCheck).length,
+      true
     );
 
     assert.throws(
@@ -5582,6 +5584,14 @@ describe("RoomlogService", () => {
                 needsCheck: true,
                 evidence: "목적물 소재지",
                 masked: true
+              },
+              {
+                label: "납부일",
+                value: "매월 45일",
+                group: "money",
+                needsCheck: false,
+                evidence: "차임 지급일",
+                masked: false
               }
             ],
             helpNotes: [
@@ -5626,6 +5636,9 @@ describe("RoomlogService", () => {
         result.extraction.items.find((item) => item.label === "상세 주소")?.masked,
         true
       );
+      const paymentDay = result.extraction.items.find((item) => item.label === "납부일");
+      assert.equal(paymentDay?.needsCheck, true);
+      assert.match(paymentDay?.evidence ?? "", /납부일은 1일부터 31일/);
       assert.equal(result.row.contract.valueSource, "unverified");
     } finally {
       globalThis.fetch = originalFetch;

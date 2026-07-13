@@ -188,6 +188,8 @@ export function updateManagerContractManualValues(
     maintenanceFee?: number;
     paymentDay?: number;
     account?: string;
+    startDate?: string;
+    endDate?: string;
   },
 ): Promise<ManagerContractDetail> {
   return serverFetch(`/contracts/manager/${encodeURIComponent(id)}/manual-values`, {

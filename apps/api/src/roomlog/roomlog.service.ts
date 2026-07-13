@@ -1478,6 +1478,120 @@ function createDemoStore(): Store {
         updatedAt: contractUpdatedAt,
         extractionId: "cx_0001",
         documentId: "cdoc_0001"
+      },
+      {
+        id: "ct_demo_302",
+        roomId: "room-302",
+        tenantId: "tenant-billing-302",
+        managerId: "landlord-demo",
+        unitId: "302",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "pending",
+        deletion: "none",
+        valueSource: "unverified",
+        monthlyRent: 720000,
+        maintenanceFee: 80000,
+        paymentDay: 10,
+        optionInventory: ["에어컨", "냉장고", "세탁기", "침대"],
+        startDate: "2026-07-01T00:00:00+09:00",
+        endDate: "2028-06-30T00:00:00+09:00",
+        createdAt: "2026-07-08T09:20:00+09:00",
+        updatedAt: "2026-07-12T15:10:00+09:00",
+        extractionId: "cx_demo_302",
+        documentId: "cdoc_demo_302"
+      },
+      {
+        id: "ct_demo_303",
+        roomId: "room-303",
+        tenantId: "tenant-billing-303",
+        managerId: "landlord-demo",
+        unitId: "303",
+        landlordName: "박관리",
+        lifecycle: "analyzing",
+        review: "info_requested",
+        deletion: "none",
+        valueSource: "unverified",
+        monthlyRent: 690000,
+        maintenanceFee: 75000,
+        paymentDay: 20,
+        optionInventory: ["에어컨", "책상", "옷장"],
+        startDate: "2026-07-15T00:00:00+09:00",
+        endDate: "2028-07-14T00:00:00+09:00",
+        createdAt: "2026-07-10T14:30:00+09:00",
+        updatedAt: "2026-07-12T18:00:00+09:00",
+        extractionId: "cx_demo_303",
+        documentId: "cdoc_demo_303"
+      },
+      {
+        id: "ct_demo_304",
+        roomId: "room-304",
+        tenantId: "tenant-billing-304",
+        managerId: "landlord-demo",
+        unitId: "304",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "confirmed",
+        deletion: "none",
+        valueSource: "confirmed",
+        monthlyRent: 740000,
+        maintenanceFee: 85000,
+        paymentDay: 5,
+        optionInventory: ["에어컨", "세탁기", "전자레인지"],
+        startDate: "2026-06-01T00:00:00+09:00",
+        endDate: "2028-05-31T00:00:00+09:00",
+        createdAt: "2026-06-01T10:00:00+09:00",
+        updatedAt: "2026-07-11T11:45:00+09:00",
+        confirmedAt: "2026-07-11T11:45:00+09:00",
+        confirmedByManagerId: "landlord-demo",
+        extractionId: "cx_demo_304",
+        documentId: "cdoc_demo_304"
+      },
+      {
+        id: "ct_demo_411",
+        roomId: "room-411",
+        tenantId: "tenant-billing-411",
+        managerId: "landlord-demo",
+        unitId: "411",
+        landlordName: "박관리",
+        lifecycle: "expiring_soon",
+        review: "pending",
+        deletion: "none",
+        valueSource: "manual",
+        monthlyRent: 780000,
+        maintenanceFee: 90000,
+        paymentDay: 25,
+        optionInventory: ["에어컨", "인덕션", "붙박이장"],
+        startDate: "2024-08-01T00:00:00+09:00",
+        endDate: "2026-07-31T00:00:00+09:00",
+        createdAt: "2026-07-06T08:40:00+09:00",
+        updatedAt: "2026-07-12T09:00:00+09:00",
+        extractionId: "cx_demo_411",
+        documentId: "cdoc_demo_411"
+      },
+      {
+        id: "ct_demo_412",
+        roomId: "room-412",
+        tenantId: "tenant-billing-412",
+        managerId: "landlord-demo",
+        unitId: "412",
+        landlordName: "박관리",
+        lifecycle: "expired",
+        review: "confirmed",
+        deletion: "requested",
+        valueSource: "confirmed",
+        monthlyRent: 760000,
+        maintenanceFee: 80000,
+        paymentDay: 15,
+        optionInventory: ["에어컨", "세탁기", "침대", "책상"],
+        startDate: "2024-07-01T00:00:00+09:00",
+        endDate: "2026-06-30T00:00:00+09:00",
+        createdAt: "2024-07-01T09:00:00+09:00",
+        updatedAt: "2026-07-12T16:25:00+09:00",
+        confirmedAt: "2026-06-15T10:20:00+09:00",
+        confirmedByManagerId: "landlord-demo",
+        extractionId: "cx_demo_412",
+        documentId: "cdoc_demo_412"
       }
     ],
     contractDocuments: [
@@ -1489,6 +1603,51 @@ function createDemoStore(): Store {
         fileName: "contract-301.pdf",
         fileUrl: "/uploads/contract-301.pdf",
         uploadedAt: contractCreatedAt
+      },
+      {
+        id: "cdoc_demo_302",
+        contractId: "ct_demo_302",
+        uploadedByUserId: "tenant-billing-302",
+        origin: "tenant_upload",
+        fileName: "demo-contract-302.pdf",
+        fileUrl: "/uploads/demo-contract-302.pdf",
+        uploadedAt: "2026-07-08T09:20:00+09:00"
+      },
+      {
+        id: "cdoc_demo_303",
+        contractId: "ct_demo_303",
+        uploadedByUserId: "landlord-demo",
+        origin: "manager_upload",
+        fileName: "demo-contract-303.jpg",
+        fileUrl: "/uploads/demo-contract-303.jpg",
+        uploadedAt: "2026-07-10T14:30:00+09:00"
+      },
+      {
+        id: "cdoc_demo_304",
+        contractId: "ct_demo_304",
+        uploadedByUserId: "landlord-demo",
+        origin: "manager_upload",
+        fileName: "demo-contract-304.pdf",
+        fileUrl: "/uploads/demo-contract-304.pdf",
+        uploadedAt: "2026-06-01T10:00:00+09:00"
+      },
+      {
+        id: "cdoc_demo_411",
+        contractId: "ct_demo_411",
+        uploadedByUserId: "landlord-demo",
+        origin: "manual",
+        fileName: "manual-contract-411.pdf",
+        fileUrl: "/uploads/manual-contract-411.pdf",
+        uploadedAt: "2026-07-06T08:40:00+09:00"
+      },
+      {
+        id: "cdoc_demo_412",
+        contractId: "ct_demo_412",
+        uploadedByUserId: "tenant-billing-412",
+        origin: "tenant_upload",
+        fileName: "expired-contract-412.pdf",
+        fileUrl: "/uploads/expired-contract-412.pdf",
+        uploadedAt: "2024-07-01T09:00:00+09:00"
       }
     ],
     contractExtractions: [
@@ -1531,6 +1690,153 @@ function createDemoStore(): Store {
           }
         ],
         createdAt: contractUpdatedAt
+      },
+      {
+        id: "cx_demo_302",
+        contractId: "ct_demo_302",
+        confirmed: false,
+        highlights: [
+          "월세 72만원, 관리비 8만원, 매월 10일 납부",
+          "2026.07.01부터 24개월 계약",
+          "반려동물 특약과 하자 보수 범위는 관리자 확인 필요"
+        ],
+        items: [
+          { label: "보증금", value: "10,000,000원", group: "money", needsCheck: false, evidence: "임대차 보증금은 금 일천만원으로 한다." },
+          { label: "월세", value: "720,000원", group: "money", needsCheck: false, evidence: "차임은 매월 금 칠십이만원으로 한다." },
+          { label: "관리비", value: "80,000원", group: "money", needsCheck: false, evidence: "관리비는 월 8만원으로 별도 납부한다." },
+          { label: "납부일", value: "매월 10일", group: "money", needsCheck: false, evidence: "매월 10일까지 임대인 계좌로 송금한다." },
+          { label: "계약 기간", value: "2026.07.01 ~ 2028.06.30", group: "term", needsCheck: false, evidence: "임대차 기간은 2026년 7월 1일부터 24개월로 한다." },
+          { label: "상세 주소", value: "방배 루미에르 302호", group: "term", needsCheck: false, evidence: "목적물은 방배 루미에르 제302호로 한다." },
+          { label: "반려동물", value: "소형견 1마리 가능", group: "responsibility", needsCheck: true, evidence: "반려동물은 임대인 승인 범위 내에서 허용한다." },
+          { label: "하자 보수", value: "입주 전 하자 목록 확인 필요", group: "responsibility", needsCheck: true, evidence: "입주 전 발견된 하자는 별도 체크리스트로 확인한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "반려동물 특약",
+            plain: "허용 범위와 원상복구 책임을 입주 전에 명확히 적어두는 편이 좋습니다.",
+            source: "반려동물은 임대인 승인 범위 내에서 허용한다."
+          },
+          {
+            clause: "하자 보수",
+            plain: "입주 전 하자는 사진과 체크리스트를 남겨 퇴실 정산 분쟁을 줄일 수 있습니다.",
+            source: "입주 전 발견된 하자는 별도 체크리스트로 확인한다."
+          }
+        ],
+        createdAt: "2026-07-12T15:10:00+09:00"
+      },
+      {
+        id: "cx_demo_303",
+        contractId: "ct_demo_303",
+        confirmed: false,
+        highlights: [
+          "관리자 업로드 이미지에서 OCR 분석 중",
+          "납부 계좌와 자동 연장 문구가 흐릿하게 인식됨",
+          "임차인에게 보완 요청이 필요한 상태"
+        ],
+        items: [
+          { label: "보증금", value: "8,000,000원", group: "money", needsCheck: false, evidence: "보증금은 금 팔백만원으로 한다." },
+          { label: "월세", value: "690,000원", group: "money", needsCheck: false, evidence: "월 차임은 69만원으로 한다." },
+          { label: "관리비", value: "75,000원", group: "money", needsCheck: true, evidence: "관리비 금액 일부가 흐릿하게 인식됨." },
+          { label: "납부일", value: "매월 20일", group: "money", needsCheck: false, evidence: "매월 20일 선납한다." },
+          { label: "납부 계좌", value: "국민은행 ***-**-****88", group: "money", needsCheck: true, masked: true, evidence: "계좌번호 뒷자리가 일부 가려져 있음." },
+          { label: "계약 기간", value: "2026.07.15 ~ 2028.07.14", group: "term", needsCheck: false, evidence: "임대차 기간은 2026년 7월 15일부터 2028년 7월 14일까지로 한다." },
+          { label: "자동 연장", value: "확인 필요", group: "term", needsCheck: true, evidence: "묵시적 갱신 특약 문구가 중복 인식됨." },
+          { label: "원상복구", value: "퇴거 시 원상복구", group: "responsibility", needsCheck: false, evidence: "임차인은 퇴거 시 목적물을 원상으로 반환한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "관리비",
+            plain: "관리비 포함 항목과 별도 납부 항목을 계약서 원문과 대조해 주세요.",
+            source: "관리비 금액 일부가 흐릿하게 인식됨."
+          },
+          {
+            clause: "납부 계좌",
+            plain: "계좌번호는 민감정보라 마스킹해 두고, 검토자는 원문 파일에서만 확인하는 흐름이 안전합니다.",
+            source: "계좌번호 뒷자리가 일부 가려져 있음."
+          }
+        ],
+        createdAt: "2026-07-12T18:00:00+09:00"
+      },
+      {
+        id: "cx_demo_304",
+        contractId: "ct_demo_304",
+        confirmed: true,
+        highlights: [
+          "관리자 확인 완료 계약",
+          "월세 74만원, 관리비 8만5천원",
+          "OCR 항목과 수동 입력값이 일치함"
+        ],
+        items: [
+          { label: "보증금", value: "12,000,000원", group: "money", needsCheck: false, evidence: "임대차 보증금은 금 일천이백만원으로 한다." },
+          { label: "월세", value: "740,000원", group: "money", needsCheck: false, evidence: "차임은 매월 74만원으로 한다." },
+          { label: "관리비", value: "85,000원", group: "money", needsCheck: false, evidence: "관리비는 매월 85,000원으로 한다." },
+          { label: "납부일", value: "매월 5일", group: "money", needsCheck: false, evidence: "매월 5일까지 납부한다." },
+          { label: "계약 기간", value: "2026.06.01 ~ 2028.05.31", group: "term", needsCheck: false, evidence: "계약 기간은 2026년 6월 1일부터 2028년 5월 31일까지이다." },
+          { label: "상세 주소", value: "방배 루미에르 304호", group: "term", needsCheck: false, evidence: "목적물 표시 제304호." },
+          { label: "원상복구", value: "일반 사용 손모 제외", group: "responsibility", needsCheck: false, evidence: "통상 손모를 제외하고 원상으로 회복한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "확정 완료",
+            plain: "OCR 추출값과 관리자 입력값이 일치해 확정 처리된 예시 계약입니다.",
+            source: "OCR 항목과 수동 입력값이 일치함"
+          }
+        ],
+        createdAt: "2026-07-11T11:45:00+09:00"
+      },
+      {
+        id: "cx_demo_411",
+        contractId: "ct_demo_411",
+        confirmed: false,
+        highlights: [
+          "계약 만료가 30일 이내인 호실",
+          "수동 등록된 계약서라 OCR 대조가 필요함",
+          "퇴실 정산 특약 확인 필요"
+        ],
+        items: [
+          { label: "보증금", value: "15,000,000원", group: "money", needsCheck: false, evidence: "보증금은 금 일천오백만원으로 한다." },
+          { label: "월세", value: "780,000원", group: "money", needsCheck: false, evidence: "차임은 매월 금 칠십팔만원이다." },
+          { label: "관리비", value: "90,000원", group: "money", needsCheck: false, evidence: "관리비는 매월 9만원으로 한다." },
+          { label: "납부일", value: "매월 25일", group: "money", needsCheck: false, evidence: "매월 25일까지 납부한다." },
+          { label: "계약 기간", value: "2024.08.01 ~ 2026.07.31", group: "term", needsCheck: false, evidence: "임대차 기간은 2024년 8월 1일부터 2026년 7월 31일까지이다." },
+          { label: "만료 안내", value: "만료 임박", group: "term", needsCheck: true, evidence: "만료일이 임박하여 연장 또는 퇴실 확인이 필요하다." },
+          { label: "퇴실 정산", value: "공과금 정산 확인 필요", group: "responsibility", needsCheck: true, evidence: "퇴실 시 공과금과 원상복구 비용을 정산한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "만료 임박",
+            plain: "만료 30일 전후에는 연장 여부, 퇴실 일정, 보증금 반환 일정을 한 번에 확인하는 것이 좋습니다.",
+            source: "만료일이 임박하여 연장 또는 퇴실 확인이 필요하다."
+          }
+        ],
+        createdAt: "2026-07-12T09:00:00+09:00"
+      },
+      {
+        id: "cx_demo_412",
+        contractId: "ct_demo_412",
+        confirmed: true,
+        highlights: [
+          "계약 종료 후 삭제 요청이 접수된 예시",
+          "보관 예외 항목과 삭제 가능 항목을 구분해야 함",
+          "민감정보 마스킹 유지"
+        ],
+        items: [
+          { label: "보증금", value: "9,000,000원", group: "money", needsCheck: false, evidence: "보증금은 금 구백만원으로 한다." },
+          { label: "월세", value: "760,000원", group: "money", needsCheck: false, evidence: "차임은 매월 76만원으로 한다." },
+          { label: "관리비", value: "80,000원", group: "money", needsCheck: false, evidence: "관리비는 8만원으로 한다." },
+          { label: "납부일", value: "매월 15일", group: "money", needsCheck: false, evidence: "매월 15일까지 납부한다." },
+          { label: "계약 기간", value: "2024.07.01 ~ 2026.06.30", group: "term", needsCheck: false, evidence: "계약 기간은 2024년 7월 1일부터 2026년 6월 30일까지로 한다." },
+          { label: "삭제 요청", value: "임차인 요청 접수", group: "responsibility", needsCheck: false, evidence: "계약 종료 후 개인정보 삭제 요청이 접수되었다." },
+          { label: "보관 예외", value: "정산 기록 5년 보관", group: "responsibility", needsCheck: false, evidence: "법정 보관 대상은 정해진 기간 동안 별도 보관한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "삭제 요청",
+            plain: "계약 종료 후에도 정산, 분쟁, 법정 보관 항목은 바로 삭제하지 않고 분리 보관하는 흐름이 필요합니다.",
+            source: "법정 보관 대상은 정해진 기간 동안 별도 보관한다."
+          }
+        ],
+        createdAt: "2026-07-12T16:25:00+09:00"
       }
     ],
     contractPrivacies: [
@@ -1546,6 +1852,68 @@ function createDemoStore(): Store {
         deletion: "none",
         deletionSlaHours: 72,
         deletable: false
+      },
+      {
+        contractId: "ct_demo_302",
+        maskingEnabled: true,
+        retention: [
+          { label: "계약서 원본", reason: "임대차 계약 이력 관리", until: "계약 종료 후 5년" },
+          { label: "임대인 계좌", reason: "월세 납부 확인", until: "정산 완료 후 즉시 파기" },
+          { label: "입주 전 하자 사진", reason: "퇴실 정산 분쟁 대비", until: "계약 종료 후 1년" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_303",
+        maskingEnabled: true,
+        retention: [
+          { label: "보완 요청 원문", reason: "OCR 대조 및 검토 이력", until: "확정 후 3년" },
+          { label: "납부 계좌", reason: "임대료 납부 검증", until: "확정 후 즉시 마스킹" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_304",
+        maskingEnabled: true,
+        retention: [
+          { label: "확정 계약서", reason: "임대차 계약 증빙", until: "계약 종료 후 5년" },
+          { label: "검토 로그", reason: "관리자 확정 감사 기록", until: "3년" }
+        ],
+        forwardingConsent: true,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_411",
+        maskingEnabled: true,
+        retention: [
+          { label: "만료 임박 계약서", reason: "연장 또는 퇴실 협의", until: "정산 완료 후 5년" },
+          { label: "퇴실 정산 메모", reason: "공과금 및 원상복구 확인", until: "정산 완료 후 1년" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_412",
+        maskingEnabled: true,
+        retention: [
+          { label: "정산 기록", reason: "법정 보관 및 분쟁 대비", until: "계약 종료 후 5년" },
+          { label: "개인 연락처", reason: "삭제 요청 대상", until: "삭제 승인 즉시 파기" },
+          { label: "삭제 요청 처리 로그", reason: "감사 기록", until: "3년" }
+        ],
+        forwardingConsent: false,
+        deletion: "requested",
+        deletionSlaHours: 72,
+        deletable: true
       }
     ],
     contractInvites: [
@@ -2087,7 +2455,10 @@ export class RoomlogService {
     const loadedStore = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
-    this.store = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
+    const bootStore = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
+    const shouldPersistDemoBackfill =
+      this.seedDemoData && this.hasDemoBackfillChanges(loadedStore, bootStore);
+    this.store = bootStore;
     this.auth = new RoomlogAuthDomain(
       this.store,
       () => this.persistStore(),
@@ -2193,6 +2564,10 @@ export class RoomlogService {
       (managerId, kind, input) => this.resolveManagerAgentPendingCommand(managerId, kind, input),
       (managerId, sessionId) => this.safetyIdentifier(managerId, sessionId)
     );
+
+    if (shouldPersistDemoBackfill) {
+      this.persistStore();
+    }
   }
 
   async flushPersistence() {
@@ -8539,6 +8914,72 @@ export class RoomlogService {
       moveoutReportAudits: mergeMissingById(snapshot.moveoutReportAudits, demo.moveoutReportAudits),
       history: mergeMissingById(snapshot.history, demo.history)
     };
+  }
+
+  private hasDemoBackfillChanges(before: Store, after: Store) {
+    const collectionKeys: Array<keyof Store> = [
+      "users",
+      "socialAccounts",
+      "rooms",
+      "vendors",
+      "vendorInvites",
+      "tenantInvites",
+      "contracts",
+      "contractDocuments",
+      "contractExtractions",
+      "contractPrivacies",
+      "contractInvites",
+      "bills",
+      "paymentReports",
+      "deposits",
+      "maintenanceFees",
+      "attachments",
+      "floorPlans",
+      "moveInChecklist",
+      "aiFeedback",
+      "intakeSessions",
+      "complaints",
+      "tickets",
+      "repairs",
+      "costs",
+      "receipts",
+      "receiptOcrs",
+      "messages",
+      "messagingThreads",
+      "messagingMessages",
+      "messagingAnnouncementDrafts",
+      "messagingAnnouncements",
+      "messagingAnnouncementDeliveries",
+      "managerReports",
+      "managerReportSourceReferences",
+      "managerReportExternalShares",
+      "managerReportAuditLogs",
+      "moveouts",
+      "moveoutRecords",
+      "moveoutChecklist",
+      "moveoutSettlements",
+      "moveoutDeductions",
+      "moveoutDisputes",
+      "moveoutReportAudits",
+      "history"
+    ];
+
+    const hasArrayBackfill = collectionKeys.some((key) => {
+      const beforeValue = before[key];
+      const afterValue = after[key];
+
+      return (
+        Array.isArray(beforeValue) &&
+        Array.isArray(afterValue) &&
+        beforeValue.length !== afterValue.length
+      );
+    });
+
+    return (
+      hasArrayBackfill ||
+      Object.keys(before.tenantRooms).length !== Object.keys(after.tenantRooms).length ||
+      Object.keys(before.analyses).length !== Object.keys(after.analyses).length
+    );
   }
 
   private persistStore() {
