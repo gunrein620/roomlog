@@ -25,6 +25,7 @@ export function ContractRegisterForm({ action }: { action: ContractRegisterActio
   const [fileName, setFileName] = useState("파일 미선택");
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [hasFile, setHasFile] = useState(false);
+  const submitDisabled = pending || !hasFile;
 
   useEffect(() => {
     if (!actionState.redirectTo) return;
@@ -94,13 +95,19 @@ export function ContractRegisterForm({ action }: { action: ContractRegisterActio
               type="file"
               accept="application/pdf,image/*"
               required
+              disabled={pending}
               onChange={handleFileChange}
               style={visuallyHiddenStyle}
             />
           </label>
 
           <div className="contract-register-upload-actions" style={uploadActionStyle}>
-            <label className="contract-register-upload-button" htmlFor="manager-contract-file" style={fileButtonStyle}>
+            <label
+              className="contract-register-upload-button"
+              htmlFor="manager-contract-file"
+              aria-disabled={pending}
+              style={pending ? disabledFileButtonStyle : fileButtonStyle}
+            >
               <FileUp aria-hidden="true" style={smallIconStyle} />
               <span>파일 선택</span>
             </label>
@@ -109,8 +116,9 @@ export function ContractRegisterForm({ action }: { action: ContractRegisterActio
               type="submit"
               name="intent"
               value="ocr-first"
-              disabled={pending || !hasFile}
-              style={buttonWithIconStyle}
+              disabled={submitDisabled}
+              aria-disabled={submitDisabled}
+              style={submitDisabled ? disabledSubmitButtonStyle : buttonWithIconStyle}
             >
               <ScanLine aria-hidden="true" style={smallIconStyle} />
               {pending ? "처리 중" : "계약서 입력"}
@@ -207,6 +215,13 @@ const fileButtonStyle = {
   cursor: "pointer",
 } as const;
 
+const disabledFileButtonStyle = {
+  ...fileButtonStyle,
+  opacity: 0.55,
+  cursor: "not-allowed",
+  pointerEvents: "none",
+} as const;
+
 const visuallyHiddenStyle = {
   position: "absolute",
   width: 1,
@@ -218,6 +233,12 @@ const visuallyHiddenStyle = {
 const buttonWithIconStyle = {
   gap: "var(--space-sm)",
   minHeight: "var(--touch-target)",
+} as const;
+
+const disabledSubmitButtonStyle = {
+  ...buttonWithIconStyle,
+  opacity: 0.55,
+  cursor: "not-allowed",
 } as const;
 
 const errorNoticeStyle = {

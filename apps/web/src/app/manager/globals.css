@@ -1747,10 +1747,39 @@ dd {
   line-height: var(--lh-title);
 }
 
+.manager-contract-dashboard__filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
 .manager-contract-dashboard__status-filters {
+  flex: 1 1 auto;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
+}
+
+.manager-contract-dashboard__create-link {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0 var(--space-xl);
+  border-radius: var(--radius-btn);
+  color: var(--on-primary);
+  background: var(--primary);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-title);
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+}
+
+.manager-contract-dashboard__create-link:hover {
+  filter: brightness(0.96);
 }
 
 .manager-contract-dashboard__status-filters button {
@@ -2154,6 +2183,7 @@ dd {
 }
 
 .manager-contract-dashboard__status-filters button:focus-visible,
+.manager-contract-dashboard__create-link:focus-visible,
 .manager-contract-dashboard__filter-panel input:focus-visible,
 .manager-contract-dashboard__filter-panel select:focus-visible,
 .manager-contract-table__primary-link:focus-visible,
@@ -2165,6 +2195,15 @@ dd {
 }
 
 @media (max-width: 860px) {
+  .manager-contract-dashboard__filter-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .manager-contract-dashboard__create-link {
+    width: 100%;
+  }
+
   .manager-contract-dashboard__filter-panel {
     grid-template-columns: 1fr;
   }

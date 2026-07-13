@@ -69,6 +69,30 @@ type ContractOcrResult = {
   rawText?: string;
 };
 
+type OpenAiContractOcrField = {
+  value?: string;
+  evidence?: string;
+  needsCheck?: boolean;
+  masked?: boolean;
+};
+
+type OpenAiContractOcrFields = {
+  contractStartDate?: OpenAiContractOcrField;
+  contractEndDate?: OpenAiContractOcrField;
+  depositBaseAmount?: OpenAiContractOcrField;
+  depositConversionAmount?: OpenAiContractOcrField;
+  depositFinalAmount?: OpenAiContractOcrField;
+  rentBaseAmount?: OpenAiContractOcrField;
+  rentConversionAmount?: OpenAiContractOcrField;
+  maintenanceFee?: OpenAiContractOcrField;
+  paymentDay?: OpenAiContractOcrField;
+  landlordAccount?: OpenAiContractOcrField;
+  address?: OpenAiContractOcrField;
+  autoRenewal?: OpenAiContractOcrField;
+  restorationDuty?: OpenAiContractOcrField;
+  repairDuty?: OpenAiContractOcrField;
+};
+
 export class RoomlogContractDomain {
   constructor(
     private readonly store: Store,
@@ -704,7 +728,7 @@ export class RoomlogContractDomain {
     const documentPart = this.openAiContractDocumentPart(document, bytes, mimeType);
     if (!documentPart) return undefined;
 
-    const model = process.env.OPENAI_CONTRACT_OCR_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.6-luna";
+    const model = process.env.OPENAI_CONTRACT_OCR_MODEL || process.env.OPENAI_CHAT_MODEL || "gpt-5.6";
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -717,6 +741,8 @@ export class RoomlogContractDomain {
         instructions: [
           "너는 한국 주택 임대차 계약서 OCR 검토 보조자다.",
           "계약서 이미지나 PDF에서 보증금, 월세, 관리비, 납부일, 계약 기간, 주소, 자동연장, 원상복구, 수선 책임을 추출한다.",
+          "복합 금액은 한 문장으로 뭉치지 말고 기본 금액, 전환 금액, 최종 금액처럼 세부 필드로 나누어 판단한다.",
+          "계약 기간은 시작일과 종료일을 각각 따로 읽은 뒤 사람이 보기 쉬운 기간 문장으로 요약한다.",
           "불확실하거나 원문 재확인이 필요한 항목은 needsCheck를 true로 둔다.",
           "민감한 계좌번호, 상세주소 일부는 masked=true로 표시한다.",
           "반드시 한국어 JSON만 반환한다."
@@ -2120,7 +2146,7 @@ export class RoomlogContractDomain {
       return {
         type: "input_image",
         image_url: fileData,
-        detail: "high"
+        detail: process.env.OPENAI_CONTRACT_OCR_IMAGE_DETAIL?.trim() || "high"
       };
     }
 
@@ -2128,7 +2154,8 @@ export class RoomlogContractDomain {
       return {
         type: "input_file",
         filename: basename(document.fileName || "contract.pdf"),
-        file_data: fileData
+        file_data: fileData,
+        detail: process.env.OPENAI_CONTRACT_OCR_PDF_DETAIL?.trim() || "high"
       };
     }
 
@@ -2156,12 +2183,46 @@ export class RoomlogContractDomain {
       `등록 계약기간: ${this.dateLabel(contract.startDate)} ~ ${this.dateLabel(contract.endDate)}`,
       `기존 추출값: ${knownItems}`,
       "권장 label은 보증금, 월세, 관리비, 납부일, 임대인 계좌, 계약 기간, 상세 주소, 자동연장, 원상복구, 수선 책임이다.",
+      "fields에는 contractStartDate, contractEndDate, depositBaseAmount, depositConversionAmount, depositFinalAmount, rentBaseAmount, rentConversionAmount, maintenanceFee, paymentDay, landlordAccount, address, autoRenewal, restorationDuty, repairDuty를 가능한 범위에서 채워줘.",
+      "문서에 없는 값은 추측하지 말고 value를 빈 문자열로 두고 needsCheck를 true로 둬.",
+      "계약서의 표나 조항에 여러 금액이 있으면 항목별 의미를 evidence에 적고, finalAmount가 명확하지 않으면 기본/전환 값을 모두 유지해.",
       "금액은 원 단위 문자열로, 날짜는 YYYY.MM.DD 형식으로 정리해줘.",
       "원문에서 근거 문장을 evidence에 짧게 넣어줘."
     ].join("\n");
   }
 
   private contractOcrJsonSchema() {
+    const fieldSchema = {
+      type: "object",
+      properties: {
+        value: { type: "string" },
+        evidence: { type: "string" },
+        needsCheck: { type: "boolean" },
+        masked: { type: "boolean" }
+      },
+      required: ["value", "evidence", "needsCheck", "masked"],
+      additionalProperties: false
+    };
+    const fieldsProperties = [
+      "contractStartDate",
+      "contractEndDate",
+      "depositBaseAmount",
+      "depositConversionAmount",
+      "depositFinalAmount",
+      "rentBaseAmount",
+      "rentConversionAmount",
+      "maintenanceFee",
+      "paymentDay",
+      "landlordAccount",
+      "address",
+      "autoRenewal",
+      "restorationDuty",
+      "repairDuty"
+    ].reduce<Record<string, typeof fieldSchema>>((properties, key) => {
+      properties[key] = fieldSchema;
+      return properties;
+    }, {});
+
     return {
       type: "object",
       additionalProperties: false,
@@ -2187,6 +2248,12 @@ export class RoomlogContractDomain {
             additionalProperties: false
           }
         },
+        fields: {
+          type: "object",
+          properties: fieldsProperties,
+          required: Object.keys(fieldsProperties),
+          additionalProperties: false
+        },
         helpNotes: {
           type: "array",
           items: {
@@ -2201,7 +2268,7 @@ export class RoomlogContractDomain {
           }
         }
       },
-      required: ["summary", "highlights", "items", "helpNotes"]
+      required: ["summary", "highlights", "items", "fields", "helpNotes"]
     };
   }
 
@@ -2229,13 +2296,240 @@ export class RoomlogContractDomain {
 
   private parseOpenAiContractOcr(rawText: string): Omit<ContractOcrResult, "source"> {
     const parsed = JSON.parse(this.extractJsonObjectText(rawText)) as Record<string, unknown>;
+    const itemItems = this.normalizeOpenAiOcrItems(parsed.items);
+    const fieldItems = this.normalizeOpenAiOcrFields(parsed.fields);
+    const mergedItems = this.mergeOpenAiOcrItems(itemItems, fieldItems);
 
     return {
       summary: this.stringValue(parsed.summary) || "계약 OCR 분석 완료",
       highlights: this.stringArray(parsed.highlights).slice(0, 5),
-      items: this.normalizeOpenAiOcrItems(parsed.items),
+      items: this.validateOpenAiOcrItems(mergedItems),
       helpNotes: this.normalizeOpenAiHelpNotes(parsed.helpNotes)
     };
+  }
+
+  private normalizeOpenAiOcrFields(value: unknown): ContractExtraction["items"] {
+    if (!this.isRecord(value)) return [];
+
+    const field = (key: keyof OpenAiContractOcrFields) => this.normalizeOpenAiOcrField(value[key]);
+    const items: ContractExtraction["items"] = [];
+    const addItem = (
+      label: string,
+      itemValue: string,
+      group: ExtractionGroup,
+      fields: Array<OpenAiContractOcrField | undefined>,
+      masked = false
+    ) => {
+      const cleanValue = itemValue.trim();
+      if (!cleanValue) return;
+      const activeFields = fields.filter((item) => Boolean(item?.value?.trim()));
+
+      const evidence = activeFields
+        .map((item) => item?.evidence?.trim())
+        .filter(Boolean)
+        .join(" / ");
+      items.push({
+        label,
+        value: cleanValue,
+        group,
+        needsCheck: activeFields.some((item) => item?.needsCheck !== false),
+        evidence: evidence || "OpenAI OCR 세부 필드 추출",
+        masked: masked || activeFields.some((item) => item?.masked === true)
+      });
+    };
+
+    const startDate = field("contractStartDate");
+    const endDate = field("contractEndDate");
+    addItem(
+      "계약 기간",
+      [startDate?.value, endDate?.value].filter(Boolean).join(" ~ "),
+      "term",
+      [startDate, endDate]
+    );
+
+    const depositBase = field("depositBaseAmount");
+    const depositConversion = field("depositConversionAmount");
+    const depositFinal = field("depositFinalAmount");
+    addItem(
+      "보증금",
+      this.joinLabeledOcrValues([
+        ["기본", depositBase?.value],
+        ["전환보증금", depositConversion?.value],
+        ["전환 후", depositFinal?.value]
+      ]),
+      "money",
+      [depositBase, depositConversion, depositFinal]
+    );
+
+    const rentBase = field("rentBaseAmount");
+    const rentConversion = field("rentConversionAmount");
+    addItem(
+      "월세",
+      this.joinLabeledOcrValues([
+        ["기본", rentBase?.value],
+        ["전환 후", rentConversion?.value]
+      ]),
+      "money",
+      [rentBase, rentConversion]
+    );
+
+    const maintenanceFee = field("maintenanceFee");
+    addItem("관리비", maintenanceFee?.value ?? "", "money", [maintenanceFee]);
+
+    const paymentDay = field("paymentDay");
+    addItem("납부일", this.normalizePaymentDayOcrValue(paymentDay?.value), "money", [paymentDay]);
+
+    const landlordAccount = field("landlordAccount");
+    addItem("임대인 계좌", landlordAccount?.value ?? "", "money", [landlordAccount], true);
+
+    const address = field("address");
+    addItem("상세 주소", address?.value ?? "", "term", [address], true);
+
+    const autoRenewal = field("autoRenewal");
+    addItem("자동연장", autoRenewal?.value ?? "", "term", [autoRenewal]);
+
+    const restorationDuty = field("restorationDuty");
+    addItem("원상복구", restorationDuty?.value ?? "", "responsibility", [restorationDuty]);
+
+    const repairDuty = field("repairDuty");
+    addItem("수선 책임", repairDuty?.value ?? "", "responsibility", [repairDuty]);
+
+    return items;
+  }
+
+  private normalizeOpenAiOcrField(value: unknown): OpenAiContractOcrField | undefined {
+    if (!this.isRecord(value)) return undefined;
+
+    return {
+      value: this.stringValue(value.value),
+      evidence: this.stringValue(value.evidence),
+      needsCheck: typeof value.needsCheck === "boolean" ? value.needsCheck : true,
+      masked: typeof value.masked === "boolean" ? value.masked : false
+    };
+  }
+
+  private mergeOpenAiOcrItems(
+    itemItems: ContractExtraction["items"],
+    fieldItems: ContractExtraction["items"]
+  ): ContractExtraction["items"] {
+    const merged = [...itemItems];
+
+    for (const fieldItem of fieldItems) {
+      const index = merged.findIndex((item) => item.label === fieldItem.label);
+      if (index < 0) {
+        merged.push(fieldItem);
+        continue;
+      }
+
+      const existing = merged[index];
+      if (this.isMissingExtractionValue(existing.value) || !this.isMissingExtractionValue(fieldItem.value)) {
+        merged[index] = {
+          ...existing,
+          ...fieldItem,
+          evidence: [existing.evidence, fieldItem.evidence].filter(Boolean).join(" / "),
+          needsCheck: existing.needsCheck || fieldItem.needsCheck,
+          masked: existing.masked || fieldItem.masked
+        };
+      }
+    }
+
+    return merged;
+  }
+
+  private validateOpenAiOcrItems(items: ContractExtraction["items"]): ContractExtraction["items"] {
+    return items.map((item) => {
+      const validationMessage = this.openAiOcrValidationMessage(item);
+      if (!validationMessage) return item;
+
+      return {
+        ...item,
+        needsCheck: true,
+        evidence: [item.evidence, validationMessage].filter(Boolean).join(" / ")
+      };
+    });
+  }
+
+  private openAiOcrValidationMessage(item: ContractExtraction["items"][number]) {
+    if (this.isMissingExtractionValue(item.value)) return undefined;
+
+    if (item.label === "계약 기간") {
+      const dates = this.extractOcrDates(item.value);
+      if (dates.length < 2) return "검증: 계약 시작일과 종료일을 모두 확인해야 합니다.";
+      if (this.timeOf(dates[0]) > this.timeOf(dates[1])) {
+        return "검증: 계약 시작일이 종료일보다 늦습니다.";
+      }
+      return undefined;
+    }
+
+    if (["보증금", "월세", "관리비"].includes(item.label)) {
+      return this.hasOcrAmount(item.value)
+        ? undefined
+        : "검증: 금액 항목인데 원 단위 숫자를 확인하지 못했습니다.";
+    }
+
+    if (item.label === "납부일") {
+      const day = this.extractOcrPaymentDay(item.value);
+      return day !== undefined && day >= 1 && day <= 31
+        ? undefined
+        : "검증: 납부일은 1일부터 31일 사이의 일자로 확인해야 합니다.";
+    }
+
+    if (item.label === "임대인 계좌") {
+      const digits = item.value.replace(/\D/g, "");
+      return digits.length >= 6
+        ? undefined
+        : "검증: 계좌번호 숫자가 충분히 확인되지 않았습니다.";
+    }
+
+    if (item.label === "상세 주소") {
+      return item.value.replace(/\s/g, "").length >= 6
+        ? undefined
+        : "검증: 주소가 너무 짧아 원문 확인이 필요합니다.";
+    }
+
+    return undefined;
+  }
+
+  private extractOcrDates(value: string) {
+    return Array.from(value.matchAll(/\d{4}[.-]\d{1,2}[.-]\d{1,2}/g))
+      .map((match) => this.normalizeOcrDate(match[0]))
+      .filter(Boolean) as string[];
+  }
+
+  private normalizeOcrDate(value: string) {
+    const match = value.match(/(\d{4})[.-](\d{1,2})[.-](\d{1,2})/);
+    if (!match) return undefined;
+
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+
+    return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+  }
+
+  private hasOcrAmount(value: string) {
+    return /\d/.test(value) && /(원|만원|억|천|백|만|,)/.test(value);
+  }
+
+  private extractOcrPaymentDay(value: string) {
+    const match = value.match(/\d{1,2}/);
+    return match ? Number(match[0]) : undefined;
+  }
+
+  private joinLabeledOcrValues(values: Array<[string, string | undefined]>) {
+    return values
+      .map(([label, value]) => [label, value?.trim()] as const)
+      .filter(([, value]) => Boolean(value))
+      .map(([label, value]) => `${label} ${value}`)
+      .join("; ");
+  }
+
+  private normalizePaymentDayOcrValue(value?: string) {
+    const cleanValue = value?.trim();
+    if (!cleanValue) return "";
+
+    const day = cleanValue.match(/\d{1,2}/)?.[0];
+    return day ? `매월 ${day}일` : cleanValue;
   }
 
   private normalizeOpenAiOcrItems(value: unknown): ContractExtraction["items"] {

@@ -37,10 +37,6 @@ export default async function Page() {
           <MetricCard label="미등록 호실" value={`${dashboard.counts.unregistered}호`} note="수동값 또는 초대 필요" />
         </Grid>
 
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>계약서 등록</LinkButton>
-        </div>
-
         <ContractDashboardClient counts={dashboard.counts} rows={sortedRows} />
 
         <Section

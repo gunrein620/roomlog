@@ -7,6 +7,7 @@ import {
   runManagerContractOcr,
   updateManagerContractManualValues,
 } from "@/lib/contract-manager-api";
+import { hasContractPrefillInput, storedContractPrefillInput } from "@/lib/contract-prefill";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
   BackLink,
@@ -23,7 +24,6 @@ import { OcrSubmitButton } from "./OcrSubmitButton";
 
 type SearchParams = Promise<{ id?: string; source?: string }>;
 type ManagerContractDetailResult = Awaited<ReturnType<typeof getManagerContractDetail>>;
-type ManualValueInput = Parameters<typeof updateManagerContractManualValues>[1];
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +65,7 @@ async function prefillStoredContractValuesAction(formData: FormData) {
   const contractId = String(formData.get("contractId") ?? "");
   const detail = await getManagerContractDetail(contractId);
   const input = storedContractPrefillInput(detail);
-  const hasInput = hasPrefillInput(input);
+  const hasInput = hasContractPrefillInput(input);
 
   if (hasInput) {
     await updateManagerContractManualValues(contractId, input);
@@ -80,6 +80,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const { id, source: sourceParam } = await searchParams;
   const detail = await getManagerContractDetail(id);
   const source = ocrSource(detail.extraction.highlights);
+  const failureInfo = source.kind === "mock" ? ocrFailureInfo(detail.extraction.highlights) : undefined;
   const valueRows = buildValueRows(detail, source.kind);
   const needsCheckCount = detail.extraction.items.filter((item) => item.needsCheck).length;
   const readItemCount =
@@ -134,6 +135,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <SummaryTile label="읽은 항목" value={`${readItemCount}개`} note={`최근 분석 ${formatDateTime(detail.extraction.createdAt)}`} />
           <SummaryTile label="확인 필요" value={`${needsCheckCount}개`} note={needsCheckCount ? "최종 수정 후 확정" : "바로 확정 가능"} emphasis={needsCheckCount > 0} />
         </div>
+
+        {failureInfo ? <OcrFailureCard info={failureInfo} /> : null}
 
         {notice ? (
           <Card style={noticeCardStyle}>
@@ -203,7 +206,12 @@ function ComparisonTable({ rows }: { rows: ValueRow[] }) {
         </thead>
         <tbody>
           {rows.map((row) => {
-            const hasDetails = row.ocrDetails.length > 0 || row.dbDetails.length > 0 || row.finalDetails.length > 0 || Boolean(row.evidence?.trim());
+            const hasDetails =
+              row.ocrDetails.length > 0 ||
+              row.dbDetails.length > 0 ||
+              row.finalDetails.length > 0 ||
+              row.validationMessages.length > 0 ||
+              Boolean(row.evidence?.trim());
 
             return (
               <Fragment key={row.label}>
@@ -218,11 +226,17 @@ function ComparisonTable({ rows }: { rows: ValueRow[] }) {
                     <ValueText value={row.dbValue} />
                   </td>
                   <td style={tdStrongStyle}>
-                    <ValueText value={row.finalValue} strong />
+                    <div style={finalValueCellStyle}>
+                      <ValueText value={row.finalValue} strong />
+                      <span style={finalSourceStyle}>{row.finalSource}</span>
+                    </div>
                   </td>
                   <td style={tdStyle}>
                     <div style={statusCellStyle}>
                       <Badge emphasis={row.statusEmphasis}>{row.status}</Badge>
+                      {row.validationMessages.length ? (
+                        <span style={validationCountStyle}>검증 사유 {row.validationMessages.length}</span>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -247,10 +261,27 @@ function ComparisonTable({ rows }: { rows: ValueRow[] }) {
 
 function RowDetailPanel({ row }: { row: ValueRow }) {
   return (
-    <div style={rowDetailPanelStyle}>
-      <DetailGroup title="OCR 분석" summary={row.ocrValue} details={row.ocrDetails} evidence={row.evidence} />
-      <DetailGroup title="기존 DB" summary={row.dbValue} details={row.dbDetails} />
-      <DetailGroup title="최종 반영" summary={row.finalValue} details={row.finalDetails} strong />
+    <div style={rowDetailWrapStyle}>
+      {row.validationMessages.length ? (
+        <div style={validationPanelStyle}>
+          <span style={validationTitleStyle}>자동 검증 사유</span>
+          <ul style={validationListStyle}>
+            {row.validationMessages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div style={rowDetailPanelStyle}>
+        <DetailGroup title="OCR 분석" summary={row.ocrValue} details={row.ocrDetails} evidence={row.evidence} />
+        <DetailGroup title="기존 DB" summary={row.dbValue} details={row.dbDetails} />
+        <DetailGroup
+          title="최종 반영"
+          summary={row.finalValue}
+          details={[{ label: "반영 기준", value: row.finalSource }, ...row.finalDetails]}
+          strong
+        />
+      </div>
     </div>
   );
 }
@@ -419,17 +450,34 @@ function SummaryTile({
   );
 }
 
+function OcrFailureCard({ info }: { info: OcrFailureInfo }) {
+  return (
+    <Card style={ocrFailureCardStyle}>
+      <AlertTriangle size={20} strokeWidth={2.5} color="#dc2626" aria-hidden="true" />
+      <div style={ocrFailureTextStyle}>
+        <strong>실제 OCR 결과를 사용하지 못했습니다</strong>
+        <span>{info.reason}</span>
+        <span style={ocrFailureHintStyle}>
+          현재 표의 OCR 요약은 신뢰하지 않고, 기존 DB 계약값 또는 수동 입력값으로 최종값을 보강해야 합니다.
+        </span>
+      </div>
+    </Card>
+  );
+}
+
 type ValueRow = {
   label: string;
   ocrValue: string;
   dbValue: string;
   finalValue: string;
+  finalSource: string;
   status: string;
   statusEmphasis: boolean;
   evidence?: string;
   ocrDetails: ValueDetail[];
   dbDetails: ValueDetail[];
   finalDetails: ValueDetail[];
+  validationMessages: string[];
 };
 
 type ValueDetail = {
@@ -438,6 +486,9 @@ type ValueDetail = {
 };
 
 type OcrSourceKind = "openai" | "mock" | "initial";
+type OcrFailureInfo = {
+  reason: string;
+};
 
 function buildValueRows(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind): ValueRow[] {
   const contract = detail.row.contract;
@@ -468,13 +519,28 @@ function makeValueRow(
   const ocrFailed = sourceKind === "mock";
   const rawOcrValue = item?.value?.trim() || "미확인";
   const normalizedDbValue = dbValue.trim();
-  const finalRawValue = ocrFailed
-    ? normalizedDbValue || "직접 입력 필요"
-    : !isMissingDisplayValue(rawOcrValue)
+  const validationMessages = validationMessagesFromEvidence(ocrFailed ? undefined : item?.evidence);
+  const hasUsableOcrValue = !isMissingDisplayValue(rawOcrValue);
+  const hasDbValue = Boolean(normalizedDbValue);
+  const shouldPreferDbValue = hasDbValue && (ocrFailed || Boolean(item?.needsCheck) || validationMessages.length > 0);
+  const finalRawValue = shouldPreferDbValue
+    ? normalizedDbValue
+    : hasUsableOcrValue
       ? rawOcrValue
       : normalizedDbValue || "직접 입력 필요";
   const missingFinal = isMissingDisplayValue(finalRawValue) || finalRawValue === "직접 입력 필요";
-  const displayOcrValue = ocrFailed ? "실제 OCR 미추출" : summarizeContractValue(label, rawOcrValue);
+  const finalSource = missingFinal
+    ? "직접 입력 필요"
+    : shouldPreferDbValue
+      ? ocrFailed
+        ? "OCR 실패로 DB값 사용"
+        : "확인 필요 OCR 대신 DB값 사용"
+      : hasUsableOcrValue
+        ? "OCR값 사용"
+        : hasDbValue
+          ? "DB값 사용"
+          : "직접 입력 필요";
+  const displayOcrValue = ocrFailed ? "OCR 실패 - 미추출" : summarizeContractValue(label, rawOcrValue);
   const displayDbValue = normalizedDbValue ? summarizeContractValue(label, normalizedDbValue) : "없음";
   const displayFinalValue = summarizeContractValue(label, finalRawValue);
 
@@ -483,13 +549,26 @@ function makeValueRow(
     ocrValue: displayOcrValue,
     dbValue: displayDbValue,
     finalValue: displayFinalValue,
-    status: missingFinal ? "부족" : ocrFailed ? "DB값" : item?.needsCheck ? "확인 필요" : "확인",
+    finalSource,
+    status: missingFinal ? "부족" : ocrFailed ? "DB/수동 확인" : item?.needsCheck ? "확인 필요" : "확인",
     statusEmphasis: missingFinal || (!ocrFailed && Boolean(item?.needsCheck)),
     evidence: ocrFailed ? undefined : item?.evidence,
     ocrDetails: ocrFailed ? [] : contractValueDetails(label, rawOcrValue),
     dbDetails: contractValueDetails(label, normalizedDbValue),
     finalDetails: contractValueDetails(label, finalRawValue),
+    validationMessages,
   };
+}
+
+function validationMessagesFromEvidence(evidence?: string) {
+  if (!evidence?.trim()) return [];
+
+  return evidence
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith("검증:"))
+    .map((part) => part.replace(/^검증:\s*/, ""))
+    .filter(Boolean);
 }
 
 function summarizeContractValue(label: string, value: string) {
@@ -634,64 +713,6 @@ function manualDefaults(detail: ManagerContractDetailResult, sourceKind: OcrSour
   };
 }
 
-function storedContractPrefillInput(detail: ManagerContractDetailResult): ManualValueInput {
-  const contract = detail.row.contract;
-  const input: ManualValueInput = {};
-
-  if (termNeedsPrefill(detail)) {
-    if (contract.startDate) input.startDate = contract.startDate;
-    if (contract.endDate) input.endDate = contract.endDate;
-  }
-
-  if (needsStoredPrefill(detail, "월세") && contract.monthlyRent !== undefined) {
-    input.monthlyRent = contract.monthlyRent;
-  }
-
-  if (needsStoredPrefill(detail, "관리비") && contract.maintenanceFee !== undefined) {
-    input.maintenanceFee = contract.maintenanceFee;
-  }
-
-  if (needsStoredPrefill(detail, "납부일") && contract.paymentDay !== undefined) {
-    input.paymentDay = contract.paymentDay;
-  }
-
-  const storedDeposit = manualInputValue(detail.manualValues.deposit);
-  if (needsStoredPrefill(detail, "보증금") && storedDeposit) {
-    input.deposit = storedDeposit;
-  }
-
-  const storedAccount = manualInputValue(detail.manualValues.account);
-  if (needsStoredPrefill(detail, "임대인 계좌") && storedAccount) {
-    input.account = storedAccount;
-  }
-
-  return input;
-}
-
-function hasPrefillInput(input: ManualValueInput) {
-  return Boolean(
-    input.deposit ||
-      input.account ||
-      input.startDate ||
-      input.endDate ||
-      input.monthlyRent !== undefined ||
-      input.maintenanceFee !== undefined ||
-      input.paymentDay !== undefined,
-  );
-}
-
-function needsStoredPrefill(detail: ManagerContractDetailResult, label: string) {
-  const item = extractionItem(detail, label);
-  return isMockOnlyExtractionItem(item) || isMissingDisplayValue(item?.value);
-}
-
-function termNeedsPrefill(detail: ManagerContractDetailResult) {
-  const item = extractionItem(detail, "계약 기간");
-  const value = item?.value?.trim() ?? "";
-  if (isMockOnlyExtractionItem(item)) return true;
-  return !value || value.includes("미확인") || value === "원문 확인 필요";
-}
-
 function extractionItem(detail: ManagerContractDetailResult, label: string) {
   return detail.extraction.items.find((item) => item.label === label);
 }
@@ -799,6 +820,30 @@ function ocrSource(highlights: string[]) {
   };
 }
 
+function ocrFailureInfo(highlights: string[]): OcrFailureInfo {
+  const text = highlights.join(" ").replace(/\s+/g, " ").trim();
+  const firstHighlight = highlights.find((highlight) => highlight.trim())?.trim();
+
+  if (/OPENAI_API_KEY/i.test(text)) {
+    return { reason: "OPENAI_API_KEY가 없어서 실제 OCR을 실행하지 못했습니다." };
+  }
+
+  const statusMatch = text.match(/OpenAI contract OCR failed with\s+\d+[^·]*/i);
+  if (statusMatch?.[0]) {
+    return { reason: statusMatch[0].trim() };
+  }
+
+  if (/model|모델/i.test(text)) {
+    return { reason: "OCR 모델 설정 또는 호출 과정에서 실패했습니다." };
+  }
+
+  if (/호출|실패|fallback|mock/i.test(text)) {
+    return { reason: firstHighlight || "OpenAI OCR 호출에 실패해 mock 결과로 대체되었습니다." };
+  }
+
+  return { reason: "실제 OCR 결과가 없어 mock 또는 기존 값 기반으로 표시 중입니다." };
+}
+
 function pageNotice(sourceParam?: string) {
   if (sourceParam === "db-prefill") return "기존 DB 계약값을 부족한 항목에 반영했습니다. 최종값을 확인해 주세요.";
   if (sourceParam === "db-prefill-empty") return "추가로 채울 기존 DB 계약값이 없습니다. 직접 입력해 주세요.";
@@ -853,6 +898,28 @@ const noticeCardStyle = {
   background: "var(--primary-container)",
 } as const;
 
+const ocrFailureCardStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "var(--space-sm)",
+  padding: "var(--space-md)",
+  border: "1px solid rgba(220, 38, 38, 0.28)",
+  background: "rgba(254, 242, 242, 0.88)",
+} as const;
+
+const ocrFailureTextStyle = {
+  display: "grid",
+  gap: 4,
+  color: "#991b1b",
+  lineHeight: "var(--lh-body)",
+} as const;
+
+const ocrFailureHintStyle = {
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+} as const;
+
 const tableStyle = {
   width: "100%",
   borderCollapse: "collapse",
@@ -891,6 +958,29 @@ const statusCellStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "flex-end",
+  flexDirection: "column",
+  gap: 6,
+} as const;
+
+const validationCountStyle = {
+  color: "var(--danger, #dc2626)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+} as const;
+
+const finalValueCellStyle = {
+  display: "grid",
+  gap: 4,
+  minWidth: 160,
+} as const;
+
+const finalSourceStyle = {
+  width: "fit-content",
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  lineHeight: "var(--lh-caption)",
 } as const;
 
 const detailRowCellStyle = {
@@ -917,11 +1007,41 @@ const detailsSummaryStyle = {
   background: "var(--primary-container)",
 } as const;
 
+const rowDetailWrapStyle = {
+  display: "grid",
+  gap: "var(--space-md)",
+  marginTop: "var(--space-sm)",
+} as const;
+
 const rowDetailPanelStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
   gap: "var(--space-md)",
-  marginTop: "var(--space-sm)",
+} as const;
+
+const validationPanelStyle = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  padding: "var(--space-md)",
+  border: "1px solid rgba(220, 38, 38, 0.28)",
+  borderRadius: "var(--radius-md)",
+  background: "rgba(254, 242, 242, 0.88)",
+  color: "#991b1b",
+} as const;
+
+const validationTitleStyle = {
+  fontSize: "var(--fs-caption)",
+  fontWeight: 900,
+} as const;
+
+const validationListStyle = {
+  display: "grid",
+  gap: 4,
+  margin: 0,
+  paddingLeft: "1.1rem",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  lineHeight: "var(--lh-body)",
 } as const;
 
 const detailGroupStyle = {

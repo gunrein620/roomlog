@@ -25,7 +25,7 @@ import {
   billPayableFrom,
   isBillPaymentOpen,
   paymentHistoryInclusiveDays
-} from "@roomlog/types";
+} from "@roomlog/types/payment";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
   hasRequiredPasswordMix,

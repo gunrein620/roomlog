@@ -5584,6 +5584,14 @@ describe("RoomlogService", () => {
                 needsCheck: true,
                 evidence: "목적물 소재지",
                 masked: true
+              },
+              {
+                label: "납부일",
+                value: "매월 45일",
+                group: "money",
+                needsCheck: false,
+                evidence: "차임 지급일",
+                masked: false
               }
             ],
             helpNotes: [
@@ -5628,6 +5636,9 @@ describe("RoomlogService", () => {
         result.extraction.items.find((item) => item.label === "상세 주소")?.masked,
         true
       );
+      const paymentDay = result.extraction.items.find((item) => item.label === "납부일");
+      assert.equal(paymentDay?.needsCheck, true);
+      assert.match(paymentDay?.evidence ?? "", /납부일은 1일부터 31일/);
       assert.equal(result.row.contract.valueSource, "unverified");
     } finally {
       globalThis.fetch = originalFetch;

@@ -95,17 +95,23 @@ export function ContractDashboardClient({
     <section className="manager-contract-dashboard" aria-labelledby="manager-contract-dashboard-title">
       <h2 id="manager-contract-dashboard-title">계약 목록 · 검토대기/확인필요/SLA 초과 상단</h2>
 
-      <div className="manager-contract-dashboard__status-filters" aria-label="계약 상태 필터">
-        {(Object.keys(statusFilterLabels) as ContractStatusFilter[]).map((status) => (
-          <button
-            key={status}
-            type="button"
-            aria-pressed={filters.status === status}
-            onClick={() => updateFilters({ status })}
-          >
-            {statusFilterLabels[status]} {statusCounts[status]}
-          </button>
-        ))}
+      <div className="manager-contract-dashboard__filter-header">
+        <div className="manager-contract-dashboard__status-filters" aria-label="계약 상태 필터">
+          {(Object.keys(statusFilterLabels) as ContractStatusFilter[]).map((status) => (
+            <button
+              key={status}
+              type="button"
+              aria-pressed={filters.status === status}
+              onClick={() => updateFilters({ status })}
+            >
+              {statusFilterLabels[status]} {statusCounts[status]}
+            </button>
+          ))}
+        </div>
+
+        <Link className="manager-contract-dashboard__create-link" href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>
+          계약서 등록
+        </Link>
       </div>
 
       <div className="manager-contract-dashboard__filter-panel">
