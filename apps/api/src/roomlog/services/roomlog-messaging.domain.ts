@@ -13,9 +13,12 @@ import type {
   MessagingAnnouncementResult,
   MessagingMessage,
   MessagingMessageSender,
+  ManagerMessagingRecipient,
   MessagingThread,
   MessagingThreadContext,
   Room,
+  StartManagerConversationInput,
+  TenantLandlordConversation,
   UpdateAnnouncementDraftInput,
   UserAccount
 } from "../roomlog.types";
@@ -50,6 +53,21 @@ export class RoomlogMessagingDomain {
       throw new BadRequestException("메시지 내용을 입력해주세요.");
     }
 
+    const existing =
+      (input.context ?? "general") === "general" && !input.contextRef?.trim()
+        ? this.findTenantGeneralThread(tenantId, room.id)
+        : undefined;
+    if (existing) {
+      this.addThreadMessageInternal(existing, tenantId, {
+        sender: "tenant",
+        body,
+        kind: input.kind ?? "text",
+        attachmentUrls: input.attachmentUrls
+      });
+      this.persistStore();
+      return this.presentThread(existing, true);
+    }
+
     const createdAt = now();
     const thread: MessagingThread = {
       id: id("mth"),
@@ -77,6 +95,25 @@ export class RoomlogMessagingDomain {
     this.persistStore();
 
     return this.presentThread(thread, true);
+  }
+
+  getTenantLandlordConversation(tenantId: string): TenantLandlordConversation {
+    const room = this.requireTenantRoom(tenantId);
+    if (!room.landlordId) {
+      throw new BadRequestException("연결된 관리인이 없어 대화를 시작할 수 없습니다.");
+    }
+
+    const landlord = this.store.users.find((user) => user.id === room.landlordId);
+    if (!landlord) {
+      throw new NotFoundException("연결된 관리인을 찾을 수 없습니다.");
+    }
+
+    return {
+      threadId: this.findTenantGeneralThread(tenantId, room.id)?.id,
+      buildingName: room.buildingName,
+      unitId: this.displayUnitId(room),
+      landlordName: landlord.name
+    };
   }
 
   createMessagingThread(managerId: string, input: CreateMessagingThreadInput): MessagingThread {
@@ -182,6 +219,82 @@ export class RoomlogMessagingDomain {
       .filter((thread) => !context || thread.context === context)
       .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt))
       .map((thread) => this.presentThread(thread));
+  }
+
+  listManagerMessagingRecipients(managerId: string): ManagerMessagingRecipient[] {
+    return Object.entries(this.store.tenantRooms)
+      .flatMap(([tenantId, roomId]) => {
+        if (!this.canManagerAccessRoom(managerId, roomId)) {
+          return [];
+        }
+
+        const room = this.findRoom(roomId);
+        const tenant = this.store.users.find((user) => user.id === tenantId);
+        if (!tenant) {
+          return [];
+        }
+
+        const existingGeneralThreadId = this.store.messagingThreads.find(
+          (thread) =>
+            thread.roomId === roomId &&
+            thread.tenantId === tenantId &&
+            thread.context === "general" &&
+            !thread.contextRef
+        )?.id;
+
+        return [{
+          roomId,
+          buildingName: room.buildingName,
+          unitId: this.displayUnitId(room),
+          tenantId,
+          tenantName: tenant.name,
+          existingGeneralThreadId
+        }];
+      })
+      .sort((left, right) =>
+        `${left.buildingName}\u0000${left.unitId}\u0000${left.tenantName}`.localeCompare(
+          `${right.buildingName}\u0000${right.unitId}\u0000${right.tenantName}`,
+          "ko"
+        )
+      );
+  }
+
+  startManagerConversation(
+    managerId: string,
+    input: StartManagerConversationInput
+  ): MessagingThread {
+    this.assertManagerCanAccessRoom(managerId, input.roomId);
+
+    if (this.store.tenantRooms[input.tenantId] !== input.roomId) {
+      throw new ForbiddenException("해당 세대 임차인과만 대화를 시작할 수 있습니다.");
+    }
+
+    const existing = this.store.messagingThreads.find(
+      (thread) =>
+        thread.roomId === input.roomId &&
+        thread.tenantId === input.tenantId &&
+        thread.context === "general" &&
+        !thread.contextRef
+    );
+    if (existing) {
+      return this.presentThread(existing);
+    }
+
+    const body = input.body?.trim();
+    if (!body) {
+      throw new BadRequestException("첫 메시지를 입력해주세요.");
+    }
+
+    return this.createMessagingThread(managerId, {
+      roomId: input.roomId,
+      tenantId: input.tenantId,
+      context: "general",
+      contextLabel: "일반 문의",
+      initialMessage: {
+        sender: "manager",
+        body
+      }
+    });
   }
 
   getManagerMessagingThread(managerId: string, threadId: string): MessagingThread {
@@ -538,6 +651,18 @@ export class RoomlogMessagingDomain {
     return this.findRoom(roomId);
   }
 
+  private findTenantGeneralThread(tenantId: string, roomId: string) {
+    return this.store.messagingThreads
+      .filter(
+        (thread) =>
+          thread.tenantId === tenantId &&
+          thread.roomId === roomId &&
+          thread.context === "general" &&
+          !thread.contextRef
+      )
+      .sort((left, right) => this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt))[0];
+  }
+
   private assertNoPaymentDunning(context: MessagingThreadContext, body: string) {
     if (context !== "payment") {
       return;
@@ -615,7 +740,7 @@ export class RoomlogMessagingDomain {
   }
 
   private assertUrgentTranslationsReviewed(draft: MessagingAnnouncementDraft) {
-    if (draft.category !== "urgent") {
+    if (draft.category !== "urgent" || draft.translations.length === 0) {
       return;
     }
 

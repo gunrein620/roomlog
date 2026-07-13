@@ -1,3 +1,9 @@
+export type {
+  ManagerMessagingRecipient,
+  StartManagerConversationInput,
+  TenantLandlordConversation
+} from "@roomlog/types";
+
 export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
 export type MessageSenderRole = Exclude<UserRole, "SEEKER"> | "AI_ASSISTANT" | "SYSTEM";
 export type ComplaintSourceChannel = "DIRECT_FORM" | "REALTIME_CHAT" | "VOICE_CHAT" | "CALLBOT";

@@ -64,6 +64,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   }
   const isUrgent = draft.category === "urgent";
   const attachedTranslation = findAttachedTranslation(draft);
+  const finalLanguage = attachedTranslation?.langLabel ?? "한국어";
 
   return (
     <>
@@ -114,22 +115,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
           {isUrgent ? (
             <Card>
-              <div style={sectionTitleStyle}>최종 첨부 번역</div>
-              {attachedTranslation ? (
-                <Card style={{ background: "var(--surface-container)" }}>
-                  <Badge emphasis>{attachedTranslation.langLabel}</Badge>
-                  <div style={{ marginTop: "var(--space-sm)", fontWeight: 800 }}>
-                    {attachedTranslation.title}
-                  </div>
-                  <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-                    {attachedTranslation.body}
-                  </div>
-                </Card>
-              ) : (
-                <NoticeCard title="첨부 번역 없음">
-                  공지 작성 화면에서 최종 번역을 첨부해 주세요.
-                </NoticeCard>
-              )}
+              <div style={sectionTitleStyle}>최종 발송 언어</div>
+              <Card style={{ background: "var(--surface-container)" }}>
+                <Badge emphasis>{finalLanguage}</Badge>
+                <div style={{ marginTop: "var(--space-sm)", fontWeight: 800 }}>
+                  {draft.title}
+                </div>
+                <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+                  {draft.body}
+                </div>
+              </Card>
             </Card>
           ) : null}
         </div>
@@ -143,7 +138,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <MetaRow label="미납 타깃" value="없음" />
             <MetaRow label="독촉 문구" value="없음" />
             <MetaRow label="확인 정책" value={draft.confirmRequired ? "확인 게이트" : "읽음"} />
-            <MetaRow label="최종 언어" value={attachedTranslation?.langLabel ?? "첨부 없음"} />
+            <MetaRow label="최종 언어" value={finalLanguage} />
           </Card>
           <NoticeCard title="확인 게이트" emphasis>
             발송은 이 화면의 승인 이후에만 진행됩니다. 작성 화면에서 자동 발송하지 않습니다.

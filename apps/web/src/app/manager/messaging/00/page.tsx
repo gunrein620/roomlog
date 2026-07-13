@@ -4,6 +4,7 @@ import type { Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
 import {
   deleteManagerThread,
+  listManagerMessagingRecipients,
   listManagerThreads,
 } from "@/lib/messaging-manager-api";
 import {
@@ -26,6 +27,7 @@ import {
   sectionTitleStyle,
 } from "../_components";
 import { BuildingFilter } from "./BuildingFilter";
+import { NewConversationForm } from "./NewConversationForm";
 
 export const dynamic = "force-dynamic";
 
@@ -56,11 +58,12 @@ async function deleteManagerThreadAction(formData: FormData) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const [{ building }, threads] = await Promise.all([
+  const [{ building }, threads, recipients] = await Promise.all([
     searchParams,
     listManagerThreads(),
+    listManagerMessagingRecipients(),
   ]);
-  const buildingOptions = getBuildingOptions(threads);
+  const buildingOptions = getBuildingOptions(threads, recipients);
   const showUnassigned = hasUnassignedBuilding(threads);
   const activeBuilding = resolveBuildingFilter(building, buildingOptions, showUnassigned);
   const filteredThreads = filterThreadsByBuilding(threads, activeBuilding);
@@ -94,6 +97,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Input aria-label="대화 내 검색" placeholder="대화 내 검색" readOnly />
       </Card>
 
+      <NewConversationForm
+        recipients={recipients}
+        initialBuilding={activeBuilding}
+      />
+
       <BuildingFilter
         activeBuilding={activeBuilding}
         buildingOptions={buildingOptions}
@@ -110,7 +118,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </div>
           ) : (
             <Card style={{ color: "var(--on-surface-variant)", textAlign: "center" }}>
-              선택한 건물의 티켓이 없습니다.
+              이 건물에는 아직 시작된 대화가 없습니다.
             </Card>
           )}
       </section>

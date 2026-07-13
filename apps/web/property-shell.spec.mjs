@@ -451,6 +451,11 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingComposerSource, /buildAttachedTranslations/);
   assert.match(managerMessagingComposerSource, /findAttachedTranslation/);
   assert.match(managerMessagingComposerSource, /findVisibleTranslation/);
+  assert.match(managerMessagingComposerSource, /announcementDeliveryMode/);
+  assert.match(managerMessagingComposerSource, /translationsForDelivery/);
+  assert.match(managerMessagingComposerSource, /name="deliveryMode"/);
+  assert.match(managerMessagingComposerSource, /한국어 원문으로 발송/);
+  assert.match(managerMessagingComposerSource, /번역본으로 발송/);
   assert.match(managerMessagingComposerSource, /첨부하기/);
   assert.match(managerMessagingComposerSource, /첨부됨/);
   assert.match(managerMessagingComposerSource, /번역 후 첨부할 언어를 선택해 주세요/);
@@ -483,7 +488,8 @@ test("manager announcement compose edits targets and translates each language be
   assert.doesNotMatch(managerMessagingComposeFeatureSource, /value=\{draft\.title\} readOnly/);
   assert.doesNotMatch(managerMessagingComposeFeatureSource, /<StaticButton>임시 저장<\/StaticButton>/);
   assert.match(managerMessagingReviewSource, /findAttachedTranslation/);
-  assert.match(managerMessagingReviewSource, /최종 첨부 번역/);
+  assert.match(managerMessagingReviewSource, /최종 발송 언어/);
+  assert.match(managerMessagingReviewSource, /attachedTranslation\?\.langLabel \?\? "한국어"/);
   assert.match(managerMessagingReviewSource, /최종 언어/);
   assert.doesNotMatch(managerMessagingReviewSource, /D21 주요 언어 번역 미리보기/);
   assert.doesNotMatch(managerMessagingReviewSource, /주요 언어 검수 완료/);
@@ -926,7 +932,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "집주인 공지사항",
     "임대인으로부터 전달된 새로운 소식이 없습니다.",
     "입주 정보",
-    "우주빌리지 401호",
+    "tenantRoomTitle",
     "계약 기간",
     "차기 결제일",
     "월세",
@@ -996,7 +1002,9 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.doesNotMatch(pageSource, /AI 생활 도우미는 곧 연결됩니다/);
   assert.match(pageSource, /tenant-chat-panel/);
   assert.match(pageSource, /setIsLandlordChatOpen\(true\)/);
-  assert.match(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
+  assert.match(pageSource, /tenantLandlordConversationPaths\.current\(\)/);
+  assert.match(pageSource, /submitLandlordMessage/);
+  assert.doesNotMatch(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
   assert.match(cssSource, /\.tenant-chat-panel/);
   assert.doesNotMatch(pageSource, /창문 누수|욕실 타일 보수|에어컨 필터|오늘 2:30|보일러 온수 불량 접수하기|HVAC|2:30 PM/);
 });

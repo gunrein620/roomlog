@@ -26,9 +26,12 @@ import {
   translateAnnouncementAction,
 } from "./actions";
 import {
+  announcementDeliveryMode,
   buildAttachedTranslations,
   findAttachedTranslation,
   findVisibleTranslation,
+  translationsForDelivery,
+  type AnnouncementDeliveryMode,
 } from "./attachment-state";
 import styles from "./AnnouncementComposer.module.css";
 
@@ -46,6 +49,14 @@ const SCOPE_OPTIONS: ReadonlyArray<{ value: AnnouncementScope; label: string }> 
   { value: "all", label: "전체" },
   { value: "building", label: "건물" },
   { value: "unit", label: "호실" },
+];
+
+const DELIVERY_MODE_OPTIONS: ReadonlyArray<{
+  value: AnnouncementDeliveryMode;
+  label: string;
+}> = [
+  { value: "korean", label: "한국어 원문으로 발송" },
+  { value: "translated", label: "번역본으로 발송" },
 ];
 
 function emptyTranslation(lang: AnnouncementLanguage, label: string): AnnouncementTranslation {
@@ -88,6 +99,9 @@ export function AnnouncementComposer({
   const [attachedLabel, setAttachedLabel] = useState(
     findAttachedTranslation(initialDraft)?.langLabel ?? null,
   );
+  const [deliveryMode, setDeliveryMode] = useState<AnnouncementDeliveryMode>(
+    announcementDeliveryMode(initialDraft),
+  );
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [feedback, setFeedback] = useState("");
@@ -102,6 +116,7 @@ export function AnnouncementComposer({
     selectedBuilding,
     selectedRoomIds,
   );
+  const deliveryTranslations = translationsForDelivery(deliveryMode, translations);
 
   function updateSource(field: "title" | "body", value: string) {
     if (field === "title") setTitle(value);
@@ -166,6 +181,7 @@ export function AnnouncementComposer({
     setBody(attached.body);
     setTranslations(buildAttachedTranslations(attached));
     setAttachedLabel(label);
+    setDeliveryMode("translated");
     setErrors([]);
     setFeedback(`${label} 번역을 공지 제목과 상세 내용에 첨부했습니다.`);
   }
@@ -191,16 +207,22 @@ export function AnnouncementComposer({
   async function handleSave(intent: "save" | "review") {
     if (
       intent === "review"
-      && category === "urgent"
-      && !findAttachedTranslation({ title, body, translations })
+      && deliveryMode === "translated"
+      && !findAttachedTranslation({ title, body, translations: deliveryTranslations })
     ) {
       setErrors(["번역 후 첨부할 언어를 선택해 주세요."]);
       return;
     }
 
     const validationErrors = validateAnnouncementCompose(
-      { category, title, body, targetRoomIds: target.targetRoomIds, translations },
-      { requireUrgentReviews: intent === "review" },
+      {
+        category,
+        title,
+        body,
+        targetRoomIds: target.targetRoomIds,
+        translations: deliveryTranslations,
+      },
+      { requireUrgentReviews: intent === "review" && deliveryMode === "translated" },
     );
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
@@ -220,7 +242,7 @@ export function AnnouncementComposer({
           targetRoomIds: target.targetRoomIds,
           title,
           body,
-          translations,
+          translations: deliveryTranslations,
         },
       });
       setCurrentDraftId(saved.id);
@@ -338,6 +360,24 @@ export function AnnouncementComposer({
             <span className={styles.sectionDot} /> 내 용
           </h2>
           <div className={styles.sectionStack}>
+            <fieldset className={styles.deliveryModeFieldset}>
+              <legend className={styles.fieldLabel}>발송 언어</legend>
+              <div className={styles.deliveryModeGroup}>
+                {DELIVERY_MODE_OPTIONS.map((option) => (
+                  <label key={option.value}>
+                    <input
+                      className={styles.choiceInput}
+                      type="radio"
+                      name="deliveryMode"
+                      value={option.value}
+                      checked={deliveryMode === option.value}
+                      onChange={() => setDeliveryMode(option.value)}
+                    />
+                    <span className={styles.categoryPill}>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <label className={styles.fieldLabel}>
               공지 제목
               <input
