@@ -852,6 +852,40 @@ export default function RoomlogFloorPlanEditor() {
   // 드래그(이동/크기조절)는 mousemove마다 상태를 갱신하므로, 드래그 시작 시점 한 번만 이력에 쌓는다.
   const dragHistoryPushedRef = useRef(false);
   const lastHistorySnapshotRef = useRef<EditorHistorySnapshot>({ fixtures: fixtureCandidates, openings: openingCandidates, walls });
+
+  // 마운트 시 저장된 도면 초안(floorPlanDraft)을 복원한다 — "다시 열기"로 재진입해도
+  // 그렸던 벽·문/창문·설비·가구·축척이 남아있게(예전엔 walls가 항상 []로 시작해 빈 캔버스가 됐다).
+  // roomWalls3D는 walls·축척에서 파생되므로 2D 상태만 되살리면 3D도 그대로 복구된다.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let draft: Record<string, unknown> | null = null;
+    try {
+      const raw = window.localStorage.getItem("floorPlanDraft");
+      draft = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    } catch {
+      draft = null;
+    }
+    if (!draft) return;
+    const restoredWalls = Array.isArray(draft.walls) ? (draft.walls as Wall[]) : [];
+    if (restoredWalls.length === 0) return; // 의미 있는 벽이 없으면 빈 캔버스 유지(새로 그리기)
+
+    editHistorySkipRef.current = true; // 복원은 실행취소 이력에 쌓지 않는다
+    setWalls(restoredWalls);
+    if (Array.isArray(draft.openings)) setOpeningCandidates(draft.openings as FloorPlanCandidate[]);
+    if (Array.isArray(draft.fixtures)) setFixtureCandidates(draft.fixtures as FloorPlanCandidate[]);
+    if (Array.isArray(draft.furnitures)) setPlacedFurnitures(draft.furnitures as PlacedFurniture[]);
+    if (Array.isArray(draft.hiddenWallIds)) setHiddenWallIds(new Set(draft.hiddenWallIds as string[]));
+    if (typeof draft.pixelToMmRatio === "number") setPixelToMmRatio(draft.pixelToMmRatio);
+    if (draft.extractionMeta && typeof draft.extractionMeta === "object") {
+      const meta = draft.extractionMeta as ExtractionMeta;
+      setExtractionMeta(meta);
+      setIsScaleSet(Boolean(meta.scaleConfirmed));
+    }
+    if (typeof draft.id === "string") setFloorPlanDraftId(draft.id);
+    fitViewToWalls(restoredWalls);
+    setUploadStatus("저장된 도면을 불러왔어요 — 이어서 수정할 수 있어요");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
   const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
