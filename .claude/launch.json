@@ -16,6 +16,14 @@
       "cwd": ".",
       "port": 3000,
       "autoPort": false
+    },
+    {
+      "name": "web-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/next-with-root-env.mjs", "dev", "-p", "3200"],
+      "cwd": "apps/web",
+      "port": 3200,
+      "autoPort": false
     }
   ]
 }

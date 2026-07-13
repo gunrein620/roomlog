@@ -3,7 +3,7 @@
 // 사는 집(세입자) 마이페이지 — 계약 상태, 수리요청(실제 민원 API), 관리비, 집주인 채팅.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Bath, Bot, ChevronRight, FileText, Headphones, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
@@ -19,11 +19,6 @@ const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   upcoming: null,
   previousUnpaidLabel: null,
 };
-
-const demoTenantRepairHistory = [
-  { id: "demo-aircon", title: "에어컨 수리", status: "완료", date: "2024.08.12", Icon: Snowflake, tone: "warm" },
-  { id: "demo-sink", title: "세면대 교체", status: "처리 중", date: "2024.11.02", Icon: Bath, tone: "neutral" }
-];
 
 type TenantContractSummary = {
   threadId: string;
@@ -210,38 +205,41 @@ export default function TenantMyPage({
   const [repairRequests, setRepairRequests] = useState<TenantRepairRequest[]>([]);
 
   // 접수 내역은 서버가 진실 — 새로고침해도 남고, 관리인이 상태를 바꾸면 여기 라벨도 따라온다.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/tenant/complaints", { cache: "no-store" });
-        if (!res.ok) return; // 비로그인/집 미연결 — 빈 목록 유지
-        const complaints = (await res.json()) as Array<{
-          id: string;
-          title: string;
-          displayStatus?: string;
-          createdAt?: string;
-        }>;
-        if (cancelled || !Array.isArray(complaints)) return;
-        setRepairRequests(
-          complaints
-            .slice()
-            .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
-            .map((item) => ({ id: item.id, title: item.title, status: item.displayStatus ?? "접수됨", date: item.createdAt?.slice(0, 10).replaceAll("-", ".") }))
-        );
-      } catch {
-        // 일시 오류 — 접수 시점에 다시 채워진다
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  // 신규 접수 직후에도 같은 로더를 다시 불러 서버 상태를 그대로 반영한다.
+  const loadRepairRequests = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tenant/complaints", { cache: "no-store" });
+      if (!res.ok) return; // 비로그인/집 미연결 — 빈 목록 유지
+      const complaints = (await res.json()) as Array<{
+        id: string;
+        title: string;
+        displayStatus?: string;
+        createdAt?: string;
+      }>;
+      if (!Array.isArray(complaints)) return;
+      setRepairRequests(
+        complaints
+          .slice()
+          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+          .map((item) => ({ id: item.id, title: item.title, status: item.displayStatus ?? "접수됨", date: item.createdAt?.slice(0, 10).replaceAll("-", ".") }))
+      );
+    } catch {
+      // 일시 오류 — 접수 시점에 다시 채워진다
+    }
   }, []);
+
+  useEffect(() => {
+    void loadRepairRequests();
+  }, [loadRepairRequests]);
   const [billingCard, setBillingCard] = useState<TenantBillingCardModel>(EMPTY_BILLING_CARD);
   const [isBillLoading, setIsBillLoading] = useState(true);
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
+  const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
+  const [requestDraft, setRequestDraft] = useState({ title: "", location: "", description: "" });
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [requestError, setRequestError] = useState("");
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
   const [aiMode, setAiMode] = useState<TenantAiMode>("text");
@@ -345,16 +343,52 @@ export default function TenantMyPage({
       : tenancy?.contract?.respondedAt
         ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결`
         : "정보 없음";
-  const repairHistory = repairRequests.length
-    ? repairRequests.slice(0, 4).map((item, index) => ({
-        id: item.id,
-        title: item.title,
-        status: item.status,
-        date: item.date ?? "일자 확인 중",
-        Icon: index % 2 === 0 ? Snowflake : Bath,
-        tone: index % 2 === 0 ? "warm" : "neutral"
-      }))
-    : demoTenantRepairHistory;
+  // 서버 접수 내역이 진실 — 비어 있으면 데모를 지어내지 않고 빈 상태를 그대로 보여준다.
+  const repairHistory = repairRequests.slice(0, 4).map((item, index) => ({
+    id: item.id,
+    title: item.title,
+    status: item.status,
+    date: item.date ?? "일자 확인 중",
+    Icon: index % 2 === 0 ? Snowflake : Bath,
+    tone: index % 2 === 0 ? "warm" : "neutral"
+  }));
+
+  const openRequestSheet = () => {
+    setRequestDraft({ title: "", location: "", description: "" });
+    setRequestError("");
+    setIsRequestSheetOpen(true);
+  };
+
+  // 신규 민원/하자 접수 — 실제 민원 API(POST /tenant/complaints)로 보내 관리자 대시보드와 연결된다.
+  const handleRequestSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSubmittingRequest) return;
+    setIsSubmittingRequest(true);
+    setRequestError("");
+    try {
+      const res = await fetch("/api/tenant/complaints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: requestDraft.title.trim(),
+          location: requestDraft.location.trim(),
+          description: requestDraft.description.trim()
+        })
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => undefined)) as { message?: string } | undefined;
+        setRequestError(data?.message || "요청을 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+      setIsRequestSheetOpen(false);
+      showToast("민원/하자 요청이 접수되었습니다.");
+      void loadRepairRequests();
+    } catch {
+      setRequestError("네트워크 오류로 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setIsSubmittingRequest(false);
+    }
+  };
 
   const handleAiSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -441,7 +475,7 @@ export default function TenantMyPage({
       <section className="tenant-history-card" aria-label="민원/하자 이력">
         <header className="tenant-section-head">
           <h3>민원/하자 이력</h3>
-          <button type="button" onClick={onGoInquiry}>
+          <button type="button" onClick={openRequestSheet}>
             신규 요청하기
             <span aria-hidden="true">+</span>
           </button>
@@ -462,6 +496,11 @@ export default function TenantMyPage({
               </button>
             );
           })}
+          {repairHistory.length === 0 ? (
+            <p className="tenant-history-empty">
+              접수된 민원/하자가 없습니다. 불편한 점이 생기면 신규 요청하기로 알려주세요.
+            </p>
+          ) : null}
         </div>
       </section>
 
@@ -742,6 +781,68 @@ export default function TenantMyPage({
             <button className="notification-action" type="button" onClick={() => setIsContractSheetOpen(false)}>
               확인
             </button>
+          </section>
+        </div>
+      ) : null}
+
+      {isRequestSheetOpen ? (
+        <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsRequestSheetOpen(false)}>
+          <section
+            className="notification-sheet tenant-request-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-request-sheet-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>민원/하자 신규 요청</span>
+                <h2 id="tenant-request-sheet-title">어떤 불편이 있으신가요?</h2>
+                <p>접수하면 관리자에게 바로 전달되고, 처리 상태를 이 화면에서 확인할 수 있습니다.</p>
+              </div>
+              <button type="button" onClick={() => setIsRequestSheetOpen(false)} aria-label="신규 요청 닫기">×</button>
+            </header>
+
+            <form className="tenant-request-form" onSubmit={handleRequestSubmit}>
+              <label>
+                <span>제목</span>
+                <input
+                  type="text"
+                  value={requestDraft.title}
+                  onChange={(event) => setRequestDraft((draft) => ({ ...draft, title: event.target.value }))}
+                  placeholder="예: 에어컨에서 물이 새요"
+                  maxLength={80}
+                  required
+                />
+              </label>
+              <label>
+                <span>발생 위치</span>
+                <input
+                  type="text"
+                  value={requestDraft.location}
+                  onChange={(event) => setRequestDraft((draft) => ({ ...draft, location: event.target.value }))}
+                  placeholder="예: 거실 에어컨 아래"
+                  maxLength={60}
+                  required
+                />
+              </label>
+              <label>
+                <span>상세 설명</span>
+                <textarea
+                  value={requestDraft.description}
+                  onChange={(event) => setRequestDraft((draft) => ({ ...draft, description: event.target.value }))}
+                  placeholder="언제부터, 어떤 증상이 있는지 적어주시면 처리가 빨라져요."
+                  rows={4}
+                  maxLength={1000}
+                  required
+                />
+              </label>
+              {requestError ? <p className="tenant-request-error" role="alert">{requestError}</p> : null}
+              <button className="notification-action" type="submit" disabled={isSubmittingRequest}>
+                {isSubmittingRequest ? "접수 중…" : "요청 접수하기"}
+              </button>
+            </form>
           </section>
         </div>
       ) : null}

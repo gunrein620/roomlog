@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, EllipsisVertical } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ticketDashHref } from "../../_components/ticket-manager-ui";
+import { TicketDetailDialog } from "./TicketDetailDialog";
 import {
   DEFECT_STATUS_FILTERS,
   countDefectStatuses,
@@ -52,7 +53,7 @@ const displayStatusLabel: Record<DefectDisplayStatus, string> = {
   cancelled: "취소",
 };
 
-function DashboardRow({ row }: { row: DefectDashboardRow }) {
+function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (row: DefectDashboardRow) => void }) {
   const displayStatus = defectDisplayStatus(row);
 
   return (
@@ -66,12 +67,14 @@ function DashboardRow({ row }: { row: DefectDashboardRow }) {
         </span>
       </td>
       <td>
-        <Link
+        {/* 작업명 클릭 → 페이지 이동 대신 상세 모달(빠른 확인) — 깊은 작업은 모달 안 링크로 */}
+        <button
+          type="button"
           className="manager-defect-dashboard__job-link"
-          href={ticketDashHref("01", row.ticket.id)}
+          onClick={() => onSelect(row)}
         >
           {row.ticket.title}
-        </Link>
+        </button>
       </td>
       <td className="manager-defect-dashboard__muted-cell">
         {row.buildingName ?? "—"}
@@ -135,6 +138,7 @@ export function ManagerDefectDashboard({
     template: initialTemplate,
   });
   const [page, setPage] = useState(1);
+  const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
 
   const counts = useMemo(() => countDefectStatuses(rows), [rows]);
   const workers = useMemo(
@@ -256,7 +260,7 @@ export function ManagerDefectDashboard({
           </thead>
           <tbody>
             {pageResult.rows.map((row) => (
-              <DashboardRow key={row.ticket.id} row={row} />
+              <DashboardRow key={row.ticket.id} row={row} onSelect={setSelectedRow} />
             ))}
             {pageResult.rows.length === 0 ? (
               <tr>
@@ -305,6 +309,8 @@ export function ManagerDefectDashboard({
           </button>
         </nav>
       </footer>
+
+      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
     </section>
   );
 }

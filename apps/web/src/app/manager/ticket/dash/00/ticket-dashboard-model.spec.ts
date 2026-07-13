@@ -11,7 +11,6 @@ import {
   ticketStatusGroup,
   type DefectDashboardRow,
 } from "./ticket-dashboard-model";
-import { MANAGER_DEFECT_DASHBOARD_DEMO_ROWS } from "./manager-defect-dashboard-demo";
 
 const ticket = (id: string, status: Ticket["status"]): Ticket => ({
   id,
@@ -110,14 +109,28 @@ describe("manager defect dashboard model", () => {
   });
 
   it("filters rows by their displayed building name", () => {
+    const namedRows: DefectDashboardRow[] = [
+      { ticket: ticket("tower-1", "received"), buildingName: "세움타워" },
+      { ticket: ticket("villa-1", "received"), buildingName: "우주빌리지" },
+      { ticket: ticket("unknown-1", "received") },
+    ];
     assert.deepEqual(
-      filterDefectRows(MANAGER_DEFECT_DASHBOARD_DEMO_ROWS, {
+      filterDefectRows(namedRows, {
         status: "all",
         worker: "all",
         building: "세움타워",
         template: "all",
       }).map((row) => row.ticket.id),
-      ["demo-defect-01", "demo-defect-02", "demo-defect-06", "demo-defect-08"],
+      ["tower-1"],
+    );
+    assert.deepEqual(
+      filterDefectRows(namedRows, {
+        status: "all",
+        worker: "all",
+        building: "missing",
+        template: "all",
+      }).map((row) => row.ticket.id),
+      ["unknown-1"],
     );
   });
 

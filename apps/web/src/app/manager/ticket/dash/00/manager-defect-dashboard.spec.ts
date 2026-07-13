@@ -91,7 +91,9 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(pageSource, /initialTemplate === "all"/);
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
-  assert.match(pageSource, /\.\.\.MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
+  // 더미 행 혼합 금지 — 대시보드는 실제 접수 티켓만 보여준다(세입자 신규 요청과 직결).
+  assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
+  assert.match(pageSource, /listManagerTicketRows/);
   assert.match(componentSource, /initialTemplate/);
   assert.match(componentSource, /disabled/);
   assert.match(componentSource, /row\.buildingName \?\? "—"/);

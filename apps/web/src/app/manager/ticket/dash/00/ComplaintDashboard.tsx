@@ -20,6 +20,7 @@ import {
   latestComplaintMonth,
   serializeComplaintDashboardCsv,
 } from "./complaint-dashboard-model";
+import { TicketDetailDialog } from "./TicketDetailDialog";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
 
 const METRICS = [
@@ -69,6 +70,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
   const [month, setMonth] = useState(() => latestComplaintMonth(rows));
   const [pickerYear, setPickerYear] = useState(() => monthParts(latestComplaintMonth(rows)).year);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<DefectDashboardRow | null>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
   const dashboard = useMemo(() => buildComplaintDashboard(rows, month), [rows, month]);
   const maxTrendCount = Math.max(1, ...dashboard.trend.map((item) => item.count));
@@ -269,7 +271,16 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
               {dashboard.recent.map((row) => (
                 <tr key={row.ticket.id}>
                   <td><span className="manager-complaint-dashboard__category" data-category={complaintCategory(row.ticket)}>{dashboard.categories.find((category) => category.id === complaintCategory(row.ticket))?.label}</span></td>
-                  <td>{row.ticket.title}</td>
+                  <td>
+                    {/* 접수 내용 클릭 → 상세 모달(페이지 이동 없이 바로 확인) */}
+                    <button
+                      type="button"
+                      className="manager-complaint-dashboard__row-link"
+                      onClick={() => setSelectedRow(row)}
+                    >
+                      {row.ticket.title}
+                    </button>
+                  </td>
                   <td>{row.buildingName ?? "—"} / {row.ticket.unitId || "—"}</td>
                   <td>{formatComplaintDate(row.ticket.createdAt)}</td>
                   <td><span className="manager-complaint-dashboard__status" data-status={complaintStatusLabel(row.ticket.status)}>{complaintStatusLabel(row.ticket.status)}</span></td>
@@ -280,6 +291,8 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
           </table>
         </div>
       </article>
+
+      <TicketDetailDialog row={selectedRow} onClose={() => setSelectedRow(null)} />
     </section>
   );
 }

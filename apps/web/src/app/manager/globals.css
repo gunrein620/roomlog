@@ -1720,9 +1720,15 @@ dd {
 }
 
 .manager-defect-dashboard__job-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--on-surface);
+  font: inherit;
   font-weight: var(--fw-subtitle);
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .manager-defect-dashboard__job-link:hover {
@@ -1954,6 +1960,157 @@ dd {
 
   .manager-defect-dashboard__pagination nav {
     justify-self: center;
+  }
+}
+
+/* 민원 상세 모달 — 접수 건을 페이지 이동 없이 빠르게 확인하는 표면 */
+.manager-ticket-dialog {
+  width: min(560px, calc(100vw - var(--space-xl) * 2));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.manager-ticket-dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.manager-ticket-dialog__body {
+  display: grid;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.manager-ticket-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.manager-ticket-dialog__badges {
+  margin: 0 0 var(--space-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.manager-ticket-dialog__header h2 {
+  margin: 0;
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-subtitle, 1.4);
+  overflow-wrap: anywhere;
+}
+
+.manager-ticket-dialog__meta {
+  margin: var(--space-xs) 0 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.manager-ticket-dialog__header button {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+}
+
+.manager-ticket-dialog__header button:hover {
+  background: var(--surface-container);
+  color: var(--on-surface);
+}
+
+.manager-ticket-dialog__header button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.manager-ticket-dialog__facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md) var(--space-lg);
+  padding: var(--space-lg);
+  border-radius: var(--radius);
+  background: var(--surface-container-low, var(--surface-container));
+}
+
+.manager-ticket-dialog__facts dt {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.manager-ticket-dialog__facts dd {
+  margin: var(--space-xs) 0 0;
+  font-weight: var(--fw-subtitle);
+  overflow-wrap: anywhere;
+}
+
+.manager-ticket-dialog__description h3 {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-ticket-dialog__description p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  line-height: var(--lh-body, 1.6);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.manager-ticket-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-dialog__actions a {
+  flex: 1 1 auto;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--on-surface);
+  font-weight: var(--fw-subtitle);
+  text-decoration: none;
+}
+
+.manager-ticket-dialog__actions a:first-child {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.manager-ticket-dialog__actions a:hover {
+  filter: brightness(0.97);
+}
+
+.manager-ticket-dialog__actions a:focus-visible,
+.manager-ticket-dialog__header button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 640px) {
+  .manager-ticket-dialog__facts {
+    grid-template-columns: 1fr;
   }
 }
 /* manager-defect-dashboard:end */
@@ -2401,6 +2558,27 @@ dd {
   height: calc(var(--touch-target) * 2);
   color: var(--on-surface-variant) !important;
   text-align: center !important;
+}
+
+/* 최근 접수 내역의 내용 클릭 → 상세 모달을 여는 텍스트 버튼 */
+.manager-complaint-dashboard__row-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--on-surface);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  text-align: left;
+  cursor: pointer;
+}
+
+.manager-complaint-dashboard__row-link:hover {
+  color: var(--primary);
+}
+
+.manager-complaint-dashboard__row-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .manager-complaint-dashboard__period button:focus-visible,

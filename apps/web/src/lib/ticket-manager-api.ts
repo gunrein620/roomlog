@@ -60,6 +60,23 @@ export async function listManagerTickets(filter?: string): Promise<Ticket[]> {
   }
 }
 
+// 대시보드용 목록 — 티켓+수리를 목록 1회 조회로 함께 매핑한다(티켓별 재조회 N+1 제거).
+// getManagerRepair와 달리 데모 폴백이 없다: 수리 미배정이면 undefined(작업자 "미배정" 표시).
+// 실제 접수 건에 가짜 업체/금액을 섞지 않기 위한 분리다(위조 금지).
+export async function listManagerTicketRows(): Promise<
+  { ticket: Ticket; repair?: RepairJob }[]
+> {
+  try {
+    return (await listTeamTickets()).map((t) => ({
+      ticket: toManagerTicket(t),
+      repair: toManagerRepair(t) ?? undefined
+    }));
+  } catch (error) {
+    console.error("[manager/api] listManagerTicketRows 실패 → 빈 목록:", error);
+    return [];
+  }
+}
+
 export async function getManagerQueueSummary(): Promise<ManagerQueueSummary> {
   try {
     const list = await listTeamTickets();
