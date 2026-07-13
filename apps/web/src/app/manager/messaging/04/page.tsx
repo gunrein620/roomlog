@@ -4,12 +4,12 @@ import { Button, Input } from "@roomlog/ui";
 import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
 import { addManagerThreadMessage, deleteManagerThread, getManagerThread } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { formatThreadLocation } from "@/lib/messaging-thread-location";
 import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
   CONTEXT_LABEL,
-  LinkButton,
   NoticeCard,
   ScreenHeader,
   StaticButton,
@@ -85,27 +85,25 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const thread = await getRequiredManagerThread(id);
   const messages = thread.messages ?? [];
   const isPayment = thread.context === "payment";
+  const locationLabel = formatThreadLocation(thread);
 
   return (
     <>
       <MessageAutoRefresh intervalMs={3000} />
       <ScreenHeader
         eyebrow="M-MSG-04"
-        title={`${thread.unitId}호 채팅 스레드`}
+        title={`${locationLabel} 채팅 스레드`}
         actions={
-          <>
-            <LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-00"]} variant="secondary">허브</LinkButton>
-            <form action={deleteManagerThreadAction}>
-              <input type="hidden" name="threadId" value={thread.id} />
-              <Button
-                type="submit"
-                variant="ghost"
-                aria-label={`${thread.unitId}호 ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
-              >
-                삭제
-              </Button>
-            </form>
-          </>
+          <form action={deleteManagerThreadAction}>
+            <input type="hidden" name="threadId" value={thread.id} />
+            <Button
+              type="submit"
+              variant="ghost"
+              aria-label={`${locationLabel} ${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
+            >
+              삭제
+            </Button>
+          </form>
         }
       />
 
@@ -175,10 +173,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 }
 
 function ContextCard({ thread }: { thread: Thread }) {
+  const locationLabel = formatThreadLocation(thread);
+
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
       <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-        <Badge emphasis>{thread.unitId}호</Badge>
+        <Badge emphasis>{locationLabel}</Badge>
         <Badge>{thread.tenantId}</Badge>
         <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
         {thread.pendingRequest ? <Badge emphasis>추가요청 대기</Badge> : null}

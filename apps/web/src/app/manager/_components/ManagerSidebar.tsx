@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Bot,
   Building2,
+  ChevronDown,
   ContactRound,
   ExternalLink,
   FileText,
@@ -19,6 +20,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   MANAGER_NAV_GROUPS,
   getManagerCurrentHref,
@@ -44,12 +46,32 @@ const MANAGER_NAV_ICONS: Record<ManagerNavItemId, LucideIcon> = {
 export interface ManagerSidebarProps {
   onNavigate?: () => void;
   showCloseButton?: boolean;
+  /** 사이드바 우측 상단 액션 슬롯 (예: 데스크톱 접기 토글) — 모바일 닫기 버튼과 같은 자리. */
+  headerAction?: ReactNode;
 }
 
-export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerSidebarProps) {
+export function ManagerSidebar({ onNavigate, showCloseButton = false, headerAction }: ManagerSidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const state = getManagerNavState(pathname);
   const currentHref = getManagerCurrentHref(pathname);
+  const ticketActive = state.activeItemId === "ticket";
+  const messagingActive = state.activeItemId === "messaging";
+  const [ticketExpanded, setTicketExpanded] = useState(ticketActive);
+  const [messagingExpanded, setMessagingExpanded] = useState(messagingActive);
+  const ticketTypeFilter = searchParams.get("type") === "complaint"
+    ? "complaint"
+    : searchParams.get("type") === "defect"
+      ? "defect"
+      : "all";
+
+  useEffect(() => {
+    if (ticketActive) setTicketExpanded(true);
+  }, [pathname, ticketActive]);
+
+  useEffect(() => {
+    if (messagingActive) setMessagingExpanded(true);
+  }, [pathname, messagingActive]);
 
   return (
     <div className="manager-sidebar">
@@ -70,7 +92,9 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
           >
             <X aria-hidden="true" />
           </button>
-        ) : null}
+        ) : (
+          headerAction ?? null
+        )}
       </header>
 
       <nav aria-label="관리자 전체 메뉴" className="manager-sidebar__nav">
@@ -82,28 +106,58 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false }: ManagerS
                 const active = state.activeItemId === item.id;
                 const parentCurrent = currentHref === item.href && state.activeChildHref === null;
                 const Icon = MANAGER_NAV_ICONS[item.icon];
+                const isTicket = item.id === "ticket";
+                const isMessaging = item.id === "messaging";
+                const isCollapsible = isTicket || isMessaging;
+                const expanded = isTicket ? ticketExpanded : messagingExpanded;
+                const subnavId = isTicket ? "manager-ticket-subnav" : "manager-messaging-subnav";
+                const setExpanded = isTicket ? setTicketExpanded : setMessagingExpanded;
+                const showChildren = isCollapsible ? expanded : active;
 
                 return (
                   <div key={item.id} className="manager-sidebar__item">
-                    <Link
-                      href={item.href}
-                      onClick={onNavigate}
-                      aria-current={parentCurrent ? "page" : undefined}
-                      className={`manager-sidebar__link${active ? " is-active" : ""}`}
-                    >
-                      <Icon aria-hidden="true" />
-                      <span>{item.label}</span>
-                      {item.external ? (
-                        <span className="manager-sidebar__external">
-                          <ExternalLink aria-hidden="true" />
-                          <span className="manager-sidebar__sr-only">관리자 워크스페이스 밖으로 이동</span>
-                        </span>
-                      ) : null}
-                    </Link>
-                    {active ? (
-                      <div className="manager-sidebar__children">
+                    {isCollapsible ? (
+                      <button
+                        type="button"
+                        className={`manager-sidebar__parent-toggle${active ? " is-active" : ""}`}
+                        aria-expanded={expanded}
+                        aria-controls={subnavId}
+                        aria-label={`${item.label} 메뉴 ${expanded ? "접기" : "펼치기"}`}
+                        data-expanded={expanded}
+                        onClick={() => setExpanded((current) => !current)}
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>{item.label}</span>
+                        <ChevronDown aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <div className={`manager-sidebar__link-row${active ? " is-active" : ""}`}>
+                        <Link
+                          href={item.href}
+                          onClick={onNavigate}
+                          aria-current={parentCurrent ? "page" : undefined}
+                          className={`manager-sidebar__link${active ? " is-active" : ""}`}
+                        >
+                          <Icon aria-hidden="true" />
+                          <span>{item.label}</span>
+                          {item.external ? (
+                            <span className="manager-sidebar__external">
+                              <ExternalLink aria-hidden="true" />
+                              <span className="manager-sidebar__sr-only">관리자 워크스페이스 밖으로 이동</span>
+                            </span>
+                          ) : null}
+                        </Link>
+                      </div>
+                    )}
+                    {showChildren ? (
+                      <div
+                        id={isCollapsible ? subnavId : undefined}
+                        className="manager-sidebar__children"
+                      >
                         {item.children.map((child) => {
-                          const childActive = currentHref === child.href;
+                          const childActive = child.typeFilter
+                            ? child.typeFilter === ticketTypeFilter
+                            : child.active ?? currentHref === child.href;
                           return (
                             <Link
                               key={child.href}

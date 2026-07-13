@@ -1,0 +1,361 @@
+.list {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.cardButton {
+  all: unset;
+  display: block;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.cardButton:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--space-xs);
+}
+
+.cardButton:hover > div {
+  border-color: var(--primary);
+}
+
+.cardLayout {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  gap: var(--space-lg);
+  text-align: left;
+}
+
+.cardMedia,
+.dialogMedia {
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface-container-high);
+}
+
+.cardMedia {
+  min-height: 120px;
+}
+
+.cardMedia img,
+.dialogMedia img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cardContent,
+.dialogBody,
+.form,
+.removeConfirm {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.cardContent {
+  align-content: center;
+}
+
+.badges,
+.actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.dialog {
+  width: min(760px, calc(100vw - var(--space-xl)));
+  max-height: calc(100vh - var(--space-xl));
+  padding: 0;
+  overflow: auto;
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.dialog::backdrop {
+  background: color-mix(in srgb, var(--on-surface) 45%, transparent);
+}
+
+.dialogHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--surface-container-lowest);
+  border-bottom: 1px solid var(--border);
+}
+
+.dialogHeader h2,
+.dialogBody p {
+  margin: 0;
+}
+
+.iconButton,
+.actionButton,
+.dangerButton {
+  min-height: var(--touch-target);
+  border-radius: var(--radius-btn);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.iconButton {
+  min-width: var(--touch-target);
+  color: var(--on-surface);
+  background: transparent;
+  border: 0;
+}
+
+.dialogBody {
+  padding: var(--space-lg);
+}
+
+.dialogMedia {
+  min-height: 240px;
+  max-height: 360px;
+}
+
+.mediaEmpty {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  color: var(--on-surface-variant);
+}
+
+.detailGrid,
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.detailItem,
+.field {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.detailItem dt,
+.field span {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+}
+
+.detailItem dd {
+  margin: 0;
+  font-weight: 800;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: var(--touch-target);
+  box-sizing: border-box;
+  padding: var(--space-sm) var(--space-md);
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.fullWidth {
+  grid-column: 1 / -1;
+}
+
+.actions {
+  justify-content: flex-end;
+  padding-top: var(--space-sm);
+}
+
+.actionButton,
+.dangerButton {
+  padding: 0 var(--space-lg);
+}
+
+.actionButton {
+  color: var(--primary);
+  background: transparent;
+  border: 1.5px solid var(--primary);
+}
+
+.actionButton[data-primary="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.dangerButton {
+  color: var(--error);
+  background: var(--error-container);
+  border: 1px solid var(--error);
+}
+
+.actionButton:disabled,
+.dangerButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.error {
+  color: var(--error);
+  font-weight: 800;
+}
+
+.mediaEditor {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container-low);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.sectionHeader h3,
+.sectionHeader p,
+.mediaNotice {
+  margin: 0;
+}
+
+.sectionHeader p,
+.mediaNotice {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.fileButton,
+.mediaLink {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 var(--space-md);
+  color: var(--primary);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-btn);
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fileButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.fileButton:focus-within,
+.mediaLink:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--space-xs);
+}
+
+.photoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-sm);
+}
+
+.photoItem {
+  position: relative;
+  min-height: 120px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+}
+
+.photoItem img {
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  object-fit: cover;
+}
+
+.photoItem figcaption {
+  position: absolute;
+  left: var(--space-xs);
+  bottom: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--on-primary);
+  background: var(--primary);
+  border-radius: var(--radius-btn);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+}
+
+.photoItem button {
+  position: absolute;
+  top: var(--space-xs);
+  right: var(--space-xs);
+  min-height: var(--touch-target);
+  padding: 0 var(--space-sm);
+  color: var(--error);
+  background: var(--error-container);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-btn);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mediaActions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-sm);
+  padding: var(--space-xl) var(--space-md);
+}
+
+.empty p {
+  margin: 0;
+  color: var(--on-surface-variant);
+}
+
+@media (max-width: 720px) {
+  .cardLayout,
+  .detailGrid,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .fullWidth {
+    grid-column: auto;
+  }
+
+  .mediaActions > *,
+  .sectionHeader .fileButton {
+    width: 100%;
+  }
+}

@@ -13,6 +13,7 @@ import {
   managerDemoRepair,
   managerDemoTicket
 } from "./ticket-manager-demo";
+import { managerDefectDashboardDemoRecord } from "./manager-defect-dashboard-demo";
 
 // 관리인 티켓 API 클라이언트 — 팀 실 백엔드(GET /manager/tickets)에 쿠키 인증으로 연결.
 // [레퍼런스 패턴 복제] 서버 컴포넌트 전용(serverFetch가 httpOnly 쿠키→Bearer forward).
@@ -70,6 +71,9 @@ export async function getManagerQueueSummary(): Promise<ManagerQueueSummary> {
 }
 
 export async function getManagerTicket(id: string = MANAGER_DEMO_TICKET_ID): Promise<Ticket> {
+  const demo = managerDefectDashboardDemoRecord(id);
+  if (demo) return demo.ticket;
+
   const t = await selectedTeamTicket(id);
   if (t) return toManagerTicket(t);
   console.warn("[manager/api] 활성 티켓 없음 → 데모 폴백");
@@ -79,6 +83,9 @@ export async function getManagerTicket(id: string = MANAGER_DEMO_TICKET_ID): Pro
 export async function getManagerAnalysis(
   ticketId: string = MANAGER_DEMO_TICKET_ID
 ): Promise<DefectAnalysis> {
+  const demo = managerDefectDashboardDemoRecord(ticketId);
+  if (demo) return demo.analysis;
+
   const t = await selectedTeamTicket(ticketId);
   const mapped = t && toManagerAnalysis(t);
   if (mapped) return mapped;
@@ -89,6 +96,9 @@ export async function getManagerAnalysis(
 export async function getManagerRepair(
   ticketId: string = MANAGER_DEMO_TICKET_ID
 ): Promise<RepairJob> {
+  const demo = managerDefectDashboardDemoRecord(ticketId);
+  if (demo) return demo.repair;
+
   const t = await selectedTeamTicket(ticketId);
   const mapped = t && toManagerRepair(t);
   if (mapped) return mapped;

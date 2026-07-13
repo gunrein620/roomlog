@@ -1,8 +1,12 @@
 import type {
   AnnouncementDelivery,
   AnnouncementDraft,
+  AnnouncementDraftInput,
   AnnouncementRecipient,
   AnnouncementResult,
+  AnnouncementTranslationRequest,
+  AnnouncementTranslationResponse,
+  UpdateAnnouncementDraftInput,
   Thread,
   ThreadContext,
 } from "@roomlog/types";
@@ -19,6 +23,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
     category: "urgent",
     scope: "building",
     targetLabel: "A동 전체 42세대",
+    targetRoomIds: ["room-301", "room-302", "room-303"],
     title: "[긴급] 오늘 14~16시 단수 안내",
     body: "노후 배관 교체로 오늘 14:00~16:00 단수됩니다. 미리 물을 받아두세요.",
     translations: [
@@ -28,6 +33,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
         title: "[Urgent] Water outage today 14:00-16:00",
         body: "Water supply will be suspended today from 14:00 to 16:00 for pipe replacement. Please prepare water in advance.",
         reviewed: true,
+        sourceHash: "demo-urgent-water-v1",
       },
       {
         lang: "zh",
@@ -35,6 +41,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
         title: "[紧急] 今日14:00-16:00停水通知",
         body: "因更换老化管道，今日14:00至16:00将停水。请提前储水。",
         reviewed: true,
+        sourceHash: "demo-urgent-water-v1",
       },
       {
         lang: "vi",
@@ -42,6 +49,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
         title: "[Khẩn cấp] Ngừng cấp nước hôm nay 14:00-16:00",
         body: "Nước sẽ tạm ngừng hôm nay từ 14:00 đến 16:00 để thay ống cũ. Vui lòng chuẩn bị nước trước.",
         reviewed: true,
+        sourceHash: "demo-urgent-water-v1",
       },
     ],
     confirmRequired: true,
@@ -53,6 +61,7 @@ export const DEMO_MANAGER_DRAFTS: AnnouncementDraft[] = [
     category: "life",
     scope: "all",
     targetLabel: "전체 118세대",
+    targetRoomIds: ["room-301", "room-302", "room-303"],
     title: "공용 계단 청소 안내",
     body: "매주 화요일 오전 공용 계단 청소가 진행됩니다. 복도 적치물을 정리해 주세요.",
     confirmRequired: false,
@@ -112,6 +121,7 @@ export const DEMO_MANAGER_RESULTS: AnnouncementResult[] = [
 export const DEMO_MANAGER_THREADS: Thread[] = [
   {
     id: "th_mgr_302",
+    buildingName: "테스트 건물1",
     unitId: "302",
     tenantId: "tn_302",
     context: "defect",
@@ -143,6 +153,7 @@ export const DEMO_MANAGER_THREADS: Thread[] = [
   },
   {
     id: "th_mgr_405",
+    buildingName: "테스트 건물2",
     unitId: "405",
     tenantId: "tn_405",
     context: "payment",
@@ -166,6 +177,7 @@ export const DEMO_MANAGER_THREADS: Thread[] = [
   },
   {
     id: "th_mgr_201",
+    buildingName: "테스트 건물3",
     unitId: "201",
     tenantId: "tn_201",
     context: "announcement",
@@ -212,6 +224,7 @@ export const managerMessagingPaths = {
   announcementDrafts: () => "/manager/messaging/announcement-drafts",
   announcementDraft: (id: string) =>
     `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}`,
+  announcementTranslations: () => "/manager/messaging/announcement-translations",
   announcementRecipients: (id: string) =>
     `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}/recipients`,
   sendAnnouncementDraft: (id: string) =>
@@ -269,15 +282,27 @@ export function listAnnouncementDrafts(): Promise<AnnouncementDraft[]> {
   );
 }
 
-export function createAnnouncementDraft(input: {
-  category: AnnouncementDraft["category"];
-  scope: AnnouncementDraft["scope"];
-  targetLabel: string;
-  title: string;
-  body: string;
-  confirmRequired?: boolean;
-}): Promise<AnnouncementDraft> {
+export function createAnnouncementDraft(input: AnnouncementDraftInput): Promise<AnnouncementDraft> {
   return serverFetch<AnnouncementDraft>(managerMessagingPaths.announcementDrafts(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAnnouncementDraft(
+  id: string,
+  input: UpdateAnnouncementDraftInput,
+): Promise<AnnouncementDraft> {
+  return serverFetch<AnnouncementDraft>(managerMessagingPaths.announcementDraft(id), {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function translateAnnouncement(
+  input: AnnouncementTranslationRequest,
+): Promise<AnnouncementTranslationResponse> {
+  return serverFetch<AnnouncementTranslationResponse>(managerMessagingPaths.announcementTranslations(), {
     method: "POST",
     body: JSON.stringify(input),
   });

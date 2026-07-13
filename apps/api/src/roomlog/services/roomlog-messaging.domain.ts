@@ -16,9 +16,11 @@ import type {
   MessagingThread,
   MessagingThreadContext,
   Room,
+  UpdateAnnouncementDraftInput,
   UserAccount
 } from "../roomlog.types";
 import type { Store } from "../roomlog.service";
+import { ANNOUNCEMENT_LANGUAGES, announcementSourceHash } from "./roomlog-announcement-support";
 
 type InitialThreadMessage = NonNullable<CreateMessagingThreadInput["initialMessage"]>;
 
@@ -229,7 +231,7 @@ export class RoomlogMessagingDomain {
       title: input.title.trim(),
       body: input.body.trim(),
       translations: input.translations ?? [],
-      confirmRequired: input.confirmRequired ?? input.category === "urgent",
+      confirmRequired: input.category === "urgent",
       status: "draft",
       createdByManagerId: managerId,
       createdAt,
@@ -251,6 +253,42 @@ export class RoomlogMessagingDomain {
 
   getManagerAnnouncementDraft(managerId: string, draftId: string): MessagingAnnouncementDraft {
     return this.presentDraft(this.findManagerDraft(managerId, draftId));
+  }
+
+  updateManagerAnnouncementDraft(
+    managerId: string,
+    draftId: string,
+    input: UpdateAnnouncementDraftInput
+  ): MessagingAnnouncementDraft {
+    const draft = this.findManagerDraft(managerId, draftId);
+
+    if (draft.status === "sent") {
+      throw new BadRequestException("발송된 공지는 수정할 수 없습니다.");
+    }
+
+    this.assertAnnouncementContent(input.title, input.body, input.targetLabel);
+    const targetRooms = this.targetRoomsFor(managerId, input);
+    const sourceChanged =
+      draft.title.trim() !== input.title.trim() || draft.body.trim() !== input.body.trim();
+    const updatedSourceHash = announcementSourceHash(input.title, input.body);
+    draft.category = input.category;
+    draft.scope = input.scope;
+    draft.targetLabel = input.targetLabel.trim();
+    draft.targetRoomIds = targetRooms.map((room) => room.id);
+    draft.title = input.title.trim();
+    draft.body = input.body.trim();
+    draft.translations = input.translations.map((translation) => ({
+      ...translation,
+      reviewed:
+        sourceChanged && translation.sourceHash !== updatedSourceHash
+          ? false
+          : translation.reviewed
+    }));
+    draft.confirmRequired = input.category === "urgent";
+    draft.updatedAt = now();
+    this.persistStore();
+
+    return this.presentDraft(draft);
   }
 
   listManagerAnnouncementRecipients(managerId: string, draftId: string) {
@@ -463,13 +501,21 @@ export class RoomlogMessagingDomain {
   }
 
   private presentThread(thread: MessagingThread, includeMessages = false): MessagingThread {
+    const threadMessages = this.store.messagingMessages
+      .filter((message) => message.threadId === thread.id)
+      .sort((a, b) => this.timeOf(a.createdAt) - this.timeOf(b.createdAt));
+
+    const room = this.findRoom(thread.roomId);
+
     return {
       ...thread,
+      buildingName: room.buildingName,
+      unitId: this.displayUnitId(room),
+      // 목록 응답에는 messages가 빠지므로, "마지막 발신자"만 별도로 실어
+      // 관리인 미응답(마지막 발신자=세입자) 판정을 목록만으로 가능하게 한다.
+      lastMessageSender: threadMessages.at(-1)?.sender,
       messages: includeMessages
-        ? this.store.messagingMessages
-            .filter((message) => message.threadId === thread.id)
-            .sort((a, b) => this.timeOf(a.createdAt) - this.timeOf(b.createdAt))
-            .map((message) => ({ ...message, attachmentUrls: [...message.attachmentUrls] }))
+        ? threadMessages.map((message) => ({ ...message, attachmentUrls: [...message.attachmentUrls] }))
         : undefined
     };
   }
@@ -525,8 +571,24 @@ export class RoomlogMessagingDomain {
       throw new ForbiddenException("관리 중인 호실이 없습니다.");
     }
 
+    const requestedRoomIds = input.targetRoomIds;
+
+    if (input.scope === "all") {
+      if (requestedRoomIds === undefined) {
+        return managedRooms;
+      }
+
+      const requested = new Set(requestedRoomIds);
+      const managed = new Set(managedRooms.map((room) => room.id));
+      if (requested.size !== managed.size || [...requested].some((roomId) => !managed.has(roomId))) {
+        throw new BadRequestException("전체 공지는 관리 중인 전체 호실을 대상으로 선택해야 합니다.");
+      }
+
+      return managedRooms;
+    }
+
     if (input.scope === "unit") {
-      const targetRoomIds = input.targetRoomIds ?? [];
+      const targetRoomIds = requestedRoomIds ?? [];
 
       if (targetRoomIds.length === 0) {
         throw new BadRequestException("호실 공지는 대상 호실이 필요합니다.");
@@ -538,8 +600,12 @@ export class RoomlogMessagingDomain {
       });
     }
 
-    if (input.targetRoomIds?.length) {
-      return input.targetRoomIds.map((roomId) => {
+    if (requestedRoomIds !== undefined && requestedRoomIds.length === 0) {
+      throw new BadRequestException("건물 공지는 대상 호실이 필요합니다.");
+    }
+
+    if (requestedRoomIds?.length) {
+      return requestedRoomIds.map((roomId) => {
         this.assertManagerCanAccessRoom(managerId, roomId);
         return this.findRoom(roomId);
       });
@@ -553,10 +619,23 @@ export class RoomlogMessagingDomain {
       return;
     }
 
-    const unreviewed = draft.translations.filter((translation) => !translation.reviewed);
+    const currentSourceHash = announcementSourceHash(draft.title, draft.body);
+    for (const required of ANNOUNCEMENT_LANGUAGES) {
+      const matches = draft.translations.filter((translation) => translation.lang === required.lang);
+      if (matches.length !== 1) {
+        throw new BadRequestException(`긴급 공지는 ${required.label} 번역이 정확히 하나 필요합니다.`);
+      }
 
-    if (unreviewed.length > 0) {
-      throw new BadRequestException("긴급 공지는 모든 번역 검수 완료 후 발송할 수 있습니다.");
+      const translation = matches[0];
+      if (!translation.title.trim() || !translation.body.trim()) {
+        throw new BadRequestException(`긴급 공지 ${required.label} 번역 내용을 입력해주세요.`);
+      }
+      if (translation.sourceHash !== currentSourceHash) {
+        throw new BadRequestException(`긴급 공지 ${required.label} 번역이 현재 원문과 다릅니다.`);
+      }
+      if (!translation.reviewed) {
+        throw new BadRequestException(`긴급 공지 ${required.label} 번역 검수를 완료해주세요.`);
+      }
     }
   }
 
