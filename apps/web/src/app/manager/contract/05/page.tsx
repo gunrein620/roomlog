@@ -20,6 +20,8 @@ import {
   formatDateTime,
 } from "../_components";
 
+type SearchParams = Promise<{ id?: string }>;
+
 export const dynamic = "force-dynamic";
 
 async function decideDeletionAction(formData: FormData) {
@@ -29,7 +31,8 @@ async function decideDeletionAction(formData: FormData) {
   const state = String(formData.get("state") ?? "") as Extract<DeletionState, "completed" | "limited" | "denied">;
   const retentionNote = String(formData.get("retentionNote") ?? "");
   await decideManagerContractDeletion(contractId, state, retentionNote);
-  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-05"]);
+  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-05"]}?id=${encodeURIComponent(contractId)}`;
+  redirect(contractHref);
 }
 
 async function saveRetentionNoteAction(formData: FormData) {
@@ -38,11 +41,13 @@ async function saveRetentionNoteAction(formData: FormData) {
   const contractId = String(formData.get("contractId") ?? "");
   const retentionNote = String(formData.get("retentionNote") ?? "");
   await updateManagerContractPrivacy(contractId, { retentionNote });
-  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-05"]);
+  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-05"]}?id=${encodeURIComponent(contractId)}`;
+  redirect(contractHref);
 }
 
-export default async function Page() {
-  const detail = await getManagerContractDetail();
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { id } = await searchParams;
+  const detail = await getManagerContractDetail(id);
 
   return (
     <ContractShell id="M-DOC-05" title="보관기간·삭제 처리·감사로그">
