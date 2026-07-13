@@ -37,6 +37,7 @@ export default async function Page() {
       context={`관리 중 ${dashboard.homeCards.length}곳`}
       managerName={managerName}
       hideAssistantLauncher
+      theme="cosmic"
     >
       <div className="manager-home-dashboard">
         <header className="manager-home-intro">
@@ -100,96 +101,9 @@ export default async function Page() {
       </div>
 
       <style>{`
-        /* 둥근 한글 서체 — 나눔스퀘어라운드 (네이버 한글 정적 CDN).
-           원본 CSS는 웨이트별 패밀리명이 분리되어 있어 가짜 볼드가 생기므로
-           woff2를 직접 선언해 font-weight 400/700/800에 매핑한다. */
-        @font-face {
-          font-family: "NanumSquareRound";
-          src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundR.woff2) format("woff2");
-          font-weight: 400;
-          font-display: swap;
-        }
-        @font-face {
-          font-family: "NanumSquareRound";
-          src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundB.woff2) format("woff2");
-          font-weight: 700;
-          font-display: swap;
-        }
-        @font-face {
-          font-family: "NanumSquareRound";
-          src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundEB.woff2) format("woff2");
-          font-weight: 800;
-          font-display: swap;
-        }
-
-        /* ── 집우집주(宇宙) 코스믹 스킨 — M-HOME-00 한정 토큰 오버라이드.
-           컴포넌트는 시맨틱 토큰만 소비하므로 여기서 팔레트만 갈아끼운다.
-           검증 후 packages/ui/tokens.css(theme v1)로 승격 예정. ── */
-        .manager-workspace:has(.manager-home-dashboard) {
-          /* surface: 새벽빛 라벤더 캔버스 — 보더 없이도 흰 카드가 읽히도록 캔버스를 한 톤 깊게 */
-          --surface: #f1eef9;
-          --surface-dim: #e8e3f3;
-          --surface-container-lowest: #ffffff;
-          --surface-container-low: #f5f2fb;
-          --surface-container: #efebf8;
-          --surface-container-high: #e8e3f3;
-          --surface-container-highest: #e1dcef;
-          --on-surface: #211c33;
-          --on-surface-variant: #6b6584;
-          --inverse-surface: #262040;
-          --inverse-on-surface: #f7f5fc;
-
-          /* 선 대신 면 — 보더 완전 제거. 구분은 캔버스-카드 톤 차이와 그림자만 맡는다 */
-          --outline: #9a93b6;
-          --outline-variant: transparent;
-          --border: transparent;
-
-          /* primary: 우주 인디고 */
-          --primary: #5747cf;
-          --on-primary: #ffffff;
-          --primary-container: #e9e5ff;
-          --on-primary-container: #3a2ba8;
-
-          --chip-bg: #f0edf9;
-          --chip-on: #4c4570;
-
-          /* pastel: 성운 팔레트 — 유형 구분 의미는 유지, 색축만 보라 계열로 */
-          --pastel-peach: #f9e0d3;
-          --on-pastel-peach: #86432a;
-          --pastel-mint: #daefe6;
-          --on-pastel-mint: #1f6a52;
-          --pastel-lilac: #e9e2fa;
-          --on-pastel-lilac: #4f3d9e;
-          --pastel-blue: #e1e6fb;
-          --on-pastel-blue: #3a4894;
-          --pastel-pink: #fadeee;
-          --on-pastel-pink: #963f6d;
-          --pastel-yellow: #f7ebc4;
-          --on-pastel-yellow: #6d581a;
-
-          /* nav: 심야 우주 */
-          --nav-surface: #201a3f;
-          --nav-on-surface: #f4f1fd;
-          --nav-on-surface-muted: #a79ed6;
-
-          --input-border: #e6e1f2;
-          --input-placeholder: #9a93b6;
-          --input-text: #211c33;
-
-          /* 서체: 둥근 한글 — 모서리 곡률과 같은 이야기를 글자에서도 */
-          --font-sans: "NanumSquareRound", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-
-          /* elevation: 남보라 그림자 — 레퍼런스처럼 있는 듯 없는 듯, 넓게 퍼진 저농도로 */
-          --shadow: 0 24px 56px rgba(35, 27, 74, 0.09);
-          --shadow-soft: 0 14px 36px rgba(35, 27, 74, 0.05);
-
-          /* 곡률 — 크기에 비례해 radius 확대 (카드 20 / 버튼 16) */
-          --radius-sm: 10px;
-          --radius: 14px;
-          --radius-md: 20px;
-          --radius-btn: 16px;
-          --radius-lg: 26px;
-        }
+        /* 집우집주 코스믹 테마 토큰(팔레트·서체·radius)은 packages/ui/tokens.css의 .theme-cosmic으로
+           승격됨 — ManagerAppShell theme="cosmic" prop이 워크스페이스 루트에 그 클래스를 얹는다.
+           여기 남는 건 이 페이지 전용 장식(별무리 사이드바 배경 등)과 레이아웃뿐이다. */
 
         .manager-home-dashboard {
           display: grid;
@@ -290,7 +204,7 @@ export default async function Page() {
            전부 background 레이어라 DOM 추가·리플로 비용 없음.
            글로벌 사이드바(ManagerSidebar)는 토큰을 소비하므로, 이 스코프에서
            표면·글자 토큰을 어두운 배경용으로 재반전시켜 가독성을 지킨다. */
-        .manager-workspace:has(.manager-home-dashboard) .manager-workspace__sidebar {
+        .manager-workspace.theme-cosmic .manager-workspace__sidebar {
           --surface-container-lowest: transparent;
           --surface-container-low: rgba(255, 255, 255, 0.06);
           --surface-container: rgba(255, 255, 255, 0.08);
@@ -318,7 +232,7 @@ export default async function Page() {
             linear-gradient(172deg, #292153 0%, #1e1840 52%, #241d4e 100%) !important;
         }
 
-        .manager-workspace:has(.manager-home-dashboard) .manager-workspace__content {
+        .manager-workspace.theme-cosmic .manager-workspace__content {
           background: var(--surface);
         }
 

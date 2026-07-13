@@ -9,6 +9,8 @@ export interface ManagerShellProps {
   rightRail?: ReactNode;
   /** 데스크톱에서 사이드바를 접은 상태로 렌더 (토글 상태는 호출측이 관리). */
   navCollapsed?: boolean;
+  /** opt-in 테마 토큰(packages/ui/src/tokens.css의 .theme-*)을 워크스페이스 루트에 얹는다. */
+  theme?: "cosmic";
   children: ReactNode;
 }
 
@@ -20,12 +22,14 @@ export function ManagerShell({
   headerActions,
   rightRail,
   navCollapsed = false,
+  theme,
   children,
 }: ManagerShellProps) {
   const rootClassName = [
     "manager-workspace",
     rightRail ? "manager-workspace--with-rail" : "",
     navCollapsed ? "manager-workspace--nav-collapsed" : "",
+    theme ? `theme-${theme}` : "",
   ]
     .filter(Boolean)
     .join(" ");
