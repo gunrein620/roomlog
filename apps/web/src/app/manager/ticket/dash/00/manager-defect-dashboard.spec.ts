@@ -143,8 +143,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(navigationSource, /하자 관리/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-12 PR #51(headerAction 슬롯)·#52(소통 관리) 사이드바 변경 병합으로 갱신
-    "40d535b64543fbe2658d9d9a77fe3fcdeac73c323025e72ba7302686dd462ea2",
+    // 2026-07-13 브랜드를 집우집주(WOOZU) 로고+홈 링크로 교체, 접기 토글을 브랜드 왼쪽으로 이동
+    "644d549ee8f6eedca8db572d09508c90c81060350f28571f77a869d1017e036f",
   );
   assert.equal(
     sha256(navigationSource),
