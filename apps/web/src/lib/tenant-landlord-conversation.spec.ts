@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import {
   tenantLandlordConversationPaths,
@@ -22,4 +24,16 @@ test("builds the tenant landlord messaging contract", () => {
 
 test("trims an empty first message for client validation", () => {
   assert.equal(tenantLandlordThreadInput("   ").body, "");
+});
+
+test("tenant my page opens landlord inquiries through roomlog messaging", () => {
+  const source = readFileSync(
+    join(__dirname, "../app/my/flows/TenantMyPage.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /tenantLandlordConversationPaths/);
+  assert.match(source, /openLandlordConversation/);
+  assert.match(source, /submitLandlordMessage/);
+  assert.doesNotMatch(source, /TradeChatCenter/);
 });

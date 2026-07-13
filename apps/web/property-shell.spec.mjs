@@ -926,7 +926,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
     "집주인 공지사항",
     "임대인으로부터 전달된 새로운 소식이 없습니다.",
     "입주 정보",
-    "우주빌리지 401호",
+    "tenantRoomTitle",
     "계약 기간",
     "차기 결제일",
     "월세",
@@ -996,7 +996,9 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.doesNotMatch(pageSource, /AI 생활 도우미는 곧 연결됩니다/);
   assert.match(pageSource, /tenant-chat-panel/);
   assert.match(pageSource, /setIsLandlordChatOpen\(true\)/);
-  assert.match(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
+  assert.match(pageSource, /tenantLandlordConversationPaths\.current\(\)/);
+  assert.match(pageSource, /submitLandlordMessage/);
+  assert.doesNotMatch(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
   assert.match(cssSource, /\.tenant-chat-panel/);
   assert.doesNotMatch(pageSource, /창문 누수|욕실 타일 보수|에어컨 필터|오늘 2:30|보일러 온수 불량 접수하기|HVAC|2:30 PM/);
 });

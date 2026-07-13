@@ -5,11 +5,16 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { Announcement } from "@roomlog/types";
+import { useRouter } from "next/navigation";
+import type { Announcement, TenantLandlordConversation, Thread } from "@roomlog/types";
 import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
-import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
+import {
+  tenantLandlordConversationPaths,
+  tenantLandlordThreadHref,
+  tenantLandlordThreadInput
+} from "@/lib/tenant-landlord-conversation";
 import {
   tenantBillingCardModel,
   type TenantBillingCardModel,
@@ -201,6 +206,7 @@ export default function TenantMyPage({
   onGoInquiry: () => void;
   onGoHome: () => void;
 }) {
+  const router = useRouter();
   // 이 계정에 실제로 연결된 집 — 없으면 null(연결 안내), 확인 전엔 "loading".
   // 하드코딩된 매물 정보를 보여주던 자리를 실제 계약 데이터로 교체한다(위조 금지).
   const [tenancy, setTenancy] = useState<TenantTenancy | null | "loading">("loading");
@@ -382,6 +388,11 @@ export default function TenantMyPage({
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
+  const [landlordConversation, setLandlordConversation] = useState<TenantLandlordConversation | null>(null);
+  const [landlordMessageDraft, setLandlordMessageDraft] = useState("");
+  const [landlordConversationError, setLandlordConversationError] = useState("");
+  const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
+  const [isLandlordMessageSubmitting, setIsLandlordMessageSubmitting] = useState(false);
   const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
   const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
   const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
@@ -400,6 +411,67 @@ export default function TenantMyPage({
   const showToast = (message: string) => {
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
+  };
+
+  const openLandlordConversation = async () => {
+    if (!tenancy || tenancy === "loading") {
+      showToast("입주 연결이 완료되면 임대인 문의를 열 수 있습니다.");
+      return;
+    }
+
+    setIsLandlordConversationLoading(true);
+    setLandlordConversationError("");
+    try {
+      const response = await fetch(tenantLandlordConversationPaths.current(), { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "대화 정보를 불러오지 못했습니다.");
+      }
+
+      const conversation = payload as TenantLandlordConversation;
+      if (conversation.threadId) {
+        router.push(tenantLandlordThreadHref(conversation.threadId));
+        return;
+      }
+
+      setLandlordConversation(conversation);
+      setIsLandlordChatOpen(true);
+    } catch (error) {
+      setLandlordConversationError(
+        error instanceof Error ? error.message : "대화 정보를 불러오지 못했습니다."
+      );
+      setIsLandlordChatOpen(true);
+    } finally {
+      setIsLandlordConversationLoading(false);
+    }
+  };
+
+  const submitLandlordMessage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const input = tenantLandlordThreadInput(landlordMessageDraft);
+    if (!input.body || isLandlordMessageSubmitting) return;
+
+    setIsLandlordMessageSubmitting(true);
+    setLandlordConversationError("");
+    try {
+      const response = await fetch(tenantLandlordConversationPaths.threads(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "메시지를 보내지 못했습니다.");
+      }
+
+      router.push(tenantLandlordThreadHref((payload as Thread).id));
+    } catch (error) {
+      setLandlordConversationError(
+        error instanceof Error ? error.message : "메시지를 보내지 못했습니다."
+      );
+    } finally {
+      setIsLandlordMessageSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -452,10 +524,11 @@ export default function TenantMyPage({
           ["체결일", tenancy.contract?.respondedAt ? tenancyDateLabel(tenancy.contract.respondedAt) : "정보 없음"]
         ]
       : [["안내", "아직 연결된 집이 없습니다. 계약이 체결되면 이 자리에 실제 계약 정보가 표시됩니다."]];
-  const contractThreadId = tenancy && tenancy !== "loading" ? tenancy.contract?.threadId ?? "" : "";
-  const landlordChatTitle = tenancy && tenancy !== "loading" && tenancy.contract?.landlordName
-    ? `${tenancy.contract.landlordName} 집주인`
-    : "계약 집주인";
+  const landlordChatTitle = landlordConversation?.landlordName
+    ? `${landlordConversation.landlordName} 임대인`
+    : tenancy && tenancy !== "loading" && tenancy.contract?.landlordName
+      ? `${tenancy.contract.landlordName} 임대인`
+      : "연결된 임대인";
   const tenantRoomTitle =
     tenancy === "loading"
       ? "입주 정보 확인 중"
@@ -691,16 +764,11 @@ export default function TenantMyPage({
             <button
               className="tenant-secondary-button"
               type="button"
-              onClick={() => {
-                if (!contractThreadId) {
-                  showToast("계약이 체결되면 임대인 문의를 열 수 있습니다.");
-                  return;
-                }
-                setIsLandlordChatOpen(true);
-              }}
+              onClick={() => void openLandlordConversation()}
+              disabled={isLandlordConversationLoading}
             >
               <MessageCircle size={18} strokeWidth={2.5} aria-hidden="true" />
-              임대인에게 문의하기
+              {isLandlordConversationLoading ? "문의 확인 중..." : "임대인에게 문의하기"}
             </button>
           </div>
         </div>
@@ -961,18 +1029,38 @@ export default function TenantMyPage({
               </button>
             </header>
             <div className="tenant-chat-panel-body">
-              {tenancy && tenancy !== "loading" && tenancy.contract ? (
-                <TradeChatCenter
-                  roleFilter="buyer"
-                  lockedThreadId={tenancy.contract.threadId}
-                  emptyText="계약한 집주인과의 대화가 아직 준비되지 않았습니다."
-                />
-              ) : (
-                <div className="listing-empty-card" role="status">
-                  <strong>계약 채팅이 없습니다</strong>
-                  <p>계약이 체결되면 집주인과의 대화가 여기에 열립니다.</p>
+              <form className="tenant-landlord-message-form" onSubmit={submitLandlordMessage}>
+                <div className="tenant-landlord-message-context">
+                  <span>연결된 입주 정보</span>
+                  <strong>
+                    {landlordConversation
+                      ? `${landlordConversation.buildingName} ${landlordConversation.unitId}호`
+                      : tenancy && tenancy !== "loading"
+                        ? `${tenancy.buildingName} ${tenancy.roomNo}호`
+                        : "입주 정보 확인 필요"}
+                  </strong>
+                  <p>보낸 문의는 관리자 소통 화면에 같은 대화로 표시됩니다.</p>
                 </div>
-              )}
+                <label htmlFor="tenant-landlord-message">첫 메시지</label>
+                <textarea
+                  id="tenant-landlord-message"
+                  value={landlordMessageDraft}
+                  onChange={(event) => setLandlordMessageDraft(event.target.value)}
+                  placeholder="임대인에게 문의할 내용을 입력하세요."
+                  disabled={isLandlordMessageSubmitting || !landlordConversation}
+                />
+                {landlordConversationError ? <p role="alert">{landlordConversationError}</p> : null}
+                <button
+                  type="submit"
+                  disabled={
+                    !landlordConversation ||
+                    !landlordMessageDraft.trim() ||
+                    isLandlordMessageSubmitting
+                  }
+                >
+                  {isLandlordMessageSubmitting ? "보내는 중..." : "문의 보내기"}
+                </button>
+              </form>
             </div>
           </aside>
         </>
