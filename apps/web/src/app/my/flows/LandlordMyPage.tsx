@@ -23,6 +23,7 @@ import {
   serializeOwnerDraft
 } from "@/lib/owner-draft";
 import { intakeSplatAsset } from "@/lib/splat-asset-api";
+import { clearOwnerPhotos, loadOwnerPhotos, saveOwnerPhotos } from "@/lib/owner-photo-store";
 
 // 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
 let naverMapsLoadPromise: Promise<boolean> | null = null;
@@ -332,6 +333,8 @@ export default function LandlordMyPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   // 선택 즉시 보이는 미리보기 URL — photoFiles가 바뀌면 이전 objectURL은 회수한다.
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  // IndexedDB에서 사진 복원이 끝났는지 — 복원 전에 저장 효과가 돌면 저장분을 지워버리는 경쟁을 막는다.
+  const [arePhotosRestored, setArePhotosRestored] = useState(false);
   // 등록 요약 사진 캐러셀의 현재 인덱스, 3D 도면 스냅샷.
   const [photoIndex, setPhotoIndex] = useState(0);
   const [floorPlan3D, setFloorPlan3D] = useState<ListingFloorPlan3D | null>(null);
@@ -478,7 +481,7 @@ export default function LandlordMyPage() {
 
     if (draft) {
       setOwnerForm(draft.ownerForm);
-      setPhotoCount(draft.photoCount);
+      // photoCount는 실제 복원된 File 개수로 아래에서 맞춘다(파일 없이 "N장"만 남는 불일치 방지).
       setHas3DRoom(draft.has3DRoom);
       setRegistrationStatus(draft.registrationStatus);
       setMyListings(draft.myListings);
@@ -491,6 +494,15 @@ export default function LandlordMyPage() {
       setHas3DRoom(true);
       setFloorPlan3D(bootSnapshot);
     }
+
+    // 사진(File)은 IndexedDB에서 복원 — 3D 도면 에디터 왕복(전체 새로고침) 후에도 유지된다.
+    void loadOwnerPhotos().then((files) => {
+      if (files.length > 0) {
+        setPhotoFiles(files);
+        setPhotoCount(files.length);
+      }
+      setArePhotosRestored(true);
+    });
 
     setIsDraftLoaded(true);
   }, []);
@@ -512,6 +524,14 @@ export default function LandlordMyPage() {
       window.removeEventListener("focus", syncFloorPlanConnection);
     };
   }, []);
+
+  // 사진 선택이 바뀌면 IndexedDB에 반영 — 도면 에디터로 갔다가 돌아와도 사진이 남게.
+  // 최초 복원이 끝난 뒤에만 저장한다(복원 전 빈 배열로 저장분을 덮어쓰지 않도록).
+  useEffect(() => {
+    if (!arePhotosRestored) return;
+    if (photoFiles.length > 0) void saveOwnerPhotos(photoFiles);
+    else void clearOwnerPhotos();
+  }, [arePhotosRestored, photoFiles]);
 
   // 저장: 복원이 끝난 뒤부터 변경마다 versioned draft로 기록. 등록 제출로 생긴 myListings도 함께 유지된다.
   useEffect(() => {
@@ -630,6 +650,7 @@ export default function LandlordMyPage() {
         }
         setHas3DRoom(false);
         setGeoCoords(null);
+        void clearOwnerPhotos();
         if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
         const listingSuccessToast = "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
