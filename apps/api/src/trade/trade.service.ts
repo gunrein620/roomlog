@@ -398,6 +398,17 @@ export class TradeService implements OnModuleDestroy {
 
   private persist() {
     if (!this.filePath) return;
+    try {
+      mkdirSync(dirname(this.filePath), { recursive: true });
+      writeFileSync(this.filePath, JSON.stringify(this.store), "utf8");
+    } catch {
+      // 기존 거래 흐름은 데모용 메모리 상태를 계속 사용한다.
+    }
+  }
+
+  /** 계약 수락만 파일 저장 성공을 보장한 뒤 후속 청구 연결을 진행한다. */
+  private persistAcceptance() {
+    if (!this.filePath) return;
     const tempFilePath = `${this.filePath}.tmp`;
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
@@ -717,7 +728,8 @@ export class TradeService implements OnModuleDestroy {
       } else {
         this.pushMessage(thread, user, "계약 제안을 거절했어요.");
       }
-      this.persist();
+      if (accept) this.persistAcceptance();
+      else this.persist();
     } catch (error) {
       contract.status = previous.contractStatus;
       if (previous.respondedAt === undefined) delete contract.respondedAt;
