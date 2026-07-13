@@ -3780,7 +3780,17 @@ describe("RoomlogService", () => {
         }
       ]
     });
+    assert.equal(
+      service
+        .listTenantMessagingAnnouncements("tenant-demo")
+        .some((announcement) => announcement.draftId === reviewedDraft.id),
+      false
+    );
     const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
+    const tenantAnnouncements = service.listTenantMessagingAnnouncements("tenant-demo");
+
+    assert.equal(tenantAnnouncements[0]?.id, sent.announcementId);
+    assert.equal(tenantAnnouncements[0]?.title, reviewedDraft.title);
 
     let tenantAnnouncement = service.getTenantMessagingAnnouncement(
       "tenant-demo",
@@ -5393,10 +5403,24 @@ describe("RoomlogService", () => {
       /관리 가능한 계약서/
     );
 
+    const manualValues = {
+      monthlyRent: 650000,
+      maintenanceFee: 70000,
+      paymentDay: 25,
+      startDate: "2026-03-01",
+      endDate: "2099-12-31"
+    };
+    service.updateManagerContractManualValues(
+      "landlord-demo",
+      tenantContract.id,
+      manualValues
+    );
+
     const confirmed = service.confirmManagerContractReview("landlord-demo", tenantContract.id, {
       confirmNeedsCheck: true
     });
 
+    assert.equal(confirmed.row.contract.lifecycle, "active");
     assert.equal(confirmed.row.contract.review, "confirmed");
     assert.equal(confirmed.row.contract.valueSource, "confirmed");
     assert.equal(service.getTenantContract("tenant-demo", tenantContract.id).review, "confirmed");

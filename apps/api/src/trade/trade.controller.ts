@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFiles, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFiles, UseInterceptors } from "@nestjs/common";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogService } from "../roomlog/roomlog.service";
+import { TradeContractBillingBridge } from "./trade-contract-billing-bridge.service";
 import { TradeService, type TradeListingInput, type TradeThread } from "./trade.service";
 
 type UploadedImageFile = { buffer: Buffer; originalname: string; mimetype: string };
@@ -12,7 +13,8 @@ export class TradeController {
   constructor(
     private readonly tradeService: TradeService,
     private readonly roomlogService: RoomlogService,
-    private readonly realtime: RealtimeGateway
+    private readonly realtime: RealtimeGateway,
+    private readonly contractBillingBridge: TradeContractBillingBridge
   ) {}
 
   private user(authorization?: string) {
@@ -151,23 +153,22 @@ export class TradeController {
 
   /** 계약 응답 — 수락 시 세입자 관계(tenantRooms)를 연결해 TENANT 권한이 파생되게 한다. */
   @Post("contracts/:contractId/respond")
-  respondContract(
+  async respondContract(
     @Headers("authorization") authorization: string | undefined,
     @Param("contractId") contractId: string,
     @Body() body: { accept: boolean }
   ) {
+    if (typeof body?.accept !== "boolean") {
+      throw new BadRequestException("계약 수락 여부는 true 또는 false boolean이어야 합니다.");
+    }
     const user = this.user(authorization);
     const { contract, thread } = this.tradeService.respondContract(
       user,
       contractId,
-      Boolean(body?.accept)
+      body.accept,
+      body.accept ? (accepted) => this.contractBillingBridge.preflight(accepted) : undefined
     );
-    if (contract.status === "accepted") {
-      this.roomlogService.assignTenantRoomFromContract(contract.tenantId, contract.landlordId, {
-        title: contract.listingTitle,
-        location: contract.location
-      });
-    }
+    if (body.accept) await this.contractBillingBridge.ensure(contract);
     this.notifyThread(thread, user.id);
     return contract;
   }

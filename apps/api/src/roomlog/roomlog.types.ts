@@ -763,6 +763,7 @@ export type Contract = {
   documentId?: string;
   confirmedAt?: string;
   confirmedByManagerId?: string;
+  tradeAcceptedAt?: string;
 };
 
 export type ContractDocument = {
@@ -840,6 +841,29 @@ export type CreateTenantContractInput = {
   storageConsent: boolean;
 };
 
+export type EnsureTradeContractDraftInput = {
+  tradeContractId: string;
+  roomId: string;
+  tenantId: string;
+  landlordId: string;
+  landlordName: string;
+  depositKrw: number;
+  monthlyRent: number;
+};
+
+export type ConnectAcceptedTradeContractInput = {
+  tradeContractId: string;
+  listingTitle: string;
+  location: string;
+  roomNo?: string;
+  tenantId: string;
+  landlordId: string;
+  landlordName: string;
+  depositKrw: number;
+  monthlyRent: number;
+  acceptedAt: string;
+};
+
 export type CreateManagerContractInput = {
   roomId?: string;
   unitId?: string;
@@ -859,6 +883,8 @@ export type UpdateManagerContractManualValuesInput = {
   monthlyRent?: number;
   maintenanceFee?: number;
   paymentDay?: number;
+  startDate?: string;
+  endDate?: string;
   account?: string;
 };
 

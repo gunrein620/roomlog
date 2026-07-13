@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { RealtimeModule } from "../realtime/realtime.module";
 import { RoomlogModule } from "../roomlog/roomlog.module";
 import { TradeController } from "./trade.controller";
+import { TradeContractBillingBridge } from "./trade-contract-billing-bridge.service";
 import { TradeService, TRADE_SERVICE_OPTIONS, type TradeServiceOptions } from "./trade.service";
 import { TradeStoreProjector } from "./trade-store.projector";
 
@@ -31,7 +32,8 @@ export async function createTradeServiceOptions(
       provide: TRADE_SERVICE_OPTIONS,
       useFactory: async () => createTradeServiceOptions()
     },
-    TradeService
+    TradeService,
+    TradeContractBillingBridge
   ]
 })
 export class TradeModule {}

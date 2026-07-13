@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleDestroy, Optional } from "@nestjs/common";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
@@ -88,6 +88,7 @@ export type TradeContract = {
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
+  roomNo?: string;
   proposedAt: string;
   respondedAt?: string;
 };
@@ -401,7 +402,25 @@ export class TradeService implements OnModuleDestroy {
       mkdirSync(dirname(this.filePath), { recursive: true });
       writeFileSync(this.filePath, JSON.stringify(this.store), "utf8");
     } catch {
-      // 영속화 실패는 치명적이지 않다 — 메모리 상태로 계속 동작
+      // 기존 거래 흐름은 데모용 메모리 상태를 계속 사용한다.
+    }
+  }
+
+  /** 계약 수락만 파일 저장 성공을 보장한 뒤 후속 청구 연결을 진행한다. */
+  private persistAcceptance() {
+    if (!this.filePath) return;
+    const tempFilePath = `${this.filePath}.tmp`;
+    try {
+      mkdirSync(dirname(this.filePath), { recursive: true });
+      writeFileSync(tempFilePath, JSON.stringify(this.store), "utf8");
+      renameSync(tempFilePath, this.filePath);
+    } catch (error) {
+      try {
+        unlinkSync(tempFilePath);
+      } catch {
+        // temp path may be a directory or may not have been created
+      }
+      throw error;
     }
   }
 
@@ -652,6 +671,7 @@ export class TradeService implements OnModuleDestroy {
       depositManwon: listing.depositManwon,
       monthlyRentManwon: listing.monthlyRentManwon,
       location: fullListingLocation(listing),
+      ...(listing.detailAddress ? { roomNo: listing.detailAddress } : {}),
       proposedAt: new Date().toISOString()
     };
     this.store.contracts.unshift(contract);
@@ -661,23 +681,65 @@ export class TradeService implements OnModuleDestroy {
   }
 
   /** 계약 응답 — 제안받은 문의자(예비 세입자)만. 수락하면 매물이 계약완료로 전환된다. */
-  respondContract(user: { id: string; name: string }, contractId: string, accept: boolean): { contract: TradeContract; thread: TradeThread } {
+  respondContract(
+    user: { id: string; name: string },
+    contractId: string,
+    accept: boolean,
+    beforeAccept?: (contract: TradeContract) => void
+  ): { contract: TradeContract; thread: TradeThread } {
+    if (typeof accept !== "boolean") {
+      throw new BadRequestException("계약 수락 여부는 true 또는 false boolean이어야 합니다.");
+    }
     const contract = this.store.contracts.find((item) => item.id === contractId);
     if (!contract) throw new NotFoundException("계약 제안을 찾을 수 없습니다.");
     if (contract.tenantId !== user.id) throw new ForbiddenException("제안받은 사람만 응답할 수 있습니다.");
+    const thread = this.getThread(user.id, contract.threadId);
+    if (accept && contract.status === "accepted") {
+      beforeAccept?.({ ...contract });
+      return { contract, thread };
+    }
     if (contract.status !== "proposed") throw new BadRequestException("이미 처리된 계약 제안입니다.");
 
-    const thread = this.getThread(user.id, contract.threadId);
-    contract.status = accept ? "accepted" : "declined";
-    contract.respondedAt = new Date().toISOString();
+    const respondedAt = new Date().toISOString();
+    const response: TradeContract = {
+      ...contract,
+      status: accept ? "accepted" : "declined",
+      respondedAt
+    };
+    if (accept) beforeAccept?.(response);
+    const listing = accept
+      ? this.store.listings.find((item) => item.id === contract.listingId)
+      : undefined;
+    if (accept && !listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    const previous = {
+      contractStatus: contract.status,
+      respondedAt: contract.respondedAt,
+      listingStatus: listing?.status,
+      messageCount: thread.messages.length,
+      threadUpdatedAt: thread.updatedAt
+    };
 
-    if (accept) {
-      this.markListingContracted(contract.listingId);
-      this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
-    } else {
-      this.pushMessage(thread, user, "계약 제안을 거절했어요.");
+    try {
+      contract.status = response.status;
+      contract.respondedAt = respondedAt;
+      if (accept) {
+        listing!.status = "계약완료";
+        this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
+      } else {
+        this.pushMessage(thread, user, "계약 제안을 거절했어요.");
+      }
+      if (accept) this.persistAcceptance();
+      else this.persist();
+    } catch (error) {
+      contract.status = previous.contractStatus;
+      if (previous.respondedAt === undefined) delete contract.respondedAt;
+      else contract.respondedAt = previous.respondedAt;
+      if (listing && previous.listingStatus) listing.status = previous.listingStatus;
+      thread.messages.splice(previous.messageCount);
+      thread.updatedAt = previous.threadUpdatedAt;
+      throw error;
     }
-    this.persist();
+    if (accept) this.projectListings();
     return { contract, thread };
   }
 
@@ -701,6 +763,12 @@ export class TradeService implements OnModuleDestroy {
     return this.store.contracts
       .filter((item) => item.landlordId === userId || item.tenantId === userId)
       .sort((a, b) => b.proposedAt.localeCompare(a.proposedAt));
+  }
+
+  listAcceptedContracts(): TradeContract[] {
+    return this.store.contracts
+      .filter((contract) => contract.status === "accepted")
+      .map((contract) => ({ ...contract }));
   }
 
   /** 스레드의 최신 계약(참여자 전용) — 채팅 화면의 제안 버튼/수락 카드 상태 판단용. */

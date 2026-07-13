@@ -83,6 +83,7 @@ import {
   ContractExtraction,
   ContractInvite,
   ContractPrivacy,
+  ConnectAcceptedTradeContractInput,
   Cost,
   CostReviewQueueSummary,
   CostType,
@@ -98,6 +99,7 @@ import {
   CreateManagerReportInput,
   DeletionState,
   EscalateMoveoutDisputeInput,
+  EnsureTradeContractDraftInput,
   CreateComplaintFromCallInput,
   CreateComplaintInput,
   CreateIntakeSessionInput,
@@ -663,7 +665,11 @@ export type VendorMgmtListFilters = {
   sort?: string;
 };
 
-export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
+export type ManagerContractOrigin =
+  | "tenant_upload"
+  | "manager_upload"
+  | "manual"
+  | "trade_acceptance";
 
 export type ManagerContractRow = {
   contract: Contract;
@@ -2189,9 +2195,16 @@ export class RoomlogService {
   async flushPersistence() {
     await this.pendingPersistence;
 
-    if (this.persistenceError) {
+    if (this.persistenceError !== undefined) {
       throw this.persistenceError;
     }
+  }
+
+  async ensureTradeContractDurability() {
+    if (this.persistenceError !== undefined) {
+      this.projectStore();
+    }
+    await this.flushPersistence();
   }
 
   signup(input: SignupInput): AuthResult {
@@ -2979,7 +2992,19 @@ export class RoomlogService {
           (!contract.managerId || contract.managerId === managerId) &&
           contract.lifecycle === "active" &&
           contract.review === "confirmed" &&
-          contract.valueSource === "confirmed"
+          contract.valueSource === "confirmed" &&
+          contract.monthlyRent !== undefined &&
+          Number.isSafeInteger(contract.monthlyRent) &&
+          contract.monthlyRent >= 0 &&
+          contract.maintenanceFee !== undefined &&
+          Number.isSafeInteger(contract.maintenanceFee) &&
+          contract.maintenanceFee >= 0 &&
+          Number.isSafeInteger(contract.monthlyRent + contract.maintenanceFee) &&
+          contract.monthlyRent + contract.maintenanceFee > 0 &&
+          contract.paymentDay !== undefined &&
+          Number.isInteger(contract.paymentDay) &&
+          contract.paymentDay >= 1 &&
+          contract.paymentDay <= 31
       )
       .map((contract) => {
         const room = rooms.find((candidate) => candidate.id === contract.roomId)!;
@@ -2996,9 +3021,9 @@ export class RoomlogService {
           unitId: room.roomNo,
           tenantName: this.tenantNameForRoom(room.id),
           contractId: contract.id,
-          monthlyRent: contract.monthlyRent ?? 0,
-          maintenanceFee: contract.maintenanceFee ?? 0,
-          dueDate: this.billingDueDate(month, contract.paymentDay ?? 25),
+          monthlyRent: contract.monthlyRent!,
+          maintenanceFee: contract.maintenanceFee!,
+          dueDate: this.billingDueDate(month, contract.paymentDay!),
           duplicateBillId: duplicate?.id
         };
       })
@@ -3068,7 +3093,11 @@ export class RoomlogService {
       }
       const monthlyRent = this.validateBillAmount(row.monthlyRent, "월세");
       const maintenanceFee = this.validateBillAmount(row.maintenanceFee, "관리비");
-      if (monthlyRent + maintenanceFee <= 0) {
+      const totalAmount = monthlyRent + maintenanceFee;
+      if (!Number.isSafeInteger(totalAmount)) {
+        throw new BadRequestException(`${room.roomNo}의 청구 합계는 안전한 원 단위 정수여야 합니다.`);
+      }
+      if (totalAmount <= 0) {
         throw new BadRequestException(`${room.roomNo}의 청구 금액을 입력해주세요.`);
       }
       const dueDate = this.validateBillDueDate(row.dueDate, month);
@@ -3251,6 +3280,18 @@ export class RoomlogService {
 
   createTenantContract(tenantId: string, input: CreateTenantContractInput) {
     return this.contract.createTenantContract(tenantId, input);
+  }
+
+  ensureTradeContractDraft(input: EnsureTradeContractDraftInput) {
+    return this.contract.ensureTradeContractDraft(input);
+  }
+
+  connectAcceptedTradeContract(input: ConnectAcceptedTradeContractInput) {
+    return this.contract.connectAcceptedTradeContract(input);
+  }
+
+  preflightAcceptedTradeContract(input: ConnectAcceptedTradeContractInput) {
+    return this.contract.preflightAcceptedTradeContract(input);
   }
 
   getManagerContractDashboard(managerId: string) {
@@ -7670,7 +7711,7 @@ export class RoomlogService {
   }
 
   private validateBillAmount(value: number, label: string) {
-    if (!Number.isInteger(value) || value < 0) {
+    if (!Number.isSafeInteger(value) || value < 0) {
       throw new BadRequestException(`${label}는 0 이상의 원 단위 정수여야 합니다.`);
     }
     return value;
