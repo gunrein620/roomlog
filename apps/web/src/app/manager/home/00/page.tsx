@@ -1,17 +1,33 @@
 import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
+import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 import { getUser } from "@/lib/session";
+import { AlertStatTiles } from "./AlertStatTiles";
 import { CopilotPanel } from "./CopilotPanel";
-import { DepositGauge } from "./DepositGauge";
+import { HeroDepositCard } from "./HeroDepositCard";
 import { HomeCards } from "./HomeCards";
-import { OccupancyCard } from "./OccupancyCard";
+import { RingStatCard } from "./RingStatCard";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
+import { BuildingsSection } from "./sections/BuildingsSection";
+import { RegisterSection } from "./sections/RegisterSection";
+import { ReportSection } from "./sections/ReportSection";
 
 export default async function Page() {
   const user = await getUser();
   const dashboard = await assembleManagerDashboard(user);
   const managerName = user?.name ?? "관리인";
+
+  const warnings = {
+    overdue: dashboard.briefingInput.overdueCount,
+    urgent: dashboard.briefingInput.urgentTicketCount,
+    expiring: dashboard.briefingInput.expiringContractCount,
+    unanswered: dashboard.briefingInput.unansweredThreadCount
+  };
+  const occupancy = {
+    contracted: dashboard.homeCards.length,
+    total: dashboard.homeCards.length + dashboard.uncontractedListings.length
+  };
 
   return (
     // 워크스페이스 셸(글로벌 사이드바)을 따르되, 홈은 자체 코파일럿을 내장하므로
@@ -43,30 +59,52 @@ export default async function Page() {
           </div>
         ) : null}
 
-        <div className="manager-home-primary-grid">
-          <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
-          <div className="manager-home-side-stack">
-            <DepositGauge
-              depositRatePct={dashboard.depositRatePct}
-              monthLabel={dashboard.depositRateMonthLabel}
-              payerCounts={dashboard.depositPayerCounts}
-              failed={dashboard.sourceFailures.includes("billing")}
-            />
-            <OccupancyCard
-              contractedCount={dashboard.homeCards.length}
-              vacantCount={dashboard.uncontractedListings.length}
-              failed={
-                dashboard.sourceFailures.includes("listings") ||
-                dashboard.sourceFailures.includes("tradeContracts")
-              }
-            />
-          </div>
+        <div className="manager-home-bento">
+          <HeroDepositCard
+            depositRatePct={dashboard.depositRatePct}
+            monthLabel={dashboard.depositRateMonthLabel}
+            payerCounts={dashboard.depositPayerCounts}
+            depositAmounts={dashboard.depositAmounts}
+          />
+          <RingStatCard
+            label="입주율"
+            pct={occupancy.total > 0 ? Math.round((occupancy.contracted / occupancy.total) * 100) : null}
+            sub={occupancy.total > 0 ? `${occupancy.contracted} / ${occupancy.total}곳` : "확인 필요"}
+            href={MHOME_ROUTES["M-HOME-03"]}
+            gridArea="occ"
+            tint="blue"
+          />
+          <RingStatCard
+            label="티켓 처리율"
+            pct={
+              dashboard.ticketProgress
+                ? Math.round((dashboard.ticketProgress.resolved / dashboard.ticketProgress.total) * 100)
+                : null
+            }
+            sub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
+            href={MANAGER_CROSS.ticketDash}
+            gridArea="ticket"
+            tint="mint"
+          />
+          <AlertStatTiles warnings={warnings} />
         </div>
 
         <HomeCards
           homeCards={dashboard.homeCards}
           uncontractedListings={dashboard.uncontractedListings}
         />
+
+        <section aria-labelledby="manager-today-tasks-title" className="manager-home-tasks">
+          <div className="manager-home-tasks-heading">
+            <h2 id="manager-today-tasks-title">오늘 확인할 업무</h2>
+            <span>{dashboard.todayTasks.length}건</span>
+          </div>
+          <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
+        </section>
+
+        <ReportSection />
+        <BuildingsSection />
+        <RegisterSection />
       </div>
 
       <style>{`
@@ -166,6 +204,45 @@ export default async function Page() {
           gap: var(--space-xl);
         }
 
+        /* ── 벤토 그리드 — 3열 1:1:1(입주율 링 · 납부 히어로 · 티켓 처리율 링) + 경고 타일 스트립 ── */
+        .manager-home-bento {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-areas:
+            "occ hero ticket"
+            "alerts alerts alerts";
+          gap: var(--space-md);
+        }
+
+        .manager-home-bento > .manager-hero-deposit {
+          grid-area: hero;
+        }
+
+        .manager-home-bento > .manager-alert-tiles {
+          grid-area: alerts;
+        }
+
+        @media (max-width: 1120px) {
+          .manager-home-bento {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-areas:
+              "hero hero"
+              "occ ticket"
+              "alerts alerts";
+          }
+        }
+
+        @media (max-width: 620px) {
+          .manager-home-bento {
+            grid-template-columns: 1fr;
+            grid-template-areas:
+              "hero"
+              "occ"
+              "ticket"
+              "alerts";
+          }
+        }
+
         /* ── 레퍼런스 정렬 — 박스를 줄이고 톤으로 말하기 ── */
 
         /* 활성 필터 '전체': 진한 단색 필 → 옅은 틴트 + 유색 텍스트 (레퍼런스의 Recent 탭 스타일).
@@ -205,10 +282,12 @@ export default async function Page() {
           content: "\\2726  ";
         }
 
+        /* 페이지 최상위 문장 — 헤딩 위계에서 제일 크게 */
         .manager-home-intro strong {
           display: block;
-          font-size: var(--fs-title);
-          line-height: var(--lh-title);
+          font-size: 28px;
+          line-height: 36px;
+          font-weight: 800;
         }
 
         .manager-home-source-alert {
@@ -224,17 +303,28 @@ export default async function Page() {
           line-height: var(--lh-caption);
         }
 
-        .manager-home-primary-grid {
+        .manager-home-tasks {
           display: grid;
-          grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.72fr);
-          align-items: start;
+          gap: var(--space-md);
+        }
+
+        .manager-home-tasks-heading {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
           gap: var(--space-lg);
         }
 
-        .manager-home-side-stack {
-          min-width: 0;
-          display: grid;
-          gap: var(--space-lg);
+        .manager-home-tasks-heading h2 {
+          margin: 0;
+          font-size: var(--fs-title);
+          line-height: var(--lh-title);
+        }
+
+        .manager-home-tasks-heading > span {
+          color: var(--on-surface-variant);
+          font-size: var(--fs-caption);
+          font-weight: 700;
         }
 
         /* 시그니처 — 심야 우주 네비: 별무리(radial dot 레이어) + 궤도 링 + 성운 코너.
@@ -271,12 +361,6 @@ export default async function Page() {
 
         .manager-workspace:has(.manager-home-dashboard) .manager-workspace__content {
           background: var(--surface);
-        }
-
-        @media (max-width: 1120px) {
-          .manager-home-primary-grid {
-            grid-template-columns: 1fr;
-          }
         }
 
         @media (max-width: 620px) {

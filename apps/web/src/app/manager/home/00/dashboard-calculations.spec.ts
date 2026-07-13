@@ -9,6 +9,8 @@ import {
   buildTodayTasks,
   calculateDepositRatePct,
   countOverdueBills,
+  countTicketProgress,
+  sumDepositAmounts,
   rentStatusChipForContract,
   sortTodayTasks,
   type DashboardBillingRow,
@@ -275,5 +277,46 @@ describe("depositRateMonthLabel", () => {
   it("청구 데이터가 없으면 '이번 달'로 둔다", () => {
     assert.equal(depositRateMonthLabel(null, "2026-07"), "이번 달");
     assert.equal(depositRateMonthLabel([], "2026-07"), "이번 달");
+  });
+});
+
+describe("sumDepositAmounts (계기판 오도미터)", () => {
+  it("입금률과 같은 월 스코프에서 수납·청구 합계를 낸다", () => {
+    const rows = [
+      bill("b1", "301", "김민수", 100_000, 100_000, "paid", "2026-07"),
+      bill("b2", "302", "박서연", 100_000, 30_000, "partially_paid", "2026-07"),
+      bill("b3", "303", "이하나", 100_000, 100_000, "paid", "2026-06")
+    ];
+
+    assert.deepEqual(sumDepositAmounts(rows, "2026-07"), { collected: 130_000, billed: 200_000 });
+  });
+
+  it("초과 납부는 청구액 상한으로 잘라 수납률 부풀림을 막는다", () => {
+    const rows = [bill("b1", "301", "김민수", 100_000, 150_000, "paid", "2026-07")];
+    assert.deepEqual(sumDepositAmounts(rows, "2026-07"), { collected: 100_000, billed: 100_000 });
+  });
+
+  it("대상이 없으면 0이 아니라 null", () => {
+    assert.equal(sumDepositAmounts(null), null);
+    assert.equal(sumDepositAmounts([], "2026-07"), null);
+    assert.equal(sumDepositAmounts([bill("b1", "301", "김민수", 0, 0, "draft", "2026-07")], "2026-07"), null);
+  });
+});
+
+describe("countTicketProgress (계기판 처리율 링)", () => {
+  it("취소 건은 분모에서 제외하고 진행/완료를 나눈다", () => {
+    const tickets = [
+      ticket("t1", "301", "processing", 2),
+      ticket("t2", "302", "resolved", 3),
+      ticket("t3", "303", "resolved", 3),
+      ticket("t4", "304", "cancelled", 3)
+    ];
+
+    assert.deepEqual(countTicketProgress(tickets), { open: 1, resolved: 2, total: 3 });
+  });
+
+  it("티켓이 없으면(전부 취소 포함) null", () => {
+    assert.equal(countTicketProgress([]), null);
+    assert.equal(countTicketProgress([ticket("t1", "301", "cancelled", 3)]), null);
   });
 });

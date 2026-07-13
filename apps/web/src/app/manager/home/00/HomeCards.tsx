@@ -60,7 +60,7 @@ export function HomeCards({
           display: flex;
           align-items: flex-end;
           justify-content: space-between;
-          gap: var(--space-md);
+          gap: var(--space-lg);
         }
 
         .manager-portfolio-heading h2,
@@ -69,8 +69,8 @@ export function HomeCards({
         }
 
         .manager-portfolio-heading h2 {
-          font-size: var(--fs-subtitle);
-          line-height: var(--lh-subtitle);
+          font-size: var(--fs-title);
+          line-height: var(--lh-title);
         }
 
         .manager-portfolio-heading > span,
@@ -104,9 +104,10 @@ export function HomeCards({
           padding-top: var(--space-sm);
         }
 
+        /* 미계약 매물은 위계상 관리 중인 집의 하위 섹션 — 다른 헤딩보다 한 급 아래로 */
         .manager-listings-heading h3 {
-          font-size: var(--fs-body);
-          line-height: var(--lh-body);
+          font-size: var(--fs-subtitle);
+          line-height: var(--lh-subtitle);
         }
 
         .manager-listings-empty {

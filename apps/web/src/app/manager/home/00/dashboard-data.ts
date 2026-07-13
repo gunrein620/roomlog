@@ -12,7 +12,9 @@ import {
   calculateDepositRatePct,
   countDepositPayers,
   countOverdueBills,
+  countTicketProgress,
   depositRateMonthLabel,
+  sumDepositAmounts,
   type DashboardBillingRow,
   type DashboardContractExpiryRow,
   type DashboardListing,
@@ -30,6 +32,8 @@ export type ManagerDashboardData = {
   depositRatePct: number | null;
   depositRateMonthLabel: string;
   depositPayerCounts: { paid: number; total: number } | null;
+  depositAmounts: { collected: number; billed: number } | null;
+  ticketProgress: { open: number; resolved: number; total: number } | null;
   homeCards: ManagerHomeCard[];
   uncontractedListings: DashboardListing[];
   sourceFailures: DashboardSourceKey[];
@@ -148,6 +152,8 @@ export async function assembleManagerDashboard(user: SessionUser | null): Promis
     depositRatePct,
     depositRateMonthLabel: depositRateMonthLabel(billingRows),
     depositPayerCounts: countDepositPayers(billingRows),
+    depositAmounts: sumDepositAmounts(billingRows),
+    ticketProgress: countTicketProgress(ticketRows),
     homeCards,
     uncontractedListings: listings.data,
     sourceFailures,
