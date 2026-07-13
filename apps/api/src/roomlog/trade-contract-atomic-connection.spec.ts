@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -273,7 +273,7 @@ describe("atomic accepted trade contract connection", () => {
     assert.equal(stale.id, "ct_legacy_active_b");
     assert.equal(replayed.id, "ct_legacy_active_b");
     assert.equal(active?.tradeAcceptedAt, "2026-07-13T02:00:00.000Z");
-    assert.equal(active?.updatedAt, "2026-07-13T02:00:00.000Z");
+    assert.equal(active?.updatedAt, "2026-06-01T00:00:00.000Z");
     assert.equal(storeOf(service).tenantRooms["tenant-reuse"], "room-reuse-b");
     assert.deepEqual(storeSnapshot(service), afterNewer);
     assert.equal(projected.length, 1);
@@ -345,6 +345,189 @@ describe("atomic accepted trade contract connection", () => {
     assert.equal(storeOf(restored).tenantRooms["tenant-rds-reuse"], "room-rds-b");
     assert.deepEqual(storeSnapshot(restored), beforeReplay);
     assert.equal(projected.length, 0);
+  });
+
+  it("round-trips a hidden stable marker so mutable updatedAt cannot block a genuinely newer event", async () => {
+    const initialStore = emptyStore();
+    initialStore.rooms.push(
+      {
+        id: "room-marker-a",
+        buildingName: "마커빌라",
+        roomNo: "101",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+      {
+        id: "room-marker-b",
+        buildingName: "마커빌라",
+        roomNo: "202",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+      {
+        id: "room-marker-c",
+        buildingName: "마커빌라",
+        roomNo: "303",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+    );
+    initialStore.contracts.push({
+      id: "ct_legacy_marker_b",
+      roomId: "room-marker-b",
+      tenantId: "tenant-marker",
+      managerId: "landlord-exact",
+      unitId: "202",
+      landlordName: "정확 임대인",
+      lifecycle: "active",
+      review: "confirmed",
+      deletion: "none",
+      valueSource: "confirmed",
+      monthlyRent: 650_000,
+      maintenanceFee: 0,
+      paymentDay: 10,
+      optionInventory: [],
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    initialStore.tenantRooms["tenant-marker"] = "room-marker-a";
+    const acceptedB = input(
+      "trade-marker-b",
+      "202호",
+      "tenant-marker",
+      "2026-07-13T02:00:00.000Z",
+    );
+    const first = new RoomlogService({ seedDemoData: false, initialStore });
+    connect(first, acceptedB);
+    const rdsStore = storeSnapshot(first);
+    rdsStore.contracts.forEach((contract) => delete contract.tradeAcceptedAt);
+    const projected: Store[] = [];
+    const restored = new RoomlogService({
+      seedDemoData: false,
+      initialStore: rdsStore,
+      storeProjector: {
+        persist: (store) => {
+          projected.push(structuredClone(store));
+        },
+      },
+    });
+    const beforeReplay = storeSnapshot(restored);
+
+    const replayed = connect(restored, acceptedB);
+    assert.throws(
+      () => connect(restored, {
+        ...acceptedB,
+        acceptedAt: "2026-07-13T02:01:00.000Z",
+      }),
+      /수락 이벤트 시각.*일치하지 않습니다/,
+    );
+    await restored.flushPersistence();
+
+    assert.equal(replayed.id, "ct_legacy_marker_b");
+    assert.deepEqual(storeSnapshot(restored), beforeReplay);
+    assert.equal(projected.length, 0);
+
+    const connectedC = connect(
+      restored,
+      input("trade-marker-c", "303호", "tenant-marker", "2026-07-14T02:00:00.000Z"),
+    );
+    connect(
+      restored,
+      input("trade-marker-a", "101호", "tenant-marker", "2026-07-12T02:00:00.000Z"),
+    );
+    await restored.flushPersistence();
+
+    const legacy = storeOf(restored).contracts
+      .find((contract) => contract.id === "ct_legacy_marker_b")!;
+    const extraction = storeOf(restored).contractExtractions
+      .find((candidate) => candidate.contractId === legacy.id)!;
+    const markerNote = extraction.helpNotes
+      .find((note) => note.clause === "__roomlog_trade_acceptance__");
+    assert.deepEqual(JSON.parse(markerNote!.plain), {
+      tradeContractId: "trade-marker-b",
+      acceptedAt: "2026-07-13T02:00:00.000Z",
+    });
+    assert.equal(legacy.updatedAt, "2026-08-01T00:00:00.000Z");
+    assert.equal(connectedC.id, "ct_trade_trade-marker-c");
+    assert.equal(storeOf(restored).tenantRooms["tenant-marker"], "room-marker-c");
+    assert.equal(projected.length, 1);
+    assert.equal(
+      restored.getManagerContractDetail("landlord-exact", legacy.id).extraction.helpNotes
+        .some((note) => note.clause === "__roomlog_trade_acceptance__"),
+      false,
+    );
+    assert.equal(
+      restored.getTenantContractExtraction("tenant-marker", legacy.id).helpNotes
+        .some((note) => note.clause === "__roomlog_trade_acceptance__"),
+      false,
+    );
+  });
+
+  it("rolls back hidden marker and missing extraction creation on synchronous file persistence failure", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-marker-rollback-"));
+    const storeFilePath = join(dir, "roomlog.json");
+    const initialStore = emptyStore();
+    initialStore.rooms.push(
+      {
+        id: "room-marker-rollback-a",
+        buildingName: "마커롤백빌라",
+        roomNo: "101",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+      {
+        id: "room-marker-rollback-b",
+        buildingName: "마커롤백빌라",
+        roomNo: "202",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+    );
+    initialStore.contracts.push({
+      id: "ct_legacy_marker_rollback",
+      roomId: "room-marker-rollback-b",
+      tenantId: "tenant-marker-rollback",
+      managerId: "landlord-exact",
+      unitId: "202",
+      landlordName: "정확 임대인",
+      lifecycle: "active",
+      review: "confirmed",
+      deletion: "none",
+      valueSource: "confirmed",
+      monthlyRent: 650_000,
+      maintenanceFee: 0,
+      paymentDay: 10,
+      optionInventory: [],
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    initialStore.tenantRooms["tenant-marker-rollback"] = "room-marker-rollback-a";
+    writeFileSync(storeFilePath, JSON.stringify(initialStore), "utf8");
+    const service = new RoomlogService({ seedDemoData: false, storeFilePath });
+    const before = storeSnapshot(service);
+    const beforeFile = readFileSync(storeFilePath, "utf8");
+    mkdirSync(`${storeFilePath}.tmp`);
+
+    assert.throws(
+      () => connect(
+        service,
+        input(
+          "trade-marker-rollback",
+          "202호",
+          "tenant-marker-rollback",
+          "2026-07-13T02:00:00.000Z",
+        ),
+      ),
+      /EISDIR|directory|rename|write/i,
+    );
+
+    assert.deepEqual(storeSnapshot(service), before);
+    assert.equal(readFileSync(storeFilePath, "utf8"), beforeFile);
+    assert.equal(
+      storeOf(service).contractExtractions
+        .some((extraction) => extraction.contractId === "ct_legacy_marker_rollback"),
+      false,
+    );
   });
 
   it("derives a restored deterministic trade event from createdAt without repeated persistence", async () => {

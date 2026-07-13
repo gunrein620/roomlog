@@ -34,15 +34,24 @@ import type {
   Store
 } from "../roomlog.service";
 
+const TRADE_ACCEPTANCE_MARKER_CLAUSE = "__roomlog_trade_acceptance__";
+
+type TradeAcceptanceMarker = {
+  tradeContractId: string;
+  acceptedAt: string;
+};
+
 type AcceptedTradeContractPlan = {
   resolved: { room?: Room; unit: string; address: string };
   monthlyRent: number;
   depositKrw: number;
   acceptedAt: string;
+  tradeContractId: string;
   contractId: string;
   deterministic?: Contract;
   room: Room;
   active?: Contract;
+  activeMarker?: TradeAcceptanceMarker;
   currentRoomId?: string;
   newerCurrent?: Contract;
 };
@@ -148,10 +157,12 @@ export class RoomlogContractDomain {
       monthlyRent,
       depositKrw,
       acceptedAt,
+      tradeContractId,
       contractId,
       deterministic,
       room,
       active,
+      activeMarker,
       currentRoomId,
       newerCurrent
     } = this.planAcceptedTradeContract(input);
@@ -162,20 +173,44 @@ export class RoomlogContractDomain {
 
     if (active && !deterministic) {
       const acceptedTime = this.timeOf(acceptedAt);
+      if (
+        activeMarker &&
+        activeMarker.tradeContractId !== tradeContractId &&
+        this.timeOf(activeMarker.acceptedAt) > acceptedTime
+      ) {
+        return this.presentContract(active);
+      }
+      const hadAcceptedAt = Object.prototype.hasOwnProperty.call(active, "tradeAcceptedAt");
       const previousAcceptedAt = active.tradeAcceptedAt;
-      const previousUpdatedAt = active.updatedAt;
+      const hadExtractionId = Object.prototype.hasOwnProperty.call(active, "extractionId");
+      const previousExtractionId = active.extractionId;
+      const extractionCount = this.store.contractExtractions.length;
+      const existingExtraction = this.store.contractExtractions.find(
+        (item) => item.id === active.extractionId || item.contractId === active.id
+      );
+      const previousHelpNotes = existingExtraction?.helpNotes;
       const relationChanged = currentRoomId !== room.id;
-      const markerChanged = this.tradeAcceptedTime(active) !== acceptedTime;
+      const markerChanged =
+        activeMarker?.tradeContractId !== tradeContractId ||
+        activeMarker?.acceptedAt !== acceptedAt;
       if (!relationChanged && !markerChanged) return this.presentContract(active);
 
       active.tradeAcceptedAt = acceptedAt;
-      if (this.timeOf(active.updatedAt) < acceptedTime) active.updatedAt = acceptedAt;
+      const extraction = existingExtraction ?? this.ensureContractExtraction(active);
+      this.setTradeAcceptanceMarker(extraction, { tradeContractId, acceptedAt });
       this.store.tenantRooms[input.tenantId] = room.id;
       try {
         this.persistStore();
       } catch (error) {
-        active.tradeAcceptedAt = previousAcceptedAt;
-        active.updatedAt = previousUpdatedAt;
+        if (hadAcceptedAt) active.tradeAcceptedAt = previousAcceptedAt;
+        else delete active.tradeAcceptedAt;
+        if (existingExtraction) {
+          existingExtraction.helpNotes = previousHelpNotes ?? [];
+        } else {
+          this.store.contractExtractions.splice(extractionCount);
+        }
+        if (hadExtractionId) active.extractionId = previousExtractionId;
+        else delete active.extractionId;
         this.restoreTenantRoom(input.tenantId, currentRoomId);
         throw error;
       }
@@ -1245,6 +1280,20 @@ export class RoomlogContractDomain {
     if (active && active.tenantId !== input.tenantId) {
       throw new ConflictException("해당 호실에 다른 임차인의 활성 계약이 있습니다.");
     }
+    const activeMarker = active ? this.tradeAcceptanceMarker(active) : undefined;
+    if (
+      activeMarker?.tradeContractId === tradeContractId &&
+      activeMarker.acceptedAt !== acceptedAt
+    ) {
+      throw new ConflictException("동일한 거래 계약 ID의 수락 이벤트 시각이 일치하지 않습니다.");
+    }
+    if (
+      activeMarker &&
+      activeMarker.tradeContractId !== tradeContractId &&
+      this.timeOf(activeMarker.acceptedAt) === this.timeOf(acceptedAt)
+    ) {
+      throw new ConflictException("동일한 수락 시각에 서로 다른 거래 계약 ID가 연결돼 있습니다.");
+    }
 
     const currentRoomId = this.store.tenantRooms[input.tenantId];
     const newerCurrent = currentRoomId
@@ -1265,10 +1314,12 @@ export class RoomlogContractDomain {
       monthlyRent,
       depositKrw,
       acceptedAt,
+      tradeContractId,
       contractId,
       deterministic,
       room,
       active,
+      activeMarker,
       currentRoomId,
       newerCurrent
     };
@@ -1372,12 +1423,49 @@ export class RoomlogContractDomain {
   }
 
   private tradeAcceptedTime(contract: Contract): number {
-    const persistedFallback = contract.id.startsWith("ct_trade_")
-      ? contract.createdAt
-      : contract.lifecycle === "active"
-        ? contract.updatedAt
-        : contract.createdAt;
-    return this.timeOf(contract.tradeAcceptedAt ?? persistedFallback);
+    if (contract.id.startsWith("ct_trade_")) return this.timeOf(contract.createdAt);
+    const marker = this.tradeAcceptanceMarker(contract);
+    return marker ? this.timeOf(marker.acceptedAt) : Number.NEGATIVE_INFINITY;
+  }
+
+  private tradeAcceptanceMarker(contract: Contract): TradeAcceptanceMarker | undefined {
+    const extraction = this.store.contractExtractions.find(
+      (item) => item.id === contract.extractionId || item.contractId === contract.id
+    );
+    const note = extraction?.helpNotes.find(
+      (candidate) => candidate.clause === TRADE_ACCEPTANCE_MARKER_CLAUSE
+    );
+    if (!note) return undefined;
+
+    try {
+      const parsed = JSON.parse(note.plain) as Partial<TradeAcceptanceMarker>;
+      if (typeof parsed.tradeContractId !== "string" || !parsed.tradeContractId.trim()) {
+        return undefined;
+      }
+      if (typeof parsed.acceptedAt !== "string" || !Number.isFinite(Date.parse(parsed.acceptedAt))) {
+        return undefined;
+      }
+      return {
+        tradeContractId: parsed.tradeContractId.trim(),
+        acceptedAt: new Date(parsed.acceptedAt).toISOString()
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private setTradeAcceptanceMarker(
+    extraction: ContractExtraction,
+    marker: TradeAcceptanceMarker
+  ) {
+    extraction.helpNotes = [
+      ...extraction.helpNotes.filter((note) => note.clause !== TRADE_ACCEPTANCE_MARKER_CLAUSE),
+      {
+        clause: TRADE_ACCEPTANCE_MARKER_CLAUSE,
+        plain: JSON.stringify(marker),
+        source: "Roomlog machine metadata"
+      }
+    ];
   }
 
   private restoreTenantRoom(tenantId: string, roomId: string | undefined) {
@@ -1675,7 +1763,9 @@ export class RoomlogContractDomain {
       ...extraction,
       highlights: [...extraction.highlights],
       items: extraction.items.map((item) => ({ ...item })),
-      helpNotes: extraction.helpNotes.map((note) => ({ ...note }))
+      helpNotes: extraction.helpNotes
+        .filter((note) => note.clause !== TRADE_ACCEPTANCE_MARKER_CLAUSE)
+        .map((note) => ({ ...note }))
     };
   }
 
