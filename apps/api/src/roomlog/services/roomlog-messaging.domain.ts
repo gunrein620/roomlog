@@ -18,6 +18,7 @@ import type {
   MessagingThreadContext,
   Room,
   StartManagerConversationInput,
+  TenantLandlordConversation,
   UpdateAnnouncementDraftInput,
   UserAccount
 } from "../roomlog.types";
@@ -52,6 +53,21 @@ export class RoomlogMessagingDomain {
       throw new BadRequestException("메시지 내용을 입력해주세요.");
     }
 
+    const existing =
+      (input.context ?? "general") === "general" && !input.contextRef?.trim()
+        ? this.findTenantGeneralThread(tenantId, room.id)
+        : undefined;
+    if (existing) {
+      this.addThreadMessageInternal(existing, tenantId, {
+        sender: "tenant",
+        body,
+        kind: input.kind ?? "text",
+        attachmentUrls: input.attachmentUrls
+      });
+      this.persistStore();
+      return this.presentThread(existing, true);
+    }
+
     const createdAt = now();
     const thread: MessagingThread = {
       id: id("mth"),
@@ -79,6 +95,25 @@ export class RoomlogMessagingDomain {
     this.persistStore();
 
     return this.presentThread(thread, true);
+  }
+
+  getTenantLandlordConversation(tenantId: string): TenantLandlordConversation {
+    const room = this.requireTenantRoom(tenantId);
+    if (!room.landlordId) {
+      throw new BadRequestException("연결된 관리인이 없어 대화를 시작할 수 없습니다.");
+    }
+
+    const landlord = this.store.users.find((user) => user.id === room.landlordId);
+    if (!landlord) {
+      throw new NotFoundException("연결된 관리인을 찾을 수 없습니다.");
+    }
+
+    return {
+      threadId: this.findTenantGeneralThread(tenantId, room.id)?.id,
+      buildingName: room.buildingName,
+      unitId: this.displayUnitId(room),
+      landlordName: landlord.name
+    };
   }
 
   createMessagingThread(managerId: string, input: CreateMessagingThreadInput): MessagingThread {
@@ -614,6 +649,18 @@ export class RoomlogMessagingDomain {
     }
 
     return this.findRoom(roomId);
+  }
+
+  private findTenantGeneralThread(tenantId: string, roomId: string) {
+    return this.store.messagingThreads
+      .filter(
+        (thread) =>
+          thread.tenantId === tenantId &&
+          thread.roomId === roomId &&
+          thread.context === "general" &&
+          !thread.contextRef
+      )
+      .sort((left, right) => this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt))[0];
   }
 
   private assertNoPaymentDunning(context: MessagingThreadContext, body: string) {

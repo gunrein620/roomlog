@@ -572,6 +572,13 @@ export class RoomlogController {
     return result;
   }
 
+  @Get("tenant/messaging/landlord-conversation")
+  getTenantLandlordConversation(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantLandlordConversation(user.id);
+  }
+
   @Get("tenant/messaging/threads")
   listTenantMessagingThreads(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);

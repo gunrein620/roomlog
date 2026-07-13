@@ -3563,6 +3563,39 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("links tenant landlord inquiry to the manager messaging thread", () => {
+    const service = new RoomlogService();
+    const existing = service
+      .listTenantMessagingThreads("tenant-demo")
+      .find((thread) => thread.context === "general" && !thread.contextRef);
+
+    const conversation = service.getTenantLandlordConversation("tenant-demo");
+    assert.equal(conversation.buildingName, "정글빌라");
+    assert.equal(conversation.unitId, "301");
+    assert.equal(conversation.landlordName, "박관리");
+    assert.equal(conversation.threadId, existing?.id);
+
+    const before = service.getDemoState().messagingThreads.length;
+    const result = service.createTenantMessagingThread("tenant-demo", {
+      context: "general",
+      contextLabel: "일반 문의",
+      body: "임대인에게 문의드립니다."
+    });
+
+    if (existing) {
+      assert.equal(result.id, existing.id);
+    }
+    assert.equal(
+      service.getDemoState().messagingThreads.length,
+      existing ? before : before + 1
+    );
+    assert.equal(result.messages?.at(-1)?.body, "임대인에게 문의드립니다.");
+    assert.equal(
+      service.listManagerMessagingThreads("landlord-demo").some((thread) => thread.id === result.id),
+      true
+    );
+  });
+
   it("lets tenants and managers delete only scoped messaging threads", () => {
     const service = new RoomlogService();
 

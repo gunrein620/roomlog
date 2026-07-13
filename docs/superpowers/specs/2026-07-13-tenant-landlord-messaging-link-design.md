@@ -94,7 +94,7 @@
   - 최초 작성 요청은 `general`과 첫 메시지를 전송한다.
   - 빈 메시지 및 중복 제출을 막는다.
 - 통합 검증
-  - `pnpm --filter @roomlog/types build`
+  - `pnpm --filter @roomlog/types typecheck`
   - 관련 API/Web 테스트
   - `pnpm test:api`
   - `pnpm test:web`

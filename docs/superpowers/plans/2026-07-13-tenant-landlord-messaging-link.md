@@ -165,7 +165,7 @@ getTenantLandlordConversation(@Headers("authorization") authorization?: string) 
 
 - [ ] **Step 7: 타입 빌드와 API 테스트 GREEN 확인**
 
-Run: `pnpm --filter @roomlog/types build && pnpm --filter api test -- --test-name-pattern="tenant landlord inquiry|real linked tenant start"`
+Run: `pnpm --filter @roomlog/types typecheck && pnpm --filter api exec node --test --test-name-pattern="links tenant landlord inquiry|real linked tenant start" -r ts-node/register src/roomlog/roomlog.service.spec.ts`
 
 Expected: 관련 테스트 0 failures.
 

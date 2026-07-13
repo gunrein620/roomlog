@@ -7287,6 +7287,10 @@ export class RoomlogService {
     return this.messaging.createTenantMessagingThread(tenantId, input);
   }
 
+  getTenantLandlordConversation(tenantId: string) {
+    return this.messaging.getTenantLandlordConversation(tenantId);
+  }
+
   listTenantMessagingThreads(tenantId: string) {
     return this.messaging.listTenantMessagingThreads(tenantId);
   }
