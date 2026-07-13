@@ -2197,6 +2197,12 @@ export type SaveAttachmentInput = {
   category: AttachmentCategory;
 };
 
+export type SaveContractDocumentUploadInput = {
+  buffer: Buffer;
+  originalName: string;
+  mimeType: string;
+};
+
 export type SaveFloorPlanDraftInput = {
   roomId?: string;
   sourceAttachmentId?: string;

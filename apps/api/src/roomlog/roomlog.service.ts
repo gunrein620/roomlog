@@ -199,6 +199,7 @@ import {
   RoomWall,
   RoomTimelineEntry,
   SaveAttachmentInput,
+  SaveContractDocumentUploadInput,
   SaveFloorPlanDraftInput,
   SaveRoomWallsInput,
   SimulatorWallData,
@@ -2112,6 +2113,7 @@ export class RoomlogService {
     );
     this.contract = new RoomlogContractDomain(
       this.store,
+      this.storageAdapter,
       () => this.persistStore(),
       (roomId) => this.findRoom(roomId),
       (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
@@ -3310,6 +3312,10 @@ export class RoomlogService {
 
   requestManagerContractInfo(managerId: string, contractId: string) {
     return this.contract.requestManagerContractInfo(managerId, contractId);
+  }
+
+  runManagerContractOcr(managerId: string, contractId: string) {
+    return this.contract.runManagerContractOcr(managerId, contractId);
   }
 
   createManagerContract(managerId: string, input: CreateManagerContractInput) {
@@ -5701,6 +5707,10 @@ export class RoomlogService {
 
   async saveAttachment(uploadedByUserId: string, input: SaveAttachmentInput) {
     return this.floorPlan.saveAttachment(uploadedByUserId, input);
+  }
+
+  async saveManagerContractUpload(managerId: string, input: SaveContractDocumentUploadInput) {
+    return this.contract.saveManagerContractUpload(managerId, input);
   }
 
   createFloorPlanDraft(ownerId: string, input: SaveFloorPlanDraftInput) {
@@ -10551,8 +10561,27 @@ export class RoomlogService {
     const isLeak = ["누수", "물", "천장", "샘"].some((word) => text.includes(word));
     const isBoiler = ["보일러", "온수", "난방"].some((word) => text.includes(word));
     const isMold = ["곰팡이", "얼룩"].some((word) => text.includes(word));
+    // 시설 수리가 아닌 일반 민원(소음/납부/주차)도 분류 — 관리자 민원 대시보드(일반 민원)와 연결된다.
+    const isNoise = ["소음", "시끄", "층간", "쿵쿵", "소란"].some((word) => text.includes(word));
+    const isBilling = ["관리비", "납부", "결제", "청구"].some((word) => text.includes(word));
+    const isParking = ["주차"].some((word) => text.includes(word));
     const tenantHint = ["깨뜨", "파손", "떨어뜨", "부주의"].some((word) => text.includes(word));
-    const category = isLeak ? "누수" : isBoiler ? "보일러" : isMold ? "곰팡이" : lower.includes("door") ? "도어락" : "설비";
+    // 일반 민원 키워드를 시설 키워드보다 먼저 본다 — 층간소음 신고가 "천장" 언급만으로 누수가 되지 않게.
+    const category = isNoise
+      ? "소음"
+      : isBilling
+        ? "납부"
+        : isParking
+          ? "주차"
+          : isLeak
+            ? "누수"
+            : isBoiler
+              ? "보일러"
+              : isMold
+                ? "곰팡이"
+                : lower.includes("door")
+                  ? "도어락"
+                  : "설비";
     const priority = isEmergency ? 1 : isLeak || isBoiler ? 2 : 3;
     const responsibilityHint = tenantHint ? "임차인 책임 가능성" : "임대인 책임 가능성";
 

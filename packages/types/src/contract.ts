@@ -52,8 +52,6 @@ export interface Contract {
   createdAt: string;
   updatedAt: string;
   extractionId?: string;
-  /** 거래 수락 파생 초안의 수락 이벤트 시각 */
-  tradeAcceptedAt?: string;
 }
 
 /** 추출 항목 하나 — 값·확인필요·근거(원문 하이라이트). 민감정보 기본 마스킹 */

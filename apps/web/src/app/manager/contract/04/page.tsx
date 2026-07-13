@@ -18,8 +18,6 @@ import {
   StaticButton,
 } from "../_components";
 
-type SearchParams = Promise<{ id?: string }>;
-
 export const dynamic = "force-dynamic";
 
 async function createInviteAction(formData: FormData) {
@@ -31,27 +29,23 @@ async function createInviteAction(formData: FormData) {
     email: String(formData.get("email") ?? "") || undefined,
     phone: String(formData.get("phone") ?? "") || undefined,
   });
-  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-04"]}?id=${encodeURIComponent(contractId)}`;
-  redirect(contractHref);
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-04"]);
 }
 
 async function updateInviteAction(formData: FormData) {
   "use server";
 
-  const contractId = String(formData.get("contractId") ?? "");
   const inviteId = String(formData.get("inviteId") ?? "");
   const state = String(formData.get("state") ?? "") as "waiting" | "connected" | "disputed";
   await updateManagerContractInvite(inviteId, {
     state,
     note: String(formData.get("note") ?? "") || undefined,
   });
-  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-04"]}?id=${encodeURIComponent(contractId)}`;
-  redirect(contractHref);
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-04"]);
 }
 
-export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id } = await searchParams;
-  const detail = await getManagerContractDetail(id);
+export default async function Page() {
+  const detail = await getManagerContractDetail();
   const contract = detail.row.contract;
 
   return (
@@ -116,14 +110,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   </div>
                   <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <form action={updateInviteAction}>
-                      <input type="hidden" name="contractId" value={contract.id} />
                       <input type="hidden" name="inviteId" value={invite.id} />
                       <input type="hidden" name="state" value={invite.state === "connected" ? "waiting" : "connected"} />
                       <input type="hidden" name="note" value={invite.state === "connected" ? "관리자 연결 해제" : "관리자 확인 후 연결 완료"} />
                       <StaticButton type="submit" variant="secondary">{invite.state === "connected" ? "해제" : "연결 저장"}</StaticButton>
                     </form>
                     <form action={updateInviteAction}>
-                      <input type="hidden" name="contractId" value={contract.id} />
                       <input type="hidden" name="inviteId" value={invite.id} />
                       <input type="hidden" name="state" value="disputed" />
                       <input type="hidden" name="note" value="임차인 이의 또는 정보 불일치로 보류" />
@@ -145,7 +137,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             </div>
             {detail.inviteLinks[0] ? (
               <form action={updateInviteAction}>
-                <input type="hidden" name="contractId" value={contract.id} />
                 <input type="hidden" name="inviteId" value={detail.inviteLinks[0].id} />
                 <input type="hidden" name="state" value="connected" />
                 <input type="hidden" name="note" value="기존 임차인 등록 기록 대조 후 연결" />
@@ -161,12 +152,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <div style={{ color: "var(--on-surface-variant)" }}>
             연결 완료 후 임차인 T-DOC 홈에 동일 계약 레코드가 표시됩니다.
           </div>
-          <LinkButton
-            href={`${MANAGER_CONTRACT_ROUTES["M-DOC-03"]}?id=${encodeURIComponent(contract.id)}`}
-            variant="secondary"
-          >
-            연결 완료 후 호실 보기
-          </LinkButton>
+          <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-03"]} variant="secondary">연결 완료 후 호실 보기</LinkButton>
         </Card>
       </PageStack>
     </ContractShell>

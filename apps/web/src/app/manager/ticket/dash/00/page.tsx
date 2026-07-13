@@ -1,20 +1,14 @@
-import { getManagerRepair, listManagerTickets } from "@/lib/ticket-manager-api";
+import { listManagerTicketRows } from "@/lib/ticket-manager-api";
 import { ComplaintDashboard } from "./ComplaintDashboard";
 import { ManagerDefectDashboard } from "./ManagerDefectDashboard";
-import { MANAGER_DEFECT_DASHBOARD_DEMO_ROWS } from "./manager-defect-dashboard-demo";
 
 type SearchParams = Promise<{ type?: string }>;
 
+// 대시보드는 실제 접수 티켓만 보여준다 — 더미 행 혼합 제거(세입자 신규 요청과 직결).
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { type } = await searchParams;
   const initialTemplate = type === "complaint" || type === "defect" ? type : "all";
-  const tickets = await listManagerTickets();
-  const repairs = await Promise.all(tickets.map((ticket) => getManagerRepair(ticket.id)));
-  const liveRows = tickets.map((ticket, index) => ({
-    ticket,
-    repair: repairs[index],
-  }));
-  const rows = [...liveRows, ...MANAGER_DEFECT_DASHBOARD_DEMO_ROWS];
+  const rows = await listManagerTicketRows();
 
   if (initialTemplate === "all") return <ComplaintDashboard rows={rows} />;
 

@@ -18,6 +18,8 @@ export interface TeamManagerTicket {
   status: string;
   priority: number;
   responsibilityHint: string;
+  /** 팀 Ticket.category(하자/소음/납부…) — presentTicket이 ticket 필드를 spread하므로 함께 온다 */
+  category?: string;
   complaint: {
     title: string;
     description: string;
@@ -50,6 +52,7 @@ function asComplaint(t: TeamManagerTicket): TeamComplaint {
       status: t.status,
       priority: t.priority,
       responsibilityHint: t.responsibilityHint,
+      category: t.category,
       analysis: t.analysis,
       repairs: t.repairs,
       assignedVendor: t.assignedVendor

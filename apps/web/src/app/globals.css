@@ -7222,6 +7222,64 @@ p {
   font-weight: 800;
 }
 
+/* 접수 내역이 없을 때 — 데모를 지어내는 대신 빈 상태를 정직하게 보여준다 */
+.tenant-history-empty {
+  margin: 0;
+  padding: 26px 18px;
+  border: 1px dashed color-mix(in srgb, var(--line) 82%, var(--muted));
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* 민원/하자 신규 요청 시트 — 계약서 시트와 같은 바텀시트 패턴 위의 입력 폼 */
+.tenant-request-form {
+  display: grid;
+  gap: 16px;
+}
+
+.tenant-request-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.tenant-request-form input,
+.tenant-request-form textarea {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--line) 42%, var(--paper));
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.tenant-request-form input:focus,
+.tenant-request-form textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: var(--paper);
+}
+
+.tenant-request-form textarea {
+  resize: vertical;
+  min-height: 104px;
+}
+
+.tenant-request-error {
+  margin: 0;
+  color: var(--error, #ba1a1a);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
 .tenant-payment-card {
   position: relative;
   min-height: 390px;

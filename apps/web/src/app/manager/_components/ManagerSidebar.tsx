@@ -76,12 +76,31 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
   return (
     <div className="manager-sidebar">
       <header className="manager-sidebar__header">
-        <div className="manager-sidebar__brand">
-          <Link href="/manager/home/00" onClick={onNavigate}>
-            <Building2 aria-hidden="true" />
-            <span>ROOMLOG</span>
-          </Link>
-          <span>관리자 워크스페이스</span>
+        <div className="manager-sidebar__lead">
+          {!showCloseButton ? headerAction ?? null : null}
+          <div className="manager-sidebar__brand">
+            <Link href="/" onClick={onNavigate} className="manager-sidebar__brand-logo">
+              <span className="manager-sidebar__brand-icon" aria-hidden="true">
+                <svg viewBox="0 0 140 68" fill="none">
+                  <path
+                    d="M18 58 L70 18 L122 58"
+                    stroke="currentColor"
+                    strokeWidth="11"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                  <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                </svg>
+              </span>
+              <span className="manager-sidebar__brand-name">
+                집우집주<em>WOOZU</em>
+              </span>
+            </Link>
+            <span>관리자 워크스페이스</span>
+          </div>
         </div>
         {showCloseButton ? (
           <button
@@ -92,9 +111,7 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
           >
             <X aria-hidden="true" />
           </button>
-        ) : (
-          headerAction ?? null
-        )}
+        ) : null}
       </header>
 
       <nav aria-label="관리자 전체 메뉴" className="manager-sidebar__nav">

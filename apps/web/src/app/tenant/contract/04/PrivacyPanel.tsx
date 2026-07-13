@@ -32,7 +32,6 @@ export function PrivacyPanel({
   contractId: string;
   requestDeletionAction?: (formData: FormData) => Promise<void>;
 }) {
-  const isTradeAcceptance = contractId.startsWith("ct_trade_");
   const [masking, setMasking] = useState(privacy.maskingEnabled);
   const [forwarding, setForwarding] = useState(privacy.forwardingConsent);
   const [deletion, setDeletion] = useState<DeletionState>(privacy.deletion);
@@ -98,7 +97,7 @@ export function PrivacyPanel({
 
         {/* ④ 삭제 요청 영역 (종료 전 비활성) */}
         <section>
-          <div style={sectionLabel}>{isTradeAcceptance ? "계약 기록 삭제" : "계약서 삭제"}</div>
+          <div style={sectionLabel}>계약서 삭제</div>
           {deletion !== "none" ? (
             <div
               style={{
@@ -153,7 +152,7 @@ export function PrivacyPanel({
               </div>
             ) : (
               <Button fullWidth onClick={() => setGateOpen(true)}>
-                {isTradeAcceptance ? "계약 기록 삭제 요청" : "계약서 삭제 요청"}
+                계약서 삭제 요청
               </Button>
             )
           ) : (

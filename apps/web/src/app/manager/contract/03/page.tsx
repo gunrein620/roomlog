@@ -8,10 +8,6 @@ import {
 } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import {
-  editableManualTextValue,
-  parseOptionalSafeNonNegativeInteger,
-} from "@/lib/manual-contract-values";
-import {
   BackLink,
   Badge,
   Card,
@@ -28,8 +24,6 @@ import {
   linkReset,
 } from "../_components";
 
-type SearchParams = Promise<{ id?: string }>;
-
 export const dynamic = "force-dynamic";
 
 async function saveManualValuesAction(formData: FormData) {
@@ -38,15 +32,12 @@ async function saveManualValuesAction(formData: FormData) {
   const contractId = String(formData.get("contractId") ?? "");
   await updateManagerContractManualValues(contractId, {
     deposit: String(formData.get("deposit") ?? ""),
-    monthlyRent: parseOptionalSafeNonNegativeInteger(formData.get("monthlyRent")),
-    maintenanceFee: parseOptionalSafeNonNegativeInteger(formData.get("maintenanceFee")),
-    paymentDay: parseOptionalSafeNonNegativeInteger(formData.get("paymentDay")),
-    startDate: String(formData.get("startDate") ?? ""),
-    endDate: String(formData.get("endDate") ?? ""),
+    monthlyRent: numberValue(formData.get("monthlyRent")),
+    maintenanceFee: numberValue(formData.get("maintenanceFee")),
+    paymentDay: numberValue(formData.get("paymentDay")),
     account: String(formData.get("account") ?? ""),
   });
-  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-03"]}?id=${encodeURIComponent(contractId)}`;
-  redirect(contractHref);
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-03"]);
 }
 
 async function saveInventoryAction(formData: FormData) {
@@ -58,15 +49,12 @@ async function saveInventoryAction(formData: FormData) {
     .map((item) => item.trim())
     .filter(Boolean);
   await updateManagerContractInventory(contractId, items);
-  const contractHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-03"]}?id=${encodeURIComponent(contractId)}`;
-  redirect(contractHref);
+  redirect(MANAGER_CONTRACT_ROUTES["M-DOC-03"]);
 }
 
-export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id } = await searchParams;
-  const detail = await getManagerContractDetail(id);
+export default async function Page() {
+  const detail = await getManagerContractDetail();
   const contract = detail.row.contract;
-  const isTradeAcceptance = detail.row.origin === "trade_acceptance";
 
   return (
     <ContractShell id="M-DOC-03" title="호실·임차인·계약 정보 / 타임라인">
@@ -97,7 +85,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </Card>
           <Card>
             <h2 style={{ margin: "0 0 var(--space-md)", fontSize: "var(--fs-subtitle)" }}>계약 정보</h2>
-            <MetaRow label="기간" value={`${contract.startDate ? formatDate(contract.startDate) : "미확인"} - ${contract.endDate ? formatDate(contract.endDate) : "미확인"}`} />
+            <MetaRow label="기간" value={`${formatDate(contract.startDate ?? contract.createdAt)} - ${formatDate(contract.endDate ?? contract.updatedAt)}`} />
             <MetaRow label="월세" value={`${contract.monthlyRent?.toLocaleString("ko-KR") ?? "-"}원`} />
             <MetaRow label="관리비" value={`${contract.maintenanceFee?.toLocaleString("ko-KR") ?? "-"}원`} />
             <MetaRow label="납부일" value={`매월 ${contract.paymentDay ?? "-"}일`} />
@@ -106,13 +94,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <h2 style={{ margin: "0 0 var(--space-md)", fontSize: "var(--fs-subtitle)" }}>수동 계약값</h2>
             <form action={saveManualValuesAction} style={{ display: "grid", gap: "var(--space-sm)" }}>
               <input type="hidden" name="contractId" value={contract.id} />
-              <Field name="deposit" label="보증금" defaultValue={editableManualTextValue(detail.manualValues.deposit)} />
-              <Field name="startDate" label="계약 시작일" type="date" defaultValue={contract.startDate?.slice(0, 10) ?? ""} />
-              <Field name="endDate" label="계약 종료일" type="date" defaultValue={contract.endDate?.slice(0, 10) ?? ""} />
+              <Field name="deposit" label="보증금" defaultValue={detail.manualValues.deposit} />
               <Field name="monthlyRent" label="월세" defaultValue={contract.monthlyRent ?? ""} inputMode="numeric" />
               <Field name="maintenanceFee" label="관리비" defaultValue={contract.maintenanceFee ?? ""} inputMode="numeric" />
               <Field name="paymentDay" label="납부일" defaultValue={contract.paymentDay ?? ""} inputMode="numeric" />
-              <Field name="account" label="계좌" defaultValue={editableManualTextValue(detail.manualValues.account)} />
+              <Field name="account" label="계좌" defaultValue={detail.manualValues.account} />
               <StaticButton type="submit" variant="secondary">수동값 저장</StaticButton>
             </form>
           </Card>
@@ -165,17 +151,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
         <Card style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-md)", alignItems: "center" }}>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-            <LinkButton href={`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contract.id)}`}>
-              {isTradeAcceptance ? "거래 계약 검토" : "계약서 열기"}
-            </LinkButton>
-            <LinkButton href={`${MANAGER_CONTRACT_ROUTES["M-DOC-04"]}?id=${encodeURIComponent(contract.id)}`} variant="secondary">임차인 초대</LinkButton>
-            <LinkButton href={`${MANAGER_CONTRACT_ROUTES["M-DOC-05"]}?id=${encodeURIComponent(contract.id)}`} variant="secondary">보관·삭제 처리</LinkButton>
+            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-01"]}>계약서 열기</LinkButton>
+            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-04"]} variant="secondary">임차인 초대</LinkButton>
+            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-05"]} variant="secondary">보관·삭제 처리</LinkButton>
           </div>
-          {isTradeAcceptance ? (
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]} variant="secondary">계약 문서 등록</LinkButton>
-          ) : (
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]} variant="secondary">계약서 추가 등록</LinkButton>
-          )}
+          <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]} variant="secondary">계약서 추가 등록</LinkButton>
         </Card>
       </PageStack>
     </ContractShell>
@@ -187,20 +167,24 @@ function Field({
   label,
   defaultValue,
   inputMode,
-  type,
 }: {
   name: string;
   label: string;
   defaultValue: string | number;
   inputMode?: "numeric";
-  type?: "text" | "date";
 }) {
   return (
     <label style={{ display: "grid", gap: 4 }}>
       <span style={captionStyle}>{label}</span>
-      <input name={name} type={type} defaultValue={defaultValue} inputMode={inputMode} style={fieldStyle} />
+      <input name={name} defaultValue={defaultValue} inputMode={inputMode} style={fieldStyle} />
     </label>
   );
+}
+
+function numberValue(value: FormDataEntryValue | null) {
+  const parsed = Number(String(value ?? "").replace(/[^\d]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 const fieldStyle = {

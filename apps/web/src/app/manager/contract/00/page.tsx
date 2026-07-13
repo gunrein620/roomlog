@@ -27,16 +27,20 @@ export default async function Page() {
   });
 
   return (
-    <ContractShell id="M-DOC-00" title="계약 검토·확정 대시보드">
+    <ContractShell id="M-DOC-00" title="계약서 검토·확정 대시보드">
       <PageStack>
         <Grid columns={4}>
-          <MetricCard label="검토 대기" value={`${dashboard.counts.pending}건`} note="문서 등록·거래 수락 유입" />
-          <MetricCard label="확인 필요" value={`${dashboard.counts.needsCheck}개`} note="계약 조건 관리자 확인 필요" />
+          <MetricCard label="검토 대기" value={`${dashboard.counts.pending}건`} note="임차인·관리자 업로드 유입" />
+          <MetricCard label="확인 필요" value={`${dashboard.counts.needsCheck}개`} note="OCR 원문 대조 필요" />
           <MetricCard label="SLA 초과" value={`${dashboard.counts.slaOverdue}건`} note="장기 미확정 출구 표시" />
           <MetricCard label="미등록 호실" value={`${dashboard.counts.unregistered}호`} note="수동값 또는 초대 필요" />
         </Grid>
 
-        <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-lg)", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>계약서 등록</LinkButton>
+        </div>
+
+        <Card style={{ display: "grid", gap: "var(--space-lg)", alignItems: "center" }}>
           <div style={{ display: "grid", gap: "var(--space-sm)" }}>
             <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
               <Badge emphasis>확인필요 {dashboard.counts.needsCheck}</Badge>
@@ -45,11 +49,6 @@ export default async function Page() {
               <Badge>삭제 요청 {dashboard.counts.deletionRequests}</Badge>
             </div>
             <Input aria-label="계약 검색" placeholder="건물, 호실, 임차인 검색" readOnly />
-          </div>
-          <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>계약서 등록</LinkButton>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-03"]} variant="secondary">호실·타임라인</LinkButton>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-04"]} variant="secondary">임차인 초대</LinkButton>
           </div>
         </Card>
 

@@ -37,6 +37,8 @@ export interface TeamTicket {
   status: string;
   priority: number;
   responsibilityHint: string;
+  /** 팀 Ticket.category(하자/소음/납부…) — 하자 민원 vs 일반 민원 구분 근거 */
+  category?: string;
   analysis?: TeamAnalysis;
   repairs?: TeamRepair[];
   assignedVendor?: { businessName?: string };
@@ -106,11 +108,19 @@ export function mapResponsibility(hint: string): ResponsibilityVerdict {
   return mapped ?? "unclear";
 }
 
+// 시설 수리가 아닌 카테고리(소음/납부/계약/공용공간/기타 등)는 일반 민원으로 분류한다.
+// 하드코딩 "defect" 고정이던 것을 팀 category 기반으로 교정 — 미지정/수리성 카테고리는 기존대로 defect.
+const COMPLAINT_CATEGORIES = new Set(["소음", "납부", "계약", "공용공간", "기타", "주차", "민원"]);
+
+export function ticketTypeFromCategory(category?: string): Ticket["type"] {
+  return category && COMPLAINT_CATEGORIES.has(category) ? "complaint" : "defect";
+}
+
 export function toTicket(c: TeamComplaint): Ticket {
   const repair = c.ticket.repairs?.[0];
   return {
     id: c.id,
-    type: "defect",
+    type: ticketTypeFromCategory(c.ticket.category ?? c.ticket.analysis?.category),
     // 화면들이 `{unitId}호`로 렌더하므로 unitId는 호 없는 숫자여야 한다(roomNo "301호" → "301").
     unitId: (c.room?.roomNo ?? "").replace(/\s*호\s*$/, ""),
     title: c.title,
