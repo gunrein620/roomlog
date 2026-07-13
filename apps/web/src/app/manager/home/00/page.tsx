@@ -3,9 +3,9 @@ import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 import { getUser } from "@/lib/session";
 import { AlertStatTiles } from "./AlertStatTiles";
 import { CopilotPanel } from "./CopilotPanel";
-import { HeroDepositCard } from "./HeroDepositCard";
 import { HomeCards } from "./HomeCards";
-import { RingStatCard } from "./RingStatCard";
+import { InstrumentPanel } from "./InstrumentPanel";
+import { PortfolioStatCards } from "./PortfolioStatCards";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
@@ -60,39 +60,31 @@ export default async function Page() {
         ) : null}
 
         <div className="manager-home-bento">
-          <HeroDepositCard
+          <InstrumentPanel
             depositRatePct={dashboard.depositRatePct}
             monthLabel={dashboard.depositRateMonthLabel}
             payerCounts={dashboard.depositPayerCounts}
             depositAmounts={dashboard.depositAmounts}
-          />
-          <RingStatCard
-            label="입주율"
-            pct={occupancy.total > 0 ? Math.round((occupancy.contracted / occupancy.total) * 100) : null}
-            sub={occupancy.total > 0 ? `${occupancy.contracted} / ${occupancy.total}곳` : "확인 필요"}
-            href={MHOME_ROUTES["M-HOME-03"]}
-            gridArea="occ"
-            tint="blue"
-          />
-          <RingStatCard
-            label="티켓 처리율"
-            pct={
+            occupancyPct={occupancy.total > 0 ? Math.round((occupancy.contracted / occupancy.total) * 100) : null}
+            occupancySub={occupancy.total > 0 ? `${occupancy.contracted} / ${occupancy.total}곳` : "확인 필요"}
+            occupancyHref={MHOME_ROUTES["M-HOME-03"]}
+            ticketPct={
               dashboard.ticketProgress
                 ? Math.round((dashboard.ticketProgress.resolved / dashboard.ticketProgress.total) * 100)
                 : null
             }
-            sub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
-            href={MANAGER_CROSS.ticketDash}
-            gridArea="ticket"
-            tint="mint"
+            ticketSub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
+            ticketHref={MANAGER_CROSS.ticketDash}
           />
-          <AlertStatTiles warnings={warnings} />
+          <PortfolioStatCards amounts={dashboard.portfolioAmounts} />
         </div>
 
         <HomeCards
           homeCards={dashboard.homeCards}
           uncontractedListings={dashboard.uncontractedListings}
         />
+
+        <AlertStatTiles warnings={warnings} />
 
         <section aria-labelledby="manager-today-tasks-title" className="manager-home-tasks">
           <div className="manager-home-tasks-heading">
@@ -204,43 +196,10 @@ export default async function Page() {
           gap: var(--space-xl);
         }
 
-        /* ── 벤토 그리드 — 3열 1:1:1(입주율 링 · 납부 히어로 · 티켓 처리율 링) + 경고 타일 스트립 ── */
+        /* ── 벤토 — 계기 패널(입주율 링·납부 게이지·티켓 처리율 링 통합) + 자산 스탯 카드 2장 ── */
         .manager-home-bento {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          grid-template-areas:
-            "occ hero ticket"
-            "alerts alerts alerts";
           gap: var(--space-md);
-        }
-
-        .manager-home-bento > .manager-hero-deposit {
-          grid-area: hero;
-        }
-
-        .manager-home-bento > .manager-alert-tiles {
-          grid-area: alerts;
-        }
-
-        @media (max-width: 1120px) {
-          .manager-home-bento {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-template-areas:
-              "hero hero"
-              "occ ticket"
-              "alerts alerts";
-          }
-        }
-
-        @media (max-width: 620px) {
-          .manager-home-bento {
-            grid-template-columns: 1fr;
-            grid-template-areas:
-              "hero"
-              "occ"
-              "ticket"
-              "alerts";
-          }
         }
 
         /* ── 레퍼런스 정렬 — 박스를 줄이고 톤으로 말하기 ── */

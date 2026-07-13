@@ -15,6 +15,7 @@ import {
   countTicketProgress,
   depositRateMonthLabel,
   sumDepositAmounts,
+  sumPortfolioAmounts,
   type DashboardBillingRow,
   type DashboardContractExpiryRow,
   type DashboardListing,
@@ -34,6 +35,7 @@ export type ManagerDashboardData = {
   depositPayerCounts: { paid: number; total: number } | null;
   depositAmounts: { collected: number; billed: number } | null;
   ticketProgress: { open: number; resolved: number; total: number } | null;
+  portfolioAmounts: { depositManwon: number; monthlyRentManwon: number; contractCount: number } | null;
   homeCards: ManagerHomeCard[];
   uncontractedListings: DashboardListing[];
   sourceFailures: DashboardSourceKey[];
@@ -154,6 +156,7 @@ export async function assembleManagerDashboard(user: SessionUser | null): Promis
     depositPayerCounts: countDepositPayers(billingRows),
     depositAmounts: sumDepositAmounts(billingRows),
     ticketProgress: countTicketProgress(ticketRows),
+    portfolioAmounts: sumPortfolioAmounts(tradeContracts.data),
     homeCards,
     uncontractedListings: listings.data,
     sourceFailures,
@@ -192,7 +195,9 @@ async function loadTradeContracts(user: SessionUser | null): Promise<SourceResul
         location: contract.location,
         tenantName: contract.tenantName,
         priceLabel: priceLabel(contract),
-        threadId: contract.threadId
+        threadId: contract.threadId,
+        depositManwon: contract.depositManwon,
+        monthlyRentManwon: contract.monthlyRentManwon
       }));
 
     return { data: contracts, failed: false };

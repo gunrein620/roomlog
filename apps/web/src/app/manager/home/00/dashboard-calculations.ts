@@ -76,6 +76,8 @@ export type DashboardTradeContract = {
   tenantName: string;
   priceLabel: string;
   threadId: string;
+  depositManwon: number;
+  monthlyRentManwon: number;
 };
 
 export type DashboardListing = {
@@ -212,6 +214,22 @@ export function sumDepositAmounts(
       billed: sums.billed + positiveNumber(row.totalAmount)
     }),
     { collected: 0, billed: 0 }
+  );
+}
+
+// 자산 스탯 카드용 — 계약 중인 집(이미 accepted로 필터된 목록)의 보증금·월세 합계. 계약이 없으면 null.
+export function sumPortfolioAmounts(
+  contracts: DashboardTradeContract[]
+): { depositManwon: number; monthlyRentManwon: number; contractCount: number } | null {
+  if (contracts.length === 0) return null;
+
+  return contracts.reduce(
+    (sums, contract) => ({
+      depositManwon: sums.depositManwon + positiveNumber(contract.depositManwon),
+      monthlyRentManwon: sums.monthlyRentManwon + positiveNumber(contract.monthlyRentManwon),
+      contractCount: sums.contractCount + 1
+    }),
+    { depositManwon: 0, monthlyRentManwon: 0, contractCount: 0 }
   );
 }
 

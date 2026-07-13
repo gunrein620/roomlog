@@ -3,10 +3,10 @@ import { FileClock, MessageSquareText, ReceiptText, Wrench } from "lucide-react"
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 
 const TILES = [
-  { key: "overdue", label: "연체", tone: "peach", href: MANAGER_CROSS.billing, Icon: ReceiptText },
-  { key: "urgent", label: "긴급 하자", tone: "pink", href: MANAGER_CROSS.ticketDash, Icon: Wrench },
-  { key: "expiring", label: "만기 임박", tone: "lilac", href: MANAGER_CROSS.contract, Icon: FileClock },
-  { key: "unanswered", label: "답장 대기", tone: "mint", href: MANAGER_CROSS.messaging, Icon: MessageSquareText }
+  { key: "overdue", label: "연체", href: MANAGER_CROSS.billing, Icon: ReceiptText },
+  { key: "urgent", label: "긴급 하자", href: MANAGER_CROSS.ticketDash, Icon: Wrench },
+  { key: "expiring", label: "만기 임박", href: MANAGER_CROSS.contract, Icon: FileClock },
+  { key: "unanswered", label: "답장 대기", href: MANAGER_CROSS.messaging, Icon: MessageSquareText }
 ] as const;
 
 export type AlertStatWarnings = {
@@ -17,14 +17,14 @@ export type AlertStatWarnings = {
 };
 
 /**
- * 주의 항목 파스텔 스탯 타일 4개.
+ * 주의 항목 스탯 타일 4개 — 인디고 단일 축 농도로 심각도를 표현.
  * 색은 상태 전달을 보조할 뿐 — 아이콘·라벨·건수가 항상 함께 있어 색 단독 의존이 없다.
  */
 export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
   return (
     <>
       <ul className="manager-alert-tiles" aria-label="주의 항목">
-      {TILES.map(({ key, label, tone, href, Icon }) => {
+      {TILES.map(({ key, label, href, Icon }) => {
         const count = warnings[key];
         const active = count > 0;
         return (
@@ -33,8 +33,8 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
               href={href}
               className={
                 active
-                  ? `manager-alert-tile manager-alert-tile--${tone} manager-alert-tile--active`
-                  : `manager-alert-tile manager-alert-tile--${tone}`
+                  ? `manager-alert-tile manager-alert-tile--${key} manager-alert-tile--active`
+                  : `manager-alert-tile manager-alert-tile--${key}`
               }
             >
               <span className="manager-alert-tile-top">
@@ -69,6 +69,7 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
         .manager-alert-tile {
           display: grid;
           align-content: space-between;
+          justify-items: center;
           gap: var(--space-lg);
           min-height: 152px;
           height: 100%;
@@ -79,6 +80,7 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           color: var(--on-surface-variant);
           box-shadow: var(--shadow-soft);
           text-decoration: none;
+          text-align: center;
           transition: transform 0.16s ease;
         }
 
@@ -89,6 +91,7 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
         .manager-alert-tile-top {
           display: flex;
           align-items: center;
+          justify-content: center;
           gap: var(--space-sm);
         }
 
@@ -134,24 +137,26 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           font-weight: 800;
         }
 
-        .manager-alert-tile--peach.manager-alert-tile--active {
-          background: var(--pastel-peach);
-          color: var(--on-pastel-peach);
+        /* 파스텔 4색 → 인디고 단일 축 4단계(심각도 순: 긴급 하자 > 연체 > 만기 임박 > 답장 대기).
+           72%는 흰 텍스트 기준 대비 4.5:1을 못 넘겨(≈3.6:1) 85%로 올렸다 — 나머지는 계산대로. */
+        .manager-alert-tile--urgent.manager-alert-tile--active {
+          background: var(--primary);
+          color: #ffffff;
         }
 
-        .manager-alert-tile--pink.manager-alert-tile--active {
-          background: var(--pastel-pink);
-          color: var(--on-pastel-pink);
+        .manager-alert-tile--overdue.manager-alert-tile--active {
+          background: color-mix(in srgb, var(--primary) 85%, #ffffff);
+          color: #ffffff;
         }
 
-        .manager-alert-tile--lilac.manager-alert-tile--active {
-          background: var(--pastel-lilac);
-          color: var(--on-pastel-lilac);
+        .manager-alert-tile--expiring.manager-alert-tile--active {
+          background: color-mix(in srgb, var(--primary) 26%, #ffffff);
+          color: var(--on-primary-container);
         }
 
-        .manager-alert-tile--mint.manager-alert-tile--active {
-          background: var(--pastel-mint);
-          color: var(--on-pastel-mint);
+        .manager-alert-tile--unanswered.manager-alert-tile--active {
+          background: color-mix(in srgb, var(--primary) 12%, #ffffff);
+          color: var(--on-primary-container);
         }
 
         @media (max-width: 620px) {

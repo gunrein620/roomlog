@@ -4,9 +4,8 @@ import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 
 // M-HOME-02(임대 현황 리포트) 데모 콘텐츠를 00 페이지 하단 섹션으로 통합.
 // 상단 탭 "임대 현황 리포트"는 /manager/home/00#report로 스크롤한다.
+// 총 보증금·월 예상수익은 자산 스탯 카드(PortfolioStatCards)로 옮겨서 여기선 뺐다 — 중복 노출 방지.
 const kpis = [
-  ["총 보증금", "8.4억", "계약 원장 기준"],
-  ["월 예상수익", "1,860만원", "청구 예정 합계"],
   ["실수납", "1,420만원", "확인 완료 입금만"],
   ["미납률", "확인 중", "M-BILL 단일 산식 연결 전"],
 ] as const;
@@ -34,7 +33,7 @@ export function ReportSection() {
           <Badge>PDF/CSV</Badge>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "var(--space-md)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "var(--space-md)" }}>
           {kpis.map(([label, value, note]) => (
             <Card key={label}>
               <div style={captionStyle}>{label}</div>

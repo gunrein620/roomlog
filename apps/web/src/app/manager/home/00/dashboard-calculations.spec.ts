@@ -11,12 +11,14 @@ import {
   countOverdueBills,
   countTicketProgress,
   sumDepositAmounts,
+  sumPortfolioAmounts,
   rentStatusChipForContract,
   sortTodayTasks,
   type DashboardBillingRow,
   type DashboardContractExpiryRow,
   type DashboardThread,
   type DashboardTicket,
+  type DashboardTradeContract,
   type TodayTask
 } from "./dashboard-calculations";
 
@@ -320,3 +322,36 @@ describe("countTicketProgress (계기판 처리율 링)", () => {
     assert.equal(countTicketProgress([ticket("t1", "301", "cancelled", 3)]), null);
   });
 });
+
+describe("sumPortfolioAmounts (자산 스탯 카드)", () => {
+  it("계약 중인 집의 보증금·월세를 합산하고 계약 건수를 함께 반환한다", () => {
+    const contracts = [
+      tradeContract("c1", "김민수", 5000, 50),
+      tradeContract("c2", "박서연", 3000, 40)
+    ];
+
+    assert.deepEqual(sumPortfolioAmounts(contracts), { depositManwon: 8000, monthlyRentManwon: 90, contractCount: 2 });
+  });
+
+  it("계약이 없으면 0이 아니라 null", () => {
+    assert.equal(sumPortfolioAmounts([]), null);
+  });
+});
+
+function tradeContract(
+  id: string,
+  tenantName: string,
+  depositManwon: number,
+  monthlyRentManwon: number
+): DashboardTradeContract {
+  return {
+    id,
+    listingTitle: "정글빌라 301호",
+    location: "서울시 중구",
+    tenantName,
+    priceLabel: `월세 ${depositManwon}/${monthlyRentManwon}`,
+    threadId: `thread-${id}`,
+    depositManwon,
+    monthlyRentManwon
+  };
+}
