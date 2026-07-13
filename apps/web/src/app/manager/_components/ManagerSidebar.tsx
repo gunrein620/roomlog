@@ -27,6 +27,7 @@ import {
   getManagerNavState,
   type ManagerNavItemId,
 } from "@/lib/manager-navigation";
+import { resolveTicketDashboardView } from "../ticket/dash/00/ticket-dashboard-view";
 
 const MANAGER_NAV_ICONS: Record<ManagerNavItemId, LucideIcon> = {
   dashboard: LayoutDashboard,
@@ -59,11 +60,11 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
   const messagingActive = state.activeItemId === "messaging";
   const [ticketExpanded, setTicketExpanded] = useState(ticketActive);
   const [messagingExpanded, setMessagingExpanded] = useState(messagingActive);
-  const ticketTypeFilter = searchParams.get("type") === "complaint"
-    ? "complaint"
-    : searchParams.get("type") === "defect"
-      ? "defect"
-      : "all";
+  const dashboardView = resolveTicketDashboardView({
+    type: searchParams.get("type") ?? undefined,
+    view: searchParams.get("view") ?? undefined,
+  });
+  const ticketView = dashboardView === "dashboard" ? "dashboard" : "management";
 
   useEffect(() => {
     if (ticketActive) setTicketExpanded(true);
@@ -172,8 +173,8 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
                         className="manager-sidebar__children"
                       >
                         {item.children.map((child) => {
-                          const childActive = child.typeFilter
-                            ? child.typeFilter === ticketTypeFilter
+                          const childActive = child.ticketView
+                            ? child.ticketView === ticketView
                             : child.active ?? currentHref === child.href;
                           return (
                             <Link

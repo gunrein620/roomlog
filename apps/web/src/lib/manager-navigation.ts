@@ -12,13 +12,13 @@ export type ManagerNavItemId =
   | "dashboard" | "listing" | "contract" | "billing" | "cost" | "ticket"
   | "messaging" | "moveout" | "vendor" | "report" | "assistant" | "settings";
 
-export type ManagerTicketTypeFilter = "all" | "complaint" | "defect";
+export type ManagerTicketView = "dashboard" | "management";
 export interface ManagerNavChild {
   label: string;
   href: string;
   demo?: true;
   active?: boolean;
-  typeFilter?: ManagerTicketTypeFilter;
+  ticketView?: ManagerTicketView;
 }
 export interface ManagerNavItem {
   id: ManagerNavItemId;
@@ -115,13 +115,16 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
       {
         id: "ticket",
         label: "민원·하자",
-        href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=defect`,
+        href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?view=management`,
         icon: "ticket",
         activePrefixes: ["/manager/ticket/dash"],
         children: [
-          { label: "민원 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"], typeFilter: "all" },
-          { label: "민원 대응", href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=complaint`, typeFilter: "complaint" },
-          { label: "하자 관리", href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=defect`, typeFilter: "defect" },
+          { label: "민원 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"], ticketView: "dashboard" },
+          {
+            label: "민원/하자 관리",
+            href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?view=management`,
+            ticketView: "management",
+          },
         ],
       },
       {

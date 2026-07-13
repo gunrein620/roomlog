@@ -87,11 +87,12 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.doesNotMatch(componentSource, /더미 작업 비활성/);
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
   assert.match(pageSource, /searchParams/);
-  assert.match(pageSource, /type === "complaint" \|\| type === "defect"/);
-  assert.match(pageSource, /initialTemplate === "all"/);
+  assert.match(pageSource, /resolveTicketDashboardView/);
+  assert.match(pageSource, /headers\(\)/);
+  assert.match(pageSource, /appendLocalTicketDemoRows/);
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
-  // 더미 행 혼합 금지 — 대시보드는 실제 접수 티켓만 보여준다(세입자 신규 요청과 직결).
+  // 과거 추적 데모 상수는 사용하지 않고, Git 비추적 로컬 파일만 서버 로더로 추가한다.
   assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(pageSource, /listManagerTicketRows/);
   assert.match(componentSource, /initialTemplate/);
@@ -138,20 +139,23 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   );
   assert.doesNotMatch(dashboardCss, /#[\da-f]{3,8}/i);
 
-  assert.match(sidebarSource, /child\.active \?\? currentHref === child\.href/);
+  assert.match(sidebarSource, /child\.ticketView/);
   assert.match(layoutSource, /<ManagerAppShell[\s\S]*?subnav=\{false\}/);
   assert.match(navigationSource, /민원 대시보드/);
-  assert.match(navigationSource, /민원 대응/);
-  assert.match(navigationSource, /하자 관리/);
+  assert.match(navigationSource, /민원\/하자 관리/);
+  assert.doesNotMatch(navigationSource, /label: "민원 대응"/);
+  assert.doesNotMatch(navigationSource, /label: "하자 관리"/);
+  assert.match(componentSource, /"민원\/하자 관리"/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-13 브랜드를 집우집주(WOOZU) 로고+홈 링크로 교체, 접기 토글을 브랜드 왼쪽으로 이동
-    "644d549ee8f6eedca8db572d09508c90c81060350f28571f77a869d1017e036f",
+    // 2026-07-13 통합 관리 화면 상태에 맞춰 티켓 하위 메뉴 활성 계약을 변경.
+    "2e28e29afb35527181fa314081864353e34fc71fee2bbdfa4e53e37343facefb",
   );
   assert.equal(
     sha256(navigationSource),
     // 2026-07-13 대시보드 탭 통합 — "미처리 업무" 자식 제거, 리포트·건물 관리·등록 탭을
-    // /manager/home/00#report 등 페이지 내 앵커 링크로 전환(별도 페이지를 홈에 통합)
-    "b6883d8775307183150e7eb7a4a2af4475ae98e6f9bad232b967210aa8975252",
+    // /manager/home/00#report 등 페이지 내 앵커 링크로 전환(별도 페이지를 홈에 통합).
+    // dev 머지: 티켓 자식의 typeFilter → ticketView 개편과 합쳐진 소스 기준 해시.
+    "b0e6fc7ae52524f29faa1380ace537b7ca015a7b329dbb70e64b7e2349ffd188",
   );
 });

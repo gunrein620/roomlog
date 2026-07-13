@@ -13,9 +13,11 @@ import type {
   MessagingAnnouncementResult,
   MessagingMessage,
   MessagingMessageSender,
+  ManagerMessagingRecipient,
   MessagingThread,
   MessagingThreadContext,
   Room,
+  StartManagerConversationInput,
   UpdateAnnouncementDraftInput,
   UserAccount
 } from "../roomlog.types";
@@ -182,6 +184,82 @@ export class RoomlogMessagingDomain {
       .filter((thread) => !context || thread.context === context)
       .sort((a, b) => this.timeOf(b.updatedAt) - this.timeOf(a.updatedAt))
       .map((thread) => this.presentThread(thread));
+  }
+
+  listManagerMessagingRecipients(managerId: string): ManagerMessagingRecipient[] {
+    return Object.entries(this.store.tenantRooms)
+      .flatMap(([tenantId, roomId]) => {
+        if (!this.canManagerAccessRoom(managerId, roomId)) {
+          return [];
+        }
+
+        const room = this.findRoom(roomId);
+        const tenant = this.store.users.find((user) => user.id === tenantId);
+        if (!tenant) {
+          return [];
+        }
+
+        const existingGeneralThreadId = this.store.messagingThreads.find(
+          (thread) =>
+            thread.roomId === roomId &&
+            thread.tenantId === tenantId &&
+            thread.context === "general" &&
+            !thread.contextRef
+        )?.id;
+
+        return [{
+          roomId,
+          buildingName: room.buildingName,
+          unitId: this.displayUnitId(room),
+          tenantId,
+          tenantName: tenant.name,
+          existingGeneralThreadId
+        }];
+      })
+      .sort((left, right) =>
+        `${left.buildingName}\u0000${left.unitId}\u0000${left.tenantName}`.localeCompare(
+          `${right.buildingName}\u0000${right.unitId}\u0000${right.tenantName}`,
+          "ko"
+        )
+      );
+  }
+
+  startManagerConversation(
+    managerId: string,
+    input: StartManagerConversationInput
+  ): MessagingThread {
+    this.assertManagerCanAccessRoom(managerId, input.roomId);
+
+    if (this.store.tenantRooms[input.tenantId] !== input.roomId) {
+      throw new ForbiddenException("해당 세대 임차인과만 대화를 시작할 수 있습니다.");
+    }
+
+    const existing = this.store.messagingThreads.find(
+      (thread) =>
+        thread.roomId === input.roomId &&
+        thread.tenantId === input.tenantId &&
+        thread.context === "general" &&
+        !thread.contextRef
+    );
+    if (existing) {
+      return this.presentThread(existing);
+    }
+
+    const body = input.body?.trim();
+    if (!body) {
+      throw new BadRequestException("첫 메시지를 입력해주세요.");
+    }
+
+    return this.createMessagingThread(managerId, {
+      roomId: input.roomId,
+      tenantId: input.tenantId,
+      context: "general",
+      contextLabel: "일반 문의",
+      initialMessage: {
+        sender: "manager",
+        body
+      }
+    });
   }
 
   getManagerMessagingThread(managerId: string, threadId: string): MessagingThread {

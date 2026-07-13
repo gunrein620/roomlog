@@ -174,7 +174,7 @@ export function ManagerDefectDashboard({
   return (
     <section className="manager-defect-dashboard" aria-labelledby="manager-defect-title">
       <h2 id="manager-defect-title">
-        {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원 대시보드"}
+        {initialTemplate === "complaint" ? "민원 대응" : initialTemplate === "defect" ? "하자 관리" : "민원/하자 관리"}
       </h2>
 
       <div

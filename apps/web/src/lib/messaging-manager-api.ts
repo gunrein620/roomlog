@@ -6,6 +6,8 @@ import type {
   AnnouncementResult,
   AnnouncementTranslationRequest,
   AnnouncementTranslationResponse,
+  ManagerMessagingRecipient,
+  StartManagerConversationInput,
   UpdateAnnouncementDraftInput,
   Thread,
   ThreadContext,
@@ -221,6 +223,8 @@ export const managerMessagingPaths = {
   thread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
   deleteThread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
   threadMessages: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}/messages`,
+  recipients: () => "/manager/messaging/recipients",
+  conversations: () => "/manager/messaging/conversations",
   announcementDrafts: () => "/manager/messaging/announcement-drafts",
   announcementDraft: (id: string) =>
     `/manager/messaging/announcement-drafts/${encodeURIComponent(id)}`,
@@ -252,6 +256,17 @@ export function listManagerThreads(context?: ThreadContext): Promise<Thread[]> {
     fallback.length > 0 ? fallback : DEMO_MANAGER_THREADS,
     "관리인 메시지 목록 조회",
   );
+}
+
+export function listManagerMessagingRecipients(): Promise<ManagerMessagingRecipient[]> {
+  return serverFetch(managerMessagingPaths.recipients());
+}
+
+export function startManagerConversation(input: StartManagerConversationInput): Promise<Thread> {
+  return serverFetch<Thread>(managerMessagingPaths.conversations(), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getManagerThread(id: string): Promise<Thread> {

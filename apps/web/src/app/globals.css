@@ -7070,37 +7070,38 @@ p {
     var(--canvas);
 }
 
-.tenant-floorplan-svg {
-  width: min(100%, 420px);
-  height: auto;
-  color: color-mix(in srgb, var(--ink) 66%, var(--muted));
-  filter: drop-shadow(0 18px 20px color-mix(in srgb, var(--ink) 8%, transparent));
+.tenant-residence-photo-card {
+  padding: 0;
+  border-style: solid;
+  background: var(--paper);
 }
 
-.tenant-floorplan-svg rect,
-.tenant-floorplan-svg path,
-.tenant-floorplan-svg circle {
-  fill: color-mix(in srgb, var(--paper) 78%, transparent);
-  stroke: currentColor;
-  stroke-width: 3;
+.tenant-residence-photo {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  object-fit: cover;
+  display: block;
 }
 
-.tenant-floorplan-svg path {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.tenant-residence-empty-card {
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
 }
 
-.tenant-floorplan-svg text {
-  fill: color-mix(in srgb, var(--muted) 86%, var(--ink));
-  font-size: 9px;
+.tenant-residence-empty-card strong {
+  color: var(--ink);
+  font-size: 1.05rem;
   font-weight: 900;
-  letter-spacing: 0;
 }
 
-.tenant-floorplan-svg .tenant-floorplan-measure {
-  stroke: color-mix(in srgb, var(--muted) 46%, transparent);
-  stroke-width: 1.5;
+.tenant-residence-empty-card span {
+  max-width: 280px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .tenant-residence-details {
@@ -7283,7 +7284,7 @@ p {
 /* 민원/하자 신규 요청 시트 — 계약서 시트와 같은 바텀시트 패턴 위의 입력 폼 */
 .tenant-request-form {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 .tenant-request-form label {
@@ -7292,6 +7293,61 @@ p {
   font-size: 0.86rem;
   font-weight: 800;
   color: var(--ink);
+}
+
+.tenant-request-detail-sheet header {
+  align-items: flex-start;
+}
+
+.tenant-request-detail-sheet header span {
+  color: var(--blue);
+  font-weight: 900;
+}
+
+.tenant-request-detail-sheet header h2 {
+  margin-top: 6px;
+  font-size: clamp(1.8rem, 4vw, 2.3rem);
+  line-height: 1.05;
+}
+
+.tenant-request-type-toggle {
+  display: flex;
+  gap: 12px;
+}
+
+.tenant-request-type-toggle button {
+  min-width: 78px;
+  min-height: 52px;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, var(--muted));
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.tenant-request-type-toggle button.active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.tenant-request-detail-form .tenant-request-type-toggle button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.tenant-request-detail-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
+  align-items: end;
+  gap: 24px;
+}
+
+.tenant-request-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.58fr);
+  gap: 16px;
 }
 
 .tenant-request-form input,
@@ -7316,7 +7372,121 @@ p {
 
 .tenant-request-form textarea {
   resize: vertical;
-  min-height: 104px;
+  min-height: 182px;
+}
+
+.tenant-request-detail-form input[readonly],
+.tenant-request-detail-form textarea[readonly] {
+  cursor: default;
+}
+
+.tenant-request-detail-form .tenant-request-body-field textarea {
+  min-height: 320px;
+}
+
+.tenant-request-image-strip {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.tenant-request-image-input,
+.tenant-request-image-preview,
+.tenant-request-image-placeholder {
+  position: relative;
+  flex: 0 0 84px;
+  width: 84px;
+  height: 100px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 84%, var(--muted));
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.tenant-request-image-input {
+  place-items: center;
+  gap: 6px;
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.tenant-request-image-input span {
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.tenant-request-image-input input {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.tenant-request-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tenant-request-image-file {
+  display: grid;
+  place-items: center;
+}
+
+.tenant-request-image-preview button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 72%, transparent);
+  color: #ffffff;
+}
+
+.tenant-request-image-placeholder {
+  background:
+    linear-gradient(135deg, transparent calc(50% - 0.5px), color-mix(in srgb, var(--line) 90%, var(--muted)), transparent calc(50% + 0.5px)),
+    linear-gradient(45deg, transparent calc(50% - 0.5px), color-mix(in srgb, var(--line) 90%, var(--muted)), transparent calc(50% + 0.5px)),
+    color-mix(in srgb, var(--canvas) 78%, var(--paper));
+}
+
+.tenant-request-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tenant-request-actions button {
+  min-width: 104px;
+  min-height: 54px;
+  padding: 0 18px;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, var(--muted));
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.tenant-request-actions button.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.tenant-request-actions button:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .tenant-request-error {
@@ -7324,6 +7494,30 @@ p {
   color: var(--error, #ba1a1a);
   font-size: 0.86rem;
   font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .tenant-request-detail-meta-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .tenant-request-detail-form .tenant-request-body-field textarea {
+    min-height: 220px;
+  }
+
+  .tenant-request-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-request-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tenant-request-actions button.primary {
+    grid-column: 1 / -1;
+  }
 }
 
 .tenant-payment-card {
@@ -11141,6 +11335,10 @@ p {
   .postcode-sheet {
     width: min(calc(100vw - 48px), 560px);
     border-radius: 26px;
+  }
+
+  .tenant-request-sheet {
+    width: min(calc(100vw - 48px), 700px);
   }
 
   .search-sheet-backdrop,
