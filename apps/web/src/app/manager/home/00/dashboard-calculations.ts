@@ -76,6 +76,8 @@ export type DashboardTradeContract = {
   tenantName: string;
   priceLabel: string;
   threadId: string;
+  depositManwon: number;
+  monthlyRentManwon: number;
 };
 
 export type DashboardListing = {
@@ -191,6 +193,55 @@ export function depositRateMonthLabel(
   if (!month || month === referenceMonth) return "이번 달";
 
   return `${Number(month.slice(5, 7))}월(최근 청구월)`;
+}
+
+// 오도미터용 — 입금률과 같은 월 스코프에서 수납액·청구액 합계. 대상이 없으면 null.
+export function sumDepositAmounts(
+  rows: DashboardBillingRow[] | null,
+  referenceMonth = currentBillingMonth()
+): { collected: number; billed: number } | null {
+  if (!rows) return null;
+
+  const scopedRows = billingRowsForDepositRate(rows, referenceMonth).filter(
+    (row) => positiveNumber(row.totalAmount) > 0
+  );
+  if (scopedRows.length === 0) return null;
+
+  return scopedRows.reduce(
+    (sums, row) => ({
+      // 초과 납부가 수납률을 부풀리지 않도록 청구액 상한으로 자른다.
+      collected: sums.collected + Math.min(positiveNumber(row.paidAmount), positiveNumber(row.totalAmount)),
+      billed: sums.billed + positiveNumber(row.totalAmount)
+    }),
+    { collected: 0, billed: 0 }
+  );
+}
+
+// 자산 스탯 카드용 — 계약 중인 집(이미 accepted로 필터된 목록)의 보증금·월세 합계. 계약이 없으면 null.
+export function sumPortfolioAmounts(
+  contracts: DashboardTradeContract[]
+): { depositManwon: number; monthlyRentManwon: number; contractCount: number } | null {
+  if (contracts.length === 0) return null;
+
+  return contracts.reduce(
+    (sums, contract) => ({
+      depositManwon: sums.depositManwon + positiveNumber(contract.depositManwon),
+      monthlyRentManwon: sums.monthlyRentManwon + positiveNumber(contract.monthlyRentManwon),
+      contractCount: sums.contractCount + 1
+    }),
+    { depositManwon: 0, monthlyRentManwon: 0, contractCount: 0 }
+  );
+}
+
+// 티켓 처리율 링용 — 취소 건은 분모에서 제외. 대상이 없으면 null.
+export function countTicketProgress(
+  tickets: DashboardTicket[]
+): { open: number; resolved: number; total: number } | null {
+  const scoped = tickets.filter((ticket) => ticket.status !== "cancelled");
+  if (scoped.length === 0) return null;
+
+  const open = scoped.filter(isOpenTicket).length;
+  return { open, resolved: scoped.length - open, total: scoped.length };
 }
 
 export function countOverdueBills(rows: DashboardBillingRow[], summaryOverdue: number): number {

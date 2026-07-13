@@ -169,6 +169,9 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   );
   assert.equal(
     sha256(navigationSource),
-    "e8dfb3d30d932b41ebad8c29fe0d38987505c7004032bec4a6415fba9ed81e2a",
+    // 2026-07-13 대시보드 탭 통합 — "미처리 업무" 자식 제거, 리포트·건물 관리·등록 탭을
+    // /manager/home/00#report 등 페이지 내 앵커 링크로 전환(별도 페이지를 홈에 통합).
+    // dev 머지: 티켓 자식의 typeFilter → ticketView 개편과 합쳐진 소스 기준 해시.
+    "b0e6fc7ae52524f29faa1380ace537b7ca015a7b329dbb70e64b7e2349ffd188",
   );
 });

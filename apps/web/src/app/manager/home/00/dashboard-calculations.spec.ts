@@ -9,12 +9,16 @@ import {
   buildTodayTasks,
   calculateDepositRatePct,
   countOverdueBills,
+  countTicketProgress,
+  sumDepositAmounts,
+  sumPortfolioAmounts,
   rentStatusChipForContract,
   sortTodayTasks,
   type DashboardBillingRow,
   type DashboardContractExpiryRow,
   type DashboardThread,
   type DashboardTicket,
+  type DashboardTradeContract,
   type TodayTask
 } from "./dashboard-calculations";
 
@@ -277,3 +281,77 @@ describe("depositRateMonthLabel", () => {
     assert.equal(depositRateMonthLabel([], "2026-07"), "이번 달");
   });
 });
+
+describe("sumDepositAmounts (계기판 오도미터)", () => {
+  it("입금률과 같은 월 스코프에서 수납·청구 합계를 낸다", () => {
+    const rows = [
+      bill("b1", "301", "김민수", 100_000, 100_000, "paid", "2026-07"),
+      bill("b2", "302", "박서연", 100_000, 30_000, "partially_paid", "2026-07"),
+      bill("b3", "303", "이하나", 100_000, 100_000, "paid", "2026-06")
+    ];
+
+    assert.deepEqual(sumDepositAmounts(rows, "2026-07"), { collected: 130_000, billed: 200_000 });
+  });
+
+  it("초과 납부는 청구액 상한으로 잘라 수납률 부풀림을 막는다", () => {
+    const rows = [bill("b1", "301", "김민수", 100_000, 150_000, "paid", "2026-07")];
+    assert.deepEqual(sumDepositAmounts(rows, "2026-07"), { collected: 100_000, billed: 100_000 });
+  });
+
+  it("대상이 없으면 0이 아니라 null", () => {
+    assert.equal(sumDepositAmounts(null), null);
+    assert.equal(sumDepositAmounts([], "2026-07"), null);
+    assert.equal(sumDepositAmounts([bill("b1", "301", "김민수", 0, 0, "draft", "2026-07")], "2026-07"), null);
+  });
+});
+
+describe("countTicketProgress (계기판 처리율 링)", () => {
+  it("취소 건은 분모에서 제외하고 진행/완료를 나눈다", () => {
+    const tickets = [
+      ticket("t1", "301", "processing", 2),
+      ticket("t2", "302", "resolved", 3),
+      ticket("t3", "303", "resolved", 3),
+      ticket("t4", "304", "cancelled", 3)
+    ];
+
+    assert.deepEqual(countTicketProgress(tickets), { open: 1, resolved: 2, total: 3 });
+  });
+
+  it("티켓이 없으면(전부 취소 포함) null", () => {
+    assert.equal(countTicketProgress([]), null);
+    assert.equal(countTicketProgress([ticket("t1", "301", "cancelled", 3)]), null);
+  });
+});
+
+describe("sumPortfolioAmounts (자산 스탯 카드)", () => {
+  it("계약 중인 집의 보증금·월세를 합산하고 계약 건수를 함께 반환한다", () => {
+    const contracts = [
+      tradeContract("c1", "김민수", 5000, 50),
+      tradeContract("c2", "박서연", 3000, 40)
+    ];
+
+    assert.deepEqual(sumPortfolioAmounts(contracts), { depositManwon: 8000, monthlyRentManwon: 90, contractCount: 2 });
+  });
+
+  it("계약이 없으면 0이 아니라 null", () => {
+    assert.equal(sumPortfolioAmounts([]), null);
+  });
+});
+
+function tradeContract(
+  id: string,
+  tenantName: string,
+  depositManwon: number,
+  monthlyRentManwon: number
+): DashboardTradeContract {
+  return {
+    id,
+    listingTitle: "정글빌라 301호",
+    location: "서울시 중구",
+    tenantName,
+    priceLabel: `월세 ${depositManwon}/${monthlyRentManwon}`,
+    threadId: `thread-${id}`,
+    depositManwon,
+    monthlyRentManwon
+  };
+}

@@ -46,7 +46,7 @@ describe("manager workspace navigation", () => {
 
   it("marks prototype home links", () => {
     const dashboard = items.find((item) => item.id === "dashboard");
-    assert.equal(dashboard?.children.find((child) => child.href === "/manager/home/03")?.demo, true);
+    assert.equal(dashboard?.children.find((child) => child.href === "/manager/home/00#buildings")?.demo, true);
   });
 
   it("keeps listing management inside the manager workspace", () => {
@@ -79,12 +79,30 @@ describe("manager workspace navigation", () => {
   it("matches every permanent child and keeps settings separate from dashboard", () => {
     for (const item of items) {
       for (const child of item.children) {
+        // 해시 앵커 자식(#report 등)은 별도 테스트에서 다룬다 — pathname 기준 매칭은 해시를 모른다.
+        if (child.href.includes("#")) continue;
         assert.deepEqual(getManagerNavState(child.href), { activeItemId: item.id, activeChildHref: child.href });
       }
     }
     assert.deepEqual(getManagerNavState("/manager/home/06"), { activeItemId: "settings", activeChildHref: null });
     assert.deepEqual(getManagerNavState("/manager/listing"), { activeItemId: "listing", activeChildHref: null });
     assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: "assistant", activeChildHref: null });
+  });
+
+  it("collapses hash-anchor dashboard children to the base '자산현황' tab (usePathname never carries a hash)", () => {
+    const dashboard = items.find((item) => item.id === "dashboard");
+    const assetsTab = dashboard?.children.find((child) => child.label === "자산현황");
+    assert.ok(assetsTab);
+
+    for (const child of dashboard?.children ?? []) {
+      if (!child.href.includes("#")) continue;
+      // 세 탭 모두 같은 페이지(/manager/home/00) 안의 앵커일 뿐이라 pathname만으로는 구분이 안 되고,
+      // children 배열에서 먼저 나오는 "자산현황"으로 수렴한다. 스크롤 위치 추적은 스코프 밖(팀 결정).
+      assert.deepEqual(getManagerNavState(child.href), {
+        activeItemId: "dashboard",
+        activeChildHref: assetsTab?.href,
+      });
+    }
   });
 
   it("matches every contextual route to its parent only", () => {

@@ -172,28 +172,30 @@ export function TodayTasksCard({
           color: var(--on-primary);
         }
 
+        /* AlertStatTiles와 동일한 인디고 단일 축 4단계로 동기화(심각도 순).
+           overdue는 흰 텍스트 대비 4.5:1 확보를 위해 85%로 올림(AlertStatTiles와 같은 근거). */
         .manager-task-filter--selected.manager-task-filter--overdue {
-          border-color: var(--pastel-peach);
-          background: var(--pastel-peach);
-          color: var(--on-pastel-peach);
+          border-color: color-mix(in srgb, var(--primary) 85%, #ffffff);
+          background: color-mix(in srgb, var(--primary) 85%, #ffffff);
+          color: #ffffff;
         }
 
         .manager-task-filter--selected.manager-task-filter--urgent_ticket {
-          border-color: var(--pastel-pink);
-          background: var(--pastel-pink);
-          color: var(--on-pastel-pink);
+          border-color: var(--primary);
+          background: var(--primary);
+          color: #ffffff;
         }
 
         .manager-task-filter--selected.manager-task-filter--expiring {
-          border-color: var(--pastel-lilac);
-          background: var(--pastel-lilac);
-          color: var(--on-pastel-lilac);
+          border-color: color-mix(in srgb, var(--primary) 26%, #ffffff);
+          background: color-mix(in srgb, var(--primary) 26%, #ffffff);
+          color: var(--on-primary-container);
         }
 
         .manager-task-filter--selected.manager-task-filter--unanswered {
-          border-color: var(--pastel-mint);
-          background: var(--pastel-mint);
-          color: var(--on-pastel-mint);
+          border-color: color-mix(in srgb, var(--primary) 12%, #ffffff);
+          background: color-mix(in srgb, var(--primary) 12%, #ffffff);
+          color: var(--on-primary-container);
         }
 
         .manager-task-filter--overdue:not(.manager-task-filter--selected),
@@ -239,13 +241,23 @@ export function TodayTasksCard({
         }
 
         .manager-task-row-icon--overdue {
-          background: var(--pastel-peach);
-          color: var(--on-pastel-peach);
+          background: color-mix(in srgb, var(--primary) 85%, #ffffff);
+          color: #ffffff;
         }
 
         .manager-task-row-icon--urgent_ticket {
-          background: var(--pastel-pink);
-          color: var(--on-pastel-pink);
+          background: var(--primary);
+          color: #ffffff;
+        }
+
+        .manager-task-row-icon--expiring {
+          background: color-mix(in srgb, var(--primary) 26%, #ffffff);
+          color: var(--on-primary-container);
+        }
+
+        .manager-task-row-icon--unanswered {
+          background: color-mix(in srgb, var(--primary) 12%, #ffffff);
+          color: var(--on-primary-container);
         }
 
         .manager-task-copy {
@@ -275,12 +287,14 @@ export function TodayTasksCard({
           font-weight: 700;
         }
 
-        .manager-task-kind--overdue {
-          color: var(--on-pastel-peach);
+        .manager-task-kind--overdue,
+        .manager-task-kind--urgent_ticket {
+          color: var(--primary);
         }
 
-        .manager-task-kind--urgent_ticket {
-          color: var(--on-pastel-pink);
+        .manager-task-kind--expiring,
+        .manager-task-kind--unanswered {
+          color: var(--on-primary-container);
         }
 
         .manager-task-detail {

@@ -913,6 +913,19 @@ dd {
 }
 
 /* manager-workspace:start */
+
+/* 탭 → 페이지 내 앵커 스크롤(#report 등) 전환에 맞춰 부드러운 스크롤 적용.
+   html 전역 선택자를 쓰되 :has()로 관리인 워크스페이스가 실제로 마운트된 문서에만 스코프한다. */
+html:has(.manager-workspace) {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.manager-workspace) {
+    scroll-behavior: auto;
+  }
+}
+
 .manager-workspace {
   min-height: 100dvh;
   display: grid;
@@ -1317,13 +1330,37 @@ dd {
 }
 
 .manager-section-nav {
+  position: relative;
   min-width: max-content;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
 }
 
+/* 리퀴드 글래스 호버 인디케이터 — 링크 뒤(z-index 아래)에서 JS로 위치·폭을 옮겨 미끄러진다.
+   중립 rgba만 사용 — 전역 컴포넌트라 코스믹 스킨 같은 로컬 토큰 오버라이드에 기대지 않는다. */
+.manager-section-nav__glass {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18));
+  backdrop-filter: blur(10px) saturate(1.5);
+  -webkit-backdrop-filter: blur(10px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 20px rgba(35, 27, 74, 0.14);
+  opacity: 0;
+  transform: translateX(0);
+  transition: transform 0.28s cubic-bezier(0.34, 1.2, 0.4, 1), width 0.28s cubic-bezier(0.34, 1.2, 0.4, 1), opacity 0.18s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .manager-section-nav a {
+  position: relative;
+  z-index: 1;
   min-height: var(--touch-target);
   display: inline-flex;
   align-items: center;
@@ -1332,11 +1369,17 @@ dd {
   border-radius: var(--radius);
   color: var(--on-surface-variant);
   text-decoration: none;
+  transition: transform 0.15s ease;
 }
 
 .manager-section-nav a[aria-current="page"] {
   background: var(--primary-container);
   color: var(--on-primary-container);
+}
+
+/* 비활성 탭 호버 — 배경 틴트는 글래스 인디케이터가 대체하고, 살짝 뜨는 리프트만 유지 */
+.manager-section-nav a:not([aria-current="page"]):hover {
+  transform: translateY(-1px);
 }
 
 .manager-assistant {
@@ -3213,6 +3256,18 @@ dd {
 
 @media (prefers-reduced-motion: reduce) {
   .manager-workspace {
+    transition: none;
+  }
+
+  .manager-section-nav a {
+    transition: none;
+  }
+
+  .manager-section-nav a:not([aria-current="page"]):hover {
+    transform: none;
+  }
+
+  .manager-section-nav__glass {
     transition: none;
   }
 }
