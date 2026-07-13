@@ -3805,6 +3805,28 @@ describe("RoomlogService", () => {
     const sourceBody = "오늘 18시부터 긴급 단수가 있습니다.";
     const sourceHash = announcementSourceHash(sourceTitle, sourceBody);
 
+    const koreanOnlyDraft = service.createManagerAnnouncementDraft("landlord-demo", {
+      category: "urgent",
+      scope: "building",
+      targetLabel: "정글빌라 전체",
+      title: sourceTitle,
+      body: sourceBody,
+      confirmRequired: true,
+      translations: []
+    });
+
+    const koreanOnlySent = service.sendManagerAnnouncementDraft(
+      "landlord-demo",
+      koreanOnlyDraft.id
+    );
+    const koreanOnlyAnnouncement = service.getTenantMessagingAnnouncement(
+      "tenant-demo",
+      koreanOnlySent.announcementId
+    );
+    assert.equal(koreanOnlyAnnouncement.title, sourceTitle);
+    assert.equal(koreanOnlyAnnouncement.body, sourceBody);
+    assert.equal(koreanOnlyAnnouncement.confirmRequired, true);
+
     const unsafeDraft = service.createManagerAnnouncementDraft("landlord-demo", {
       category: "urgent",
       scope: "building",

@@ -740,7 +740,7 @@ export class RoomlogMessagingDomain {
   }
 
   private assertUrgentTranslationsReviewed(draft: MessagingAnnouncementDraft) {
-    if (draft.category !== "urgent") {
+    if (draft.category !== "urgent" || draft.translations.length === 0) {
       return;
     }
 
