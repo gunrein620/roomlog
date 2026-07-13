@@ -6229,8 +6229,15 @@ p {
 }
 
 .owner-step1-fields > .owner-step1-wide,
-.owner-step1-fields > .owner-step1-addr {
+.owner-step1-fields > .owner-step1-addr-row {
   grid-column: 1 / -1;
+}
+
+/* 주소·세부주소 한 행 — 모바일은 세로 스택, 데스크톱은 반반(1:1) */
+.owner-step1-addr-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px 16px;
 }
 
 /* 업로드 타일 — 사진/3D도면/JSON/영상을 하나의 통일된 카드 언어로 묶는다.
@@ -11201,9 +11208,9 @@ p {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  /* 매물명은 전체 폭, 주소는 2/3폭(세부주소가 남는 열을 채움) */
-  .owner-step1-fields > .owner-step1-addr {
-    grid-column: span 2;
+  /* 데스크톱: 주소·세부주소를 반반(1:1)으로 */
+  .owner-step1-addr-row {
+    grid-template-columns: 1fr 1fr;
   }
 
   /* 문의센터: 채팅 허브가 전체 폭 — 데스크톱 2패널(목록+대화)은 TradeChatCenter variant="hub"가 그린다 */

@@ -675,25 +675,28 @@ export default function LandlordMyPage() {
               <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
             </label>
 
-            <label className="owner-step1-addr">
-              주소
-              <div className="owner-address-row">
-                <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
-                <button className="owner-address-search-button" type="button" onClick={() => setIsPostcodeSearchOpen(true)}>
-                  <Search aria-hidden="true" size={16} />
-                  주소 검색
-                </button>
-              </div>
-            </label>
+            {/* 주소 · 세부주소는 한 행에서 반반(1:1)으로 */}
+            <div className="owner-step1-addr-row">
+              <label>
+                주소
+                <div className="owner-address-row">
+                  <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
+                  <button className="owner-address-search-button" type="button" onClick={() => setIsPostcodeSearchOpen(true)}>
+                    <Search aria-hidden="true" size={16} />
+                    주소 검색
+                  </button>
+                </div>
+              </label>
 
-            <label>
-              세부주소
-              <input
-                value={ownerForm.detailAddress}
-                onChange={(event) => updateOwnerForm("detailAddress", event.target.value)}
-                placeholder="예: 402호, A동 1203호"
-              />
-            </label>
+              <label>
+                세부주소
+                <input
+                  value={ownerForm.detailAddress}
+                  onChange={(event) => updateOwnerForm("detailAddress", event.target.value)}
+                  placeholder="예: 402호, A동 1203호"
+                />
+              </label>
+            </div>
 
             <label>
               거래유형
