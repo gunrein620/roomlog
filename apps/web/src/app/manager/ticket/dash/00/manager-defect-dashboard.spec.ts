@@ -88,9 +88,11 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
   assert.match(pageSource, /searchParams/);
   assert.match(pageSource, /resolveTicketDashboardView/);
+  assert.match(pageSource, /headers\(\)/);
+  assert.match(pageSource, /appendLocalTicketDemoRows/);
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
-  // 더미 행 혼합 금지 — 대시보드는 실제 접수 티켓만 보여준다(세입자 신규 요청과 직결).
+  // 과거 추적 데모 상수는 사용하지 않고, Git 비추적 로컬 파일만 서버 로더로 추가한다.
   assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(pageSource, /listManagerTicketRows/);
   assert.match(componentSource, /initialTemplate/);
