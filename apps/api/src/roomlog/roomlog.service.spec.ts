@@ -3889,9 +3889,12 @@ describe("RoomlogService", () => {
     );
     const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
     const tenantAnnouncements = service.listTenantMessagingAnnouncements("tenant-demo");
+    const deliveredAnnouncement = tenantAnnouncements.find(
+      (announcement) => announcement.id === sent.announcementId
+    );
 
-    assert.equal(tenantAnnouncements[0]?.id, sent.announcementId);
-    assert.equal(tenantAnnouncements[0]?.title, reviewedDraft.title);
+    assert.equal(deliveredAnnouncement?.id, sent.announcementId);
+    assert.equal(deliveredAnnouncement?.title, reviewedDraft.title);
 
     let tenantAnnouncement = service.getTenantMessagingAnnouncement(
       "tenant-demo",
@@ -3911,7 +3914,10 @@ describe("RoomlogService", () => {
       sent.announcementId
     );
     assert.equal(tenantAnnouncement.state, "confirmed");
-    assert.equal(service.listManagerAnnouncementResults("landlord-demo")[0].counts.confirmed, 1);
+    assert.equal(
+      service.getManagerAnnouncementResult("landlord-demo", sent.announcementId).counts.confirmed,
+      1
+    );
   });
 
   it("invalidates reviewed translations when the Korean announcement source changes", () => {
