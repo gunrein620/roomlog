@@ -1,14 +1,19 @@
 /**
  * 룸로그 셸 — 관리인 자산현황 홈/셸(M-HOME 데스크탑) + Voice 비서 홈(M-VOX 폰) 라우트.
  * 스펙: roomlog_screens_manager-home.md. 셸=라우팅 허브(중복 0), 기존 관리인 세트로 위임.
+ *
+ * M-HOME-02/03/05는 별도 페이지였다가 00 페이지의 앵커 섹션(#report/#buildings/#register)으로
+ * 통합됐다. 아래 값은 그 앵커로 직행하고, 옛 라우트(/manager/home/02 등)는 페이지 자체가
+ * redirect()로 남아 북마크·외부 링크가 깨지지 않게만 유지한다(앱 내부 링크는 이 상수를 써서
+ * 리다이렉트를 거치지 않는다).
  */
 export const MHOME_ROUTES = {
   "M-HOME-00": "/manager/home/00", // 자산현황 대시보드 (center)
   "M-HOME-01": "/manager/home/01", // 미처리 업무 허브
-  "M-HOME-02": "/manager/home/02", // 임대 현황 리포트(지표·차트)
-  "M-HOME-03": "/manager/home/03", // 전체 건물 관리
+  "M-HOME-02": "/manager/home/00#report", // 임대 현황 리포트(지표·차트) — 00에 통합됨
+  "M-HOME-03": "/manager/home/00#buildings", // 전체 건물 관리 — 00에 통합됨
   "M-HOME-04": "/manager/home/04", // 건물 상세
-  "M-HOME-05": "/manager/home/05", // 건물·호실 등록 / CSV
+  "M-HOME-05": "/manager/home/00#register", // 건물·호실 등록 / CSV — 00에 통합됨
   "M-HOME-06": "/manager/home/06", // 설정
   "M-HOME-E0": "/manager/home/e0",
 } as const;
