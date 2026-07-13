@@ -95,6 +95,17 @@ type TenantComplaintResponse = {
   messages?: TenantComplaintMessage[];
 };
 
+type TenantComplaintCreateResponse = {
+  complaint?: TenantComplaintResponse;
+};
+
+type TenantAttachmentUploadResponse = {
+  id?: string;
+  fileName?: string;
+  fileUrl?: string;
+  url?: string;
+};
+
 type RequestImagePreview = {
   id: string;
   file: File;
@@ -230,6 +241,35 @@ function normalizeTenantRepairRequest(item: TenantComplaintResponse): TenantRepa
     status: item.displayStatus ?? item.status ?? "접수됨",
     date: repairDateLabel(item.createdAt)
   };
+}
+
+async function uploadTenantRequestImages(images: RequestImagePreview[]) {
+  const uploadedUrls: string[] = [];
+
+  for (const image of images) {
+    const formData = new FormData();
+    formData.append("file", image.file);
+    formData.append("category", "COMPLAINT_PHOTO");
+
+    const response = await fetch("/api/tenant/uploads", {
+      method: "POST",
+      body: formData
+    });
+    const data = (await response.json().catch(() => undefined)) as
+      | (TenantAttachmentUploadResponse & { message?: string })
+      | undefined;
+
+    if (!response.ok) {
+      throw new Error(data?.message || "이미지 업로드에 실패했습니다.");
+    }
+
+    const uploadedUrl = data?.fileUrl ?? data?.url;
+    if (uploadedUrl) {
+      uploadedUrls.push(uploadedUrl);
+    }
+  }
+
+  return uploadedUrls;
 }
 
 function formatNumber(amount: number): string {
@@ -714,6 +754,7 @@ export default function TenantMyPage({
     setIsSubmittingRequest(true);
     setRequestError("");
     try {
+      const attachmentUrls = await uploadTenantRequestImages(requestImages);
       const res = await fetch("/api/tenant/complaints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -723,10 +764,7 @@ export default function TenantMyPage({
           occurredAt: requestDraft.occurredAt ? new Date(requestDraft.occurredAt).toISOString() : undefined,
           description: [
             `[${requestDraft.category}]`,
-            requestDraft.description.trim(),
-            requestImages.length > 0
-              ? `첨부 이미지: ${requestImages.map((image) => image.file.name).join(", ")}`
-              : ""
+            requestDraft.description.trim()
           ].filter(Boolean).join("\n\n")
         })
       });
@@ -735,13 +773,30 @@ export default function TenantMyPage({
         setRequestError(data?.message || "요청을 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
         return;
       }
+      const created = (await res.json().catch(() => undefined)) as TenantComplaintCreateResponse | undefined;
+      const complaintId = created?.complaint?.id;
+      if (complaintId && attachmentUrls.length > 0) {
+        const messageRes = await fetch(`/api/tenant/complaints/${encodeURIComponent(complaintId)}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messageText: "첨부 이미지를 제출했습니다.",
+            attachmentUrls
+          })
+        });
+        if (!messageRes.ok) {
+          const data = (await messageRes.json().catch(() => undefined)) as { message?: string } | undefined;
+          setRequestError(data?.message || "민원은 접수됐지만 이미지 첨부 연결에 실패했습니다.");
+          return;
+        }
+      }
       setIsRequestSheetOpen(false);
       setRequestDraft(EMPTY_REQUEST_DRAFT);
       clearRequestImages();
       showToast("민원/하자 요청이 접수되었습니다.");
       void loadRepairRequests();
-    } catch {
-      setRequestError("네트워크 오류로 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "네트워크 오류로 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setIsSubmittingRequest(false);
     }
