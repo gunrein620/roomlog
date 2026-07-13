@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Thread } from "@roomlog/types";
+import type { ManagerMessagingRecipient, Thread } from "@roomlog/types";
 import {
   UNASSIGNED_BUILDING_FILTER,
   filterThreadsByBuilding,
@@ -34,6 +34,20 @@ const threads = [
 test("builds unique normalized building options and detects legacy threads", () => {
   assert.deepEqual(getBuildingOptions(threads), ["테스트 건물1", "테스트 건물2"]);
   assert.equal(hasUnassignedBuilding(threads), true);
+});
+
+test("includes contract recipient buildings without existing threads", () => {
+  const recipients: ManagerMessagingRecipient[] = [
+    {
+      roomId: "room-contract-101",
+      buildingName: "계약 빌딩",
+      unitId: "101",
+      tenantId: "tenant-contract",
+      tenantName: "김세입",
+    },
+  ];
+
+  assert.deepEqual(getBuildingOptions([], recipients), ["계약 빌딩"]);
 });
 
 test("accepts only available URL building filters", () => {
