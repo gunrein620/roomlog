@@ -680,11 +680,11 @@ export default function LandlordMyPage() {
               <label>
                 주소
                 <div className="owner-address-row">
-                  <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
                   <button className="owner-address-search-button" type="button" onClick={() => setIsPostcodeSearchOpen(true)}>
                     <Search aria-hidden="true" size={16} />
                     주소 검색
                   </button>
+                  <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
                 </div>
               </label>
 
