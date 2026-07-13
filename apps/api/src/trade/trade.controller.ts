@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFil
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogService } from "../roomlog/roomlog.service";
+import { TradeContractBillingBridge } from "./trade-contract-billing-bridge.service";
 import { TradeService, type TradeListingInput, type TradeThread } from "./trade.service";
 
 type UploadedImageFile = { buffer: Buffer; originalname: string; mimetype: string };
@@ -12,7 +13,8 @@ export class TradeController {
   constructor(
     private readonly tradeService: TradeService,
     private readonly roomlogService: RoomlogService,
-    private readonly realtime: RealtimeGateway
+    private readonly realtime: RealtimeGateway,
+    private readonly contractBillingBridge: TradeContractBillingBridge
   ) {}
 
   private user(authorization?: string) {
@@ -162,12 +164,7 @@ export class TradeController {
       contractId,
       Boolean(body?.accept)
     );
-    if (contract.status === "accepted") {
-      this.roomlogService.assignTenantRoomFromContract(contract.tenantId, contract.landlordId, {
-        title: contract.listingTitle,
-        location: contract.location
-      });
-    }
+    if (contract.status === "accepted") this.contractBillingBridge.ensure(contract);
     this.notifyThread(thread, user.id);
     return contract;
   }

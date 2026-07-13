@@ -24,6 +24,20 @@ const input = {
   images: ["https://example.test/listing.jpg"]
 };
 
+function acceptContract(service: TradeService) {
+  const listing = service.createListing(owner, input);
+  const tenant = { id: "tenant-1", name: "세입자" };
+  const thread = service.createInquiry(tenant, {
+    listingId: listing.id,
+    listingTitle: listing.title,
+    message: "계약하고 싶어요"
+  });
+  const proposed = service.proposeContract(owner, thread.id).contract;
+  const accepted = service.respondContract(tenant, proposed.id, true).contract;
+
+  return { tenant, thread, accepted };
+}
+
 describe("TradeService public listings", () => {
   it("exposes newly created direct listings in the public feed immediately", () => {
     const service = serviceWithTempStore();
@@ -59,5 +73,20 @@ describe("TradeService public listings", () => {
     const created = service.createListing(owner, { ...input, detailAddress: "   " });
 
     assert.equal(created.detailAddress, undefined);
+  });
+});
+
+describe("TradeService contract acceptance", () => {
+  it("returns an already accepted contract without duplicating its acceptance message", () => {
+    const service = serviceWithTempStore();
+    const { tenant, thread, accepted: first } = acceptContract(service);
+
+    const messageCount = service.getThread(tenant.id, thread.id).messages.length;
+    const second = service.respondContract(tenant, first.id, true).contract;
+
+    assert.equal(first.status, "accepted");
+    assert.equal(second.id, first.id);
+    assert.equal(service.getThread(tenant.id, thread.id).messages.length, messageCount);
+    assert.deepEqual(service.listAcceptedContracts().map((contract) => contract.id), [first.id]);
   });
 });

@@ -665,9 +665,10 @@ export class TradeService implements OnModuleDestroy {
     const contract = this.store.contracts.find((item) => item.id === contractId);
     if (!contract) throw new NotFoundException("계약 제안을 찾을 수 없습니다.");
     if (contract.tenantId !== user.id) throw new ForbiddenException("제안받은 사람만 응답할 수 있습니다.");
+    const thread = this.getThread(user.id, contract.threadId);
+    if (accept && contract.status === "accepted") return { contract, thread };
     if (contract.status !== "proposed") throw new BadRequestException("이미 처리된 계약 제안입니다.");
 
-    const thread = this.getThread(user.id, contract.threadId);
     contract.status = accept ? "accepted" : "declined";
     contract.respondedAt = new Date().toISOString();
 
@@ -701,6 +702,12 @@ export class TradeService implements OnModuleDestroy {
     return this.store.contracts
       .filter((item) => item.landlordId === userId || item.tenantId === userId)
       .sort((a, b) => b.proposedAt.localeCompare(a.proposedAt));
+  }
+
+  listAcceptedContracts(): TradeContract[] {
+    return this.store.contracts
+      .filter((contract) => contract.status === "accepted")
+      .map((contract) => ({ ...contract }));
   }
 
   /** 스레드의 최신 계약(참여자 전용) — 채팅 화면의 제안 버튼/수락 카드 상태 판단용. */
