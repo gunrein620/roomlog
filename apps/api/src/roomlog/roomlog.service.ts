@@ -2193,9 +2193,16 @@ export class RoomlogService {
   async flushPersistence() {
     await this.pendingPersistence;
 
-    if (this.persistenceError) {
+    if (this.persistenceError !== undefined) {
       throw this.persistenceError;
     }
+  }
+
+  async ensureTradeContractDurability() {
+    if (this.persistenceError !== undefined) {
+      this.projectStore();
+    }
+    await this.flushPersistence();
   }
 
   signup(input: SignupInput): AuthResult {
@@ -3279,6 +3286,10 @@ export class RoomlogService {
 
   connectAcceptedTradeContract(input: ConnectAcceptedTradeContractInput) {
     return this.contract.connectAcceptedTradeContract(input);
+  }
+
+  preflightAcceptedTradeContract(input: ConnectAcceptedTradeContractInput) {
+    return this.contract.preflightAcceptedTradeContract(input);
   }
 
   getManagerContractDashboard(managerId: string) {

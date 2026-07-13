@@ -35,14 +35,14 @@ function acceptContract(service: TradeService, title: string, detailAddress = "1
 }
 
 describe("TradeContractBillingBridge", () => {
-  it("backfills one billing draft for an accepted contract idempotently", () => {
+  it("backfills one billing draft for an accepted contract idempotently", async () => {
     const tradeService = tradeServiceWithTempStore();
     const roomlogService = new RoomlogService({ seedDemoData: true });
     const accepted = acceptContract(tradeService, "기동보정빌라");
     const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
 
-    bridge.onModuleInit();
-    bridge.onModuleInit();
+    await bridge.onModuleInit();
+    await bridge.onModuleInit();
 
     const rows = roomlogService.getManagerContractDashboard("landlord-demo").rows
       .filter((row) => row.contract.id === `ct_trade_${accepted.id}`);
@@ -63,7 +63,7 @@ describe("TradeContractBillingBridge", () => {
     assert.equal(rows[0].origin, "trade_acceptance");
   });
 
-  it("continues backfilling accepted contracts after an individual conflict", () => {
+  it("continues backfilling accepted contracts after an individual conflict", async () => {
     const tradeService = tradeServiceWithTempStore();
     const roomlogService = new RoomlogService({ seedDemoData: true });
     const healthy = acceptContract(tradeService, "정상보정빌라");
@@ -88,7 +88,7 @@ describe("TradeContractBillingBridge", () => {
     store.contracts.find((contract) => contract.id === active.id)!.lifecycle = "active";
     const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
 
-    bridge.onModuleInit();
+    await bridge.onModuleInit();
 
     const healthyRows = roomlogService.getManagerContractDashboard("landlord-demo").rows
       .filter((row) => row.contract.id === `ct_trade_${healthy.id}`);
@@ -100,7 +100,7 @@ describe("TradeContractBillingBridge", () => {
     assert.equal(conflictingRows.length, 0);
   });
 
-  it("logs and skips an accepted startup record whose exact unit cannot be resolved", () => {
+  it("logs and skips an accepted startup record whose exact unit cannot be resolved", async () => {
     const tradeService = tradeServiceWithTempStore();
     const listing = tradeService.createListing(landlord, {
       title: "호실누락보정빌라",
@@ -121,12 +121,12 @@ describe("TradeContractBillingBridge", () => {
     const before = structuredClone((roomlogService as unknown as { store: unknown }).store);
     const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
 
-    bridge.onModuleInit();
+    await bridge.onModuleInit();
 
     assert.deepEqual((roomlogService as unknown as { store: unknown }).store, before);
   });
 
-  it("rejects an unsafe manwon-to-KRW conversion before any Roomlog mutation", () => {
+  it("rejects an unsafe manwon-to-KRW conversion before any Roomlog mutation", async () => {
     const tradeService = tradeServiceWithTempStore();
     const roomlogService = new RoomlogService({ seedDemoData: false });
     const before = structuredClone((roomlogService as unknown as { store: unknown }).store);
@@ -150,7 +150,44 @@ describe("TradeContractBillingBridge", () => {
       respondedAt: "2026-07-13T01:01:00.000Z",
     } as TradeContract & { roomNo: string };
 
-    assert.throws(() => bridge.ensure(accepted), /안전한.*원 단위|safe integer|원 단위 정수/);
+    await assert.rejects(
+      async () => bridge.ensure(accepted),
+      /안전한.*원 단위|safe integer|원 단위 정수/,
+    );
     assert.deepEqual((roomlogService as unknown as { store: unknown }).store, before);
+  });
+
+  it("awaits startup projection and retries the latest accepted snapshot after recovery", async () => {
+    const tradeService = tradeServiceWithTempStore();
+    const accepted = acceptContract(tradeService, "기동프로젝터복구빌라", "707호");
+    let attempts = 0;
+    const successfulStores: Array<{
+      tenantRooms: Record<string, string>;
+      contracts: Array<{ id: string }>;
+    }> = [];
+    const roomlogService = new RoomlogService({
+      seedDemoData: false,
+      storeProjector: {
+        persist: async (store) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("startup projector unavailable");
+          successfulStores.push(structuredClone(store));
+        },
+      },
+    });
+    const bridge = new TradeContractBillingBridge(tradeService, roomlogService);
+
+    await bridge.onModuleInit();
+    assert.equal(attempts, 1);
+
+    await bridge.onModuleInit();
+
+    assert.equal(attempts, 2);
+    assert.equal(successfulStores.length, 1);
+    assert.equal(successfulStores[0].tenantRooms[accepted.tenantId] !== undefined, true);
+    assert.equal(
+      successfulStores[0].contracts.some((contract) => contract.id === `ct_trade_${accepted.id}`),
+      true,
+    );
   });
 });

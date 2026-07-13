@@ -153,7 +153,7 @@ export class TradeController {
 
   /** 계약 응답 — 수락 시 세입자 관계(tenantRooms)를 연결해 TENANT 권한이 파생되게 한다. */
   @Post("contracts/:contractId/respond")
-  respondContract(
+  async respondContract(
     @Headers("authorization") authorization: string | undefined,
     @Param("contractId") contractId: string,
     @Body() body: { accept: boolean }
@@ -166,8 +166,9 @@ export class TradeController {
       user,
       contractId,
       body.accept,
-      body.accept ? (accepted) => this.contractBillingBridge.ensure(accepted) : undefined
+      body.accept ? (accepted) => this.contractBillingBridge.preflight(accepted) : undefined
     );
+    if (body.accept) await this.contractBillingBridge.ensure(contract);
     this.notifyThread(thread, user.id);
     return contract;
   }

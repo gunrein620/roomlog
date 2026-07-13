@@ -1,8 +1,10 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RoomlogService, type Store } from "../roomlog/roomlog.service";
+import { TradeContractBillingBridge } from "./trade-contract-billing-bridge.service";
 import { TradeService } from "./trade.service";
 
 function serviceWithTempStore() {
@@ -132,5 +134,49 @@ describe("TradeService contract acceptance", () => {
     assert.equal(second.id, first.id);
     assert.equal(service.getThread(tenant.id, thread.id).messages.length, messageCount);
     assert.deepEqual(service.listAcceptedContracts().map((contract) => contract.id), [first.id]);
+  });
+
+  it("rolls back every acceptance mutation when the atomic Trade file write fails", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-trade-accept-failure-"));
+    const filePath = join(dir, "trade-store.json");
+    const roomlogFilePath = join(dir, "roomlog-store.json");
+    const service = new TradeService(filePath);
+    const roomlogService = new RoomlogService({ seedDemoData: false, storeFilePath: roomlogFilePath });
+    const bridge = new TradeContractBillingBridge(service, roomlogService);
+    const listing = service.createListing(owner, input);
+    const tenant = { id: "tenant-persist-failure", name: "저장실패 세입자" };
+    const thread = service.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "저장 실패를 검증해요",
+    });
+    const proposed = service.proposeContract(owner, thread.id).contract;
+    const before = {
+      contracts: structuredClone(service.listContracts(tenant.id)),
+      listings: structuredClone(service.listListings()),
+      thread: structuredClone(service.getThread(tenant.id, thread.id)),
+      file: readFileSync(filePath, "utf8"),
+      roomlog: structuredClone((roomlogService as unknown as { store: Store }).store),
+    };
+    mkdirSync(`${filePath}.tmp`);
+    let preflights = 0;
+
+    assert.throws(
+      () => service.respondContract(tenant, proposed.id, true, (accepted) => {
+        preflights += 1;
+        bridge.preflight(accepted);
+      }),
+      /EISDIR|directory|rename|write/i,
+    );
+
+    assert.equal(preflights, 1);
+    assert.deepEqual(service.listContracts(tenant.id), before.contracts);
+    assert.deepEqual(service.listListings(), before.listings);
+    assert.deepEqual(service.getThread(tenant.id, thread.id), before.thread);
+    assert.equal(readFileSync(filePath, "utf8"), before.file);
+    assert.deepEqual((roomlogService as unknown as { store: Store }).store, before.roomlog);
+    assert.equal(existsSync(roomlogFilePath), false);
+    const restarted = new TradeService(filePath);
+    assert.equal(restarted.contractForThread(tenant.id, thread.id)?.status, "proposed");
   });
 });

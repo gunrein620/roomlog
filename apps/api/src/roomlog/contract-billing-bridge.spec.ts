@@ -1,5 +1,8 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { RoomlogService } from "./roomlog.service";
 
 function createTradeRoom(service: RoomlogService, title = "거래연결빌라") {
@@ -203,6 +206,99 @@ describe("trade contract billing bridge", () => {
         .options.some((candidate) => candidate.contractId === first.id),
       false,
     );
+  });
+
+  it("rolls back contract and extraction confirmation when synchronous file persistence fails", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-confirm-rollback-"));
+    const storeFilePath = join(dir, "roomlog.json");
+    const service = new RoomlogService({ seedDemoData: true, storeFilePath });
+    const { contract } = createTradeDraft(service, "confirm-persist-failure");
+    service.updateManagerContractManualValues("landlord-demo", contract.id, {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    });
+    const beforeStore = structuredClone((service as unknown as { store: unknown }).store);
+    const beforeFile = readFileSync(storeFilePath, "utf8");
+    mkdirSync(`${storeFilePath}.tmp`);
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: true,
+      }),
+      /EISDIR|directory|rename|write/i,
+    );
+
+    assert.deepEqual((service as unknown as { store: unknown }).store, beforeStore);
+    assert.equal(readFileSync(storeFilePath, "utf8"), beforeFile);
+    const detail = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.equal(detail.row.contract.lifecycle, "analyzing");
+    assert.equal(detail.row.contract.review, "pending");
+    assert.equal(detail.extraction.confirmed, false);
+    assert.equal(detail.extraction.items.some((item) => item.needsCheck), true);
+    assert.equal(
+      service.getManagerBillCreationOptions("landlord-demo").options
+        .some((option) => option.contractId === contract.id),
+      false,
+    );
+  });
+
+  it("stores and persists a missing extraction before a successful confirmation", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-confirm-missing-extraction-"));
+    const storeFilePath = join(dir, "roomlog.json");
+    const source = new RoomlogService({ seedDemoData: true });
+    const { contract } = createTradeDraft(source, "confirm-missing-extraction");
+    source.updateManagerContractManualValues("landlord-demo", contract.id, {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    });
+    const missingStore = structuredClone((source as unknown as {
+      store: {
+        contracts: Array<{ id: string; extractionId?: string }>;
+        contractExtractions: Array<{ contractId: string }>;
+      };
+    }).store);
+    missingStore.contractExtractions = missingStore.contractExtractions
+      .filter((extraction) => extraction.contractId !== contract.id);
+    delete missingStore.contracts.find((candidate) => candidate.id === contract.id)!.extractionId;
+    const restored = new RoomlogService({
+      seedDemoData: false,
+      initialStore: missingStore as any,
+      storeFilePath,
+    });
+
+    const confirmed = restored.confirmManagerContractReview("landlord-demo", contract.id, {
+      confirmNeedsCheck: true,
+    });
+    const stored = (restored as unknown as {
+      store: {
+        contracts: Array<{ id: string; extractionId?: string }>;
+        contractExtractions: Array<{
+          id: string;
+          contractId: string;
+          confirmed: boolean;
+          items: Array<{ needsCheck: boolean }>;
+        }>;
+      };
+    }).store;
+    const storedExtraction = stored.contractExtractions
+      .find((extraction) => extraction.contractId === contract.id);
+
+    assert.equal(confirmed.extraction.confirmed, true);
+    assert.equal(storedExtraction?.confirmed, true);
+    assert.equal(storedExtraction?.items.some((item) => item.needsCheck), false);
+    assert.equal(
+      stored.contracts.find((candidate) => candidate.id === contract.id)?.extractionId,
+      storedExtraction?.id,
+    );
+
+    const restarted = new RoomlogService({ seedDemoData: false, storeFilePath });
+    const afterRestart = restarted.getManagerContractDetail("landlord-demo", contract.id);
+    assert.equal(afterRestart.extraction.confirmed, true);
+    assert.equal(afterRestart.extraction.items.some((item) => item.needsCheck), false);
   });
 
   it("rejects a contract whose end date is earlier than its start date", () => {

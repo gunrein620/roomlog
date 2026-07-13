@@ -34,6 +34,19 @@ import type {
   Store
 } from "../roomlog.service";
 
+type AcceptedTradeContractPlan = {
+  resolved: { room?: Room; unit: string; address: string };
+  monthlyRent: number;
+  depositKrw: number;
+  acceptedAt: string;
+  contractId: string;
+  deterministic?: Contract;
+  room: Room;
+  active?: Contract;
+  currentRoomId?: string;
+  newerCurrent?: Contract;
+};
+
 export class RoomlogContractDomain {
   constructor(
     private readonly store: Store,
@@ -125,80 +138,44 @@ export class RoomlogContractDomain {
     };
   }
 
+  preflightAcceptedTradeContract(input: ConnectAcceptedTradeContractInput): void {
+    this.planAcceptedTradeContract(input);
+  }
+
   connectAcceptedTradeContract(input: ConnectAcceptedTradeContractInput): Contract {
-    const resolved = this.resolveExactTradeRoom(input);
-    const tradeContractId = typeof input.tradeContractId === "string"
-      ? input.tradeContractId.trim()
-      : "";
-    if (!tradeContractId) {
-      throw new BadRequestException("거래 계약 ID를 확인할 수 없습니다.");
-    }
-    if (typeof input.landlordId !== "string" || !input.landlordId.trim()) {
-      throw new BadRequestException("거래 계약 임대인을 확인할 수 없습니다.");
-    }
-    if (typeof input.tenantId !== "string" || !input.tenantId.trim()) {
-      throw new BadRequestException("거래 계약 임차인을 확인할 수 없습니다.");
-    }
-    const monthlyRent = this.requireNonNegativeInteger(input.monthlyRent, "월세");
-    const depositKrw = this.requireNonNegativeInteger(input.depositKrw, "보증금");
-    const acceptedAt = this.requireAcceptedEventTime(input.acceptedAt);
-    const contractId = `ct_trade_${tradeContractId}`;
-    const deterministic = this.store.contracts.find((contract) => contract.id === contractId);
-    const room: Room = resolved.room ?? {
-      id: id("room"),
-      buildingName: input.listingTitle.trim() || resolved.address,
-      roomNo: resolved.unit,
-      address: resolved.address,
-      landlordId: input.landlordId
-    };
+    const {
+      resolved,
+      monthlyRent,
+      depositKrw,
+      acceptedAt,
+      contractId,
+      deterministic,
+      room,
+      active,
+      currentRoomId,
+      newerCurrent
+    } = this.planAcceptedTradeContract(input);
 
-    if (
-      deterministic &&
-      (
-        deterministic.roomId !== room.id ||
-        deterministic.managerId !== input.landlordId ||
-        deterministic.tenantId !== input.tenantId
-      )
-    ) {
-      throw new ConflictException("동일한 거래 계약 ID가 다른 계약 관계에 연결돼 있습니다.");
-    }
-    if (deterministic?.tradeAcceptedAt && deterministic.tradeAcceptedAt !== acceptedAt) {
-      throw new ConflictException("동일한 거래 계약 ID의 수락 이벤트 시각이 일치하지 않습니다.");
-    }
-
-    const active = this.store.contracts.find(
-      (contract) =>
-        contract.id !== deterministic?.id &&
-        contract.roomId === room.id &&
-        contract.lifecycle === "active"
-    );
-    if (active && active.tenantId !== input.tenantId) {
-      throw new ConflictException("해당 호실에 다른 임차인의 활성 계약이 있습니다.");
-    }
-
-    const currentRoomId = this.store.tenantRooms[input.tenantId];
-    const newerCurrent = currentRoomId
-      ? this.store.contracts
-          .filter(
-            (contract) =>
-              contract.id !== deterministic?.id &&
-              contract.id.startsWith("ct_trade_") &&
-              contract.tenantId === input.tenantId &&
-              contract.roomId === currentRoomId &&
-              this.tradeAcceptedTime(contract) > this.timeOf(acceptedAt)
-          )
-          .sort((left, right) => this.tradeAcceptedTime(right) - this.tradeAcceptedTime(left))[0]
-      : undefined;
     if (newerCurrent) {
       return this.presentContract(deterministic ?? newerCurrent);
     }
 
     if (active && !deterministic) {
-      if (currentRoomId === room.id) return this.presentContract(active);
+      const acceptedTime = this.timeOf(acceptedAt);
+      const previousAcceptedAt = active.tradeAcceptedAt;
+      const previousUpdatedAt = active.updatedAt;
+      const relationChanged = currentRoomId !== room.id;
+      const markerChanged = this.tradeAcceptedTime(active) !== acceptedTime;
+      if (!relationChanged && !markerChanged) return this.presentContract(active);
+
+      active.tradeAcceptedAt = acceptedAt;
+      if (this.timeOf(active.updatedAt) < acceptedTime) active.updatedAt = acceptedAt;
       this.store.tenantRooms[input.tenantId] = room.id;
       try {
         this.persistStore();
       } catch (error) {
+        active.tradeAcceptedAt = previousAcceptedAt;
+        active.updatedAt = previousUpdatedAt;
         this.restoreTenantRoom(input.tenantId, currentRoomId);
         throw error;
       }
@@ -206,20 +183,16 @@ export class RoomlogContractDomain {
     }
 
     if (deterministic) {
-      const previousAcceptedAt = deterministic.tradeAcceptedAt;
-      const previousCreatedAt = deterministic.createdAt;
       const relationChanged = currentRoomId !== room.id;
-      const eventChanged = previousAcceptedAt === undefined;
-      if (!relationChanged && !eventChanged) return this.presentContract(deterministic);
+      if (!relationChanged) return this.presentContract(deterministic);
 
-      deterministic.tradeAcceptedAt = acceptedAt;
-      if (eventChanged) deterministic.createdAt = acceptedAt;
+      const previousAcceptedAt = deterministic.tradeAcceptedAt;
+      deterministic.tradeAcceptedAt ??= acceptedAt;
       this.store.tenantRooms[input.tenantId] = room.id;
       try {
         this.persistStore();
       } catch (error) {
         deterministic.tradeAcceptedAt = previousAcceptedAt;
-        deterministic.createdAt = previousCreatedAt;
         this.restoreTenantRoom(input.tenantId, currentRoomId);
         throw error;
       }
@@ -232,7 +205,9 @@ export class RoomlogContractDomain {
       tenantId: input.tenantId,
       managerId: input.landlordId,
       unitId: resolved.unit,
-      landlordName: input.landlordName.trim() || "관리자",
+      landlordName: typeof input.landlordName === "string" && input.landlordName.trim()
+        ? input.landlordName.trim()
+        : "관리자",
       lifecycle: "analyzing",
       review: "pending",
       deletion: "none",
@@ -425,7 +400,10 @@ export class RoomlogContractDomain {
     input: ConfirmContractInput = {}
   ) {
     const contract = this.findManagerContract(managerId, contractId);
-    const extraction = this.findContractExtraction(contract);
+    const storedExtraction = this.store.contractExtractions.find(
+      (item) => item.id === contract.extractionId || item.contractId === contract.id
+    );
+    const extraction = storedExtraction ?? this.findContractExtraction(contract);
     const needsCheck = extraction.items.filter((item) => item.needsCheck);
 
     if (needsCheck.length > 0 && input.confirmNeedsCheck !== true) {
@@ -468,6 +446,24 @@ export class RoomlogContractDomain {
       this.requirePaymentDay(contract.paymentDay);
     }
 
+    const previousContract = {
+      lifecycle: contract.lifecycle,
+      review: contract.review,
+      valueSource: contract.valueSource,
+      confirmedAt: contract.confirmedAt,
+      confirmedByManagerId: contract.confirmedByManagerId,
+      updatedAt: contract.updatedAt,
+      extractionId: contract.extractionId
+    };
+    const previousExtraction = {
+      confirmed: extraction.confirmed,
+      needsCheck: extraction.items.map((item) => item.needsCheck)
+    };
+
+    if (!storedExtraction) {
+      this.store.contractExtractions.push(extraction);
+      contract.extractionId = extraction.id;
+    }
     contract.lifecycle = "active";
     contract.review = "confirmed";
     contract.valueSource = "confirmed";
@@ -478,7 +474,29 @@ export class RoomlogContractDomain {
     extraction.items.forEach((item) => {
       item.needsCheck = false;
     });
-    this.persistStore();
+    try {
+      this.persistStore();
+    } catch (error) {
+      contract.lifecycle = previousContract.lifecycle;
+      contract.review = previousContract.review;
+      contract.valueSource = previousContract.valueSource;
+      contract.updatedAt = previousContract.updatedAt;
+      if (previousContract.confirmedAt === undefined) delete contract.confirmedAt;
+      else contract.confirmedAt = previousContract.confirmedAt;
+      if (previousContract.confirmedByManagerId === undefined) delete contract.confirmedByManagerId;
+      else contract.confirmedByManagerId = previousContract.confirmedByManagerId;
+      if (previousContract.extractionId === undefined) delete contract.extractionId;
+      else contract.extractionId = previousContract.extractionId;
+      extraction.confirmed = previousExtraction.confirmed;
+      extraction.items.forEach((item, index) => {
+        item.needsCheck = previousExtraction.needsCheck[index] ?? item.needsCheck;
+      });
+      if (!storedExtraction) {
+        const extractionIndex = this.store.contractExtractions.indexOf(extraction);
+        if (extractionIndex >= 0) this.store.contractExtractions.splice(extractionIndex, 1);
+      }
+      throw error;
+    }
 
     return this.getManagerContractDetail(managerId, contract.id);
   }
@@ -1168,6 +1186,94 @@ export class RoomlogContractDomain {
     return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
   }
 
+  private planAcceptedTradeContract(
+    input: ConnectAcceptedTradeContractInput
+  ): AcceptedTradeContractPlan {
+    const resolved = this.resolveExactTradeRoom(input);
+    const tradeContractId = typeof input.tradeContractId === "string"
+      ? input.tradeContractId.trim()
+      : "";
+    if (!tradeContractId) {
+      throw new BadRequestException("거래 계약 ID를 확인할 수 없습니다.");
+    }
+    if (typeof input.landlordId !== "string" || !input.landlordId.trim()) {
+      throw new BadRequestException("거래 계약 임대인을 확인할 수 없습니다.");
+    }
+    if (typeof input.tenantId !== "string" || !input.tenantId.trim()) {
+      throw new BadRequestException("거래 계약 임차인을 확인할 수 없습니다.");
+    }
+
+    const monthlyRent = this.requireNonNegativeInteger(input.monthlyRent, "월세");
+    const depositKrw = this.requireNonNegativeInteger(input.depositKrw, "보증금");
+    const acceptedAt = this.requireAcceptedEventTime(input.acceptedAt);
+    const contractId = `ct_trade_${tradeContractId}`;
+    const deterministic = this.store.contracts.find((contract) => contract.id === contractId);
+    const room: Room = resolved.room ?? {
+      id: id("room"),
+      buildingName:
+        typeof input.listingTitle === "string" && input.listingTitle.trim()
+          ? input.listingTitle.trim()
+          : resolved.address,
+      roomNo: resolved.unit,
+      address: resolved.address,
+      landlordId: input.landlordId
+    };
+
+    if (
+      deterministic &&
+      (
+        deterministic.roomId !== room.id ||
+        deterministic.managerId !== input.landlordId ||
+        deterministic.tenantId !== input.tenantId
+      )
+    ) {
+      throw new ConflictException("동일한 거래 계약 ID가 다른 계약 관계에 연결돼 있습니다.");
+    }
+    if (
+      deterministic &&
+      this.tradeAcceptedTime(deterministic) !== this.timeOf(acceptedAt)
+    ) {
+      throw new ConflictException("동일한 거래 계약 ID의 수락 이벤트 시각이 일치하지 않습니다.");
+    }
+
+    const active = this.store.contracts.find(
+      (contract) =>
+        contract.id !== deterministic?.id &&
+        contract.roomId === room.id &&
+        contract.lifecycle === "active"
+    );
+    if (active && active.tenantId !== input.tenantId) {
+      throw new ConflictException("해당 호실에 다른 임차인의 활성 계약이 있습니다.");
+    }
+
+    const currentRoomId = this.store.tenantRooms[input.tenantId];
+    const newerCurrent = currentRoomId
+      ? this.store.contracts
+          .filter(
+            (contract) =>
+              contract.id !== deterministic?.id &&
+              (contract.id.startsWith("ct_trade_") || contract.lifecycle === "active") &&
+              contract.tenantId === input.tenantId &&
+              contract.roomId === currentRoomId &&
+              this.tradeAcceptedTime(contract) > this.timeOf(acceptedAt)
+          )
+          .sort((left, right) => this.tradeAcceptedTime(right) - this.tradeAcceptedTime(left))[0]
+      : undefined;
+
+    return {
+      resolved,
+      monthlyRent,
+      depositKrw,
+      acceptedAt,
+      contractId,
+      deterministic,
+      room,
+      active,
+      currentRoomId,
+      newerCurrent
+    };
+  }
+
   private resolveExactTradeRoom(input: ConnectAcceptedTradeContractInput): {
     room?: Room;
     unit: string;
@@ -1216,7 +1322,7 @@ export class RoomlogContractDomain {
 
   private unitCandidates(value: string): string[] {
     if (!value) return [];
-    const matches = Array.from(value.matchAll(/([\p{L}\p{N}-]+)\s*호/gu))
+    const matches = Array.from(value.matchAll(/([\p{L}\p{N}-]+)\s*호(?![\p{L}\p{N}-])/gu))
       .map((match) => this.normalizeUnit(match[1]))
       .filter(Boolean);
     if (matches.length === 0 && /^[\p{L}\p{N}-]+$/u.test(value.trim())) {
@@ -1226,7 +1332,7 @@ export class RoomlogContractDomain {
   }
 
   private trailingUnit(value: string): { unit: string; index: number } | undefined {
-    const match = /(?:^|[\s,])([\p{L}\p{N}-]+)\s*호\s*$/u.exec(value);
+    const match = /(?:^|[\s,])([\p{L}\p{N}-]+)\s*호(?=[^\p{L}\p{N}-]*$)/u.exec(value);
     if (!match || match.index === undefined) return undefined;
     const tokenOffset = match[0].search(/[\p{L}\p{N}-]/u);
     return {
@@ -1266,7 +1372,12 @@ export class RoomlogContractDomain {
   }
 
   private tradeAcceptedTime(contract: Contract): number {
-    return this.timeOf(contract.tradeAcceptedAt ?? contract.createdAt);
+    const persistedFallback = contract.id.startsWith("ct_trade_")
+      ? contract.createdAt
+      : contract.lifecycle === "active"
+        ? contract.updatedAt
+        : contract.createdAt;
+    return this.timeOf(contract.tradeAcceptedAt ?? persistedFallback);
   }
 
   private restoreTenantRoom(tenantId: string, roomId: string | undefined) {

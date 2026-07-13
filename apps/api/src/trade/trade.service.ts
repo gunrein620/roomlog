@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleDestroy, Optional } from "@nestjs/common";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
@@ -398,11 +398,18 @@ export class TradeService implements OnModuleDestroy {
 
   private persist() {
     if (!this.filePath) return;
+    const tempFilePath = `${this.filePath}.tmp`;
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
-      writeFileSync(this.filePath, JSON.stringify(this.store), "utf8");
-    } catch {
-      // 영속화 실패는 치명적이지 않다 — 메모리 상태로 계속 동작
+      writeFileSync(tempFilePath, JSON.stringify(this.store), "utf8");
+      renameSync(tempFilePath, this.filePath);
+    } catch (error) {
+      try {
+        unlinkSync(tempFilePath);
+      } catch {
+        // temp path may be a directory or may not have been created
+      }
+      throw error;
     }
   }
 
@@ -689,16 +696,38 @@ export class TradeService implements OnModuleDestroy {
       respondedAt
     };
     if (accept) beforeAccept?.(response);
-    contract.status = response.status;
-    contract.respondedAt = respondedAt;
+    const listing = accept
+      ? this.store.listings.find((item) => item.id === contract.listingId)
+      : undefined;
+    if (accept && !listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
+    const previous = {
+      contractStatus: contract.status,
+      respondedAt: contract.respondedAt,
+      listingStatus: listing?.status,
+      messageCount: thread.messages.length,
+      threadUpdatedAt: thread.updatedAt
+    };
 
-    if (accept) {
-      this.markListingContracted(contract.listingId);
-      this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
-    } else {
-      this.pushMessage(thread, user, "계약 제안을 거절했어요.");
+    try {
+      contract.status = response.status;
+      contract.respondedAt = respondedAt;
+      if (accept) {
+        listing!.status = "계약완료";
+        this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
+      } else {
+        this.pushMessage(thread, user, "계약 제안을 거절했어요.");
+      }
+      this.persist();
+    } catch (error) {
+      contract.status = previous.contractStatus;
+      if (previous.respondedAt === undefined) delete contract.respondedAt;
+      else contract.respondedAt = previous.respondedAt;
+      if (listing && previous.listingStatus) listing.status = previous.listingStatus;
+      thread.messages.splice(previous.messageCount);
+      thread.updatedAt = previous.threadUpdatedAt;
+      throw error;
     }
-    this.persist();
+    if (accept) this.projectListings();
     return { contract, thread };
   }
 

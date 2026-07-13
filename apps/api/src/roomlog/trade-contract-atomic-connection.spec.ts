@@ -209,6 +209,206 @@ describe("atomic accepted trade contract connection", () => {
     assert.equal(persisted.length, 1);
   });
 
+  it("persists a newer accepted marker on a reused active contract and blocks an older room after replay", async () => {
+    const initialStore = emptyStore();
+    initialStore.rooms.push(
+      {
+        id: "room-reuse-a",
+        buildingName: "재사용빌라",
+        roomNo: "101",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+      {
+        id: "room-reuse-b",
+        buildingName: "재사용빌라",
+        roomNo: "202",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+    );
+    initialStore.contracts.push({
+      id: "ct_legacy_active_b",
+      roomId: "room-reuse-b",
+      tenantId: "tenant-reuse",
+      managerId: "landlord-exact",
+      unitId: "202",
+      landlordName: "정확 임대인",
+      lifecycle: "active",
+      review: "confirmed",
+      deletion: "none",
+      valueSource: "confirmed",
+      monthlyRent: 650_000,
+      maintenanceFee: 0,
+      paymentDay: 10,
+      optionInventory: [],
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    });
+    initialStore.tenantRooms["tenant-reuse"] = "room-reuse-a";
+    const projected: Store[] = [];
+    const service = new RoomlogService({
+      seedDemoData: false,
+      initialStore,
+      storeProjector: {
+        persist: (store) => {
+          projected.push(structuredClone(store));
+        },
+      },
+    });
+    const newerInput = input("trade-reuse-newer", "202호", "tenant-reuse", "2026-07-13T02:00:00.000Z");
+
+    const reused = connect(service, newerInput);
+    await service.flushPersistence();
+    const afterNewer = storeSnapshot(service);
+    const stale = connect(
+      service,
+      input("trade-reuse-older", "101호", "tenant-reuse", "2026-07-13T01:00:00.000Z"),
+    );
+    const replayed = connect(service, newerInput);
+    await service.flushPersistence();
+
+    const active = storeOf(service).contracts.find((contract) => contract.id === "ct_legacy_active_b");
+    assert.equal(reused.id, "ct_legacy_active_b");
+    assert.equal(stale.id, "ct_legacy_active_b");
+    assert.equal(replayed.id, "ct_legacy_active_b");
+    assert.equal(active?.tradeAcceptedAt, "2026-07-13T02:00:00.000Z");
+    assert.equal(active?.updatedAt, "2026-07-13T02:00:00.000Z");
+    assert.equal(storeOf(service).tenantRooms["tenant-reuse"], "room-reuse-b");
+    assert.deepEqual(storeSnapshot(service), afterNewer);
+    assert.equal(projected.length, 1);
+  });
+
+  it("uses persisted timestamps after an RDS-style round trip strips optional accepted markers", async () => {
+    const initialStore = emptyStore();
+    initialStore.rooms.push(
+      {
+        id: "room-rds-a",
+        buildingName: "RDS재사용빌라",
+        roomNo: "101",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+      {
+        id: "room-rds-b",
+        buildingName: "RDS재사용빌라",
+        roomNo: "202",
+        address: "서울 서초구 방배로 88",
+        landlordId: "landlord-exact",
+      },
+    );
+    initialStore.contracts.push({
+      id: "ct_legacy_rds_active",
+      roomId: "room-rds-b",
+      tenantId: "tenant-rds-reuse",
+      managerId: "landlord-exact",
+      unitId: "202",
+      landlordName: "정확 임대인",
+      lifecycle: "active",
+      review: "confirmed",
+      deletion: "none",
+      valueSource: "confirmed",
+      monthlyRent: 650_000,
+      maintenanceFee: 0,
+      paymentDay: 10,
+      optionInventory: [],
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    });
+    initialStore.tenantRooms["tenant-rds-reuse"] = "room-rds-a";
+    const first = new RoomlogService({ seedDemoData: false, initialStore });
+    const newerInput = input("trade-rds-reuse-newer", "202호", "tenant-rds-reuse", "2026-07-13T02:00:00.000Z");
+    connect(first, newerInput);
+    const rdsStore = storeSnapshot(first);
+    rdsStore.contracts.forEach((contract) => delete contract.tradeAcceptedAt);
+    const projected: Store[] = [];
+    const restored = new RoomlogService({
+      seedDemoData: false,
+      initialStore: rdsStore,
+      storeProjector: {
+        persist: (store) => {
+          projected.push(structuredClone(store));
+        },
+      },
+    });
+    const beforeReplay = storeSnapshot(restored);
+
+    const replayed = connect(restored, newerInput);
+    const stale = connect(
+      restored,
+      input("trade-rds-reuse-older", "101호", "tenant-rds-reuse", "2026-07-13T01:00:00.000Z"),
+    );
+    await restored.flushPersistence();
+
+    assert.equal(replayed.id, "ct_legacy_rds_active");
+    assert.equal(stale.id, "ct_legacy_rds_active");
+    assert.equal(storeOf(restored).tenantRooms["tenant-rds-reuse"], "room-rds-b");
+    assert.deepEqual(storeSnapshot(restored), beforeReplay);
+    assert.equal(projected.length, 0);
+  });
+
+  it("derives a restored deterministic trade event from createdAt without repeated persistence", async () => {
+    const acceptedAt = "2026-07-13T03:00:00.000Z";
+    const acceptedInput = input("trade-rds-deterministic", "303호", "tenant-rds-deterministic", acceptedAt);
+    const first = new RoomlogService({ seedDemoData: false });
+    connect(first, acceptedInput);
+    const rdsStore = storeSnapshot(first);
+    rdsStore.contracts.forEach((contract) => delete contract.tradeAcceptedAt);
+    const projected: Store[] = [];
+    const restored = new RoomlogService({
+      seedDemoData: false,
+      initialStore: rdsStore,
+      storeProjector: {
+        persist: (store) => {
+          projected.push(structuredClone(store));
+        },
+      },
+    });
+    const beforeReplay = storeSnapshot(restored);
+
+    const replayed = connect(restored, acceptedInput);
+    assert.throws(
+      () => connect(restored, { ...acceptedInput, acceptedAt: "2026-07-13T03:01:00.000Z" }),
+      /수락 이벤트 시각.*일치하지 않습니다/,
+    );
+    await restored.flushPersistence();
+
+    assert.equal(replayed.id, "ct_trade_trade-rds-deterministic");
+    assert.deepEqual(storeSnapshot(restored), beforeReplay);
+    assert.equal(projected.length, 0);
+  });
+
+  it("ignores transit line words when resolving one exact unit and still rejects real ambiguity", () => {
+    const service = new RoomlogService({ seedDemoData: false });
+    const transit = input("trade-transit-unit", "101호", "tenant-transit", "2026-07-13T04:00:00.000Z");
+    transit.location = "서울 지하철 3호선 방배역 인근 방배로 88 101호";
+
+    const connected = connect(service, transit);
+    const room = storeOf(service).rooms.find((candidate) => candidate.id === connected.roomId);
+
+    assert.equal(connected.unitId, "101");
+    assert.equal(room?.address, "서울 지하철 3호선 방배역 인근 방배로 88");
+    const punctuated = input(
+      "trade-punctuated-unit",
+      undefined,
+      "tenant-punctuated",
+      "2026-07-13T04:00:30.000Z",
+    );
+    punctuated.location = "서울 서초구 방배로 88 303호.";
+    const punctuatedConnection = connect(service, punctuated);
+    const punctuatedRoom = storeOf(service).rooms
+      .find((candidate) => candidate.id === punctuatedConnection.roomId);
+    assert.equal(punctuatedConnection.unitId, "303");
+    assert.equal(punctuatedRoom?.address, "서울 서초구 방배로 88");
+    assert.throws(
+      () => connect(service, {
+        ...input("trade-transit-ambiguous", undefined, "tenant-transit-ambiguous", "2026-07-13T04:01:00.000Z"),
+        location: "서울 지하철 3호선 방배역 인근 방배로 88 101호, 102호",
+      }),
+      /정확한 호실 하나/,
+    );
+  });
+
   it("preserves the exact room, trade draft, accepted time, and tenant relation across a file-backed restart", () => {
     const dir = mkdtempSync(join(tmpdir(), "roomlog-atomic-restart-"));
     const storeFilePath = join(dir, "roomlog.json");
