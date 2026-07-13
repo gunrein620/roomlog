@@ -5,13 +5,16 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import type { Announcement } from "@roomlog/types";
 import { Bath, Bot, ChevronRight, FileText, Headphones, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { TradeChatCenter } from "@/app/_components/TradeChatCenter";
+import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
   tenantBillingCardModel,
   type TenantBillingCardModel,
 } from "./tenant-current-bill";
+import { latestTenantAnnouncement } from "./tenant-announcement-card";
 
 const TENANT_AI_GREETING = "안녕하세요! 우주(Woo-zu) AI 어시스턴트입니다. 무엇을 도와드릴까요?";
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
@@ -43,6 +46,10 @@ type TenantRepairRequest = {
   status: string;
   date?: string;
 };
+
+type TenantAnnouncementState =
+  | { status: "loading" | "empty" | "error"; announcement: null }
+  | { status: "ready"; announcement: Announcement };
 
 type TenantAiMode = "text" | "call";
 type TenantAiStage = "choose" | "text" | "voice";
@@ -202,6 +209,62 @@ export default function TenantMyPage({
     };
   }, []);
 
+  const [announcementState, setAnnouncementState] = useState<TenantAnnouncementState>({
+    status: "loading",
+    announcement: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    let requestVersion = 0;
+
+    const loadAnnouncements = async () => {
+      const currentRequest = ++requestVersion;
+
+      try {
+        const response = await fetch("/api/tenant/messaging/announcements", { cache: "no-store" });
+        if (!response.ok) throw new Error("공지 조회 실패");
+
+        const payload: unknown = await response.json();
+        if (!Array.isArray(payload)) throw new Error("공지 응답 형식 오류");
+
+        const latest = latestTenantAnnouncement(payload as Announcement[]);
+        if (cancelled || currentRequest !== requestVersion) return;
+
+        setAnnouncementState(
+          latest
+            ? { status: "ready", announcement: latest }
+            : { status: "empty", announcement: null },
+        );
+      } catch {
+        if (cancelled || currentRequest !== requestVersion) return;
+
+        setAnnouncementState((current) =>
+          current.status === "ready"
+            ? current
+            : { status: "error", announcement: null },
+        );
+      }
+    };
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadAnnouncements();
+    };
+    const socket = getRealtimeSocket();
+
+    void loadAnnouncements();
+    socket.on("roomlog:activity", loadAnnouncements);
+    window.addEventListener("focus", loadAnnouncements);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      socket.off("roomlog:activity", loadAnnouncements);
+      window.removeEventListener("focus", loadAnnouncements);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
+
   const [repairRequests, setRepairRequests] = useState<TenantRepairRequest[]>([]);
 
   // 접수 내역은 서버가 진실 — 새로고침해도 남고, 관리인이 상태를 바꾸면 여기 라벨도 따라온다.
@@ -352,6 +415,12 @@ export default function TenantMyPage({
     Icon: index % 2 === 0 ? Snowflake : Bath,
     tone: index % 2 === 0 ? "warm" : "neutral"
   }));
+  const announcementStatusMessage =
+    announcementState.status === "loading"
+      ? "공지사항을 확인하고 있습니다."
+      : announcementState.status === "error"
+        ? "공지사항을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요."
+        : "임대인으로부터 전달된 새로운 소식이 없습니다.";
 
   const openRequestSheet = () => {
     setRequestDraft({ title: "", location: "", description: "" });
@@ -418,10 +487,24 @@ export default function TenantMyPage({
         <div className="tenant-card-icon" aria-hidden="true">
           <Megaphone size={28} strokeWidth={2.5} />
         </div>
-        <div>
-          <h3>집주인 공지사항</h3>
-          <p>임대인으로부터 전달된 새로운 소식이 없습니다.</p>
-        </div>
+        {announcementState.status === "ready" ? (
+          <Link
+            href={`/tenant/messaging/02?id=${encodeURIComponent(announcementState.announcement.id)}`}
+            style={{ color: "inherit", textDecoration: "none", position: "relative", zIndex: 1 }}
+          >
+            <span>집주인 공지사항</span>
+            <h3>{announcementState.announcement.title}</h3>
+            <p>{announcementState.announcement.body}</p>
+            <small>
+              {announcementState.announcement.sender} · {tenancyDateLabel(announcementState.announcement.sentAt)}
+            </small>
+          </Link>
+        ) : (
+          <div>
+            <h3>집주인 공지사항</h3>
+            <p>{announcementStatusMessage}</p>
+          </div>
+        )}
         <Megaphone className="tenant-announcement-watermark" size={128} strokeWidth={2.1} aria-hidden="true" />
       </section>
 

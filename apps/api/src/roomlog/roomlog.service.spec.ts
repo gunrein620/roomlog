@@ -3780,7 +3780,17 @@ describe("RoomlogService", () => {
         }
       ]
     });
+    assert.equal(
+      service
+        .listTenantMessagingAnnouncements("tenant-demo")
+        .some((announcement) => announcement.draftId === reviewedDraft.id),
+      false
+    );
     const sent = service.sendManagerAnnouncementDraft("landlord-demo", reviewedDraft.id);
+    const tenantAnnouncements = service.listTenantMessagingAnnouncements("tenant-demo");
+
+    assert.equal(tenantAnnouncements[0]?.id, sent.announcementId);
+    assert.equal(tenantAnnouncements[0]?.title, reviewedDraft.title);
 
     let tenantAnnouncement = service.getTenantMessagingAnnouncement(
       "tenant-demo",
