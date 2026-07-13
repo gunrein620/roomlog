@@ -275,6 +275,7 @@ function defaultStoreFilePath(): string | undefined {
 @Injectable()
 export class TradeService implements OnModuleDestroy {
   private store: TradeStore = { listings: [], threads: [], contracts: [] };
+  private committedStore: TradeStore = { listings: [], threads: [], contracts: [] };
   private readonly filePath: string | undefined;
   // DATABASE_URL이 있을 때만 주입됨 — 매물(listing)을 RDS로 write-through 프로젝션한다.
   private readonly storeProjector?: TradeStoreProjector;
@@ -298,6 +299,7 @@ export class TradeService implements OnModuleDestroy {
     this.storeProjector = options?.storeProjector;
     this.load(); // JSON: 스레드/계약 + (DB 없을 때의) 매물 폴백
     this.hydrateListingsFromDb(options?.initialListings);
+    this.committedStore = this.cloneStore(this.store);
   }
 
   /**
@@ -352,7 +354,7 @@ export class TradeService implements OnModuleDestroy {
     const failedGenerationAtEntry = this.projectionFailure?.generation;
     if (listing.status !== "계약완료") {
       listing.status = "계약완료";
-      this.persistAcceptance();
+      this.persist();
       this.projectListings();
     } else if (
       this.storeProjector &&
@@ -432,31 +434,30 @@ export class TradeService implements OnModuleDestroy {
   }
 
   private persist() {
-    if (!this.filePath) return;
-    try {
-      mkdirSync(dirname(this.filePath), { recursive: true });
-      writeFileSync(this.filePath, JSON.stringify(this.store), "utf8");
-    } catch {
-      // 기존 거래 흐름은 데모용 메모리 상태를 계속 사용한다.
+    const snapshot = this.cloneStore(this.store);
+    if (!this.filePath) {
+      this.committedStore = snapshot;
+      return;
     }
-  }
-
-  /** 계약 수락만 파일 저장 성공을 보장한 뒤 후속 청구 연결을 진행한다. */
-  private persistAcceptance() {
-    if (!this.filePath) return;
     const tempFilePath = `${this.filePath}.tmp`;
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
-      writeFileSync(tempFilePath, JSON.stringify(this.store), "utf8");
+      writeFileSync(tempFilePath, JSON.stringify(snapshot), "utf8");
       renameSync(tempFilePath, this.filePath);
+      this.committedStore = snapshot;
     } catch (error) {
       try {
         unlinkSync(tempFilePath);
       } catch {
         // temp path may be a directory or may not have been created
       }
+      this.store = this.cloneStore(this.committedStore);
       throw error;
     }
+  }
+
+  private cloneStore(store: TradeStore): TradeStore {
+    return structuredClone(store);
   }
 
   listListings(): TradeListing[] {
@@ -746,34 +747,15 @@ export class TradeService implements OnModuleDestroy {
       ? this.store.listings.find((item) => item.id === contract.listingId)
       : undefined;
     if (accept && !listing) throw new NotFoundException("매물을 찾을 수 없습니다.");
-    const previous = {
-      contractStatus: contract.status,
-      respondedAt: contract.respondedAt,
-      listingStatus: listing?.status,
-      messageCount: thread.messages.length,
-      threadUpdatedAt: thread.updatedAt
-    };
-
-    try {
-      contract.status = response.status;
-      contract.respondedAt = respondedAt;
-      if (accept) {
-        listing!.status = "계약완료";
-        this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
-      } else {
-        this.pushMessage(thread, user, "계약 제안을 거절했어요.");
-      }
-      if (accept) this.persistAcceptance();
-      else this.persist();
-    } catch (error) {
-      contract.status = previous.contractStatus;
-      if (previous.respondedAt === undefined) delete contract.respondedAt;
-      else contract.respondedAt = previous.respondedAt;
-      if (listing && previous.listingStatus) listing.status = previous.listingStatus;
-      thread.messages.splice(previous.messageCount);
-      thread.updatedAt = previous.threadUpdatedAt;
-      throw error;
+    contract.status = response.status;
+    contract.respondedAt = respondedAt;
+    if (accept) {
+      listing!.status = "계약완료";
+      this.pushMessage(thread, user, "✅ 계약 제안을 수락했어요 — 계약이 체결되었습니다.");
+    } else {
+      this.pushMessage(thread, user, "계약 제안을 거절했어요.");
     }
+    this.persist();
     if (accept) this.projectListings();
     return { contract, thread };
   }

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomlogService, type Store } from "../roomlog/roomlog.service";
@@ -10,6 +10,20 @@ import { TradeService } from "./trade.service";
 function serviceWithTempStore() {
   const dir = mkdtempSync(join(tmpdir(), "roomlog-trade-"));
   return new TradeService(join(dir, "trade-store.json"));
+}
+
+function serviceWithStorePath(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const filePath = join(dir, "trade-store.json");
+  return { service: new TradeService(filePath), filePath };
+}
+
+function blockAtomicWrite(filePath: string) {
+  mkdirSync(`${filePath}.tmp`);
+}
+
+function unblockAtomicWrite(filePath: string) {
+  rmSync(`${filePath}.tmp`, { recursive: true, force: true });
 }
 
 const owner = { id: "owner-1", name: "집주인" };
@@ -178,5 +192,150 @@ describe("TradeService contract acceptance", () => {
     assert.equal(existsSync(roomlogFilePath), false);
     const restarted = new TradeService(filePath);
     assert.equal(restarted.contractForThread(tenant.id, thread.id)?.status, "proposed");
+  });
+});
+
+describe("TradeService atomic file persistence", () => {
+  it("rolls back a failed proposal and retries with one contract and one proposal message", () => {
+    const { service, filePath } = serviceWithStorePath("roomlog-trade-proposal-rollback-");
+    const listing = service.createListing(owner, input);
+    const tenant = { id: "tenant-proposal-rollback", name: "제안롤백 세입자" };
+    const thread = service.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "제안 롤백을 확인해요",
+    });
+    const beforeThread = structuredClone(service.getThread(owner.id, thread.id));
+    const beforeFile = readFileSync(filePath, "utf8");
+    blockAtomicWrite(filePath);
+
+    assert.throws(
+      () => service.proposeContract(owner, thread.id),
+      /EISDIR|directory|rename|write/i,
+    );
+    assert.deepEqual(service.listContracts(owner.id), []);
+    assert.deepEqual(service.getThread(owner.id, thread.id), beforeThread);
+    assert.equal(readFileSync(filePath, "utf8"), beforeFile);
+
+    unblockAtomicWrite(filePath);
+    const retried = service.proposeContract(owner, thread.id);
+    assert.equal(service.listContracts(owner.id).length, 1);
+    assert.equal(
+      retried.thread.messages.filter((message) => message.body.includes("계약을 제안")).length,
+      1,
+    );
+  });
+
+  it("keeps a proposed contract when cancellation persistence fails", () => {
+    const { service, filePath } = serviceWithStorePath("roomlog-trade-cancel-rollback-");
+    const listing = service.createListing(owner, input);
+    const tenant = { id: "tenant-cancel-rollback", name: "취소롤백 세입자" };
+    const thread = service.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "취소 롤백을 확인해요",
+    });
+    const proposed = service.proposeContract(owner, thread.id).contract;
+    const beforeThread = structuredClone(service.getThread(owner.id, thread.id));
+    const beforeFile = readFileSync(filePath, "utf8");
+    blockAtomicWrite(filePath);
+
+    assert.throws(
+      () => service.cancelContract(owner, proposed.id),
+      /EISDIR|directory|rename|write/i,
+    );
+    assert.equal(service.contractForThread(owner.id, thread.id)?.status, "proposed");
+    assert.deepEqual(service.getThread(owner.id, thread.id), beforeThread);
+    assert.equal(readFileSync(filePath, "utf8"), beforeFile);
+
+    unblockAtomicWrite(filePath);
+    assert.equal(service.cancelContract(owner, proposed.id).contract.status, "cancelled");
+  });
+
+  it("keeps a proposed contract when decline persistence fails", () => {
+    const { service, filePath } = serviceWithStorePath("roomlog-trade-decline-rollback-");
+    const listing = service.createListing(owner, input);
+    const tenant = { id: "tenant-decline-rollback", name: "거절롤백 세입자" };
+    const thread = service.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "거절 롤백을 확인해요",
+    });
+    const proposed = service.proposeContract(owner, thread.id).contract;
+    const beforeThread = structuredClone(service.getThread(tenant.id, thread.id));
+    const beforeFile = readFileSync(filePath, "utf8");
+    blockAtomicWrite(filePath);
+
+    assert.throws(
+      () => service.respondContract(tenant, proposed.id, false),
+      /EISDIR|directory|rename|write/i,
+    );
+    assert.equal(service.contractForThread(tenant.id, thread.id)?.status, "proposed");
+    assert.deepEqual(service.getThread(tenant.id, thread.id), beforeThread);
+    assert.equal(readFileSync(filePath, "utf8"), beforeFile);
+  });
+
+  it("rolls back failed listing create, update, delete, and contracted mutations", () => {
+    {
+      const { service, filePath } = serviceWithStorePath("roomlog-trade-create-rollback-");
+      blockAtomicWrite(filePath);
+      assert.throws(() => service.createListing(owner, input), /EISDIR|directory|rename|write/i);
+      assert.deepEqual(service.listListings(), []);
+      assert.equal(existsSync(filePath), false);
+    }
+
+    for (const mutation of ["update", "delete", "contract"] as const) {
+      const { service, filePath } = serviceWithStorePath(`roomlog-trade-${mutation}-rollback-`);
+      const listing = service.createListing(owner, input);
+      const beforeListings = structuredClone(service.listListings());
+      const beforeFile = readFileSync(filePath, "utf8");
+      blockAtomicWrite(filePath);
+
+      const action = mutation === "update"
+        ? () => service.updateListing(owner, listing.id, { title: "저장되면 안 되는 제목" })
+        : mutation === "delete"
+          ? () => service.deleteListing(owner, listing.id)
+          : () => service.markListingContracted(listing.id);
+      assert.throws(action, /EISDIR|directory|rename|write/i);
+      assert.deepEqual(service.listListings(), beforeListings);
+      assert.equal(readFileSync(filePath, "utf8"), beforeFile);
+    }
+  });
+
+  it("rolls back failed inquiry creation and message sending", () => {
+    const inquiryCase = serviceWithStorePath("roomlog-trade-inquiry-rollback-");
+    const inquiryListing = inquiryCase.service.createListing(owner, input);
+    const tenant = { id: "tenant-inquiry-rollback", name: "문의롤백 세입자" };
+    const beforeInquiryFile = readFileSync(inquiryCase.filePath, "utf8");
+    blockAtomicWrite(inquiryCase.filePath);
+
+    assert.throws(
+      () => inquiryCase.service.createInquiry(tenant, {
+        listingId: inquiryListing.id,
+        listingTitle: inquiryListing.title,
+        message: "저장되면 안 되는 문의",
+      }),
+      /EISDIR|directory|rename|write/i,
+    );
+    assert.deepEqual(inquiryCase.service.listThreads(tenant.id), []);
+    assert.equal(readFileSync(inquiryCase.filePath, "utf8"), beforeInquiryFile);
+
+    const messageCase = serviceWithStorePath("roomlog-trade-message-rollback-");
+    const messageListing = messageCase.service.createListing(owner, input);
+    const thread = messageCase.service.createInquiry(tenant, {
+      listingId: messageListing.id,
+      listingTitle: messageListing.title,
+      message: "정상 문의",
+    });
+    const beforeThread = structuredClone(messageCase.service.getThread(tenant.id, thread.id));
+    const beforeMessageFile = readFileSync(messageCase.filePath, "utf8");
+    blockAtomicWrite(messageCase.filePath);
+
+    assert.throws(
+      () => messageCase.service.sendMessage(tenant, thread.id, "저장되면 안 되는 메시지"),
+      /EISDIR|directory|rename|write/i,
+    );
+    assert.deepEqual(messageCase.service.getThread(tenant.id, thread.id), beforeThread);
+    assert.equal(readFileSync(messageCase.filePath, "utf8"), beforeMessageFile);
   });
 });
