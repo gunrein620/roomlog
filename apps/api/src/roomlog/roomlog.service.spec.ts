@@ -3720,6 +3720,52 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("lists linked messaging recipients and reuses general conversations", () => {
+    const service = new RoomlogService();
+    const recipients = service.listManagerMessagingRecipients("landlord-demo");
+    const existingRecipient = recipients.find((item) => item.tenantId === "tenant-demo");
+    const newRecipient = recipients.find((item) => item.tenantId === "tenant-billing-303");
+
+    assert.equal(existingRecipient?.buildingName, "정글빌라");
+    assert.equal(existingRecipient?.roomId, "room-301");
+    assert.ok(existingRecipient?.existingGeneralThreadId);
+    assert.equal(newRecipient?.roomId, "room-303");
+    assert.equal(newRecipient?.existingGeneralThreadId, undefined);
+
+    const initialThreadCount = service.getDemoState().messagingThreads.length;
+    const reused = service.startManagerConversation("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "tenant-demo",
+      body: "중복 생성되면 안 됩니다."
+    });
+    assert.equal(reused.id, existingRecipient?.existingGeneralThreadId);
+    assert.equal(service.getDemoState().messagingThreads.length, initialThreadCount);
+
+    const created = service.startManagerConversation("landlord-demo", {
+      roomId: "room-303",
+      tenantId: "tenant-billing-303",
+      body: "안녕하세요. 계약 관련 안내드립니다."
+    });
+    const retried = service.startManagerConversation("landlord-demo", {
+      roomId: "room-303",
+      tenantId: "tenant-billing-303",
+      body: "재시도 메시지는 추가되면 안 됩니다."
+    });
+
+    assert.equal(created.context, "general");
+    assert.equal(created.lastMessage, "안녕하세요. 계약 관련 안내드립니다.");
+    assert.equal(retried.id, created.id);
+    assert.equal(service.getDemoState().messagingThreads.length, initialThreadCount + 1);
+    assert.throws(
+      () => service.startManagerConversation("landlord-demo", {
+        roomId: "room-302",
+        tenantId: "tenant-demo",
+        body: "잘못된 호실 조합"
+      }),
+      /해당 세대 임차인/
+    );
+  });
+
   it("requires reviewed urgent announcement translations before send and separates read from confirmation", () => {
     const service = new RoomlogService();
     const sourceTitle = "긴급 단수 안내";
