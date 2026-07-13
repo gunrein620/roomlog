@@ -282,7 +282,7 @@ export class RoomlogContractDomain {
     const extraction = this.findContractExtraction(contract);
     const needsCheck = extraction.items.filter((item) => item.needsCheck);
 
-    if (needsCheck.length > 0 && !input.confirmNeedsCheck) {
+    if (needsCheck.length > 0 && input.confirmNeedsCheck !== true) {
       throw new BadRequestException("확인 필요 항목을 원문과 대조했다는 확인이 필요합니다.");
     }
 
@@ -299,6 +299,9 @@ export class RoomlogContractDomain {
       throw new BadRequestException("관리비를 입력해주세요.");
     }
 
+    const monthlyRent = this.requireNonNegativeInteger(contract.monthlyRent, "월세");
+    const maintenanceFee = this.requireNonNegativeInteger(contract.maintenanceFee, "관리비");
+
     const startDateKey = this.contractDateKey(contract.startDate, "계약 시작일");
     const endDateKey = this.contractDateKey(contract.endDate, "계약 종료일");
     if (this.timeOf(endDateKey) < this.timeOf(startDateKey)) {
@@ -308,7 +311,7 @@ export class RoomlogContractDomain {
       throw new BadRequestException("이미 종료된 계약은 활성화할 수 없습니다.");
     }
 
-    const totalAmount = contract.monthlyRent + contract.maintenanceFee;
+    const totalAmount = monthlyRent + maintenanceFee;
     if (totalAmount > 0) {
       if (contract.paymentDay === undefined) {
         throw new BadRequestException("납부일을 입력해주세요.");
@@ -393,6 +396,8 @@ export class RoomlogContractDomain {
     input: UpdateManagerContractManualValuesInput
   ) {
     const contract = this.findManagerContract(managerId, contractId);
+    const deposit = this.optionalManualText(input.deposit, "보증금");
+    const account = this.optionalManualText(input.account, "임대인 계좌");
     const monthlyRent = this.optionalNonNegativeInteger(input.monthlyRent, "월세");
     const maintenanceFee = this.optionalNonNegativeInteger(input.maintenanceFee, "관리비");
     const paymentDay = input.paymentDay === undefined
@@ -414,7 +419,7 @@ export class RoomlogContractDomain {
     contract.valueSource = "manual";
     contract.updatedAt = now();
 
-    this.upsertExtractionItem(extraction, "보증금", input.deposit, "money");
+    this.upsertExtractionItem(extraction, "보증금", deposit, "money");
     this.upsertExtractionItem(
       extraction,
       "월세",
@@ -445,7 +450,7 @@ export class RoomlogContractDomain {
         "term"
       );
     }
-    this.upsertExtractionItem(extraction, "임대인 계좌", input.account, "money", true);
+    this.upsertExtractionItem(extraction, "임대인 계좌", account, "money", true);
     this.persistStore();
 
     return this.getManagerContractDetail(managerId, contract.id);
@@ -909,6 +914,15 @@ export class RoomlogContractDomain {
     return value === undefined ? undefined : this.requireNonNegativeInteger(value, field);
   }
 
+  private optionalManualText(value: string | undefined, field: string) {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") {
+      throw new BadRequestException(`${field}은 문자열이어야 합니다.`);
+    }
+
+    return value.trim();
+  }
+
   private requirePaymentDay(value: number) {
     if (!Number.isInteger(value) || value < 1 || value > 31) {
       throw new BadRequestException("납부일은 1일부터 31일 사이의 정수여야 합니다.");
@@ -918,6 +932,9 @@ export class RoomlogContractDomain {
   }
 
   private optionalContractDate(value: string, field: string) {
+    if (typeof value !== "string") {
+      throw new BadRequestException(`${field}은 문자열이어야 합니다.`);
+    }
     if (!value.trim()) return undefined;
 
     return this.contractDateKey(value, field);

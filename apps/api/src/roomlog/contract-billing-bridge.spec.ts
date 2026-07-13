@@ -51,6 +51,23 @@ function todayInSeoulKey() {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
+function storedContract(service: RoomlogService, contractId: string) {
+  const store = (service as unknown as {
+    store: {
+      contracts: Array<{
+        id: string;
+        lifecycle: string;
+        review: string;
+        valueSource: string;
+        monthlyRent?: number;
+        maintenanceFee?: number;
+      }>;
+    };
+  }).store;
+
+  return store.contracts.find((candidate) => candidate.id === contractId)!;
+}
+
 describe("trade contract billing bridge", () => {
   it("creates one unverified billing contract draft on the exact assigned room", () => {
     const service = new RoomlogService();
@@ -359,6 +376,131 @@ describe("trade contract billing bridge", () => {
         .options.some((option) => option.contractId === contract.id),
       false,
     );
+  });
+
+  it("rejects malformed legacy money values for activation and bill creation", () => {
+    const invalidValues = [
+      { name: "negative", value: -1 },
+      { name: "fractional", value: 1.5 },
+      { name: "NaN", value: Number.NaN },
+      { name: "positive infinity", value: Number.POSITIVE_INFINITY },
+      { name: "negative infinity", value: Number.NEGATIVE_INFINITY },
+    ];
+
+    for (const field of ["monthlyRent", "maintenanceFee"] as const) {
+      const service = new RoomlogService();
+      const { room, contract } = createTradeDraft(service, `legacy-money-${field}`);
+      const manualValues = {
+        monthlyRent: 100,
+        maintenanceFee: 100,
+        paymentDay: 10,
+        startDate: "2026-07-13",
+        endDate: "2099-07-12",
+      };
+      service.updateManagerContractManualValues("landlord-demo", contract.id, manualValues);
+      const legacyContract = storedContract(service, contract.id);
+      const label = field === "monthlyRent" ? "월세" : "관리비";
+
+      for (const invalid of invalidValues) {
+        legacyContract.monthlyRent = 100;
+        legacyContract.maintenanceFee = 100;
+        legacyContract[field] = invalid.value;
+        legacyContract.lifecycle = "analyzing";
+        legacyContract.review = "pending";
+        legacyContract.valueSource = "manual";
+
+        assert.throws(
+          () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+            confirmNeedsCheck: true,
+          }),
+          new RegExp(`${label}.*0 이상의 원 단위 정수`),
+          `${field} accepted ${invalid.name}`,
+        );
+        const rejected = service.getManagerContractDetail("landlord-demo", contract.id);
+        assert.equal(rejected.row.contract.lifecycle, "analyzing");
+        assert.equal(rejected.row.contract.review, "pending");
+        assert.equal(rejected.row.contract.valueSource, "manual");
+        assert.equal(rejected.extraction.confirmed, false);
+
+        legacyContract.lifecycle = "active";
+        legacyContract.review = "confirmed";
+        legacyContract.valueSource = "confirmed";
+        assert.equal(
+          service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+            .options.some((option) => option.contractId === contract.id),
+          false,
+          `${field} billed ${invalid.name}`,
+        );
+      }
+    }
+  });
+
+  it("requires literal true to acknowledge needs-check extraction items", () => {
+    const service = new RoomlogService();
+    const { contract } = createTradeDraft(service, "literal-review-acknowledgement");
+    const manualValues = {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    };
+    service.updateManagerContractManualValues("landlord-demo", contract.id, manualValues);
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: "false" as any,
+      }),
+      /원문과 대조/,
+    );
+    const rejected = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.equal(rejected.row.contract.lifecycle, "analyzing");
+    assert.equal(rejected.row.contract.review, "pending");
+    assert.equal(rejected.extraction.confirmed, false);
+  });
+
+  it("rejects a non-string deposit before any manual contract mutation", () => {
+    const service = new RoomlogService();
+    const { contract } = createTradeDraft(service, "invalid-manual-deposit");
+    const before = service.getManagerContractDetail("landlord-demo", contract.id);
+    const invalidInput = {
+      deposit: 10_000_000 as any,
+      monthlyRent: 700_000,
+      maintenanceFee: 70_000,
+      paymentDay: 15,
+      startDate: "2026-08-01",
+      endDate: "2099-07-31",
+    };
+
+    assert.throws(
+      () => service.updateManagerContractManualValues("landlord-demo", contract.id, invalidInput),
+      /보증금.*문자열/,
+    );
+    const after = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.deepEqual(after.row.contract, before.row.contract);
+    assert.deepEqual(after.extraction, before.extraction);
+  });
+
+  it("rejects a non-string account before any manual contract mutation", () => {
+    const service = new RoomlogService();
+    const { contract } = createTradeDraft(service, "invalid-manual-account");
+    const before = service.getManagerContractDetail("landlord-demo", contract.id);
+    const invalidInput = {
+      deposit: "10,000,000원",
+      account: 123_456_789 as any,
+      monthlyRent: 700_000,
+      maintenanceFee: 70_000,
+      paymentDay: 15,
+      startDate: "2026-08-01",
+      endDate: "2099-07-31",
+    };
+
+    assert.throws(
+      () => service.updateManagerContractManualValues("landlord-demo", contract.id, invalidInput),
+      /임대인 계좌.*문자열/,
+    );
+    const after = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.deepEqual(after.row.contract, before.row.contract);
+    assert.deepEqual(after.extraction, before.extraction);
   });
 
   it("validates manual contract dates and clears a previous date when blank is entered", () => {

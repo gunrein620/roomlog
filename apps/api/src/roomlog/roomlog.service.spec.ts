@@ -5398,7 +5398,7 @@ describe("RoomlogService", () => {
       maintenanceFee: 70000,
       paymentDay: 25,
       startDate: "2026-03-01",
-      endDate: "2028-02-29"
+      endDate: "2099-12-31"
     };
     service.updateManagerContractManualValues(
       "landlord-demo",

@@ -2983,7 +2983,13 @@ export class RoomlogService {
           contract.lifecycle === "active" &&
           contract.review === "confirmed" &&
           contract.valueSource === "confirmed" &&
-          (contract.monthlyRent ?? 0) + (contract.maintenanceFee ?? 0) > 0 &&
+          contract.monthlyRent !== undefined &&
+          Number.isInteger(contract.monthlyRent) &&
+          contract.monthlyRent >= 0 &&
+          contract.maintenanceFee !== undefined &&
+          Number.isInteger(contract.maintenanceFee) &&
+          contract.maintenanceFee >= 0 &&
+          contract.monthlyRent + contract.maintenanceFee > 0 &&
           contract.paymentDay !== undefined &&
           Number.isInteger(contract.paymentDay) &&
           contract.paymentDay >= 1 &&
@@ -3004,8 +3010,8 @@ export class RoomlogService {
           unitId: room.roomNo,
           tenantName: this.tenantNameForRoom(room.id),
           contractId: contract.id,
-          monthlyRent: contract.monthlyRent ?? 0,
-          maintenanceFee: contract.maintenanceFee ?? 0,
+          monthlyRent: contract.monthlyRent!,
+          maintenanceFee: contract.maintenanceFee!,
           dueDate: this.billingDueDate(month, contract.paymentDay!),
           duplicateBillId: duplicate?.id
         };
