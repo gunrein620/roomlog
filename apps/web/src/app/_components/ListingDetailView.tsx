@@ -1,7 +1,7 @@
 "use client";
 
-// 매물 상세 뷰 + 문의 시트 — /listing/[id] 라우트와 SPA(홈 카드 문자문의의 InquirySheet)가 공유.
-// 상세 라우트 분리(1단계)로 page.tsx에서 추출했다(동작 불변).
+// 매물 상세 뷰 — /listing/[id] 라우트가 쓴다.
+// "문자로 문의하기"는 폼(간편문의 시트) 대신 채팅 탭의 빈 대화로 바로 보낸다(onStartChat, 당근식).
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
@@ -34,7 +34,6 @@ import {
   safetyReportItems,
   type Listing
 } from "@/lib/listing-catalog";
-import type { InquiryPayload } from "@/lib/inquiry-flow";
 import { NaverMapPreview } from "./NaverMapPreview";
 
 // 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
@@ -48,20 +47,16 @@ export function ListingDetailView({
   isSaved,
   onBack,
   onToggleSaved,
-  onSubmitInquiry,
-  onViewInquiryCenter,
-  onRequireLogin
+  onStartChat
 }: {
   listing: Listing;
   isSaved: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
-  onSubmitInquiry: (payload: InquiryPayload, listingNo?: string) => Promise<"ok" | "auth" | "error">;
-  onViewInquiryCenter: () => void;
-  onRequireLogin?: () => void;
+  /** "문자로 문의하기" 등 문의 진입점 — 채팅 탭의 이 매물 대화로 바로 보낸다. */
+  onStartChat: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
-  const [isInquirySheetOpen, setIsInquirySheetOpen] = useState(false);
   const [isComplexSheetOpen, setIsComplexSheetOpen] = useState(false);
   const [isAgentSheetOpen, setIsAgentSheetOpen] = useState(false);
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
@@ -188,7 +183,7 @@ export function ListingDetailView({
             <span>단지</span>
             <strong>정보 보기</strong>
           </button>
-          <button type="button" onClick={() => setIsInquirySheetOpen(true)}>
+          <button type="button" onClick={onStartChat}>
             <span>8분 응답</span>
             <strong>문의하기</strong>
           </button>
@@ -316,7 +311,7 @@ export function ListingDetailView({
           <h2>방문 전 거래 가능 여부 확인</h2>
           <p>중개사가 계약 가능, 계약 불가능, 대체 매물을 문자로 답변합니다.</p>
         </div>
-        <button type="button" onClick={() => setIsInquirySheetOpen(true)}>간편문의</button>
+        <button type="button" onClick={onStartChat}>간편문의</button>
       </section>
 
       <div className="detail-info-pair">
@@ -379,7 +374,7 @@ export function ListingDetailView({
 
       <div className="detail-contact-bar" id="detail-contact">
         <span className="contact-tooltip">로그인 없이 문의 가능 · 평균 응답 8분</span>
-        <button className="detail-contact-small" type="button" aria-label="전화문의" onClick={() => setIsInquirySheetOpen(true)}>
+        <button className="detail-contact-small" type="button" aria-label="전화문의" onClick={onStartChat}>
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
         </button>
@@ -392,7 +387,7 @@ export function ListingDetailView({
           <span>1인칭</span>
           <strong>체험</strong>
         </a>
-        <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
+        <button className="detail-contact-primary" type="button" onClick={onStartChat}>
           <strong>문자로 문의하기</strong>
           <span>방문 가능 여부 바로 확인</span>
         </button>
@@ -554,7 +549,7 @@ export function ListingDetailView({
                 type="button"
                 onClick={() => {
                   setIsComplexSheetOpen(false);
-                  setIsInquirySheetOpen(true);
+                  onStartChat();
                 }}
               >
                 단지 문의하기
@@ -616,7 +611,7 @@ export function ListingDetailView({
                 type="button"
                 onClick={() => {
                   setIsAgentSheetOpen(false);
-                  setIsInquirySheetOpen(true);
+                  onStartChat();
                 }}
               >
                 중개사 문의하기
@@ -625,176 +620,6 @@ export function ListingDetailView({
           </section>
         </div>
       ) : null}
-
-      {isInquirySheetOpen ? (
-        <InquirySheet
-          listing={listing}
-          onClose={() => setIsInquirySheetOpen(false)}
-          onSubmitInquiry={onSubmitInquiry}
-          onViewInquiryCenter={onViewInquiryCenter}
-          onRequireLogin={onRequireLogin}
-        />
-      ) : null}
     </section>
-  );
-}
-
-// 통합 문의 작성 sheet — 매물 상세 "문의하기"와 홈 카드 "문자문의"가
-// 전부 이 하나의 sheet를 연다. (QA 3·4·6·7)
-export function InquirySheet({
-  listing,
-  onClose,
-  onSubmitInquiry,
-  onViewInquiryCenter,
-  onRequireLogin
-}: {
-  listing: Listing;
-  onClose: () => void;
-  onSubmitInquiry: (payload: InquiryPayload, listingNo?: string) => Promise<"ok" | "auth" | "error">;
-  onViewInquiryCenter: () => void;
-  onRequireLogin?: () => void;
-}) {
-  const [selectedInquiryMessage, setSelectedInquiryMessage] = useState("아직 거래 가능한가요?");
-  const [selectedVisitTime, setSelectedVisitTime] = useState("오늘 3시");
-  const [inquiryMemo, setInquiryMemo] = useState("");
-  const [submitState, setSubmitState] = useState<"idle" | "sending" | "sent" | "auth" | "error">("idle");
-  const inquirySent = submitState === "sent";
-  const setInquirySent = (sent: boolean) => setSubmitState(sent ? "sent" : "idle");
-
-  return (
-    <div className="inquiry-sheet-backdrop" role="presentation" onClick={onClose}>
-      <section className="inquiry-sheet" role="dialog" aria-modal="true" aria-labelledby="inquiry-sheet-title" onClick={(event) => event.stopPropagation()}>
-        <div className="sheet-handle" aria-hidden="true" />
-        <header>
-          <div>
-            <span>문의하기</span>
-            <h2 id="inquiry-sheet-title">간편문의</h2>
-            <p>문의를 보내면 집주인과 채팅으로 바로 이어집니다. (로그인 필요)</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="문의 닫기">×</button>
-        </header>
-
-        <div className="inquiry-listing-summary">
-          <strong>{listing.price}</strong>
-          <span>{listing.title}</span>
-          <small>{listing.broker} · {listing.response}</small>
-        </div>
-
-        <div className="inquiry-message-group">
-          <strong>문의 내용 선택</strong>
-          <div className="inquiry-message-grid">
-            {[
-              "아직 거래 가능한가요?",
-              "오늘 방문 가능한가요?",
-              "관리비 포함 내역 알려주세요",
-              "3D 투어 먼저 보고 싶어요"
-            ].map((message) => (
-              <button
-                className={selectedInquiryMessage === message ? "active" : ""}
-                type="button"
-                key={message}
-                onClick={() => {
-                  setSelectedInquiryMessage(message);
-                  setInquirySent(false);
-                }}
-              >
-                {message}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="visit-time-group">
-          <strong>방문 희망 시간</strong>
-          <div>
-            {["오늘 3시", "내일 오전", "주말 가능"].map((time) => (
-              <button
-                className={selectedVisitTime === time ? "active" : ""}
-                type="button"
-                key={time}
-                onClick={() => {
-                  setSelectedVisitTime(time);
-                  setInquirySent(false);
-                }}
-              >
-                {time}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <label className="inquiry-textarea">
-          <span>추가 메모</span>
-          <textarea
-            value={inquiryMemo}
-            placeholder="예: 실매물 여부와 방문 가능한 시간을 확인하고 싶습니다."
-            onChange={(event) => {
-              setInquiryMemo(event.target.value);
-              setInquirySent(false);
-            }}
-          />
-        </label>
-
-        <div className="inquiry-selected-summary" role="status">
-          <strong>선택한 문의</strong>
-          <p>{selectedInquiryMessage} · {selectedVisitTime}</p>
-        </div>
-
-        <div className="inquiry-agent-row">
-          <span aria-hidden="true">✓</span>
-          <p>48시간 안에 계약 가능, 계약 불가, 대체 매물 추천 중 하나로 답변됩니다.</p>
-        </div>
-
-        <div className="inquiry-policy-row" aria-label="허위매물 차단 정책">
-          <strong>허위매물 차단</strong>
-          <p>계약불가 또는 미답변 매물은 안내 배지가 함께 표시됩니다.</p>
-        </div>
-
-        <div className="inquiry-sheet-actions">
-          <button type="button" onClick={onClose}>닫기</button>
-          <button
-            type="button"
-            disabled={submitState === "sending"}
-            onClick={async () => {
-              if (inquirySent || submitState === "sending") return;
-              setSubmitState("sending");
-              const message = inquiryMemo.trim()
-                ? `${selectedInquiryMessage} — ${inquiryMemo.trim()}`
-                : selectedInquiryMessage;
-              const result = await onSubmitInquiry(
-                {
-                  listingTitle: listing.title,
-                  broker: listing.broker,
-                  message,
-                  visitTime: selectedVisitTime
-                },
-                listing.listingNo
-              );
-              setSubmitState(result === "ok" ? "sent" : result);
-            }}
-          >
-            {submitState === "sending" ? "보내는 중…" : "문의 보내기"}
-          </button>
-        </div>
-
-        {inquirySent ? (
-          <div className="inquiry-submit-feedback" role="status">
-            <p>문의가 접수됐습니다. 집주인이 답하면 문의센터 채팅으로 이어집니다.</p>
-            <button type="button" onClick={onViewInquiryCenter}>문의센터 보기</button>
-          </div>
-        ) : null}
-        {submitState === "auth" ? (
-          <div className="inquiry-submit-feedback" role="status">
-            <p>문의를 보내려면 WOOZU 계정 로그인이 필요합니다.</p>
-            {onRequireLogin ? <button type="button" onClick={onRequireLogin}>로그인하기</button> : null}
-          </div>
-        ) : null}
-        {submitState === "error" ? (
-          <div className="inquiry-submit-feedback" role="status">
-            <p>문의 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
-          </div>
-        ) : null}
-      </section>
-    </div>
   );
 }

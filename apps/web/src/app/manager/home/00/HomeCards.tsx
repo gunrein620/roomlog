@@ -18,7 +18,7 @@ export function HomeCards({
       {homeCards.length === 0 ? (
         <div role="status" className="manager-portfolio-empty">
           <strong>계약 중인 집이 아직 없습니다</strong>
-          <span>문의 채팅에서 계약이 수락되면 이곳에 표시됩니다.</span>
+          <span>매물 채팅에서 계약이 수락되면 이곳에 표시됩니다.</span>
         </div>
       ) : (
         <BuildingBoard homeCards={homeCards} />

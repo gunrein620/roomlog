@@ -96,16 +96,8 @@ import {
   type NaverGeocodeResponse,
   type NaverMapViewport
 } from "./_components/NaverMapPreview";
-import { InquirySheet } from "./_components/ListingDetailView";
 import { loadSavedListingNos, toggleSavedListingNo } from "../lib/saved-listings";
-import { submitTradeInquiry } from "../lib/trade-inquiry";
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
-import {
-  pickInquiryTargetNo,
-  withNewInquiry,
-  type InquiryItem,
-  type InquiryPayload
-} from "../lib/inquiry-flow";
 import { TradeChatCenter } from "./_components/TradeChatCenter";
 import {
   OWNER_DRAFT_STORAGE_KEY,
@@ -546,7 +538,7 @@ const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: st
   { key: "home", label: "홈", Icon: HomeIcon, href: "#home-title" },
   { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
   { key: "saved", label: "찜", Icon: Heart, href: "#saved-list" },
-  { key: "inquiry", label: "문의", Icon: MessageCircle, href: "#inquiry" }
+  { key: "inquiry", label: "채팅", Icon: MessageCircle, href: "#inquiry" }
 ];
 
 const mapResultTabs: Array<{ key: MapResultTab; label: string }> = [
@@ -672,8 +664,6 @@ const trustItems = [
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-// QA: 데모 문의(답변 포함)가 세션마다 "문의 1" 배지를 되살리던 문제 — 실제 문의만 쌓이도록 빈 목록으로 시작.
-const initialInquiries: InquiryItem[] = [];
 
 
 
@@ -744,29 +734,33 @@ function SavedListingsSection({
 
 function InquiryHubSection({
   onRequireLogin,
-  focusThreadId
+  focusThreadId,
+  composeListing
 }: {
   onRequireLogin: () => void;
   focusThreadId?: string;
+  composeListing?: { listingNo: string; title: string };
 }) {
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
       <div className="section-title no-margin">
         <div>
-          <h2 id="inquiry-title">문의센터</h2>
-          <p>보낸 문의와 받은 문의가 모두 채팅으로 이어집니다.</p>
+          <h2 id="inquiry-title">채팅</h2>
+          <p>매물을 보고 연락한 사람들과의 채팅이 모두 여기에 모입니다.</p>
         </div>
       </div>
 
-      {/* 서버 스레드 기반 문의 채팅 — 보낸 문의(구매자)와 받은 문의(집주인)를 한 곳에서 본다.
-          QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제.
+      {/* 매물 거래 채팅(당근식) — 매물을 보고 연락한 사람(구매자)과 집주인의 채팅을 한 곳에서 본다.
+          세입자↔관리자 소통 채널(tenant/manager messaging)과는 별개다.
+          QA: roleFilter="buyer" 고정 탓에 집주인이 채팅 탭에서 받은 채팅을 못 보던 문제 → 필터 해제.
           variant="hub": 데스크톱 브라우저는 목록+대화 2패널, 앱(PWA·좁은 화면)은 채팅 목록 단일 패널. */}
       <div className="inquiry-chat-panel">
         <TradeChatCenter
           variant="hub"
-          emptyText="매물 상세의 '문자문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
+          emptyText="매물 상세의 '문자문의'로 첫 채팅을 시작해보세요. 받은 채팅도 여기로 들어옵니다."
           onRequireLogin={onRequireLogin}
           focusThreadId={focusThreadId}
+          composeListing={composeListing}
         />
       </div>
     </section>
@@ -1249,13 +1243,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   useEffect(() => {
     setSavedListingNos(loadSavedListingNos([listings[0].listingNo, listings[2].listingNo]));
   }, []);
-  const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
-  // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
-  const [inquiryComposeListingNo, setInquiryComposeListingNo] = useState<string | null>(null);
-  // 문의 전송 직후 채팅으로 바로 진입할 스레드 id (문의센터 TradeChatCenter로 전달)
+  // 문의 전송 직후 채팅으로 바로 진입할 스레드 id (채팅 탭 TradeChatCenter로 전달)
   const [buyerFocusThreadId, setBuyerFocusThreadId] = useState<string | undefined>(undefined);
-  const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
-  const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
+  // 상세 "문자로 문의하기"로 진입 시 이 매물의 대화(초안)를 바로 연다 (/inquiry?compose=&title=)
+  const [composeListing, setComposeListing] = useState<{ listingNo: string; title: string } | undefined>(undefined);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
@@ -1535,13 +1526,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const mapMarkers = mapOverlayListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
   const findListingCardByNo = (listingNo: string) => allListings.find((listing) => listing.listingNo === listingNo);
 
-  const inquiryComposeListing = inquiryComposeListingNo
-    ? allListings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
-    : null;
-
-  const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
-
-  // 실시간 문의 신호 — 상대가 보낸 trade:updated만 문의 탭 밖에서 배지를 켠다(탭 진입 시 해제).
+  // 실시간 채팅 신호 — 상대가 보낸 trade:updated만 채팅 탭 밖에서 배지를 켠다(탭 진입 시 해제).
   const [unseenTradeCount, setUnseenTradeCount] = useState(0);
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
@@ -1566,58 +1551,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     if (activeTab === "inquiry") setUnseenTradeCount(0);
   }, [activeTab]);
 
-  const inquiryBadgeCount = unseenReplyCount + unseenTradeCount;
-
-  // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
-  useEffect(() => {
-    if (activeTab !== "inquiry") return;
-
-    setSeenInquiryIds((current) => {
-      const repliedIds = inquiries.filter((item) => item.reply).map((item) => item.id);
-      const merged = Array.from(new Set([...current, ...repliedIds]));
-      return merged.length === current.length ? current : merged;
-    });
-  }, [activeTab, inquiries]);
+  const inquiryBadgeCount = unseenTradeCount;
 
   // 상세는 이제 라우트(/listing/[id]) — 공유 가능한 URL로 이동한다(1단계 라우트 분리).
+  // 채팅 시작도 상세의 문의하기가 담당한다 — 홈 카드에는 별도 액션 버튼을 두지 않는다.
   const openListing = (listing: Listing) => {
-    setViewedListingNos((current) => [listing.listingNo, ...current.filter((no) => no !== listing.listingNo)].slice(0, 4));
     router.push(`/listing/${encodeURIComponent(listing.listingNo)}`);
-  };
-
-  // 문의는 서버 스레드로 전송된다 — 집주인(또는 데모 임대인) 계정이 실제로 받고, 채팅으로 이어진다.
-  // 반환값: ok=접수, auth=로그인 필요, error=실패.
-  const submitInquiry = async (
-    payload: InquiryPayload,
-    listingNo?: string
-  ): Promise<"ok" | "auth" | "error"> => {
-    const result = await submitTradeInquiry(payload, listingNo);
-    if (result.status !== "ok") return result.status;
-    // 로컬 요약 목록에도 즉시 반영 (문의센터 상단 노출 — lib/inquiry-flow 테스트로 고정된 규칙)
-    setInquiries((current) => withNewInquiry(current, payload, Date.now()));
-    // 서버가 방금 생성/이어붙인 스레드 id를 돌려주면, 문의센터 채팅으로 바로 진입한다(당근식).
-    if (result.threadId) {
-      setBuyerFocusThreadId(result.threadId);
-      setInquiryComposeListingNo(null);
-      activateTab("inquiry");
-    }
-    return "ok";
-  };
-
-  // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
-  // 홈 카드 "문자문의"가 이 흐름을 쓴다 (QA 3·4·7). 문의 탭의 "새 문의" 버튼은 제거됐다.
-  const openInquiryComposer = (listing?: Listing) => {
-    if (listing) {
-      setInquiryComposeListingNo(listing.listingNo);
-      return;
-    }
-
-    const targetNo = pickInquiryTargetNo(
-      viewedListingNos,
-      visibleHomeListings.map((item) => item.listingNo)
-    ) ?? allListings[0]?.listingNo;
-
-    if (targetNo) setInquiryComposeListingNo(targetNo);
   };
 
   const activateTab = (tab: AppTab) => {
@@ -1804,6 +1743,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     const focusThread = params.get("thread");
     if (focusThread) {
       setBuyerFocusThreadId(focusThread);
+    }
+    // 상세 "문자로 문의하기" → /inquiry?compose=<listingNo>&title=<제목> — 이 매물 대화(초안)를 연다.
+    const composeNo = params.get("compose");
+    if (composeNo) {
+      setComposeListing({ listingNo: composeNo, title: params.get("title") ?? "매물 문의" });
+      setActiveTab("inquiry");
+      window.history.replaceState(null, "", TAB_PATHS.inquiry + window.location.hash);
+      setIsRouteReady(true);
+      return;
     }
 
     if (auth) {
@@ -1992,7 +1940,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
               <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
               <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
-                문의
+                채팅
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
               <button className={activeTab === "living" ? "active" : ""} type="button" onClick={() => activateTab("living")}>세입자</button>
@@ -2123,32 +2071,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                           ))}
                         </div>
                       </div>
+                      {/* 카드 본문은 가격·제목·핵심 스펙만 — 신뢰 배지는 사진 위, 나머지는 상세에서. */}
                       <div className="listing-body">
-                        <div className="listing-status-line">
-                          <span>{listing.listingLabel}</span>
-                          <span>{listing.updated}</span>
-                        </div>
                         <div>
                           <strong>{listing.price}</strong>
-                          <span>{listing.score}</span>
+                          <span className="listing-updated">{listing.updated}</span>
                         </div>
                         <h3>{listing.title}</h3>
                         <p>{listing.spec}</p>
                         <small>{listing.location}</small>
-                        <small className="listing-detail-address">세부주소: {listingDetailAddressLabel(listing)}</small>
-                        <small className="listing-broker">{listing.broker}</small>
-                        <div className="listing-meta-row">
-                          <span>{listing.verification}</span>
-                          <span>{listing.response}</span>
-                          <span>{listing.badges.includes("3D 투어") ? "3D 투어 가능" : "방문 예약"}</span>
-                        </div>
                       </div>
                     </button>
-                    <div className="listing-card-footer" aria-label={`${listing.title} 빠른 액션`}>
-                      <button type="button" onClick={() => openListing(listing)}>상세 보기</button>
-                      <button type="button" onClick={() => openInquiryComposer(listing)}>문자문의</button>
-                      <button type="button" onClick={() => openListing(listing)}>3D 보기</button>
-                    </div>
                     <button
                       className={savedListingNos.includes(listing.listingNo) ? "save-listing-button saved" : "save-listing-button"}
                       type="button"
@@ -2428,7 +2361,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 </button>
                 <div>
                   <em>{selectedMapListing.flags[0]}</em>
-                  <button type="button" onClick={() => activateTab("inquiry")}>문의</button>
+                  <button type="button" onClick={() => activateTab("inquiry")}>채팅</button>
                 </div>
               </article>
             ) : null}
@@ -2595,7 +2528,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                     </div>
                     <footer>
                       <button type="button" onClick={() => setActiveMapResultTab("rooms")}>보유 매물</button>
-                      <button type="button" onClick={() => activateTab("inquiry")}>문의하기</button>
+                      <button type="button" onClick={() => activateTab("inquiry")}>채팅하기</button>
                     </footer>
                   </article>
                 ))}
@@ -2613,7 +2546,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
+          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} composeListing={composeListing} />
         ) : null}
         {activeTab === "sell" ? (
           <LandlordMyPage />
@@ -2638,7 +2571,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             >
               <item.Icon size={22} strokeWidth={2.3} aria-hidden="true" />
               {item.label}
-              {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 문의 ${inquiryBadgeCount}건`} /> : null}
+              {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 채팅 ${inquiryBadgeCount}건`} /> : null}
             </a>
           ))}
           <MobileRoleMenu
@@ -2688,21 +2621,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           isOpen={isNotificationSheetOpen}
           onClose={() => setIsNotificationSheetOpen(false)}
         />
-        {inquiryComposeListing ? (
-          <InquirySheet
-            listing={inquiryComposeListing}
-            onClose={() => setInquiryComposeListingNo(null)}
-            onSubmitInquiry={submitInquiry}
-            onViewInquiryCenter={() => {
-              setInquiryComposeListingNo(null);
-              activateTab("inquiry");
-            }}
-            onRequireLogin={() => {
-              setInquiryComposeListingNo(null);
-              openAuthScreen("login");
-            }}
-          />
-        ) : null}
       </div>
     </main>
   );

@@ -47,9 +47,9 @@ export default function manifest(): MetadataRoute.Manifest {
         icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }]
       },
       {
-        name: "문의센터",
-        short_name: "문의",
-        description: "진행 중인 매물 문의 확인",
+        name: "채팅",
+        short_name: "채팅",
+        description: "진행 중인 매물 채팅 확인",
         url: "/#inquiry",
         icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }]
       }

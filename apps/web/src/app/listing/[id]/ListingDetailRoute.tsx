@@ -1,14 +1,12 @@
 "use client";
 
-// 상세 라우트의 클라이언트 배선 — 찜(localStorage 공유), 문의 전송, 라우터 네비게이션을
-// ListingDetailView 프롭에 연결한다. SPA(page.tsx)와 동일한 저장 키·전송 로직을 쓴다.
+// 상세 라우트의 클라이언트 배선 — 찜(localStorage 공유)과 라우터 네비게이션을 ListingDetailView에 연결한다.
+// "문자로 문의하기"는 채팅 탭의 이 매물 대화(초안)로 바로 보낸다(compose 파라미터, 당근식).
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ListingDetailView } from "@/app/_components/ListingDetailView";
 import { demoListings, type Listing } from "@/lib/listing-catalog";
 import { loadSavedListingNos, toggleSavedListingNo } from "@/lib/saved-listings";
-import { submitTradeInquiry } from "@/lib/trade-inquiry";
-import type { InquiryPayload } from "@/lib/inquiry-flow";
 
 export function ListingDetailRoute({ listing }: { listing: Listing }) {
   const router = useRouter();
@@ -27,13 +25,11 @@ export function ListingDetailRoute({ listing }: { listing: Listing }) {
     router.push("/");
   };
 
-  const submitInquiry = async (payload: InquiryPayload, listingNo?: string): Promise<"ok" | "auth" | "error"> => {
-    const result = await submitTradeInquiry(payload, listingNo);
-    if (result.status === "ok" && result.threadId) {
-      // 문의 성공 → 문의센터 채팅으로 바로 진입(당근식). 문의 탭이 thread 파라미터로 대화를 연다.
-      router.push(`/inquiry?thread=${encodeURIComponent(result.threadId)}`);
-    }
-    return result.status;
+  // 폼 없이 채팅 탭으로 — 기존 대화가 있으면 열고, 없으면 빈 대화를 연다(첫 메시지에 스레드 생성).
+  const startChat = () => {
+    router.push(
+      `/inquiry?compose=${encodeURIComponent(listing.listingNo)}&title=${encodeURIComponent(listing.title)}`
+    );
   };
 
   return (
@@ -42,9 +38,7 @@ export function ListingDetailRoute({ listing }: { listing: Listing }) {
       isSaved={savedListingNos.includes(listing.listingNo)}
       onBack={goBack}
       onToggleSaved={(listingNo) => setSavedListingNos((current) => toggleSavedListingNo(current, listingNo))}
-      onSubmitInquiry={submitInquiry}
-      onViewInquiryCenter={() => router.push("/inquiry")}
-      onRequireLogin={() => router.push(`/login?redirectTo=${encodeURIComponent(`/listing/${listing.listingNo}`)}`)}
+      onStartChat={startChat}
     />
   );
 }

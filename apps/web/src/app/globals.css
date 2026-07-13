@@ -1901,130 +1901,50 @@ p {
   color: #e32952;
 }
 
+/* 카드 본문 — 가격·제목·스펙·위치 네 줄만. 액션/신뢰 칩은 상세로 넘겼다. */
 .listing-body {
-  padding: 10px 12px 8px;
-}
-
-.listing-status-line {
-  min-height: 20px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #eef1f6;
+  padding: 12px 14px 14px;
 }
 
 .listing-body > div {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
 
 .listing-body strong {
   color: var(--blue);
-  font-size: 0.84rem;
-}
-
-.listing-body span {
-  color: var(--green);
-  font-size: 0.78rem;
+  font-size: 1rem;
   font-weight: 900;
+  letter-spacing: -0.01em;
 }
 
-.listing-status-line span {
-  color: #7b8495;
-  font-size: 0.66rem;
-  font-weight: 900;
+.listing-body .listing-updated {
+  color: #98a0af;
+  font-size: 0.7rem;
+  font-weight: 800;
 }
 
-.listing-status-line span:first-child {
-  min-width: 0;
+.listing-body h3 {
+  margin-top: 5px;
   overflow: hidden;
-  color: #4d5667;
+  font-size: 0.98rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.listing-body h3 {
-  margin-top: 4px;
-  font-size: 1.02rem;
-}
-
 .listing-body p {
-  margin-top: 5px;
-  padding-top: 5px;
-  border-top: 1px solid var(--line);
-  color: #3d4350;
-  font-size: 0.82rem;
+  margin-top: 4px;
+  color: #5b6474;
+  font-size: 0.8rem;
 }
 
 .listing-body small {
   display: block;
-  margin-top: 4px;
+  margin-top: 2px;
   color: var(--muted);
   font-size: 0.74rem;
-}
-
-.listing-broker {
-  color: #394151;
-  font-size: 0.7rem;
-  font-weight: 900;
-}
-
-.listing-detail-address {
-  color: #6b7280;
-}
-
-.listing-meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.listing-meta-row span {
-  display: inline-flex;
-  min-height: 22px;
-  align-items: center;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: #f2f5fb;
-  color: #5b6474;
-  font-size: 0.64rem;
-  font-weight: 900;
-}
-
-.listing-meta-row span:first-child {
-  background: #eefaf4;
-  color: var(--green);
-}
-
-.listing-card-footer {
-  display: grid;
-  grid-template-columns: 1.1fr 1.1fr 0.9fr;
-  gap: 8px;
-  padding: 0 12px 10px;
-}
-
-.listing-card-footer button {
-  min-width: 0;
-  min-height: 32px;
-  border: 1px solid #dce2ef;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #3f4858;
-  font-size: 0.7rem;
-  font-weight: 900;
-}
-
-.listing-card-footer button:nth-child(2) {
-  border-color: transparent;
-  background: var(--blue);
-  color: #ffffff;
-}
-
-.listing-card-footer button:nth-child(3) {
-  border-color: transparent;
-  background: #111827;
-  color: #ffffff;
 }
 
 .map-screen {
@@ -12528,6 +12448,29 @@ p {
   padding: 14px;
   overflow-y: auto;
   background: var(--canvas);
+}
+
+/* 빈 대화(초안) 안내 — 상세 "문자로 문의하기"로 들어와 아직 메시지가 없을 때 */
+.trade-compose-hint {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  justify-items: center;
+  min-height: 180px;
+  padding: 24px 18px;
+  text-align: center;
+}
+
+.trade-compose-hint strong {
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.trade-compose-hint p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .trade-day-chip {

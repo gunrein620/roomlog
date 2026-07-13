@@ -605,19 +605,24 @@ test("landlord link-required CTA starts the unprotected listing flow instead of 
   assert.match(pageSource, /activeTab === "sell"\s*\?\s*isListingStartMode\s*\?\s*null/);
 });
 
-test("every inquiry entry point opens the same composer sheet and feeds the inquiry center", () => {
-  // QA 3·4·6·7 회귀 방지: 홈 카드 문자문의·상세 문의하기가 같은 sheet로 이어진다.
-  assert.match(pageSource, /function InquirySheet/);
-  assert.match(pageSource, /openInquiryComposer\(listing\)/);
-  // 문의 탭의 "새 문의" 버튼은 제거됐다 — 문의센터는 채팅 허브만 남는다.
+test("문의하기는 폼 없이 채팅 탭의 매물 대화(초안)로 바로 보낸다", () => {
+  // 간편문의 시트(폼)는 제거됐다 — 상세의 문의 버튼은 onStartChat으로 채팅 탭에 보낸다.
+  assert.doesNotMatch(pageSource, /function InquirySheet/);
+  assert.doesNotMatch(pageSource, /setIsInquirySheetOpen/);
+  assert.doesNotMatch(pageSource, /문의 내용 선택|방문 희망 시간/);
+  assert.doesNotMatch(pageSource, /openInquiryComposer/);
+  // 채팅 탭의 "새 문의" 버튼은 제거됐다 — 채팅 허브만 남는다.
   assert.doesNotMatch(pageSource, /onNewInquiry/);
-  assert.match(pageSource, /pickInquiryTargetNo/);
-  assert.match(pageSource, /withNewInquiry/);
-  // "새 문의"가 안내 문구만 띄우고 홈으로 보내던 동작 금지.
-  assert.doesNotMatch(pageSource, /새 문의는 매물 상세에서 바로 보낼 수 있습니다/);
-  // 접수 완료 상태에서 문의센터로 바로 이동할 수 있다.
-  assert.match(pageSource, /문의센터 보기/);
-  assert.match(pageSource, /onViewInquiryCenter/);
+  // 상세 "문자로 문의하기" → onStartChat → /inquiry?compose=<매물번호>&title=<제목>
+  assert.match(listingDetailViewSource, /detail-contact-primary[\s\S]*?onClick=\{onStartChat\}/);
+  assert.match(listingRouteClientSource, /\/inquiry\?compose=/);
+  // 채팅 탭은 compose 파라미터를 받아 이 매물 대화(초안)를 연다.
+  assert.match(homeAppSource, /params\.get\("compose"\)/);
+  assert.match(homeAppSource, /composeListing/);
+  // TradeChatCenter: 빈 대화 초안 → 첫 메시지 전송 시 /api/trade/inquiries로 스레드 생성(당근식).
+  assert.match(tradeChatCenterSource, /isCompose/);
+  assert.match(tradeChatCenterSource, /sendComposeMessage/);
+  assert.match(tradeChatCenterSource, /\/api\/trade\/inquiries/);
 });
 
 test("inquiry center chat hub splits desktop two-pane vs app list with sort and unread badges", () => {
@@ -726,8 +731,6 @@ test("borrows mature Zigbang and Dabang product patterns for trust and map searc
     "조건에 맞는 확인매물",
     "AI 안전분석",
     "중개사 평점",
-    "48시간 안에 계약 가능",
-    "허위매물 차단",
     "지도 결과 요약",
     "평균 응답",
     "오늘 현장확인",
@@ -806,17 +809,12 @@ test("makes filters and saved listings behave like interactive app state", () =>
   assert.doesNotMatch(pageSource, /category\.icon/);
   assert.match(cssSource, /\.category-card i svg\s*{[^}]*width:\s*18px/s);
   assert.match(cssSource, /\.listing-photo img\s*{[^}]*height:\s*126px/s);
-  assert.match(cssSource, /\.listing-meta-row\s*{/);
-  assert.match(pageSource, /listing-status-line/);
-  assert.match(pageSource, /listing-card-footer/);
-  assert.match(pageSource, /listing\.listingLabel/);
-  assert.match(pageSource, /listing\.updated/);
-  assert.match(pageSource, /listing\.broker/);
-  assert.match(pageSource, /listing\.verification/);
-  assert.match(pageSource, /listing\.response/);
-  assert.match(pageSource, /문자문의/);
-  assert.match(cssSource, /\.listing-status-line/);
-  assert.match(cssSource, /\.listing-card-footer/);
+  // 홈 카드는 가격·제목·스펙·위치 4줄만 — 상태줄/집주인 이름/신뢰 칩/액션 버튼 행은 제거됐다.
+  assert.match(homeAppSource, /listing\.price/);
+  assert.match(homeAppSource, /listing\.updated/);
+  assert.match(homeAppSource, /listing\.spec/);
+  assert.doesNotMatch(homeAppSource, /listing-status-line|listing-card-footer|listing-meta-row|listing-broker/);
+  assert.doesNotMatch(cssSource, /\.listing-status-line|\.listing-card-footer|\.listing-meta-row|\.listing-broker/);
   assert.match(pageSource, /toggleQuickFilter/);
   assert.match(pageSource, /activeMapFilter/);
   assert.match(pageSource, /savedListingNos/);
@@ -1054,7 +1052,6 @@ test("shows a landlord my page with property registration fields and media actio
   assert.match(cssSource, /\.owner-preview-actions button/);
   assert.match(cssSource, /\.owner-submit-summary/);
   assert.match(cssSource, /\.owner-summary-address/);
-  assert.match(cssSource, /\.listing-detail-address/);
   assert.match(cssSource, /\.owner-submit-grid/);
   assert.match(cssSource, /\.owner-ops-grid/);
   assert.match(cssSource, /\.owner-ops-card/);
@@ -1071,7 +1068,7 @@ test("shows a landlord my page with property registration fields and media actio
 test("adds real bottom-tab destinations and a labeled role menu", () => {
   for (const label of [
     "찜한 매물",
-    "문의센터",
+    "채팅",
     "세입자",
     "관리",
     "매물등록",
@@ -1111,7 +1108,7 @@ test("adds real bottom-tab destinations and a labeled role menu", () => {
   assert.doesNotMatch(pageSource, /onClick=\{\(event\) => \{[\s\S]*scrollIntoView[\s\S]*activateTab\(item\.key\)/);
   assert.match(pageSource, /href: "#saved-list"/);
   assert.match(pageSource, /href: "#inquiry"/);
-  assert.match(pageSource, /setInquiries/);
+  assert.match(pageSource, /unseenTradeCount/);
   assert.match(cssSource, /\.inquiry-notice/);
   assert.match(cssSource, /\.saved-compare-strip/);
   // 문의센터의 채널/타임라인/미니 통계 카드는 제거됐다 — 채팅 허브만 남는다.
@@ -1164,13 +1161,7 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
     "등기 변동",
     "보증금 비율",
     "대출·특약",
-    "주변 치안",
-    "문의 내용 선택",
-    "아직 거래 가능한가요",
-    "3D 투어 먼저 보고 싶어요",
-    "방문 희망 시간",
-    "문의 보내기",
-    "안내 배지가 함께 표시됩니다"
+    "주변 치안"
   ]) {
     assert.match(pageSource, new RegExp(label));
   }
@@ -1195,10 +1186,6 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(pageSource, /listingPriceRows/);
   assert.match(pageSource, /listingBuildingRows/);
   assert.match(pageSource, /safetyScore/);
-  assert.match(pageSource, /selectedInquiryMessage/);
-  assert.match(pageSource, /selectedVisitTime/);
-  assert.match(pageSource, /inquiryMemo/);
-  assert.match(pageSource, /inquirySent/);
   // 상세는 /listing/[id] 라우트 — 카드 클릭은 상태 대신 라우터 이동, 찜은 localStorage 공유 스토어.
   assert.match(pageSource, /router\.push\(`\/listing\/\$\{encodeURIComponent\(listing\.listingNo\)\}`\)/);
   assert.match(pageSource, /listing-card-action/);
@@ -1217,10 +1204,11 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(pageSource, /<Phone/);
   assert.match(pageSource, /setIsComplexSheetOpen\(true\)/);
   assert.match(pageSource, /setIsAgentSheetOpen\(true\)/);
-  assert.match(pageSource, /setIsInquirySheetOpen\(true\)/);
+  // 문의 진입점은 폼(시트)이 아니라 onStartChat — 채팅 탭의 매물 대화로 바로 보낸다.
+  assert.match(pageSource, /onClick=\{onStartChat\}/);
   assert.match(pageSource, /scrollToSafetyReport[\s\S]*detail-report-card[\s\S]*scrollIntoView/);
   assert.match(pageSource, /detail-contact-tour[\s\S]*setIsTourSheetOpen\(true\)/);
-  assert.match(pageSource, /detail-contact-primary[\s\S]*setIsInquirySheetOpen\(true\)/);
+  assert.match(pageSource, /detail-contact-primary[\s\S]*onClick=\{onStartChat\}/);
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*position:\s*fixed/s);
   assert.match(cssSource, /\.detail-quick-actions/);
   assert.match(cssSource, /\.detail-quick-actions button:first-child/);

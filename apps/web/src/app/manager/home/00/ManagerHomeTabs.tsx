@@ -141,8 +141,8 @@ export default function ManagerHomeTabs({
             {contracts.length === 0 ? (
               <EmptyState
                 title="계약중인 집이 아직 없습니다"
-                body="문의 채팅에서 '이 분과 계약하기'로 제안하고 상대가 수락하면 여기에 표시됩니다."
-                action={<Link href="/?tab=inquiry" style={actionLinkStyle}>문의 채팅 열기</Link>}
+                body="매물 채팅에서 '이 분과 계약하기'로 제안하고 상대가 수락하면 여기에 표시됩니다."
+                action={<Link href="/?tab=inquiry" style={actionLinkStyle}>매물 채팅 열기</Link>}
               />
             ) : (
               contracts.map((contract) => (
@@ -241,7 +241,7 @@ function ContractDashboard({
           <InfoItem label="세입자" value={contract.tenantName} />
           <InfoItem label="임대 조건" value={contract.priceLabel} />
           <InfoItem label="계약 체결일" value={contract.acceptedAtLabel || "정보 없음"} />
-          <InfoItem label="계약 방식" value="문의 채팅 제안 · 수락" />
+          <InfoItem label="계약 방식" value="매물 채팅 제안 · 수락" />
         </dl>
       </section>
 

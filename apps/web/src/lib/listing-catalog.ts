@@ -147,7 +147,8 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     detailAddress: listing.detailAddress?.trim() || undefined,
     price: tradePriceLabel(listing),
     headline: listing.description || "집주인이 직접 등록한 매물입니다.",
-    spec: `${listing.roomType} · 집주인 직접`,
+    // 카드 배지("집주인 직접")와 겹치지 않게 스펙은 방 종류만 — 중복 문구 정리.
+    spec: listing.roomType,
     roomType: listing.roomType,
     sizeLabel: "확인 중",
     floorLabel: "확인 중",

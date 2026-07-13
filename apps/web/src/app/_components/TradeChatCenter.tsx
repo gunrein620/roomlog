@@ -2,9 +2,12 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
+import { TRADE_LISTING_NO_PREFIX } from "@/lib/listing-catalog";
 import { tradeChatDisplayMode } from "./trade-chat-display";
 
-// 거래 문의 채팅 센터 — 구매 희망자(문의센터 탭)와 집주인(내놓은 집 마이페이지)이
+// 매물 거래 채팅 센터(당근식) — 매물을 보고 연락하는 사람들의 채팅 채널.
+// 세입자↔관리자(입주 후) 소통 채널과는 별개다 — 그쪽은 tenant/manager messaging.
+// 구매 희망자(채팅 탭)와 집주인(내놓은 집 마이페이지)이
 // 같은 스레드를 양쪽에서 보는 공용 컴포넌트.
 // 수신 1차 채널은 웹소켓 "trade:updated" 이벤트. 소켓이 끊기면 원래 폴링
 // (목록 8초 · 열린 대화 3초)으로 폴백하고, 연결 중에도 느린 주기(30초) 폴링을
@@ -148,6 +151,7 @@ export function TradeChatCenter({
   emptyText,
   onRequireLogin,
   focusThreadId,
+  composeListing,
   lockedThreadId
 }: {
   /** hub=문의센터 전용 레이아웃(데스크톱 2패널/앱 목록), 생략=기존 단일 컬럼 */
@@ -158,6 +162,9 @@ export function TradeChatCenter({
   onRequireLogin?: () => void;
   /** 값이 바뀌면 해당 스레드를 자동으로 연다(문의 전송 직후 채팅으로 바로 진입). */
   focusThreadId?: string;
+  /** 매물 상세의 "문자로 문의하기"가 이 값을 실어 온다 — 기존 대화가 있으면 열고,
+   *  없으면 빈 대화(초안)를 열어 첫 메시지를 보낼 때 스레드를 만든다(당근식). */
+  composeListing?: { listingNo: string; title: string };
   /** 계약/생활 대시보드처럼 특정 스레드 하나만 보여줄 때 사용한다. */
   lockedThreadId?: string;
 }) {
@@ -168,6 +175,8 @@ export function TradeChatCenter({
   const [openContract, setOpenContract] = useState<TradeContract | null>(null);
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
+  // 상세에서 넘어온 "빈 대화(초안)" 모드 — 아직 스레드가 없어 첫 메시지 전송으로 생성한다.
+  const [isCompose, setIsCompose] = useState(false);
   const [isContractBusy, setIsContractBusy] = useState(false);
   const [myUserId, setMyUserId] = useState("");
   const [isSocketLive, setIsSocketLive] = useState(false);
@@ -183,6 +192,11 @@ export function TradeChatCenter({
   const hubLayout = useHubLayout();
   const isHub = variant === "hub";
   const isHubDesktop = isHub && hubLayout === "desktop";
+
+  // 상세에서 온 매물번호(TRADE-<id>)는 서버 매물, 그 외(데모 매물)는 listingId 없이 제목으로 매칭한다.
+  const composeListingId = composeListing?.listingNo.startsWith(TRADE_LISTING_NO_PREFIX)
+    ? composeListing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length)
+    : null;
 
   const loadThreads = useCallback(async () => {
     try {
@@ -237,6 +251,25 @@ export function TradeChatCenter({
       loadThreads();
     }
   }, [focusThreadId, lockedThreadId, loadThreads]);
+
+  // 상세의 "문자로 문의하기" 진입 — 이미 이 매물로 나눈 대화가 있으면 그걸 열고,
+  // 없으면 빈 대화(초안)를 연다. 목록이 로드된 뒤에 판단한다.
+  useEffect(() => {
+    if (!composeListing || threads === null) return;
+    const existing = threads.find((thread) =>
+      composeListingId ? thread.listingId === composeListingId : thread.listingTitle === composeListing.title
+    );
+    if (existing) {
+      setIsCompose(false);
+      setOpenThreadId(existing.id);
+    } else {
+      setIsCompose(true);
+      setOpenThreadId(null);
+      setOpenThread(null);
+    }
+    // 첫 진입 시 한 번만 판단 — 이후 목록 폴링이 모드를 되돌리지 않게 한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeListing?.listingNo, threads !== null]);
 
   // 내 userId — 말풍선 좌/우 구분용
   useEffect(() => {
@@ -388,6 +421,37 @@ export function TradeChatCenter({
     }
   };
 
+  // 빈 대화(초안)에서의 첫 전송 — 서버가 스레드를 만들거나(신규) 같은 매물의 기존 스레드를 재사용한다.
+  const sendComposeMessage = async () => {
+    if (!composeListing || !draft.trim() || isSending) return;
+    setIsSending(true);
+    try {
+      const res = await fetch("/api/trade/inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: composeListingId,
+          listingTitle: composeListing.title,
+          message: draft.trim()
+        })
+      });
+      if (res.status === 401) {
+        setNeedsLogin(true);
+        return;
+      }
+      if (res.ok) {
+        const thread = (await res.json()) as TradeThread;
+        setDraft("");
+        setIsCompose(false);
+        setOpenThreadId(thread.id);
+        setOpenThread(thread);
+        loadThreads();
+      }
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const openThreadFromList = (thread: TradeThreadSummary) => {
     setOpenThreadId(thread.id);
     // 목록 요약만으로 즉시 읽음 처리 — 대화 로딩을 기다리지 않고 뱃지를 끈다.
@@ -405,8 +469,8 @@ export function TradeChatCenter({
   if (displayMode === "login") {
     return (
       <div className="listing-empty-card" role="status">
-        <strong>로그인하면 문의 대화가 보입니다</strong>
-        <p>WOOZU 계정으로 로그인하면 보낸 문의와 받은 문의를 채팅으로 이어갈 수 있어요.</p>
+        <strong>로그인하면 채팅이 보입니다</strong>
+        <p>WOOZU 계정으로 로그인하면 보낸 채팅과 받은 채팅을 이어갈 수 있어요.</p>
         {onRequireLogin ? (
           <button type="button" onClick={onRequireLogin}>로그인하기</button>
         ) : null}
@@ -521,7 +585,7 @@ export function TradeChatCenter({
     let lastDay = "";
 
     return (
-      <section aria-label="문의 대화" className="trade-chat-room">
+      <section aria-label="채팅 대화" className="trade-chat-room">
         <header className="trade-chat-room-head">
           <div className="trade-chat-room-title">
             {/* 허브는 당근처럼 상대가 제목, 매물이 부제 — 그 외(내놓은 집·계약 채팅)는 매물이 제목 */}
@@ -575,9 +639,54 @@ export function TradeChatCenter({
     );
   };
 
+  // 빈 대화(초안) — 상세 "문자로 문의하기"로 들어왔지만 아직 주고받은 메시지가 없는 상태.
+  // 첫 메시지를 보내는 순간 스레드가 만들어져 일반 대화로 전환된다.
+  const renderCompose = () => {
+    if (!composeListing) return null;
+    return (
+      <section aria-label="채팅 대화" className="trade-chat-room">
+        <header className="trade-chat-room-head">
+          <div className="trade-chat-room-title">
+            <strong>{composeListing.title}</strong>
+            <small>메시지를 보내면 집주인과의 대화가 시작됩니다</small>
+          </div>
+          {lockedThreadId || isHubDesktop ? null : (
+            <button type="button" className="trade-chat-back" onClick={() => setIsCompose(false)}>
+              목록으로
+            </button>
+          )}
+        </header>
+        <div className="trade-chat-scroll">
+          <div className="trade-compose-hint">
+            <strong>이 매물로 채팅을 시작해요</strong>
+            <p>궁금한 점을 남기면 집주인에게 바로 전달됩니다.</p>
+          </div>
+        </div>
+        <form
+          className="trade-chat-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            sendComposeMessage();
+          }}
+        >
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="메시지를 입력해주세요"
+            aria-label="메시지 입력"
+            autoFocus
+          />
+          <button type="submit" disabled={isSending || !draft.trim()}>
+            보내기
+          </button>
+        </form>
+      </section>
+    );
+  };
+
   // 허브 목록 행(당근식) — 아바타 · 상대 이름 · 매물/시각 메타 · 마지막 메시지 · 안읽음 뱃지
   const renderHubList = (items: TradeThreadSummary[]) => (
-    <div className={isHubDesktop ? "trade-hub-list desktop" : "trade-hub-list app"} aria-label="문의 대화 목록">
+    <div className={isHubDesktop ? "trade-hub-list desktop" : "trade-hub-list app"} aria-label="채팅 목록">
       {items.map((thread) => {
         const unread = openThreadId === thread.id ? 0 : unreadCount(thread);
         return (
@@ -594,7 +703,7 @@ export function TradeChatCenter({
               <span className="trade-hub-item-top">
                 <strong>{thread.counterpartName}</strong>
                 <small>
-                  {thread.role === "buyer" ? "보낸 문의" : "받은 문의"} · {listTimeLabel(thread.lastMessageAt)}
+                  {thread.role === "buyer" ? "보낸 채팅" : "받은 채팅"} · {listTimeLabel(thread.lastMessageAt)}
                 </small>
               </span>
               <span className="trade-hub-item-listing">{thread.listingTitle}</span>
@@ -614,12 +723,12 @@ export function TradeChatCenter({
   // 허브 데스크톱 = 당근채팅 웹처럼 목록·대화를 한 프레임에 — 목록은 항상 왼쪽에 유지
   if (isHubDesktop) {
     if (threads === null) {
-      return <div className="listing-empty-card"><p>문의 대화를 불러오는 중…</p></div>;
+      return <div className="listing-empty-card"><p>채팅을 불러오는 중…</p></div>;
     }
-    if (threads.length === 0) {
+    if (threads.length === 0 && !isCompose) {
       return (
         <div className="listing-empty-card">
-          <strong>아직 문의 대화가 없습니다</strong>
+          <strong>아직 채팅이 없습니다</strong>
           <p>{emptyText}</p>
         </div>
       );
@@ -634,10 +743,12 @@ export function TradeChatCenter({
             ) : (
               <div className="trade-hub-placeholder"><p>대화를 불러오는 중…</p></div>
             )
+          ) : isCompose ? (
+            renderCompose()
           ) : (
             <div className="trade-hub-placeholder">
               <strong>대화를 선택해주세요</strong>
-              <p>왼쪽 목록에서 문의를 고르면 여기에 대화가 열립니다.</p>
+              <p>왼쪽 목록에서 채팅을 고르면 여기에 대화가 열립니다.</p>
             </div>
           )}
         </div>
@@ -645,14 +756,19 @@ export function TradeChatCenter({
     );
   }
 
+  // 빈 대화(초안) — 앱/단일 레이아웃에서는 대화 화면을 전체로 띄운다.
+  if (isCompose && !openThreadId) {
+    return renderCompose();
+  }
+
   if (displayMode === "loading") {
-    return <div className="listing-empty-card"><p>문의 대화를 불러오는 중…</p></div>;
+    return <div className="listing-empty-card"><p>채팅을 불러오는 중…</p></div>;
   }
 
   if (displayMode === "empty") {
     return (
       <div className="listing-empty-card">
-        <strong>아직 문의 대화가 없습니다</strong>
+        <strong>아직 채팅이 없습니다</strong>
         <p>{emptyText}</p>
       </div>
     );
@@ -668,7 +784,7 @@ export function TradeChatCenter({
     return renderHubList(visibleThreads);
   }
   return (
-    <div style={{ display: "grid", gap: 10 }} aria-label="문의 대화 목록">
+    <div style={{ display: "grid", gap: 10 }} aria-label="채팅 목록">
       {visibleThreads.map((thread) => (
         <button
           key={thread.id}
@@ -690,7 +806,7 @@ export function TradeChatCenter({
               {thread.listingTitle}
             </strong>
             <span style={{ flex: "none", color: "var(--blue)", fontSize: "0.7rem", fontWeight: 900 }}>
-              {thread.role === "buyer" ? "보낸 문의" : "받은 문의"}
+              {thread.role === "buyer" ? "보낸 채팅" : "받은 채팅"}
             </span>
           </div>
           <span style={{ color: "var(--ink)", fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
