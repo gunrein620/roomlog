@@ -53,10 +53,9 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         ],
         children: [
           { label: "자산현황", href: MHOME_ROUTES["M-HOME-00"] },
-          { label: "미처리 업무", href: MHOME_ROUTES["M-HOME-01"] },
-          { label: "임대 현황 리포트", href: MHOME_ROUTES["M-HOME-02"], demo: true },
-          { label: "전체 건물 관리", href: MHOME_ROUTES["M-HOME-03"], demo: true },
-          { label: "건물·호실 등록", href: MHOME_ROUTES["M-HOME-05"], demo: true },
+          { label: "임대 현황 리포트", href: `${MHOME_ROUTES["M-HOME-00"]}#report`, demo: true },
+          { label: "전체 건물 관리", href: `${MHOME_ROUTES["M-HOME-00"]}#buildings`, demo: true },
+          { label: "건물·호실 등록", href: `${MHOME_ROUTES["M-HOME-00"]}#register`, demo: true },
         ],
       },
     ],
