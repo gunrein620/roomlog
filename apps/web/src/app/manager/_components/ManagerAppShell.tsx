@@ -22,6 +22,8 @@ export interface ManagerAppShellProps {
   assistantBriefing?: readonly ManagerAssistantBriefingItem[];
   /** 화면이 자체 AI 표면(예: 홈 코파일럿)을 내장할 때 플로팅 AI 비서 런처를 숨긴다. 기본값은 기존 동작 유지. */
   hideAssistantLauncher?: boolean;
+  /** opt-in 테마(packages/ui tokens.css의 .theme-*)를 워크스페이스 루트에 적용. 기본은 미지정(theme v1 그대로). */
+  theme?: "cosmic";
   children: ReactNode;
 }
 
@@ -33,6 +35,7 @@ export function ManagerAppShell({
   showAssistantRail = false,
   assistantBriefing = [],
   hideAssistantLauncher = false,
+  theme,
   children,
 }: ManagerAppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -114,6 +117,7 @@ export function ManagerAppShell({
         title={title}
         context={context}
         navCollapsed={navCollapsed}
+        theme={theme}
         nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} /></Suspense>}
         subnav={subnav ?? <ManagerSectionNav />}
         headerActions={action}
