@@ -5,7 +5,7 @@ import { AlertStatTiles } from "./AlertStatTiles";
 import { CopilotPanel } from "./CopilotPanel";
 import { HomeCards } from "./HomeCards";
 import { InstrumentPanel } from "./InstrumentPanel";
-import { PortfolioStatCards } from "./PortfolioStatCards";
+import { PortfolioBarCards } from "./PortfolioBarCards";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
@@ -77,7 +77,7 @@ export default async function Page() {
             ticketSub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
             ticketHref={MANAGER_CROSS.ticketDash}
           />
-          <PortfolioStatCards amounts={dashboard.portfolioAmounts} />
+          <PortfolioBarCards />
         </div>
 
         <HomeCards
@@ -216,16 +216,7 @@ export default async function Page() {
           --on-primary-container: #43338f;
           border-right-color: #2c2454 !important;
           background:
-            radial-gradient(1.5px 1.5px at 18% 9%, rgba(255, 255, 255, 0.9), transparent 55%),
-            radial-gradient(1px 1px at 72% 5%, rgba(255, 255, 255, 0.7), transparent 55%),
-            radial-gradient(1px 1px at 44% 16%, rgba(214, 205, 255, 0.8), transparent 55%),
-            radial-gradient(1.5px 1.5px at 84% 27%, rgba(255, 255, 255, 0.55), transparent 55%),
-            radial-gradient(1px 1px at 24% 38%, rgba(214, 205, 255, 0.6), transparent 55%),
-            radial-gradient(1px 1px at 64% 49%, rgba(255, 255, 255, 0.5), transparent 55%),
-            radial-gradient(1.5px 1.5px at 36% 63%, rgba(255, 255, 255, 0.6), transparent 55%),
-            radial-gradient(1px 1px at 80% 74%, rgba(214, 205, 255, 0.55), transparent 55%),
-            radial-gradient(1px 1px at 16% 86%, rgba(255, 255, 255, 0.45), transparent 55%),
-            radial-gradient(1px 1px at 58% 94%, rgba(214, 205, 255, 0.5), transparent 55%),
+            url("/textures/cosmic-sidebar.svg") top center / cover no-repeat,
             radial-gradient(circle 130px at 86% 5%, transparent 100px, rgba(160, 146, 255, 0.3) 101px, transparent 103px),
             radial-gradient(circle 380px at 115% -6%, rgba(242, 123, 169, 0.14), transparent 68%),
             radial-gradient(circle 360px at -25% 106%, rgba(102, 88, 214, 0.3), transparent 70%),
