@@ -70,6 +70,7 @@ import {
   SaveRoomWallsInput,
   SendIntakeMessageInput,
   SendDunningInput,
+  StartManagerConversationInput,
   SubmitTenantAiFeedbackInput,
   UpdateManagerContractInventoryInput,
   UpdateManagerContractInviteInput,
@@ -1248,6 +1249,25 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.listManagerMessagingThreads(user.id, context);
+  }
+
+  @Get("manager/messaging/recipients")
+  listManagerMessagingRecipients(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerMessagingRecipients(user.id);
+  }
+
+  @Post("manager/messaging/conversations")
+  startManagerConversation(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: StartManagerConversationInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = this.roomlogService.startManagerConversation(user.id, body);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging" });
+
+    return result;
   }
 
   @Post("manager/messaging/threads")

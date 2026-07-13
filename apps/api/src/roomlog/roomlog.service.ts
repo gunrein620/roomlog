@@ -206,6 +206,7 @@ import {
   ScheduleRepairInput,
   SendIntakeMessageInput,
   SendDunningInput,
+  StartManagerConversationInput,
   StatusHistory,
   SubmitTenantAiFeedbackInput,
   SubmitEstimateInput,
@@ -7308,6 +7309,14 @@ export class RoomlogService {
 
   listManagerMessagingThreads(managerId: string, context?: MessagingThreadContext) {
     return this.messaging.listManagerMessagingThreads(managerId, context);
+  }
+
+  listManagerMessagingRecipients(managerId: string) {
+    return this.messaging.listManagerMessagingRecipients(managerId);
+  }
+
+  startManagerConversation(managerId: string, input: StartManagerConversationInput) {
+    return this.messaging.startManagerConversation(managerId, input);
   }
 
   getManagerMessagingThread(managerId: string, threadId: string) {
