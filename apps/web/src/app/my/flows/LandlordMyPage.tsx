@@ -668,32 +668,36 @@ export default function LandlordMyPage() {
             </small>
           ) : null}
 
-          <label>
-            매물명
-            <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
-          </label>
+          {/* 넓은 폭을 활용해 필드를 여러 열로 흘려 세로 높이를 줄인다(데스크톱 3열 / 모바일 2열) */}
+          <div className="owner-step1-fields">
+            <label className="owner-step1-wide">
+              매물명
+              <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
+            </label>
 
-          <label>
-            주소
-            <div className="owner-address-row">
-              <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
-              <button className="owner-address-search-button" type="button" onClick={() => setIsPostcodeSearchOpen(true)}>
-                <Search aria-hidden="true" size={16} />
-                주소 검색
-              </button>
+            {/* 주소 · 세부주소는 한 행에서 반반(1:1)으로 */}
+            <div className="owner-step1-addr-row">
+              <label>
+                주소
+                <div className="owner-address-row">
+                  <input value={ownerForm.address} onChange={(event) => updateOwnerForm("address", event.target.value)} placeholder="도로명 또는 지번 주소" />
+                  <button className="owner-address-search-button" type="button" onClick={() => setIsPostcodeSearchOpen(true)}>
+                    <Search aria-hidden="true" size={16} />
+                    주소 검색
+                  </button>
+                </div>
+              </label>
+
+              <label>
+                세부주소
+                <input
+                  value={ownerForm.detailAddress}
+                  onChange={(event) => updateOwnerForm("detailAddress", event.target.value)}
+                  placeholder="예: 402호, A동 1203호"
+                />
+              </label>
             </div>
-          </label>
 
-          <label>
-            세부주소
-            <input
-              value={ownerForm.detailAddress}
-              onChange={(event) => updateOwnerForm("detailAddress", event.target.value)}
-              placeholder="예: 402호, A동 1203호"
-            />
-          </label>
-
-          <div className="form-grid">
             <label>
               거래유형
               <select value={ownerForm.tradeType} onChange={(event) => updateOwnerForm("tradeType", event.target.value)}>
@@ -713,9 +717,7 @@ export default function LandlordMyPage() {
                 aria-label="입주가능일 달력 선택"
               />
             </label>
-          </div>
 
-          <div className="form-grid">
             <label>
               보증금
               <input inputMode="numeric" value={ownerForm.deposit} onChange={(event) => updateOwnerForm("deposit", event.target.value)} placeholder="만원 단위" />
@@ -724,9 +726,7 @@ export default function LandlordMyPage() {
               월세
               <input inputMode="numeric" value={ownerForm.monthly} onChange={(event) => updateOwnerForm("monthly", event.target.value)} placeholder="만원 단위" />
             </label>
-          </div>
 
-          <div className="form-grid">
             <label>
               전세금
               <input inputMode="numeric" value={ownerForm.jeonse} onChange={(event) => updateOwnerForm("jeonse", event.target.value)} placeholder="전세일 때 입력" />
@@ -735,9 +735,7 @@ export default function LandlordMyPage() {
               관리비
               <input inputMode="numeric" value={ownerForm.maintenance} onChange={(event) => updateOwnerForm("maintenance", event.target.value)} placeholder="만원 단위" />
             </label>
-          </div>
 
-          <div className="form-grid">
             <label>
               전용면적
               <input inputMode="decimal" value={ownerForm.area} onChange={(event) => updateOwnerForm("area", event.target.value)} placeholder="m²" />
