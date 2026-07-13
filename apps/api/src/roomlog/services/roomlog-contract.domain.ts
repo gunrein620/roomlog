@@ -129,9 +129,21 @@ export class RoomlogContractDomain {
     if (room.landlordId !== input.landlordId) {
       throw new ForbiddenException("거래 계약 임대인의 호실만 계약으로 연결할 수 있습니다.");
     }
+    const monthlyRent = this.requireNonNegativeInteger(input.monthlyRent, "월세");
+    const depositKrw = this.requireNonNegativeInteger(input.depositKrw, "보증금");
 
     const contractId = `ct_trade_${input.tradeContractId}`;
     const deterministic = this.store.contracts.find((contract) => contract.id === contractId);
+    if (
+      deterministic &&
+      (
+        deterministic.roomId !== room.id ||
+        deterministic.managerId !== input.landlordId ||
+        deterministic.tenantId !== input.tenantId
+      )
+    ) {
+      throw new ConflictException("동일한 거래 계약 ID가 다른 계약 관계에 연결돼 있습니다.");
+    }
     const active = this.store.contracts.find(
       (contract) =>
         contract.id !== deterministic?.id &&
@@ -143,13 +155,6 @@ export class RoomlogContractDomain {
       throw new ConflictException("해당 호실에 다른 임차인의 활성 계약이 있습니다.");
     }
     if (deterministic) {
-      if (
-        deterministic.roomId !== room.id ||
-        deterministic.managerId !== input.landlordId ||
-        deterministic.tenantId !== input.tenantId
-      ) {
-        throw new ConflictException("동일한 거래 계약 ID가 다른 계약 관계에 연결돼 있습니다.");
-      }
       return this.presentContract(deterministic);
     }
 
@@ -165,7 +170,7 @@ export class RoomlogContractDomain {
       review: "pending",
       deletion: "none",
       valueSource: "unverified",
-      monthlyRent: this.requireNonNegativeInteger(input.monthlyRent, "월세"),
+      monthlyRent,
       optionInventory: [],
       createdAt,
       updatedAt: createdAt
@@ -176,7 +181,7 @@ export class RoomlogContractDomain {
     this.upsertExtractionItem(
       extraction,
       "보증금",
-      `${this.requireNonNegativeInteger(input.depositKrw, "보증금").toLocaleString("ko-KR")}원`,
+      `${depositKrw.toLocaleString("ko-KR")}원`,
       "money",
       false,
       "거래 계약 수락값"
@@ -248,7 +253,9 @@ export class RoomlogContractDomain {
       },
       manualValues: {
         deposit: this.extractionValue(extraction, "보증금") ?? "관리자 수동값 없음",
-        rent: contract.monthlyRent ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "관리자 수동값 없음",
+        rent: contract.monthlyRent !== undefined
+          ? `${contract.monthlyRent.toLocaleString("ko-KR")}원`
+          : "관리자 수동값 없음",
         maintenanceFee: contract.maintenanceFee
           ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
           : "관리자 수동값 없음",
@@ -367,7 +374,9 @@ export class RoomlogContractDomain {
     this.upsertExtractionItem(
       extraction,
       "월세",
-      contract.monthlyRent ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : undefined,
+      contract.monthlyRent !== undefined
+        ? `${contract.monthlyRent.toLocaleString("ko-KR")}원`
+        : undefined,
       "money"
     );
     this.upsertExtractionItem(
@@ -610,7 +619,7 @@ export class RoomlogContractDomain {
         "민감정보는 기본 마스킹 상태로 보관됩니다."
       ],
       items: [
-        { label: "월세", value: contract.monthlyRent ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
+        { label: "월세", value: contract.monthlyRent !== undefined ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
         { label: "관리비", value: contract.maintenanceFee ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
         { label: "납부일", value: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미확인", group: "money", needsCheck: true },
         { label: "계약 기간", value: `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`, group: "term", needsCheck: true },
