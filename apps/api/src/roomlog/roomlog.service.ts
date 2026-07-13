@@ -2982,7 +2982,12 @@ export class RoomlogService {
           (!contract.managerId || contract.managerId === managerId) &&
           contract.lifecycle === "active" &&
           contract.review === "confirmed" &&
-          contract.valueSource === "confirmed"
+          contract.valueSource === "confirmed" &&
+          (contract.monthlyRent ?? 0) + (contract.maintenanceFee ?? 0) > 0 &&
+          contract.paymentDay !== undefined &&
+          Number.isInteger(contract.paymentDay) &&
+          contract.paymentDay >= 1 &&
+          contract.paymentDay <= 31
       )
       .map((contract) => {
         const room = rooms.find((candidate) => candidate.id === contract.roomId)!;
@@ -3001,7 +3006,7 @@ export class RoomlogService {
           contractId: contract.id,
           monthlyRent: contract.monthlyRent ?? 0,
           maintenanceFee: contract.maintenanceFee ?? 0,
-          dueDate: this.billingDueDate(month, contract.paymentDay ?? 25),
+          dueDate: this.billingDueDate(month, contract.paymentDay!),
           duplicateBillId: duplicate?.id
         };
       })

@@ -869,6 +869,8 @@ export type UpdateManagerContractManualValuesInput = {
   monthlyRent?: number;
   maintenanceFee?: number;
   paymentDay?: number;
+  startDate?: string;
+  endDate?: string;
   account?: string;
 };
 

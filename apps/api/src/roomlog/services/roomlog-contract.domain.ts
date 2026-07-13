@@ -256,7 +256,7 @@ export class RoomlogContractDomain {
         rent: contract.monthlyRent !== undefined
           ? `${contract.monthlyRent.toLocaleString("ko-KR")}원`
           : "관리자 수동값 없음",
-        maintenanceFee: contract.maintenanceFee
+        maintenanceFee: contract.maintenanceFee !== undefined
           ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
           : "관리자 수동값 없음",
         paymentDay: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "관리자 수동값 없음",
@@ -286,6 +286,37 @@ export class RoomlogContractDomain {
       throw new BadRequestException("확인 필요 항목을 원문과 대조했다는 확인이 필요합니다.");
     }
 
+    if (!contract.startDate) {
+      throw new BadRequestException("계약 시작일을 입력해주세요.");
+    }
+    if (!contract.endDate) {
+      throw new BadRequestException("계약 종료일을 입력해주세요.");
+    }
+    if (contract.monthlyRent === undefined) {
+      throw new BadRequestException("월세를 입력해주세요.");
+    }
+    if (contract.maintenanceFee === undefined) {
+      throw new BadRequestException("관리비를 입력해주세요.");
+    }
+
+    const startDateKey = this.contractDateKey(contract.startDate, "계약 시작일");
+    const endDateKey = this.contractDateKey(contract.endDate, "계약 종료일");
+    if (this.timeOf(endDateKey) < this.timeOf(startDateKey)) {
+      throw new BadRequestException("계약 종료일은 시작일보다 빠를 수 없습니다.");
+    }
+    if (endDateKey < this.todayInSeoulKey()) {
+      throw new BadRequestException("이미 종료된 계약은 활성화할 수 없습니다.");
+    }
+
+    const totalAmount = contract.monthlyRent + contract.maintenanceFee;
+    if (totalAmount > 0) {
+      if (contract.paymentDay === undefined) {
+        throw new BadRequestException("납부일을 입력해주세요.");
+      }
+      this.requirePaymentDay(contract.paymentDay);
+    }
+
+    contract.lifecycle = "active";
     contract.review = "confirmed";
     contract.valueSource = "confirmed";
     contract.confirmedAt = now();
@@ -362,11 +393,24 @@ export class RoomlogContractDomain {
     input: UpdateManagerContractManualValuesInput
   ) {
     const contract = this.findManagerContract(managerId, contractId);
+    const monthlyRent = this.optionalNonNegativeInteger(input.monthlyRent, "월세");
+    const maintenanceFee = this.optionalNonNegativeInteger(input.maintenanceFee, "관리비");
+    const paymentDay = input.paymentDay === undefined
+      ? undefined
+      : this.requirePaymentDay(input.paymentDay);
+    const startDate = input.startDate === undefined
+      ? undefined
+      : this.optionalContractDate(input.startDate, "계약 시작일");
+    const endDate = input.endDate === undefined
+      ? undefined
+      : this.optionalContractDate(input.endDate, "계약 종료일");
     const extraction = this.ensureContractExtraction(contract);
 
-    contract.monthlyRent = this.positiveInteger(input.monthlyRent) ?? contract.monthlyRent;
-    contract.maintenanceFee = this.positiveInteger(input.maintenanceFee) ?? contract.maintenanceFee;
-    contract.paymentDay = this.paymentDay(input.paymentDay) ?? contract.paymentDay;
+    if (input.monthlyRent !== undefined) contract.monthlyRent = monthlyRent;
+    if (input.maintenanceFee !== undefined) contract.maintenanceFee = maintenanceFee;
+    if (input.paymentDay !== undefined) contract.paymentDay = paymentDay;
+    if (input.startDate !== undefined) contract.startDate = startDate;
+    if (input.endDate !== undefined) contract.endDate = endDate;
     contract.valueSource = "manual";
     contract.updatedAt = now();
 
@@ -382,7 +426,9 @@ export class RoomlogContractDomain {
     this.upsertExtractionItem(
       extraction,
       "관리비",
-      contract.maintenanceFee ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : undefined,
+      contract.maintenanceFee !== undefined
+        ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원`
+        : undefined,
       "money"
     );
     this.upsertExtractionItem(
@@ -391,6 +437,14 @@ export class RoomlogContractDomain {
       contract.paymentDay ? `매월 ${contract.paymentDay}일` : undefined,
       "money"
     );
+    if (input.startDate !== undefined || input.endDate !== undefined) {
+      this.upsertExtractionItem(
+        extraction,
+        "계약 기간",
+        `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`,
+        "term"
+      );
+    }
     this.upsertExtractionItem(extraction, "임대인 계좌", input.account, "money", true);
     this.persistStore();
 
@@ -620,7 +674,7 @@ export class RoomlogContractDomain {
       ],
       items: [
         { label: "월세", value: contract.monthlyRent !== undefined ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
-        { label: "관리비", value: contract.maintenanceFee ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
+        { label: "관리비", value: contract.maintenanceFee !== undefined ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : "미확인", group: "money", needsCheck: true },
         { label: "납부일", value: contract.paymentDay ? `매월 ${contract.paymentDay}일` : "미확인", group: "money", needsCheck: true },
         { label: "계약 기간", value: `${contract.startDate?.slice(0, 10) ?? "미확인"} ~ ${contract.endDate?.slice(0, 10) ?? "미확인"}`, group: "term", needsCheck: true },
         { label: "원상복구", value: "원문 확인 필요", group: "responsibility", needsCheck: true }
@@ -849,6 +903,50 @@ export class RoomlogContractDomain {
     }
 
     return value;
+  }
+
+  private optionalNonNegativeInteger(value: number | undefined, field: string) {
+    return value === undefined ? undefined : this.requireNonNegativeInteger(value, field);
+  }
+
+  private requirePaymentDay(value: number) {
+    if (!Number.isInteger(value) || value < 1 || value > 31) {
+      throw new BadRequestException("납부일은 1일부터 31일 사이의 정수여야 합니다.");
+    }
+
+    return value;
+  }
+
+  private optionalContractDate(value: string, field: string) {
+    if (!value.trim()) return undefined;
+
+    return this.contractDateKey(value, field);
+  }
+
+  private contractDateKey(value: string, field: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u.test(value)) {
+      throw new BadRequestException(`${field}은 YYYY-MM-DD 형식이어야 합니다.`);
+    }
+
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+      throw new BadRequestException(`${field}은 YYYY-MM-DD 형식이어야 합니다.`);
+    }
+
+    return value;
+  }
+
+  private todayInSeoulKey() {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(new Date());
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((candidate) => candidate.type === type)?.value;
+
+    return `${part("year")}-${part("month")}-${part("day")}`;
   }
 
   private paymentDay(value: number | undefined) {

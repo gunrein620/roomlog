@@ -9,6 +9,48 @@ function createTradeRoom(service: RoomlogService, title = "거래연결빌라") 
   });
 }
 
+function createTradeDraft(
+  service: RoomlogService,
+  tradeContractId: string,
+  monthlyRent = 650_000,
+) {
+  const room = createTradeRoom(service, `거래연결빌라-${tradeContractId}`);
+  const contract = service.ensureTradeContractDraft({
+    tradeContractId,
+    roomId: room.id,
+    tenantId: "tenant-demo",
+    landlordId: "landlord-demo",
+    landlordName: "박관리",
+    depositKrw: 10_000_000,
+    monthlyRent,
+  });
+
+  return { room, contract };
+}
+
+function createManagerDraft(service: RoomlogService, key: string) {
+  const room = createTradeRoom(service, `관리자계약빌라-${key}`);
+  const detail = service.createManagerContract("landlord-demo", {
+    roomId: room.id,
+    unitId: room.roomNo,
+  });
+
+  return { room, contract: detail.row.contract };
+}
+
+function todayInSeoulKey() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value;
+
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 describe("trade contract billing bridge", () => {
   it("creates one unverified billing contract draft on the exact assigned room", () => {
     const service = new RoomlogService();
@@ -50,6 +92,315 @@ describe("trade contract billing bridge", () => {
       store: { contractDocuments: Array<{ contractId: string }> };
     }).store;
     assert.equal(store.contractDocuments.some((document) => document.contractId === first.id), false);
+
+    assert.equal(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .options.some((option) => option.contractId === first.id),
+      false,
+    );
+
+    assert.throws(() => service.confirmManagerContractReview("landlord-demo", first.id, {
+      confirmNeedsCheck: true,
+    }), /계약 시작일/);
+    const failedConfirmation = service.getManagerContractDetail("landlord-demo", first.id);
+    assert.equal(failedConfirmation.row.contract.lifecycle, "analyzing");
+    assert.equal(failedConfirmation.row.contract.review, "pending");
+    assert.equal(failedConfirmation.row.contract.valueSource, "unverified");
+    assert.equal(failedConfirmation.extraction.confirmed, false);
+
+    const manualValues = {
+      deposit: "10,000,000원",
+      monthlyRent: 650_000,
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    };
+    const manuallyUpdated = service.updateManagerContractManualValues(
+      "landlord-demo",
+      first.id,
+      manualValues,
+    );
+    assert.equal(manuallyUpdated.manualValues.maintenanceFee, "0원");
+    assert.equal(
+      manuallyUpdated.extraction.items.find((item) => item.label === "관리비")?.value,
+      "0원",
+    );
+    assert.equal(
+      manuallyUpdated.extraction.items.find((item) => item.label === "계약 기간")?.value,
+      "2026-07-13 ~ 2099-07-12",
+    );
+
+    assert.throws(() => service.confirmManagerContractReview("landlord-demo", first.id, {
+      confirmNeedsCheck: false,
+    }), /원문과 대조/);
+    const stillPending = service.getManagerContractDetail("landlord-demo", first.id);
+    assert.equal(stillPending.row.contract.lifecycle, "analyzing");
+    assert.equal(stillPending.row.contract.review, "pending");
+    assert.equal(stillPending.row.contract.valueSource, "manual");
+    assert.equal(stillPending.extraction.confirmed, false);
+
+    const confirmed = service.confirmManagerContractReview("landlord-demo", first.id, {
+      confirmNeedsCheck: true,
+    });
+    assert.equal(confirmed.row.contract.lifecycle, "active");
+    assert.equal(confirmed.row.contract.review, "confirmed");
+    assert.equal(confirmed.row.contract.valueSource, "confirmed");
+
+    const option = service.getManagerBillCreationOptions(
+      "landlord-demo",
+      room.buildingName,
+      "2026-08",
+    ).options.find((candidate) => candidate.contractId === first.id);
+    assert.equal(option?.monthlyRent, 650_000);
+    assert.equal(option?.maintenanceFee, 0);
+    assert.equal(option?.dueDate, "2026-08-10");
+    assert.equal(
+      service.getManagerBillCreationOptions("multi-demo", undefined, "2026-08")
+        .options.some((candidate) => candidate.contractId === first.id),
+      false,
+    );
+  });
+
+  it("rejects a contract whose end date is earlier than its start date", () => {
+    const service = new RoomlogService();
+    const { contract } = createTradeDraft(service, "reversed-period");
+    const manualValues = {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2099-07-13",
+      endDate: "2099-07-12",
+    };
+    service.updateManagerContractManualValues("landlord-demo", contract.id, manualValues);
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: true,
+      }),
+      /종료일은 시작일보다 빠를 수 없습니다/,
+    );
+    const detail = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.equal(detail.row.contract.lifecycle, "analyzing");
+    assert.equal(detail.row.contract.review, "pending");
+    assert.equal(detail.row.contract.valueSource, "manual");
+    assert.equal(detail.extraction.confirmed, false);
+  });
+
+  it("rejects a contract that ended before the current Seoul calendar day", () => {
+    const service = new RoomlogService();
+    const { contract } = createTradeDraft(service, "expired-period");
+    const manualValues = {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "1999-01-01",
+      endDate: "2000-01-01",
+    };
+    service.updateManagerContractManualValues("landlord-demo", contract.id, manualValues);
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: true,
+      }),
+      /이미 종료된 계약/,
+    );
+    const detail = service.getManagerContractDetail("landlord-demo", contract.id);
+    assert.equal(detail.row.contract.lifecycle, "analyzing");
+    assert.equal(detail.row.contract.review, "pending");
+    assert.equal(detail.extraction.confirmed, false);
+  });
+
+  it("requires both rent and maintenance fee before confirmation", () => {
+    const rentMissingService = new RoomlogService();
+    const rentMissing = createManagerDraft(rentMissingService, "rent-missing").contract;
+    const maintenanceOnly = {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    };
+    rentMissingService.updateManagerContractManualValues(
+      "landlord-demo",
+      rentMissing.id,
+      maintenanceOnly,
+    );
+    assert.throws(
+      () => rentMissingService.confirmManagerContractReview("landlord-demo", rentMissing.id, {
+        confirmNeedsCheck: true,
+      }),
+      /월세를 입력/,
+    );
+
+    const feeMissingService = new RoomlogService();
+    const feeMissing = createManagerDraft(feeMissingService, "fee-missing").contract;
+    const rentOnly = {
+      monthlyRent: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    };
+    feeMissingService.updateManagerContractManualValues("landlord-demo", feeMissing.id, rentOnly);
+    assert.throws(
+      () => feeMissingService.confirmManagerContractReview("landlord-demo", feeMissing.id, {
+        confirmNeedsCheck: true,
+      }),
+      /관리비를 입력/,
+    );
+  });
+
+  it("confirms a zero-total contract through its inclusive end date but excludes it from billing", () => {
+    const service = new RoomlogService();
+    const { room, contract } = createTradeDraft(service, "zero-total", 0);
+    const manualValues = {
+      monthlyRent: 0,
+      maintenanceFee: 0,
+      startDate: "2000-01-01",
+      endDate: todayInSeoulKey(),
+    };
+    const updated = service.updateManagerContractManualValues(
+      "landlord-demo",
+      contract.id,
+      manualValues,
+    );
+
+    assert.equal(updated.manualValues.rent, "0원");
+    assert.equal(updated.manualValues.maintenanceFee, "0원");
+    const confirmed = service.confirmManagerContractReview("landlord-demo", contract.id, {
+      confirmNeedsCheck: true,
+    });
+    assert.equal(confirmed.row.contract.lifecycle, "active");
+    assert.equal(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .options.some((option) => option.contractId === contract.id),
+      false,
+    );
+  });
+
+  it("rejects a positive total without a payment day and excludes legacy invalid active data", () => {
+    const service = new RoomlogService();
+    const { room, contract } = createTradeDraft(service, "missing-payment-day");
+    const manualValues = {
+      maintenanceFee: 0,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    };
+    service.updateManagerContractManualValues("landlord-demo", contract.id, manualValues);
+
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: true,
+      }),
+      /납부일을 입력/,
+    );
+
+    const store = (service as unknown as {
+      store: { contracts: Array<{ id: string; lifecycle: string; review: string; valueSource: string }> };
+    }).store;
+    const legacyContract = store.contracts.find((candidate) => candidate.id === contract.id)!;
+    legacyContract.lifecycle = "active";
+    legacyContract.review = "confirmed";
+    legacyContract.valueSource = "confirmed";
+
+    assert.equal(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .options.some((option) => option.contractId === contract.id),
+      false,
+    );
+  });
+
+  it("requires a payment day from 1 through 31 for activation and billing", () => {
+    const service = new RoomlogService();
+    const { room, contract } = createTradeDraft(service, "invalid-payment-day");
+    const manualValues = {
+      maintenanceFee: 0,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    };
+    service.updateManagerContractManualValues("landlord-demo", contract.id, manualValues);
+
+    const invalidPaymentDay = { paymentDay: 32 };
+    assert.throws(
+      () => service.updateManagerContractManualValues(
+        "landlord-demo",
+        contract.id,
+        invalidPaymentDay,
+      ),
+      /납부일.*1.*31/,
+    );
+
+    const store = (service as unknown as {
+      store: {
+        contracts: Array<{
+          id: string;
+          lifecycle: string;
+          review: string;
+          valueSource: string;
+          paymentDay?: number;
+        }>;
+      };
+    }).store;
+    const legacyContract = store.contracts.find((candidate) => candidate.id === contract.id)!;
+    legacyContract.paymentDay = 32;
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: true,
+      }),
+      /납부일.*1.*31/,
+    );
+    assert.equal(
+      service.getManagerContractDetail("landlord-demo", contract.id).row.contract.lifecycle,
+      "analyzing",
+    );
+
+    legacyContract.lifecycle = "active";
+    legacyContract.review = "confirmed";
+    legacyContract.valueSource = "confirmed";
+    assert.equal(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .options.some((option) => option.contractId === contract.id),
+      false,
+    );
+  });
+
+  it("validates manual contract dates and clears a previous date when blank is entered", () => {
+    const service = new RoomlogService();
+    const { contract } = createTradeDraft(service, "manual-date-validation");
+    const validDates = {
+      maintenanceFee: 0,
+      paymentDay: 10,
+      startDate: "2026-07-13",
+      endDate: "2099-07-12",
+    };
+    service.updateManagerContractManualValues("landlord-demo", contract.id, validDates);
+
+    const invalidDate = { deposit: undefined, startDate: "2026/07/13" };
+    assert.throws(
+      () => service.updateManagerContractManualValues("landlord-demo", contract.id, invalidDate),
+      /계약 시작일.*YYYY-MM-DD/,
+    );
+
+    const impossibleDate = { deposit: undefined, endDate: "2026-02-30" };
+    assert.throws(
+      () => service.updateManagerContractManualValues("landlord-demo", contract.id, impossibleDate),
+      /계약 종료일.*YYYY-MM-DD/,
+    );
+
+    const blankDate = { deposit: undefined, startDate: "" };
+    const cleared = service.updateManagerContractManualValues(
+      "landlord-demo",
+      contract.id,
+      blankDate,
+    );
+    assert.equal(cleared.row.contract.startDate, undefined);
+    assert.equal(
+      cleared.extraction.items.find((item) => item.label === "계약 기간")?.value,
+      "미확인 ~ 2099-07-12",
+    );
+    assert.throws(
+      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
+        confirmNeedsCheck: true,
+      }),
+      /계약 시작일/,
+    );
   });
 
   it("does not leave partial draft state when deposit validation fails", () => {
