@@ -7295,6 +7295,21 @@ p {
   color: var(--ink);
 }
 
+.tenant-request-detail-sheet header {
+  align-items: flex-start;
+}
+
+.tenant-request-detail-sheet header span {
+  color: var(--blue);
+  font-weight: 900;
+}
+
+.tenant-request-detail-sheet header h2 {
+  margin-top: 6px;
+  font-size: clamp(1.8rem, 4vw, 2.3rem);
+  line-height: 1.05;
+}
+
 .tenant-request-type-toggle {
   display: flex;
   gap: 12px;
@@ -7315,6 +7330,18 @@ p {
   border-color: var(--blue);
   background: var(--blue-soft);
   color: var(--blue);
+}
+
+.tenant-request-detail-form .tenant-request-type-toggle button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.tenant-request-detail-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
+  align-items: end;
+  gap: 24px;
 }
 
 .tenant-request-row {
@@ -7346,6 +7373,15 @@ p {
 .tenant-request-form textarea {
   resize: vertical;
   min-height: 182px;
+}
+
+.tenant-request-detail-form input[readonly],
+.tenant-request-detail-form textarea[readonly] {
+  cursor: default;
+}
+
+.tenant-request-detail-form .tenant-request-body-field textarea {
+  min-height: 320px;
 }
 
 .tenant-request-image-strip {
@@ -7397,6 +7433,11 @@ p {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.tenant-request-image-file {
+  display: grid;
+  place-items: center;
 }
 
 .tenant-request-image-preview button {
@@ -7456,6 +7497,15 @@ p {
 }
 
 @media (max-width: 640px) {
+  .tenant-request-detail-meta-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .tenant-request-detail-form .tenant-request-body-field textarea {
+    min-height: 220px;
+  }
+
   .tenant-request-row {
     grid-template-columns: 1fr;
   }

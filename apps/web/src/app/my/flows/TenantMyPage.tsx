@@ -29,6 +29,8 @@ const EMPTY_REQUEST_DRAFT = {
   description: ""
 };
 
+type TenantRequestCategory = "민원" | "하자";
+
 type TenantContractSummary = {
   listingId?: string;
   threadId: string;
@@ -60,9 +62,37 @@ type TenantListingPhotoSummary = {
 type TenantRepairRequest = {
   id: string;
   title: string;
+  category: TenantRequestCategory;
+  description: string;
+  location?: string;
+  occurredAt?: string;
+  createdAt?: string;
+  attachments: TenantRepairAttachment[];
   /** 서버 티켓 표시 상태(접수됨/검토중/업체 배정…) 그대로 */
   status: string;
   date?: string;
+};
+
+type TenantRepairAttachment = {
+  name: string;
+  url?: string;
+};
+
+type TenantComplaintMessage = {
+  messageText?: string;
+  attachmentUrls?: string[];
+};
+
+type TenantComplaintResponse = {
+  id: string;
+  title: string;
+  description?: string;
+  location?: string;
+  occurredAt?: string;
+  createdAt?: string;
+  displayStatus?: string;
+  status?: string;
+  messages?: TenantComplaintMessage[];
 };
 
 type RequestImagePreview = {
@@ -120,6 +150,86 @@ function billingDateLabel(iso?: string): string {
   const month = parts.find((part) => part.type === "month")?.value;
   const day = parts.find((part) => part.type === "day")?.value;
   return year && month && day ? `${year}.${month}.${day}` : "정보 없음";
+}
+
+function repairDateLabel(iso?: string): string {
+  if (!iso) return "일자 확인 중";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "일자 확인 중";
+  return iso.slice(0, 10).replaceAll("-", ".");
+}
+
+function repairDateTimeLabel(iso?: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(date);
+}
+
+function parseTenantRequestDescription(rawDescription?: string) {
+  let text = (rawDescription ?? "").trim();
+  let category: TenantRequestCategory = "민원";
+
+  const categoryMatch = text.match(/^\[(민원|하자)\]\s*/);
+  if (categoryMatch) {
+    category = categoryMatch[1] as TenantRequestCategory;
+    text = text.slice(categoryMatch[0].length).trim();
+  }
+
+  const attachmentNames: string[] = [];
+  const bodyLines: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const imageLineMatch = trimmed.match(/^(첨부 이미지|.*이미지|.*吏)\s*:\s*(.+)$/);
+    const hasImageFileName = /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(trimmed);
+    if (imageLineMatch || (trimmed.includes(":") && hasImageFileName)) {
+      const names = (imageLineMatch?.[2] ?? trimmed.split(":").slice(1).join(":"))
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+      attachmentNames.push(...names);
+      continue;
+    }
+    bodyLines.push(line);
+  }
+
+  return {
+    category,
+    description: bodyLines.join("\n").trim(),
+    attachmentNames
+  };
+}
+
+function normalizeTenantRepairRequest(item: TenantComplaintResponse): TenantRepairRequest {
+  const parsedDescription = parseTenantRequestDescription(item.description);
+  const attachmentUrls = (item.messages ?? [])
+    .flatMap((message) => message.attachmentUrls ?? [])
+    .filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+  const attachments: TenantRepairAttachment[] = [
+    ...attachmentUrls.map((url) => ({ name: url.split("/").pop() || "첨부 이미지", url })),
+    ...parsedDescription.attachmentNames.map((name) => ({ name }))
+  ];
+
+  return {
+    id: item.id,
+    title: item.title,
+    category: parsedDescription.category,
+    description: parsedDescription.description,
+    location: item.location,
+    occurredAt: item.occurredAt,
+    createdAt: item.createdAt,
+    attachments,
+    status: item.displayStatus ?? item.status ?? "접수됨",
+    date: repairDateLabel(item.createdAt)
+  };
 }
 
 function formatNumber(amount: number): string {
@@ -356,18 +466,13 @@ export default function TenantMyPage({
     try {
       const res = await fetch("/api/tenant/complaints", { cache: "no-store" });
       if (!res.ok) return; // 비로그인/집 미연결 — 빈 목록 유지
-      const complaints = (await res.json()) as Array<{
-        id: string;
-        title: string;
-        displayStatus?: string;
-        createdAt?: string;
-      }>;
+      const complaints = (await res.json()) as TenantComplaintResponse[];
       if (!Array.isArray(complaints)) return;
       setRepairRequests(
         complaints
           .slice()
           .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
-          .map((item) => ({ id: item.id, title: item.title, status: item.displayStatus ?? "접수됨", date: item.createdAt?.slice(0, 10).replaceAll("-", ".") }))
+          .map(normalizeTenantRepairRequest)
       );
     } catch {
       // 일시 오류 — 접수 시점에 다시 채워진다
@@ -388,6 +493,9 @@ export default function TenantMyPage({
   const requestImagesRef = useRef<RequestImagePreview[]>([]);
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
+  const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
+  const [isRepairDetailLoading, setIsRepairDetailLoading] = useState(false);
+  const [repairDetailError, setRepairDetailError] = useState("");
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
   const [aiMode, setAiMode] = useState<TenantAiMode>("text");
@@ -497,6 +605,7 @@ export default function TenantMyPage({
     title: item.title,
     status: item.status,
     date: item.date ?? "일자 확인 중",
+    request: item,
     Icon: index % 2 === 0 ? Snowflake : Bath,
     tone: index % 2 === 0 ? "warm" : "neutral"
   }));
@@ -506,10 +615,41 @@ export default function TenantMyPage({
       : announcementState.status === "error"
         ? "공지사항을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요."
         : "임대인으로부터 전달된 새로운 소식이 없습니다.";
+  const selectedRepairOccurredAtLabel = selectedRepairRequest
+    ? repairDateTimeLabel(selectedRepairRequest.occurredAt ?? selectedRepairRequest.createdAt)
+    : "";
+  const selectedRepairBody = selectedRepairRequest?.description.trim() || "본문 내용이 없습니다.";
+  const selectedRepairPhotos =
+    selectedRepairRequest?.attachments.filter((attachment): attachment is TenantRepairAttachment & { url: string } =>
+      typeof attachment.url === "string" && attachment.url.trim().length > 0
+    ) ?? [];
 
   const openRequestSheet = () => {
     setRequestError("");
     setIsRequestSheetOpen(true);
+  };
+
+  const openRepairDetailSheet = async (request: TenantRepairRequest) => {
+    setSelectedRepairRequest(request);
+    setRepairDetailError("");
+    setIsRepairDetailLoading(true);
+
+    try {
+      const res = await fetch(`/api/tenant/complaints/${encodeURIComponent(request.id)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("민원/하자 상세 조회 실패");
+      const detail = (await res.json()) as TenantComplaintResponse;
+      setSelectedRepairRequest(normalizeTenantRepairRequest(detail));
+    } catch {
+      setRepairDetailError("상세 내용을 불러오지 못했습니다. 목록에 남아있는 접수 정보만 표시합니다.");
+    } finally {
+      setIsRepairDetailLoading(false);
+    }
+  };
+
+  const closeRepairDetailSheet = () => {
+    setSelectedRepairRequest(null);
+    setRepairDetailError("");
+    setIsRepairDetailLoading(false);
   };
 
   useEffect(() => {
@@ -718,7 +858,7 @@ export default function TenantMyPage({
           {repairHistory.map((item, index) => {
             const ItemIcon = item.Icon;
             return (
-              <button className="tenant-history-row" type="button" key={item.id} onClick={onGoInquiry}>
+              <button className="tenant-history-row" type="button" key={item.id} onClick={() => openRepairDetailSheet(item.request)}>
                 <span className={`tenant-history-icon ${item.tone}`} aria-hidden="true">
                   <ItemIcon size={20} strokeWidth={2.4} />
                 </span>
@@ -1015,6 +1155,80 @@ export default function TenantMyPage({
             <button className="notification-action" type="button" onClick={() => setIsContractSheetOpen(false)}>
               확인
             </button>
+          </section>
+        </div>
+      ) : null}
+
+      {selectedRepairRequest ? (
+        <div className="notification-sheet-backdrop" role="presentation" onClick={closeRepairDetailSheet}>
+          <section
+            className="notification-sheet tenant-request-sheet tenant-request-detail-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-request-detail-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sheet-handle" aria-hidden="true" />
+            <header>
+              <div>
+                <span>민원/하자 접수 내용</span>
+                <h2 id="tenant-request-detail-title">{selectedRepairRequest.title}</h2>
+              </div>
+              <button type="button" onClick={closeRepairDetailSheet} aria-label="접수 내용 닫기">
+                <X size={18} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            </header>
+
+            {repairDetailError ? <p className="tenant-request-error" role="alert">{repairDetailError}</p> : null}
+
+            <div className="tenant-request-form tenant-request-detail-form">
+              <div className="tenant-request-detail-meta-row">
+                <div className="tenant-request-type-toggle" role="group" aria-label="요청 유형">
+                  {(["민원", "하자"] as const).map((category) => (
+                    <button
+                      key={category}
+                      className={selectedRepairRequest.category === category ? "active" : ""}
+                      type="button"
+                      disabled
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+                <label className="tenant-request-date-field">
+                  <span>발생일시</span>
+                  <input type="text" value={selectedRepairOccurredAtLabel} placeholder="연도-월-일 --:--" readOnly />
+                </label>
+              </div>
+
+              <label className="tenant-request-body-field">
+                <span>본문 내용</span>
+                <textarea value={selectedRepairBody} rows={6} readOnly />
+              </label>
+
+              {selectedRepairRequest.location ? (
+                <label className="tenant-request-title-field">
+                  <span>발생 위치</span>
+                  <input type="text" value={selectedRepairRequest.location} readOnly />
+                </label>
+              ) : null}
+
+              {selectedRepairPhotos.length > 0 ? (
+                <div className="tenant-request-image-strip" aria-label="첨부 이미지">
+                  {selectedRepairPhotos.map((attachment) => (
+                    <div className="tenant-request-image-preview tenant-request-image-file" key={attachment.url}>
+                      <img src={attachment.url} alt={`${attachment.name} 첨부 이미지`} />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="tenant-request-actions">
+                <button className="primary" type="button" onClick={closeRepairDetailSheet}>
+                  닫기
+                </button>
+              </div>
+            </div>
           </section>
         </div>
       ) : null}
