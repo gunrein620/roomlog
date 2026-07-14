@@ -11482,6 +11482,93 @@ p {
   }
 }
 
+/* 매물 등록 결과 팝업 — 성공/실패를 중앙 모달로 알리고, 성공 확인 시 홈 피드로 이동 */
+.listing-result-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 88;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(18, 24, 40, 0.44);
+}
+
+.listing-result-dialog {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(100%, 384px);
+  padding: 30px 26px 22px;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 24px 48px rgba(18, 24, 40, 0.26);
+  text-align: center;
+  animation: listing-result-in 0.22s ease;
+}
+
+@keyframes listing-result-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.listing-result-icon {
+  display: inline-grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.listing-result-dialog.is-success .listing-result-icon {
+  background: #e7f7ee;
+  color: #12934f;
+}
+
+.listing-result-dialog.is-error .listing-result-icon {
+  background: #fdecec;
+  color: #d43c3c;
+}
+
+.listing-result-dialog h2 {
+  margin: 0;
+  font-size: 1.22rem;
+}
+
+.listing-result-dialog p {
+  margin: 0;
+  color: #5b6472;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.listing-result-dialog > button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.listing-result-dialog.is-success > button {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.listing-result-dialog.is-error > button {
+  background: #f3f5f8;
+  color: #1f2632;
+}
+
 .profile-activity-grid article[role="button"],
 .profile-summary-list article[role="button"] {
   position: relative;
@@ -12514,6 +12601,125 @@ p {
   background: var(--paper);
   font-size: 0.76rem;
   font-weight: 900;
+}
+
+/* ── 계약 바 — 채팅 상단에서 양쪽 모두에게 항상 보이는 계약 액션 ──
+   집주인: "계약 제안하기" / 세입자: "제안 수락"(제안 전엔 잠김, 제안 오면 둥둥 활성화) */
+.contract-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.contract-bar.is-open {
+  background: #eef2fb;
+}
+
+.contract-bar.is-done {
+  background: #e8f7ee;
+  color: #136c34;
+}
+
+.contract-bar-stack {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.contract-bar-note {
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.contract-bar.is-open .contract-bar-note {
+  color: #31406a;
+}
+
+.contract-bar-sub {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.contract-bar-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 주 액션 버튼 — 시인성을 위해 크고 진하게, 그림자로 띄운다 */
+.contract-cta {
+  flex: none;
+  min-height: 42px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.84rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(47, 85, 255, 0.28);
+}
+
+.contract-cta:disabled {
+  background: #e3e8f1;
+  color: #96a1b5;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* 제안 도착 — 위아래로 둥둥 떠서 눌러달라고 신호를 보낸다 */
+.contract-cta.is-live {
+  animation: contract-cta-bob 1.4s ease-in-out infinite;
+}
+
+@keyframes contract-cta-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.contract-ghost-btn {
+  flex: none;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.contract-ghost-btn.is-danger {
+  border-color: #e6b3b3;
+  color: #b42222;
+}
+
+.contract-ghost-btn:disabled,
+.contract-cta.is-live:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contract-cta.is-live {
+    animation: none;
+  }
 }
 
 .trade-chat-scroll {

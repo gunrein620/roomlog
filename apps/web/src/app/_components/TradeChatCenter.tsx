@@ -68,28 +68,8 @@ function contractTermsLabel(contract: TradeContract): string {
   return `${contract.tradeType} ${deposit}만`;
 }
 
-const contractBarStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  padding: "9px 14px",
-  borderBottom: "1px solid var(--line)",
-  fontSize: "0.8rem",
-  fontWeight: 800
-} as const;
-
-const contractSmallBtnStyle = {
-  flex: "none",
-  minHeight: 32,
-  padding: "0 12px",
-  borderRadius: 999,
-  border: "1px solid var(--line)",
-  background: "#ffffff",
-  fontSize: "0.76rem",
-  fontWeight: 900,
-  cursor: "pointer"
-} as const;
+// 계약 바 스타일은 globals.css의 .contract-bar / .contract-cta 계열 클래스가 담당한다
+// — 세입자 수락 버튼의 둥둥 애니메이션(keyframes) 때문에 인라인 스타일 대신 클래스를 쓴다.
 
 // 말풍선 옆 시각 — 날짜는 날짜 구분칩이 담당하므로 시각만
 function timeLabel(iso: string): string {
@@ -486,46 +466,81 @@ export function TradeChatCenter({
     const contractClosed = openContract?.status === "declined" || openContract?.status === "cancelled";
     const canPropose = iAmOwner && Boolean(openThread.listingId) && (!openContract || contractClosed);
 
+    // 계약 바 — 양쪽 모두에게 항상 보인다. 집주인은 "계약 제안하기",
+    // 세입자는 "제안 수락"이 잠긴 채 대기하다가 제안이 오면 둥둥 뜨며 활성화된다.
     const contractBar = (() => {
       if (openContract?.status === "accepted") {
         return (
-          <div style={{ ...contractBarStyle, background: "#e8f7ee", color: "#136c34" }} role="status">
-            ✅ 계약 체결됨 — {contractTermsLabel(openContract)}
-            {!iAmOwner ? " · 마이페이지 ‘나의 집’에서 확인하세요" : ""}
+          <div className="contract-bar is-done" role="status">
+            <strong className="contract-bar-note">
+              ✅ 계약 체결됨 — {contractTermsLabel(openContract)}
+              {!iAmOwner ? " · 마이페이지 ‘나의 집’에서 확인하세요" : ""}
+            </strong>
           </div>
         );
       }
-      if (openContract?.status === "proposed" && iAmOwner) {
-        return (
-          <div style={{ ...contractBarStyle, background: "#eef2fb", color: "#31406a" }} role="status">
-            <span style={{ minWidth: 0 }}>📋 계약 제안 중 — {contractTermsLabel(openContract)} · {openThread.buyerName}님 수락 대기</span>
-            <button
-              type="button"
-              disabled={isContractBusy}
-              onClick={() =>
-                runContractAction(
-                  `/api/trade/contracts/${openContract.id}/cancel`,
-                  {},
-                  "계약 제안을 취소할까요?"
-                )
-              }
-              style={{ ...contractSmallBtnStyle, color: "#b42222", borderColor: "#e6b3b3" }}
-            >
-              제안 취소
-            </button>
-          </div>
-        );
-      }
-      if (openContract?.status === "proposed" && openContract.tenantId === myUserId) {
-        return (
-          <div style={{ display: "grid", gap: 8, padding: "12px 14px", borderBottom: "1px solid var(--line)", background: "#eef2fb" }} role="status">
-            <strong style={{ fontSize: "0.88rem", color: "#31406a" }}>🤝 집주인이 계약을 제안했어요 — {contractTermsLabel(openContract)}</strong>
-            <span style={{ color: "var(--muted)", fontSize: "0.76rem", fontWeight: 700 }}>
-              수락하면 계약이 체결되고, 이 집이 마이페이지 ‘나의 집’으로 연결됩니다.
-            </span>
-            <div style={{ display: "flex", gap: 8 }}>
+
+      if (iAmOwner) {
+        if (openContract?.status === "proposed") {
+          return (
+            <div className="contract-bar is-open" role="status">
+              <div className="contract-bar-stack">
+                <strong className="contract-bar-note">📋 계약을 제안했어요 — {contractTermsLabel(openContract)}</strong>
+                <span className="contract-bar-sub">{openThread.buyerName}님이 수락하면 계약이 체결됩니다.</span>
+              </div>
               <button
                 type="button"
+                className="contract-ghost-btn is-danger"
+                disabled={isContractBusy}
+                onClick={() =>
+                  runContractAction(
+                    `/api/trade/contracts/${openContract.id}/cancel`,
+                    {},
+                    "계약 제안을 취소할까요?"
+                  )
+                }
+              >
+                제안 취소
+              </button>
+            </div>
+          );
+        }
+        if (canPropose) {
+          return (
+            <div className="contract-bar">
+              <span className="contract-bar-sub">마음이 맞았다면 계약을 제안해 보세요 — 상대가 수락하면 체결됩니다.</span>
+              <button
+                type="button"
+                className="contract-cta"
+                disabled={isContractBusy}
+                onClick={() =>
+                  runContractAction(
+                    "/api/trade/contracts",
+                    { threadId: openThread.id },
+                    `${openThread.buyerName}님에게 '${openThread.listingTitle}' 계약을 제안할까요?\n상대가 수락하면 계약이 체결됩니다.`
+                  )
+                }
+              >
+                🤝 계약 제안하기
+              </button>
+            </div>
+          );
+        }
+        return null;
+      }
+
+      // 세입자(문의자) 쪽
+      if (openContract?.status === "proposed" && openContract.tenantId === myUserId) {
+        return (
+          <div className="contract-bar is-open" role="status">
+            <div className="contract-bar-stack">
+              <strong className="contract-bar-note">🤝 집주인이 계약을 제안했어요 — {contractTermsLabel(openContract)}</strong>
+              <span className="contract-bar-sub">수락하면 계약이 체결되고, 이 집이 마이페이지 ‘나의 집’으로 연결됩니다.</span>
+            </div>
+            <div className="contract-bar-actions">
+              <button
+                type="button"
+                className="contract-cta is-live"
                 disabled={isContractBusy}
                 onClick={() =>
                   runContractAction(
@@ -534,12 +549,12 @@ export function TradeChatCenter({
                     `'${openContract.listingTitle}' 계약을 수락할까요?\n${contractTermsLabel(openContract)} 조건으로 계약이 체결됩니다.`
                   )
                 }
-                style={{ flex: 1, minHeight: 40, borderRadius: 10, background: "var(--blue)", color: "#ffffff", fontWeight: 900, fontSize: "0.84rem", opacity: isContractBusy ? 0.5 : 1 }}
               >
-                수락하기
+                ✅ 제안 수락
               </button>
               <button
                 type="button"
+                className="contract-ghost-btn"
                 disabled={isContractBusy}
                 onClick={() =>
                   runContractAction(
@@ -548,7 +563,6 @@ export function TradeChatCenter({
                     "계약 제안을 거절할까요?"
                   )
                 }
-                style={{ ...contractSmallBtnStyle, minHeight: 40, padding: "0 16px" }}
               >
                 거절
               </button>
@@ -556,30 +570,14 @@ export function TradeChatCenter({
           </div>
         );
       }
-      if (canPropose) {
-        return (
-          <div style={{ ...contractBarStyle, background: "var(--paper)" }}>
-            <span style={{ color: "var(--muted)", fontSize: "0.76rem", fontWeight: 700 }}>
-              이 분과 계약을 진행하시겠어요?
-            </span>
-            <button
-              type="button"
-              disabled={isContractBusy}
-              onClick={() =>
-                runContractAction(
-                  "/api/trade/contracts",
-                  { threadId: openThread.id },
-                  `${openThread.buyerName}님에게 '${openThread.listingTitle}' 계약을 제안할까요?\n상대가 수락하면 계약이 체결됩니다.`
-                )
-              }
-              style={{ ...contractSmallBtnStyle, background: "var(--blue)", color: "#ffffff", border: "none" }}
-            >
-              🤝 이 분과 계약하기
-            </button>
-          </div>
-        );
-      }
-      return null;
+      return (
+        <div className="contract-bar" role="status">
+          <span className="contract-bar-sub">집주인이 계약을 제안하면 수락 버튼이 켜집니다.</span>
+          <button type="button" className="contract-cta" disabled title="집주인의 계약 제안을 기다리는 중">
+            제안 수락
+          </button>
+        </div>
+      );
     })();
 
     let lastDay = "";
