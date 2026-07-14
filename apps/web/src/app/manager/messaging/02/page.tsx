@@ -14,7 +14,6 @@ import {
   Card,
   CATEGORY_LABEL,
   LinkButton,
-  MetaRow,
   NoticeCard,
   SCOPE_LABEL,
   ScreenHeader,
@@ -43,6 +42,28 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const attachedTranslation = findAttachedTranslation(draft);
   const finalLanguage = attachedTranslation?.langLabel ?? "한국어";
   const recipientState = announcementRecipientState(recipients.length);
+  const reviewActions = (
+    <div
+      data-testid="announcement-review-actions"
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: "var(--space-sm)",
+        flexWrap: "wrap",
+        marginTop: "var(--space-md)",
+      }}
+    >
+      <div style={{ display: "grid", width: "min(280px, 100%)" }}>
+        <StaticButton>체크 완료</StaticButton>
+      </div>
+      <div style={{ width: "min(280px, 100%)" }}>
+        <AnnouncementSendForm
+          draftId={draft.id}
+          canSend={recipientState.canSend}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -52,87 +73,67 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         actions={<LinkButton href={`${MANAGER_MESSAGING_ROUTES["M-MSG-01"]}?id=${draft.id}`} variant="secondary">수정</LinkButton>}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: "var(--space-lg)", alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
-          <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
-            <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-              <Badge emphasis={isUrgent}>{CATEGORY_LABEL[draft.category]}</Badge>
-              <Badge>{SCOPE_LABEL[draft.scope]}</Badge>
-              <Badge>{draft.targetLabel}</Badge>
-              {resend ? <Badge emphasis>재발송 수신자 재산정</Badge> : null}
-            </div>
-            <div style={{ fontSize: "var(--fs-title)", fontWeight: 800, lineHeight: "var(--lh-title)" }}>
-              {draft.title}
-            </div>
-            <p style={{ margin: 0, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{draft.body}</p>
-          </Card>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
+        <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+          <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+            <Badge emphasis={isUrgent}>{CATEGORY_LABEL[draft.category]}</Badge>
+            <Badge>{SCOPE_LABEL[draft.scope]}</Badge>
+            <Badge>{draft.targetLabel}</Badge>
+            {resend ? <Badge emphasis>재발송 수신자 재산정</Badge> : null}
+          </div>
+          <div style={{ fontSize: "var(--fs-title)", fontWeight: 800, lineHeight: "var(--lh-title)" }}>
+            {draft.title}
+          </div>
+          <p style={{ margin: 0, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{draft.body}</p>
+        </Card>
 
+        <Card>
+          <div style={sectionTitleStyle}>수신자 명단 · 데스크탑 본체</div>
+          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+            {recipientState.canSend ? (
+              recipients.map((recipient) => (
+                <div
+                  key={`${recipient.unitId}-${recipient.tenantName}`}
+                  style={{
+                    minHeight: 48,
+                    display: "grid",
+                    gridTemplateColumns: "96px 1fr 120px",
+                    alignItems: "center",
+                    gap: "var(--space-sm)",
+                    borderBottom: "1px solid var(--border)",
+                    fontSize: "var(--fs-caption)",
+                  }}
+                >
+                  <strong>{recipient.unitId}호</strong>
+                  <span>{recipient.tenantName}</span>
+                  <Badge>{recipient.preferredLang}</Badge>
+                </div>
+              ))
+            ) : (
+              <NoticeCard title="발송 가능한 수신자 없음">
+                {recipientState.emptyMessage}
+              </NoticeCard>
+            )}
+          </div>
+        </Card>
+
+        {!isUrgent ? reviewActions : null}
+
+        {isUrgent ? (
           <Card>
-            <div style={sectionTitleStyle}>수신자 명단 · 데스크탑 본체</div>
-            <div style={{ display: "grid", gap: "var(--space-sm)" }}>
-              {recipientState.canSend ? (
-                recipients.map((recipient) => (
-                  <div
-                    key={`${recipient.unitId}-${recipient.tenantName}`}
-                    style={{
-                      minHeight: 48,
-                      display: "grid",
-                      gridTemplateColumns: "96px 1fr 120px",
-                      alignItems: "center",
-                      gap: "var(--space-sm)",
-                      borderBottom: "1px solid var(--border)",
-                      fontSize: "var(--fs-caption)",
-                    }}
-                  >
-                    <strong>{recipient.unitId}호</strong>
-                    <span>{recipient.tenantName}</span>
-                    <Badge>{recipient.preferredLang}</Badge>
-                  </div>
-                ))
-              ) : (
-                <NoticeCard title="발송 가능한 수신자 없음">
-                  {recipientState.emptyMessage}
-                </NoticeCard>
-              )}
-            </div>
-          </Card>
-
-          {isUrgent ? (
-            <Card>
-              <div style={sectionTitleStyle}>최종 발송 언어</div>
-              <Card style={{ background: "var(--surface-container)" }}>
-                <Badge emphasis>{finalLanguage}</Badge>
-                <div style={{ marginTop: "var(--space-sm)", fontWeight: 800 }}>
-                  {draft.title}
-                </div>
-                <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-                  {draft.body}
-                </div>
-              </Card>
+            <div style={sectionTitleStyle}>최종 발송 언어</div>
+            <Card style={{ background: "var(--surface-container)" }}>
+              <Badge emphasis>{finalLanguage}</Badge>
+              <div style={{ marginTop: "var(--space-sm)", fontWeight: 800 }}>
+                {draft.title}
+              </div>
+              <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+                {draft.body}
+              </div>
             </Card>
-          ) : null}
-        </div>
-
-        <aside style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
-          <NoticeCard title="폰 read-only 미리보기">
-            대량 명단 검토와 승인 발송은 데스크탑 본체에서만 진행합니다. 폰은 미리보기와 웹 딥링크만 제공합니다.
-          </NoticeCard>
-          <Card>
-            <div style={sectionTitleStyle}>문구 톤 체크</div>
-            <MetaRow label="미납 타깃" value="없음" />
-            <MetaRow label="독촉 문구" value="없음" />
-            <MetaRow label="확인 정책" value={draft.confirmRequired ? "확인 게이트" : "읽음"} />
-            <MetaRow label="최종 언어" value={finalLanguage} />
+            {reviewActions}
           </Card>
-          <NoticeCard title="확인 게이트" emphasis>
-            발송은 이 화면의 승인 이후에만 진행됩니다. 작성 화면에서 자동 발송하지 않습니다.
-          </NoticeCard>
-          <StaticButton>체크 완료</StaticButton>
-          <AnnouncementSendForm
-            draftId={draft.id}
-            canSend={recipientState.canSend}
-          />
-        </aside>
+        ) : null}
       </div>
     </>
   );
