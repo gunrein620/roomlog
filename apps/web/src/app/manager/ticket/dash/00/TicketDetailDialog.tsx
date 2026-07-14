@@ -4,7 +4,7 @@
 // 행에 이미 실려 온 티켓+수리 데이터를 그대로 사용(추가 조회 없음), 깊은 작업은 상세 페이지 링크로 이어간다.
 import Link from "next/link";
 import { X } from "lucide-react";
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from "react";
 import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import {
   ticketDashHref,
@@ -15,6 +15,7 @@ import {
   defectDisplayStatus,
   formatDefectDate,
   formatDefectMoney,
+  resolveManagerAttachmentUrl,
   type DefectDashboardRow,
 } from "./ticket-dashboard-model";
 
@@ -36,6 +37,17 @@ function formatCreatedAt(iso: string): string {
   }).format(date);
 }
 
+function attachmentFileName(url: string) {
+  const pathName = url.split(/[?#]/, 1)[0];
+  const encodedName = pathName.split("/").filter(Boolean).at(-1) ?? "첨부 이미지";
+
+  try {
+    return decodeURIComponent(encodedName);
+  } catch {
+    return encodedName;
+  }
+}
+
 export function TicketDetailDialog({
   row,
   onClose,
@@ -44,6 +56,11 @@ export function TicketDetailDialog({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [selectedAttachmentUrl, setSelectedAttachmentUrl] = useState<string | null>(null);
+  const [failedAttachmentUrls, setFailedAttachmentUrls] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -52,13 +69,58 @@ export function TicketDetailDialog({
     if (!row && dialog.open) dialog.close();
   }, [row]);
 
+  useEffect(() => {
+    setSelectedAttachmentUrl(null);
+    setFailedAttachmentUrls(new Set());
+  }, [row?.ticket.id]);
+
+  useEffect(() => {
+    if (!selectedAttachmentUrl) return;
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedAttachmentUrl(null);
+        window.requestAnimationFrame(() => previewTriggerRef.current?.focus());
+      }
+    }
+
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => document.removeEventListener("keydown", closeOnEscape, true);
+  }, [selectedAttachmentUrl]);
+
   function closeOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
     if (!isDialogBackdropPoint(event, event.currentTarget.getBoundingClientRect())) return;
     onClose();
   }
 
+  function closePreview() {
+    setSelectedAttachmentUrl(null);
+    window.requestAnimationFrame(() => previewTriggerRef.current?.focus());
+  }
+
+  function closePreviewOnBackdrop(event: MouseEvent<HTMLDivElement>) {
+    event.stopPropagation();
+    if (event.target === event.currentTarget) closePreview();
+  }
+
+  function keepDialogOpenForPreview(event: SyntheticEvent<HTMLDialogElement>) {
+    if (!selectedAttachmentUrl) return;
+    event.preventDefault();
+    closePreview();
+  }
+
+  function markAttachmentFailed(url: string) {
+    setFailedAttachmentUrls((current) => new Set(current).add(url));
+    setSelectedAttachmentUrl((current) => (current === url ? null : current));
+  }
+
   if (!row) return null;
   const { ticket, repair } = row;
+  const selectedPreviewUrl = selectedAttachmentUrl
+    ? resolveManagerAttachmentUrl(selectedAttachmentUrl)
+    : null;
 
   return (
     <dialog
@@ -67,6 +129,7 @@ export function TicketDetailDialog({
       aria-labelledby="manager-ticket-dialog-title"
       onClick={closeOnBackdrop}
       onClose={onClose}
+      onCancel={keepDialogOpenForPreview}
     >
       <article className="manager-ticket-dialog__body">
         <header className="manager-ticket-dialog__header">
@@ -120,11 +183,76 @@ export function TicketDetailDialog({
           <p>{ticket.description || "세입자가 남긴 상세 설명이 없습니다."}</p>
         </section>
 
+        {(row.attachmentUrls?.length ?? 0) > 0 && (
+          <section
+            className="manager-ticket-dialog__attachments"
+            aria-labelledby="manager-ticket-dialog-attachments-title"
+          >
+            <h3 id="manager-ticket-dialog-attachments-title">첨부 이미지</h3>
+            <div className="manager-ticket-dialog__attachment-list">
+              {row.attachmentUrls?.map((attachmentUrl) => {
+                const previewUrl = resolveManagerAttachmentUrl(attachmentUrl);
+                const fileName = attachmentFileName(attachmentUrl);
+
+                return failedAttachmentUrls.has(attachmentUrl) ? (
+                  <a
+                    className="manager-ticket-dialog__attachment-fallback"
+                    href={previewUrl}
+                    key={attachmentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {fileName}
+                  </a>
+                ) : (
+                  <button
+                    className="manager-ticket-dialog__attachment-thumbnail"
+                    type="button"
+                    aria-label={`${fileName} 크게 보기`}
+                    key={attachmentUrl}
+                    onClick={(event) => {
+                      previewTriggerRef.current = event.currentTarget;
+                      setSelectedAttachmentUrl(attachmentUrl);
+                    }}
+                  >
+                    <img
+                      src={previewUrl}
+                      alt={`${fileName} 첨부 이미지`}
+                      onError={() => markAttachmentFailed(attachmentUrl)}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <footer className="manager-ticket-dialog__actions">
           <Link href={ticketDashHref("01", ticket.id)}>상세·정보입력</Link>
           <Link href={ticketDashHref("04", ticket.id)}>업체 선정·견적</Link>
           <Link href={ticketDashHref("05", ticket.id)}>결제·비용 승인</Link>
         </footer>
+
+        {selectedAttachmentUrl && selectedPreviewUrl && (
+          <div
+            className="manager-ticket-image-preview"
+            role="dialog"
+            aria-modal="true"
+            aria-label="첨부 이미지 크게 보기"
+            onClick={closePreviewOnBackdrop}
+          >
+            <figure className="manager-ticket-image-preview__content">
+              <button type="button" aria-label="큰 이미지 닫기" onClick={closePreview}>
+                <X aria-hidden="true" />
+              </button>
+              <img
+                src={selectedPreviewUrl}
+                alt={`${attachmentFileName(selectedPreviewUrl)} 원본`}
+                onError={() => markAttachmentFailed(selectedAttachmentUrl)}
+              />
+            </figure>
+          </div>
+        )}
       </article>
     </dialog>
   );
