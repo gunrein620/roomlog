@@ -35,9 +35,13 @@ describe("tenant announcement route boundary", () => {
     assert.match(page, /listAnnouncements/);
     assert.match(page, /AnnouncementListPage/);
     assert.doesNotMatch(page, /getAnnouncement/);
+    assert.match(component, /^"use client";/);
     assert.match(component, /공지사항/);
     assert.match(component, /도움이 필요하신가요/);
-    assert.match(component, /tenantAnnouncementDetailHref/);
+    assert.match(component, /AnnouncementDetailDialog/);
+    assert.match(component, /useState/);
+    assert.match(component, /type="button"/);
+    assert.doesNotMatch(component, /tenantAnnouncementDetailHref/);
     assert.match(
       component,
       /const needsConfirmation = announcement\.confirmRequired && announcement\.state !== "confirmed";/,
@@ -75,7 +79,23 @@ describe("tenant announcement route boundary", () => {
     assert.match(css, /prefers-reduced-motion/);
     assert.match(css, /-webkit-line-clamp:\s*1;/);
     assert.doesNotMatch(css, /-webkit-line-clamp:\s*2;/);
+    assert.match(css, /\.announcementDialog\s*\{/);
+    assert.match(css, /\.announcementDialog::backdrop\s*\{/);
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
+  });
+
+  it("opens announcement details in an accessible native dialog", () => {
+    assert.equal(existsSync(join(root, "AnnouncementDetailDialog.tsx")), true);
+    const dialog = read("AnnouncementDetailDialog.tsx");
+    assert.match(dialog, /^"use client";/);
+    assert.match(dialog, /<dialog/);
+    assert.match(dialog, /showModal\(\)/);
+    assert.match(dialog, /onCancel/);
+    assert.match(dialog, /\/api\/tenant\/messaging\/announcements\//);
+    assert.match(dialog, /\/api\/tenant\/messaging\/threads/);
+    for (const label of ["상세 내용", "확인", "읽음", "이 공지 문의"]) {
+      assert.match(dialog, new RegExp(label));
+    }
   });
 
   it("keeps the legacy notice entry on detail and routes the living card to the list", () => {

@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import type { Announcement, AnnouncementCategory } from "@roomlog/types";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   BellRing,
@@ -16,10 +19,10 @@ import {
 import {
   ANNOUNCEMENT_FILTERS,
   selectAnnouncements,
-  tenantAnnouncementDetailHref,
   tenantAnnouncementListHref,
   type AnnouncementFilter,
 } from "./announcement-list-model";
+import { AnnouncementDetailDialog } from "./AnnouncementDetailDialog";
 import styles from "./AnnouncementListPage.module.css";
 
 const FILTER_LABELS: Record<AnnouncementFilter, string> = {
@@ -76,7 +79,29 @@ export function AnnouncementListPage({
   filter: AnnouncementFilter;
   query: string;
 }) {
-  const visible = selectAnnouncements(announcements, { filter, query });
+  const [announcementItems, setAnnouncementItems] = useState(announcements);
+  const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
+  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const visible = selectAnnouncements(announcementItems, { filter, query });
+  const selectedAnnouncement =
+    announcementItems.find((announcement) => announcement.id === selectedAnnouncementId) ?? null;
+
+  useEffect(() => {
+    setAnnouncementItems(announcements);
+  }, [announcements]);
+
+  function closeAnnouncementDialog() {
+    setSelectedAnnouncementId(null);
+    window.requestAnimationFrame(() => lastTriggerRef.current?.focus());
+  }
+
+  function updateAnnouncement(nextAnnouncement: Announcement) {
+    setAnnouncementItems((current) =>
+      current.map((announcement) =>
+        announcement.id === nextAnnouncement.id ? nextAnnouncement : announcement,
+      ),
+    );
+  }
 
   return (
     <div className={styles.viewport}>
@@ -138,10 +163,14 @@ export function AnnouncementListPage({
                       className={`${styles.card} ${isUrgent ? styles.cardUrgent : ""}`}
                     >
                       {isUrgent && <BellRing className={styles.watermark} aria-hidden="true" />}
-                      <Link
-                        href={tenantAnnouncementDetailHref(announcement.id)}
+                      <button
+                        type="button"
                         className={styles.cardLink}
                         aria-label={`${announcement.title} 공지 자세히 보기`}
+                        onClick={(event) => {
+                          lastTriggerRef.current = event.currentTarget;
+                          setSelectedAnnouncementId(announcement.id);
+                        }}
                       >
                         <div className={styles.cardTop}>
                           <span className={styles.category}>
@@ -163,7 +192,7 @@ export function AnnouncementListPage({
                           <time dateTime={announcement.sentAt}>{formatDate(announcement.sentAt)}</time>
                         </footer>
                         <ChevronRight className={styles.cardArrow} aria-hidden="true" size={19} />
-                      </Link>
+                      </button>
                     </article>
                   );
                 })}
@@ -184,6 +213,11 @@ export function AnnouncementListPage({
           </aside>
         </div>
       </main>
+      <AnnouncementDetailDialog
+        announcement={selectedAnnouncement}
+        onAnnouncementChange={updateAnnouncement}
+        onClose={closeAnnouncementDialog}
+      />
     </div>
   );
 }
