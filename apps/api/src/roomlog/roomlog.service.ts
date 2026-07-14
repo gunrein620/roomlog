@@ -221,6 +221,7 @@ import {
   TeamCollection,
   TeamCollectionBuildingRow,
   TeamCollectionPoint,
+  TeamCollectionTiming,
   TeamDashSummary,
   TeamDeposit,
   TeamDunning,
@@ -232,6 +233,7 @@ import {
   TeamTenantBillingOverview,
   TeamTenantPaymentHistory,
   TeamTenantPaymentHistoryEvent,
+  TeamTransactionLedgerRow,
   Ticket,
   TicketMessage,
   TicketStatus,
@@ -3134,7 +3136,9 @@ export class RoomlogService {
   getManagerCollection(
     managerId: string,
     buildingName?: string,
-    billingMonth?: string
+    billingMonth?: string,
+    historyFrom?: string,
+    historyTo?: string
   ): TeamCollection {
     const month = this.validateBillingMonth(billingMonth);
     const { scope, rooms } = this.resolveManagerBillingScope(managerId, buildingName);
@@ -3174,13 +3178,59 @@ export class RoomlogService {
       .sort((left, right) => right.depositedAt.localeCompare(left.depositedAt))
       .slice(0, 5)
       .map((deposit) => this.presentDeposit(deposit));
-    const trend = Array.from({ length: 12 }, (_, index) => this.shiftBillingMonth(month, index - 11))
-      .map((trendMonth) =>
-        this.collectionPointForBills(
-          trendMonth,
-          scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+    const scopedBillMonths = scopedBills
+      .map((bill) => bill.billingMonth)
+      .filter((candidate) => candidate <= month)
+      .sort((left, right) => left.localeCompare(right));
+    const availableFromMonth = scopedBillMonths[0] ?? month;
+    const availableToMonth = scopedBillMonths[scopedBillMonths.length - 1] ?? month;
+    const hasRecordedHistory = scopedBillMonths.length > 0;
+    const defaultHistoryTo = hasRecordedHistory ? availableToMonth : month;
+    const requestedFromMonth = this.validateBillingMonth(
+      historyFrom ?? this.shiftBillingMonth(defaultHistoryTo, -5)
+    );
+    const requestedToMonth = this.validateBillingMonth(historyTo ?? defaultHistoryTo);
+    if (requestedFromMonth > requestedToMonth) {
+      throw new BadRequestException("실적 조회 시작 월은 종료 월보다 늦을 수 없습니다.");
+    }
+    if (requestedToMonth > month) {
+      throw new BadRequestException("실적 조회 종료 월은 선택한 청구 월보다 늦을 수 없습니다.");
+    }
+    const boundedFromMonth =
+      requestedFromMonth < availableFromMonth ? availableFromMonth : requestedFromMonth;
+    const boundedToMonth =
+      requestedToMonth > availableToMonth ? availableToMonth : requestedToMonth;
+    const hasAppliedHistory =
+      hasRecordedHistory && boundedFromMonth <= boundedToMonth;
+    const appliedFromMonth = hasAppliedHistory ? boundedFromMonth : availableFromMonth;
+    const appliedToMonth = hasAppliedHistory ? boundedToMonth : availableToMonth;
+    const trend = hasAppliedHistory
+      ? this.billingMonthsBetween(appliedFromMonth, appliedToMonth).map((trendMonth) =>
+          this.collectionPointForBills(
+            trendMonth,
+            scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+          )
         )
-      );
+      : [];
+    const rollingFromMonth = hasRecordedHistory
+      ? this.shiftBillingMonth(availableToMonth, -5) < availableFromMonth
+        ? availableFromMonth
+        : this.shiftBillingMonth(availableToMonth, -5)
+      : month;
+    const rollingAverageTrend = hasRecordedHistory
+      ? this.billingMonthsBetween(rollingFromMonth, availableToMonth).map((trendMonth) =>
+          this.collectionPointForBills(
+            trendMonth,
+            scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+          )
+        )
+      : [];
+    const timing = this.collectionTimingForBills(
+      month,
+      selectedBills,
+      previousMonth,
+      scopedBills.filter((bill) => bill.billingMonth === previousMonth)
+    );
     const buildings: TeamCollectionBuildingRow[] = scope.buildings
       .filter((building) => !scope.selectedBuilding || building.buildingName === scope.selectedBuilding)
       .map((building) => {
@@ -3225,11 +3275,23 @@ export class RoomlogService {
         collectedAmount: currentPoint.collectedAmount,
         unpaidAmount,
         collectionRate: currentPoint.collectionRate,
+        billedUnits: currentPoint.billedUnits,
+        fullyPaidUnits: currentPoint.fullyPaidUnits,
+        partiallyPaidUnits: currentPoint.partiallyPaidUnits,
+        threeMonthAverageRate: this.averageCollectionRate(rollingAverageTrend, 3),
+        sixMonthAverageRate: this.averageCollectionRate(rollingAverageTrend, 6),
         previousCollectionRate: previousPoint.collectionRate,
         rateDelta,
         confirmingAmount
       },
       trend,
+      history: {
+        availableFromMonth,
+        availableToMonth,
+        appliedFromMonth,
+        appliedToMonth
+      },
+      timing,
       buildings,
       collectionRate: currentPoint.collectionRate,
       collectedAmount: currentPoint.collectedAmount,
@@ -3246,6 +3308,7 @@ export class RoomlogService {
     deposits: TeamDeposit[];
     orphanDeposits: TeamDeposit[];
     mismatchDeposits: TeamDeposit[];
+    ledgerRows: TeamTransactionLedgerRow[];
   } {
     const billIdsWithReports = new Set(
       this.store.paymentReports
@@ -3262,6 +3325,23 @@ export class RoomlogService {
       .filter((bill) => billIdsWithReports.has(bill.id))
       .map((bill) => this.presentManagerBillRow(bill, managerId));
     const deposits = this.managerRelevantDeposits(managerId);
+    const depositRows = deposits.map((deposit) =>
+      this.presentManagerTransactionDeposit(managerId, deposit)
+    );
+    const managerCosts = this.listManagerCosts(managerId);
+    const supersededCostIds = new Set(
+      managerCosts
+        .filter((cost) => cost.status === "amended" && cost.supersedesId)
+        .map((cost) => cost.supersedesId as string)
+    );
+    const withdrawalRows = managerCosts
+      .filter(
+        (cost): cost is Cost & { status: "confirmed" | "amended" } =>
+          (cost.status === "confirmed" || cost.status === "amended") &&
+          cost.repairPayment !== "unpaid" &&
+          !supersededCostIds.has(cost.id)
+      )
+      .map((cost) => this.presentManagerTransactionCost(managerId, cost));
 
     return {
       paymentReports,
@@ -3273,7 +3353,10 @@ export class RoomlogService {
         .map((deposit) => this.presentDeposit(deposit)),
       mismatchDeposits: deposits
         .filter((deposit) => deposit.matchStatus === "MISMATCH")
-        .map((deposit) => this.presentDeposit(deposit))
+        .map((deposit) => this.presentDeposit(deposit)),
+      ledgerRows: [...depositRows, ...withdrawalRows].sort((left, right) =>
+        right.occurredAt.localeCompare(left.occurredAt)
+      )
     };
   }
 
@@ -3334,8 +3417,10 @@ export class RoomlogService {
     }
 
     if (report.status !== "MATCHED") {
+      const confirmedAt = now();
       this.applyConfirmedPayment(bill, report.amount);
       report.status = "MATCHED";
+      report.confirmedAt = confirmedAt;
     }
 
     this.refreshBillStatusAfterPaymentChange(bill);
@@ -8221,6 +8306,16 @@ export class RoomlogService {
     return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
   }
 
+  private billingMonthsBetween(fromMonth: string, toMonth: string) {
+    const [fromYear, fromNumber] = fromMonth.split("-").map(Number);
+    const [toYear, toNumber] = toMonth.split("-").map(Number);
+    const monthCount = (toYear - fromYear) * 12 + toNumber - fromNumber;
+    return Array.from(
+      { length: monthCount + 1 },
+      (_, index) => this.shiftBillingMonth(fromMonth, index)
+    );
+  }
+
   private billingDueDate(month: string, paymentDay: number) {
     const [year, monthNumber] = month.split("-").map(Number);
     const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
@@ -8309,13 +8404,119 @@ export class RoomlogService {
     );
     const billedAmount = included.reduce((sum, bill) => sum + bill.totalAmount, 0);
     const collectedAmount = included.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    const billedUnits = included.length;
+    const fullyPaidUnits = included.filter(
+      (bill) => bill.totalAmount > 0 && bill.paidAmount >= bill.totalAmount
+    ).length;
+    const partiallyPaidUnits = included.filter(
+      (bill) => bill.paidAmount > 0 && bill.paidAmount < bill.totalAmount
+    ).length;
     return {
       billingMonth,
       billedAmount,
       collectedAmount,
       unpaidAmount: Math.max(0, billedAmount - collectedAmount),
-      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0
+      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
+      billedUnits,
+      fullyPaidUnits,
+      partiallyPaidUnits
     };
+  }
+
+  private averageCollectionRate(points: TeamCollectionPoint[], months: number) {
+    const eligible = points.filter((point) => point.billedAmount > 0).slice(-months);
+    return eligible.length > 0
+      ? eligible.reduce((sum, point) => sum + point.collectionRate, 0) / eligible.length
+      : 0;
+  }
+
+  private collectionTimingForBills(
+    currentMonth: string,
+    currentBills: Bill[],
+    previousMonth: string,
+    previousBills: Bill[]
+  ): TeamCollectionTiming {
+    const currentEvents = this.confirmedCollectionEventsForBills(currentBills);
+    const previousEvents = this.confirmedCollectionEventsForBills(previousBills);
+    const totalCurrentAmount = currentEvents.reduce((sum, event) => sum + event.amount, 0);
+    const onTimeAmount = currentEvents
+      .filter(
+        (event) =>
+          billingDateInSeoul(event.occurredAt) <= billingDateInSeoul(event.bill.dueDate)
+      )
+      .reduce((sum, event) => sum + event.amount, 0);
+    const weightedCollectionDay = currentEvents.reduce(
+      (sum, event) =>
+        sum + this.collectionDayForMonth(event.occurredAt, currentMonth) * event.amount,
+      0
+    );
+
+    return {
+      currentMonth,
+      previousMonth,
+      onTimeCollectionRate: totalCurrentAmount > 0 ? onTimeAmount / totalCurrentAmount : 0,
+      averageCollectionDay:
+        totalCurrentAmount > 0 ? weightedCollectionDay / totalCurrentAmount : undefined,
+      points: Array.from({ length: 31 }, (_, index) => {
+        const day = index + 1;
+        return {
+          day,
+          currentCumulativeAmount: currentEvents
+            .filter((event) => this.collectionDayForMonth(event.occurredAt, currentMonth) <= day)
+            .reduce((sum, event) => sum + event.amount, 0),
+          previousCumulativeAmount: previousEvents
+            .filter((event) => this.collectionDayForMonth(event.occurredAt, previousMonth) <= day)
+            .reduce((sum, event) => sum + event.amount, 0)
+        };
+      })
+    };
+  }
+
+  private confirmedCollectionEventsForBills(bills: Bill[]) {
+    return bills
+      .filter((bill) => !["CANCELED", "CORRECTED"].includes(bill.status))
+      .flatMap((bill) => {
+        const events: Array<{ bill: Bill; amount: number; occurredAt: string }> = [];
+        let remainingAmount = Math.max(0, bill.paidAmount);
+        const appendEvent = (amount: number, occurredAt: string) => {
+          const confirmedAmount = Math.min(remainingAmount, Math.max(0, amount));
+          if (confirmedAmount <= 0) return;
+          events.push({ bill, amount: confirmedAmount, occurredAt });
+          remainingAmount -= confirmedAmount;
+        };
+
+        this.store.deposits
+          .filter(
+            (deposit) => deposit.matchStatus === "MATCHED" && deposit.matchedBillId === bill.id
+          )
+          .sort((left, right) => left.depositedAt.localeCompare(right.depositedAt))
+          .forEach((deposit) => appendEvent(deposit.amount, deposit.depositedAt));
+
+        this.store.paymentReports
+          .filter(
+            (report) =>
+              report.billId === bill.id &&
+              report.status === "MATCHED" &&
+              Boolean(report.confirmedAt)
+          )
+          .sort((left, right) =>
+            (left.confirmedAt ?? "").localeCompare(right.confirmedAt ?? "")
+          )
+          .forEach((report) => appendEvent(report.amount, report.confirmedAt ?? bill.updatedAt));
+
+        appendEvent(remainingAmount, bill.updatedAt);
+        return events;
+      });
+  }
+
+  private collectionDayForMonth(occurredAt: string, billingMonth: string) {
+    const occurredDate = billingDateInSeoul(occurredAt);
+    const elapsed = Math.floor(
+      (Date.parse(`${occurredDate}T00:00:00.000Z`) -
+        Date.parse(`${billingMonth}-01T00:00:00.000Z`)) /
+        86_400_000
+    );
+    return Math.min(31, Math.max(1, elapsed + 1));
   }
 
   private findBill(billId: string) {
@@ -8845,12 +9046,106 @@ export class RoomlogService {
     };
   }
 
+  private presentManagerTransactionDeposit(
+    managerId: string,
+    deposit: Deposit
+  ): TeamTransactionLedgerRow {
+    const bill = deposit.matchedBillId
+      ? this.managerBills(managerId).find((candidate) => candidate.id === deposit.matchedBillId)
+      : undefined;
+    const presentedBill = bill ? this.presentBill(bill) : undefined;
+    const room = bill ? this.roomForManagerBill(managerId, bill) : undefined;
+    const statusLabels: Record<Deposit["matchStatus"], string> = {
+      MATCHED: "매칭 완료",
+      UNMATCHED: "확인 필요",
+      ORPHAN: "미연결",
+      MISMATCH: "불일치"
+    };
+
+    return {
+      id: deposit.id,
+      direction: "deposit",
+      occurredAt: deposit.depositedAt,
+      amount: deposit.amount,
+      statusLabel: statusLabels[deposit.matchStatus],
+      buildingName: room?.buildingName,
+      unitId: bill ? room?.roomNo ?? this.normalizeUnitId(bill.unitId) : undefined,
+      candidateUnitId: bill ? undefined : deposit.guessedUnitId,
+      partyName: bill ? this.tenantNameForBill(bill) : undefined,
+      itemLabel:
+        presentedBill && presentedBill.items.length > 0
+          ? presentedBill.items.map((item) => item.label).join(" · ")
+          : "입금",
+      depositorName: deposit.depositorName,
+      linkedBillRelation: bill
+        ? deposit.matchStatus === "MATCHED"
+          ? "matched"
+          : "candidate"
+        : undefined,
+      linkedBill:
+        bill && presentedBill
+          ? {
+              buildingName: room?.buildingName,
+              unitId: room?.roomNo ?? this.normalizeUnitId(bill.unitId),
+              tenantName: this.tenantNameForBill(bill),
+              billingMonth: bill.billingMonth,
+              dueDate: bill.dueDate,
+              totalAmount: bill.totalAmount,
+              paidAmount: bill.paidAmount,
+              status: presentedBill.status,
+              items: presentedBill.items
+            }
+          : undefined
+    };
+  }
+
+  private presentManagerTransactionCost(
+    managerId: string,
+    cost: Cost & { status: "confirmed" | "amended" }
+  ): TeamTransactionLedgerRow {
+    const candidateRooms =
+      cost.scope === "unit" && cost.unitId
+        ? this.store.rooms.filter(
+            (room) =>
+              this.canManagerAccessRoom(managerId, room.id) &&
+              this.unitsEqual(this.displayUnitId(room), cost.unitId)
+          )
+        : [];
+    const room = candidateRooms.length === 1 ? candidateRooms[0] : undefined;
+    const receipt = cost.receiptId
+      ? this.store.receipts.find((candidate) => candidate.id === cost.receiptId)
+      : undefined;
+
+    return {
+      id: cost.id,
+      direction: "withdrawal",
+      occurredAt: cost.date,
+      amount: cost.amount,
+      statusLabel:
+        cost.status === "amended"
+          ? "정정된 비용"
+          : cost.verified
+            ? "확정 비용"
+            : "확정 비용 · 미검증",
+      buildingName: room?.buildingName,
+      unitId: cost.unitId,
+      itemLabel: cost.item,
+      cost: {
+        type: cost.type,
+        scope: cost.scope,
+        verified: cost.verified,
+        evidenceAvailable: Boolean(receipt?.hasEvidence),
+        status: cost.status
+      }
+    };
+  }
+
   private stageForDaysOverdue(daysOverdue: number): TeamOverdue["stage"] {
-    if (daysOverdue >= 30) {
+    if (daysOverdue >= 31) {
       return "SEVERE";
     }
 
-    if (daysOverdue >= 7) {
+    if (daysOverdue >= 8) {
       return "WARNING";
     }
 

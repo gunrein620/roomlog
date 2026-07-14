@@ -54,6 +54,8 @@ function billingPath(path: string, query: ManagerBillingDemoQuery = {}) {
   const params = new URLSearchParams();
   if (query.building) params.set("building", query.building);
   if (query.month) params.set("month", query.month);
+  if (query.historyFrom) params.set("historyFrom", query.historyFrom);
+  if (query.historyTo) params.set("historyTo", query.historyTo);
   const search = params.toString();
   return search ? `${path}?${search}` : path;
 }

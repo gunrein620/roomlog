@@ -209,6 +209,11 @@ export interface ManagerCollectionBrief {
   collectedAmount: number;
   unpaidAmount: number;
   collectionRate: number;
+  billedUnits: number;
+  fullyPaidUnits: number;
+  partiallyPaidUnits: number;
+  threeMonthAverageRate: number;
+  sixMonthAverageRate: number;
   previousCollectionRate?: number;
   rateDelta?: number;
   confirmingAmount: number;
@@ -220,6 +225,30 @@ export interface ManagerCollectionPoint {
   collectedAmount: number;
   unpaidAmount: number;
   collectionRate: number;
+  billedUnits: number;
+  fullyPaidUnits: number;
+  partiallyPaidUnits: number;
+}
+
+export interface ManagerCollectionHistoryRange {
+  availableFromMonth: string;
+  availableToMonth: string;
+  appliedFromMonth: string;
+  appliedToMonth: string;
+}
+
+export interface ManagerCollectionTimingPoint {
+  day: number;
+  currentCumulativeAmount: number;
+  previousCumulativeAmount: number;
+}
+
+export interface ManagerCollectionTiming {
+  currentMonth: string;
+  previousMonth: string;
+  onTimeCollectionRate: number;
+  averageCollectionDay?: number;
+  points: ManagerCollectionTimingPoint[];
 }
 
 export interface ManagerCollectionBuildingRow extends ManagerCollectionPoint {
@@ -236,7 +265,54 @@ export interface ManagerCollectionAnalytics {
   billingMonth: string;
   brief: ManagerCollectionBrief;
   trend: ManagerCollectionPoint[];
+  history: ManagerCollectionHistoryRange;
+  timing: ManagerCollectionTiming;
   buildings: ManagerCollectionBuildingRow[];
+}
+
+export type ManagerTransactionDirection = "deposit" | "withdrawal";
+export type ManagerTransactionLedgerSource = "database" | "demo";
+
+export interface ManagerTransactionLedgerBill {
+  buildingName?: string;
+  unitId: string;
+  tenantName: string;
+  billingMonth: string;
+  dueDate: string;
+  totalAmount: number;
+  paidAmount: number;
+  status: BillStatus;
+  items: BillLineItem[];
+}
+
+export interface ManagerTransactionLedgerCost {
+  type: "repair" | "maintenance" | "common" | "other";
+  scope: "unit" | "building";
+  verified: boolean;
+  evidenceAvailable: boolean;
+  status: "confirmed" | "amended";
+}
+
+export interface ManagerTransactionLedgerRow {
+  id: string;
+  direction: ManagerTransactionDirection;
+  occurredAt: string;
+  amount: number;
+  statusLabel: string;
+  buildingName?: string;
+  unitId?: string;
+  candidateUnitId?: string;
+  partyName?: string;
+  itemLabel: string;
+  depositorName?: string;
+  linkedBillRelation?: "matched" | "candidate";
+  linkedBill?: ManagerTransactionLedgerBill;
+  cost?: ManagerTransactionLedgerCost;
+}
+
+export interface ManagerTransactionLedgerData {
+  source: ManagerTransactionLedgerSource;
+  rows: ManagerTransactionLedgerRow[];
 }
 
 /** 청구 관리 대시보드 요약 — M-BILL-00 헤더 카운트 */
