@@ -22,6 +22,7 @@
   --outline: #9aa1af;
   --outline-variant: #e3e6ed;
   --border: #e3e6ed; /* 카드·헤더·리스트 기본 경계 (= WOOZU --line) */
+  --table-row-divider: #edf0f5;
 
   /* --- color: primary (action = WOOZU 블루) --- */
   --primary: #2f55ff;
