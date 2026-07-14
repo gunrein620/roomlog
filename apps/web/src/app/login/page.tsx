@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   WoozuLoginScreen,
+  socialAuthErrorMessage,
   type AppRole,
   type ViewerProfile
 } from "../_components/WoozuLoginScreen";
@@ -56,7 +57,7 @@ export default function UnifiedLoginPage() {
     const params = new URLSearchParams(window.location.search);
     const nextIntent = normalizeLoginIntent(params.get("intent"));
     const nextRedirect = safeRedirectPath(params.get("redirectTo"), "") || undefined;
-    const error = params.get("error") ?? undefined;
+    const error = socialAuthErrorMessage(params.get("error") ?? undefined);
 
     setIntent(nextIntent);
     setRedirectTo(nextRedirect);
