@@ -744,14 +744,16 @@ export class RoomlogController {
   }
 
   @Patch("contracts/manager/:contractId/manual-values")
-  updateManagerContractManualValues(
+  async updateManagerContractManualValues(
     @Headers("authorization") authorization: string | undefined,
     @Param("contractId") contractId: string,
     @Body() body: UpdateManagerContractManualValuesInput
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.updateManagerContractManualValues(user.id, contractId, body);
+    const result = this.roomlogService.updateManagerContractManualValues(user.id, contractId, body);
+    await this.roomlogService.ensurePersistenceDurability();
+    return result;
   }
 
   @Patch("contracts/manager/:contractId/inventory")

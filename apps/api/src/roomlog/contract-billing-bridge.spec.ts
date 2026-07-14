@@ -184,6 +184,43 @@ describe("trade contract billing bridge", () => {
     assert.equal(extraction?.items.some((item) => item.needsCheck), false);
   });
 
+  it("waits for manual contract value projection before reporting save success", async () => {
+    let rejectManualSnapshot = false;
+    let targetContractId: string | undefined;
+    const service = new RoomlogService({
+      storeProjector: {
+        persist: async (store) => {
+          const hasUpdatedContract = store.contracts.some(
+            (contract) =>
+              contract.id === targetContractId &&
+              contract.maintenanceFee === 70_000 &&
+              contract.startDate === "2026-07-14",
+          );
+          if (rejectManualSnapshot && hasUpdatedContract) {
+            throw new Error("manual contract projector unavailable");
+          }
+        },
+      },
+    });
+    const { contract } = createTradeDraft(service, "manager-manual-value-projector");
+    targetContractId = contract.id;
+    await service.ensurePersistenceDurability();
+
+    const auth = service.login({ email: "manager@roomlog.test", password: "password123!" });
+    const controller = new RoomlogController(service, new RealtimeGateway());
+    const header = `Bearer ${auth.accessToken}`;
+    rejectManualSnapshot = true;
+
+    await assert.rejects(
+      async () => controller.updateManagerContractManualValues(header, contract.id, {
+        maintenanceFee: 70_000,
+        startDate: "2026-07-14",
+        endDate: "2099-07-13",
+      }),
+      /manual contract projector unavailable/,
+    );
+  });
+
   it("scopes manager contract invite links to the exact selected contract", () => {
     const service = new RoomlogService();
     const first = createManagerDraft(service, "invite-scope-first").contract;
