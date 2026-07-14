@@ -4,6 +4,7 @@
 // 로그인은 역할을 제한하지 않는다: 계정 identity만 확인하고, 룸로그 표면 진입은
 // 로그인 후 세션의 capability(roles)로 판단한다.
 import { Fragment, useState, type ReactNode } from "react";
+import { KakaoTalkLogoIcon } from "./KakaoTalkLogoIcon";
 
 export type AppRole = "seeker" | "tenant" | "landlord";
 export type AuthMode = "login" | "signup";
@@ -39,11 +40,27 @@ export const googleAuthHrefForMode = (
   return `/api/auth/google/start?role=SEEKER&flow=${flow}&redirectTo=${encodeURIComponent(redirectTo)}&errorRedirectTo=${encodeURIComponent(errorRedirectTo)}`;
 };
 
+export const kakaoAuthHrefForMode = (
+  mode: AuthMode,
+  options?: { redirectTo?: string; errorRedirectTo?: string }
+) => {
+  const flow = mode === "signup" ? "signup" : "login";
+  const redirectTo = options?.redirectTo ?? defaultAuthRedirectPath;
+  const errorRedirectTo =
+    options?.errorRedirectTo ?? (mode === "signup" ? "/?auth=signup" : "/");
+  return `/api/auth/kakao/start?role=SEEKER&flow=${flow}&redirectTo=${encodeURIComponent(redirectTo)}&errorRedirectTo=${encodeURIComponent(errorRedirectTo)}`;
+};
+
 export const socialProvidersForMode = (
   mode: AuthMode,
   options?: { redirectTo?: string; errorRedirectTo?: string }
 ): Array<{ label: string; className: string; mark: ReactNode; href?: string }> => [
-  { label: "네이버로 계속하기", className: "naver", mark: <span aria-hidden="true">N</span> },
+  {
+    label: "카카오톡으로 계속하기",
+    className: "kakao",
+    mark: <span className="kakao-logo-icon" aria-hidden="true"><KakaoTalkLogoIcon /></span>,
+    href: kakaoAuthHrefForMode(mode, options)
+  },
   {
     label: "Google로 계속하기",
     className: "google",
@@ -69,9 +86,7 @@ export function WoozuLoginScreen({
   googleErrorRedirectTo?: string;
   initialError?: string;
 }) {
-  const [socialLoginNotice, setSocialLoginNotice] = useState(
-    "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다."
-  );
+  const socialLoginNotice = "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다.";
   const [serviceEmail, setServiceEmail] = useState("");
   const [servicePassword, setServicePassword] = useState("");
   const [serviceLoginError, setServiceLoginError] = useState(initialError ?? "");
@@ -180,9 +195,7 @@ export function WoozuLoginScreen({
                 onClick={() => {
                   if (provider.href) {
                     window.location.href = provider.href;
-                    return;
                   }
-                  setSocialLoginNotice(`${provider.label.replace("로 계속하기", "")} 로그인으로 관심 매물 저장과 문의 알림을 받을 수 있습니다.`);
                 }}
               >
                 {provider.mark}

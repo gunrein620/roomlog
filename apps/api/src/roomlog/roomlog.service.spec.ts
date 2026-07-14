@@ -1441,6 +1441,87 @@ describe("RoomlogService", () => {
     }
   });
 
+  it("logs in and links a Kakao account through the social auth flow", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalRestApiKey = process.env.KAKAO_LOGIN_REST_API_KEY;
+    const originalClientSecret = process.env.KAKAO_LOGIN_CLIENT_SECRET;
+    const requests: string[] = [];
+
+    process.env.KAKAO_LOGIN_REST_API_KEY = "kakao-rest-api-key";
+    delete process.env.KAKAO_LOGIN_CLIENT_SECRET;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      requests.push(url);
+
+      if (url === "https://kauth.kakao.com/oauth/token") {
+        const body = String(init?.body);
+        assert.match(body, /client_id=kakao-rest-api-key/);
+        assert.match(body, /redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fkakao%2Fcallback/);
+
+        return new Response(JSON.stringify({ access_token: "kakao-access-token" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      if (url === "https://kapi.kakao.com/v2/user/me") {
+        assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer kakao-access-token");
+
+        return new Response(
+          JSON.stringify({
+            id: 987654321,
+            kakao_account: {
+              email: "KakaoUser@Roomlog.Test",
+              is_email_valid: true,
+              is_email_verified: true,
+              profile: {
+                nickname: "Kakao User",
+                profile_image_url: "https://example.test/kakao-avatar.png"
+              }
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const service = new RoomlogService({ seedDemoData: false } as any);
+
+      await assert.rejects(
+        () =>
+          service.loginWithKakao({
+            code: "kakao-code-before-signup",
+            redirectUri: "http://localhost:3000/api/auth/kakao/callback",
+            role: "SEEKER"
+          }),
+        /SOCIAL_SIGNUP_REQUIRED/
+      );
+
+      const auth = await service.loginWithKakao({
+        code: "kakao-code",
+        redirectUri: "http://localhost:3000/api/auth/kakao/callback",
+        role: "SEEKER",
+        flow: "signup"
+      });
+
+      assert.equal(auth.name, "Kakao User");
+      assert.equal(service.getMe(`Bearer ${auth.accessToken}`).email, "kakaouser@roomlog.test");
+      assert.equal((service as any).store.socialAccounts.length, 1);
+      assert.equal((service as any).store.socialAccounts[0].provider, "KAKAO");
+      assert.equal((service as any).store.socialAccounts[0].providerUserId, "987654321");
+      assert.equal(requests.filter((url) => url === "https://kauth.kakao.com/oauth/token").length, 2);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalRestApiKey === undefined) delete process.env.KAKAO_LOGIN_REST_API_KEY;
+      else process.env.KAKAO_LOGIN_REST_API_KEY = originalRestApiKey;
+      if (originalClientSecret === undefined) delete process.env.KAKAO_LOGIN_CLIENT_SECRET;
+      else process.env.KAKAO_LOGIN_CLIENT_SECRET = originalClientSecret;
+    }
+  });
+
   it("projects signup state to configured persistence", async () => {
     const projectedStores: any[] = [];
     const service = new RoomlogService({

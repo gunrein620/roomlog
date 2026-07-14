@@ -11,7 +11,6 @@ const PAGE_SIZE = 10;
 const CONTRACT_TABLE_COLUMNS = [
   "우선",
   "검토상태",
-  "삭제",
   "건물",
   "호실",
   "임차인",
@@ -26,16 +25,15 @@ const CONTRACT_TABLE_COLUMNS = [
   "작업",
 ] as const;
 
-type ContractStatusFilter = "all" | "needs_check" | "sla" | "pending" | "expiring" | "delete";
+type ContractStatusFilter = "all" | "needs_check" | "sla" | "pending" | "expiring";
 type ContractOriginFilter = "all" | ManagerContractRow["origin"];
 
 const statusFilterLabels: Record<ContractStatusFilter, string> = {
   all: "전체",
   needs_check: "확인 필요",
-  sla: "SLA 경과",
+  sla: "검토 필요",
   pending: "검토 대기",
   expiring: "만료 예정",
-  delete: "삭제 요청",
 };
 
 const originFilterLabels: Record<ContractOriginFilter, string> = {
@@ -113,7 +111,7 @@ export function ContractDashboardClient({
 
   return (
     <section className="manager-contract-dashboard" aria-labelledby="manager-contract-dashboard-title">
-      <h2 id="manager-contract-dashboard-title">계약 목록 · 검토대기/확인필요/SLA 초과 상단</h2>
+      <h2 id="manager-contract-dashboard-title">계약 목록 · 검토대기/확인필요/검토 필요 상단</h2>
 
       {focusedRow ? (
         <div className="manager-contract-dashboard__confirmation" role="status" aria-live="polite">
@@ -273,10 +271,9 @@ function ContractDashboardTable({
                 </td>
                 <td>
                   <span className={`manager-contract-table__status manager-contract-table__status--${priority.kind}`}>
-                    {row.slaOverdue ? "SLA 초과" : row.statusLabel}
+                    {row.slaOverdue ? "검토 필요" : row.statusLabel}
                   </span>
                 </td>
-                <td className="manager-contract-table__muted">{deletionLabel(row.contract.deletion)}</td>
                 <td>
                   <Link href={detailHref} className="manager-contract-table__primary-link">
                     {row.buildingName}
@@ -337,7 +334,6 @@ function contractSearchText(row: ManagerContractRow) {
       row.tenantName,
       row.statusLabel,
       originLabel(row.origin),
-      deletionLabel(row.contract.deletion),
       moneyLabel(row.contract.monthlyRent),
       moneyLabel(row.contract.maintenanceFee),
       paymentDayLabel(row.contract.paymentDay),
@@ -362,7 +358,6 @@ function countContractStatuses(rows: ManagerContractRow[], counts: ManagerContra
     sla: counts.slaOverdue,
     pending: counts.pending,
     expiring: counts.expiringSoon,
-    delete: counts.deletionRequests,
   } satisfies Record<ContractStatusFilter, number>;
 }
 
@@ -371,13 +366,11 @@ function contractMatchesStatus(row: ManagerContractRow, status: ContractStatusFi
   if (status === "sla") return row.slaOverdue;
   if (status === "pending") return row.contract.review === "pending";
   if (status === "expiring") return row.daysToExpire <= 30;
-  if (status === "delete") return row.contract.deletion === "requested";
   return true;
 }
 
 function priorityFor(row: ManagerContractRow) {
-  if (row.contract.deletion === "requested") return { kind: "delete", label: "삭제" };
-  if (row.slaOverdue) return { kind: "sla", label: "SLA" };
+  if (row.slaOverdue) return { kind: "sla", label: "검토" };
   if (row.needsCheckCount > 0) return { kind: "check", label: "확인" };
   if (row.contract.review === "pending") return { kind: "pending", label: "대기" };
   if (row.daysToExpire <= 30) return { kind: "expire", label: "만료" };
@@ -389,14 +382,6 @@ function originLabel(origin: ManagerContractRow["origin"]) {
   if (origin === "tenant_upload") return "임차인";
   if (origin === "manager_upload") return "관리자";
   return "수동";
-}
-
-function deletionLabel(state: ManagerContractRow["contract"]["deletion"]) {
-  if (state === "requested") return "요청";
-  if (state === "completed") return "완료";
-  if (state === "limited") return "제한";
-  if (state === "denied") return "불가";
-  return "-";
 }
 
 function moneyLabel(value?: number) {

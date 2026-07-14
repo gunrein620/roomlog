@@ -299,6 +299,8 @@ export type GoogleSocialLoginInput = {
   flow?: "login" | "signup";
 };
 
+export type KakaoSocialLoginInput = GoogleSocialLoginInput;
+
 const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
   {
     id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
@@ -2606,6 +2608,10 @@ export class RoomlogService {
 
   async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
     return await this.auth.loginWithGoogle(input);
+  }
+
+  async loginWithKakao(input: KakaoSocialLoginInput): Promise<AuthResult> {
+    return await this.auth.loginWithKakao(input);
   }
 
   getUserFromToken(authorization?: string): UserAccount {

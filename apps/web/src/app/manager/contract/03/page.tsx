@@ -153,7 +153,6 @@ export default async function Page() {
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
             <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-01"]}>계약서 열기</LinkButton>
             <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-04"]} variant="secondary">임차인 초대</LinkButton>
-            <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-05"]} variant="secondary">보관·삭제 처리</LinkButton>
           </div>
           <LinkButton href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]} variant="secondary">계약서 추가 등록</LinkButton>
         </Card>

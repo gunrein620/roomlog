@@ -966,7 +966,7 @@ export type AttachmentCategory =
   | "INTAKE_PHOTO"
   | "FLOOR_PLAN_SOURCE";
 
-export type SocialProvider = "GOOGLE" | "NAVER";
+export type SocialProvider = "GOOGLE" | "KAKAO" | "NAVER";
 
 export type SocialAccount = {
   id: string;

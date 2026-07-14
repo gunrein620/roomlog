@@ -37,6 +37,7 @@ test("apiUrl prefers API_INTERNAL_URL for server-side calls", () => {
   process.env.NODE_ENV = "production";
 
   assert.equal(apiUrl("/auth/social/google/callback"), "http://api:4000/api/auth/social/google/callback");
+  assert.equal(apiUrl("/auth/social/kakao/callback"), "http://api:4000/api/auth/social/kakao/callback");
 });
 
 test("apiUrl avoids relative /api during local development", () => {

@@ -24,9 +24,11 @@ import {
   verifyPassword
 } from "../roomlog-support";
 import type { Room, UserAccount, UserRole } from "../roomlog.types";
+import type { SocialProvider } from "../roomlog.types";
 import type {
   AuthResult,
   GoogleSocialLoginInput,
+  KakaoSocialLoginInput,
   LoginInput,
   SignupInput,
   Store,
@@ -36,6 +38,8 @@ import type {
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+const KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token";
+const KAKAO_USERINFO_URL = "https://kapi.kakao.com/v2/user/me";
 const SOCIAL_SIGNUP_REQUIRED = "SOCIAL_SIGNUP_REQUIRED";
 const rootEnvCandidatePaths = [
   resolve(process.cwd(), ".env"),
@@ -83,6 +87,41 @@ type GoogleUserInfoResponse = {
   email_verified?: boolean | string;
   name?: string;
   picture?: string;
+};
+
+type KakaoTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type KakaoUserInfoResponse = {
+  id?: number | string;
+  properties?: {
+    nickname?: string;
+    profile_image?: string;
+  };
+  kakao_account?: {
+    email?: string;
+    is_email_verified?: boolean;
+    is_email_valid?: boolean;
+    profile?: {
+      nickname?: string;
+      profile_image_url?: string;
+    };
+  };
+};
+
+type LoginSocialProvider = Extract<SocialProvider, "GOOGLE" | "KAKAO">;
+
+type NormalizedSocialProfile = {
+  provider: LoginSocialProvider;
+  providerLabel: string;
+  providerUserId: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+  passwordLabel: string;
 };
 
 export class RoomlogAuthDomain {
@@ -178,8 +217,6 @@ export class RoomlogAuthDomain {
   }
 
   async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
-    const role = this.normalizeSocialRole(input.role);
-    const flow = input.flow === "signup" ? "signup" : "login";
     const code = input.code?.trim();
     const redirectUri = input.redirectUri?.trim();
 
@@ -198,12 +235,60 @@ export class RoomlogAuthDomain {
       throw new UnauthorizedException("Google email verification is required.");
     }
 
+    return this.completeSocialLogin(input, {
+      provider: "GOOGLE",
+      providerLabel: "Google",
+      providerUserId: profile.sub,
+      email,
+      name: profile.name,
+      avatarUrl: profile.picture,
+      passwordLabel: "google-social-login"
+    });
+  }
+
+  async loginWithKakao(input: KakaoSocialLoginInput): Promise<AuthResult> {
+    const code = input.code?.trim();
+    const redirectUri = input.redirectUri?.trim();
+
+    if (!code || !redirectUri) {
+      throw new BadRequestException("Kakao authorization code and redirect URI are required.");
+    }
+
+    const profile = await this.fetchKakaoProfile(code, redirectUri);
+    const providerUserId = profile.id !== undefined ? String(profile.id) : "";
+    const email = profile.kakao_account?.email?.trim().toLowerCase();
+
+    if (!providerUserId || !email) {
+      throw new UnauthorizedException("Kakao account did not return a usable email identity.");
+    }
+
+    if (profile.kakao_account?.is_email_verified === false || profile.kakao_account?.is_email_valid === false) {
+      throw new UnauthorizedException("Kakao email verification is required.");
+    }
+
+    return this.completeSocialLogin(input, {
+      provider: "KAKAO",
+      providerLabel: "Kakao",
+      providerUserId,
+      email,
+      name: profile.kakao_account?.profile?.nickname ?? profile.properties?.nickname,
+      avatarUrl: profile.kakao_account?.profile?.profile_image_url ?? profile.properties?.profile_image,
+      passwordLabel: "kakao-social-login"
+    });
+  }
+
+  private completeSocialLogin(
+    input: GoogleSocialLoginInput | KakaoSocialLoginInput,
+    profile: NormalizedSocialProfile
+  ): AuthResult {
+    const role = this.normalizeSocialRole(input.role);
+    const flow = input.flow === "signup" ? "signup" : "login";
     const existingSocialAccount = this.store.socialAccounts.find(
-      (account) => account.provider === "GOOGLE" && account.providerUserId === profile.sub
+      (account) => account.provider === profile.provider && account.providerUserId === profile.providerUserId
     );
 
     if (existingSocialAccount) {
-      // 통합 계정: 같은 Google identity는 role/intent와 무관하게 같은 WOOZU 계정으로 로그인된다.
+      // 통합 계정: 같은 social identity는 role/intent와 무관하게 같은 WOOZU 계정으로 로그인된다.
       const user = this.findActiveSocialUser(existingSocialAccount.userId);
       this.tryAcceptInviteOnLogin(user, role, input.inviteToken);
       this.updateSocialAccount(existingSocialAccount.id, user.id, profile);
@@ -211,7 +296,7 @@ export class RoomlogAuthDomain {
       return this.authResult(user);
     }
 
-    const existingUser = this.store.users.find((account) => account.email === email);
+    const existingUser = this.store.users.find((account) => account.email === profile.email);
 
     if (!existingUser && flow === "login") {
       throw new BadRequestException(SOCIAL_SIGNUP_REQUIRED);
@@ -537,6 +622,56 @@ export class RoomlogAuthDomain {
     return profile;
   }
 
+  private async fetchKakaoProfile(code: string, redirectUri: string): Promise<KakaoUserInfoResponse> {
+    const clientId = runtimeEnv("KAKAO_LOGIN_REST_API_KEY") ?? runtimeEnv("KAKAO_LOGIN_CLIENT_ID");
+    const clientSecret = runtimeEnv("KAKAO_LOGIN_CLIENT_SECRET");
+
+    if (!clientId) {
+      throw new BadRequestException("Kakao login REST API key is not configured.");
+    }
+
+    const tokenParams = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      code
+    });
+
+    if (clientSecret) {
+      tokenParams.set("client_secret", clientSecret);
+    }
+
+    const tokenResponse = await fetch(KAKAO_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: tokenParams
+    }).catch((error) => {
+      throw new BadGatewayException(`Kakao token request failed: ${String(error)}`);
+    });
+
+    const tokenJson = (await tokenResponse.json().catch(() => ({}))) as KakaoTokenResponse;
+
+    if (!tokenResponse.ok || !tokenJson.access_token) {
+      throw new UnauthorizedException(
+        tokenJson.error_description || tokenJson.error || "Kakao authorization code exchange failed."
+      );
+    }
+
+    const profileResponse = await fetch(KAKAO_USERINFO_URL, {
+      headers: { Authorization: `Bearer ${tokenJson.access_token}`, Accept: "application/json" }
+    }).catch((error) => {
+      throw new BadGatewayException(`Kakao profile request failed: ${String(error)}`);
+    });
+
+    const profile = (await profileResponse.json().catch(() => ({}))) as KakaoUserInfoResponse;
+
+    if (!profileResponse.ok) {
+      throw new UnauthorizedException("Kakao profile lookup failed.");
+    }
+
+    return profile;
+  }
+
   private normalizeSocialRole(role?: UserRole): UserRole {
     const normalizedRole = role ?? "SEEKER";
 
@@ -569,14 +704,14 @@ export class RoomlogAuthDomain {
   }
 
   private createSocialUser(
-    profile: GoogleUserInfoResponse,
+    profile: NormalizedSocialProfile,
     role: UserRole,
     inviteToken?: string
   ): UserAccount {
-    const email = profile.email?.trim().toLowerCase();
+    const email = profile.email;
 
     if (!email) {
-      throw new UnauthorizedException("Google account email is required.");
+      throw new UnauthorizedException(`${profile.providerLabel} account email is required.`);
     }
 
     let phone: string | undefined;
@@ -584,7 +719,7 @@ export class RoomlogAuthDomain {
     const user: UserAccount = {
       id: id("usr"),
       email,
-      passwordHash: hashPassword(`google:${profile.sub}:${id("pwd")}`),
+      passwordHash: hashPassword(`${profile.provider.toLowerCase()}:${profile.providerUserId}:${id("pwd")}`),
       name: profile.name?.trim() || email.split("@")[0],
       role,
       status: "ACTIVE",
@@ -596,7 +731,7 @@ export class RoomlogAuthDomain {
         email,
         inviteToken,
         name: user.name,
-        password: "google-social-login",
+        password: profile.passwordLabel,
         role: "TENANT"
       });
       phone = tenantInvite.phone;
@@ -608,14 +743,14 @@ export class RoomlogAuthDomain {
 
     if (role === "VENDOR") {
       if (!inviteToken?.trim()) {
-        throw new BadRequestException("Vendor Google login requires a manager invite token.");
+        throw new BadRequestException(`Vendor ${profile.providerLabel} login requires a manager invite token.`);
       }
 
       const vendorInvite = this.resolvePendingVendorInvite({
         email,
         inviteToken,
         name: user.name,
-        password: "google-social-login",
+        password: profile.passwordLabel,
         role: "VENDOR"
       });
       phone = vendorInvite.phone;
@@ -650,33 +785,33 @@ export class RoomlogAuthDomain {
   private updateSocialAccount(
     socialAccountId: string | undefined,
     userId: string,
-    profile: GoogleUserInfoResponse
+    profile: NormalizedSocialProfile
   ) {
     const nowIso = now();
     const existing =
       socialAccountId !== undefined
         ? this.store.socialAccounts.find((account) => account.id === socialAccountId)
         : this.store.socialAccounts.find(
-            (account) => account.provider === "GOOGLE" && account.providerUserId === profile.sub
+            (account) => account.provider === profile.provider && account.providerUserId === profile.providerUserId
           );
 
     if (existing) {
       existing.userId = userId;
-      existing.email = profile.email?.trim().toLowerCase();
+      existing.email = profile.email;
       existing.name = profile.name?.trim();
-      existing.avatarUrl = profile.picture;
+      existing.avatarUrl = profile.avatarUrl;
       existing.updatedAt = nowIso;
       return existing;
     }
 
     const created = {
       id: id("social"),
-      provider: "GOOGLE" as const,
-      providerUserId: profile.sub || "",
+      provider: profile.provider,
+      providerUserId: profile.providerUserId,
       userId,
-      email: profile.email?.trim().toLowerCase(),
+      email: profile.email,
       name: profile.name?.trim(),
-      avatarUrl: profile.picture,
+      avatarUrl: profile.avatarUrl,
       createdAt: nowIso,
       updatedAt: nowIso
     };
