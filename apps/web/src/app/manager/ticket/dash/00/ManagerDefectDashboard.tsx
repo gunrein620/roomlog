@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { ChevronLeft, ChevronRight, EllipsisVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
-import { ticketDashHref } from "../../_components/ticket-manager-ui";
+import { TicketActionMenu } from "./TicketActionMenu";
 import { TicketDetailDialog } from "./TicketDetailDialog";
 import {
   DEFECT_STATUS_FILTERS,
@@ -99,25 +98,10 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
       </td>
       <td>
         <div className="manager-defect-dashboard__action">
-          <details className="manager-defect-dashboard__more-menu">
-            <summary
-              className="manager-defect-dashboard__more-action"
-              aria-label={`${row.ticket.title} 작업 메뉴`}
-            >
-              <EllipsisVertical aria-hidden="true" />
-            </summary>
-            <div className="manager-defect-dashboard__more-menu-list" role="menu">
-              <Link role="menuitem" href={ticketDashHref("01", row.ticket.id)}>
-                상세·정보입력
-              </Link>
-              <Link role="menuitem" href={ticketDashHref("04", row.ticket.id)}>
-                업체 선정·견적
-              </Link>
-              <Link role="menuitem" href={ticketDashHref("05", row.ticket.id)}>
-                결제·비용 승인
-              </Link>
-            </div>
-          </details>
+          <TicketActionMenu
+            ticketId={row.ticket.id}
+            ticketTitle={row.ticket.title}
+          />
         </div>
       </td>
     </tr>

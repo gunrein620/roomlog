@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { managerTicketAttachmentUrls } from "./ticket-manager-api";
+import { listManagerTicketRows, managerTicketAttachmentUrls } from "./ticket-manager-api";
 import type { TeamManagerTicket } from "./manager-mapping";
 
 const ticket = {
@@ -24,5 +24,22 @@ describe("manager ticket attachment mapping", () => {
       managerTicketAttachmentUrls({ messages: [{}] } as unknown as TeamManagerTicket),
       [],
     );
+  });
+});
+
+describe("manager ticket row loading", () => {
+  it("propagates API failures instead of returning an empty dashboard", async () => {
+    const failure = new Error("manager tickets unavailable");
+
+    await assert.rejects(
+      () => listManagerTicketRows(async () => {
+        throw failure;
+      }),
+      (error) => error === failure,
+    );
+  });
+
+  it("keeps an actual empty API response as an empty dashboard", async () => {
+    assert.deepEqual(await listManagerTicketRows(async () => []), []);
   });
 });

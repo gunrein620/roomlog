@@ -16,6 +16,7 @@ import {
   buildComplaintDashboard,
   complaintCategory,
   complaintStatusLabel,
+  dashboardTicketTypeLabel,
   formatComplaintDate,
   latestComplaintMonth,
   serializeComplaintDashboardCsv,
@@ -24,7 +25,7 @@ import { TicketDetailDialog } from "./TicketDetailDialog";
 import type { DefectDashboardRow } from "./ticket-dashboard-model";
 
 const METRICS = [
-  { id: "total", label: "전체 민원", icon: ListChecks },
+  { id: "total", label: "전체 접수", icon: ListChecks },
   { id: "inProgress", label: "처리 중", icon: BarChart3 },
   { id: "waiting", label: "대기", icon: Hourglass },
   { id: "completed", label: "완료", icon: CheckCircle2 },
@@ -61,7 +62,7 @@ function downloadCsv(
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `민원-대시보드-${monthLabel}.csv`;
+  link.download = `민원-하자-대시보드-${monthLabel}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -111,8 +112,8 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
     <section className="manager-complaint-dashboard" aria-labelledby="manager-complaint-title">
       <header className="manager-complaint-dashboard__header">
         <div>
-          <h2 id="manager-complaint-title">민원 대시보드</h2>
-          <p>민원 현황을 한눈에 확인하고 관리하세요.</p>
+          <h2 id="manager-complaint-title">민원/하자 대시보드</h2>
+          <p>민원과 하자 현황을 한눈에 확인하고 관리하세요.</p>
         </div>
         <div className="manager-complaint-dashboard__header-actions">
           <div className="manager-complaint-dashboard__calendar-anchor" ref={calendarRef}>
@@ -214,10 +215,10 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
       <div className="manager-complaint-dashboard__chart-grid">
         <article className="manager-complaint-dashboard__panel">
           <div className="manager-complaint-dashboard__panel-heading">
-            <h3>민원 접수 현황</h3>
+            <h3>민원/하자 접수 현황</h3>
             <span>최근 6개월</span>
           </div>
-          <div className="manager-complaint-dashboard__trend" role="img" aria-label="최근 6개월 민원 접수 건수">
+          <div className="manager-complaint-dashboard__trend" role="img" aria-label="최근 6개월 민원/하자 접수 건수">
             {dashboard.trend.map((item) => (
               <div key={item.label} className="manager-complaint-dashboard__trend-item">
                 <span className="manager-complaint-dashboard__trend-count">{item.count}</span>
@@ -234,14 +235,14 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
 
         <article className="manager-complaint-dashboard__panel">
           <div className="manager-complaint-dashboard__panel-heading">
-            <h3>민원 유형별 비율</h3>
+            <h3>유형별 비율</h3>
           </div>
           <div className="manager-complaint-dashboard__distribution">
             <div
               className="manager-complaint-dashboard__donut"
               style={{ background: `conic-gradient(${donutSegments || "var(--outline-variant) 0 100%"})` }}
               role="img"
-              aria-label={`총 ${dashboard.summary.total}건의 민원 유형별 비율`}
+              aria-label={`총 ${dashboard.summary.total}건의 민원/하자 유형별 비율`}
             >
               <div><strong>{dashboard.summary.total}</strong><span>총 접수</span></div>
             </div>
@@ -259,8 +260,8 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
 
       <article className="manager-complaint-dashboard__recent">
         <div className="manager-complaint-dashboard__panel-heading">
-          <h3>최근 민원 접수 내역</h3>
-          <Link href="/manager/ticket/dash/00?type=complaint">전체보기</Link>
+          <h3>최근 민원/하자 접수 내역</h3>
+          <Link href="/manager/ticket/dash/00?view=management">전체보기</Link>
         </div>
         <div className="manager-complaint-dashboard__recent-scroll">
           <table>
@@ -270,7 +271,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
             <tbody>
               {dashboard.recent.map((row) => (
                 <tr key={row.ticket.id}>
-                  <td><span className="manager-complaint-dashboard__category" data-category={complaintCategory(row.ticket)}>{dashboard.categories.find((category) => category.id === complaintCategory(row.ticket))?.label}</span></td>
+                  <td><span className="manager-complaint-dashboard__category" data-category={complaintCategory(row.ticket)}>{dashboardTicketTypeLabel(row.ticket)}</span></td>
                   <td>
                     {/* 접수 내용 클릭 → 상세 모달(페이지 이동 없이 바로 확인) */}
                     <button
@@ -286,7 +287,7 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
                   <td><span className="manager-complaint-dashboard__status" data-status={complaintStatusLabel(row.ticket.status)}>{complaintStatusLabel(row.ticket.status)}</span></td>
                 </tr>
               ))}
-              {dashboard.recent.length === 0 ? <tr><td colSpan={5} className="manager-complaint-dashboard__empty">선택한 기간에 접수된 일반 민원이 없습니다.</td></tr> : null}
+              {dashboard.recent.length === 0 ? <tr><td colSpan={5} className="manager-complaint-dashboard__empty">선택한 기간에 접수된 민원/하자가 없습니다.</td></tr> : null}
             </tbody>
           </table>
         </div>
