@@ -1954,6 +1954,19 @@ html:has(.manager-workspace) {
   background: var(--error);
 }
 
+.manager-ai-voice-controls .manager-ai-push-to-talk {
+  width: min(100%, var(--content-narrow-max));
+  min-height: calc(var(--touch-target) + var(--space-lg));
+  touch-action: none;
+  user-select: none;
+}
+
+.manager-ai-voice-controls .manager-ai-push-to-talk[aria-pressed="true"] {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+  box-shadow: var(--shadow-soft);
+}
+
 .manager-ai-voice-controls button svg {
   width: var(--space-lg);
   height: var(--space-lg);

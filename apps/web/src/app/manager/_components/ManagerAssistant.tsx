@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bot, Headphones, MessageSquare, Mic, PhoneOff, Send, X } from "lucide-react";
 import {
+  useEffect,
   useId,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
 } from "react";
 import { MANAGER_BILLING_ROUTES } from "@/lib/billing-manager-nav";
 import {
@@ -119,7 +121,24 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
     appendEntry: session.appendVoiceEntry,
     applyCopilotResponse: session.applyCopilotResponse,
   });
+  const stopTalkingRef = useRef(realtime.stopTalking);
+  stopTalkingRef.current = realtime.stopTalking;
   const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    const stopTalking = () => stopTalkingRef.current();
+    const stopTalkingWhenHidden = () => {
+      if (document.hidden) stopTalking();
+    };
+
+    window.addEventListener("blur", stopTalking);
+    document.addEventListener("visibilitychange", stopTalkingWhenHidden);
+    return () => {
+      window.removeEventListener("blur", stopTalking);
+      document.removeEventListener("visibilitychange", stopTalkingWhenHidden);
+      stopTalking();
+    };
+  }, []);
 
   function closeAssistant() {
     realtime.disconnect();
@@ -155,6 +174,27 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
 
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
+  }
+
+  function startPushToTalk(event: PointerEvent<HTMLButtonElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    realtime.startTalking();
+  }
+
+  function stopPushToTalk() {
+    realtime.stopTalking();
+  }
+
+  function startPushToTalkFromKeyboard(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.repeat || (event.key !== " " && event.key !== "Enter")) return;
+    event.preventDefault();
+    realtime.startTalking();
+  }
+
+  function stopPushToTalkFromKeyboard(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== " " && event.key !== "Enter") return;
+    event.preventDefault();
+    realtime.stopTalking();
   }
 
   return (
@@ -309,7 +349,29 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
                   <span className={`manager-ai-voice-status manager-ai-voice-status--${realtime.status}`} />
                   {realtime.statusLabel}
                 </p>
-                {realtime.status === "connected" || realtime.status === "connecting" ? (
+                {realtime.status === "connected" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="manager-ai-push-to-talk"
+                      aria-pressed={realtime.isTalking}
+                      onPointerDown={startPushToTalk}
+                      onPointerUp={stopPushToTalk}
+                      onPointerCancel={stopPushToTalk}
+                      onLostPointerCapture={stopPushToTalk}
+                      onKeyDown={startPushToTalkFromKeyboard}
+                      onKeyUp={stopPushToTalkFromKeyboard}
+                      onBlur={stopPushToTalk}
+                    >
+                      <Mic aria-hidden="true" />
+                      {realtime.isTalking ? "말하는 중…" : "Push to Talk"}
+                    </button>
+                    <button type="button" className="is-disconnect" onClick={realtime.disconnect}>
+                      <PhoneOff aria-hidden="true" />
+                      통화 종료
+                    </button>
+                  </>
+                ) : realtime.status === "connecting" ? (
                   <button type="button" className="is-disconnect" onClick={realtime.disconnect}>
                     <PhoneOff aria-hidden="true" />
                     통화 종료
@@ -320,7 +382,11 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
                     통화 시작
                   </button>
                 )}
-                <small>통화 시작을 누른 뒤 마이크 권한을 허용해 주세요.</small>
+                <small>
+                  {realtime.status === "connected"
+                    ? "버튼을 누르고 있는 동안만 음성이 전달됩니다."
+                    : "통화 시작을 누른 뒤 마이크 권한을 허용해 주세요."}
+                </small>
               </div>
             )}
             <div className="manager-ai-mode-toggle" aria-label="AI 상담 모드 전환">

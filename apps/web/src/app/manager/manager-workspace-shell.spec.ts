@@ -97,6 +97,15 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(assistant, /realtime\.disconnect/);
   assert.match(assistant, /통화 시작/);
   assert.match(assistant, /통화 종료/);
+  assert.match(assistant, /Push to Talk/);
+  assert.match(assistant, /aria-pressed=\{realtime\.isTalking\}/);
+  assert.match(assistant, /onPointerDown=\{startPushToTalk\}/);
+  assert.match(assistant, /onPointerUp=\{stopPushToTalk\}/);
+  assert.match(assistant, /onPointerCancel=\{stopPushToTalk\}/);
+  assert.match(assistant, /onLostPointerCapture=\{stopPushToTalk\}/);
+  assert.match(assistant, /onKeyDown=\{startPushToTalkFromKeyboard\}/);
+  assert.match(assistant, /onKeyUp=\{stopPushToTalkFromKeyboard\}/);
+  assert.match(assistant, /visibilitychange/);
   assert.match(assistant, /ManagerAssistantActionCard/);
   assert.match(assistant, /event\.nativeEvent\.isComposing/);
   assert.match(assistant, /event\.shiftKey/);
@@ -115,6 +124,7 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
     /\.manager-assistant-dialog__header\s*\{[^}]*color:\s*var\(--on-primary\);[^}]*background:\s*var\(--primary\);/,
   );
   assert.match(managerCss, /\.manager-ai-mode-icon\s*\{/);
+  assert.match(managerCss, /\.manager-ai-push-to-talk\s*\{/);
   // useEffect는 사이드바 접힘 상태(localStorage) 복원용.
   assert.match(appShellSource, /import \{ Suspense, useEffect, useRef, useState \} from "react"/);
   // 데스크톱 사이드바에는 접기 토글이 헤더 액션으로 꽂힌다.
