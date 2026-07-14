@@ -9,6 +9,8 @@ import type {
   DunningGuard,
   ManagerBillCreationData,
   ManagerBillCreationOption,
+  ManagerBillCreationUnavailableOption,
+  ManagerBillCreationUnavailableReason,
   ManagerBillRow,
   ManagerBillingDashboardData,
   ManagerBillingRecentDeposit,
@@ -211,6 +213,14 @@ export interface TeamBillCreationData {
     maintenanceFee?: number;
     dueDate?: string;
     duplicateBillId?: string;
+  }>;
+  unavailableOptions?: Array<{
+    roomId?: string;
+    buildingName?: string;
+    unitId?: string;
+    tenantName?: string;
+    contractId?: string;
+    reasons?: string[];
   }>;
 }
 
@@ -580,6 +590,34 @@ function toBillCreationOption(
   };
 }
 
+const BILL_CREATION_UNAVAILABLE_REASONS = new Set<ManagerBillCreationUnavailableReason>([
+  "NO_CONTRACT",
+  "CONTRACT_NOT_ACTIVE",
+  "CONTRACT_NOT_CONFIRMED",
+  "CONTRACT_VALUES_NOT_CONFIRMED",
+  "MONTHLY_RENT_MISSING",
+  "MAINTENANCE_FEE_MISSING",
+  "BILL_AMOUNT_INVALID",
+  "PAYMENT_DAY_MISSING",
+  "PAYMENT_DAY_INVALID",
+]);
+
+function toBillCreationUnavailableOption(
+  option: NonNullable<TeamBillCreationData["unavailableOptions"]>[number],
+): ManagerBillCreationUnavailableOption {
+  return {
+    roomId: stringOr(option.roomId),
+    buildingName: stringOr(option.buildingName),
+    unitId: normalizeUnitId(option.unitId),
+    tenantName: stringOr(option.tenantName, "미연결 임차인"),
+    contractId: option.contractId ? stringOr(option.contractId) : undefined,
+    reasons: (option.reasons ?? []).filter(
+      (reason): reason is ManagerBillCreationUnavailableReason =>
+        BILL_CREATION_UNAVAILABLE_REASONS.has(reason as ManagerBillCreationUnavailableReason),
+    ),
+  };
+}
+
 export function toManagerBillCreationData(
   data: TeamBillCreationData,
 ): ManagerBillCreationData {
@@ -592,5 +630,6 @@ export function toManagerBillCreationData(
       accountHolder: stringOr(data.account?.accountHolder),
     },
     options: (data.options ?? []).map(toBillCreationOption),
+    unavailableOptions: (data.unavailableOptions ?? []).map(toBillCreationUnavailableOption),
   };
 }

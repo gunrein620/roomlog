@@ -74,6 +74,60 @@ function storedContract(service: RoomlogService, contractId: string) {
 }
 
 describe("trade contract billing bridge", () => {
+  it("explains why each current-building room cannot create a bill", () => {
+    const service = new RoomlogService();
+    const withoutContract = createTradeRoom(service, "청구불가-계약없음");
+    const noContractData = service.getManagerBillCreationOptions(
+      "landlord-demo",
+      withoutContract.buildingName,
+      "2026-08",
+    );
+    const noContract = noContractData.unavailableOptions.find(
+      (option) => option.roomId === withoutContract.id,
+    );
+    assert.deepEqual(noContract?.reasons, ["NO_CONTRACT"]);
+
+    const { room, contract } = createManagerDraft(service, "청구불가-검토중");
+    const pendingData = service.getManagerBillCreationOptions(
+      "landlord-demo",
+      room.buildingName,
+      "2026-08",
+    );
+    const pending = pendingData.unavailableOptions.find(
+      (option) => option.contractId === contract.id,
+    );
+    assert.ok(pending?.reasons.includes("CONTRACT_NOT_ACTIVE"));
+    assert.ok(pending?.reasons.includes("CONTRACT_NOT_CONFIRMED"));
+    assert.ok(pending?.reasons.includes("CONTRACT_VALUES_NOT_CONFIRMED"));
+    assert.ok(pending?.reasons.includes("MONTHLY_RENT_MISSING"));
+    assert.ok(pending?.reasons.includes("MAINTENANCE_FEE_MISSING"));
+    assert.ok(pending?.reasons.includes("PAYMENT_DAY_MISSING"));
+  });
+
+  it("returns the contract attached to the tenant current room", () => {
+    const service = new RoomlogService();
+    const first = createTradeDraft(service, "tenant-current-old", 610_000);
+    service.updateManagerContractManualValues("landlord-demo", first.contract.id, {
+      maintenanceFee: 50_000,
+      paymentDay: 5,
+      startDate: "2000-01-01",
+      endDate: "2099-12-31",
+    });
+    const second = createTradeDraft(service, "tenant-current-new", 730_000);
+    service.updateManagerContractManualValues("landlord-demo", second.contract.id, {
+      maintenanceFee: 80_000,
+      paymentDay: 25,
+      startDate: "2000-01-01",
+      endDate: "2099-12-31",
+    });
+
+    const current = service.getTenantCurrentContract("tenant-demo");
+    assert.equal(current?.id, second.contract.id);
+    assert.equal(current?.monthlyRent, 730_000);
+    assert.equal(current?.maintenanceFee, 80_000);
+    assert.equal(current?.paymentDay, 25);
+  });
+
   it("awaits manager confirmation projection and reprojects confirmed state on retry", async () => {
     let rejectConfirmedSnapshot = true;
     let targetContractId: string | undefined;

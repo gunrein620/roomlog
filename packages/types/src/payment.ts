@@ -302,11 +302,33 @@ export interface ManagerBillCreationOption {
   duplicateBillId?: string;
 }
 
+export type ManagerBillCreationUnavailableReason =
+  | "NO_CONTRACT"
+  | "CONTRACT_NOT_ACTIVE"
+  | "CONTRACT_NOT_CONFIRMED"
+  | "CONTRACT_VALUES_NOT_CONFIRMED"
+  | "MONTHLY_RENT_MISSING"
+  | "MAINTENANCE_FEE_MISSING"
+  | "BILL_AMOUNT_INVALID"
+  | "PAYMENT_DAY_MISSING"
+  | "PAYMENT_DAY_INVALID";
+
+export interface ManagerBillCreationUnavailableOption {
+  roomId: string;
+  buildingName: string;
+  unitId: string;
+  tenantName: string;
+  contractId?: string;
+  reasons: ManagerBillCreationUnavailableReason[];
+}
+
 export interface ManagerBillCreationData {
   scope: ManagerBillingScope;
   billingMonth: string;
   account: PaymentAccount;
   options: ManagerBillCreationOption[];
+  unavailableOptions: ManagerBillCreationUnavailableOption[];
+  readOnly?: boolean;
 }
 
 export interface CreateManagerBillRowInput {

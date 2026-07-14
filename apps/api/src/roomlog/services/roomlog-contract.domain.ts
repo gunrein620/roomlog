@@ -110,6 +110,41 @@ export class RoomlogContractDomain {
     return this.tenantContracts(tenantId).map((contract) => this.presentContract(contract));
   }
 
+  getTenantCurrentContract(tenantId: string): Contract | null {
+    const roomId = this.store.tenantRooms[tenantId];
+    if (!roomId) return null;
+
+    const room = this.findRoom(roomId);
+    const today = this.todayInSeoulKey();
+    const score = (contract: Contract) => {
+      const unitMatches = this.normalizeUnit(contract.unitId) === this.normalizeUnit(room.roomNo);
+      const active = contract.lifecycle === "active" || contract.lifecycle === "expiring_soon";
+      const withinTerm =
+        Boolean(contract.startDate && contract.startDate.slice(0, 10) <= today) &&
+        Boolean(contract.endDate && contract.endDate.slice(0, 10) >= today);
+
+      return (
+        (unitMatches ? 100 : 0) +
+        (active ? 50 : 0) +
+        (withinTerm ? 40 : 0) +
+        (contract.review === "confirmed" ? 20 : 0) +
+        (contract.valueSource === "confirmed" ? 10 : 0)
+      );
+    };
+    const current = this.tenantContracts(tenantId)
+      .filter(
+        (contract) =>
+          contract.roomId === roomId &&
+          (!contract.tenantId || contract.tenantId === tenantId)
+      )
+      .sort(
+        (left, right) =>
+          score(right) - score(left) || this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt)
+      )[0];
+
+    return current ? this.presentContract(current) : null;
+  }
+
   getTenantContract(tenantId: string, contractId: string): Contract {
     return this.presentContract(this.findTenantContract(tenantId, contractId));
   }

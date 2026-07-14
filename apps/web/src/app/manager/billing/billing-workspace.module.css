@@ -119,6 +119,11 @@
   box-shadow: var(--focus-ring);
 }
 
+.readOnlyInput {
+  display: flex;
+  align-items: center;
+}
+
 .select {
   min-width: calc(var(--touch-target) * 3);
 }
@@ -489,6 +494,11 @@
   color: var(--on-primary-container);
 }
 
+.statusPill[data-state="unavailable"] {
+  background: var(--warning-container);
+  color: var(--on-warning-container);
+}
+
 .emptyState {
   padding: var(--space-xxl);
   color: var(--on-surface-variant);
@@ -778,6 +788,58 @@
 .disabledRow {
   color: var(--on-surface-variant);
   background: var(--surface-container-low);
+}
+
+.unavailableReasonCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.optionReason {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.unavailableDetails {
+  border-top: 1px solid var(--border);
+}
+
+.unavailableDetails summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  font-size: var(--fs-caption);
+  list-style: none;
+}
+
+.unavailableDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.unavailableDetails summary strong {
+  color: var(--on-surface);
+  font-weight: var(--fw-subtitle);
+}
+
+.unavailableDetails[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.unavailableTable th:first-child,
+.unavailableTable td:first-child {
+  width: calc(var(--touch-target) * 1.8);
+}
+
+.unavailableTable th:nth-child(2),
+.unavailableTable td:nth-child(2) {
+  width: calc(var(--touch-target) * 2.4);
 }
 
 .submitButton {

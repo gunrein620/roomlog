@@ -2050,11 +2050,32 @@ export type TeamBillCreationOption = {
   duplicateBillId?: string;
 };
 
+export type TeamBillCreationUnavailableReason =
+  | "NO_CONTRACT"
+  | "CONTRACT_NOT_ACTIVE"
+  | "CONTRACT_NOT_CONFIRMED"
+  | "CONTRACT_VALUES_NOT_CONFIRMED"
+  | "MONTHLY_RENT_MISSING"
+  | "MAINTENANCE_FEE_MISSING"
+  | "BILL_AMOUNT_INVALID"
+  | "PAYMENT_DAY_MISSING"
+  | "PAYMENT_DAY_INVALID";
+
+export type TeamBillCreationUnavailableOption = {
+  roomId: string;
+  buildingName: string;
+  unitId: string;
+  tenantName: string;
+  contractId?: string;
+  reasons: TeamBillCreationUnavailableReason[];
+};
+
 export type TeamBillCreationData = {
   scope: TeamBillingScope;
   billingMonth: string;
   account: PaymentAccount;
   options: TeamBillCreationOption[];
+  unavailableOptions: TeamBillCreationUnavailableOption[];
 };
 
 export type CreateManagerBillRowInput = {
