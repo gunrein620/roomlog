@@ -1,31 +1,16 @@
 "use client";
 
-import { ArrowUpRight, Check, Send, X } from "lucide-react";
+import { ArrowUpRight, Send, X } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import type {
+  ManagerCopilotChatMessage as CopilotChatMessage,
+  ManagerCopilotChatResponse as CopilotChatResponse,
+} from "@roomlog/types";
+import { ManagerAssistantActionCard } from "../../_components/ManagerAssistantActionCard";
+import { requestManagerCopilotChat } from "../../../../lib/manager-copilot-api";
 import type { BriefingInput } from "./briefing-input";
 import { buildBriefing, buildPresetResponses } from "./copilot-briefing";
-
-type CopilotChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type CopilotChatRequest = {
-  messages: CopilotChatMessage[];
-  confirmActionId?: string;
-};
-
-type CopilotChatResponse = {
-  mode: "openai" | "not_configured";
-  reply: string;
-  pendingAction?: {
-    id: string;
-    kind: "billing.send_dunning" | "messaging.send_reply";
-    summary: string;
-  };
-  receipts?: Array<{ kind: string; summary: string }>;
-};
 
 type MessageTranscriptEntry = {
   id: string;
@@ -110,7 +95,7 @@ export function CopilotPanel({ briefingInput }: { briefingInput: BriefingInput }
     setPendingAction(null);
 
     try {
-      const response = await requestCopilotChat({ messages: toChatMessages(nextEntries) });
+      const response = await requestManagerCopilotChat({ messages: toChatMessages(nextEntries) });
       applyCopilotResponse(response);
     } catch (error) {
       appendEntry({ role: "system", content: error instanceof Error ? error.message : "네트워크 오류" });
@@ -143,7 +128,7 @@ export function CopilotPanel({ briefingInput }: { briefingInput: BriefingInput }
     setSending(true);
 
     try {
-      const response = await requestCopilotChat({
+      const response = await requestManagerCopilotChat({
         messages: toChatMessages(entries),
         confirmActionId: pendingAction.id
       });
@@ -156,9 +141,47 @@ export function CopilotPanel({ briefingInput }: { briefingInput: BriefingInput }
     }
   }
 
-  function cancelPendingAction() {
-    setPendingAction(null);
-    appendEntry({ role: "assistant", content: "취소했어요.", localOnly: true });
+  async function cancelPendingAction() {
+    if (!pendingAction || sending) return;
+    setSending(true);
+
+    try {
+      const response = await requestManagerCopilotChat({
+        messages: toChatMessages(entries),
+        cancelActionId: pendingAction.id,
+      });
+      setPendingAction(null);
+      applyCopilotResponse(response);
+    } catch (error) {
+      appendEntry({ role: "system", content: error instanceof Error ? error.message : "네트워크 오류" });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function revisePendingDunning(messageText: string, channel: string) {
+    const preview = pendingAction?.dunningPreview;
+    if (!preview || sending) return;
+    setSending(true);
+
+    try {
+      const response = await requestManagerCopilotChat({
+        messages: toChatMessages(entries),
+        intent: {
+          type: "billing.send_dunning",
+          source: "assistant",
+          billId: preview.billId,
+          prompt: `${preview.unitId}호 ${preview.billingMonth} 독촉 문구 수정`,
+          channel,
+          messageText,
+        },
+      });
+      applyCopilotResponse(response);
+    } catch (error) {
+      appendEntry({ role: "system", content: error instanceof Error ? error.message : "네트워크 오류" });
+    } finally {
+      setSending(false);
+    }
   }
 
   function openCopilot() {
@@ -237,30 +260,13 @@ export function CopilotPanel({ briefingInput }: { briefingInput: BriefingInput }
             )}
 
             {pendingAction ? (
-              <div style={confirmationCardStyle}>
-                <span style={bubbleLabelStyle}>확인 필요</span>
-                <strong style={confirmationTitleStyle}>{pendingAction.summary}</strong>
-                <div style={confirmationActionsStyle}>
-                  <button
-                    type="button"
-                    onClick={confirmPendingAction}
-                    disabled={sending}
-                    style={{ ...actionButtonStyle, background: "var(--primary)", color: "var(--on-primary)", border: "1.5px solid var(--primary)" }}
-                  >
-                    <Check size={16} strokeWidth={2.5} aria-hidden="true" />
-                    발송
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelPendingAction}
-                    disabled={sending}
-                    style={secondaryActionButtonStyle}
-                  >
-                    <X size={16} strokeWidth={2.5} aria-hidden="true" />
-                    취소
-                  </button>
-                </div>
-              </div>
+              <ManagerAssistantActionCard
+                action={pendingAction}
+                busy={sending}
+                onConfirm={confirmPendingAction}
+                onCancel={cancelPendingAction}
+                onReviseDunning={revisePendingDunning}
+              />
             ) : null}
           </div>
 
@@ -544,34 +550,6 @@ function ReceiptEntry({ receipt }: { receipt: ReceiptTranscriptEntry }) {
   );
 }
 
-async function requestCopilotChat(payload: CopilotChatRequest): Promise<CopilotChatResponse> {
-  let response: Response;
-
-  try {
-    response = await fetch("/api/manager/copilot/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload)
-    });
-  } catch {
-    throw new Error("네트워크 오류");
-  }
-
-  const body = await response.json().catch(() => undefined);
-
-  if (!response.ok) {
-    const message = getResponseMessage(body);
-    throw new Error(message || "네트워크 오류");
-  }
-
-  if (!isCopilotChatResponse(body)) {
-    const message = getResponseMessage(body) || "AI 응답을 해석하지 못했습니다.";
-    throw new Error(message);
-  }
-
-  return body;
-}
-
 export function toChatMessages(entries: TranscriptEntry[]): CopilotChatMessage[] {
   return entries
     .filter(
@@ -583,21 +561,6 @@ export function toChatMessages(entries: TranscriptEntry[]): CopilotChatMessage[]
 
 function isReceiptEntry(entry: TranscriptEntry): entry is ReceiptTranscriptEntry {
   return "type" in entry && entry.type === "receipt";
-}
-
-function isCopilotChatResponse(body: unknown): body is CopilotChatResponse {
-  if (!body || typeof body !== "object") return false;
-
-  const maybe = body as Partial<CopilotChatResponse>;
-  return (maybe.mode === "openai" || maybe.mode === "not_configured") && typeof maybe.reply === "string";
-}
-
-function getResponseMessage(body: unknown): string | undefined {
-  if (!body || typeof body !== "object" || !("message" in body)) return undefined;
-
-  const message = (body as { message?: unknown }).message;
-  if (Array.isArray(message)) return message.join(", ");
-  return typeof message === "string" ? message : undefined;
 }
 
 function formatNotConfiguredNotice(reply: string) {
@@ -678,45 +641,6 @@ const chatBubbleStyle: CSSProperties = {
   padding: "var(--space-sm) var(--space-md)",
   borderRadius: "var(--radius-md)",
   lineHeight: "var(--lh-body)"
-};
-
-const confirmationCardStyle: CSSProperties = {
-  display: "grid",
-  gap: "var(--space-sm)",
-  justifySelf: "start",
-  maxWidth: "min(78ch, 92%)",
-  padding: "var(--space-md)",
-  border: "1.5px solid var(--primary)",
-  borderRadius: "var(--radius-md)",
-  background: "var(--surface-container-lowest)"
-};
-
-const confirmationTitleStyle: CSSProperties = {
-  lineHeight: "var(--lh-body)"
-};
-
-const confirmationActionsStyle: CSSProperties = {
-  display: "flex",
-  gap: "var(--space-xs)",
-  flexWrap: "wrap"
-};
-
-const actionButtonStyle: CSSProperties = {
-  minHeight: 36,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "var(--space-xs)",
-  padding: "0 var(--space-md)",
-  borderRadius: "var(--radius-btn)",
-  fontWeight: 700,
-  cursor: "pointer"
-};
-
-const secondaryActionButtonStyle: CSSProperties = {
-  ...actionButtonStyle,
-  border: "1px solid var(--border)",
-  background: "var(--surface-container)",
-  color: "var(--on-surface)"
 };
 
 const receiptStyle: CSSProperties = {

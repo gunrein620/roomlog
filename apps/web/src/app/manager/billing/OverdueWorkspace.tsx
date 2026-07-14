@@ -18,7 +18,7 @@ function won(value: number) {
 }
 
 function guardLabel(item: OverdueCase) {
-  if (!item.guard.blocked) return "AI 검토 가능";
+  if (!item.guard.blocked) return "AI 독촉 준비 가능";
   if (item.guard.hasConfirming && item.guard.hasOrphan) return "납부 신고·미연결 입금 확인 중";
   if (item.guard.hasConfirming) return "납부 신고 확인 중";
   if (item.guard.hasOrphan) return "미연결 입금 확인 중";
@@ -58,7 +58,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
           <div className={styles.metricValue} data-tone={data.summary.severeCount ? "danger" : undefined}>{data.summary.severeCount}세대</div>
         </div>
         <div className={styles.summaryItem}>
-          <div className={styles.metricLabel}>확인 대기</div>
+          <div className={styles.metricLabel}>입금 확인 대기</div>
           <div className={styles.metricValue}>{data.summary.waitingCount}세대</div>
         </div>
         <div className={styles.summaryItem}>
@@ -107,7 +107,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
                 활성 연체 <span className={styles.filterCount}>{data.activeCases.length}</span>
               </button>
               <button type="button" className={styles.filterButton} aria-pressed={queue === "waiting"} onClick={() => selectQueue("waiting")}>
-                확인 대기 <span className={styles.filterCount}>{data.waitingCases.length}</span>
+                입금 확인 대기 <span className={styles.filterCount}>{data.waitingCases.length}</span>
               </button>
             </div>
           </div>
@@ -130,7 +130,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
                 </div>
                 <div className={styles.caseMeta}>
                   <span>{item.daysOverdue}일 경과</span>
-                  <span className={styles.smallPill}>{queue === "waiting" ? "확인 대기" : item.daysOverdue >= 31 ? "장기 연체" : "검토 대상"}</span>
+                  <span className={styles.smallPill}>{queue === "waiting" ? "입금 확인" : item.daysOverdue >= 31 ? "장기 연체" : "검토 대상"}</span>
                 </div>
               </button>
             ))
@@ -144,7 +144,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
             <>
               <div className={styles.detailTop}>
                 <div>
-                  <p className={styles.sectionEyebrow}>{queue === "active" ? "활성 케이스" : "확인 대기 케이스"}</p>
+                  <p className={styles.sectionEyebrow}>{queue === "active" ? "활성 케이스" : "입금 확인 대기 케이스"}</p>
                   <h2 className={styles.detailTitle}>{selected.buildingName ?? "건물 확인 필요"} {selected.unitId}호 · {selected.tenantName}</h2>
                 </div>
                 <span className={styles.detailBadge}>{selected.daysOverdue}일 경과</span>
@@ -156,7 +156,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
                 <div className={styles.detailField}><div className={styles.detailLabel}>총 청구액</div><div className={styles.detailValue}>{selected.totalAmount === undefined ? "—" : won(selected.totalAmount)}</div></div>
                 <div className={styles.detailField}><div className={styles.detailLabel}>확정 수납</div><div className={styles.detailValue}>{selected.paidAmount === undefined ? "—" : won(selected.paidAmount)}</div></div>
                 <div className={styles.detailField}><div className={styles.detailLabel}>미수금</div><div className={`${styles.detailValue} ${styles.unpaid}`}>{won(selected.unpaidAmount)}</div></div>
-                <div className={styles.detailField}><div className={styles.detailLabel}>확인 가드</div><div className={styles.detailValue}>{guardLabel(selected)}</div></div>
+                <div className={styles.detailField}><div className={styles.detailLabel}>처리 상태</div><div className={styles.detailValue}>{guardLabel(selected)}</div></div>
               </div>
 
               {queue === "waiting" ? (

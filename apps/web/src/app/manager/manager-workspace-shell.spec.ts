@@ -119,7 +119,12 @@ test("manager workspace uses canonical tokens without manager-local collisions",
   assert.match(tokenSource, /--manager-sidebar-width:/);
   assert.match(tokenSource, /--manager-assistant-width:/);
   assert.match(tokenSource, /--focus-ring:/);
-  assert.doesNotMatch(managerCss, /^\s*--border:/m);
+  const localBorderOverrides = managerCss.match(/^\s*--border:/gm) ?? [];
+  assert.equal(localBorderOverrides.length, 1);
+  assert.match(
+    managerCss,
+    /\.manager-workspace\.theme-cosmic \.manager-workspace__sidebar\s*\{[\s\S]*?--border:\s*var\(--cosmic-sidebar-border\);/,
+  );
   assert.doesNotMatch(managerCss, /^\s*--shadow:/m);
 });
 

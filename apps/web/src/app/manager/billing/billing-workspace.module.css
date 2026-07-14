@@ -494,6 +494,11 @@
   color: var(--on-primary-container);
 }
 
+.statusPill[data-state="payment_review"] {
+  background: var(--warning-container);
+  color: var(--on-warning-container);
+}
+
 .statusPill[data-state="unavailable"] {
   background: var(--warning-container);
   color: var(--on-warning-container);

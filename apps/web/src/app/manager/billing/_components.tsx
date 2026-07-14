@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
-import type { BillStatus, Deposit, ManagerBillRow, OverdueCase, OverdueStage } from "@roomlog/types";
+import type { Deposit, ManagerBillRow, OverdueCase, OverdueStage } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
 import {
@@ -8,6 +8,10 @@ import {
   managerBillHref,
   managerDunningHref,
 } from "@/lib/billing-manager-nav";
+import {
+  managerAgentOverdueHref,
+  managerBillStatusLabel,
+} from "@/lib/billing-manager-workspace";
 import styles from "./billing-workspace.module.css";
 
 export const routes = {
@@ -143,7 +147,7 @@ export function BillTable<T extends ManagerBillRow>({
               <td style={tdStyle}>{won(bill.totalAmount)}</td>
               <td style={tdStyle}>{won(bill.paidAmount)}</td>
               <td style={tdStyle}>
-                <StatusBadge status={bill.status} />
+                <StatusBadge bill={bill} />
               </td>
               <td style={tdStyle}>{bill.dueDate}</td>
               <td style={{ ...tdStyle, textAlign: "right" }}>
@@ -218,7 +222,7 @@ export function OverdueTable({ cases, waiting }: { cases: OverdueCase[]; waiting
       <table style={tableStyle}>
         <thead>
           <tr>
-            {["호실", "임차인", "미납", "경과", "단계", "가드", ""].map((head) => (
+            {["호실", "임차인", "미납", "경과", "단계", "독촉 상태", ""].map((head) => (
               <th key={head} style={thStyle}>
                 {head}
               </th>
@@ -242,8 +246,8 @@ export function OverdueTable({ cases, waiting }: { cases: OverdueCase[]; waiting
                     M-BILL-03에서 확인
                   </Link>
                 ) : (
-                  <Link href={routes.dunning(item.billId)} style={linkStyle}>
-                    독촉문 작성
+                  <Link href={managerAgentOverdueHref(item)} style={linkStyle}>
+                    AI 채팅에서 처리
                   </Link>
                 )}
               </td>
@@ -279,13 +283,15 @@ export function GuardBanner({
     >
       <div>
         <div style={{ fontWeight: 800, marginBottom: 6 }}>
-          {blocked ? "발송 차단: 확인중 또는 orphan 입금이 있습니다" : "발송 가능: 확인중·orphan 가드를 통과했습니다"}
+          {guardBannerTitle(blocked, hasConfirming, hasOrphan)}
         </div>
         <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-body)" }}>
-          확인중 {hasConfirming ? "있음" : "없음"} · orphan {hasOrphan ? "있음" : "없음"} · 자동 발송 없이 관리인 승인 후 발송
+          {blocked
+            ? "입금 사실을 확인하기 전에는 연체 독촉을 보낼 수 없습니다."
+            : "AI 비서가 문구를 준비하고 관리인이 확인 카드에서 승인한 뒤 발송합니다."}
         </div>
       </div>
-      {blocked ? <TextButtonLink href={routes.matching}>M-BILL-03에서 확인</TextButtonLink> : null}
+      {blocked ? <TextButtonLink href={routes.matching}>입출금 내역에서 확인</TextButtonLink> : null}
     </div>
   );
 }
@@ -335,28 +341,17 @@ function formatDateTime(value: string): string {
 }
 
 function guardText(blocked: boolean, hasConfirming: boolean, hasOrphan: boolean): string {
-  if (!blocked) return "통과";
-  if (hasConfirming && hasOrphan) return "확인중·orphan";
-  if (hasConfirming) return "확인 대기";
-  if (hasOrphan) return "orphan 보류";
-  return "보류";
+  if (!blocked) return "독촉 검토 가능";
+  if (hasConfirming && hasOrphan) return "납부 신고·미연결 입금 확인 대기";
+  if (hasConfirming) return "납부 신고 확인 대기";
+  if (hasOrphan) return "미연결 입금 확인 대기";
+  return "입금 확인 대기";
 }
-
-const statusLabel: Record<BillStatus, string> = {
-  draft: "작성",
-  sent: "수납대기",
-  confirming: "확인중",
-  partially_paid: "일부납부",
-  paid: "완료",
-  overdue: "연체",
-  corrected: "정정",
-  canceled: "취소",
-};
 
 const depositStatusLabel: Record<Deposit["matchStatus"], string> = {
   unmatched: "실제입금",
   matched: "확정",
-  orphan: "orphan",
+  orphan: "미연결",
   mismatch: "불일치",
 };
 
@@ -366,8 +361,20 @@ const stageLabel: Record<OverdueStage, string> = {
   severe: "심각",
 };
 
-function StatusBadge({ status }: { status: BillStatus }) {
-  return <Badge emphasis={status === "confirming" || status === "overdue"}>{statusLabel[status]}</Badge>;
+function StatusBadge({ bill }: { bill: ManagerBillRow }) {
+  return (
+    <Badge emphasis={bill.status === "confirming" || bill.status === "overdue" || Boolean(bill.guard?.blocked)}>
+      {managerBillStatusLabel(bill)}
+    </Badge>
+  );
+}
+
+function guardBannerTitle(blocked: boolean, hasConfirming: boolean, hasOrphan: boolean) {
+  if (!blocked) return "독촉 준비 가능";
+  if (hasConfirming && hasOrphan) return "독촉 보류: 납부 신고와 미연결 입금을 확인해 주세요";
+  if (hasConfirming) return "독촉 보류: 납부 신고를 확인해 주세요";
+  if (hasOrphan) return "독촉 보류: 미연결 입금을 확인해 주세요";
+  return "독촉 보류: 입금내역을 확인해 주세요";
 }
 
 const captionStyle: CSSProperties = {
