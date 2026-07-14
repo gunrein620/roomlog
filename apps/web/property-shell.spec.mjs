@@ -370,7 +370,15 @@ test("opens tenant message compose only from real API thread ids", () => {
 });
 
 test("opens manager message compose only from real API thread ids", () => {
+  assert.doesNotMatch(managerMessagingApiSource, /DEMO_MANAGER_THREADS/);
   assert.doesNotMatch(managerMessagingThreadSource, /DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /테스트 건물[123]/);
+  assert.doesNotMatch(managerMessagingApiSource, /th_mgr_(302|405|201)/);
+  assert.match(
+    managerMessagingApiSource,
+    /listManagerThreads[\s\S]*?tryFetch\([\s\S]*?managerMessagingPaths\.threads\(context\),[\s\S]*?\[\]/,
+  );
   assert.doesNotMatch(managerMessagingApiSource, /getManagerThread\(id: string = DEMO_MANAGER_THREAD_ID/);
   assert.doesNotMatch(managerMessagingApiSource, /thread\.id === id \|\| thread\.unitId === id/);
   assert.match(managerMessagingApiSource, /deleteManagerThread/);

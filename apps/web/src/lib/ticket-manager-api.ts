@@ -24,6 +24,17 @@ async function listTeamTickets(filter?: string): Promise<TeamManagerTicket[]> {
   return serverFetch<TeamManagerTicket[]>(`/manager/tickets${query}`);
 }
 
+export function managerTicketAttachmentUrls(ticket: TeamManagerTicket): string[] {
+  return Array.from(
+    new Set(
+      (ticket.messages ?? [])
+        .flatMap((message) => message.attachmentUrls ?? [])
+        .map((url) => url.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 async function activeTeamTicket(): Promise<TeamManagerTicket | null> {
   try {
     const list = await listTeamTickets();
@@ -69,7 +80,8 @@ export async function listManagerTicketRows(): Promise<
   try {
     return (await listTeamTickets()).map((t) => ({
       ticket: toManagerTicket(t),
-      repair: toManagerRepair(t) ?? undefined
+      repair: toManagerRepair(t) ?? undefined,
+      attachmentUrls: managerTicketAttachmentUrls(t)
     }));
   } catch (error) {
     console.error("[manager/api] listManagerTicketRows 실패 → 빈 목록:", error);

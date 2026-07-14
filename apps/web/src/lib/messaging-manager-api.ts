@@ -120,100 +120,8 @@ export const DEMO_MANAGER_RESULTS: AnnouncementResult[] = [
   },
 ];
 
-export const DEMO_MANAGER_THREADS: Thread[] = [
-  {
-    id: "th_mgr_302",
-    buildingName: "테스트 건물1",
-    unitId: "302",
-    tenantId: "tn_302",
-    context: "defect",
-    contextRef: "tk_0001",
-    contextLabel: "하자 · 에어컨 물샘",
-    lastMessage: "천장에서 물이 떨어져요. 오늘 확인 가능할까요?",
-    unreadCount: 2,
-    pendingRequest: true,
-    archivedNotice: true,
-    updatedAt: "2026-07-02T09:20:00+09:00",
-    messages: [
-      {
-        id: "m_mgr_1",
-        threadId: "th_mgr_302",
-        sender: "tenant",
-        kind: "text",
-        body: "천장에서 물이 떨어져요. 오늘 확인 가능할까요?",
-        createdAt: "2026-07-02T09:02:00+09:00",
-      },
-      {
-        id: "m_mgr_2",
-        threadId: "th_mgr_302",
-        sender: "manager",
-        kind: "photo_request",
-        body: "누수 위치와 배수구 쪽 사진을 한 장씩 부탁드립니다.",
-        createdAt: "2026-07-02T09:20:00+09:00",
-      },
-    ],
-  },
-  {
-    id: "th_mgr_405",
-    buildingName: "테스트 건물2",
-    unitId: "405",
-    tenantId: "tn_405",
-    context: "payment",
-    contextRef: "bill_405_202607",
-    contextLabel: "청구 문의 · 관리비",
-    lastMessage: "이번 달 관리비 항목 중 수도요금 산정 기준을 알고 싶어요.",
-    unreadCount: 1,
-    pendingRequest: false,
-    archivedNotice: true,
-    updatedAt: "2026-07-02T08:10:00+09:00",
-    messages: [
-      {
-        id: "m_mgr_3",
-        threadId: "th_mgr_405",
-        sender: "tenant",
-        kind: "text",
-        body: "이번 달 관리비 항목 중 수도요금 산정 기준을 알고 싶어요.",
-        createdAt: "2026-07-02T08:10:00+09:00",
-      },
-    ],
-  },
-  {
-    id: "th_mgr_201",
-    buildingName: "테스트 건물3",
-    unitId: "201",
-    tenantId: "tn_201",
-    context: "announcement",
-    contextRef: "an_urgent_water",
-    contextLabel: "공지 문의 · 단수",
-    lastMessage: "아이 하원 시간과 겹치는데 엘리베이터 이용은 괜찮나요?",
-    unreadCount: 0,
-    pendingRequest: false,
-    archivedNotice: true,
-    updatedAt: "2026-07-01T12:40:00+09:00",
-    messages: [
-      {
-        id: "m_mgr_4",
-        threadId: "th_mgr_201",
-        sender: "tenant",
-        kind: "text",
-        body: "아이 하원 시간과 겹치는데 엘리베이터 이용은 괜찮나요?",
-        createdAt: "2026-07-01T12:40:00+09:00",
-      },
-      {
-        id: "m_mgr_5",
-        threadId: "th_mgr_201",
-        sender: "manager",
-        kind: "text",
-        body: "엘리베이터는 정상 운행합니다. 단수 시간에 물 사용만 어렵습니다.",
-        createdAt: "2026-07-01T12:48:00+09:00",
-      },
-    ],
-  },
-];
-
 export const DEMO_MANAGER_DRAFT_ID = DEMO_MANAGER_DRAFTS[0].id;
 export const DEMO_MANAGER_RESULT_ID = DEMO_MANAGER_RESULTS[0].announcementId;
-export const DEMO_MANAGER_THREAD_ID = DEMO_MANAGER_THREADS[0].id;
 
 export const managerMessagingPaths = {
   threads: (context?: ThreadContext) =>
@@ -242,18 +150,15 @@ async function tryFetch<T>(path: string, fallback: T, label: string): Promise<T>
   try {
     return await serverFetch<T>(path);
   } catch (error) {
-    console.warn(`[messaging/manager-api] ${label} 실패 → 데모 폴백`, error);
+    console.warn(`[messaging/manager-api] ${label} 실패 → 폴백 사용`, error);
     return fallback;
   }
 }
 
 export function listManagerThreads(context?: ThreadContext): Promise<Thread[]> {
-  const fallback = context
-    ? DEMO_MANAGER_THREADS.filter((thread) => thread.context === context)
-    : DEMO_MANAGER_THREADS;
   return tryFetch(
     managerMessagingPaths.threads(context),
-    fallback.length > 0 ? fallback : DEMO_MANAGER_THREADS,
+    [],
     "관리인 메시지 목록 조회",
   );
 }

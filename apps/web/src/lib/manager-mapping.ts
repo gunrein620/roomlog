@@ -32,6 +32,7 @@ export interface TeamManagerTicket {
   analysis?: TeamAnalysis;
   repairs?: TeamRepair[];
   assignedVendor?: { businessName?: string };
+  messages?: Array<{ attachmentUrls?: string[] }>;
 }
 
 function asComplaint(t: TeamManagerTicket): TeamComplaint {
