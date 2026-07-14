@@ -15,7 +15,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const realRows = await listManagerTicketRows();
   const rows = await appendLocalTicketDemoRows(realRows, requestHeaders.get("host"));
 
-  if (dashboardView === "dashboard") return <ComplaintDashboard rows={rows} />;
+  if (dashboardView === "dashboard") {
+    return (
+      <>
+        <TicketDashboardAutoRefresh intervalMs={3000} />
+        <ComplaintDashboard rows={rows} />
+      </>
+    );
+  }
 
   const initialTemplate = dashboardView === "management" ? "all" : dashboardView;
   return (

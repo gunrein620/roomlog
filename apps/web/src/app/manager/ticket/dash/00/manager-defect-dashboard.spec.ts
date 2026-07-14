@@ -102,6 +102,10 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(pageSource, /headers\(\)/);
   assert.match(pageSource, /appendLocalTicketDemoRows/);
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
+  assert.match(
+    pageSource,
+    /dashboardView === "dashboard"[\s\S]*<TicketDashboardAutoRefresh intervalMs=\{3000\} \/>[\s\S]*<ComplaintDashboard rows=\{rows\} \/>/,
+  );
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
   assert.match(autoRefreshSource, /getRealtimeSocket/);
   assert.match(autoRefreshSource, /isTicketActivity/);
@@ -124,9 +128,11 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(cssSource, /button:disabled/);
   assert.match(cssSource, /manager-defect-dashboard__more-menu-list/);
   assert.match(complaintDashboardSource, /보고서 다운로드/);
-  assert.match(complaintDashboardSource, /최근 민원 접수 내역/);
+  assert.match(complaintDashboardSource, /민원\/하자 대시보드/);
+  assert.match(complaintDashboardSource, /전체 접수/);
+  assert.match(complaintDashboardSource, /최근 민원\/하자 접수 내역/);
   assert.match(complaintDashboardSource, /aria-label="이전 달"/);
-  assert.match(complaintDashboardSource, /\?type=complaint/);
+  assert.match(complaintDashboardSource, /\?view=management/);
   assert.match(complaintDashboardSource, /aria-label="조회 월 선택"/);
   assert.match(complaintDashboardSource, /role="dialog"/);
   assert.match(complaintDashboardSource, /aria-label="조회 연월 선택"/);
@@ -182,13 +188,13 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
     sha256(sidebarSource),
     // 2026-07-14 통합 대시보드 하위 탭(리포트·건물 관리·등록)에 스크롤스파이 활성 표시 추가 —
     // 해시 섹션을 스크롤 위치로 추적해 사이드바 하이라이트를 동기화(자산현황=최상단).
-    "d7c065a39db073660260a027a32b0d58c7f5abb0242c5b4d2ae9df49032b4f00",
+    "1d2033408390210cb5bb8ad7f19d970796fbfd988e39a6c77916a90bde1add3d",
   );
   assert.equal(
     sha256(navigationSource),
     // 2026-07-13 대시보드 탭 통합 — "미처리 업무" 자식 제거, 리포트·건물 관리·등록 탭을
     // /manager/home/00#report 등 페이지 내 앵커 링크로 전환(별도 페이지를 홈에 통합).
     // dev 머지: 티켓 자식의 typeFilter → ticketView 개편과 합쳐진 소스 기준 해시.
-    "b0e6fc7ae52524f29faa1380ace537b7ca015a7b329dbb70e64b7e2349ffd188",
+    "354706836db13bc1cc1eaa062e25ab069a1efe808938cdf87a39dfd8ff513d3a",
   );
 });
