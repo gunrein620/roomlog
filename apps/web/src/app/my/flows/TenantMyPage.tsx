@@ -47,12 +47,26 @@ type TenantContractSummary = {
 };
 
 type TenantTenancy = {
+  roomId: string;
   buildingName: string;
   roomNo: string;
   address: string;
+  landlordId?: string;
   imageUrl?: string;
   contract: TenantContractSummary | null;
   leaseContract: Contract | null;
+};
+
+type TenantRoomOption = {
+  roomId: string;
+  buildingName: string;
+  roomNo: string;
+  address: string;
+  landlordId?: string;
+  landlordName?: string;
+  contractId?: string;
+  contractStatus?: string;
+  isCurrent?: boolean;
 };
 
 type TenantListingPhotoSummary = {
@@ -366,6 +380,8 @@ export default function TenantMyPage({
   // 이 계정에 실제로 연결된 집 — 없으면 null(연결 안내), 확인 전엔 "loading".
   // 하드코딩된 매물 정보를 보여주던 자리를 실제 계약 데이터로 교체한다(위조 금지).
   const [tenancy, setTenancy] = useState<TenantTenancy | null | "loading">("loading");
+  const [tenantRooms, setTenantRooms] = useState<TenantRoomOption[]>([]);
+  const [selectedTenantRoomId, setSelectedTenantRoomId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -378,11 +394,60 @@ export default function TenantMyPage({
         }
         const me = (await meRes.json()) as {
           userId?: string;
-          room?: { buildingName: string; roomNo: string; address: string; landlordId?: string };
+          room?: { id?: string; buildingName: string; roomNo: string; address: string; landlordId?: string };
         };
         if (!me.userId || !me.room) {
           if (!cancelled) setTenancy(null);
           return;
+        }
+
+        let roomOptions: TenantRoomOption[] = [];
+        try {
+          const roomsRes = await fetch("/api/tenant/rooms", { cache: "no-store" });
+          if (roomsRes.ok) {
+            const rooms = (await roomsRes.json()) as TenantRoomOption[];
+            if (Array.isArray(rooms)) {
+              roomOptions = rooms.filter((room) => room.roomId);
+            }
+          }
+        } catch {
+          roomOptions = [];
+        }
+
+        const fallbackRoom: TenantRoomOption = {
+          roomId: me.room.id || `${me.room.buildingName}-${me.room.roomNo}`,
+          buildingName: me.room.buildingName,
+          roomNo: me.room.roomNo,
+          address: me.room.address,
+          landlordId: me.room.landlordId,
+          isCurrent: true
+        };
+        if (roomOptions.length === 0) {
+          roomOptions = [fallbackRoom];
+        }
+
+        const storedRoomId =
+          typeof window !== "undefined" ? window.localStorage.getItem("woozuTenantRoomId") : "";
+        const selectedRoom =
+          roomOptions.find((room) => room.roomId === selectedTenantRoomId) ??
+          roomOptions.find((room) => room.roomId === storedRoomId) ??
+          roomOptions.find((room) => room.isCurrent) ??
+          roomOptions[0];
+
+        if (!selectedRoom) {
+          if (!cancelled) {
+            setTenantRooms([]);
+            setTenancy(null);
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setTenantRooms(roomOptions);
+          if (selectedTenantRoomId !== selectedRoom.roomId) {
+            setSelectedTenantRoomId(selectedRoom.roomId);
+          }
+          window.localStorage.setItem("woozuTenantRoomId", selectedRoom.roomId);
         }
 
         let contract: TenantContractSummary | null = null;
@@ -407,7 +472,7 @@ export default function TenantMyPage({
               (item) =>
                 item.tenantId === me.userId &&
                 item.status === "accepted" &&
-                item.landlordId === me.room?.landlordId
+                item.landlordId === selectedRoom.landlordId
             );
             if (accepted) {
               contract = {
@@ -425,7 +490,7 @@ export default function TenantMyPage({
                 if (listingsRes.ok) {
                   const listings = (await listingsRes.json()) as TenantListingPhotoSummary[];
                   if (Array.isArray(listings)) {
-                    residenceImageUrl = findTenantListingImage(listings, accepted.listingId, me.room);
+                    residenceImageUrl = findTenantListingImage(listings, accepted.listingId, selectedRoom);
                   }
                 }
               } catch {
@@ -438,7 +503,10 @@ export default function TenantMyPage({
         }
 
         try {
-          const leaseRes = await fetch("/api/tenant/current-contract", { cache: "no-store" });
+          const leaseRes = await fetch(
+            `/api/tenant/current-contract?roomId=${encodeURIComponent(selectedRoom.roomId)}`,
+            { cache: "no-store" }
+          );
           if (leaseRes.ok) {
             leaseContract = (await leaseRes.json()) as Contract | null;
           }
@@ -448,9 +516,11 @@ export default function TenantMyPage({
 
         if (!cancelled) {
           setTenancy({
-            buildingName: me.room.buildingName,
-            roomNo: me.room.roomNo,
-            address: me.room.address,
+            roomId: selectedRoom.roomId,
+            buildingName: selectedRoom.buildingName,
+            roomNo: selectedRoom.roomNo,
+            address: selectedRoom.address,
+            landlordId: selectedRoom.landlordId,
             imageUrl: residenceImageUrl,
             contract,
             leaseContract
@@ -463,7 +533,7 @@ export default function TenantMyPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedTenantRoomId]);
 
   const [announcementState, setAnnouncementState] = useState<TenantAnnouncementState>({
     status: "loading",
@@ -581,7 +651,7 @@ export default function TenantMyPage({
 
     setIsLandlordConversationLoading(true);
     try {
-      const response = await fetch(tenantLandlordConversationPaths.current(), { cache: "no-store" });
+      const response = await fetch(tenantLandlordConversationPaths.current(tenancy.roomId), { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(payload?.message || "대화 정보를 불러오지 못했습니다.");
@@ -595,7 +665,7 @@ export default function TenantMyPage({
       const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(tenantLandlordThreadInput())
+        body: JSON.stringify(tenantLandlordThreadInput("", tenancy.roomId))
       });
       const created = await createResponse.json().catch(() => ({}));
       if (!createResponse.ok) {
@@ -943,6 +1013,40 @@ export default function TenantMyPage({
           title={tenantRoomTitle}
         />
         <div className="tenant-residence-details">
+          {tenantRooms.length > 1 && tenancy && tenancy !== "loading" ? (
+            <label
+              style={{
+                display: "grid",
+                gap: 6,
+                maxWidth: 360,
+                fontSize: 13,
+                fontWeight: 800,
+                color: "var(--on-surface-variant)"
+              }}
+            >
+              집 선택
+              <select
+                value={selectedTenantRoomId || tenancy.roomId}
+                onChange={(event) => setSelectedTenantRoomId(event.currentTarget.value)}
+                style={{
+                  minHeight: 46,
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: "0 14px",
+                  background: "var(--surface-container-lowest)",
+                  color: "var(--on-surface)",
+                  fontSize: 16,
+                  fontWeight: 800
+                }}
+              >
+                {tenantRooms.map((room) => (
+                  <option key={room.roomId} value={room.roomId}>
+                    {room.buildingName} {room.roomNo}호
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <span className="tenant-pill">입주 정보</span>
           <h3>{tenantRoomTitle}</h3>
           <p>{tenantAddress}</p>

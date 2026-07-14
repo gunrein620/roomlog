@@ -187,6 +187,7 @@ export type CreateMessagingThreadInput = {
 };
 
 export type CreateTenantMessagingThreadInput = {
+  roomId?: string;
   context?: MessagingThreadContext;
   contextRef?: string;
   contextLabel?: string;

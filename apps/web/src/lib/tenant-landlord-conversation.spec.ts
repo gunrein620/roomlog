@@ -14,7 +14,17 @@ test("builds the tenant landlord messaging contract", () => {
     "/api/tenant/messaging/landlord-conversation"
   );
   assert.equal(tenantLandlordConversationPaths.threads(), "/api/tenant/messaging/threads");
+  assert.equal(
+    tenantLandlordConversationPaths.current("room 301"),
+    "/api/tenant/messaging/landlord-conversation?roomId=room%20301"
+  );
   assert.deepEqual(tenantLandlordThreadInput("  수도 문의입니다.  "), {
+    context: "general",
+    contextLabel: "일반 문의",
+    body: "수도 문의입니다."
+  });
+  assert.deepEqual(tenantLandlordThreadInput("  수도 문의입니다.  ", "room-301"), {
+    roomId: "room-301",
     context: "general",
     contextLabel: "일반 문의",
     body: "수도 문의입니다."

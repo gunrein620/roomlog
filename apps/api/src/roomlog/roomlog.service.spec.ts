@@ -4166,6 +4166,60 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("lets tenants choose among linked rooms for contract and landlord conversation scope", () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+
+    state.contracts.push({
+      id: "ct_tenant_multi_302",
+      roomId: "room-302",
+      tenantId: "tenant-demo",
+      managerId: "landlord-demo",
+      unitId: "302",
+      landlordName: "Demo Manager",
+      lifecycle: "active",
+      review: "confirmed",
+      deletion: "none",
+      valueSource: "confirmed",
+      monthlyRent: 720000,
+      maintenanceFee: 80000,
+      paymentDay: 10,
+      startDate: "2026-07-01T00:00:00+09:00",
+      endDate: "2028-06-30T00:00:00+09:00",
+      createdAt: "2026-07-08T09:20:00+09:00",
+      updatedAt: "2026-07-12T15:10:00+09:00"
+    } as any);
+
+    const rooms = service.listTenantRooms("tenant-demo");
+    assert.deepEqual(
+      rooms.map((room) => room.roomId),
+      ["room-301", "room-302"]
+    );
+    assert.equal(rooms[0].isCurrent, true);
+
+    const selectedContract = service.getTenantCurrentContract("tenant-demo", "room-302");
+    assert.equal(selectedContract?.roomId, "room-302");
+    assert.equal(selectedContract?.monthlyRent, 720000);
+
+    const conversation = service.getTenantLandlordConversation("tenant-demo", "room-302");
+    assert.equal(conversation.roomId, "room-302");
+    assert.equal(conversation.unitId, "302");
+
+    const thread = service.createTenantMessagingThread("tenant-demo", {
+      roomId: "room-302",
+      context: "general",
+      contextLabel: "Second room",
+      body: "Hello from selected room"
+    });
+    assert.equal(thread.roomId, "room-302");
+
+    assert.equal(service.getTenantCurrentContract("tenant-demo", "room-412"), null);
+    assert.throws(
+      () => service.getTenantLandlordConversation("tenant-demo", "room-412"),
+      /호실|tenant|임차/
+    );
+  });
+
   it("requires reviewed urgent announcement translations before send and separates read from confirmation", () => {
     const service = new RoomlogService();
     const sourceTitle = "긴급 단수 안내";

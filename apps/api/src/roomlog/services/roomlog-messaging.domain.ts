@@ -42,7 +42,7 @@ export class RoomlogMessagingDomain {
     tenantId: string,
     input: CreateTenantMessagingThreadInput
   ): MessagingThread {
-    const room = this.requireTenantRoom(tenantId);
+    const room = this.requireTenantRoom(tenantId, input.roomId);
 
     if (!room.landlordId) {
       throw new BadRequestException("연결된 관리인이 없어 메시지 스레드를 시작할 수 없습니다.");
@@ -103,8 +103,8 @@ export class RoomlogMessagingDomain {
     return this.presentThread(thread, true);
   }
 
-  getTenantLandlordConversation(tenantId: string): TenantLandlordConversation {
-    const room = this.requireTenantRoom(tenantId);
+  getTenantLandlordConversation(tenantId: string, roomId?: string): TenantLandlordConversation {
+    const room = this.requireTenantRoom(tenantId, roomId);
     if (!room.landlordId) {
       throw new BadRequestException("연결된 관리인이 없어 대화를 시작할 수 없습니다.");
     }
@@ -116,6 +116,7 @@ export class RoomlogMessagingDomain {
 
     return {
       threadId: this.findTenantGeneralThread(tenantId, room.id)?.id,
+      roomId: room.id,
       buildingName: room.buildingName,
       unitId: this.displayUnitId(room),
       landlordName: landlord.name
@@ -647,11 +648,19 @@ export class RoomlogMessagingDomain {
     return this.findRoom(thread.roomId).landlordId ?? "";
   }
 
-  private requireTenantRoom(tenantId: string) {
-    const roomId = this.store.tenantRooms[tenantId];
+  private requireTenantRoom(tenantId: string, selectedRoomId?: string) {
+    const roomId = selectedRoomId?.trim() || this.store.tenantRooms[tenantId];
 
     if (!roomId) {
       throw new NotFoundException("임차인 호실을 찾을 수 없습니다.");
+    }
+
+    const canAccess =
+      this.store.tenantRooms[tenantId] === roomId ||
+      this.store.contracts.some((contract) => contract.tenantId === tenantId && contract.roomId === roomId);
+
+    if (!canAccess) {
+      throw new ForbiddenException("해당 호실 임차인만 대화를 시작할 수 있습니다.");
     }
 
     return this.findRoom(roomId);

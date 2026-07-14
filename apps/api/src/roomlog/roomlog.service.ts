@@ -3796,8 +3796,8 @@ export class RoomlogService {
     return this.contract.listTenantContracts(tenantId);
   }
 
-  getTenantCurrentContract(tenantId: string): Contract | null {
-    return this.contract.getTenantCurrentContract(tenantId);
+  getTenantCurrentContract(tenantId: string, roomId?: string): Contract | null {
+    return this.contract.getTenantCurrentContract(tenantId, roomId);
   }
 
   getTenantContract(tenantId: string, contractId: string): Contract {
@@ -7737,6 +7737,45 @@ export class RoomlogService {
     return this.findRoom(roomId);
   }
 
+  listTenantRooms(tenantId: string) {
+    const currentRoomId = this.store.tenantRooms[tenantId];
+    const linkedRoomIds = new Set<string>();
+
+    if (currentRoomId) {
+      linkedRoomIds.add(currentRoomId);
+    }
+
+    this.store.contracts
+      .filter((contract) => contract.tenantId === tenantId)
+      .forEach((contract) => linkedRoomIds.add(contract.roomId));
+
+    return [...linkedRoomIds]
+      .map((roomId) => {
+        const room = this.findRoom(roomId);
+        const contract = this.contract.getTenantCurrentContract(tenantId, roomId);
+        const landlord = room.landlordId
+          ? this.store.users.find((user) => user.id === room.landlordId)
+          : undefined;
+
+        return {
+          roomId: room.id,
+          buildingName: room.buildingName,
+          roomNo: room.roomNo,
+          address: room.address,
+          landlordId: room.landlordId,
+          landlordName: landlord?.name ?? contract?.landlordName,
+          contractId: contract?.id,
+          contractStatus: contract?.lifecycle,
+          isCurrent: room.id === currentRoomId,
+          updatedAt: contract?.updatedAt
+        };
+      })
+      .sort((left, right) => {
+        if (left.isCurrent !== right.isCurrent) return left.isCurrent ? -1 : 1;
+        return this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt);
+      });
+  }
+
   listTenantMoveouts(tenantId: string) {
     return this.moveout.listTenantMoveouts(tenantId);
   }
@@ -7868,8 +7907,8 @@ export class RoomlogService {
     return this.messaging.createTenantMessagingThread(tenantId, input);
   }
 
-  getTenantLandlordConversation(tenantId: string) {
-    return this.messaging.getTenantLandlordConversation(tenantId);
+  getTenantLandlordConversation(tenantId: string, roomId?: string) {
+    return this.messaging.getTenantLandlordConversation(tenantId, roomId);
   }
 
   listTenantMessagingThreads(tenantId: string) {
