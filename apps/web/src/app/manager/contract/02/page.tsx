@@ -111,7 +111,7 @@ function numberValue(formData: FormData, name: string) {
 
 function dateValue(formData: FormData, name: string) {
   const value = textValue(formData, name);
-  return value ? `${value}T00:00:00+09:00` : undefined;
+  return value || undefined;
 }
 
 function uploadedFileName(formData: FormData, name: string) {
