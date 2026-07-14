@@ -92,6 +92,14 @@ const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
   : "";
 const managerMessagingListSource = readFileSync(new URL("./src/app/manager/messaging/00/page.tsx", import.meta.url), "utf8");
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
+const managerMessagingReviewActionPath = new URL("./src/app/manager/messaging/02/actions.ts", import.meta.url);
+const managerMessagingReviewActionSource = existsSync(managerMessagingReviewActionPath)
+  ? readFileSync(managerMessagingReviewActionPath, "utf8")
+  : "";
+const managerMessagingSendFormPath = new URL("./src/app/manager/messaging/02/AnnouncementSendForm.tsx", import.meta.url);
+const managerMessagingSendFormSource = existsSync(managerMessagingSendFormPath)
+  ? readFileSync(managerMessagingSendFormPath, "utf8")
+  : "";
 const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
 const managerMessagingComposerPath = new URL("./src/app/manager/messaging/01/AnnouncementComposer.tsx", import.meta.url);
 const managerMessagingActionsPath = new URL("./src/app/manager/messaging/01/actions.ts", import.meta.url);
@@ -494,6 +502,15 @@ test("manager announcement compose edits targets and translates each language be
   assert.doesNotMatch(managerMessagingReviewSource, /D21 주요 언어 번역 미리보기/);
   assert.doesNotMatch(managerMessagingReviewSource, /주요 언어 검수 완료/);
   assert.doesNotMatch(managerMessagingReviewSource, /label="번역 검수"/);
+});
+
+test("manager announcement send keeps business errors inside the review screen", () => {
+  assert.match(managerMessagingSendFormSource, /useActionState/);
+  assert.match(managerMessagingSendFormSource, /role="alert"/);
+  assert.match(managerMessagingSendFormSource, /disabled=\{!canSend \|\| pending\}/);
+  assert.match(managerMessagingReviewActionSource, /error instanceof ApiError/);
+  assert.match(managerMessagingReviewActionSource, /return \{[\s\S]*?error:/);
+  assert.doesNotMatch(managerMessagingReviewActionSource, /throw error/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {

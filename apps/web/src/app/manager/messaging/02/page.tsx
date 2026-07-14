@@ -1,14 +1,13 @@
 import { redirect } from "next/navigation";
-import { Button } from "@roomlog/ui";
 import {
   DEMO_MANAGER_DRAFT_ID,
   getAnnouncementDraft,
   listAnnouncementRecipients,
-  sendAnnouncementDraft,
 } from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { ApiError } from "@/lib/server-api";
 import { findAttachedTranslation } from "../01/attachment-state";
+import { AnnouncementSendForm } from "./AnnouncementSendForm";
 import { announcementRecipientState } from "./review-state";
 import {
   Badge,
@@ -26,29 +25,6 @@ import {
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string; resend?: string }>;
-
-async function sendAnnouncement(formData: FormData) {
-  "use server";
-
-  const draftId = String(formData.get("draftId") ?? "");
-
-  if (!draftId) {
-    redirect(MANAGER_MESSAGING_ROUTES["M-MSG-00"]);
-  }
-
-  let result;
-  try {
-    result = await sendAnnouncementDraft(draftId);
-  } catch (error) {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-      redirect("/manager/login");
-    }
-    throw error;
-  }
-  redirect(
-    `${MANAGER_MESSAGING_ROUTES["M-MSG-03"]}?id=${encodeURIComponent(result.announcementId)}`,
-  );
-}
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id, resend } = await searchParams;
@@ -152,12 +128,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             발송은 이 화면의 승인 이후에만 진행됩니다. 작성 화면에서 자동 발송하지 않습니다.
           </NoticeCard>
           <StaticButton>체크 완료</StaticButton>
-          <form action={sendAnnouncement}>
-            <input type="hidden" name="draftId" value={draft.id} />
-            <Button type="submit" fullWidth disabled={!recipientState.canSend}>
-              승인하고 발송
-            </Button>
-          </form>
+          <AnnouncementSendForm
+            draftId={draft.id}
+            canSend={recipientState.canSend}
+          />
         </aside>
       </div>
     </>
