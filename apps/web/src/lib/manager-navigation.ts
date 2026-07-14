@@ -49,12 +49,9 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
           MHOME_ROUTES["M-HOME-04"],
           MHOME_ROUTES["M-HOME-05"],
         ],
-        children: [
-          { label: "자산현황", href: MHOME_ROUTES["M-HOME-00"] },
-          { label: "임대 현황 리포트", href: `${MHOME_ROUTES["M-HOME-00"]}#report`, demo: true },
-          { label: "전체 건물 관리", href: `${MHOME_ROUTES["M-HOME-00"]}#buildings`, demo: true },
-          { label: "건물·호실 등록", href: `${MHOME_ROUTES["M-HOME-00"]}#register`, demo: true },
-        ],
+        // 통합 대시보드는 하위 탭 없이 한 페이지에서 전부 보여준다 — 앵커 탭(자산현황/리포트/건물)은
+        // 스크롤 한 화면으로 통합되며 제거됐고, 건물·호실 등록은 미사용 기능이라 함께 내렸다.
+        children: [],
       },
     ],
   },

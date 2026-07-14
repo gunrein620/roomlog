@@ -21,10 +21,8 @@ export function BuildingsSection() {
       </div>
 
       <div style={{ display: "grid", gap: "var(--space-lg)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "var(--space-lg)", alignItems: "end" }}>
-          <Input aria-label="건물 검색" placeholder="건물명, 지역, 담당자 검색" readOnly />
-          <LinkButton href={MHOME_ROUTES["M-HOME-05"]}>건물 등록</LinkButton>
-        </div>
+        {/* 건물·호실 등록은 미사용 기능으로 제거 — 검색만 남긴다 */}
+        <Input aria-label="건물 검색" placeholder="건물명, 지역, 담당자 검색" readOnly />
 
         <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
           {["리스크순", "수납률순", "월세순", "공실순", "담당자", "유형", "지역", "상태"].map((label, index) => (
@@ -100,10 +98,6 @@ function Metric({ label, value }: { label: string; value: string }) {
       <div style={{ marginTop: "var(--space-xs)", fontWeight: 800 }}>{value}</div>
     </div>
   );
-}
-
-function LinkButton({ href, children }: { href: string; children: React.ReactNode }) {
-  return <Link href={href} style={{ minHeight: "var(--touch-target)", padding: "0 var(--space-lg)", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-btn)", background: "var(--primary)", color: "var(--on-primary)", textDecoration: "none", fontWeight: 800 }}>{children}</Link>;
 }
 
 const linkReset = { color: "inherit", textDecoration: "none" } as const;

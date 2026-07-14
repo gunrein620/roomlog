@@ -44,9 +44,9 @@ describe("manager workspace navigation", () => {
     assert.equal(getManagerCurrentHref("/manager/billing/bill-1"), null);
   });
 
-  it("marks prototype home links", () => {
+  it("keeps the dashboard as a single at-a-glance page without sub tabs", () => {
     const dashboard = items.find((item) => item.id === "dashboard");
-    assert.equal(dashboard?.children.find((child) => child.href === "/manager/home/00#buildings")?.demo, true);
+    assert.deepEqual(dashboard?.children, []);
   });
 
   it("keeps listing management inside the manager workspace", () => {
@@ -95,22 +95,6 @@ describe("manager workspace navigation", () => {
       activeChildHref: "/manager/listing?status=contracted",
     });
     assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: "assistant", activeChildHref: null });
-  });
-
-  it("collapses hash-anchor dashboard children to the base '자산현황' tab (usePathname never carries a hash)", () => {
-    const dashboard = items.find((item) => item.id === "dashboard");
-    const assetsTab = dashboard?.children.find((child) => child.label === "자산현황");
-    assert.ok(assetsTab);
-
-    for (const child of dashboard?.children ?? []) {
-      if (!child.href.includes("#")) continue;
-      // 세 탭 모두 같은 페이지(/manager/home/00) 안의 앵커일 뿐이라 pathname만으로는 구분이 안 되고,
-      // children 배열에서 먼저 나오는 "자산현황"으로 수렴한다. 스크롤 위치 추적은 스코프 밖(팀 결정).
-      assert.deepEqual(getManagerNavState(child.href), {
-        activeItemId: "dashboard",
-        activeChildHref: assetsTab?.href,
-      });
-    }
   });
 
   it("matches every contextual route to its parent only", () => {
