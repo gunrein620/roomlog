@@ -13,8 +13,8 @@ const hrefs = items.flatMap((item) => [item.href, ...item.children.map((child) =
 describe("manager workspace navigation", () => {
   it("contains every manager desktop domain entry", () => {
     assert.deepEqual(items.map((item) => item.id), [
-      "dashboard", "listing", "contract", "billing", "cost", "ticket",
-      "messaging", "moveout", "vendor", "report", "assistant", "settings",
+      "dashboard", "listing", "contract", "billing", "ticket",
+      "messaging", "vendor", "report", "assistant", "settings",
     ]);
   });
 
@@ -53,9 +53,14 @@ describe("manager workspace navigation", () => {
     const listing = items.find((item) => item.id === "listing");
     assert.equal(listing?.href, "/manager/listing");
     assert.equal(listing?.external, undefined);
+    // 매물 관리는 상태별 서브탭(계약완료/미계약)을 가지며, 쿼리 없는 진입은 첫 탭(계약완료)으로 수렴한다.
+    assert.deepEqual(listing?.children.map((child) => child.href), [
+      "/manager/listing?status=contracted",
+      "/manager/listing?status=available",
+    ]);
     assert.deepEqual(getManagerNavState("/manager/listing"), {
       activeItemId: "listing",
-      activeChildHref: null,
+      activeChildHref: "/manager/listing?status=contracted",
     });
   });
 
@@ -85,7 +90,10 @@ describe("manager workspace navigation", () => {
       }
     }
     assert.deepEqual(getManagerNavState("/manager/home/06"), { activeItemId: "settings", activeChildHref: null });
-    assert.deepEqual(getManagerNavState("/manager/listing"), { activeItemId: "listing", activeChildHref: null });
+    assert.deepEqual(getManagerNavState("/manager/listing"), {
+      activeItemId: "listing",
+      activeChildHref: "/manager/listing?status=contracted",
+    });
     assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: "assistant", activeChildHref: null });
   });
 
@@ -108,8 +116,7 @@ describe("manager workspace navigation", () => {
   it("matches every contextual route to its parent only", () => {
     const cases = [
       ["/manager/contract/01?id=doc", "contract"], ["/manager/billing/bill-1", "billing"],
-      ["/manager/cost/03?id=cost", "cost"], ["/manager/messaging/04?id=thread", "messaging"],
-      ["/manager/moveout/02?id=moveout", "moveout"], ["/manager/vendor-mgmt/02?id=vendor", "vendor"],
+      ["/manager/messaging/04?id=thread", "messaging"], ["/manager/vendor-mgmt/02?id=vendor", "vendor"],
       ["/manager/report/03?id=report", "report"],
     ] as const;
     for (const [pathname, activeItemId] of cases) {
