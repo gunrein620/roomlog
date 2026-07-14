@@ -12,6 +12,7 @@ export type DefectDashboardRow = {
   ticket: Ticket;
   repair?: RepairJob;
   buildingName?: string;
+  attachmentUrls?: string[];
 };
 
 export type DefectDisplayStatus =
