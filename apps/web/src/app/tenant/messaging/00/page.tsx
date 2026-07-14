@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Announcement, AnnouncementCategory, AnnouncementScope, Thread } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
+import { MessagingPhoneFrame } from "../MessagingPhoneFrame";
 import { deleteTenantThread, listAnnouncements, listThreads } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { ApiError } from "@/lib/server-api";
@@ -82,7 +83,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   ).length;
 
   return (
-    <>
+    <MessagingPhoneFrame>
       <header
         style={{
           flex: "none",
@@ -162,7 +163,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       <footer style={{ flex: "none", padding: "12px 14px", borderTop: "1px solid var(--border)" }}>
         <PrimaryLink href={MESSAGING_ROUTES["T-MSG-00"]}>대화 목록 보기</PrimaryLink>
       </footer>
-    </>
+    </MessagingPhoneFrame>
   );
 }
 

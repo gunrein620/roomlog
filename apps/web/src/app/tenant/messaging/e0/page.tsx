@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card } from "@roomlog/ui";
+import { MessagingPhoneFrame } from "../MessagingPhoneFrame";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 
 type SearchParams = Promise<{ from?: string }>;
@@ -9,7 +10,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const retryHref = from && from.startsWith("/tenant/messaging/") ? from : MESSAGING_ROUTES["T-MSG-00"];
 
   return (
-    <>
+    <MessagingPhoneFrame>
       <div
         style={{
           flex: 1,
@@ -50,7 +51,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </ActionLink>
         <ActionLink href={MESSAGING_ROUTES["T-MSG-00"]}>받은함</ActionLink>
       </footer>
-    </>
+    </MessagingPhoneFrame>
   );
 }
 
