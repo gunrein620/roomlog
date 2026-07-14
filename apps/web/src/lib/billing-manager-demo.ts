@@ -498,6 +498,7 @@ export const DEMO_BILL_CREATION: ManagerBillCreationData = {
     maintenanceFee: Number(maintenanceFee),
     dueDate: `2026-08-${String(day).padStart(2, "0")}`,
   })),
+  unavailableOptions: [],
 };
 
 export const DEMO_DUNNING: DunningDraft = {
@@ -656,6 +657,7 @@ export function demoManagerBillCreation(
     scope: demoScope(query.building),
     billingMonth: month,
     account: DEMO_BILL_CREATION.account,
+    readOnly: true,
     options: DEMO_BILL_CREATION.options
       .filter((option) => !query.building || option.buildingName === query.building)
       .map((option) => ({
@@ -663,5 +665,6 @@ export function demoManagerBillCreation(
         dueDate: `${month}-${option.dueDate.slice(-2)}`,
         duplicateBillId: month === "2026-07" ? `bill-${option.roomId}-2026-07` : undefined,
       })),
+    unavailableOptions: [],
   };
 }

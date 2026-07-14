@@ -212,6 +212,7 @@ import {
   SubmitEstimateInput,
   TeamBill,
   TeamBillCreationData,
+  TeamBillCreationUnavailableReason,
   TeamBillPaymentOrder,
   TeamBillRow,
   TeamBillingDashboard,
@@ -3371,27 +3372,13 @@ export class RoomlogService {
     const roomIds = new Set(rooms.map((room) => room.id));
     const accountSource = this.managerBills(managerId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-    const options = this.store.contracts
-      .filter(
-        (contract) =>
-          roomIds.has(contract.roomId) &&
-          (!contract.managerId || contract.managerId === managerId) &&
-          contract.lifecycle === "active" &&
-          contract.review === "confirmed" &&
-          contract.valueSource === "confirmed" &&
-          contract.monthlyRent !== undefined &&
-          Number.isSafeInteger(contract.monthlyRent) &&
-          contract.monthlyRent >= 0 &&
-          contract.maintenanceFee !== undefined &&
-          Number.isSafeInteger(contract.maintenanceFee) &&
-          contract.maintenanceFee >= 0 &&
-          Number.isSafeInteger(contract.monthlyRent + contract.maintenanceFee) &&
-          contract.monthlyRent + contract.maintenanceFee > 0 &&
-          contract.paymentDay !== undefined &&
-          Number.isInteger(contract.paymentDay) &&
-          contract.paymentDay >= 1 &&
-          contract.paymentDay <= 31
-      )
+    const scopedContracts = this.store.contracts.filter(
+      (contract) =>
+        roomIds.has(contract.roomId) &&
+        (!contract.managerId || contract.managerId === managerId)
+    );
+    const options = scopedContracts
+      .filter((contract) => this.managerBillCreationUnavailableReasons(contract).length === 0)
       .map((contract) => {
         const room = rooms.find((candidate) => candidate.id === contract.roomId)!;
         const duplicate = this.store.bills.find(
@@ -3419,6 +3406,36 @@ export class RoomlogService {
           "ko"
         )
       );
+    const optionRoomIds = new Set(options.map((option) => option.roomId));
+    const unavailableOptions = rooms
+      .filter((room) => !optionRoomIds.has(room.id))
+      .map((room) => {
+        const candidates = scopedContracts
+          .filter((contract) => contract.roomId === room.id)
+          .sort((left, right) => {
+            const score = (contract: Contract) =>
+              (contract.lifecycle === "active" ? 100 : 0) +
+              (contract.review === "confirmed" ? 20 : 0) +
+              (contract.valueSource === "confirmed" ? 10 : 0);
+            return score(right) - score(left) || right.updatedAt.localeCompare(left.updatedAt);
+          });
+        const contract = candidates[0];
+
+        return {
+          roomId: room.id,
+          buildingName: room.buildingName,
+          unitId: room.roomNo,
+          tenantName: this.tenantNameForRoom(room.id),
+          contractId: contract?.id,
+          reasons: this.managerBillCreationUnavailableReasons(contract)
+        };
+      })
+      .sort((left, right) =>
+        `${left.buildingName}-${left.unitId}`.localeCompare(
+          `${right.buildingName}-${right.unitId}`,
+          "ko"
+        )
+      );
 
     return {
       scope,
@@ -3428,7 +3445,8 @@ export class RoomlogService {
         accountNumber: accountSource?.accountNumber ?? "",
         accountHolder: accountSource?.accountHolder ?? ""
       },
-      options
+      options,
+      unavailableOptions
     };
   }
 
@@ -8106,6 +8124,51 @@ export class RoomlogService {
     const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     const day = Math.min(lastDay, Math.max(1, Math.round(paymentDay)));
     return `${month}-${String(day).padStart(2, "0")}`;
+  }
+
+  private managerBillCreationUnavailableReasons(
+    contract?: Contract
+  ): TeamBillCreationUnavailableReason[] {
+    if (!contract) {
+      return ["NO_CONTRACT"];
+    }
+
+    const reasons = new Set<TeamBillCreationUnavailableReason>();
+    if (contract.lifecycle !== "active") reasons.add("CONTRACT_NOT_ACTIVE");
+    if (contract.review !== "confirmed") reasons.add("CONTRACT_NOT_CONFIRMED");
+    if (contract.valueSource !== "confirmed") {
+      reasons.add("CONTRACT_VALUES_NOT_CONFIRMED");
+    }
+
+    const rent = contract.monthlyRent;
+    const maintenance = contract.maintenanceFee;
+    const validRent = Number.isSafeInteger(rent) && rent !== undefined && rent >= 0;
+    const validMaintenance =
+      Number.isSafeInteger(maintenance) && maintenance !== undefined && maintenance >= 0;
+
+    if (rent === undefined) reasons.add("MONTHLY_RENT_MISSING");
+    else if (!validRent) reasons.add("BILL_AMOUNT_INVALID");
+    if (maintenance === undefined) reasons.add("MAINTENANCE_FEE_MISSING");
+    else if (!validMaintenance) reasons.add("BILL_AMOUNT_INVALID");
+
+    if (validRent && validMaintenance) {
+      const total = rent + maintenance;
+      if (!Number.isSafeInteger(total) || total <= 0) {
+        reasons.add("BILL_AMOUNT_INVALID");
+      }
+    }
+
+    if (contract.paymentDay === undefined) {
+      reasons.add("PAYMENT_DAY_MISSING");
+    } else if (
+      !Number.isInteger(contract.paymentDay) ||
+      contract.paymentDay < 1 ||
+      contract.paymentDay > 31
+    ) {
+      reasons.add("PAYMENT_DAY_INVALID");
+    }
+
+    return [...reasons];
   }
 
   private validateBillAmount(value: number, label: string) {
