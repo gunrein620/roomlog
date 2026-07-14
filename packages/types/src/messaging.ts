@@ -47,7 +47,7 @@ export interface CreateTenantMessagingThreadInput {
   context?: ThreadContext;
   contextRef?: string;
   contextLabel?: string;
-  body: string;
+  body?: string;
   kind?: MessageKind;
   attachmentUrls?: string[];
 }

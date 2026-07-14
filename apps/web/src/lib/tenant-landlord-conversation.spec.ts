@@ -26,6 +26,14 @@ test("trims an empty first message for client validation", () => {
   assert.equal(tenantLandlordThreadInput("   ").body, "");
 });
 
+test("builds an empty landlord thread request for direct chat entry", () => {
+  assert.deepEqual(tenantLandlordThreadInput(), {
+    context: "general",
+    contextLabel: "일반 문의",
+    body: ""
+  });
+});
+
 test("tenant my page opens landlord inquiries through roomlog messaging", () => {
   const source = readFileSync(
     join(__dirname, "../app/my/flows/TenantMyPage.tsx"),
@@ -34,6 +42,8 @@ test("tenant my page opens landlord inquiries through roomlog messaging", () => 
 
   assert.match(source, /tenantLandlordConversationPaths/);
   assert.match(source, /openLandlordConversation/);
-  assert.match(source, /submitLandlordMessage/);
+  assert.match(source, /tenantLandlordThreadHref/);
+  assert.doesNotMatch(source, /submitLandlordMessage/);
+  assert.doesNotMatch(source, /setIsLandlordChatOpen/);
   assert.doesNotMatch(source, /TradeChatCenter/);
 });

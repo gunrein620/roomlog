@@ -48,24 +48,28 @@ export class RoomlogMessagingDomain {
       throw new BadRequestException("연결된 관리인이 없어 메시지 스레드를 시작할 수 없습니다.");
     }
 
-    const body = input.body?.trim();
-    if (!body) {
-      throw new BadRequestException("메시지 내용을 입력해주세요.");
-    }
+    const body = input.body?.trim() ?? "";
+    const isGeneralLandlordThread = (input.context ?? "general") === "general" && !input.contextRef?.trim();
 
     const existing =
-      (input.context ?? "general") === "general" && !input.contextRef?.trim()
+      isGeneralLandlordThread
         ? this.findTenantGeneralThread(tenantId, room.id)
         : undefined;
     if (existing) {
-      this.addThreadMessageInternal(existing, tenantId, {
-        sender: "tenant",
-        body,
-        kind: input.kind ?? "text",
-        attachmentUrls: input.attachmentUrls
-      });
-      this.persistStore();
+      if (body) {
+        this.addThreadMessageInternal(existing, tenantId, {
+          sender: "tenant",
+          body,
+          kind: input.kind ?? "text",
+          attachmentUrls: input.attachmentUrls
+        });
+        this.persistStore();
+      }
       return this.presentThread(existing, true);
+    }
+
+    if (!body && !isGeneralLandlordThread) {
+      throw new BadRequestException("메시지 내용을 입력해주세요.");
     }
 
     const createdAt = now();
@@ -77,7 +81,7 @@ export class RoomlogMessagingDomain {
       context: input.context ?? "general",
       contextRef: input.contextRef?.trim() || undefined,
       contextLabel: input.contextLabel?.trim() || "일반 문의",
-      lastMessage: body,
+      lastMessage: body || "대화가 시작되었습니다.",
       unreadCount: 0,
       pendingRequest: false,
       archivedNotice: true,
@@ -86,12 +90,14 @@ export class RoomlogMessagingDomain {
     };
 
     this.store.messagingThreads.push(thread);
-    this.addThreadMessageInternal(thread, tenantId, {
-      sender: "tenant",
-      body,
-      kind: input.kind ?? "text",
-      attachmentUrls: input.attachmentUrls
-    });
+    if (body) {
+      this.addThreadMessageInternal(thread, tenantId, {
+        sender: "tenant",
+        body,
+        kind: input.kind ?? "text",
+        attachmentUrls: input.attachmentUrls
+      });
+    }
     this.persistStore();
 
     return this.presentThread(thread, true);

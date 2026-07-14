@@ -5,7 +5,7 @@ export const tenantLandlordConversationPaths = {
   threads: () => "/api/tenant/messaging/threads"
 } as const;
 
-export function tenantLandlordThreadInput(body: string): CreateTenantMessagingThreadInput {
+export function tenantLandlordThreadInput(body = ""): CreateTenantMessagingThreadInput {
   return {
     context: "general",
     contextLabel: "일반 문의",

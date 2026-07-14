@@ -3922,6 +3922,47 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("opens a tenant landlord messaging thread before the first message is typed", () => {
+    const service = new RoomlogService();
+    const manager = service.signup({
+      email: "empty-thread-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "빈 스레드 관리자",
+      phone: "010-7000-1801",
+      role: "LANDLORD",
+      buildingName: "빈스레드빌라",
+      roomNo: "1801호",
+      address: "서울시 강동구 빈스레드로 18"
+    } as any);
+
+    const tenant = service.signup({
+      email: "empty-thread-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "빈 스레드 세입자",
+      phone: "010-7000-3801",
+      role: "TENANT",
+      buildingName: "빈스레드빌라",
+      roomNo: "1801호",
+      address: "서울시 강동구 빈스레드로 18"
+    } as any);
+
+    const thread = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      contextLabel: "일반 문의"
+    });
+
+    assert.equal(thread.tenantId, tenant.userId);
+    assert.equal(thread.messages?.length, 0);
+    assert.equal(thread.lastMessage, "대화가 시작되었습니다.");
+    assert.equal(service.getTenantLandlordConversation(tenant.userId).threadId, thread.id);
+    assert.equal(
+      service.listManagerMessagingThreads(manager.userId).some((item) => item.id === thread.id),
+      true
+    );
+  });
+
   it("lets tenants and managers delete only scoped messaging threads", () => {
     const service = new RoomlogService();
 

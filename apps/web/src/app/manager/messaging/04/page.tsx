@@ -113,9 +113,15 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
             <div style={sectionTitleStyle}>메시지 타임라인</div>
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
+            {messages.length > 0 ? (
+              messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))
+            ) : (
+              <div style={{ fontSize: "var(--fs-caption)", color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+                아직 주고받은 메시지가 없습니다. 세입자가 메시지를 보내면 이 타임라인에 바로 표시됩니다.
+              </div>
+            )}
           </Card>
 
           <Card>

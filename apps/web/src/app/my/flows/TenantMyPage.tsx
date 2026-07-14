@@ -6,7 +6,7 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Announcement, Contract, TenantLandlordConversation, Thread } from "@roomlog/types";
+import type { Announcement, Contract, Thread } from "@roomlog/types";
 import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
@@ -549,12 +549,7 @@ export default function TenantMyPage({
   const [isBillLoading, setIsBillLoading] = useState(true);
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
-  const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
-  const [landlordConversation, setLandlordConversation] = useState<TenantLandlordConversation | null>(null);
-  const [landlordMessageDraft, setLandlordMessageDraft] = useState("");
-  const [landlordConversationError, setLandlordConversationError] = useState("");
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
-  const [isLandlordMessageSubmitting, setIsLandlordMessageSubmitting] = useState(false);
   const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
   const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
   const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
@@ -585,7 +580,6 @@ export default function TenantMyPage({
     }
 
     setIsLandlordConversationLoading(true);
-    setLandlordConversationError("");
     try {
       const response = await fetch(tenantLandlordConversationPaths.current(), { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
@@ -593,49 +587,31 @@ export default function TenantMyPage({
         throw new Error(payload?.message || "대화 정보를 불러오지 못했습니다.");
       }
 
-      const conversation = payload as TenantLandlordConversation;
-      if (conversation.threadId) {
-        router.push(tenantLandlordThreadHref(conversation.threadId));
+      if (payload?.threadId) {
+        router.push(tenantLandlordThreadHref(String(payload.threadId)));
         return;
       }
 
-      setLandlordConversation(conversation);
-      setIsLandlordChatOpen(true);
-    } catch (error) {
-      setLandlordConversationError(
-        error instanceof Error ? error.message : "대화 정보를 불러오지 못했습니다."
-      );
-      setIsLandlordChatOpen(true);
-    } finally {
-      setIsLandlordConversationLoading(false);
-    }
-  };
-
-  const submitLandlordMessage = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const input = tenantLandlordThreadInput(landlordMessageDraft);
-    if (!input.body || isLandlordMessageSubmitting) return;
-
-    setIsLandlordMessageSubmitting(true);
-    setLandlordConversationError("");
-    try {
-      const response = await fetch(tenantLandlordConversationPaths.threads(), {
+      const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input)
+        body: JSON.stringify(tenantLandlordThreadInput())
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || "메시지를 보내지 못했습니다.");
+      const created = await createResponse.json().catch(() => ({}));
+      if (!createResponse.ok) {
+        throw new Error(created?.message || "대화를 시작하지 못했습니다.");
       }
 
-      router.push(tenantLandlordThreadHref((payload as Thread).id));
+      const threadId = (created as Thread).id;
+      if (!threadId) {
+        throw new Error("대화 스레드를 만들지 못했습니다.");
+      }
+
+      router.push(tenantLandlordThreadHref(threadId));
     } catch (error) {
-      setLandlordConversationError(
-        error instanceof Error ? error.message : "메시지를 보내지 못했습니다."
-      );
+      showToast(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {
-      setIsLandlordMessageSubmitting(false);
+      setIsLandlordConversationLoading(false);
     }
   };
 
@@ -704,11 +680,6 @@ export default function TenantMyPage({
           ["체결일", tenancy.contract?.respondedAt ? tenancyDateLabel(tenancy.contract.respondedAt) : "정보 없음"]
         ]
       : [["안내", "아직 연결된 집이 없습니다. 계약이 체결되면 이 자리에 실제 계약 정보가 표시됩니다."]];
-  const landlordChatTitle = landlordConversation?.landlordName
-    ? `${landlordConversation.landlordName} 임대인`
-    : tenancy && tenancy !== "loading" && tenancy.contract?.landlordName
-      ? `${tenancy.contract.landlordName} 임대인`
-      : "연결된 임대인";
   const tenantRoomTitle =
     tenancy === "loading"
       ? "입주 정보 확인 중"
@@ -1238,69 +1209,6 @@ export default function TenantMyPage({
             </>
           ) : null}
         </aside>
-      ) : null}
-
-      {isLandlordChatOpen ? (
-        <>
-          <button
-            className="tenant-chat-backdrop"
-            type="button"
-            aria-label="집주인 채팅 닫기"
-            onClick={() => setIsLandlordChatOpen(false)}
-          />
-          <aside
-            className="tenant-chat-panel"
-            id="tenant-landlord-chat-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tenant-landlord-chat-title"
-          >
-            <header className="tenant-chat-panel-head">
-              <div>
-                <span>{landlordChatTitle}</span>
-                <h2 id="tenant-landlord-chat-title">집주인 채팅</h2>
-                <p>{tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "계약한 집"}</p>
-              </div>
-              <button type="button" onClick={() => setIsLandlordChatOpen(false)} aria-label="집주인 채팅 닫기">
-                <X size={18} strokeWidth={2.5} aria-hidden="true" />
-              </button>
-            </header>
-            <div className="tenant-chat-panel-body">
-              <form className="tenant-landlord-message-form" onSubmit={submitLandlordMessage}>
-                <div className="tenant-landlord-message-context">
-                  <span>연결된 입주 정보</span>
-                  <strong>
-                    {landlordConversation
-                      ? `${landlordConversation.buildingName} ${landlordConversation.unitId}호`
-                      : tenancy && tenancy !== "loading"
-                        ? `${tenancy.buildingName} ${tenancy.roomNo}호`
-                        : "입주 정보 확인 필요"}
-                  </strong>
-                  <p>보낸 문의는 관리자 소통 화면에 같은 대화로 표시됩니다.</p>
-                </div>
-                <label htmlFor="tenant-landlord-message">첫 메시지</label>
-                <textarea
-                  id="tenant-landlord-message"
-                  value={landlordMessageDraft}
-                  onChange={(event) => setLandlordMessageDraft(event.target.value)}
-                  placeholder="임대인에게 문의할 내용을 입력하세요."
-                  disabled={isLandlordMessageSubmitting || !landlordConversation}
-                />
-                {landlordConversationError ? <p role="alert">{landlordConversationError}</p> : null}
-                <button
-                  type="submit"
-                  disabled={
-                    !landlordConversation ||
-                    !landlordMessageDraft.trim() ||
-                    isLandlordMessageSubmitting
-                  }
-                >
-                  {isLandlordMessageSubmitting ? "보내는 중..." : "문의 보내기"}
-                </button>
-              </form>
-            </div>
-          </aside>
-        </>
       ) : null}
 
       {isContractSheetOpen ? (

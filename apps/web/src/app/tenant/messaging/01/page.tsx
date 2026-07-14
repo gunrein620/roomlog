@@ -144,7 +144,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         style={{
           flex: 1,
           overflow: "auto",
-          padding: "14px",
+          padding: "14px 14px 92px",
           display: "flex",
           flexDirection: "column",
           gap: 12,
@@ -176,9 +176,23 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         )}
 
         <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
-          ))}
+          {messages.length > 0 ? (
+            messages.map((message) => (
+              <MessageBubble key={message.id} message={message} />
+            ))
+          ) : (
+            <Card
+              style={{
+                padding: 14,
+                fontSize: 12,
+                color: "var(--on-surface-variant)",
+                background: "var(--surface-container)",
+                lineHeight: 1.5,
+              }}
+            >
+              아직 보낸 메시지가 없습니다. 아래 입력창에 메시지를 보내면 관리자 소통 화면에도 같은 대화로 표시됩니다.
+            </Card>
+          )}
         </section>
 
         {thread.archivedNotice && (
@@ -199,8 +213,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         action={sendTenantMessage}
         style={{
           flex: "none",
+          position: "sticky",
+          bottom: 0,
+          zIndex: 5,
           padding: "12px 14px",
           borderTop: "1px solid var(--border)",
+          background: "var(--surface-container-lowest)",
           display: "grid",
           gridTemplateColumns: "1fr auto",
           gap: 8,
