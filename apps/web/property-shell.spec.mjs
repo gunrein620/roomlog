@@ -513,6 +513,13 @@ test("manager announcement send keeps business errors inside the review screen",
   assert.doesNotMatch(managerMessagingReviewActionSource, /throw error/);
 });
 
+test("manager announcement send makes the empty-recipient button visibly disabled", () => {
+  assert.match(managerMessagingSendFormSource, /!canSend \? "수신자 없음"/);
+  assert.match(managerMessagingSendFormSource, /background: "var\(--surface-container-highest\)"/);
+  assert.match(managerMessagingSendFormSource, /color: "var\(--on-surface-variant\)"/);
+  assert.match(managerMessagingSendFormSource, /cursor: "not-allowed"/);
+});
+
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["조건에 맞는 방", "지도 열기", "추천 매물", "매물 57804322", "전체"]) {
     assert.match(pageSource, new RegExp(label));

@@ -8,6 +8,11 @@ import {
 } from "./actions";
 
 const initialState: SendAnnouncementActionState = {};
+const emptyRecipientButtonStyle = {
+  background: "var(--surface-container-highest)",
+  color: "var(--on-surface-variant)",
+  cursor: "not-allowed",
+} as const;
 
 export function AnnouncementSendForm({
   draftId,
@@ -40,8 +45,13 @@ export function AnnouncementSendForm({
           {state.error}
         </div>
       ) : null}
-      <Button type="submit" fullWidth disabled={!canSend || pending}>
-        {pending ? "발송 중..." : "승인하고 발송"}
+      <Button
+        type="submit"
+        fullWidth
+        disabled={!canSend || pending}
+        style={!canSend ? emptyRecipientButtonStyle : undefined}
+      >
+        {!canSend ? "수신자 없음" : pending ? "발송 중..." : "승인하고 발송"}
       </Button>
     </form>
   );

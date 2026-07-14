@@ -255,3 +255,34 @@ git rev-parse origin/kms-notice
 ```
 
 Expected: HEAD matches `origin/kms-notice`; only pre-existing unrelated untracked documents remain.
+
+### Task 4: 빈 수신자 발송 버튼의 시각 상태 보완
+
+**Files:**
+- Modify: `apps/web/src/app/manager/messaging/02/AnnouncementSendForm.tsx`
+- Modify: `apps/web/property-shell.spec.mjs`
+
+**Interfaces:**
+- Consumes: `canSend: boolean`, `pending: boolean`
+- Produces: 수신자 0명일 때 `수신자 없음` 문구와 회색 토큰 스타일이 적용된 disabled 버튼
+
+- [ ] **Step 1: 회귀 테스트를 추가하고 RED 확인**
+
+`property-shell.spec.mjs`에서 `수신자 없음`, `var(--surface-container-highest)`, `var(--on-surface-variant)`, `not-allowed`가 발송 폼에 존재하는지 검증하고 `node --test property-shell.spec.mjs`로 현재 구현이 실패하는지 확인한다.
+
+- [ ] **Step 2: 공지 발송 폼에만 최소 구현**
+
+`!canSend`일 때 버튼 문구를 `수신자 없음`으로 정하고, `Button`의 `style`에 회색 배경·글자·커서를 전달한다. `pending`일 때는 기존 `발송 중...` 문구를 유지한다.
+
+- [ ] **Step 3: 기능 게이트와 전체 웹 검증**
+
+```bash
+cd apps/web && node --test property-shell.spec.mjs
+cd ../.. && pnpm test:web && pnpm --filter web build
+```
+
+Expected: 대상 테스트와 웹 전체 테스트가 0 failure이고 production build가 종료 코드 0을 반환한다.
+
+- [ ] **Step 4: Docker 화면 검증 후 커밋·푸시**
+
+최신 web 이미지를 재빌드하고 수신자 0명 검토 화면에서 버튼이 회색 `수신자 없음`으로 렌더되는지 확인한 뒤 관련 파일만 커밋하고 `origin/kms-notice`에 푸시한다.
