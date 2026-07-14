@@ -69,7 +69,7 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
         .manager-alert-tile {
           display: grid;
           align-content: space-between;
-          justify-items: center;
+          justify-items: start;
           gap: var(--space-lg);
           min-height: 152px;
           height: 100%;
@@ -80,7 +80,7 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           color: var(--on-surface-variant);
           box-shadow: var(--shadow-soft);
           text-decoration: none;
-          text-align: center;
+          text-align: left;
           transition: transform 0.16s ease;
         }
 
@@ -91,7 +91,7 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
         .manager-alert-tile-top {
           display: flex;
           align-items: center;
-          justify-content: center;
+          justify-content: flex-start;
           gap: var(--space-sm);
         }
 
@@ -106,15 +106,15 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           color: inherit;
         }
 
-        /* 계기 이름표 — 자간 넓힌 마이크로 라벨 */
+        /* 계기 이름표 — 아이콘과 함께 좌측 정렬 */
         .manager-alert-tile-label {
-          font-size: 13px;
+          font-size: 22px;
           font-weight: 800;
           letter-spacing: 0.1em;
         }
 
+        /* 라벨은 좌측이지만 건수(0건·n건)는 타일 가운데로 */
         .manager-alert-tile-count {
-          /* 커진 타일에서 좌측 정렬 숫자는 우측이 비어 보인다 — 계기 대칭으로 중앙 정렬 */
           justify-self: center;
           color: var(--on-surface);
           font-size: var(--fs-caption);

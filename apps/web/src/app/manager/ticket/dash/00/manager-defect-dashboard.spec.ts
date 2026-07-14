@@ -164,8 +164,9 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /"민원\/하자 관리"/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-13 통합 관리 화면 상태에 맞춰 티켓 하위 메뉴 활성 계약을 변경.
-    "2e28e29afb35527181fa314081864353e34fc71fee2bbdfa4e53e37343facefb",
+    // 2026-07-14 통합 대시보드 하위 탭(리포트·건물 관리·등록)에 스크롤스파이 활성 표시 추가 —
+    // 해시 섹션을 스크롤 위치로 추적해 사이드바 하이라이트를 동기화(자산현황=최상단).
+    "d7c065a39db073660260a027a32b0d58c7f5abb0242c5b4d2ae9df49032b4f00",
   );
   assert.equal(
     sha256(navigationSource),
