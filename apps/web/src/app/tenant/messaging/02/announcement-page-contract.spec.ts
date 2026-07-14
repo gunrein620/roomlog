@@ -8,7 +8,9 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 describe("tenant announcement route boundary", () => {
   it("keeps auth in the shared layout and moves PhoneFrame to legacy screens", () => {
-    assert.doesNotMatch(read("../layout.tsx"), /PhoneFrame/);
+    const layout = read("../layout.tsx");
+    assert.match(layout, /requireUser\("TENANT"\)/);
+    assert.doesNotMatch(layout, /PhoneFrame/);
     for (const path of ["../00/page.tsx", "../01/page.tsx", "../e0/page.tsx"]) {
       assert.match(read(path), /MessagingPhoneFrame/);
     }
@@ -36,8 +38,28 @@ describe("tenant announcement route boundary", () => {
     assert.match(component, /공지사항/);
     assert.match(component, /도움이 필요하신가요/);
     assert.match(component, /tenantAnnouncementDetailHref/);
+    assert.match(
+      component,
+      /const needsConfirmation = announcement\.confirmRequired && announcement\.state !== "confirmed";/,
+    );
+    assert.match(
+      component,
+      /const isOrdinaryUnread = announcement\.state === "unread" && !announcement\.confirmRequired;/,
+    );
+    assert.match(
+      component,
+      /\{needsConfirmation && <span className=\{styles\.unread\}>미확인<\/span>\}/,
+    );
+    assert.match(
+      component,
+      /\{isOrdinaryUnread && <span className=\{styles\.unread\}>새 공지<\/span>\}/,
+    );
+    assert.match(component, /<summary aria-label="공지 검색">/);
+    assert.doesNotMatch(component, /공지 검색 열기/);
     assert.match(css, /@media \(min-width: 768px\)/);
     assert.match(css, /prefers-reduced-motion/);
+    assert.match(css, /-webkit-line-clamp:\s*1;/);
+    assert.doesNotMatch(css, /-webkit-line-clamp:\s*2;/);
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
   });
 

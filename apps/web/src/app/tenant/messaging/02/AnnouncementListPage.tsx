@@ -100,7 +100,7 @@ export function AnnouncementListPage({
               <p>우리 건물의 새로운 소식을 확인하세요.</p>
             </div>
             <details className={styles.mobileSearch} open={Boolean(query)}>
-              <summary aria-label="공지 검색 열기">
+              <summary aria-label="공지 검색">
                 <Search aria-hidden="true" size={21} />
               </summary>
               <SearchForm filter={filter} query={query} />
@@ -152,7 +152,8 @@ export function AnnouncementListPage({
                 {visible.map((announcement) => {
                   const CategoryIcon = CATEGORY_ICONS[announcement.category];
                   const isUrgent = announcement.category === "urgent" || announcement.confirmRequired;
-                  const isUnread = announcement.state === "unread";
+                  const needsConfirmation = announcement.confirmRequired && announcement.state !== "confirmed";
+                  const isOrdinaryUnread = announcement.state === "unread" && !announcement.confirmRequired;
 
                   return (
                     <article
@@ -172,7 +173,8 @@ export function AnnouncementListPage({
                             </span>
                             {CATEGORY_LABELS[announcement.category]}
                           </span>
-                          {isUnread && <span className={styles.unread}>새 공지</span>}
+                          {needsConfirmation && <span className={styles.unread}>미확인</span>}
+                          {isOrdinaryUnread && <span className={styles.unread}>새 공지</span>}
                         </div>
                         <h2>{announcement.title}</h2>
                         <p className={styles.cardBody}>{announcement.body}</p>
