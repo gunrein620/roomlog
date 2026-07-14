@@ -46,11 +46,11 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
     <>
       <div className={styles.summaryStrip} aria-label="연체 핵심 지표">
         <div className={styles.summaryItem}>
-          <div className={styles.metricLabel}>활성 연체 미수금</div>
+          <div className={styles.metricLabel}>독촉 대상 미수금</div>
           <div className={styles.metricValue} data-tone="danger">{won(data.summary.activeUnpaidAmount)}</div>
         </div>
         <div className={styles.summaryItem}>
-          <div className={styles.metricLabel}>활성 연체 세대</div>
+          <div className={styles.metricLabel}>독촉 대상 세대</div>
           <div className={styles.metricValue}>{data.summary.activeCount}세대</div>
         </div>
         <div className={styles.summaryItem}>
@@ -88,7 +88,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
           ))}
         </div>
         <label className={styles.searchWrap}>
-          <span className="sr-only">연체 케이스 검색</span>
+          <span className={styles.visuallyHidden}>연체 대상 검색</span>
           <Search className={styles.searchIcon} aria-hidden="true" size={15} />
           <input
             className={styles.input}
@@ -102,9 +102,9 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
       <section className={styles.caseWorkspace}>
         <div className={styles.caseList}>
           <div className={styles.caseListHeader}>
-            <div className={styles.toolbar} aria-label="연체 큐">
+            <div className={styles.toolbar} aria-label="연체 처리 목록">
               <button type="button" className={styles.filterButton} aria-pressed={queue === "active"} onClick={() => selectQueue("active")}>
-                활성 연체 <span className={styles.filterCount}>{data.activeCases.length}</span>
+                독촉 대상 <span className={styles.filterCount}>{data.activeCases.length}</span>
               </button>
               <button type="button" className={styles.filterButton} aria-pressed={queue === "waiting"} onClick={() => selectQueue("waiting")}>
                 입금 확인 대기 <span className={styles.filterCount}>{data.waitingCases.length}</span>
@@ -135,7 +135,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
               </button>
             ))
           ) : (
-            <div className={styles.emptyState}>이 구간에 표시할 케이스가 없습니다.</div>
+            <div className={styles.emptyState}>이 조건에 맞는 대상이 없습니다.</div>
           )}
         </div>
 
@@ -144,7 +144,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
             <>
               <div className={styles.detailTop}>
                 <div>
-                  <p className={styles.sectionEyebrow}>{queue === "active" ? "활성 케이스" : "입금 확인 대기 케이스"}</p>
+                  <p className={styles.sectionEyebrow}>{queue === "active" ? "연체 상세" : "입금 확인 상세"}</p>
                   <h2 className={styles.detailTitle}>{selected.buildingName ?? "건물 확인 필요"} {selected.unitId}호 · {selected.tenantName}</h2>
                 </div>
                 <span className={styles.detailBadge}>{selected.daysOverdue}일 경과</span>
@@ -184,7 +184,7 @@ export function OverdueWorkspace({ data }: { data: ManagerOverdueWorkspace }) {
               </div>
             </>
           ) : (
-            <div className={styles.emptyState}>왼쪽에서 검토할 케이스를 선택하세요.</div>
+            <div className={styles.emptyState}>왼쪽 목록에서 확인할 청구를 선택하세요.</div>
           )}
         </div>
       </section>
