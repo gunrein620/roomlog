@@ -27,14 +27,7 @@ import {
   getManagerNavState,
   type ManagerNavItemId,
 } from "@/lib/manager-navigation";
-import { MHOME_ROUTES } from "@/lib/manager-home-nav";
 import { resolveTicketDashboardView } from "../ticket/dash/00/ticket-dashboard-view";
-
-// href에서 해시(#report 등)만 뽑는다 — 해시 없으면 빈 문자열(자산현황).
-function hashOf(href: string): string {
-  const index = href.indexOf("#");
-  return index >= 0 ? href.slice(index) : "";
-}
 
 const MANAGER_NAV_ICONS: Record<ManagerNavItemId, LucideIcon> = {
   dashboard: LayoutDashboard,
@@ -96,39 +89,6 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
     if (messagingActive) setMessagingExpanded(true);
   }, [pathname, messagingActive]);
 
-  // 통합 대시보드(home/00)에서만: 스크롤 위치로 해시 섹션(#report·#buildings·#register)을
-  // 추적해 하위 탭 활성 표시를 동기화한다. 해시는 usePathname에 안 잡혀 클라이언트에서 직접 본다.
-  const [activeHash, setActiveHash] = useState("");
-  useEffect(() => {
-    if (pathname !== MHOME_ROUTES["M-HOME-00"]) {
-      setActiveHash("");
-      return;
-    }
-    const ids = ["report", "buildings", "register"];
-    let raf = 0;
-    const compute = () => {
-      raf = 0;
-      // 뷰포트 상단에서 이 지점(160px)을 지난 마지막 섹션이 현재 섹션 — 지나기 전엔 자산현황.
-      let current = "";
-      for (const id of ids) {
-        const el = document.getElementById(id);
-        if (el && el.getBoundingClientRect().top <= 160) current = `#${id}`;
-      }
-      setActiveHash(current);
-    };
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(compute);
-    };
-    compute();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [pathname]);
-
   return (
     <div className="manager-sidebar">
       <header className="manager-sidebar__header">
@@ -176,8 +136,6 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
             <div className="manager-sidebar__items">
               {group.items.map((item) => {
                 const active = state.activeItemId === item.id;
-                // 통합 대시보드 홈에서는 하위 탭 활성 판정을 스크롤 해시로 대체(자산현황=해시 없음).
-                const isDashboardHome = item.id === "dashboard" && pathname === item.href;
                 const parentCurrent = currentHref === item.href && state.activeChildHref === null;
                 const Icon = MANAGER_NAV_ICONS[item.icon];
                 const isTicket = item.id === "ticket";
@@ -237,9 +195,7 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
                             // ticketView 매칭은 민원·하자 화면일 때만 — 다른 화면에서 '민원 대시보드'가
                             // 기본 view 값과 우연히 일치해 하이라이트되는 것을 막는다.
                             ? active && child.ticketView === ticketView
-                            : isDashboardHome
-                              ? hashOf(child.href) === activeHash
-                              : child.active ?? currentHref === child.href;
+                            : child.active ?? currentHref === child.href;
                           return (
                             <Link
                               key={child.href}

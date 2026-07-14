@@ -37,12 +37,10 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
                   : `manager-alert-tile manager-alert-tile--${key}`
               }
             >
-              <span className="manager-alert-tile-top">
-                <span className="manager-alert-tile-icon" aria-hidden="true">
-                  <Icon size={20} strokeWidth={2.2} />
-                </span>
-                <span className="manager-alert-tile-label">{label}</span>
+              <span className="manager-alert-tile-icon" aria-hidden="true">
+                <Icon size={16} strokeWidth={2.4} />
               </span>
+              <span className="manager-alert-tile-label">{label}</span>
               <span className="manager-alert-tile-count">
                 <strong>{count}</strong>건
               </span>
@@ -66,14 +64,15 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           height: 100%;
         }
 
+        /* 컴팩트 스탯 칩 — 아이콘·라벨·건수를 한 줄에. 대시보드에서 자리를 덜 차지하도록
+           카드형(152px)에서 줄형(56px)으로 축소했다. */
         .manager-alert-tile {
-          display: grid;
-          align-content: space-between;
-          justify-items: start;
-          gap: var(--space-lg);
-          min-height: 152px;
+          display: flex;
+          align-items: center;
+          gap: var(--space-sm);
+          min-height: 56px;
           height: 100%;
-          padding: var(--space-xl);
+          padding: var(--space-sm) var(--space-md);
           border-radius: var(--radius-md);
           /* 소등 상태 — 흰 카드가 아니라 한 톤 낮춰 "꺼져 있음"을 배경으로도 드러낸다 */
           background: var(--surface-container-low);
@@ -88,16 +87,9 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           transform: translateY(-2px);
         }
 
-        .manager-alert-tile-top {
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          gap: var(--space-sm);
-        }
-
         .manager-alert-tile-icon {
-          width: 40px;
-          height: 40px;
+          width: 30px;
+          height: 30px;
           flex: none;
           display: grid;
           place-items: center;
@@ -106,19 +98,19 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           color: inherit;
         }
 
-        /* 계기 이름표 — 아이콘과 함께 좌측 정렬 */
         .manager-alert-tile-label {
-          font-size: 22px;
+          font-size: 14px;
           font-weight: 800;
-          letter-spacing: 0.1em;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
         }
 
-        /* 라벨은 좌측이지만 건수(0건·n건)는 타일 가운데로 */
         .manager-alert-tile-count {
-          justify-self: center;
+          margin-left: auto;
           color: var(--on-surface);
           font-size: var(--fs-caption);
           font-weight: 700;
+          white-space: nowrap;
         }
 
         .manager-alert-tile--active {
@@ -130,9 +122,14 @@ export function AlertStatTiles({ warnings }: { warnings: AlertStatWarnings }) {
           color: inherit;
         }
 
+        /* 진한 활성 배경(연체·긴급) 위에서 건수가 묻히지 않게 타일 텍스트색을 따라간다 */
+        .manager-alert-tile--active .manager-alert-tile-count {
+          color: inherit;
+        }
+
         .manager-alert-tile-count strong {
           margin-right: 2px;
-          font-size: 36px;
+          font-size: 20px;
           line-height: 1.1;
           font-weight: 800;
         }

@@ -10,7 +10,6 @@ import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
 import { BuildingsSection } from "./sections/BuildingsSection";
-import { RegisterSection } from "./sections/RegisterSection";
 import { ReportSection } from "./sections/ReportSection";
 
 export default async function Page() {
@@ -60,32 +59,36 @@ export default async function Page() {
           </div>
         ) : null}
 
-        <div className="manager-home-bento">
-          <InstrumentPanel
-            depositRatePct={dashboard.depositRatePct}
-            monthLabel={dashboard.depositRateMonthLabel}
-            payerCounts={dashboard.depositPayerCounts}
-            depositAmounts={dashboard.depositAmounts}
-            occupancyPct={occupancy.total > 0 ? Math.round((occupancy.contracted / occupancy.total) * 100) : null}
-            occupancySub={occupancy.total > 0 ? `${occupancy.contracted} / ${occupancy.total}곳` : "확인 필요"}
-            occupancyHref={MHOME_ROUTES["M-HOME-03"]}
-            ticketPct={
-              dashboard.ticketProgress
-                ? Math.round((dashboard.ticketProgress.resolved / dashboard.ticketProgress.total) * 100)
-                : null
-            }
-            ticketSub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
-            ticketHref={MANAGER_CROSS.ticketDash}
-          />
-          <PortfolioBarCards />
+        {/* 한눈에 보이는 글랜스 — 좌: 코스믹 계기판+자산 추이, 우: 임대 현황 리포트(세로 막대) */}
+        <div className="manager-home-glance">
+          <div className="manager-home-bento">
+            <InstrumentPanel
+              depositRatePct={dashboard.depositRatePct}
+              monthLabel={dashboard.depositRateMonthLabel}
+              payerCounts={dashboard.depositPayerCounts}
+              depositAmounts={dashboard.depositAmounts}
+              occupancyPct={occupancy.total > 0 ? Math.round((occupancy.contracted / occupancy.total) * 100) : null}
+              occupancySub={occupancy.total > 0 ? `${occupancy.contracted} / ${occupancy.total}곳` : "확인 필요"}
+              occupancyHref={MHOME_ROUTES["M-HOME-03"]}
+              ticketPct={
+                dashboard.ticketProgress
+                  ? Math.round((dashboard.ticketProgress.resolved / dashboard.ticketProgress.total) * 100)
+                  : null
+              }
+              ticketSub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
+              ticketHref={MANAGER_CROSS.ticketDash}
+            />
+            <PortfolioBarCards />
+          </div>
+          <ReportSection />
         </div>
+
+        <AlertStatTiles warnings={warnings} />
 
         <HomeCards
           homeCards={dashboard.homeCards}
           uncontractedListings={dashboard.uncontractedListings}
         />
-
-        <AlertStatTiles warnings={warnings} />
 
         <section aria-labelledby="manager-today-tasks-title" className="manager-home-tasks">
           <div className="manager-home-tasks-heading">
@@ -95,9 +98,7 @@ export default async function Page() {
           <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
         </section>
 
-        <ReportSection />
         <BuildingsSection />
-        <RegisterSection />
       </div>
 
       <style>{`
@@ -110,10 +111,26 @@ export default async function Page() {
           gap: var(--space-xl);
         }
 
+        /* ── 글랜스 2단 — 좌 코스믹 벤토, 우 임대 현황 리포트. 좁은 화면에선 세로로 쌓인다 ── */
+        .manager-home-glance {
+          display: grid;
+          grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+          gap: var(--space-md);
+          align-items: stretch;
+        }
+
         /* ── 벤토 — 계기 패널(입주율 링·납부 게이지·티켓 처리율 링 통합) + 자산 스탯 카드 2장 ── */
         .manager-home-bento {
+          min-width: 0;
           display: grid;
+          align-content: start;
           gap: var(--space-md);
+        }
+
+        @media (max-width: 1100px) {
+          .manager-home-glance {
+            grid-template-columns: 1fr;
+          }
         }
 
         /* ── 레퍼런스 정렬 — 박스를 줄이고 톤으로 말하기 ── */

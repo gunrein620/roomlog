@@ -151,6 +151,9 @@ export function InstrumentPanel({
            아래 linear-gradient는 텍스처 로딩 전 fallback (SVG 하늘 그라데이션과 동일 톤). */
         .manager-instrument-panel {
           position: relative;
+          /* 글랜스 2단 배치로 카드가 절반 폭에도 들어간다 — 게이지 축소·재배치는
+             뷰포트가 아니라 카드 자신의 폭 기준(컨테이너 쿼리)으로 판단한다. */
+          container-type: inline-size;
           display: grid;
           gap: var(--space-lg);
           padding: var(--space-xl);
@@ -292,8 +295,18 @@ export function InstrumentPanel({
           color: #ffffff;
         }
 
-        /* 카드 폭이 좁아지는 구간 — 링이 넘치지 않도록 축소 */
-        @media (max-width: 1120px) {
+        /* 카드 폭이 좁아지는 구간(글랜스 절반 칼럼 등) — 3열이 안 들어가므로
+           게이지를 첫 줄 전체 폭으로 올리고 링 2개를 아랫줄에 나란히 둔다. 링도 한 단계 축소. */
+        @container (max-width: 799px) {
+          .manager-instrument-gauges {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .manager-instrument-gauge-column {
+            grid-column: 1 / -1;
+            order: -1;
+          }
+
           .manager-instrument-ring {
             width: 160px;
             height: 160px;
@@ -302,16 +315,21 @@ export function InstrumentPanel({
           .manager-instrument-ring-tick {
             transform-origin: 50% 80px;
           }
-        }
 
-        /* 더 좁은 화면 — 3열을 세로로 쌓고 게이지를 맨 위로 */
-        @media (max-width: 720px) {
-          .manager-instrument-gauges {
-            grid-template-columns: 1fr;
+          .manager-instrument-ring-pct {
+            font-size: 38px;
           }
 
-          .manager-instrument-gauge {
-            order: -1;
+          .manager-instrument-ring-label,
+          .manager-instrument-gauge-label {
+            font-size: 20px;
+          }
+        }
+
+        /* 아주 좁은 카드(모바일 단일 칼럼) — 링도 세로로 쌓는다 */
+        @container (max-width: 430px) {
+          .manager-instrument-gauges {
+            grid-template-columns: 1fr;
           }
         }
 
