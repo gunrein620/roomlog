@@ -9,28 +9,19 @@ import {
   Search,
   WalletCards,
 } from "lucide-react";
-import type { BillStatus, ManagerBillRow } from "@roomlog/types";
+import type { ManagerBillRow } from "@roomlog/types";
 import type { ManagerDashboardData } from "@/lib/billing-manager-api";
 import {
   buildBillingScopeHref,
   filterDashboardBills,
   groupBillsByBuilding,
+  managerBillDisplayState,
+  managerBillStatusLabel,
   type DashboardBillSort,
   type DashboardQuickFilter,
   type DashboardReviewFilter,
 } from "@/lib/billing-manager-workspace";
 import styles from "./billing-workspace.module.css";
-
-const statusLabel: Record<BillStatus, string> = {
-  draft: "초안",
-  sent: "수납 대기",
-  confirming: "납부 확인 중",
-  partially_paid: "일부 수납",
-  paid: "수납 완료",
-  overdue: "연체",
-  corrected: "정정",
-  canceled: "취소",
-};
 
 function won(value: number) {
   return `${value.toLocaleString("ko-KR")}원`;
@@ -74,8 +65,8 @@ function LedgerTable({ bills }: { bills: ManagerBillRow[] }) {
                 {won(unpaid(bill))}
               </td>
               <td>
-                <span className={styles.statusPill} data-state={bill.status}>
-                  {statusLabel[bill.status]}
+                <span className={styles.statusPill} data-state={managerBillDisplayState(bill)}>
+                  {managerBillStatusLabel(bill)}
                 </span>
               </td>
               <td>{bill.dueDate.slice(0, 10)}</td>
@@ -148,7 +139,7 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
         bill.totalAmount,
         bill.paidAmount,
         unpaid(bill),
-        statusLabel[bill.status],
+        managerBillStatusLabel(bill),
         bill.dueDate.slice(0, 10),
       ]),
     ];
@@ -328,6 +319,7 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
                 <option value="draft">초안</option>
                 <option value="sent">수납 대기</option>
                 <option value="confirming">납부 확인 중</option>
+                <option value="payment_review">입금 확인 대기</option>
                 <option value="partially_paid">일부 수납</option>
                 <option value="paid">수납 완료</option>
                 <option value="overdue">연체</option>

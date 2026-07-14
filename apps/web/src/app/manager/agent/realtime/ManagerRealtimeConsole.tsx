@@ -2,26 +2,16 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Badge, Button, Card } from "@roomlog/ui";
+import type {
+  ManagerAgentCommandInput,
+  ManagerAgentCommandName,
+  ManagerAgentCommandResult,
+  ManagerCopilotChatResponse,
+  ManagerCopilotPendingAction,
+} from "@roomlog/types";
+import { ManagerAssistantActionCard } from "@/app/manager/_components/ManagerAssistantActionCard";
 import { normalizeManagerPrompt } from "@/lib/manager-assistant";
-
-type ManagerAgentCommandName =
-  | "ticket.query"
-  | "billing.summary"
-  | "billing.send_dunning"
-  | "messaging.draft_reply"
-  | "messaging.send_reply";
-
-type ManagerAgentCommandResult = {
-  status: "executed" | "draft_only" | "blocked";
-  domain: "ticket" | "billing" | "messaging" | "system";
-  summary: string;
-  data?: unknown;
-  navigation?: {
-    label: string;
-    href: string;
-  };
-  requiresConfirmation?: boolean;
-};
+import { requestManagerCopilotChat } from "@/lib/manager-copilot-api";
 
 type ManagerRealtimeClientSecretResult = {
   mode: "openai" | "not_configured";
@@ -62,8 +52,8 @@ const commandOptions: Array<{
   },
   {
     command: "billing.send_dunning",
-    label: "연체 독촉 발송",
-    placeholder: "411호 연체 독촉 메시지 바로 보내줘"
+    label: "연체 독촉",
+    placeholder: "411호 연체 독촉 문구를 준비해줘"
   },
   {
     command: "messaging.draft_reply",
@@ -77,17 +67,26 @@ const commandOptions: Array<{
   }
 ];
 
-export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?: string }) {
-  const [activeCommand, setActiveCommand] = useState<ManagerAgentCommandName>("ticket.query");
+export function ManagerRealtimeConsole({
+  initialPrompt = "",
+  initialBillId,
+}: {
+  initialPrompt?: string;
+  initialBillId?: string;
+}) {
+  const [activeCommand, setActiveCommand] = useState<ManagerAgentCommandName>(() =>
+    initialBillId ? "billing.send_dunning" : "ticket.query",
+  );
   const [chatText, setChatText] = useState(() => normalizeManagerPrompt(initialPrompt));
   const [pendingText, setPendingText] = useState(false);
+  const [pendingAction, setPendingAction] = useState<ManagerCopilotPendingAction | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [session, setSession] = useState<ManagerRealtimeClientSecretResult | null>(null);
   const [entries, setEntries] = useState<ConsoleEntry[]>([
     {
       id: "initial",
       role: "agent",
-      text: "처리할 일을 대화로 입력하세요. 티켓 조회, 청구 요약, 청구 전용 연체 독촉 발송, 소통 답장 초안과 일반 답장 발송을 실행할 수 있습니다."
+      text: "처리할 일을 대화로 입력하세요. 티켓 조회, 청구 요약, 청구 전용 연체 독촉 준비, 소통 답장 초안과 일반 답장 발송을 실행할 수 있습니다."
     }
   ]);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -111,7 +110,7 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [entries.length, pendingText, voiceStatus]);
+  }, [entries.length, pendingAction, pendingText, voiceStatus]);
 
   const activeOption = commandOptions.find((option) => option.command === activeCommand) ?? commandOptions[0];
 
@@ -185,14 +184,7 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
     }
   }
 
-  async function runManagerCommand(input: {
-    command: string;
-    text?: string;
-    billId?: string;
-    channel?: string;
-    threadId?: string;
-    body?: string;
-  }): Promise<ManagerAgentCommandResult> {
+  async function runManagerCommand(input: ManagerAgentCommandInput): Promise<ManagerAgentCommandResult> {
     const response = await fetch("/api/manager/agent/realtime/command", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -207,9 +199,110 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
     return body as ManagerAgentCommandResult;
   }
 
+  async function requestDunningPreparation({
+    prompt,
+    billId,
+    channel,
+    messageText,
+  }: {
+    prompt?: string;
+    billId?: string;
+    channel?: string;
+    messageText?: string;
+  }) {
+    return requestManagerCopilotChat({
+      messages: [],
+      intent: {
+        type: "billing.send_dunning",
+        source: initialBillId ? "overdue" : "assistant",
+        billId,
+        prompt,
+        channel,
+        messageText,
+      },
+    });
+  }
+
+  function applyCopilotResponse(response: ManagerCopilotChatResponse) {
+    appendEntry({ role: response.mode === "not_configured" ? "system" : "agent", text: response.reply });
+    setPendingAction(response.pendingAction ?? null);
+
+    for (const receipt of response.receipts ?? []) {
+      appendEntry({ role: "system", text: `실행 완료 · ${receipt.summary}` });
+    }
+  }
+
+  async function confirmPendingAction() {
+    if (!pendingAction || pendingText) return;
+    setPendingText(true);
+
+    try {
+      const response = await requestManagerCopilotChat({
+        messages: [],
+        confirmActionId: pendingAction.id,
+      });
+      applyCopilotResponse(response);
+    } catch (error) {
+      appendEntry({
+        role: "system",
+        text: error instanceof Error ? error.message : "독촉을 발송하지 못했습니다.",
+      });
+    } finally {
+      setPendingText(false);
+    }
+  }
+
+  async function cancelPendingAction() {
+    if (!pendingAction || pendingText) return;
+    setPendingText(true);
+
+    try {
+      const response = await requestManagerCopilotChat({
+        messages: [],
+        cancelActionId: pendingAction.id,
+      });
+      applyCopilotResponse(response);
+    } catch (error) {
+      appendEntry({
+        role: "system",
+        text: error instanceof Error ? error.message : "독촉 취소를 처리하지 못했습니다.",
+      });
+    } finally {
+      setPendingText(false);
+    }
+  }
+
+  async function revisePendingDunning(messageText: string, channel: string) {
+    const preview = pendingAction?.dunningPreview;
+    if (!preview || pendingText) return;
+    setPendingText(true);
+
+    try {
+      const response = await requestDunningPreparation({
+        billId: preview.billId,
+        prompt: `${preview.unitId}호 ${preview.billingMonth} 독촉 문구 수정`,
+        channel,
+        messageText,
+      });
+      applyCopilotResponse(response);
+    } catch (error) {
+      appendEntry({
+        role: "system",
+        text: error instanceof Error ? error.message : "독촉 문구를 수정하지 못했습니다.",
+      });
+    } finally {
+      setPendingText(false);
+    }
+  }
+
   async function submitAgentMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedText = chatText.trim();
+
+    if (pendingAction) {
+      appendEntry({ role: "system", text: "먼저 현재 독촉을 발송하거나 취소해 주세요." });
+      return;
+    }
 
     if (!trimmedText) {
       appendEntry({ role: "system", text: "AI agent에게 전달할 내용을 입력해주세요." });
@@ -223,12 +316,23 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
     setChatText("");
 
     try {
-      const result = await runManagerCommand({
-        command: inferredCommand,
-        text: trimmedText,
-        body: inferredCommand === "messaging.draft_reply" || inferredCommand === "messaging.send_reply" ? trimmedText : undefined
-      });
-      appendEntry({ role: "agent", text: result.summary, result });
+      if (inferredCommand === "billing.send_dunning") {
+        const response = await requestDunningPreparation({
+          prompt: trimmedText,
+          billId: initialBillId,
+        });
+        applyCopilotResponse(response);
+      } else {
+        const result = await runManagerCommand({
+          command: inferredCommand,
+          text: trimmedText,
+          body:
+            inferredCommand === "messaging.draft_reply" || inferredCommand === "messaging.send_reply"
+              ? trimmedText
+              : undefined,
+        });
+        appendEntry({ role: "agent", text: result.summary, result });
+      }
     } catch (error) {
       appendEntry({
         role: "system",
@@ -240,7 +344,13 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
   }
 
   function submitAgentMessageFromKeyboard(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || pendingText) {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing ||
+      pendingText ||
+      Boolean(pendingAction)
+    ) {
       return;
     }
 
@@ -385,15 +495,31 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
       // 명령 실패도 모델에 결과로 돌려줘야 대화가 이어진다 — 안 돌려주면 응답 없이 멈춘 것처럼 보인다.
       let result: ManagerAgentCommandResult;
       try {
-        result = await runManagerCommand({
-          command: args.command || "",
-          text: args.text,
-          billId: args.billId,
-          channel: args.channel,
-          threadId: args.threadId,
-          body: args.body
-        });
-        appendEntry({ role: "agent", text: result.summary, result });
+        if (args.command === "billing.send_dunning") {
+          const response = await requestDunningPreparation({
+            prompt: args.text,
+            billId: args.billId || initialBillId,
+            channel: args.channel,
+            messageText: args.body,
+          });
+          applyCopilotResponse(response);
+          result = {
+            status: response.pendingAction ? "draft_only" : "blocked",
+            domain: "billing",
+            summary: response.reply,
+            requiresConfirmation: Boolean(response.pendingAction),
+          };
+        } else {
+          result = await runManagerCommand({
+            command: args.command || "",
+            text: args.text,
+            billId: args.billId,
+            channel: args.channel,
+            threadId: args.threadId,
+            body: args.body,
+          });
+          appendEntry({ role: "agent", text: result.summary, result });
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "명령 실행 중 오류가 발생했습니다.";
         result = { status: "blocked", domain: "system", summary: message };
@@ -450,7 +576,7 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
             <Badge emphasis>OpenAI Realtime</Badge>
             <Badge>{voiceStatusLabel(voiceStatus)}</Badge>
-            <Badge>관리인 확인 게이트</Badge>
+            <Badge>관리인 확인 후 실행</Badge>
           </div>
           <h1 style={{ margin: "var(--space-md) 0 var(--space-sm)", fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
             실시간 AI 운영 에이전트
@@ -498,6 +624,7 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
               <button
                 key={option.command}
                 type="button"
+                disabled={pendingText || Boolean(pendingAction)}
                 onClick={() => {
                   setActiveCommand(option.command);
                   setChatText((current) => current || option.placeholder);
@@ -544,6 +671,15 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
               </div>
             );
           })}
+          {pendingAction ? (
+            <ManagerAssistantActionCard
+              action={pendingAction}
+              busy={pendingText}
+              onConfirm={confirmPendingAction}
+              onCancel={cancelPendingAction}
+              onReviseDunning={revisePendingDunning}
+            />
+          ) : null}
         </div>
 
         <form onSubmit={submitAgentMessage} style={chatFormStyle}>
@@ -553,13 +689,14 @@ export function ManagerRealtimeConsole({ initialPrompt = "" }: { initialPrompt?:
               value={chatText}
               onChange={(event) => setChatText(event.target.value)}
               onKeyDown={submitAgentMessageFromKeyboard}
+              disabled={Boolean(pendingAction)}
               rows={2}
-              placeholder="AI agent에게 처리할 일을 입력하세요"
+              placeholder={pendingAction ? "발송 여부를 먼저 확인해 주세요" : "AI agent에게 처리할 일을 입력하세요"}
               style={chatInputStyle}
             />
           </label>
           <div style={{ display: "flex", alignItems: "end" }}>
-            <Button type="submit" disabled={pendingText}>
+            <Button type="submit" disabled={pendingText || Boolean(pendingAction)}>
               {pendingText ? "처리 중" : "전송"}
             </Button>
           </div>

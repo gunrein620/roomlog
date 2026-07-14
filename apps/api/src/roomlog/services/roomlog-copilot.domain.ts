@@ -4,7 +4,9 @@ import type {
   CopilotChatRequest,
   CopilotChatResponse,
   ManagerAgentCommandInput,
-  ManagerAgentCommandResult
+  ManagerAgentCommandResult,
+  ManagerAssistantIntent,
+  ManagerDunningActionPreview
 } from "../roomlog.types";
 import {
   buildManagerAgentInstructions,
@@ -23,6 +25,7 @@ type CopilotPendingCommandResolution =
       status: "ready";
       commandInput: ManagerAgentCommandInput;
       summary: string;
+      dunningPreview?: ManagerDunningActionPreview;
     }
   | {
       status: "blocked";
@@ -83,6 +86,21 @@ export class RoomlogCopilotDomain {
     managerId: string,
     input: CopilotChatRequest = { messages: [] }
   ): Promise<CopilotChatResponse> {
+    const confirmActionId = input.confirmActionId?.trim();
+    const cancelActionId = input.cancelActionId?.trim();
+
+    if (confirmActionId) {
+      return await this.confirmPendingAction(managerId, confirmActionId);
+    }
+
+    if (cancelActionId) {
+      return this.cancelPendingAction(managerId, cancelActionId);
+    }
+
+    if (input.intent) {
+      return await this.prepareIntent(managerId, input.intent);
+    }
+
     if (!process.env.OPENAI_API_KEY) {
       return {
         mode: "not_configured",
@@ -91,13 +109,29 @@ export class RoomlogCopilotDomain {
       };
     }
 
-    const confirmActionId = input.confirmActionId?.trim();
-
-    if (confirmActionId) {
-      return await this.confirmPendingAction(managerId, confirmActionId);
-    }
-
     return await this.runChatLoop(managerId, input);
+  }
+
+  private async prepareIntent(
+    managerId: string,
+    intent: ManagerAssistantIntent
+  ): Promise<CopilotChatResponse> {
+    const prepared = await this.createPendingAction(managerId, "billing.send_dunning", {
+      command: "billing.send_dunning",
+      billId: intent.billId,
+      text: intent.prompt,
+      channel: intent.channel,
+      body: intent.messageText
+    });
+    const summary = this.resultSummary(prepared.content);
+
+    return {
+      mode: "openai",
+      reply: prepared.pendingAction
+        ? `${prepared.pendingAction.summary} 내용을 확인한 뒤 발송해 주세요.`
+        : summary || "독촉을 준비하지 못했습니다. 대상 청구를 다시 확인해 주세요.",
+      pendingAction: prepared.pendingAction
+    };
   }
 
   private async runChatLoop(
@@ -297,6 +331,7 @@ export class RoomlogCopilotDomain {
       id: id("copilot_action"),
       kind,
       summary: resolution.summary,
+      dunningPreview: resolution.dunningPreview,
       managerId,
       commandInput: { ...resolution.commandInput },
       expiresAtMs: Date.now() + pendingActionTtlMs
@@ -320,7 +355,8 @@ export class RoomlogCopilotDomain {
     return {
       id: action.id,
       kind: action.kind,
-      summary: action.summary
+      summary: action.summary,
+      dunningPreview: action.dunningPreview
     };
   }
 
@@ -378,6 +414,18 @@ export class RoomlogCopilotDomain {
     return action;
   }
 
+  private cancelPendingAction(managerId: string, actionId: string): CopilotChatResponse {
+    const action = this.consumePendingAction(managerId, actionId);
+
+    return {
+      mode: "openai",
+      reply:
+        action.kind === "billing.send_dunning"
+          ? "독촉 발송을 취소했습니다."
+          : "메시지 발송을 취소했습니다."
+    };
+  }
+
   private restorePendingAction(action: CopilotPendingActionRecord) {
     const restored = {
       ...action,
@@ -429,5 +477,11 @@ export class RoomlogCopilotDomain {
 
   private optionalStringValue(value: unknown) {
     return typeof value === "string" ? value : undefined;
+  }
+
+  private resultSummary(content: unknown) {
+    if (!content || typeof content !== "object" || !("summary" in content)) return "";
+    const summary = (content as { summary?: unknown }).summary;
+    return typeof summary === "string" ? summary : "";
   }
 }

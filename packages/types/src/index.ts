@@ -9,3 +9,4 @@ export * from "./moveout";
 export * from "./cost";
 export * from "./report";
 export * from "./vendor-mgmt";
+export * from "./manager-assistant";

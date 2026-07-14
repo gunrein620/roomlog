@@ -497,6 +497,8 @@ describe("RoomlogService", () => {
     const collection = service.getManagerCollection("landlord-demo");
     const deposits = service.listManagerBillDeposits("landlord-demo");
     const overdue = service.listManagerOverdueCases("landlord-demo");
+    const guardedDetail = service.getManagerBill("landlord-demo", "bill-demo-guarded");
+    const guardedCase = overdue.waitingCases.find((item) => item.billId === "bill-demo-guarded");
 
     assert.equal(dashboard.bills.length >= 5, true, "청구 목록은 최소 5건이어야 한다.");
     assert.equal(collection.recentDeposits.length, 5, "최근 입금은 5건이어야 한다.");
@@ -506,6 +508,8 @@ describe("RoomlogService", () => {
     assert.equal(deposits.mismatchDeposits.length, 5, "불일치 확인 요청은 5건이어야 한다.");
     assert.equal(overdue.activeCases.length, 5, "연체 세대 목록은 5건이어야 한다.");
     assert.equal(overdue.waitingCases.length, 5, "확인 대기 목록은 5건이어야 한다.");
+    assert.ok(guardedCase, "확인 대기 목록에 보호된 청구가 있어야 한다.");
+    assert.deepEqual(guardedDetail.guard, guardedCase.guard, "상세도 목록과 같은 입금 확인 상태를 반환해야 한다.");
   });
 
   it("backfills manager billing dummy rows when a persisted demo snapshot has empty billing tables", () => {
@@ -4357,7 +4361,8 @@ describe("RoomlogService", () => {
       assert.match(result.instructions, /청구 관리/);
       assert.match(result.instructions, /소통/);
       assert.match(result.instructions, /독촉 발송은 billing\.send_dunning/);
-      assert.doesNotMatch(result.instructions, /확인중 입금 또는 orphan 입금이 있으면 서버가 차단/);
+      assert.match(result.instructions, /확인 카드/);
+      assert.match(result.instructions, /미연결 입금/);
       assert.equal(result.tools.some((tool: any) => tool.name === "run_manager_agent_command"), true);
       assert.match(JSON.stringify(result.tools), /ticket.query/);
       assert.match(JSON.stringify(result.tools), /billing.summary/);
@@ -4503,12 +4508,12 @@ describe("RoomlogService", () => {
     assert.equal(dunningResult.status, "executed");
     assert.equal(dunningResult.domain, "billing");
     assert.match(dunningResult.summary, /411호.*독촉.*발송/);
-    assert.equal(dunningResult.navigation?.href, "/manager/billing/dunning/bill-demo-overdue-411?id=bill-demo-overdue-411&send=ok");
+    assert.equal(dunningResult.navigation?.href, "/manager/billing/overdue");
 
-    assert.equal(guardedDunningResult.status, "executed");
+    assert.equal(guardedDunningResult.status, "blocked");
     assert.equal(guardedDunningResult.domain, "billing");
-    assert.match(guardedDunningResult.summary, /301호.*독촉.*발송/);
-    assert.equal(guardedDunningResult.navigation?.href, "/manager/billing/dunning/bill-demo-guarded?id=bill-demo-guarded&send=ok");
+    assert.match(guardedDunningResult.summary, /납부 신고|미연결 입금/);
+    assert.equal(guardedDunningResult.navigation, undefined);
   });
 
   it("sends a manager realtime message into the tenant-visible messaging thread", async () => {
@@ -4556,7 +4561,7 @@ describe("RoomlogService", () => {
     assert.match(lastMessage?.body ?? "", /미납|청구|독촉/);
   });
 
-  it("sends guarded realtime dunning requests immediately into tenant-visible payment threads", async () => {
+  it("blocks guarded dunning requests before creating a tenant-visible payment thread", async () => {
     const service = new RoomlogService();
 
     const result = service.runManagerAgentCommand("landlord-demo", {
@@ -4568,11 +4573,10 @@ describe("RoomlogService", () => {
       (thread) => thread.context === "payment" && thread.contextRef === "bill-demo-guarded-302"
     );
 
-    assert.equal(result.status, "executed");
+    assert.equal(result.status, "blocked");
     assert.equal(result.domain, "billing");
-    assert.ok(paymentThread, "확인중 청구도 독촉 요청 즉시 임차인 payment 메시지함에 기록되어야 한다.");
-    assert.equal(paymentThread.lastMessage, (result.data as any).text);
-    assert.equal(paymentThread.unreadCount, 1);
+    assert.match(result.summary, /납부 신고|입금내역/);
+    assert.equal(paymentThread, undefined, "입금 확인 중인 청구에는 독촉 스레드를 만들면 안 된다.");
   });
 
   it("blocks realtime manager messages that look like payment dunning", async () => {

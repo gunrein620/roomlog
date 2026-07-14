@@ -120,7 +120,7 @@ export function ManagerAppShell({
         navCollapsed={navCollapsed}
         theme={theme}
         nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} /></Suspense>}
-        subnav={subnav ?? <ManagerSectionNav />}
+        subnav={subnav ?? <Suspense fallback={null}><ManagerSectionNav /></Suspense>}
         headerActions={action}
         rightRail={rail}
       >

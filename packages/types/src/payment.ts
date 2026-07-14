@@ -146,6 +146,11 @@ export interface DunningGuard {
   hasOrphan: boolean; // 해당 호실/기간 미해소 orphan 입금 존재(전역 가드 A5)
 }
 
+/** 관리인 청구 상세 — 청구 원본과 현재 독촉 가드를 한 응답으로 고정한다. */
+export interface ManagerBillDetail extends Bill {
+  guard: DunningGuard;
+}
+
 /** 청구 목록 행(관리인 뷰) — 대시보드/연체 표에 임차인명 포함. Bill의 표시용 파생. */
 export interface ManagerBillRow {
   billId: string;
@@ -359,9 +364,13 @@ export interface CreateManagerBillsResult {
  */
 export interface DunningDraft {
   billId: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
+  billingMonth?: string;
   unpaidAmount: number;
+  dueDate?: string;
+  daysOverdue?: number;
   draftText: string; // AI 초안(편집 대상)
   channel: string; // 발송 채널(단일)
   guard: DunningGuard; // blocked면 발송 차단

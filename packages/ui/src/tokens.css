@@ -82,6 +82,7 @@
   --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
   --shadow-soft: 0 8px 24px rgba(18, 24, 40, 0.08);
   --focus-ring: 0 0 0 3px rgba(47, 85, 255, 0.28);
+  --disabled-opacity: 0.52;
 
   /* --- spacing (4/8/12/16/24/32) --- */
   --space-xs: 4px;
@@ -203,6 +204,22 @@
   --nav-surface: #201a3f;
   --nav-on-surface: #f4f1fd;
   --nav-on-surface-muted: #a79ed6;
+
+  /* cosmic sidebar: 관리 화면 공용 심야 우주 표면 */
+  --cosmic-sidebar-surface-lowest: transparent;
+  --cosmic-sidebar-surface-low: rgba(255, 255, 255, 0.06);
+  --cosmic-sidebar-surface: rgba(255, 255, 255, 0.08);
+  --cosmic-sidebar-surface-high: rgba(255, 255, 255, 0.12);
+  --cosmic-sidebar-border: rgba(160, 146, 255, 0.22);
+  --cosmic-sidebar-primary-container: rgba(233, 229, 255, 0.94);
+  --cosmic-sidebar-on-primary-container: #43338f;
+  --cosmic-sidebar-border-strong: #2c2454;
+  --cosmic-sidebar-orbit: rgba(160, 146, 255, 0.3);
+  --cosmic-sidebar-nebula-pink: rgba(242, 123, 169, 0.14);
+  --cosmic-sidebar-nebula-indigo: rgba(102, 88, 214, 0.3);
+  --cosmic-sidebar-gradient-start: #292153;
+  --cosmic-sidebar-gradient-mid: #1e1840;
+  --cosmic-sidebar-gradient-end: #241d4e;
 
   --input-border: #e6e1f2;
   --input-placeholder: #9a93b6;

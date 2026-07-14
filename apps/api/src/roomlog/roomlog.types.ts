@@ -1,8 +1,19 @@
 export type {
+  ManagerAgentCommandInput,
+  ManagerAgentCommandName,
+  ManagerAgentCommandResult,
+  ManagerAssistantIntent,
+  ManagerCopilotChatRequest,
+  ManagerCopilotChatResponse,
+  ManagerCopilotPendingAction,
+  ManagerDunningActionPreview,
   ManagerMessagingRecipient,
   StartManagerConversationInput,
   TenantLandlordConversation
 } from "@roomlog/types";
+
+export type CopilotChatRequest = import("@roomlog/types").ManagerCopilotChatRequest;
+export type CopilotChatResponse = import("@roomlog/types").ManagerCopilotChatResponse;
 
 export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
 export type MessageSenderRole = Exclude<UserRole, "SEEKER"> | "AI_ASSISTANT" | "SYSTEM";
@@ -1219,51 +1230,6 @@ export type ManagerAssistantQueryResult = {
   generatedAt: string;
 };
 
-export type ManagerAgentCommandName =
-  | "ticket.query"
-  | "billing.summary"
-  | "billing.send_dunning"
-  | "messaging.list_threads"
-  | "messaging.draft_reply"
-  | "messaging.send_reply";
-
-export type ManagerAgentCommandInput = {
-  command: string;
-  text?: string;
-  billId?: string;
-  channel?: string;
-  threadId?: string;
-  body?: string;
-};
-
-export type ManagerAgentCommandResult = {
-  status: "executed" | "draft_only" | "blocked";
-  domain: "ticket" | "billing" | "messaging" | "system";
-  summary: string;
-  data?: unknown;
-  navigation?: {
-    label: string;
-    href: string;
-  };
-  requiresConfirmation?: boolean;
-};
-
-export type CopilotChatRequest = {
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
-  confirmActionId?: string;
-};
-
-export type CopilotChatResponse = {
-  mode: "openai" | "not_configured";
-  reply: string;
-  pendingAction?: {
-    id: string;
-    kind: "billing.send_dunning" | "messaging.send_reply";
-    summary: string;
-  };
-  receipts?: Array<{ kind: string; summary: string }>;
-};
-
 export type ManagerReplyIntent =
   | "RECEIPT_ACK"
   | "REQUEST_PHOTO"
@@ -1843,6 +1809,10 @@ export type TeamBill = Omit<
   account: PaymentAccount;
 };
 
+export type TeamManagerBillDetail = TeamBill & {
+  guard: DunningGuard;
+};
+
 export type TeamTenantBillSummary = {
   bill: TeamBill;
   payableFrom: string;
@@ -2102,9 +2072,13 @@ export type CreateManagerBillsResult = {
 
 export type TeamDunning = {
   billId: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
+  billingMonth: string;
   unpaidAmount: number;
+  dueDate: string;
+  daysOverdue: number;
   draftText: string;
   channel: string;
   guard: DunningGuard;

@@ -56,7 +56,7 @@ export default async function Page() {
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
               <Metric label="입주율" value={formatPercent(kpi.occupancyRate)} note="호실 원천 연결 전이면 숨김" />
-              <Metric label="수납률" value={formatPercent(kpi.collectionRate)} note="확인중·orphan 제외" />
+              <Metric label="수납률" value={formatPercent(kpi.collectionRate)} note="납부 확인 중·미연결 입금 제외" />
               <Metric label="미납" value={formatWon(kpi.overdueAmount)} note="현재 미납 합계" />
               <Metric label="긴급민원" value={`${kpi.urgentTickets}건`} note="미해결 긴급 티켓" />
             </div>
