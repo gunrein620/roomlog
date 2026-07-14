@@ -1,4 +1,6 @@
 import type {
+  BillStatus,
+  DunningGuard,
   ManagerBillRow,
   ManagerCollectionBuildingRow,
   ManagerCollectionPoint,
@@ -29,6 +31,52 @@ export interface BillingBuildingGroup {
   collectedAmount: number;
   unpaidAmount: number;
   bills: ManagerBillRow[];
+}
+
+export type ManagerBillDisplayState = BillStatus | "payment_review";
+
+type ManagerBillStatusSource = {
+  status: BillStatus;
+  totalAmount: number;
+  paidAmount: number;
+  dueDate: string;
+  daysOverdue?: number;
+  guard?: DunningGuard;
+};
+
+const managerBillStatusLabels: Record<BillStatus, string> = {
+  draft: "초안",
+  sent: "수납 대기",
+  confirming: "납부 확인 중",
+  partially_paid: "일부 수납",
+  paid: "수납 완료",
+  overdue: "연체",
+  corrected: "정정",
+  canceled: "취소",
+};
+
+export function managerBillDisplayState(bill: ManagerBillStatusSource): ManagerBillDisplayState {
+  const unpaid = Math.max(0, bill.totalAmount - bill.paidAmount);
+  const parsedDueDate = Date.parse(bill.dueDate);
+  const pastDue =
+    (bill.daysOverdue ?? 0) > 0 ||
+    (Number.isFinite(parsedDueDate) && parsedDueDate < Date.now());
+
+  if (unpaid > 0 && pastDue && bill.guard?.blocked) return "payment_review";
+  return bill.status;
+}
+
+export function managerBillStatusLabel(bill: ManagerBillStatusSource): string {
+  if (managerBillDisplayState(bill) !== "payment_review") {
+    return managerBillStatusLabels[bill.status];
+  }
+
+  if (bill.guard?.hasConfirming && bill.guard.hasOrphan) {
+    return "납부·미연결 입금 확인 대기";
+  }
+  if (bill.guard?.hasOrphan) return "미연결 입금 확인 대기";
+  if (bill.guard?.hasConfirming) return "납부 신고 확인 대기";
+  return "입금 확인 대기";
 }
 
 export function shiftBillingMonth(month: string, offset: number): string {
@@ -83,7 +131,13 @@ export function filterDashboardBills(
     if (quick === "needs_review" && review === "long_overdue" && !isLongActiveOverdue(bill)) {
       return false;
     }
-    if (filters.status && filters.status !== "all" && bill.status !== filters.status) return false;
+    if (
+      filters.status &&
+      filters.status !== "all" &&
+      managerBillDisplayState(bill) !== filters.status
+    ) {
+      return false;
+    }
     if (
       query &&
       ![bill.buildingName, bill.unitId, bill.tenantName, bill.billingMonth]
@@ -177,7 +231,7 @@ export function filterOverdueCases(
 export function managerAgentOverdueHref(item: OverdueCase): string {
   const params = new URLSearchParams({
     billId: item.billId,
-    prompt: `${item.buildingName ?? "건물 미확인"} ${item.unitId}호 ${item.tenantName}님의 ${item.daysOverdue}일 경과 미수금 ${item.unpaidAmount.toLocaleString("ko-KR")}원 건을 검토해줘. 발송 전에는 반드시 나에게 확인받아.`,
+    prompt: `${item.buildingName ?? "건물 미확인"} ${item.unitId}호 ${item.tenantName}님의 ${item.daysOverdue}일 경과 미수금 ${item.unpaidAmount.toLocaleString("ko-KR")}원 연체 독촉 문구를 준비해줘. 발송 전에는 반드시 나에게 확인받아.`,
   });
   return `/manager/agent/realtime?${params.toString()}`;
 }

@@ -153,6 +153,7 @@ import {
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
+  ManagerDunningActionPreview,
   ManagerRealtimeClientSecretResult,
   ManagerReport,
   ManagerReportAuditLogEntry,
@@ -224,6 +225,7 @@ import {
   TeamDeposit,
   TeamDunning,
   TeamMaintenance,
+  TeamManagerBillDetail,
   TeamOverdue,
   TeamOverdueWorkspace,
   TeamReport,
@@ -3091,8 +3093,12 @@ export class RoomlogService {
     };
   }
 
-  getManagerBill(managerId: string, billId: string): TeamBill {
-    return this.presentBill(this.findManagerBill(managerId, billId));
+  getManagerBill(managerId: string, billId: string): TeamManagerBillDetail {
+    const bill = this.findManagerBill(managerId, billId);
+    return {
+      ...this.presentBill(bill),
+      guard: this.dunningGuardForBill(bill)
+    };
   }
 
   publishManagerBill(managerId: string, billId: string): TeamBill {
@@ -3588,13 +3594,45 @@ export class RoomlogService {
       throw new BadRequestException("독촉 발송에는 관리인이 편집한 문구와 채널이 필요합니다.");
     }
 
-    if (this.unpaidAmount(bill) <= 0) {
-      throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
+    if (channel !== "룸로그 알림") {
+      throw new BadRequestException("독촉은 세입자의 룸로그 납부 알림으로만 보낼 수 있습니다.");
     }
+
+    this.assertManagerDunningAllowed(bill);
 
     this.recordManagerDunningMessage(managerId, bill, text, channel);
 
     return { ok: true };
+  }
+
+  private assertManagerDunningAllowed(bill: Bill) {
+    if (this.unpaidAmount(bill) <= 0) {
+      throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
+    }
+
+    if (!this.canAutoOverdue(bill)) {
+      throw new BadRequestException("납부기한이 지난 공개 청구서만 독촉할 수 있습니다.");
+    }
+
+    const guard = this.dunningGuardForBill(bill);
+
+    if (guard.hasConfirming && guard.hasOrphan) {
+      throw new BadRequestException(
+        "납부 신고와 미연결 입금이 있어 독촉을 보낼 수 없습니다. 입금내역을 먼저 확인해 주세요."
+      );
+    }
+
+    if (guard.hasConfirming) {
+      throw new BadRequestException(
+        "납부 신고 또는 확인 중인 입금이 있어 독촉을 보낼 수 없습니다. 입금내역을 먼저 확인해 주세요."
+      );
+    }
+
+    if (guard.hasOrphan) {
+      throw new BadRequestException(
+        "미연결 입금이 있어 독촉을 보낼 수 없습니다. 입금내역을 먼저 확인해 주세요."
+      );
+    }
   }
 
   private recordManagerDunningMessage(managerId: string, bill: Bill, text: string, channel: string) {
@@ -4600,8 +4638,9 @@ export class RoomlogService {
     if (kind === "billing.send_dunning") {
       try {
         const bill = this.findManagerAgentDunningBill(managerId, input);
+        this.assertManagerDunningAllowed(bill);
         const draft = this.presentDunningDraft(bill);
-        const channel = input.channel?.trim() || draft.channel;
+        const channel = draft.channel;
         const messageText = input.body?.trim() || draft.draftText;
 
         return {
@@ -4613,7 +4652,20 @@ export class RoomlogService {
             channel,
             body: messageText
           },
-          summary: this.managerAgentDunningPendingSummary(managerId, bill, draft)
+          summary: this.managerAgentDunningPendingSummary(managerId, bill, draft),
+          dunningPreview: {
+            billId: draft.billId,
+            buildingName: draft.buildingName,
+            unitId: draft.unitId,
+            tenantName: draft.tenantName,
+            billingMonth: draft.billingMonth,
+            unpaidAmount: draft.unpaidAmount,
+            dueDate: draft.dueDate,
+            daysOverdue: draft.daysOverdue,
+            channel,
+            messageText,
+            guard: draft.guard
+          } satisfies ManagerDunningActionPreview
         };
       } catch (error) {
         return {
@@ -4621,7 +4673,7 @@ export class RoomlogService {
           domain: "billing" as const,
           summary:
             error instanceof Error
-              ? `${error.message} 다시 대상을 지정해주세요.`
+              ? error.message
               : "독촉 대상 연체 청구서를 확인하지 못했습니다. 다시 대상을 지정해주세요.",
           requiresConfirmation: true
         };
@@ -4725,7 +4777,7 @@ export class RoomlogService {
       try {
         const bill = this.findManagerAgentDunningBill(managerId, input);
         const draft = this.presentDunningDraft(bill);
-        const channel = input.channel?.trim() || draft.channel;
+        const channel = draft.channel;
         const messageText = body || draft.draftText;
 
         this.sendManagerDunning(managerId, bill.id, {
@@ -4746,8 +4798,8 @@ export class RoomlogService {
             guard: draft.guard
           },
           navigation: {
-            label: "독촉 발송 확인",
-            href: `/manager/billing/dunning/${encodeURIComponent(draft.billId)}?id=${encodeURIComponent(draft.billId)}&send=ok`
+            label: "연체 관리에서 확인",
+            href: "/manager/billing/overdue"
           }
         };
       } catch (error) {
@@ -4858,6 +4910,16 @@ export class RoomlogService {
     managerId: string,
     input: ManagerAgentCommandInput
   ): Promise<ManagerAgentCommandResult> {
+    if (input.command?.trim() === "billing.send_dunning") {
+      return {
+        status: "blocked",
+        domain: "billing",
+        summary:
+          "독촉은 AI 비서의 확인 카드에서 대상과 문구를 확인한 뒤 발송해 주세요.",
+        requiresConfirmation: true
+      };
+    }
+
     const result = this.runManagerAgentCommand(managerId, input);
 
     if (!process.env.OPENAI_API_KEY || result.status === "blocked") {
@@ -5082,25 +5144,44 @@ export class RoomlogService {
       return this.findManagerBill(managerId, explicitBillId);
     }
 
-    const unitId = this.extractUnitIdFromAgentText(`${input.text ?? ""} ${input.body ?? ""}`);
-    const candidates = this.managerBills(managerId).filter((bill) => this.canAutoOverdue(bill));
+    const requestText = `${input.text ?? ""} ${input.body ?? ""}`.trim();
+    const unitId = this.extractUnitIdFromAgentText(requestText);
+    const billingMonth = this.extractBillingMonthFromAgentText(requestText);
+    const candidates = this.managerBills(managerId)
+      .filter((bill) => this.canAutoOverdue(bill))
+      .sort((left, right) => this.daysOverdueForBill(right) - this.daysOverdueForBill(left));
+    let matched = candidates;
 
     if (unitId) {
-      const matched = candidates.find((bill) => this.unitsEqual(bill.unitId, unitId));
-
-      if (matched) {
-        return matched;
-      }
+      matched = matched.filter((bill) => this.unitsEqual(bill.unitId, unitId));
+    } else {
+      const tenantMatches = matched.filter((bill) => requestText.includes(this.tenantNameForBill(bill)));
+      if (tenantMatches.length) matched = tenantMatches;
     }
 
-    const firstActive = candidates.find((bill) => !this.dunningGuardForBill(bill).blocked);
-
-    if (firstActive) {
-      return firstActive;
+    if (billingMonth) {
+      matched = matched.filter((bill) => bill.billingMonth === billingMonth);
     }
 
-    if (candidates[0]) {
-      return candidates[0];
+    if (matched.length === 1) {
+      return matched[0];
+    }
+
+    if (matched.length > 1) {
+      const choices = matched
+        .slice(0, 4)
+        .map(
+          (bill) =>
+            `${this.tenantNameForBill(bill)} ${bill.unitId}호 ${this.managerAgentBillingMonthLabel(bill.billingMonth)}분`
+        )
+        .join(", ");
+      throw new BadRequestException(
+        `독촉 대상이 여러 건입니다: ${choices}. 호실과 청구월을 함께 지정해 주세요.`
+      );
+    }
+
+    if (unitId || billingMonth) {
+      throw new BadRequestException("지정한 호실과 청구월에 맞는 연체 청구서를 찾을 수 없습니다.");
     }
 
     throw new BadRequestException("독촉 대상 연체 청구서를 찾을 수 없습니다.");
@@ -5108,6 +5189,17 @@ export class RoomlogService {
 
   private extractUnitIdFromAgentText(text: string) {
     return text.match(/([0-9]{1,4})\s*호/u)?.[1];
+  }
+
+  private extractBillingMonthFromAgentText(text: string) {
+    const full = text.match(/(20\d{2})[년.\-/\s]+(1[0-2]|0?[1-9])\s*월?/u);
+    if (full) return `${full[1]}-${String(Number(full[2])).padStart(2, "0")}`;
+
+    const monthOnly = text.match(/(?:^|\s)(1[0-2]|0?[1-9])\s*월(?:분)?/u);
+    if (!monthOnly) return undefined;
+
+    const year = this.todayInSeoul().slice(0, 4);
+    return `${year}-${String(Number(monthOnly[1])).padStart(2, "0")}`;
   }
 
   private createComplaintRecord(
@@ -8763,14 +8855,19 @@ export class RoomlogService {
     const tenantName = this.tenantNameForBill(bill);
     const unpaidAmount = this.unpaidAmount(bill);
     const dueDate = bill.dueDate.slice(0, 10);
+    const room = this.roomForBill(bill);
 
     return {
       billId: bill.id,
-      unitId: bill.unitId,
+      buildingName: room?.buildingName,
+      unitId: room ? this.displayUnitId(room) : bill.unitId.replace(/호$/u, "").trim(),
       tenantName,
+      billingMonth: bill.billingMonth,
       unpaidAmount,
+      dueDate,
+      daysOverdue: this.daysOverdueForBill(bill),
       draftText: `${tenantName}님, ${bill.billingMonth} 청구 잔액 ${unpaidAmount.toLocaleString("ko-KR")}원이 ${dueDate} 기준 미납으로 확인되어 안내드립니다. 이미 납부하셨다면 앱에서 입금 확인 신고를 남겨주세요.`,
-      channel: "SMS",
+      channel: "룸로그 알림",
       guard: this.dunningGuardForBill(bill)
     };
   }

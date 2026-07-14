@@ -1,6 +1,6 @@
 import { Button, Card } from "@roomlog/ui";
-import type { BillStatus } from "@roomlog/types";
 import { getManagerBill } from "@/lib/billing-manager-api";
+import { managerBillStatusLabel } from "@/lib/billing-manager-workspace";
 import {
   BillingShell,
   Grid,
@@ -17,23 +17,13 @@ import { publishBillAction } from "./actions";
 type Params = Promise<{ billId: string }>;
 type SearchParams = Promise<{ id?: string; published?: string; publishError?: string }>;
 
-const billStatusLabel: Record<BillStatus, string> = {
-  draft: "초안",
-  sent: "수납 대기",
-  confirming: "납부 확인 중",
-  partially_paid: "일부 수납",
-  paid: "수납 완료",
-  overdue: "연체",
-  corrected: "정정",
-  canceled: "취소",
-};
-
 export default async function Page({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const [{ billId }, { id, published, publishError }] = await Promise.all([params, searchParams]);
   const targetBillId = id || billId;
   const bill = await getManagerBill(targetBillId);
   const isNew = targetBillId === "new";
-  const guardBlocked = bill.status === "confirming";
+  const unpaidAmount = Math.max(0, bill.totalAmount - bill.paidAmount);
+  const isPastDue = Number.isFinite(Date.parse(bill.dueDate)) && Date.parse(bill.dueDate) < Date.now();
 
   return (
     <BillingShell title={isNew ? "월 청구서 생성" : "청구서 상세"} active={routes.dashboard}>
@@ -68,7 +58,13 @@ export default async function Page({ params, searchParams }: { params: Params; s
           </Card>
         ) : null}
 
-        <GuardBanner blocked={guardBlocked} hasConfirming={guardBlocked} hasOrphan={false} />
+        {isPastDue && unpaidAmount > 0 ? (
+          <GuardBanner
+            blocked={bill.guard.blocked}
+            hasConfirming={bill.guard.hasConfirming}
+            hasOrphan={bill.guard.hasOrphan}
+          />
+        ) : null}
 
         <Grid columns={2}>
           <Card>
@@ -107,7 +103,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
 
         <Section title="상태 이력·감사로그">
           <Card style={{ color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-            작성 → 관리인 수정 → 승인 대기 → 발송. 정정·취소는 이 화면에서 사유와 함께 기록됩니다.
+            작성 → 관리인 수정 → 청구 확정·공개. 정정·취소는 이 화면에서 사유와 함께 기록됩니다.
           </Card>
         </Section>
 
@@ -117,11 +113,11 @@ export default async function Page({ params, searchParams }: { params: Params; s
           {bill.status === "draft" ? (
             <form action={publishBillAction} style={{ display: "contents" }}>
               <input type="hidden" name="billId" value={bill.id} />
-              <Button type="submit">청구 확정</Button>
+              <Button type="submit">청구 확정·공개</Button>
             </form>
           ) : (
             <span style={{ alignSelf: "center", color: "var(--on-surface-variant)" }}>
-              현재 상태: {billStatusLabel[bill.status]}
+              현재 상태: {managerBillStatusLabel(bill)}
             </span>
           )}
         </div>

@@ -11,6 +11,7 @@ import type {
   ManagerBillCreationOption,
   ManagerBillCreationUnavailableOption,
   ManagerBillCreationUnavailableReason,
+  ManagerBillDetail,
   ManagerBillRow,
   ManagerBillingDashboardData,
   ManagerBillingRecentDeposit,
@@ -50,6 +51,7 @@ export interface TeamBill {
   depositConfirmationRequested?: boolean;
   createdAt: string;
   updatedAt: string;
+  guard?: Partial<DunningGuard>;
 }
 
 export interface TeamDashSummary {
@@ -148,9 +150,13 @@ export interface TeamOverdue {
 
 export interface TeamDunning {
   billId: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
+  billingMonth?: string;
   unpaidAmount: number;
+  dueDate?: string;
+  daysOverdue?: number;
   draftText: string;
   channel: string;
   guard?: Partial<DunningGuard>;
@@ -359,6 +365,13 @@ export function toBill(team: TeamBill): Bill {
   };
 }
 
+export function toManagerBillDetail(team: TeamBill): ManagerBillDetail {
+  return {
+    ...toBill(team),
+    guard: mapGuard(team.guard),
+  };
+}
+
 export function toDashSummary(summary: TeamDashSummary): BillDashboardSummary {
   return {
     total: numberOr(summary.total),
@@ -441,9 +454,13 @@ export function toOverdueCase(item: TeamOverdue): OverdueCase {
 export function toDunningDraft(draft: TeamDunning): DunningDraft {
   return {
     billId: stringOr(draft.billId),
+    buildingName: draft.buildingName ? stringOr(draft.buildingName) : undefined,
     unitId: normalizeUnitId(draft.unitId),
     tenantName: stringOr(draft.tenantName, "임차인"),
+    billingMonth: draft.billingMonth ? stringOr(draft.billingMonth) : undefined,
     unpaidAmount: numberOr(draft.unpaidAmount),
+    dueDate: draft.dueDate ? stringOr(draft.dueDate) : undefined,
+    daysOverdue: draft.daysOverdue === undefined ? undefined : numberOr(draft.daysOverdue),
     draftText: stringOr(draft.draftText),
     channel: stringOr(draft.channel, "룸로그 알림"),
     guard: mapGuard(draft.guard),
