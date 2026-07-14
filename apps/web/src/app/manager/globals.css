@@ -1289,6 +1289,7 @@ html:has(.manager-workspace) {
 }
 
 .manager-sidebar__parent-toggle:hover {
+  color: var(--on-surface);
   background: var(--surface-container-high);
 }
 

@@ -70,6 +70,10 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
     managerCss,
     /\.manager-sidebar__parent-toggle\s*\{[^}]*width:\s*100%;[^}]*display:\s*flex;/,
   );
+  assert.match(
+    managerCss,
+    /\.manager-sidebar__parent-toggle:hover\s*\{[^}]*color:\s*var\(--on-surface\);[^}]*background:\s*var\(--surface-container-high\);/,
+  );
   assert.match(sectionNavSource, /item\.children\.map/);
   assert.match(sectionNavSource, /aria-current/);
   assert.match(assistant, /showModal\(\)/);
