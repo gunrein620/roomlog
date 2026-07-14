@@ -77,7 +77,8 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(assistant, /getBoundingClientRect\(\)/);
   assert.match(assistant, /isDialogBackdropPoint/);
   assert.match(appShellSource, /aria-haspopup="dialog"/);
-  assert.match(appShellSource, /subnav \?\? <ManagerSectionNav/);
+  // 기본 서브내비는 Suspense로 감싼다 — useSearchParams가 정적 프리렌더에서 경계를 요구.
+  assert.match(appShellSource, /subnav \?\? <Suspense fallback=\{null\}><ManagerSectionNav \/><\/Suspense>/);
   assert.match(appShellSource, /!fullAssistant/);
   assert.match(appShellSource, /getBoundingClientRect\(\)/);
   assert.match(appShellSource, /isDialogBackdropPoint/);

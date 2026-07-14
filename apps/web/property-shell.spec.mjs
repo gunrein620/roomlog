@@ -84,7 +84,7 @@ const managerHomePageSource = readFileSync(new URL("./src/app/manager/home/00/pa
 const managerHomeDashboardDataSource = readFileSync(new URL("./src/app/manager/home/00/dashboard-data.ts", import.meta.url), "utf8");
 const tenantMessagingListSource = readFileSync(new URL("./src/app/tenant/messaging/00/page.tsx", import.meta.url), "utf8");
 const tenantMessagingThreadSource = readFileSync(new URL("./src/app/tenant/messaging/01/page.tsx", import.meta.url), "utf8");
-const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/page.tsx", import.meta.url), "utf8");
+const tenantMessagingAnnouncementSource = readFileSync(new URL("./src/app/tenant/messaging/02/[id]/page.tsx", import.meta.url), "utf8");
 const tenantMessagingApiSource = readFileSync(new URL("./src/lib/messaging-api.ts", import.meta.url), "utf8");
 const messageAutoRefreshPath = new URL("./src/app/_components/MessageAutoRefresh.tsx", import.meta.url);
 const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
@@ -1040,7 +1040,13 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.match(pageSource, /공지사항을 확인하고 있습니다\./);
   assert.match(pageSource, /임대인으로부터 전달된 새로운 소식이 없습니다\./);
   assert.match(pageSource, /공지사항을 불러오지 못했습니다\. 잠시 후 다시 확인해 주세요\./);
-  assert.match(pageSource, /\/tenant\/messaging\/02\?id=/);
+  assert.match(
+    pageSource,
+    /<Link[\s\S]*?href="\/tenant\/messaging\/02"[\s\S]*?className="tenant-announcement-link"/,
+  );
+  assert.doesNotMatch(pageSource, /tenantAnnouncementDetailHref/);
+  assert.match(cssSource, /\.tenant-announcement-link\s*\{/);
+  assert.match(cssSource, /\.tenant-announcement-link:focus-visible\s*\{/);
   assert.doesNotMatch(pageSource, /"에어컨 수리"|"세면대 교체"/);
 
   assert.match(pageSource, /activeTab === "living"/);

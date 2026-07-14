@@ -937,28 +937,33 @@ export default function TenantMyPage({
       {tenantToast ? <p className="mypage-toast" role="status">{tenantToast}</p> : null}
 
       <section className="tenant-announcement-card" aria-label="집주인 공지사항">
-        <div className="tenant-card-icon" aria-hidden="true">
-          <Megaphone size={28} strokeWidth={2.5} />
-        </div>
         {announcementState.status === "ready" ? (
-          <Link
-            href={`/tenant/messaging/02?id=${encodeURIComponent(announcementState.announcement.id)}`}
-            style={{ color: "inherit", textDecoration: "none", position: "relative", zIndex: 1 }}
-          >
-            <span>집주인 공지사항</span>
-            <h3>{announcementState.announcement.title}</h3>
-            <p>{announcementState.announcement.body}</p>
-            <small>
-              {announcementState.announcement.sender} · {tenancyDateLabel(announcementState.announcement.sentAt)}
-            </small>
+          <Link href="/tenant/messaging/02" className="tenant-announcement-link">
+            <div className="tenant-card-icon" aria-hidden="true">
+              <Megaphone size={28} strokeWidth={2.5} />
+            </div>
+            <div>
+              <span>집주인 공지사항</span>
+              <h3>{announcementState.announcement.title}</h3>
+              <p>{announcementState.announcement.body}</p>
+              <small>
+                {announcementState.announcement.sender} · {tenancyDateLabel(announcementState.announcement.sentAt)}
+              </small>
+            </div>
+            <Megaphone className="tenant-announcement-watermark" size={128} strokeWidth={2.1} aria-hidden="true" />
           </Link>
         ) : (
-          <div>
-            <h3>집주인 공지사항</h3>
-            <p>{announcementStatusMessage}</p>
-          </div>
+          <>
+            <div className="tenant-card-icon" aria-hidden="true">
+              <Megaphone size={28} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h3>집주인 공지사항</h3>
+              <p>{announcementStatusMessage}</p>
+            </div>
+            <Megaphone className="tenant-announcement-watermark" size={128} strokeWidth={2.1} aria-hidden="true" />
+          </>
         )}
-        <Megaphone className="tenant-announcement-watermark" size={128} strokeWidth={2.1} aria-hidden="true" />
       </section>
 
       <section className="tenant-residence-card" aria-label="입주 정보">
