@@ -944,6 +944,33 @@ html:has(.manager-workspace) {
   background: var(--surface-container-lowest);
 }
 
+/* ── 코스믹 테마 — 심야 우주 사이드바(별무리 radial dot + 궤도 링 + 성운 코너).
+   theme="cosmic"을 쓰는 모든 관리 화면에 동일하게 적용해 밤하늘 느낌으로 통일한다.
+   전부 background 레이어라 DOM 추가·리플로 비용 없음. 글로벌 사이드바는 표면 토큰을
+   소비하므로, 이 스코프에서 표면·글자 토큰을 어두운 배경용으로 재반전시켜 가독성을 지킨다. */
+.manager-workspace.theme-cosmic .manager-workspace__sidebar {
+  --surface-container-lowest: transparent;
+  --surface-container-low: rgba(255, 255, 255, 0.06);
+  --surface-container: rgba(255, 255, 255, 0.08);
+  --surface-container-high: rgba(255, 255, 255, 0.12);
+  --on-surface: #f4f1fd;
+  --on-surface-variant: #a79ed6;
+  --border: rgba(160, 146, 255, 0.22);
+  --primary-container: rgba(233, 229, 255, 0.94);
+  --on-primary-container: #43338f;
+  border-right-color: #2c2454 !important;
+  background:
+    url("/textures/cosmic-sidebar.svg") top center / cover no-repeat,
+    radial-gradient(circle 130px at 86% 5%, transparent 100px, rgba(160, 146, 255, 0.3) 101px, transparent 103px),
+    radial-gradient(circle 380px at 115% -6%, rgba(242, 123, 169, 0.14), transparent 68%),
+    radial-gradient(circle 360px at -25% 106%, rgba(102, 88, 214, 0.3), transparent 70%),
+    linear-gradient(172deg, #292153 0%, #1e1840 52%, #241d4e 100%) !important;
+}
+
+.manager-workspace.theme-cosmic .manager-workspace__content {
+  background: var(--surface);
+}
+
 .manager-workspace__content,
 .manager-workspace__main {
   min-width: 0;
