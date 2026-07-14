@@ -11,8 +11,6 @@ import {
   LifeBuoy,
   Megaphone,
   Search,
-  UserRound,
-  WalletCards,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -43,13 +41,6 @@ const CATEGORY_ICONS: Record<AnnouncementCategory, LucideIcon> = {
   life: Home,
   event: CalendarDays,
 };
-
-const MAIN_NAV_ITEMS: Array<{ href: string; label: string; icon: LucideIcon; current?: boolean }> = [
-  { href: "/tenant/home/00", label: "홈", icon: Home },
-  { href: "/tenant/messaging/02", label: "공지", icon: Megaphone, current: true },
-  { href: "/tenant/payment/00", label: "고정비", icon: WalletCards },
-  { href: "/my", label: "내 정보", icon: UserRound },
-];
 
 const MONTH_DAY_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
   month: "long",
@@ -110,20 +101,6 @@ export function AnnouncementListPage({
             <SearchForm filter={filter} query={query} />
           </div>
         </header>
-
-        <nav className={styles.bottomNav} aria-label="세입자 주요 메뉴">
-          {MAIN_NAV_ITEMS.map(({ href, label, icon: Icon, current }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`${styles.navLink} ${current ? styles.navLinkActive : ""}`}
-              aria-current={current ? "page" : undefined}
-            >
-              <Icon aria-hidden="true" size={20} />
-              <span>{label}</span>
-            </Link>
-          ))}
-        </nav>
 
         <div className={styles.content}>
           <nav className={styles.filters} aria-label="공지 필터">

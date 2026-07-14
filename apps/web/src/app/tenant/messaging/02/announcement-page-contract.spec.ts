@@ -56,6 +56,13 @@ describe("tenant announcement route boundary", () => {
     );
     assert.match(component, /<summary aria-label="공지 검색">/);
     assert.doesNotMatch(component, /공지 검색 열기/);
+    assert.doesNotMatch(
+      component,
+      /MAIN_NAV_ITEMS|aria-label="세입자 주요 메뉴"|styles\.bottomNav/,
+    );
+    assert.doesNotMatch(css, /\.(?:bottomNav|navLink|navLinkActive)\b/);
+    const contentRule = css.match(/\.content\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    assert.doesNotMatch(contentRule, /touch-target/);
     assert.match(css, /@media \(min-width: 768px\)/);
     assert.match(css, /prefers-reduced-motion/);
     assert.match(css, /-webkit-line-clamp:\s*1;/);
