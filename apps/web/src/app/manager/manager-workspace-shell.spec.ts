@@ -136,9 +136,8 @@ test("every manager desktop domain composes ManagerAppShell", () => {
   }
 });
 
-// PR #51: 홈 콘텐츠가 통합 오버뷰 → 코스믹 대시보드+코파일럿으로 교체됨.
-// 셸 계약(공용 워크스페이스 사용)은 유지하고, 콘텐츠 계약만 새 구성으로 갱신한다.
-// 공용 AI 런처 대신 홈 내장 코파일럿을 쓰는 방향은 PR에서 논의 중 — hideAssistantLauncher가 그 표식.
+// 홈 콘텐츠는 코스믹 대시보드 한 화면(글랜스). 셸 계약(공용 워크스페이스 사용)은 유지하고,
+// 콘텐츠 계약만 갱신한다. AI 브리핑 배너(내장 코파일럿)는 개편에서 제거돼 AI는 공용 플로팅 런처가 담당.
 test("manager home composes the cosmic dashboard in the shared workspace", () => {
   const homeSource = readFileSync(managerHomePath, "utf8");
   const overviewSource = existsSync(managerOverviewPath)
@@ -149,9 +148,10 @@ test("manager home composes the cosmic dashboard in the shared workspace", () =>
   assert.match(homeSource, /<ManagerAppShell/);
   assert.doesNotMatch(homeSource, /import \{ ManagerShell \}/);
   assert.doesNotMatch(homeSource, /<ManagerShell[\s\n]/);
-  assert.match(homeSource, /hideAssistantLauncher/);
   assert.match(homeSource, /manager-home-dashboard/);
-  assert.match(homeSource, /<CopilotPanel briefingInput=\{dashboard\.briefingInput\}/);
+  // AI 브리핑 배너(CopilotPanel)는 대시보드 개편에서 제거 — AI는 공용 플로팅 런처가 담당.
+  assert.doesNotMatch(homeSource, /CopilotPanel/);
+  assert.doesNotMatch(homeSource, /hideAssistantLauncher/);
   assert.doesNotMatch(homeSource, /function HomeNav/);
 
   // 통합 오버뷰 산출물은 보존 — 홈 구성 최종안이 결정될 때까지 삭제하지 않는다.
