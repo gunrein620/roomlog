@@ -67,7 +67,10 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         href: MANAGER_LISTING_PATH,
         icon: "listing",
         activePrefixes: [MANAGER_LISTING_PATH],
-        children: [],
+        children: [
+          { label: "계약완료", href: `${MANAGER_LISTING_PATH}?status=contracted` },
+          { label: "미계약", href: `${MANAGER_LISTING_PATH}?status=available` },
+        ],
       },
       {
         id: "contract",
