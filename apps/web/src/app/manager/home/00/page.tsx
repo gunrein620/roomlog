@@ -2,10 +2,8 @@ import { ManagerAppShell } from "@/app/manager/_components/ManagerAppShell";
 import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 import { getUser } from "@/lib/session";
 import { AlertStatTiles } from "./AlertStatTiles";
-import { CopilotPanel } from "./CopilotPanel";
 import { HomeCards } from "./HomeCards";
 import { InstrumentPanel } from "./InstrumentPanel";
-import { PortfolioBarCards } from "./PortfolioBarCards";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
@@ -29,13 +27,12 @@ export default async function Page() {
   };
 
   return (
-    // 워크스페이스 셸(글로벌 사이드바)을 따르되, 홈은 자체 코파일럿을 내장하므로
-    // 공용 AI 비서 플로팅 런처는 숨긴다 — AI 표면 통일 방향은 PR에서 논의.
+    // 워크스페이스 셸(글로벌 사이드바)을 따른다. AI 진입은 다른 관리 화면과 동일하게
+    // 공용 플로팅 런처가 담당한다(대시보드 상단의 AI 브리핑 배너는 제거).
     <ManagerAppShell
       title="관리 홈"
       context={`관리 중 ${dashboard.homeCards.length}곳`}
       managerName={managerName}
-      hideAssistantLauncher
       theme="cosmic"
     >
       <div className="manager-home-dashboard">
@@ -46,10 +43,6 @@ export default async function Page() {
           </div>
         </header>
 
-        <div data-copilot-slot>
-          <CopilotPanel briefingInput={dashboard.briefingInput} />
-        </div>
-
         {dashboard.sourceFailures.length > 0 ? (
           <div role="status" className="manager-home-source-alert">
             <strong>일부 데이터를 불러오지 못했습니다.</strong>
@@ -59,44 +52,43 @@ export default async function Page() {
           </div>
         ) : null}
 
-        {/* 한눈에 보이는 글랜스 — 좌: 코스믹 계기판+자산 추이, 우: 임대 현황 리포트(세로 막대) */}
-        <div className="manager-home-glance">
-          <div className="manager-home-bento">
-            <InstrumentPanel
-              depositRatePct={dashboard.depositRatePct}
-              monthLabel={dashboard.depositRateMonthLabel}
-              payerCounts={dashboard.depositPayerCounts}
-              depositAmounts={dashboard.depositAmounts}
-              occupancyPct={occupancy.total > 0 ? Math.round((occupancy.contracted / occupancy.total) * 100) : null}
-              occupancySub={occupancy.total > 0 ? `${occupancy.contracted} / ${occupancy.total}곳` : "확인 필요"}
-              occupancyHref={MHOME_ROUTES["M-HOME-03"]}
-              ticketPct={
-                dashboard.ticketProgress
-                  ? Math.round((dashboard.ticketProgress.resolved / dashboard.ticketProgress.total) * 100)
-                  : null
-              }
-              ticketSub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
-              ticketHref={MANAGER_CROSS.ticketDash}
-            />
-            <PortfolioBarCards />
-          </div>
-          <ReportSection />
-        </div>
+        {/* ── 코스믹 히어로 존: 계기판(현재 상태) 풀폭 → 경고 스트립 → 별자리 차트 밴드(추이) ── */}
+        <InstrumentPanel
+          depositRatePct={dashboard.depositRatePct}
+          monthLabel={dashboard.depositRateMonthLabel}
+          payerCounts={dashboard.depositPayerCounts}
+          depositAmounts={dashboard.depositAmounts}
+          occupancyPct={occupancy.total > 0 ? Math.round((occupancy.contracted / occupancy.total) * 100) : null}
+          occupancySub={occupancy.total > 0 ? `${occupancy.contracted} / ${occupancy.total}곳` : "확인 필요"}
+          occupancyHref={MHOME_ROUTES["M-HOME-03"]}
+          ticketPct={
+            dashboard.ticketProgress
+              ? Math.round((dashboard.ticketProgress.resolved / dashboard.ticketProgress.total) * 100)
+              : null
+          }
+          ticketSub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
+          ticketHref={MANAGER_CROSS.ticketDash}
+        />
 
         <AlertStatTiles warnings={warnings} />
 
-        <HomeCards
-          homeCards={dashboard.homeCards}
-          uncontractedListings={dashboard.uncontractedListings}
-        />
+        <ReportSection />
 
-        <section aria-labelledby="manager-today-tasks-title" className="manager-home-tasks">
-          <div className="manager-home-tasks-heading">
-            <h2 id="manager-today-tasks-title">오늘 확인할 업무</h2>
-            <span>{dashboard.todayTasks.length}건</span>
-          </div>
-          <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
-        </section>
+        {/* ── 운영 존: 관리 중인 집·미계약 | 오늘 확인할 업무 — 2단으로 스캔 거리를 줄인다 ── */}
+        <div className="manager-home-ops">
+          <HomeCards
+            homeCards={dashboard.homeCards}
+            uncontractedListings={dashboard.uncontractedListings}
+          />
+
+          <section aria-labelledby="manager-today-tasks-title" className="manager-home-tasks">
+            <div className="manager-home-tasks-heading">
+              <h2 id="manager-today-tasks-title">오늘 확인할 업무</h2>
+              <span>{dashboard.todayTasks.length}건</span>
+            </div>
+            <TodayTasksCard tasks={dashboard.todayTasks} sourceFailures={dashboard.sourceFailures} />
+          </section>
+        </div>
 
         <BuildingsSection />
       </div>
@@ -111,24 +103,34 @@ export default async function Page() {
           gap: var(--space-xl);
         }
 
-        /* ── 글랜스 2단 — 좌 코스믹 벤토, 우 임대 현황 리포트. 좁은 화면에선 세로로 쌓인다 ── */
-        .manager-home-glance {
-          display: grid;
-          grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-          gap: var(--space-md);
-          align-items: stretch;
+        /* 로드 오케스트레이션 — 페이지 블록들이 위에서부터 순서대로 떠오른다.
+           계기판(히어로)이 먼저, 아래 존들이 반 박자씩 따라온다. */
+        .manager-home-dashboard > * {
+          animation: manager-home-rise 0.5s cubic-bezier(0.22, 0.9, 0.28, 1) backwards;
         }
 
-        /* ── 벤토 — 계기 패널(입주율 링·납부 게이지·티켓 처리율 링 통합) + 자산 스탯 카드 2장 ── */
-        .manager-home-bento {
-          min-width: 0;
-          display: grid;
-          align-content: start;
-          gap: var(--space-md);
+        .manager-home-dashboard > *:nth-child(2) { animation-delay: 0.05s; }
+        .manager-home-dashboard > *:nth-child(3) { animation-delay: 0.1s; }
+        .manager-home-dashboard > *:nth-child(4) { animation-delay: 0.15s; }
+        .manager-home-dashboard > *:nth-child(n + 5) { animation-delay: 0.2s; }
+
+        @keyframes manager-home-rise {
+          from {
+            opacity: 0;
+            transform: translateY(12px);
+          }
         }
 
-        @media (max-width: 1100px) {
-          .manager-home-glance {
+        /* ── 운영 존 2단 — 관리 중인 집·미계약 | 오늘 확인할 업무. 좁으면 세로로 ── */
+        .manager-home-ops {
+          display: grid;
+          grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+          gap: var(--space-xl);
+          align-items: start;
+        }
+
+        @media (max-width: 1080px) {
+          .manager-home-ops {
             grid-template-columns: 1fr;
           }
         }
@@ -227,6 +229,12 @@ export default async function Page() {
             flex-direction: column;
           }
 
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .manager-home-dashboard > * {
+            animation: none;
+          }
         }
 
       `}</style>
