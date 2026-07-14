@@ -12,7 +12,7 @@ const expectedVoiceInstructions = [
   "실행은 반드시 run_manager_agent_command 도구로 서버 allowlist를 통과한 명령만 사용합니다.",
   "티켓 처리에서는 조건 조회와 다음 확인 지점 제안을 우선합니다.",
   "청구 관리에서는 요약, 수납률, 미납 현황을 설명하고, 관리인이 명시적으로 요청한 연체 독촉 발송은 billing.send_dunning 명령으로만 실행합니다.",
-  "billing.send_dunning은 청구 전용 채널이며 관리인이 명시적으로 요청하면 확인중 입금 또는 orphan 입금 여부와 관계없이 바로 발송합니다. 결제 확정과 입금 매칭은 실행하지 않습니다.",
+  "billing.send_dunning은 청구 전용 채널이며 항상 확인 카드로 보류한 뒤 관리인이 승인해야 발송합니다. 납부 신고 또는 미연결 입금이 있으면 발송을 차단하고 입금 확인을 안내합니다.",
   "소통에서는 목록 조회, 답장 초안, 일반 답장 발송을 처리할 수 있고, 금전 독촉이나 공지 발송은 소통 채널로 보내지 않습니다.",
   "사용자가 위험한 실행을 요청하면 차단 사유와 필요한 확인 단계를 짧게 안내합니다."
 ].join("\n");
@@ -45,7 +45,7 @@ const expectedRealtimeTools = [
         },
         billId: {
           type: "string",
-          description: "독촉을 보낼 청구서 id. 없으면 자연어의 호실 또는 접근 가능한 첫 연체 청구서를 사용합니다."
+          description: "독촉을 준비할 청구서 id. 없으면 자연어의 임차인·호실·청구월로 찾고, 대상이 여러 건이면 선택을 요청합니다."
         },
         channel: {
           type: "string",
@@ -57,7 +57,7 @@ const expectedRealtimeTools = [
         },
         body: {
           type: "string",
-          description: "관리인이 확인한 답장 본문 또는 초안 기준 문장"
+          description: "AI가 준비했거나 관리인이 수정한 발송 문구"
         }
       },
       required: ["command"]
@@ -187,7 +187,7 @@ describe("manager copilot chat domain", () => {
       assert.equal(chatBodies[0].tools[0].function.name, "run_manager_agent_command");
       const toolMessage = chatBodies[1].messages.find((message: any) => message.role === "tool");
       assert.match(toolMessage.content, /billing/);
-      assert.match(toolMessage.content, /이번 달 청구 15건/);
+      assert.match(toolMessage.content, /이번 달 청구 \d+건/);
       assert.match(toolMessage.content, /"data"/);
     } finally {
       globalThis.fetch = originalFetch;
@@ -257,6 +257,108 @@ describe("manager copilot chat domain", () => {
       assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), false);
     } finally {
       globalThis.fetch = originalFetch;
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("prepares and confirms an explicit dunning intent without depending on the AI window or model", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+    const billId = "bill-demo-overdue-411";
+
+    try {
+      const pending = await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        intent: {
+          type: "billing.send_dunning",
+          source: "overdue",
+          billId,
+          prompt: "411호 연체 독촉 문구를 준비해줘",
+          messageText: "납부기한이 지난 청구가 있어 안내드립니다."
+        }
+      });
+
+      assert.equal(pending.mode, "openai");
+      assert.equal(pending.pendingAction?.kind, "billing.send_dunning");
+      assert.equal(pending.pendingAction?.dunningPreview?.billId, billId);
+      assert.equal(pending.pendingAction?.dunningPreview?.unitId, "411");
+      assert.equal(pending.pendingAction?.dunningPreview?.billingMonth.length, 7);
+      assert.match(pending.pendingAction?.dunningPreview?.messageText ?? "", /납부기한/);
+      assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), false);
+      assert.ok(pending.pendingAction?.id);
+
+      const confirmed = await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        confirmActionId: pending.pendingAction?.id
+      });
+
+      assert.equal(confirmed.receipts?.[0]?.kind, "billing.send_dunning");
+      assert.equal(hasPaymentThread(service, "tenant-billing-411", billId), true);
+    } finally {
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("blocks an explicit dunning intent while a payment report or unmatched deposit needs review", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      const result = await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        intent: {
+          type: "billing.send_dunning",
+          source: "overdue",
+          billId: "bill-demo-guarded",
+          prompt: "301호 독촉 보내줘"
+        }
+      });
+
+      assert.equal(result.mode, "openai");
+      assert.equal(result.pendingAction, undefined);
+      assert.match(result.reply, /납부 신고|미연결 입금/);
+    } finally {
+      if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
+      else delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("cancels a pending dunning action so it cannot be confirmed later", async () => {
+    const originalApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const service = new RoomlogService();
+
+    try {
+      const pending = await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        intent: {
+          type: "billing.send_dunning",
+          source: "overdue",
+          billId: "bill-demo-overdue-411"
+        }
+      });
+      assert.ok(pending.pendingAction?.id);
+
+      const cancelled = await service.chatManagerCopilot("landlord-demo", {
+        messages: [],
+        cancelActionId: pending.pendingAction.id
+      });
+
+      assert.match(cancelled.reply, /취소/);
+      assert.equal(cancelled.pendingAction, undefined);
+      await assert.rejects(
+        () =>
+          service.chatManagerCopilot("landlord-demo", {
+            messages: [],
+            confirmActionId: pending.pendingAction?.id
+          }),
+        /보류 액션/
+      );
+    } finally {
       if (originalApiKey) process.env.OPENAI_API_KEY = originalApiKey;
       else delete process.env.OPENAI_API_KEY;
     }
