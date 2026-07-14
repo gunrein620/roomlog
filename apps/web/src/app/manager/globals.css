@@ -1354,6 +1354,12 @@ html:has(.manager-workspace) {
   }
 }
 
+/* 같은 섹션 안에서 하위 탭만 이동한 리마운트(청구·수납처럼 경로가 갈리는 탭)에서는
+   이미 열려 있던 목록이므로 등장 애니메이션을 반복하지 않는다. */
+.manager-sidebar__children-wrap--settled.is-open .manager-sidebar__child {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .manager-sidebar__children-wrap,
   .manager-sidebar__children {
