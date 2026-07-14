@@ -30,9 +30,14 @@ export interface ManagerRealtimeSessionOptions {
   initialBillId?: string;
 }
 
+type ManagerAudioStream = {
+  getAudioTracks(): Array<{ enabled: boolean }>;
+};
+
 export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions) {
   const [status, setStatus] = useState<ManagerAssistantConnectionState>("idle");
   const [activity, setActivity] = useState<ManagerRealtimeActivity>("idle");
+  const [isTalking, setIsTalking] = useState(false);
   const [sessionMeta, setSessionMeta] = useState<ManagerRealtimeClientSecretResult | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
@@ -57,12 +62,14 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
 
     try {
       const stream = await requestMicrophone();
+      setManagerAudioTracksEnabled(stream, false);
       streamRef.current = stream;
       const nextSession = await requestRealtimeClientSecret();
       setSessionMeta(nextSession);
 
       if (nextSession.mode !== "openai" || !nextSession.clientSecret?.value) {
         closeResources();
+        setIsTalking(false);
         setStatus("not_configured");
         appendMessage(
           "system",
@@ -83,6 +90,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       peer.onconnectionstatechange = () => {
         if (peer.connectionState !== "failed") return;
         closeResources();
+        setIsTalking(false);
         setStatus("error");
         setActivity("idle");
         appendMessage("system", "음성 연결이 끊어졌습니다. 다시 통화를 시작해 주세요.");
@@ -120,6 +128,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
       await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
     } catch (error) {
       closeResources();
+      setIsTalking(false);
       setStatus("error");
       setActivity("idle");
       appendMessage(
@@ -131,8 +140,20 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
 
   function disconnect() {
     closeResources();
+    setIsTalking(false);
     setStatus("idle");
     setActivity("idle");
+  }
+
+  function startTalking() {
+    if (!managerPushToTalkEnabled(status) || !streamRef.current) return;
+    setManagerAudioTracksEnabled(streamRef.current, true);
+    setIsTalking(true);
+  }
+
+  function stopTalking() {
+    setManagerAudioTracksEnabled(streamRef.current, false);
+    setIsTalking(false);
   }
 
   async function handleRealtimeEvent(channel: RTCDataChannel, rawEvent: string) {
@@ -204,6 +225,7 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
   }
 
   function closeResources() {
+    setManagerAudioTracksEnabled(streamRef.current, false);
     closeManagerRealtimeResources({
       channel: channelRef.current,
       peer: peerRef.current,
@@ -219,11 +241,26 @@ export function useManagerRealtimeSession(options: ManagerRealtimeSessionOptions
   return {
     status,
     activity,
+    isTalking,
     statusLabel: managerRealtimeStatusLabel(status, activity),
     sessionMeta,
     connect,
     disconnect,
+    startTalking,
+    stopTalking,
   };
+}
+
+export function managerPushToTalkEnabled(status: ManagerAssistantConnectionState) {
+  return status === "connected";
+}
+
+export function setManagerAudioTracksEnabled(
+  stream: ManagerAudioStream | null,
+  enabled: boolean,
+) {
+  for (const track of stream?.getAudioTracks() ?? []) track.enabled = enabled;
+  return enabled;
 }
 
 export function managerRealtimeStatusLabel(

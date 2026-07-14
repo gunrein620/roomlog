@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  managerPushToTalkEnabled,
   managerRealtimeStatusLabel,
   microphoneErrorMessage,
+  setManagerAudioTracksEnabled,
 } from "./useManagerRealtimeSession";
 
 describe("manager realtime session labels", () => {
@@ -16,5 +18,23 @@ describe("manager realtime session labels", () => {
     assert.match(microphoneErrorMessage("NotAllowedError"), /마이크 권한이 거부/);
     assert.match(microphoneErrorMessage("NotFoundError"), /마이크 장치/);
     assert.match(microphoneErrorMessage("NotReadableError"), /다른 앱/);
+  });
+
+  it("keeps microphone tracks muted until push-to-talk starts", () => {
+    const tracks = [{ enabled: true }, { enabled: true }];
+    const stream = { getAudioTracks: () => tracks };
+
+    assert.equal(setManagerAudioTracksEnabled(stream, false), false);
+    assert.deepEqual(tracks.map((track) => track.enabled), [false, false]);
+
+    assert.equal(setManagerAudioTracksEnabled(stream, true), true);
+    assert.deepEqual(tracks.map((track) => track.enabled), [true, true]);
+  });
+
+  it("allows push-to-talk transmission only for a connected session", () => {
+    assert.equal(managerPushToTalkEnabled("connected"), true);
+    assert.equal(managerPushToTalkEnabled("connecting"), false);
+    assert.equal(managerPushToTalkEnabled("idle"), false);
+    assert.equal(managerPushToTalkEnabled("error"), false);
   });
 });
