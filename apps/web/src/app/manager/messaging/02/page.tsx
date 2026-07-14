@@ -9,6 +9,7 @@ import {
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { ApiError } from "@/lib/server-api";
 import { findAttachedTranslation } from "../01/attachment-state";
+import { announcementRecipientState } from "./review-state";
 import {
   Badge,
   Card,
@@ -65,6 +66,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const isUrgent = draft.category === "urgent";
   const attachedTranslation = findAttachedTranslation(draft);
   const finalLanguage = attachedTranslation?.langLabel ?? "한국어";
+  const recipientState = announcementRecipientState(recipients.length);
 
   return (
     <>
@@ -92,24 +94,30 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <Card>
             <div style={sectionTitleStyle}>수신자 명단 · 데스크탑 본체</div>
             <div style={{ display: "grid", gap: "var(--space-sm)" }}>
-              {recipients.map((recipient) => (
-                <div
-                  key={`${recipient.unitId}-${recipient.tenantName}`}
-                  style={{
-                    minHeight: 48,
-                    display: "grid",
-                    gridTemplateColumns: "96px 1fr 120px",
-                    alignItems: "center",
-                    gap: "var(--space-sm)",
-                    borderBottom: "1px solid var(--border)",
-                    fontSize: "var(--fs-caption)",
-                  }}
-                >
-                  <strong>{recipient.unitId}호</strong>
-                  <span>{recipient.tenantName}</span>
-                  <Badge>{recipient.preferredLang}</Badge>
-                </div>
-              ))}
+              {recipientState.canSend ? (
+                recipients.map((recipient) => (
+                  <div
+                    key={`${recipient.unitId}-${recipient.tenantName}`}
+                    style={{
+                      minHeight: 48,
+                      display: "grid",
+                      gridTemplateColumns: "96px 1fr 120px",
+                      alignItems: "center",
+                      gap: "var(--space-sm)",
+                      borderBottom: "1px solid var(--border)",
+                      fontSize: "var(--fs-caption)",
+                    }}
+                  >
+                    <strong>{recipient.unitId}호</strong>
+                    <span>{recipient.tenantName}</span>
+                    <Badge>{recipient.preferredLang}</Badge>
+                  </div>
+                ))
+              ) : (
+                <NoticeCard title="발송 가능한 수신자 없음">
+                  {recipientState.emptyMessage}
+                </NoticeCard>
+              )}
             </div>
           </Card>
 
@@ -146,7 +154,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <StaticButton>체크 완료</StaticButton>
           <form action={sendAnnouncement}>
             <input type="hidden" name="draftId" value={draft.id} />
-            <Button type="submit" fullWidth>
+            <Button type="submit" fullWidth disabled={!recipientState.canSend}>
               승인하고 발송
             </Button>
           </form>
