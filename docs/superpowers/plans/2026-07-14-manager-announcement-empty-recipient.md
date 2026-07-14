@@ -56,7 +56,7 @@ describe("manager announcement recipient state", () => {
 Run from `apps/web`:
 
 ```bash
-node --test -r ts-node/register src/app/manager/messaging/02/review-state.spec.ts
+TS_NODE_COMPILER_OPTIONS='{"module":"commonjs"}' node --test -r ts-node/register src/app/manager/messaging/02/review-state.spec.ts
 ```
 
 Expected: FAIL because `review-state.ts` and `announcementRecipientState` do not exist.
@@ -89,7 +89,7 @@ In `page.tsx`, compute `const recipientState = announcementRecipientState(recipi
 
 ```bash
 cd apps/web
-node --test -r ts-node/register src/app/manager/messaging/02/review-state.spec.ts
+TS_NODE_COMPILER_OPTIONS='{"module":"commonjs"}' node --test -r ts-node/register src/app/manager/messaging/02/review-state.spec.ts
 cd ../..
 pnpm test:web
 pnpm --filter web build
