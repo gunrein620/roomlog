@@ -78,11 +78,10 @@ describe("tenant announcement route boundary", () => {
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
   });
 
-  it("routes existing tenant notice entry points to the dynamic detail helper", () => {
+  it("keeps the legacy notice entry on detail and routes the living card to the list", () => {
     assert.match(read("../00/page.tsx"), /tenantAnnouncementDetailHref\(announcement\.id\)/);
-    assert.match(
-      read("../../../my/flows/TenantMyPage.tsx"),
-      /tenantAnnouncementDetailHref\(announcementState\.announcement\.id\)/,
-    );
+    const livingPage = read("../../../my/flows/TenantMyPage.tsx");
+    assert.match(livingPage, /<Link href="\/tenant\/messaging\/02" className="tenant-announcement-link">/);
+    assert.doesNotMatch(livingPage, /tenantAnnouncementDetailHref/);
   });
 });
