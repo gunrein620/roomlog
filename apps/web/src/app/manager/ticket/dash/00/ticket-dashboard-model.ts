@@ -147,3 +147,19 @@ export function formatDefectDate(iso?: string) {
 export function formatDefectMoney(amount?: number) {
   return typeof amount === "number" ? new Intl.NumberFormat("ko-KR").format(amount) : "—";
 }
+
+export function resolveManagerAttachmentUrl(
+  url: string,
+  publicApiBase = process.env.NEXT_PUBLIC_API_URL ?? "",
+) {
+  const normalizedUrl = url.trim();
+  const normalizedBase = publicApiBase.trim().replace(/\/+$/, "");
+
+  if (!normalizedUrl.startsWith("/api/") || !/^https?:\/\//.test(normalizedBase)) {
+    return normalizedUrl;
+  }
+
+  return normalizedBase.endsWith("/api")
+    ? `${normalizedBase}${normalizedUrl.slice(4)}`
+    : `${normalizedBase}${normalizedUrl}`;
+}

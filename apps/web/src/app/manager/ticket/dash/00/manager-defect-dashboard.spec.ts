@@ -18,6 +18,10 @@ const autoRefreshPath = join(
   root,
   "src/app/manager/ticket/dash/00/TicketDashboardAutoRefresh.tsx",
 );
+const ticketDetailDialogPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/TicketDetailDialog.tsx",
+);
 const layoutPath = join(root, "src/app/manager/ticket/dash/layout.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
@@ -34,6 +38,7 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   const pageSource = readFileSync(pagePath, "utf8");
   assert.equal(existsSync(autoRefreshPath), true, autoRefreshPath);
   const autoRefreshSource = readFileSync(autoRefreshPath, "utf8");
+  const ticketDetailDialogSource = readFileSync(ticketDetailDialogPath, "utf8");
   const layoutSource = readFileSync(layoutPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
@@ -136,6 +141,17 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(complaintDashboardSource, /event\.key === "Escape"/);
   assert.match(cssSource, /\/\* manager-complaint-dashboard:start \*\//);
   assert.match(cssSource, /manager-complaint-dashboard__calendar-popover/);
+  assert.match(ticketDetailDialogSource, /row\.attachmentUrls/);
+  assert.match(ticketDetailDialogSource, /manager-ticket-dialog__attachments/);
+  assert.match(ticketDetailDialogSource, /manager-ticket-dialog__attachment-thumbnail/);
+  assert.match(ticketDetailDialogSource, /manager-ticket-image-preview/);
+  assert.match(ticketDetailDialogSource, /aria-modal="true"/);
+  assert.match(ticketDetailDialogSource, /event\.key === "Escape"/);
+  assert.match(ticketDetailDialogSource, /onError/);
+  assert.match(ticketDetailDialogSource, /markAttachmentFailed\(selectedAttachmentUrl\)/);
+  assert.match(ticketDetailDialogSource, /target="_blank"/);
+  assert.match(cssSource, /manager-ticket-dialog__attachment-thumbnail/);
+  assert.match(cssSource, /manager-ticket-image-preview/);
 
   const dashboardCss = cssSource.match(
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,

@@ -2606,6 +2606,98 @@ html:has(.manager-workspace) {
   overflow-wrap: anywhere;
 }
 
+.manager-ticket-dialog__attachments {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-dialog__attachments h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-ticket-dialog__attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-dialog__attachment-thumbnail {
+  width: 112px;
+  height: 84px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container);
+  cursor: zoom-in;
+}
+
+.manager-ticket-dialog__attachment-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.manager-ticket-dialog__attachment-fallback {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+
+.manager-ticket-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-overlay) + 1);
+  display: grid;
+  place-items: center;
+  padding: var(--space-xl);
+  background: color-mix(in srgb, var(--on-surface) 72%, transparent);
+  cursor: zoom-out;
+}
+
+.manager-ticket-image-preview__content {
+  position: relative;
+  max-width: min(960px, 100%);
+  max-height: 100%;
+  margin: 0;
+  cursor: default;
+}
+
+.manager-ticket-image-preview__content img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - var(--space-xl) * 2);
+  object-fit: contain;
+  border-radius: var(--radius-lg, 16px);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-ticket-image-preview__content button {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-full, 999px);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
 .manager-ticket-dialog__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2637,7 +2729,9 @@ html:has(.manager-workspace) {
 }
 
 .manager-ticket-dialog__actions a:focus-visible,
-.manager-ticket-dialog__header button:focus-visible {
+.manager-ticket-dialog__header button:focus-visible,
+.manager-ticket-dialog__attachment-thumbnail:focus-visible,
+.manager-ticket-image-preview__content button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
