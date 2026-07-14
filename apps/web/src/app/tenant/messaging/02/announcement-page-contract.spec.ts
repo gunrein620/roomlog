@@ -56,6 +56,14 @@ describe("tenant announcement route boundary", () => {
     );
     assert.match(component, /<summary aria-label="공지 검색">/);
     assert.doesNotMatch(component, /공지 검색 열기/);
+    assert.match(
+      component,
+      /<Link href="\/living" className=\{styles\.backLink\} aria-label="세입자 홈으로 돌아가기">/,
+    );
+    assert.doesNotMatch(
+      component,
+      /<Link href="\/tenant\/home\/00" className=\{styles\.backLink\}/,
+    );
     assert.doesNotMatch(
       component,
       /MAIN_NAV_ITEMS|aria-label="세입자 주요 메뉴"|styles\.bottomNav/,

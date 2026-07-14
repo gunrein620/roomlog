@@ -83,7 +83,7 @@ export function AnnouncementListPage({
       <main className={styles.shell}>
         <header className={styles.header}>
           <div className={styles.headerMain}>
-            <Link href="/tenant/home/00" className={styles.backLink} aria-label="세입자 홈으로 돌아가기">
+            <Link href="/living" className={styles.backLink} aria-label="세입자 홈으로 돌아가기">
               <ArrowLeft aria-hidden="true" size={22} />
             </Link>
             <div className={styles.titleBlock}>
