@@ -123,6 +123,10 @@ const managerMessagingShellTitleSource = existsSync(managerMessagingShellTitlePa
 const managerMessagingThreadSource = readFileSync(new URL("./src/app/manager/messaging/04/page.tsx", import.meta.url), "utf8");
 const managerMessagingResultSource = readFileSync(new URL("./src/app/manager/messaging/03/page.tsx", import.meta.url), "utf8");
 const managerContractPageSource = readFileSync(new URL("./src/app/manager/contract/01/page.tsx", import.meta.url), "utf8");
+const managerContractConfirmErrorFocusSource = readFileSync(new URL("./src/app/manager/contract/01/ContractConfirmErrorFocus.tsx", import.meta.url), "utf8");
+const managerContractRegisterPageSource = readFileSync(new URL("./src/app/manager/contract/02/page.tsx", import.meta.url), "utf8");
+const managerContractDashboardPageSource = readFileSync(new URL("./src/app/manager/contract/00/page.tsx", import.meta.url), "utf8");
+const managerContractDashboardClientSource = readFileSync(new URL("./src/app/manager/contract/00/ContractDashboardClient.tsx", import.meta.url), "utf8");
 const managerContractApiSource = readFileSync(new URL("./src/lib/contract-manager-api.ts", import.meta.url), "utf8");
 const managerMessagingApiSource = readFileSync(new URL("./src/lib/messaging-manager-api.ts", import.meta.url), "utf8");
 const tradeControllerSource = readFileSync(new URL("../api/src/trade/trade.controller.ts", import.meta.url), "utf8");
@@ -366,7 +370,15 @@ test("opens tenant message compose only from real API thread ids", () => {
 });
 
 test("opens manager message compose only from real API thread ids", () => {
+  assert.doesNotMatch(managerMessagingApiSource, /DEMO_MANAGER_THREADS/);
   assert.doesNotMatch(managerMessagingThreadSource, /DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /DEMO_MANAGER_THREAD_ID/);
+  assert.doesNotMatch(managerMessagingApiSource, /테스트 건물[123]/);
+  assert.doesNotMatch(managerMessagingApiSource, /th_mgr_(302|405|201)/);
+  assert.match(
+    managerMessagingApiSource,
+    /listManagerThreads[\s\S]*?tryFetch\([\s\S]*?managerMessagingPaths\.threads\(context\),[\s\S]*?\[\]/,
+  );
   assert.doesNotMatch(managerMessagingApiSource, /getManagerThread\(id: string = DEMO_MANAGER_THREAD_ID/);
   assert.doesNotMatch(managerMessagingApiSource, /thread\.id === id \|\| thread\.unitId === id/);
   assert.match(managerMessagingApiSource, /deleteManagerThread/);
@@ -380,6 +392,36 @@ test("opens manager message compose only from real API thread ids", () => {
   assert.doesNotMatch(managerContractPageSource, /th_mgr_302/);
   assert.doesNotMatch(managerContractApiSource, /th_mgr_302/);
   assert.doesNotMatch(managerMessagingResultSource, /MESSAGING_ROUTES\["M-MSG-04"\][\s\S]*unitId=/);
+});
+
+test("manager contract forms submit date-only values and show correction save errors", () => {
+  for (const source of [managerContractPageSource, managerContractRegisterPageSource]) {
+    assert.doesNotMatch(source, /T00:00:00\+09:00/);
+    assert.match(source, /return value \|\| undefined;/);
+  }
+
+  assert.match(managerContractPageSource, /error instanceof ApiError/);
+  assert.match(managerContractPageSource, /수정 저장 실패/);
+  assert.match(managerContractPageSource, /role="alert"/);
+});
+
+test("confirmed manager contracts return to the dashboard and reveal the confirmed row", () => {
+  assert.match(managerContractPageSource, /MANAGER_CONTRACT_ROUTES\["M-DOC-00"\][\s\S]*focus=/);
+  assert.match(managerContractDashboardPageSource, /focusedContractId=\{focus\}/);
+  assert.match(managerContractDashboardClientSource, /focusedRowIndex/);
+  assert.match(managerContractDashboardClientSource, /scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
+  assert.match(managerContractDashboardClientSource, /is-focused/);
+  assert.match(managerContractDashboardClientSource, /검토 확정이 완료되었습니다/);
+});
+
+test("failed manager contract confirmation reveals every field that needs correction", () => {
+  assert.match(managerContractPageSource, /contractConfirmationIssues/);
+  assert.match(managerContractPageSource, /confirmError:\s*message\.slice/);
+  assert.match(managerContractPageSource, /검토 확정 실패/);
+  assert.match(managerContractPageSource, /aria-invalid=\{Boolean\(/);
+  assert.match(managerContractPageSource, /수정 저장/);
+  assert.match(managerContractConfirmErrorFocusSource, /scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
+  assert.match(managerContractConfirmErrorFocusSource, /focus\(\{ preventScroll: true \}\)/);
 });
 
 test("manager messaging thread places its back link beside the shell title", () => {

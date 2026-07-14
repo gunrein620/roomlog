@@ -22,6 +22,12 @@ import { toManagerListingRow, type ManagerListingRow } from "./manager-listing-m
 import styles from "./ManagerListingBoard.module.css";
 
 type DialogMode = "view" | "edit" | "remove";
+type ListingStatusTab = "contracted" | "available";
+
+const STATUS_TAB_LABELS: Record<ListingStatusTab, string> = {
+  contracted: "계약완료",
+  available: "미계약",
+};
 
 const registrationLinkStyle = {
   minHeight: "var(--touch-target)",
@@ -72,7 +78,13 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ManagerListingBoard({ initialListings }: { initialListings: ManagerListingRow[] }) {
+export function ManagerListingBoard({
+  initialListings,
+  activeStatus,
+}: {
+  initialListings: ManagerListingRow[];
+  activeStatus: ListingStatusTab;
+}) {
   const [listings, setListings] = useState(initialListings);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<DialogMode>("view");
@@ -238,6 +250,11 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
     }
   }
 
+  const visibleListings = listings.filter((listing) =>
+    activeStatus === "contracted" ? listing.statusLabel === "계약완료" : listing.statusLabel === "노출중",
+  );
+  const activeStatusLabel = STATUS_TAB_LABELS[activeStatus];
+
   return (
     <>
       {listings.length === 0 ? (
@@ -246,9 +263,14 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
           <p>새 매물을 등록하면 이곳에서 관리할 수 있습니다.</p>
           <Link href="/sell" style={registrationLinkStyle}>새 매물 등록</Link>
         </Card>
+      ) : visibleListings.length === 0 ? (
+        <Card className={styles.empty}>
+          <strong>{activeStatusLabel} 매물이 없습니다</strong>
+          <p>다른 탭에서 등록한 매물을 확인할 수 있습니다.</p>
+        </Card>
       ) : (
-        <section className={styles.list} aria-label="등록한 매물 목록">
-          {listings.map((listing) => (
+        <section className={styles.list} aria-label={`${activeStatusLabel} 매물 목록`}>
+          {visibleListings.map((listing) => (
             <ListingCard key={listing.id} listing={listing} onOpen={() => openListing(listing.id)} />
           ))}
         </section>

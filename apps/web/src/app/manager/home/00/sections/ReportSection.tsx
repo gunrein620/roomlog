@@ -4,12 +4,8 @@ import { MANAGER_CROSS, MHOME_ROUTES } from "@/lib/manager-home-nav";
 
 // M-HOME-02(임대 현황 리포트) 데모 콘텐츠를 00 페이지 하단 섹션으로 통합.
 // 상단 탭 "임대 현황 리포트"는 /manager/home/00#report로 스크롤한다.
-// 총 보증금·월 예상수익은 자산 스탯 카드(PortfolioStatCards)로 옮겨서 여기선 뺐다 — 중복 노출 방지.
-const kpis = [
-  ["실수납", "1,420만원", "확인 완료 입금만"],
-  ["미납률", "확인 중", "M-BILL 단일 산식 연결 전"],
-] as const;
-
+// 월별 수익 추이·월별 수리비는 메인 계기판 아래 자산 막대 카드(PortfolioBarCards)에도 뽑아 올렸다(이 섹션의 4개 차트는 그대로 유지).
+// 실수납·미납률 KPI 카드는 계기판의 입주율·티켓 링과 겹쳐 여기서 삭제했다.
 const charts = [
   ["월별 수익 추이", "70%", "실수납"],
   ["공실률·입주율", "44%", "입주율"],
@@ -31,16 +27,6 @@ export function ReportSection() {
           <Badge>1Y</Badge>
           <Badge>건물 전체</Badge>
           <Badge>PDF/CSV</Badge>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "var(--space-md)" }}>
-          {kpis.map(([label, value, note]) => (
-            <Card key={label}>
-              <div style={captionStyle}>{label}</div>
-              <div style={{ marginTop: "var(--space-md)", fontSize: "var(--fs-title)", fontWeight: 800 }}>{value}</div>
-              <div style={{ marginTop: "var(--space-xs)", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>{note}</div>
-            </Card>
-          ))}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-lg)" }}>

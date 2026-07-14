@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { MouseEvent } from "react";
 import { useRef } from "react";
 import { MANAGER_NAV_GROUPS, getManagerNavState } from "@/lib/manager-navigation";
 
 export function ManagerSectionNav() {
   const pathname = usePathname();
-  const state = getManagerNavState(pathname);
+  // 쿼리 기반 탭(예: 매물 관리 ?status=)도 활성 판정에 반영한다. 쿼리를 안 쓰는 섹션은
+  // getManagerNavState의 path-only 폴백이 그대로 매칭하므로 하위 호환.
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
+  const fullPath = search ? `${pathname}?${search}` : pathname;
+  const state = getManagerNavState(fullPath);
   const item = MANAGER_NAV_GROUPS.flatMap((group) => group.items).find(
     (candidate) => candidate.id === state.activeItemId,
   );

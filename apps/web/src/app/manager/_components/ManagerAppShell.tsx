@@ -22,7 +22,8 @@ export interface ManagerAppShellProps {
   assistantBriefing?: readonly ManagerAssistantBriefingItem[];
   /** 화면이 자체 AI 표면(예: 홈 코파일럿)을 내장할 때 플로팅 AI 비서 런처를 숨긴다. 기본값은 기존 동작 유지. */
   hideAssistantLauncher?: boolean;
-  /** opt-in 테마(packages/ui tokens.css의 .theme-*)를 워크스페이스 루트에 적용. 기본은 미지정(theme v1 그대로). */
+  /** 워크스페이스 테마(packages/ui tokens.css의 .theme-*). 관리 화면 전체를 코스믹(심야 우주)으로 통일 —
+   *  기본값 "cosmic". 특정 화면만 v1(라이트)로 되돌리려면 theme={undefined}를 명시적으로 넘긴다. */
   theme?: "cosmic";
   children: ReactNode;
 }
@@ -35,7 +36,7 @@ export function ManagerAppShell({
   showAssistantRail = false,
   assistantBriefing = [],
   hideAssistantLauncher = false,
-  theme,
+  theme = "cosmic",
   children,
 }: ManagerAppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);

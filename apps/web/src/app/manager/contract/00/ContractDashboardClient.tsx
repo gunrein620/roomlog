@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, EllipsisVertical } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CheckCircle2, ChevronLeft, ChevronRight, EllipsisVertical } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { ManagerContractDashboard, ManagerContractRow } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 
@@ -46,9 +46,11 @@ const originFilterLabels: Record<ContractOriginFilter, string> = {
 export function ContractDashboardClient({
   counts,
   rows,
+  focusedContractId,
 }: {
   counts: ManagerContractDashboard["counts"];
   rows: ManagerContractRow[];
+  focusedContractId?: string;
 }) {
   const [filters, setFilters] = useState({
     status: "all" as ContractStatusFilter,
@@ -56,7 +58,12 @@ export function ContractDashboardClient({
     origin: "all" as ContractOriginFilter,
     query: "",
   });
-  const [page, setPage] = useState(1);
+  const focusedRowIndex = focusedContractId
+    ? rows.findIndex((row) => row.contract.id === focusedContractId)
+    : -1;
+  const [page, setPage] = useState(
+    focusedRowIndex >= 0 ? Math.floor(focusedRowIndex / PAGE_SIZE) + 1 : 1,
+  );
 
   const buildings = useMemo(
     () =>
@@ -83,6 +90,19 @@ export function ContractDashboardClient({
   const pageRows = filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const firstResult = filteredRows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const lastResult = Math.min(currentPage * PAGE_SIZE, filteredRows.length);
+  const focusedRow = focusedRowIndex >= 0 ? rows[focusedRowIndex] : undefined;
+
+  useEffect(() => {
+    if (!focusedContractId) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(contractRowId(focusedContractId))
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentPage, focusedContractId]);
 
   function updateFilters(next: Partial<typeof filters>) {
     setFilters((current) => ({ ...current, ...next }));
@@ -92,6 +112,18 @@ export function ContractDashboardClient({
   return (
     <section className="manager-contract-dashboard" aria-labelledby="manager-contract-dashboard-title">
       <h2 id="manager-contract-dashboard-title">계약 목록 · 검토대기/확인필요/검토 필요 상단</h2>
+
+      {focusedRow ? (
+        <div className="manager-contract-dashboard__confirmation" role="status" aria-live="polite">
+          <CheckCircle2 aria-hidden="true" />
+          <div>
+            <strong>검토 확정이 완료되었습니다</strong>
+            <span>
+              {focusedRow.buildingName} {focusedRow.contract.unitId}호 · {focusedRow.tenantName}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="manager-contract-dashboard__filter-header">
         <div className="manager-contract-dashboard__status-filters" aria-label="계약 상태 필터">
@@ -156,7 +188,7 @@ export function ContractDashboardClient({
         </label>
       </div>
 
-      <ContractDashboardTable rows={pageRows} />
+      <ContractDashboardTable rows={pageRows} focusedContractId={focusedContractId} />
 
       <footer className="manager-contract-dashboard__pagination">
         <span>
@@ -196,7 +228,13 @@ export function ContractDashboardClient({
   );
 }
 
-function ContractDashboardTable({ rows }: { rows: ManagerContractRow[] }) {
+function ContractDashboardTable({
+  rows,
+  focusedContractId,
+}: {
+  rows: ManagerContractRow[];
+  focusedContractId?: string;
+}) {
   return (
     <div className="manager-contract-table-wrap">
       <table className="manager-contract-table">
@@ -213,9 +251,19 @@ function ContractDashboardTable({ rows }: { rows: ManagerContractRow[] }) {
           {rows.map((row) => {
             const priority = priorityFor(row);
             const detailHref = `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${row.contract.id}`;
+            const isFocused = row.contract.id === focusedContractId;
+            const rowClassName = [
+              row.slaOverdue || row.needsCheckCount > 0 ? "is-attention" : "",
+              isFocused ? "is-focused" : "",
+            ].filter(Boolean).join(" ") || undefined;
 
             return (
-              <tr key={row.contract.id} className={row.slaOverdue || row.needsCheckCount > 0 ? "is-attention" : undefined}>
+              <tr
+                key={row.contract.id}
+                id={contractRowId(row.contract.id)}
+                className={rowClassName}
+                aria-current={isFocused ? "true" : undefined}
+              >
                 <td>
                   <span className={`manager-contract-priority manager-contract-priority--${priority.kind}`}>
                     {priority.label}
@@ -297,6 +345,10 @@ function contractSearchText(row: ManagerContractRow) {
 
 function normalizeSearchText(value: string) {
   return value.replace(/\s+/g, "").toLocaleLowerCase("ko-KR");
+}
+
+function contractRowId(contractId: string) {
+  return `manager-contract-row-${encodeURIComponent(contractId)}`;
 }
 
 function countContractStatuses(rows: ManagerContractRow[], counts: ManagerContractDashboard["counts"]) {

@@ -5,7 +5,7 @@ import { AlertStatTiles } from "./AlertStatTiles";
 import { CopilotPanel } from "./CopilotPanel";
 import { HomeCards } from "./HomeCards";
 import { InstrumentPanel } from "./InstrumentPanel";
-import { PortfolioStatCards } from "./PortfolioStatCards";
+import { PortfolioBarCards } from "./PortfolioBarCards";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
@@ -77,7 +77,7 @@ export default async function Page() {
             ticketSub={dashboard.ticketProgress ? `진행 중 ${dashboard.ticketProgress.open}건` : "티켓 없음"}
             ticketHref={MANAGER_CROSS.ticketDash}
           />
-          <PortfolioStatCards amounts={dashboard.portfolioAmounts} />
+          <PortfolioBarCards />
         </div>
 
         <HomeCards
@@ -200,41 +200,8 @@ export default async function Page() {
           font-weight: 700;
         }
 
-        /* 시그니처 — 심야 우주 네비: 별무리(radial dot 레이어) + 궤도 링 + 성운 코너.
-           전부 background 레이어라 DOM 추가·리플로 비용 없음.
-           글로벌 사이드바(ManagerSidebar)는 토큰을 소비하므로, 이 스코프에서
-           표면·글자 토큰을 어두운 배경용으로 재반전시켜 가독성을 지킨다. */
-        .manager-workspace.theme-cosmic .manager-workspace__sidebar {
-          --surface-container-lowest: transparent;
-          --surface-container-low: rgba(255, 255, 255, 0.06);
-          --surface-container: rgba(255, 255, 255, 0.08);
-          --surface-container-high: rgba(255, 255, 255, 0.12);
-          --on-surface: #f4f1fd;
-          --on-surface-variant: #a79ed6;
-          --border: rgba(160, 146, 255, 0.22);
-          --primary-container: rgba(233, 229, 255, 0.94);
-          --on-primary-container: #43338f;
-          border-right-color: #2c2454 !important;
-          background:
-            radial-gradient(1.5px 1.5px at 18% 9%, rgba(255, 255, 255, 0.9), transparent 55%),
-            radial-gradient(1px 1px at 72% 5%, rgba(255, 255, 255, 0.7), transparent 55%),
-            radial-gradient(1px 1px at 44% 16%, rgba(214, 205, 255, 0.8), transparent 55%),
-            radial-gradient(1.5px 1.5px at 84% 27%, rgba(255, 255, 255, 0.55), transparent 55%),
-            radial-gradient(1px 1px at 24% 38%, rgba(214, 205, 255, 0.6), transparent 55%),
-            radial-gradient(1px 1px at 64% 49%, rgba(255, 255, 255, 0.5), transparent 55%),
-            radial-gradient(1.5px 1.5px at 36% 63%, rgba(255, 255, 255, 0.6), transparent 55%),
-            radial-gradient(1px 1px at 80% 74%, rgba(214, 205, 255, 0.55), transparent 55%),
-            radial-gradient(1px 1px at 16% 86%, rgba(255, 255, 255, 0.45), transparent 55%),
-            radial-gradient(1px 1px at 58% 94%, rgba(214, 205, 255, 0.5), transparent 55%),
-            radial-gradient(circle 130px at 86% 5%, transparent 100px, rgba(160, 146, 255, 0.3) 101px, transparent 103px),
-            radial-gradient(circle 380px at 115% -6%, rgba(242, 123, 169, 0.14), transparent 68%),
-            radial-gradient(circle 360px at -25% 106%, rgba(102, 88, 214, 0.3), transparent 70%),
-            linear-gradient(172deg, #292153 0%, #1e1840 52%, #241d4e 100%) !important;
-        }
-
-        .manager-workspace.theme-cosmic .manager-workspace__content {
-          background: var(--surface);
-        }
+        /* 심야 우주 사이드바·콘텐츠 배경은 manager/globals.css의 .theme-cosmic 스코프로
+           승격됨(모든 관리 화면 공용). 여기 남는 건 이 페이지 전용 인트로/레이아웃뿐이다. */
 
         @media (max-width: 620px) {
           .manager-home-intro,

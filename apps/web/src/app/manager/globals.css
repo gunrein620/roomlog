@@ -944,6 +944,33 @@ html:has(.manager-workspace) {
   background: var(--surface-container-lowest);
 }
 
+/* ── 코스믹 테마 — 심야 우주 사이드바(별무리 radial dot + 궤도 링 + 성운 코너).
+   theme="cosmic"을 쓰는 모든 관리 화면에 동일하게 적용해 밤하늘 느낌으로 통일한다.
+   전부 background 레이어라 DOM 추가·리플로 비용 없음. 글로벌 사이드바는 표면 토큰을
+   소비하므로, 이 스코프에서 표면·글자 토큰을 어두운 배경용으로 재반전시켜 가독성을 지킨다. */
+.manager-workspace.theme-cosmic .manager-workspace__sidebar {
+  --surface-container-lowest: transparent;
+  --surface-container-low: rgba(255, 255, 255, 0.06);
+  --surface-container: rgba(255, 255, 255, 0.08);
+  --surface-container-high: rgba(255, 255, 255, 0.12);
+  --on-surface: #f4f1fd;
+  --on-surface-variant: #a79ed6;
+  --border: rgba(160, 146, 255, 0.22);
+  --primary-container: rgba(233, 229, 255, 0.94);
+  --on-primary-container: #43338f;
+  border-right-color: #2c2454 !important;
+  background:
+    url("/textures/cosmic-sidebar.svg") top center / cover no-repeat,
+    radial-gradient(circle 130px at 86% 5%, transparent 100px, rgba(160, 146, 255, 0.3) 101px, transparent 103px),
+    radial-gradient(circle 380px at 115% -6%, rgba(242, 123, 169, 0.14), transparent 68%),
+    radial-gradient(circle 360px at -25% 106%, rgba(102, 88, 214, 0.3), transparent 70%),
+    linear-gradient(172deg, #292153 0%, #1e1840 52%, #241d4e 100%) !important;
+}
+
+.manager-workspace.theme-cosmic .manager-workspace__content {
+  background: var(--surface);
+}
+
 .manager-workspace__content,
 .manager-workspace__main {
   min-width: 0;
@@ -1790,6 +1817,32 @@ html:has(.manager-workspace) {
   line-height: var(--lh-title);
 }
 
+.manager-contract-dashboard__confirmation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid color-mix(in srgb, var(--success) 32%, var(--border));
+  border-radius: var(--radius-md);
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-contract-dashboard__confirmation svg {
+  flex: 0 0 auto;
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-contract-dashboard__confirmation div {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.manager-contract-dashboard__confirmation span {
+  font-size: var(--fs-caption);
+}
+
 .manager-contract-dashboard__filter-header {
   display: flex;
   align-items: center;
@@ -1918,6 +1971,12 @@ html:has(.manager-workspace) {
 
 .manager-contract-table tbody tr.is-attention {
   background: color-mix(in srgb, var(--primary) 4%, var(--surface-container-lowest));
+}
+
+.manager-contract-table tbody tr.is-focused,
+.manager-contract-table tbody tr.is-focused:hover {
+  background: var(--primary-container);
+  box-shadow: inset var(--space-xs) 0 0 var(--primary);
 }
 
 .manager-contract-table tr:last-child td {
@@ -2606,6 +2665,98 @@ html:has(.manager-workspace) {
   overflow-wrap: anywhere;
 }
 
+.manager-ticket-dialog__attachments {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-dialog__attachments h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-ticket-dialog__attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-dialog__attachment-thumbnail {
+  width: 112px;
+  height: 84px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container);
+  cursor: zoom-in;
+}
+
+.manager-ticket-dialog__attachment-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.manager-ticket-dialog__attachment-fallback {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+
+.manager-ticket-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-overlay) + 1);
+  display: grid;
+  place-items: center;
+  padding: var(--space-xl);
+  background: color-mix(in srgb, var(--on-surface) 72%, transparent);
+  cursor: zoom-out;
+}
+
+.manager-ticket-image-preview__content {
+  position: relative;
+  max-width: min(960px, 100%);
+  max-height: 100%;
+  margin: 0;
+  cursor: default;
+}
+
+.manager-ticket-image-preview__content img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - var(--space-xl) * 2);
+  object-fit: contain;
+  border-radius: var(--radius-lg, 16px);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-ticket-image-preview__content button {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-full, 999px);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
 .manager-ticket-dialog__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2637,7 +2788,9 @@ html:has(.manager-workspace) {
 }
 
 .manager-ticket-dialog__actions a:focus-visible,
-.manager-ticket-dialog__header button:focus-visible {
+.manager-ticket-dialog__header button:focus-visible,
+.manager-ticket-dialog__attachment-thumbnail:focus-visible,
+.manager-ticket-image-preview__content button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
