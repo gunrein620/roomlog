@@ -49,6 +49,9 @@ jobs:
           GOOGLE_LOGIN_CLIENT_ID: "${{ secrets.GOOGLE_LOGIN_CLIENT_ID }}"
           GOOGLE_LOGIN_CLIENT_SECRET: "${{ secrets.GOOGLE_LOGIN_CLIENT_SECRET }}"
           GOOGLE_LOGIN_CALLBACK_URL: "${{ secrets.GOOGLE_LOGIN_CALLBACK_URL }}"
+          KAKAO_LOGIN_REST_API_KEY: "${{ secrets.KAKAO_LOGIN_REST_API_KEY }}"
+          KAKAO_LOGIN_CLIENT_SECRET: "${{ secrets.KAKAO_LOGIN_CLIENT_SECRET }}"
+          KAKAO_LOGIN_CALLBACK_URL: "${{ secrets.KAKAO_LOGIN_CALLBACK_URL }}"
           PORT: "${{ secrets.PORT }}"
           AWS_REGION: "${{ secrets.AWS_REGION }}"
           S3_BUCKET_NAME: "${{ secrets.S3_BUCKET_NAME }}"
@@ -104,6 +107,22 @@ jobs:
             GOOGLE_LOGIN_CALLBACK_URL="$(read_prod_env_key GOOGLE_LOGIN_CALLBACK_URL)"
           fi
 
+          # 카카오 로그인 — 개별 secret 우선, 없으면 PROD_ENV에서 읽는다(구글과 동일한 패턴).
+          KAKAO_LOGIN_REST_API_KEY="${KAKAO_LOGIN_REST_API_KEY:-}"
+          if [ -z "$KAKAO_LOGIN_REST_API_KEY" ] && [ -n "${PROD_ENV:-}" ]; then
+            KAKAO_LOGIN_REST_API_KEY="$(read_prod_env_key KAKAO_LOGIN_REST_API_KEY)"
+          fi
+
+          KAKAO_LOGIN_CLIENT_SECRET="${KAKAO_LOGIN_CLIENT_SECRET:-}"
+          if [ -z "$KAKAO_LOGIN_CLIENT_SECRET" ] && [ -n "${PROD_ENV:-}" ]; then
+            KAKAO_LOGIN_CLIENT_SECRET="$(read_prod_env_key KAKAO_LOGIN_CLIENT_SECRET)"
+          fi
+
+          KAKAO_LOGIN_CALLBACK_URL="${KAKAO_LOGIN_CALLBACK_URL:-}"
+          if [ -z "$KAKAO_LOGIN_CALLBACK_URL" ] && [ -n "${PROD_ENV:-}" ]; then
+            KAKAO_LOGIN_CALLBACK_URL="$(read_prod_env_key KAKAO_LOGIN_CALLBACK_URL)"
+          fi
+
           # 웹소켓 접속 주소 — PROD_ENV로 덮어쓸 수 있고, 기본은 api 서브도메인(ALB 호스트 규칙).
           NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL:-}"
           if [ -z "$NEXT_PUBLIC_SOCKET_URL" ] && [ -n "${PROD_ENV:-}" ]; then
@@ -149,7 +168,7 @@ jobs:
 
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|KAKAO_LOGIN_REST_API_KEY|KAKAO_LOGIN_CLIENT_SECRET|KAKAO_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -171,6 +190,15 @@ jobs:
           EOF
 
           # 값이 있을 때만 기록 — secret 미등록 상태에서 빈 값으로 덮지 않는다.
+          if [ -n "$KAKAO_LOGIN_REST_API_KEY" ]; then
+            echo "KAKAO_LOGIN_REST_API_KEY=${KAKAO_LOGIN_REST_API_KEY}" >> .env.production
+          fi
+          if [ -n "$KAKAO_LOGIN_CLIENT_SECRET" ]; then
+            echo "KAKAO_LOGIN_CLIENT_SECRET=${KAKAO_LOGIN_CLIENT_SECRET}" >> .env.production
+          fi
+          if [ -n "$KAKAO_LOGIN_CALLBACK_URL" ]; then
+            echo "KAKAO_LOGIN_CALLBACK_URL=${KAKAO_LOGIN_CALLBACK_URL}" >> .env.production
+          fi
           if [ -n "$MOLIT_SERVICE_KEY" ]; then
             echo "MOLIT_SERVICE_KEY=${MOLIT_SERVICE_KEY}" >> .env.production
           fi
