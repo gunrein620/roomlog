@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Mic, Send, X } from "lucide-react";
-import { useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { Bot, Headphones, MessageSquare, Mic, Send, X } from "lucide-react";
+import {
+  useId,
+  useReducer,
+  useRef,
+  useState,
+  type FormEvent,
+  type MouseEvent,
+} from "react";
 import { MANAGER_BILLING_ROUTES } from "@/lib/billing-manager-nav";
 import {
   MAX_MANAGER_PROMPT_LENGTH,
@@ -13,6 +20,10 @@ import {
 } from "@/lib/manager-assistant";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { MANAGER_TICKET_ROUTES } from "@/lib/ticket-manager-nav";
+import {
+  initialManagerAssistantSessionState,
+  reduceManagerAssistantSession,
+} from "./manager-assistant-session";
 
 export interface ManagerAssistantPanelProps {
   managerName?: string;
@@ -105,9 +116,13 @@ export function ManagerAssistantPanel({
 export function ManagerAssistantLauncher({
   managerName,
   contextLabel,
-  briefing,
+  briefing = [],
 }: ManagerAssistantLauncherProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [session, dispatch] = useReducer(
+    reduceManagerAssistantSession,
+    initialManagerAssistantSessionState,
+  );
 
   function closeOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
     if (event.target !== event.currentTarget) return;
@@ -149,11 +164,71 @@ export function ManagerAssistantLauncher({
             <X aria-hidden="true" />
           </button>
         </header>
-        <ManagerAssistantPanel
-          managerName={managerName}
-          contextLabel={contextLabel}
-          briefing={briefing}
-        />
+        {session.stage === "choose" ? (
+          <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
+            <div className="manager-ai-mode-picker__copy">
+              <span>ROOMLOG AI</span>
+              <h2>{managerName ?? "관리자"}님, 상담 방식을 선택해 주세요</h2>
+              <p>{contextLabel ?? "현재 관리자 화면"}의 업무 맥락을 이어서 처리합니다.</p>
+            </div>
+            {briefing.length ? (
+              <p className="manager-ai-mode-picker__briefing">
+                오늘 확인할 업무가 {briefing.length}개 있습니다.
+              </p>
+            ) : null}
+            <div className="manager-ai-mode-cards">
+              <button
+                type="button"
+                onClick={() => dispatch({ type: "select_mode", mode: "text" })}
+              >
+                <MessageSquare aria-hidden="true" />
+                <strong>Text Chat</strong>
+                <small>TEXT</small>
+              </button>
+              <button
+                type="button"
+                onClick={() => dispatch({ type: "select_mode", mode: "voice" })}
+              >
+                <Headphones aria-hidden="true" />
+                <strong>Voice Call</strong>
+                <small>CALL</small>
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="manager-ai-conversation" aria-label="AI 관리 비서 대화">
+            <div className="manager-ai-transcript" role="log" aria-live="polite">
+              <div className="manager-ai-message manager-ai-message--assistant">
+                <span className="manager-ai-message__avatar" aria-hidden="true">
+                  <Bot />
+                </span>
+                <p>
+                  {session.mode === "text"
+                    ? "텍스트로 처리할 관리 업무를 입력해 주세요."
+                    : "통화 시작을 누르면 음성으로 관리 업무를 처리할 수 있습니다."}
+                </p>
+              </div>
+            </div>
+            <div className="manager-ai-mode-toggle" aria-label="AI 상담 모드 전환">
+              <button
+                type="button"
+                aria-pressed={session.mode === "text"}
+                onClick={() => dispatch({ type: "select_mode", mode: "text" })}
+              >
+                <MessageSquare aria-hidden="true" />
+                텍스트
+              </button>
+              <button
+                type="button"
+                aria-pressed={session.mode === "voice"}
+                onClick={() => dispatch({ type: "select_mode", mode: "voice" })}
+              >
+                <Headphones aria-hidden="true" />
+                음성
+              </button>
+            </div>
+          </section>
+        )}
       </dialog>
     </>
   );
