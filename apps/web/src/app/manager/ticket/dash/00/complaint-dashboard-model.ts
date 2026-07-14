@@ -56,9 +56,7 @@ function ticketMonthKey(ticket: Ticket) {
 
 function rowsForMonth(rows: readonly DefectDashboardRow[], month: Date) {
   const key = monthKey(month);
-  return rows.filter(
-    (row) => row.ticket.type === "complaint" && ticketMonthKey(row.ticket) === key,
-  );
+  return rows.filter((row) => ticketMonthKey(row.ticket) === key);
 }
 
 export function complaintCategory(ticket: Ticket): ComplaintCategoryId {
@@ -69,6 +67,10 @@ export function complaintCategory(ticket: Ticket): ComplaintCategoryId {
     return "repair";
   }
   return "other";
+}
+
+export function dashboardTicketTypeLabel(ticket: Ticket) {
+  return ticket.type === "defect" ? "하자" : CATEGORY_LABEL[complaintCategory(ticket)];
 }
 
 export function complaintStatusLabel(status: Ticket["status"]) {
@@ -117,9 +119,7 @@ export function buildComplaintDashboard(
     const key = monthKey(trendMonth);
     return {
       label: `${parts.month}월`,
-      count: rows.filter(
-        (row) => row.ticket.type === "complaint" && ticketMonthKey(row.ticket) === key,
-      ).length,
+      count: rows.filter((row) => ticketMonthKey(row.ticket) === key).length,
       current: index === 5,
     };
   });
@@ -153,7 +153,7 @@ export function serializeComplaintDashboardCsv(
   const dashboard = buildComplaintDashboard(rows, month);
   const headers = ["유형", "내용", "건물/호실", "접수일", "상태"];
   const records = dashboard.recent.map((row) => [
-    CATEGORY_LABEL[complaintCategory(row.ticket)],
+    dashboardTicketTypeLabel(row.ticket),
     row.ticket.title,
     `${row.buildingName ?? "—"} / ${row.ticket.unitId || "—"}`,
     formatComplaintDate(row.ticket.createdAt),
@@ -164,7 +164,6 @@ export function serializeComplaintDashboardCsv(
 
 export function latestComplaintMonth(rows: readonly DefectDashboardRow[]) {
   const latest = rows
-    .filter((row) => row.ticket.type === "complaint")
     .map((row) => row.ticket.createdAt)
     .sort()
     .at(-1);

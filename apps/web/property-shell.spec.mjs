@@ -600,10 +600,10 @@ test("promotes the future 3D room tour as a primary listing detail action", () =
   assert.doesNotMatch(pageSource, /3D ENGINE SLOT|다른 팀의 3D 엔진|연결될 위치/);
 });
 
-test("offers a clean white social sign-in limited to Naver and Google", () => {
+test("offers a clean white social sign-in limited to Kakao and Google", () => {
   // 로그인 화면은 WoozuLoginScreen으로 추출되어 /?auth=login과 /login이 공유한다.
   for (const label of [
-    "네이버",
+    "카카오톡",
     "Google",
     "집우집주",
     "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다",
@@ -615,7 +615,7 @@ test("offers a clean white social sign-in limited to Naver and Google", () => {
   }
 
   assert.match(loginScreenSource, /socialLoginNotice/);
-  assert.match(loginScreenSource, /setSocialLoginNotice/);
+  assert.doesNotMatch(loginScreenSource, /setSocialLoginNotice/);
   assert.match(loginScreenSource, /service-login-panel/);
   assert.match(loginScreenSource, /submitServiceLogin/);
   assert.match(loginScreenSource, /\/api\/auth\/login/);
@@ -629,7 +629,7 @@ test("offers a clean white social sign-in limited to Naver and Google", () => {
   assert.match(cssSource, /\.login-phone\s*{[^}]*background:\s*#ffffff/s);
   assert.match(cssSource, /\.login-feature-bar/);
   assert.match(cssSource, /\.social-login-notice/);
-  assert.doesNotMatch(loginScreenSource, /카카오로 계속하기/);
+  assert.match(loginScreenSource, /카카오톡으로 계속하기/);
   assert.doesNotMatch(loginScreenSource, /Apple로 계속하기/);
   assert.doesNotMatch(loginScreenSource, /assets\/img\/image\.png/);
   assert.doesNotMatch(loginScreenSource, /loginHeroImage/);
@@ -637,7 +637,7 @@ test("offers a clean white social sign-in limited to Naver and Google", () => {
   assert.doesNotMatch(loginScreenSource, /login-hero-image/);
   assert.doesNotMatch(cssSource, /\.login-visual/);
   assert.doesNotMatch(cssSource, /\.login-hero-image/);
-  assert.doesNotMatch(cssSource, /\.social-button\.kakao/);
+  assert.match(cssSource, /\.social-button\.kakao/);
   assert.doesNotMatch(cssSource, /\.social-button\.apple/);
   assert.doesNotMatch(pageSource, /개발 중에는/);
   assert.doesNotMatch(pageSource, /pin-a|pin-b|pin-c/);
