@@ -112,11 +112,7 @@ export function ManagerAssistantPanel({
   );
 }
 
-export function ManagerAssistantLauncher({
-  managerName,
-  contextLabel,
-  briefing = [],
-}: ManagerAssistantLauncherProps) {
+export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const session = useManagerAssistantSession();
   const realtime = useManagerRealtimeSession({
@@ -187,7 +183,10 @@ export function ManagerAssistantLauncher({
         onClose={realtime.disconnect}
       >
         <header className="manager-assistant-dialog__header">
-          <strong id="manager-assistant-dialog-title">AI 관리 비서</strong>
+          <span className="manager-assistant-dialog__brand">
+            <Bot aria-hidden="true" />
+            <strong id="manager-assistant-dialog-title">Woo-zu AI Assistant</strong>
+          </span>
           <button
             type="button"
             aria-label="AI 관리 비서 닫기"
@@ -199,21 +198,17 @@ export function ManagerAssistantLauncher({
         {session.stage === "choose" ? (
           <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
             <div className="manager-ai-mode-picker__copy">
-              <span>ROOMLOG AI</span>
-              <h2>{managerName ?? "관리자"}님, 상담 방식을 선택해 주세요</h2>
-              <p>{contextLabel ?? "현재 관리자 화면"}의 업무 맥락을 이어서 처리합니다.</p>
+              <h2>Choose your consultation mode</h2>
+              <p>How would you like to talk with Woo-zu AI?</p>
             </div>
-            {briefing.length ? (
-              <p className="manager-ai-mode-picker__briefing">
-                오늘 확인할 업무가 {briefing.length}개 있습니다.
-              </p>
-            ) : null}
             <div className="manager-ai-mode-cards">
               <button
                 type="button"
                 onClick={() => selectMode("text")}
               >
-                <MessageSquare aria-hidden="true" />
+                <span className="manager-ai-mode-icon" aria-hidden="true">
+                  <MessageSquare />
+                </span>
                 <strong>Text Chat</strong>
                 <small>TEXT</small>
               </button>
@@ -221,7 +216,9 @@ export function ManagerAssistantLauncher({
                 type="button"
                 onClick={() => selectMode("voice")}
               >
-                <Headphones aria-hidden="true" />
+                <span className="manager-ai-mode-icon" aria-hidden="true">
+                  <Headphones />
+                </span>
                 <strong>Voice Call</strong>
                 <small>CALL</small>
               </button>

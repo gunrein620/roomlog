@@ -81,8 +81,13 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(assistant, /getBoundingClientRect\(\)/);
   assert.match(assistant, /isDialogBackdropPoint/);
   assert.match(assistant, /AI 상담 모드 선택/);
+  assert.match(assistant, /Woo-zu AI Assistant/);
+  assert.match(assistant, /Choose your consultation mode/);
+  assert.match(assistant, /How would you like to talk with Woo-zu AI\?/);
   assert.match(assistant, /Text Chat/);
   assert.match(assistant, /Voice Call/);
+  assert.match(assistant, /manager-ai-mode-icon/);
+  assert.doesNotMatch(assistant, /상담 방식을 선택해 주세요/);
   assert.match(assistant, /role="log"/);
   assert.match(assistant, /aria-live="polite"/);
   assert.match(assistant, /useManagerAssistantSession/);
@@ -101,6 +106,15 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(appShellSource, /!fullAssistant/);
   assert.match(appShellSource, /getBoundingClientRect\(\)/);
   assert.match(appShellSource, /isDialogBackdropPoint/);
+  assert.match(
+    managerCss,
+    /\.manager-assistant-dialog\s*\{[^}]*width:\s*min\(calc\(100vw - var\(--space-xxl\)\), calc\(var\(--content-aside-max\) \+ var\(--content-aside-max\)\)\);/,
+  );
+  assert.match(
+    managerCss,
+    /\.manager-assistant-dialog__header\s*\{[^}]*color:\s*var\(--on-primary\);[^}]*background:\s*var\(--primary\);/,
+  );
+  assert.match(managerCss, /\.manager-ai-mode-icon\s*\{/);
   // useEffect는 사이드바 접힘 상태(localStorage) 복원용.
   assert.match(appShellSource, /import \{ Suspense, useEffect, useRef, useState \} from "react"/);
   // 데스크톱 사이드바에는 접기 토글이 헤더 액션으로 꽂힌다.
