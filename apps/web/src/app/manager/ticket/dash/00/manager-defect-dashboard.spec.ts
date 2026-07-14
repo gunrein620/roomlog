@@ -9,6 +9,10 @@ const componentPath = join(
   root,
   "src/app/manager/ticket/dash/00/ManagerDefectDashboard.tsx",
 );
+const actionMenuPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/TicketActionMenu.tsx",
+);
 const complaintDashboardPath = join(
   root,
   "src/app/manager/ticket/dash/00/ComplaintDashboard.tsx",
@@ -31,9 +35,11 @@ const sha256 = (source: string) => createHash("sha256").update(source).digest("h
 
 test("manager defect dashboard matches the approved body with the ticket sidebar tabs", () => {
   assert.equal(existsSync(componentPath), true, componentPath);
+  assert.equal(existsSync(actionMenuPath), true, actionMenuPath);
   assert.equal(existsSync(complaintDashboardPath), true, complaintDashboardPath);
 
   const componentSource = readFileSync(componentPath, "utf8");
+  const actionMenuSource = readFileSync(actionMenuPath, "utf8");
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
   const pageSource = readFileSync(pagePath, "utf8");
   assert.equal(existsSync(autoRefreshPath), true, autoRefreshPath);
@@ -83,16 +89,25 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /defectDisplayStatus/);
   assert.match(componentSource, /업체 선정/);
   assert.match(componentSource, /미완료/);
-  assert.match(componentSource, /ticketDashHref\("01",\s*row\.ticket\.id\)/);
-  assert.match(componentSource, /ticketDashHref\("04",\s*row\.ticket\.id\)/);
-  assert.match(componentSource, /ticketDashHref\("05",\s*row\.ticket\.id\)/);
-  assert.match(componentSource, /<details/);
-  assert.match(componentSource, /<summary/);
+  assert.match(actionMenuSource, /ticketDashHref\("01",\s*ticketId\)/);
+  assert.match(actionMenuSource, /ticketDashHref\("04",\s*ticketId\)/);
+  assert.match(actionMenuSource, /ticketDashHref\("05",\s*ticketId\)/);
+  assert.match(componentSource, /<TicketActionMenu/);
+  assert.doesNotMatch(componentSource, /<details/);
+  assert.doesNotMatch(componentSource, /<summary/);
+  assert.match(actionMenuSource, /createPortal/);
+  assert.match(actionMenuSource, /placeTicketActionMenu/);
+  assert.match(actionMenuSource, /aria-haspopup="menu"/);
+  assert.match(actionMenuSource, /aria-expanded=\{open\}/);
+  assert.match(actionMenuSource, /event\.key === "Escape"/);
+  assert.match(actionMenuSource, /pointerdown/);
+  assert.match(actionMenuSource, /addEventListener\("scroll"/);
+  assert.match(actionMenuSource, /addEventListener\("resize"/);
   assert.doesNotMatch(componentSource, /manager-defect-dashboard__primary-action/);
   assert.doesNotMatch(componentSource, />\s*정보입력\s*</);
-  assert.match(componentSource, /상세·정보입력/);
-  assert.match(componentSource, /업체 선정·견적/);
-  assert.match(componentSource, /결제·비용 승인/);
+  assert.match(actionMenuSource, /상세·정보입력/);
+  assert.match(actionMenuSource, /업체 선정·견적/);
+  assert.match(actionMenuSource, /결제·비용 승인/);
   assert.doesNotMatch(componentSource, /박지훈/);
   assert.doesNotMatch(componentSource, /row\.isDemo/);
   assert.doesNotMatch(componentSource, /더미 작업 비활성/);
@@ -127,6 +142,10 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(cssSource, /\/\* manager-defect-dashboard:start \*\//);
   assert.match(cssSource, /button:disabled/);
   assert.match(cssSource, /manager-defect-dashboard__more-menu-list/);
+  assert.doesNotMatch(
+    cssSource,
+    /manager-defect-dashboard__table tbody tr:nth-last-child\(-n \+ 3\)/,
+  );
   assert.match(complaintDashboardSource, /보고서 다운로드/);
   assert.match(complaintDashboardSource, /민원\/하자 대시보드/);
   assert.match(complaintDashboardSource, /전체 접수/);
@@ -186,15 +205,12 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /"민원\/하자 관리"/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-14 통합 대시보드 하위 탭(리포트·건물 관리·등록)에 스크롤스파이 활성 표시 추가 —
-    // 해시 섹션을 스크롤 위치로 추적해 사이드바 하이라이트를 동기화(자산현황=최상단).
-    "1d2033408390210cb5bb8ad7f19d970796fbfd988e39a6c77916a90bde1add3d",
+    // 2026-07-14 dev 병합: 통합 대시보드 하위 탭 제거에 맞춰 스크롤스파이와 해시 추적 제거.
+    "7ca63c953c5f9650ee771a02426c5cfe8591532e1ccde8529f2437888b54bb0c",
   );
   assert.equal(
     sha256(navigationSource),
-    // 2026-07-13 대시보드 탭 통합 — "미처리 업무" 자식 제거, 리포트·건물 관리·등록 탭을
-    // /manager/home/00#report 등 페이지 내 앵커 링크로 전환(별도 페이지를 홈에 통합).
-    // dev 머지: 티켓 자식의 typeFilter → ticketView 개편과 합쳐진 소스 기준 해시.
-    "354706836db13bc1cc1eaa062e25ab069a1efe808938cdf87a39dfd8ff513d3a",
+    // 2026-07-14 dev 병합: 통합 대시보드 children 제거와 티켓 ticketView 개편이 합쳐진 소스.
+    "bf440768d0228e20323a71ecbfcbe7f16ce8ec2ea8feef6a9024a91ceef99b76",
   );
 });

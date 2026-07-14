@@ -2484,28 +2484,14 @@ html:has(.manager-workspace) {
   cursor: pointer;
 }
 
-.manager-defect-dashboard__more-menu {
-  position: relative;
-}
-
-.manager-defect-dashboard__more-menu > summary {
-  list-style: none;
-}
-
-.manager-defect-dashboard__more-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
-.manager-defect-dashboard__more-menu[open] > summary {
+.manager-defect-dashboard__more-action[aria-expanded="true"] {
   color: var(--primary);
   background: var(--primary-container);
 }
 
 .manager-defect-dashboard__more-menu-list {
-  position: absolute;
-  top: calc(100% + var(--space-xs));
-  right: 0;
-  z-index: 10;
+  position: fixed;
+  z-index: var(--z-floating);
   min-width: calc(var(--touch-target) * 4);
   display: grid;
   gap: var(--space-xs);
@@ -2514,6 +2500,10 @@ html:has(.manager-workspace) {
   border-radius: var(--radius);
   background: var(--surface-container-lowest);
   box-shadow: var(--shadow);
+}
+
+.manager-defect-dashboard__more-menu-list[data-positioned="false"] {
+  visibility: hidden;
 }
 
 .manager-defect-dashboard__more-menu-list a {
@@ -2530,12 +2520,6 @@ html:has(.manager-workspace) {
 .manager-defect-dashboard__more-menu-list a:focus-visible {
   color: var(--on-primary-container);
   background: var(--primary-container);
-}
-
-.manager-defect-dashboard__table tbody tr:nth-last-child(-n + 3)
-  .manager-defect-dashboard__more-menu-list {
-  top: auto;
-  bottom: calc(100% + var(--space-xs));
 }
 
 .manager-defect-dashboard__action svg,
