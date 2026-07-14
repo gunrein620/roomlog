@@ -4,15 +4,14 @@
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import type { Announcement, Contract, Thread } from "@roomlog/types";
+import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
 import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
   tenantLandlordConversationPaths,
-  tenantLandlordThreadHref,
   tenantLandlordThreadInput
 } from "@/lib/tenant-landlord-conversation";
 import {
@@ -164,6 +163,11 @@ function tenancyDateLabel(iso?: string): string {
 
 function formatKrw(amount: number): string {
   return `${amount.toLocaleString("ko-KR")} KRW`;
+}
+
+function formatTenantRoomTitle(buildingName: string, roomNo: string): string {
+  const normalizedRoomNo = roomNo.replace(/호+$/u, "").trim();
+  return `${buildingName} ${normalizedRoomNo}`.trim();
 }
 
 function billingDateLabel(iso?: string): string {
@@ -369,6 +373,127 @@ function TenantFloorPlanPreview({
   );
 }
 
+function TenantLandlordChatModal({
+  thread,
+  draft,
+  isSending,
+  onDraftChange,
+  onClose,
+  onSubmit
+}: {
+  thread: Thread;
+  draft: string;
+  isSending: boolean;
+  onDraftChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const messages = thread.messages ?? [];
+  const unitLabel = compactTenantThreadUnit(thread.unitId);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [thread.id]);
+
+  const modal = (
+    <div className="tenant-chat-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="tenant-landlord-chat-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tenant-landlord-chat-title"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="tenant-chat-modal-head">
+          <button type="button" onClick={onClose} aria-label="채팅 닫기">
+            <X size={18} strokeWidth={2.5} aria-hidden="true" />
+          </button>
+          <div>
+            <h2 id="tenant-landlord-chat-title">관리인</h2>
+            <p>{unitLabel ? `${unitLabel} · ${thread.contextLabel ?? "일반 문의"}` : thread.contextLabel ?? "일반 문의"}</p>
+          </div>
+        </header>
+
+        <main className="tenant-chat-modal-stream" aria-label="메시지 타임라인">
+          {messages.length > 0 ? (
+            messages.map((message) => <TenantChatMessageBubble key={message.id} message={message} />)
+          ) : (
+            <div className="tenant-chat-modal-empty" aria-hidden="true" />
+          )}
+        </main>
+
+        <form className="tenant-chat-modal-compose" onSubmit={onSubmit}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            placeholder="메시지를 입력하세요"
+            autoComplete="off"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <button type="submit" disabled={!draft.trim() || isSending}>
+            {isSending ? "전송 중" : "보내기"}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+
+  return typeof document === "undefined" ? null : createPortal(modal, document.body);
+}
+
+function TenantChatMessageBubble({ message }: { message: Message }) {
+  const isMine = message.sender === "tenant";
+  return (
+    <article className={isMine ? "tenant-chat-message mine" : "tenant-chat-message"}>
+      <div className="tenant-chat-bubble">
+        <p>{message.body}</p>
+        <time>{formatTenantMessageTime(message.createdAt)}</time>
+      </div>
+    </article>
+  );
+}
+
+async function fetchTenantMessageThread(threadId: string): Promise<Thread> {
+  const response = await fetch(`/api/tenant/messaging/threads/${encodeURIComponent(threadId)}`, {
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "대화를 불러오지 못했습니다.");
+  }
+  return payload as Thread;
+}
+
+async function sendTenantMessageToThread(threadId: string, body: string): Promise<Thread> {
+  const response = await fetch(`/api/tenant/messaging/threads/${encodeURIComponent(threadId)}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "메시지를 보내지 못했습니다.");
+  }
+  return payload as Thread;
+}
+
+function formatTenantMessageTime(iso: string): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(iso));
+}
+
+function compactTenantThreadUnit(unitId: string): string {
+  return unitId.replace(/\s*호$/u, "").trim();
+}
+
 export default function TenantMyPage({
   onGoInquiry,
   onGoHome
@@ -376,7 +501,6 @@ export default function TenantMyPage({
   onGoInquiry: () => void;
   onGoHome: () => void;
 }) {
-  const router = useRouter();
   // 이 계정에 실제로 연결된 집 — 없으면 null(연결 안내), 확인 전엔 "loading".
   // 하드코딩된 매물 정보를 보여주던 자리를 실제 계약 데이터로 교체한다(위조 금지).
   const [tenancy, setTenancy] = useState<TenantTenancy | null | "loading">("loading");
@@ -620,6 +744,9 @@ export default function TenantMyPage({
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
+  const [landlordChatThread, setLandlordChatThread] = useState<Thread | null>(null);
+  const [landlordChatDraft, setLandlordChatDraft] = useState("");
+  const [isLandlordMessageSending, setIsLandlordMessageSending] = useState(false);
   const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
   const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
   const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
@@ -645,7 +772,7 @@ export default function TenantMyPage({
 
   const openLandlordConversation = async () => {
     if (!tenancy || tenancy === "loading") {
-      showToast("입주 연결이 완료되면 임대인 문의를 열 수 있습니다.");
+      showToast("입주 연결이 완료되면 임대인에게 문의할 수 있습니다.");
       return;
     }
 
@@ -657,27 +784,28 @@ export default function TenantMyPage({
         throw new Error(payload?.message || "대화 정보를 불러오지 못했습니다.");
       }
 
+      let thread: Thread | null = null;
       if (payload?.threadId) {
-        router.push(tenantLandlordThreadHref(String(payload.threadId)));
-        return;
+        thread = await fetchTenantMessageThread(String(payload.threadId));
+      } else {
+        const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(tenantLandlordThreadInput("", tenancy.roomId))
+        });
+        const created = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok) {
+          throw new Error(created?.message || "대화를 시작하지 못했습니다.");
+        }
+        thread = created as Thread;
       }
 
-      const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(tenantLandlordThreadInput("", tenancy.roomId))
-      });
-      const created = await createResponse.json().catch(() => ({}));
-      if (!createResponse.ok) {
-        throw new Error(created?.message || "대화를 시작하지 못했습니다.");
-      }
-
-      const threadId = (created as Thread).id;
-      if (!threadId) {
+      if (!thread?.id) {
         throw new Error("대화 스레드를 만들지 못했습니다.");
       }
 
-      router.push(tenantLandlordThreadHref(threadId));
+      setLandlordChatThread(thread);
+      setLandlordChatDraft("");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {
@@ -685,6 +813,27 @@ export default function TenantMyPage({
     }
   };
 
+  const closeLandlordChat = () => {
+    setLandlordChatThread(null);
+    setLandlordChatDraft("");
+  };
+
+  const handleLandlordMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = landlordChatDraft.trim();
+    if (!landlordChatThread || !body || isLandlordMessageSending) return;
+
+    setIsLandlordMessageSending(true);
+    try {
+      const nextThread = await sendTenantMessageToThread(landlordChatThread.id, body);
+      setLandlordChatThread(nextThread);
+      setLandlordChatDraft("");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "메시지를 보내지 못했습니다.");
+    } finally {
+      setIsLandlordMessageSending(false);
+    }
+  };
   useEffect(() => {
     let cancelled = false;
 
@@ -718,7 +867,7 @@ export default function TenantMyPage({
   const contractRows: Array<[string, string]> =
     tenancy && tenancy !== "loading"
       ? [
-          ["집 주소", `${tenancy.buildingName} ${tenancy.roomNo}호`],
+          ["집 주소", formatTenantRoomTitle(tenancy.buildingName, tenancy.roomNo)],
           ["상세 주소", tenancy.address || "미등록"],
           ["임대인", tenancy.leaseContract?.landlordName ?? tenancy.contract?.landlordName ?? "정보 없음"],
           ["거래 유형", tenancy.contract?.tradeType ?? "정보 없음"],
@@ -754,7 +903,7 @@ export default function TenantMyPage({
     tenancy === "loading"
       ? "입주 정보 확인 중"
       : tenancy
-        ? `${tenancy.buildingName} ${tenancy.roomNo}호`
+        ? formatTenantRoomTitle(tenancy.buildingName, tenancy.roomNo)
         : "연결된 집이 없습니다";
   const tenantAddress =
     tenancy === "loading"
@@ -1008,45 +1157,28 @@ export default function TenantMyPage({
       </section>
 
       <section className="tenant-residence-card" aria-label="입주 정보">
-        <TenantFloorPlanPreview
-          imageUrl={tenancy && tenancy !== "loading" ? tenancy.imageUrl : undefined}
-          title={tenantRoomTitle}
-        />
-        <div className="tenant-residence-details">
-          {tenantRooms.length > 1 && tenancy && tenancy !== "loading" ? (
-            <label
-              style={{
-                display: "grid",
-                gap: 6,
-                maxWidth: 360,
-                fontSize: 13,
-                fontWeight: 800,
-                color: "var(--on-surface-variant)"
-              }}
-            >
-              집 선택
+        <div className="tenant-residence-media">
+          {tenantRooms.length > 0 && tenancy && tenancy !== "loading" ? (
+            <label className="tenant-room-select">
+              <span>집 선택</span>
               <select
                 value={selectedTenantRoomId || tenancy.roomId}
                 onChange={(event) => setSelectedTenantRoomId(event.currentTarget.value)}
-                style={{
-                  minHeight: 46,
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: "0 14px",
-                  background: "var(--surface-container-lowest)",
-                  color: "var(--on-surface)",
-                  fontSize: 16,
-                  fontWeight: 800
-                }}
               >
                 {tenantRooms.map((room) => (
                   <option key={room.roomId} value={room.roomId}>
-                    {room.buildingName} {room.roomNo}호
+                    {formatTenantRoomTitle(room.buildingName, room.roomNo)}
                   </option>
                 ))}
               </select>
             </label>
           ) : null}
+          <TenantFloorPlanPreview
+            imageUrl={tenancy && tenancy !== "loading" ? tenancy.imageUrl : undefined}
+            title={tenantRoomTitle}
+          />
+        </div>
+        <div className="tenant-residence-details">
           <span className="tenant-pill">입주 정보</span>
           <h3>{tenantRoomTitle}</h3>
           <p>{tenantAddress}</p>
@@ -1315,6 +1447,17 @@ export default function TenantMyPage({
         </aside>
       ) : null}
 
+      {landlordChatThread ? (
+        <TenantLandlordChatModal
+          thread={landlordChatThread}
+          draft={landlordChatDraft}
+          isSending={isLandlordMessageSending}
+          onDraftChange={setLandlordChatDraft}
+          onClose={closeLandlordChat}
+          onSubmit={handleLandlordMessageSubmit}
+        />
+      ) : null}
+
       {isContractSheetOpen ? (
         <div className="notification-sheet-backdrop" role="presentation" onClick={() => setIsContractSheetOpen(false)}>
           <section
@@ -1329,7 +1472,9 @@ export default function TenantMyPage({
               <div>
                 <span>전자 계약서</span>
                 <h2 id="contract-sheet-title">
-                  {tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "연결된 집 없음"}
+                  {tenancy && tenancy !== "loading"
+                    ? formatTenantRoomTitle(tenancy.buildingName, tenancy.roomNo)
+                    : "연결된 집 없음"}
                 </h2>
                 <p>
                   {tenancy && tenancy !== "loading" && tenancy.contract?.respondedAt

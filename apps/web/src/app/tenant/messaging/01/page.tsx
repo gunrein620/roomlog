@@ -1,25 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { Message, Thread, ThreadContext } from "@roomlog/types";
-import { Badge, Button, Card, Input } from "@roomlog/ui";
+import type { Message, Thread } from "@roomlog/types";
 import { MessagingPhoneFrame } from "../MessagingPhoneFrame";
 import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
-import { addTenantThreadMessage, deleteTenantThread, getThread } from "@/lib/messaging-api";
+import { addTenantThreadMessage, getThread } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { ApiError } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ id?: string }>;
-
-const CONTEXT_TONE: Record<ThreadContext, string> = {
-  defect: "추가 응답은 하자 기록에도 반영돼요",
-  payment: "청구 맥락 채팅은 문의용이에요",
-  contract: "계약 문의",
-  moveout: "퇴실 문의",
-  announcement: "공지 문의",
-  general: "일반 문의",
-};
 
 function formatTime(iso: string): string {
   return new Intl.DateTimeFormat("ko-KR", {
@@ -40,35 +30,11 @@ async function sendTenantMessage(formData: FormData) {
     redirect(MESSAGING_ROUTES["T-MSG-00"]);
   }
 
-  if (threadId && body) {
+  if (body) {
     await addTenantThreadMessage(threadId, { body });
   }
 
   redirect(`${MESSAGING_ROUTES["T-MSG-01"]}?id=${encodeURIComponent(threadId)}`);
-}
-
-async function deleteTenantThreadAction(formData: FormData) {
-  "use server";
-
-  const threadId = String(formData.get("threadId") ?? "");
-
-  if (!threadId) {
-    redirect(MESSAGING_ROUTES["T-MSG-00"]);
-  }
-
-  try {
-    await deleteTenantThread(threadId);
-  } catch (error) {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-      redirect("/tenant/login");
-    }
-    if (error instanceof ApiError && error.status === 404) {
-      redirect(MESSAGING_ROUTES["T-MSG-00"]);
-    }
-    throw error;
-  }
-
-  redirect(MESSAGING_ROUTES["T-MSG-00"]);
 }
 
 async function getRequiredThread(id: string): Promise<Thread> {
@@ -98,188 +64,66 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   return (
     <MessagingPhoneFrame>
       <MessageAutoRefresh intervalMs={3000} />
-      <header
-        style={{
-          flex: "none",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          padding: "16px 14px",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <Link
-            href={MESSAGING_ROUTES["T-MSG-00"]}
-            aria-label="받은함으로"
-            style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 800 }}
-          >
-            ←
-          </Link>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>관리인</div>
-            <div style={{ fontSize: 11, color: "var(--on-surface-variant)", marginTop: 2 }}>
-              {thread.unitId}호 · {thread.contextLabel ?? "일반 문의"}
-            </div>
-          </div>
+      <header className="tenant-chat-header">
+        <Link href={MESSAGING_ROUTES["T-MSG-00"]} aria-label="대화 목록으로" className="tenant-chat-back">
+          ←
+        </Link>
+        <div className="tenant-chat-title">
+          <strong>관리인</strong>
+          <span>
+            {thread.unitId} · {thread.contextLabel ?? "일반 문의"}
+          </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <Badge>원문 보기</Badge>
-          <form action={deleteTenantThreadAction}>
-            <input type="hidden" name="threadId" value={thread.id} />
-            <Button
-              type="submit"
-              variant="ghost"
-              aria-label={`${thread.contextLabel ?? "일반 문의"} 대화 삭제`}
-              style={{ height: 36, padding: "0 12px" }}
-            >
-              삭제
-            </Button>
-          </form>
-        </div>
+        <Link href={MESSAGING_ROUTES["T-MSG-00"]} className="tenant-chat-list-link">
+          목록
+        </Link>
       </header>
 
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "14px 14px 92px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <ContextCard thread={thread} />
-
-        {pendingMessage && (
-          <Card
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              border: "1.5px solid var(--primary)",
-              background: "var(--surface-container-high)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 800 }}>추가요청 응답 대기</div>
-              <Badge emphasis>하자 기록 반영</Badge>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.45 }}>
-              {pendingMessage.body} 응답하면 연결된 하자 기록에도 함께 남아요.
-            </div>
-            <Button variant="secondary" fullWidth>
-              사진 또는 설명으로 응답
-            </Button>
-          </Card>
-        )}
-
-        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {messages.length > 0 ? (
-            messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))
-          ) : (
-            <Card
-              style={{
-                padding: 14,
-                fontSize: 12,
-                color: "var(--on-surface-variant)",
-                background: "var(--surface-container)",
-                lineHeight: 1.5,
-              }}
-            >
-              아직 보낸 메시지가 없습니다. 아래 입력창에 메시지를 보내면 관리자 소통 화면에도 같은 대화로 표시됩니다.
-            </Card>
-          )}
+      <main className="tenant-chat-body">
+        <section className="tenant-chat-context" aria-label="대화 정보">
+          <span>{thread.contextLabel ?? "일반 문의"}</span>
+          <strong>관리인 · {thread.unitId}</strong>
         </section>
 
-        {thread.archivedNotice && (
-          <Card
-            style={{
-              padding: 12,
-              fontSize: 12,
-              color: "var(--on-surface-variant)",
-              background: "var(--surface-container)",
-            }}
-          >
-            이 대화는 관리 기록에 보관돼요.
-          </Card>
-        )}
-      </div>
+        {pendingMessage ? (
+          <section className="tenant-chat-request" aria-label="추가 요청">
+            <div>
+              <strong>추가 요청 답변 대기</strong>
+              <p>{pendingMessage.body}</p>
+            </div>
+            <span>하자 기록 반영</span>
+          </section>
+        ) : null}
 
-      <form
-        action={sendTenantMessage}
-        style={{
-          flex: "none",
-          position: "sticky",
-          bottom: 0,
-          zIndex: 5,
-          padding: "12px 14px",
-          borderTop: "1px solid var(--border)",
-          background: "var(--surface-container-lowest)",
-          display: "grid",
-          gridTemplateColumns: "1fr auto",
-          gap: 8,
-          alignItems: "center",
-        }}
-      >
+        <section className="tenant-chat-stream" aria-label="메시지 타임라인">
+          {messages.length > 0 ? (
+            messages.map((message) => <MessageBubble key={message.id} message={message} />)
+          ) : (
+            <div className="tenant-chat-empty" aria-hidden="true" />
+          )}
+        </section>
+      </main>
+
+      <form action={sendTenantMessage} className="tenant-chat-compose">
         <input type="hidden" name="threadId" value={thread.id} />
-        <Input name="body" aria-label="메시지 입력" placeholder="메시지를 입력하세요" />
-        <Button type="submit">보내기</Button>
+        <input name="body" aria-label="메시지 입력" placeholder="메시지를 입력하세요" autoComplete="off" />
+        <button type="submit">보내기</button>
       </form>
     </MessagingPhoneFrame>
-  );
-}
-
-function ContextCard({ thread }: { thread: Thread }) {
-  return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <Badge emphasis>{thread.contextLabel ?? "일반 문의"}</Badge>
-        <Badge>{CONTEXT_TONE[thread.context]}</Badge>
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 800 }}>맥락 카드</div>
-      <div style={{ fontSize: 12, color: "var(--on-surface-variant)", lineHeight: 1.45 }}>
-        연결 ID {thread.contextRef ?? thread.id}. 청구 맥락에서도 이 채팅은 문의와 해결 안내용이며
-        독촉 문구를 쓰지 않아요.
-      </div>
-    </Card>
   );
 }
 
 function MessageBubble({ message }: { message: Message }) {
   const isMine = message.sender === "tenant";
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: isMine ? "flex-end" : "flex-start",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "78%",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-md)",
-          padding: "10px 12px",
-          background: isMine ? "var(--primary)" : "var(--surface-container-lowest)",
-          color: isMine ? "var(--on-primary)" : "var(--on-surface)",
-        }}
-      >
-        <div style={{ fontSize: 13, lineHeight: 1.45 }}>{message.body}</div>
-        <div
-          style={{
-            fontSize: 10,
-            marginTop: 6,
-            color: isMine ? "var(--on-primary)" : "var(--on-surface-variant)",
-          }}
-        >
-          {message.kind === "photo_request" ? "추가요청 · " : ""}
+    <article className={isMine ? "tenant-chat-message mine" : "tenant-chat-message"}>
+      <div className="tenant-chat-bubble">
+        <p>{message.body}</p>
+        <time>
+          {message.kind === "photo_request" ? "추가 요청 · " : ""}
           {formatTime(message.createdAt)}
-        </div>
+        </time>
       </div>
-    </div>
+    </article>
   );
 }
