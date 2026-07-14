@@ -208,11 +208,15 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
                         </Link>
                       </div>
                     )}
-                    {showChildren ? (
+                    {item.children.length > 0 ? (
+                      // 항상 렌더하고 grid-rows 트랜지션으로 높이를 접었다 편다 —
+                      // 조건부 마운트는 트랜지션이 불가능해 탭 전환이 뚝뚝 끊긴다.
                       <div
                         id={isCollapsible ? subnavId : undefined}
-                        className="manager-sidebar__children"
+                        className={`manager-sidebar__children-wrap${showChildren ? " is-open" : ""}`}
+                        inert={!showChildren}
                       >
+                        <div className="manager-sidebar__children">
                         {item.children.map((child) => {
                           const childActive = child.ticketView
                             ? child.ticketView === ticketView
@@ -232,6 +236,7 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
                             </Link>
                           );
                         })}
+                        </div>
                       </div>
                     ) : null}
                   </div>

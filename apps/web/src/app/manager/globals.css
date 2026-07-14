@@ -1302,10 +1302,67 @@ html:has(.manager-workspace) {
   background: transparent;
 }
 
+/* 하위 탭 열림/닫힘 — 항상 렌더 + grid-rows 0fr↔1fr 트랜지션으로 높이가 스르륵 접히고 펴진다.
+   닫힘은 inert(ManagerSidebar)로 포커스·클릭까지 차단. */
+.manager-sidebar__children-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.manager-sidebar__children-wrap.is-open {
+  grid-template-rows: 1fr;
+}
+
 .manager-sidebar__children {
   display: grid;
   gap: var(--space-xs);
+  min-height: 0;
+  overflow: hidden;
   padding: var(--space-xs) 0 var(--space-sm) var(--space-xxl);
+  transition: padding 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 닫힌 상태에선 상하 패딩도 0으로 — 패딩은 grid 트랙 밖 높이라 남으면 잔공간이 보인다 */
+.manager-sidebar__children-wrap:not(.is-open) > .manager-sidebar__children {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* 열릴 때 하위 탭이 위에서 살짝 미끄러져 들어온다 — keyframe이라 페이지 이동으로
+   사이드바가 새로 그려질 때(리마운트)도 등장 모션이 살아있다. 순차 딜레이로 결 추가. */
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child {
+  animation: manager-sidebar-child-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child:nth-child(2) {
+  animation-delay: 0.05s;
+}
+
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child:nth-child(3) {
+  animation-delay: 0.1s;
+}
+
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child:nth-child(n + 4) {
+  animation-delay: 0.15s;
+}
+
+@keyframes manager-sidebar-child-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manager-sidebar__children-wrap,
+  .manager-sidebar__children {
+    transition: none;
+  }
+
+  .manager-sidebar__children-wrap.is-open .manager-sidebar__child {
+    animation: none;
+  }
 }
 
 .manager-sidebar__child {
