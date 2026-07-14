@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Announcement, Contract, TenantLandlordConversation, Thread } from "@roomlog/types";
 import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
+import { tenantAnnouncementDetailHref } from "@/app/tenant/messaging/02/announcement-list-model";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
@@ -942,7 +943,7 @@ export default function TenantMyPage({
         </div>
         {announcementState.status === "ready" ? (
           <Link
-            href={`/tenant/messaging/02?id=${encodeURIComponent(announcementState.announcement.id)}`}
+            href={tenantAnnouncementDetailHref(announcementState.announcement.id)}
             style={{ color: "inherit", textDecoration: "none", position: "relative", zIndex: 1 }}
           >
             <span>집주인 공지사항</span>

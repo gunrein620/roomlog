@@ -1040,7 +1040,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.match(pageSource, /공지사항을 확인하고 있습니다\./);
   assert.match(pageSource, /임대인으로부터 전달된 새로운 소식이 없습니다\./);
   assert.match(pageSource, /공지사항을 불러오지 못했습니다\. 잠시 후 다시 확인해 주세요\./);
-  assert.match(pageSource, /\/tenant\/messaging\/02\?id=/);
+  assert.match(pageSource, /tenantAnnouncementDetailHref\(announcementState\.announcement\.id\)/);
   assert.doesNotMatch(pageSource, /"에어컨 수리"|"세면대 교체"/);
 
   assert.match(pageSource, /activeTab === "living"/);

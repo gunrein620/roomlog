@@ -40,4 +40,12 @@ describe("tenant announcement route boundary", () => {
     assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
   });
+
+  it("routes existing tenant notice entry points to the dynamic detail helper", () => {
+    assert.match(read("../00/page.tsx"), /tenantAnnouncementDetailHref\(announcement\.id\)/);
+    assert.match(
+      read("../../../my/flows/TenantMyPage.tsx"),
+      /tenantAnnouncementDetailHref\(announcementState\.announcement\.id\)/,
+    );
+  });
 });

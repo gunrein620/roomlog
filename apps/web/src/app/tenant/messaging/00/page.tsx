@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { Announcement, AnnouncementCategory, AnnouncementScope, Thread } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
 import { MessagingPhoneFrame } from "../MessagingPhoneFrame";
+import { tenantAnnouncementDetailHref } from "@/app/tenant/messaging/02/announcement-list-model";
 import { deleteTenantThread, listAnnouncements, listThreads } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
 import { ApiError } from "@/lib/server-api";
@@ -253,7 +254,7 @@ function AnnouncementRow({ announcement }: { announcement: Announcement }) {
   const needsConfirm = announcement.confirmRequired && announcement.state !== "confirmed";
   return (
     <Link
-      href={`${MESSAGING_ROUTES["T-MSG-02"]}?id=${announcement.id}`}
+      href={tenantAnnouncementDetailHref(announcement.id)}
       style={{ color: "inherit", textDecoration: "none" }}
     >
       <Card style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14 }}>
