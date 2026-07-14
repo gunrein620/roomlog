@@ -9,7 +9,7 @@
   --blue-dark: #173ad7;
   --blue-soft: #eef2ff;
   --green: #00bf72;
-  --naver: #03c75a;
+  --kakao: #fee500;
   --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
   font-family:
     Arial,
@@ -440,9 +440,26 @@ p {
   font-size: 0.78rem;
 }
 
-.social-button.naver {
-  background: var(--naver);
-  color: #ffffff;
+.social-button.kakao {
+  background: var(--kakao);
+  color: #191919;
+}
+
+.social-button.kakao:hover {
+  background: #f4dc00;
+  box-shadow: 0 8px 18px rgba(25, 25, 25, 0.08);
+}
+
+.kakao-logo-icon {
+  color: #191919;
+  font-weight: 950;
+  background: transparent;
+}
+
+.kakao-logo-icon svg {
+  display: block;
+  width: 24px;
+  height: 24px;
 }
 
 .social-button.google {
@@ -692,6 +709,7 @@ p {
   line-height: 1.5;
 }
 
+.signup-social-button,
 .signup-google-button {
   display: flex;
   min-height: 52px;
@@ -706,6 +724,7 @@ p {
   text-decoration: none;
 }
 
+.signup-social-button span,
 .signup-google-button span {
   display: inline-grid;
   width: 24px;
@@ -714,6 +733,22 @@ p {
   border-radius: 50%;
   background: #f2f4f8;
   color: #4285f4;
+}
+
+.signup-social-button--kakao {
+  border-color: #f0d900;
+  background: var(--kakao);
+  color: #191919;
+}
+
+.signup-social-button--kakao span {
+  background: rgba(0, 0, 0, 0.08);
+  color: #191919;
+  font-weight: 950;
+}
+
+.signup-social-button--kakao .kakao-logo-icon {
+  background: transparent;
 }
 
 .service-frame {

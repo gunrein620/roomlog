@@ -21,6 +21,7 @@ enum UserStatus {
 
 enum SocialProvider {
   GOOGLE
+  KAKAO
   NAVER
 }
 
