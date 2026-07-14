@@ -1800,6 +1800,94 @@ html:has(.manager-workspace) {
   line-height: var(--lh-body);
 }
 
+.manager-ai-message--user {
+  justify-content: flex-end;
+}
+
+.manager-ai-message--user p {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-message--system p {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-ai-receipt,
+.manager-ai-notice,
+.manager-ai-voice-placeholder {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.manager-ai-receipt {
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-ai-notice,
+.manager-ai-voice-placeholder {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-ai-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.manager-ai-composer label {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-ai-composer textarea {
+  width: 100%;
+  min-height: calc(var(--touch-target) * 2);
+  resize: vertical;
+  padding: var(--space-md);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  color: var(--input-text);
+  background: var(--surface-container-lowest);
+  font: inherit;
+  line-height: var(--lh-body);
+}
+
+.manager-ai-composer button {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-md);
+  border: 0;
+  border-radius: var(--radius-btn);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-composer button:disabled,
+.manager-ai-composer textarea:disabled {
+  cursor: not-allowed;
+  opacity: var(--disabled-opacity);
+}
+
+.manager-ai-composer svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
 .manager-ai-mode-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

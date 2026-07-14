@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Bot, Headphones, MessageSquare, Mic, Send, X } from "lucide-react";
 import {
   useId,
-  useReducer,
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
   type MouseEvent,
 } from "react";
 import { MANAGER_BILLING_ROUTES } from "@/lib/billing-manager-nav";
@@ -20,10 +20,8 @@ import {
 } from "@/lib/manager-assistant";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { MANAGER_TICKET_ROUTES } from "@/lib/ticket-manager-nav";
-import {
-  initialManagerAssistantSessionState,
-  reduceManagerAssistantSession,
-} from "./manager-assistant-session";
+import { ManagerAssistantActionCard } from "./ManagerAssistantActionCard";
+import { useManagerAssistantSession } from "./useManagerAssistantSession";
 
 export interface ManagerAssistantPanelProps {
   managerName?: string;
@@ -119,15 +117,33 @@ export function ManagerAssistantLauncher({
   briefing = [],
 }: ManagerAssistantLauncherProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [session, dispatch] = useReducer(
-    reduceManagerAssistantSession,
-    initialManagerAssistantSessionState,
-  );
+  const session = useManagerAssistantSession();
+  const [draft, setDraft] = useState("");
 
   function closeOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
     if (event.target !== event.currentTarget) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     if (isDialogBackdropPoint(event, bounds)) event.currentTarget.close();
+  }
+
+  async function submitTextMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const submitted = await session.submitText(draft);
+    if (submitted) setDraft("");
+  }
+
+  function submitTextFromKeyboard(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing ||
+      session.inputDisabled
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
   }
 
   return (
@@ -179,7 +195,7 @@ export function ManagerAssistantLauncher({
             <div className="manager-ai-mode-cards">
               <button
                 type="button"
-                onClick={() => dispatch({ type: "select_mode", mode: "text" })}
+                onClick={() => session.selectMode("text")}
               >
                 <MessageSquare aria-hidden="true" />
                 <strong>Text Chat</strong>
@@ -187,7 +203,7 @@ export function ManagerAssistantLauncher({
               </button>
               <button
                 type="button"
-                onClick={() => dispatch({ type: "select_mode", mode: "voice" })}
+                onClick={() => session.selectMode("voice")}
               >
                 <Headphones aria-hidden="true" />
                 <strong>Voice Call</strong>
@@ -198,22 +214,92 @@ export function ManagerAssistantLauncher({
         ) : (
           <section className="manager-ai-conversation" aria-label="AI 관리 비서 대화">
             <div className="manager-ai-transcript" role="log" aria-live="polite">
-              <div className="manager-ai-message manager-ai-message--assistant">
-                <span className="manager-ai-message__avatar" aria-hidden="true">
-                  <Bot />
-                </span>
-                <p>
-                  {session.mode === "text"
-                    ? "텍스트로 처리할 관리 업무를 입력해 주세요."
-                    : "통화 시작을 누르면 음성으로 관리 업무를 처리할 수 있습니다."}
-                </p>
-              </div>
+              {session.entries.length ? (
+                session.entries.map((entry) =>
+                  entry.kind === "receipt" ? (
+                    <p key={entry.id} className="manager-ai-receipt">
+                      실행 완료 · {entry.summary}
+                    </p>
+                  ) : (
+                    <div
+                      key={entry.id}
+                      className={`manager-ai-message manager-ai-message--${entry.role}`}
+                    >
+                      {entry.role !== "user" ? (
+                        <span className="manager-ai-message__avatar" aria-hidden="true">
+                          <Bot />
+                        </span>
+                      ) : null}
+                      <p>{entry.content}</p>
+                    </div>
+                  ),
+                )
+              ) : (
+                <div className="manager-ai-message manager-ai-message--assistant">
+                  <span className="manager-ai-message__avatar" aria-hidden="true">
+                    <Bot />
+                  </span>
+                  <p>
+                    {session.mode === "text"
+                      ? "텍스트로 처리할 관리 업무를 입력해 주세요."
+                      : "통화 시작을 누르면 음성으로 관리 업무를 처리할 수 있습니다."}
+                  </p>
+                </div>
+              )}
+              {session.pendingAction ? (
+                <ManagerAssistantActionCard
+                  action={session.pendingAction}
+                  busy={session.busy}
+                  onConfirm={session.confirmPendingAction}
+                  onCancel={session.cancelPendingAction}
+                  onReviseDunning={session.revisePendingDunning}
+                />
+              ) : null}
             </div>
+            {session.notice ? (
+              <p className="manager-ai-notice" role="status">
+                {session.notice}
+              </p>
+            ) : null}
+            {session.mode === "text" ? (
+              <form className="manager-ai-composer" onSubmit={submitTextMessage}>
+                <label>
+                  <span>대화 입력</span>
+                  <textarea
+                    value={draft}
+                    rows={3}
+                    maxLength={MAX_MANAGER_PROMPT_LENGTH}
+                    disabled={session.inputDisabled}
+                    placeholder={
+                      session.pendingAction
+                        ? "발송하거나 취소한 뒤 대화를 이어가세요"
+                        : session.notice
+                          ? "AI 설정 후 사용할 수 있습니다"
+                          : "처리할 관리 업무를 입력하세요"
+                    }
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={submitTextFromKeyboard}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  aria-label="AI 관리 비서에 메시지 전송"
+                  disabled={session.inputDisabled || !draft.trim()}
+                >
+                  <Send aria-hidden="true" />
+                  <span>{session.busy ? "전송 중" : "전송"}</span>
+                </button>
+              </form>
+            ) : (
+              <p className="manager-ai-voice-placeholder" role="status">
+                음성 연결을 준비했습니다. 통화 시작 기능을 연결하고 있습니다.
+              </p>
+            )}
             <div className="manager-ai-mode-toggle" aria-label="AI 상담 모드 전환">
               <button
                 type="button"
                 aria-pressed={session.mode === "text"}
-                onClick={() => dispatch({ type: "select_mode", mode: "text" })}
+                onClick={() => session.selectMode("text")}
               >
                 <MessageSquare aria-hidden="true" />
                 텍스트
@@ -221,7 +307,7 @@ export function ManagerAssistantLauncher({
               <button
                 type="button"
                 aria-pressed={session.mode === "voice"}
-                onClick={() => dispatch({ type: "select_mode", mode: "voice" })}
+                onClick={() => session.selectMode("voice")}
               >
                 <Headphones aria-hidden="true" />
                 음성
