@@ -182,6 +182,7 @@ export function useManagerAssistantSession() {
     cancelPendingAction: () => resolvePendingAction("cancel"),
     revisePendingDunning,
     appendVoiceEntry: appendEntry,
+    applyCopilotResponse,
     setPendingAction(pendingAction: typeof state.pendingAction) {
       dispatch({ type: "set_pending_action", pendingAction });
     },

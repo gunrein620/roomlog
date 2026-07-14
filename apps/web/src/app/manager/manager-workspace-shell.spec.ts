@@ -86,7 +86,12 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(assistant, /role="log"/);
   assert.match(assistant, /aria-live="polite"/);
   assert.match(assistant, /useManagerAssistantSession/);
+  assert.match(assistant, /useManagerRealtimeSession/);
   assert.match(assistant, /session\.submitText/);
+  assert.match(assistant, /realtime\.connect/);
+  assert.match(assistant, /realtime\.disconnect/);
+  assert.match(assistant, /통화 시작/);
+  assert.match(assistant, /통화 종료/);
   assert.match(assistant, /ManagerAssistantActionCard/);
   assert.match(assistant, /event\.nativeEvent\.isComposing/);
   assert.match(assistant, /event\.shiftKey/);

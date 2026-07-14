@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Headphones, MessageSquare, Mic, Send, X } from "lucide-react";
+import { Bot, Headphones, MessageSquare, Mic, PhoneOff, Send, X } from "lucide-react";
 import {
   useId,
   useRef,
@@ -22,6 +22,7 @@ import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { MANAGER_TICKET_ROUTES } from "@/lib/ticket-manager-nav";
 import { ManagerAssistantActionCard } from "./ManagerAssistantActionCard";
 import { useManagerAssistantSession } from "./useManagerAssistantSession";
+import { useManagerRealtimeSession } from "./useManagerRealtimeSession";
 
 export interface ManagerAssistantPanelProps {
   managerName?: string;
@@ -118,12 +119,26 @@ export function ManagerAssistantLauncher({
 }: ManagerAssistantLauncherProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const session = useManagerAssistantSession();
+  const realtime = useManagerRealtimeSession({
+    appendEntry: session.appendVoiceEntry,
+    applyCopilotResponse: session.applyCopilotResponse,
+  });
   const [draft, setDraft] = useState("");
+
+  function closeAssistant() {
+    realtime.disconnect();
+    dialogRef.current?.close();
+  }
+
+  function selectMode(mode: "text" | "voice") {
+    if (mode === "text") realtime.disconnect();
+    session.selectMode(mode);
+  }
 
   function closeOnBackdrop(event: MouseEvent<HTMLDialogElement>) {
     if (event.target !== event.currentTarget) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    if (isDialogBackdropPoint(event, bounds)) event.currentTarget.close();
+    if (isDialogBackdropPoint(event, bounds)) closeAssistant();
   }
 
   async function submitTextMessage(event: FormEvent<HTMLFormElement>) {
@@ -169,13 +184,14 @@ export function ManagerAssistantLauncher({
         className="manager-assistant-dialog"
         aria-labelledby="manager-assistant-dialog-title"
         onClick={closeOnBackdrop}
+        onClose={realtime.disconnect}
       >
         <header className="manager-assistant-dialog__header">
           <strong id="manager-assistant-dialog-title">AI 관리 비서</strong>
           <button
             type="button"
             aria-label="AI 관리 비서 닫기"
-            onClick={() => dialogRef.current?.close()}
+            onClick={closeAssistant}
           >
             <X aria-hidden="true" />
           </button>
@@ -195,7 +211,7 @@ export function ManagerAssistantLauncher({
             <div className="manager-ai-mode-cards">
               <button
                 type="button"
-                onClick={() => session.selectMode("text")}
+                onClick={() => selectMode("text")}
               >
                 <MessageSquare aria-hidden="true" />
                 <strong>Text Chat</strong>
@@ -203,7 +219,7 @@ export function ManagerAssistantLauncher({
               </button>
               <button
                 type="button"
-                onClick={() => session.selectMode("voice")}
+                onClick={() => selectMode("voice")}
               >
                 <Headphones aria-hidden="true" />
                 <strong>Voice Call</strong>
@@ -291,15 +307,30 @@ export function ManagerAssistantLauncher({
                 </button>
               </form>
             ) : (
-              <p className="manager-ai-voice-placeholder" role="status">
-                음성 연결을 준비했습니다. 통화 시작 기능을 연결하고 있습니다.
-              </p>
+              <div className="manager-ai-voice-controls">
+                <p role="status" aria-live="polite">
+                  <span className={`manager-ai-voice-status manager-ai-voice-status--${realtime.status}`} />
+                  {realtime.statusLabel}
+                </p>
+                {realtime.status === "connected" || realtime.status === "connecting" ? (
+                  <button type="button" className="is-disconnect" onClick={realtime.disconnect}>
+                    <PhoneOff aria-hidden="true" />
+                    통화 종료
+                  </button>
+                ) : (
+                  <button type="button" onClick={realtime.connect}>
+                    <Mic aria-hidden="true" />
+                    통화 시작
+                  </button>
+                )}
+                <small>통화 시작을 누른 뒤 마이크 권한을 허용해 주세요.</small>
+              </div>
             )}
             <div className="manager-ai-mode-toggle" aria-label="AI 상담 모드 전환">
               <button
                 type="button"
                 aria-pressed={session.mode === "text"}
-                onClick={() => session.selectMode("text")}
+                onClick={() => selectMode("text")}
               >
                 <MessageSquare aria-hidden="true" />
                 텍스트
@@ -307,7 +338,7 @@ export function ManagerAssistantLauncher({
               <button
                 type="button"
                 aria-pressed={session.mode === "voice"}
-                onClick={() => session.selectMode("voice")}
+                onClick={() => selectMode("voice")}
               >
                 <Headphones aria-hidden="true" />
                 음성

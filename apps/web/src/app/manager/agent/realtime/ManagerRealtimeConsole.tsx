@@ -10,6 +10,10 @@ import type {
   ManagerCopilotPendingAction,
 } from "@roomlog/types";
 import { ManagerAssistantActionCard } from "@/app/manager/_components/ManagerAssistantActionCard";
+import {
+  closeManagerRealtimeResources,
+  parseManagerRealtimeEvent,
+} from "@/app/manager/_components/manager-realtime-events";
 import { normalizeManagerPrompt } from "@/lib/manager-assistant";
 import { requestManagerCopilotChat } from "@/lib/manager-copilot-api";
 
@@ -455,42 +459,22 @@ export function ManagerRealtimeConsole({
   }
 
   async function handleRealtimeEvent(dataChannel: RTCDataChannel, rawEvent: string) {
-    let event: {
-      type?: string;
-      call_id?: string;
-      arguments?: string;
-      delta?: string;
-      transcript?: string;
-      error?: { message?: string };
-    };
-    try {
-      event = JSON.parse(rawEvent);
-    } catch {
-      return; // 규격 밖 페이로드는 무시
+    const event = parseManagerRealtimeEvent(rawEvent);
+    if (event.kind === "ignored" || event.kind === "activity") return;
+    if (event.kind === "error") {
+      appendEntry({ role: "system", text: `Realtime 오류: ${event.message}` });
+      return;
     }
-
-    if (event.type === "error") {
+    if (event.kind === "transcript") {
       appendEntry({
-        role: "system",
-        text: `Realtime 오류: ${event.error?.message || "알 수 없는 오류"}`
+        role: event.role === "user" ? "manager" : "agent",
+        text: event.content,
       });
       return;
     }
 
-    if (event.type === "response.function_call_arguments.done" && event.call_id) {
-      let args: {
-        command?: string;
-        text?: string;
-        billId?: string;
-        channel?: string;
-        threadId?: string;
-        body?: string;
-      } = {};
-      try {
-        args = JSON.parse(event.arguments || "{}");
-      } catch {
-        args = {};
-      }
+    if (event.kind === "command") {
+      const args = event.input;
 
       // 명령 실패도 모델에 결과로 돌려줘야 대화가 이어진다 — 안 돌려주면 응답 없이 멈춘 것처럼 보인다.
       let result: ManagerAgentCommandResult;
@@ -511,7 +495,7 @@ export function ManagerRealtimeConsole({
           };
         } else {
           result = await runManagerCommand({
-            command: args.command || "",
+            command: args.command,
             text: args.text,
             billId: args.billId,
             channel: args.channel,
@@ -530,27 +514,12 @@ export function ManagerRealtimeConsole({
           type: "conversation.item.create",
           item: {
             type: "function_call_output",
-            call_id: event.call_id,
+            call_id: event.callId,
             output: JSON.stringify(result)
           }
         })
       );
       dataChannel.send(JSON.stringify({ type: "response.create" }));
-      return;
-    }
-
-    // 에이전트 음성 자막 — GA(output_audio_transcript)와 구(audio_transcript) 이벤트명을 모두 받는다.
-    if (
-      (event.type === "response.output_audio_transcript.done" || event.type === "response.audio_transcript.done") &&
-      event.transcript
-    ) {
-      appendEntry({ role: "agent", text: event.transcript });
-      return;
-    }
-
-    // 관리인 발화 인식 결과 — 내가 말한 내용이 어떻게 인식됐는지 대화창에 남긴다.
-    if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript) {
-      appendEntry({ role: "manager", text: event.transcript.trim() });
     }
   }
 
@@ -560,12 +529,15 @@ export function ManagerRealtimeConsole({
   }
 
   function closeVoiceResources() {
-    dataChannelRef.current?.close();
+    closeManagerRealtimeResources({
+      channel: dataChannelRef.current,
+      peer: peerRef.current,
+      stream: streamRef.current,
+    });
     dataChannelRef.current = null;
-    peerRef.current?.close();
     peerRef.current = null;
-    streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (audioRef.current) audioRef.current.srcObject = null;
     audioRef.current = null;
   }
 

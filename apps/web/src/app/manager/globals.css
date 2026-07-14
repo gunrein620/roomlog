@@ -1815,8 +1815,7 @@ html:has(.manager-workspace) {
 }
 
 .manager-ai-receipt,
-.manager-ai-notice,
-.manager-ai-voice-placeholder {
+.manager-ai-notice {
   margin: 0;
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius);
@@ -1829,10 +1828,78 @@ html:has(.manager-workspace) {
   background: var(--success-container);
 }
 
-.manager-ai-notice,
-.manager-ai-voice-placeholder {
+.manager-ai-notice {
   color: var(--on-warning-container);
   background: var(--warning-container);
+}
+
+.manager-ai-voice-controls {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  color: var(--on-surface);
+  background: var(--surface-container);
+}
+
+.manager-ai-voice-controls p {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0;
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-ai-voice-status {
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--outline);
+}
+
+.manager-ai-voice-status--connected {
+  background: var(--success);
+}
+
+.manager-ai-voice-status--connecting {
+  background: var(--warning);
+}
+
+.manager-ai-voice-status--error,
+.manager-ai-voice-status--not_configured {
+  background: var(--error);
+}
+
+.manager-ai-voice-controls button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--on-primary);
+  background: var(--primary);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.manager-ai-voice-controls button.is-disconnect {
+  color: var(--on-error);
+  background: var(--error);
+}
+
+.manager-ai-voice-controls button svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
+.manager-ai-voice-controls small {
+  color: var(--on-surface-variant);
+  text-align: center;
 }
 
 .manager-ai-composer {
