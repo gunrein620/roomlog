@@ -348,6 +348,13 @@ export class RoomlogController {
     return this.roomlogService.getTenantBillingOverview(user.id);
   }
 
+  @Get("tenant/current-contract")
+  getTenantCurrentContract(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.getTenantCurrentContract(user.id);
+  }
+
   @Get("tenant/bills/history")
   getTenantPaymentHistory(
     @Headers("authorization") authorization: string | undefined,

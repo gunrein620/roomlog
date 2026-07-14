@@ -3666,6 +3666,10 @@ export class RoomlogService {
     return this.contract.listTenantContracts(tenantId);
   }
 
+  getTenantCurrentContract(tenantId: string): Contract | null {
+    return this.contract.getTenantCurrentContract(tenantId);
+  }
+
   getTenantContract(tenantId: string, contractId: string): Contract {
     return this.contract.getTenantContract(tenantId, contractId);
   }

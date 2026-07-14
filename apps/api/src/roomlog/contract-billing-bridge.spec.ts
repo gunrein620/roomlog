@@ -104,6 +104,30 @@ describe("trade contract billing bridge", () => {
     assert.ok(pending?.reasons.includes("PAYMENT_DAY_MISSING"));
   });
 
+  it("returns the contract attached to the tenant current room", () => {
+    const service = new RoomlogService();
+    const first = createTradeDraft(service, "tenant-current-old", 610_000);
+    service.updateManagerContractManualValues("landlord-demo", first.contract.id, {
+      maintenanceFee: 50_000,
+      paymentDay: 5,
+      startDate: "2000-01-01",
+      endDate: "2099-12-31",
+    });
+    const second = createTradeDraft(service, "tenant-current-new", 730_000);
+    service.updateManagerContractManualValues("landlord-demo", second.contract.id, {
+      maintenanceFee: 80_000,
+      paymentDay: 25,
+      startDate: "2000-01-01",
+      endDate: "2099-12-31",
+    });
+
+    const current = service.getTenantCurrentContract("tenant-demo");
+    assert.equal(current?.id, second.contract.id);
+    assert.equal(current?.monthlyRent, 730_000);
+    assert.equal(current?.maintenanceFee, 80_000);
+    assert.equal(current?.paymentDay, 25);
+  });
+
   it("awaits manager confirmation projection and reprojects confirmed state on retry", async () => {
     let rejectConfirmedSnapshot = true;
     let targetContractId: string | undefined;

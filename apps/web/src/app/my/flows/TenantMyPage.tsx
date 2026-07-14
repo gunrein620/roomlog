@@ -6,7 +6,7 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Announcement, TenantLandlordConversation, Thread } from "@roomlog/types";
+import type { Announcement, Contract, TenantLandlordConversation, Thread } from "@roomlog/types";
 import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
@@ -52,6 +52,7 @@ type TenantTenancy = {
   address: string;
   imageUrl?: string;
   contract: TenantContractSummary | null;
+  leaseContract: Contract | null;
 };
 
 type TenantListingPhotoSummary = {
@@ -166,6 +167,11 @@ function billingDateLabel(iso?: string): string {
   const month = parts.find((part) => part.type === "month")?.value;
   const day = parts.find((part) => part.type === "day")?.value;
   return year && month && day ? `${year}.${month}.${day}` : "정보 없음";
+}
+
+function contractPeriodText(contract: Contract | null): string {
+  if (!contract?.startDate || !contract.endDate) return "정보 없음";
+  return `${billingDateLabel(contract.startDate)} ~ ${billingDateLabel(contract.endDate)}`;
 }
 
 function repairDateLabel(iso?: string): string {
@@ -380,6 +386,7 @@ export default function TenantMyPage({
         }
 
         let contract: TenantContractSummary | null = null;
+        let leaseContract: Contract | null = null;
         let residenceImageUrl: string | undefined;
         try {
           const contractsRes = await fetch("/api/trade/contracts", { cache: "no-store" });
@@ -430,13 +437,23 @@ export default function TenantMyPage({
           // 계약 상세 조회 실패 — 방 정보만으로도 표시는 이어간다
         }
 
+        try {
+          const leaseRes = await fetch("/api/tenant/current-contract", { cache: "no-store" });
+          if (leaseRes.ok) {
+            leaseContract = (await leaseRes.json()) as Contract | null;
+          }
+        } catch {
+          leaseContract = null;
+        }
+
         if (!cancelled) {
           setTenancy({
             buildingName: me.room.buildingName,
             roomNo: me.room.roomNo,
             address: me.room.address,
             imageUrl: residenceImageUrl,
-            contract
+            contract,
+            leaseContract
           });
         }
       } catch {
@@ -657,7 +674,7 @@ export default function TenantMyPage({
       ? [
           ["집 주소", `${tenancy.buildingName} ${tenancy.roomNo}호`],
           ["상세 주소", tenancy.address || "미등록"],
-          ["임대인", tenancy.contract?.landlordName ?? "정보 없음"],
+          ["임대인", tenancy.leaseContract?.landlordName ?? tenancy.contract?.landlordName ?? "정보 없음"],
           ["거래 유형", tenancy.contract?.tradeType ?? "정보 없음"],
           [
             "보증금",
@@ -665,10 +682,25 @@ export default function TenantMyPage({
           ],
           [
             "월세",
-            tenancy.contract && tenancy.contract.tradeType === "월세"
-              ? `${(tenancy.contract.monthlyRentManwon || 0).toLocaleString("ko-KR")}만원`
-              : "-"
+            tenancy.leaseContract?.monthlyRent !== undefined
+              ? formatKrw(tenancy.leaseContract.monthlyRent)
+              : tenancy.contract && tenancy.contract.tradeType === "월세"
+                ? `${(tenancy.contract.monthlyRentManwon || 0).toLocaleString("ko-KR")}만원`
+                : "정보 없음"
           ],
+          [
+            "관리비",
+            tenancy.leaseContract?.maintenanceFee !== undefined
+              ? formatKrw(tenancy.leaseContract.maintenanceFee)
+              : "정보 없음"
+          ],
+          [
+            "납부일",
+            tenancy.leaseContract?.paymentDay
+              ? `매월 ${tenancy.leaseContract.paymentDay}일`
+              : "정보 없음"
+          ],
+          ["계약 기간", contractPeriodText(tenancy.leaseContract)],
           ["체결일", tenancy.contract?.respondedAt ? tenancyDateLabel(tenancy.contract.respondedAt) : "정보 없음"]
         ]
       : [["안내", "아직 연결된 집이 없습니다. 계약이 체결되면 이 자리에 실제 계약 정보가 표시됩니다."]];
@@ -693,25 +725,30 @@ export default function TenantMyPage({
   const nextPaymentBilling = billingCard.current?.isPaid
     ? billingCard.upcoming
     : residenceBilling;
-  const monthlyRentKrw = residenceBilling?.rentAmount ?? null;
-  const maintenanceFeeKrw = residenceBilling?.maintenanceAmount ?? null;
+  const leaseContract = tenancy && tenancy !== "loading" ? tenancy.leaseContract : null;
+  const monthlyRentKrw = leaseContract?.monthlyRent ?? residenceBilling?.rentAmount ?? null;
+  const maintenanceFeeKrw = leaseContract?.maintenanceFee ?? residenceBilling?.maintenanceAmount ?? null;
   const residenceAmountLabel = (amount: number | null) =>
-    isBillLoading
+    tenancy === "loading" || (amount === null && isBillLoading)
       ? "확인 중"
-      : billingError || amount === null
+      : amount === null
         ? "정보 없음"
         : formatKrw(amount);
-  const nextPaymentDateLabel = isBillLoading
-    ? "확인 중"
-    : billingError
-      ? "정보 없음"
-      : billingDateLabel(nextPaymentBilling?.dueDate);
+  const nextPaymentDateLabel = nextPaymentBilling?.dueDate
+    ? billingDateLabel(nextPaymentBilling.dueDate)
+    : isBillLoading && !leaseContract?.paymentDay
+      ? "확인 중"
+      : leaseContract?.paymentDay
+        ? `청구 전 · 매월 ${leaseContract.paymentDay}일`
+        : "정보 없음";
   const contractPeriodLabel =
     tenancy === "loading"
       ? "확인 중"
-      : tenancy?.contract?.respondedAt
-        ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결`
-        : "정보 없음";
+      : leaseContract?.startDate && leaseContract.endDate
+        ? contractPeriodText(leaseContract)
+        : tenancy?.contract?.respondedAt
+          ? `${tenancyDateLabel(tenancy.contract.respondedAt)} 체결`
+          : "정보 없음";
   // 서버 접수 내역이 진실 — 비어 있으면 데모를 지어내지 않고 빈 상태를 그대로 보여준다.
   const repairHistory = repairRequests.slice(0, 4).map((item, index) => ({
     id: item.id,
