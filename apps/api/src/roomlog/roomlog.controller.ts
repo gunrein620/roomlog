@@ -1125,11 +1125,19 @@ export class RoomlogController {
   getManagerCollection(
     @Headers("authorization") authorization?: string,
     @Query("building") building?: string,
-    @Query("month") month?: string
+    @Query("month") month?: string,
+    @Query("historyFrom") historyFrom?: string,
+    @Query("historyTo") historyTo?: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getManagerCollection(user.id, building, month);
+    return this.roomlogService.getManagerCollection(
+      user.id,
+      building,
+      month,
+      historyFrom,
+      historyTo
+    );
   }
 
   @Get("manager/bills/deposits")

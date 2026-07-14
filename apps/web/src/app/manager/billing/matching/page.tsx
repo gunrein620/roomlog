@@ -1,16 +1,13 @@
-import { getManagerDashboard, getManagerDeposits } from "@/lib/billing-manager-api";
+import { getManagerDeposits } from "@/lib/billing-manager-api";
 import { BillingShell, routes } from "../_components";
 import { ManagerTransactionLedger } from "./ManagerTransactionLedger";
 
 export default async function Page() {
-  const [data, dashboard] = await Promise.all([getManagerDeposits(), getManagerDashboard()]);
+  const data = await getManagerDeposits();
 
   return (
     <BillingShell title="입출금 내역" active={routes.matching}>
-      <ManagerTransactionLedger
-        bills={[...dashboard.bills, ...data.paymentReports]}
-        deposits={[...data.deposits, ...data.orphanDeposits, ...data.mismatchDeposits]}
-      />
+      <ManagerTransactionLedger ledgerData={data.ledger} />
     </BillingShell>
   );
 }

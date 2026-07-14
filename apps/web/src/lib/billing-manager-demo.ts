@@ -11,6 +11,7 @@ import type {
   ManagerBillingScope,
   ManagerCollectionAnalytics,
   ManagerOverdueWorkspace,
+  ManagerTransactionLedgerData,
   OverdueCase,
 } from "@roomlog/types";
 import type { ManagerPaymentReportRow } from "./billing-manager-mapping";
@@ -24,6 +25,7 @@ export interface ManagerDepositsData {
   deposits: Deposit[];
   orphanDeposits: Deposit[];
   mismatchDeposits: Deposit[];
+  ledger: ManagerTransactionLedgerData;
 }
 
 export type ManagerOverdueData = ManagerOverdueWorkspace;
@@ -31,6 +33,8 @@ export type ManagerOverdueData = ManagerOverdueWorkspace;
 export interface ManagerBillingDemoQuery {
   building?: string;
   month?: string;
+  historyFrom?: string;
+  historyTo?: string;
 }
 
 export const DEMO_BILLING_SCOPE: ManagerBillingScope = {
@@ -384,18 +388,79 @@ function demoShiftMonth(month: string, offset: number) {
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function demoMonthsBetween(fromMonth: string, toMonth: string) {
+  const [fromYear, fromNumber] = fromMonth.split("-").map(Number);
+  const [toYear, toNumber] = toMonth.split("-").map(Number);
+  const count = (toYear - fromYear) * 12 + toNumber - fromNumber;
+  return Array.from({ length: Math.max(0, count) + 1 }, (_, index) =>
+    demoShiftMonth(fromMonth, index),
+  );
+}
+
 const collectionTrend = Array.from({ length: 12 }, (_, index) => {
   const billedAmount = index === 11 ? 3480000 : 3100000 + index * 35000;
   const collectionRate = index === 11 ? 1005000 / 3480000 : 0.25 + index * 0.007;
   const collectedAmount = index === 11 ? 1005000 : Math.round(billedAmount * collectionRate);
+  const billedUnits = 5;
+  const fullyPaidUnits = index === 11 ? 1 : Math.min(4, Math.floor(collectionRate * billedUnits));
+  const partiallyPaidUnits = collectedAmount > 0 ? 1 : 0;
   return {
     billingMonth: demoShiftMonth("2026-07", index - 11),
     billedAmount,
     collectedAmount,
     unpaidAmount: billedAmount - collectedAmount,
     collectionRate,
+    billedUnits,
+    fullyPaidUnits,
+    partiallyPaidUnits,
   };
 });
+
+function demoCollectionTiming(month: string, currentAmount: number, previousAmount: number) {
+  const currentMilestones = [
+    { day: 3, rate: 0.35 },
+    { day: 8, rate: 0.72 },
+    { day: 15, rate: 1 },
+  ];
+  const previousMilestones = [
+    { day: 5, rate: 0.25 },
+    { day: 10, rate: 0.68 },
+    { day: 20, rate: 1 },
+  ];
+  const cumulativeAt = (
+    day: number,
+    amount: number,
+    milestones: Array<{ day: number; rate: number }>,
+  ) => {
+    const milestone = [...milestones].reverse().find((item) => day >= item.day);
+    return milestone ? Math.round(amount * milestone.rate) : 0;
+  };
+
+  return {
+    currentMonth: month,
+    previousMonth: demoShiftMonth(month, -1),
+    onTimeCollectionRate: currentAmount > 0 ? 0.82 : 0,
+    averageCollectionDay: currentAmount > 0 ? 9.4 : undefined,
+    points: Array.from({ length: 31 }, (_, index) => ({
+      day: index + 1,
+      currentCumulativeAmount: cumulativeAt(
+        index + 1,
+        currentAmount,
+        currentMilestones,
+      ),
+      previousCumulativeAmount: cumulativeAt(
+        index + 1,
+        previousAmount,
+        previousMilestones,
+      ),
+    })),
+  };
+}
+
+const demoThreeMonthAverage =
+  collectionTrend.slice(-3).reduce((sum, point) => sum + point.collectionRate, 0) / 3;
+const demoSixMonthAverage =
+  collectionTrend.slice(-6).reduce((sum, point) => sum + point.collectionRate, 0) / 6;
 
 export const DEMO_COLLECTION_ANALYTICS: ManagerCollectionAnalytics = {
   scope: DEMO_BILLING_SCOPE,
@@ -405,16 +470,35 @@ export const DEMO_COLLECTION_ANALYTICS: ManagerCollectionAnalytics = {
     collectedAmount: 1005000,
     unpaidAmount: 1795000,
     collectionRate: 1005000 / 3480000,
+    billedUnits: 5,
+    fullyPaidUnits: 1,
+    partiallyPaidUnits: 1,
+    threeMonthAverageRate: demoThreeMonthAverage,
+    sixMonthAverageRate: demoSixMonthAverage,
     previousCollectionRate: 0.32,
     rateDelta: 1005000 / 3480000 - 0.32,
     confirmingAmount: 680000,
   },
   trend: collectionTrend,
+  history: {
+    availableFromMonth: collectionTrend[0]?.billingMonth ?? "2026-07",
+    availableToMonth: "2026-07",
+    appliedFromMonth: "2026-02",
+    appliedToMonth: "2026-07",
+  },
+  timing: demoCollectionTiming("2026-07", 1005000, Math.round(3480000 * 0.32)),
   buildings: DEMO_BILLING_SCOPE.buildings.map((building) => {
     const bills = DEMO_BILLS.filter((bill) => bill.buildingName === building.buildingName);
     const billedAmount = bills.reduce((sum, bill) => sum + bill.totalAmount, 0);
     const collectedAmount = bills.reduce((sum, bill) => sum + bill.paidAmount, 0);
     const collectionRate = billedAmount > 0 ? collectedAmount / billedAmount : 0;
+    const billedUnits = bills.length;
+    const fullyPaidUnits = bills.filter(
+      (bill) => bill.totalAmount > 0 && bill.paidAmount >= bill.totalAmount,
+    ).length;
+    const partiallyPaidUnits = bills.filter(
+      (bill) => bill.paidAmount > 0 && bill.paidAmount < bill.totalAmount,
+    ).length;
     return {
       ...building,
       billingMonth: "2026-07",
@@ -422,6 +506,9 @@ export const DEMO_COLLECTION_ANALYTICS: ManagerCollectionAnalytics = {
       collectedAmount,
       unpaidAmount: billedAmount - collectedAmount,
       collectionRate,
+      billedUnits,
+      fullyPaidUnits,
+      partiallyPaidUnits,
       previousCollectionRate: building.buildingName === "성수 라움" ? 0.26 : 0.36,
       rateDelta: collectionRate - (building.buildingName === "성수 라움" ? 0.26 : 0.36),
       bills,
@@ -434,6 +521,49 @@ export const DEMO_DEPOSITS_DATA: ManagerDepositsData = {
   deposits: DEMO_DEPOSITS.filter((deposit) => deposit.matchStatus === "unmatched" || deposit.matchStatus === "matched"),
   orphanDeposits: DEMO_DEPOSITS.filter((deposit) => deposit.matchStatus === "orphan"),
   mismatchDeposits: DEMO_DEPOSITS.filter((deposit) => deposit.matchStatus === "mismatch"),
+  ledger: {
+    source: "demo",
+    rows: DEMO_DEPOSITS.map((deposit) => {
+      const bill = DEMO_BILLS.find((candidate) => candidate.billId === deposit.matchedBillId);
+      const statusLabel = {
+        matched: "매칭 완료",
+        unmatched: "확인 필요",
+        orphan: "미연결",
+        mismatch: "불일치",
+      }[deposit.matchStatus];
+      return {
+        id: deposit.id,
+        direction: "deposit" as const,
+        occurredAt: deposit.depositedAt,
+        amount: deposit.amount,
+        statusLabel,
+        buildingName: bill?.buildingName,
+        unitId: bill?.unitId,
+        candidateUnitId: bill ? undefined : deposit.guessedUnitId,
+        partyName: bill?.tenantName,
+        itemLabel: bill ? "청구 입금" : "입금",
+        depositorName: deposit.depositorName,
+        linkedBillRelation: bill
+          ? deposit.matchStatus === "matched"
+            ? "matched" as const
+            : "candidate" as const
+          : undefined,
+        linkedBill: bill
+          ? {
+              buildingName: bill.buildingName,
+              unitId: bill.unitId,
+              tenantName: bill.tenantName,
+              billingMonth: bill.billingMonth,
+              dueDate: bill.dueDate,
+              totalAmount: bill.totalAmount,
+              paidAmount: bill.paidAmount,
+              status: bill.status,
+              items: [],
+            }
+          : undefined,
+      };
+    }),
+  },
 };
 
 const overdueNames = ["정예린", "한도윤", "오지후", "서민지", "유현우"];
@@ -586,27 +716,91 @@ export function demoManagerCollection(
             collectedAmount: 0,
             unpaidAmount: 0,
             collectionRate: 0,
+            billedUnits: 0,
+            fullyPaidUnits: 0,
+            partiallyPaidUnits: 0,
             rateDelta: 0,
           }),
     }));
   const billedAmount = buildings.reduce((sum, item) => sum + item.billedAmount, 0);
   const collectedAmount = buildings.reduce((sum, item) => sum + item.collectedAmount, 0);
-  const confirmingAmount = month === "2026-07" ? 680000 : 0;
-  const trend = Array.from({ length: 12 }, (_, index) => {
-    const trendMonth = demoShiftMonth(month, index - 11);
-    const source = DEMO_COLLECTION_ANALYTICS.trend.find(
-      (point) => point.billingMonth === trendMonth,
-    );
-    return (
-      source ?? {
-        billingMonth: trendMonth,
-        billedAmount: 0,
-        collectedAmount: 0,
-        unpaidAmount: 0,
-        collectionRate: 0,
-      }
-    );
-  });
+  const billedUnits = buildings.reduce((sum, item) => sum + item.billedUnits, 0);
+  const fullyPaidUnits = buildings.reduce((sum, item) => sum + item.fullyPaidUnits, 0);
+  const partiallyPaidUnits = buildings.reduce(
+    (sum, item) => sum + item.partiallyPaidUnits,
+    0,
+  );
+  const confirmingAmount =
+    month === "2026-07"
+      ? buildings
+          .flatMap((building) => building.bills)
+          .filter((bill) => bill.status === "confirming" || bill.guard?.hasConfirming)
+          .reduce(
+            (sum, bill) =>
+              sum + (bill.unpaidAmount ?? Math.max(0, bill.totalAmount - bill.paidAmount)),
+            0,
+          )
+      : 0;
+  const availableMonths = DEMO_COLLECTION_ANALYTICS.trend
+    .map((point) => point.billingMonth)
+    .filter((candidate) => candidate <= month)
+    .sort((left, right) => left.localeCompare(right));
+  const hasRecordedHistory = availableMonths.length > 0;
+  const availableFromMonth = availableMonths[0] ?? month;
+  const availableToMonth = availableMonths[availableMonths.length - 1] ?? month;
+  const defaultHistoryTo = hasRecordedHistory ? availableToMonth : month;
+  const requestedFromMonth = query.historyFrom ?? demoShiftMonth(defaultHistoryTo, -5);
+  const requestedToMonth = query.historyTo ?? defaultHistoryTo;
+  const validRange =
+    requestedFromMonth <= requestedToMonth && requestedToMonth <= month;
+  const fallbackFromMonth = demoShiftMonth(defaultHistoryTo, -5);
+  const safeFromMonth = validRange ? requestedFromMonth : fallbackFromMonth;
+  const safeToMonth = validRange ? requestedToMonth : defaultHistoryTo;
+  const boundedFromMonth =
+    safeFromMonth < availableFromMonth ? availableFromMonth : safeFromMonth;
+  const boundedToMonth =
+    safeToMonth > availableToMonth ? availableToMonth : safeToMonth;
+  const hasAppliedHistory =
+    hasRecordedHistory && boundedFromMonth <= boundedToMonth;
+  const appliedFromMonth = hasAppliedHistory ? boundedFromMonth : availableFromMonth;
+  const appliedToMonth = hasAppliedHistory ? boundedToMonth : availableToMonth;
+  const trend = hasAppliedHistory
+    ? demoMonthsBetween(appliedFromMonth, appliedToMonth).map((trendMonth) => {
+        const source = DEMO_COLLECTION_ANALYTICS.trend.find(
+          (point) => point.billingMonth === trendMonth,
+        );
+        return (
+          source ?? {
+            billingMonth: trendMonth,
+            billedAmount: 0,
+            collectedAmount: 0,
+            unpaidAmount: 0,
+            collectionRate: 0,
+            billedUnits: 0,
+            fullyPaidUnits: 0,
+            partiallyPaidUnits: 0,
+          }
+        );
+      })
+    : [];
+  const eligibleTrend = Array.from({ length: 6 }, (_, index) =>
+    demoShiftMonth(month, index - 5),
+  )
+    .map((trendMonth) =>
+      DEMO_COLLECTION_ANALYTICS.trend.find(
+        (point) => point.billingMonth === trendMonth,
+      ),
+    )
+    .filter((point): point is NonNullable<typeof point> => Boolean(point?.billedAmount));
+  const averageRate = (months: number) => {
+    const points = eligibleTrend.slice(-months);
+    return points.length > 0
+      ? points.reduce((sum, point) => sum + point.collectionRate, 0) / points.length
+      : 0;
+  };
+  const previousCollectionRate =
+    DEMO_COLLECTION_ANALYTICS.brief.previousCollectionRate ?? 0;
+  const previousCollectedAmount = Math.round(billedAmount * previousCollectionRate);
   return {
     scope: demoScope(query.building),
     billingMonth: month,
@@ -615,15 +809,26 @@ export function demoManagerCollection(
       collectedAmount,
       unpaidAmount: Math.max(0, billedAmount - collectedAmount - confirmingAmount),
       collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
-      previousCollectionRate: DEMO_COLLECTION_ANALYTICS.brief.previousCollectionRate,
+      billedUnits,
+      fullyPaidUnits,
+      partiallyPaidUnits,
+      threeMonthAverageRate: averageRate(3),
+      sixMonthAverageRate: averageRate(6),
+      previousCollectionRate,
       rateDelta:
         billedAmount > 0
-          ? collectedAmount / billedAmount -
-            (DEMO_COLLECTION_ANALYTICS.brief.previousCollectionRate ?? 0)
+          ? collectedAmount / billedAmount - previousCollectionRate
           : 0,
       confirmingAmount,
     },
     trend,
+    history: {
+      availableFromMonth,
+      availableToMonth,
+      appliedFromMonth,
+      appliedToMonth,
+    },
+    timing: demoCollectionTiming(month, collectedAmount, previousCollectedAmount),
     buildings,
   };
 }

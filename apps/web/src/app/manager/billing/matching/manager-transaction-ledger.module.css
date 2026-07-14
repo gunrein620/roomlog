@@ -175,7 +175,7 @@
 .table td {
   height: 50px;
   padding: 0 10px;
-  border-bottom: 1px solid #edf0f5;
+  border-bottom: 1px solid var(--table-row-divider);
   background: #fff;
   white-space: nowrap;
 }
@@ -306,27 +306,81 @@
   background: #f8fafc !important;
 }
 
-.detailRow div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  padding: 12px 22px 12px 48px;
-  color: #79808c;
-  font-size: 12px;
+.detailContent {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-xl) var(--space-md) calc(var(--touch-target) - var(--space-xs));
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
 }
 
-.detailRow strong {
+.detailGroup {
+  display: grid;
+  grid-template-columns: calc(var(--touch-target) * 1.5) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-lg);
+}
+
+.detailGroup + .detailGroup {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--table-row-divider);
+}
+
+.detailGroupTitle {
+  margin: 0;
+  color: var(--on-surface);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-title);
+}
+
+.detailFields {
+  display: grid;
+  gap: var(--space-sm) var(--space-xl);
+  margin: 0;
+}
+
+.detailFields[data-columns="4"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.detailFields[data-columns="6"] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.detailField {
+  min-width: 0;
+}
+
+.detailField dt {
+  margin: 0 0 var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.detailField dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--on-surface);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-subtitle);
+  font-variant-numeric: tabular-nums;
+}
+
+.detailContent > span strong {
   margin-right: 5px;
-  color: #79808c;
+  color: var(--on-surface-variant);
   font-weight: 400;
 }
 
-.detailRow span {
+.detailContent > span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: #263245;
-  font-weight: 500;
+  gap: var(--space-sm);
+  color: var(--on-surface);
+  font-weight: var(--fw-subtitle);
 }
 
 .detailRow .status_unmatched {
@@ -421,6 +475,16 @@
 
   .searchField {
     flex: 1 1 200px;
+  }
+
+  .detailGroup {
+    grid-template-columns: 1fr;
+    gap: var(--space-sm);
+  }
+
+  .detailFields[data-columns="4"],
+  .detailFields[data-columns="6"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
