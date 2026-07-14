@@ -22,6 +22,12 @@ import { toManagerListingRow, type ManagerListingRow } from "./manager-listing-m
 import styles from "./ManagerListingBoard.module.css";
 
 type DialogMode = "view" | "edit" | "remove";
+type ListingTab = "contracted" | "available";
+
+const LISTING_TABS: readonly { id: ListingTab; label: string }[] = [
+  { id: "contracted", label: "계약완료" },
+  { id: "available", label: "미계약" },
+];
 
 const registrationLinkStyle = {
   minHeight: "var(--touch-target)",
@@ -74,6 +80,7 @@ function DetailItem({ label, value }: { label: string; value: string }) {
 
 export function ManagerListingBoard({ initialListings }: { initialListings: ManagerListingRow[] }) {
   const [listings, setListings] = useState(initialListings);
+  const [tab, setTab] = useState<ListingTab>("contracted");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<DialogMode>("view");
   const [pending, setPending] = useState(false);
@@ -238,6 +245,15 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
     }
   }
 
+  const contractedListings = listings.filter((listing) => listing.statusLabel === "계약완료");
+  const availableListings = listings.filter((listing) => listing.statusLabel === "노출중");
+  const tabCounts: Record<ListingTab, number> = {
+    contracted: contractedListings.length,
+    available: availableListings.length,
+  };
+  const visibleListings = tab === "contracted" ? contractedListings : availableListings;
+  const activeTabLabel = LISTING_TABS.find((item) => item.id === tab)?.label ?? "";
+
   return (
     <>
       {listings.length === 0 ? (
@@ -247,11 +263,35 @@ export function ManagerListingBoard({ initialListings }: { initialListings: Mana
           <Link href="/sell" style={registrationLinkStyle}>새 매물 등록</Link>
         </Card>
       ) : (
-        <section className={styles.list} aria-label="등록한 매물 목록">
-          {listings.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} onOpen={() => openListing(listing.id)} />
-          ))}
-        </section>
+        <>
+          <nav className={styles.tabs} aria-label="매물 상태 필터">
+            {LISTING_TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={styles.tab}
+                aria-current={tab === item.id ? "page" : undefined}
+                onClick={() => setTab(item.id)}
+              >
+                <span>{item.label}</span>
+                <span className={styles.tabCount}>{tabCounts[item.id]}</span>
+              </button>
+            ))}
+          </nav>
+
+          {visibleListings.length === 0 ? (
+            <Card className={styles.empty}>
+              <strong>{activeTabLabel} 매물이 없습니다</strong>
+              <p>다른 탭에서 등록한 매물을 확인할 수 있습니다.</p>
+            </Card>
+          ) : (
+            <section className={styles.list} aria-label={`${activeTabLabel} 매물 목록`}>
+              {visibleListings.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} onOpen={() => openListing(listing.id)} />
+              ))}
+            </section>
+          )}
+        </>
       )}
 
       <dialog

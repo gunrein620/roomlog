@@ -140,7 +140,6 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
                 집우집주<em>WOOZU</em>
               </span>
             </Link>
-            <span>관리자 워크스페이스</span>
           </div>
         </div>
         {showCloseButton ? (

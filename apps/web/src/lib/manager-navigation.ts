@@ -1,9 +1,7 @@
 import { MANAGER_BILLING_ROUTES } from "./billing-manager-nav";
 import { MANAGER_CONTRACT_ROUTES } from "./contract-manager-nav";
-import { MANAGER_COST_ROUTES } from "./cost-nav";
 import { MANAGER_CROSS, MHOME_ROUTES } from "./manager-home-nav";
 import { MANAGER_MESSAGING_ROUTES } from "./messaging-manager-nav";
-import { MANAGER_MOVEOUT_ROUTES } from "./moveout-manager-nav";
 import { MANAGER_REPORT_ROUTES } from "./report-nav";
 import { MANAGER_TICKET_ROUTES } from "./ticket-manager-nav";
 import { MANAGER_VENDOR_MGMT_ROUTES } from "./vendor-mgmt-nav";
@@ -95,18 +93,6 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
           { label: "연체 관리", href: MANAGER_BILLING_ROUTES.overdue },
         ],
       },
-      {
-        id: "cost",
-        label: "비용 원장",
-        href: MANAGER_COST_ROUTES["M-COST-00"],
-        icon: "cost",
-        activePrefixes: ["/manager/cost"],
-        children: [
-          { label: "원장·검토 큐", href: MANAGER_COST_ROUTES["M-COST-00"] },
-          { label: "영수증 첨부", href: MANAGER_COST_ROUTES["M-COST-01"] },
-          { label: "공개 관리", href: MANAGER_COST_ROUTES["M-COST-04"] },
-        ],
-      },
     ],
   },
   {
@@ -136,16 +122,6 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         children: [
           { label: "소통 허브", href: MANAGER_MESSAGING_ROUTES["M-MSG-00"] },
           { label: "공지 작성", href: MANAGER_MESSAGING_ROUTES["M-MSG-01"] },
-        ],
-      },
-      {
-        id: "moveout",
-        label: "퇴실·정산",
-        href: MANAGER_MOVEOUT_ROUTES["M-OUT-00"],
-        icon: "moveout",
-        activePrefixes: ["/manager/moveout"],
-        children: [
-          { label: "검토 대시보드", href: MANAGER_MOVEOUT_ROUTES["M-OUT-00"] },
         ],
       },
       {
