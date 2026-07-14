@@ -520,6 +520,11 @@ test("manager announcement send makes the empty-recipient button visibly disable
   assert.match(managerMessagingSendFormSource, /cursor: "not-allowed"/);
 });
 
+test("manager announcement review labels the edit action concisely", () => {
+  assert.match(managerMessagingReviewSource, />수정<\/LinkButton>/);
+  assert.doesNotMatch(managerMessagingReviewSource, /수정하러/);
+});
+
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
   for (const label of ["조건에 맞는 방", "지도 열기", "추천 매물", "매물 57804322", "전체"]) {
     assert.match(pageSource, new RegExp(label));

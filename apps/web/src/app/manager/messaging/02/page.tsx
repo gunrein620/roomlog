@@ -49,7 +49,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       <ScreenHeader
         eyebrow="M-MSG-02"
         title="발송 전 검토"
-        actions={<LinkButton href={`${MANAGER_MESSAGING_ROUTES["M-MSG-01"]}?id=${draft.id}`} variant="secondary">수정하러</LinkButton>}
+        actions={<LinkButton href={`${MANAGER_MESSAGING_ROUTES["M-MSG-01"]}?id=${draft.id}`} variant="secondary">수정</LinkButton>}
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: "var(--space-lg)", alignItems: "start" }}>
