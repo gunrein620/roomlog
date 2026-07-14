@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Message, Thread, ThreadContext } from "@roomlog/types";
 import { Badge, Button, Card, Input } from "@roomlog/ui";
+import { MessagingPhoneFrame } from "../MessagingPhoneFrame";
 import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
 import { addTenantThreadMessage, deleteTenantThread, getThread } from "@/lib/messaging-api";
 import { MESSAGING_ROUTES } from "@/lib/messaging-nav";
@@ -95,7 +96,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const pendingMessage = messages.find((message) => message.kind === "photo_request");
 
   return (
-    <>
+    <MessagingPhoneFrame>
       <MessageAutoRefresh intervalMs={3000} />
       <header
         style={{
@@ -210,7 +211,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Input name="body" aria-label="메시지 입력" placeholder="메시지를 입력하세요" />
         <Button type="submit">보내기</Button>
       </form>
-    </>
+    </MessagingPhoneFrame>
   );
 }
 

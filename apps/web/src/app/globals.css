@@ -6990,6 +6990,25 @@ p {
   overflow: hidden;
 }
 
+.tenant-announcement-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 24px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.tenant-announcement-link:focus-visible {
+  border-radius: inherit;
+  outline: 2px solid var(--blue);
+  outline-offset: -4px;
+}
+
 .tenant-card-icon {
   display: inline-grid;
   width: 64px;
@@ -12211,6 +12230,10 @@ p {
     padding: 30px 32px;
   }
 
+  .tenant-announcement-link {
+    padding: 30px 32px;
+  }
+
   .tenant-residence-card {
     grid-template-columns: minmax(360px, 0.62fr) minmax(0, 1fr);
     gap: 48px;
@@ -12259,6 +12282,12 @@ p {
 
 @media (max-width: 560px) {
   .tenant-announcement-card {
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .tenant-announcement-link {
     grid-template-columns: 54px minmax(0, 1fr);
     gap: 14px;
     padding: 18px;

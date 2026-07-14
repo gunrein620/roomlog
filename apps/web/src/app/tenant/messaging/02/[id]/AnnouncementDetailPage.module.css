@@ -1,0 +1,25 @@
+.viewport {
+  min-height: 100dvh;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-family: var(--font-sans);
+}
+
+.detailShell {
+  min-height: 100dvh;
+  background: var(--surface-container-lowest);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .viewport { padding: var(--space-xxl); }
+  .detailShell {
+    max-width: var(--content-readable-max);
+    min-height: calc(100dvh - (var(--space-xxl) * 2));
+    margin: 0 auto;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+}
