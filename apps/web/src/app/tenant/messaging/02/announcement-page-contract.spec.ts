@@ -25,4 +25,19 @@ describe("tenant announcement route boundary", () => {
     assert.match(css, /@media \(min-width: 768px\)/);
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
   });
+
+  it("renders a responsive token-only list at /02", () => {
+    const page = read("page.tsx");
+    const component = read("AnnouncementListPage.tsx");
+    const css = read("AnnouncementListPage.module.css");
+    assert.match(page, /listAnnouncements/);
+    assert.match(page, /AnnouncementListPage/);
+    assert.doesNotMatch(page, /getAnnouncement/);
+    assert.match(component, /공지사항/);
+    assert.match(component, /도움이 필요하신가요/);
+    assert.match(component, /tenantAnnouncementDetailHref/);
+    assert.match(css, /@media \(min-width: 768px\)/);
+    assert.match(css, /prefers-reduced-motion/);
+    assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
+  });
 });
