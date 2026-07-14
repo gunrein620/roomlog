@@ -16,7 +16,10 @@ import { ContractDashboardClient } from "./ContractDashboardClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
+type SearchParams = Promise<{ focus?: string }>;
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const { focus } = await searchParams;
   const dashboard = await getManagerContractDashboard();
   const sortedRows = [...dashboard.rows].sort((a, b) => {
     const score = (row: ManagerContractRow) =>
@@ -37,7 +40,11 @@ export default async function Page() {
           <MetricCard label="미등록 호실" value={`${dashboard.counts.unregistered}호`} note="수동값 또는 초대 필요" />
         </Grid>
 
-        <ContractDashboardClient counts={dashboard.counts} rows={sortedRows} />
+        <ContractDashboardClient
+          counts={dashboard.counts}
+          rows={sortedRows}
+          focusedContractId={focus}
+        />
 
         <Section
           title="보관·삭제 처리"

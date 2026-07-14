@@ -9,6 +9,15 @@ import {
 } from "@/lib/contract-manager-api";
 import { hasContractPrefillInput, storedContractPrefillInput } from "@/lib/contract-prefill";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
+import { ApiError } from "@/lib/server-api";
+import {
+  confirmationFieldLabel,
+  confirmationFieldsFromMessage,
+  contractConfirmationIssues,
+  parseConfirmationFields,
+  type ContractConfirmationField,
+  type ContractConfirmationIssue,
+} from "../contract-confirmation";
 import {
   BackLink,
   Badge,
@@ -20,9 +29,16 @@ import {
   captionStyle,
   formatDateTime,
 } from "../_components";
+import { ContractConfirmErrorFocus } from "./ContractConfirmErrorFocus";
 import { OcrSubmitButton } from "./OcrSubmitButton";
 
-type SearchParams = Promise<{ id?: string; source?: string }>;
+type SearchParams = Promise<{
+  id?: string;
+  source?: string;
+  error?: string;
+  confirmError?: string;
+  confirmFields?: string;
+}>;
 type ManagerContractDetailResult = Awaited<ReturnType<typeof getManagerContractDetail>>;
 
 export const dynamic = "force-dynamic";
@@ -31,8 +47,48 @@ async function confirmContractAction(formData: FormData) {
   "use server";
 
   const contractId = String(formData.get("contractId") ?? "");
-  await confirmManagerContract(contractId);
-  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`);
+  let failure: { message: string; fields: ContractConfirmationField[] } | undefined;
+
+  try {
+    const detail = await getManagerContractDetail(contractId);
+    const issues = contractConfirmationIssues(detail.row.contract);
+
+    if (issues.length > 0) {
+      failure = {
+        message: "확정 전에 필수 계약값을 수정해 주세요.",
+        fields: issues.map((issue) => issue.field),
+      };
+    } else {
+      await confirmManagerContract(contractId);
+    }
+  } catch (error) {
+    const message = error instanceof ApiError && error.message.trim()
+      ? error.message
+      : "계약을 확정하지 못했습니다. 표시된 계약값을 확인한 뒤 다시 시도해 주세요.";
+    failure = { message, fields: confirmationFieldsFromMessage(message) };
+  }
+
+  if (failure) {
+    redirect(confirmationFailureUrl(contractId, failure.message, failure.fields));
+  }
+
+  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-00"]}?focus=${encodeURIComponent(contractId)}`);
+}
+
+function confirmationFailureUrl(
+  contractId: string,
+  message: string,
+  fields: ContractConfirmationField[],
+) {
+  const uniqueFields = [...new Set(fields)];
+  const params = new URLSearchParams({
+    id: contractId,
+    confirmError: message.slice(0, 240),
+  });
+  if (uniqueFields.length > 0) params.set("confirmFields", uniqueFields.join(","));
+
+  const target = uniqueFields[0] ? contractFieldId(uniqueFields[0]) : "contract-confirm-error";
+  return `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?${params.toString()}#${target}`;
 }
 
 async function runOcrAction(formData: FormData) {
@@ -47,15 +103,25 @@ async function updateManualCorrectionAction(formData: FormData) {
   "use server";
 
   const contractId = String(formData.get("contractId") ?? "");
-  await updateManagerContractManualValues(contractId, {
-    deposit: textValue(formData, "deposit"),
-    monthlyRent: numberValue(formData, "monthlyRent"),
-    maintenanceFee: numberValue(formData, "maintenanceFee"),
-    paymentDay: numberValue(formData, "paymentDay"),
-    account: textValue(formData, "landlordAccount"),
-    startDate: dateValue(formData, "startDate"),
-    endDate: dateValue(formData, "endDate"),
-  });
+  const detailUrl = `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`;
+
+  try {
+    await updateManagerContractManualValues(contractId, {
+      deposit: textValue(formData, "deposit"),
+      monthlyRent: numberValue(formData, "monthlyRent"),
+      maintenanceFee: numberValue(formData, "maintenanceFee"),
+      paymentDay: numberValue(formData, "paymentDay"),
+      account: textValue(formData, "landlordAccount"),
+      startDate: dateValue(formData, "startDate"),
+      endDate: dateValue(formData, "endDate"),
+    });
+  } catch (error) {
+    const message = error instanceof ApiError
+      ? error.message
+      : "수정한 계약값을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    redirect(`${detailUrl}&error=${encodeURIComponent(message)}`);
+  }
+
   redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}&source=manual-saved`);
 }
 
@@ -77,7 +143,13 @@ async function prefillStoredContractValuesAction(formData: FormData) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { id, source: sourceParam } = await searchParams;
+  const {
+    id,
+    source: sourceParam,
+    error: errorParam,
+    confirmError: confirmErrorParam,
+    confirmFields: confirmFieldsParam,
+  } = await searchParams;
   const detail = await getManagerContractDetail(id);
   const source = ocrSource(detail.extraction.highlights);
   const failureInfo = source.kind === "mock" ? ocrFailureInfo(detail.extraction.highlights) : undefined;
@@ -88,6 +160,27 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       ? 0
       : detail.extraction.items.filter((item) => !isMissingDisplayValue(item.value)).length;
   const notice = pageNotice(sourceParam);
+  const saveError = errorParam?.trim().slice(0, 240);
+  const confirmError = confirmErrorParam?.trim().slice(0, 240);
+  const requestedConfirmFields = parseConfirmationFields(confirmFieldsParam);
+  const detectedConfirmationIssues = confirmError
+    ? contractConfirmationIssues(detail.row.contract)
+    : [];
+  const confirmationIssues: ContractConfirmationIssue[] = detectedConfirmationIssues.length > 0
+    ? detectedConfirmationIssues
+    : confirmError && requestedConfirmFields[0]
+      ? [{
+          field: requestedConfirmFields[0],
+          label: confirmationFieldLabel(requestedConfirmFields[0]),
+          message: confirmError,
+        }]
+      : [];
+  const issueFields = new Set(confirmationIssues.map((issue) => issue.field));
+  const focusedConfirmationField =
+    requestedConfirmFields.find((field) => issueFields.has(field)) ?? confirmationIssues[0]?.field;
+  const confirmErrorTargetId = focusedConfirmationField
+    ? contractFieldId(focusedConfirmationField)
+    : "contract-confirm-error";
 
   return (
     <ContractShell id="M-DOC-01" title="계약서 OCR 검토·확정">
@@ -145,6 +238,47 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </Card>
         ) : null}
 
+        {saveError ? (
+          <div role="alert" aria-live="polite">
+            <Card style={saveErrorCardStyle}>
+              <AlertTriangle size={18} strokeWidth={2.5} color="var(--error)" aria-hidden="true" />
+              <div style={saveErrorTextStyle}>
+                <strong>수정 저장 실패</strong>
+                <span>{saveError}</span>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
+        {confirmError ? (
+          <>
+            <ContractConfirmErrorFocus targetId={confirmErrorTargetId} />
+            <div id="contract-confirm-error" role="alert" aria-live="assertive" tabIndex={-1}>
+              <Card style={confirmErrorCardStyle}>
+                <AlertTriangle size={20} strokeWidth={2.5} color="var(--error)" aria-hidden="true" />
+                <div style={confirmErrorTextStyle}>
+                  <strong>검토 확정 실패</strong>
+                  <span>{confirmError}</span>
+                  {confirmationIssues.length > 0 ? (
+                    <ul style={confirmErrorListStyle}>
+                      {confirmationIssues.map((issue) => (
+                        <li key={`${issue.field}-${issue.message}`}>
+                          <a href={`#${contractFieldId(issue.field)}`} style={confirmErrorLinkStyle}>
+                            <strong>{issue.label}</strong>: {issue.message}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <span style={confirmErrorHintStyle}>
+                    아래 값을 수정하고 <strong>수정 저장</strong>한 뒤 다시 검토 확정해 주세요.
+                  </span>
+                </div>
+              </Card>
+            </div>
+          </>
+        ) : null}
+
         <Section
           title="OCR 결과 · DB값 비교"
           action={
@@ -163,7 +297,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </Section>
 
         <Section title="최종 계약값 수정">
-          <ManualCorrectionForm detail={detail} sourceKind={source.kind} />
+          <ManualCorrectionForm
+            detail={detail}
+            sourceKind={source.kind}
+            confirmationIssues={confirmationIssues}
+          />
         </Section>
 
         <Card style={footerCardStyle}>
@@ -343,11 +481,19 @@ function ValueText({ value, strong = false }: { value: string; strong?: boolean 
 function ManualCorrectionForm({
   detail,
   sourceKind,
+  confirmationIssues,
 }: {
   detail: ManagerContractDetailResult;
   sourceKind: OcrSourceKind;
+  confirmationIssues: ContractConfirmationIssue[];
 }) {
   const values = manualDefaults(detail, sourceKind);
+  const issueByField = new Map(confirmationIssues.map((issue) => [issue.field, issue]));
+  const startDateIssue = issueByField.get("startDate");
+  const endDateIssue = issueByField.get("endDate");
+  const monthlyRentIssue = issueByField.get("monthlyRent");
+  const maintenanceFeeIssue = issueByField.get("maintenanceFee");
+  const paymentDayIssue = issueByField.get("paymentDay");
 
   return (
     <Card style={manualCardStyle}>
@@ -360,36 +506,79 @@ function ManualCorrectionForm({
         <div style={correctionGroupGridStyle}>
           <CorrectionGroup title="계약 기간" note="계약서 원문 기준 시작일과 종료일을 확인하세요.">
             <div style={twoColumnFieldStyle}>
-              <CorrectionField label="계약 시작일">
-                <input name="startDate" type="date" defaultValue={values.startDate} style={correctionInputStyle} />
+              <CorrectionField fieldId={contractFieldId("startDate")} label="계약 시작일" error={startDateIssue?.message}>
+                <input
+                  id={contractFieldId("startDate")}
+                  name="startDate"
+                  type="date"
+                  defaultValue={values.startDate}
+                  aria-invalid={Boolean(startDateIssue)}
+                  aria-describedby={startDateIssue ? contractFieldErrorId("startDate") : undefined}
+                  style={correctionInputStateStyle(Boolean(startDateIssue))}
+                />
               </CorrectionField>
-              <CorrectionField label="계약 종료일">
-                <input name="endDate" type="date" defaultValue={values.endDate} style={correctionInputStyle} />
+              <CorrectionField fieldId={contractFieldId("endDate")} label="계약 종료일" error={endDateIssue?.message}>
+                <input
+                  id={contractFieldId("endDate")}
+                  name="endDate"
+                  type="date"
+                  defaultValue={values.endDate}
+                  aria-invalid={Boolean(endDateIssue)}
+                  aria-describedby={endDateIssue ? contractFieldErrorId("endDate") : undefined}
+                  style={correctionInputStateStyle(Boolean(endDateIssue))}
+                />
               </CorrectionField>
             </div>
           </CorrectionGroup>
 
           <CorrectionGroup title="금액" note="보증금은 복합 조건이 길 수 있어 그대로 보관합니다. 월세와 관리비는 숫자만 저장됩니다.">
-            <CorrectionField label="보증금">
-              <textarea name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
+            <CorrectionField fieldId="contract-field-deposit" label="보증금">
+              <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
             </CorrectionField>
             <div style={twoColumnFieldStyle}>
-              <CorrectionField label="월세">
-                <input name="monthlyRent" inputMode="numeric" defaultValue={formatNumberInput(values.monthlyRent)} placeholder="예: 650,000" style={correctionInputStyle} />
+              <CorrectionField fieldId={contractFieldId("monthlyRent")} label="월세" error={monthlyRentIssue?.message}>
+                <input
+                  id={contractFieldId("monthlyRent")}
+                  name="monthlyRent"
+                  inputMode="numeric"
+                  defaultValue={formatNumberInput(values.monthlyRent)}
+                  placeholder="예: 650,000"
+                  aria-invalid={Boolean(monthlyRentIssue)}
+                  aria-describedby={monthlyRentIssue ? contractFieldErrorId("monthlyRent") : undefined}
+                  style={correctionInputStateStyle(Boolean(monthlyRentIssue))}
+                />
               </CorrectionField>
-              <CorrectionField label="관리비">
-                <input name="maintenanceFee" inputMode="numeric" defaultValue={formatNumberInput(values.maintenanceFee)} placeholder="예: 70,000" style={correctionInputStyle} />
+              <CorrectionField fieldId={contractFieldId("maintenanceFee")} label="관리비" error={maintenanceFeeIssue?.message}>
+                <input
+                  id={contractFieldId("maintenanceFee")}
+                  name="maintenanceFee"
+                  inputMode="numeric"
+                  defaultValue={formatNumberInput(values.maintenanceFee)}
+                  placeholder="예: 70,000"
+                  aria-invalid={Boolean(maintenanceFeeIssue)}
+                  aria-describedby={maintenanceFeeIssue ? contractFieldErrorId("maintenanceFee") : undefined}
+                  style={correctionInputStateStyle(Boolean(maintenanceFeeIssue))}
+                />
               </CorrectionField>
             </div>
           </CorrectionGroup>
 
           <CorrectionGroup title="납부·계좌" note="납부일은 매월 기준 일자만 입력하고, 계좌는 은행명과 계좌번호를 함께 적습니다.">
             <div style={twoColumnFieldStyle}>
-              <CorrectionField label="납부일">
-                <input name="paymentDay" inputMode="numeric" defaultValue={values.paymentDay} placeholder="예: 25" style={correctionInputStyle} />
+              <CorrectionField fieldId={contractFieldId("paymentDay")} label="납부일" error={paymentDayIssue?.message}>
+                <input
+                  id={contractFieldId("paymentDay")}
+                  name="paymentDay"
+                  inputMode="numeric"
+                  defaultValue={values.paymentDay}
+                  placeholder="예: 25"
+                  aria-invalid={Boolean(paymentDayIssue)}
+                  aria-describedby={paymentDayIssue ? contractFieldErrorId("paymentDay") : undefined}
+                  style={correctionInputStateStyle(Boolean(paymentDayIssue))}
+                />
               </CorrectionField>
-              <CorrectionField label="임대인 계좌">
-                <input name="landlordAccount" defaultValue={values.landlordAccount} placeholder="은행명 계좌번호" style={correctionInputStyle} />
+              <CorrectionField fieldId="contract-field-landlordAccount" label="임대인 계좌">
+                <input id="contract-field-landlordAccount" name="landlordAccount" defaultValue={values.landlordAccount} placeholder="은행명 계좌번호" style={correctionInputStyle} />
               </CorrectionField>
             </div>
           </CorrectionGroup>
@@ -417,11 +606,26 @@ function CorrectionGroup({ title, note, children }: { title: string; note: strin
   );
 }
 
-function CorrectionField({ label, children }: { label: string; children: ReactNode }) {
+function CorrectionField({
+  fieldId,
+  label,
+  error,
+  children,
+}: {
+  fieldId: string;
+  label: string;
+  error?: string;
+  children: ReactNode;
+}) {
   return (
-    <label style={{ display: "grid", gap: "var(--space-xs)", fontSize: "var(--fs-caption)", fontWeight: 800 }}>
+    <label htmlFor={fieldId} style={correctionFieldStyle}>
       <span>{label}</span>
       {children}
+      {error ? (
+        <span id={`${fieldId}-error`} style={correctionFieldErrorStyle}>
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -774,11 +978,19 @@ function numberValue(formData: FormData, name: string) {
 
 function dateValue(formData: FormData, name: string) {
   const value = textValue(formData, name);
-  return value ? `${value}T00:00:00+09:00` : undefined;
+  return value || undefined;
 }
 
 function dateInputValue(iso?: string) {
   return iso?.slice(0, 10) ?? "";
+}
+
+function contractFieldId(field: ContractConfirmationField) {
+  return `contract-field-${field}`;
+}
+
+function contractFieldErrorId(field: ContractConfirmationField) {
+  return `${contractFieldId(field)}-error`;
 }
 
 function manualInputValue(value?: string) {
@@ -896,6 +1108,55 @@ const noticeCardStyle = {
   alignItems: "center",
   color: "var(--on-primary-container)",
   background: "var(--primary-container)",
+} as const;
+
+const saveErrorCardStyle = {
+  display: "flex",
+  gap: "var(--space-sm)",
+  alignItems: "flex-start",
+  color: "var(--on-error-container)",
+  background: "var(--error-container)",
+  borderColor: "var(--error)",
+} as const;
+
+const saveErrorTextStyle = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  lineHeight: "var(--lh-body)",
+} as const;
+
+const confirmErrorCardStyle = {
+  display: "flex",
+  gap: "var(--space-sm)",
+  alignItems: "flex-start",
+  color: "var(--on-error-container)",
+  background: "var(--error-container)",
+  borderColor: "var(--error)",
+} as const;
+
+const confirmErrorTextStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
+  width: "100%",
+  lineHeight: "var(--lh-body)",
+} as const;
+
+const confirmErrorListStyle = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  margin: 0,
+  paddingLeft: "var(--space-lg)",
+} as const;
+
+const confirmErrorLinkStyle = {
+  color: "inherit",
+  textDecoration: "underline",
+  textUnderlineOffset: "var(--space-xs)",
+} as const;
+
+const confirmErrorHintStyle = {
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
 } as const;
 
 const ocrFailureCardStyle = {
@@ -1160,6 +1421,13 @@ const twoColumnFieldStyle = {
   gap: "var(--space-sm)",
 } as const;
 
+const correctionFieldStyle = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+} as const;
+
 const correctionInputStyle = {
   minHeight: "var(--touch-target)",
   width: "100%",
@@ -1170,6 +1438,23 @@ const correctionInputStyle = {
   background: "var(--surface-container-lowest)",
   font: "inherit",
   fontWeight: 800,
+  scrollMarginTop: "calc(var(--space-xxl) * 3)",
+} as const;
+
+function correctionInputStateStyle(hasError: boolean) {
+  if (!hasError) return correctionInputStyle;
+
+  return {
+    ...correctionInputStyle,
+    borderColor: "var(--error)",
+  } as const;
+}
+
+const correctionFieldErrorStyle = {
+  color: "var(--on-error-container)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  lineHeight: "var(--lh-body)",
 } as const;
 
 const correctionTextareaStyle = {

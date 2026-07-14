@@ -1790,6 +1790,32 @@ html:has(.manager-workspace) {
   line-height: var(--lh-title);
 }
 
+.manager-contract-dashboard__confirmation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid color-mix(in srgb, var(--success) 32%, var(--border));
+  border-radius: var(--radius-md);
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-contract-dashboard__confirmation svg {
+  flex: 0 0 auto;
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-contract-dashboard__confirmation div {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.manager-contract-dashboard__confirmation span {
+  font-size: var(--fs-caption);
+}
+
 .manager-contract-dashboard__filter-header {
   display: flex;
   align-items: center;
@@ -1918,6 +1944,12 @@ html:has(.manager-workspace) {
 
 .manager-contract-table tbody tr.is-attention {
   background: color-mix(in srgb, var(--primary) 4%, var(--surface-container-lowest));
+}
+
+.manager-contract-table tbody tr.is-focused,
+.manager-contract-table tbody tr.is-focused:hover {
+  background: var(--primary-container);
+  box-shadow: inset var(--space-xs) 0 0 var(--primary);
 }
 
 .manager-contract-table tr:last-child td {
