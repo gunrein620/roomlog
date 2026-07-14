@@ -3922,6 +3922,47 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("opens a tenant landlord messaging thread before the first message is typed", () => {
+    const service = new RoomlogService();
+    const manager = service.signup({
+      email: "empty-thread-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "빈 스레드 관리자",
+      phone: "010-7000-1801",
+      role: "LANDLORD",
+      buildingName: "빈스레드빌라",
+      roomNo: "1801호",
+      address: "서울시 강동구 빈스레드로 18"
+    } as any);
+
+    const tenant = service.signup({
+      email: "empty-thread-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "빈 스레드 세입자",
+      phone: "010-7000-3801",
+      role: "TENANT",
+      buildingName: "빈스레드빌라",
+      roomNo: "1801호",
+      address: "서울시 강동구 빈스레드로 18"
+    } as any);
+
+    const thread = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      contextLabel: "일반 문의"
+    });
+
+    assert.equal(thread.tenantId, tenant.userId);
+    assert.equal(thread.messages?.length, 0);
+    assert.equal(thread.lastMessage, "대화가 시작되었습니다.");
+    assert.equal(service.getTenantLandlordConversation(tenant.userId).threadId, thread.id);
+    assert.equal(
+      service.listManagerMessagingThreads(manager.userId).some((item) => item.id === thread.id),
+      true
+    );
+  });
+
   it("lets tenants and managers delete only scoped messaging threads", () => {
     const service = new RoomlogService();
 
@@ -4122,6 +4163,60 @@ describe("RoomlogService", () => {
         body: "잘못된 호실 조합"
       }),
       /해당 세대 임차인/
+    );
+  });
+
+  it("lets tenants choose among linked rooms for contract and landlord conversation scope", () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+
+    state.contracts.push({
+      id: "ct_tenant_multi_302",
+      roomId: "room-302",
+      tenantId: "tenant-demo",
+      managerId: "landlord-demo",
+      unitId: "302",
+      landlordName: "Demo Manager",
+      lifecycle: "active",
+      review: "confirmed",
+      deletion: "none",
+      valueSource: "confirmed",
+      monthlyRent: 720000,
+      maintenanceFee: 80000,
+      paymentDay: 10,
+      startDate: "2026-07-01T00:00:00+09:00",
+      endDate: "2028-06-30T00:00:00+09:00",
+      createdAt: "2026-07-08T09:20:00+09:00",
+      updatedAt: "2026-07-12T15:10:00+09:00"
+    } as any);
+
+    const rooms = service.listTenantRooms("tenant-demo");
+    assert.deepEqual(
+      rooms.map((room) => room.roomId),
+      ["room-301", "room-302"]
+    );
+    assert.equal(rooms[0].isCurrent, true);
+
+    const selectedContract = service.getTenantCurrentContract("tenant-demo", "room-302");
+    assert.equal(selectedContract?.roomId, "room-302");
+    assert.equal(selectedContract?.monthlyRent, 720000);
+
+    const conversation = service.getTenantLandlordConversation("tenant-demo", "room-302");
+    assert.equal(conversation.roomId, "room-302");
+    assert.equal(conversation.unitId, "302");
+
+    const thread = service.createTenantMessagingThread("tenant-demo", {
+      roomId: "room-302",
+      context: "general",
+      contextLabel: "Second room",
+      body: "Hello from selected room"
+    });
+    assert.equal(thread.roomId, "room-302");
+
+    assert.equal(service.getTenantCurrentContract("tenant-demo", "room-412"), null);
+    assert.throws(
+      () => service.getTenantLandlordConversation("tenant-demo", "room-412"),
+      /호실|tenant|임차/
     );
   });
 

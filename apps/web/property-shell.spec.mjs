@@ -1088,7 +1088,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.doesNotMatch(pageSource, /AI 생활 도우미는 곧 연결됩니다/);
   assert.match(pageSource, /tenant-chat-panel/);
   assert.match(pageSource, /setIsLandlordChatOpen\(true\)/);
-  assert.match(pageSource, /tenantLandlordConversationPaths\.current\(\)/);
+  assert.match(pageSource, /tenantLandlordConversationPaths\.current\(tenancy\.roomId\)/);
   assert.match(pageSource, /submitLandlordMessage/);
   assert.doesNotMatch(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
   assert.match(cssSource, /\.tenant-chat-panel/);

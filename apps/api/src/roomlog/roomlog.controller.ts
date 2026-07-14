@@ -324,6 +324,13 @@ export class RoomlogController {
     return this.roomlogService.getTenantRoomTimeline(user.id);
   }
 
+  @Get("tenant/rooms")
+  listTenantRooms(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantRooms(user.id);
+  }
+
   @Get("tenant/move-in-checklist")
   listTenantMoveInChecklist(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);
@@ -363,10 +370,13 @@ export class RoomlogController {
   }
 
   @Get("tenant/current-contract")
-  getTenantCurrentContract(@Headers("authorization") authorization?: string) {
+  getTenantCurrentContract(
+    @Headers("authorization") authorization?: string,
+    @Query("roomId") roomId?: string
+  ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.getTenantCurrentContract(user.id);
+    return this.roomlogService.getTenantCurrentContract(user.id, roomId);
   }
 
   @Get("tenant/bills/history")
@@ -594,10 +604,13 @@ export class RoomlogController {
   }
 
   @Get("tenant/messaging/landlord-conversation")
-  getTenantLandlordConversation(@Headers("authorization") authorization?: string) {
+  getTenantLandlordConversation(
+    @Headers("authorization") authorization?: string,
+    @Query("roomId") roomId?: string
+  ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.getTenantLandlordConversation(user.id);
+    return this.roomlogService.getTenantLandlordConversation(user.id, roomId);
   }
 
   @Get("tenant/messaging/threads")
