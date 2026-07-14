@@ -3567,6 +3567,31 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("exposes an explicit ticket kind to manager clients", () => {
+    const service = new RoomlogService();
+    const generalComplaint = service.createComplaint("tenant-demo", {
+      title: "관리비 납부 문의",
+      description: "이번 달 관리비 결제 금액을 확인해주세요.",
+      location: "301호"
+    });
+    const defectComplaint = service.createComplaint("tenant-demo", {
+      title: "화장실 천장 누수",
+      description: "천장에서 물이 떨어집니다.",
+      location: "301호 화장실"
+    });
+
+    const tickets = service.listTicketsForManager("landlord-demo");
+
+    assert.equal(
+      tickets.find((ticket) => ticket.id === generalComplaint.ticket.id)?.kind,
+      "complaint"
+    );
+    assert.equal(
+      tickets.find((ticket) => ticket.id === defectComplaint.ticket.id)?.kind,
+      "defect"
+    );
+  });
+
   it("lets a real linked tenant start a messaging thread that the linked manager can reply to", () => {
     const service = new RoomlogService();
 

@@ -18,6 +18,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, join } from "node:path";
+import type { TicketType } from "@roomlog/types";
 import {
   billingDateInSeoul,
   billingMonthInSeoul,
@@ -12016,6 +12017,7 @@ export class RoomlogService {
 
     return {
       ...ticket,
+      kind: this.ticketKindFromCategory(ticket.category),
       complaint,
       room,
       analysis: this.presentAnalysis(analysis, ticket),
@@ -12033,6 +12035,12 @@ export class RoomlogService {
       roomTimeline: this.presentRoomTimeline(ticket.roomId),
       callbot: this.presentCallbotContext(ticket)
     };
+  }
+
+  private ticketKindFromCategory(category: string): TicketType {
+    return ["소음", "납부", "계약", "공용공간", "기타", "주차", "민원"].includes(category)
+      ? "complaint"
+      : "defect";
   }
 
   private presentCallbotContext(ticket: Ticket): CallbotTicketContext | undefined {
