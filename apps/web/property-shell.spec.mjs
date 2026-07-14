@@ -92,6 +92,14 @@ const messageAutoRefreshSource = existsSync(messageAutoRefreshPath)
   : "";
 const managerMessagingListSource = readFileSync(new URL("./src/app/manager/messaging/00/page.tsx", import.meta.url), "utf8");
 const managerMessagingReviewSource = readFileSync(new URL("./src/app/manager/messaging/02/page.tsx", import.meta.url), "utf8");
+const managerMessagingReviewActionPath = new URL("./src/app/manager/messaging/02/actions.ts", import.meta.url);
+const managerMessagingReviewActionSource = existsSync(managerMessagingReviewActionPath)
+  ? readFileSync(managerMessagingReviewActionPath, "utf8")
+  : "";
+const managerMessagingSendFormPath = new URL("./src/app/manager/messaging/02/AnnouncementSendForm.tsx", import.meta.url);
+const managerMessagingSendFormSource = existsSync(managerMessagingSendFormPath)
+  ? readFileSync(managerMessagingSendFormPath, "utf8")
+  : "";
 const managerMessagingComposeSource = readFileSync(new URL("./src/app/manager/messaging/01/page.tsx", import.meta.url), "utf8");
 const managerMessagingComposerPath = new URL("./src/app/manager/messaging/01/AnnouncementComposer.tsx", import.meta.url);
 const managerMessagingActionsPath = new URL("./src/app/manager/messaging/01/actions.ts", import.meta.url);
@@ -490,10 +498,42 @@ test("manager announcement compose edits targets and translates each language be
   assert.match(managerMessagingReviewSource, /findAttachedTranslation/);
   assert.match(managerMessagingReviewSource, /최종 발송 언어/);
   assert.match(managerMessagingReviewSource, /attachedTranslation\?\.langLabel \?\? "한국어"/);
-  assert.match(managerMessagingReviewSource, /최종 언어/);
+  assert.match(managerMessagingReviewSource, /최종 발송 언어/);
   assert.doesNotMatch(managerMessagingReviewSource, /D21 주요 언어 번역 미리보기/);
   assert.doesNotMatch(managerMessagingReviewSource, /주요 언어 검수 완료/);
   assert.doesNotMatch(managerMessagingReviewSource, /label="번역 검수"/);
+});
+
+test("manager announcement send keeps business errors inside the review screen", () => {
+  assert.match(managerMessagingSendFormSource, /useActionState/);
+  assert.match(managerMessagingSendFormSource, /role="alert"/);
+  assert.match(managerMessagingSendFormSource, /disabled=\{!canSend \|\| pending\}/);
+  assert.match(managerMessagingReviewActionSource, /error instanceof ApiError/);
+  assert.match(managerMessagingReviewActionSource, /return \{[\s\S]*?error:/);
+  assert.doesNotMatch(managerMessagingReviewActionSource, /throw error/);
+});
+
+test("manager announcement send makes the empty-recipient button visibly disabled", () => {
+  assert.match(managerMessagingSendFormSource, /!canSend \? "수신자 없음"/);
+  assert.match(managerMessagingSendFormSource, /background: "var\(--surface-container-highest\)"/);
+  assert.match(managerMessagingSendFormSource, /color: "var\(--on-surface-variant\)"/);
+  assert.match(managerMessagingSendFormSource, /cursor: "not-allowed"/);
+});
+
+test("manager announcement review labels the edit action concisely", () => {
+  assert.match(managerMessagingReviewSource, />수정<\/LinkButton>/);
+  assert.doesNotMatch(managerMessagingReviewSource, /수정하러/);
+});
+
+test("manager announcement review keeps only final delivery actions in the content column", () => {
+  for (const removedCopy of ["폰 read-only 미리보기", "문구 톤 체크", "확인 게이트"]) {
+    assert.doesNotMatch(managerMessagingReviewSource, new RegExp(removedCopy));
+  }
+  assert.match(managerMessagingReviewSource, /const reviewActions = \(/);
+  assert.match(managerMessagingReviewSource, /justifyContent: "flex-end"/);
+  assert.match(managerMessagingReviewSource, /\{!isUrgent \? reviewActions : null\}/);
+  assert.match(managerMessagingReviewSource, /\{isUrgent \? \([\s\S]*?최종 발송 언어[\s\S]*?\{reviewActions\}[\s\S]*?\) : null\}/);
+  assert.doesNotMatch(managerMessagingReviewSource, /<aside/);
 });
 
 test("renders a mobile real-estate app shell with search, map list, and listing detail sections", () => {
