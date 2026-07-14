@@ -377,6 +377,7 @@ function TenantLandlordChatModal({
   thread,
   draft,
   isSending,
+  latestAnnouncement,
   onDraftChange,
   onClose,
   onSubmit
@@ -384,6 +385,7 @@ function TenantLandlordChatModal({
   thread: Thread;
   draft: string;
   isSending: boolean;
+  latestAnnouncement: Announcement | null;
   onDraftChange: (value: string) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -391,6 +393,7 @@ function TenantLandlordChatModal({
   const messages = thread.messages ?? [];
   const unitLabel = compactTenantThreadUnit(thread.unitId);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isNoticeOpen, setIsNoticeOpen] = useState(false);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -415,6 +418,25 @@ function TenantLandlordChatModal({
             <p>{unitLabel ? `${unitLabel} · ${thread.contextLabel ?? "일반 문의"}` : thread.contextLabel ?? "일반 문의"}</p>
           </div>
         </header>
+
+        {latestAnnouncement ? (
+          <section className="tenant-chat-modal-notice" aria-label="최근 공지사항">
+            <button type="button" onClick={() => setIsNoticeOpen((open) => !open)} aria-expanded={isNoticeOpen}>
+              <Megaphone size={18} strokeWidth={2.4} aria-hidden="true" />
+              <span>{latestAnnouncement.title}</span>
+              <ChevronRight size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            {isNoticeOpen ? (
+              <div className="tenant-chat-modal-notice-detail">
+                <strong>최근 공지</strong>
+                <p>{latestAnnouncement.body}</p>
+                <small>
+                  {latestAnnouncement.sender} · {tenancyDateLabel(latestAnnouncement.sentAt)}
+                </small>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         <main className="tenant-chat-modal-stream" aria-label="메시지 타임라인">
           {messages.length > 0 ? (
@@ -1452,6 +1474,7 @@ export default function TenantMyPage({
           thread={landlordChatThread}
           draft={landlordChatDraft}
           isSending={isLandlordMessageSending}
+          latestAnnouncement={announcementState.status === "ready" ? announcementState.announcement : null}
           onDraftChange={setLandlordChatDraft}
           onClose={closeLandlordChat}
           onSubmit={handleLandlordMessageSubmit}

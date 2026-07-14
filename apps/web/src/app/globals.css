@@ -12046,6 +12046,79 @@ p {
   font-weight: 850;
 }
 
+.tenant-chat-modal-notice {
+  flex: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.tenant-chat-modal-notice > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  border: 0;
+  padding: 0 18px;
+  background: var(--paper);
+  color: var(--ink);
+  text-align: left;
+}
+
+.tenant-chat-modal-notice > button svg:first-child {
+  color: var(--blue);
+}
+
+.tenant-chat-modal-notice > button svg:last-child {
+  color: var(--muted);
+  transform: rotate(90deg);
+}
+
+.tenant-chat-modal-notice > button[aria-expanded="true"] svg:last-child {
+  transform: rotate(-90deg);
+}
+
+.tenant-chat-modal-notice > button span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tenant-chat-modal-notice-detail {
+  display: grid;
+  gap: 8px;
+  margin: 0 14px 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--canvas);
+}
+
+.tenant-chat-modal-notice-detail strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.tenant-chat-modal-notice-detail p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.55;
+}
+
+.tenant-chat-modal-notice-detail small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .tenant-chat-modal-stream {
   flex: 1;
   min-height: 0;
