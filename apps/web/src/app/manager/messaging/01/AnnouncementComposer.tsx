@@ -344,11 +344,13 @@ export function AnnouncementComposer({
                 </div>
               ) : null}
 
-              <div className={styles.targetBox}>
-                <span>{target.targetLabel}</span>
-              </div>
-              <div className={styles.targetHint}>
-                공지 대상을 선택하세요.
+              <div className={styles.targetSummary}>
+                <div className={styles.targetBox}>
+                  <span>{target.targetLabel}</span>
+                </div>
+                <div className={styles.targetHint}>
+                  공지 대상을 선택하세요.
+                </div>
               </div>
             </div>
           </div>

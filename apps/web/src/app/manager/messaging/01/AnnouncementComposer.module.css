@@ -128,6 +128,13 @@
   gap: var(--space-md);
 }
 
+.targetSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--space-md);
+  align-items: stretch;
+}
+
 .selectWrap {
   position: relative;
 }
@@ -213,10 +220,16 @@
 }
 
 .targetHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  max-width: 100%;
   padding: var(--space-md) var(--space-lg);
   border: 1px dashed var(--outline-variant);
   color: var(--on-surface-variant);
   text-align: center;
+  white-space: nowrap;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
@@ -422,6 +435,14 @@
 
   .unitList {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .targetSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .targetHint {
+    justify-self: start;
   }
 
   .actionRow {

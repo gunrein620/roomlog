@@ -535,6 +535,22 @@ test("manager announcement compose edits targets and translates each language be
     managerMessagingComposeFeatureSource,
     /<div className=\{styles\.targetBox\}>\s*<span>\{target\.targetLabel\}<\/span>\s*<\/div>/,
   );
+  assert.match(
+    managerMessagingComposerSource,
+    /<div className=\{styles\.targetSummary\}>\s*<div className=\{styles\.targetBox\}>[\s\S]*?<div className=\{styles\.targetHint\}>\s*공지 대상을 선택하세요\.\s*<\/div>\s*<\/div>/,
+  );
+  assert.match(
+    managerMessagingComposerCssSource,
+    /\.targetSummary\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) max-content;/,
+  );
+  assert.match(
+    managerMessagingComposerCssSource,
+    /\.targetHint\s*\{[\s\S]*?width: max-content;[\s\S]*?white-space: nowrap;/,
+  );
+  assert.match(
+    managerMessagingComposerCssSource,
+    /@media \(max-width: 640px\)[\s\S]*?\.targetSummary\s*\{\s*grid-template-columns: 1fr;\s*\}/,
+  );
   assert.match(managerMessagingComposerSource, /공지 대상을 선택하세요\./);
   assert.doesNotMatch(
     managerMessagingComposerSource,
