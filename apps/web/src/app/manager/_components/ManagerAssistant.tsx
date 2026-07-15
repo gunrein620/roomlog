@@ -265,7 +265,7 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
         <header className="manager-assistant-dialog__header">
           <span className="manager-assistant-dialog__brand">
             <Bot aria-hidden="true" />
-            <strong id="manager-assistant-dialog-title">Woo-zu AI Assistant</strong>
+            <strong id="manager-assistant-dialog-title">Woo-zu AI 비서</strong>
           </span>
           <button
             type="button"
@@ -278,8 +278,8 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
         {session.stage === "choose" ? (
           <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
             <div className="manager-ai-mode-picker__copy">
-              <h2>Choose your consultation mode</h2>
-              <p>How would you like to talk with Woo-zu AI?</p>
+              <h2>상담 방식을 선택해 주세요</h2>
+              <p>Woo-zu AI와 어떻게 대화하시겠어요?</p>
             </div>
             <div className="manager-ai-mode-cards">
               <button
@@ -289,7 +289,7 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
                 <span className="manager-ai-mode-icon" aria-hidden="true">
                   <MessageSquare />
                 </span>
-                <strong>Text Chat</strong>
+                <strong>텍스트 채팅</strong>
                 <small>TEXT</small>
               </button>
               <button
@@ -299,7 +299,7 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
                 <span className="manager-ai-mode-icon" aria-hidden="true">
                   <Headphones />
                 </span>
-                <strong>Voice Call</strong>
+                <strong>음성 통화</strong>
                 <small>CALL</small>
               </button>
             </div>
