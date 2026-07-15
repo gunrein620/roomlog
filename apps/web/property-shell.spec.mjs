@@ -460,8 +460,15 @@ test("auto-refreshes open messaging thread details without infrastructure change
 });
 
 test("manager announcement compose edits targets and translates each language before review", () => {
-  assert.doesNotMatch(managerMessagingComposeSource, /LinkButton/);
+  assert.doesNotMatch(
+    managerMessagingComposeSource,
+    /actions=\{<LinkButton href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\} variant="secondary">\s*허브\s*<\/LinkButton>\}/,
+  );
   assert.doesNotMatch(managerMessagingComposeSource, />\s*허브\s*</);
+  assert.match(
+    managerMessagingResultSource,
+    /actions=\{<LinkButton href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\} variant="secondary">\s*허브\s*<\/LinkButton>\}/,
+  );
   assert.doesNotMatch(managerMessagingComposerSource, /발송은 다음 화면에서만/);
   assert.doesNotMatch(
     managerMessagingComposerSource,
