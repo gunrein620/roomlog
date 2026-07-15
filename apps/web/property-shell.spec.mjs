@@ -114,9 +114,17 @@ const managerMessagingSavedDraftListPath = new URL(
   "./src/app/manager/messaging/01/SavedAnnouncementDraftList.tsx",
   import.meta.url,
 );
-const managerMessagingSavedDraftListSource = existsSync(managerMessagingSavedDraftListPath)
-  ? readFileSync(managerMessagingSavedDraftListPath, "utf8")
+const managerMessagingSavedDraftModalPath = new URL(
+  "./src/app/manager/messaging/01/SavedAnnouncementDraftModal.tsx",
+  import.meta.url,
+);
+const managerMessagingSavedDraftModalSource = existsSync(managerMessagingSavedDraftModalPath)
+  ? readFileSync(managerMessagingSavedDraftModalPath, "utf8")
   : "";
+const managerSectionNavSource = readFileSync(
+  new URL("./src/app/manager/_components/ManagerSectionNav.tsx", import.meta.url),
+  "utf8",
+);
 const managerMessagingActionsSource = existsSync(managerMessagingActionsPath)
   ? readFileSync(managerMessagingActionsPath, "utf8")
   : "";
@@ -467,17 +475,27 @@ test("auto-refreshes open messaging thread details without infrastructure change
 });
 
 test("manager announcement compose edits targets and translates each language before review", () => {
-  assert.equal(existsSync(managerMessagingSavedDraftListPath), true);
+  assert.equal(existsSync(managerMessagingSavedDraftModalPath), true);
+  assert.equal(existsSync(managerMessagingSavedDraftListPath), false);
   assert.match(managerMessagingComposeSource, /listAnnouncementDrafts/);
-  assert.match(managerMessagingComposeSource, /<SavedAnnouncementDraftList drafts=\{drafts\} \/>/);
+  assert.match(managerSectionNavSource, /savedDraftsModalHref/);
+  assert.match(managerSectionNavSource, /aria-haspopup="dialog"/);
+  assert.match(managerSectionNavSource, />\s*<span>임시 저장<\/span>/);
+  assert.match(managerMessagingComposeSource, /drafts\?: string/);
+  assert.match(managerMessagingComposeSource, /<SavedAnnouncementDraftModal/);
+  assert.doesNotMatch(managerMessagingComposeSource, /<SavedAnnouncementDraftList/);
   assert.match(managerMessagingComposeSource, /<AnnouncementComposer\s+key=\{id \?\? "new"\}/);
-  assert.match(managerMessagingSavedDraftListSource, /임시 저장된 공지/);
-  assert.match(managerMessagingSavedDraftListSource, /임시 저장된 공지가 없습니다\./);
-  assert.match(managerMessagingSavedDraftListSource, /savedAnnouncementDraftTitle/);
-  assert.match(managerMessagingSavedDraftListSource, /formatDateTime\(draft\.updatedAt\)/);
-  assert.match(managerMessagingSavedDraftListSource, />\s*불러오기\s*<\/LinkButton>/);
+  assert.match(managerMessagingSavedDraftModalSource, /<dialog/);
+  assert.match(managerMessagingSavedDraftModalSource, /showModal\(\)/);
+  assert.match(managerMessagingSavedDraftModalSource, /aria-labelledby="manager-saved-drafts-title"/);
+  assert.match(managerMessagingSavedDraftModalSource, /onKeyDown=\{closeOnEscape\}/);
+  assert.match(managerMessagingSavedDraftModalSource, /event\.key !== "Escape"/);
+  assert.match(managerMessagingSavedDraftModalSource, /임시 저장된 공지가 없습니다\./);
+  assert.match(managerMessagingSavedDraftModalSource, /savedAnnouncementDraftTitle/);
+  assert.match(managerMessagingSavedDraftModalSource, /formatDateTime\(draft\.updatedAt\)/);
+  assert.match(managerMessagingSavedDraftModalSource, />\s*불러오기\s*<\/Link>/);
   assert.match(
-    managerMessagingSavedDraftListSource,
+    managerMessagingSavedDraftModalSource,
     /MANAGER_MESSAGING_ROUTES\["M-MSG-01"\][\s\S]*encodeURIComponent\(draft\.id\)/,
   );
   assert.doesNotMatch(

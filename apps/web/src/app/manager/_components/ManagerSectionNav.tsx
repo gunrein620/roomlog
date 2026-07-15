@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import type { MouseEvent } from "react";
 import { useRef } from "react";
 import { MANAGER_NAV_GROUPS, getManagerNavState } from "@/lib/manager-navigation";
+import { savedDraftsModalHref } from "./manager-section-nav-state";
 
 export function ManagerSectionNav() {
   const pathname = usePathname();
@@ -17,6 +18,7 @@ export function ManagerSectionNav() {
   const item = MANAGER_NAV_GROUPS.flatMap((group) => group.items).find(
     (candidate) => candidate.id === state.activeItemId,
   );
+  const savedDraftsHref = savedDraftsModalHref(pathname, searchParams);
   // 리퀴드 글래스 호버 인디케이터 — ref로 직접 스타일을 옮겨 리렌더 없이 부드럽게 미끄러지게 한다.
   const glassRef = useRef<HTMLSpanElement>(null);
 
@@ -80,6 +82,15 @@ export function ManagerSectionNav() {
           {child.demo ? <span className="manager-section-nav__demo">데모</span> : null}
         </Link>
       ))}
+      {savedDraftsHref ? (
+        <Link
+          href={savedDraftsHref}
+          aria-haspopup="dialog"
+          onMouseEnter={(event) => slideGlassTo(event.currentTarget)}
+        >
+          <span>임시 저장</span>
+        </Link>
+      ) : null}
     </nav>
   );
 }
