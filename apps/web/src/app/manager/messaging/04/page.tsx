@@ -190,9 +190,6 @@ function ContextCard({ thread }: { thread: Thread }) {
         {thread.pendingRequest ? <Badge emphasis>추가요청 대기</Badge> : null}
       </div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>
-      <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: 1.5 }}>
-        연결된 업무: {thread.contextRef ?? thread.id} · 임차인에게도 같은 대화가 표시됩니다.
-      </div>
     </Card>
   );
 }

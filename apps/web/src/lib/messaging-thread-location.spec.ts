@@ -42,6 +42,12 @@ test("uses the shared location label on manager messaging list and detail pages"
   assert.match(detailPage, /aria-label=\{`\$\{locationLabel\}/);
 });
 
+test("hides the connected-work note while keeping the context title", () => {
+  assert.doesNotMatch(detailPage, /연결된 업무:/);
+  assert.doesNotMatch(detailPage, /임차인에게도 같은 대화가 표시됩니다\./);
+  assert.match(detailPage, /thread\.contextLabel \?\? "일반 문의"/);
+});
+
 test("keeps the reply-needed badge balanced on exactly two accessible lines", () => {
   assert.match(listPage, /aria-label="답장 필요"/);
   assert.match(listPage, /<span>답장<\/span>/);
