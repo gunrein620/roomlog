@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { KakaoTalkLogoIcon } from "../_components/KakaoTalkLogoIcon";
+import { socialAuthErrorMessage } from "../_components/WoozuLoginScreen";
 
 const DEFAULT_REDIRECT = "/";
 
@@ -43,7 +44,7 @@ export default function SignupPage() {
     }
 
     if (authError) {
-      setError(authError);
+      setError(socialAuthErrorMessage(authError) ?? authError);
     }
   }, []);
 

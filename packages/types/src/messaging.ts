@@ -44,10 +44,11 @@ export interface Thread {
 }
 
 export interface CreateTenantMessagingThreadInput {
+  roomId?: string;
   context?: ThreadContext;
   contextRef?: string;
   contextLabel?: string;
-  body: string;
+  body?: string;
   kind?: MessageKind;
   attachmentUrls?: string[];
 }
@@ -55,6 +56,7 @@ export interface CreateTenantMessagingThreadInput {
 /** 세입자의 입주 연결을 기준으로 계산한 임대인 일반 대화 진입 정보. */
 export interface TenantLandlordConversation {
   threadId?: string;
+  roomId: string;
   buildingName: string;
   unitId: string;
   landlordName: string;

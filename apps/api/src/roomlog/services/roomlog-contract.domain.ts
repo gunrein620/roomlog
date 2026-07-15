@@ -110,9 +110,10 @@ export class RoomlogContractDomain {
     return this.tenantContracts(tenantId).map((contract) => this.presentContract(contract));
   }
 
-  getTenantCurrentContract(tenantId: string): Contract | null {
-    const roomId = this.store.tenantRooms[tenantId];
+  getTenantCurrentContract(tenantId: string, selectedRoomId?: string): Contract | null {
+    const roomId = selectedRoomId?.trim() || this.store.tenantRooms[tenantId];
     if (!roomId) return null;
+    if (!this.canTenantAccessRoom(tenantId, roomId)) return null;
 
     const room = this.findRoom(roomId);
     const today = this.todayInSeoulKey();
@@ -143,6 +144,13 @@ export class RoomlogContractDomain {
       )[0];
 
     return current ? this.presentContract(current) : null;
+  }
+
+  private canTenantAccessRoom(tenantId: string, roomId: string): boolean {
+    return (
+      this.store.tenantRooms[tenantId] === roomId ||
+      this.tenantContracts(tenantId).some((contract) => contract.roomId === roomId)
+    );
   }
 
   getTenantContract(tenantId: string, contractId: string): Contract {
