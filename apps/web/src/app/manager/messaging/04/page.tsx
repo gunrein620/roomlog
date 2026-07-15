@@ -9,7 +9,6 @@ import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
-  NoticeCard,
   ScreenHeader,
   StaticButton,
   formatDateTime,
@@ -83,7 +82,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   const thread = await getRequiredManagerThread(id);
   const messages = thread.messages ?? [];
-  const isPayment = thread.context === "payment";
   const locationLabel = formatThreadLocation(thread);
 
   return (
@@ -141,23 +139,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </div>
 
         <aside style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
-          <NoticeCard title="추가 요청">
-            사진 또는 설명 요청은 임차인 T-MSG-01 상단에 고정되고, 하자 맥락이면 T-DEF-11에도 반영됩니다.
-          </NoticeCard>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
             <StaticButton>사진 요청</StaticButton>
             <StaticButton>설명 요청</StaticButton>
           </div>
-
-          {isPayment ? (
-            <NoticeCard title="청구 맥락 톤 가드" emphasis>
-              이 채팅은 문의 해결용입니다. 관리인발 독촉 문구, 납부 압박, 미납 낙인 표현은 보낼 수 없습니다.
-            </NoticeCard>
-          ) : (
-            <NoticeCard title="맥락 톤">
-              연결된 업무 맥락을 유지하되, 공지와 채팅을 섞어 발송하지 않습니다.
-            </NoticeCard>
-          )}
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitleStyle}>AI 답장 초안</div>
@@ -167,9 +152,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <StaticButton>초안 적용</StaticButton>
           </Card>
 
-          <NoticeCard title="음성 답장 확인 1스텝" emphasis>
-            음성 받아쓰기는 바로 전송하지 않고 텍스트 확인 화면을 거친 뒤 보냅니다.
-          </NoticeCard>
           <StaticButton>음성 받아쓰기 → 텍스트 확인</StaticButton>
         </aside>
       </div>
