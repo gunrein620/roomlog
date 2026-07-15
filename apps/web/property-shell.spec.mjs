@@ -636,6 +636,8 @@ test("manager announcement review keeps only final delivery actions in the conte
   for (const removedCopy of ["폰 read-only 미리보기", "문구 톤 체크", "확인 게이트"]) {
     assert.doesNotMatch(managerMessagingReviewSource, new RegExp(removedCopy));
   }
+  assert.doesNotMatch(managerMessagingReviewSource, /체크 완료/);
+  assert.doesNotMatch(managerMessagingReviewSource, /\bStaticButton\b/);
   assert.match(managerMessagingReviewSource, /const reviewActions = \(/);
   assert.match(managerMessagingReviewSource, /justifyContent: "flex-end"/);
   assert.match(managerMessagingReviewSource, /\{!isUrgent \? reviewActions : null\}/);
