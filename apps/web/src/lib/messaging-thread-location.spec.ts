@@ -56,16 +56,25 @@ test("hides secondary context badges while keeping primary context", () => {
   assert.match(detailPage, /thread\.contextLabel \?\? "일반 문의"/);
 });
 
-test("hides guidance cards while keeping their actions", () => {
-  assert.doesNotMatch(detailPage, /추가 요청/);
-  assert.doesNotMatch(detailPage, /맥락 톤/);
-  assert.doesNotMatch(detailPage, /청구 맥락 톤 가드/);
-  assert.doesNotMatch(detailPage, /음성 답장 확인 1스텝/);
-  assert.match(detailPage, /<StaticButton>사진 요청<\/StaticButton>/);
-  assert.match(detailPage, /<StaticButton>설명 요청<\/StaticButton>/);
-  assert.match(detailPage, /<StaticButton>음성 받아쓰기 → 텍스트 확인<\/StaticButton>/);
-  assert.match(detailPage, />AI 답장 초안<\/div>/);
-  assert.match(detailPage, /<StaticButton>초안 적용<\/StaticButton>/);
+test("removes non-working messaging actions and their empty side rail", () => {
+  for (const text of [
+    "사진 요청",
+    "설명 요청",
+    "AI 답장 초안",
+    "초안 적용",
+    "음성 받아쓰기 → 텍스트 확인",
+  ]) {
+    assert.doesNotMatch(detailPage, new RegExp(text));
+  }
+
+  assert.doesNotMatch(detailPage, /StaticButton/);
+  assert.doesNotMatch(detailPage, /<aside/);
+  assert.doesNotMatch(detailPage, /340px/);
+  assert.match(detailPage, /<ManagerThreadReadReceipt threadId=\{thread\.id\} \/>/);
+  assert.match(detailPage, /<MessageAutoRefresh intervalMs=\{3000\} \/>/);
+  assert.match(detailPage, />메시지 타임라인<\/div>/);
+  assert.match(detailPage, /<Input name="body"/);
+  assert.match(detailPage, /<Button type="submit">답장 보내기<\/Button>/);
 });
 
 test("keeps the reply-needed badge balanced on exactly two accessible lines", () => {
