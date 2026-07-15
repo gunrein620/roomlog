@@ -8023,6 +8023,21 @@ p {
   font-size: 20px;
   font-weight: 800;
   line-height: 1.56;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.tenant-ai-message.system {
+  justify-content: center;
+}
+
+.tenant-ai-message.system .tenant-ai-bubble {
+  max-width: 92%;
+  background: color-mix(in srgb, var(--canvas) 62%, var(--paper));
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-align: center;
 }
 
 .tenant-ai-message.assistant .tenant-ai-bubble {
@@ -8033,6 +8048,59 @@ p {
   border-top-right-radius: 4px;
   background: var(--blue);
   color: var(--paper);
+}
+
+.tenant-ai-finalize-button {
+  justify-self: center;
+  min-height: 50px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: var(--paper);
+  font-size: 1rem;
+  font-weight: 900;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--blue) 28%, transparent);
+}
+
+.tenant-ai-finalize-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.tenant-ai-voice-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--canvas) 62%, var(--paper));
+}
+
+.tenant-ai-voice-controls p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  font-weight: 850;
+}
+
+.tenant-ai-voice-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: var(--paper);
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.tenant-ai-voice-button.is-disconnect {
+  background: color-mix(in srgb, var(--ink) 78%, var(--blue));
 }
 
 .tenant-ai-call-note {

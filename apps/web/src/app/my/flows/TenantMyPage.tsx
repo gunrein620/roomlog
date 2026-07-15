@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
-import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
+import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
@@ -19,8 +19,8 @@ import {
   type TenantBillingCardModel,
 } from "./tenant-current-bill";
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
+import { useTenantAiAssistant } from "./useTenantAiAssistant";
 
-const TENANT_AI_GREETING = "안녕하세요! 우주(Woo-zu) AI 어시스턴트입니다. 무엇을 도와드릴까요?";
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   current: null,
   upcoming: null,
@@ -137,12 +137,6 @@ type TenantAnnouncementState =
 
 type TenantAiMode = "text" | "call";
 type TenantAiStage = "choose" | "text" | "voice";
-
-type TenantAiMessage = {
-  id: string;
-  sender: "assistant" | "tenant";
-  text: string;
-};
 
 // 계약 조건 한 줄 표기 — 실제 연결된 계약이 없으면 위조하지 않고 그 사실을 그대로 알린다.
 function tenancyTermsLabel(contract: TenantContractSummary | null): string {
@@ -782,15 +776,28 @@ export default function TenantMyPage({
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
   const [aiMode, setAiMode] = useState<TenantAiMode>("text");
   const [aiDraft, setAiDraft] = useState("");
-  const [aiMessages, setAiMessages] = useState<TenantAiMessage[]>([
-    { id: "tenant-ai-welcome", sender: "assistant", text: TENANT_AI_GREETING }
-  ]);
+  const aiMessagesRef = useRef<HTMLDivElement>(null);
   const [tenantToast, setTenantToast] = useState("");
 
   const showToast = (message: string) => {
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
   };
+
+  // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
+  const ai = useTenantAiAssistant({
+    roomId: tenancy && tenancy !== "loading" ? tenancy.roomId : undefined,
+    onComplaintFiled: () => {
+      showToast("민원/하자 요청이 접수되었습니다.");
+      void loadRepairRequests();
+    }
+  });
+
+  useEffect(() => {
+    const container = aiMessagesRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  }, [ai.messages.length, ai.busy, ai.readyToFinalize]);
 
   const openLandlordConversation = async () => {
     if (!tenancy || tenancy === "loading") {
@@ -1127,19 +1134,26 @@ export default function TenantMyPage({
   const handleAiSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextMessage = aiDraft.trim();
-    if (!nextMessage || aiStage === "choose" || aiMode !== "text") return;
+    if (!nextMessage || aiStage === "choose" || aiMode !== "text" || ai.busy) return;
 
-    const timestamp = Date.now();
-    setAiMessages((messages) => [
-      ...messages,
-      { id: `tenant-ai-user-${timestamp}`, sender: "tenant", text: nextMessage },
-      {
-        id: `tenant-ai-reply-${timestamp}`,
-        sender: "assistant",
-        text: "현재는 데모 상담 화면입니다. 실제 AI 응답이 연결되면 이 대화에서 이어서 도와드릴게요."
-      }
-    ]);
     setAiDraft("");
+    void ai.submitText(nextMessage);
+  };
+
+  const selectAiMode = (nextMode: TenantAiMode) => {
+    setAiMode(nextMode);
+    setAiStage(nextMode === "text" ? "text" : "voice");
+    if (nextMode === "text") {
+      ai.voice.disconnect();
+      void ai.startTextSession();
+    } else {
+      setAiDraft("");
+    }
+  };
+
+  const closeAiAssistant = () => {
+    ai.voice.disconnect();
+    setIsAiAssistantOpen(false);
   };
 
   return (
@@ -1337,8 +1351,12 @@ export default function TenantMyPage({
         className="tenant-ai-assist-button"
         type="button"
         onClick={() => {
+          if (isAiAssistantOpen) {
+            closeAiAssistant();
+            return;
+          }
           setAiStage("choose");
-          setIsAiAssistantOpen((isOpen) => !isOpen);
+          setIsAiAssistantOpen(true);
         }}
         aria-label={isAiAssistantOpen ? "AI 생활 도우미 닫기" : "AI 생활 도우미 열기"}
         aria-controls="tenant-ai-assistant-panel"
@@ -1363,7 +1381,7 @@ export default function TenantMyPage({
             <button
               className="tenant-ai-close-button"
               type="button"
-              onClick={() => setIsAiAssistantOpen(false)}
+              onClick={closeAiAssistant}
               aria-label="AI 생활 도우미 닫기"
             >
               <X size={20} strokeWidth={2.4} aria-hidden="true" />
@@ -1379,10 +1397,7 @@ export default function TenantMyPage({
                 <button
                   className="tenant-ai-mode-card"
                   type="button"
-                  onClick={() => {
-                    setAiMode("text");
-                    setAiStage("text");
-                  }}
+                  onClick={() => selectAiMode("text")}
                 >
                   <span className="tenant-ai-mode-icon" aria-hidden="true">
                     <MessageSquare size={38} strokeWidth={2.2} />
@@ -1393,11 +1408,7 @@ export default function TenantMyPage({
                 <button
                   className="tenant-ai-mode-card"
                   type="button"
-                  onClick={() => {
-                    setAiMode("call");
-                    setAiStage("voice");
-                    setAiDraft("");
-                  }}
+                  onClick={() => selectAiMode("call")}
                 >
                   <span className="tenant-ai-mode-icon" aria-hidden="true">
                     <Headphones size={40} strokeWidth={2.2} />
@@ -1410,8 +1421,8 @@ export default function TenantMyPage({
           ) : null}
           {aiStage !== "choose" ? (
             <>
-              <div className="tenant-ai-messages" aria-live="polite">
-                {aiMessages.map((message) => (
+              <div className="tenant-ai-messages" aria-live="polite" ref={aiMessagesRef}>
+                {ai.messages.map((message) => (
                   <div className={`tenant-ai-message ${message.sender}`} key={message.id}>
                     {message.sender === "assistant" ? (
                       <span className="tenant-ai-avatar" aria-hidden="true">
@@ -1421,20 +1432,60 @@ export default function TenantMyPage({
                     <p className="tenant-ai-bubble">{message.text}</p>
                   </div>
                 ))}
-                {aiMode === "call" ? (
+                {ai.busy ? (
                   <p className="tenant-ai-call-note" role="status">
-                    통화 모드에서는 메시지 입력 대신 음성 상담 상태를 이어서 확인합니다.
+                    AI가 내용을 정리하고 있어요...
                   </p>
                 ) : null}
+                {ai.readyToFinalize ? (
+                  <button
+                    className="tenant-ai-finalize-button"
+                    type="button"
+                    onClick={() => void ai.finalizeComplaint()}
+                    disabled={ai.busy}
+                  >
+                    이 내용으로 민원 접수하기
+                  </button>
+                ) : null}
               </div>
+              {aiMode === "call" ? (
+                <div className="tenant-ai-voice-controls">
+                  <p role="status" aria-live="polite">{ai.voice.statusLabel}</p>
+                  {ai.voice.status === "connected" || ai.voice.status === "connecting" ? (
+                    <button
+                      className="tenant-ai-voice-button is-disconnect"
+                      type="button"
+                      onClick={ai.voice.disconnect}
+                    >
+                      <PhoneOff size={18} strokeWidth={2.4} aria-hidden="true" />
+                      통화 종료
+                    </button>
+                  ) : (
+                    <button
+                      className="tenant-ai-voice-button"
+                      type="button"
+                      onClick={() => void ai.voice.connect()}
+                    >
+                      <Mic size={18} strokeWidth={2.4} aria-hidden="true" />
+                      통화 시작
+                    </button>
+                  )}
+                </div>
+              ) : null}
               <form className="tenant-ai-composer" onSubmit={handleAiSubmit}>
                 <input
                   type="text"
                   value={aiDraft}
                   onChange={(event) => setAiDraft(event.target.value)}
-                  placeholder={aiMode === "call" ? "통화 모드로 연결 준비 중..." : "메시지를 입력하세요..."}
+                  placeholder={
+                    aiMode === "call"
+                      ? "통화 모드에서는 음성으로 상담합니다"
+                      : ai.busy
+                        ? "AI 응답을 기다리는 중..."
+                        : "메시지를 입력하세요..."
+                  }
                   aria-label="AI 어시스턴트 메시지 입력"
-                  disabled={aiMode === "call"}
+                  disabled={aiMode === "call" || ai.busy}
                 />
                 <button
                   className="tenant-ai-mode-toggle"
@@ -1442,12 +1493,7 @@ export default function TenantMyPage({
                   role="switch"
                   aria-label="AI 상담 모드 전환"
                   aria-checked={aiMode === "call"}
-                  onClick={() => {
-                    const nextMode: TenantAiMode = aiMode === "text" ? "call" : "text";
-                    setAiMode(nextMode);
-                    setAiStage(nextMode === "text" ? "text" : "voice");
-                    if (nextMode === "call") setAiDraft("");
-                  }}
+                  onClick={() => selectAiMode(aiMode === "text" ? "call" : "text")}
                 >
                   <span>text</span>
                   <span className="tenant-ai-switch" aria-hidden="true">
@@ -1458,7 +1504,7 @@ export default function TenantMyPage({
                 <button
                   className="tenant-ai-send-button"
                   type="submit"
-                  disabled={aiMode === "call" || !aiDraft.trim()}
+                  disabled={aiMode === "call" || ai.busy || !aiDraft.trim()}
                   aria-label="AI 어시스턴트 메시지 보내기"
                 >
                   <Send size={22} strokeWidth={2.3} aria-hidden="true" />
