@@ -1492,8 +1492,13 @@ test("removes obvious mockup copy from the visible product shell", () => {
   assert.doesNotMatch(pageSource, /<code>NEXT_PUBLIC_NAVER_MAP_CLIENT_ID<\/code>/);
 });
 
-test("links the landlord 3D floor plan action to the dedicated creation page", () => {
-  assert.match(pageSource, /href="\/floor-plan-3d"/);
+test("links the landlord 3D floor plan action to the internal MitUNet page", () => {
+  assert.match(pageSource, /buildRoomlogMitunetEditorPath/);
+  assert.match(pageSource, /window\.location\.href = editorPath/);
+  assert.doesNotMatch(pageSource, /NEXT_PUBLIC_MITUNET_EDITOR_URL/);
+  assert.doesNotMatch(pageSource, /buildMitunetEditorUrl/);
+  assert.doesNotMatch(pageSource, /window\.open/);
+  assert.doesNotMatch(pageSource, /href="\/floor-plan-3d"/);
   assert.match(pageSource, /3D 도면 만들기/);
 
   assert.equal(existsSync(floorPlanPagePath), true, "3D 도면 생성 페이지가 있어야 합니다.");

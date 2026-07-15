@@ -5,6 +5,8 @@ import {
   formatDraftSavedAt,
   initialOwnerListings,
   parseOwnerDraft,
+  OWNER_DRAFT_STORAGE_KEY,
+  saveOwnerDraft,
   serializeOwnerDraft
 } from "./owner-draft";
 
@@ -34,6 +36,21 @@ describe("owner listing draft persistence", () => {
     assert.equal(restored.myListings.length, 2);
     assert.equal(restored.myListings[0].title, "성수 아뜰리에 501호");
     assert.equal(restored.ownerForm.detailAddress, "");
+  });
+
+  it("writes the current registration state synchronously before navigation", () => {
+    const entries = new Map<string, string>();
+    const storage = { setItem: (key: string, value: string) => entries.set(key, value) };
+    const savedAt = "2026-07-15T12:34:56.000Z";
+
+    const returnedSavedAt = saveOwnerDraft(storage, sampleState, savedAt);
+    const restored = parseOwnerDraft(entries.get(OWNER_DRAFT_STORAGE_KEY) ?? null);
+
+    assert.equal(returnedSavedAt, savedAt);
+    assert.ok(restored);
+    assert.equal(restored.ownerForm.title, sampleState.ownerForm.title);
+    assert.equal(restored.photoCount, sampleState.photoCount);
+    assert.equal(restored.has3DRoom, true);
   });
 
   it("fills detailAddress for legacy drafts that do not have it yet", () => {

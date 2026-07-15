@@ -13,6 +13,7 @@ import {
 } from "../floor-plan-3d/furniture-placement";
 import type { FurnitureCatalogItem, PlacedFurniture, WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import { RoomlogThreeFloorPlanView } from "../floor-plan-3d/room-scene/RoomlogThreeFloorPlanView";
+import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 
 export type ListingFloorPlanWall = {
   id: string;
@@ -40,6 +41,7 @@ export type ListingFloorPlan3D = {
   walls3D: ListingFloorPlanWall[];
   furnitures: ListingFloorPlanFurniture[];
   name?: string;
+  mitunet?: MitunetFloorPlan;
 };
 
 const TOUR_HORIZONTAL_SCALE = 1.85;
@@ -276,6 +278,7 @@ export default function ListingTourRoom3D({ floorPlan }: { floorPlan: ListingFlo
         furnitureVerticalScale={TOUR_HORIZONTAL_SCALE}
         hideHint
         horizontalScale={TOUR_HORIZONTAL_SCALE}
+        mitunetPlan={floorPlan.mitunet}
         orbitMinDistance={1.6}
         onFloorPointerDown={handleFloorPointerDown}
         onFloorPointerMove={handleFloorPointerMove}

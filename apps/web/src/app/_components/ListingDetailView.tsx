@@ -32,6 +32,7 @@ import {
   neighborhoodItems,
   optionItems,
   safetyReportItems,
+  shouldShow3DTourControls,
   type Listing
 } from "@/lib/listing-catalog";
 import { NaverMapPreview } from "./NaverMapPreview";
@@ -67,6 +68,7 @@ export function ListingDetailView({
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const detailAddressLabel = listingDetailAddressLabel(listing);
+  const has3DTour = shouldShow3DTourControls(listing);
   const safetyScore = listing.score.replace("안심 ", "");
   // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
   const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
@@ -171,10 +173,12 @@ export function ListingDetailView({
         </div>
         <div className="detail-address-detail">세부주소: {detailAddressLabel}</div>
         <div className="detail-quick-actions" aria-label="상세 빠른 액션">
-          <button type="button" onClick={() => setIsTourSheetOpen(true)}>
-            <span>3D</span>
-            <strong>투어 보기</strong>
-          </button>
+          {has3DTour ? (
+            <button type="button" onClick={() => setIsTourSheetOpen(true)}>
+              <span>3D</span>
+              <strong>투어 보기</strong>
+            </button>
+          ) : null}
           <button type="button" onClick={scrollToSafetyReport}>
             <span>{safetyScoreLabel}</span>
             <strong>안심 리포트</strong>
@@ -378,10 +382,12 @@ export function ListingDetailView({
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
         </button>
-        <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
-          <span>3D</span>
-          <strong>둘러보기</strong>
-        </button>
+        {has3DTour ? (
+          <button className="detail-contact-tour" type="button" onClick={() => setIsTourSheetOpen(true)}>
+            <span>3D</span>
+            <strong>둘러보기</strong>
+          </button>
+        ) : null}
         {/* 임시 데모용 — 1인칭 체험은 splat 투어 페이지로 바로 이동한다(woo-zu.com/splat-tour) */}
         <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
           <span>1인칭</span>
@@ -393,7 +399,7 @@ export function ListingDetailView({
         </button>
       </div>
 
-      {isTourSheetOpen ? (
+      {has3DTour && isTourSheetOpen ? (
         <div className="tour-sheet-backdrop" role="presentation" onClick={() => setIsTourSheetOpen(false)}>
           <section className="tour-sheet" role="dialog" aria-modal="true" aria-labelledby="tour-sheet-title" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-handle" aria-hidden="true" />

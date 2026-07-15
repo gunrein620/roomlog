@@ -8,8 +8,10 @@ import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
+import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 import { FURNITURE_CATALOG, getFurnitureDimensions } from "../furniture-placement";
 import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
+import { createMitunetSceneLayout, type MitunetSceneLayout, type MitunetScenePolygon } from "./mitunet-geometry";
 
 Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
   (modelUrl) => useGLTF.preload(modelUrl)
@@ -48,15 +50,18 @@ function computeWallBoundsXZ(wallsData: WheretoputWall3D[]) {
 }
 
 function RoomFloor({
+  boundsOverride,
   onFloorPointerDown,
   onFloorPointerMove,
   wallsData
 }: {
+  boundsOverride?: ReturnType<typeof computeWallBoundsXZ>;
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   wallsData: WheretoputWall3D[];
 }) {
-  const bounds = useMemo(() => computeWallBoundsXZ(wallsData), [wallsData]);
+  const computedBounds = useMemo(() => computeWallBoundsXZ(wallsData), [wallsData]);
+  const bounds = boundsOverride ?? computedBounds;
 
   return (
     <mesh
@@ -68,6 +73,60 @@ function RoomFloor({
       <planeGeometry args={[bounds.width, bounds.height]} />
       <meshLambertMaterial color="#f3d9a0" />
     </mesh>
+  );
+}
+
+function mitunetShape(polygon: MitunetScenePolygon) {
+  const shape = new THREE.Shape();
+  polygon.outer.forEach(([x, z], index) => {
+    if (index === 0) shape.moveTo(x, -z);
+    else shape.lineTo(x, -z);
+  });
+  shape.closePath();
+  polygon.holes.forEach((ring) => {
+    const hole = new THREE.Path();
+    ring.forEach(([x, z], index) => {
+      if (index === 0) hole.moveTo(x, -z);
+      else hole.lineTo(x, -z);
+    });
+    hole.closePath();
+    shape.holes.push(hole);
+  });
+  return shape;
+}
+
+function MitunetExtrudedLayer({
+  color,
+  height,
+  polygons,
+  y = 0
+}: {
+  color: string;
+  height: number;
+  polygons: MitunetScenePolygon[];
+  y?: number;
+}) {
+  const geometry = useMemo(
+    () => new THREE.ExtrudeGeometry(polygons.map(mitunetShape), { bevelEnabled: false, depth: height, steps: 1 }),
+    [height, polygons]
+  );
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  if (polygons.length === 0) return null;
+
+  return (
+    <mesh geometry={geometry} position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <meshLambertMaterial color={color} />
+    </mesh>
+  );
+}
+
+function MitunetFloorPlanMeshes({ layout }: { layout: MitunetSceneLayout }) {
+  return (
+    <>
+      <MitunetExtrudedLayer color="#f4f1eb" height={2.7} polygons={layout.wall} />
+      <MitunetExtrudedLayer color="#b77945" height={2.1} polygons={layout.door} />
+      <MitunetExtrudedLayer color="#8ecae6" height={1.15} polygons={layout.window} y={0.9} />
+    </>
   );
 }
 
@@ -262,10 +321,9 @@ function RoomOrbitControls({
 
 // 방 크기에 맞춰 카메라 거리를 자동 계산 — 고정 카메라로는 작은 방이 점처럼,
 // 큰 방이 화면 밖으로 나가므로, 진입/방 크기 변경 시 전체가 보이는 거리로 재배치한다.
-function RoomCameraAutoFit({ wallsData }: { wallsData: WheretoputWall3D[] }) {
+function RoomCameraAutoFit({ bounds }: { bounds: ReturnType<typeof computeWallBoundsXZ> }) {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
-  const bounds = useMemo(() => computeWallBoundsXZ(wallsData), [wallsData]);
   // 벽을 조금 옮길 때마다 카메라가 튀지 않게, 0.5m 단위로 반올림한 크기가 바뀔 때만 재배치한다.
   const boundsKey = `${Math.round(bounds.centerX * 2)}:${Math.round(bounds.centerZ * 2)}:${Math.round(Math.max(bounds.width, bounds.height) * 2)}`;
 
@@ -289,6 +347,7 @@ export function RoomlogThreeFloorPlanView({
   furnitureVerticalScale = 1,
   hideHint = false,
   horizontalScale = 1,
+  mitunetPlan,
   orbitMaxDistance = 42,
   orbitMinDistance = 5,
   onFloorPointerDown,
@@ -314,6 +373,7 @@ export function RoomlogThreeFloorPlanView({
   furnitureVerticalScale?: number;
   hideHint?: boolean;
   horizontalScale?: number;
+  mitunetPlan?: MitunetFloorPlan;
   orbitMaxDistance?: number;
   orbitMinDistance?: number;
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
@@ -332,7 +392,15 @@ export function RoomlogThreeFloorPlanView({
   wallsData: WheretoputWall3D[];
 }) {
   const sceneHorizontalScale = Math.max(0.1, horizontalScale);
-  const wallBounds = computeWallBoundsXZ(wallsData);
+  const mitunetLayout = useMemo(() => mitunetPlan ? createMitunetSceneLayout(mitunetPlan) : null, [mitunetPlan]);
+  const wallBounds = mitunetLayout
+    ? {
+        centerX: mitunetLayout.bounds.centerX,
+        centerZ: mitunetLayout.bounds.centerZ,
+        width: mitunetLayout.bounds.width,
+        height: mitunetLayout.bounds.depth
+      }
+    : computeWallBoundsXZ(wallsData);
 
   // dev(React StrictMode)에서 R3F의 초기 컨테이너 측정이 유실돼 캔버스가 300×150으로
   // 남고 씬이 그려지지 않는 경우가 있다. 마운트 직후 resize를 쏴서 재측정을 강제한다.
@@ -349,12 +417,18 @@ export function RoomlogThreeFloorPlanView({
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
       <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop}>
-        <RoomCameraAutoFit wallsData={wallsData} />
+        <RoomCameraAutoFit bounds={wallBounds} />
         <color attach="background" args={["#626260"]} />
         <ambientLight intensity={0.72} />
         <directionalLight intensity={1.4} position={[6, 12, 8]} />
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
-          <RoomFloor onFloorPointerDown={onFloorPointerDown} onFloorPointerMove={onFloorPointerMove} wallsData={wallsData} />
+          <RoomFloor
+            boundsOverride={mitunetLayout ? wallBounds : undefined}
+            onFloorPointerDown={onFloorPointerDown}
+            onFloorPointerMove={onFloorPointerMove}
+            wallsData={wallsData}
+          />
+          {mitunetLayout ? <MitunetFloorPlanMeshes layout={mitunetLayout} /> : null}
           {wallsData.map((wall) => (
             <WallMesh
               isSelected={String(selectedWallId ?? "") === String(wall.wall_id)}
