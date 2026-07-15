@@ -399,12 +399,12 @@ model UserAccount {
   updatedAt    DateTime   @updatedAt
 
   tenantRooms          TenantRoom[]
-  uploadedAttachments  Attachment[]          @relation("UploadedAttachments")
-  floorPlans           FloorPlan[]           @relation("OwnedFloorPlans")
-  intakeSessions       IntakeSession[]       @relation("TenantIntakeSessions")
-  complaints           Complaint[]           @relation("TenantComplaints")
-  tickets              Ticket[]              @relation("TenantTickets")
-  moveoutRequests      MoveoutRequest[]      @relation("TenantMoveouts")
+  uploadedAttachments  Attachment[]       @relation("UploadedAttachments")
+  floorPlans           FloorPlan[]        @relation("OwnedFloorPlans")
+  intakeSessions       IntakeSession[]     @relation("TenantIntakeSessions")
+  complaints           Complaint[]         @relation("TenantComplaints")
+  tickets              Ticket[]            @relation("TenantTickets")
+  moveoutRequests      MoveoutRequest[]    @relation("TenantMoveouts")
   moveInChecklistItems MoveInChecklistItem[]
   socialAccounts       SocialAccount[]
 
@@ -449,8 +449,8 @@ model Room {
   moveInChecklistItems MoveInChecklistItem[]
   bills                Bill[]
 
-  @@unique([buildingName, roomNo])
   @@index([landlordId])
+  @@unique([buildingName, roomNo])
 }
 
 model RoomWall {
@@ -485,27 +485,27 @@ model TenantRoom {
 }
 
 model Bill {
-  id                           String                   @id
-  roomId                       String?
-  unitId                       String
-  billingMonth                 String
-  status                       BillStatus               @default(DRAFT)
-  totalAmount                  Int
-  paidAmount                   Int                      @default(0)
-  dueDate                      DateTime
-  bankName                     String
-  accountNumber                String
-  accountHolder                String
-  correctionHistory            String[]                 @default([])
-  maintenanceFeeId             String?
-  depositConfirmationRequested Boolean                  @default(false)
-  items                        BillLineItem[]
-  reports                      PaymentReport[]
-  deposits                     Deposit[]
-  paymentTransactions          BillPaymentTransaction[]
-  room                         Room?                    @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  createdAt                    DateTime                 @default(now())
-  updatedAt                    DateTime                 @updatedAt
+  id                             String         @id
+  roomId                         String?
+  unitId                         String
+  billingMonth                   String
+  status                         BillStatus     @default(DRAFT)
+  totalAmount                    Int
+  paidAmount                     Int            @default(0)
+  dueDate                        DateTime
+  bankName                       String
+  accountNumber                  String
+  accountHolder                  String
+  correctionHistory              String[]       @default([])
+  maintenanceFeeId               String?
+  depositConfirmationRequested   Boolean        @default(false)
+  items                          BillLineItem[]
+  reports                        PaymentReport[]
+  deposits                       Deposit[]
+  paymentTransactions            BillPaymentTransaction[]
+  room                           Room?          @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  createdAt                      DateTime       @default(now())
+  updatedAt                      DateTime       @updatedAt
 
   @@index([unitId, billingMonth])
   @@index([roomId, billingMonth])
@@ -544,16 +544,16 @@ model PaymentReport {
 }
 
 model Deposit {
-  id                   String             @id
-  depositorName        String
-  amount               Int
-  depositedAt          DateTime
-  matchStatus          DepositMatchStatus @default(UNMATCHED)
-  matchedBillId        String?
-  guessedUnitId        String?
+  id            String             @id
+  depositorName String
+  amount        Int
+  depositedAt   DateTime
+  matchStatus   DepositMatchStatus @default(UNMATCHED)
+  matchedBillId String?
+  guessedUnitId String?
   paymentTransactionId String?
 
-  bill               Bill?                   @relation(fields: [matchedBillId], references: [id])
+  bill               Bill?                    @relation(fields: [matchedBillId], references: [id])
   paymentTransaction BillPaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
 
   @@index([matchStatus])
@@ -593,7 +593,7 @@ model BillPaymentAllocation {
   kind           BillLineItemKind
   amount         Int
 
-  transaction  BillPaymentTransaction @relation(fields: [transactionId], references: [id])
+  transaction BillPaymentTransaction @relation(fields: [transactionId], references: [id])
   billLineItem BillLineItem           @relation(fields: [billLineItemId], references: [id])
 
   @@index([transactionId])
@@ -601,22 +601,22 @@ model BillPaymentAllocation {
 }
 
 model MaintenanceFee {
-  id           String               @id
-  unitId       String
-  billingMonth String
-  totalAmount  Int
-  available    Boolean              @default(false)
-  items        MaintenanceFeeItem[]
+  id            String               @id
+  unitId        String
+  billingMonth  String
+  totalAmount   Int
+  available     Boolean              @default(false)
+  items         MaintenanceFeeItem[]
 
   @@index([unitId, billingMonth])
 }
 
 model MaintenanceFeeItem {
-  id               String  @id
-  maintenanceFeeId String
-  label            String
-  amount           Int
-  receiptAvailable Boolean @default(false)
+  id                 String  @id
+  maintenanceFeeId   String
+  label              String
+  amount             Int
+  receiptAvailable   Boolean @default(false)
 
   fee MaintenanceFee @relation(fields: [maintenanceFeeId], references: [id])
 
@@ -701,11 +701,11 @@ model Contract {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
-  room            Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  documents       ContractDocument[]
-  extraction      ContractExtraction?
-  privacy         ContractPrivacy?
-  invites         ContractInvite[]
+  room       Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  documents  ContractDocument[]
+  extraction ContractExtraction?
+  privacy    ContractPrivacy?
+  invites    ContractInvite[]
   moveoutRequests MoveoutRequest[]
 
   @@index([roomId])
@@ -757,10 +757,10 @@ model ContractPrivacy {
 }
 
 model ContractInvite {
-  id                 String    @id
+  id                 String   @id
   contractId         String
   roomId             String
-  inviteToken        String    @unique
+  inviteToken        String   @unique
   invitedByManagerId String
   tenantName         String
   email              String?
@@ -768,7 +768,7 @@ model ContractInvite {
   state              String
   signupUrl          String
   audit              String
-  createdAt          DateTime  @default(now())
+  createdAt          DateTime @default(now())
   acceptedAt         DateTime?
   acceptedByUserId   String?
 
@@ -780,14 +780,14 @@ model ContractInvite {
 }
 
 model Attachment {
-  id         String             @id
-  uploadedBy String
-  fileName   String
-  fileUrl    String
-  mimeType   String
-  sizeBytes  Int
-  category   AttachmentCategory
-  createdAt  DateTime           @default(now())
+  id          String             @id
+  uploadedBy  String
+  fileName    String
+  fileUrl     String
+  mimeType    String
+  sizeBytes   Int
+  category    AttachmentCategory
+  createdAt   DateTime           @default(now())
 
   uploader UserAccount @relation("UploadedAttachments", fields: [uploadedBy], references: [id])
 
@@ -877,8 +877,8 @@ model IntakeSession {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
-  tenant   UserAccount     @relation("TenantIntakeSessions", fields: [tenantId], references: [id])
-  room     Room            @relation(fields: [roomId], references: [id])
+  tenant  UserAccount     @relation("TenantIntakeSessions", fields: [tenantId], references: [id])
+  room    Room            @relation(fields: [roomId], references: [id])
   messages IntakeMessage[]
 
   @@index([tenantId, updatedAt])
@@ -956,7 +956,7 @@ model Ticket {
 }
 
 model AiAnalysis {
-  ticketId           String   @id
+  ticketId           String  @id
   summary            String
   category           String
   detailCategory     String?
@@ -997,26 +997,26 @@ model AiFeedback {
 }
 
 model RepairRequest {
-  id                   String            @id
-  ticketId             String
-  vendorId             String
-  status               RepairStatus
-  title                String
-  description          String
-  estimateAmount       Int?
-  estimateDescription  String?
-  costBearer           RepairCostBearer?
-  estimateApprovedAt   DateTime?
+  id                  String            @id
+  ticketId            String
+  vendorId            String
+  status              RepairStatus
+  title               String
+  description         String
+  estimateAmount      Int?
+  estimateDescription String?
+  costBearer          RepairCostBearer?
+  estimateApprovedAt  DateTime?
   estimateApprovalNote String?
-  scheduledAt          DateTime?
-  completedAt          DateTime?
-  completionNote       String?
-  completionPhotoUrls  String[]
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  scheduledAt         DateTime?
+  completedAt         DateTime?
+  completionNote      String?
+  completionPhotoUrls String[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  ticket   Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  vendor   VendorProfile   @relation(fields: [vendorId], references: [id])
+  ticket   Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  vendor   VendorProfile @relation(fields: [vendorId], references: [id])
   messages TicketMessage[]
 
   @@index([vendorId, status])
@@ -1043,7 +1043,7 @@ model Receipt {
 }
 
 model Cost {
-  id            String               @id
+  id            String                 @id
   managerId     String?
   date          DateTime
   item          String
@@ -1051,8 +1051,8 @@ model Cost {
   type          CostType
   scope         CostAttributionScope
   unitId        String?
-  status        CostStatus           @default(DRAFT)
-  verified      Boolean              @default(false)
+  status        CostStatus             @default(DRAFT)
+  verified      Boolean                @default(false)
   reviewReason  CostReviewReason?
   disclosure    DisclosureState?
   repairPayment RepairPaymentState?
@@ -1060,13 +1060,13 @@ model Cost {
   receiptId     String?
   supersedesId  String?
   voidReason    String?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
 
-  receipt    Receipt?     @relation(fields: [receiptId], references: [id])
-  supersedes Cost?        @relation("CostAmendments", fields: [supersedesId], references: [id])
-  amendments Cost[]       @relation("CostAmendments")
-  ocrs       ReceiptOcr[]
+  receipt   Receipt?     @relation(fields: [receiptId], references: [id])
+  supersedes Cost?       @relation("CostAmendments", fields: [supersedesId], references: [id])
+  amendments Cost[]      @relation("CostAmendments")
+  ocrs      ReceiptOcr[]
 
   @@index([managerId])
   @@index([status, date])
@@ -1122,20 +1122,20 @@ model TicketMessage {
 }
 
 model MessagingThread {
-  id                 String                 @id
-  roomId             String
-  unitId             String
-  tenantId           String
-  context            MessagingThreadContext
-  contextRef         String?
-  contextLabel       String?
-  lastMessage        String
-  unreadCount        Int                    @default(0)
-  managerUnreadCount Int                    @default(0)
-  pendingRequest     Boolean                @default(false)
-  archivedNotice     Boolean                @default(true)
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
+  id             String                 @id
+  roomId         String
+  unitId         String
+  tenantId       String
+  context        MessagingThreadContext
+  contextRef     String?
+  contextLabel   String?
+  lastMessage    String
+  unreadCount    Int                    @default(0)
+  managerUnreadCount Int                 @default(0)
+  pendingRequest Boolean                @default(false)
+  archivedNotice Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   messages MessagingMessage[]
 
@@ -1160,7 +1160,7 @@ model MessagingMessage {
 }
 
 model MessagingAnnouncementDraft {
-  id                 String                           @id
+  id                 String                          @id
   category           MessagingAnnouncementCategory
   scope              MessagingAnnouncementScope
   targetLabel        String
@@ -1168,11 +1168,11 @@ model MessagingAnnouncementDraft {
   title              String
   body               String
   translations       Json
-  confirmRequired    Boolean                          @default(false)
+  confirmRequired    Boolean                         @default(false)
   status             MessagingAnnouncementDraftStatus @default(DRAFT)
   createdByManagerId String
-  createdAt          DateTime                         @default(now())
-  updatedAt          DateTime                         @updatedAt
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
 
   @@index([createdByManagerId, updatedAt])
 }
@@ -1316,9 +1316,9 @@ model MoveoutRequest {
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
-  tenant     UserAccount               @relation("TenantMoveouts", fields: [tenantId], references: [id], onDelete: Cascade)
-  room       Room                      @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  contract   Contract?                 @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  tenant     UserAccount        @relation("TenantMoveouts", fields: [tenantId], references: [id], onDelete: Cascade)
+  room       Room               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  contract   Contract?          @relation(fields: [contractId], references: [id], onDelete: SetNull)
   records    MoveoutRecord[]
   checklist  MoveoutChecklistItem[]
   settlement MoveoutSettlement?
@@ -1332,16 +1332,16 @@ model MoveoutRequest {
 }
 
 model MoveoutRecord {
-  id                        String              @id
-  moveoutId                 String
-  source                    MoveoutRecordSource
-  title                     String
-  description               String
-  occurredAt                DateTime?
-  wearVerdict               MoveoutWearVerdict?
-  wearNote                  String?
-  moveinComparisonAvailable Boolean             @default(false)
-  createdAt                 DateTime            @default(now())
+  id                         String              @id
+  moveoutId                  String
+  source                     MoveoutRecordSource
+  title                      String
+  description                String
+  occurredAt                 DateTime?
+  wearVerdict                MoveoutWearVerdict?
+  wearNote                   String?
+  moveinComparisonAvailable  Boolean             @default(false)
+  createdAt                  DateTime            @default(now())
 
   moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
 
@@ -1430,17 +1430,17 @@ model MoveoutDisputeEvent {
 }
 
 model MoveoutReportAuditEntry {
-  id             String                      @id
+  id             String                       @id
   moveoutId      String
   recordItemId   String
   action         MoveoutWearAdjustmentAction
   fromVerdict    MoveoutWearVerdict?
   toVerdict      MoveoutWearVerdict?
   evidenceNote   String
-  tenantNotified Boolean                     @default(false)
+  tenantNotified Boolean                      @default(false)
   managerName    String
   managerId      String
-  createdAt      DateTime                    @default(now())
+  createdAt      DateTime                     @default(now())
 
   moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
 
@@ -1449,14 +1449,14 @@ model MoveoutReportAuditEntry {
 }
 
 model StatusHistory {
-  id          String            @id
+  id          String   @id
   ticketId    String
   fromStatus  String?
   toStatus    String
   actorUserId String
   actorRole   MessageSenderRole
   note        String
-  createdAt   DateTime          @default(now())
+  createdAt   DateTime @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
@@ -1466,20 +1466,20 @@ model StatusHistory {
 // 원격 3D 투어용 Gaussian Splat 자산. 문서: docs/remote-3d-tour.md §4.
 // 도면(FloorPlan)과 각각 선택적 자산 — 둘 다 있고 transform이 붙으면 하이브리드 해금(§5).
 model SplatAsset {
-  id                String           @id
-  roomId            String
-  listingId         String? // 직접등록 매물(TradeListing, JSON 스토어라 FK 없음) 연결
-  floorPlanId       String? // 정합 대상 도면. 있으면 미니맵/프리셋/클립 해금
-  fileUrl           String // .spz/.sog 경로
-  fileKind          String           @default("spz")
-  sizeBytes         Int?
-  videoUrl          String? // PROCESSING 접수 시 원본 영상 경로
-  status            SplatAssetStatus @default(UPLOADED)
-  transform         Json? // SplatTransform (tour-types.ts). null이면 미정합
+  id          String           @id
+  roomId      String
+  listingId   String? // 직접등록 매물(TradeListing, JSON 스토어라 FK 없음) 연결
+  floorPlanId String? // 정합 대상 도면. 있으면 미니맵/프리셋/클립 해금
+  fileUrl     String // .spz/.sog 경로
+  fileKind    String           @default("spz")
+  sizeBytes   Int?
+  videoUrl    String? // PROCESSING 접수 시 원본 영상 경로
+  status      SplatAssetStatus @default(UPLOADED)
+  transform   Json? // SplatTransform (tour-types.ts). null이면 미정합
   registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용
-  capturedAt        DateTime? // 촬영 시각 메타 (§7 편향 표기용)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  capturedAt  DateTime? // 촬영 시각 메타 (§7 편향 표기용)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   room      Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
   floorPlan FloorPlan? @relation(fields: [floorPlanId], references: [id])
