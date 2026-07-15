@@ -1969,6 +1969,7 @@ function createDemoStore(): Store {
         contextLabel: "생활 문의",
         lastMessage: "확인 후 오늘 안으로 답변드리겠습니다.",
         unreadCount: 1,
+        managerUnreadCount: 0,
         pendingRequest: false,
         archivedNotice: true,
         createdAt,
@@ -3763,6 +3764,7 @@ export class RoomlogService {
         contextLabel,
         lastMessage: text,
         unreadCount: 0,
+        managerUnreadCount: 0,
         pendingRequest: false,
         archivedNotice: true,
         createdAt,
@@ -7947,6 +7949,10 @@ export class RoomlogService {
     return this.messaging.getManagerMessagingThread(managerId, threadId);
   }
 
+  markManagerMessagingThreadRead(managerId: string, threadId: string) {
+    return this.messaging.markManagerMessagingThreadRead(managerId, threadId);
+  }
+
   addManagerMessagingThreadMessage(
     managerId: string,
     threadId: string,
@@ -9298,7 +9304,8 @@ export class RoomlogService {
         ...thread,
         archivedNotice: thread.archivedNotice ?? true,
         pendingRequest: thread.pendingRequest ?? false,
-        unreadCount: thread.unreadCount ?? 0
+        unreadCount: thread.unreadCount ?? 0,
+        managerUnreadCount: thread.managerUnreadCount ?? 0
       })),
       messagingMessages: (parsed.messagingMessages ?? []).map((message) => ({
         ...message,

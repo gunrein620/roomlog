@@ -18,6 +18,7 @@ function thread(id: string, buildingName?: string): Thread {
     context: "general",
     lastMessage: "문의",
     unreadCount: 0,
+    managerUnreadCount: 0,
     pendingRequest: false,
     archivedNotice: true,
     updatedAt: "2026-07-11T12:00:00+09:00",

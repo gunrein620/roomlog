@@ -3889,6 +3889,74 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("tracks and clears manager unread general inquiry messages", () => {
+    const service = new RoomlogService();
+    const manager = service.signup({
+      email: "manager-unread@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "미확인 관리자",
+      phone: "010-8100-1000",
+      role: "LANDLORD",
+      buildingName: "미확인 빌라",
+      roomNo: "101호",
+      address: "서울시 성동구 미확인로 1"
+    } as any);
+    const tenant = service.signup({
+      email: "tenant-unread@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "문의 임차인",
+      phone: "010-8100-2000",
+      role: "TENANT",
+      buildingName: "미확인 빌라",
+      roomNo: "101호",
+      address: "서울시 성동구 미확인로 1"
+    } as any);
+
+    const thread = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      body: "확인 부탁드립니다."
+    });
+    assert.equal(thread.managerUnreadCount, 1);
+
+    const second = service.addTenantMessagingThreadMessage(tenant.userId, thread.id, {
+      body: "한 번 더 문의드립니다."
+    });
+    assert.equal(second.managerUnreadCount, 2);
+
+    service.addManagerMessagingThreadMessage(manager.userId, thread.id, {
+      body: "확인하겠습니다."
+    });
+    assert.equal(
+      service.getManagerMessagingThread(manager.userId, thread.id).managerUnreadCount,
+      2
+    );
+
+    const read = service.markManagerMessagingThreadRead(manager.userId, thread.id);
+    assert.equal(read.managerUnreadCount, 0);
+    assert.equal(
+      service.listManagerMessagingThreads(manager.userId, "general")[0]?.managerUnreadCount,
+      0
+    );
+
+    const otherManager = service.signup({
+      email: "other-unread-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "외부 관리자",
+      phone: "010-8100-3000",
+      role: "LANDLORD",
+      buildingName: "외부 빌라",
+      roomNo: "1호",
+      address: "서울시 성동구 외부로 1"
+    } as any);
+    assert.throws(
+      () => service.markManagerMessagingThreadRead(otherManager.userId, thread.id),
+      /메시지 스레드를 찾을 수 없습니다/
+    );
+  });
+
   it("links tenant landlord inquiry to the manager messaging thread", () => {
     const service = new RoomlogService();
     const existing = service
