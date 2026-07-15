@@ -30,7 +30,8 @@ export function TourCamera({
   onArrive,
   walkMode = false,
   onCameraMove,
-  walkBounds = null
+  walkBounds = null,
+  spawnView = null
 }: {
   presets: TourPreset[];
   activeId: string;
@@ -40,8 +41,12 @@ export function TourCamera({
   onCameraMove?: (position: [number, number, number]) => void;
   // 실도면 경계(있으면) — 걷기 이동을 이 안으로 클램프. 없으면 플레이스홀더 방 박스.
   walkBounds?: PlanBounds | null;
+  // 투어가 열릴 때 스냅할 초기 시점. 프리셋(현관/방중앙/창가)과 별개 — activeId가 어떤
+  // 프리셋과도 안 맞을 때(스폰 상태)만 마운트 1회 적용한다. null이면 기존 프리셋 스폰 유지.
+  spawnView?: { position: [number, number, number]; target: [number, number, number] } | null;
 }) {
   const controlsRef = useRef<ComponentRef<typeof CameraControls>>(null);
+  const spawnAppliedRef = useRef(false);
   const transitionTokenRef = useRef(0);
   const walkModeRef = useRef(walkMode);
   const walkKeysRef = useRef(new Set<string>());
@@ -252,6 +257,21 @@ export function TourCamera({
     lastReportedRef.current = next;
     onCameraMove(next);
   });
+
+  // 스폰 스냅: 프리셋 전환과 별개로, 투어가 열릴 때 지정 시점으로 한 번 순간이동한다.
+  // activeId가 프리셋에 매칭되면(사용자가 버튼을 눌렀거나 프리셋 스폰이면) 그 전환이 담당하므로 건너뛴다.
+  useEffect(() => {
+    if (spawnAppliedRef.current || !spawnView) return;
+    const controls = controlsRef.current;
+    if (!controls) return;
+    if (presets.some((preset) => preset.id === activeId)) return;
+
+    spawnAppliedRef.current = true;
+    const limits = calculateTourCameraRigLimits(spawnView.position, spawnView.target);
+    configureControls(controls, limits, walkModeRef.current);
+    void applyLookAt(controls, spawnView, false);
+    controls.update(0);
+  }, [spawnView, presets, activeId]);
 
   return <CameraControls makeDefault ref={controlsRef} />;
 }
