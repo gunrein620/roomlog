@@ -90,6 +90,12 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.doesNotMatch(assistant, /상담 방식을 선택해 주세요/);
   assert.match(assistant, /role="log"/);
   assert.match(assistant, /aria-live="polite"/);
+  assert.match(assistant, /ref=\{transcriptRef\}/);
+  assert.match(assistant, /onScroll=\{updateTranscriptStickiness\}/);
+  assert.match(assistant, /shouldManagerAssistantStickToBottom/);
+  assert.match(assistant, /requestAnimationFrame/);
+  assert.match(assistant, /cancelAnimationFrame/);
+  assert.match(assistant, /scrollTranscriptToBottom/);
   assert.match(assistant, /useManagerAssistantSession/);
   assert.match(assistant, /useManagerRealtimeSession/);
   assert.match(assistant, /session\.submitText/);

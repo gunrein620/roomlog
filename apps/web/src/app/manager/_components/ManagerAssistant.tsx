@@ -23,6 +23,7 @@ import {
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { MANAGER_TICKET_ROUTES } from "@/lib/ticket-manager-nav";
 import { ManagerAssistantActionCard } from "./ManagerAssistantActionCard";
+import { shouldManagerAssistantStickToBottom } from "./manager-assistant-scroll";
 import { useManagerAssistantSession } from "./useManagerAssistantSession";
 import { useManagerRealtimeSession } from "./useManagerRealtimeSession";
 
@@ -116,6 +117,8 @@ export function ManagerAssistantPanel({
 
 export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
   const session = useManagerAssistantSession();
   const realtime = useManagerRealtimeSession({
     appendEntry: session.appendVoiceEntry,
@@ -139,6 +142,43 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
       stopTalking();
     };
   }, []);
+
+  useEffect(() => {
+    shouldStickToBottomRef.current = true;
+  }, [session.stage, session.mode]);
+
+  useEffect(() => {
+    if (session.stage !== "conversation" || !shouldStickToBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(scrollTranscriptToBottom);
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    session.entries.length,
+    session.pendingAction,
+    session.notice,
+    session.stage,
+    session.mode,
+  ]);
+
+  function openAssistant() {
+    shouldStickToBottomRef.current = true;
+    dialogRef.current?.showModal();
+    window.requestAnimationFrame(scrollTranscriptToBottom);
+  }
+
+  function updateTranscriptStickiness() {
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
+
+    shouldStickToBottomRef.current = shouldManagerAssistantStickToBottom(transcript);
+  }
+
+  function scrollTranscriptToBottom() {
+    const transcript = transcriptRef.current;
+    if (!transcript) return;
+
+    transcript.scrollTo({ top: transcript.scrollHeight, behavior: "smooth" });
+  }
 
   function closeAssistant() {
     realtime.disconnect();
@@ -207,7 +247,7 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
             aria-label="AI 관리 비서 열기"
             aria-haspopup="dialog"
             aria-controls="manager-assistant-dialog"
-            onClick={() => dialogRef.current?.showModal()}
+            onClick={openAssistant}
           >
             <Bot aria-hidden="true" />
             <span>AI 비서</span>
@@ -266,7 +306,13 @@ export function ManagerAssistantLauncher(_props: ManagerAssistantLauncherProps) 
           </section>
         ) : (
           <section className="manager-ai-conversation" aria-label="AI 관리 비서 대화">
-            <div className="manager-ai-transcript" role="log" aria-live="polite">
+            <div
+              ref={transcriptRef}
+              className="manager-ai-transcript"
+              role="log"
+              aria-live="polite"
+              onScroll={updateTranscriptStickiness}
+            >
               {session.entries.length ? (
                 session.entries.map((entry) =>
                   entry.kind === "receipt" ? (
