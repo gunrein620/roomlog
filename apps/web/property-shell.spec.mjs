@@ -537,7 +537,32 @@ test("manager announcement compose edits targets and translates each language be
   );
   assert.match(
     managerMessagingComposerSource,
-    /<div className=\{styles\.targetSummary\}>\s*<div className=\{styles\.targetBox\}>[\s\S]*?<div className=\{styles\.targetHint\}>\s*공지 대상을 선택하세요\.\s*<\/div>\s*<\/div>/,
+    /const \[hasScopeSelection, setHasScopeSelection\] = useState\(Boolean\(draftId\)\);/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /const calculatedTarget = buildAnnouncementTarget\(/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /const target = hasScopeSelection\s*\? calculatedTarget\s*:\s*\{ targetRoomIds: \[\], targetLabel: "" \};/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /const hasValidTarget = target\.targetRoomIds\.length > 0;/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /checked=\{hasScopeSelection && scope === option\.value\}/,
+  );
+  assert.match(managerMessagingComposerSource, /setHasScopeSelection\(true\)/);
+  assert.match(
+    managerMessagingComposerSource,
+    /hasScopeSelection && \(scope === "building" \|\| scope === "unit"\)/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /<div className=\{styles\.targetSummary\}>\s*\{hasValidTarget \? \(\s*<div className=\{styles\.targetBox\}>[\s\S]*?\) : \(\s*<div className=\{styles\.targetHint\}>\s*공지 대상을 선택하세요\.\s*<\/div>\s*\)\}\s*<\/div>/,
   );
   assert.match(
     managerMessagingComposerCssSource,
