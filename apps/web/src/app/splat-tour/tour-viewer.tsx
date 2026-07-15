@@ -21,12 +21,18 @@ import { getSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
 import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import type { SplatTransform } from "./tour-types";
 
-// home_clean.spz: Scaniverse 집 스캔의 플로터 제거판을 SPZ v3(gzip)로 압축한 8.7MB 샘플
-// (--spz-version 3 산출 — Spark 2.1.0은 v1~3 gzip만 읽고, v4가 기본값인 splat-transform은
-// 플래그로 해결. 적대검증에서 매직바이트·411K 가우시안 보존 확인). 튜닝은 같은 basename의
-// home_clean.tuning.json(native)이 담당하고 높이는 바닥 스냅이 자동 보정한다.
-// 원본 home_clean.ply(93MB)는 로컬 전용 — git에는 spz만 커밋한다.
-const SPLAT_SRC = "/samples/home_clean.spz";
+// cap2_sharp.spz: 자체 캡처앱(capture-ios) 촬영본의 샤픈 산출 SPZ(756K 가우시안). 배치는 같은
+// basename의 cap2_sharp.tuning.json이 담당한다 — auto fit(폰 캡처는 미터 스케일 미보정이라 native
+// 원점을 못 믿어 bbox 자동 센터링·스케일), rotX 0(이 캡처는 이미 Y-up이라 기본 180° 플립을 끈다),
+// rotY 180(방을 yaw 180° 돌려세움). 축·각도 미세조정은 리빌드 없이 ?splatFit/?splatRotX/?splatRotY로 덮어쓴다.
+const SPLAT_SRC = "/samples/cap2_sharp.spz";
+
+// 투어가 열릴 때의 초기 시점(방 안쪽 소파 구역). 프리셋 버튼(현관/방중앙/창가)과 별개이며,
+// cap2_sharp 배치에서 실측한 카메라 포즈다(라이브 컨트롤에서 getPosition/getTarget으로 캡처).
+const SPAWN_VIEW: { position: [number, number, number]; target: [number, number, number] } = {
+  position: [-0.304, 1.45, -0.731],
+  target: [0.22, 0.477, -2.505]
+};
 
 function clamp01to100(value: number): number {
   return Math.min(100, Math.max(0, value));
@@ -52,7 +58,8 @@ export default function TourViewer() {
   const objectUrlRef = useRef<string | null>(null);
   const [src, setSrc] = useState(SPLAT_SRC);
   const [acceptedFileName, setAcceptedFileName] = useState("");
-  const [activeId, setActiveId] = useState(DEMO_PRESETS[0]?.id ?? "");
+  // 스폰은 프리셋이 아니라 SPAWN_VIEW가 담당 — 시작 시엔 어떤 프리셋도 활성 아님(빈 문자열).
+  const [activeId, setActiveId] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoadingVisible, setIsLoadingVisible] = useState(true);
   const [showHint, setShowHint] = useState(true);
@@ -91,7 +98,7 @@ export default function TourViewer() {
     [planBounds]
   );
 
-  const initialCamera: [number, number, number] = DEMO_PRESETS[0]?.camera.position ?? [0, 1.5, 3];
+  const initialCamera: [number, number, number] = SPAWN_VIEW.position;
 
   const handleAcceptSplat = useCallback((url: string, fileName: string) => {
     if (objectUrlRef.current) {
@@ -545,6 +552,7 @@ export default function TourViewer() {
           onArrive={setActiveId}
           onCameraMove={handleCameraMove}
           presets={DEMO_PRESETS}
+          spawnView={SPAWN_VIEW}
           walkMode={isWalkMode}
           walkBounds={planBounds}
         />
