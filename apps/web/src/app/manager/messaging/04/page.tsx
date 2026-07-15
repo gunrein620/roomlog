@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import type { Message, Thread } from "@roomlog/types";
 import { Button, Input } from "@roomlog/ui";
 import { MessageAutoRefresh } from "@/app/_components/MessageAutoRefresh";
-import { addManagerThreadMessage, deleteManagerThread, getManagerThread } from "@/lib/messaging-manager-api";
+import {
+  addManagerThreadMessage,
+  deleteManagerThread,
+  getManagerThread,
+} from "@/lib/messaging-manager-api";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { formatThreadLocation } from "@/lib/messaging-thread-location";
 import { ApiError } from "@/lib/server-api";
@@ -14,6 +18,7 @@ import {
   formatDateTime,
   sectionTitleStyle,
 } from "../_components";
+import { ManagerThreadReadReceipt } from "./ManagerThreadReadReceipt";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +91,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   return (
     <>
+      <ManagerThreadReadReceipt threadId={thread.id} />
       <MessageAutoRefresh intervalMs={3000} />
       <ScreenHeader
         eyebrow="M-MSG-04"
