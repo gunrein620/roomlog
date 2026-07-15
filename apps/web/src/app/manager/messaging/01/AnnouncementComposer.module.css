@@ -284,25 +284,6 @@
   background: var(--surface-container-lowest);
 }
 
-.primaryInfo {
-  padding: var(--space-xl);
-  border-radius: var(--radius-lg);
-  background: var(--primary);
-  color: var(--on-primary);
-}
-
-.primaryInfo h2 {
-  margin: 0 0 var(--space-sm);
-  font-size: var(--fs-subtitle);
-}
-
-.primaryInfo p {
-  margin: 0;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  opacity: 0.9;
-}
-
 .translationHeader {
   justify-content: space-between;
   margin-bottom: var(--space-xl);
@@ -431,8 +412,7 @@
 }
 
 @media (max-width: 640px) {
-  .card,
-  .primaryInfo {
+  .card {
     padding: var(--space-lg);
   }
 

@@ -423,11 +423,6 @@ export function AnnouncementComposer({
       </div>
 
       <aside className={styles.rightColumn}>
-        <section className={styles.primaryInfo}>
-          <h2>발송은 다음 화면에서만</h2>
-          <p>이 화면은 작성과 저장까지만 담당합니다. 자동 발송 없이 검토 게이트를 거칩니다.</p>
-        </section>
-
         <section className={styles.card}>
           <div className={styles.translationHeader}>
             <h2>{category === "urgent" ? "긴급 다국어 검수" : "다국어 번역"}</h2>
