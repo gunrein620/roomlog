@@ -2,12 +2,19 @@
 
 // 사는 집(세입자) 마이페이지 — 계약 상태, 수리요청(실제 민원 API), 관리비, 집주인 채팅.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
-import type { ChangeEvent, FormEvent } from "react";
+import type {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent
+} from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
-import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
+import { Bath, Bot, Check, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
+import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
@@ -772,10 +779,10 @@ export default function TenantMyPage({
   const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
   const [isRepairDetailLoading, setIsRepairDetailLoading] = useState(false);
   const [repairDetailError, setRepairDetailError] = useState("");
-  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
   const [aiMode, setAiMode] = useState<TenantAiMode>("text");
   const [aiDraft, setAiDraft] = useState("");
+  const aiDialogRef = useRef<HTMLDialogElement>(null);
   const aiMessagesRef = useRef<HTMLDivElement>(null);
   const [tenantToast, setTenantToast] = useState("");
 
@@ -1140,6 +1147,14 @@ export default function TenantMyPage({
     void ai.submitText(nextMessage);
   };
 
+  const submitAiFromKeyboard = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || ai.busy) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  };
+
   const selectAiMode = (nextMode: TenantAiMode) => {
     setAiMode(nextMode);
     setAiStage(nextMode === "text" ? "text" : "voice");
@@ -1151,9 +1166,43 @@ export default function TenantMyPage({
     }
   };
 
+  const openAiAssistant = () => {
+    setAiStage("choose");
+    aiDialogRef.current?.showModal();
+  };
+
   const closeAiAssistant = () => {
     ai.voice.disconnect();
-    setIsAiAssistantOpen(false);
+    aiDialogRef.current?.close();
+  };
+
+  // 관리자 비서와 동일한 백드롭 클릭 닫기 — 다이얼로그 사각형 밖 클릭만 닫는다.
+  const closeAiOnBackdrop = (event: ReactMouseEvent<HTMLDialogElement>) => {
+    if (event.target !== event.currentTarget) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (isDialogBackdropPoint(event, bounds)) closeAiAssistant();
+  };
+
+  // Push to Talk — 누르고 있는 동안만 송신(포인터·키보드 모두 지원, 관리자 비서와 동일).
+  const startAiPushToTalk = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    ai.voice.startTalking();
+  };
+
+  const stopAiPushToTalk = () => {
+    ai.voice.stopTalking();
+  };
+
+  const startAiPushToTalkFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.repeat || (event.key !== " " && event.key !== "Enter")) return;
+    event.preventDefault();
+    ai.voice.startTalking();
+  };
+
+  const stopAiPushToTalkFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== " " && event.key !== "Enter") return;
+    event.preventDefault();
+    ai.voice.stopTalking();
   };
 
   return (
@@ -1350,170 +1399,204 @@ export default function TenantMyPage({
       <button
         className="tenant-ai-assist-button"
         type="button"
-        onClick={() => {
-          if (isAiAssistantOpen) {
-            closeAiAssistant();
-            return;
-          }
-          setAiStage("choose");
-          setIsAiAssistantOpen(true);
-        }}
-        aria-label={isAiAssistantOpen ? "AI 생활 도우미 닫기" : "AI 생활 도우미 열기"}
-        aria-controls="tenant-ai-assistant-panel"
-        aria-expanded={isAiAssistantOpen}
+        onClick={openAiAssistant}
+        aria-label="AI 생활 도우미 열기"
+        aria-haspopup="dialog"
+        aria-controls="tenant-ai-assistant-dialog"
       >
         <Bot size={30} strokeWidth={2.3} aria-hidden="true" />
       </button>
 
-      {isAiAssistantOpen ? (
-        <aside
-          className="tenant-ai-panel"
-          id="tenant-ai-assistant-panel"
-          role="dialog"
-          aria-modal="false"
-          aria-labelledby="tenant-ai-title"
-        >
-          <header className="tenant-ai-panel-head">
-            <div className="tenant-ai-brand">
-              <Bot size={18} strokeWidth={2.4} aria-hidden="true" />
-              <h3 id="tenant-ai-title">Woo-zu AI Assistant</h3>
+      {/* 관리자 AI 비서(ManagerAssistantLauncher)와 동일한 다이얼로그 UI — 데이터만 세입자 intake 세션 */}
+      <dialog
+        ref={aiDialogRef}
+        id="tenant-ai-assistant-dialog"
+        className="manager-assistant-dialog"
+        aria-labelledby="tenant-ai-dialog-title"
+        onClick={closeAiOnBackdrop}
+        onClose={ai.voice.disconnect}
+      >
+        <header className="manager-assistant-dialog__header">
+          <span className="manager-assistant-dialog__brand">
+            <Bot aria-hidden="true" />
+            <strong id="tenant-ai-dialog-title">Woo-zu AI Assistant</strong>
+          </span>
+          <button
+            type="button"
+            aria-label="AI 생활 도우미 닫기"
+            onClick={closeAiAssistant}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </header>
+        {aiStage === "choose" ? (
+          <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
+            <div className="manager-ai-mode-picker__copy">
+              <h2>Choose your consultation mode</h2>
+              <p>How would you like to talk with Woo-zu AI?</p>
             </div>
-            <button
-              className="tenant-ai-close-button"
-              type="button"
-              onClick={closeAiAssistant}
-              aria-label="AI 생활 도우미 닫기"
+            <div className="manager-ai-mode-cards">
+              <button type="button" onClick={() => selectAiMode("text")}>
+                <span className="manager-ai-mode-icon" aria-hidden="true">
+                  <MessageSquare />
+                </span>
+                <strong>Text Chat</strong>
+                <small>TEXT</small>
+              </button>
+              <button type="button" onClick={() => selectAiMode("call")}>
+                <span className="manager-ai-mode-icon" aria-hidden="true">
+                  <Headphones />
+                </span>
+                <strong>Voice Call</strong>
+                <small>CALL</small>
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="manager-ai-conversation" aria-label="AI 생활 도우미 대화">
+            <div
+              ref={aiMessagesRef}
+              className="manager-ai-transcript"
+              role="log"
+              aria-live="polite"
             >
-              <X size={20} strokeWidth={2.4} aria-hidden="true" />
-            </button>
-          </header>
-          {aiStage === "choose" ? (
-            <div className="tenant-ai-mode-picker" aria-label="AI 상담 모드 선택">
-              <div className="tenant-ai-mode-picker-copy">
-                <h4>Choose your consultation mode</h4>
-                <p>How would you like to talk with Woo-zu AI?</p>
-              </div>
-              <div className="tenant-ai-mode-cards">
-                <button
-                  className="tenant-ai-mode-card"
-                  type="button"
-                  onClick={() => selectAiMode("text")}
-                >
-                  <span className="tenant-ai-mode-icon" aria-hidden="true">
-                    <MessageSquare size={38} strokeWidth={2.2} />
-                  </span>
-                  <strong>Text Chat</strong>
-                  <small>TEXT</small>
-                </button>
-                <button
-                  className="tenant-ai-mode-card"
-                  type="button"
-                  onClick={() => selectAiMode("call")}
-                >
-                  <span className="tenant-ai-mode-icon" aria-hidden="true">
-                    <Headphones size={40} strokeWidth={2.2} />
-                  </span>
-                  <strong>Voice Call</strong>
-                  <small>CALL</small>
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {aiStage !== "choose" ? (
-            <>
-              <div className="tenant-ai-messages" aria-live="polite" ref={aiMessagesRef}>
-                {ai.messages.map((message) => (
-                  <div className={`tenant-ai-message ${message.sender}`} key={message.id}>
-                    {message.sender === "assistant" ? (
-                      <span className="tenant-ai-avatar" aria-hidden="true">
-                        <Bot size={15} strokeWidth={2.4} />
+              {ai.messages.map((message) =>
+                message.sender === "receipt" ? (
+                  <p key={message.id} className="manager-ai-receipt">
+                    {message.text}
+                  </p>
+                ) : (
+                  <div
+                    key={message.id}
+                    className={`manager-ai-message manager-ai-message--${
+                      message.sender === "tenant" ? "user" : message.sender
+                    }`}
+                  >
+                    {message.sender !== "tenant" ? (
+                      <span className="manager-ai-message__avatar" aria-hidden="true">
+                        <Bot />
                       </span>
                     ) : null}
-                    <p className="tenant-ai-bubble">{message.text}</p>
+                    <p>{message.text}</p>
                   </div>
-                ))}
-                {ai.busy ? (
-                  <p className="tenant-ai-call-note" role="status">
-                    AI가 내용을 정리하고 있어요...
-                  </p>
-                ) : null}
-                {ai.readyToFinalize ? (
-                  <button
-                    className="tenant-ai-finalize-button"
-                    type="button"
-                    onClick={() => void ai.finalizeComplaint()}
-                    disabled={ai.busy}
-                  >
-                    이 내용으로 민원 접수하기
-                  </button>
-                ) : null}
-              </div>
-              {aiMode === "call" ? (
-                <div className="tenant-ai-voice-controls">
-                  <p role="status" aria-live="polite">{ai.voice.statusLabel}</p>
-                  {ai.voice.status === "connected" || ai.voice.status === "connecting" ? (
-                    <button
-                      className="tenant-ai-voice-button is-disconnect"
-                      type="button"
-                      onClick={ai.voice.disconnect}
-                    >
-                      <PhoneOff size={18} strokeWidth={2.4} aria-hidden="true" />
-                      통화 종료
-                    </button>
-                  ) : (
-                    <button
-                      className="tenant-ai-voice-button"
-                      type="button"
-                      onClick={() => void ai.voice.connect()}
-                    >
-                      <Mic size={18} strokeWidth={2.4} aria-hidden="true" />
-                      통화 시작
-                    </button>
-                  )}
-                </div>
+                ),
+              )}
+              {ai.busy ? (
+                <p className="manager-ai-notice" role="status">
+                  AI가 내용을 정리하고 있어요...
+                </p>
               ) : null}
-              <form className="tenant-ai-composer" onSubmit={handleAiSubmit}>
-                <input
-                  type="text"
-                  value={aiDraft}
-                  onChange={(event) => setAiDraft(event.target.value)}
-                  placeholder={
-                    aiMode === "call"
-                      ? "통화 모드에서는 음성으로 상담합니다"
-                      : ai.busy
-                        ? "AI 응답을 기다리는 중..."
-                        : "메시지를 입력하세요..."
-                  }
-                  aria-label="AI 어시스턴트 메시지 입력"
-                  disabled={aiMode === "call" || ai.busy}
-                />
+              {ai.readyToFinalize ? (
+                <section className="manager-assistant-action-card" aria-label="민원 접수 확인">
+                  <div className="manager-assistant-action-card__heading">
+                    <span className="manager-assistant-action-card__eyebrow">접수 전 확인</span>
+                    <strong className="manager-assistant-action-card__title">
+                      상담 내용이 정리되었습니다. 이대로 관리자에게 민원을 접수할까요?
+                    </strong>
+                  </div>
+                  <div className="manager-assistant-action-card__actions">
+                    <button
+                      type="button"
+                      onClick={() => void ai.finalizeComplaint()}
+                      disabled={ai.busy}
+                      className="manager-assistant-action-card__button manager-assistant-action-card__button--primary"
+                    >
+                      <Check size={16} aria-hidden="true" />
+                      민원 접수
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+            </div>
+            {aiMode === "text" ? (
+              <form className="manager-ai-composer" onSubmit={handleAiSubmit}>
+                <label>
+                  <span>대화 입력</span>
+                  <textarea
+                    value={aiDraft}
+                    rows={3}
+                    disabled={ai.busy}
+                    placeholder={ai.busy ? "AI 응답을 기다리는 중..." : "불편한 점을 알려주세요"}
+                    onChange={(event) => setAiDraft(event.target.value)}
+                    onKeyDown={submitAiFromKeyboard}
+                  />
+                </label>
                 <button
-                  className="tenant-ai-mode-toggle"
-                  type="button"
-                  role="switch"
-                  aria-label="AI 상담 모드 전환"
-                  aria-checked={aiMode === "call"}
-                  onClick={() => selectAiMode(aiMode === "text" ? "call" : "text")}
-                >
-                  <span>text</span>
-                  <span className="tenant-ai-switch" aria-hidden="true">
-                    <span />
-                  </span>
-                  <span>call</span>
-                </button>
-                <button
-                  className="tenant-ai-send-button"
                   type="submit"
-                  disabled={aiMode === "call" || ai.busy || !aiDraft.trim()}
-                  aria-label="AI 어시스턴트 메시지 보내기"
+                  aria-label="AI 생활 도우미에 메시지 전송"
+                  disabled={ai.busy || !aiDraft.trim()}
                 >
-                  <Send size={22} strokeWidth={2.3} aria-hidden="true" />
+                  <Send aria-hidden="true" />
+                  <span>{ai.busy ? "전송 중" : "전송"}</span>
                 </button>
               </form>
-            </>
-          ) : null}
-        </aside>
-      ) : null}
+            ) : (
+              <div className="manager-ai-voice-controls">
+                <p role="status" aria-live="polite">
+                  <span className={`manager-ai-voice-status manager-ai-voice-status--${ai.voice.status}`} />
+                  {ai.voice.statusLabel}
+                </p>
+                {ai.voice.status === "connected" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="manager-ai-push-to-talk"
+                      aria-pressed={ai.voice.isTalking}
+                      onPointerDown={startAiPushToTalk}
+                      onPointerUp={stopAiPushToTalk}
+                      onPointerCancel={stopAiPushToTalk}
+                      onLostPointerCapture={stopAiPushToTalk}
+                      onKeyDown={startAiPushToTalkFromKeyboard}
+                      onKeyUp={stopAiPushToTalkFromKeyboard}
+                      onBlur={stopAiPushToTalk}
+                    >
+                      <Mic aria-hidden="true" />
+                      {ai.voice.isTalking ? "말하는 중…" : "Push to Talk"}
+                    </button>
+                    <button type="button" className="is-disconnect" onClick={ai.voice.disconnect}>
+                      <PhoneOff aria-hidden="true" />
+                      통화 종료
+                    </button>
+                  </>
+                ) : ai.voice.status === "connecting" ? (
+                  <button type="button" className="is-disconnect" onClick={ai.voice.disconnect}>
+                    <PhoneOff aria-hidden="true" />
+                    통화 종료
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => void ai.voice.connect()}>
+                    <Mic aria-hidden="true" />
+                    통화 시작
+                  </button>
+                )}
+                <small>
+                  {ai.voice.status === "connected"
+                    ? "버튼을 누르고 있는 동안만 음성이 전달됩니다."
+                    : "통화 시작을 누른 뒤 마이크 권한을 허용해 주세요."}
+                </small>
+              </div>
+            )}
+            <div className="manager-ai-mode-toggle" aria-label="AI 상담 모드 전환">
+              <button
+                type="button"
+                aria-pressed={aiMode === "text"}
+                onClick={() => selectAiMode("text")}
+              >
+                <MessageSquare aria-hidden="true" />
+                텍스트
+              </button>
+              <button
+                type="button"
+                aria-pressed={aiMode === "call"}
+                onClick={() => selectAiMode("call")}
+              >
+                <Headphones aria-hidden="true" />
+                음성
+              </button>
+            </div>
+          </section>
+        )}
+      </dialog>
 
       {landlordChatThread ? (
         <TenantLandlordChatModal

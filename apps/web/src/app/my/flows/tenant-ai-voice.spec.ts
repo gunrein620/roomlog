@@ -34,6 +34,23 @@ describe("tenant ai voice turn mapping", () => {
     assert.equal(update.assistantTranscript, "확인했습니다. 소음이 언제부터 시작됐나요?");
   });
 
+  it("maps speaking and responding events to activity like the manager assistant", () => {
+    const listening = applyTenantVoiceEvent(emptyRealtimeTurnState(), {
+      type: "input_audio_buffer.speech_started"
+    });
+    assert.equal(listening.activity, "listening");
+
+    const responding = applyTenantVoiceEvent(emptyRealtimeTurnState(), {
+      type: "response.created"
+    });
+    assert.equal(responding.activity, "responding");
+
+    const idle = applyTenantVoiceEvent(emptyRealtimeTurnState(), {
+      type: "input_audio_buffer.speech_stopped"
+    });
+    assert.equal(idle.activity, "idle");
+  });
+
   it("flushes the completed turn once user and response are both done, then resets state", () => {
     let state = emptyRealtimeTurnState();
 
@@ -62,12 +79,13 @@ describe("tenant ai voice turn mapping", () => {
 });
 
 describe("tenant ai voice status label", () => {
-  it("maps connection states to tenant-facing labels", () => {
-    assert.equal(tenantVoiceStatusLabel("connecting"), "연결 중...");
-    assert.match(tenantVoiceStatusLabel("not_configured"), /AI 키 설정/);
-    assert.match(tenantVoiceStatusLabel("error"), /다시 통화/);
-    assert.match(tenantVoiceStatusLabel("idle"), /통화 시작/);
-    assert.equal(tenantVoiceStatusLabel("connected"), "연결됨 — 편하게 말씀해 주세요.");
-    assert.equal(tenantVoiceStatusLabel("connected", "AI 응답 전사 완료"), "AI 응답 전사 완료");
+  it("matches the manager assistant label rules", () => {
+    assert.equal(tenantVoiceStatusLabel("connecting", "idle"), "연결 중");
+    assert.equal(tenantVoiceStatusLabel("not_configured", "idle"), "API 키 필요");
+    assert.equal(tenantVoiceStatusLabel("error", "idle"), "연결 오류");
+    assert.equal(tenantVoiceStatusLabel("idle", "idle"), "연결 준비");
+    assert.equal(tenantVoiceStatusLabel("connected", "listening"), "듣는 중");
+    assert.equal(tenantVoiceStatusLabel("connected", "responding"), "AI 응답 중");
+    assert.equal(tenantVoiceStatusLabel("connected", "idle"), "연결됨");
   });
 });

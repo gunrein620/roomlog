@@ -2,7 +2,8 @@
 
 // 세입자 AI 생활 도우미 세션 훅 — 목업이던 패널을 실제 민원 intake 백엔드에 연결한다.
 // 텍스트: intake 세션 메시지 턴(OpenAI Responses, 키 없으면 로컬 폴백 초안).
-// 음성: OpenAI Realtime WebRTC(서버 VAD) + 턴 전사를 같은 세션에 기록.
+// 음성: OpenAI Realtime WebRTC + Push to Talk(버튼을 누른 동안만 마이크 전달, 관리자 비서와 동일 UX)
+//       — 턴 전사를 같은 세션에 기록한다.
 // 접수 준비(readyToFinalize)가 되면 finalize로 실제 민원/티켓을 생성한다.
 import { useEffect, useRef, useState } from "react";
 import {
@@ -27,12 +28,13 @@ import {
 import {
   applyTenantVoiceEvent,
   tenantVoiceStatusLabel,
+  type TenantVoiceActivity,
   type TenantVoiceConnectionState,
 } from "./tenant-ai-voice";
 
 export type TenantAiChatMessage = {
   id: string;
-  sender: "assistant" | "tenant" | "system";
+  sender: "assistant" | "tenant" | "system" | "receipt";
   text: string;
 };
 
@@ -52,7 +54,8 @@ export function useTenantAiAssistant({
   const [busy, setBusy] = useState(false);
   const [readyToFinalize, setReadyToFinalize] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<TenantVoiceConnectionState>("idle");
-  const [voiceNote, setVoiceNote] = useState("");
+  const [voiceActivity, setVoiceActivity] = useState<TenantVoiceActivity>("idle");
+  const [isTalking, setIsTalking] = useState(false);
 
   const roomIdRef = useRef(roomId);
   roomIdRef.current = roomId;
@@ -66,7 +69,22 @@ export function useTenantAiAssistant({
   const turnStateRef = useRef<RealtimeTurnState>(emptyRealtimeTurnState());
   const persistStateRef = useRef<RealtimePersistState>(emptyRealtimePersistState());
 
-  useEffect(() => closeVoiceResources, []);
+  // 화면 이탈/탭 숨김 시 송신을 끊는다 — 관리자 비서(ManagerAssistantLauncher)와 동일한 안전장치.
+  useEffect(() => {
+    const stopTalkingNow = () => stopTalking();
+    const stopTalkingWhenHidden = () => {
+      if (document.hidden) stopTalkingNow();
+    };
+
+    window.addEventListener("blur", stopTalkingNow);
+    document.addEventListener("visibilitychange", stopTalkingWhenHidden);
+    return () => {
+      window.removeEventListener("blur", stopTalkingNow);
+      document.removeEventListener("visibilitychange", stopTalkingWhenHidden);
+      closeVoiceResources();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function appendMessage(sender: TenantAiChatMessage["sender"], text: string) {
     const trimmed = text.trim();
@@ -152,10 +170,10 @@ export function useTenantAiAssistant({
       const result = await finalizeTenantIntakeSession(sessionId);
       const title = result.complaint?.title;
       appendMessage(
-        "system",
+        "receipt",
         title
-          ? `민원이 접수되었습니다: ${title}. 처리 상태는 민원/하자 이력에서 확인할 수 있어요.`
-          : "민원이 접수되었습니다. 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
+          ? `접수 완료 · ${title} — 처리 상태는 민원/하자 이력에서 확인할 수 있어요.`
+          : "접수 완료 · 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
       );
       sessionIdRef.current = null;
       sessionPromiseRef.current = null;
@@ -173,16 +191,18 @@ export function useTenantAiAssistant({
   async function connectVoice() {
     if (voiceStatus === "connecting" || voiceStatus === "connected") return;
     setVoiceStatus("connecting");
-    setVoiceNote("");
+    setVoiceActivity("idle");
 
     try {
       const session = await ensureSession();
       const stream = await requestMicrophone();
+      setAudioTracksEnabled(stream, false);
       streamRef.current = stream;
 
       const secret = await createTenantRealtimeClientSecret(session.id);
       if (secret.mode !== "openai" || !secret.clientSecret?.value) {
         closeVoiceResources();
+        setIsTalking(false);
         setVoiceStatus("not_configured");
         appendMessage(
           "system",
@@ -203,7 +223,9 @@ export function useTenantAiAssistant({
       peer.onconnectionstatechange = () => {
         if (peer.connectionState !== "failed") return;
         closeVoiceResources();
+        setIsTalking(false);
         setVoiceStatus("error");
+        setVoiceActivity("idle");
         appendMessage("system", "음성 연결이 끊어졌습니다. 다시 통화를 시작해 주세요.");
       };
 
@@ -214,7 +236,7 @@ export function useTenantAiAssistant({
         turnStateRef.current = emptyRealtimeTurnState();
         persistStateRef.current = emptyRealtimePersistState();
         setVoiceStatus("connected");
-        appendMessage("system", "음성 상담이 연결되었습니다. 불편한 점을 편하게 말씀해 주세요.");
+        appendMessage("system", "음성 연결이 열렸습니다. 불편한 점을 편하게 말씀해 주세요.");
       };
       channel.onmessage = (event) => {
         handleVoiceEvent(session.id, String(event.data));
@@ -241,15 +263,30 @@ export function useTenantAiAssistant({
       await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
     } catch (error) {
       closeVoiceResources();
+      setIsTalking(false);
       setVoiceStatus("error");
+      setVoiceActivity("idle");
       appendError(error, "음성 연결 중 오류가 발생했습니다.");
     }
   }
 
   function disconnectVoice() {
     closeVoiceResources();
+    setIsTalking(false);
     setVoiceStatus("idle");
-    setVoiceNote("");
+    setVoiceActivity("idle");
+  }
+
+  // Push to Talk — 버튼을 누르고 있는 동안만 마이크 트랙을 살린다(관리자 비서와 동일).
+  function startTalking() {
+    if (voiceStatus !== "connected" || !streamRef.current) return;
+    setAudioTracksEnabled(streamRef.current, true);
+    setIsTalking(true);
+  }
+
+  function stopTalking() {
+    setAudioTracksEnabled(streamRef.current, false);
+    setIsTalking(false);
   }
 
   function handleVoiceEvent(sessionId: string, rawEvent: string) {
@@ -268,7 +305,7 @@ export function useTenantAiAssistant({
     const update = applyTenantVoiceEvent(turnStateRef.current, payload);
     turnStateRef.current = update.state;
 
-    if (update.statusNote) setVoiceNote(update.statusNote);
+    if (update.activity) setVoiceActivity(update.activity);
     if (update.tenantTranscript) appendMessage("tenant", update.tenantTranscript);
     if (update.assistantTranscript) appendMessage("assistant", update.assistantTranscript);
     if (update.flush) {
@@ -306,6 +343,7 @@ export function useTenantAiAssistant({
   }
 
   function closeVoiceResources() {
+    setAudioTracksEnabled(streamRef.current, false);
     try {
       channelRef.current?.close();
     } catch {
@@ -333,15 +371,23 @@ export function useTenantAiAssistant({
     finalizeComplaint,
     voice: {
       status: voiceStatus,
-      statusLabel: tenantVoiceStatusLabel(voiceStatus, voiceNote),
+      activity: voiceActivity,
+      isTalking,
+      statusLabel: tenantVoiceStatusLabel(voiceStatus, voiceActivity),
       connect: connectVoice,
       disconnect: disconnectVoice,
+      startTalking,
+      stopTalking,
     },
   };
 }
 
 function createMessageId() {
   return `tenant-ai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function setAudioTracksEnabled(stream: MediaStream | null, enabled: boolean) {
+  for (const track of stream?.getAudioTracks() ?? []) track.enabled = enabled;
 }
 
 async function requestMicrophone(): Promise<MediaStream> {
