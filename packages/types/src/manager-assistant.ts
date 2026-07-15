@@ -83,3 +83,27 @@ export interface ManagerCopilotChatResponse {
   pendingAction?: ManagerCopilotPendingAction;
   receipts?: Array<{ kind: string; summary: string }>;
 }
+
+export type ManagerAssistantMode = "text" | "voice";
+
+export type ManagerAssistantConnectionState =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "not_configured"
+  | "error";
+
+export type ManagerAssistantTranscriptEntry =
+  | {
+      id: string;
+      kind: "message";
+      role: "user" | "assistant" | "system";
+      content: string;
+      localOnly?: boolean;
+    }
+  | {
+      id: string;
+      kind: "receipt";
+      receiptKind: string;
+      summary: string;
+    };

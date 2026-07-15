@@ -80,12 +80,57 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(assistant, /aria-label="AI 관리 비서 닫기"/);
   assert.match(assistant, /getBoundingClientRect\(\)/);
   assert.match(assistant, /isDialogBackdropPoint/);
+  assert.match(assistant, /AI 상담 모드 선택/);
+  assert.match(assistant, /Woo-zu AI Assistant/);
+  assert.match(assistant, /Choose your consultation mode/);
+  assert.match(assistant, /How would you like to talk with Woo-zu AI\?/);
+  assert.match(assistant, /Text Chat/);
+  assert.match(assistant, /Voice Call/);
+  assert.match(assistant, /manager-ai-mode-icon/);
+  assert.doesNotMatch(assistant, /상담 방식을 선택해 주세요/);
+  assert.match(assistant, /role="log"/);
+  assert.match(assistant, /aria-live="polite"/);
+  assert.match(assistant, /ref=\{transcriptRef\}/);
+  assert.match(assistant, /onScroll=\{updateTranscriptStickiness\}/);
+  assert.match(assistant, /shouldManagerAssistantStickToBottom/);
+  assert.match(assistant, /requestAnimationFrame/);
+  assert.match(assistant, /cancelAnimationFrame/);
+  assert.match(assistant, /scrollTranscriptToBottom/);
+  assert.match(assistant, /useManagerAssistantSession/);
+  assert.match(assistant, /useManagerRealtimeSession/);
+  assert.match(assistant, /session\.submitText/);
+  assert.match(assistant, /realtime\.connect/);
+  assert.match(assistant, /realtime\.disconnect/);
+  assert.match(assistant, /통화 시작/);
+  assert.match(assistant, /통화 종료/);
+  assert.match(assistant, /Push to Talk/);
+  assert.match(assistant, /aria-pressed=\{realtime\.isTalking\}/);
+  assert.match(assistant, /onPointerDown=\{startPushToTalk\}/);
+  assert.match(assistant, /onPointerUp=\{stopPushToTalk\}/);
+  assert.match(assistant, /onPointerCancel=\{stopPushToTalk\}/);
+  assert.match(assistant, /onLostPointerCapture=\{stopPushToTalk\}/);
+  assert.match(assistant, /onKeyDown=\{startPushToTalkFromKeyboard\}/);
+  assert.match(assistant, /onKeyUp=\{stopPushToTalkFromKeyboard\}/);
+  assert.match(assistant, /visibilitychange/);
+  assert.match(assistant, /ManagerAssistantActionCard/);
+  assert.match(assistant, /event\.nativeEvent\.isComposing/);
+  assert.match(assistant, /event\.shiftKey/);
   assert.match(appShellSource, /aria-haspopup="dialog"/);
   // 기본 서브내비는 Suspense로 감싼다 — useSearchParams가 정적 프리렌더에서 경계를 요구.
   assert.match(appShellSource, /subnav \?\? <Suspense fallback=\{null\}><ManagerSectionNav \/><\/Suspense>/);
   assert.match(appShellSource, /!fullAssistant/);
   assert.match(appShellSource, /getBoundingClientRect\(\)/);
   assert.match(appShellSource, /isDialogBackdropPoint/);
+  assert.match(
+    managerCss,
+    /\.manager-assistant-dialog\s*\{[^}]*width:\s*min\(calc\(100vw - var\(--space-xxl\)\), calc\(var\(--content-aside-max\) \+ var\(--content-aside-max\)\)\);/,
+  );
+  assert.match(
+    managerCss,
+    /\.manager-assistant-dialog__header\s*\{[^}]*color:\s*var\(--on-primary\);[^}]*background:\s*var\(--primary\);/,
+  );
+  assert.match(managerCss, /\.manager-ai-mode-icon\s*\{/);
+  assert.match(managerCss, /\.manager-ai-push-to-talk\s*\{/);
   // useEffect는 사이드바 접힘 상태(localStorage) 복원용.
   assert.match(appShellSource, /import \{ Suspense, useEffect, useRef, useState \} from "react"/);
   // 데스크톱 사이드바에는 접기 토글이 헤더 액션으로 꽂힌다.

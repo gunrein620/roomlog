@@ -1663,7 +1663,9 @@ html:has(.manager-workspace) {
 }
 
 .manager-assistant-dialog {
-  width: min(420px, calc(100% - var(--space-xxl)));
+  width: min(calc(100vw - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
+  height: min(calc(100dvh - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
+  max-width: none;
   max-height: calc(100dvh - var(--space-xxl));
   margin: auto;
   border: 1px solid var(--border);
@@ -1671,26 +1673,392 @@ html:has(.manager-workspace) {
   padding: 0;
   color: var(--on-surface);
   background: var(--surface-container-lowest);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .manager-assistant-dialog__header {
   position: sticky;
   top: 0;
   z-index: var(--z-floating);
-  min-height: var(--header-height);
+  min-height: calc(var(--touch-target) + var(--space-md));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
   padding: 0 var(--space-lg);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-container-lowest);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-assistant-dialog__brand {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.manager-assistant-dialog__brand svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+  flex: 0 0 auto;
+}
+
+.manager-assistant-dialog__brand strong {
+  overflow: hidden;
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-assistant-dialog__header button {
+  color: var(--on-primary);
 }
 
 .manager-assistant-dialog > .manager-assistant {
   border: 0;
   border-radius: 0;
+}
+
+.manager-ai-conversation {
+  display: grid;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+}
+
+.manager-ai-mode-picker {
+  min-height: 0;
+  height: calc(100% - var(--touch-target) - var(--space-md));
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: calc(var(--space-xl) + var(--space-xl));
+  padding: calc(var(--space-xxl) + var(--space-xxl)) var(--space-xxl) var(--space-xxl);
+  overflow-y: auto;
+}
+
+.manager-ai-conversation {
+  height: calc(100% - var(--touch-target) - var(--space-md));
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+
+.manager-ai-mode-picker__copy {
+  display: grid;
+  gap: var(--space-md);
+  text-align: center;
+}
+
+.manager-ai-mode-cards small {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-caption);
+  letter-spacing: var(--space-xs);
+}
+
+.manager-ai-mode-picker__copy h2,
+.manager-ai-mode-picker__copy p,
+.manager-ai-message p {
+  margin: 0;
+}
+
+.manager-ai-mode-picker__copy h2 {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-ai-mode-picker__copy p {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-subtitle);
+  line-height: var(--lh-subtitle);
+}
+
+.manager-ai-mode-cards {
+  width: min(100%, calc(var(--content-narrow-max) + var(--touch-target) + var(--space-xl)));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xl);
+}
+
+.manager-ai-mode-cards button {
+  min-height: calc(var(--touch-target) * 4 + var(--space-xl));
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.manager-ai-mode-cards button:hover {
+  border-color: var(--primary);
+}
+
+.manager-ai-mode-cards strong {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-ai-mode-icon {
+  width: calc(var(--touch-target) + var(--space-xxl));
+  height: calc(var(--touch-target) + var(--space-xxl));
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  color: var(--primary);
+  background: var(--primary-container);
+}
+
+.manager-ai-mode-icon svg {
+  width: var(--space-xxl);
+  height: var(--space-xxl);
+}
+
+.manager-ai-transcript {
+  min-height: calc(var(--touch-target) * 5);
+  max-height: calc(100dvh - 320px);
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  overflow-y: auto;
+}
+
+.manager-ai-message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.manager-ai-message__avatar {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-ai-message__avatar svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
+.manager-ai-message p {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  background: var(--surface-container);
+  line-height: var(--lh-body);
+}
+
+.manager-ai-message--user {
+  justify-content: flex-end;
+}
+
+.manager-ai-message--user p {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-message--system p {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-ai-receipt,
+.manager-ai-notice {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.manager-ai-receipt {
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-ai-notice {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-ai-voice-controls {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  color: var(--on-surface);
+  background: var(--surface-container);
+}
+
+.manager-ai-voice-controls p {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0;
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-ai-voice-status {
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--outline);
+}
+
+.manager-ai-voice-status--connected {
+  background: var(--success);
+}
+
+.manager-ai-voice-status--connecting {
+  background: var(--warning);
+}
+
+.manager-ai-voice-status--error,
+.manager-ai-voice-status--not_configured {
+  background: var(--error);
+}
+
+.manager-ai-voice-controls button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--on-primary);
+  background: var(--primary);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.manager-ai-voice-controls button.is-disconnect {
+  color: var(--on-error);
+  background: var(--error);
+}
+
+.manager-ai-voice-controls .manager-ai-push-to-talk {
+  width: min(100%, var(--content-narrow-max));
+  min-height: calc(var(--touch-target) + var(--space-lg));
+  touch-action: none;
+  user-select: none;
+}
+
+.manager-ai-voice-controls .manager-ai-push-to-talk[aria-pressed="true"] {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+  box-shadow: var(--shadow-soft);
+}
+
+.manager-ai-voice-controls button svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
+.manager-ai-voice-controls small {
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.manager-ai-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.manager-ai-composer label {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-ai-composer textarea {
+  width: 100%;
+  min-height: calc(var(--touch-target) * 2);
+  resize: vertical;
+  padding: var(--space-md);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  color: var(--input-text);
+  background: var(--surface-container-lowest);
+  font: inherit;
+  line-height: var(--lh-body);
+}
+
+.manager-ai-composer button {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-md);
+  border: 0;
+  border-radius: var(--radius-btn);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-composer button:disabled,
+.manager-ai-composer textarea:disabled {
+  cursor: not-allowed;
+  opacity: var(--disabled-opacity);
+}
+
+.manager-ai-composer svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
+.manager-ai-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  border-radius: var(--radius-full);
+  background: var(--surface-container);
+}
+
+.manager-ai-mode-toggle button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+  background: transparent;
+}
+
+.manager-ai-mode-toggle button[aria-pressed="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-mode-toggle svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
 }
 
 .manager-mobile-nav-dialog {
@@ -1746,6 +2114,56 @@ html:has(.manager-workspace) {
   .manager-assistant-launcher-frame__inner {
     padding-right: calc(var(--space-lg) + env(safe-area-inset-right));
     padding-left: var(--space-lg);
+  }
+
+  .manager-assistant-dialog__header {
+    min-height: calc(var(--touch-target) + var(--space-xs));
+    padding: 0 var(--space-md);
+  }
+
+  .manager-assistant-dialog__brand strong {
+    font-size: var(--fs-body);
+  }
+
+  .manager-ai-mode-picker {
+    height: calc(100% - var(--touch-target) - var(--space-xs));
+    gap: var(--space-xl);
+    padding: calc(var(--space-xxl) + var(--space-xl)) var(--space-lg) var(--space-xl);
+  }
+
+  .manager-ai-mode-picker__copy {
+    gap: var(--space-sm);
+  }
+
+  .manager-ai-mode-picker__copy h2 {
+    font-size: var(--fs-subtitle);
+    line-height: var(--lh-subtitle);
+  }
+
+  .manager-ai-mode-picker__copy p {
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+  }
+
+  .manager-ai-mode-cards {
+    gap: var(--space-sm);
+  }
+
+  .manager-ai-mode-cards button {
+    min-height: calc(var(--touch-target) * 3 + var(--space-lg));
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+  }
+
+  .manager-ai-mode-icon {
+    width: calc(var(--touch-target) + var(--space-lg));
+    height: calc(var(--touch-target) + var(--space-lg));
+  }
+
+  .manager-ai-mode-cards strong {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
   }
 }
 /* manager-app-shell:end */
