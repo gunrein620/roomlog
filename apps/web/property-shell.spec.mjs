@@ -519,6 +519,14 @@ test("manager announcement compose edits targets and translates each language be
     managerMessagingComposeFeatureSource,
     /<div className=\{styles\.targetBox\}>\s*<span>\{target\.targetLabel\}<\/span>\s*<\/div>/,
   );
+  assert.match(managerMessagingComposerSource, /공지 대상을 선택하세요\./);
+  assert.doesNotMatch(
+    managerMessagingComposerSource,
+    /미납 세대 옵션은 없습니다\. 연체·독촉은 별도 채널에서 처리합니다\./,
+  );
+  assert.match(managerMessagingComposerSource, /\{ value: "all", label: "전체" \}/);
+  assert.match(managerMessagingComposerSource, /\{ value: "building", label: "건물" \}/);
+  assert.match(managerMessagingComposerSource, /\{ value: "unit", label: "호실" \}/);
   assert.match(managerMessagingComposeFeatureSource, /className=\{styles\.selectWrap\}/);
   assert.match(managerMessagingComposeFeatureSource, /appearance: none/);
   assert.match(

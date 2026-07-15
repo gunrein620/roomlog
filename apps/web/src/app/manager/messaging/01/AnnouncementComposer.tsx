@@ -348,8 +348,7 @@ export function AnnouncementComposer({
                 <span>{target.targetLabel}</span>
               </div>
               <div className={styles.targetHint}>
-                공지 대상을 선택하세요.<br />
-                미납 세대 옵션은 없습니다. 연체·독촉은 별도 채널에서 처리합니다.
+                공지 대상을 선택하세요.
               </div>
             </div>
           </div>
