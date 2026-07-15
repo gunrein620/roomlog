@@ -9,7 +9,6 @@ import { ApiError } from "@/lib/server-api";
 import {
   Badge,
   Card,
-  CONTEXT_LABEL,
   NoticeCard,
   ScreenHeader,
   StaticButton,
@@ -185,8 +184,6 @@ function ContextCard({ thread }: { thread: Thread }) {
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
       <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
         <Badge emphasis>{locationLabel}</Badge>
-        <Badge>{thread.tenantId}</Badge>
-        <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
         {thread.pendingRequest ? <Badge emphasis>추가요청 대기</Badge> : null}
       </div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>

@@ -48,6 +48,14 @@ test("hides the connected-work note while keeping the context title", () => {
   assert.match(detailPage, /thread\.contextLabel \?\? "일반 문의"/);
 });
 
+test("hides secondary context badges while keeping primary context", () => {
+  assert.doesNotMatch(detailPage, /<Badge>\{thread\.tenantId\}<\/Badge>/);
+  assert.doesNotMatch(detailPage, /<Badge>\{CONTEXT_LABEL\[thread\.context\]\}<\/Badge>/);
+  assert.match(detailPage, /<Badge emphasis>\{locationLabel\}<\/Badge>/);
+  assert.match(detailPage, /thread\.pendingRequest \? <Badge emphasis>추가요청 대기<\/Badge>/);
+  assert.match(detailPage, /thread\.contextLabel \?\? "일반 문의"/);
+});
+
 test("keeps the reply-needed badge balanced on exactly two accessible lines", () => {
   assert.match(listPage, /aria-label="답장 필요"/);
   assert.match(listPage, /<span>답장<\/span>/);
