@@ -110,6 +110,13 @@ const managerMessagingComposerCssSource = readFileSync(
 const managerMessagingComposerSource = existsSync(managerMessagingComposerPath)
   ? readFileSync(managerMessagingComposerPath, "utf8")
   : "";
+const managerMessagingSavedDraftListPath = new URL(
+  "./src/app/manager/messaging/01/SavedAnnouncementDraftList.tsx",
+  import.meta.url,
+);
+const managerMessagingSavedDraftListSource = existsSync(managerMessagingSavedDraftListPath)
+  ? readFileSync(managerMessagingSavedDraftListPath, "utf8")
+  : "";
 const managerMessagingActionsSource = existsSync(managerMessagingActionsPath)
   ? readFileSync(managerMessagingActionsPath, "utf8")
   : "";
@@ -460,6 +467,19 @@ test("auto-refreshes open messaging thread details without infrastructure change
 });
 
 test("manager announcement compose edits targets and translates each language before review", () => {
+  assert.equal(existsSync(managerMessagingSavedDraftListPath), true);
+  assert.match(managerMessagingComposeSource, /listAnnouncementDrafts/);
+  assert.match(managerMessagingComposeSource, /<SavedAnnouncementDraftList drafts=\{drafts\} \/>/);
+  assert.match(managerMessagingComposeSource, /<AnnouncementComposer\s+key=\{id \?\? "new"\}/);
+  assert.match(managerMessagingSavedDraftListSource, /임시 저장된 공지/);
+  assert.match(managerMessagingSavedDraftListSource, /임시 저장된 공지가 없습니다\./);
+  assert.match(managerMessagingSavedDraftListSource, /savedAnnouncementDraftTitle/);
+  assert.match(managerMessagingSavedDraftListSource, /formatDateTime\(draft\.updatedAt\)/);
+  assert.match(managerMessagingSavedDraftListSource, />\s*불러오기\s*<\/LinkButton>/);
+  assert.match(
+    managerMessagingSavedDraftListSource,
+    /MANAGER_MESSAGING_ROUTES\["M-MSG-01"\][\s\S]*encodeURIComponent\(draft\.id\)/,
+  );
   assert.doesNotMatch(
     managerMessagingComposeSource,
     /actions=\{<LinkButton href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\} variant="secondary">\s*허브\s*<\/LinkButton>\}/,
