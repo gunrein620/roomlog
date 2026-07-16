@@ -299,7 +299,7 @@ export function ListingDetailView({
       </section>
 
       <div className="detail-contact-bar" id="detail-contact">
-        <span className="contact-tooltip">로그인 없이 문의 가능 · 평균 응답 8분</span>
+        <span className="contact-tooltip">로그인 없이 문의 가능 · 채팅으로 바로 연결</span>
         <button className="detail-contact-small" type="button" aria-label="전화문의" onClick={onStartChat}>
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
