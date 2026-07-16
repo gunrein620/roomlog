@@ -4,6 +4,7 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundEx
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
+import { TradeService } from "../trade/trade.service";
 import {
   type CreateSplatAssetInput,
   type IntakeSplatAssetInput,
@@ -100,7 +101,10 @@ export class SplatAssetService {
   constructor(
     @Optional()
     @Inject(SPLAT_ASSET_DATABASE_URL)
-    databaseUrl?: string
+    databaseUrl?: string,
+    // 소유권 조회의 1순위 소스 — trade 도메인의 runtime truth(JSON 스토어).
+    // DB 프로젝션(prisma.tradeListing)은 지연/실패할 수 있어 폴백으로만 쓴다(2026-07-16 실측 403).
+    @Optional() private readonly tradeService?: TradeService
   ) {
     const resolvedDatabaseUrl =
       databaseUrl?.trim() || process.env.SPLAT_ASSET_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
@@ -313,6 +317,11 @@ export class SplatAssetService {
   }
 
   async findListingOwnerId(listingId: string): Promise<string | null> {
+    // 1순위: trade runtime truth(JSON 스토어) — 프로젝션 지연/실패와 무관하게 최신.
+    const live = this.tradeService?.listListings().find((listing) => listing.id === listingId);
+    if (live?.ownerId) return live.ownerId;
+
+    // 폴백: DB 프로젝션 (tradeService 미주입 컨텍스트 — 단위테스트 등).
     const listing = await this.getPrisma().tradeListing.findUnique({
       where: { id: listingId },
       select: { ownerId: true }

@@ -341,6 +341,8 @@ export class TradeService implements OnModuleDestroy {
           if (generation >= (this.projectionFailure?.generation ?? -1)) {
             this.projectionFailure = { generation, error };
           }
+          // 실패 은폐 금지 — 프로젝션이 죽으면 이 테이블을 읽는 모든 소비자가 스테일 데이터를 본다.
+          console.warn(`[trade] 매물 DB 프로젝션 실패(gen=${generation}):`, error);
         }
       );
     return generation;
