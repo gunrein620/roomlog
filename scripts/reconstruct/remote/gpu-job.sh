@@ -242,8 +242,10 @@ if [[ "$SOURCE_KIND" == "record3d-zip" ]]; then
         wget -qO- https://deb.nodesource.com/setup_20.x | bash -
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nodejs
       fi
-      npx --yes @playcanvas/splat-transform /workspace/clean.ply \
-        --spz-version 3 /workspace/out.spz
+      # @2 버전 핀 필수: v3.x CLI는 --spz-version을 잃고 NGSP(v4, 비압축)로 뽑아 뷰어(Spark)가 못 읽는다(2026-07-16 실측).
+      # -r -90,0,0: ARKit/nerfstudio Z-up → 뷰어 Y-up 중력 정렬을 산출물에 굽는다(뷰어 보정 불필요).
+      npx --yes @playcanvas/splat-transform@2 -w /workspace/clean.ply \
+        -r -90,0,0 --spz-version 3 /workspace/out.spz
     '
 else
   copy_payload_file reconstruct.sh

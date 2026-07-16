@@ -76,7 +76,7 @@ echo "  ply: $PLY  ($(du -h "$PLY" | cut -f1))"
 echo "▶ [4/4] .spz 압축 (--spz-version 3 필수 — 근거는 reconstruct.sh 주석)"
 SPZ="${ROOT}/${NAME}.spz"
 if command -v node >/dev/null 2>&1; then
-  npx --yes @playcanvas/splat-transform "$PLY" --spz-version 3 "$SPZ"
+  npx --yes @playcanvas/splat-transform@2 -w "$PLY" --spz-version 3 "$SPZ"  # @2 핀: v3 CLI는 NGSP(v4)로 뽑아 뷰어가 못 읽음(2026-07-16)
   echo "✓ 완료: $SPZ  ($(du -h "$SPZ" | cut -f1))"
 else
   echo "⚠ node 없음 — 호스트/웹앱에서: npx @playcanvas/splat-transform $PLY --spz-version 3 <출력>.spz"
