@@ -105,8 +105,70 @@ pnpm --filter web dev            # /splat-tour 새로고침
   로컬에서 톤매핑 후 전송(이번엔 ffmpeg zscale+hable로 해결했음).
 - 스크립트가 포즈 매칭률 33% 미만이면 학습 전에 중단한다(포즈 게이트). 좋은 캡처는 80%+가 정상.
 
-Scaniverse 산출물(참고 기준: `apps/web/public/samples/ms_home.spz`, 가우시안 42만)은 ARKit/LiDAR로
+로컬 Scaniverse 비교 산출물(저장소 미포함, 가우시안 42만)은 ARKit/LiDAR로
 포즈를 하드웨어에서 얻는다 — 나쁜 캡처 내성은 걔가 높고, 좋은 캡처의 렌더 품질은 오프라인 GPU 학습이 유리.
+
+## Record3D 경로 (W1 — COLMAP 없는 파이프라인 검증)
+
+포즈 실패의 진원지(COLMAP)를 우회하는 형제 스크립트: `reconstruct-record3d.sh`.
+Record3D 앱(iPhone 12 Pro+, LiDAR)이 ARKit 포즈+LiDAR 깊이를 export하므로 SfM이 통째로 빠진다.
+자세한 근거·전략은 Obsidian `룸로그_3D투어_캡처앱_빌드스펙_2026-07-08.md`.
+
+```sh
+# 폰: Record3D로 촬영(위 촬영 가이드 SOP 동일) → export 2종:
+#   ① "EXR + JPG sequence"  ② "Point Cloud(PLY) sequence"(가우시안 init용, 강력 권장)
+# 전송: AirDrop→Mac→croc→GPU 박스 (기존 관행)
+bash reconstruct-record3d.sh r3d_export r3d_export_ply myroom 15000
+```
+
+- 포즈 게이트 불필요(센서 포즈라 ~100%). 대신 스크립트가 **P3 체크포인트**를 출력한다:
+  transforms.json에 ply 초기화·depth_file_path가 실렸는지 — depth loss 감독(dn-splatter)
+  필요 여부를 여기서 판정.
+- `VOXEL` 환경변수로 LiDAR 점군 다운샘플 조절(기본 0.05m — 문서 기본 0.8은 원룸엔 과성김).
+- 컨테이너는 동일 nerfstudio 이미지면 되고 COLMAP/hloc 셋업(setup-container.sh §1·§4) 불필요
+  — node(§3)만 .spz 변환에 필요.
+
+## 원격 GPU 잡 (`remote/`)
+
+API 오케스트레이터는 AWS Systems Manager `AWS-RunShellScript` 명령에 아래 파일을 base64로
+동봉한다. GPU 인스턴스의 NVMe와 Docker 이미지는 stop 때 사라질 수 있으므로 각 잡이
+`bootstrap-nvme.sh`부터 실행한다. 런타임 파일은 원격 임시 디렉터리 한곳에 평탄화해서 둔다.
+
+| 파일 | 역할 |
+| --- | --- |
+| `remote/bootstrap-nvme.sh` | Docker 대기, EBS tar 복원 또는 nerfstudio 1.1.3 pull, NVMe 잡 루트 준비 |
+| `remote/gpu-job.sh` | 다운로드, 분기별 재구성, SPZ 검증·콜백·정리 |
+| `record3d_pointinit.py`, `cull_floaters.py` | Record3D 변환과 floater 제거 |
+| `reconstruct.sh` | video → COLMAP → splatfacto → SPZ 기존 경로 |
+
+`gpu-job.sh`는 위 런타임 파일들이 자기와 **같은 디렉터리**에 있다고 가정한다. API는 파일
+내용을 각각 base64로 인코딩해 원격 임시 디렉터리에 복원한 뒤 `bash gpu-job.sh`를 호출한다.
+SSM 명령 전체가 100KB 제한 안에 남도록 RUNBOOK·README·setup 스크립트는 잡 페이로드에
+넣지 않는다. `setup-container.sh`의 Node 20 설치 단계는 `gpu-job.sh`가 필요한 경우에만 수행한다.
+
+### 환경변수 계약
+
+| 변수 | 필수 | 기본값 | 의미 |
+| --- | --- | --- | --- |
+| `ASSET_ID` | 예 | 없음 | 잡·콜백 식별자. 영문자/숫자/`.`/`_`/`-`, 최대 128자 |
+| `SOURCE_URL` | 예 | 없음 | 공개 접근 가능한 `http` 또는 `https` 입력 URL |
+| `SOURCE_KIND` | 예 | 없음 | `record3d-zip` 또는 `video` |
+| `CALLBACK_BASE` | 예 | 없음 | API origin. 예: `https://api.woo-zu.com` |
+| `WORKER_SECRET` | 예 | 없음 | 두 콜백의 `x-worker-secret` 헤더 값 |
+| `ITERS` | 아니요 | `30000` | splatfacto 최대 iteration 수 |
+| `GPU_IMAGE_TAR` | 아니요 | `/home/ssm-user/recon-capture.tar` | EBS의 `roomlog/recon:capture` 이미지 tar 우선 후보 |
+
+### 콜백과 종료 의미
+
+- 성공: `POST {CALLBACK_BASE}/splat-assets/{ASSET_ID}/reconstruction/complete`, multipart 필드
+  `file`에 `{ASSET_ID}.spz`를 업로드한다. HTTP 실패는 잡 실패로 전환된다.
+- 실패: `POST {CALLBACK_BASE}/splat-assets/{ASSET_ID}/reconstruction/failure`, JSON
+  `{"error":"단계명, 실패 명령, 로그 마지막 2KB"}`를 보낸다. 콜백 전송 자체는 15초로 제한하며
+  실패해도 원래 잡 종료를 가리지 않는다.
+- 성공·실패 모두 `/opt/dlami/nvme/jobs/{ASSET_ID}`를 삭제한다. 실패 로그만 EBS
+  `/home/ssm-user/job-{ASSET_ID}.log`에 남긴다.
+- 컨테이너에서 `pip install numpy` 또는 `pip install gsplat`은 금지다. upstream fallback에는
+  `build-essential`과 `python3-dev`만 잡 컨테이너 시작 시 보충한다.
 
 ## 이 런북이 아직 안 하는 것 (후속)
 

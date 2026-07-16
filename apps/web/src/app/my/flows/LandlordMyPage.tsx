@@ -468,6 +468,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
     return () => window.clearTimeout(timer);
   }, [ownerToast]);
 
+  // 3D 투어 상태(정합 필요/제작 중/실패)는 상단 네비 벨(TourActionBell)이 단일 소스로 알린다.
+  // 예전 하단 "3D 투어 진행 상태" 섹션과 그 집계·소켓 구독은 벨로 대체되어 제거됐다.
+
   // 결과 팝업 닫기 — 실패면 폼에 남아 재시도(작성 내용은 draft로 보존), 성공이면 홈 피드로 보낸다.
   const closeSubmitResult = () => {
     const wasSuccess = submitResult?.ok === true;
@@ -996,7 +999,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           <p>등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
         </section>
 
-        <section className="owner-card">
+        <section className="owner-card" id="owner-tour-intake">
           <div className="form-heading">
             <div>
               <span>STEP 03</span>
@@ -1011,7 +1014,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               </span>
               <span className="upload-tile-main">
                 <strong>영상/스플랫 접수</strong>
-                <span className="upload-tile-desc">영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
+                <span className="upload-tile-desc">캡처앱 zip(권장)이나 영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
                 <span className="upload-tile-status">
                   {tourSourceFile ? `${tourSourceFile.name} · ${formatFileSize(tourSourceFile.size)}` : "선택된 파일 없음"}
                 </span>
@@ -1020,7 +1023,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               <input
                 ref={tourSourceInputRef}
                 type="file"
-                accept="video/*,.spz"
+                accept="video/*,.spz,.zip"
                 aria-label="영상 또는 스플랫 파일 업로드"
                 onChange={(event) => {
                   setTourSourceFile(event.currentTarget.files?.[0] ?? null);
@@ -1042,6 +1045,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           )}
         </button>
       </form>
+
       {isPostcodeSearchOpen ? (
         <div className="postcode-sheet-backdrop" role="presentation" onClick={() => setIsPostcodeSearchOpen(false)}>
           <section

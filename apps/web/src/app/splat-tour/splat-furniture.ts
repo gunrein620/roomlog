@@ -6,7 +6,8 @@ export type SplatFurnitureSource =
   | "url-off"
   | "url-demo"
   | "resident-design"
-  | "floor-plan-draft";
+  | "floor-plan-draft"
+  | "asset-server";
 
 export interface SplatFurnitureState {
   furnitures: PlacedFurniture[];
@@ -64,6 +65,56 @@ export function loadSplatFurnitureFromBrowser(): SplatFurnitureState {
     // 브라우저 저장소 접근이 막힌 환경에서는 투어 렌더를 계속 살린다.
     return resolveSplatFurniture(window.location.search, null);
   }
+}
+
+/** resolveViewerFurniture가 참조하는 자산의 최소 형태 — status와 서버 동봉 furnitures만 본다. */
+export interface ViewerFurnitureAsset {
+  status: string;
+  furnitures?: unknown;
+}
+
+/**
+ * ?asset= 링크 방문자용 가구 소스 결정. 우선순위(높음→낮음):
+ *   1. ?furniture=0/off — 언제나 최우선(서버 가구보다도 위).
+ *   2. 서버 동봉 가구 — 자산이 REGISTERED이고 유효 furnitures가 있을 때만.
+ *      (정합 전엔 도면 좌표와 splat이 안 맞아 가구가 허공에 뜨므로 REGISTERED 게이트 필수.)
+ *   3. 기존 로컬/데모 체인(resolveSplatFurniture) — localStorage 초안 → ?furniture=demo.
+ */
+export function resolveViewerFurniture(
+  search: string,
+  storage: Pick<Storage, "getItem"> | null,
+  asset: ViewerFurnitureAsset | null
+): SplatFurnitureState {
+  const params = new URLSearchParams(search);
+  const furnitureParams = params.getAll("furniture").map((value) => value.trim().toLowerCase());
+  if (furnitureParams.some(isFurnitureOffValue)) {
+    return { furnitures: [], source: "url-off" };
+  }
+
+  const serverFurnitures = resolveServerFurniture(asset);
+  if (serverFurnitures) {
+    return { furnitures: serverFurnitures, source: "asset-server" };
+  }
+
+  return resolveSplatFurniture(search, storage);
+}
+
+export function loadViewerFurnitureFromBrowser(asset: ViewerFurnitureAsset | null): SplatFurnitureState {
+  if (typeof window === "undefined") return createEmptyState();
+
+  try {
+    return resolveViewerFurniture(window.location.search, window.localStorage, asset);
+  } catch {
+    return resolveViewerFurniture(window.location.search, null, asset);
+  }
+}
+
+function resolveServerFurniture(asset: ViewerFurnitureAsset | null): PlacedFurniture[] | null {
+  if (!asset || asset.status !== "REGISTERED") return null;
+  if (!Array.isArray(asset.furnitures)) return null;
+
+  const furnitures = asset.furnitures.filter(isValidPlacedFurniture);
+  return furnitures.length > 0 ? furnitures : null;
 }
 
 function createEmptyState(): SplatFurnitureState {
@@ -133,7 +184,7 @@ function chooseStorageCandidate(
   return resident ?? draft;
 }
 
-function isValidPlacedFurniture(value: unknown): value is PlacedFurniture {
+export function isValidPlacedFurniture(value: unknown): value is PlacedFurniture {
   if (!isRecord(value)) return false;
 
   return (

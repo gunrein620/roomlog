@@ -6,6 +6,7 @@ import { MarketModule } from "./market/market.module";
 import { RoomlogModule } from "./roomlog/roomlog.module";
 import { SplatAssetModule } from "./splat-asset/splat-asset.module";
 import { RealtimeModule } from "./realtime/realtime.module";
+import { ReconstructionModule } from "./reconstruction/reconstruction.module";
 import { TradeModule } from "./trade/trade.module";
 
 @Module({
@@ -17,7 +18,8 @@ import { TradeModule } from "./trade/trade.module";
     ListingsModule,
     SplatAssetModule,
     TradeModule,
-    RealtimeModule
+    RealtimeModule,
+    ReconstructionModule
   ]
 })
 export class AppModule {}

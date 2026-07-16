@@ -4,7 +4,7 @@
 // "문자로 문의하기"는 폼(간편문의 시트) 대신 채팅 탭의 빈 대화로 바로 보낸다(onStartChat, 당근식).
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Banknote,
@@ -24,8 +24,10 @@ import {
   listingDetailAddressLabel,
   listingMapAddress,
   optionItems,
+  TRADE_LISTING_NO_PREFIX,
   type Listing
 } from "@/lib/listing-catalog";
+import { listSplatAssetsByListing } from "@/lib/splat-asset-api";
 import { NaverMapPreview } from "./NaverMapPreview";
 
 // 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
@@ -58,6 +60,44 @@ export function ListingDetailView({
   const detailAddressLabel = listingDetailAddressLabel(listing);
   const mapAddress = listingMapAddress(listing);
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
+  // 매물별 3D 게이트 대상은 직접등록(TRADE-) 매물뿐 — 정적(하드코딩) 매물은 기존 데모 링크를 그대로 둔다(곧 삭제 예정).
+  const isTradeDirectListing = isDirectListing && listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX);
+  // 직접등록 매물의 대표 3D 자산 id — 있으면 "1인칭 체험"이 이 매물 전용 투어로 연결된다.
+  const [splatAssetId, setSplatAssetId] = useState<string | null>(null);
+  // 자산 조회 완료 여부 — 조회 중엔 "준비 안 됨"을 성급히 띄우지 않는다(로딩과 없음을 구분).
+  const [splatChecked, setSplatChecked] = useState(false);
+
+  // 직접등록 매물이면 연결된 splat 자산을 조회해 대표 하나를 고른다(REGISTERED > UPLOADED > PROCESSING).
+  // 자산이 없거나(또는 FAILED뿐) 조회가 실패하면 splatAssetId는 null로 남고, 아래에서 매물별 게이트("준비 안 됨")를 노출한다.
+  useEffect(() => {
+    if (!isTradeDirectListing) {
+      setSplatAssetId(null);
+      setSplatChecked(false);
+      return;
+    }
+    const listingId = listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
+    let cancelled = false;
+    setSplatChecked(false);
+    listSplatAssetsByListing(listingId)
+      .then((assets) => {
+        if (cancelled) return;
+        const priority: Record<string, number> = { REGISTERED: 3, UPLOADED: 2, PROCESSING: 1 };
+        const pick = assets
+          .filter((asset) => asset.status in priority)
+          .sort((a, b) => priority[b.status] - priority[a.status])[0];
+        setSplatAssetId(pick?.id ?? null);
+        setSplatChecked(true);
+      })
+      .catch(() => {
+        // 조회 실패 — 자산 없음으로 간주하고 게이트를 정직하게 노출한다(데모로 은폐하지 않음).
+        if (cancelled) return;
+        setSplatChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isTradeDirectListing, listing.listingNo]);
+
   // 직접등록 매물은 집주인이 등록 시 고른 옵션만, 데모 매물(options 없음)은 기존 고정 목록을 보여준다.
   const listingOptions = listing.options ?? optionItems;
 
@@ -230,11 +270,37 @@ export function ListingDetailView({
           <span>3D</span>
           <strong>둘러보기</strong>
         </button>
-        {/* 임시 데모용 — 1인칭 체험은 splat 투어 페이지로 바로 이동한다(woo-zu.com/splat-tour) */}
-        <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
-          <span>1인칭</span>
-          <strong>체험</strong>
-        </a>
+        {/* 1인칭 체험 — 매물별 정직 게이트.
+            · 직접등록(TRADE-) + 대표 자산 있음 → 이 매물 전용 splat 투어(?asset=)
+            · 직접등록 + 자산 없음/FAILED뿐 → 비활성 "준비 안 됨"(링크 아님, 없는 상태를 그대로 노출)
+            · 정적(하드코딩) 매물 → 기존 공통 데모 투어(/splat-tour) 유지(곧 삭제 예정) */}
+        {splatAssetId ? (
+          <a className="detail-contact-tour detail-contact-splat" href={`/splat-tour?asset=${splatAssetId}`}>
+            <span>1인칭</span>
+            <strong>체험</strong>
+          </a>
+        ) : isTradeDirectListing ? (
+          <span
+            className="detail-contact-tour detail-contact-splat detail-contact-splat-empty"
+            role="note"
+            aria-label="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            title="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            style={{
+              background: "var(--surface-container)",
+              borderColor: "var(--border)",
+              color: "var(--on-surface-variant)",
+              cursor: "default"
+            }}
+          >
+            <span style={{ color: "var(--on-surface-variant)" }}>1인칭</span>
+            <strong>{splatChecked ? "준비 안 됨" : "확인 중"}</strong>
+          </span>
+        ) : (
+          <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
+            <span>1인칭</span>
+            <strong>체험 (데모)</strong>
+          </a>
+        )}
         <button className="detail-contact-primary" type="button" onClick={onStartChat}>
           <strong>문자로 문의하기</strong>
           <span>방문 가능 여부 바로 확인</span>

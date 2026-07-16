@@ -35,7 +35,7 @@ export default async function ManagerListingPage({ searchParams }: { searchParam
   let listingError = false;
 
   try {
-    const listings = await serverFetch<TradeListing[]>("/trade/listings");
+    const listings = await serverFetch<TradeListing[]>("/trade/listings?mine=1");
     rows = toManagerListingRows(listings, user.userId);
   } catch {
     listingError = true;

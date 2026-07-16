@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [],
+  "source": "existing RX-93 8x9 atlas preserved without standard-row regeneration",
+  "note": "All populated standard cells remained non-empty in the v2 atlas validator; final contact-sheet visual QA is the motion and identity gate."
+}

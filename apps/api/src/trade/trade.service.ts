@@ -363,6 +363,8 @@ export class TradeService implements OnModuleDestroy {
           if (generation >= (this.projectionFailure?.generation ?? -1)) {
             this.projectionFailure = { generation, error };
           }
+          // 실패 은폐 금지 — 프로젝션이 죽으면 이 테이블을 읽는 모든 소비자가 스테일 데이터를 본다.
+          console.warn(`[trade] 매물 DB 프로젝션 실패(gen=${generation}):`, error);
         }
       );
     return generation;
@@ -492,6 +494,11 @@ export class TradeService implements OnModuleDestroy {
 
   listPublicListings(): TradeListing[] {
     return this.listListings().filter((listing) => listing.status === "노출중");
+  }
+
+  /** 소유자 스코프 매물 목록 — ?mine=1 경로가 소비(마이페이지·앱 픽커). */
+  listListingsByOwner(ownerId: string): TradeListing[] {
+    return this.listListings().filter((listing) => listing.ownerId === ownerId);
   }
 
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {

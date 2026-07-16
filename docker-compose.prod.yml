@@ -50,6 +50,13 @@ services:
       # 버킷 생성 후 아래 두 값만 채우면(=true, CloudFront URL) 코드 변경 없이 S3 저장으로 전환된다.
       S3_UPLOADS_ENABLED: ${S3_UPLOADS_ENABLED:-}
       CLOUDFRONT_BASE_URL: ${CLOUDFRONT_BASE_URL:-}
+      # GPU 재구성 오케스트레이터 — 전부 채워져야 활성(하나라도 비면 자동 비활성, apps/api/src/reconstruction/).
+      GPU_PIPELINE_ENABLED: ${GPU_PIPELINE_ENABLED:-}
+      GPU_INSTANCE_ID: ${GPU_INSTANCE_ID:-}
+      # GPU 박스는 us-east-1 — 스토리지 리전(ap-northeast-2)과 다르므로 반드시 별도 값.
+      GPU_REGION: ${GPU_REGION:-}
+      GPU_WORKER_SECRET: ${GPU_WORKER_SECRET:-}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://api.woo-zu.com}
     ports:
       - "4000:4000"
     volumes:

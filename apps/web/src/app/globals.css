@@ -13601,6 +13601,118 @@ p {
   font-weight: 700;
 }
 
+/* 상단 벨 알림 (임대인) — 정합 필요/재업로드 자산을 상시 노출 */
+.tour-bell {
+  position: relative;
+  display: inline-flex;
+}
+
+.tour-bell-button {
+  position: relative;
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--paper);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tour-bell-button:hover {
+  color: var(--ink);
+  border-color: var(--blue);
+}
+
+.tour-bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--error);
+  color: var(--paper);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.tour-bell-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 60;
+  width: 320px;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.tour-bell-menu-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.tour-bell-empty {
+  margin: 0;
+  padding: 8px 4px 4px;
+  color: var(--subtle);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.tour-bell-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tour-bell-item {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.tour-bell-item.is-uploaded {
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.tour-bell-item.is-uploaded:hover {
+  border-color: var(--blue);
+}
+
+.tour-bell-item.is-failed {
+  background: var(--error-container);
+  color: var(--error);
+}
+
+.tour-bell-item.is-failed:hover {
+  border-color: var(--error);
+}
+
 /* ============================================================
    AI 비서 다이얼로그 공용 스타일 (관리자 manager/globals.css에서 추출한 사본)
    세입자 마이페이지의 Woo-zu AI 패널이 관리자 비서와 동일한 UI를 쓰기 위해
