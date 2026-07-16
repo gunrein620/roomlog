@@ -1,9 +1,104 @@
+/*
+ * 우주(WOOZU) 나이트스카이 스킨 — 임차인 가구함·배치 화면 전용.
+ * 원칙: raw 색상값은 아래 .screen 토큰 블록에서만 정의하고,
+ * 모든 규칙은 var(--wz-*) 또는 @roomlog/ui 시맨틱 변수 재매핑을 소비한다.
+ * 60·30·10 — 딥퍼플(제목·가구·강조 면) / 라벤더(보조 텍스트·칩·벽) /
+ * 코랄(화면당 핵심 CTA 하나: 배치안 저장 · 치수 저장).
+ */
+
+/* 브랜드 헤드라인 서체 — Gowun Batang(명조). 미로드 시 시스템 명조 폴백. */
+@font-face {
+  font-family: "Gowun Batang";
+  src: url(https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2107@1.1/GowunBatang-Regular.woff) format("woff");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gowun Batang";
+  src: url(https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2107@1.1/GowunBatang-Bold.woff) format("woff");
+  font-weight: 700;
+  font-display: swap;
+}
+
 .screen {
+  /* --- WOOZU 토큰 블록 (raw 색상은 여기에서만) --- */
+  --wz-primary: #20184a;
+  --wz-primary-800: #2a1f52;
+  --wz-primary-900: #17133a;
+  --wz-secondary: #8b83c0;
+  --wz-secondary-soft: #cbbff5;
+  --wz-surface-muted: #efecfa;
+  --wz-accent: #f2899d;
+  --wz-accent-deep: #c25370;
+  --wz-on-accent: #0b0b12;
+  --wz-bg: #faf8fc;
+  --wz-surface: #ffffff;
+  --wz-border: #ece8f4;
+  --wz-text: #20184a;
+  --wz-text-secondary: #5a5478;
+  --wz-muted: #9a95b0;
+  --wz-success: #1f6a52;
+  --wz-success-soft: #dff0e8;
+  --wz-danger: #a94442;
+  --wz-danger-deep: #7e2f2e;
+  --wz-danger-soft: #f9e5e2;
+  --wz-gradient-night: linear-gradient(160deg, #1b1746, #2a1f52);
+  --wz-night-stars:
+    radial-gradient(1.4px 1.4px at 18% 26%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1.1px 1.1px at 71% 18%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.3px 1.3px at 86% 58%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 32% 72%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1.5px 1.5px at 57% 42%, rgba(203, 191, 245, 0.55), transparent),
+    radial-gradient(1px 1px at 9% 55%, rgba(203, 191, 245, 0.38), transparent),
+    radial-gradient(1.2px 1.2px at 44% 12%, rgba(203, 191, 245, 0.4), transparent);
+  --wz-on-night: #f1edfb;
+  --wz-night-chip: rgba(255, 255, 255, 0.1);
+  --wz-night-border: rgba(203, 191, 245, 0.42);
+  --wz-scrim: rgba(23, 19, 58, 0.84);
+  --wz-font-heading: "Gowun Batang", "Noto Serif KR", "Nanum Myeongjo", serif;
+  --wz-font-body: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --wz-shadow-card: 0 8px 26px rgba(26, 19, 48, 0.05);
+  --wz-focus-ring: 0 0 0 3px rgba(139, 131, 192, 0.4);
+
+  /* --- @roomlog/ui 공용 컴포넌트(Card·Button)가 소비하는 시맨틱 변수 재매핑 --- */
+  --surface-container-lowest: var(--wz-surface);
+  --surface-container-low: var(--wz-bg);
+  --surface-container: var(--wz-surface-muted);
+  --on-surface: var(--wz-text);
+  --on-surface-variant: var(--wz-text-secondary);
+  --border: var(--wz-border);
+  --outline-variant: var(--wz-border);
+  --primary: var(--wz-primary);
+  --on-primary: var(--wz-surface);
+  --primary-container: var(--wz-surface-muted);
+  --on-primary-container: var(--wz-primary-800);
+  --error: var(--wz-danger);
+  --error-container: var(--wz-danger-soft);
+  --on-error-container: var(--wz-danger-deep);
+  --success-container: var(--wz-success-soft);
+  --on-success-container: var(--wz-success);
+  --chip-bg: var(--wz-surface-muted);
+  --chip-on: var(--wz-text-secondary);
+  --input-border: var(--wz-border);
+  --input-placeholder: var(--wz-muted);
+  --input-text: var(--wz-text);
+  --font-sans: var(--wz-font-body);
+  --focus-ring: var(--wz-focus-ring);
+  --shadow-soft: var(--wz-shadow-card);
+
   display: flex;
   min-height: 0;
   height: 100%;
   flex-direction: column;
-  background: var(--surface-container-lowest);
+  background: var(--wz-bg);
+  color: var(--wz-text);
+  font-family: var(--wz-font-body);
+}
+
+/* @roomlog/ui Button은 disabled 시각 처리가 없어 여기서 보강한다 */
+.screen button:disabled {
+  cursor: not-allowed;
+  opacity: var(--disabled-opacity);
 }
 
 .header {
@@ -12,8 +107,9 @@
   align-items: center;
   gap: var(--space-sm);
   min-height: var(--header-height);
-  padding: var(--space-sm) var(--space-lg);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-sm) var(--page-margin);
+  border-bottom: 1px solid var(--wz-border);
+  background: var(--wz-surface);
 }
 
 .backLink {
@@ -23,34 +119,50 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius);
-  color: var(--on-surface);
-  font-weight: 800;
+  color: var(--wz-secondary);
+  font-weight: 700;
   text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.backLink:hover {
+  background: var(--wz-surface-muted);
+  color: var(--wz-primary);
 }
 
 .headingBlock {
   min-width: 0;
 }
 
-.eyebrow,
+.eyebrow {
+  margin: 0;
+  color: var(--wz-accent-deep);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 .sectionLabel {
   margin: 0;
-  color: var(--primary);
-  font-size: var(--fs-caption);
-  font-weight: 800;
+  color: var(--wz-primary);
+  font-family: var(--wz-font-heading);
+  font-size: var(--fs-body);
+  font-weight: 700;
 }
 
 .title {
   margin: 0;
-  color: var(--on-surface);
-  font-size: var(--fs-header);
-  font-weight: var(--fw-header);
-  line-height: var(--lh-header);
+  color: var(--wz-primary);
+  font-family: var(--wz-font-heading);
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: var(--lh-title);
 }
 
 .subtitle {
   margin: var(--space-xs) 0 0;
-  color: var(--on-surface-variant);
+  color: var(--wz-text-secondary);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
@@ -61,13 +173,13 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-xl);
   overflow-y: auto;
-  padding: var(--space-lg);
+  padding: var(--page-margin);
 }
 
 .plannerContent {
-  gap: var(--space-md);
+  gap: var(--space-lg);
 }
 
 .summaryRow,
@@ -100,14 +212,24 @@
 }
 
 .count {
-  color: var(--on-surface-variant);
+  color: var(--wz-text-secondary);
   font-size: var(--fs-caption);
   font-weight: 700;
 }
 
+/* 링크로 쓰이는 count("가구 관리")는 밝은 배경 위 accent-deep 링크 규약을 따른다 */
+a.count {
+  color: var(--wz-accent-deep);
+  text-decoration: none;
+}
+
+a.count:hover {
+  text-decoration: underline;
+}
+
 .list {
   display: grid;
-  gap: var(--space-sm);
+  gap: var(--space-md);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -116,6 +238,7 @@
 .furnitureCard {
   display: grid;
   gap: var(--space-md);
+  box-shadow: var(--wz-shadow-card);
 }
 
 .furnitureIdentity {
@@ -133,16 +256,17 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius);
-  background: var(--surface-container);
+  background: var(--wz-surface-muted);
+  color: var(--wz-secondary);
   font-size: var(--fs-subtitle);
 }
 
 .itemName {
   margin: 0;
   overflow: hidden;
-  color: var(--on-surface);
+  color: var(--wz-text);
   font-size: var(--fs-body);
-  font-weight: 800;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -150,7 +274,7 @@
 .itemMeta,
 .helperText {
   margin: var(--space-xs) 0 0;
-  color: var(--on-surface-variant);
+  color: var(--wz-text-secondary);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
@@ -165,33 +289,34 @@
   min-height: 1.75rem;
   align-items: center;
   border-radius: var(--radius-full);
-  background: var(--chip-bg);
-  color: var(--chip-on);
+  background: var(--wz-surface-muted);
+  color: var(--wz-text-secondary);
   font-size: var(--fs-caption);
   font-weight: 700;
-  padding: 0 var(--space-sm);
+  padding: 0 var(--space-md);
 }
 
 .statusChip[data-state="valid"] {
-  background: var(--success-container);
-  color: var(--on-success-container);
+  background: var(--wz-success-soft);
+  color: var(--wz-success);
+  font-weight: 800;
 }
 
 .statusChip[data-state="invalid"] {
-  background: var(--error-container);
-  color: var(--on-error-container);
+  background: var(--wz-danger-soft);
+  color: var(--wz-danger-deep);
 }
 
 .statusChip[data-state="empty"] {
-  background: var(--surface-container);
-  color: var(--on-surface-variant);
+  background: var(--wz-surface-muted);
+  color: var(--wz-text-secondary);
 }
 
 .editForm {
   display: grid;
   gap: var(--space-sm);
   padding-top: var(--space-sm);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--wz-border);
 }
 
 .fieldGrid {
@@ -203,7 +328,7 @@
 .field {
   display: grid;
   gap: var(--space-xs);
-  color: var(--on-surface-variant);
+  color: var(--wz-text-secondary);
   font-size: var(--fs-caption);
   font-weight: 700;
 }
@@ -211,10 +336,10 @@
 .input {
   width: 100%;
   min-height: var(--control-secondary-size);
-  border: 1px solid var(--input-border);
+  border: 1px solid var(--wz-border);
   border-radius: var(--radius);
-  background: var(--surface-container-lowest);
-  color: var(--input-text);
+  background: var(--wz-surface);
+  color: var(--wz-text);
   padding: 0 var(--space-sm);
 }
 
@@ -222,7 +347,7 @@
 .backLink:focus-visible,
 .compactButton:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring);
+  box-shadow: var(--wz-focus-ring);
 }
 
 .actionRow {
@@ -234,19 +359,42 @@
   min-height: var(--control-compact-size);
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--outline-variant);
+  border: 1px solid var(--wz-border);
   border-radius: var(--radius-btn);
-  background: var(--surface-container-lowest);
-  color: var(--on-surface);
-  font-weight: 800;
+  background: var(--wz-surface);
+  color: var(--wz-primary);
+  font-weight: 700;
   padding: 0 var(--space-md);
   text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.compactButton:hover:not(:disabled) {
+  background: var(--wz-surface-muted);
 }
 
 .compactButton[data-emphasis="true"] {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--on-primary);
+  border-color: var(--wz-primary);
+  background: var(--wz-primary);
+  color: var(--wz-surface);
+}
+
+.compactButton[data-emphasis="true"]:hover:not(:disabled) {
+  border-color: var(--wz-primary-800);
+  background: var(--wz-primary-800);
+}
+
+/* 가구함 화면의 핵심 CTA(치수 저장)만 코랄 — 화면당 코랄 하나 원칙 */
+.editForm .compactButton[data-emphasis="true"] {
+  border-color: var(--wz-accent);
+  background: var(--wz-accent);
+  color: var(--wz-on-accent);
+}
+
+.editForm .compactButton[data-emphasis="true"]:hover:not(:disabled) {
+  border-color: var(--wz-accent-deep);
+  background: var(--wz-accent-deep);
+  color: var(--wz-surface);
 }
 
 .compactButton:disabled {
@@ -263,28 +411,77 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-sm);
-  border: 1px dashed var(--outline-variant);
   border-radius: var(--radius-md);
-  background: var(--surface-container-low);
   padding: var(--space-xl);
   text-align: center;
+}
+
+/* 빈 상태 = 밤하늘 패널: 나이트 그라데이션 + 은은한 별 */
+.emptyState {
+  background-color: var(--wz-primary-800);
+  background-image: var(--wz-night-stars), var(--wz-gradient-night);
+  box-shadow: var(--wz-shadow-card);
+  color: var(--wz-on-night);
+}
+
+.errorState {
+  border: 1px solid var(--wz-border);
+  background: var(--wz-surface);
+  box-shadow: var(--wz-shadow-card);
+}
+
+.comingSoon {
+  background: var(--wz-surface-muted);
 }
 
 .emptyState h2,
 .errorState h2,
 .comingSoon h2 {
   margin: 0;
-  color: var(--on-surface);
+  font-family: var(--wz-font-heading);
   font-size: var(--fs-subtitle);
+  font-weight: 700;
+}
+
+.emptyState h2 {
+  color: var(--wz-on-night);
+}
+
+.errorState h2,
+.comingSoon h2 {
+  color: var(--wz-primary);
 }
 
 .emptyState p,
 .errorState p,
 .comingSoon p {
   margin: 0;
-  color: var(--on-surface-variant);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
+}
+
+.emptyState p {
+  color: var(--wz-secondary-soft);
+}
+
+.errorState p,
+.comingSoon p {
+  color: var(--wz-text-secondary);
+}
+
+.emptyState .categoryIcon {
+  background: var(--wz-night-chip);
+  color: var(--wz-secondary-soft);
+}
+
+.emptyState .compactButton {
+  border-color: var(--wz-night-border);
+  background: transparent;
+  color: var(--wz-on-night);
+}
+
+.emptyState .compactButton:hover:not(:disabled) {
+  background: var(--wz-night-chip);
 }
 
 .comingSoon {
@@ -295,13 +492,13 @@
 
 .loadingList {
   display: grid;
-  gap: var(--space-sm);
+  gap: var(--space-md);
 }
 
 .skeleton {
   min-height: 7rem;
   border-radius: var(--radius-md);
-  background: var(--surface-container);
+  background: var(--wz-surface-muted);
   animation: pulse 1.4s ease-in-out infinite alternate;
 }
 
@@ -318,9 +515,10 @@
   position: relative;
   overflow: hidden;
   flex: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--wz-border);
   border-radius: var(--radius-md);
-  background: var(--surface-container-low);
+  background: var(--wz-surface);
+  box-shadow: var(--wz-shadow-card);
   aspect-ratio: 1 / 1;
 }
 
@@ -332,10 +530,11 @@
   user-select: none;
 }
 
+/* 탑다운 도면: 라벤더 벽 · 딥퍼플 가구 · 코랄 선택 하이라이트 */
 .wall {
-  fill: var(--on-surface-variant);
-  stroke: var(--on-surface);
-  stroke-width: 0.025;
+  fill: var(--wz-secondary);
+  stroke: var(--wz-primary-800);
+  stroke-width: 0.02;
 }
 
 .furniture {
@@ -348,33 +547,29 @@
 }
 
 .furnitureShape {
-  fill: var(--primary-container);
-  stroke: var(--primary);
+  fill: var(--wz-primary);
+  stroke: var(--wz-primary-900);
   stroke-width: 0.04;
 }
 
 .furniture[data-invalid="true"] .furnitureShape {
-  fill: var(--error-container);
-  stroke: var(--error);
+  fill: var(--wz-danger);
+  stroke: var(--wz-danger-deep);
   stroke-dasharray: 0.12 0.08;
 }
 
 .furniture[data-selected="true"] .furnitureShape,
 .furniture:focus-visible .furnitureShape {
-  stroke: var(--on-surface);
+  stroke: var(--wz-accent);
   stroke-width: 0.075;
 }
 
 .furnitureIndex {
-  fill: var(--on-primary-container);
+  fill: var(--wz-on-night);
   font-weight: 800;
   pointer-events: none;
   text-anchor: middle;
   dominant-baseline: central;
-}
-
-.furniture[data-invalid="true"] .furnitureIndex {
-  fill: var(--on-error-container);
 }
 
 .canvasHint {
@@ -383,9 +578,9 @@
   bottom: var(--space-sm);
   left: var(--space-sm);
   margin: 0;
-  border-radius: var(--radius);
-  background: var(--inverse-surface);
-  color: var(--inverse-on-surface);
+  border-radius: var(--radius-full);
+  background: var(--wz-scrim);
+  color: var(--wz-on-night);
   font-size: var(--fs-caption);
   padding: var(--space-xs) var(--space-sm);
   text-align: center;
@@ -402,15 +597,16 @@
 .inventoryItem {
   display: grid;
   gap: var(--space-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--wz-border);
   border-radius: var(--radius);
-  background: var(--surface-container-lowest);
+  background: var(--wz-surface);
+  box-shadow: var(--wz-shadow-card);
   padding: var(--space-md);
 }
 
 .placementItem[data-selected="true"] {
-  border-color: var(--primary);
-  background: var(--primary-container);
+  border-color: var(--wz-secondary);
+  background: var(--wz-surface-muted);
 }
 
 .placementTitle {
@@ -428,32 +624,37 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: var(--chip-bg);
-  color: var(--chip-on);
+  background: var(--wz-surface-muted);
+  color: var(--wz-primary-800);
   font-size: var(--fs-caption);
   font-weight: 800;
 }
 
 .footer {
+  /* 화면당 코랄 하나 — 배치 화면의 핵심 CTA(배치안 저장)만 코랄로 재매핑 */
+  --primary: var(--wz-accent);
+  --on-primary: var(--wz-on-accent);
+
   display: grid;
   flex: none;
   gap: var(--space-xs);
-  padding: var(--space-md) var(--space-lg);
-  border-top: 1px solid var(--border);
-  background: var(--surface-container-lowest);
+  padding: var(--space-md) var(--page-margin);
+  border-top: 1px solid var(--wz-border);
+  background: var(--wz-surface);
 }
+
 
 .footerMessage {
   min-height: var(--lh-caption);
   margin: 0;
-  color: var(--on-surface-variant);
+  color: var(--wz-text-secondary);
   font-size: var(--fs-caption);
   text-align: center;
 }
 
 .errorText {
   margin: 0;
-  color: var(--error);
+  color: var(--wz-danger);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
