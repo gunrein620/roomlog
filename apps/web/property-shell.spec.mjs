@@ -178,7 +178,8 @@ test("serves role frontends from the single web container on port 3000", () => {
 test("packages the production API without reinstalling dependencies in the runner", () => {
   assert.equal(apiDockerfileSource.match(/pnpm install/g)?.length, 1);
   assert.equal(apiDockerfileSource.match(/prisma generate/g)?.length, 1);
-  assert.match(apiDockerfileSource, /pnpm --filter api deploy --prod \/prod\/api/);
+  assert.match(apiDockerfileSource, /pnpm --filter api deploy --legacy --prod \/prod\/api/);
+  assert.match(apiDockerfileSource, /cp -R "\$builder_client_root\/\.prisma" "\$deployed_client_root\/\.prisma"/);
 
   const runnerSource = requireSourceMatch(
     apiDockerfileSource,

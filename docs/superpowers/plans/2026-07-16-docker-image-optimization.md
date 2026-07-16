@@ -4,7 +4,7 @@
 
 **Goal:** Reduce production Docker build and image export time by packaging the Next.js standalone runtime and eliminating the API runner's second dependency installation and Prisma generation.
 
-**Architecture:** The web builder emits Next.js standalone output and a minimal Node runner copies only standalone, static, and public artifacts. The API builder installs once, generates Prisma once, compiles NestJS, and uses `pnpm --filter api deploy --prod` to assemble a production runtime tree copied into a clean runner stage.
+**Architecture:** The web builder emits Next.js standalone output and a minimal Node runner copies only standalone, static, and public artifacts. The API builder installs once, generates Prisma once, compiles NestJS, and uses `pnpm --filter api deploy --legacy --prod` to assemble a production runtime tree copied into a clean runner stage without changing workspace-wide dependency injection settings.
 
 **Tech Stack:** Docker BuildKit, Docker Compose, Next.js 16 standalone output, NestJS 11, pnpm 11 deploy, Prisma 7, Node.js 24 Alpine
 
@@ -51,7 +51,7 @@ Add:
 test("packages the production API without reinstalling dependencies in the runner", () => {
   assert.equal(apiDockerfileSource.match(/pnpm install/g)?.length, 1);
   assert.equal(apiDockerfileSource.match(/prisma generate/g)?.length, 1);
-  assert.match(apiDockerfileSource, /pnpm --filter api deploy --prod \/prod\/api/);
+  assert.match(apiDockerfileSource, /pnpm --filter api deploy --legacy --prod \/prod\/api/);
 
   const runnerSource = requireSourceMatch(
     apiDockerfileSource,
@@ -197,7 +197,10 @@ COPY apps/api apps/api
 COPY scripts/reconstruct scripts/reconstruct
 
 RUN pnpm --filter api build
-RUN pnpm --filter api deploy --prod /prod/api
+RUN pnpm --filter api deploy --legacy --prod /prod/api
+RUN builder_client_root="$(dirname "$(dirname "$(readlink -f apps/api/node_modules/@prisma/client)")")" \
+    && deployed_client_root="$(dirname "$(dirname "$(readlink -f /prod/api/node_modules/@prisma/client)")")" \
+    && cp -R "$builder_client_root/.prisma" "$deployed_client_root/.prisma"
 ```
 
 - [ ] **Step 2: Build a clean API runner without install commands**
@@ -224,7 +227,7 @@ EXPOSE 4000
 CMD ["node", "apps/api/dist/main"]
 ```
 
-The `/prod/api` copy contains package metadata, tracked migration assets, and production dependencies. The explicit `dist` copy avoids package-packlist rules excluding the gitignored build directory. Root workspace metadata keeps the migration script's existing `pnpm --filter api exec prisma` command valid. The explicit shared types and reconstruction copies preserve runtime file reads and workspace package imports.
+The `/prod/api` copy contains package metadata, tracked migration assets, and production dependencies. Legacy deploy does not preserve Prisma's generated `.prisma/client` directory, so the builder copies that first and only generated client into the deployed dependency tree. The explicit `dist` copy avoids package-packlist rules excluding the gitignored build directory. Root workspace metadata keeps the migration script's existing `pnpm --filter api exec prisma` command valid. The explicit shared types and reconstruction copies preserve runtime file reads and workspace package imports.
 
 - [ ] **Step 3: Run the focused API contract and verify GREEN**
 
@@ -243,7 +246,7 @@ Run:
 ```bash
 pnpm --filter api build
 deploy_check_dir="$(mktemp -d /tmp/roomlog-api-deploy-check.XXXXXX)"
-pnpm --filter api deploy --prod "$deploy_check_dir"
+pnpm --filter api deploy --legacy --prod "$deploy_check_dir"
 test -f apps/api/dist/main.js
 test -f "$deploy_check_dir/scripts/migrate-database.mjs"
 ```
