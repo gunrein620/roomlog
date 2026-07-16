@@ -187,7 +187,7 @@ export function NaverMapPreview({
   const scriptUrl = naverMapScriptUrl;
   // 좌표 배열이 실제로 달라졌을 때만 마커를 다시 그린다 (렌더마다 새 배열이 와도 무시).
   const markersKey = markers
-    ? JSON.stringify(markers.map((deal) => [deal.lat, deal.lng, deal.mapLabel]))
+    ? JSON.stringify(markers.map((deal) => [deal.lat, deal.lng, deal.mapLabel, deal.clusterLabel, deal.title, deal.price]))
     : "";
   const centerKey =
     center && Number.isFinite(center.lat) && Number.isFinite(center.lng)

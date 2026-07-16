@@ -2337,7 +2337,8 @@ p {
   backdrop-filter: blur(12px);
 }
 
-.map-selected-card > button {
+.map-selected-card > button,
+.map-selected-summary {
   display: grid;
   min-width: 0;
   gap: 4px;
@@ -2366,7 +2367,7 @@ p {
   white-space: nowrap;
 }
 
-.map-selected-card > div {
+.map-selected-actions {
   display: grid;
   justify-items: end;
   gap: 7px;
@@ -2385,7 +2386,7 @@ p {
   font-weight: 900;
 }
 
-.map-selected-card > div button {
+.map-selected-actions button {
   min-height: 34px;
   padding: 0 13px;
   border-radius: 12px;
@@ -2393,6 +2394,47 @@ p {
   color: #ffffff;
   font-size: 0.74rem;
   font-weight: 900;
+}
+
+.map-selected-room-list {
+  grid-column: 1 / -1;
+  display: grid;
+  max-height: 126px;
+  gap: 7px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.map-selected-room-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(47, 85, 255, 0.14);
+  border-radius: 13px;
+  background: #f8fbff;
+  color: inherit;
+  text-align: left;
+}
+
+.map-selected-room-list button.active {
+  border-color: rgba(47, 85, 255, 0.72);
+  background: #eef3ff;
+}
+
+.map-selected-room-list strong,
+.map-selected-room-list span,
+.map-selected-room-list small {
+  min-width: 0;
+}
+
+.map-selected-room-list small {
+  grid-column: 1 / -1;
+}
+
+.map-selected-detail-address {
+  grid-column: 1 / -1;
 }
 
 .result-sheet {
