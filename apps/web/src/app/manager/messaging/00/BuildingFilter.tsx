@@ -31,10 +31,10 @@ export function BuildingFilter({
   return (
     <label
       style={{
-        width: "min(100%, 420px)",
+        flex: "0 1 280px",
+        minWidth: "min(100%, 220px)",
         display: "grid",
         gap: "var(--space-xs)",
-        marginBottom: "var(--space-lg)",
         color: "var(--on-surface-variant)",
         fontSize: "var(--fs-caption)",
         fontWeight: 800,

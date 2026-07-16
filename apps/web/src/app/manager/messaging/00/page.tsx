@@ -14,6 +14,7 @@ import {
   resolveBuildingFilter,
 } from "@/lib/messaging-building-filter";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
+import { filterThreadsBySearch } from "@/lib/messaging-thread-search";
 import { formatThreadLocation } from "@/lib/messaging-thread-location";
 import { ApiError } from "@/lib/server-api";
 import {
@@ -31,7 +32,7 @@ import { NewConversationForm } from "./NewConversationForm";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ building?: string }>;
+type SearchParams = Promise<{ building?: string; q?: string }>;
 
 async function deleteManagerThreadAction(formData: FormData) {
   "use server";
@@ -58,7 +59,7 @@ async function deleteManagerThreadAction(formData: FormData) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const [{ building }, threads, recipients] = await Promise.all([
+  const [{ building, q }, threads, recipients] = await Promise.all([
     searchParams,
     listManagerThreads(),
     listManagerMessagingRecipients(),
@@ -67,12 +68,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const showUnassigned = hasUnassignedBuilding(threads);
   const activeBuilding = resolveBuildingFilter(building, buildingOptions, showUnassigned);
   const filteredThreads = filterThreadsByBuilding(threads, activeBuilding);
-  const sortedThreads = [...filteredThreads].sort((a, b) => {
+  const searchQuery = q?.trim() ?? "";
+  const searchedThreads = filterThreadsBySearch(filteredThreads, searchQuery);
+  const sortedThreads = [...searchedThreads].sort((a, b) => {
     const urgentA = a.unreadCount + Number(a.pendingRequest);
     const urgentB = b.unreadCount + Number(b.pendingRequest);
     return urgentB - urgentA || b.updatedAt.localeCompare(a.updatedAt);
   });
-  const needsReply = filteredThreads.filter((thread) => thread.unreadCount > 0 || thread.pendingRequest).length;
+  const needsReply = searchedThreads.filter((thread) => thread.unreadCount > 0 || thread.pendingRequest).length;
 
   return (
     <>
@@ -82,30 +85,74 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         actions={<LinkButton href={MANAGER_MESSAGING_ROUTES["M-MSG-01"]}>공지 작성</LinkButton>}
       />
 
-      <Card style={{ marginBottom: "var(--space-lg)", display: "grid", gap: "var(--space-md)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-md)", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: 800 }}>
-              답장 필요 {needsReply}건
-            </div>
-            <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
-              대화 내 검색만 제공하며 전역 검색은 셸 소유입니다.
-            </div>
-          </div>
-          <Badge>알림 벨 · 인스크린</Badge>
+      <div
+        className="manager-messaging-toolbar"
+        style={{
+          marginBottom: "var(--space-lg)",
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "end",
+          gap: "var(--space-md)",
+          padding: "var(--space-md)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-lg)",
+          background: "var(--surface-container-lowest)",
+        }}
+      >
+        <BuildingFilter
+          activeBuilding={activeBuilding}
+          buildingOptions={buildingOptions}
+          showUnassigned={showUnassigned}
+        />
+        <form
+          method="get"
+          style={{
+            flex: "1 1 360px",
+            minWidth: 0,
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto",
+            alignItems: "end",
+            gap: "var(--space-sm)",
+          }}
+        >
+          {activeBuilding ? <input type="hidden" name="building" value={activeBuilding} /> : null}
+          <label
+            style={{
+              minWidth: 0,
+              display: "grid",
+              gap: "var(--space-xs)",
+              color: "var(--on-surface-variant)",
+              fontSize: "var(--fs-caption)",
+              fontWeight: 800,
+            }}
+          >
+            제목·내용 검색
+            <Input
+              type="search"
+              name="q"
+              aria-label="제목 및 내용 검색"
+              placeholder="제목/내용 검색"
+              defaultValue={searchQuery}
+            />
+          </label>
+          <Button type="submit">검색</Button>
+        </form>
+        <div
+          style={{
+            flex: "0 0 auto",
+            minHeight: "var(--touch-target)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+          }}
+        >
+          <Badge emphasis>답장 필요 {needsReply}건</Badge>
         </div>
-        <Input aria-label="대화 내 검색" placeholder="대화 내 검색" readOnly />
-      </Card>
+      </div>
 
       <NewConversationForm
         recipients={recipients}
         initialBuilding={activeBuilding}
-      />
-
-      <BuildingFilter
-        activeBuilding={activeBuilding}
-        buildingOptions={buildingOptions}
-        showUnassigned={showUnassigned}
       />
 
       <section>
@@ -116,6 +163,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               <ThreadCard key={thread.id} thread={thread} />
             ))}
           </div>
+          ) : searchQuery ? (
+            <Card style={{ color: "var(--on-surface-variant)", textAlign: "center" }}>
+              &ldquo;{searchQuery}&rdquo; 검색 결과가 없습니다.
+            </Card>
           ) : (
             <Card style={{ color: "var(--on-surface-variant)", textAlign: "center" }}>
               이 건물에는 아직 시작된 대화가 없습니다.
