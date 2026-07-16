@@ -68,6 +68,7 @@ import {
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
 import { MobileRoleMenu } from "./_components/MobileRoleMenu";
+import TourActionBell from "./_components/TourActionBell";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
@@ -2002,11 +2003,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <div className="web-topbar-actions">
               {/* 역할은 상단 메뉴(세입자·관리·매물등록)에서 직접 진입한다 — 별도 역할 셀렉트/칩 없음. */}
               {viewer ? (
-                <div className="web-profile-menu" aria-label="로그인 사용자">
-                  <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
-                  <span className="web-profile-name">{viewer.name}</span>
-                  <button className="web-logout" type="button" onClick={logout}>로그아웃</button>
-                </div>
+                <>
+                  {/* 임대인 계정만: 재구성 완료(정합 필요)·실패(재업로드) 자산을 상단에서 상시 알린다. */}
+                  {hasCapability(viewer, "LANDLORD") ? <TourActionBell /> : null}
+                  <div className="web-profile-menu" aria-label="로그인 사용자">
+                    <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
+                    <span className="web-profile-name">{viewer.name}</span>
+                    <button className="web-logout" type="button" onClick={logout}>로그아웃</button>
+                  </div>
+                </>
               ) : (
                 <>
                   <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>

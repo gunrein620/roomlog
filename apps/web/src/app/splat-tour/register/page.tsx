@@ -16,7 +16,8 @@ import {
 } from "../splat-plan-shape";
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
-import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
+import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl, type SplatAsset } from "@/lib/splat-asset-api";
+import { fetchOwnerListings, resolveRegisterPlanSource } from "@/lib/owner-tour-assets";
 
 // ③(b) 도면–splat 2점 정합 도구. 탑다운 정사영으로 splat 바닥 모서리 2곳을 클릭하고,
 // 오른쪽 도면에서 같은 모서리 2곳을 클릭하면 solveSimilarity가 닫힌해로 transform을
@@ -29,7 +30,7 @@ const POINT_COLORS = ["#2563eb", "#dc2626"]; // A, B
 
 type PickView = "splat" | "plan";
 
-type PlanSource = "placeholder" | "storage" | "upload";
+type PlanSource = "placeholder" | "storage" | "upload" | "listing-db";
 
 type AssetBanner = {
   tone: "info" | "warning" | "error";
@@ -95,9 +96,37 @@ export default function Page() {
     setAssetId(queryAssetId);
     setAssetBanner({ tone: "info", message: `자산 ${queryAssetId} · 조회 중` });
 
+    // 자산이 연결된 매물의 도면(walls3D 스냅샷)을 픽 화면 도면으로 자동 세팅한다.
+    // 우선순위: 자산에 이미 서버 도면(floorPlanId)이 붙어 있으면 그 연결을 존중(매물 스냅샷으로 덮지 않음),
+    // 없으면 매물 스냅샷 > localStorage > placeholder. (resolveRegisterPlanSource가 판정)
+    const applyListingFloorPlan = async (asset: SplatAsset) => {
+      if (asset.floorPlanId) {
+        // 서버 도면이 이미 연결됨 — 저장 시 그 연결을 유지하도록 서버 id만 존중하고 도면은 덮지 않는다.
+        setPlanServerId(asset.floorPlanId);
+        return;
+      }
+      if (!asset.listingId) return;
+      const listings = await fetchOwnerListings();
+      if (cancelled) return;
+      const listing = (listings ?? []).find((item) => item.id === asset.listingId);
+      const decision = resolveRegisterPlanSource(
+        asset,
+        planWallsFromPayload({ walls: listing?.floorPlan?.walls3D ?? [] })
+      );
+      if (decision.source !== "listing-db") return;
+      setPlanWalls(decision.walls);
+      setPlanSource("listing-db");
+      setPlanServerId(null); // 매물 임베드 스냅샷은 서버 FloorPlan row가 아님 — 가구 연결 대상 아님
+      setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
+      setPreview(false);
+      setPlanMessage(`매물 도면 사용 중 (벽 ${decision.walls.length}개)`);
+    };
+
     getSplatAsset(queryAssetId)
       .then((asset) => {
         if (cancelled) return;
+
+        void applyListingFloorPlan(asset);
 
         const prefix = `자산 ${asset.id} · ${asset.status}`;
         if (asset.fileUrl) {
@@ -287,9 +316,11 @@ export default function Page() {
             <span style={muted}>
               {planSource === "upload"
                 ? planMessage
-                : planSource === "storage"
-                  ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
-                  : planMessage || "도면 없음 — 3×4m 플레이스홀더 사용 중"}
+                : planSource === "listing-db"
+                  ? `매물 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                  : planSource === "storage"
+                    ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
+                    : planMessage || "도면 없음 — 3×4m 플레이스홀더 사용 중"}
             </span>
           </div>
           <PlanPicker walls={planWalls} picks={planPicks} onPick={(x, y) => addPick("plan", { x, y })} />

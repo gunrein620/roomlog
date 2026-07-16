@@ -22,7 +22,8 @@ import {
   parseOwnerDraft,
   serializeOwnerDraft
 } from "@/lib/owner-draft";
-import { intakeSplatAsset, listSplatAssetsByListing } from "@/lib/splat-asset-api";
+import { intakeSplatAsset } from "@/lib/splat-asset-api";
+import { fetchOwnerListingAssets } from "@/lib/owner-tour-assets";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { tradePriceLabel, type TradeListing } from "@/lib/listing-catalog";
 import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus, type SplatAssetUpdatedPayload } from "@roomlog/types";
@@ -327,25 +328,6 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
-// 매물당 여러 자산이 있을 수 있어 배지 하나만 남긴다 — "정합 필요(UPLOADED)"가 가장 시급하고,
-// 실패·제작 중이 그다음, 이미 정합 완료(REGISTERED)는 가장 낮은 우선순위로 대표를 고른다.
-const LISTING_ASSET_PRIORITY: Record<SplatAssetStatus, number> = {
-  UPLOADED: 4,
-  FAILED: 3,
-  PROCESSING: 2,
-  REGISTERED: 1
-};
-
-function pickListingSplatAsset(
-  assets: { id: string; status: SplatAssetStatus }[]
-): { assetId: string; status: SplatAssetStatus } | null {
-  const best = assets.reduce<{ id: string; status: SplatAssetStatus } | null>((chosen, asset) => {
-    if (!chosen) return asset;
-    return LISTING_ASSET_PRIORITY[asset.status] > LISTING_ASSET_PRIORITY[chosen.status] ? asset : chosen;
-  }, null);
-  return best ? { assetId: best.id, status: best.status } : null;
-}
-
 export default function LandlordMyPage() {
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
@@ -483,32 +465,12 @@ export default function LandlordMyPage() {
   // 내 매물과 매물별 대표 3D 자산 상태를 서버에서 가져온다. 개인 임대인(1~5채) 스케일이라
   // 매물당 자산 조회를 병렬로 돌려도 부담이 없다. 비로그인/오류면 조용히 빈 목록을 유지한다.
   const loadOwnerListingAssets = useCallback(async () => {
-    let listings: TradeListing[] = [];
-    try {
-      // ?mine=1 — 내 매물만(서버 소유자 스코프). 비로그인이면 서버가 던져 res.ok=false → 빈 상태 유지.
-      const res = await fetch("/api/trade/listings?mine=1", { cache: "no-store" });
-      if (!res.ok) return; // 비로그인/매물 없음 — 빈 상태 유지
-      const parsed = (await res.json()) as unknown;
-      if (!Array.isArray(parsed)) return;
-      listings = parsed as TradeListing[];
-    } catch {
-      return; // 일시 오류 — 다음 이벤트/포커스에서 다시 채워진다
-    }
-    setOwnerListings(listings);
-
-    const entries = await Promise.all(
-      listings.map(async (listing) => {
-        try {
-          const assets = await listSplatAssetsByListing(listing.id);
-          return [listing.id, pickListingSplatAsset(assets)] as const;
-        } catch {
-          return [listing.id, null] as const;
-        }
-      })
-    );
-    setListingAssetByListing(
-      Object.fromEntries(entries.filter((entry): entry is [string, { assetId: string; status: SplatAssetStatus }] => entry[1] !== null))
-    );
+    // 내 매물 + 매물별 대표 3D 자산은 벨 알림과 공유하는 owner-tour-assets 유틸에서 모은다.
+    // 비로그인/오류면 빈 결과를 돌려주므로 빈 상태가 유지된다.
+    const data = await fetchOwnerListingAssets();
+    if (!data) return; // 비로그인/일시 오류 — 기존 상태 유지(다음 이벤트/포커스에서 다시 채워짐)
+    setOwnerListings(data.listings);
+    setListingAssetByListing(data.assetByListing);
   }, []);
 
   useEffect(() => {
