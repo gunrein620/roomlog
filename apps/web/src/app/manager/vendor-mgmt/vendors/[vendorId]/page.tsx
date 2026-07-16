@@ -33,9 +33,14 @@ export default async function ManagerVendorDetailPage({ params }: { params: Para
           description="연락처와 내부 메모는 관리자에게만 보입니다. 작업 이력은 이 관리자의 하자 건으로 제한됩니다."
           demo={result.source === "DEMO"}
           actions={
-            <LinkButton href={MANAGER_VENDOR_MGMT_PATHS.performance(vendor.vendorId)} secondary>
-              수치 성과 보기
-            </LinkButton>
+            <>
+              <LinkButton href={MANAGER_VENDOR_MGMT_PATHS.vendors} secondary>
+                ← 내 업체
+              </LinkButton>
+              <LinkButton href={MANAGER_VENDOR_MGMT_PATHS.performance(vendor.vendorId)} secondary>
+                수치 성과 보기
+              </LinkButton>
+            </>
           }
         />
         <MetricGrid metrics={[
@@ -80,7 +85,16 @@ export default async function ManagerVendorDetailPage({ params }: { params: Para
   } catch (error) {
     return (
       <VendorPageStack>
-        <VendorScreenHeader eyebrow="내 업체 상세" title="업체 상세" description="업체 정보를 확인합니다." />
+        <VendorScreenHeader
+          eyebrow="내 업체 상세"
+          title="업체 상세"
+          description="업체 정보를 확인합니다."
+          actions={
+            <LinkButton href={MANAGER_VENDOR_MGMT_PATHS.vendors} secondary>
+              ← 내 업체
+            </LinkButton>
+          }
+        />
         <ErrorState message={error instanceof Error ? error.message : "업체를 불러오지 못했습니다."} />
       </VendorPageStack>
     );
