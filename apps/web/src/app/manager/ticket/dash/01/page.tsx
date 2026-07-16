@@ -13,7 +13,6 @@ import {
   sectionTitle,
   ticketDashHref,
 } from "../../_components/ticket-manager-ui";
-import { TicketEvidenceGallery } from "./TicketEvidenceGallery";
 import { AttachmentThumbnailGallery } from "./AttachmentThumbnailGallery";
 
 type SearchParams = Promise<{ id?: string }>;
@@ -59,10 +58,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             )}
           </Card>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-lg)" }}>
-            <ResponsibilityCard analysis={analysis} />
-            <TicketEvidenceGallery attachmentUrls={detail.attachmentUrls} />
-          </div>
+          <ResponsibilityCard analysis={analysis} />
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitle}>임차인 입력·첨부</div>
