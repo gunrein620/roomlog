@@ -11,6 +11,10 @@ const uiSource = readFileSync(
   join(__dirname, "../app/manager/ticket/_components/ticket-manager-ui.tsx"),
   "utf8",
 );
+const evidenceGallerySource = readFileSync(
+  join(__dirname, "../app/manager/ticket/dash/01/TicketEvidenceGallery.tsx"),
+  "utf8",
+);
 
 describe("manager ticket detail empty states", () => {
   it("uses the strict real-data detail loader without demo fallback getters", () => {
@@ -27,8 +31,8 @@ describe("manager ticket detail empty states", () => {
   });
 
   it("removes evidence placeholders when evidence is unavailable", () => {
-    assert.match(uiSource, /조회할 사진 비교·근거 내용이 없습니다\./);
-    assert.match(pageSource, /available=\{false\}/);
+    assert.match(evidenceGallerySource, /조회할 사진 비교·근거 내용이 없습니다\./);
+    assert.match(pageSource, /attachmentUrls=\{detail\.attachmentUrls\}/);
   });
 
   it("shows only actual attachment counts or an attachment empty state", () => {

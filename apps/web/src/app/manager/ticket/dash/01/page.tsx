@@ -1,7 +1,6 @@
 import { Badge, Button, Card } from "@roomlog/ui";
 import { getManagerTicketDetail } from "@/lib/ticket-manager-api";
 import {
-  EvidencePanel,
   LinkButton,
   ResponsibilityCard,
   StatusBadges,
@@ -14,6 +13,7 @@ import {
   sectionTitle,
   ticketDashHref,
 } from "../../_components/ticket-manager-ui";
+import { TicketEvidenceGallery } from "./TicketEvidenceGallery";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -60,7 +60,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-lg)" }}>
             <ResponsibilityCard analysis={analysis} />
-            <EvidencePanel compact available={false} />
+            <TicketEvidenceGallery attachmentUrls={detail.attachmentUrls} />
           </div>
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
