@@ -1264,9 +1264,25 @@ html:has(.manager-workspace) {
   cursor: pointer;
 }
 
-.manager-sidebar__parent-toggle span {
+.manager-sidebar__parent-toggle .manager-sidebar__label {
   min-width: 0;
   flex: 1;
+}
+
+.manager-sidebar__unread-badge {
+  flex: 0 0 auto;
+  min-width: var(--space-xl);
+  height: var(--space-xl);
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  line-height: 1;
 }
 
 .manager-sidebar__parent-toggle svg {

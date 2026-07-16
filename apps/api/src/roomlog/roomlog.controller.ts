@@ -1346,6 +1346,16 @@ export class RoomlogController {
     return this.roomlogService.getManagerMessagingThread(user.id, threadId);
   }
 
+  @Post("manager/messaging/threads/:threadId/read")
+  markManagerMessagingThreadRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.markManagerMessagingThreadRead(user.id, threadId);
+  }
+
   @Post("manager/messaging/threads/:threadId/messages")
   addManagerMessagingThreadMessage(
     @Headers("authorization") authorization: string | undefined,

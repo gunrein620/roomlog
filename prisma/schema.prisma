@@ -1131,6 +1131,7 @@ model MessagingThread {
   contextLabel   String?
   lastMessage    String
   unreadCount    Int                    @default(0)
+  managerUnreadCount Int                 @default(0)
   pendingRequest Boolean                @default(false)
   archivedNotice Boolean                @default(true)
   createdAt      DateTime               @default(now())

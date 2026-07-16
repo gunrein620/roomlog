@@ -708,6 +708,7 @@ export class PrismaStoreProjector implements StoreProjector {
         contextLabel: optional(thread.contextLabel),
         lastMessage: thread.lastMessage,
         unreadCount: thread.unreadCount,
+        managerUnreadCount: thread.managerUnreadCount,
         pendingRequest: thread.pendingRequest,
         archivedNotice: thread.archivedNotice,
         createdAt: asIso(thread.createdAt) ?? new Date().toISOString(),
@@ -2026,6 +2027,7 @@ export class PrismaStoreProjector implements StoreProjector {
             contextLabel: thread.contextLabel,
             lastMessage: thread.lastMessage,
             unreadCount: thread.unreadCount,
+            managerUnreadCount: thread.managerUnreadCount,
             pendingRequest: thread.pendingRequest,
             archivedNotice: thread.archivedNotice,
             createdAt: asDate(thread.createdAt),
@@ -2040,6 +2042,7 @@ export class PrismaStoreProjector implements StoreProjector {
             contextLabel: thread.contextLabel,
             lastMessage: thread.lastMessage,
             unreadCount: thread.unreadCount,
+            managerUnreadCount: thread.managerUnreadCount,
             pendingRequest: thread.pendingRequest,
             archivedNotice: thread.archivedNotice,
             updatedAt: asDate(thread.updatedAt)

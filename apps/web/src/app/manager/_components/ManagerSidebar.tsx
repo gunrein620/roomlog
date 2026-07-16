@@ -47,6 +47,7 @@ const MANAGER_NAV_ICONS: Record<ManagerNavItemId, LucideIcon> = {
 export interface ManagerSidebarProps {
   onNavigate?: () => void;
   showCloseButton?: boolean;
+  messagingUnreadCount?: number;
   /** 사이드바 우측 상단 액션 슬롯 (예: 데스크톱 접기 토글) — 모바일 닫기 버튼과 같은 자리. */
   headerAction?: ReactNode;
 }
@@ -56,7 +57,12 @@ export interface ManagerSidebarProps {
 // 등장 애니메이션이 매번 재생되지 않도록 섹션이 실제로 바뀔 때만 애니메이션한다.
 let lastActiveItemId: ManagerNavItemId | null = null;
 
-export function ManagerSidebar({ onNavigate, showCloseButton = false, headerAction }: ManagerSidebarProps) {
+export function ManagerSidebar({
+  onNavigate,
+  showCloseButton = false,
+  messagingUnreadCount = 0,
+  headerAction,
+}: ManagerSidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   // 쿼리 기반 하위 탭(예: 매물 관리 ?status=)도 활성 판정에 반영 — pathname만 쓰면
@@ -145,6 +151,10 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
                 const subnavId = isTicket ? "manager-ticket-subnav" : "manager-messaging-subnav";
                 const setExpanded = isTicket ? setTicketExpanded : setMessagingExpanded;
                 const showChildren = isCollapsible ? expanded : active;
+                const messagingUnreadLabel =
+                  isMessaging && messagingUnreadCount > 0
+                    ? `, 미확인 메시지 ${messagingUnreadCount}개`
+                    : "";
 
                 return (
                   <div key={item.id} className="manager-sidebar__item">
@@ -154,12 +164,20 @@ export function ManagerSidebar({ onNavigate, showCloseButton = false, headerActi
                         className={`manager-sidebar__parent-toggle${active ? " is-active" : ""}`}
                         aria-expanded={expanded}
                         aria-controls={subnavId}
-                        aria-label={`${item.label} 메뉴 ${expanded ? "접기" : "펼치기"}`}
+                        aria-label={`${item.label} 메뉴 ${expanded ? "접기" : "펼치기"}${messagingUnreadLabel}`}
                         data-expanded={expanded}
                         onClick={() => setExpanded((current) => !current)}
                       >
                         <Icon aria-hidden="true" />
-                        <span>{item.label}</span>
+                        <span className="manager-sidebar__label">{item.label}</span>
+                        {isMessaging && messagingUnreadCount > 0 ? (
+                          <span
+                            className="manager-sidebar__unread-badge"
+                            aria-label={`미확인 메시지 ${messagingUnreadCount}개`}
+                          >
+                            {messagingUnreadCount > 99 ? "99+" : messagingUnreadCount}
+                          </span>
+                        ) : null}
                         <ChevronDown aria-hidden="true" />
                       </button>
                     ) : (
