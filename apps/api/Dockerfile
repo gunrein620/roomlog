@@ -54,6 +54,7 @@ COPY --from=builder /app/prisma.config.ts /app/prisma.config.ts
 COPY --from=builder /app/packages/types ./packages/types
 # GPU 오케스트레이터가 SSM으로 원격에 실을 재구성 스크립트(base64 인라인 소스). buildJobCommand가 /app/scripts/reconstruct에서 읽는다.
 COPY --from=builder /app/scripts/reconstruct /app/scripts/reconstruct
+RUN ln -sfn /app/packages/types /app/apps/api/node_modules/@roomlog/types
 
 EXPOSE 4000
 

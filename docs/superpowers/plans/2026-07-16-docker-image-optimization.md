@@ -221,13 +221,14 @@ COPY --from=builder /app/prisma /app/prisma
 COPY --from=builder /app/prisma.config.ts /app/prisma.config.ts
 COPY --from=builder /app/packages/types /app/packages/types
 COPY --from=builder /app/scripts/reconstruct /app/scripts/reconstruct
+RUN ln -sfn /app/packages/types /app/apps/api/node_modules/@roomlog/types
 
 EXPOSE 4000
 
 CMD ["node", "apps/api/dist/main"]
 ```
 
-The `/prod/api` copy contains package metadata, tracked migration assets, and production dependencies. Legacy deploy does not preserve Prisma's generated `.prisma/client` directory, so the builder copies that first and only generated client into the deployed dependency tree. The explicit `dist` copy avoids package-packlist rules excluding the gitignored build directory. Root workspace metadata keeps the migration script's existing `pnpm --filter api exec prisma` command valid. The explicit shared types and reconstruction copies preserve runtime file reads and workspace package imports.
+The `/prod/api` copy contains package metadata, tracked migration assets, and production dependencies. Legacy deploy does not preserve Prisma's generated `.prisma/client` directory, so the builder copies that first and only generated client into the deployed dependency tree. The explicit `dist` copy avoids package-packlist rules excluding the gitignored build directory. Root workspace metadata keeps the migration script's existing `pnpm --filter api exec prisma` command valid. The runner restores `@roomlog/types` as a link to `/app/packages/types`, matching the previous image layout and keeping Node's TypeScript stripping outside `node_modules`. The explicit reconstruction copy preserves runtime file reads.
 
 - [ ] **Step 3: Run the focused API contract and verify GREEN**
 

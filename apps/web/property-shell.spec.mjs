@@ -192,6 +192,7 @@ test("packages the production API without reinstalling dependencies in the runne
   assert.match(runnerSource, /COPY --from=builder \/app\/apps\/api\/dist \/app\/apps\/api\/dist/);
   assert.match(runnerSource, /COPY --from=builder \/app\/prisma \/app\/prisma/);
   assert.match(runnerSource, /COPY --from=builder \/app\/scripts\/reconstruct \/app\/scripts\/reconstruct/);
+  assert.match(runnerSource, /ln -sfn \/app\/packages\/types \/app\/apps\/api\/node_modules\/@roomlog\/types/);
   assert.match(runnerSource, /CMD \["node", "apps\/api\/dist\/main"\]/);
 });
 
