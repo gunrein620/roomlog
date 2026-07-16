@@ -30,7 +30,7 @@ export interface TeamManagerTicket {
     createdAt: string;
     updatedAt: string;
   };
-  room?: { roomNo?: string };
+  room?: { buildingName?: string; roomNo?: string };
   analysis?: TeamAnalysis;
   repairs?: TeamRepair[];
   assignedVendor?: { businessName?: string };

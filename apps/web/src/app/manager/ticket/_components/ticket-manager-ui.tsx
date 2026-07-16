@@ -11,6 +11,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { stripScreenId } from "@/lib/screen-id";
+import { buildTicketTimeline } from "@/lib/ticket-timeline";
 
 export const dashRoutes = {
   "00": "/manager/ticket/dash/00",
@@ -150,13 +151,25 @@ export function LinkButton({
   );
 }
 
-export function TicketHeader({ ticket, title }: { ticket: Ticket; title: string }) {
+export function TicketHeader({
+  ticket,
+  title,
+  showBuildingName = false,
+}: {
+  ticket: Ticket;
+  title: ReactNode;
+  showBuildingName?: boolean;
+}) {
+  const locationLabel = showBuildingName && ticket.buildingName
+    ? `${ticket.buildingName} / ${ticket.unitId}호`
+    : `${ticket.unitId}호`;
+
   return (
     <div style={{ ...row, justifyContent: "space-between" }}>
       <div>
         <div style={{ fontSize: "var(--fs-title)", fontWeight: "var(--fw-title)" }}>{title}</div>
         <div style={{ ...muted, marginTop: "var(--space-xs)" }}>
-          {ticket.unitId}호 · {ticket.id} · {ticket.title}
+          {locationLabel}
         </div>
       </div>
       <div style={row}>
@@ -167,34 +180,64 @@ export function TicketHeader({ ticket, title }: { ticket: Ticket; title: string 
   );
 }
 
-export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: RepairJob }) {
+export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: RepairJob | null }) {
+  const repairStatusLabel = repair?.stage === "in_progress"
+    ? "수리중"
+    : `수리 ${repair ? repairStageLabel[repair.stage] : "대기"}`;
+
   return (
     <div style={row}>
       <Badge emphasis>티켓 {ticketStatusLabel[ticket.status]}</Badge>
-      <Badge>수리 {repair ? repairStageLabel[repair.stage] : "대기"}</Badge>
+      <Badge>{repairStatusLabel}</Badge>
       {ticket.disposition === "on_hold" ? <Badge>보류 큐</Badge> : null}
     </div>
   );
 }
 
-export function ResponsibilityCard({ analysis }: { analysis: DefectAnalysis }) {
+export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | null }) {
+  if (!analysis) {
+    return (
+      <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+        <div style={sectionTitle}>AI 책임 검토</div>
+        <div style={muted}>조회할 책임 검토 내용이 없습니다.</div>
+      </Card>
+    );
+  }
+
   const percent = Math.round(analysis.confidence * 100);
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+    <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", padding: "var(--space-md)" }}>
       <div style={sectionTitle}>AI 책임 검토</div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>
         {responsibilityLabel[analysis.responsibility]} {percent}%
       </div>
-      <div style={muted}>확정 아님 · 관리자가 근거 확인 후 수정할 수 있음</div>
-      <div style={row}>
-        <Button variant="secondary">책임 가능성 수정</Button>
-        <Badge>{analysis.moveinComparisonAvailable ? "입주 기록 비교 가능" : "입주 기록 없음"}</Badge>
+      <div style={{ ...row, justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div style={row}>
+          <Button variant="secondary">추가 정보 입력</Button>
+          {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
+        </div>
+        <div style={muted}>AI 책임 검토는 참고용입니다.</div>
       </div>
     </Card>
   );
 }
 
-export function EvidencePanel({ compact }: { compact?: boolean }) {
+export function EvidencePanel({
+  compact,
+  available = true,
+}: {
+  compact?: boolean;
+  available?: boolean;
+}) {
+  if (!available) {
+    return (
+      <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+        <div style={sectionTitle}>사진 비교·근거</div>
+        <div style={muted}>조회할 사진 비교·근거 내용이 없습니다.</div>
+      </Card>
+    );
+  }
+
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
       <div style={sectionTitle}>사진 비교·근거</div>
@@ -232,24 +275,43 @@ export function EvidencePanel({ compact }: { compact?: boolean }) {
   );
 }
 
-export function Timeline() {
-  const items = ["접수됨", "AI 분석 완료", "관리인 검토 대기", "업체 진행 상태 동기화"];
+export function Timeline({
+  ticket,
+  analysis,
+  repair,
+}: {
+  ticket: Ticket;
+  analysis?: DefectAnalysis | null;
+  repair?: RepairJob | null;
+}) {
+  const items = buildTicketTimeline({
+    ticketStatus: ticket.status,
+    hasAnalysis: Boolean(analysis),
+    repairStage: repair?.stage,
+  });
+
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <div style={sectionTitle}>처리 이력</div>
       {items.map((item) => (
-        <div key={item} style={{ ...row, alignItems: "flex-start" }}>
+        <div key={item.label} style={{ ...row, alignItems: "flex-start" }}>
           <span
+            role="img"
+            aria-label={`${item.label}: ${item.reached ? "진행됨" : "미진행"}`}
             style={{
               width: "var(--space-sm)",
               height: "var(--space-sm)",
               marginTop: "var(--space-sm)",
               borderRadius: "var(--radius-full)",
-              background: "var(--primary)",
+              background: item.reached
+                ? "var(--primary)"
+                : "var(--surface-container-lowest)",
+              border: `1.5px solid var(--primary)`,
+              boxSizing: "border-box",
               flex: "none",
             }}
           />
-          <span style={muted}>{item}</span>
+          <span style={muted}>{item.label}</span>
         </div>
       ))}
     </Card>

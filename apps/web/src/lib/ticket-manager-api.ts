@@ -1,4 +1,12 @@
-import type { DefectAnalysis, ManagerQueueSummary, RepairJob, Ticket } from "@roomlog/types";
+import type {
+  DefectAnalysis,
+  ManagerQueueSummary,
+  ManagerReplyDraftInput,
+  ManagerReplyDraftResult,
+  ManagerTicketReplyInput,
+  RepairJob,
+  Ticket,
+} from "@roomlog/types";
 import { ApiError, serverFetch } from "./server-api";
 import {
   toManagerTicket,
@@ -22,6 +30,56 @@ import { managerDefectDashboardDemoRecord } from "./manager-defect-dashboard-dem
 async function listTeamTickets(filter?: string): Promise<TeamManagerTicket[]> {
   const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
   return serverFetch<TeamManagerTicket[]>(`/manager/tickets${query}`);
+}
+
+export type ManagerTicketDetail = {
+  ticket: Ticket;
+  analysis: DefectAnalysis | null;
+  repair: RepairJob | null;
+  attachmentUrls: string[];
+};
+
+type ManagerTicketDetailLoaders = {
+  byId: (id: string) => Promise<TeamManagerTicket | null>;
+  list: () => Promise<TeamManagerTicket[]>;
+};
+
+export async function managerTicketByIdOrNull(
+  id: string,
+  fetchTicket: (path: string) => Promise<TeamManagerTicket> = (path) =>
+    serverFetch<TeamManagerTicket>(path),
+): Promise<TeamManagerTicket | null> {
+  try {
+    return await fetchTicket(`/manager/tickets/${encodeURIComponent(id)}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+function toManagerTicketDetail(ticket: TeamManagerTicket): ManagerTicketDetail {
+  return {
+    ticket: toManagerTicket(ticket),
+    analysis: toManagerAnalysis(ticket),
+    repair: toManagerRepair(ticket),
+    attachmentUrls: managerTicketAttachmentUrls(ticket),
+  };
+}
+
+export async function getManagerTicketDetail(
+  id?: string,
+  loaders: ManagerTicketDetailLoaders = {
+    byId: managerTicketByIdOrNull,
+    list: () => listTeamTickets(),
+  },
+): Promise<ManagerTicketDetail | null> {
+  if (id) {
+    const ticket = await loaders.byId(id);
+    return ticket ? toManagerTicketDetail(ticket) : null;
+  }
+
+  const [ticket] = await loaders.list();
+  return ticket ? toManagerTicketDetail(ticket) : null;
 }
 
 export function managerTicketAttachmentUrls(ticket: TeamManagerTicket): string[] {
@@ -136,6 +194,32 @@ export async function getManagerRepair(ticketId?: string): Promise<RepairJob | n
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
   }
+}
+
+export async function draftManagerTicketReply(
+  ticketId: string,
+  input: ManagerReplyDraftInput = {},
+): Promise<ManagerReplyDraftResult> {
+  return serverFetch<ManagerReplyDraftResult>(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/reply-draft`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function sendManagerTicketReply(
+  ticketId: string,
+  input: ManagerTicketReplyInput,
+): Promise<unknown> {
+  return serverFetch(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/replies`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 // 관리인 mutation(상태/책임/긴급도 변경)은 화면 TicketStatus(lowercase 6)→팀 UPPERCASE(11)

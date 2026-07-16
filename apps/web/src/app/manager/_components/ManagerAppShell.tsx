@@ -26,6 +26,8 @@ export interface ManagerAppShellProps {
   assistantBriefing?: readonly ManagerAssistantBriefingItem[];
   /** 화면이 자체 AI 표면(예: 홈 코파일럿)을 내장할 때 플로팅 AI 비서 런처를 숨긴다. 기본값은 기존 동작 유지. */
   hideAssistantLauncher?: boolean;
+  /** 화면이 자체 제목을 제공할 때 공용 상단 헤더를 숨긴다. */
+  hideHeader?: boolean;
   /** 워크스페이스 테마(packages/ui tokens.css의 .theme-*). 관리 화면 전체를 코스믹(심야 우주)으로 통일 —
    *  기본값 "cosmic". 특정 화면만 v1(라이트)로 되돌리려면 theme={undefined}를 명시적으로 넘긴다. */
   theme?: "cosmic";
@@ -40,6 +42,7 @@ export function ManagerAppShell({
   showAssistantRail = false,
   assistantBriefing = [],
   hideAssistantLauncher = false,
+  hideHeader = false,
   theme = "cosmic",
   children,
 }: ManagerAppShellProps) {
@@ -128,6 +131,7 @@ export function ManagerAppShell({
       <ManagerShell
         title={title}
         context={context}
+        hideHeader={hideHeader}
         navCollapsed={navCollapsed}
         theme={theme}
         nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} messagingUnreadCount={messagingUnreadCount} /></Suspense>}
