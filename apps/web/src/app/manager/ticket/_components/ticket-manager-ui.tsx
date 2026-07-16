@@ -151,7 +151,7 @@ export function LinkButton({
   );
 }
 
-export function TicketHeader({ ticket, title }: { ticket: Ticket; title: string }) {
+export function TicketHeader({ ticket, title }: { ticket: Ticket; title: ReactNode }) {
   return (
     <div style={{ ...row, justifyContent: "space-between" }}>
       <div>

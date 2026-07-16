@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
@@ -11,6 +11,13 @@ const layoutSource = readFileSync(
   join(__dirname, "../app/manager/ticket/dash/layout.tsx"),
   "utf8",
 );
+const backButtonPath = join(
+  __dirname,
+  "../app/manager/ticket/dash/01/TicketDetailBackButton.tsx",
+);
+const backButtonSource = existsSync(backButtonPath)
+  ? readFileSync(backButtonPath, "utf8")
+  : "";
 const uiSource = readFileSync(
   join(__dirname, "../app/manager/ticket/_components/ticket-manager-ui.tsx"),
   "utf8",
@@ -49,5 +56,18 @@ describe("manager ticket detail empty states", () => {
     assert.match(layoutSource, /hideHeader/);
     assert.match(pageSource, /하자\/민원 처리/);
     assert.doesNotMatch(pageSource, /티켓 상세 & 검토/);
+  });
+
+  it("returns to the previous page from both ticket detail title states", () => {
+    assert.equal(
+      pageSource.match(/<TicketDetailBackButton/g)?.length,
+      2,
+    );
+    assert.match(backButtonSource, /useRouter/);
+    assert.match(backButtonSource, /window\.history\.length/);
+    assert.match(backButtonSource, /router\.back\(\)/);
+    assert.match(backButtonSource, /\/manager\/ticket\/dash\/00/);
+    assert.match(backButtonSource, /이전 페이지로 돌아가기/);
+    assert.match(backButtonSource, /ArrowLeft/);
   });
 });
