@@ -1,61 +1,81 @@
-import { Badge, Button, Card, Input } from "@roomlog/ui";
-import { getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
+import { Button, Card } from "@roomlog/ui";
+import { redirect } from "next/navigation";
 import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
-import { Body, Footer, InfoRow, LinkButton, ScreenHeader, Stepper, formatVisitTime, labelStyle, mutedStyle } from "../_components";
+import { getVendorWorkflowJob } from "@/lib/vendor-workflow-api";
+import { startJobAction } from "../actions";
+import {
+  Body,
+  DemoReadOnlyNotice,
+  Footer,
+  InfoRow,
+  InlineNotice,
+  LinkButton,
+  ScreenHeader,
+  Stepper,
+  WorkflowEstimateSummary,
+  formatDateTime,
+  mutedStyle,
+} from "../_components";
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
-  const { id } = await searchParams;
-  const [ticket, repair] = await Promise.all([
-    getVendorTicket(id),
-    getVendorRepair(id),
-  ]);
-  const needsGate = repair.quoteType === "visit" && repair.onsiteApproval !== "approved";
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string; error?: string }>;
+}) {
+  const { id, error } = await searchParams;
+  const { data: job, source, accessDenied } = await getVendorWorkflowJob(id);
+  if (accessDenied) redirect(ROUTES["V-JOB-E0"]);
+  if (!job) redirect(ROUTES["V-JOB-00"]);
+  const isInProgress = job.status === "IN_PROGRESS";
+  const canStart = job.status === "SCHEDULED"
+    && job.latestEstimate?.responseType === "FIXED_ESTIMATE"
+    && job.latestEstimate.status === "APPROVED";
+  const needsFinalEstimate = job.status === "SCHEDULED"
+    && job.latestEstimate?.responseType === "VISIT_REQUIRED";
 
   return (
     <>
-      <ScreenHeader title="수리 진행" ticketId={ticket.id} backTo={ROUTES["V-JOB-00"]} />
+      <ScreenHeader title="방문·작업 시작" backTo={withId(ROUTES["V-JOB-04"], job.repairId)} />
       <Body>
-        <Stepper steps={["일정확정", "현장 확정가", "수리중", "완료"]} current={needsGate ? 1 : 2} />
-        <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={labelStyle}>방문 정보</div>
-          <InfoRow label="확정 일정" value={formatVisitTime(repair.scheduledAt)} />
-          <InfoRow label="방문 주소" value="성수동 ○○로 12, 302호" />
-        </Card>
-        <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={labelStyle}>현장 확정가 게이트</div>
-          {needsGate ? (
-            <>
-              <Badge emphasis>착수 전 승인 대기</Badge>
-              <Input placeholder="현장 확정가 금액" defaultValue={repair.onsiteQuoteAmount?.toString()} />
-              <Input placeholder="확정 항목·사유" />
-              <p style={{ ...mutedStyle, margin: 0 }}>
-                방문 견적 건은 임차인/관리자 승인 전 착수할 수 없습니다. 빠른 승인 ETA 20분, 개략가 초과 시 승인 필수.
-              </p>
-            </>
-          ) : (
-            <>
-              <Badge emphasis>착수 가능</Badge>
-              <p style={{ ...mutedStyle, margin: 0 }}>승인된 확정가 기준으로 수리를 진행 중입니다.</p>
-            </>
-          )}
-        </Card>
-        <details style={{ border: "1px dashed var(--outline-variant)", borderRadius: "var(--radius-md)", padding: 12 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700 }}>재방문·추가비용 요청</summary>
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            <Input placeholder="사유·금액" />
-            <Button fullWidth variant="secondary">빠른 승인 요청</Button>
-            <p style={mutedStyle}>승인 시 일정 재확정으로 이동하고, 거절 시 현 범위만 진행합니다.</p>
+        {source === "DEMO" ? <DemoReadOnlyNotice /> : null}
+        {error ? <InlineNotice tone="danger">{error}</InlineNotice> : null}
+        <Stepper steps={["일정 확인", "작업 시작", "완료 보고"]} current={isInProgress ? 1 : 0} />
+        <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>
+            {isInProgress ? "작업이 진행 중입니다." : "방문 전 일정을 다시 확인해 주세요."}
           </div>
-        </details>
+          <InfoRow label="방문 일정" value={formatDateTime(job.scheduledAt)} />
+          <InfoRow label="방문 위치" value={job.publicLocation} />
+          <p style={{ ...mutedStyle, margin: 0 }}>
+            승인된 견적 범위 안에서 작업해 주세요. 추가 비용이 예상되면 임의로 진행하지 말고
+            관리자에게 변경 견적을 요청해야 합니다.
+          </p>
+        </Card>
+        <WorkflowEstimateSummary job={job} />
+        {!canStart && !isInProgress ? (
+          <InlineNotice>
+            {needsFinalEstimate
+              ? "방문 확인 결과를 고정 견적으로 제출하고 관리자 승인을 받아야 작업을 시작할 수 있습니다."
+              : "일정과 고정 견적 승인이 모두 완료된 작업만 시작할 수 있습니다."}
+          </InlineNotice>
+        ) : null}
       </Body>
       <Footer>
-        {needsGate ? (
-          <Button fullWidth>현장 확정가 제출</Button>
+        {isInProgress ? (
+          <LinkButton href={withId(ROUTES["V-JOB-06"], job.repairId)}>완료 보고하기</LinkButton>
+        ) : needsFinalEstimate && source !== "DEMO" ? (
+          <LinkButton href={withId(ROUTES["V-JOB-02"], job.repairId)}>
+            현장 확인 후 확정 견적 작성
+          </LinkButton>
         ) : (
-          <LinkButton href={withId(ROUTES["V-JOB-06"], id)}>완료 보고하기</LinkButton>
+          <form action={startJobAction}>
+            <input type="hidden" name="repairId" value={job.repairId} />
+            <Button type="submit" fullWidth disabled={source === "DEMO" || !canStart}>
+              현장에서 작업 시작
+            </Button>
+          </form>
         )}
-        <LinkButton href={withId(ROUTES["V-JOB-04"], id)} variant="secondary">일정 재확정</LinkButton>
       </Footer>
     </>
   );

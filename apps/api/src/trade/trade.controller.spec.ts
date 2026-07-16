@@ -59,6 +59,7 @@ describe("TradeController public listings", () => {
         monthlyRentManwon: 50,
         location: "서울 서초구 방배동",
         description: "",
+        options: [],
         images: [],
         status: "노출중",
         createdAt: "2026-07-09T00:00:00.000Z"
