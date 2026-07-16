@@ -99,6 +99,19 @@ test("places compact reply status beside the building and title-content search",
   assert.doesNotMatch(listPage, /aria-label="티켓 검색"/);
 });
 
+test("keeps communication tickets fixed and truncates only overflowing message content", () => {
+  assert.match(listPage, /height: 206/);
+  assert.match(listPage, /overflow: "hidden"/);
+  assert.match(
+    listPage,
+    /data-testid="manager-thread-message"[\s\S]*whiteSpace: "nowrap"[\s\S]*textOverflow: "ellipsis"/,
+  );
+  assert.doesNotMatch(
+    listPage,
+    /data-testid="manager-thread-title"[^>]*textOverflow: "ellipsis"/,
+  );
+});
+
 test("replaces messaging tabs with the building ticket filter", () => {
   assert.doesNotMatch(listPage, /function TabLink/);
   assert.doesNotMatch(listPage, /listAnnouncementDrafts|listAnnouncementResults/);

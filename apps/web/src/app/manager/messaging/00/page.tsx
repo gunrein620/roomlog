@@ -200,7 +200,8 @@ function ThreadCard({ thread }: { thread: Thread }) {
   return (
     <Card
       style={{
-        minHeight: 206,
+        height: 206,
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-sm)",
@@ -231,8 +232,22 @@ function ThreadCard({ thread }: { thread: Thread }) {
           </Badge>
         ) : null}
       </div>
-      <div style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>{thread.contextLabel ?? "일반 문의"}</div>
-      <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)", lineHeight: 1.5 }}>
+      <div data-testid="manager-thread-title" style={{ fontSize: "var(--fs-body)", fontWeight: 800 }}>
+        {thread.contextLabel ?? "일반 문의"}
+      </div>
+      <div
+        data-testid="manager-thread-message"
+        title={thread.lastMessage}
+        style={{
+          minWidth: 0,
+          overflow: "hidden",
+          color: "var(--on-surface-variant)",
+          fontSize: "var(--fs-caption)",
+          lineHeight: 1.5,
+          whiteSpace: "nowrap",
+          textOverflow: "ellipsis",
+        }}
+      >
         {thread.lastMessage}
       </div>
       <div style={{ marginTop: "auto", color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>
