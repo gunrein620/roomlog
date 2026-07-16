@@ -15,6 +15,9 @@ test("vendor assignment appears beside the reply draft action", () => {
   assert.notEqual(vendorIndex, -1);
   assert.notEqual(replyIndex, -1);
   assert.ok(vendorIndex < replyIndex);
-  assert.doesNotMatch(source, /justifyContent: "space-between"/);
+  assert.match(
+    source,
+    /<div style=\{\{ \.\.\.row, justifyContent: "flex-end" \}\}>\s*<LinkButton href=\{ticketDashHref\("04", ticket\.id\)\}/,
+  );
   assert.doesNotMatch(source, /AI 답변\/거절 통보/);
 });
