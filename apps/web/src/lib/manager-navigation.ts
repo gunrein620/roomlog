@@ -1,24 +1,22 @@
 import { MANAGER_BILLING_ROUTES } from "./billing-manager-nav";
 import { MANAGER_CONTRACT_ROUTES } from "./contract-manager-nav";
-import { MANAGER_COST_ROUTES } from "./cost-nav";
 import { MANAGER_CROSS, MHOME_ROUTES } from "./manager-home-nav";
 import { MANAGER_MESSAGING_ROUTES } from "./messaging-manager-nav";
-import { MANAGER_MOVEOUT_ROUTES } from "./moveout-manager-nav";
 import { MANAGER_REPORT_ROUTES } from "./report-nav";
 import { MANAGER_TICKET_ROUTES } from "./ticket-manager-nav";
-import { MANAGER_VENDOR_MGMT_ROUTES } from "./vendor-mgmt-nav";
+import { MANAGER_VENDOR_MGMT_NAV, MANAGER_VENDOR_MGMT_PATHS } from "./vendor-mgmt-nav";
 
 export type ManagerNavItemId =
   | "dashboard" | "listing" | "contract" | "billing" | "cost" | "ticket"
   | "messaging" | "moveout" | "vendor" | "report" | "assistant" | "settings";
 
-export type ManagerTicketTypeFilter = "all" | "complaint" | "defect";
+export type ManagerTicketView = "dashboard" | "management";
 export interface ManagerNavChild {
   label: string;
   href: string;
   demo?: true;
   active?: boolean;
-  typeFilter?: ManagerTicketTypeFilter;
+  ticketView?: ManagerTicketView;
 }
 export interface ManagerNavItem {
   id: ManagerNavItemId;
@@ -51,13 +49,9 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
           MHOME_ROUTES["M-HOME-04"],
           MHOME_ROUTES["M-HOME-05"],
         ],
-        children: [
-          { label: "자산현황", href: MHOME_ROUTES["M-HOME-00"] },
-          { label: "미처리 업무", href: MHOME_ROUTES["M-HOME-01"] },
-          { label: "임대 현황 리포트", href: MHOME_ROUTES["M-HOME-02"], demo: true },
-          { label: "전체 건물 관리", href: MHOME_ROUTES["M-HOME-03"], demo: true },
-          { label: "건물·호실 등록", href: MHOME_ROUTES["M-HOME-05"], demo: true },
-        ],
+        // 통합 대시보드는 하위 탭 없이 한 페이지에서 전부 보여준다 — 앵커 탭(자산현황/리포트/건물)은
+        // 스크롤 한 화면으로 통합되며 제거됐고, 건물·호실 등록은 미사용 기능이라 함께 내렸다.
+        children: [],
       },
     ],
   },
@@ -70,7 +64,10 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         href: MANAGER_LISTING_PATH,
         icon: "listing",
         activePrefixes: [MANAGER_LISTING_PATH],
-        children: [],
+        children: [
+          { label: "계약완료", href: `${MANAGER_LISTING_PATH}?status=contracted` },
+          { label: "미계약", href: `${MANAGER_LISTING_PATH}?status=available` },
+        ],
       },
       {
         id: "contract",
@@ -96,18 +93,6 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
           { label: "연체 관리", href: MANAGER_BILLING_ROUTES.overdue },
         ],
       },
-      {
-        id: "cost",
-        label: "비용 원장",
-        href: MANAGER_COST_ROUTES["M-COST-00"],
-        icon: "cost",
-        activePrefixes: ["/manager/cost"],
-        children: [
-          { label: "원장·검토 큐", href: MANAGER_COST_ROUTES["M-COST-00"] },
-          { label: "영수증 첨부", href: MANAGER_COST_ROUTES["M-COST-01"] },
-          { label: "공개 관리", href: MANAGER_COST_ROUTES["M-COST-04"] },
-        ],
-      },
     ],
   },
   {
@@ -116,13 +101,16 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
       {
         id: "ticket",
         label: "민원·하자",
-        href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=defect`,
+        href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?view=management`,
         icon: "ticket",
         activePrefixes: ["/manager/ticket/dash"],
         children: [
-          { label: "민원 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"], typeFilter: "all" },
-          { label: "민원 대응", href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=complaint`, typeFilter: "complaint" },
-          { label: "하자 관리", href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?type=defect`, typeFilter: "defect" },
+          { label: "민원 대시보드", href: MANAGER_TICKET_ROUTES["M-DASH-00"], ticketView: "dashboard" },
+          {
+            label: "민원/하자 관리",
+            href: `${MANAGER_TICKET_ROUTES["M-DASH-00"]}?view=management`,
+            ticketView: "management",
+          },
         ],
       },
       {
@@ -137,25 +125,12 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
         ],
       },
       {
-        id: "moveout",
-        label: "퇴실·정산",
-        href: MANAGER_MOVEOUT_ROUTES["M-OUT-00"],
-        icon: "moveout",
-        activePrefixes: ["/manager/moveout"],
-        children: [
-          { label: "검토 대시보드", href: MANAGER_MOVEOUT_ROUTES["M-OUT-00"] },
-        ],
-      },
-      {
         id: "vendor",
         label: "업체 관리",
-        href: MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"],
+        href: MANAGER_VENDOR_MGMT_PATHS.vendors,
         icon: "vendor",
         activePrefixes: ["/manager/vendor-mgmt"],
-        children: [
-          { label: "업체 주소록", href: MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"] },
-          { label: "등록·편집", href: MANAGER_VENDOR_MGMT_ROUTES["M-VEND-03"] },
-        ],
+        children: MANAGER_VENDOR_MGMT_NAV,
       },
     ],
   },

@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useActionState, useMemo, useState } from "react";
 import { CircleAlert, FileCheck2 } from "lucide-react";
-import type { ManagerBillCreationData } from "@roomlog/types";
+import type {
+  ManagerBillCreationData,
+  ManagerBillCreationUnavailableReason,
+} from "@roomlog/types";
 import { buildBillingScopeHref } from "@/lib/billing-manager-workspace";
 import { createBillsAction, type CreateBillsActionState } from "./new/actions";
 import styles from "./billing-workspace.module.css";
@@ -13,6 +16,18 @@ const initialState: CreateBillsActionState = {};
 function won(value: number) {
   return `${value.toLocaleString("ko-KR")}원`;
 }
+
+const unavailableReasonLabel: Record<ManagerBillCreationUnavailableReason, string> = {
+  NO_CONTRACT: "연결된 계약 없음",
+  CONTRACT_NOT_ACTIVE: "활성 계약 아님",
+  CONTRACT_NOT_CONFIRMED: "관리자 확정 필요",
+  CONTRACT_VALUES_NOT_CONFIRMED: "계약 금액 확정 필요",
+  MONTHLY_RENT_MISSING: "월세 미등록",
+  MAINTENANCE_FEE_MISSING: "관리비 미등록",
+  BILL_AMOUNT_INVALID: "청구 금액 확인 필요",
+  PAYMENT_DAY_MISSING: "납부일 미등록",
+  PAYMENT_DAY_INVALID: "납부일 확인 필요",
+};
 
 export function ManagerBillCreateForm({ data }: { data: ManagerBillCreationData }) {
   const router = useRouter();
@@ -24,7 +39,13 @@ export function ManagerBillCreateForm({ data }: { data: ManagerBillCreationData 
     () => data.options.filter((option) => option.buildingName === buildingName),
     [buildingName, data.options],
   );
-  const selectable = options.filter((option) => !option.duplicateBillId);
+  const unavailableOptions = useMemo(
+    () => data.unavailableOptions.filter((option) => option.buildingName === buildingName),
+    [buildingName, data.unavailableOptions],
+  );
+  const selectable = data.readOnly
+    ? []
+    : options.filter((option) => !option.duplicateBillId);
   const selectedCount = selectable.filter((option) => selected.has(option.roomId)).length;
   const selectedTotal = selectable
     .filter((option) => selected.has(option.roomId))
@@ -65,6 +86,13 @@ export function ManagerBillCreateForm({ data }: { data: ManagerBillCreationData 
         </div>
       ) : null}
 
+      {data.readOnly ? (
+        <div className={styles.errorNotice} role="alert">
+          <CircleAlert aria-hidden="true" size={18} />
+          청구 API에 연결되지 않아 조회용 예시만 표시하고 있습니다. 연결을 확인한 뒤 다시 시도해주세요.
+        </div>
+      ) : null}
+
       <section className={styles.formSection}>
         <div className={styles.formSectionHeader}>
           <div>
@@ -84,11 +112,11 @@ export function ManagerBillCreateForm({ data }: { data: ManagerBillCreationData 
           </label>
           <div className={styles.fieldGroup}>
             <span className={styles.fieldLabel}>청구월</span>
-            <div className={styles.input}>{data.billingMonth}</div>
+            <div className={`${styles.input} ${styles.readOnlyInput}`}>{data.billingMonth}</div>
           </div>
           <div className={styles.fieldGroup}>
             <span className={styles.fieldLabel}>생성 가능한 계약</span>
-            <div className={styles.input}>{selectable.length}호실</div>
+            <div className={`${styles.input} ${styles.readOnlyInput}`}>{selectable.length}개 호실</div>
           </div>
         </div>
       </section>
@@ -153,7 +181,7 @@ export function ManagerBillCreateForm({ data }: { data: ManagerBillCreationData 
               </thead>
               <tbody>
                 {options.map((option) => {
-                  const disabled = Boolean(option.duplicateBillId);
+                  const disabled = data.readOnly || Boolean(option.duplicateBillId);
                   return (
                     <tr key={option.roomId} className={disabled ? styles.disabledRow : undefined}>
                       <td>
@@ -174,7 +202,15 @@ export function ManagerBillCreateForm({ data }: { data: ManagerBillCreationData 
                       <td><input className={styles.moneyInput} type="number" min="0" step="1" name={`monthlyRent:${option.roomId}`} defaultValue={option.monthlyRent} disabled={disabled} required={!disabled && selected.has(option.roomId)} /></td>
                       <td><input className={styles.moneyInput} type="number" min="0" step="1" name={`maintenanceFee:${option.roomId}`} defaultValue={option.maintenanceFee} disabled={disabled} required={!disabled && selected.has(option.roomId)} /></td>
                       <td><input className={styles.dateInput} type="date" name={`dueDate:${option.roomId}`} defaultValue={option.dueDate} disabled={disabled} required={!disabled && selected.has(option.roomId)} /></td>
-                      <td>{disabled ? <span className={styles.statusPill} data-state="draft">이미 생성됨</span> : <span className={styles.smallPill}>생성 가능</span>}</td>
+                      <td>
+                        {data.readOnly ? (
+                          <span className={styles.statusPill} data-state="unavailable">조회 전용</span>
+                        ) : disabled ? (
+                          <span className={styles.statusPill} data-state="draft">이미 생성됨</span>
+                        ) : (
+                          <span className={styles.smallPill}>생성 가능</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -182,13 +218,55 @@ export function ManagerBillCreateForm({ data }: { data: ManagerBillCreationData 
             </table>
           </div>
         ) : (
-          <div className={styles.emptyState}>이 건물에는 확정된 활성 계약이 없습니다.</div>
+          <div className={styles.emptyState}>
+            {unavailableOptions.length
+              ? "현재 청구서를 생성할 수 있는 계약이 없습니다. 아래에서 호실별 확인 사항을 볼 수 있습니다."
+              : "이 건물에는 등록된 호실이 없습니다."}
+          </div>
         )}
+
+        {unavailableOptions.length ? (
+          <details className={styles.unavailableDetails}>
+            <summary>
+              <span>생성 전 확인이 필요한 호실</span>
+              <strong>{unavailableOptions.length}개 · 사유 보기</strong>
+            </summary>
+            <div className={styles.tableScroll}>
+              <table className={`${styles.optionTable} ${styles.unavailableTable}`}>
+                <thead>
+                  <tr>
+                    <th>호실</th>
+                    <th>임차인</th>
+                    <th>확인 사항</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unavailableOptions.map((option) => (
+                    <tr key={`unavailable-${option.roomId}`}>
+                      <td>{option.unitId}호</td>
+                      <td>{option.tenantName}</td>
+                      <td>
+                        <div className={styles.unavailableReasonCell}>
+                          <span className={styles.statusPill} data-state="unavailable">확인 필요</span>
+                          <span className={styles.optionReason}>
+                            {option.reasons.length
+                              ? option.reasons.map((reason) => unavailableReasonLabel[reason]).join(" · ")
+                              : "계약 정보를 확인해주세요."}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        ) : null}
       </section>
 
       <div className={styles.infoNotice}>
         <FileCheck2 aria-hidden="true" size={18} />
-        저장하면 선택한 호실마다 월세와 관리비 두 항목의 청구 초안이 만들어집니다. 임차인에게 자동 발송되지 않습니다.
+        납부기한은 계약의 매월 납부일을 기준으로 자동 입력되며 청구월 안에서 수정할 수 있습니다. 저장한 초안은 임차인에게 자동 발송되지 않습니다.
       </div>
 
       <div className={styles.formActions}>

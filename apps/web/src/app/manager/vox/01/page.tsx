@@ -137,7 +137,7 @@ export default function Page() {
             <Evidence label="입금자" value="김룸로그" />
             <Evidence label="입금액" value="580,000원" />
             <Evidence label="청구 대조" value="7월 월세 550,000원 + 관리비 30,000원" />
-            <Evidence label="상태" value="확인중/orphan 여부를 확인 후 확정" />
+            <Evidence label="상태" value="납부 확인·미연결 입금 여부를 확인 후 확정" />
             <label
               style={{
                 display: "flex",

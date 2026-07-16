@@ -9,11 +9,23 @@ const componentPath = join(
   root,
   "src/app/manager/ticket/dash/00/ManagerDefectDashboard.tsx",
 );
+const actionMenuPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/TicketActionMenu.tsx",
+);
 const complaintDashboardPath = join(
   root,
   "src/app/manager/ticket/dash/00/ComplaintDashboard.tsx",
 );
 const pagePath = join(root, "src/app/manager/ticket/dash/00/page.tsx");
+const autoRefreshPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/TicketDashboardAutoRefresh.tsx",
+);
+const ticketDetailDialogPath = join(
+  root,
+  "src/app/manager/ticket/dash/00/TicketDetailDialog.tsx",
+);
 const layoutPath = join(root, "src/app/manager/ticket/dash/layout.tsx");
 const cssPath = join(root, "src/app/manager/globals.css");
 const sidebarPath = join(root, "src/app/manager/_components/ManagerSidebar.tsx");
@@ -23,11 +35,16 @@ const sha256 = (source: string) => createHash("sha256").update(source).digest("h
 
 test("manager defect dashboard matches the approved body with the ticket sidebar tabs", () => {
   assert.equal(existsSync(componentPath), true, componentPath);
+  assert.equal(existsSync(actionMenuPath), true, actionMenuPath);
   assert.equal(existsSync(complaintDashboardPath), true, complaintDashboardPath);
 
   const componentSource = readFileSync(componentPath, "utf8");
+  const actionMenuSource = readFileSync(actionMenuPath, "utf8");
   const complaintDashboardSource = readFileSync(complaintDashboardPath, "utf8");
   const pageSource = readFileSync(pagePath, "utf8");
+  assert.equal(existsSync(autoRefreshPath), true, autoRefreshPath);
+  const autoRefreshSource = readFileSync(autoRefreshPath, "utf8");
+  const ticketDetailDialogSource = readFileSync(ticketDetailDialogPath, "utf8");
   const layoutSource = readFileSync(layoutPath, "utf8");
   const cssSource = readFileSync(cssPath, "utf8");
   const sidebarSource = readFileSync(sidebarPath, "utf8");
@@ -72,26 +89,50 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /defectDisplayStatus/);
   assert.match(componentSource, /업체 선정/);
   assert.match(componentSource, /미완료/);
-  assert.match(componentSource, /ticketDashHref\("01",\s*row\.ticket\.id\)/);
-  assert.match(componentSource, /ticketDashHref\("04",\s*row\.ticket\.id\)/);
-  assert.match(componentSource, /ticketDashHref\("05",\s*row\.ticket\.id\)/);
-  assert.match(componentSource, /<details/);
-  assert.match(componentSource, /<summary/);
+  assert.match(actionMenuSource, /ticketDashHref\("01",\s*ticketId\)/);
+  assert.match(actionMenuSource, /ticketDashHref\("04",\s*ticketId\)/);
+  assert.match(actionMenuSource, /ticketDashHref\("05",\s*ticketId\)/);
+  assert.match(componentSource, /<TicketActionMenu/);
+  assert.doesNotMatch(componentSource, /<details/);
+  assert.doesNotMatch(componentSource, /<summary/);
+  assert.match(actionMenuSource, /createPortal/);
+  assert.match(actionMenuSource, /placeTicketActionMenu/);
+  assert.match(actionMenuSource, /aria-haspopup="menu"/);
+  assert.match(actionMenuSource, /aria-expanded=\{open\}/);
+  assert.match(actionMenuSource, /event\.key === "Escape"/);
+  assert.match(actionMenuSource, /pointerdown/);
+  assert.match(actionMenuSource, /addEventListener\("scroll"/);
+  assert.match(actionMenuSource, /addEventListener\("resize"/);
   assert.doesNotMatch(componentSource, /manager-defect-dashboard__primary-action/);
   assert.doesNotMatch(componentSource, />\s*정보입력\s*</);
-  assert.match(componentSource, /상세·정보입력/);
-  assert.match(componentSource, /업체 선정·견적/);
-  assert.match(componentSource, /결제·비용 승인/);
+  assert.match(actionMenuSource, /상세·정보입력/);
+  assert.match(actionMenuSource, /업체 선정·견적/);
+  assert.match(actionMenuSource, /결제·비용 승인/);
   assert.doesNotMatch(componentSource, /박지훈/);
   assert.doesNotMatch(componentSource, /row\.isDemo/);
   assert.doesNotMatch(componentSource, /더미 작업 비활성/);
   assert.match(componentSource, /조건에 맞는 하자·민원 티켓이 없습니다/);
   assert.match(pageSource, /searchParams/);
-  assert.match(pageSource, /type === "complaint" \|\| type === "defect"/);
-  assert.match(pageSource, /initialTemplate === "all"/);
+  assert.match(pageSource, /resolveTicketDashboardView/);
+  assert.match(pageSource, /headers\(\)/);
+  assert.match(pageSource, /appendLocalTicketDemoRows/);
   assert.match(pageSource, /<ComplaintDashboard rows=\{rows\} \/>/);
+  assert.match(
+    pageSource,
+    /dashboardView === "dashboard"[\s\S]*<TicketDashboardAutoRefresh intervalMs=\{3000\} \/>[\s\S]*<ComplaintDashboard rows=\{rows\} \/>/,
+  );
   assert.match(pageSource, /<ManagerDefectDashboard rows=\{rows\} initialTemplate=\{initialTemplate\}/);
-  // 더미 행 혼합 금지 — 대시보드는 실제 접수 티켓만 보여준다(세입자 신규 요청과 직결).
+  assert.match(autoRefreshSource, /getRealtimeSocket/);
+  assert.match(autoRefreshSource, /isTicketActivity/);
+  assert.match(autoRefreshSource, /router\.refresh\(\)/);
+  assert.match(autoRefreshSource, /window\.setInterval/);
+  assert.match(autoRefreshSource, /30000/);
+  assert.match(autoRefreshSource, /visibilitychange/);
+  assert.match(
+    pageSource,
+    /dashboardView === "management"[\s\S]*<TicketDashboardAutoRefresh/,
+  );
+  // 과거 추적 데모 상수는 사용하지 않고, Git 비추적 로컬 파일만 서버 로더로 추가한다.
   assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(pageSource, /listManagerTicketRows/);
   assert.match(componentSource, /initialTemplate/);
@@ -101,10 +142,16 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(cssSource, /\/\* manager-defect-dashboard:start \*\//);
   assert.match(cssSource, /button:disabled/);
   assert.match(cssSource, /manager-defect-dashboard__more-menu-list/);
+  assert.doesNotMatch(
+    cssSource,
+    /manager-defect-dashboard__table tbody tr:nth-last-child\(-n \+ 3\)/,
+  );
   assert.match(complaintDashboardSource, /보고서 다운로드/);
-  assert.match(complaintDashboardSource, /최근 민원 접수 내역/);
+  assert.match(complaintDashboardSource, /민원\/하자 대시보드/);
+  assert.match(complaintDashboardSource, /전체 접수/);
+  assert.match(complaintDashboardSource, /최근 민원\/하자 접수 내역/);
   assert.match(complaintDashboardSource, /aria-label="이전 달"/);
-  assert.match(complaintDashboardSource, /\?type=complaint/);
+  assert.match(complaintDashboardSource, /\?view=management/);
   assert.match(complaintDashboardSource, /aria-label="조회 월 선택"/);
   assert.match(complaintDashboardSource, /role="dialog"/);
   assert.match(complaintDashboardSource, /aria-label="조회 연월 선택"/);
@@ -119,6 +166,17 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(complaintDashboardSource, /event\.key === "Escape"/);
   assert.match(cssSource, /\/\* manager-complaint-dashboard:start \*\//);
   assert.match(cssSource, /manager-complaint-dashboard__calendar-popover/);
+  assert.match(ticketDetailDialogSource, /row\.attachmentUrls/);
+  assert.match(ticketDetailDialogSource, /manager-ticket-dialog__attachments/);
+  assert.match(ticketDetailDialogSource, /manager-ticket-dialog__attachment-thumbnail/);
+  assert.match(ticketDetailDialogSource, /manager-ticket-image-preview/);
+  assert.match(ticketDetailDialogSource, /aria-modal="true"/);
+  assert.match(ticketDetailDialogSource, /event\.key === "Escape"/);
+  assert.match(ticketDetailDialogSource, /onError/);
+  assert.match(ticketDetailDialogSource, /markAttachmentFailed\(selectedAttachmentUrl\)/);
+  assert.match(ticketDetailDialogSource, /target="_blank"/);
+  assert.match(cssSource, /manager-ticket-dialog__attachment-thumbnail/);
+  assert.match(cssSource, /manager-ticket-image-preview/);
 
   const dashboardCss = cssSource.match(
     /\/\* manager-defect-dashboard:start \*\/[\s\S]*?\/\* manager-defect-dashboard:end \*\//,
@@ -138,18 +196,21 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   );
   assert.doesNotMatch(dashboardCss, /#[\da-f]{3,8}/i);
 
-  assert.match(sidebarSource, /child\.active \?\? currentHref === child\.href/);
+  assert.match(sidebarSource, /child\.ticketView/);
   assert.match(layoutSource, /<ManagerAppShell[\s\S]*?subnav=\{false\}/);
   assert.match(navigationSource, /민원 대시보드/);
-  assert.match(navigationSource, /민원 대응/);
-  assert.match(navigationSource, /하자 관리/);
+  assert.match(navigationSource, /민원\/하자 관리/);
+  assert.doesNotMatch(navigationSource, /label: "민원 대응"/);
+  assert.doesNotMatch(navigationSource, /label: "하자 관리"/);
+  assert.match(componentSource, /"민원\/하자 관리"/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-13 브랜드를 집우집주(WOOZU) 로고+홈 링크로 교체, 접기 토글을 브랜드 왼쪽으로 이동
-    "644d549ee8f6eedca8db572d09508c90c81060350f28571f77a869d1017e036f",
+    // 2026-07-14 dev 병합: 통합 대시보드 하위 탭 제거에 맞춰 스크롤스파이와 해시 추적 제거.
+    "7ca63c953c5f9650ee771a02426c5cfe8591532e1ccde8529f2437888b54bb0c",
   );
   assert.equal(
     sha256(navigationSource),
-    "84798e571e84c833346faf928b46cad08dd7c14195c8894e22ac2d59db1bb002",
+    // 2026-07-14 dev 병합: 통합 대시보드 children 제거와 티켓 ticketView 개편이 합쳐진 소스.
+    "bf440768d0228e20323a71ecbfcbe7f16ce8ec2ea8feef6a9024a91ceef99b76",
   );
 });

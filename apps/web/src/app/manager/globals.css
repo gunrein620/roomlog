@@ -913,6 +913,19 @@ dd {
 }
 
 /* manager-workspace:start */
+
+/* 탭 → 페이지 내 앵커 스크롤(#report 등) 전환에 맞춰 부드러운 스크롤 적용.
+   html 전역 선택자를 쓰되 :has()로 관리인 워크스페이스가 실제로 마운트된 문서에만 스코프한다. */
+html:has(.manager-workspace) {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.manager-workspace) {
+    scroll-behavior: auto;
+  }
+}
+
 .manager-workspace {
   min-height: 100dvh;
   display: grid;
@@ -929,6 +942,38 @@ dd {
   overflow-y: auto;
   border-right: 1px solid var(--border);
   background: var(--surface-container-lowest);
+}
+
+/* ── 코스믹 테마 — 심야 우주 사이드바(별무리 radial dot + 궤도 링 + 성운 코너).
+   theme="cosmic"을 쓰는 모든 관리 화면에 동일하게 적용해 밤하늘 느낌으로 통일한다.
+   전부 background 레이어라 DOM 추가·리플로 비용 없음. 글로벌 사이드바는 표면 토큰을
+   소비하므로, 이 스코프에서 표면·글자 토큰을 어두운 배경용으로 재반전시켜 가독성을 지킨다. */
+.manager-workspace.theme-cosmic .manager-workspace__sidebar {
+  --surface-container-lowest: var(--cosmic-sidebar-surface-lowest);
+  --surface-container-low: var(--cosmic-sidebar-surface-low);
+  --surface-container: var(--cosmic-sidebar-surface);
+  --surface-container-high: var(--cosmic-sidebar-surface-high);
+  --on-surface: var(--nav-on-surface);
+  --on-surface-variant: var(--nav-on-surface-muted);
+  --border: var(--cosmic-sidebar-border);
+  --primary-container: var(--cosmic-sidebar-primary-container);
+  --on-primary-container: var(--cosmic-sidebar-on-primary-container);
+  border-right-color: var(--cosmic-sidebar-border-strong) !important;
+  background:
+    url("/textures/cosmic-sidebar.svg") top center / cover no-repeat,
+    radial-gradient(circle 130px at 86% 5%, transparent 100px, var(--cosmic-sidebar-orbit) 101px, transparent 103px),
+    radial-gradient(circle 380px at 115% -6%, var(--cosmic-sidebar-nebula-pink), transparent 68%),
+    radial-gradient(circle 360px at -25% 106%, var(--cosmic-sidebar-nebula-indigo), transparent 70%),
+    linear-gradient(
+      172deg,
+      var(--cosmic-sidebar-gradient-start) 0%,
+      var(--cosmic-sidebar-gradient-mid) 52%,
+      var(--cosmic-sidebar-gradient-end) 100%
+    ) !important;
+}
+
+.manager-workspace.theme-cosmic .manager-workspace__content {
+  background: var(--surface);
 }
 
 .manager-workspace__content,
@@ -1219,9 +1264,25 @@ dd {
   cursor: pointer;
 }
 
-.manager-sidebar__parent-toggle span {
+.manager-sidebar__parent-toggle .manager-sidebar__label {
   min-width: 0;
   flex: 1;
+}
+
+.manager-sidebar__unread-badge {
+  flex: 0 0 auto;
+  min-width: var(--space-xl);
+  height: var(--space-xl);
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+  line-height: 1;
 }
 
 .manager-sidebar__parent-toggle svg {
@@ -1244,6 +1305,7 @@ dd {
 }
 
 .manager-sidebar__parent-toggle:hover {
+  color: var(--on-surface);
   background: var(--surface-container-high);
 }
 
@@ -1257,10 +1319,73 @@ dd {
   background: transparent;
 }
 
+/* 하위 탭 열림/닫힘 — 항상 렌더 + grid-rows 0fr↔1fr 트랜지션으로 높이가 스르륵 접히고 펴진다.
+   닫힘은 inert(ManagerSidebar)로 포커스·클릭까지 차단. */
+.manager-sidebar__children-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.manager-sidebar__children-wrap.is-open {
+  grid-template-rows: 1fr;
+}
+
 .manager-sidebar__children {
   display: grid;
   gap: var(--space-xs);
+  min-height: 0;
+  overflow: hidden;
   padding: var(--space-xs) 0 var(--space-sm) var(--space-xxl);
+  transition: padding 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 닫힌 상태에선 상하 패딩도 0으로 — 패딩은 grid 트랙 밖 높이라 남으면 잔공간이 보인다 */
+.manager-sidebar__children-wrap:not(.is-open) > .manager-sidebar__children {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* 열릴 때 하위 탭이 위에서 살짝 미끄러져 들어온다 — keyframe이라 페이지 이동으로
+   사이드바가 새로 그려질 때(리마운트)도 등장 모션이 살아있다. 순차 딜레이로 결 추가. */
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child {
+  animation: manager-sidebar-child-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child:nth-child(2) {
+  animation-delay: 0.05s;
+}
+
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child:nth-child(3) {
+  animation-delay: 0.1s;
+}
+
+.manager-sidebar__children-wrap.is-open .manager-sidebar__child:nth-child(n + 4) {
+  animation-delay: 0.15s;
+}
+
+@keyframes manager-sidebar-child-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* 같은 섹션 안에서 하위 탭만 이동한 리마운트(청구·수납처럼 경로가 갈리는 탭)에서는
+   이미 열려 있던 목록이므로 등장 애니메이션을 반복하지 않는다. */
+.manager-sidebar__children-wrap--settled.is-open .manager-sidebar__child {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manager-sidebar__children-wrap,
+  .manager-sidebar__children {
+    transition: none;
+  }
+
+  .manager-sidebar__children-wrap.is-open .manager-sidebar__child {
+    animation: none;
+  }
 }
 
 .manager-sidebar__child {
@@ -1317,13 +1442,37 @@ dd {
 }
 
 .manager-section-nav {
+  position: relative;
   min-width: max-content;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
 }
 
+/* 리퀴드 글래스 호버 인디케이터 — 링크 뒤(z-index 아래)에서 JS로 위치·폭을 옮겨 미끄러진다.
+   중립 rgba만 사용 — 전역 컴포넌트라 코스믹 스킨 같은 로컬 토큰 오버라이드에 기대지 않는다. */
+.manager-section-nav__glass {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18));
+  backdrop-filter: blur(10px) saturate(1.5);
+  -webkit-backdrop-filter: blur(10px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 20px rgba(35, 27, 74, 0.14);
+  opacity: 0;
+  transform: translateX(0);
+  transition: transform 0.28s cubic-bezier(0.34, 1.2, 0.4, 1), width 0.28s cubic-bezier(0.34, 1.2, 0.4, 1), opacity 0.18s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .manager-section-nav a {
+  position: relative;
+  z-index: 1;
   min-height: var(--touch-target);
   display: inline-flex;
   align-items: center;
@@ -1332,11 +1481,17 @@ dd {
   border-radius: var(--radius);
   color: var(--on-surface-variant);
   text-decoration: none;
+  transition: transform 0.15s ease;
 }
 
 .manager-section-nav a[aria-current="page"] {
   background: var(--primary-container);
   color: var(--on-primary-container);
+}
+
+/* 비활성 탭 호버 — 배경 틴트는 글래스 인디케이터가 대체하고, 살짝 뜨는 리프트만 유지 */
+.manager-section-nav a:not([aria-current="page"]):hover {
+  transform: translateY(-1px);
 }
 
 .manager-assistant {
@@ -1524,7 +1679,9 @@ dd {
 }
 
 .manager-assistant-dialog {
-  width: min(420px, calc(100% - var(--space-xxl)));
+  width: min(calc(100vw - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
+  height: min(calc(100dvh - var(--space-xxl)), calc(var(--content-aside-max) + var(--content-aside-max)));
+  max-width: none;
   max-height: calc(100dvh - var(--space-xxl));
   margin: auto;
   border: 1px solid var(--border);
@@ -1532,26 +1689,392 @@ dd {
   padding: 0;
   color: var(--on-surface);
   background: var(--surface-container-lowest);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .manager-assistant-dialog__header {
   position: sticky;
   top: 0;
   z-index: var(--z-floating);
-  min-height: var(--header-height);
+  min-height: calc(var(--touch-target) + var(--space-md));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
   padding: 0 var(--space-lg);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-container-lowest);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-assistant-dialog__brand {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.manager-assistant-dialog__brand svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+  flex: 0 0 auto;
+}
+
+.manager-assistant-dialog__brand strong {
+  overflow: hidden;
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-assistant-dialog__header button {
+  color: var(--on-primary);
 }
 
 .manager-assistant-dialog > .manager-assistant {
   border: 0;
   border-radius: 0;
+}
+
+.manager-ai-conversation {
+  display: grid;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+}
+
+.manager-ai-mode-picker {
+  min-height: 0;
+  height: calc(100% - var(--touch-target) - var(--space-md));
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: calc(var(--space-xl) + var(--space-xl));
+  padding: calc(var(--space-xxl) + var(--space-xxl)) var(--space-xxl) var(--space-xxl);
+  overflow-y: auto;
+}
+
+.manager-ai-conversation {
+  height: calc(100% - var(--touch-target) - var(--space-md));
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+
+.manager-ai-mode-picker__copy {
+  display: grid;
+  gap: var(--space-md);
+  text-align: center;
+}
+
+.manager-ai-mode-cards small {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-caption);
+  letter-spacing: var(--space-xs);
+}
+
+.manager-ai-mode-picker__copy h2,
+.manager-ai-mode-picker__copy p,
+.manager-ai-message p {
+  margin: 0;
+}
+
+.manager-ai-mode-picker__copy h2 {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-ai-mode-picker__copy p {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-subtitle);
+  line-height: var(--lh-subtitle);
+}
+
+.manager-ai-mode-cards {
+  width: min(100%, calc(var(--content-narrow-max) + var(--touch-target) + var(--space-xl)));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xl);
+}
+
+.manager-ai-mode-cards button {
+  min-height: calc(var(--touch-target) * 4 + var(--space-xl));
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.manager-ai-mode-cards button:hover {
+  border-color: var(--primary);
+}
+
+.manager-ai-mode-cards strong {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-ai-mode-icon {
+  width: calc(var(--touch-target) + var(--space-xxl));
+  height: calc(var(--touch-target) + var(--space-xxl));
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  color: var(--primary);
+  background: var(--primary-container);
+}
+
+.manager-ai-mode-icon svg {
+  width: var(--space-xxl);
+  height: var(--space-xxl);
+}
+
+.manager-ai-transcript {
+  min-height: calc(var(--touch-target) * 5);
+  max-height: calc(100dvh - 320px);
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  overflow-y: auto;
+}
+
+.manager-ai-message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.manager-ai-message__avatar {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-ai-message__avatar svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
+.manager-ai-message p {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  color: var(--on-surface);
+  background: var(--surface-container);
+  line-height: var(--lh-body);
+}
+
+.manager-ai-message--user {
+  justify-content: flex-end;
+}
+
+.manager-ai-message--user p {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-message--system p {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-ai-receipt,
+.manager-ai-notice {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.manager-ai-receipt {
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-ai-notice {
+  color: var(--on-warning-container);
+  background: var(--warning-container);
+}
+
+.manager-ai-voice-controls {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  color: var(--on-surface);
+  background: var(--surface-container);
+}
+
+.manager-ai-voice-controls p {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0;
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-ai-voice-status {
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: var(--radius-full);
+  background: var(--outline);
+}
+
+.manager-ai-voice-status--connected {
+  background: var(--success);
+}
+
+.manager-ai-voice-status--connecting {
+  background: var(--warning);
+}
+
+.manager-ai-voice-status--error,
+.manager-ai-voice-status--not_configured {
+  background: var(--error);
+}
+
+.manager-ai-voice-controls button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--on-primary);
+  background: var(--primary);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.manager-ai-voice-controls button.is-disconnect {
+  color: var(--on-error);
+  background: var(--error);
+}
+
+.manager-ai-voice-controls .manager-ai-push-to-talk {
+  width: min(100%, var(--content-narrow-max));
+  min-height: calc(var(--touch-target) + var(--space-lg));
+  touch-action: none;
+  user-select: none;
+}
+
+.manager-ai-voice-controls .manager-ai-push-to-talk[aria-pressed="true"] {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+  box-shadow: var(--shadow-soft);
+}
+
+.manager-ai-voice-controls button svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
+.manager-ai-voice-controls small {
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.manager-ai-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+}
+
+.manager-ai-composer label {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-ai-composer textarea {
+  width: 100%;
+  min-height: calc(var(--touch-target) * 2);
+  resize: vertical;
+  padding: var(--space-md);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  color: var(--input-text);
+  background: var(--surface-container-lowest);
+  font: inherit;
+  line-height: var(--lh-body);
+}
+
+.manager-ai-composer button {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-md);
+  border: 0;
+  border-radius: var(--radius-btn);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-composer button:disabled,
+.manager-ai-composer textarea:disabled {
+  cursor: not-allowed;
+  opacity: var(--disabled-opacity);
+}
+
+.manager-ai-composer svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
+}
+
+.manager-ai-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  border-radius: var(--radius-full);
+  background: var(--surface-container);
+}
+
+.manager-ai-mode-toggle button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  border: 0;
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+  background: transparent;
+}
+
+.manager-ai-mode-toggle button[aria-pressed="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-ai-mode-toggle svg {
+  width: var(--space-lg);
+  height: var(--space-lg);
 }
 
 .manager-mobile-nav-dialog {
@@ -1607,6 +2130,56 @@ dd {
   .manager-assistant-launcher-frame__inner {
     padding-right: calc(var(--space-lg) + env(safe-area-inset-right));
     padding-left: var(--space-lg);
+  }
+
+  .manager-assistant-dialog__header {
+    min-height: calc(var(--touch-target) + var(--space-xs));
+    padding: 0 var(--space-md);
+  }
+
+  .manager-assistant-dialog__brand strong {
+    font-size: var(--fs-body);
+  }
+
+  .manager-ai-mode-picker {
+    height: calc(100% - var(--touch-target) - var(--space-xs));
+    gap: var(--space-xl);
+    padding: calc(var(--space-xxl) + var(--space-xl)) var(--space-lg) var(--space-xl);
+  }
+
+  .manager-ai-mode-picker__copy {
+    gap: var(--space-sm);
+  }
+
+  .manager-ai-mode-picker__copy h2 {
+    font-size: var(--fs-subtitle);
+    line-height: var(--lh-subtitle);
+  }
+
+  .manager-ai-mode-picker__copy p {
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+  }
+
+  .manager-ai-mode-cards {
+    gap: var(--space-sm);
+  }
+
+  .manager-ai-mode-cards button {
+    min-height: calc(var(--touch-target) * 3 + var(--space-lg));
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+  }
+
+  .manager-ai-mode-icon {
+    width: calc(var(--touch-target) + var(--space-lg));
+    height: calc(var(--touch-target) + var(--space-lg));
+  }
+
+  .manager-ai-mode-cards strong {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
   }
 }
 /* manager-app-shell:end */
@@ -1735,6 +2308,529 @@ dd {
   color: var(--primary);
 }
 
+.manager-contract-dashboard {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.manager-contract-dashboard h2 {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: var(--lh-title);
+}
+
+.manager-contract-dashboard__confirmation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid color-mix(in srgb, var(--success) 32%, var(--border));
+  border-radius: var(--radius-md);
+  color: var(--on-success-container);
+  background: var(--success-container);
+}
+
+.manager-contract-dashboard__confirmation svg {
+  flex: 0 0 auto;
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-contract-dashboard__confirmation div {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.manager-contract-dashboard__confirmation span {
+  font-size: var(--fs-caption);
+}
+
+.manager-contract-dashboard__filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.manager-contract-dashboard__status-filters {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.manager-contract-dashboard__create-link {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0 var(--space-xl);
+  border-radius: var(--radius-btn);
+  color: var(--on-primary);
+  background: var(--primary);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-title);
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+}
+
+.manager-contract-dashboard__create-link:hover {
+  filter: brightness(0.96);
+}
+
+.manager-contract-dashboard__status-filters button {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+  background: var(--surface-container-lowest);
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.manager-contract-dashboard__status-filters button[aria-pressed="true"] {
+  border-color: var(--primary);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-contract-dashboard__filter-panel {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) repeat(2, minmax(180px, 1fr));
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-contract-dashboard__filter-panel label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-contract-dashboard__filter-panel input,
+.manager-contract-dashboard__filter-panel select {
+  min-width: 0;
+  min-height: var(--touch-target);
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0 var(--space-md);
+  color: var(--input-text);
+  background: var(--surface-container-low);
+  font: inherit;
+}
+
+.manager-contract-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-contract-table {
+  width: 100%;
+  min-width: 1720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.manager-contract-table th,
+.manager-contract-table td {
+  min-height: 54px;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+  font-size: var(--fs-caption);
+}
+
+.manager-contract-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  font-weight: var(--fw-subtitle);
+  white-space: nowrap;
+}
+
+.manager-contract-table tbody tr:hover {
+  background: var(--surface-container-low);
+}
+
+.manager-contract-table tbody tr.is-attention {
+  background: color-mix(in srgb, var(--primary) 4%, var(--surface-container-lowest));
+}
+
+.manager-contract-table tbody tr.is-focused,
+.manager-contract-table tbody tr.is-focused:hover {
+  background: var(--primary-container);
+  box-shadow: inset var(--space-xs) 0 0 var(--primary);
+}
+
+.manager-contract-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.manager-contract-table th:nth-child(1),
+.manager-contract-table td:nth-child(1) {
+  width: 76px;
+}
+
+.manager-contract-table th:nth-child(2),
+.manager-contract-table td:nth-child(2) {
+  width: 126px;
+}
+
+.manager-contract-table th:nth-child(3),
+.manager-contract-table td:nth-child(3) {
+  width: 78px;
+}
+
+.manager-contract-table th:nth-child(4),
+.manager-contract-table td:nth-child(4) {
+  width: 210px;
+}
+
+.manager-contract-table th:nth-child(5),
+.manager-contract-table td:nth-child(5) {
+  width: 88px;
+}
+
+.manager-contract-table th:nth-child(6),
+.manager-contract-table td:nth-child(6) {
+  width: 126px;
+}
+
+.manager-contract-table th:nth-child(7),
+.manager-contract-table td:nth-child(7) {
+  width: 98px;
+}
+
+.manager-contract-table th:nth-child(8),
+.manager-contract-table td:nth-child(8) {
+  width: 98px;
+}
+
+.manager-contract-table th:nth-child(9),
+.manager-contract-table td:nth-child(9) {
+  width: 98px;
+}
+
+.manager-contract-table th:nth-child(10),
+.manager-contract-table td:nth-child(10) {
+  width: 88px;
+}
+
+.manager-contract-table th:nth-child(11),
+.manager-contract-table td:nth-child(11),
+.manager-contract-table th:nth-child(12),
+.manager-contract-table td:nth-child(12) {
+  width: 126px;
+}
+
+.manager-contract-table th:nth-child(13),
+.manager-contract-table td:nth-child(13) {
+  width: 88px;
+}
+
+.manager-contract-table th:nth-child(14),
+.manager-contract-table td:nth-child(14) {
+  width: 82px;
+}
+
+.manager-contract-table th:nth-child(15),
+.manager-contract-table td:nth-child(15) {
+  width: 84px;
+}
+
+.manager-contract-table__status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  font-weight: var(--fw-subtitle);
+  white-space: nowrap;
+}
+
+.manager-contract-table__status--sla,
+.manager-contract-table__status--delete {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 8%, var(--surface-container-lowest));
+}
+
+.manager-contract-table__status--check,
+.manager-contract-table__status--pending,
+.manager-contract-table__status--expire {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface-container-lowest));
+}
+
+.manager-contract-table__primary-link {
+  display: block;
+  overflow: hidden;
+  color: var(--on-surface);
+  font-weight: var(--fw-subtitle);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-contract-table__primary-link:hover {
+  color: var(--primary);
+}
+
+.manager-contract-table__strong,
+.manager-contract-table__number,
+.manager-contract-table__date,
+.manager-contract-table__muted,
+.manager-contract-table__money,
+.manager-contract-table__center {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.manager-contract-table__strong,
+.manager-contract-table__number,
+.manager-contract-table__money,
+.manager-contract-table__center {
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-contract-table__date,
+.manager-contract-table__muted {
+  color: var(--on-surface-variant);
+}
+
+.manager-contract-table__money,
+.manager-contract-table__center {
+  text-align: right;
+}
+
+.manager-contract-table__center {
+  text-align: center;
+}
+
+.manager-contract-table__action {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.manager-contract-table__more-action {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--on-surface-variant);
+  background: transparent;
+  cursor: pointer;
+}
+
+.manager-contract-table__more-menu {
+  position: relative;
+}
+
+.manager-contract-table__more-menu > summary {
+  list-style: none;
+}
+
+.manager-contract-table__more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.manager-contract-table__more-menu[open] > summary {
+  color: var(--primary);
+  background: var(--primary-container);
+}
+
+.manager-contract-table__more-menu-list {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  z-index: 10;
+  min-width: calc(var(--touch-target) * 4);
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-contract-table__more-menu-list a {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  color: var(--on-surface);
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-contract-table__more-menu-list a:hover,
+.manager-contract-table__more-menu-list a:focus-visible {
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+}
+
+.manager-contract-table tbody tr:nth-last-child(-n + 3)
+  .manager-contract-table__more-menu-list {
+  top: auto;
+  bottom: calc(100% + var(--space-xs));
+}
+
+.manager-contract-table__action svg,
+.manager-contract-dashboard__pagination svg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+}
+
+.manager-contract-table__empty {
+  height: calc(var(--touch-target) * 2);
+  color: var(--on-surface-variant);
+  text-align: center !important;
+}
+
+.manager-contract-priority {
+  min-width: 40px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  font-weight: var(--fw-subtitle);
+  white-space: nowrap;
+}
+
+.manager-contract-priority--sla,
+.manager-contract-priority--delete {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 36%, var(--border));
+  background: color-mix(in srgb, var(--error) 8%, var(--surface-container-lowest));
+}
+
+.manager-contract-priority--check,
+.manager-contract-priority--pending,
+.manager-contract-priority--expire {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface-container-lowest));
+}
+
+.manager-contract-dashboard__pagination {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-contract-dashboard__pagination > span {
+  grid-column: 1;
+}
+
+.manager-contract-dashboard__pagination nav {
+  grid-column: 2;
+  justify-self: center;
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.manager-contract-dashboard__pagination button {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--on-surface-variant);
+  background: transparent;
+  font: inherit;
+  font-weight: var(--fw-subtitle);
+  cursor: pointer;
+}
+
+.manager-contract-dashboard__pagination button[aria-current="page"] {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.manager-contract-dashboard__pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.manager-contract-dashboard__status-filters button:focus-visible,
+.manager-contract-dashboard__create-link:focus-visible,
+.manager-contract-dashboard__filter-panel input:focus-visible,
+.manager-contract-dashboard__filter-panel select:focus-visible,
+.manager-contract-table__primary-link:focus-visible,
+.manager-contract-table__more-action:focus-visible,
+.manager-contract-table__more-menu-list a:focus-visible,
+.manager-contract-dashboard__pagination button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 860px) {
+  .manager-contract-dashboard__filter-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .manager-contract-dashboard__create-link {
+    width: 100%;
+  }
+
+  .manager-contract-dashboard__filter-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-contract-dashboard__filter-panel label {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-contract-dashboard__pagination {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-contract-dashboard__pagination > span,
+  .manager-contract-dashboard__pagination nav {
+    grid-column: 1;
+  }
+
+  .manager-contract-dashboard__pagination nav {
+    justify-self: center;
+  }
+}
+
 .manager-defect-dashboard__muted-cell {
   color: var(--on-surface-variant);
   white-space: nowrap;
@@ -1823,28 +2919,14 @@ dd {
   cursor: pointer;
 }
 
-.manager-defect-dashboard__more-menu {
-  position: relative;
-}
-
-.manager-defect-dashboard__more-menu > summary {
-  list-style: none;
-}
-
-.manager-defect-dashboard__more-menu > summary::-webkit-details-marker {
-  display: none;
-}
-
-.manager-defect-dashboard__more-menu[open] > summary {
+.manager-defect-dashboard__more-action[aria-expanded="true"] {
   color: var(--primary);
   background: var(--primary-container);
 }
 
 .manager-defect-dashboard__more-menu-list {
-  position: absolute;
-  top: calc(100% + var(--space-xs));
-  right: 0;
-  z-index: 10;
+  position: fixed;
+  z-index: var(--z-floating);
   min-width: calc(var(--touch-target) * 4);
   display: grid;
   gap: var(--space-xs);
@@ -1853,6 +2935,10 @@ dd {
   border-radius: var(--radius);
   background: var(--surface-container-lowest);
   box-shadow: var(--shadow);
+}
+
+.manager-defect-dashboard__more-menu-list[data-positioned="false"] {
+  visibility: hidden;
 }
 
 .manager-defect-dashboard__more-menu-list a {
@@ -1869,12 +2955,6 @@ dd {
 .manager-defect-dashboard__more-menu-list a:focus-visible {
   color: var(--on-primary-container);
   background: var(--primary-container);
-}
-
-.manager-defect-dashboard__table tbody tr:nth-last-child(-n + 3)
-  .manager-defect-dashboard__more-menu-list {
-  top: auto;
-  bottom: calc(100% + var(--space-xs));
 }
 
 .manager-defect-dashboard__action svg,
@@ -2072,6 +3152,98 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.manager-ticket-dialog__attachments {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-dialog__attachments h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-ticket-dialog__attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.manager-ticket-dialog__attachment-thumbnail {
+  width: 112px;
+  height: 84px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-container);
+  cursor: zoom-in;
+}
+
+.manager-ticket-dialog__attachment-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.manager-ticket-dialog__attachment-fallback {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+
+.manager-ticket-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-overlay) + 1);
+  display: grid;
+  place-items: center;
+  padding: var(--space-xl);
+  background: color-mix(in srgb, var(--on-surface) 72%, transparent);
+  cursor: zoom-out;
+}
+
+.manager-ticket-image-preview__content {
+  position: relative;
+  max-width: min(960px, 100%);
+  max-height: 100%;
+  margin: 0;
+  cursor: default;
+}
+
+.manager-ticket-image-preview__content img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - var(--space-xl) * 2);
+  object-fit: contain;
+  border-radius: var(--radius-lg, 16px);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow);
+}
+
+.manager-ticket-image-preview__content button {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-full, 999px);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
 .manager-ticket-dialog__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2103,7 +3275,9 @@ dd {
 }
 
 .manager-ticket-dialog__actions a:focus-visible,
-.manager-ticket-dialog__header button:focus-visible {
+.manager-ticket-dialog__header button:focus-visible,
+.manager-ticket-dialog__attachment-thumbnail:focus-visible,
+.manager-ticket-image-preview__content button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -2699,9 +3873,238 @@ dd {
   }
 }
 
+.contract-register-upload-button,
+.contract-register-submit-button {
+  width: 100%;
+}
+
+@media (min-width: 861px) {
+  .contract-register-upload-grid {
+    max-width: 980px;
+    margin-inline: auto;
+  }
+
+  .contract-register-upload-actions {
+    justify-items: center;
+  }
+
+  .contract-register-upload-button,
+  .contract-register-submit-button {
+    width: min(100%, 360px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .manager-workspace {
     transition: none;
   }
+
+  .manager-section-nav a {
+    transition: none;
+  }
+
+  .manager-section-nav a:not([aria-current="page"]):hover {
+    transform: none;
+  }
+
+  .manager-section-nav__glass {
+    transition: none;
+  }
 }
 /* manager-workspace nav collapse:end */
+
+/* manager assistant confirmation card:start */
+.manager-assistant-action-card {
+  position: relative;
+  width: min(100%, 720px);
+  display: grid;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-soft);
+  color: var(--on-surface);
+}
+
+.manager-assistant-action-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--space-xs);
+  background: linear-gradient(var(--primary), var(--pastel-pink));
+  content: "";
+}
+
+.manager-assistant-action-card__heading {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-sm);
+}
+
+.manager-assistant-action-card__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--touch-target) - var(--space-lg));
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-btn);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-title);
+}
+
+.manager-assistant-action-card__title {
+  font-size: var(--fs-subtitle);
+  line-height: var(--lh-subtitle);
+  text-wrap: balance;
+}
+
+.manager-assistant-action-card__detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.manager-assistant-action-card__detail {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-low);
+}
+
+.manager-assistant-action-card__detail-label {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+}
+
+.manager-assistant-action-card__detail-value {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-title);
+}
+
+.manager-assistant-action-card__message-field {
+  display: grid;
+  gap: var(--space-sm);
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.manager-assistant-action-card__message-preview,
+.manager-assistant-action-card__message-editor {
+  width: 100%;
+  padding: var(--space-md);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-body);
+  line-height: var(--lh-body);
+}
+
+.manager-assistant-action-card__message-preview {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.manager-assistant-action-card__message-editor {
+  min-height: 132px;
+  outline: none;
+  resize: vertical;
+}
+
+.manager-assistant-action-card__message-editor:focus-visible {
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.manager-assistant-action-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.manager-assistant-action-card__button {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-btn);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-title);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.manager-assistant-action-card__button--primary {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.manager-assistant-action-card__button--secondary {
+  border: 1px solid var(--border);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+}
+
+.manager-assistant-action-card__button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.manager-assistant-action-card__button--secondary:hover:not(:disabled) {
+  background: var(--surface-container);
+  color: var(--primary);
+}
+
+.manager-assistant-action-card__button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.manager-assistant-action-card__button:disabled,
+.manager-assistant-action-card__message-editor:disabled {
+  cursor: not-allowed;
+  opacity: var(--disabled-opacity);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manager-assistant-action-card__button {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .manager-assistant-action-card {
+    gap: var(--space-md);
+    padding: var(--space-lg);
+  }
+
+  .manager-assistant-action-card__detail-grid,
+  .manager-assistant-action-card__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-assistant-action-card__actions {
+    display: grid;
+  }
+
+  .manager-assistant-action-card__button {
+    width: 100%;
+  }
+}
+/* manager assistant confirmation card:end */

@@ -1,5 +1,5 @@
 import type { DefectAnalysis, ManagerQueueSummary, RepairJob, Ticket } from "@roomlog/types";
-import { serverFetch } from "./server-api";
+import { ApiError, serverFetch } from "./server-api";
 import {
   toManagerTicket,
   toManagerAnalysis,
@@ -22,6 +22,17 @@ import { managerDefectDashboardDemoRecord } from "./manager-defect-dashboard-dem
 async function listTeamTickets(filter?: string): Promise<TeamManagerTicket[]> {
   const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
   return serverFetch<TeamManagerTicket[]>(`/manager/tickets${query}`);
+}
+
+export function managerTicketAttachmentUrls(ticket: TeamManagerTicket): string[] {
+  return Array.from(
+    new Set(
+      (ticket.messages ?? [])
+        .flatMap((message) => message.attachmentUrls ?? [])
+        .map((url) => url.trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 async function activeTeamTicket(): Promise<TeamManagerTicket | null> {
@@ -63,18 +74,16 @@ export async function listManagerTickets(filter?: string): Promise<Ticket[]> {
 // 대시보드용 목록 — 티켓+수리를 목록 1회 조회로 함께 매핑한다(티켓별 재조회 N+1 제거).
 // getManagerRepair와 달리 데모 폴백이 없다: 수리 미배정이면 undefined(작업자 "미배정" 표시).
 // 실제 접수 건에 가짜 업체/금액을 섞지 않기 위한 분리다(위조 금지).
-export async function listManagerTicketRows(): Promise<
-  { ticket: Ticket; repair?: RepairJob }[]
+export async function listManagerTicketRows(
+  loadTickets: () => Promise<TeamManagerTicket[]> = listTeamTickets,
+): Promise<
+  { ticket: Ticket; repair?: RepairJob; attachmentUrls: string[] }[]
 > {
-  try {
-    return (await listTeamTickets()).map((t) => ({
-      ticket: toManagerTicket(t),
-      repair: toManagerRepair(t) ?? undefined
-    }));
-  } catch (error) {
-    console.error("[manager/api] listManagerTicketRows 실패 → 빈 목록:", error);
-    return [];
-  }
+  return (await loadTickets()).map((t) => ({
+    ticket: toManagerTicket(t),
+    repair: toManagerRepair(t) ?? undefined,
+    attachmentUrls: managerTicketAttachmentUrls(t)
+  }));
 }
 
 export async function getManagerQueueSummary(): Promise<ManagerQueueSummary> {
@@ -110,17 +119,23 @@ export async function getManagerAnalysis(
   return managerDemoAnalysis(ticketId);
 }
 
-export async function getManagerRepair(
-  ticketId: string = MANAGER_DEMO_TICKET_ID
-): Promise<RepairJob> {
-  const demo = managerDefectDashboardDemoRecord(ticketId);
+export function getManagerRepair(): Promise<RepairJob>;
+export function getManagerRepair(ticketId: string): Promise<RepairJob | null>;
+export async function getManagerRepair(ticketId?: string): Promise<RepairJob | null> {
+  const selectedId = ticketId ?? MANAGER_DEMO_TICKET_ID;
+  const demo = managerDefectDashboardDemoRecord(selectedId);
   if (demo) return demo.repair;
+  if (selectedId === MANAGER_DEMO_TICKET_ID) return managerDemoRepair(selectedId);
 
-  const t = await selectedTeamTicket(ticketId);
-  const mapped = t && toManagerRepair(t);
-  if (mapped) return mapped;
-  console.warn("[manager/api] 실제 수리 없음(미배정/취소) → 데모 폴백");
-  return managerDemoRepair(ticketId);
+  try {
+    const ticket = await serverFetch<TeamManagerTicket>(
+      `/manager/tickets/${encodeURIComponent(selectedId)}`,
+    );
+    return toManagerRepair(ticket);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 // 관리인 mutation(상태/책임/긴급도 변경)은 화면 TicketStatus(lowercase 6)→팀 UPPERCASE(11)

@@ -1,16 +1,36 @@
+import { headers } from "next/headers";
 import { listManagerTicketRows } from "@/lib/ticket-manager-api";
 import { ComplaintDashboard } from "./ComplaintDashboard";
+import { appendLocalTicketDemoRows } from "./local-ticket-demo";
 import { ManagerDefectDashboard } from "./ManagerDefectDashboard";
+import { TicketDashboardAutoRefresh } from "./TicketDashboardAutoRefresh";
+import { resolveTicketDashboardView } from "./ticket-dashboard-view";
 
-type SearchParams = Promise<{ type?: string }>;
+type SearchParams = Promise<{ type?: string; view?: string }>;
 
-// 대시보드는 실제 접수 티켓만 보여준다 — 더미 행 혼합 제거(세입자 신규 요청과 직결).
+// 실데이터가 항상 먼저 오며, loopback 요청에서만 Git 비추적 로컬 파일의 행을 덧붙인다.
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { type } = await searchParams;
-  const initialTemplate = type === "complaint" || type === "defect" ? type : "all";
-  const rows = await listManagerTicketRows();
+  const dashboardView = resolveTicketDashboardView(await searchParams);
+  const requestHeaders = await headers();
+  const realRows = await listManagerTicketRows();
+  const rows = await appendLocalTicketDemoRows(realRows, requestHeaders.get("host"));
 
-  if (initialTemplate === "all") return <ComplaintDashboard rows={rows} />;
+  if (dashboardView === "dashboard") {
+    return (
+      <>
+        <TicketDashboardAutoRefresh intervalMs={3000} />
+        <ComplaintDashboard rows={rows} />
+      </>
+    );
+  }
 
-  return <ManagerDefectDashboard rows={rows} initialTemplate={initialTemplate} key={initialTemplate} />;
+  const initialTemplate = dashboardView === "management" ? "all" : dashboardView;
+  return (
+    <>
+      {dashboardView === "management" ? (
+        <TicketDashboardAutoRefresh intervalMs={3000} />
+      ) : null}
+      <ManagerDefectDashboard rows={rows} initialTemplate={initialTemplate} key={initialTemplate} />
+    </>
+  );
 }

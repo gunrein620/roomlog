@@ -1,3 +1,20 @@
+export type {
+  ManagerAgentCommandInput,
+  ManagerAgentCommandName,
+  ManagerAgentCommandResult,
+  ManagerAssistantIntent,
+  ManagerCopilotChatRequest,
+  ManagerCopilotChatResponse,
+  ManagerCopilotPendingAction,
+  ManagerDunningActionPreview,
+  ManagerMessagingRecipient,
+  StartManagerConversationInput,
+  TenantLandlordConversation
+} from "@roomlog/types";
+
+export type CopilotChatRequest = import("@roomlog/types").ManagerCopilotChatRequest;
+export type CopilotChatResponse = import("@roomlog/types").ManagerCopilotChatResponse;
+
 export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
 export type MessageSenderRole = Exclude<UserRole, "SEEKER"> | "AI_ASSISTANT" | "SYSTEM";
 export type ComplaintSourceChannel = "DIRECT_FORM" | "REALTIME_CHAT" | "VOICE_CHAT" | "CALLBOT";
@@ -148,6 +165,7 @@ export type MessagingThread = {
   lastMessage: string;
   lastMessageSender?: MessagingMessageSender; // 목록 응답에도 포함 — 관리인 미응답 판정용 (presentThread에서 채움)
   unreadCount: number;
+  managerUnreadCount: number;
   pendingRequest: boolean;
   archivedNotice: boolean;
   createdAt: string;
@@ -170,10 +188,11 @@ export type CreateMessagingThreadInput = {
 };
 
 export type CreateTenantMessagingThreadInput = {
+  roomId?: string;
   context?: MessagingThreadContext;
   contextRef?: string;
   contextLabel?: string;
-  body: string;
+  body?: string;
   kind?: MessagingMessageKind;
   attachmentUrls?: string[];
 };
@@ -949,7 +968,7 @@ export type AttachmentCategory =
   | "INTAKE_PHOTO"
   | "FLOOR_PLAN_SOURCE";
 
-export type SocialProvider = "GOOGLE" | "NAVER";
+export type SocialProvider = "GOOGLE" | "KAKAO" | "NAVER";
 
 export type SocialAccount = {
   id: string;
@@ -1211,51 +1230,6 @@ export type ManagerAssistantQueryResult = {
   matchedTickets: ManagerAssistantTicketMatch[];
   nextActions: string[];
   generatedAt: string;
-};
-
-export type ManagerAgentCommandName =
-  | "ticket.query"
-  | "billing.summary"
-  | "billing.send_dunning"
-  | "messaging.list_threads"
-  | "messaging.draft_reply"
-  | "messaging.send_reply";
-
-export type ManagerAgentCommandInput = {
-  command: string;
-  text?: string;
-  billId?: string;
-  channel?: string;
-  threadId?: string;
-  body?: string;
-};
-
-export type ManagerAgentCommandResult = {
-  status: "executed" | "draft_only" | "blocked";
-  domain: "ticket" | "billing" | "messaging" | "system";
-  summary: string;
-  data?: unknown;
-  navigation?: {
-    label: string;
-    href: string;
-  };
-  requiresConfirmation?: boolean;
-};
-
-export type CopilotChatRequest = {
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
-  confirmActionId?: string;
-};
-
-export type CopilotChatResponse = {
-  mode: "openai" | "not_configured";
-  reply: string;
-  pendingAction?: {
-    id: string;
-    kind: "billing.send_dunning" | "messaging.send_reply";
-    summary: string;
-  };
-  receipts?: Array<{ kind: string; summary: string }>;
 };
 
 export type ManagerReplyIntent =
@@ -1583,6 +1557,7 @@ export type IntakeDraft = {
   requiredInfo: string[];
   photoRequested: boolean;
   readyToFinalize: boolean;
+  filingIntent: boolean;
   location?: string;
   occurredAt?: string;
   availableTimes?: string;
@@ -1761,6 +1736,7 @@ export type PaymentReport = {
   status: PaymentReportStatus;
   etaHours: number;
   reportedAt: string;
+  confirmedAt?: string;
 };
 
 export type Deposit = {
@@ -1837,6 +1813,10 @@ export type TeamBill = Omit<
   account: PaymentAccount;
 };
 
+export type TeamManagerBillDetail = TeamBill & {
+  guard: DunningGuard;
+};
+
 export type TeamTenantBillSummary = {
   bill: TeamBill;
   payableFrom: string;
@@ -1888,6 +1868,43 @@ export type TeamTenantPaymentHistory = {
 export type TeamReport = PaymentReport;
 
 export type TeamDeposit = Deposit;
+
+export type TeamTransactionLedgerBill = {
+  buildingName?: string;
+  unitId: string;
+  tenantName: string;
+  billingMonth: string;
+  dueDate: string;
+  totalAmount: number;
+  paidAmount: number;
+  status: BillStatus;
+  items: TeamBill["items"];
+};
+
+export type TeamTransactionLedgerCost = {
+  type: CostType;
+  scope: CostAttributionScope;
+  verified: boolean;
+  evidenceAvailable: boolean;
+  status: "confirmed" | "amended";
+};
+
+export type TeamTransactionLedgerRow = {
+  id: string;
+  direction: "deposit" | "withdrawal";
+  occurredAt: string;
+  amount: number;
+  statusLabel: string;
+  buildingName?: string;
+  unitId?: string;
+  candidateUnitId?: string;
+  partyName?: string;
+  itemLabel: string;
+  depositorName?: string;
+  linkedBillRelation?: "matched" | "candidate";
+  linkedBill?: TeamTransactionLedgerBill;
+  cost?: TeamTransactionLedgerCost;
+};
 
 export type TeamBillPaymentOrder = {
   billId: string;
@@ -1966,6 +1983,11 @@ export type TeamCollectionBrief = {
   collectedAmount: number;
   unpaidAmount: number;
   collectionRate: number;
+  billedUnits: number;
+  fullyPaidUnits: number;
+  partiallyPaidUnits: number;
+  threeMonthAverageRate: number;
+  sixMonthAverageRate: number;
   previousCollectionRate?: number;
   rateDelta?: number;
   confirmingAmount: number;
@@ -1977,6 +1999,30 @@ export type TeamCollectionPoint = {
   collectedAmount: number;
   unpaidAmount: number;
   collectionRate: number;
+  billedUnits: number;
+  fullyPaidUnits: number;
+  partiallyPaidUnits: number;
+};
+
+export type TeamCollectionHistoryRange = {
+  availableFromMonth: string;
+  availableToMonth: string;
+  appliedFromMonth: string;
+  appliedToMonth: string;
+};
+
+export type TeamCollectionTimingPoint = {
+  day: number;
+  currentCumulativeAmount: number;
+  previousCumulativeAmount: number;
+};
+
+export type TeamCollectionTiming = {
+  currentMonth: string;
+  previousMonth: string;
+  onTimeCollectionRate: number;
+  averageCollectionDay?: number;
+  points: TeamCollectionTimingPoint[];
 };
 
 export type TeamCollectionBuildingRow = TeamCollectionPoint & {
@@ -1993,6 +2039,8 @@ export type TeamCollection = {
   billingMonth: string;
   brief: TeamCollectionBrief;
   trend: TeamCollectionPoint[];
+  history: TeamCollectionHistoryRange;
+  timing: TeamCollectionTiming;
   buildings: TeamCollectionBuildingRow[];
   collectionRate: number;
   collectedAmount: number;
@@ -2044,11 +2092,32 @@ export type TeamBillCreationOption = {
   duplicateBillId?: string;
 };
 
+export type TeamBillCreationUnavailableReason =
+  | "NO_CONTRACT"
+  | "CONTRACT_NOT_ACTIVE"
+  | "CONTRACT_NOT_CONFIRMED"
+  | "CONTRACT_VALUES_NOT_CONFIRMED"
+  | "MONTHLY_RENT_MISSING"
+  | "MAINTENANCE_FEE_MISSING"
+  | "BILL_AMOUNT_INVALID"
+  | "PAYMENT_DAY_MISSING"
+  | "PAYMENT_DAY_INVALID";
+
+export type TeamBillCreationUnavailableOption = {
+  roomId: string;
+  buildingName: string;
+  unitId: string;
+  tenantName: string;
+  contractId?: string;
+  reasons: TeamBillCreationUnavailableReason[];
+};
+
 export type TeamBillCreationData = {
   scope: TeamBillingScope;
   billingMonth: string;
   account: PaymentAccount;
   options: TeamBillCreationOption[];
+  unavailableOptions: TeamBillCreationUnavailableOption[];
 };
 
 export type CreateManagerBillRowInput = {
@@ -2075,9 +2144,13 @@ export type CreateManagerBillsResult = {
 
 export type TeamDunning = {
   billId: string;
+  buildingName?: string;
   unitId: string;
   tenantName: string;
+  billingMonth: string;
   unpaidAmount: number;
+  dueDate: string;
+  daysOverdue: number;
   draftText: string;
   channel: string;
   guard: DunningGuard;
@@ -2096,23 +2169,6 @@ export type ConfirmBillPaymentInput = {
   orderId: string;
   paymentKey: string;
   amount: number;
-};
-
-export type TossConfirmPaymentInput = {
-  paymentKey: string;
-  orderId: string;
-  amount: number;
-};
-
-export type TossConfirmPaymentResult = TossConfirmPaymentInput & {
-  method?: string;
-  approvedAt?: string;
-  status?: string;
-  raw?: unknown;
-};
-
-export type TossPaymentGateway = {
-  confirmPayment(input: TossConfirmPaymentInput): Promise<TossConfirmPaymentResult>;
 };
 
 export type MatchDepositInput = {

@@ -32,6 +32,8 @@ describe("messaging api path contracts", () => {
 
   it("routes manager messaging through manager-scoped API paths", () => {
     assert.equal(managerMessagingPaths.threads(), "/manager/messaging/threads");
+    assert.equal(managerMessagingPaths.recipients(), "/manager/messaging/recipients");
+    assert.equal(managerMessagingPaths.conversations(), "/manager/messaging/conversations");
     assert.equal(
       managerMessagingPaths.threads("payment"),
       "/manager/messaging/threads?context=payment"
@@ -39,6 +41,10 @@ describe("messaging api path contracts", () => {
     assert.equal(
       managerMessagingPaths.threadMessages("mth_1"),
       "/manager/messaging/threads/mth_1/messages"
+    );
+    assert.equal(
+      managerMessagingPaths.readThread("mth_1"),
+      "/manager/messaging/threads/mth_1/read"
     );
     assert.equal(
       managerMessagingPaths.deleteThread("mth_1"),

@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -49,6 +49,9 @@ jobs:
           GOOGLE_LOGIN_CLIENT_ID: "${{ secrets.GOOGLE_LOGIN_CLIENT_ID }}"
           GOOGLE_LOGIN_CLIENT_SECRET: "${{ secrets.GOOGLE_LOGIN_CLIENT_SECRET }}"
           GOOGLE_LOGIN_CALLBACK_URL: "${{ secrets.GOOGLE_LOGIN_CALLBACK_URL }}"
+          KAKAO_LOGIN_REST_API_KEY: "${{ secrets.KAKAO_LOGIN_REST_API_KEY }}"
+          KAKAO_LOGIN_CLIENT_SECRET: "${{ secrets.KAKAO_LOGIN_CLIENT_SECRET }}"
+          KAKAO_LOGIN_CALLBACK_URL: "${{ secrets.KAKAO_LOGIN_CALLBACK_URL }}"
           PORT: "${{ secrets.PORT }}"
           AWS_REGION: "${{ secrets.AWS_REGION }}"
           S3_BUCKET_NAME: "${{ secrets.S3_BUCKET_NAME }}"
@@ -104,6 +107,22 @@ jobs:
             GOOGLE_LOGIN_CALLBACK_URL="$(read_prod_env_key GOOGLE_LOGIN_CALLBACK_URL)"
           fi
 
+          # 카카오 로그인 — 개별 secret 우선, 없으면 PROD_ENV에서 읽는다(구글과 동일한 패턴).
+          KAKAO_LOGIN_REST_API_KEY="${KAKAO_LOGIN_REST_API_KEY:-}"
+          if [ -z "$KAKAO_LOGIN_REST_API_KEY" ] && [ -n "${PROD_ENV:-}" ]; then
+            KAKAO_LOGIN_REST_API_KEY="$(read_prod_env_key KAKAO_LOGIN_REST_API_KEY)"
+          fi
+
+          KAKAO_LOGIN_CLIENT_SECRET="${KAKAO_LOGIN_CLIENT_SECRET:-}"
+          if [ -z "$KAKAO_LOGIN_CLIENT_SECRET" ] && [ -n "${PROD_ENV:-}" ]; then
+            KAKAO_LOGIN_CLIENT_SECRET="$(read_prod_env_key KAKAO_LOGIN_CLIENT_SECRET)"
+          fi
+
+          KAKAO_LOGIN_CALLBACK_URL="${KAKAO_LOGIN_CALLBACK_URL:-}"
+          if [ -z "$KAKAO_LOGIN_CALLBACK_URL" ] && [ -n "${PROD_ENV:-}" ]; then
+            KAKAO_LOGIN_CALLBACK_URL="$(read_prod_env_key KAKAO_LOGIN_CALLBACK_URL)"
+          fi
+
           # 웹소켓 접속 주소 — PROD_ENV로 덮어쓸 수 있고, 기본은 api 서브도메인(ALB 호스트 규칙).
           NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL:-}"
           if [ -z "$NEXT_PUBLIC_SOCKET_URL" ] && [ -n "${PROD_ENV:-}" ]; then
@@ -149,7 +168,7 @@ jobs:
 
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|KAKAO_LOGIN_REST_API_KEY|KAKAO_LOGIN_CLIENT_SECRET|KAKAO_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -171,6 +190,15 @@ jobs:
           EOF
 
           # 값이 있을 때만 기록 — secret 미등록 상태에서 빈 값으로 덮지 않는다.
+          if [ -n "$KAKAO_LOGIN_REST_API_KEY" ]; then
+            echo "KAKAO_LOGIN_REST_API_KEY=${KAKAO_LOGIN_REST_API_KEY}" >> .env.production
+          fi
+          if [ -n "$KAKAO_LOGIN_CLIENT_SECRET" ]; then
+            echo "KAKAO_LOGIN_CLIENT_SECRET=${KAKAO_LOGIN_CLIENT_SECRET}" >> .env.production
+          fi
+          if [ -n "$KAKAO_LOGIN_CALLBACK_URL" ]; then
+            echo "KAKAO_LOGIN_CALLBACK_URL=${KAKAO_LOGIN_CALLBACK_URL}" >> .env.production
+          fi
           if [ -n "$MOLIT_SERVICE_KEY" ]; then
             echo "MOLIT_SERVICE_KEY=${MOLIT_SERVICE_KEY}" >> .env.production
           fi
@@ -207,18 +235,28 @@ jobs:
           SSH_PORT="${EC2_SSH_PORT:-22}"
           APP_DIR="${EC2_APP_DIR:-/home/ec2-user/roomlog}"
           BRANCH="${GITHUB_REF_NAME:-main}"
+          REMOTE_ENV_PATH="/tmp/roomlog.env.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+
+          cleanup_uploaded_env() {
+            ssh -p "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
+              "$EC2_USER@$EC2_HOST" "rm -f -- '$REMOTE_ENV_PATH'" >/dev/null 2>&1 || true
+          }
+          trap cleanup_uploaded_env EXIT HUP INT TERM
 
           scp -P "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
-            .env.production "$EC2_USER@$EC2_HOST:/tmp/roomlog.env"
+            .env.production "$EC2_USER@$EC2_HOST:$REMOTE_ENV_PATH"
 
           ssh -p "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
             "$EC2_USER@$EC2_HOST" \
-            "bash -se -- '$APP_DIR' '$GITHUB_REPOSITORY' '$BRANCH'" <<'REMOTE'
+            "bash -se -- '$APP_DIR' '$GITHUB_REPOSITORY' '$BRANCH' '$REMOTE_ENV_PATH'" <<'REMOTE'
           set -euo pipefail
 
           APP_DIR="$1"
           REPOSITORY="$2"
           BRANCH="$3"
+          ENV_PATH="$4"
+          api_was_running=false
+          deployment_complete=false
 
           dump_docker_state() {
             echo "== roomlog containers =="
@@ -227,19 +265,50 @@ jobs:
             (sudo ss -ltnp 2>/dev/null || ss -ltnp) | grep -E ':(3000|4000)\b' || true
           }
 
+          recover_previous_api() {
+            if [ "$api_was_running" != true ] || [ "$deployment_complete" = true ]; then
+              return 0
+            fi
+
+            if docker container inspect roomlog-api >/dev/null 2>&1 \
+              && [ "$(docker inspect --format '{{.State.Running}}' roomlog-api)" = "true" ]; then
+              return 0
+            fi
+
+            echo "Recovering the previous API container." >&2
+            compose -f docker-compose.prod.yml start api
+          }
+
           on_exit() {
             status="$?"
+            trap - EXIT HUP INT TERM
+            rm -f -- "$ENV_PATH"
             if [ "$status" -ne 0 ]; then
+              set +e
+              recover_previous_api
+              recovery_status="$?"
               echo "Deploy failed. Capturing Docker state for diagnosis."
               dump_docker_state
+              if [ "$recovery_status" -ne 0 ]; then
+                echo "Previous API recovery also failed." >&2
+              fi
             fi
             exit "$status"
           }
 
           trap on_exit EXIT
+          trap 'exit 129' HUP
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          mkdir -p "$(dirname "$APP_DIR")"
+          exec 9>"${APP_DIR}.deploy.lock"
+          if ! flock -n 9; then
+            echo "Another Roomlog deployment is already running." >&2
+            exit 1
+          fi
 
           if [ ! -d "$APP_DIR/.git" ]; then
-            mkdir -p "$(dirname "$APP_DIR")"
             git clone "https://github.com/$REPOSITORY.git" "$APP_DIR"
           fi
 
@@ -248,7 +317,8 @@ jobs:
           git fetch origin "$BRANCH"
           git reset --hard "origin/$BRANCH"
 
-          mv /tmp/roomlog.env .env
+          mv -- "$ENV_PATH" .env
+          chmod 600 .env
 
           if docker compose version >/dev/null 2>&1; then
             compose() { docker compose "$@"; }
@@ -262,9 +332,27 @@ jobs:
           echo "Container state before deploy:"
           dump_docker_state
 
-          docker rm -f roomlog-web roomlog-api 2>/dev/null || true
+          compose -f docker-compose.prod.yml build web api
 
-          compose -f docker-compose.prod.yml up -d --build --remove-orphans
+          if docker container inspect roomlog-api >/dev/null 2>&1; then
+            if [ "$(docker inspect --format '{{.State.Running}}' roomlog-api)" = "true" ]; then
+              api_was_running=true
+            fi
+            compose -f docker-compose.prod.yml stop api
+            if [ "$(docker inspect --format '{{.State.Running}}' roomlog-api)" != "false" ]; then
+              echo "Existing API container did not stop; refusing migration." >&2
+              exit 1
+            fi
+          elif ! docker info >/dev/null 2>&1; then
+            echo "Docker is unavailable; refusing migration." >&2
+            exit 1
+          fi
+
+          compose -f docker-compose.prod.yml run --rm migration
+          compose -f docker-compose.prod.yml up -d --no-build --remove-orphans api web
+          deployment_complete=true
           docker image prune -f
           compose -f docker-compose.prod.yml ps
           REMOTE
+
+          trap - EXIT HUP INT TERM

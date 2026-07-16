@@ -5,11 +5,13 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  GoneException,
   UnauthorizedException
 } from "@nestjs/common";
-import { createHmac } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { VendorAccountView } from "@roomlog/types";
+import { requireBearerSubject } from "../../auth/bearer-token";
 import {
   deriveUserRoles,
   hasRequiredPasswordMix,
@@ -24,18 +26,25 @@ import {
   verifyPassword
 } from "../roomlog-support";
 import type { Room, UserAccount, UserRole } from "../roomlog.types";
+import type { SocialProvider } from "../roomlog.types";
+import {
+  VendorActivationRepositoryError,
+  type VendorAccountResolver
+} from "../vendor-activation.repository";
 import type {
   AuthResult,
   GoogleSocialLoginInput,
+  KakaoSocialLoginInput,
   LoginInput,
   SignupInput,
   Store,
-  TenantInvite,
-  VendorInvite
+  TenantInvite
 } from "../roomlog.service";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+const KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token";
+const KAKAO_USERINFO_URL = "https://kapi.kakao.com/v2/user/me";
 const SOCIAL_SIGNUP_REQUIRED = "SOCIAL_SIGNUP_REQUIRED";
 const rootEnvCandidatePaths = [
   resolve(process.cwd(), ".env"),
@@ -85,20 +94,56 @@ type GoogleUserInfoResponse = {
   picture?: string;
 };
 
+type KakaoTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type KakaoUserInfoResponse = {
+  id?: number | string;
+  properties?: {
+    nickname?: string;
+    profile_image?: string;
+  };
+  kakao_account?: {
+    email?: string;
+    is_email_verified?: boolean;
+    is_email_valid?: boolean;
+    profile?: {
+      nickname?: string;
+      profile_image_url?: string;
+    };
+  };
+};
+
+type LoginSocialProvider = Extract<SocialProvider, "GOOGLE" | "KAKAO">;
+
+type NormalizedSocialProfile = {
+  provider: LoginSocialProvider;
+  providerLabel: string;
+  providerUserId: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+  passwordLabel: string;
+};
+
 export class RoomlogAuthDomain {
   constructor(
     private readonly store: Store,
     private readonly persistStore: () => void,
-    private readonly findRoom: (roomId: string) => Room
+    private readonly findRoom: (roomId: string) => Room,
+    private readonly vendorAccountResolver: VendorAccountResolver
   ) {}
 
   signup(input: SignupInput): AuthResult {
+    if (input.role === "VENDOR") {
+      throw new GoneException("협력업체 가입은 활성화 키 방식으로 전환되었습니다.");
+    }
+
     const normalizedInput = this.normalizeSignupInput(input);
     this.validateSignupInput(normalizedInput);
-    const vendorInvite =
-      normalizedInput.role === "VENDOR"
-        ? this.resolvePendingVendorInvite(normalizedInput)
-        : undefined;
     const tenantInvite =
       normalizedInput.role === "TENANT" && normalizedInput.inviteToken
         ? this.resolvePendingTenantInvite(normalizedInput)
@@ -144,31 +189,14 @@ export class RoomlogAuthDomain {
       this.findOrCreateRoomForSignup(normalizedInput, user.id);
     }
 
-    if (user.role === "VENDOR") {
-      this.store.vendors.push({
-        id: id("vnd"),
-        userId: user.id,
-        businessName:
-          vendorInvite?.businessName ?? normalizedInput.businessName ?? `${user.name} 협력업체`,
-        contactPerson: vendorInvite?.contactPerson ?? user.name,
-        phone: user.phone ?? vendorInvite?.phone ?? "",
-        serviceArea: vendorInvite?.serviceArea ?? normalizedInput.serviceArea ?? "서울",
-        activeJobs: 0
-      });
-
-      if (vendorInvite) {
-        vendorInvite.status = "ACCEPTED";
-        vendorInvite.acceptedAt = now();
-        vendorInvite.acceptedByUserId = user.id;
-      }
-    }
-
     this.persistStore();
     return this.authResult(user);
   }
 
   login(input: LoginInput): AuthResult {
-    const user = this.store.users.find((account) => account.email === input.email);
+    // 가입 시 이메일을 소문자로 저장하므로 로그인 입력도 동일하게 정규화해 비교한다(DB 조회와 일관).
+    const email = input.email?.trim().toLowerCase();
+    const user = this.store.users.find((account) => account.email === email);
 
     if (!user || !verifyPassword(input.password, user.passwordHash)) {
       throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
@@ -178,8 +206,10 @@ export class RoomlogAuthDomain {
   }
 
   async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
-    const role = this.normalizeSocialRole(input.role);
-    const flow = input.flow === "signup" ? "signup" : "login";
+    if (input.role === "VENDOR" && input.flow === "signup") {
+      throw new GoneException("협력업체 소셜 가입은 활성화 키 방식으로 전환되었습니다.");
+    }
+
     const code = input.code?.trim();
     const redirectUri = input.redirectUri?.trim();
 
@@ -198,12 +228,64 @@ export class RoomlogAuthDomain {
       throw new UnauthorizedException("Google email verification is required.");
     }
 
+    return this.completeSocialLogin(input, {
+      provider: "GOOGLE",
+      providerLabel: "Google",
+      providerUserId: profile.sub,
+      email,
+      name: profile.name,
+      avatarUrl: profile.picture,
+      passwordLabel: "google-social-login"
+    });
+  }
+
+  async loginWithKakao(input: KakaoSocialLoginInput): Promise<AuthResult> {
+    if (input.role === "VENDOR" && input.flow === "signup") {
+      throw new GoneException("협력업체 소셜 가입은 활성화 키 방식으로 전환되었습니다.");
+    }
+
+    const code = input.code?.trim();
+    const redirectUri = input.redirectUri?.trim();
+
+    if (!code || !redirectUri) {
+      throw new BadRequestException("Kakao authorization code and redirect URI are required.");
+    }
+
+    const profile = await this.fetchKakaoProfile(code, redirectUri);
+    const providerUserId = profile.id !== undefined ? String(profile.id) : "";
+    const email = profile.kakao_account?.email?.trim().toLowerCase();
+
+    if (!providerUserId || !email) {
+      throw new UnauthorizedException("Kakao account did not return a usable email identity.");
+    }
+
+    if (profile.kakao_account?.is_email_verified === false || profile.kakao_account?.is_email_valid === false) {
+      throw new UnauthorizedException("Kakao email verification is required.");
+    }
+
+    return this.completeSocialLogin(input, {
+      provider: "KAKAO",
+      providerLabel: "Kakao",
+      providerUserId,
+      email,
+      name: profile.kakao_account?.profile?.nickname ?? profile.properties?.nickname,
+      avatarUrl: profile.kakao_account?.profile?.profile_image_url ?? profile.properties?.profile_image,
+      passwordLabel: "kakao-social-login"
+    });
+  }
+
+  private completeSocialLogin(
+    input: GoogleSocialLoginInput | KakaoSocialLoginInput,
+    profile: NormalizedSocialProfile
+  ): AuthResult {
+    const role = this.normalizeSocialRole(input.role);
+    const flow = input.flow === "signup" ? "signup" : "login";
     const existingSocialAccount = this.store.socialAccounts.find(
-      (account) => account.provider === "GOOGLE" && account.providerUserId === profile.sub
+      (account) => account.provider === profile.provider && account.providerUserId === profile.providerUserId
     );
 
     if (existingSocialAccount) {
-      // 통합 계정: 같은 Google identity는 role/intent와 무관하게 같은 WOOZU 계정으로 로그인된다.
+      // 통합 계정: 같은 social identity는 role/intent와 무관하게 같은 WOOZU 계정으로 로그인된다.
       const user = this.findActiveSocialUser(existingSocialAccount.userId);
       this.tryAcceptInviteOnLogin(user, role, input.inviteToken);
       this.updateSocialAccount(existingSocialAccount.id, user.id, profile);
@@ -211,7 +293,7 @@ export class RoomlogAuthDomain {
       return this.authResult(user);
     }
 
-    const existingUser = this.store.users.find((account) => account.email === email);
+    const existingUser = this.store.users.find((account) => account.email === profile.email);
 
     if (!existingUser && flow === "login") {
       throw new BadRequestException(SOCIAL_SIGNUP_REQUIRED);
@@ -231,30 +313,7 @@ export class RoomlogAuthDomain {
   }
 
   getUserFromToken(authorization?: string): UserAccount {
-    const token = authorization?.replace(/^Bearer\s+/i, "");
-
-    if (!token) {
-      throw new UnauthorizedException("인증 토큰이 필요합니다.");
-    }
-
-    const [payload, signature] = token.split(".");
-
-    if (!payload || !signature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const expectedSignature = createHmac("sha256", tokenSecret)
-      .update(payload)
-      .digest("base64url");
-
-    if (signature !== expectedSignature) {
-      throw new UnauthorizedException("인증 토큰이 올바르지 않습니다.");
-    }
-
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      sub?: string;
-    };
-    const userId = decoded.sub;
+    const userId = requireBearerSubject(authorization, tokenSecret);
     const user = this.store.users.find((account) => account.id === userId);
 
     if (!user) {
@@ -264,17 +323,34 @@ export class RoomlogAuthDomain {
     return user;
   }
 
-  /** 계정의 capability 집합 — role 단일값 대신 관계(TenantRoom/Room.landlordId/VendorProfile)에서 파생. */
+  /** 동기 capability 집합 — VENDOR는 ACTIVE account-link resolver에서만 추가한다. */
   rolesFor(user: UserAccount): UserRole[] {
     return deriveUserRoles(user, this.store);
   }
 
-  getMe(authorization?: string) {
+  async getMe(authorization?: string) {
     const user = this.getUserFromToken(authorization);
     const roles = this.rolesFor(user);
+    let resolvedVendorAccount: VendorAccountView | undefined;
+    try {
+      resolvedVendorAccount = await this.vendorAccountResolver.resolveActiveVendorAccount(user.id);
+    } catch (error) {
+      if (
+        !(
+          error instanceof VendorActivationRepositoryError &&
+          error.code === "ACTIVATION_UNAVAILABLE"
+        )
+      ) {
+        throw error;
+      }
+    }
+    const vendorAccount =
+      resolvedVendorAccount?.accountStatus === "LINKED"
+        ? resolvedVendorAccount
+        : undefined;
+    if (vendorAccount) roles.push("VENDOR");
     const roomId = this.store.tenantRooms[user.id];
     const room = roomId ? this.store.rooms.find((item) => item.id === roomId) : undefined;
-    const vendor = this.store.vendors.find((item) => item.userId === user.id);
     // legacy role이 아니라 파생 capability 기준 — TENANT 겸직 계정도 관리 중인 집을 본다.
     const ownedRooms = this.store.rooms.filter((item) => item.landlordId === user.id);
     const managedRooms = ownedRooms.length
@@ -294,12 +370,16 @@ export class RoomlogAuthDomain {
       roomId,
       room: room ? { ...room } : undefined,
       managedRooms,
-      vendorId: vendor?.id,
-      vendor: vendor ? { ...vendor } : undefined
+      vendorId: vendorAccount?.vendor.id,
+      vendor: vendorAccount
     };
   }
 
   getSignupInvitePreview(role: UserRole, inviteToken: string) {
+    if (role === "VENDOR") {
+      throw new GoneException("협력업체 초대 가입은 활성화 키 방식으로 전환되었습니다.");
+    }
+
     const token = inviteToken?.trim();
 
     if (!token) {
@@ -335,45 +415,22 @@ export class RoomlogAuthDomain {
       };
     }
 
-    if (role === "VENDOR") {
-      const invite = this.store.vendorInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-      }
-
-      this.assertPendingVendorInvite(invite);
-
-      const manager = this.store.users.find((user) => user.id === invite.invitedByManagerId);
-
-      return {
-        role,
-        inviteToken: invite.inviteToken,
-        status: invite.status,
-        expectedName: invite.contactPerson,
-        invitedBy: manager?.name ?? "관리자",
-        email: invite.email,
-        phone: invite.phone,
-        emailLocked: Boolean(invite.email),
-        phoneLocked: Boolean(invite.phone),
-        businessName: invite.businessName,
-        serviceArea: invite.serviceArea,
-        targetLabel: invite.businessName,
-        signupUrl: invite.signupUrl
-      };
-    }
-
     throw new BadRequestException("초대 역할이 올바르지 않습니다.");
   }
 
   /**
    * 초대를 "이미 로그인한 계정에 관계를 붙이는" 경로로 수락한다.
-   * 새 계정 생성 없이 TenantRoom/VendorProfile 연결만 시도하고, 성공하면 파생 roles를 돌려준다.
+   * 새 계정 생성 없이 TenantRoom 연결만 시도하고, 성공하면 파생 roles를 돌려준다.
+   * 업체 연결은 이 레거시 초대 경로가 아니라 VendorAccountLink 활성화로만 수행한다.
    * 같은 계정이 같은 초대를 다시 열면 성공으로 처리(멱등) — 초대 링크 재방문이 에러가 되지 않게.
    * D18: 연락처 검증은 초대에 phone이 있고 계정에도 phone이 있을 때만 대조한다 —
    * 외국인/특수 연락처 계정을 하드블록하지 않는 fail-safe. (초대+연락처 OTP는 후속 범위)
    */
   acceptInviteForUser(userId: string, role: UserRole, inviteToken: string) {
+    if (role === "VENDOR") {
+      throw new GoneException("협력업체 초대 수락은 활성화 키 방식으로 전환되었습니다.");
+    }
+
     const user = this.store.users.find((account) => account.id === userId);
 
     if (!user) {
@@ -416,49 +473,6 @@ export class RoomlogAuthDomain {
       return this.inviteLinkResult(user, "TENANT", { roomId: invite.roomId });
     }
 
-    if (role === "VENDOR") {
-      const invite = this.store.vendorInvites.find((item) => item.inviteToken === token);
-
-      if (!invite) {
-        throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-      }
-
-      const existingVendor = this.store.vendors.find((item) => item.userId === user.id);
-
-      if (invite.status === "ACCEPTED" && invite.acceptedByUserId === user.id && existingVendor) {
-        return this.inviteLinkResult(user, "VENDOR", { vendorId: existingVendor.id });
-      }
-
-      this.assertPendingVendorInvite(invite);
-
-      if (invite.email && invite.email !== user.email) {
-        throw new BadRequestException("초대된 이메일과 로그인 계정 이메일이 일치하지 않습니다.");
-      }
-
-      const vendor =
-        existingVendor ??
-        (() => {
-          const created = {
-            id: id("vnd"),
-            userId: user.id,
-            businessName: invite.businessName,
-            contactPerson: invite.contactPerson || user.name,
-            phone: invite.phone || user.phone || "",
-            serviceArea: invite.serviceArea,
-            activeJobs: 0
-          };
-          this.store.vendors.push(created);
-          return created;
-        })();
-
-      invite.status = "ACCEPTED";
-      invite.acceptedAt = now();
-      invite.acceptedByUserId = user.id;
-      this.persistStore();
-
-      return this.inviteLinkResult(user, "VENDOR", { vendorId: vendor.id });
-    }
-
     throw new BadRequestException("초대 역할이 올바르지 않습니다.");
   }
 
@@ -467,7 +481,7 @@ export class RoomlogAuthDomain {
   private tryAcceptInviteOnLogin(user: UserAccount, role: UserRole, inviteToken?: string) {
     const token = inviteToken?.trim();
 
-    if (!token || (role !== "TENANT" && role !== "VENDOR")) return;
+    if (!token || role !== "TENANT") return;
 
     try {
       this.acceptInviteForUser(user.id, role, token);
@@ -537,6 +551,56 @@ export class RoomlogAuthDomain {
     return profile;
   }
 
+  private async fetchKakaoProfile(code: string, redirectUri: string): Promise<KakaoUserInfoResponse> {
+    const clientId = runtimeEnv("KAKAO_LOGIN_REST_API_KEY") ?? runtimeEnv("KAKAO_LOGIN_CLIENT_ID");
+    const clientSecret = runtimeEnv("KAKAO_LOGIN_CLIENT_SECRET");
+
+    if (!clientId) {
+      throw new BadRequestException("Kakao login REST API key is not configured.");
+    }
+
+    const tokenParams = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      code
+    });
+
+    if (clientSecret) {
+      tokenParams.set("client_secret", clientSecret);
+    }
+
+    const tokenResponse = await fetch(KAKAO_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: tokenParams
+    }).catch((error) => {
+      throw new BadGatewayException(`Kakao token request failed: ${String(error)}`);
+    });
+
+    const tokenJson = (await tokenResponse.json().catch(() => ({}))) as KakaoTokenResponse;
+
+    if (!tokenResponse.ok || !tokenJson.access_token) {
+      throw new UnauthorizedException(
+        tokenJson.error_description || tokenJson.error || "Kakao authorization code exchange failed."
+      );
+    }
+
+    const profileResponse = await fetch(KAKAO_USERINFO_URL, {
+      headers: { Authorization: `Bearer ${tokenJson.access_token}`, Accept: "application/json" }
+    }).catch((error) => {
+      throw new BadGatewayException(`Kakao profile request failed: ${String(error)}`);
+    });
+
+    const profile = (await profileResponse.json().catch(() => ({}))) as KakaoUserInfoResponse;
+
+    if (!profileResponse.ok) {
+      throw new UnauthorizedException("Kakao profile lookup failed.");
+    }
+
+    return profile;
+  }
+
   private normalizeSocialRole(role?: UserRole): UserRole {
     const normalizedRole = role ?? "SEEKER";
 
@@ -569,14 +633,14 @@ export class RoomlogAuthDomain {
   }
 
   private createSocialUser(
-    profile: GoogleUserInfoResponse,
+    profile: NormalizedSocialProfile,
     role: UserRole,
     inviteToken?: string
   ): UserAccount {
-    const email = profile.email?.trim().toLowerCase();
+    const email = profile.email;
 
     if (!email) {
-      throw new UnauthorizedException("Google account email is required.");
+      throw new UnauthorizedException(`${profile.providerLabel} account email is required.`);
     }
 
     let phone: string | undefined;
@@ -584,7 +648,7 @@ export class RoomlogAuthDomain {
     const user: UserAccount = {
       id: id("usr"),
       email,
-      passwordHash: hashPassword(`google:${profile.sub}:${id("pwd")}`),
+      passwordHash: hashPassword(`${profile.provider.toLowerCase()}:${profile.providerUserId}:${id("pwd")}`),
       name: profile.name?.trim() || email.split("@")[0],
       role,
       status: "ACTIVE",
@@ -596,7 +660,7 @@ export class RoomlogAuthDomain {
         email,
         inviteToken,
         name: user.name,
-        password: "google-social-login",
+        password: profile.passwordLabel,
         role: "TENANT"
       });
       phone = tenantInvite.phone;
@@ -604,33 +668,6 @@ export class RoomlogAuthDomain {
       tenantInvite.status = "ACCEPTED";
       tenantInvite.acceptedAt = nowIso;
       tenantInvite.acceptedByUserId = user.id;
-    }
-
-    if (role === "VENDOR") {
-      if (!inviteToken?.trim()) {
-        throw new BadRequestException("Vendor Google login requires a manager invite token.");
-      }
-
-      const vendorInvite = this.resolvePendingVendorInvite({
-        email,
-        inviteToken,
-        name: user.name,
-        password: "google-social-login",
-        role: "VENDOR"
-      });
-      phone = vendorInvite.phone;
-      this.store.vendors.push({
-        id: id("vnd"),
-        userId: user.id,
-        businessName: vendorInvite.businessName,
-        contactPerson: vendorInvite.contactPerson || user.name,
-        phone: vendorInvite.phone,
-        serviceArea: vendorInvite.serviceArea,
-        activeJobs: 0
-      });
-      vendorInvite.status = "ACCEPTED";
-      vendorInvite.acceptedAt = nowIso;
-      vendorInvite.acceptedByUserId = user.id;
     }
 
     if (phone) {
@@ -650,33 +687,33 @@ export class RoomlogAuthDomain {
   private updateSocialAccount(
     socialAccountId: string | undefined,
     userId: string,
-    profile: GoogleUserInfoResponse
+    profile: NormalizedSocialProfile
   ) {
     const nowIso = now();
     const existing =
       socialAccountId !== undefined
         ? this.store.socialAccounts.find((account) => account.id === socialAccountId)
         : this.store.socialAccounts.find(
-            (account) => account.provider === "GOOGLE" && account.providerUserId === profile.sub
+            (account) => account.provider === profile.provider && account.providerUserId === profile.providerUserId
           );
 
     if (existing) {
       existing.userId = userId;
-      existing.email = profile.email?.trim().toLowerCase();
+      existing.email = profile.email;
       existing.name = profile.name?.trim();
-      existing.avatarUrl = profile.picture;
+      existing.avatarUrl = profile.avatarUrl;
       existing.updatedAt = nowIso;
       return existing;
     }
 
     const created = {
       id: id("social"),
-      provider: "GOOGLE" as const,
-      providerUserId: profile.sub || "",
+      provider: profile.provider,
+      providerUserId: profile.providerUserId,
       userId,
-      email: profile.email?.trim().toLowerCase(),
+      email: profile.email,
       name: profile.name?.trim(),
-      avatarUrl: profile.picture,
+      avatarUrl: profile.avatarUrl,
       createdAt: nowIso,
       updatedAt: nowIso
     };
@@ -746,11 +783,6 @@ export class RoomlogAuthDomain {
       }
     }
 
-    if (input.role === "VENDOR") {
-      if (!input.inviteToken?.trim()) {
-        throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-      }
-    }
   }
 
   /**
@@ -853,46 +885,6 @@ export class RoomlogAuthDomain {
       accessToken: tokenFor(user),
       name: user.name
     };
-  }
-
-  private resolvePendingVendorInvite(input: SignupInput) {
-    const inviteToken = input.inviteToken?.trim();
-
-    if (!inviteToken) {
-      throw new BadRequestException("협력업체 가입은 관리자 초대 토큰이 필요합니다.");
-    }
-
-    const invite = this.store.vendorInvites.find((item) => item.inviteToken === inviteToken);
-
-    if (!invite) {
-      throw new BadRequestException("유효하지 않은 협력업체 초대입니다.");
-    }
-
-    this.assertPendingVendorInvite(invite);
-
-    if (invite.email && invite.email !== input.email) {
-      throw new BadRequestException("초대된 이메일과 가입 이메일이 일치하지 않습니다.");
-    }
-
-    return invite;
-  }
-
-  private assertPendingVendorInvite(invite: VendorInvite) {
-    if (invite.status === "ACCEPTED") {
-      throw new BadRequestException("이미 사용된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "EXPIRED") {
-      throw new BadRequestException("만료된 협력업체 초대입니다.");
-    }
-
-    if (invite.status === "REVOKED") {
-      throw new BadRequestException("취소된 협력업체 초대입니다.");
-    }
-
-    if (invite.status !== "PENDING") {
-      throw new BadRequestException("사용할 수 없는 협력업체 초대입니다.");
-    }
   }
 
   private resolvePendingTenantInvite(input: SignupInput) {

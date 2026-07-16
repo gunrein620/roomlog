@@ -32,6 +32,7 @@ import {
   X
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -79,11 +80,12 @@ import {
   isRemotePhoto,
   listingDetailAddressLabel,
   mapListings,
-  neighborhoodItems,
+  monthlyDealLabel,
   tradeListingToCard,
   tradePriceLabel,
   TRADE_LISTING_NO_PREFIX,
   type Listing,
+  type MapDealTone,
   type MapPanelItem,
   type TradeListing
 } from "../lib/listing-catalog";
@@ -97,16 +99,8 @@ import {
   type NaverGeocodeResponse,
   type NaverMapViewport
 } from "./_components/NaverMapPreview";
-import { InquirySheet } from "./_components/ListingDetailView";
 import { loadSavedListingNos, toggleSavedListingNo } from "../lib/saved-listings";
-import { submitTradeInquiry } from "../lib/trade-inquiry";
 import { hasCapability, unifiedLoginPath } from "../lib/unified-login";
-import {
-  pickInquiryTargetNo,
-  withNewInquiry,
-  type InquiryItem,
-  type InquiryPayload
-} from "../lib/inquiry-flow";
 import { TradeChatCenter } from "./_components/TradeChatCenter";
 import {
   OWNER_DRAFT_STORAGE_KEY,
@@ -141,6 +135,19 @@ type MapResolvedQuery = MapSearchContext & {
 };
 type MapLocationStatus = "idle" | "requesting" | "granted" | "denied" | "unavailable";
 type MapQueryStatus = "idle" | "resolving" | "resolved" | "fallback";
+type MapListingGroup = {
+  groupKey: string;
+  listings: MapPanelItem[];
+  representative: MapPanelItem;
+  lat: number;
+  lng: number;
+  title: string;
+  price: string;
+  mapLabel: string;
+  dealTone?: MapDealTone;
+  clusterLabel: string;
+  updated: string;
+};
 
 
 
@@ -185,14 +192,25 @@ const appRoleForViewer = (viewer: ViewerProfile): AppRole => {
 };
 
 const categories = [
-  { label: "전체", count: "1,287", Icon: Building },
-  { label: "원룸", count: "632", Icon: DoorOpen },
-  { label: "투룸", count: "248", Icon: Bed },
-  { label: "오피스텔", count: "186", Icon: BriefcaseBusiness },
-  { label: "아파트", count: "91", Icon: Building2 },
-  { label: "빌라", count: "73", Icon: House },
-  { label: "단기임대", count: "57", Icon: CalendarClock }
+  { label: "전체", Icon: Building },
+  { label: "원룸", Icon: DoorOpen },
+  { label: "투룸", Icon: Bed },
+  { label: "오피스텔", Icon: BriefcaseBusiness },
+  { label: "아파트", Icon: Building2 },
+  { label: "빌라", Icon: House },
+  { label: "단기임대", Icon: CalendarClock }
 ];
+
+// 카테고리 ↔ 매물 매칭 — 홈 피드 필터와 카테고리 카드의 실제 매물 수가 같은 규칙을 쓴다.
+const listingMatchesCategory = (label: string, listing: Listing): boolean => {
+  if (label === "전체") return true;
+  if (label === "원룸" || label === "오피스텔" || label === "아파트" || label === "빌라") {
+    return listing.roomType === label;
+  }
+  if (label === "투룸") return listing.spec.includes("투룸") || listing.spec.includes("복층");
+  if (label === "단기임대") return listing.tags.includes("단기") || listing.tags.includes("단기임대");
+  return false;
+};
 
 const quickFilters = ["월세", "전세", "관리비 포함", "반려동물", "주차", "풀옵션"];
 
@@ -226,7 +244,6 @@ const notificationItems = [
 ];
 
 const marketSignals = [
-  { label: "전월세 평균", value: "월 76만", caption: "방배동 원룸 기준" },
   { label: "실매물 확인", value: "92%", caption: "최근 7일 확인율" },
   { label: "문의 응답", value: "8분", caption: "파트너 평균" }
 ];
@@ -252,24 +269,14 @@ const residentChecklist = [
 ];
 
 const mapInsightItems = [
-  { label: "전월세 평균", value: "월 76만", caption: "방배동 원룸" },
-  { label: "안전시설", value: "CCTV 12곳", caption: "치안센터 1곳" },
-  { label: "즐겨찾기", value: "조건 저장", caption: "지도 조건 알림" },
   { label: "3D 가능", value: "12개", caption: "투어 우선 보기" }
 ];
 
 
-const savedComparisonItems = [
-  { label: "저장 조건", value: "월세 130 이하", caption: "방배동 · 내방역" },
-  { label: "가격 변동", value: "변동 없음", caption: "최근 7일 기준" },
-  { label: "방문 후보", value: "오늘 3시", caption: "2개 매물 가능" }
-];
-
 const homeWebSummaryItems = [
   { label: "중개사 응답", value: "평균 8분" },
   { label: "오늘 확인", value: "39개" },
-  { label: "3D 가능", value: "12개" },
-  { label: "안전시설", value: "CCTV 12곳" }
+  { label: "3D 가능", value: "12개" }
 ];
 
 const aiBrokerSuggestions = [
@@ -280,8 +287,7 @@ const aiBrokerSuggestions = [
 
 const neighborhoodRankItems = [
   { rank: "1", label: "교통", value: "내방역 도보 5분" },
-  { rank: "2", label: "생활", value: "편의점 4곳 · 카페 7곳" },
-  { rank: "3", label: "안전", value: "CCTV 12곳 · 치안센터 1곳" }
+  { rank: "2", label: "생활", value: "편의점 4곳 · 카페 7곳" }
 ];
 
 
@@ -541,13 +547,69 @@ const mapViewportMaxSpanMeters = (viewport: NaverMapViewport | null) => {
   return Math.max(widthM, heightM);
 };
 
+const mapListingGroupKey = (listing: MapPanelItem) => {
+  if (!Number.isFinite(listing.lat) || !Number.isFinite(listing.lng)) return listing.listingNo;
+  return `${listing.lat.toFixed(5)}:${listing.lng.toFixed(5)}`;
+};
+
+const mapBuildingTitle = (listing: MapPanelItem) =>
+  listing.title
+    .replace(/\s+\d{2,4}\s*호?$/u, "")
+    .replace(/\s+/g, " ")
+    .trim() || listing.title;
+
+const mapGroupPriceLabel = (listings: MapPanelItem[]) => {
+  if (listings.length === 1) return listings[0].price;
+  const monthlyRents = listings.map((listing) => listing.monthlyRent).filter((rent) => Number.isFinite(rent) && rent < 900);
+  if (monthlyRents.length !== listings.length) return `${listings.length}개 매물`;
+  const minRent = Math.min(...monthlyRents);
+  const maxRent = Math.max(...monthlyRents);
+  return minRent === maxRent ? `월 ${minRent}만` : `월 ${minRent}~${maxRent}만`;
+};
+
+const mapGroupLabel = (listings: MapPanelItem[]) => {
+  if (listings.length === 1) return listings[0].mapLabel;
+  const monthlyRents = listings.map((listing) => listing.monthlyRent).filter((rent) => Number.isFinite(rent) && rent < 900);
+  if (monthlyRents.length !== listings.length) return `${listings.length}개`;
+  const minRent = Math.min(...monthlyRents);
+  const maxRent = Math.max(...monthlyRents);
+  return minRent === maxRent ? `${minRent}만` : `${minRent}~${maxRent}만`;
+};
+
+const groupMapListings = (listings: MapPanelItem[]): MapListingGroup[] => {
+  const groups = new Map<string, MapPanelItem[]>();
+  listings.forEach((listing) => {
+    const key = mapListingGroupKey(listing);
+    groups.set(key, [...(groups.get(key) ?? []), listing]);
+  });
+
+  return Array.from(groups.entries()).map(([groupKey, groupListings]) => {
+    const representative = groupListings[0];
+    const title = groupListings.length > 1 ? mapBuildingTitle(representative) : representative.title;
+    const dealTone = groupListings.every((listing) => listing.dealTone === "jeonse") ? "jeonse" : representative.dealTone;
+    return {
+      groupKey,
+      listings: groupListings,
+      representative,
+      lat: representative.lat,
+      lng: representative.lng,
+      title,
+      price: mapGroupPriceLabel(groupListings),
+      mapLabel: mapGroupLabel(groupListings),
+      dealTone,
+      clusterLabel: groupListings.length > 1 ? `${groupListings.length}개` : representative.clusterLabel,
+      updated: groupListings.length > 1 ? "건물 매물" : representative.updated
+    };
+  });
+};
+
 
 
 const bottomTabs: Array<{ key: AppTab; label: string; Icon: LucideIcon; href: string }> = [
   { key: "home", label: "홈", Icon: HomeIcon, href: "#home-title" },
   { key: "map", label: "지도", Icon: MapPinned, href: "#map-list" },
   { key: "saved", label: "찜", Icon: Heart, href: "#saved-list" },
-  { key: "inquiry", label: "문의", Icon: MessageCircle, href: "#inquiry" }
+  { key: "inquiry", label: "채팅", Icon: MessageCircle, href: "#inquiry" }
 ];
 
 const mapResultTabs: Array<{ key: MapResultTab; label: string }> = [
@@ -583,7 +645,7 @@ const resetWindowScrollSoon = () => {
 function tradeListingToMapItem(listing: TradeListing, index: number, total: number): MapPanelItem {
   const shortPrice =
     listing.tradeType === "월세"
-      ? `${listing.depositManwon}/${listing.monthlyRentManwon}`
+      ? monthlyDealLabel(listing.depositManwon, listing.monthlyRentManwon)
       : tradePriceLabel(listing);
   return {
     listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
@@ -598,6 +660,7 @@ function tradeListingToMapItem(listing: TradeListing, index: number, total: numb
     lat: typeof listing.lat === "number" ? listing.lat : Number.NaN,
     lng: typeof listing.lng === "number" ? listing.lng : Number.NaN,
     mapLabel: shortPrice,
+    dealTone: listing.tradeType === "전세" ? "jeonse" : "monthly",
     clusterLabel: "직접",
     verifyStatus: "집주인 직접 등록",
     responseStatus: "채팅 문의 가능",
@@ -624,6 +687,10 @@ const getMapFilterSummary = (filter: string) => {
 
   if (filter === "3D 가능") {
     return "3D 투어 가능";
+  }
+
+  if (filter === "찜한 매물") {
+    return "관심목록 기준";
   }
 
   return "시세 지도 기준";
@@ -668,13 +735,10 @@ const agentCards = [
 ];
 
 const trustItems = [
-  { title: "안심 리포트", body: "등기·시세·권리관계 요약" },
   { title: "주변 안전", body: "CCTV, 치안센터, 야간동선" },
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
 
-// QA: 데모 문의(답변 포함)가 세션마다 "문의 1" 배지를 되살리던 문제 — 실제 문의만 쌓이도록 빈 목록으로 시작.
-const initialInquiries: InquiryItem[] = [];
 
 
 
@@ -683,15 +747,18 @@ const initialInquiries: InquiryItem[] = [];
 
 
 function SavedListingsSection({
+  allListings,
   savedListingNos,
   openListing,
   onToggleSaved
 }: {
+  /** 데모 + 직접등록(TRADE-) 병합 피드 — 정적 배열만 보면 서버 매물 찜이 목록에서 빠진다. */
+  allListings: Listing[];
   savedListingNos: string[];
   openListing: (listing: Listing) => void;
   onToggleSaved: (listingNo: string) => void;
 }) {
-  const savedListings = listings.filter((listing) => savedListingNos.includes(listing.listingNo));
+  const savedListings = allListings.filter((listing) => savedListingNos.includes(listing.listingNo));
 
   return (
     <section className="screen saved-screen" id="saved-list" aria-labelledby="saved-title">
@@ -702,16 +769,6 @@ function SavedListingsSection({
         </div>
         <strong>{savedListings.length}개</strong>
       </div>
-
-      <section className="saved-compare-strip" aria-label="찜한 매물 비교 요약">
-        {savedComparisonItems.map((item) => (
-          <article key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <small>{item.caption}</small>
-          </article>
-        ))}
-      </section>
 
       <div className="saved-card-list">
         {savedListings.length > 0 ? (
@@ -745,29 +802,33 @@ function SavedListingsSection({
 
 function InquiryHubSection({
   onRequireLogin,
-  focusThreadId
+  focusThreadId,
+  composeListing
 }: {
   onRequireLogin: () => void;
   focusThreadId?: string;
+  composeListing?: { listingNo: string; title: string };
 }) {
   return (
     <section className="screen inquiry-screen" id="inquiry" aria-labelledby="inquiry-title">
       <div className="section-title no-margin">
         <div>
-          <h2 id="inquiry-title">문의센터</h2>
-          <p>보낸 문의와 받은 문의가 모두 채팅으로 이어집니다.</p>
+          <h2 id="inquiry-title">채팅</h2>
+          <p>매물을 보고 연락한 사람들과의 채팅이 모두 여기에 모입니다.</p>
         </div>
       </div>
 
-      {/* 서버 스레드 기반 문의 채팅 — 보낸 문의(구매자)와 받은 문의(집주인)를 한 곳에서 본다.
-          QA: roleFilter="buyer" 고정 탓에 집주인이 문의 탭에서 받은 문의를 못 보던 문제 → 필터 해제.
+      {/* 매물 거래 채팅(당근식) — 매물을 보고 연락한 사람(구매자)과 집주인의 채팅을 한 곳에서 본다.
+          세입자↔관리자 소통 채널(tenant/manager messaging)과는 별개다.
+          QA: roleFilter="buyer" 고정 탓에 집주인이 채팅 탭에서 받은 채팅을 못 보던 문제 → 필터 해제.
           variant="hub": 데스크톱 브라우저는 목록+대화 2패널, 앱(PWA·좁은 화면)은 채팅 목록 단일 패널. */}
       <div className="inquiry-chat-panel">
         <TradeChatCenter
           variant="hub"
-          emptyText="매물 상세의 '문자문의'로 첫 문의를 보내보세요. 받은 문의도 여기로 들어옵니다."
+          emptyText="매물 상세의 '문자문의'로 첫 채팅을 시작해보세요. 받은 채팅도 여기로 들어옵니다."
           onRequireLogin={onRequireLogin}
           focusThreadId={focusThreadId}
+          composeListing={composeListing}
         />
       </div>
     </section>
@@ -904,23 +965,6 @@ function FilterBottomSheet({
             관리비
             <span>포함 우선</span>
           </label>
-        </div>
-
-        <div className="filter-sheet-section compact">
-          <strong>입주 조건</strong>
-          <div className="filter-priority-grid">
-            {[
-              ["즉시입주", "오늘 방문 가능"],
-              ["확인매물", "실제 방문 확인"],
-              ["3D 투어", "방문 전 구조 확인"],
-              ["안심분석", "권리관계 요약"]
-            ].map(([label, caption]) => (
-              <button type="button" key={label}>
-                <span>{label}</span>
-                <small>{caption}</small>
-              </button>
-            ))}
-          </div>
         </div>
 
         <button className="filter-apply-button" type="button" onClick={onApply}>
@@ -1220,6 +1264,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const [selectedArea, setSelectedArea] = useState(DEFAULT_MAP_CONTEXT.label);
+  const [mapTopbarSearchValue, setMapTopbarSearchValue] = useState(DEFAULT_MAP_CONTEXT.label);
   const [mapSearchContext, setMapSearchContext] = useState<MapSearchContext>(DEFAULT_MAP_CONTEXT);
   const [mapViewport, setMapViewport] = useState<NaverMapViewport | null>(null);
   const [mapLocationStatus, setMapLocationStatus] = useState<MapLocationStatus>("idle");
@@ -1246,17 +1291,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
   const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
   // 찜은 localStorage와 동기화 — 상세 라우트(/listing/[id])와 같은 키를 써서 라우트를 오가도 유지된다.
-  const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
+  // 기본값은 빈 목록 — 계정과 무관하게 데모 매물이 찜돼 있던 하드코딩 제거.
+  const [savedListingNos, setSavedListingNos] = useState<string[]>([]);
   useEffect(() => {
-    setSavedListingNos(loadSavedListingNos([listings[0].listingNo, listings[2].listingNo]));
+    setSavedListingNos(loadSavedListingNos([]));
   }, []);
-  const [inquiries, setInquiries] = useState<InquiryItem[]>(initialInquiries);
-  // 통합 문의 sheet가 열려 있는 대상 매물 번호 (매물 상세 밖에서 문의를 시작할 때 사용)
-  const [inquiryComposeListingNo, setInquiryComposeListingNo] = useState<string | null>(null);
-  // 문의 전송 직후 채팅으로 바로 진입할 스레드 id (문의센터 TradeChatCenter로 전달)
+  // 문의 전송 직후 채팅으로 바로 진입할 스레드 id (채팅 탭 TradeChatCenter로 전달)
   const [buyerFocusThreadId, setBuyerFocusThreadId] = useState<string | undefined>(undefined);
-  const [seenInquiryIds, setSeenInquiryIds] = useState<number[]>([]);
-  const [viewedListingNos, setViewedListingNos] = useState<string[]>([]);
+  // 상세 "문자로 문의하기"로 진입 시 이 매물의 대화(초안)를 바로 연다 (/inquiry?compose=&title=)
+  const [composeListing, setComposeListing] = useState<{ listingNo: string; title: string } | undefined>(undefined);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
@@ -1273,15 +1316,19 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const isAuthHistoryPushedRef = useRef(false);
   // 공개된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
   const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
+  // 등록 직후 홈 피드 복귀 시에도 호출한다 — 30초 폴링을 기다리지 않고 방금 등록한 매물이 바로 보이게.
+  const loadTradeListings = useCallback(
+    () =>
       fetch("/api/trade/listings/public", { cache: "no-store" })
         .then((res) => (res.ok ? res.json() : []))
         .then((data: TradeListing[]) => {
-          if (!cancelled && Array.isArray(data)) setTradeListings(data);
+          if (Array.isArray(data)) setTradeListings(data);
         })
-        .catch(() => undefined);
+        .catch(() => undefined),
+    []
+  );
+  useEffect(() => {
+    const load = loadTradeListings;
     load();
     const timer = window.setInterval(load, 30000);
     // 다른 탭/앱에 다녀오면 즉시 갱신 — 30초 폴링만으로는 "새로고침해야 보이는" 답답함이 남는다.
@@ -1291,12 +1338,11 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     window.addEventListener("focus", reloadOnReturn);
     document.addEventListener("visibilitychange", reloadOnReturn);
     return () => {
-      cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("focus", reloadOnReturn);
       document.removeEventListener("visibilitychange", reloadOnReturn);
     };
-  }, []);
+  }, [loadTradeListings]);
 
   function requestMapCurrentLocation(force = false) {
     if (!force && mapLocationRequestedRef.current) return;
@@ -1359,6 +1405,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
   // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
   // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).
+  useEffect(() => {
+    setMapTopbarSearchValue(selectedArea);
+  }, [selectedArea]);
+
   const sortedTradeListings = tradeListings
     .filter((listing) => listing.status !== "계약완료")
     .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
@@ -1366,16 +1416,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const selectedAreaTitle = formatAreaTitle(selectedArea);
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const visibleHomeListings = allListings.filter((listing) => {
-    const categoryMatches =
-      activeCategory === "전체"
-        ? true
-        : activeCategory === "원룸"
-        ? listing.roomType === "원룸"
-        : activeCategory === "오피스텔"
-          ? listing.roomType === "오피스텔"
-          : activeCategory === "투룸"
-            ? listing.spec.includes("투룸") || listing.spec.includes("복층")
-            : false;
+    const categoryMatches = listingMatchesCategory(activeCategory, listing);
     // 거래유형(월세/전세/매매/단기)끼리는 OR — 둘 다 켜면 "월세 또는 전세"다 (QA: every()로 AND 되던 버그).
     const dealTypeFilters = activeQuickFilters.filter((filter) => ["월세", "전세", "매매", "단기"].includes(filter));
     const dealTypeMatches =
@@ -1405,6 +1446,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   });
   const visibleHomeCount = visibleHomeListings.length;
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
+  const mapFilterOptions = ["시세", "원룸·투룸", "보증금", "안전", "3D 가능", "찜한 매물"];
   // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
   const allMapItems = [
     ...tradeListings.map((listing, index) => tradeListingToMapItem(listing, index, tradeListings.length)),
@@ -1446,6 +1488,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     : mapItemsWithDistance;
   const visibleMapListings = locationScopedMapItems
     .filter((listing) => {
+      if (activeMapFilter === "찜한 매물") {
+        return savedListingNos.includes(listing.listingNo);
+      }
+
       if (activeMapFilter === "3D 가능") {
         return listing.has3DTour;
       }
@@ -1483,6 +1529,29 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
       return a.accuracyRank - b.accuracyRank;
     });
+  const marketAverageBaseListings = visibleMapListings.filter((listing) => listing.meta.includes("원룸"));
+  const marketAverageListings = marketAverageBaseListings.length > 0 ? marketAverageBaseListings : visibleMapListings;
+  const marketAverageRent =
+    marketAverageListings.length > 0
+      ? Math.round(marketAverageListings.reduce((total, listing) => total + listing.monthlyRent, 0) / marketAverageListings.length)
+      : null;
+  const mapMarketAreaLabel = isLocationScopedMap ? "현재 위치 주변" : selectedAreaTitle;
+  const dynamicMapInsightItems = [
+    {
+      label: "전월세 평균",
+      value: marketAverageRent !== null ? `월 ${marketAverageRent}만` : "매물 없음",
+      caption: `${mapMarketAreaLabel} ${marketAverageBaseListings.length > 0 ? "원룸" : "표시 매물"} 기준`
+    },
+    ...mapInsightItems
+  ];
+  const dynamicMarketSignals = [
+    {
+      label: "전월세 평균",
+      value: marketAverageRent !== null ? `월 ${marketAverageRent}만` : "매물 없음",
+      caption: `${mapMarketAreaLabel} ${marketAverageBaseListings.length > 0 ? "원룸" : "표시 매물"} 기준`
+    },
+    ...marketSignals
+  ];
   const mapScopeLabel = isLocationScopedMap
     ? "현재 위치"
     : mapSearchContext.queryType
@@ -1512,14 +1581,20 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       : listing.distance;
   const mapRoomsFeedback = isRadiusEmptyMap
     ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
+    : activeMapFilter === "찜한 매물"
+      ? `관심목록에 저장한 매물 ${visibleMapListings.length}개를 보여줍니다.`
     : `${activeSort} · ${mapFilterSummary} 조건으로 우선 매물 ${visibleMapListings.length}개를 먼저 보여줍니다.`;
   const mapEmptyTitle = isRadiusEmptyMap
     ? isLocationScopedMap
       ? "내 위치 반경 내 매물이 없습니다"
       : "반경 내 매물이 없습니다"
+    : activeMapFilter === "찜한 매물"
+      ? "찜한 매물이 없습니다"
     : "조건에 맞는 매물이 없습니다";
   const mapEmptyDescription = isRadiusEmptyMap
     ? `${isLocationScopedMap ? "현재 위치" : selectedAreaTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
+    : activeMapFilter === "찜한 매물"
+      ? "관심목록에 저장한 매물이 있으면 지도와 목록에 함께 표시됩니다."
     : `${activeSort} · ${mapFilterSummary} 조건에 맞는 매물이 없습니다.`;
   const mapViewportSpanM = mapViewportMaxSpanMeters(mapViewport);
   const mapPopupScopeRadiusM = isDistanceScopedMap ? mapSearchContext.radiusM : MAP_SEARCH_RADIUS_M;
@@ -1531,18 +1606,26 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     if (!Number.isFinite(listing.lat) || !Number.isFinite(listing.lng)) return false;
     return isMapPointInsideViewport({ lat: listing.lat, lng: listing.lng }, mapViewport);
   });
-  const selectedMapListing = mapPopupCandidates.find((listing) => listing.listingNo === selectedMapListingNo) ?? mapPopupCandidates[0];
-  // 지도 마커 = 좌표가 유효한 매물만 (직접등록 매물 포함 — QA: 지도에 매물 안 찍힘)
-  const mapMarkers = mapOverlayListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng));
+  const mapPopupGroups = groupMapListings(mapPopupCandidates);
+  const selectedMapGroup =
+    mapPopupGroups.find((group) => group.listings.some((listing) => listing.listingNo === selectedMapListingNo)) ?? mapPopupGroups[0];
+  const selectedMapListing =
+    selectedMapGroup?.listings.find((listing) => listing.listingNo === selectedMapListingNo) ?? selectedMapGroup?.representative;
+  // 지도 마커 = 좌표가 유효한 매물을 건물/좌표 단위로 묶어서 겹침을 방지한다.
+  const mapMarkers = groupMapListings(mapOverlayListings.filter((listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng))).map(
+    (group) => ({
+      lat: group.lat,
+      lng: group.lng,
+      mapLabel: group.mapLabel,
+      dealTone: group.dealTone,
+      clusterLabel: group.clusterLabel,
+      title: group.title,
+      price: group.price
+    })
+  );
   const findListingCardByNo = (listingNo: string) => allListings.find((listing) => listing.listingNo === listingNo);
 
-  const inquiryComposeListing = inquiryComposeListingNo
-    ? allListings.find((listing) => listing.listingNo === inquiryComposeListingNo) ?? null
-    : null;
-
-  const unseenReplyCount = inquiries.filter((item) => item.reply && !seenInquiryIds.includes(item.id)).length;
-
-  // 실시간 문의 신호 — 상대가 보낸 trade:updated만 문의 탭 밖에서 배지를 켠다(탭 진입 시 해제).
+  // 실시간 채팅 신호 — 상대가 보낸 trade:updated만 채팅 탭 밖에서 배지를 켠다(탭 진입 시 해제).
   const [unseenTradeCount, setUnseenTradeCount] = useState(0);
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
@@ -1567,58 +1650,12 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     if (activeTab === "inquiry") setUnseenTradeCount(0);
   }, [activeTab]);
 
-  const inquiryBadgeCount = unseenReplyCount + unseenTradeCount;
-
-  // 문의 탭을 보고 있는 동안 도착한 답변까지 즉시 확인 처리 — 탭을 나갔다 들어올 필요 없이 뱃지가 사라진다.
-  useEffect(() => {
-    if (activeTab !== "inquiry") return;
-
-    setSeenInquiryIds((current) => {
-      const repliedIds = inquiries.filter((item) => item.reply).map((item) => item.id);
-      const merged = Array.from(new Set([...current, ...repliedIds]));
-      return merged.length === current.length ? current : merged;
-    });
-  }, [activeTab, inquiries]);
+  const inquiryBadgeCount = unseenTradeCount;
 
   // 상세는 이제 라우트(/listing/[id]) — 공유 가능한 URL로 이동한다(1단계 라우트 분리).
+  // 채팅 시작도 상세의 문의하기가 담당한다 — 홈 카드에는 별도 액션 버튼을 두지 않는다.
   const openListing = (listing: Listing) => {
-    setViewedListingNos((current) => [listing.listingNo, ...current.filter((no) => no !== listing.listingNo)].slice(0, 4));
     router.push(`/listing/${encodeURIComponent(listing.listingNo)}`);
-  };
-
-  // 문의는 서버 스레드로 전송된다 — 집주인(또는 데모 임대인) 계정이 실제로 받고, 채팅으로 이어진다.
-  // 반환값: ok=접수, auth=로그인 필요, error=실패.
-  const submitInquiry = async (
-    payload: InquiryPayload,
-    listingNo?: string
-  ): Promise<"ok" | "auth" | "error"> => {
-    const result = await submitTradeInquiry(payload, listingNo);
-    if (result.status !== "ok") return result.status;
-    // 로컬 요약 목록에도 즉시 반영 (문의센터 상단 노출 — lib/inquiry-flow 테스트로 고정된 규칙)
-    setInquiries((current) => withNewInquiry(current, payload, Date.now()));
-    // 서버가 방금 생성/이어붙인 스레드 id를 돌려주면, 문의센터 채팅으로 바로 진입한다(당근식).
-    if (result.threadId) {
-      setBuyerFocusThreadId(result.threadId);
-      setInquiryComposeListingNo(null);
-      activateTab("inquiry");
-    }
-    return "ok";
-  };
-
-  // 통합 문의 작성 진입점 — 최근 본 매물이 있으면 그 매물, 없으면 첫 추천 매물의 sheet를 연다.
-  // 홈 카드 "문자문의"가 이 흐름을 쓴다 (QA 3·4·7). 문의 탭의 "새 문의" 버튼은 제거됐다.
-  const openInquiryComposer = (listing?: Listing) => {
-    if (listing) {
-      setInquiryComposeListingNo(listing.listingNo);
-      return;
-    }
-
-    const targetNo = pickInquiryTargetNo(
-      viewedListingNos,
-      visibleHomeListings.map((item) => item.listingNo)
-    ) ?? allListings[0]?.listingNo;
-
-    if (targetNo) setInquiryComposeListingNo(targetNo);
   };
 
   const activateTab = (tab: AppTab) => {
@@ -1783,6 +1820,35 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     activateTab("map");
   };
 
+  const submitMapTopbarSearch = async () => {
+    const keyword = mapTopbarSearchValue.trim();
+    if (!keyword) {
+      setMapTopbarSearchValue(selectedArea);
+      return;
+    }
+
+    const requestId = ++mapContextRequestIdRef.current;
+    setMapQueryCandidates([]);
+    setMapQueryCandidateKeyword(keyword);
+    setMapQueryStatus("resolving");
+    const candidates = await resolveMapQueryCandidates(keyword);
+    if (requestId !== mapContextRequestIdRef.current) return;
+
+    const resolvedContext = candidates[0];
+    if (resolvedContext) {
+      applyResolvedMapCandidate(keyword, resolvedContext);
+      setMapTopbarSearchValue(resolvedContext.label);
+      return;
+    }
+
+    applyMapAreaSelection(keyword, { ...DEFAULT_MAP_CONTEXT, label: keyword });
+    setMapQueryStatus("fallback");
+    setRecentSearches((current) => [keyword, ...current.filter((item) => item !== keyword)].slice(0, 5));
+    setIsSearchSheetOpen(false);
+    setActiveMapResultTab("rooms");
+    activateTab("map");
+  };
+
   const applySavedCondition = async (condition: (typeof savedConditions)[number]) => {
     setActiveCategory(condition.category);
     setActiveQuickFilters(condition.filters);
@@ -1805,6 +1871,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     const focusThread = params.get("thread");
     if (focusThread) {
       setBuyerFocusThreadId(focusThread);
+    }
+    // 상세 "문자로 문의하기" → /inquiry?compose=<listingNo>&title=<제목> — 이 매물 대화(초안)를 연다.
+    const composeNo = params.get("compose");
+    if (composeNo) {
+      setComposeListing({ listingNo: composeNo, title: params.get("title") ?? "매물 문의" });
+      setActiveTab("inquiry");
+      window.history.replaceState(null, "", TAB_PATHS.inquiry + window.location.hash);
+      setIsRouteReady(true);
+      return;
     }
 
     if (auth) {
@@ -1993,7 +2068,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
               <button className={activeTab === "saved" ? "active" : ""} type="button" onClick={() => activateTab("saved")}>관심목록</button>
               <button className={activeTab === "inquiry" ? "active" : ""} type="button" onClick={() => activateTab("inquiry")}>
-                문의
+                채팅
                 {inquiryBadgeCount > 0 ? <span className="nav-badge">{inquiryBadgeCount}</span> : null}
               </button>
               <button className={activeTab === "living" ? "active" : ""} type="button" onClick={() => activateTab("living")}>세입자</button>
@@ -2067,6 +2142,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           >
             {categories.map((category) => {
               const CategoryIcon = category.Icon;
+              // 하드코딩 수치 대신 지금 피드에 실제로 있는 매물 수를 보여준다.
+              const count = allListings.filter((listing) => listingMatchesCategory(category.label, listing)).length;
 
               return (
                 <button
@@ -2079,7 +2156,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                     <CategoryIcon size={18} strokeWidth={2.4} />
                   </i>
                   <span>{category.label}</span>
-                  <strong>{category.count}</strong>
+                  <strong>{count.toLocaleString("ko-KR")}</strong>
                 </button>
               );
             })}
@@ -2128,32 +2205,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                           ))}
                         </div>
                       </div>
+                      {/* 카드 본문은 가격·제목·핵심 스펙만 — 신뢰 배지는 사진 위, 나머지는 상세에서. */}
                       <div className="listing-body">
-                        <div className="listing-status-line">
-                          <span>{listing.listingLabel}</span>
-                          <span>{listing.updated}</span>
-                        </div>
                         <div>
                           <strong>{listing.price}</strong>
-                          <span>{listing.score}</span>
+                          <span className="listing-updated">{listing.updated}</span>
                         </div>
                         <h3>{listing.title}</h3>
                         <p>{listing.spec}</p>
                         <small>{listing.location}</small>
-                        <small className="listing-detail-address">세부주소: {listingDetailAddressLabel(listing)}</small>
-                        <small className="listing-broker">{listing.broker}</small>
-                        <div className="listing-meta-row">
-                          <span>{listing.verification}</span>
-                          <span>{listing.response}</span>
-                          <span>{listing.badges.includes("3D 투어") ? "3D 투어 가능" : "방문 예약"}</span>
-                        </div>
                       </div>
                     </button>
-                    <div className="listing-card-footer" aria-label={`${listing.title} 빠른 액션`}>
-                      <button type="button" onClick={() => openListing(listing)}>상세 보기</button>
-                      <button type="button" onClick={() => openInquiryComposer(listing)}>문자문의</button>
-                      <button type="button" onClick={() => openListing(listing)}>3D 보기</button>
-                    </div>
                     <button
                       className={savedListingNos.includes(listing.listingNo) ? "save-listing-button saved" : "save-listing-button"}
                       type="button"
@@ -2245,11 +2307,11 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </section>
 
           <section className="market-signal-grid" aria-label="지역 매물 지표">
-            {marketSignals.map((item) => (
+            {dynamicMarketSignals.map((item) => (
               <article key={item.label}>
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
-                <p>{item.label === "전월세 평균" ? `${selectedAreaTitle} 원룸 기준` : item.caption}</p>
+                <p>{item.caption}</p>
               </article>
             ))}
           </section>
@@ -2307,21 +2369,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             ))}
           </section>
 
-          <section className="neighborhood-strip" aria-label="주변 정보">
-            <div>
-              <h2>주변 정보</h2>
-              <p>생활 편의시설과 이동 시간을 같이 봅니다.</p>
-            </div>
-            <div>
-              {neighborhoodItems.map((item) => (
-                <span key={item.label}>
-                  <b>{item.label}</b>
-                  {item.value}
-                </span>
-              ))}
-            </div>
-          </section>
-
           <section className="resident-check-card" aria-label="실거주 체크">
             <div>
               <span>실거주 체크</span>
@@ -2359,27 +2406,40 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
         {activeTab === "map" ? (
         <section className="screen map-screen" id="map-list" aria-labelledby="map-title">
-          <div className="map-topbar">
+          <form
+            className="map-topbar"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitMapTopbarSearch();
+            }}
+          >
             <label>
               <Search size={20} strokeWidth={2.4} aria-hidden="true" />
-              <input value={selectedArea} readOnly aria-label="지도 검색어" onFocus={() => setIsSearchSheetOpen(true)} />
+              <input
+                value={mapTopbarSearchValue}
+                onChange={(event) => setMapTopbarSearchValue(event.target.value)}
+                aria-label="지도 검색어"
+                placeholder="동네, 역, 주소 검색"
+              />
             </label>
             <button
+              className="map-location-action-button"
               type="button"
               onClick={() => requestMapCurrentLocation(true)}
               aria-label="현재 위치 주변 매물 보기"
               title="내 위치 주변"
               disabled={mapLocationStatus === "requesting"}
             >
+              <span className="map-location-action-label">내 위치 보기</span>
               <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
             </button>
             <button type="button" onClick={() => setIsFilterSheetOpen(true)} aria-label="필터">
               <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
             </button>
-          </div>
+          </form>
 
           <div className="map-filter-row">
-            {["시세", "원룸·투룸", "보증금", "안전", "3D 가능"].map((filter) => (
+            {mapFilterOptions.map((filter) => (
               <button
                 className={activeMapFilter === filter ? "active" : ""}
                 type="button"
@@ -2399,7 +2459,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </div>
 
           <section className="map-insight-strip" aria-label="지도 생활권 요약">
-            {mapInsightItems.map((item) => (
+            {dynamicMapInsightItems.map((item) => (
               <article key={item.label}>
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
@@ -2417,26 +2477,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               markers={mapMarkers}
               onViewportChange={setMapViewport}
             />
-            {selectedMapListing ? (
-              <article className="map-selected-card" aria-label="지도 선택 매물">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const card = findListingCardByNo(selectedMapListing.listingNo);
-                    if (card) openListing(card);
-                  }}
-                >
-                  <span>{selectedMapListing.clusterLabel} · {selectedMapListing.updated}</span>
-                  <strong>{selectedMapListing.title}</strong>
-                  <small>{selectedMapListing.price} · {mapListingDistanceLabel(selectedMapListing)}</small>
-                  <small>세부주소: {listingDetailAddressLabel(selectedMapListing)}</small>
-                </button>
-                <div>
-                  <em>{selectedMapListing.flags[0]}</em>
-                  <button type="button" onClick={() => activateTab("inquiry")}>문의</button>
-                </div>
-              </article>
-            ) : null}
           </div>
 
           <div className="result-sheet">
@@ -2523,8 +2563,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                             <span>실매물 확인</span>
                             <span>{listing.updated}</span>
                           </div>
-                          <h3>{listing.title}</h3>
-                          <strong>{listing.price}</strong>
+                          <h3 title={listing.title}>{listing.title}</h3>
+                          <strong className={listing.dealTone === "jeonse" ? "map-price-text is-jeonse" : "map-price-text"}>{listing.price}</strong>
                           <p>{listing.meta}</p>
                           <small>{mapListingDistanceLabel(listing)}</small>
                           <small>세부주소: {listingDetailAddressLabel(listing)}</small>
@@ -2600,7 +2640,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                     </div>
                     <footer>
                       <button type="button" onClick={() => setActiveMapResultTab("rooms")}>보유 매물</button>
-                      <button type="button" onClick={() => activateTab("inquiry")}>문의하기</button>
+                      <button type="button" onClick={() => activateTab("inquiry")}>채팅하기</button>
                     </footer>
                   </article>
                 ))}
@@ -2612,16 +2652,23 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
         {activeTab === "saved" ? (
         <SavedListingsSection
+          allListings={allListings}
           savedListingNos={savedListingNos}
           openListing={openListing}
           onToggleSaved={toggleSavedListing}
         />
         ) : null}
         {activeTab === "inquiry" ? (
-          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} />
+          <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} composeListing={composeListing} />
         ) : null}
         {activeTab === "sell" ? (
-          <LandlordMyPage />
+          <LandlordMyPage
+            onGoHome={() => {
+              // 등록 성공 팝업 확인 → 홈 피드로. 목록을 즉시 갱신해 방금 등록한 매물이 바로 보이게 한다.
+              void loadTradeListings();
+              activateTab("home");
+            }}
+          />
         ) : null}
         {activeTab === "living" ? (
           <TenantMyPage
@@ -2643,7 +2690,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             >
               <item.Icon size={22} strokeWidth={2.3} aria-hidden="true" />
               {item.label}
-              {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 문의 ${inquiryBadgeCount}건`} /> : null}
+              {item.key === "inquiry" && inquiryBadgeCount > 0 ? <span className="tab-dot" aria-label={`읽지 않은 채팅 ${inquiryBadgeCount}건`} /> : null}
             </a>
           ))}
           <MobileRoleMenu
@@ -2693,21 +2740,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           isOpen={isNotificationSheetOpen}
           onClose={() => setIsNotificationSheetOpen(false)}
         />
-        {inquiryComposeListing ? (
-          <InquirySheet
-            listing={inquiryComposeListing}
-            onClose={() => setInquiryComposeListingNo(null)}
-            onSubmitInquiry={submitInquiry}
-            onViewInquiryCenter={() => {
-              setInquiryComposeListingNo(null);
-              activateTab("inquiry");
-            }}
-            onRequireLogin={() => {
-              setInquiryComposeListingNo(null);
-              openAuthScreen("login");
-            }}
-          />
-        ) : null}
       </div>
     </main>
   );

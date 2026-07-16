@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "build": "nest build",
+    "db:migrate:safe": "node scripts/migrate-database.mjs",
     "test": "node --test -r ts-node/register src/**/*.spec.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "crawl:furniture:url": "ts-node src/furniture-catalog/crawl-url.ts",
     "import:furniture:csv": "ts-node src/furniture-catalog/import-csv.ts",
+    "seed:vendor-demo": "node -r ts-node/register src/roomlog/scripts/seed-vendor-foundation.ts",
     "sync:furniture:naver": "ts-node src/furniture-catalog/sync-naver-shopping.ts",
     "sync:furniture": "ts-node src/furniture-catalog/sync-dummyjson.ts",
     "start:prod": "node dist/main"
@@ -25,6 +27,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@roomlog/types": "workspace:*",
+    "pg": "^8.22.0",
     "prisma": "^7.8.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

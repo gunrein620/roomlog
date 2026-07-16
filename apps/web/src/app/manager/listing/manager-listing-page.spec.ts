@@ -26,5 +26,5 @@ test("manager listing surface renders list, empty, and error states without demo
 
 test("manager listing page delegates interactive rows to the client board", () => {
   assert.match(pageSource, /import \{ ManagerListingBoard \}/);
-  assert.match(pageSource, /<ManagerListingBoard initialListings=\{rows\} \/>/);
+  assert.match(pageSource, /<ManagerListingBoard initialListings=\{rows\} activeStatus=\{activeStatus\} \/>/);
 });

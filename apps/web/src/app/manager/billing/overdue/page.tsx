@@ -23,7 +23,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <BillingWorkspaceHeader
           eyebrow="케이스 관리"
           title="연체 관리"
-          description="실제 경과일과 납부 확인 가드를 기준으로 한 건씩 검토합니다. 독촉은 화면에서 바로 발송하지 않습니다."
+          description="실제 경과일과 납부 확인 상태를 기준으로 한 건씩 검토합니다. 독촉은 화면에서 바로 발송하지 않습니다."
           basePath="/manager/billing/overdue"
           scope={data.scope}
           asOf={data.asOf}

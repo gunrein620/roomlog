@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { KakaoTalkLogoIcon } from "../_components/KakaoTalkLogoIcon";
+import { socialAuthErrorMessage } from "../_components/WoozuLoginScreen";
 
 const DEFAULT_REDIRECT = "/";
 
@@ -35,14 +37,21 @@ export default function SignupPage() {
 
     if (role !== "SEEKER") {
       setNotice("임차인/임대인 권한은 추후 서비스 키 확인 후 부여됩니다. 지금은 일반 이용자로 가입합니다.");
+    } else if (provider === "kakao") {
+      setNotice("카카오톡 계정으로 가입을 완료하면 일반 이용자로 바로 로그인됩니다.");
     } else if (provider === "google") {
       setNotice("Google 계정으로 가입을 완료하면 일반 이용자로 바로 로그인됩니다.");
     }
 
     if (authError) {
-      setError(authError);
+      setError(socialAuthErrorMessage(authError) ?? authError);
     }
   }, []);
+
+  const kakaoSignupUrl = useMemo(() => {
+    const errorRedirectTo = `/signup?provider=kakao&role=${encodeURIComponent(requestedRole)}&redirectTo=${encodeURIComponent(redirectTo)}`;
+    return `/api/auth/kakao/start?role=SEEKER&flow=signup&redirectTo=${encodeURIComponent(redirectTo)}&errorRedirectTo=${encodeURIComponent(errorRedirectTo)}`;
+  }, [redirectTo, requestedRole]);
 
   const googleSignupUrl = useMemo(() => {
     const errorRedirectTo = `/signup?provider=google&role=${encodeURIComponent(requestedRole)}&redirectTo=${encodeURIComponent(redirectTo)}`;
@@ -91,6 +100,11 @@ export default function SignupPage() {
           <h1>회원가입</h1>
           <p>{notice}</p>
         </div>
+
+        <a className="signup-social-button signup-social-button--kakao" href={kakaoSignupUrl}>
+          <span className="kakao-logo-icon" aria-hidden="true"><KakaoTalkLogoIcon /></span>
+          카카오톡으로 회원가입
+        </a>
 
         <a className="signup-google-button" href={googleSignupUrl}>
           <span aria-hidden="true">G</span>

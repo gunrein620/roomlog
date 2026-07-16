@@ -4,7 +4,10 @@ import { normalizeManagerPrompt } from "@/lib/manager-assistant";
 import { MANAGER_CROSS } from "@/lib/manager-home-nav";
 import { ManagerRealtimeConsole } from "./ManagerRealtimeConsole";
 
-type SearchParams = Promise<{ prompt?: string | string[] }>;
+type SearchParams = Promise<{
+  prompt?: string | string[];
+  billId?: string | string[];
+}>;
 
 const domains = [
   { label: "티켓 처리", href: MANAGER_CROSS.ticketDash, body: "긴급도, 사진 필요 여부, 업체 배정 후보를 확인합니다." },
@@ -13,12 +16,13 @@ const domains = [
 ];
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { prompt } = await searchParams;
+  const { prompt, billId } = await searchParams;
   const initialPrompt = normalizeManagerPrompt(prompt);
+  const initialBillId = (Array.isArray(billId) ? billId[0] : billId)?.trim().slice(0, 160);
 
   return (
     <div style={{ display: "grid", gap: "var(--space-xl)" }}>
-      <ManagerRealtimeConsole initialPrompt={initialPrompt} />
+      <ManagerRealtimeConsole initialPrompt={initialPrompt} initialBillId={initialBillId} />
 
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-md)" }}>
         {domains.map((domain) => (

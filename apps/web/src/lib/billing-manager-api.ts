@@ -5,6 +5,7 @@ import type {
   Deposit,
   DunningDraft,
   ManagerBillCreationData,
+  ManagerBillDetail,
   ManagerCollectionAnalytics,
 } from "@roomlog/types";
 import { ApiError, serverFetch } from "./server-api";
@@ -28,6 +29,7 @@ import {
   toDunningDraft,
   toManagerDashboard,
   toManagerBillCreationData,
+  toManagerBillDetail,
   toManagerCollection,
   toManagerDepositsData,
   toManagerOverdue,
@@ -52,6 +54,8 @@ function billingPath(path: string, query: ManagerBillingDemoQuery = {}) {
   const params = new URLSearchParams();
   if (query.building) params.set("building", query.building);
   if (query.month) params.set("month", query.month);
+  if (query.historyFrom) params.set("historyFrom", query.historyFrom);
+  if (query.historyTo) params.set("historyTo", query.historyTo);
   const search = params.toString();
   return search ? `${path}?${search}` : path;
 }
@@ -98,14 +102,22 @@ export async function getManagerDashboard(
   }
 }
 
-export async function getManagerBill(billId?: string): Promise<Bill> {
-  if (billId === "new") return DEMO_NEW_BILL;
+export async function getManagerBill(billId?: string): Promise<ManagerBillDetail> {
+  if (billId === "new") {
+    return {
+      ...DEMO_NEW_BILL,
+      guard: { blocked: false, hasConfirming: false, hasOrphan: false },
+    };
+  }
 
   const teamBill = await resolveTeamBill(billId);
-  if (teamBill) return toBill(teamBill);
+  if (teamBill) return toManagerBillDetail(teamBill);
 
   console.warn("[manager/billing-api] 실제 청구서 없음 → 데모 청구서 폴백");
-  return demoBillFallback(billId);
+  return {
+    ...demoBillFallback(billId),
+    guard: { blocked: false, hasConfirming: false, hasOrphan: false },
+  };
 }
 
 export async function publishManagerBill(billId: string): Promise<Bill> {

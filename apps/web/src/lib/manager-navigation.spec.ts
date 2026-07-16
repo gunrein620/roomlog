@@ -13,8 +13,8 @@ const hrefs = items.flatMap((item) => [item.href, ...item.children.map((child) =
 describe("manager workspace navigation", () => {
   it("contains every manager desktop domain entry", () => {
     assert.deepEqual(items.map((item) => item.id), [
-      "dashboard", "listing", "contract", "billing", "cost", "ticket",
-      "messaging", "moveout", "vendor", "report", "assistant", "settings",
+      "dashboard", "listing", "contract", "billing", "ticket",
+      "messaging", "vendor", "report", "assistant", "settings",
     ]);
   });
 
@@ -44,51 +44,63 @@ describe("manager workspace navigation", () => {
     assert.equal(getManagerCurrentHref("/manager/billing/bill-1"), null);
   });
 
-  it("marks prototype home links", () => {
+  it("keeps the dashboard as a single at-a-glance page without sub tabs", () => {
     const dashboard = items.find((item) => item.id === "dashboard");
-    assert.equal(dashboard?.children.find((child) => child.href === "/manager/home/03")?.demo, true);
+    assert.deepEqual(dashboard?.children, []);
   });
 
   it("keeps listing management inside the manager workspace", () => {
     const listing = items.find((item) => item.id === "listing");
     assert.equal(listing?.href, "/manager/listing");
     assert.equal(listing?.external, undefined);
+    // 매물 관리는 상태별 서브탭(계약완료/미계약)을 가지며, 쿼리 없는 진입은 첫 탭(계약완료)으로 수렴한다.
+    assert.deepEqual(listing?.children.map((child) => child.href), [
+      "/manager/listing?status=contracted",
+      "/manager/listing?status=available",
+    ]);
     assert.deepEqual(getManagerNavState("/manager/listing"), {
       activeItemId: "listing",
-      activeChildHref: null,
+      activeChildHref: "/manager/listing?status=contracted",
     });
   });
 
-  it("routes ticket child tabs to their matching dashboard type filters", () => {
+  it("routes ticket children to the dashboard and combined management view", () => {
     const ticket = items.find((item) => item.id === "ticket");
 
     assert.deepEqual(ticket?.children.map((child) => child.label), [
       "민원 대시보드",
-      "민원 대응",
-      "하자 관리",
+      "민원/하자 관리",
     ]);
-    assert.equal(ticket?.children.find((child) => child.label === "민원 대응")?.href, "/manager/ticket/dash/00?type=complaint");
-    assert.equal(ticket?.children.find((child) => child.label === "민원 대응")?.typeFilter, "complaint");
-    assert.equal(ticket?.children.find((child) => child.label === "하자 관리")?.href, "/manager/ticket/dash/00?type=defect");
-    assert.equal(ticket?.children.find((child) => child.label === "하자 관리")?.typeFilter, "defect");
+    assert.equal(
+      ticket?.children.find((child) => child.label === "민원/하자 관리")?.href,
+      "/manager/ticket/dash/00?view=management",
+    );
+    assert.equal(
+      ticket?.children.find((child) => child.label === "민원/하자 관리")?.ticketView,
+      "management",
+    );
   });
 
   it("matches every permanent child and keeps settings separate from dashboard", () => {
     for (const item of items) {
       for (const child of item.children) {
+        // 해시 앵커 자식(#report 등)은 별도 테스트에서 다룬다 — pathname 기준 매칭은 해시를 모른다.
+        if (child.href.includes("#")) continue;
         assert.deepEqual(getManagerNavState(child.href), { activeItemId: item.id, activeChildHref: child.href });
       }
     }
     assert.deepEqual(getManagerNavState("/manager/home/06"), { activeItemId: "settings", activeChildHref: null });
-    assert.deepEqual(getManagerNavState("/manager/listing"), { activeItemId: "listing", activeChildHref: null });
+    assert.deepEqual(getManagerNavState("/manager/listing"), {
+      activeItemId: "listing",
+      activeChildHref: "/manager/listing?status=contracted",
+    });
     assert.deepEqual(getManagerNavState("/manager/agent/realtime"), { activeItemId: "assistant", activeChildHref: null });
   });
 
   it("matches every contextual route to its parent only", () => {
     const cases = [
       ["/manager/contract/01?id=doc", "contract"], ["/manager/billing/bill-1", "billing"],
-      ["/manager/cost/03?id=cost", "cost"], ["/manager/messaging/04?id=thread", "messaging"],
-      ["/manager/moveout/02?id=moveout", "moveout"], ["/manager/vendor-mgmt/02?id=vendor", "vendor"],
+      ["/manager/messaging/04?id=thread", "messaging"], ["/manager/vendor-mgmt/02?id=vendor", "vendor"],
       ["/manager/report/03?id=report", "report"],
     ] as const;
     for (const [pathname, activeItemId] of cases) {

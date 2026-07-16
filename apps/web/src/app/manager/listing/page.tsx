@@ -25,7 +25,11 @@ const linkStyle = {
   fontWeight: 800,
 } as const;
 
-export default async function ManagerListingPage() {
+type SearchParams = Promise<{ status?: string }>;
+
+export default async function ManagerListingPage({ searchParams }: { searchParams: SearchParams }) {
+  const { status } = await searchParams;
+  const activeStatus = status === "available" ? "available" : "contracted";
   const user = await requireUser("LANDLORD");
   let rows: ManagerListingRow[] = [];
   let listingError = false;
@@ -64,7 +68,7 @@ export default async function ManagerListingPage() {
             <p>잠시 후 다시 시도해 주세요.</p>
           </Card>
         ) : (
-          <ManagerListingBoard initialListings={rows} />
+          <ManagerListingBoard initialListings={rows} activeStatus={activeStatus} />
         )}
       </div>
     </ManagerAppShell>

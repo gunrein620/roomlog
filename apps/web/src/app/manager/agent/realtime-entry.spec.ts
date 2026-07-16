@@ -21,11 +21,15 @@ test("manager realtime prompt is prefilled once and never auto-submitted", () =>
   const consoleSource = readFileSync(realtimeConsolePath, "utf8");
   assert.match(pageSource, /searchParams/);
   assert.match(pageSource, /prompt\?: string \| string\[\]/);
+  assert.match(pageSource, /billId\?: string \| string\[\]/);
   assert.match(pageSource, /normalizeManagerPrompt/);
   assert.match(pageSource, /normalizeManagerPrompt\(prompt\)/);
   assert.match(pageSource, /initialPrompt=\{initialPrompt\}/);
+  assert.match(pageSource, /initialBillId=\{initialBillId\}/);
   assert.match(consoleSource, /initialPrompt\?: string/);
   assert.match(consoleSource, /useState\(\(\) => normalizeManagerPrompt\(initialPrompt\)\)/);
+  assert.match(consoleSource, /ManagerAssistantActionCard/);
+  assert.match(consoleSource, /requestManagerCopilotChat/);
   assert.doesNotMatch(consoleSource, /useEffect\([^)]*submitAgentMessage/);
 });
 
@@ -80,7 +84,8 @@ test("manager realtime route uses a browser console wired to BFF agent APIs", ()
   assert.match(consoleSource, /https:\/\/api\.openai\.com\/v1\/realtime\/calls/);
   assert.doesNotMatch(consoleSource, /v1\/realtime\?model/);
   assert.match(consoleSource, /Realtime SDP 교환 실패/);
-  assert.match(consoleSource, /response\.function_call_arguments\.done/);
+  assert.match(consoleSource, /parseManagerRealtimeEvent/);
+  assert.match(consoleSource, /closeManagerRealtimeResources/);
   assert.match(consoleSource, /ticket\.query/);
   assert.match(consoleSource, /billing\.summary/);
   assert.match(consoleSource, /billing\.send_dunning/);
@@ -99,7 +104,8 @@ test("manager realtime text surface is a chat with the agent instead of a comman
   assert.match(consoleSource, /agentChatShellStyle/);
   assert.match(consoleSource, /agentMessageToCommand/);
   assert.match(consoleSource, /대화 입력/);
-  assert.match(consoleSource, /placeholder="AI agent에게 처리할 일을 입력하세요"/);
+  assert.match(consoleSource, /"AI agent에게 처리할 일을 입력하세요"/);
+  assert.match(consoleSource, /pendingAction \? "발송 여부를 먼저 확인해 주세요"/);
   assert.match(consoleSource, /"전송"/);
   assert.doesNotMatch(consoleSource, />텍스트 명령</);
   assert.doesNotMatch(consoleSource, />명령 실행</);

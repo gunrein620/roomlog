@@ -22,6 +22,7 @@ export class TradeStoreProjector {
       const rows = await this.prisma.tradeListing.findMany({ orderBy: { createdAt: "desc" } });
       return rows.map((row) => {
         const detailAddress = (row as unknown as { detailAddress?: string | null }).detailAddress?.trim();
+        const buildingName = (row as unknown as { buildingName?: string | null }).buildingName?.trim();
         return {
           id: row.id,
           ownerId: row.ownerId,
@@ -33,7 +34,9 @@ export class TradeStoreProjector {
           monthlyRentManwon: row.monthlyRentManwon,
           location: row.location,
           ...(detailAddress ? { detailAddress } : {}),
+          ...(buildingName ? { buildingName } : {}),
           description: row.description,
+          options: normalizeStringArray((row as unknown as { options?: unknown }).options),
           images: Array.isArray(row.images) ? row.images : [],
           ...(row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : {}),
           ...(row.floorPlan ? { floorPlan: row.floorPlan as unknown as ListingFloorPlan } : {}),
@@ -68,7 +71,9 @@ export class TradeStoreProjector {
           monthlyRentManwon: Math.trunc(listing.monthlyRentManwon) || 0,
           location: listing.location,
           detailAddress: listing.detailAddress?.trim() || null,
+          buildingName: listing.buildingName?.trim() || null,
           description: listing.description ?? "",
+          options: listing.options ?? [],
           images: listing.images ?? [],
           lat: listing.lat ?? null,
           lng: listing.lng ?? null,
@@ -93,4 +98,9 @@ export class TradeStoreProjector {
 
 function normalizeTradeType(value: string): TradeListing["tradeType"] {
   return value === "전세" || value === "매매" ? value : "월세";
+}
+
+// options 컬럼 추가 이전에 생성된 Prisma client와도 컴파일되도록 unknown으로 받는다.
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }

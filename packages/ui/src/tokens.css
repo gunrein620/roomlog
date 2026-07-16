@@ -22,6 +22,7 @@
   --outline: #9aa1af;
   --outline-variant: #e3e6ed;
   --border: #e3e6ed; /* 카드·헤더·리스트 기본 경계 (= WOOZU --line) */
+  --table-row-divider: #edf0f5;
 
   /* --- color: primary (action = WOOZU 블루) --- */
   --primary: #2f55ff;
@@ -82,6 +83,7 @@
   --shadow: 0 18px 44px rgba(18, 24, 40, 0.12);
   --shadow-soft: 0 8px 24px rgba(18, 24, 40, 0.08);
   --focus-ring: 0 0 0 3px rgba(47, 85, 255, 0.28);
+  --disabled-opacity: 0.52;
 
   /* --- spacing (4/8/12/16/24/32) --- */
   --space-xs: 4px;
@@ -128,4 +130,113 @@
   /* --- phone frame --- */
   --phone-w: 390px;
   --phone-h: 844px;
+}
+
+/*
+ * 집우집주(宇宙) 코스믹 테마 — opt-in. 라벤더 캔버스·우주 인디고·성운 파스텔.
+ * 원하는 표면의 루트 요소에 .theme-cosmic을 얹으면 하위 전체에 적용된다.
+ * 출처: M-HOME-00(관리인 자산현황 대시보드)에서 검증한 스킨을 그대로 승격.
+ *
+ * NanumSquareRound @font-face 3개도 여기 함께 둔다 — @font-face는 실제 텍스트에
+ * font-family가 걸려야 다운로드되므로, .theme-cosmic을 쓰지 않는 표면에는 비용이 없다.
+ */
+@font-face {
+  font-family: "NanumSquareRound";
+  src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundR.woff2) format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "NanumSquareRound";
+  src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundB.woff2) format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "NanumSquareRound";
+  src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundEB.woff2) format("woff2");
+  font-weight: 800;
+  font-display: swap;
+}
+
+.theme-cosmic {
+  /* surface: 새벽빛 라벤더 캔버스 — 보더 없이도 흰 카드가 읽히도록 캔버스를 한 톤 깊게 */
+  --surface: #f1eef9;
+  --surface-dim: #e8e3f3;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f5f2fb;
+  --surface-container: #efebf8;
+  --surface-container-high: #e8e3f3;
+  --surface-container-highest: #e1dcef;
+  --on-surface: #211c33;
+  --on-surface-variant: #6b6584;
+  --inverse-surface: #262040;
+  --inverse-on-surface: #f7f5fc;
+
+  /* 선 대신 면 — 보더 완전 제거. 구분은 캔버스-카드 톤 차이와 그림자만 맡는다 */
+  --outline: #9a93b6;
+  --outline-variant: transparent;
+  --border: transparent;
+
+  /* primary: 우주 인디고 */
+  --primary: #5747cf;
+  --on-primary: #ffffff;
+  --primary-container: #e9e5ff;
+  --on-primary-container: #3a2ba8;
+
+  --chip-bg: #f0edf9;
+  --chip-on: #4c4570;
+
+  /* pastel: 성운 팔레트 — 유형 구분 의미는 유지, 색축만 보라 계열로 */
+  --pastel-peach: #f9e0d3;
+  --on-pastel-peach: #86432a;
+  --pastel-mint: #daefe6;
+  --on-pastel-mint: #1f6a52;
+  --pastel-lilac: #e9e2fa;
+  --on-pastel-lilac: #4f3d9e;
+  --pastel-blue: #e1e6fb;
+  --on-pastel-blue: #3a4894;
+  --pastel-pink: #fadeee;
+  --on-pastel-pink: #963f6d;
+  --pastel-yellow: #f7ebc4;
+  --on-pastel-yellow: #6d581a;
+
+  /* nav: 심야 우주 */
+  --nav-surface: #201a3f;
+  --nav-on-surface: #f4f1fd;
+  --nav-on-surface-muted: #a79ed6;
+
+  /* cosmic sidebar: 관리 화면 공용 심야 우주 표면 */
+  --cosmic-sidebar-surface-lowest: transparent;
+  --cosmic-sidebar-surface-low: rgba(255, 255, 255, 0.06);
+  --cosmic-sidebar-surface: rgba(255, 255, 255, 0.08);
+  --cosmic-sidebar-surface-high: rgba(255, 255, 255, 0.12);
+  --cosmic-sidebar-border: rgba(160, 146, 255, 0.22);
+  --cosmic-sidebar-primary-container: rgba(233, 229, 255, 0.94);
+  --cosmic-sidebar-on-primary-container: #43338f;
+  --cosmic-sidebar-border-strong: #2c2454;
+  --cosmic-sidebar-orbit: rgba(160, 146, 255, 0.3);
+  --cosmic-sidebar-nebula-pink: rgba(242, 123, 169, 0.14);
+  --cosmic-sidebar-nebula-indigo: rgba(102, 88, 214, 0.3);
+  --cosmic-sidebar-gradient-start: #292153;
+  --cosmic-sidebar-gradient-mid: #1e1840;
+  --cosmic-sidebar-gradient-end: #241d4e;
+
+  --input-border: #e6e1f2;
+  --input-placeholder: #9a93b6;
+  --input-text: #211c33;
+
+  /* 서체: 둥근 한글 — 모서리 곡률과 같은 이야기를 글자에서도 */
+  --font-sans: "NanumSquareRound", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+
+  /* elevation: 남보라 그림자 — 레퍼런스처럼 있는 듯 없는 듯, 넓게 퍼진 저농도로 */
+  --shadow: 0 24px 56px rgba(35, 27, 74, 0.09);
+  --shadow-soft: 0 14px 36px rgba(35, 27, 74, 0.05);
+
+  /* 곡률 — 크기에 비례해 radius 확대 (카드 20 / 버튼 16) */
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-md: 20px;
+  --radius-btn: 16px;
+  --radius-lg: 26px;
 }

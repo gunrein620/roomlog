@@ -55,20 +55,27 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(sidebar, /const isCollapsible = isTicket \|\| isMessaging/);
   assert.match(sidebar, /const expanded = isTicket \? ticketExpanded : messagingExpanded/);
   assert.match(sidebar, /manager-messaging-subnav/);
-  assert.match(
-    sidebar,
-    /aria-label=\{`\$\{item\.label\} 메뉴 \$\{expanded \? "접기" : "펼치기"\}`\}/,
-  );
+  assert.match(sidebar, /const messagingUnreadLabel =/);
+  assert.match(sidebar, /aria-label=\{`\$\{item\.label\} 메뉴[\s\S]*?\$\{messagingUnreadLabel\}`\}/);
   assert.match(sidebar, /const showChildren = isCollapsible \? expanded : active/);
   assert.match(
     sidebar,
-    /isCollapsible \? \(\s*<button[\s\S]*?className=\{`manager-sidebar__parent-toggle\$\{active \? " is-active" : ""\}`\}[\s\S]*?<Icon aria-hidden="true" \/>[\s\S]*?<span>\{item\.label\}<\/span>[\s\S]*?<ChevronDown aria-hidden="true" \/>/,
+    /isCollapsible \? \(\s*<button[\s\S]*?className=\{`manager-sidebar__parent-toggle\$\{active \? " is-active" : ""\}`\}[\s\S]*?<Icon aria-hidden="true" \/>[\s\S]*?<span className="manager-sidebar__label">\{item\.label\}<\/span>[\s\S]*?<ChevronDown aria-hidden="true" \/>/,
   );
+  assert.match(sidebar, /messagingUnreadCount\?: number/);
+  assert.match(sidebar, /aria-label=\{`미확인 메시지 \$\{messagingUnreadCount\}개`\}/);
+  assert.match(sidebar, /manager-sidebar__unread-badge/);
+  assert.match(appShellSource, /useManagerMessagingUnreadCount\(pathname\)/);
+  assert.match(appShellSource, /messagingUnreadCount=\{messagingUnreadCount\}/);
   assert.match(managerCss, /manager-sidebar__parent-toggle/);
   assert.doesNotMatch(managerCss, /manager-sidebar__ticket-toggle/);
   assert.match(
     managerCss,
     /\.manager-sidebar__parent-toggle\s*\{[^}]*width:\s*100%;[^}]*display:\s*flex;/,
+  );
+  assert.match(
+    managerCss,
+    /\.manager-sidebar__parent-toggle:hover\s*\{[^}]*color:\s*var\(--on-surface\);[^}]*background:\s*var\(--surface-container-high\);/,
   );
   assert.match(sectionNavSource, /item\.children\.map/);
   assert.match(sectionNavSource, /aria-current/);
@@ -76,18 +83,67 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(assistant, /aria-label="AI 관리 비서 닫기"/);
   assert.match(assistant, /getBoundingClientRect\(\)/);
   assert.match(assistant, /isDialogBackdropPoint/);
+  assert.match(assistant, /AI 상담 모드 선택/);
+  assert.match(assistant, /Woo-zu AI 비서/);
+  assert.match(assistant, /상담 방식을 선택해 주세요/);
+  assert.match(assistant, /Woo-zu AI와 어떻게 대화하시겠어요\?/);
+  assert.match(assistant, /텍스트 채팅/);
+  assert.match(assistant, /음성 통화/);
+  assert.match(assistant, /manager-ai-mode-icon/);
+  assert.doesNotMatch(assistant, /Choose your consultation mode/);
+  assert.match(assistant, /role="log"/);
+  assert.match(assistant, /aria-live="polite"/);
+  assert.match(assistant, /ref=\{transcriptRef\}/);
+  assert.match(assistant, /onScroll=\{updateTranscriptStickiness\}/);
+  assert.match(assistant, /shouldManagerAssistantStickToBottom/);
+  assert.match(assistant, /requestAnimationFrame/);
+  assert.match(assistant, /cancelAnimationFrame/);
+  assert.match(assistant, /scrollTranscriptToBottom/);
+  assert.match(assistant, /useManagerAssistantSession/);
+  assert.match(assistant, /useManagerRealtimeSession/);
+  assert.match(assistant, /session\.submitText/);
+  assert.match(assistant, /realtime\.connect/);
+  assert.match(assistant, /realtime\.disconnect/);
+  assert.match(assistant, /통화 시작/);
+  assert.match(assistant, /통화 종료/);
+  assert.match(assistant, /Push to Talk/);
+  assert.match(assistant, /aria-pressed=\{realtime\.isTalking\}/);
+  assert.match(assistant, /onPointerDown=\{startPushToTalk\}/);
+  assert.match(assistant, /onPointerUp=\{stopPushToTalk\}/);
+  assert.match(assistant, /onPointerCancel=\{stopPushToTalk\}/);
+  assert.match(assistant, /onLostPointerCapture=\{stopPushToTalk\}/);
+  assert.match(assistant, /onKeyDown=\{startPushToTalkFromKeyboard\}/);
+  assert.match(assistant, /onKeyUp=\{stopPushToTalkFromKeyboard\}/);
+  assert.match(assistant, /visibilitychange/);
+  assert.match(assistant, /ManagerAssistantActionCard/);
+  assert.match(assistant, /event\.nativeEvent\.isComposing/);
+  assert.match(assistant, /event\.shiftKey/);
   assert.match(appShellSource, /aria-haspopup="dialog"/);
-  assert.match(appShellSource, /subnav \?\? <ManagerSectionNav/);
+  // 기본 서브내비는 Suspense로 감싼다 — useSearchParams가 정적 프리렌더에서 경계를 요구.
+  assert.match(appShellSource, /subnav \?\? <Suspense fallback=\{null\}><ManagerSectionNav \/><\/Suspense>/);
   assert.match(appShellSource, /!fullAssistant/);
   assert.match(appShellSource, /getBoundingClientRect\(\)/);
   assert.match(appShellSource, /isDialogBackdropPoint/);
+  assert.match(
+    managerCss,
+    /\.manager-assistant-dialog\s*\{[^}]*width:\s*min\(calc\(100vw - var\(--space-xxl\)\), calc\(var\(--content-aside-max\) \+ var\(--content-aside-max\)\)\);/,
+  );
+  assert.match(
+    managerCss,
+    /\.manager-assistant-dialog__header\s*\{[^}]*color:\s*var\(--on-primary\);[^}]*background:\s*var\(--primary\);/,
+  );
+  assert.match(managerCss, /\.manager-ai-mode-icon\s*\{/);
+  assert.match(managerCss, /\.manager-ai-push-to-talk\s*\{/);
   // useEffect는 사이드바 접힘 상태(localStorage) 복원용.
   assert.match(appShellSource, /import \{ Suspense, useEffect, useRef, useState \} from "react"/);
   // 데스크톱 사이드바에는 접기 토글이 헤더 액션으로 꽂힌다.
-  assert.match(appShellSource, /<Suspense fallback=\{null\}><ManagerSidebar headerAction=\{collapseAction\} \/><\/Suspense>/);
   assert.match(
     appShellSource,
-    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton \/><\/Suspense>/,
+    /<Suspense fallback=\{null\}><ManagerSidebar headerAction=\{collapseAction\} messagingUnreadCount=\{messagingUnreadCount\} \/><\/Suspense>/,
+  );
+  assert.match(
+    appShellSource,
+    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton messagingUnreadCount=\{messagingUnreadCount\} \/><\/Suspense>/,
   );
 });
 
@@ -119,7 +175,12 @@ test("manager workspace uses canonical tokens without manager-local collisions",
   assert.match(tokenSource, /--manager-sidebar-width:/);
   assert.match(tokenSource, /--manager-assistant-width:/);
   assert.match(tokenSource, /--focus-ring:/);
-  assert.doesNotMatch(managerCss, /^\s*--border:/m);
+  const localBorderOverrides = managerCss.match(/^\s*--border:/gm) ?? [];
+  assert.equal(localBorderOverrides.length, 1);
+  assert.match(
+    managerCss,
+    /\.manager-workspace\.theme-cosmic \.manager-workspace__sidebar\s*\{[\s\S]*?--border:\s*var\(--cosmic-sidebar-border\);/,
+  );
   assert.doesNotMatch(managerCss, /^\s*--shadow:/m);
 });
 
@@ -130,9 +191,8 @@ test("every manager desktop domain composes ManagerAppShell", () => {
   }
 });
 
-// PR #51: 홈 콘텐츠가 통합 오버뷰 → 코스믹 대시보드+코파일럿으로 교체됨.
-// 셸 계약(공용 워크스페이스 사용)은 유지하고, 콘텐츠 계약만 새 구성으로 갱신한다.
-// 공용 AI 런처 대신 홈 내장 코파일럿을 쓰는 방향은 PR에서 논의 중 — hideAssistantLauncher가 그 표식.
+// 홈 콘텐츠는 코스믹 대시보드 한 화면(글랜스). 셸 계약(공용 워크스페이스 사용)은 유지하고,
+// 콘텐츠 계약만 갱신한다. AI 브리핑 배너(내장 코파일럿)는 개편에서 제거돼 AI는 공용 플로팅 런처가 담당.
 test("manager home composes the cosmic dashboard in the shared workspace", () => {
   const homeSource = readFileSync(managerHomePath, "utf8");
   const overviewSource = existsSync(managerOverviewPath)
@@ -143,9 +203,10 @@ test("manager home composes the cosmic dashboard in the shared workspace", () =>
   assert.match(homeSource, /<ManagerAppShell/);
   assert.doesNotMatch(homeSource, /import \{ ManagerShell \}/);
   assert.doesNotMatch(homeSource, /<ManagerShell[\s\n]/);
-  assert.match(homeSource, /hideAssistantLauncher/);
   assert.match(homeSource, /manager-home-dashboard/);
-  assert.match(homeSource, /<CopilotPanel briefingInput=\{dashboard\.briefingInput\}/);
+  // AI 브리핑 배너(CopilotPanel)는 대시보드 개편에서 제거 — AI는 공용 플로팅 런처가 담당.
+  assert.doesNotMatch(homeSource, /CopilotPanel/);
+  assert.doesNotMatch(homeSource, /hideAssistantLauncher/);
   assert.doesNotMatch(homeSource, /function HomeNav/);
 
   // 통합 오버뷰 산출물은 보존 — 홈 구성 최종안이 결정될 때까지 삭제하지 않는다.

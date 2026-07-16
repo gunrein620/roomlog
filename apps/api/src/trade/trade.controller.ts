@@ -132,6 +132,15 @@ export class TradeController {
     return thread;
   }
 
+  /** 채팅방 나가기 — 내 목록에서만 숨긴다(상대는 유지). 새 메시지가 오면 되살아난다. */
+  @Post("threads/:threadId/leave")
+  leaveThread(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    return this.tradeService.leaveThread(this.user(authorization).id, threadId);
+  }
+
   /** 스레드의 최신 계약 — 채팅 화면이 제안 버튼/수락 카드 상태를 판단한다. */
   @Get("threads/:threadId/contract")
   contractForThread(

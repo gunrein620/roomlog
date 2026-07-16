@@ -10,6 +10,10 @@ import styles from "../billing-workspace.module.css";
 type SearchParams = Promise<{
   building?: string | string[];
   month?: string | string[];
+  historyFrom?: string | string[];
+  historyTo?: string | string[];
+  historyPreset?: string | string[];
+  order?: string | string[];
 }>;
 
 function single(value?: string | string[]) {
@@ -21,6 +25,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const data = await getManagerCollection({
     building: single(params.building),
     month: single(params.month),
+    historyFrom: single(params.historyFrom),
+    historyTo: single(params.historyTo),
   });
   const createHref = buildBillingScopeHref("/manager/billing/new", {
     building: data.scope.selectedBuilding,
@@ -32,9 +38,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     <BillingShell title="청구·수납 관리" active={routes.collection}>
       <div className={styles.workspace}>
         <BillingWorkspaceHeader
-          eyebrow="성과 분석"
+          eyebrow="수금 분석"
           title="수금 현황"
-          description="기간 추이와 건물별 성과를 비교해 수금이 떨어진 지점을 찾습니다. 월세와 관리비를 억지로 비교하지 않습니다."
+          description="선택 범위의 수금률과 수납 시점을 분석하고 원하는 기간의 실적 변화를 비교합니다."
           basePath="/manager/billing/collection"
           scope={data.scope}
           month={data.billingMonth}
@@ -42,12 +48,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           actionLabel={hasBuildings ? "청구서 생성" : "건물·호실 등록"}
         />
         {hasBuildings ? (
-          <CollectionWorkspace data={data} />
+          <CollectionWorkspace
+            data={data}
+            historyPreset={single(params.historyPreset)}
+            historyOrder={single(params.order)}
+          />
         ) : (
           <section className={styles.section}>
             <div className={styles.emptyState}>
               <h2 className={styles.sectionTitle}>분석할 건물이 없습니다.</h2>
-              <p>건물과 호실을 등록하면 월별·건물별 수금 성과를 확인할 수 있습니다.</p>
+              <p>건물과 호실을 등록하면 월별 수금률과 수납 시점 변화를 확인할 수 있습니다.</p>
               <Link className={styles.primaryLink} href={MHOME_ROUTES["M-HOME-05"]}>건물·호실 등록</Link>
             </div>
           </section>

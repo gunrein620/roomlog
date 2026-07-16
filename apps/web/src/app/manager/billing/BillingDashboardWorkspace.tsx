@@ -1,36 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Download,
   Search,
   WalletCards,
 } from "lucide-react";
-import type { BillStatus, ManagerBillRow } from "@roomlog/types";
+import type { ManagerBillDetail, ManagerBillRow } from "@roomlog/types";
 import type { ManagerDashboardData } from "@/lib/billing-manager-api";
 import {
   buildBillingScopeHref,
   filterDashboardBills,
   groupBillsByBuilding,
+  managerBillDisplayState,
+  managerBillStatusLabel,
   type DashboardBillSort,
   type DashboardQuickFilter,
   type DashboardReviewFilter,
 } from "@/lib/billing-manager-workspace";
+import { loadManagerBillDetailAction, publishBillAction } from "./actions";
 import styles from "./billing-workspace.module.css";
-
-const statusLabel: Record<BillStatus, string> = {
-  draft: "초안",
-  sent: "수납 대기",
-  confirming: "납부 확인 중",
-  partially_paid: "일부 수납",
-  paid: "수납 완료",
-  overdue: "연체",
-  corrected: "정정",
-  canceled: "취소",
-};
 
 function won(value: number) {
   return `${value.toLocaleString("ko-KR")}원`;
@@ -40,17 +33,157 @@ function percent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function billingMonthLabel(value: string) {
+  const [year, month] = value.split("-");
+  return year && month ? `${year}년 ${Number(month)}월` : value;
+}
+
 function unpaid(bill: ManagerBillRow) {
   return bill.unpaidAmount ?? Math.max(0, bill.totalAmount - bill.paidAmount);
 }
 
-function LedgerTable({ bills }: { bills: ManagerBillRow[] }) {
+interface LedgerTableProps {
+  bills: ManagerBillRow[];
+  expandedBillId?: string;
+  details: Record<string, ManagerBillDetail>;
+  loadingBillIds: ReadonlySet<string>;
+  errors: Record<string, string | undefined>;
+  onToggle: (bill: ManagerBillRow) => void;
+}
+
+function InlineBillDetail({
+  bill,
+  detail,
+  loading,
+  error,
+}: {
+  bill: ManagerBillRow;
+  detail?: ManagerBillDetail;
+  loading: boolean;
+  error?: string;
+}) {
+  if (loading) {
+    return <div className={styles.inlineDetailState} role="status">청구 정보를 불러오는 중입니다.</div>;
+  }
+
+  if (error || !detail) {
+    return (
+      <div className={styles.inlineDetailState} role="alert">
+        {error ?? "청구 상세 정보를 불러오지 못했습니다. 상세를 닫았다가 다시 열어 주세요."}
+      </div>
+    );
+  }
+
+  const latestHistory = detail.correctionHistory?.at(-1);
+
+  return (
+    <div className={styles.inlineDetailGrid}>
+      <div className={styles.inlineDetailGroup}>
+        <h3 className={styles.inlineDetailLabel}>청구 항목</h3>
+        <dl className={styles.inlineItemList}>
+          {detail.items.map((item, index) => (
+            <div className={styles.inlineItem} key={`${item.label}-${index}`}>
+              <dt>{item.label}</dt>
+              <dd>{won(item.amount)}</dd>
+            </div>
+          ))}
+          <div className={`${styles.inlineItem} ${styles.inlineDetailTotal}`}>
+            <dt>합계</dt>
+            <dd>{won(detail.totalAmount)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className={styles.inlineDetailGroup}>
+        <h3 className={styles.inlineDetailLabel}>납부 계좌</h3>
+        <dl className={styles.inlineItemList}>
+          <div className={styles.inlineItem}>
+            <dt>은행</dt>
+            <dd>{detail.account.bankName || "—"}</dd>
+          </div>
+          <div className={styles.inlineItem}>
+            <dt>계좌번호</dt>
+            <dd>{detail.account.accountNumber || "—"}</dd>
+          </div>
+          <div className={styles.inlineItem}>
+            <dt>예금주</dt>
+            <dd>{detail.account.accountHolder || "—"}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className={styles.inlineDetailGroup}>
+        <h3 className={styles.inlineDetailLabel}>청구 일정</h3>
+        <dl className={styles.inlineItemList}>
+          <div className={styles.inlineItem}>
+            <dt>청구월</dt>
+            <dd>{billingMonthLabel(detail.billingMonth)}</dd>
+          </div>
+          <div className={styles.inlineItem}>
+            <dt>납부기한</dt>
+            <dd>{detail.dueDate.slice(0, 10)}</dd>
+          </div>
+          <div className={styles.inlineItem}>
+            <dt>청구 생성</dt>
+            <dd>{detail.createdAt.slice(0, 10)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className={styles.inlineDetailGroup}>
+        <h3 className={styles.inlineDetailLabel}>처리 상태</h3>
+        <dl className={styles.inlineItemList}>
+          <div className={styles.inlineItem}>
+            <dt>현재 상태</dt>
+            <dd>{managerBillStatusLabel(bill)}</dd>
+          </div>
+          <div className={styles.inlineItem}>
+            <dt>확정 수납</dt>
+            <dd>{won(detail.paidAmount)}</dd>
+          </div>
+          <div className={styles.inlineItem}>
+            <dt>최근 갱신</dt>
+            <dd>{detail.updatedAt.slice(0, 10)}</dd>
+          </div>
+        </dl>
+        {latestHistory ? <p className={styles.inlineDetailNote}>{latestHistory}</p> : null}
+        {bill.status === "draft" ? (
+          <form action={publishBillAction} className={styles.inlinePublishForm}>
+            <input type="hidden" name="billId" value={bill.billId} />
+            <input type="hidden" name="billingMonth" value={bill.billingMonth} />
+            <input type="hidden" name="buildingName" value={bill.buildingName ?? ""} />
+            <button type="submit" className={styles.inlinePublishButton}>청구 확정·공개</button>
+          </form>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function LedgerTable({
+  bills,
+  expandedBillId,
+  details,
+  loadingBillIds,
+  errors,
+  onToggle,
+}: LedgerTableProps) {
   if (bills.length === 0) {
     return <div className={styles.emptyState}>조건에 맞는 청구가 없습니다.</div>;
   }
   return (
     <div className={styles.tableScroll}>
-      <table className={styles.table}>
+      <table className={`${styles.table} ${styles.ledgerTable}`}>
+        <colgroup>
+          <col className={styles.ledgerRoomColumn} />
+          <col className={styles.ledgerTenantColumn} />
+          <col className={styles.ledgerAmountColumn} />
+          <col className={styles.ledgerAmountColumn} />
+          <col className={styles.ledgerAmountColumn} />
+          <col className={styles.ledgerStatusColumn} />
+          <col className={styles.ledgerDueColumn} />
+          <col className={styles.ledgerActionColumn} />
+        </colgroup>
         <thead>
           <tr>
             <th>호실</th>
@@ -64,41 +197,85 @@ function LedgerTable({ bills }: { bills: ManagerBillRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {bills.map((bill) => (
-            <tr key={bill.billId}>
-              <td>{bill.unitId}호</td>
-              <td>{bill.tenantName}</td>
-              <td className={styles.numeric}>{won(bill.totalAmount)}</td>
-              <td className={styles.numeric}>{won(bill.paidAmount)}</td>
-              <td className={`${styles.numeric} ${unpaid(bill) > 0 ? styles.unpaid : ""}`}>
-                {won(unpaid(bill))}
-              </td>
-              <td>
-                <span className={styles.statusPill} data-state={bill.status}>
-                  {statusLabel[bill.status]}
-                </span>
-              </td>
-              <td>{bill.dueDate.slice(0, 10)}</td>
-              <td className={styles.numeric}>
-                <Link className={styles.textLink} href={`/manager/billing/${encodeURIComponent(bill.billId)}`}>
-                  상세
-                  <ChevronRight aria-hidden="true" size={14} />
-                </Link>
-              </td>
-            </tr>
-          ))}
+          {bills.map((bill) => {
+            const isExpanded = expandedBillId === bill.billId;
+            const detailId = `bill-inline-detail-${encodeURIComponent(bill.billId)}`;
+            return (
+              <Fragment key={bill.billId}>
+                <tr
+                  className={`${styles.ledgerInteractiveRow} ${isExpanded ? styles.ledgerRowExpanded : ""}`}
+                  onClick={() => onToggle(bill)}
+                >
+                  <td>{bill.unitId}호</td>
+                  <td>{bill.tenantName}</td>
+                  <td className={styles.numeric}>{won(bill.totalAmount)}</td>
+                  <td className={styles.numeric}>{won(bill.paidAmount)}</td>
+                  <td className={`${styles.numeric} ${unpaid(bill) > 0 ? styles.unpaid : ""}`}>
+                    {won(unpaid(bill))}
+                  </td>
+                  <td className={styles.ledgerStatusCell}>
+                    <span className={styles.statusPill} data-state={managerBillDisplayState(bill)}>
+                      {managerBillStatusLabel(bill)}
+                    </span>
+                  </td>
+                  <td>{bill.dueDate.slice(0, 10)}</td>
+                  <td className={styles.numeric}>
+                    <button
+                      type="button"
+                      className={styles.detailToggle}
+                      aria-expanded={isExpanded}
+                      aria-controls={detailId}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggle(bill);
+                      }}
+                    >
+                      상세
+                      {isExpanded ? <ChevronUp aria-hidden="true" size={14} /> : <ChevronDown aria-hidden="true" size={14} />}
+                    </button>
+                  </td>
+                </tr>
+                {isExpanded ? (
+                  <tr className={styles.inlineDetailRow}>
+                    <td className={styles.inlineDetailCell} colSpan={8} id={detailId}>
+                      <InlineBillDetail
+                        bill={bill}
+                        detail={details[bill.billId]}
+                        loading={loadingBillIds.has(bill.billId)}
+                        error={errors[bill.billId]}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData }) {
+export function BillingDashboardWorkspace({
+  data,
+  initialBillId,
+  initialBillDetail,
+}: {
+  data: ManagerDashboardData;
+  initialBillId?: string;
+  initialBillDetail?: ManagerBillDetail;
+}) {
   const [quick, setQuick] = useState<DashboardQuickFilter>("all");
   const [review, setReview] = useState<DashboardReviewFilter>("all");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState<DashboardBillSort>("unpaid_desc");
+  const [expandedBillId, setExpandedBillId] = useState<string | undefined>(initialBillId);
+  const [billDetails, setBillDetails] = useState<Record<string, ManagerBillDetail>>(() =>
+    initialBillId && initialBillDetail ? { [initialBillId]: initialBillDetail } : {},
+  );
+  const [loadingBillIds, setLoadingBillIds] = useState<Set<string>>(() => new Set());
+  const [billDetailErrors, setBillDetailErrors] = useState<Record<string, string | undefined>>({});
   const allGroups = useMemo(() => groupBillsByBuilding(data.bills), [data.bills]);
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(allGroups.map((group) => group.buildingName)),
@@ -137,6 +314,38 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
     });
   }
 
+  async function loadBillDetail(bill: ManagerBillRow) {
+    if (billDetails[bill.billId] || loadingBillIds.has(bill.billId)) return;
+
+    setLoadingBillIds((current) => new Set(current).add(bill.billId));
+    setBillDetailErrors((current) => ({ ...current, [bill.billId]: undefined }));
+    try {
+      const detail = await loadManagerBillDetailAction(bill.billId);
+      setBillDetails((current) => ({ ...current, [bill.billId]: detail }));
+    } catch (error) {
+      setBillDetailErrors((current) => ({
+        ...current,
+        [bill.billId]: error instanceof Error ? error.message : "청구 정보를 불러오지 못했습니다.",
+      }));
+    } finally {
+      setLoadingBillIds((current) => {
+        const next = new Set(current);
+        next.delete(bill.billId);
+        return next;
+      });
+    }
+  }
+
+  function toggleBillDetail(bill: ManagerBillRow) {
+    if (expandedBillId === bill.billId) {
+      setExpandedBillId(undefined);
+      return;
+    }
+
+    setExpandedBillId(bill.billId);
+    void loadBillDetail(bill);
+  }
+
   function exportCsv() {
     const rows = [
       ["건물", "호실", "임차인", "청구월", "청구액", "확정수납", "미수금", "상태", "납부기한"],
@@ -148,7 +357,7 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
         bill.totalAmount,
         bill.paidAmount,
         unpaid(bill),
-        statusLabel[bill.status],
+        managerBillStatusLabel(bill),
         bill.dueDate.slice(0, 10),
       ]),
     ];
@@ -192,7 +401,7 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
           <div className={styles.metricValue}>{percent(data.summary.collectionRate)}</div>
         </div>
         <div className={styles.summaryItem}>
-          <div className={styles.metricLabel}>활성 연체 세대</div>
+          <div className={styles.metricLabel}>연체 세대</div>
           <div className={styles.metricValue} data-tone={data.summary.overdueUnits ? "danger" : undefined}>
             {data.summary.overdueUnits}세대
           </div>
@@ -242,7 +451,7 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
 
         <article className={styles.previewPanel}>
           <div className={styles.previewTop}>
-            <h2 className={styles.previewTitle}>활성 연체</h2>
+            <h2 className={styles.previewTitle}>연체 현황</h2>
             <span className={styles.smallPill}>{data.summary.overdueUnits}세대</span>
           </div>
           <div className={`${styles.previewValue} ${overdue ? styles.unpaid : ""}`}>
@@ -289,7 +498,7 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
           {[
             ["all", "전체"],
             ["payment_review", "납부 확인"],
-            ["long_overdue", "장기 연체"],
+            ["long_overdue", "31일 이상"],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -328,6 +537,7 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
                 <option value="draft">초안</option>
                 <option value="sent">수납 대기</option>
                 <option value="confirming">납부 확인 중</option>
+                <option value="payment_review">입금 확인 대기</option>
                 <option value="partially_paid">일부 수납</option>
                 <option value="paid">수납 완료</option>
                 <option value="overdue">연체</option>
@@ -356,7 +566,14 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
             </Link>
           </div>
         ) : data.scope.selectedBuilding ? (
-          <LedgerTable bills={visibleBills} />
+          <LedgerTable
+            bills={visibleBills}
+            expandedBillId={expandedBillId}
+            details={billDetails}
+            loadingBillIds={loadingBillIds}
+            errors={billDetailErrors}
+            onToggle={toggleBillDetail}
+          />
         ) : (
           groups.map((group) => {
             const isExpanded = expanded.has(group.buildingName);
@@ -377,7 +594,16 @@ export function BillingDashboardWorkspace({ data }: { data: ManagerDashboardData
                   <span className={`${styles.buildingMetric} ${styles.unpaid}`}>미수 {won(group.unpaidAmount)}</span>
                   <span aria-hidden="true" />
                 </button>
-                {isExpanded ? <LedgerTable bills={group.bills} /> : null}
+                {isExpanded ? (
+                  <LedgerTable
+                    bills={group.bills}
+                    expandedBillId={expandedBillId}
+                    details={billDetails}
+                    loadingBillIds={loadingBillIds}
+                    errors={billDetailErrors}
+                    onToggle={toggleBillDetail}
+                  />
+                ) : null}
               </div>
             );
           })

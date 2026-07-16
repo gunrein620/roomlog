@@ -105,7 +105,7 @@ pnpm --filter web dev            # /splat-tour 새로고침
   로컬에서 톤매핑 후 전송(이번엔 ffmpeg zscale+hable로 해결했음).
 - 스크립트가 포즈 매칭률 33% 미만이면 학습 전에 중단한다(포즈 게이트). 좋은 캡처는 80%+가 정상.
 
-Scaniverse 산출물(참고 기준: `apps/web/public/samples/ms_home.spz`, 가우시안 42만)은 ARKit/LiDAR로
+로컬 Scaniverse 비교 산출물(저장소 미포함, 가우시안 42만)은 ARKit/LiDAR로
 포즈를 하드웨어에서 얻는다 — 나쁜 캡처 내성은 걔가 높고, 좋은 캡처의 렌더 품질은 오프라인 GPU 학습이 유리.
 
 ## Record3D 경로 (W1 — COLMAP 없는 파이프라인 검증)

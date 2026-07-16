@@ -37,6 +37,7 @@ export interface Thread {
   lastMessage: string;
   lastMessageSender?: MessageSender; // 목록 응답에도 포함 — 관리인 미응답(마지막 발신자=세입자) 판정용
   unreadCount: number; // 단일 미읽음 소스
+  managerUnreadCount: number; // 관리인이 아직 확인하지 않은 임차인 메시지 수
   pendingRequest: boolean; // 추가 사진/설명 요청 대기
   archivedNotice: boolean; // "이 대화는 관리 기록에 보관돼요" 고지
   updatedAt: string;
@@ -44,12 +45,39 @@ export interface Thread {
 }
 
 export interface CreateTenantMessagingThreadInput {
+  roomId?: string;
   context?: ThreadContext;
   contextRef?: string;
   contextLabel?: string;
-  body: string;
+  body?: string;
   kind?: MessageKind;
   attachmentUrls?: string[];
+}
+
+/** 세입자의 입주 연결을 기준으로 계산한 임대인 일반 대화 진입 정보. */
+export interface TenantLandlordConversation {
+  threadId?: string;
+  roomId: string;
+  buildingName: string;
+  unitId: string;
+  landlordName: string;
+}
+
+/** 관리인이 실제 호실 연결을 기준으로 대화를 시작할 수 있는 임차인. */
+export interface ManagerMessagingRecipient {
+  roomId: string;
+  buildingName: string;
+  unitId: string;
+  tenantId: string;
+  tenantName: string;
+  existingGeneralThreadId?: string;
+}
+
+/** 관리인이 계약 연결 임차인과 일반 대화를 시작하는 입력. */
+export interface StartManagerConversationInput {
+  roomId: string;
+  tenantId: string;
+  body: string;
 }
 
 /** 공지 카테고리 — 긴급만 확인 게이트 + 다국어 검수(D21) */

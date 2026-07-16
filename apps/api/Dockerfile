@@ -1,4 +1,6 @@
-# syntax=docker/dockerfile:1
+# `# syntax=docker/dockerfile:1` 지시어는 의도적으로 없음 — frontend 이미지 resolve가
+# 로컬 Docker Desktop에서 반복적으로 DeadlineExceeded를 내서, BuildKit 내장 frontend를 쓴다
+# (--mount=type=cache는 내장 frontend도 지원).
 # 베이스 이미지는 digest로 고정 — FROM 태그 조회 네트워크 왕복 최소화(빌드 타임아웃 완화).
 # node 버전 올릴 때: docker pull node:<태그> 후 RepoDigests 값으로 교체.
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS base
@@ -50,6 +52,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --filter api --prod --frozen-lockfile --store-dir /pnpm/store
 RUN pnpm --filter api exec prisma generate --schema ../../prisma/schema.prisma
 
+COPY apps/api/scripts ./apps/api/scripts
+COPY apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql ./apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql
 COPY --from=builder /app/packages/types ./packages/types
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 # GPU 오케스트레이터가 SSM으로 원격에 실을 재구성 스크립트(base64 인라인 소스). buildJobCommand가 /app/scripts/reconstruct에서 읽는다.
@@ -57,4 +61,4 @@ COPY scripts/reconstruct scripts/reconstruct
 
 EXPOSE 4000
 
-CMD ["sh", "-c", "pnpm --filter api exec prisma db push --config ../../prisma.config.ts && pnpm --filter api start:prod"]
+CMD ["pnpm", "--filter", "api", "start:prod"]

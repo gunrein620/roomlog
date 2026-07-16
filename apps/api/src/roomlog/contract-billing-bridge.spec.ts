@@ -74,6 +74,60 @@ function storedContract(service: RoomlogService, contractId: string) {
 }
 
 describe("trade contract billing bridge", () => {
+  it("explains why each current-building room cannot create a bill", () => {
+    const service = new RoomlogService();
+    const withoutContract = createTradeRoom(service, "청구불가-계약없음");
+    const noContractData = service.getManagerBillCreationOptions(
+      "landlord-demo",
+      withoutContract.buildingName,
+      "2026-08",
+    );
+    const noContract = noContractData.unavailableOptions.find(
+      (option) => option.roomId === withoutContract.id,
+    );
+    assert.deepEqual(noContract?.reasons, ["NO_CONTRACT"]);
+
+    const { room, contract } = createManagerDraft(service, "청구불가-검토중");
+    const pendingData = service.getManagerBillCreationOptions(
+      "landlord-demo",
+      room.buildingName,
+      "2026-08",
+    );
+    const pending = pendingData.unavailableOptions.find(
+      (option) => option.contractId === contract.id,
+    );
+    assert.ok(pending?.reasons.includes("CONTRACT_NOT_ACTIVE"));
+    assert.ok(pending?.reasons.includes("CONTRACT_NOT_CONFIRMED"));
+    assert.ok(pending?.reasons.includes("CONTRACT_VALUES_NOT_CONFIRMED"));
+    assert.ok(pending?.reasons.includes("MONTHLY_RENT_MISSING"));
+    assert.ok(pending?.reasons.includes("MAINTENANCE_FEE_MISSING"));
+    assert.ok(pending?.reasons.includes("PAYMENT_DAY_MISSING"));
+  });
+
+  it("returns the contract attached to the tenant current room", () => {
+    const service = new RoomlogService();
+    const first = createTradeDraft(service, "tenant-current-old", 610_000);
+    service.updateManagerContractManualValues("landlord-demo", first.contract.id, {
+      maintenanceFee: 50_000,
+      paymentDay: 5,
+      startDate: "2000-01-01",
+      endDate: "2099-12-31",
+    });
+    const second = createTradeDraft(service, "tenant-current-new", 730_000);
+    service.updateManagerContractManualValues("landlord-demo", second.contract.id, {
+      maintenanceFee: 80_000,
+      paymentDay: 25,
+      startDate: "2000-01-01",
+      endDate: "2099-12-31",
+    });
+
+    const current = service.getTenantCurrentContract("tenant-demo");
+    assert.equal(current?.id, second.contract.id);
+    assert.equal(current?.monthlyRent, 730_000);
+    assert.equal(current?.maintenanceFee, 80_000);
+    assert.equal(current?.paymentDay, 25);
+  });
+
   it("awaits manager confirmation projection and reprojects confirmed state on retry", async () => {
     let rejectConfirmedSnapshot = true;
     let targetContractId: string | undefined;
@@ -128,6 +182,43 @@ describe("trade contract billing bridge", () => {
     const extraction = projected.contractExtractions.find((item) => item.contractId === contract.id);
     assert.equal(extraction?.confirmed, true);
     assert.equal(extraction?.items.some((item) => item.needsCheck), false);
+  });
+
+  it("waits for manual contract value projection before reporting save success", async () => {
+    let rejectManualSnapshot = false;
+    let targetContractId: string | undefined;
+    const service = new RoomlogService({
+      storeProjector: {
+        persist: async (store) => {
+          const hasUpdatedContract = store.contracts.some(
+            (contract) =>
+              contract.id === targetContractId &&
+              contract.maintenanceFee === 70_000 &&
+              contract.startDate === "2026-07-14",
+          );
+          if (rejectManualSnapshot && hasUpdatedContract) {
+            throw new Error("manual contract projector unavailable");
+          }
+        },
+      },
+    });
+    const { contract } = createTradeDraft(service, "manager-manual-value-projector");
+    targetContractId = contract.id;
+    await service.ensurePersistenceDurability();
+
+    const auth = service.login({ email: "manager@roomlog.test", password: "password123!" });
+    const controller = new RoomlogController(service, new RealtimeGateway());
+    const header = `Bearer ${auth.accessToken}`;
+    rejectManualSnapshot = true;
+
+    await assert.rejects(
+      async () => controller.updateManagerContractManualValues(header, contract.id, {
+        maintenanceFee: 70_000,
+        startDate: "2026-07-14",
+        endDate: "2099-07-13",
+      }),
+      /manual contract projector unavailable/,
+    );
   });
 
   it("scopes manager contract invite links to the exact selected contract", () => {

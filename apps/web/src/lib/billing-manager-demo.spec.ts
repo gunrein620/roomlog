@@ -5,6 +5,8 @@ import {
   DEMO_DASHBOARD,
   DEMO_DEPOSITS_DATA,
   DEMO_OVERDUE,
+  demoManagerBillCreation,
+  demoManagerCollection,
 } from "./billing-manager-demo";
 
 describe("manager billing demo fallback data", () => {
@@ -17,5 +19,28 @@ describe("manager billing demo fallback data", () => {
     assert.equal(DEMO_DEPOSITS_DATA.mismatchDeposits.length, 5, "불일치 확인 요청은 5건이어야 한다.");
     assert.equal(DEMO_OVERDUE.activeCases.length, 5, "연체 세대 목록은 5건이어야 한다.");
     assert.equal(DEMO_OVERDUE.waitingCases.length, 5, "확인 대기 목록은 5건이어야 한다.");
+  });
+
+  it("marks bill-creation fallback data as read-only", () => {
+    const data = demoManagerBillCreation({ month: "2026-08" });
+
+    assert.equal(data.readOnly, true);
+    assert.equal(data.unavailableOptions.length, 0);
+  });
+
+  it("does not pad collection fallback outside its recorded month range", () => {
+    const firstTwoMonths = demoManagerCollection({ month: "2025-09" });
+    assert.deepEqual(
+      firstTwoMonths.trend.map((point) => point.billingMonth),
+      ["2025-08", "2025-09"],
+    );
+
+    const afterLastRecord = demoManagerCollection({ month: "2026-08" });
+    assert.equal(afterLastRecord.trend.length, 6);
+    assert.equal(afterLastRecord.trend.at(-1)?.billingMonth, "2026-07");
+    assert.equal(afterLastRecord.trend.every((point) => point.billedAmount > 0), true);
+
+    const beforeFirstRecord = demoManagerCollection({ month: "2025-07" });
+    assert.deepEqual(beforeFirstRecord.trend, []);
   });
 });

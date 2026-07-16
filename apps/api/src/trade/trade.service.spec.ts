@@ -90,6 +90,23 @@ describe("TradeService public listings", () => {
 
     assert.equal(created.detailAddress, undefined);
   });
+
+  it("stores only allowed options in canonical order and defaults to []", () => {
+    const service = serviceWithTempStore();
+
+    // 허용 목록 밖 값·중복은 버리고, 저장 순서는 허용 목록 순서를 따른다.
+    const created = service.createListing(owner, {
+      ...input,
+      options: ["CCTV", "에어컨", "금고", "에어컨"]
+    });
+    assert.deepEqual(created.options, ["에어컨", "CCTV"]);
+
+    const withoutOptions = service.createListing(owner, { ...input, title: "옵션 없는 매물" });
+    assert.deepEqual(withoutOptions.options, []);
+
+    const updated = service.updateListing(owner, created.id, { options: ["세탁기"] });
+    assert.deepEqual(updated.options, ["세탁기"]);
+  });
 });
 
 describe("TradeService contract acceptance", () => {
@@ -337,5 +354,40 @@ describe("TradeService atomic file persistence", () => {
     );
     assert.deepEqual(messageCase.service.getThread(tenant.id, thread.id), beforeThread);
     assert.equal(readFileSync(messageCase.filePath, "utf8"), beforeMessageFile);
+  });
+});
+
+describe("TradeService thread leave", () => {
+  it("hides a left thread only for the leaver and revives it on a new message", () => {
+    const service = serviceWithTempStore();
+    const tenant = { id: "tenant-leave", name: "나가는 세입자" };
+    const listing = service.createListing(owner, input);
+    const thread = service.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "문의드립니다"
+    });
+
+    service.leaveThread(tenant.id, thread.id);
+    assert.deepEqual(service.listThreads(tenant.id), []);
+    // 상대(집주인) 목록에는 그대로 남는다.
+    assert.equal(service.listThreads(owner.id).length, 1);
+
+    // 새 메시지가 오면 나간 사람의 목록에도 되살아난다.
+    service.sendMessage(owner, thread.id, "아직 보고 계신가요?");
+    assert.equal(service.listThreads(tenant.id).length, 1);
+  });
+
+  it("rejects leaving a thread the user is not part of", () => {
+    const service = serviceWithTempStore();
+    const tenant = { id: "tenant-leave-2", name: "세입자" };
+    const listing = service.createListing(owner, input);
+    const thread = service.createInquiry(tenant, {
+      listingId: listing.id,
+      listingTitle: listing.title,
+      message: "문의드립니다"
+    });
+
+    assert.throws(() => service.leaveThread("stranger-1", thread.id), /참여자가 아닙니다/);
   });
 });

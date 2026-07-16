@@ -8,6 +8,7 @@ import {
   formatDefectDate,
   formatDefectMoney,
   paginateDefectRows,
+  resolveManagerAttachmentUrl,
   ticketStatusGroup,
   type DefectDashboardRow,
 } from "./ticket-dashboard-model";
@@ -139,5 +140,24 @@ describe("manager defect dashboard model", () => {
     assert.equal(formatDefectDate(), "—");
     assert.equal(formatDefectMoney(100000), "100,000");
     assert.equal(formatDefectMoney(), "—");
+  });
+
+  it("resolves local API file paths against an absolute public API base", () => {
+    assert.equal(
+      resolveManagerAttachmentUrl("/api/files/high.png", "http://localhost:4000"),
+      "http://localhost:4000/api/files/high.png",
+    );
+    assert.equal(
+      resolveManagerAttachmentUrl("/api/files/high.png", "http://localhost:4000/api"),
+      "http://localhost:4000/api/files/high.png",
+    );
+    assert.equal(
+      resolveManagerAttachmentUrl("/api/files/high.png", "/api"),
+      "/api/files/high.png",
+    );
+    assert.equal(
+      resolveManagerAttachmentUrl("https://cdn.example.com/high.png", "http://localhost:4000"),
+      "https://cdn.example.com/high.png",
+    );
   });
 });

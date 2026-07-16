@@ -30,12 +30,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     getManagerAnalysis(ticketId),
     getManagerRepair(ticketId),
   ]);
-  const completionGuard = repair.stage === "completed" || repair.stage === "paid";
+  const completionGuard = repair?.stage === "completed" || repair?.stage === "paid";
 
   return (
     <div style={pageStack}>
       <TicketHeader ticket={ticket} title="티켓 상세 & 검토" />
-      <StatusBadges ticket={ticket} repair={repair} />
+      <StatusBadges ticket={ticket} repair={repair ?? undefined} />
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "var(--space-lg)", alignItems: "start" }}>
         <div style={pageStack}>

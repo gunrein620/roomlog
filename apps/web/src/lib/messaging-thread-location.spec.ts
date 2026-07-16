@@ -42,6 +42,41 @@ test("uses the shared location label on manager messaging list and detail pages"
   assert.match(detailPage, /aria-label=\{`\$\{locationLabel\}/);
 });
 
+test("hides the connected-work note while keeping the context title", () => {
+  assert.doesNotMatch(detailPage, /연결된 업무:/);
+  assert.doesNotMatch(detailPage, /임차인에게도 같은 대화가 표시됩니다\./);
+  assert.match(detailPage, /thread\.contextLabel \?\? "일반 문의"/);
+});
+
+test("hides secondary context badges while keeping primary context", () => {
+  assert.doesNotMatch(detailPage, /<Badge>\{thread\.tenantId\}<\/Badge>/);
+  assert.doesNotMatch(detailPage, /<Badge>\{CONTEXT_LABEL\[thread\.context\]\}<\/Badge>/);
+  assert.match(detailPage, /<Badge emphasis>\{locationLabel\}<\/Badge>/);
+  assert.match(detailPage, /thread\.pendingRequest \? <Badge emphasis>추가요청 대기<\/Badge>/);
+  assert.match(detailPage, /thread\.contextLabel \?\? "일반 문의"/);
+});
+
+test("removes non-working messaging actions and their empty side rail", () => {
+  for (const text of [
+    "사진 요청",
+    "설명 요청",
+    "AI 답장 초안",
+    "초안 적용",
+    "음성 받아쓰기 → 텍스트 확인",
+  ]) {
+    assert.doesNotMatch(detailPage, new RegExp(text));
+  }
+
+  assert.doesNotMatch(detailPage, /StaticButton/);
+  assert.doesNotMatch(detailPage, /<aside/);
+  assert.doesNotMatch(detailPage, /340px/);
+  assert.match(detailPage, /<ManagerThreadReadReceipt threadId=\{thread\.id\} \/>/);
+  assert.match(detailPage, /<MessageAutoRefresh intervalMs=\{3000\} \/>/);
+  assert.match(detailPage, />메시지 타임라인<\/div>/);
+  assert.match(detailPage, /<Input name="body"/);
+  assert.match(detailPage, /<Button type="submit">답장 보내기<\/Button>/);
+});
+
 test("keeps the reply-needed badge balanced on exactly two accessible lines", () => {
   assert.match(listPage, /aria-label="답장 필요"/);
   assert.match(listPage, /<span>답장<\/span>/);
@@ -54,5 +89,11 @@ test("replaces messaging tabs with the building ticket filter", () => {
   assert.doesNotMatch(listPage, /listAnnouncementDrafts|listAnnouncementResults/);
   assert.match(listPage, /<BuildingFilter/);
   assert.match(listPage, /건물별 · 답장 필요 상단/);
-  assert.match(listPage, /선택한 건물의 티켓이 없습니다\./);
+  assert.match(listPage, /이 건물에는 아직 시작된 대화가 없습니다\./);
+});
+
+test("loads contract recipients and mounts the new conversation form", () => {
+  assert.match(listPage, /listManagerMessagingRecipients/);
+  assert.match(listPage, /getBuildingOptions\(threads, recipients\)/);
+  assert.match(listPage, /<NewConversationForm/);
 });

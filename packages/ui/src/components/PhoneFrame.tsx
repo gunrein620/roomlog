@@ -6,10 +6,11 @@ export interface PhoneFrameProps {
   label?: ReactNode;
   /** 집우집주 홈 링크 — 룸로그 화면에서 부동산 앱으로 돌아가는 동선. null이면 숨김 */
   homeHref?: string | null;
+  fitViewport?: boolean;
 }
 
 /** 임차인·업체 화면용 폰 프레임 (390×844 중앙 배치, WOOZU 스킨) */
-export function PhoneFrame({ children, label, homeHref = "/" }: PhoneFrameProps) {
+export function PhoneFrame({ children, label, homeHref = "/", fitViewport = false }: PhoneFrameProps) {
   return (
     <div
       style={{
@@ -60,7 +61,7 @@ export function PhoneFrame({ children, label, homeHref = "/" }: PhoneFrameProps)
       <div
         style={{
           width: "var(--phone-w)",
-          height: "var(--phone-h)",
+          height: fitViewport ? "min(var(--phone-h), calc(100vh - 92px))" : "var(--phone-h)",
           border: "1px solid var(--border)",
           borderRadius: 22,
           background: "var(--surface-container-lowest)",

@@ -123,8 +123,10 @@ function harness(configOver: Partial<OrchestratorConfig> = {}) {
   const gpu = new FakeGpu();
   const notifies: NotifyCall[] = [];
   const gateway = {
-    notifyUsers: (ids: string[], event: string, payload: Record<string, unknown>) =>
-      notifies.push({ ids, event, payload })
+    notifyUsers: (ids: string[], event: string, payload: Record<string, unknown>) => {
+      notifies.push({ ids, event, payload });
+      return true; // dev 머지로 RealtimeGateway.notifyUsers 반환형이 boolean이 됨
+    }
   };
   let clock = 1_000_000;
   const config: Partial<OrchestratorConfig> = {

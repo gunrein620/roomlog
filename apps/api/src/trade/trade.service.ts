@@ -49,7 +49,11 @@ export type TradeListingInput = {
   monthlyRentManwon: number;
   location: string;
   detailAddress?: string;
+  /** 건물명 — 관리 화면에서 건물별 그룹 보기의 기준(선택 입력) */
+  buildingName?: string;
   description?: string;
+  /** 옵션(에어컨·세탁기 등) — ALLOWED_LISTING_OPTIONS 안의 값만 저장 */
+  options?: string[];
   /** 업로드된 매물 사진 URL 배열(없으면 카드가 목업으로 폴백) */
   images?: string[];
   /** 주소 지오코딩 좌표(없으면 상세 지도는 데모/안내 상태 유지) */
@@ -59,13 +63,14 @@ export type TradeListingInput = {
   floorPlan?: ListingFloorPlan | null;
 };
 
-export type TradeListing = Omit<TradeListingInput, "images"> & {
+export type TradeListing = Omit<TradeListingInput, "images" | "options"> & {
   id: string;
   ownerId: string;
   ownerName: string;
   status: "노출중" | "계약완료";
   createdAt: string;
   images: string[];
+  options: string[];
 };
 
 /**
@@ -113,6 +118,8 @@ export type TradeThread = {
   createdAt: string;
   updatedAt: string;
   messages: TradeMessage[];
+  /** 채팅방을 나간 참여자 — 이 사용자의 목록에서 숨긴다. 새 메시지가 오면 되살아난다. */
+  leftUserIds?: string[];
 };
 
 export type TradeThreadSummary = {
@@ -162,8 +169,23 @@ function normalizeCoords(lat?: number, lng?: number): { lat?: number; lng?: numb
   return { lat: latNum, lng: lngNum };
 }
 
+/** 등록 폼에서 선택 가능한 옵션 목록 — 웹(listing-catalog.ts optionItems)과 같은 순서를 유지한다. */
+export const ALLOWED_LISTING_OPTIONS = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"] as const;
+
+/** 옵션 정규화 — 허용 목록에 있는 값만, 허용 목록 순서로 중복 없이 저장. */
+function normalizeOptions(options?: string[]): string[] {
+  if (!Array.isArray(options)) return [];
+  const selected = new Set(options.filter((item): item is string => typeof item === "string").map((item) => item.trim()));
+  return ALLOWED_LISTING_OPTIONS.filter((item) => selected.has(item));
+}
+
 function normalizeDetailAddress(value?: string): string | undefined {
   const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || undefined;
+}
+
+function normalizeBuildingName(value?: string): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim().slice(0, 80) : "";
   return trimmed || undefined;
 }
 
@@ -382,10 +404,14 @@ export class TradeService implements OnModuleDestroy {
         // 구버전 레코드 후방호환 — images/contracts 없으면 빈 값으로, 손상된 floorPlan은 제거한다.
         parsed.listings.forEach((listing) => {
           listing.images = normalizeImages(listing.images);
+          listing.options = normalizeOptions(listing.options);
           listing.floorPlan = normalizeFloorPlan(listing.floorPlan);
           const detailAddress = normalizeDetailAddress(listing.detailAddress);
           if (detailAddress) listing.detailAddress = detailAddress;
           else delete listing.detailAddress;
+          const buildingName = normalizeBuildingName(listing.buildingName);
+          if (buildingName) listing.buildingName = buildingName;
+          else delete listing.buildingName;
           if (listing.status !== "계약완료") listing.status = "노출중";
         });
         parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
@@ -478,6 +504,7 @@ export class TradeService implements OnModuleDestroy {
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
     const detailAddress = normalizeDetailAddress(input.detailAddress);
+    const buildingName = normalizeBuildingName(input.buildingName);
     const listing: TradeListing = {
       id: randomUUID().slice(0, 8),
       ownerId: owner.id,
@@ -489,7 +516,9 @@ export class TradeService implements OnModuleDestroy {
       monthlyRentManwon: Number(input.monthlyRentManwon) || 0,
       location: input.location?.trim() || "위치 미입력",
       ...(detailAddress ? { detailAddress } : {}),
+      ...(buildingName ? { buildingName } : {}),
       description: input.description?.trim() || "",
+      options: normalizeOptions(input.options),
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
       ...(normalizeFloorPlan(input.floorPlan) ? { floorPlan: normalizeFloorPlan(input.floorPlan) } : {}),
@@ -536,7 +565,13 @@ export class TradeService implements OnModuleDestroy {
       if (detailAddress) listing.detailAddress = detailAddress;
       else delete listing.detailAddress;
     }
+    if (typeof input.buildingName === "string") {
+      const buildingName = normalizeBuildingName(input.buildingName);
+      if (buildingName) listing.buildingName = buildingName;
+      else delete listing.buildingName;
+    }
     if (typeof input.description === "string") listing.description = input.description.trim();
+    if (Array.isArray(input.options)) listing.options = normalizeOptions(input.options);
     if (Array.isArray(input.images)) listing.images = normalizeImages(input.images);
     if (input.lat !== undefined || input.lng !== undefined) {
       const coords = normalizeCoords(input.lat, input.lng);
@@ -621,6 +656,7 @@ export class TradeService implements OnModuleDestroy {
   listThreads(userId: string): TradeThreadSummary[] {
     return this.store.threads
       .filter((thread) => thread.buyerId === userId || thread.ownerId === userId)
+      .filter((thread) => !thread.leftUserIds?.includes(userId))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map((thread) => {
         const last = thread.messages[thread.messages.length - 1];
@@ -666,6 +702,20 @@ export class TradeService implements OnModuleDestroy {
       createdAt: now
     });
     thread.updatedAt = now;
+    // 새 메시지는 나간 사람의 목록에도 채팅방을 되살린다(같은 매물 재문의·상대의 후속 연락).
+    if (thread.leftUserIds?.length) delete thread.leftUserIds;
+  }
+
+  /** 채팅방 나가기 — 내 목록에서만 숨긴다(상대는 그대로). 새 메시지가 오면 다시 나타난다. */
+  leaveThread(userId: string, threadId: string): { ok: true } {
+    const thread = this.getThread(userId, threadId);
+    const left = new Set(thread.leftUserIds ?? []);
+    if (!left.has(userId)) {
+      left.add(userId);
+      thread.leftUserIds = [...left];
+      this.persist();
+    }
+    return { ok: true };
   }
 
   /** 계약 조건 한 줄 표기 — 채팅 안내 메시지 공용. */

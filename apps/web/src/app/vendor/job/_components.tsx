@@ -1,10 +1,13 @@
 import Link from "next/link";
-import type { DefectAnalysis, RepairJob, Ticket } from "@roomlog/types";
-import { Badge, Button, Card, Input } from "@roomlog/ui";
-import { ROUTES, type VendorRoute } from "@/lib/vendor-nav";
-
-export const DEMO_EXPIRES_AT = "2026-07-04 18:00";
-export const REQUESTER = "성수 ○○관리사무소";
+import type { VendorJobDetail, VendorJobSummary } from "@roomlog/types";
+import { Badge, Card } from "@roomlog/ui";
+import type { VendorRoute } from "@/lib/vendor-nav";
+import { resolveAssetFileUrl } from "@/lib/splat-asset-api";
+import {
+  estimateStatusLabel,
+  paymentStatusLabel,
+  vendorJobStatusLabel,
+} from "@/lib/vendor-workflow-presenter";
 
 export const primaryLinkStyle = {
   height: "var(--touch-target)",
@@ -53,11 +56,9 @@ export const mutedStyle = {
 
 export function ScreenHeader({
   title,
-  ticketId,
   backTo,
 }: {
   title: string;
-  ticketId?: string;
   backTo?: string;
 }) {
   return (
@@ -81,7 +82,6 @@ export function ScreenHeader({
       )}
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
-        {ticketId && <div style={{ ...mutedStyle, marginTop: 2 }}>건 ID {ticketId}</div>}
       </div>
       <div style={{ width: 34 }} />
     </header>
@@ -172,98 +172,179 @@ export function InfoRow({ label, value }: { label: string; value: React.ReactNod
   );
 }
 
-export function TrustBadges() {
+export function InlineNotice({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "danger" | "success";
+}) {
+  const color = tone === "danger"
+    ? "var(--error)"
+    : tone === "success"
+      ? "var(--success)"
+      : "var(--on-surface-variant)";
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      <Badge emphasis>정식 요청</Badge>
-      <Badge>사진 메타데이터 제거</Badge>
-      <Badge>PII 마스킹</Badge>
+    <div
+      role={tone === "danger" ? "alert" : "status"}
+      style={{
+        padding: "10px 12px",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-md)",
+        background: "var(--surface-container)",
+        color,
+        fontSize: "var(--fs-caption)",
+        lineHeight: 1.5,
+      }}
+    >
+      {children}
     </div>
   );
 }
 
-export function ContactThread() {
+export function DemoReadOnlyNotice() {
   return (
-    <details
-      style={{
-        border: "1px dashed var(--outline-variant)",
-        borderRadius: "var(--radius-md)",
-        padding: 12,
-      }}
-    >
-      <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700 }}>관리자에게 문의</summary>
-      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-        <Input placeholder="개인 연락처·상세주소 없이 질문 입력" />
-        <Button fullWidth variant="secondary">문의 보내기</Button>
-        <p style={mutedStyle}>문의와 답변은 관리자 검수·마스킹 후 건 ID에 귀속됩니다.</p>
-      </div>
-    </details>
+    <InlineNotice>
+      API에 연결되지 않아 예시 데이터를 읽기 전용으로 표시합니다. 저장·제출·작업 시작은
+      실제 연결 후 사용할 수 있습니다.
+    </InlineNotice>
   );
 }
 
-export function PhotoPreview() {
+export function AttachmentGallery({
+  urls,
+  emptyLabel = "첨부된 사진이 없습니다.",
+}: {
+  urls?: string[];
+  emptyLabel?: string;
+}) {
+  const safeUrls = Array.from(new Set((urls ?? []).filter((url) =>
+    typeof url === "string" && url.trim().length > 0
+  )));
+  if (safeUrls.length === 0) {
+    return <p style={{ ...mutedStyle, margin: 0 }}>{emptyLabel}</p>;
+  }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-      {["누수 부위", "바닥 고임"].map((label) => (
-        <div
-          key={label}
+      {safeUrls.map((url, index) => (
+        <img
+          key={url}
+          src={resolveAssetFileUrl(url)}
+          alt={`수리 자료 ${index + 1}`}
+          loading="lazy"
           style={{
+            display: "block",
+            width: "100%",
             aspectRatio: "1 / 1",
+            objectFit: "cover",
             border: "1px solid var(--border)",
             borderRadius: "var(--radius-md)",
             background: "var(--surface-container)",
-            display: "flex",
-            alignItems: "end",
-            padding: 8,
-            boxSizing: "border-box",
           }}
-        >
-          <Badge>{label}</Badge>
-        </div>
+        />
       ))}
     </div>
   );
 }
 
-export function TicketSummary({
-  ticket,
-  analysis,
-}: {
-  ticket: Ticket;
-  analysis: DefectAnalysis;
-}) {
+export function WorkflowJobSummary({ job }: { job: VendorJobSummary | VendorJobDetail }) {
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 15, fontWeight: 800 }}>{ticket.title}</div>
-        <Badge emphasis>긴급도 {ticket.urgency}</Badge>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>{job.title}</div>
+          <div style={{ ...mutedStyle, marginTop: 3 }}>{job.publicLocation}</div>
+        </div>
+        <Badge emphasis>{vendorJobStatusLabel(job.status)}</Badge>
       </div>
-      <p style={{ ...mutedStyle, margin: 0 }}>{ticket.description}</p>
-      <InfoRow label="예상 문제" value={analysis.problemCandidates[0] ?? "확인 필요"} />
-      <InfoRow label="방문 가능" value="평일 오전·주말 협의" />
-      <InfoRow label="대략 위치" value={ticket.location} />
+      <InfoRow label="작업 분야" value={job.trade || "확인 필요"} />
+      {"description" in job && job.description ? (
+        <p style={{ ...mutedStyle, margin: 0 }}>{job.description}</p>
+      ) : null}
+      <InfoRow label="최근 업데이트" value={formatDateTime(job.updatedAt)} />
     </Card>
   );
 }
 
-export function QuoteSummary({ repair }: { repair: RepairJob }) {
-  const quoteTypeLabel = repair.quoteType === "visit" ? "방문 견적" : repair.quoteType === "decline" ? "견적 불가" : "숫자 견적";
+export function WorkflowEstimateSummary({ job }: { job: VendorJobSummary | VendorJobDetail }) {
+  const estimate = job.latestEstimate;
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <InfoRow label="회신 유형" value={quoteTypeLabel} />
-      <InfoRow label="견적" value={repair.quoteAmount ? `${repair.quoteAmount.toLocaleString()}원` : "현장 확인 필요"} />
-      <InfoRow label="방문 가능" value={formatVisitTime(repair.scheduledAt)} />
-      {repair.quoteNote && <p style={{ ...mutedStyle, margin: 0 }}>{repair.quoteNote}</p>}
+    <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={labelStyle}>견적 회신</div>
+      <InfoRow label="상태" value={estimateStatusLabel(estimate?.status)} />
+      {estimate ? (
+        <>
+          <InfoRow
+            label="회신 방식"
+            value={estimate.responseType === "FIXED_ESTIMATE"
+              ? "고정 견적"
+              : estimate.responseType === "VISIT_REQUIRED"
+                ? "방문 후 견적"
+                : "진행 불가"}
+          />
+          {estimate.totalAmount !== undefined ? (
+            <InfoRow label="견적 합계" value={`${estimate.totalAmount.toLocaleString()}원`} />
+          ) : null}
+          {estimate.visitAvailableAt ? (
+            <InfoRow label="방문 가능 시간" value={formatDateTime(estimate.visitAvailableAt)} />
+          ) : null}
+          {estimate.workDescription ? (
+            <p style={{ ...mutedStyle, margin: 0 }}>{estimate.workDescription}</p>
+          ) : null}
+          {estimate.declineReason ? (
+            <p style={{ ...mutedStyle, margin: 0 }}>{estimate.declineReason}</p>
+          ) : null}
+          {estimate.lineItems.map((line) => (
+            <InfoRow
+              key={line.id}
+              label={line.description}
+              value={`${line.lineAmount.toLocaleString()}원`}
+            />
+          ))}
+        </>
+      ) : (
+        <p style={{ ...mutedStyle, margin: 0 }}>아직 저장된 견적이 없습니다.</p>
+      )}
     </Card>
   );
 }
 
-export function formatVisitTime(iso?: string) {
-  if (!iso) return "일정 미정";
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours() < 12 ? "오전" : "오후"} ${d.getHours() % 12 || 12}:00`;
+export function SettlementSummary({ job }: { job: VendorJobSummary | VendorJobDetail }) {
+  const payment = job.paymentRequest;
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={labelStyle}>정산 진행</div>
+      <InfoRow label="현재 상태" value={paymentStatusLabel(payment?.status)} />
+      {payment ? (
+        <>
+          <InfoRow label="정산 금액" value={`${payment.amount.toLocaleString()}원`} />
+          {payment.processedAt ? (
+            <InfoRow label="처리 일시" value={formatDateTime(payment.processedAt)} />
+          ) : null}
+          {payment.failureReason ? (
+            <p style={{ ...mutedStyle, margin: 0 }}>
+              지급 처리는 관리자 확인 중입니다. 세부 내부 사유는 관리자에게 문의해 주세요.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p style={{ ...mutedStyle, margin: 0 }}>
+          완료 보고가 승인되면 승인된 견적 금액으로 정산 요청이 생성됩니다.
+        </p>
+      )}
+    </Card>
+  );
 }
 
-export function routes() {
-  return ROUTES;
+export function formatDateTime(iso?: string) {
+  if (!iso) return "일정 미정";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "일정 확인 필요";
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
 }

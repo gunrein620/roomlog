@@ -6,6 +6,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
   Optional,
   UnauthorizedException
 } from "@nestjs/common";
@@ -18,6 +19,12 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, join } from "node:path";
+import type {
+  TicketType,
+  VendorAccountView,
+  VendorActivationClaimResult,
+  VendorActivationPreviewEnvelope
+} from "@roomlog/types";
 import {
   billingDateInSeoul,
   billingMonthInSeoul,
@@ -26,6 +33,10 @@ import {
   isBillPaymentOpen,
   paymentHistoryInclusiveDays
 } from "@roomlog/types/payment";
+import {
+  TossPaymentsHttpGateway,
+  type TossPaymentGateway
+} from "../payment/toss-payment.gateway";
 import { createFileStorageAdapter, FileStorageAdapter } from "./storage.service";
 import {
   hasRequiredPasswordMix,
@@ -41,10 +52,21 @@ import {
 import { RoomlogAuthDomain } from "./services/roomlog-auth.domain";
 import { RoomlogFloorPlanDomain } from "./services/roomlog-floor-plan.domain";
 import { RoomlogCostDomain } from "./services/roomlog-cost.domain";
+import {
+  NoopFinancialCostReader,
+  type FinancialCostReader
+} from "./services/prisma-financial-cost.reader";
 import { RoomlogChecklistDomain } from "./services/roomlog-checklist.domain";
 import { RoomlogContractDomain } from "./services/roomlog-contract.domain";
 import { RoomlogVendorMgmtDomain } from "./services/roomlog-vendor-mgmt.domain";
-import { RoomlogVendorRepairDomain } from "./services/roomlog-vendor-repair.domain";
+import { RoomlogVendorActivationDomain } from "./services/roomlog-vendor-activation.domain";
+import type { VendorActivationSecurityConfig } from "./services/vendor-activation-security";
+import type {
+  VendorAccountResolver,
+  VendorActivationRepository
+} from "./vendor-activation.repository";
+import { UnavailableVendorActivationRepository } from "./unavailable-vendor-activation.repository";
+import type { TenantVendorWorkflowAuthority } from "./tenant-vendor-connection.repository";
 import { RoomlogMessagingDomain } from "./services/roomlog-messaging.domain";
 import { RoomlogAnnouncementTranslationService } from "./services/roomlog-announcement-translation.service";
 import { RoomlogMoveoutDomain } from "./services/roomlog-moveout.domain";
@@ -58,12 +80,10 @@ import {
   AddMessagingThreadMessageInput,
   AnnouncementTranslationRequest,
   AddTenantComplaintMessageInput,
-  AddVendorRepairMessageInput,
   AskManagerReportChatInput,
   AiFeedback,
   AiFeedbackTarget,
   AiAnalysis,
-  ApproveRepairEstimateInput,
   AssignVendorInput,
   Attachment,
   Bill,
@@ -153,6 +173,7 @@ import {
   ManagerAssistantQueryInput,
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
+  ManagerDunningActionPreview,
   ManagerRealtimeClientSecretResult,
   ManagerReport,
   ManagerReportAuditLogEntry,
@@ -192,7 +213,6 @@ import {
   RepairRequest,
   RepairStatus,
   ReviewTenantAiFeedbackInput,
-  ReportCompletionInput,
   Receipt,
   ReceiptOcr,
   Room,
@@ -203,14 +223,14 @@ import {
   SaveFloorPlanDraftInput,
   SaveRoomWallsInput,
   SimulatorWallData,
-  ScheduleRepairInput,
   SendIntakeMessageInput,
   SendDunningInput,
+  StartManagerConversationInput,
   StatusHistory,
   SubmitTenantAiFeedbackInput,
-  SubmitEstimateInput,
   TeamBill,
   TeamBillCreationData,
+  TeamBillCreationUnavailableReason,
   TeamBillPaymentOrder,
   TeamBillRow,
   TeamBillingDashboard,
@@ -218,23 +238,23 @@ import {
   TeamCollection,
   TeamCollectionBuildingRow,
   TeamCollectionPoint,
+  TeamCollectionTiming,
   TeamDashSummary,
   TeamDeposit,
   TeamDunning,
   TeamMaintenance,
+  TeamManagerBillDetail,
   TeamOverdue,
   TeamOverdueWorkspace,
   TeamReport,
   TeamTenantBillingOverview,
   TeamTenantPaymentHistory,
   TeamTenantPaymentHistoryEvent,
+  TeamTransactionLedgerRow,
   Ticket,
   TicketMessage,
   TicketStatus,
   SocialAccount,
-  TossConfirmPaymentInput,
-  TossConfirmPaymentResult,
-  TossPaymentGateway,
   ConfirmBillPaymentInput,
   UpdateManagerContractInventoryInput,
   UpdateManagerContractInviteInput,
@@ -259,27 +279,12 @@ export type SignupInput = {
   serviceArea?: string;
 };
 
-export type CreateVendorInviteInput = {
-  email?: string;
-  businessName: string;
-  contactPerson: string;
-  phone: string;
-  serviceArea: string;
-};
-
 export type CreateTenantInviteInput = {
   roomId: string;
   email?: string;
   tenantName: string;
   phone?: string;
   moveInDate?: string;
-};
-
-export type ManagerVendorProfileInput = {
-  businessName?: string;
-  contactPerson?: string;
-  phone?: string;
-  serviceArea?: string;
 };
 
 export type LoginInput = {
@@ -294,6 +299,8 @@ export type GoogleSocialLoginInput = {
   inviteToken?: string;
   flow?: "login" | "signup";
 };
+
+export type KakaoSocialLoginInput = GoogleSocialLoginInput;
 
 const FLOOR_PLAN_AI_MODELS: FloorPlanAiModel[] = [
   {
@@ -648,23 +655,6 @@ const FLOOR_PLAN_OBJECT_GRAPH_SCHEMA = {
   type: "object"
 } as const;
 
-export type VendorMgmtTrade =
-  | "plumbing"
-  | "electrical"
-  | "hvac"
-  | "appliance"
-  | "locksmith"
-  | "waterproofing"
-  | "cleaning"
-  | "general"
-  | "other";
-
-export type VendorMgmtListFilters = {
-  q?: string;
-  trade?: string;
-  sort?: string;
-};
-
 export type ManagerContractOrigin =
   | "tenant_upload"
   | "manager_upload"
@@ -689,6 +679,22 @@ export type ConfirmContractInput = {
 };
 
 
+export type VendorActivationProvider = VendorActivationRepository &
+  VendorAccountResolver;
+
+/**
+ * 인증 계정(UserAccount/SocialAccount)의 DB 단일 원본 저장소.
+ * 전체 스토어 프로젝션(StoreProjector)과 달리 응답 전에 동기 커밋된다 —
+ * 회원가입은 이 저장이 성공해야 토큰을 반환하고, 로그인은 DB에서 계정을 직접 조회한다.
+ */
+export interface AuthAccountRepository {
+  assertAccountAvailable(email: string, phone?: string): Promise<void>;
+  findUserByEmail(email: string): Promise<UserAccount | null>;
+  saveUser(user: UserAccount): Promise<void>;
+  saveSocialAccount(account: SocialAccount): Promise<void>;
+  disconnect?(): Promise<void>;
+}
+
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
@@ -697,7 +703,11 @@ export type RoomlogServiceOptions = {
   seedDemoData?: boolean;
   initialStore?: Store;
   storeProjector?: StoreProjector;
+  financialCostReader?: FinancialCostReader;
+  authRepository?: AuthAccountRepository;
   paymentGateway?: TossPaymentGateway;
+  vendorActivationRepository?: VendorActivationProvider;
+  vendorActivationSecurity?: VendorActivationSecurityConfig;
 };
 
 export type AuthResult = {
@@ -710,13 +720,19 @@ export type AuthResult = {
 
 export type VendorSummary = {
   id: string;
-  userId: string;
   businessName: string;
   contactPerson: string;
   phone: string;
   serviceArea: string;
+  businessNumber?: string;
+  trades?: string[];
+  serviceAreas?: string[];
+  verificationStatus?: "VERIFIED" | "PENDING" | "REJECTED";
+  isActive?: boolean;
   activeJobs: number;
   createdByManagerId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type VendorInvite = {
@@ -875,13 +891,15 @@ function complaintStatusFor(ticketStatus: TicketStatus): ComplaintStatus {
   return map[ticketStatus];
 }
 
-function createDemoStore(): Store {
+/**
+ * 로그인 가능한 핵심 데모 계정 4종 — 데모 스토어(createDemoStore)와
+ * DB 부팅 보정(ensureCoreDemoLoginAccounts)이 같은 정의를 공유한다.
+ * DB가 원본인 환경에서 계정 유실이 있어도 이 계정들로는 항상 로그인할 수 있어야 한다.
+ */
+export function coreDemoLoginAccounts(): UserAccount[] {
   const createdAt = now();
-  const moveoutCreatedAt = "2026-07-01T09:00:00+09:00";
-  const moveoutUpdatedAt = "2026-07-02T09:00:00+09:00";
-  const moveoutDisputeCreatedAt = "2026-06-28T09:00:00+09:00";
-  const moveoutDisputeDeadline = "2026-07-01T09:00:00+09:00";
-  const users: UserAccount[] = [
+
+  return [
     {
       id: "tenant-demo",
       email: "tenant@roomlog.test",
@@ -925,6 +943,15 @@ function createDemoStore(): Store {
       createdAt
     }
   ];
+}
+
+function createDemoStore(): Store {
+  const moveoutCreatedAt = "2026-07-01T09:00:00+09:00";
+  const moveoutUpdatedAt = "2026-07-02T09:00:00+09:00";
+  const moveoutDisputeCreatedAt = "2026-06-28T09:00:00+09:00";
+  const moveoutDisputeDeadline = "2026-07-01T09:00:00+09:00";
+  const createdAt = now();
+  const users: UserAccount[] = coreDemoLoginAccounts();
   const contractCreatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
   const contractUpdatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 10 * 60 * 1000).toISOString();
   const billingDate = new Date();
@@ -1424,7 +1451,6 @@ function createDemoStore(): Store {
     vendors: [
       {
         id: "vendor-demo",
-        userId: "vendor-demo-user",
         businessName: "빠른누수 설비",
         contactPerson: "이수리",
         phone: "010-3000-0001",
@@ -1477,6 +1503,120 @@ function createDemoStore(): Store {
         updatedAt: contractUpdatedAt,
         extractionId: "cx_0001",
         documentId: "cdoc_0001"
+      },
+      {
+        id: "ct_demo_302",
+        roomId: "room-302",
+        tenantId: "tenant-billing-302",
+        managerId: "landlord-demo",
+        unitId: "302",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "pending",
+        deletion: "none",
+        valueSource: "unverified",
+        monthlyRent: 720000,
+        maintenanceFee: 80000,
+        paymentDay: 10,
+        optionInventory: ["에어컨", "냉장고", "세탁기", "침대"],
+        startDate: "2026-07-01T00:00:00+09:00",
+        endDate: "2028-06-30T00:00:00+09:00",
+        createdAt: "2026-07-08T09:20:00+09:00",
+        updatedAt: "2026-07-12T15:10:00+09:00",
+        extractionId: "cx_demo_302",
+        documentId: "cdoc_demo_302"
+      },
+      {
+        id: "ct_demo_303",
+        roomId: "room-303",
+        tenantId: "tenant-billing-303",
+        managerId: "landlord-demo",
+        unitId: "303",
+        landlordName: "박관리",
+        lifecycle: "analyzing",
+        review: "info_requested",
+        deletion: "none",
+        valueSource: "unverified",
+        monthlyRent: 690000,
+        maintenanceFee: 75000,
+        paymentDay: 20,
+        optionInventory: ["에어컨", "책상", "옷장"],
+        startDate: "2026-07-15T00:00:00+09:00",
+        endDate: "2028-07-14T00:00:00+09:00",
+        createdAt: "2026-07-10T14:30:00+09:00",
+        updatedAt: "2026-07-12T18:00:00+09:00",
+        extractionId: "cx_demo_303",
+        documentId: "cdoc_demo_303"
+      },
+      {
+        id: "ct_demo_304",
+        roomId: "room-304",
+        tenantId: "tenant-billing-304",
+        managerId: "landlord-demo",
+        unitId: "304",
+        landlordName: "박관리",
+        lifecycle: "active",
+        review: "confirmed",
+        deletion: "none",
+        valueSource: "confirmed",
+        monthlyRent: 740000,
+        maintenanceFee: 85000,
+        paymentDay: 5,
+        optionInventory: ["에어컨", "세탁기", "전자레인지"],
+        startDate: "2026-06-01T00:00:00+09:00",
+        endDate: "2028-05-31T00:00:00+09:00",
+        createdAt: "2026-06-01T10:00:00+09:00",
+        updatedAt: "2026-07-11T11:45:00+09:00",
+        confirmedAt: "2026-07-11T11:45:00+09:00",
+        confirmedByManagerId: "landlord-demo",
+        extractionId: "cx_demo_304",
+        documentId: "cdoc_demo_304"
+      },
+      {
+        id: "ct_demo_411",
+        roomId: "room-411",
+        tenantId: "tenant-billing-411",
+        managerId: "landlord-demo",
+        unitId: "411",
+        landlordName: "박관리",
+        lifecycle: "expiring_soon",
+        review: "pending",
+        deletion: "none",
+        valueSource: "manual",
+        monthlyRent: 780000,
+        maintenanceFee: 90000,
+        paymentDay: 25,
+        optionInventory: ["에어컨", "인덕션", "붙박이장"],
+        startDate: "2024-08-01T00:00:00+09:00",
+        endDate: "2026-07-31T00:00:00+09:00",
+        createdAt: "2026-07-06T08:40:00+09:00",
+        updatedAt: "2026-07-12T09:00:00+09:00",
+        extractionId: "cx_demo_411",
+        documentId: "cdoc_demo_411"
+      },
+      {
+        id: "ct_demo_412",
+        roomId: "room-412",
+        tenantId: "tenant-billing-412",
+        managerId: "landlord-demo",
+        unitId: "412",
+        landlordName: "박관리",
+        lifecycle: "expired",
+        review: "confirmed",
+        deletion: "requested",
+        valueSource: "confirmed",
+        monthlyRent: 760000,
+        maintenanceFee: 80000,
+        paymentDay: 15,
+        optionInventory: ["에어컨", "세탁기", "침대", "책상"],
+        startDate: "2024-07-01T00:00:00+09:00",
+        endDate: "2026-06-30T00:00:00+09:00",
+        createdAt: "2024-07-01T09:00:00+09:00",
+        updatedAt: "2026-07-12T16:25:00+09:00",
+        confirmedAt: "2026-06-15T10:20:00+09:00",
+        confirmedByManagerId: "landlord-demo",
+        extractionId: "cx_demo_412",
+        documentId: "cdoc_demo_412"
       }
     ],
     contractDocuments: [
@@ -1488,6 +1628,51 @@ function createDemoStore(): Store {
         fileName: "contract-301.pdf",
         fileUrl: "/uploads/contract-301.pdf",
         uploadedAt: contractCreatedAt
+      },
+      {
+        id: "cdoc_demo_302",
+        contractId: "ct_demo_302",
+        uploadedByUserId: "tenant-billing-302",
+        origin: "tenant_upload",
+        fileName: "demo-contract-302.pdf",
+        fileUrl: "/uploads/demo-contract-302.pdf",
+        uploadedAt: "2026-07-08T09:20:00+09:00"
+      },
+      {
+        id: "cdoc_demo_303",
+        contractId: "ct_demo_303",
+        uploadedByUserId: "landlord-demo",
+        origin: "manager_upload",
+        fileName: "demo-contract-303.jpg",
+        fileUrl: "/uploads/demo-contract-303.jpg",
+        uploadedAt: "2026-07-10T14:30:00+09:00"
+      },
+      {
+        id: "cdoc_demo_304",
+        contractId: "ct_demo_304",
+        uploadedByUserId: "landlord-demo",
+        origin: "manager_upload",
+        fileName: "demo-contract-304.pdf",
+        fileUrl: "/uploads/demo-contract-304.pdf",
+        uploadedAt: "2026-06-01T10:00:00+09:00"
+      },
+      {
+        id: "cdoc_demo_411",
+        contractId: "ct_demo_411",
+        uploadedByUserId: "landlord-demo",
+        origin: "manual",
+        fileName: "manual-contract-411.pdf",
+        fileUrl: "/uploads/manual-contract-411.pdf",
+        uploadedAt: "2026-07-06T08:40:00+09:00"
+      },
+      {
+        id: "cdoc_demo_412",
+        contractId: "ct_demo_412",
+        uploadedByUserId: "tenant-billing-412",
+        origin: "tenant_upload",
+        fileName: "expired-contract-412.pdf",
+        fileUrl: "/uploads/expired-contract-412.pdf",
+        uploadedAt: "2024-07-01T09:00:00+09:00"
       }
     ],
     contractExtractions: [
@@ -1530,6 +1715,153 @@ function createDemoStore(): Store {
           }
         ],
         createdAt: contractUpdatedAt
+      },
+      {
+        id: "cx_demo_302",
+        contractId: "ct_demo_302",
+        confirmed: false,
+        highlights: [
+          "월세 72만원, 관리비 8만원, 매월 10일 납부",
+          "2026.07.01부터 24개월 계약",
+          "반려동물 특약과 하자 보수 범위는 관리자 확인 필요"
+        ],
+        items: [
+          { label: "보증금", value: "10,000,000원", group: "money", needsCheck: false, evidence: "임대차 보증금은 금 일천만원으로 한다." },
+          { label: "월세", value: "720,000원", group: "money", needsCheck: false, evidence: "차임은 매월 금 칠십이만원으로 한다." },
+          { label: "관리비", value: "80,000원", group: "money", needsCheck: false, evidence: "관리비는 월 8만원으로 별도 납부한다." },
+          { label: "납부일", value: "매월 10일", group: "money", needsCheck: false, evidence: "매월 10일까지 임대인 계좌로 송금한다." },
+          { label: "계약 기간", value: "2026.07.01 ~ 2028.06.30", group: "term", needsCheck: false, evidence: "임대차 기간은 2026년 7월 1일부터 24개월로 한다." },
+          { label: "상세 주소", value: "방배 루미에르 302호", group: "term", needsCheck: false, evidence: "목적물은 방배 루미에르 제302호로 한다." },
+          { label: "반려동물", value: "소형견 1마리 가능", group: "responsibility", needsCheck: true, evidence: "반려동물은 임대인 승인 범위 내에서 허용한다." },
+          { label: "하자 보수", value: "입주 전 하자 목록 확인 필요", group: "responsibility", needsCheck: true, evidence: "입주 전 발견된 하자는 별도 체크리스트로 확인한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "반려동물 특약",
+            plain: "허용 범위와 원상복구 책임을 입주 전에 명확히 적어두는 편이 좋습니다.",
+            source: "반려동물은 임대인 승인 범위 내에서 허용한다."
+          },
+          {
+            clause: "하자 보수",
+            plain: "입주 전 하자는 사진과 체크리스트를 남겨 퇴실 정산 분쟁을 줄일 수 있습니다.",
+            source: "입주 전 발견된 하자는 별도 체크리스트로 확인한다."
+          }
+        ],
+        createdAt: "2026-07-12T15:10:00+09:00"
+      },
+      {
+        id: "cx_demo_303",
+        contractId: "ct_demo_303",
+        confirmed: false,
+        highlights: [
+          "관리자 업로드 이미지에서 OCR 분석 중",
+          "납부 계좌와 자동 연장 문구가 흐릿하게 인식됨",
+          "임차인에게 보완 요청이 필요한 상태"
+        ],
+        items: [
+          { label: "보증금", value: "8,000,000원", group: "money", needsCheck: false, evidence: "보증금은 금 팔백만원으로 한다." },
+          { label: "월세", value: "690,000원", group: "money", needsCheck: false, evidence: "월 차임은 69만원으로 한다." },
+          { label: "관리비", value: "75,000원", group: "money", needsCheck: true, evidence: "관리비 금액 일부가 흐릿하게 인식됨." },
+          { label: "납부일", value: "매월 20일", group: "money", needsCheck: false, evidence: "매월 20일 선납한다." },
+          { label: "납부 계좌", value: "국민은행 ***-**-****88", group: "money", needsCheck: true, masked: true, evidence: "계좌번호 뒷자리가 일부 가려져 있음." },
+          { label: "계약 기간", value: "2026.07.15 ~ 2028.07.14", group: "term", needsCheck: false, evidence: "임대차 기간은 2026년 7월 15일부터 2028년 7월 14일까지로 한다." },
+          { label: "자동 연장", value: "확인 필요", group: "term", needsCheck: true, evidence: "묵시적 갱신 특약 문구가 중복 인식됨." },
+          { label: "원상복구", value: "퇴거 시 원상복구", group: "responsibility", needsCheck: false, evidence: "임차인은 퇴거 시 목적물을 원상으로 반환한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "관리비",
+            plain: "관리비 포함 항목과 별도 납부 항목을 계약서 원문과 대조해 주세요.",
+            source: "관리비 금액 일부가 흐릿하게 인식됨."
+          },
+          {
+            clause: "납부 계좌",
+            plain: "계좌번호는 민감정보라 마스킹해 두고, 검토자는 원문 파일에서만 확인하는 흐름이 안전합니다.",
+            source: "계좌번호 뒷자리가 일부 가려져 있음."
+          }
+        ],
+        createdAt: "2026-07-12T18:00:00+09:00"
+      },
+      {
+        id: "cx_demo_304",
+        contractId: "ct_demo_304",
+        confirmed: true,
+        highlights: [
+          "관리자 확인 완료 계약",
+          "월세 74만원, 관리비 8만5천원",
+          "OCR 항목과 수동 입력값이 일치함"
+        ],
+        items: [
+          { label: "보증금", value: "12,000,000원", group: "money", needsCheck: false, evidence: "임대차 보증금은 금 일천이백만원으로 한다." },
+          { label: "월세", value: "740,000원", group: "money", needsCheck: false, evidence: "차임은 매월 74만원으로 한다." },
+          { label: "관리비", value: "85,000원", group: "money", needsCheck: false, evidence: "관리비는 매월 85,000원으로 한다." },
+          { label: "납부일", value: "매월 5일", group: "money", needsCheck: false, evidence: "매월 5일까지 납부한다." },
+          { label: "계약 기간", value: "2026.06.01 ~ 2028.05.31", group: "term", needsCheck: false, evidence: "계약 기간은 2026년 6월 1일부터 2028년 5월 31일까지이다." },
+          { label: "상세 주소", value: "방배 루미에르 304호", group: "term", needsCheck: false, evidence: "목적물 표시 제304호." },
+          { label: "원상복구", value: "일반 사용 손모 제외", group: "responsibility", needsCheck: false, evidence: "통상 손모를 제외하고 원상으로 회복한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "확정 완료",
+            plain: "OCR 추출값과 관리자 입력값이 일치해 확정 처리된 예시 계약입니다.",
+            source: "OCR 항목과 수동 입력값이 일치함"
+          }
+        ],
+        createdAt: "2026-07-11T11:45:00+09:00"
+      },
+      {
+        id: "cx_demo_411",
+        contractId: "ct_demo_411",
+        confirmed: false,
+        highlights: [
+          "계약 만료가 30일 이내인 호실",
+          "수동 등록된 계약서라 OCR 대조가 필요함",
+          "퇴실 정산 특약 확인 필요"
+        ],
+        items: [
+          { label: "보증금", value: "15,000,000원", group: "money", needsCheck: false, evidence: "보증금은 금 일천오백만원으로 한다." },
+          { label: "월세", value: "780,000원", group: "money", needsCheck: false, evidence: "차임은 매월 금 칠십팔만원이다." },
+          { label: "관리비", value: "90,000원", group: "money", needsCheck: false, evidence: "관리비는 매월 9만원으로 한다." },
+          { label: "납부일", value: "매월 25일", group: "money", needsCheck: false, evidence: "매월 25일까지 납부한다." },
+          { label: "계약 기간", value: "2024.08.01 ~ 2026.07.31", group: "term", needsCheck: false, evidence: "임대차 기간은 2024년 8월 1일부터 2026년 7월 31일까지이다." },
+          { label: "만료 안내", value: "만료 임박", group: "term", needsCheck: true, evidence: "만료일이 임박하여 연장 또는 퇴실 확인이 필요하다." },
+          { label: "퇴실 정산", value: "공과금 정산 확인 필요", group: "responsibility", needsCheck: true, evidence: "퇴실 시 공과금과 원상복구 비용을 정산한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "만료 임박",
+            plain: "만료 30일 전후에는 연장 여부, 퇴실 일정, 보증금 반환 일정을 한 번에 확인하는 것이 좋습니다.",
+            source: "만료일이 임박하여 연장 또는 퇴실 확인이 필요하다."
+          }
+        ],
+        createdAt: "2026-07-12T09:00:00+09:00"
+      },
+      {
+        id: "cx_demo_412",
+        contractId: "ct_demo_412",
+        confirmed: true,
+        highlights: [
+          "계약 종료 후 삭제 요청이 접수된 예시",
+          "보관 예외 항목과 삭제 가능 항목을 구분해야 함",
+          "민감정보 마스킹 유지"
+        ],
+        items: [
+          { label: "보증금", value: "9,000,000원", group: "money", needsCheck: false, evidence: "보증금은 금 구백만원으로 한다." },
+          { label: "월세", value: "760,000원", group: "money", needsCheck: false, evidence: "차임은 매월 76만원으로 한다." },
+          { label: "관리비", value: "80,000원", group: "money", needsCheck: false, evidence: "관리비는 8만원으로 한다." },
+          { label: "납부일", value: "매월 15일", group: "money", needsCheck: false, evidence: "매월 15일까지 납부한다." },
+          { label: "계약 기간", value: "2024.07.01 ~ 2026.06.30", group: "term", needsCheck: false, evidence: "계약 기간은 2024년 7월 1일부터 2026년 6월 30일까지로 한다." },
+          { label: "삭제 요청", value: "임차인 요청 접수", group: "responsibility", needsCheck: false, evidence: "계약 종료 후 개인정보 삭제 요청이 접수되었다." },
+          { label: "보관 예외", value: "정산 기록 5년 보관", group: "responsibility", needsCheck: false, evidence: "법정 보관 대상은 정해진 기간 동안 별도 보관한다." }
+        ],
+        helpNotes: [
+          {
+            clause: "삭제 요청",
+            plain: "계약 종료 후에도 정산, 분쟁, 법정 보관 항목은 바로 삭제하지 않고 분리 보관하는 흐름이 필요합니다.",
+            source: "법정 보관 대상은 정해진 기간 동안 별도 보관한다."
+          }
+        ],
+        createdAt: "2026-07-12T16:25:00+09:00"
       }
     ],
     contractPrivacies: [
@@ -1545,6 +1877,68 @@ function createDemoStore(): Store {
         deletion: "none",
         deletionSlaHours: 72,
         deletable: false
+      },
+      {
+        contractId: "ct_demo_302",
+        maskingEnabled: true,
+        retention: [
+          { label: "계약서 원본", reason: "임대차 계약 이력 관리", until: "계약 종료 후 5년" },
+          { label: "임대인 계좌", reason: "월세 납부 확인", until: "정산 완료 후 즉시 파기" },
+          { label: "입주 전 하자 사진", reason: "퇴실 정산 분쟁 대비", until: "계약 종료 후 1년" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_303",
+        maskingEnabled: true,
+        retention: [
+          { label: "보완 요청 원문", reason: "OCR 대조 및 검토 이력", until: "확정 후 3년" },
+          { label: "납부 계좌", reason: "임대료 납부 검증", until: "확정 후 즉시 마스킹" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_304",
+        maskingEnabled: true,
+        retention: [
+          { label: "확정 계약서", reason: "임대차 계약 증빙", until: "계약 종료 후 5년" },
+          { label: "검토 로그", reason: "관리자 확정 감사 기록", until: "3년" }
+        ],
+        forwardingConsent: true,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_411",
+        maskingEnabled: true,
+        retention: [
+          { label: "만료 임박 계약서", reason: "연장 또는 퇴실 협의", until: "정산 완료 후 5년" },
+          { label: "퇴실 정산 메모", reason: "공과금 및 원상복구 확인", until: "정산 완료 후 1년" }
+        ],
+        forwardingConsent: false,
+        deletion: "none",
+        deletionSlaHours: 72,
+        deletable: false
+      },
+      {
+        contractId: "ct_demo_412",
+        maskingEnabled: true,
+        retention: [
+          { label: "정산 기록", reason: "법정 보관 및 분쟁 대비", until: "계약 종료 후 5년" },
+          { label: "개인 연락처", reason: "삭제 요청 대상", until: "삭제 승인 즉시 파기" },
+          { label: "삭제 요청 처리 로그", reason: "감사 기록", until: "3년" }
+        ],
+        forwardingConsent: false,
+        deletion: "requested",
+        deletionSlaHours: 72,
+        deletable: true
       }
     ],
     contractInvites: [
@@ -1592,6 +1986,7 @@ function createDemoStore(): Store {
         contextLabel: "생활 문의",
         lastMessage: "확인 후 오늘 안으로 답변드리겠습니다.",
         unreadCount: 1,
+        managerUnreadCount: 0,
         pendingRequest: false,
         archivedNotice: true,
         createdAt,
@@ -1986,58 +2381,8 @@ function shouldSeedDemoData(option?: boolean) {
   return process.env.NODE_ENV !== "production";
 }
 
-class TossPaymentsGateway implements TossPaymentGateway {
-  constructor(
-    private readonly secretKey = process.env.TOSS_SECRET_KEY,
-    private readonly apiBase = process.env.TOSS_API_BASE_URL ?? "https://api.tosspayments.com"
-  ) {}
-
-  async confirmPayment(input: TossConfirmPaymentInput): Promise<TossConfirmPaymentResult> {
-    const secretKey = this.secretKey?.trim();
-
-    if (!secretKey) {
-      throw new BadGatewayException("TOSS_SECRET_KEY가 설정되어 있지 않습니다.");
-    }
-
-    const response = await fetch(`${this.apiBase.replace(/\/$/, "")}/v1/payments/confirm`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${secretKey}:`, "utf8").toString("base64")}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(input)
-    });
-    const data = await response.json().catch(() => undefined) as
-      | {
-          paymentKey?: string;
-          orderId?: string;
-          amount?: number;
-          totalAmount?: number;
-          method?: string;
-          approvedAt?: string;
-          status?: string;
-          message?: string;
-        }
-      | undefined;
-
-    if (!response.ok) {
-      throw new BadGatewayException(data?.message ?? "토스페이먼츠 결제 승인에 실패했습니다.");
-    }
-
-    return {
-      paymentKey: data?.paymentKey ?? input.paymentKey,
-      orderId: data?.orderId ?? input.orderId,
-      amount: Number(data?.totalAmount ?? data?.amount ?? input.amount),
-      method: data?.method,
-      approvedAt: data?.approvedAt,
-      status: data?.status,
-      raw: data
-    };
-  }
-}
-
 @Injectable()
-export class RoomlogService {
+export class RoomlogService implements OnModuleDestroy {
   private readonly store: Store;
   private readonly storeFilePath?: string;
   private readonly uploadDir: string;
@@ -2045,19 +2390,25 @@ export class RoomlogService {
   private readonly storageAdapter: FileStorageAdapter;
   private readonly seedDemoData: boolean;
   private readonly storeProjector?: StoreProjector;
+  private readonly financialCostReader: FinancialCostReader;
+  private readonly vendorActivationRepository: VendorActivationProvider;
+  // 인증 계정의 DB 단일 원본 — 있으면 가입/로그인/소셜이 응답 전에 DB로 동기 커밋된다.
+  private readonly authRepository?: AuthAccountRepository;
   private readonly paymentGateway: TossPaymentGateway;
   private readonly billsWithPaymentConfirmation = new Set<string>();
   private pendingPersistence = Promise.resolve();
   private persistenceGeneration = 0;
   private completedPersistenceGeneration = 0;
   private persistenceFailure?: { generation: number; error: unknown };
+  private shutdownStarted = false;
+  private shutdownPromise?: Promise<void>;
   private readonly auth: RoomlogAuthDomain;
+  private readonly vendorActivation: RoomlogVendorActivationDomain;
   private readonly floorPlan: RoomlogFloorPlanDomain;
   private readonly cost: RoomlogCostDomain;
   private readonly checklist: RoomlogChecklistDomain;
   private readonly contract: RoomlogContractDomain;
   private readonly vendorMgmt: RoomlogVendorMgmtDomain;
-  private readonly vendorRepair: RoomlogVendorRepairDomain;
   private readonly messaging: RoomlogMessagingDomain;
   private readonly announcementTranslation: RoomlogAnnouncementTranslationService;
   private readonly moveout: RoomlogMoveoutDomain;
@@ -2074,7 +2425,13 @@ export class RoomlogService {
     this.uploadDir = options.uploadDir ?? process.env.LOCAL_UPLOAD_DIR ?? "uploads";
     this.seedDemoData = shouldSeedDemoData(options.seedDemoData);
     this.storeProjector = options.storeProjector;
-    this.paymentGateway = options.paymentGateway ?? new TossPaymentsGateway();
+    this.financialCostReader =
+      options.financialCostReader ?? new NoopFinancialCostReader();
+    this.vendorActivationRepository =
+      options.vendorActivationRepository ??
+      new UnavailableVendorActivationRepository();
+    this.authRepository = options.authRepository;
+    this.paymentGateway = options.paymentGateway ?? new TossPaymentsHttpGateway();
     this.publicUploadBaseUrl = (
       options.publicUploadBaseUrl ??
       process.env.PUBLIC_UPLOAD_BASE_URL ??
@@ -2086,11 +2443,24 @@ export class RoomlogService {
     const loadedStore = options.initialStore
       ? this.normalizeStoreSnapshot(JSON.parse(JSON.stringify(options.initialStore)) as Store)
       : this.loadStore();
-    this.store = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
+    const bootStore = this.seedDemoData ? this.backfillDemoStoreSnapshot(loadedStore) : loadedStore;
+    const shouldPersistDemoBackfill =
+      this.seedDemoData && this.hasDemoBackfillChanges(loadedStore, bootStore);
+    this.store = bootStore;
     this.auth = new RoomlogAuthDomain(
       this.store,
       () => this.persistStore(),
-      (roomId) => this.findRoom(roomId)
+      (roomId) => this.findRoom(roomId),
+      this.vendorActivationRepository
+    );
+    this.vendorActivation = new RoomlogVendorActivationDomain(
+      this.vendorActivationRepository,
+      options.vendorActivationSecurity,
+      (userId) => {
+        const user = this.store.users.find((account) => account.id === userId);
+        return user ? { user, relations: this.store } : undefined;
+      },
+      () => new Date()
     );
     this.floorPlan = new RoomlogFloorPlanDomain(
       this.store,
@@ -2127,31 +2497,7 @@ export class RoomlogService {
     this.vendorMgmt = new RoomlogVendorMgmtDomain(
       this.store,
       () => this.persistStore(),
-      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId),
-      (managerId, roomId) => this.canManagerAccessRoom(managerId, roomId),
-      (ticketId) => this.findTicket(ticketId),
-      (roomId) => this.findRoom(roomId),
-      (complaintId) => this.findComplaint(complaintId),
-      (iso) => this.timeOf(iso),
-      (startIso, endIso) => this.elapsedHours(startIso, endIso),
-      (values) => this.average(values),
-      (values) => this.median(values)
-    );
-    this.vendorRepair = new RoomlogVendorRepairDomain(
-      this.store,
-      () => this.persistStore(),
-      (ticketId) => this.findTicket(ticketId),
-      (complaintId) => this.findComplaint(complaintId),
-      (repairId) => this.findRepair(repairId),
-      (ticketId, toStatus, changedByUserId, note) =>
-        this.transitionTicket(ticketId, toStatus, changedByUserId, note),
-      (ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls) =>
-        this.addMessageInternal(ticketId, complaintId, senderUserId, senderRole, messageText, attachmentUrls),
-      (ticketId, changedByUserId, fromStatus, toStatus, note) =>
-        this.pushHistory(ticketId, changedByUserId, fromStatus, toStatus, note),
-      (repair, allowed, action) => this.assertRepairStatus(repair, allowed, action),
-      (managerId, ticket) => this.assertManagerCanAccessTicket(managerId, ticket),
-      (message) => this.presentTicketMessage(message)
+      (managerId, roomId) => this.assertManagerCanAccessRoom(managerId, roomId)
     );
     this.messaging = new RoomlogMessagingDomain(
       this.store,
@@ -2192,6 +2538,97 @@ export class RoomlogService {
       (managerId, kind, input) => this.resolveManagerAgentPendingCommand(managerId, kind, input),
       (managerId, sessionId) => this.safetyIdentifier(managerId, sessionId)
     );
+
+    if (shouldPersistDemoBackfill) {
+      this.persistStore();
+    }
+  }
+
+  onModuleDestroy(): Promise<void> {
+    if (!this.shutdownPromise) {
+      this.shutdownStarted = true;
+      this.shutdownPromise = this.shutdownResources();
+    }
+
+    return this.shutdownPromise;
+  }
+
+  private async shutdownResources(): Promise<void> {
+    await this.drainPersistenceQueue();
+
+    let firstFailure: unknown;
+    let hasFailure = false;
+    const preserveFirstFailure = (error: unknown) => {
+      if (!hasFailure) {
+        hasFailure = true;
+        firstFailure = error;
+      }
+    };
+
+    try {
+      await this.vendorActivationRepository.close();
+    } catch (error) {
+      preserveFirstFailure(error);
+    }
+
+    if (
+      this.storeProjector &&
+      (this.storeProjector as unknown as object) !==
+        (this.vendorActivationRepository as unknown as object)
+    ) {
+      await this.drainPersistenceQueue();
+      try {
+        await this.storeProjector.disconnect?.();
+      } catch (error) {
+        preserveFirstFailure(error);
+      }
+    }
+
+    if (
+      (this.financialCostReader as unknown as object) !==
+        (this.vendorActivationRepository as unknown as object) &&
+      (this.financialCostReader as unknown as object) !==
+        (this.storeProjector as unknown as object)
+    ) {
+      try {
+        await this.financialCostReader.close?.();
+      } catch (error) {
+        preserveFirstFailure(error);
+      }
+    }
+
+    if (
+      this.authRepository &&
+      (this.authRepository as unknown as object) !==
+        (this.vendorActivationRepository as unknown as object) &&
+      (this.authRepository as unknown as object) !==
+        (this.storeProjector as unknown as object) &&
+      (this.authRepository as unknown as object) !==
+        (this.financialCostReader as unknown as object)
+    ) {
+      try {
+        await this.authRepository.disconnect?.();
+      } catch (error) {
+        preserveFirstFailure(error);
+      }
+    }
+
+    if (hasFailure) throw firstFailure;
+  }
+
+  private async drainPersistenceQueue(): Promise<void> {
+    while (true) {
+      const pendingPersistence = this.pendingPersistence;
+      const persistenceGeneration = this.persistenceGeneration;
+      await pendingPersistence.catch(() => undefined);
+
+      if (
+        pendingPersistence === this.pendingPersistence &&
+        persistenceGeneration === this.persistenceGeneration
+      ) {
+        return;
+      }
+    }
   }
 
   async flushPersistence() {
@@ -2221,16 +2658,171 @@ export class RoomlogService {
     return this.auth.signup(input);
   }
 
+  /**
+   * DB-first 회원가입 — 컨트롤러가 쓰는 경로.
+   * DB(authRepository)가 있으면: DB 중복 검사 → 메모리 가입 → DB 동기 커밋 순서로,
+   * DB 저장이 성공해야 토큰을 반환한다(실패 시 메모리 롤백 후 에러).
+   * 기존 비동기 프로젝션만으로는 "가입 성공 응답 후 DB 저장 실패 → 재시작 시 계정 증발"이 가능했다.
+   */
+  async signupWithDb(input: SignupInput): Promise<AuthResult> {
+    if (!this.authRepository) return this.auth.signup(input);
+
+    const email = input.email?.trim().toLowerCase() ?? "";
+    const phone = normalizePhoneNumber(input.phone);
+    await this.authRepository.assertAccountAvailable(email, phone);
+
+    const snapshot = this.captureAuthSnapshot();
+    const result = this.auth.signup(input);
+    const user = this.store.users.find((account) => account.id === result.userId);
+    try {
+      if (user) {
+        await this.authRepository.saveUser(user);
+        // auth.signup()에서 먼저 예약된 전체 프로젝션이 같은 계정을 삽입하다
+        // 고유 키 충돌로 실패해도, 확정된 DB 행을 기준으로 다음 세대가 복구한다.
+        this.projectStore();
+      }
+    } catch (error) {
+      // DB 확정 실패 — 메모리·JSON에 남은 반쪽 계정을 되돌리고 실패를 그대로 알린다.
+      this.restoreAuthSnapshot(snapshot);
+      this.persistStore();
+      throw error;
+    }
+    return result;
+  }
+
   login(input: LoginInput): AuthResult {
     return this.auth.login(input);
   }
 
+  /**
+   * DB-first 로그인 — 컨트롤러가 쓰는 경로.
+   * DB에서 이메일로 직접 조회해 메모리 캐시를 갱신한 뒤 검증한다 —
+   * 운영자가 DB에 직접 넣었거나 다른 인스턴스가 만든 계정도 재시작 없이 로그인된다.
+   * DB 장애 시에는 메모리로 폴백한다(로그인은 fail-safe).
+   */
+  async loginWithDb(input: LoginInput): Promise<AuthResult> {
+    if (this.authRepository) {
+      const email = input.email?.trim().toLowerCase();
+      if (email) {
+        try {
+          const dbUser = await this.authRepository.findUserByEmail(email);
+          if (dbUser) this.mergeUserIntoStore(dbUser);
+        } catch {
+          // DB 장애 — 메모리 캐시로 계속 진행
+        }
+      }
+    }
+    return this.auth.login(input);
+  }
+
   async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
-    return await this.auth.loginWithGoogle(input);
+    return await this.commitSocialLogin(() => this.auth.loginWithGoogle(input));
+  }
+
+  async loginWithKakao(input: KakaoSocialLoginInput): Promise<AuthResult> {
+    return await this.commitSocialLogin(() => this.auth.loginWithKakao(input));
+  }
+
+  /**
+   * 소셜 로그인 DB 커밋 — 신규 생성 계정은 DB 저장이 성공해야 응답한다(실패 시 롤백).
+   * 기존 계정의 재로그인은 프로필 갱신 저장이 실패해도 로그인을 막지 않는다(fail-safe,
+   * 다음 전체 프로젝션이 따라잡는다).
+   */
+  private async commitSocialLogin(run: () => Promise<AuthResult>): Promise<AuthResult> {
+    if (!this.authRepository) return await run();
+
+    const knownUserIds = new Set(this.store.users.map((account) => account.id));
+    const snapshot = this.captureAuthSnapshot();
+    const result = await run();
+    const isNewAccount = !knownUserIds.has(result.userId);
+    const user = this.store.users.find((account) => account.id === result.userId);
+    const socialAccounts = this.store.socialAccounts.filter(
+      (account) => account.userId === result.userId
+    );
+    try {
+      if (user) await this.authRepository.saveUser(user);
+      for (const account of socialAccounts) {
+        await this.authRepository.saveSocialAccount(account);
+      }
+    } catch (error) {
+      if (isNewAccount) {
+        this.restoreAuthSnapshot(snapshot);
+        this.persistStore();
+        throw error;
+      }
+      // 기존 계정 로그인 — DB 갱신 실패는 로그인 성공을 막지 않는다.
+    }
+    return result;
+  }
+
+  /** DB에서 읽은 계정을 메모리 캐시에 반영 — 로그인 검증은 항상 최신 DB 자격증명 기준이 된다. */
+  private mergeUserIntoStore(dbUser: UserAccount) {
+    const existing =
+      this.store.users.find((account) => account.id === dbUser.id) ??
+      this.store.users.find((account) => account.email === dbUser.email);
+    if (existing) {
+      existing.email = dbUser.email;
+      existing.passwordHash = dbUser.passwordHash;
+      existing.name = dbUser.name;
+      existing.phone = dbUser.phone;
+      existing.role = dbUser.role;
+      existing.status = dbUser.status;
+      return;
+    }
+    this.store.users.push({ ...dbUser });
+  }
+
+  /** 가입/소셜 커밋 실패 롤백용 — 인증 경로가 건드리는 컬렉션만 스냅샷한다. */
+  private captureAuthSnapshot() {
+    return structuredClone({
+      users: this.store.users,
+      socialAccounts: this.store.socialAccounts,
+      rooms: this.store.rooms,
+      vendors: this.store.vendors,
+      tenantRooms: this.store.tenantRooms,
+      tenantInvites: this.store.tenantInvites,
+      vendorInvites: this.store.vendorInvites
+    });
+  }
+
+  /** 도메인 협력 객체들이 같은 배열 인스턴스를 참조하므로 배열은 제자리(in-place)로 되돌린다. */
+  private restoreAuthSnapshot(snapshot: ReturnType<RoomlogService["captureAuthSnapshot"]>) {
+    this.store.users.splice(0, this.store.users.length, ...snapshot.users);
+    this.store.socialAccounts.splice(0, this.store.socialAccounts.length, ...snapshot.socialAccounts);
+    this.store.rooms.splice(0, this.store.rooms.length, ...snapshot.rooms);
+    this.store.vendors.splice(0, this.store.vendors.length, ...snapshot.vendors);
+    this.store.tenantInvites.splice(0, this.store.tenantInvites.length, ...snapshot.tenantInvites);
+    this.store.vendorInvites.splice(0, this.store.vendorInvites.length, ...snapshot.vendorInvites);
+    for (const key of Object.keys(this.store.tenantRooms)) delete this.store.tenantRooms[key];
+    Object.assign(this.store.tenantRooms, snapshot.tenantRooms);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
     return this.auth.getUserFromToken(authorization);
+  }
+
+  async previewVendorActivation(
+    rawKey: string
+  ): Promise<VendorActivationPreviewEnvelope> {
+    return await this.vendorActivation.preview(rawKey);
+  }
+
+  async claimVendorActivation(
+    userId: string,
+    activationSession: string
+  ): Promise<VendorActivationClaimResult> {
+    await this.flushPersistence();
+    return await this.vendorActivation.claim(userId, activationSession);
+  }
+
+  async resolveActiveVendorId(userId: string): Promise<string | undefined> {
+    return await this.vendorActivationRepository.resolveActiveVendorId(userId);
+  }
+
+  async resolveActiveVendorAccount(
+    userId: string
+  ): Promise<VendorAccountView | undefined> {
+    return await this.vendorActivationRepository.resolveActiveVendorAccount(userId);
   }
 
   /** 관계 기반 파생 capability — requireRole 등 권한 판단은 user.role 단일값 대신 이걸 쓴다. */
@@ -2243,8 +2835,8 @@ export class RoomlogService {
     return this.auth.acceptInviteForUser(userId, role, inviteToken);
   }
 
-  getMe(authorization?: string) {
-    return this.auth.getMe(authorization);
+  async getMe(authorization?: string) {
+    return await this.auth.getMe(authorization);
   }
 
   /** 매물 직접등록이 만든 임대인 관계 — 소유 room이 없으면 매물 기반 room을 만들어 LANDLORD capability를 연다. */
@@ -2265,7 +2857,7 @@ export class RoomlogService {
     return {
       users: this.store.users.map(({ passwordHash, ...user }) => user),
       rooms: this.store.rooms,
-      vendors: this.listVendors(),
+      vendors: this.store.vendors.map((vendor) => ({ ...vendor })),
       tenantInvites: this.store.tenantInvites,
       contracts: this.store.contracts,
       contractDocuments: this.store.contractDocuments,
@@ -2619,7 +3211,7 @@ export class RoomlogService {
       transaction.paymentKey = confirmed.paymentKey;
       transaction.method = confirmed.method;
       transaction.approvedAt = confirmed.approvedAt ?? now();
-      transaction.rawResponse = confirmed.raw ?? confirmed;
+      transaction.rawResponse = confirmed;
       this.applyConfirmedPaymentToItems(bill, transaction);
       this.refreshBillStatusAfterPaymentChange(bill);
       this.store.deposits.unshift({
@@ -2714,8 +3306,12 @@ export class RoomlogService {
     };
   }
 
-  getManagerBill(managerId: string, billId: string): TeamBill {
-    return this.presentBill(this.findManagerBill(managerId, billId));
+  getManagerBill(managerId: string, billId: string): TeamManagerBillDetail {
+    const bill = this.findManagerBill(managerId, billId);
+    return {
+      ...this.presentBill(bill),
+      guard: this.dunningGuardForBill(bill)
+    };
   }
 
   publishManagerBill(managerId: string, billId: string): TeamBill {
@@ -2745,7 +3341,9 @@ export class RoomlogService {
   getManagerCollection(
     managerId: string,
     buildingName?: string,
-    billingMonth?: string
+    billingMonth?: string,
+    historyFrom?: string,
+    historyTo?: string
   ): TeamCollection {
     const month = this.validateBillingMonth(billingMonth);
     const { scope, rooms } = this.resolveManagerBillingScope(managerId, buildingName);
@@ -2785,13 +3383,59 @@ export class RoomlogService {
       .sort((left, right) => right.depositedAt.localeCompare(left.depositedAt))
       .slice(0, 5)
       .map((deposit) => this.presentDeposit(deposit));
-    const trend = Array.from({ length: 12 }, (_, index) => this.shiftBillingMonth(month, index - 11))
-      .map((trendMonth) =>
-        this.collectionPointForBills(
-          trendMonth,
-          scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+    const scopedBillMonths = scopedBills
+      .map((bill) => bill.billingMonth)
+      .filter((candidate) => candidate <= month)
+      .sort((left, right) => left.localeCompare(right));
+    const availableFromMonth = scopedBillMonths[0] ?? month;
+    const availableToMonth = scopedBillMonths[scopedBillMonths.length - 1] ?? month;
+    const hasRecordedHistory = scopedBillMonths.length > 0;
+    const defaultHistoryTo = hasRecordedHistory ? availableToMonth : month;
+    const requestedFromMonth = this.validateBillingMonth(
+      historyFrom ?? this.shiftBillingMonth(defaultHistoryTo, -5)
+    );
+    const requestedToMonth = this.validateBillingMonth(historyTo ?? defaultHistoryTo);
+    if (requestedFromMonth > requestedToMonth) {
+      throw new BadRequestException("실적 조회 시작 월은 종료 월보다 늦을 수 없습니다.");
+    }
+    if (requestedToMonth > month) {
+      throw new BadRequestException("실적 조회 종료 월은 선택한 청구 월보다 늦을 수 없습니다.");
+    }
+    const boundedFromMonth =
+      requestedFromMonth < availableFromMonth ? availableFromMonth : requestedFromMonth;
+    const boundedToMonth =
+      requestedToMonth > availableToMonth ? availableToMonth : requestedToMonth;
+    const hasAppliedHistory =
+      hasRecordedHistory && boundedFromMonth <= boundedToMonth;
+    const appliedFromMonth = hasAppliedHistory ? boundedFromMonth : availableFromMonth;
+    const appliedToMonth = hasAppliedHistory ? boundedToMonth : availableToMonth;
+    const trend = hasAppliedHistory
+      ? this.billingMonthsBetween(appliedFromMonth, appliedToMonth).map((trendMonth) =>
+          this.collectionPointForBills(
+            trendMonth,
+            scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+          )
         )
-      );
+      : [];
+    const rollingFromMonth = hasRecordedHistory
+      ? this.shiftBillingMonth(availableToMonth, -5) < availableFromMonth
+        ? availableFromMonth
+        : this.shiftBillingMonth(availableToMonth, -5)
+      : month;
+    const rollingAverageTrend = hasRecordedHistory
+      ? this.billingMonthsBetween(rollingFromMonth, availableToMonth).map((trendMonth) =>
+          this.collectionPointForBills(
+            trendMonth,
+            scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+          )
+        )
+      : [];
+    const timing = this.collectionTimingForBills(
+      month,
+      selectedBills,
+      previousMonth,
+      scopedBills.filter((bill) => bill.billingMonth === previousMonth)
+    );
     const buildings: TeamCollectionBuildingRow[] = scope.buildings
       .filter((building) => !scope.selectedBuilding || building.buildingName === scope.selectedBuilding)
       .map((building) => {
@@ -2836,11 +3480,23 @@ export class RoomlogService {
         collectedAmount: currentPoint.collectedAmount,
         unpaidAmount,
         collectionRate: currentPoint.collectionRate,
+        billedUnits: currentPoint.billedUnits,
+        fullyPaidUnits: currentPoint.fullyPaidUnits,
+        partiallyPaidUnits: currentPoint.partiallyPaidUnits,
+        threeMonthAverageRate: this.averageCollectionRate(rollingAverageTrend, 3),
+        sixMonthAverageRate: this.averageCollectionRate(rollingAverageTrend, 6),
         previousCollectionRate: previousPoint.collectionRate,
         rateDelta,
         confirmingAmount
       },
       trend,
+      history: {
+        availableFromMonth,
+        availableToMonth,
+        appliedFromMonth,
+        appliedToMonth
+      },
+      timing,
       buildings,
       collectionRate: currentPoint.collectionRate,
       collectedAmount: currentPoint.collectedAmount,
@@ -2852,12 +3508,7 @@ export class RoomlogService {
     };
   }
 
-  listManagerBillDeposits(managerId: string): {
-    paymentReports: TeamBillRow[];
-    deposits: TeamDeposit[];
-    orphanDeposits: TeamDeposit[];
-    mismatchDeposits: TeamDeposit[];
-  } {
+  async listManagerBillDeposits(managerId: string) {
     const billIdsWithReports = new Set(
       this.store.paymentReports
         .filter((report) => report.status === "CONFIRMING")
@@ -2873,6 +3524,23 @@ export class RoomlogService {
       .filter((bill) => billIdsWithReports.has(bill.id))
       .map((bill) => this.presentManagerBillRow(bill, managerId));
     const deposits = this.managerRelevantDeposits(managerId);
+    const depositRows = deposits.map((deposit) =>
+      this.presentManagerTransactionDeposit(managerId, deposit)
+    );
+    const managerCosts = await this.listManagerCosts(managerId);
+    const supersededCostIds = new Set(
+      managerCosts
+        .filter((cost) => cost.status === "amended" && cost.supersedesId)
+        .map((cost) => cost.supersedesId as string)
+    );
+    const withdrawalRows = managerCosts
+      .filter(
+        (cost): cost is Cost & { status: "confirmed" | "amended" } =>
+          (cost.status === "confirmed" || cost.status === "amended") &&
+          cost.repairPayment !== "unpaid" &&
+          !supersededCostIds.has(cost.id)
+      )
+      .map((cost) => this.presentManagerTransactionCost(managerId, cost));
 
     return {
       paymentReports,
@@ -2884,7 +3552,10 @@ export class RoomlogService {
         .map((deposit) => this.presentDeposit(deposit)),
       mismatchDeposits: deposits
         .filter((deposit) => deposit.matchStatus === "MISMATCH")
-        .map((deposit) => this.presentDeposit(deposit))
+        .map((deposit) => this.presentDeposit(deposit)),
+      ledgerRows: [...depositRows, ...withdrawalRows].sort((left, right) =>
+        right.occurredAt.localeCompare(left.occurredAt)
+      )
     };
   }
 
@@ -2945,8 +3616,10 @@ export class RoomlogService {
     }
 
     if (report.status !== "MATCHED") {
+      const confirmedAt = now();
       this.applyConfirmedPayment(bill, report.amount);
       report.status = "MATCHED";
+      report.confirmedAt = confirmedAt;
     }
 
     this.refreshBillStatusAfterPaymentChange(bill);
@@ -2995,27 +3668,13 @@ export class RoomlogService {
     const roomIds = new Set(rooms.map((room) => room.id));
     const accountSource = this.managerBills(managerId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-    const options = this.store.contracts
-      .filter(
-        (contract) =>
-          roomIds.has(contract.roomId) &&
-          (!contract.managerId || contract.managerId === managerId) &&
-          contract.lifecycle === "active" &&
-          contract.review === "confirmed" &&
-          contract.valueSource === "confirmed" &&
-          contract.monthlyRent !== undefined &&
-          Number.isSafeInteger(contract.monthlyRent) &&
-          contract.monthlyRent >= 0 &&
-          contract.maintenanceFee !== undefined &&
-          Number.isSafeInteger(contract.maintenanceFee) &&
-          contract.maintenanceFee >= 0 &&
-          Number.isSafeInteger(contract.monthlyRent + contract.maintenanceFee) &&
-          contract.monthlyRent + contract.maintenanceFee > 0 &&
-          contract.paymentDay !== undefined &&
-          Number.isInteger(contract.paymentDay) &&
-          contract.paymentDay >= 1 &&
-          contract.paymentDay <= 31
-      )
+    const scopedContracts = this.store.contracts.filter(
+      (contract) =>
+        roomIds.has(contract.roomId) &&
+        (!contract.managerId || contract.managerId === managerId)
+    );
+    const options = scopedContracts
+      .filter((contract) => this.managerBillCreationUnavailableReasons(contract).length === 0)
       .map((contract) => {
         const room = rooms.find((candidate) => candidate.id === contract.roomId)!;
         const duplicate = this.store.bills.find(
@@ -3043,6 +3702,36 @@ export class RoomlogService {
           "ko"
         )
       );
+    const optionRoomIds = new Set(options.map((option) => option.roomId));
+    const unavailableOptions = rooms
+      .filter((room) => !optionRoomIds.has(room.id))
+      .map((room) => {
+        const candidates = scopedContracts
+          .filter((contract) => contract.roomId === room.id)
+          .sort((left, right) => {
+            const score = (contract: Contract) =>
+              (contract.lifecycle === "active" ? 100 : 0) +
+              (contract.review === "confirmed" ? 20 : 0) +
+              (contract.valueSource === "confirmed" ? 10 : 0);
+            return score(right) - score(left) || right.updatedAt.localeCompare(left.updatedAt);
+          });
+        const contract = candidates[0];
+
+        return {
+          roomId: room.id,
+          buildingName: room.buildingName,
+          unitId: room.roomNo,
+          tenantName: this.tenantNameForRoom(room.id),
+          contractId: contract?.id,
+          reasons: this.managerBillCreationUnavailableReasons(contract)
+        };
+      })
+      .sort((left, right) =>
+        `${left.buildingName}-${left.unitId}`.localeCompare(
+          `${right.buildingName}-${right.unitId}`,
+          "ko"
+        )
+      );
 
     return {
       scope,
@@ -3052,7 +3741,8 @@ export class RoomlogService {
         accountNumber: accountSource?.accountNumber ?? "",
         accountHolder: accountSource?.accountHolder ?? ""
       },
-      options
+      options,
+      unavailableOptions
     };
   }
 
@@ -3194,13 +3884,45 @@ export class RoomlogService {
       throw new BadRequestException("독촉 발송에는 관리인이 편집한 문구와 채널이 필요합니다.");
     }
 
-    if (this.unpaidAmount(bill) <= 0) {
-      throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
+    if (channel !== "룸로그 알림") {
+      throw new BadRequestException("독촉은 세입자의 룸로그 납부 알림으로만 보낼 수 있습니다.");
     }
+
+    this.assertManagerDunningAllowed(bill);
 
     this.recordManagerDunningMessage(managerId, bill, text, channel);
 
     return { ok: true };
+  }
+
+  private assertManagerDunningAllowed(bill: Bill) {
+    if (this.unpaidAmount(bill) <= 0) {
+      throw new BadRequestException("미납 잔액이 없는 청구서에는 독촉을 보낼 수 없습니다.");
+    }
+
+    if (!this.canAutoOverdue(bill)) {
+      throw new BadRequestException("납부기한이 지난 공개 청구서만 독촉할 수 있습니다.");
+    }
+
+    const guard = this.dunningGuardForBill(bill);
+
+    if (guard.hasConfirming && guard.hasOrphan) {
+      throw new BadRequestException(
+        "납부 신고와 미연결 입금이 있어 독촉을 보낼 수 없습니다. 입금내역을 먼저 확인해 주세요."
+      );
+    }
+
+    if (guard.hasConfirming) {
+      throw new BadRequestException(
+        "납부 신고 또는 확인 중인 입금이 있어 독촉을 보낼 수 없습니다. 입금내역을 먼저 확인해 주세요."
+      );
+    }
+
+    if (guard.hasOrphan) {
+      throw new BadRequestException(
+        "미연결 입금이 있어 독촉을 보낼 수 없습니다. 입금내역을 먼저 확인해 주세요."
+      );
+    }
   }
 
   private recordManagerDunningMessage(managerId: string, bill: Bill, text: string, channel: string) {
@@ -3239,6 +3961,7 @@ export class RoomlogService {
         contextLabel,
         lastMessage: text,
         unreadCount: 0,
+        managerUnreadCount: 0,
         pendingRequest: false,
         archivedNotice: true,
         createdAt,
@@ -3270,6 +3993,10 @@ export class RoomlogService {
 
   listTenantContracts(tenantId: string): Contract[] {
     return this.contract.listTenantContracts(tenantId);
+  }
+
+  getTenantCurrentContract(tenantId: string, roomId?: string): Contract | null {
+    return this.contract.getTenantCurrentContract(tenantId, roomId);
   }
 
   getTenantContract(tenantId: string, contractId: string): Contract {
@@ -3471,7 +4198,29 @@ export class RoomlogService {
     session.updatedAt = now();
     this.persistStore();
 
-    return { session: this.presentIntakeSession(session), assistantMessage };
+    const autoFinalized = this.maybeAutoFinalizeIntake(tenantId, session);
+
+    return { session: this.presentIntakeSession(session), assistantMessage, autoFinalized };
+  }
+
+  // 세입자가 접수를 명시 요청했고(filingIntent) 초안이 준비되면 버튼 없이 같은 턴에서 바로 접수한다.
+  // 수동 "민원 접수" 버튼과 같은 경로라 중복 후보가 있어도 새 티켓으로 접수된다(AI가 중복 가능성은 대화에서 안내).
+  private maybeAutoFinalizeIntake(tenantId: string, session: IntakeSession) {
+    if (!session.draft.readyToFinalize || !session.draft.filingIntent) {
+      return undefined;
+    }
+
+    try {
+      const finalized = this.finalizeIntakeSession(tenantId, session.id);
+      return {
+        complaint: finalized.complaint,
+        ticket: finalized.ticket,
+        analysis: finalized.analysis
+      };
+    } catch {
+      // 자동 접수에 실패해도 상담은 유지 — 기존 수동 접수 버튼 경로로 폴백한다.
+      return undefined;
+    }
   }
 
   async recordRealtimeTurn(
@@ -3646,7 +4395,7 @@ export class RoomlogService {
       category: confirmedDetailCategory,
       detailCategory: confirmedDetailCategory,
       priority: confirmedPriority,
-      responsibilityHint: confirmedResponsibilityHint,
+      responsibilityHint: session.draft.responsibilityHint,
       confidenceScore: session.draft.confidenceScore,
       reasons: [...correctionReasons, ...session.draft.reasons],
       recommendedAction: session.draft.recommendedAction,
@@ -3673,7 +4422,8 @@ export class RoomlogService {
         senderRole: message.sender,
         messageText: message.messageText,
         attachmentUrls: message.attachmentUrls
-      }))
+      })),
+      confirmedResponsibilityHint
     );
 
     session.status = "FINALIZED";
@@ -4202,8 +4952,9 @@ export class RoomlogService {
     if (kind === "billing.send_dunning") {
       try {
         const bill = this.findManagerAgentDunningBill(managerId, input);
+        this.assertManagerDunningAllowed(bill);
         const draft = this.presentDunningDraft(bill);
-        const channel = input.channel?.trim() || draft.channel;
+        const channel = draft.channel;
         const messageText = input.body?.trim() || draft.draftText;
 
         return {
@@ -4215,7 +4966,20 @@ export class RoomlogService {
             channel,
             body: messageText
           },
-          summary: this.managerAgentDunningPendingSummary(managerId, bill, draft)
+          summary: this.managerAgentDunningPendingSummary(managerId, bill, draft),
+          dunningPreview: {
+            billId: draft.billId,
+            buildingName: draft.buildingName,
+            unitId: draft.unitId,
+            tenantName: draft.tenantName,
+            billingMonth: draft.billingMonth,
+            unpaidAmount: draft.unpaidAmount,
+            dueDate: draft.dueDate,
+            daysOverdue: draft.daysOverdue,
+            channel,
+            messageText,
+            guard: draft.guard
+          } satisfies ManagerDunningActionPreview
         };
       } catch (error) {
         return {
@@ -4223,7 +4987,7 @@ export class RoomlogService {
           domain: "billing" as const,
           summary:
             error instanceof Error
-              ? `${error.message} 다시 대상을 지정해주세요.`
+              ? error.message
               : "독촉 대상 연체 청구서를 확인하지 못했습니다. 다시 대상을 지정해주세요.",
           requiresConfirmation: true
         };
@@ -4327,7 +5091,7 @@ export class RoomlogService {
       try {
         const bill = this.findManagerAgentDunningBill(managerId, input);
         const draft = this.presentDunningDraft(bill);
-        const channel = input.channel?.trim() || draft.channel;
+        const channel = draft.channel;
         const messageText = body || draft.draftText;
 
         this.sendManagerDunning(managerId, bill.id, {
@@ -4348,8 +5112,8 @@ export class RoomlogService {
             guard: draft.guard
           },
           navigation: {
-            label: "독촉 발송 확인",
-            href: `/manager/billing/dunning/${encodeURIComponent(draft.billId)}?id=${encodeURIComponent(draft.billId)}&send=ok`
+            label: "연체 관리에서 확인",
+            href: "/manager/billing/overdue"
           }
         };
       } catch (error) {
@@ -4460,6 +5224,16 @@ export class RoomlogService {
     managerId: string,
     input: ManagerAgentCommandInput
   ): Promise<ManagerAgentCommandResult> {
+    if (input.command?.trim() === "billing.send_dunning") {
+      return {
+        status: "blocked",
+        domain: "billing",
+        summary:
+          "독촉은 AI 비서의 확인 카드에서 대상과 문구를 확인한 뒤 발송해 주세요.",
+        requiresConfirmation: true
+      };
+    }
+
     const result = this.runManagerAgentCommand(managerId, input);
 
     if (!process.env.OPENAI_API_KEY || result.status === "blocked") {
@@ -4684,25 +5458,44 @@ export class RoomlogService {
       return this.findManagerBill(managerId, explicitBillId);
     }
 
-    const unitId = this.extractUnitIdFromAgentText(`${input.text ?? ""} ${input.body ?? ""}`);
-    const candidates = this.managerBills(managerId).filter((bill) => this.canAutoOverdue(bill));
+    const requestText = `${input.text ?? ""} ${input.body ?? ""}`.trim();
+    const unitId = this.extractUnitIdFromAgentText(requestText);
+    const billingMonth = this.extractBillingMonthFromAgentText(requestText);
+    const candidates = this.managerBills(managerId)
+      .filter((bill) => this.canAutoOverdue(bill))
+      .sort((left, right) => this.daysOverdueForBill(right) - this.daysOverdueForBill(left));
+    let matched = candidates;
 
     if (unitId) {
-      const matched = candidates.find((bill) => this.unitsEqual(bill.unitId, unitId));
-
-      if (matched) {
-        return matched;
-      }
+      matched = matched.filter((bill) => this.unitsEqual(bill.unitId, unitId));
+    } else {
+      const tenantMatches = matched.filter((bill) => requestText.includes(this.tenantNameForBill(bill)));
+      if (tenantMatches.length) matched = tenantMatches;
     }
 
-    const firstActive = candidates.find((bill) => !this.dunningGuardForBill(bill).blocked);
-
-    if (firstActive) {
-      return firstActive;
+    if (billingMonth) {
+      matched = matched.filter((bill) => bill.billingMonth === billingMonth);
     }
 
-    if (candidates[0]) {
-      return candidates[0];
+    if (matched.length === 1) {
+      return matched[0];
+    }
+
+    if (matched.length > 1) {
+      const choices = matched
+        .slice(0, 4)
+        .map(
+          (bill) =>
+            `${this.tenantNameForBill(bill)} ${bill.unitId}호 ${this.managerAgentBillingMonthLabel(bill.billingMonth)}분`
+        )
+        .join(", ");
+      throw new BadRequestException(
+        `독촉 대상이 여러 건입니다: ${choices}. 호실과 청구월을 함께 지정해 주세요.`
+      );
+    }
+
+    if (unitId || billingMonth) {
+      throw new BadRequestException("지정한 호실과 청구월에 맞는 연체 청구서를 찾을 수 없습니다.");
     }
 
     throw new BadRequestException("독촉 대상 연체 청구서를 찾을 수 없습니다.");
@@ -4710,6 +5503,17 @@ export class RoomlogService {
 
   private extractUnitIdFromAgentText(text: string) {
     return text.match(/([0-9]{1,4})\s*호/u)?.[1];
+  }
+
+  private extractBillingMonthFromAgentText(text: string) {
+    const full = text.match(/(20\d{2})[년.\-/\s]+(1[0-2]|0?[1-9])\s*월?/u);
+    if (full) return `${full[1]}-${String(Number(full[2])).padStart(2, "0")}`;
+
+    const monthOnly = text.match(/(?:^|\s)(1[0-2]|0?[1-9])\s*월(?:분)?/u);
+    if (!monthOnly) return undefined;
+
+    const year = this.todayInSeoul().slice(0, 4);
+    return `${year}-${String(Number(monthOnly[1])).padStart(2, "0")}`;
   }
 
   private createComplaintRecord(
@@ -4723,7 +5527,9 @@ export class RoomlogService {
       senderRole: TicketMessage["senderRole"];
       messageText: string;
       attachmentUrls?: string[];
-    }[]
+    }[],
+    ticketResponsibilityHint: Ticket["responsibilityHint"] =
+      analysis.responsibilityHint
   ) {
     const createdAt = now();
     const complaintId = id("cmp");
@@ -4752,7 +5558,7 @@ export class RoomlogService {
       category: analysis.category,
       priority: analysis.priority,
       status: "RECEIVED",
-      responsibilityHint: analysis.responsibilityHint,
+      responsibilityHint: ticketResponsibilityHint,
       aiSummary: analysis.summary,
       dueAt: priorityDueAt(analysis.priority),
       createdAt,
@@ -4802,6 +5608,115 @@ export class RoomlogService {
     }
 
     return this.presentComplaint(complaint);
+  }
+
+  async synchronizeTenantVendorRequest(
+    input: TenantVendorWorkflowAuthority
+  ): Promise<void> {
+    const complaint = this.store.complaints.find(
+      (item) => item.id === input.complaintId && item.tenantId === input.tenantId
+    );
+    const ticket = this.store.tickets.find(
+      (item) =>
+        item.id === input.ticketId &&
+        item.complaintId === input.complaintId &&
+        item.tenantId === input.tenantId
+    );
+    if (!complaint || !ticket || complaint.ticketId !== ticket.id) {
+      throw new ConflictException(
+        "업체 접수 결과를 현재 하자 접수 정보와 동기화할 수 없습니다."
+      );
+    }
+
+    let storeChanged = false;
+    const activeRepair = input.activeRepair;
+    for (const repair of this.store.repairs) {
+      if (
+        repair.ticketId === ticket.id &&
+        repair.id !== activeRepair?.id &&
+        !["COMPLETED", "CANCELLED"].includes(repair.status)
+      ) {
+        repair.status = "CANCELLED";
+        repair.updatedAt = input.ticketUpdatedAt;
+        storeChanged = true;
+      }
+    }
+
+    if (activeRepair) {
+      const sameRepair = this.store.repairs.find(
+        (item) => item.id === activeRepair.id
+      );
+      if (
+        sameRepair &&
+        (sameRepair.ticketId !== ticket.id ||
+          sameRepair.vendorId !== activeRepair.vendorId)
+      ) {
+        throw new ConflictException(
+          "동일한 수리 요청 식별자가 다른 접수에 사용되었습니다."
+        );
+      }
+      if (!sameRepair) {
+        const repair: RepairRequest = {
+          id: activeRepair.id,
+          ticketId: ticket.id,
+          vendorId: activeRepair.vendorId,
+          status: activeRepair.status,
+          title: activeRepair.title,
+          description: activeRepair.description,
+          ...(activeRepair.costBearer
+            ? { costBearer: activeRepair.costBearer }
+            : {}),
+          completionPhotoUrls: [...activeRepair.completionPhotoUrls],
+          createdAt: activeRepair.createdAt,
+          updatedAt: activeRepair.updatedAt
+        };
+        this.store.repairs.unshift(repair);
+        storeChanged = true;
+      } else {
+        const nextPhotoUrls = [...activeRepair.completionPhotoUrls];
+        if (
+          sameRepair.status !== activeRepair.status ||
+          sameRepair.title !== activeRepair.title ||
+          sameRepair.description !== activeRepair.description ||
+          sameRepair.costBearer !== activeRepair.costBearer ||
+          JSON.stringify(sameRepair.completionPhotoUrls) !==
+            JSON.stringify(nextPhotoUrls) ||
+          sameRepair.updatedAt !== activeRepair.updatedAt
+        ) {
+          sameRepair.status = activeRepair.status;
+          sameRepair.title = activeRepair.title;
+          sameRepair.description = activeRepair.description;
+          sameRepair.costBearer = activeRepair.costBearer;
+          sameRepair.completionPhotoUrls = nextPhotoUrls;
+          sameRepair.updatedAt = activeRepair.updatedAt;
+          storeChanged = true;
+        }
+      }
+    }
+
+    if (
+      ticket.assignedVendorId !== input.assignedVendorId ||
+      ticket.status !== input.ticketStatus ||
+      ticket.updatedAt !== input.ticketUpdatedAt
+    ) {
+      ticket.assignedVendorId = input.assignedVendorId;
+      ticket.status = input.ticketStatus;
+      ticket.updatedAt = input.ticketUpdatedAt;
+      storeChanged = true;
+    }
+    if (
+      complaint.status !== input.complaintStatus ||
+      complaint.updatedAt !== input.complaintUpdatedAt
+    ) {
+      complaint.status = input.complaintStatus;
+      complaint.updatedAt = input.complaintUpdatedAt;
+      storeChanged = true;
+    }
+    if (storeChanged) {
+      this.persistStore();
+    }
+
+    await this.ensurePersistenceDurability();
   }
 
   listTickets() {
@@ -5233,31 +6148,38 @@ export class RoomlogService {
     return repair;
   }
 
-  listManagerCosts(managerId: string) {
-    return this.cost.listManagerCosts(managerId);
+  async listManagerCosts(managerId: string) {
+    const financialCosts = await this.financialCostReader.listManagerCosts(managerId);
+    return this.cost.listManagerCosts(managerId, financialCosts);
   }
 
-  getManagerCost(managerId: string, costId: string) {
-    return this.cost.getManagerCost(managerId, costId);
+  async getManagerCost(managerId: string, costId: string) {
+    const financialCosts = await this.financialCostReader.listManagerCosts(managerId);
+    return this.cost.getManagerCost(managerId, costId, financialCosts);
   }
 
-  confirmManagerCost(managerId: string, costId: string) {
+  async confirmManagerCost(managerId: string, costId: string) {
+    await this.assertStoreOwnedCostMutation(costId);
     return this.cost.confirmManagerCost(managerId, costId);
   }
 
-  confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+  async confirmManagerReceiptOcr(managerId: string, ocrId: string) {
+    const costId = this.store.receiptOcrs.find((item) => item.id === ocrId)?.costId;
+    if (costId) await this.assertStoreOwnedCostMutation(costId);
     return this.cost.confirmManagerReceiptOcr(managerId, ocrId);
   }
 
-  voidManagerCost(managerId: string, costId: string, reason?: string) {
+  async voidManagerCost(managerId: string, costId: string, reason?: string) {
+    await this.assertStoreOwnedCostMutation(costId);
     return this.cost.voidManagerCost(managerId, costId, reason);
   }
 
-  updateManagerCostDisclosure(
+  async updateManagerCostDisclosure(
     managerId: string,
     costId: string,
     disclosure: "public" | "private"
   ) {
+    await this.assertStoreOwnedCostMutation(costId);
     return this.cost.updateManagerCostDisclosure(managerId, costId, disclosure);
   }
 
@@ -5265,8 +6187,17 @@ export class RoomlogService {
     return this.cost.getManagerCostReviewQueueSummary(managerId);
   }
 
-  getManagerMonthlyCostSummary(managerId: string, month?: string) {
-    return this.cost.getManagerMonthlyCostSummary(managerId, month);
+  async getManagerMonthlyCostSummary(managerId: string, month?: string) {
+    const financialCosts = await this.financialCostReader.listManagerCosts(managerId);
+    return this.cost.getManagerMonthlyCostSummary(managerId, month, financialCosts);
+  }
+
+  private async assertStoreOwnedCostMutation(costId: string) {
+    if (await this.financialCostReader.isFinanceOwnedCost(costId)) {
+      throw new ConflictException(
+        "금융 처리로 생성된 비용은 기존 비용 API에서 변경할 수 없습니다."
+      );
+    }
   }
 
   listManagerReceipts(managerId: string) {
@@ -5281,46 +6212,6 @@ export class RoomlogService {
     return this.cost.getManagerDisclosureSetting(managerId, month);
   }
 
-  listVendors() {
-    return this.vendorMgmt.listVendors();
-  }
-
-  listManagerVendorMgmtVendors(managerId: string, filters: VendorMgmtListFilters = {}) {
-    return this.vendorMgmt.listManagerVendorMgmtVendors(managerId, filters);
-  }
-
-  getManagerVendorMgmtDetail(managerId: string, vendorId: string) {
-    return this.vendorMgmt.getManagerVendorMgmtDetail(managerId, vendorId);
-  }
-
-  getManagerVendorMgmtPerf(managerId: string, vendorId: string) {
-    return this.vendorMgmt.getManagerVendorMgmtPerf(managerId, vendorId);
-  }
-
-  listManagerVendorDuplicateCandidates(managerId: string) {
-    return this.vendorMgmt.listManagerVendorDuplicateCandidates(managerId);
-  }
-
-  createManagerVendorProfile(managerId: string, input: ManagerVendorProfileInput) {
-    return this.vendorMgmt.createManagerVendorProfile(managerId, input);
-  }
-
-  updateManagerVendorProfile(
-    managerId: string,
-    vendorId: string,
-    input: ManagerVendorProfileInput
-  ) {
-    return this.vendorMgmt.updateManagerVendorProfile(managerId, vendorId, input);
-  }
-
-  createVendorInvite(managerId: string, input: CreateVendorInviteInput) {
-    return this.vendorMgmt.createVendorInvite(managerId, input);
-  }
-
-  listVendorInvites(managerId: string) {
-    return this.vendorMgmt.listVendorInvites(managerId);
-  }
-
   createTenantInvite(managerId: string, input: CreateTenantInviteInput) {
     return this.vendorMgmt.createTenantInvite(managerId, input);
   }
@@ -5333,66 +6224,11 @@ export class RoomlogService {
     return this.auth.getSignupInvitePreview(role, inviteToken);
   }
 
-  listVendorRepairs(vendorUserOrProfileId: string) {
-    return this.vendorRepair.listVendorRepairs(vendorUserOrProfileId);
-  }
-
-  getVendorRepair(vendorUserOrProfileId: string, repairId: string) {
-    return this.vendorRepair.getVendorRepair(vendorUserOrProfileId, repairId);
-  }
-
-  submitEstimate(vendorUserOrProfileId: string, repairId: string, input: SubmitEstimateInput) {
-    return this.vendorRepair.submitEstimate(vendorUserOrProfileId, repairId, input);
-  }
-
-  approveRepairEstimate(
-    managerId: string,
-    repairId: string,
-    input: ApproveRepairEstimateInput
-  ) {
-    return this.vendorRepair.approveRepairEstimate(managerId, repairId, input);
-  }
-
-  scheduleRepair(vendorUserOrProfileId: string, repairId: string, input: ScheduleRepairInput) {
-    return this.vendorRepair.scheduleRepair(vendorUserOrProfileId, repairId, input);
-  }
-
-  reportCompletion(vendorUserOrProfileId: string, repairId: string, input: ReportCompletionInput) {
-    return this.vendorRepair.reportCompletion(vendorUserOrProfileId, repairId, input);
-  }
-
-  addVendorRepairMessage(
-    vendorUserOrProfileId: string,
-    repairId: string,
-    input: AddVendorRepairMessageInput
-  ) {
-    return this.vendorRepair.addVendorRepairMessage(vendorUserOrProfileId, repairId, input);
-  }
-
-  approveCompletion(managerId: string, ticketId: string, note?: string) {
-    this.assertManagerCanAccessTicket(managerId, this.findTicket(ticketId));
-    this.assertTicketStatus(ticketId, ["COMPLETION_REPORTED"], "완료 승인");
-    const ticket = this.transitionTicket(ticketId, "COMPLETED", managerId, note ?? "완료 승인");
-    const complaint = this.findComplaint(ticket.complaintId);
-    const repairs = this.store.repairs.filter((repair) => repair.ticketId === ticketId);
-
-    for (const repair of repairs) {
-      repair.status = "COMPLETED";
-      repair.updatedAt = now();
-    }
-
-    complaint.status = "COMPLETED";
-    complaint.updatedAt = now();
-    this.persistStore();
-
-    return ticket;
-  }
-
   addMessage(senderUserId: string, ticketId: string, messageText: string) {
     const ticket = this.findTicket(ticketId);
     const user = this.store.users.find((account) => account.id === senderUserId);
     const senderRole =
-      user?.role === "TENANT" || user?.role === "LANDLORD" || user?.role === "VENDOR"
+      user?.role === "TENANT" || user?.role === "LANDLORD"
         ? user.role
         : "TENANT";
 
@@ -7155,6 +7991,45 @@ export class RoomlogService {
     return this.findRoom(roomId);
   }
 
+  listTenantRooms(tenantId: string) {
+    const currentRoomId = this.store.tenantRooms[tenantId];
+    const linkedRoomIds = new Set<string>();
+
+    if (currentRoomId) {
+      linkedRoomIds.add(currentRoomId);
+    }
+
+    this.store.contracts
+      .filter((contract) => contract.tenantId === tenantId)
+      .forEach((contract) => linkedRoomIds.add(contract.roomId));
+
+    return [...linkedRoomIds]
+      .map((roomId) => {
+        const room = this.findRoom(roomId);
+        const contract = this.contract.getTenantCurrentContract(tenantId, roomId);
+        const landlord = room.landlordId
+          ? this.store.users.find((user) => user.id === room.landlordId)
+          : undefined;
+
+        return {
+          roomId: room.id,
+          buildingName: room.buildingName,
+          roomNo: room.roomNo,
+          address: room.address,
+          landlordId: room.landlordId,
+          landlordName: landlord?.name ?? contract?.landlordName,
+          contractId: contract?.id,
+          contractStatus: contract?.lifecycle,
+          isCurrent: room.id === currentRoomId,
+          updatedAt: contract?.updatedAt
+        };
+      })
+      .sort((left, right) => {
+        if (left.isCurrent !== right.isCurrent) return left.isCurrent ? -1 : 1;
+        return this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt);
+      });
+  }
+
   listTenantMoveouts(tenantId: string) {
     return this.moveout.listTenantMoveouts(tenantId);
   }
@@ -7286,6 +8161,10 @@ export class RoomlogService {
     return this.messaging.createTenantMessagingThread(tenantId, input);
   }
 
+  getTenantLandlordConversation(tenantId: string, roomId?: string) {
+    return this.messaging.getTenantLandlordConversation(tenantId, roomId);
+  }
+
   listTenantMessagingThreads(tenantId: string) {
     return this.messaging.listTenantMessagingThreads(tenantId);
   }
@@ -7310,8 +8189,20 @@ export class RoomlogService {
     return this.messaging.listManagerMessagingThreads(managerId, context);
   }
 
+  listManagerMessagingRecipients(managerId: string) {
+    return this.messaging.listManagerMessagingRecipients(managerId);
+  }
+
+  startManagerConversation(managerId: string, input: StartManagerConversationInput) {
+    return this.messaging.startManagerConversation(managerId, input);
+  }
+
   getManagerMessagingThread(managerId: string, threadId: string) {
     return this.messaging.getManagerMessagingThread(managerId, threadId);
+  }
+
+  markManagerMessagingThreadRead(managerId: string, threadId: string) {
+    return this.messaging.markManagerMessagingThreadRead(managerId, threadId);
   }
 
   addManagerMessagingThreadMessage(
@@ -7386,8 +8277,9 @@ export class RoomlogService {
     return this.report.listManagerReports(managerId);
   }
 
-  createManagerReport(managerId: string, input: CreateManagerReportInput) {
-    return this.report.createManagerReport(managerId, input);
+  async createManagerReport(managerId: string, input: CreateManagerReportInput) {
+    const managerCosts = await this.listManagerCosts(managerId);
+    return this.report.createManagerReport(managerId, input, managerCosts);
   }
 
   getManagerReport(managerId: string, reportId: string) {
@@ -7713,11 +8605,66 @@ export class RoomlogService {
     return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
   }
 
+  private billingMonthsBetween(fromMonth: string, toMonth: string) {
+    const [fromYear, fromNumber] = fromMonth.split("-").map(Number);
+    const [toYear, toNumber] = toMonth.split("-").map(Number);
+    const monthCount = (toYear - fromYear) * 12 + toNumber - fromNumber;
+    return Array.from(
+      { length: monthCount + 1 },
+      (_, index) => this.shiftBillingMonth(fromMonth, index)
+    );
+  }
+
   private billingDueDate(month: string, paymentDay: number) {
     const [year, monthNumber] = month.split("-").map(Number);
     const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     const day = Math.min(lastDay, Math.max(1, Math.round(paymentDay)));
     return `${month}-${String(day).padStart(2, "0")}`;
+  }
+
+  private managerBillCreationUnavailableReasons(
+    contract?: Contract
+  ): TeamBillCreationUnavailableReason[] {
+    if (!contract) {
+      return ["NO_CONTRACT"];
+    }
+
+    const reasons = new Set<TeamBillCreationUnavailableReason>();
+    if (contract.lifecycle !== "active") reasons.add("CONTRACT_NOT_ACTIVE");
+    if (contract.review !== "confirmed") reasons.add("CONTRACT_NOT_CONFIRMED");
+    if (contract.valueSource !== "confirmed") {
+      reasons.add("CONTRACT_VALUES_NOT_CONFIRMED");
+    }
+
+    const rent = contract.monthlyRent;
+    const maintenance = contract.maintenanceFee;
+    const validRent = Number.isSafeInteger(rent) && rent !== undefined && rent >= 0;
+    const validMaintenance =
+      Number.isSafeInteger(maintenance) && maintenance !== undefined && maintenance >= 0;
+
+    if (rent === undefined) reasons.add("MONTHLY_RENT_MISSING");
+    else if (!validRent) reasons.add("BILL_AMOUNT_INVALID");
+    if (maintenance === undefined) reasons.add("MAINTENANCE_FEE_MISSING");
+    else if (!validMaintenance) reasons.add("BILL_AMOUNT_INVALID");
+
+    if (validRent && validMaintenance) {
+      const total = rent + maintenance;
+      if (!Number.isSafeInteger(total) || total <= 0) {
+        reasons.add("BILL_AMOUNT_INVALID");
+      }
+    }
+
+    if (contract.paymentDay === undefined) {
+      reasons.add("PAYMENT_DAY_MISSING");
+    } else if (
+      !Number.isInteger(contract.paymentDay) ||
+      contract.paymentDay < 1 ||
+      contract.paymentDay > 31
+    ) {
+      reasons.add("PAYMENT_DAY_INVALID");
+    }
+
+    return [...reasons];
   }
 
   private validateBillAmount(value: number, label: string) {
@@ -7756,13 +8703,119 @@ export class RoomlogService {
     );
     const billedAmount = included.reduce((sum, bill) => sum + bill.totalAmount, 0);
     const collectedAmount = included.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    const billedUnits = included.length;
+    const fullyPaidUnits = included.filter(
+      (bill) => bill.totalAmount > 0 && bill.paidAmount >= bill.totalAmount
+    ).length;
+    const partiallyPaidUnits = included.filter(
+      (bill) => bill.paidAmount > 0 && bill.paidAmount < bill.totalAmount
+    ).length;
     return {
       billingMonth,
       billedAmount,
       collectedAmount,
       unpaidAmount: Math.max(0, billedAmount - collectedAmount),
-      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0
+      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
+      billedUnits,
+      fullyPaidUnits,
+      partiallyPaidUnits
     };
+  }
+
+  private averageCollectionRate(points: TeamCollectionPoint[], months: number) {
+    const eligible = points.filter((point) => point.billedAmount > 0).slice(-months);
+    return eligible.length > 0
+      ? eligible.reduce((sum, point) => sum + point.collectionRate, 0) / eligible.length
+      : 0;
+  }
+
+  private collectionTimingForBills(
+    currentMonth: string,
+    currentBills: Bill[],
+    previousMonth: string,
+    previousBills: Bill[]
+  ): TeamCollectionTiming {
+    const currentEvents = this.confirmedCollectionEventsForBills(currentBills);
+    const previousEvents = this.confirmedCollectionEventsForBills(previousBills);
+    const totalCurrentAmount = currentEvents.reduce((sum, event) => sum + event.amount, 0);
+    const onTimeAmount = currentEvents
+      .filter(
+        (event) =>
+          billingDateInSeoul(event.occurredAt) <= billingDateInSeoul(event.bill.dueDate)
+      )
+      .reduce((sum, event) => sum + event.amount, 0);
+    const weightedCollectionDay = currentEvents.reduce(
+      (sum, event) =>
+        sum + this.collectionDayForMonth(event.occurredAt, currentMonth) * event.amount,
+      0
+    );
+
+    return {
+      currentMonth,
+      previousMonth,
+      onTimeCollectionRate: totalCurrentAmount > 0 ? onTimeAmount / totalCurrentAmount : 0,
+      averageCollectionDay:
+        totalCurrentAmount > 0 ? weightedCollectionDay / totalCurrentAmount : undefined,
+      points: Array.from({ length: 31 }, (_, index) => {
+        const day = index + 1;
+        return {
+          day,
+          currentCumulativeAmount: currentEvents
+            .filter((event) => this.collectionDayForMonth(event.occurredAt, currentMonth) <= day)
+            .reduce((sum, event) => sum + event.amount, 0),
+          previousCumulativeAmount: previousEvents
+            .filter((event) => this.collectionDayForMonth(event.occurredAt, previousMonth) <= day)
+            .reduce((sum, event) => sum + event.amount, 0)
+        };
+      })
+    };
+  }
+
+  private confirmedCollectionEventsForBills(bills: Bill[]) {
+    return bills
+      .filter((bill) => !["CANCELED", "CORRECTED"].includes(bill.status))
+      .flatMap((bill) => {
+        const events: Array<{ bill: Bill; amount: number; occurredAt: string }> = [];
+        let remainingAmount = Math.max(0, bill.paidAmount);
+        const appendEvent = (amount: number, occurredAt: string) => {
+          const confirmedAmount = Math.min(remainingAmount, Math.max(0, amount));
+          if (confirmedAmount <= 0) return;
+          events.push({ bill, amount: confirmedAmount, occurredAt });
+          remainingAmount -= confirmedAmount;
+        };
+
+        this.store.deposits
+          .filter(
+            (deposit) => deposit.matchStatus === "MATCHED" && deposit.matchedBillId === bill.id
+          )
+          .sort((left, right) => left.depositedAt.localeCompare(right.depositedAt))
+          .forEach((deposit) => appendEvent(deposit.amount, deposit.depositedAt));
+
+        this.store.paymentReports
+          .filter(
+            (report) =>
+              report.billId === bill.id &&
+              report.status === "MATCHED" &&
+              Boolean(report.confirmedAt)
+          )
+          .sort((left, right) =>
+            (left.confirmedAt ?? "").localeCompare(right.confirmedAt ?? "")
+          )
+          .forEach((report) => appendEvent(report.amount, report.confirmedAt ?? bill.updatedAt));
+
+        appendEvent(remainingAmount, bill.updatedAt);
+        return events;
+      });
+  }
+
+  private collectionDayForMonth(occurredAt: string, billingMonth: string) {
+    const occurredDate = billingDateInSeoul(occurredAt);
+    const elapsed = Math.floor(
+      (Date.parse(`${occurredDate}T00:00:00.000Z`) -
+        Date.parse(`${billingMonth}-01T00:00:00.000Z`)) /
+        86_400_000
+    );
+    return Math.min(31, Math.max(1, elapsed + 1));
   }
 
   private findBill(billId: string) {
@@ -8292,12 +9345,106 @@ export class RoomlogService {
     };
   }
 
+  private presentManagerTransactionDeposit(
+    managerId: string,
+    deposit: Deposit
+  ): TeamTransactionLedgerRow {
+    const bill = deposit.matchedBillId
+      ? this.managerBills(managerId).find((candidate) => candidate.id === deposit.matchedBillId)
+      : undefined;
+    const presentedBill = bill ? this.presentBill(bill) : undefined;
+    const room = bill ? this.roomForManagerBill(managerId, bill) : undefined;
+    const statusLabels: Record<Deposit["matchStatus"], string> = {
+      MATCHED: "매칭 완료",
+      UNMATCHED: "확인 필요",
+      ORPHAN: "미연결",
+      MISMATCH: "불일치"
+    };
+
+    return {
+      id: deposit.id,
+      direction: "deposit",
+      occurredAt: deposit.depositedAt,
+      amount: deposit.amount,
+      statusLabel: statusLabels[deposit.matchStatus],
+      buildingName: room?.buildingName,
+      unitId: bill ? room?.roomNo ?? this.normalizeUnitId(bill.unitId) : undefined,
+      candidateUnitId: bill ? undefined : deposit.guessedUnitId,
+      partyName: bill ? this.tenantNameForBill(bill) : undefined,
+      itemLabel:
+        presentedBill && presentedBill.items.length > 0
+          ? presentedBill.items.map((item) => item.label).join(" · ")
+          : "입금",
+      depositorName: deposit.depositorName,
+      linkedBillRelation: bill
+        ? deposit.matchStatus === "MATCHED"
+          ? "matched"
+          : "candidate"
+        : undefined,
+      linkedBill:
+        bill && presentedBill
+          ? {
+              buildingName: room?.buildingName,
+              unitId: room?.roomNo ?? this.normalizeUnitId(bill.unitId),
+              tenantName: this.tenantNameForBill(bill),
+              billingMonth: bill.billingMonth,
+              dueDate: bill.dueDate,
+              totalAmount: bill.totalAmount,
+              paidAmount: bill.paidAmount,
+              status: presentedBill.status,
+              items: presentedBill.items
+            }
+          : undefined
+    };
+  }
+
+  private presentManagerTransactionCost(
+    managerId: string,
+    cost: Cost & { status: "confirmed" | "amended" }
+  ): TeamTransactionLedgerRow {
+    const candidateRooms =
+      cost.scope === "unit" && cost.unitId
+        ? this.store.rooms.filter(
+            (room) =>
+              this.canManagerAccessRoom(managerId, room.id) &&
+              this.unitsEqual(this.displayUnitId(room), cost.unitId)
+          )
+        : [];
+    const room = candidateRooms.length === 1 ? candidateRooms[0] : undefined;
+    const receipt = cost.receiptId
+      ? this.store.receipts.find((candidate) => candidate.id === cost.receiptId)
+      : undefined;
+
+    return {
+      id: cost.id,
+      direction: "withdrawal",
+      occurredAt: cost.date,
+      amount: cost.amount,
+      statusLabel:
+        cost.status === "amended"
+          ? "정정된 비용"
+          : cost.verified
+            ? "확정 비용"
+            : "확정 비용 · 미검증",
+      buildingName: room?.buildingName,
+      unitId: cost.unitId,
+      itemLabel: cost.item,
+      cost: {
+        type: cost.type,
+        scope: cost.scope,
+        verified: cost.verified,
+        evidenceAvailable: Boolean(receipt?.hasEvidence),
+        status: cost.status
+      }
+    };
+  }
+
   private stageForDaysOverdue(daysOverdue: number): TeamOverdue["stage"] {
-    if (daysOverdue >= 30) {
+    if (daysOverdue >= 31) {
       return "SEVERE";
     }
 
-    if (daysOverdue >= 7) {
+    if (daysOverdue >= 8) {
       return "WARNING";
     }
 
@@ -8308,14 +9455,19 @@ export class RoomlogService {
     const tenantName = this.tenantNameForBill(bill);
     const unpaidAmount = this.unpaidAmount(bill);
     const dueDate = bill.dueDate.slice(0, 10);
+    const room = this.roomForBill(bill);
 
     return {
       billId: bill.id,
-      unitId: bill.unitId,
+      buildingName: room?.buildingName,
+      unitId: room ? this.displayUnitId(room) : bill.unitId.replace(/호$/u, "").trim(),
       tenantName,
+      billingMonth: bill.billingMonth,
       unpaidAmount,
+      dueDate,
+      daysOverdue: this.daysOverdueForBill(bill),
       draftText: `${tenantName}님, ${bill.billingMonth} 청구 잔액 ${unpaidAmount.toLocaleString("ko-KR")}원이 ${dueDate} 기준 미납으로 확인되어 안내드립니다. 이미 납부하셨다면 앱에서 입금 확인 신고를 남겨주세요.`,
-      channel: "SMS",
+      channel: "룸로그 알림",
       guard: this.dunningGuardForBill(bill)
     };
   }
@@ -8338,6 +9490,11 @@ export class RoomlogService {
     return {
       ...parsed,
       socialAccounts: parsed.socialAccounts ?? [],
+      vendors: (parsed.vendors ?? []).map((vendor) => ({
+        ...vendor,
+        trades: vendor.trades ?? [],
+        serviceAreas: vendor.serviceAreas ?? []
+      })),
       vendorInvites: parsed.vendorInvites ?? [],
       tenantInvites: parsed.tenantInvites ?? [],
       contracts: parsed.contracts ?? [],
@@ -8405,7 +9562,8 @@ export class RoomlogService {
         ...thread,
         archivedNotice: thread.archivedNotice ?? true,
         pendingRequest: thread.pendingRequest ?? false,
-        unreadCount: thread.unreadCount ?? 0
+        unreadCount: thread.unreadCount ?? 0,
+        managerUnreadCount: thread.managerUnreadCount ?? 0
       })),
       messagingMessages: (parsed.messagingMessages ?? []).map((message) => ({
         ...message,
@@ -8528,7 +9686,75 @@ export class RoomlogService {
     };
   }
 
+  private hasDemoBackfillChanges(before: Store, after: Store) {
+    const collectionKeys: Array<keyof Store> = [
+      "users",
+      "socialAccounts",
+      "rooms",
+      "vendors",
+      "vendorInvites",
+      "tenantInvites",
+      "contracts",
+      "contractDocuments",
+      "contractExtractions",
+      "contractPrivacies",
+      "contractInvites",
+      "bills",
+      "paymentReports",
+      "deposits",
+      "maintenanceFees",
+      "attachments",
+      "floorPlans",
+      "moveInChecklist",
+      "aiFeedback",
+      "intakeSessions",
+      "complaints",
+      "tickets",
+      "repairs",
+      "costs",
+      "receipts",
+      "receiptOcrs",
+      "messages",
+      "messagingThreads",
+      "messagingMessages",
+      "messagingAnnouncementDrafts",
+      "messagingAnnouncements",
+      "messagingAnnouncementDeliveries",
+      "managerReports",
+      "managerReportSourceReferences",
+      "managerReportExternalShares",
+      "managerReportAuditLogs",
+      "moveouts",
+      "moveoutRecords",
+      "moveoutChecklist",
+      "moveoutSettlements",
+      "moveoutDeductions",
+      "moveoutDisputes",
+      "moveoutReportAudits",
+      "history"
+    ];
+
+    const hasArrayBackfill = collectionKeys.some((key) => {
+      const beforeValue = before[key];
+      const afterValue = after[key];
+
+      return (
+        Array.isArray(beforeValue) &&
+        Array.isArray(afterValue) &&
+        beforeValue.length !== afterValue.length
+      );
+    });
+
+    return (
+      hasArrayBackfill ||
+      Object.keys(before.tenantRooms).length !== Object.keys(after.tenantRooms).length ||
+      Object.keys(before.analyses).length !== Object.keys(after.analyses).length
+    );
+  }
+
   private persistStore() {
+    this.assertPersistenceAdmissionOpen();
+
     if (!this.storeFilePath) {
       this.projectStore();
       return;
@@ -8536,12 +9762,19 @@ export class RoomlogService {
 
     mkdirSync(dirname(this.storeFilePath), { recursive: true });
     const tempFilePath = `${this.storeFilePath}.tmp`;
-    writeFileSync(tempFilePath, JSON.stringify(this.store, null, 2));
+    // DB가 인증 원본인 환경에서는 JSON 백업에 passwordHash를 복제하지 않는다(민감정보 최소화).
+    // DB 모드에서 JSON은 부팅 소스로 쓰이지 않으므로(initialStore가 우선) 빈 해시가 안전하다.
+    const fileSnapshot = this.authRepository
+      ? { ...this.store, users: this.store.users.map((user) => ({ ...user, passwordHash: "" })) }
+      : this.store;
+    writeFileSync(tempFilePath, JSON.stringify(fileSnapshot, null, 2));
     renameSync(tempFilePath, this.storeFilePath);
     this.projectStore();
   }
 
   private projectStore(): number {
+    this.assertPersistenceAdmissionOpen();
+
     if (!this.storeProjector) {
       return this.persistenceGeneration;
     }
@@ -8567,6 +9800,12 @@ export class RoomlogService {
         }
       );
     return generation;
+  }
+
+  private assertPersistenceAdmissionOpen() {
+    if (this.shutdownStarted) {
+      throw new Error("서비스 종료 중에는 저장할 수 없습니다.");
+    }
   }
 
   private isStoreSnapshot(value: unknown): value is Store {
@@ -8711,6 +9950,7 @@ export class RoomlogService {
       requiredInfo: ["문제 위치", "증상", "방문 가능 시간"],
       photoRequested: false,
       readyToFinalize: false,
+      filingIntent: false,
       duplicateCandidates: []
     };
   }
@@ -9024,11 +10264,20 @@ export class RoomlogService {
       requiredInfo,
       photoRequested,
       readyToFinalize: requiredInfo.length === 0,
+      filingIntent: this.detectFilingIntent(text),
       location,
       occurredAt,
       availableTimes,
       duplicateCandidates
     };
+  }
+
+  // 세입자가 접수를 명시적으로 요청했는지(로컬 폴백 판정) — 단순 증상 설명은 해당하지 않는다.
+  private detectFilingIntent(text: string) {
+    const compact = text.replace(/\s+/g, "");
+    return /(민원|하자|신고|티켓)(을|를)?(넣|올려|접수)|접수(해줘|해주세요|해요|하고싶|부탁|진행|원해|할래|할게)|신고(해줘|해주세요|하고싶|할래|할게)|넣어줘|넣어주세요|올려줘|올려주세요/.test(
+      compact
+    );
   }
 
   private nextQuestionsForDraft(input: {
@@ -9521,7 +10770,9 @@ export class RoomlogService {
       "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
       "- 사진이 있으면 사진 URL을 관리자 검토 자료로 연결하고, 사진이 부족하면 근접/전체 사진을 구분해서 요청합니다.",
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
-      "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다."
+      "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
+      "- draft.filingIntent는 세입자가 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했다면 false입니다.",
+      "- filingIntent와 readyToFinalize가 모두 true이면 시스템이 이번 턴에서 민원을 자동 접수하므로, assistantMessage에서 정리한 내용으로 접수를 진행한다고 안내합니다."
     ].join("\n");
   }
 
@@ -9705,6 +10956,10 @@ export class RoomlogService {
         typeof generated.readyToFinalize === "boolean"
           ? generated.readyToFinalize
           : fallback.readyToFinalize,
+      filingIntent:
+        typeof generated.filingIntent === "boolean"
+          ? generated.filingIntent
+          : fallback.filingIntent,
       location: generated.location?.trim() || fallback.location,
       occurredAt: generated.occurredAt?.trim() || fallback.occurredAt,
       availableTimes: generated.availableTimes?.trim() || fallback.availableTimes,
@@ -10133,6 +11388,7 @@ export class RoomlogService {
             "requiredInfo",
             "photoRequested",
             "readyToFinalize",
+            "filingIntent",
             "location",
             "occurredAt",
             "availableTimes"
@@ -10251,6 +11507,7 @@ export class RoomlogService {
             },
             photoRequested: { type: "boolean" },
             readyToFinalize: { type: "boolean" },
+            filingIntent: { type: "boolean" },
             location: { type: "string" },
             occurredAt: { type: "string" },
             availableTimes: { type: "string" }
@@ -11392,6 +12649,7 @@ export class RoomlogService {
 
     return {
       ...ticket,
+      kind: this.ticketKindFromCategory(ticket.category),
       complaint,
       room,
       analysis: this.presentAnalysis(analysis, ticket),
@@ -11409,6 +12667,12 @@ export class RoomlogService {
       roomTimeline: this.presentRoomTimeline(ticket.roomId),
       callbot: this.presentCallbotContext(ticket)
     };
+  }
+
+  private ticketKindFromCategory(category: string): TicketType {
+    return ["소음", "납부", "계약", "공용공간", "기타", "주차", "민원"].includes(category)
+      ? "complaint"
+      : "defect";
   }
 
   private presentCallbotContext(ticket: Ticket): CallbotTicketContext | undefined {

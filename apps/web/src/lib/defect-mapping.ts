@@ -8,6 +8,7 @@ import type {
   RepairJob,
   RepairStage,
   ResponsibilityVerdict,
+  TicketType,
   Urgency
 } from "@roomlog/types";
 
@@ -39,6 +40,8 @@ export interface TeamTicket {
   responsibilityHint: string;
   /** 팀 Ticket.category(하자/소음/납부…) — 하자 민원 vs 일반 민원 구분 근거 */
   category?: string;
+  /** API가 확정한 티켓 종류. 구버전 응답은 category fallback을 사용한다. */
+  kind?: TicketType;
   analysis?: TeamAnalysis;
   repairs?: TeamRepair[];
   assignedVendor?: { businessName?: string };
@@ -120,7 +123,8 @@ export function toTicket(c: TeamComplaint): Ticket {
   const repair = c.ticket.repairs?.[0];
   return {
     id: c.id,
-    type: ticketTypeFromCategory(c.ticket.category ?? c.ticket.analysis?.category),
+    type: c.ticket.kind ?? ticketTypeFromCategory(c.ticket.category ?? c.ticket.analysis?.category),
+    category: c.ticket.category ?? c.ticket.analysis?.detailCategory ?? c.ticket.analysis?.category,
     // 화면들이 `{unitId}호`로 렌더하므로 unitId는 호 없는 숫자여야 한다(roomNo "301호" → "301").
     unitId: (c.room?.roomNo ?? "").replace(/\s*호\s*$/, ""),
     title: c.title,

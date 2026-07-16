@@ -1,18 +1,21 @@
-import { redirect } from "next/navigation";
 import {
   createManagerContract,
   createManagerContractInvite,
+  runManagerContractOcr,
   uploadManagerContractDocument,
   updateManagerContractManualValues,
 } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import { ApiError } from "@/lib/server-api";
-import { BackLink, Badge, Card, ContractShell, PageStack, Section } from "../_components";
-import { ContractRegisterForm } from "./ContractRegisterForm";
+import { ContractShell, PageStack, Section } from "../_components";
+import { ContractRegisterForm, type ContractRegisterActionState } from "./ContractRegisterForm";
 
 export const dynamic = "force-dynamic";
 
-async function createContractAction(formData: FormData) {
+async function createContractAction(
+  _state: ContractRegisterActionState,
+  formData: FormData
+): Promise<ContractRegisterActionState> {
   "use server";
 
   const unitId = textValue(formData, "unitId");
@@ -25,6 +28,7 @@ async function createContractAction(formData: FormData) {
   const deposit = textValue(formData, "deposit");
   const landlordAccount = textValue(formData, "landlordAccount");
   const contractFile = uploadedFile(formData, "contractFile");
+  const intent = textValue(formData, "intent");
 
   let contractId = "";
 
@@ -51,6 +55,8 @@ async function createContractAction(formData: FormData) {
         maintenanceFee,
         paymentDay,
         account: landlordAccount,
+        startDate: dateValue(formData, "startDate"),
+        endDate: dateValue(formData, "endDate"),
       });
     }
 
@@ -61,37 +67,28 @@ async function createContractAction(formData: FormData) {
         email: tenantEmail,
       });
     }
+
+    if (intent === "ocr-first") {
+      await runManagerContractOcr(contractId);
+    }
   } catch (error) {
     if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-      redirect("/manager/login");
+      return { redirectTo: "/manager/login" };
     }
-    throw error;
+    return { error: contractActionErrorMessage(error) };
   }
 
-  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`);
+  const nextUrl =
+    intent === "ocr-first"
+      ? `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}&source=ocr-first`
+      : `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`;
+  return { redirectTo: nextUrl };
 }
 
 export default function Page() {
   return (
     <ContractShell id="M-DOC-02" title="계약서 등록">
       <PageStack>
-        <Card style={{ display: "grid", gap: "var(--space-md)" }}>
-          <BackLink />
-          <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-            <Badge emphasis>관리자 등록</Badge>
-            <Badge>검토 대기 생성</Badge>
-            <Badge>원본 파일 저장</Badge>
-          </div>
-          <div style={{ display: "grid", gap: "var(--space-xs)" }}>
-            <h1 style={{ margin: 0, fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>
-              계약 기본값과 원본 파일을 한 번에 접수합니다
-            </h1>
-            <p style={{ margin: 0, color: "var(--on-surface-variant)", lineHeight: "var(--lh-body)" }}>
-              등록된 계약은 검토 대기 상태로 이동하고, 다음 단계에서 OCR 추출값과 입력값을 대조합니다.
-            </p>
-          </div>
-        </Card>
-
         <Section title="계약서 등록 접수">
           <ContractRegisterForm action={createContractAction} />
         </Section>
@@ -114,7 +111,7 @@ function numberValue(formData: FormData, name: string) {
 
 function dateValue(formData: FormData, name: string) {
   const value = textValue(formData, name);
-  return value ? `${value}T00:00:00+09:00` : undefined;
+  return value || undefined;
 }
 
 function uploadedFileName(formData: FormData, name: string) {
@@ -127,4 +124,10 @@ function uploadedFile(formData: FormData, name: string) {
   const file = formData.get(name);
   if (!(file instanceof File)) return undefined;
   return file.size > 0 ? file : undefined;
+}
+
+function contractActionErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.message.trim()) return error.message;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return "계약서 등록 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
 }
