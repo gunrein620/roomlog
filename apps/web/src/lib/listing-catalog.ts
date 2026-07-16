@@ -99,6 +99,7 @@ export type TradeListing = {
   id: string;
   ownerId: string;
   ownerName: string;
+  roomId?: string;
   title: string;
   roomType: string;
   tradeType: "월세" | "반전세" | "전세" | "매매";

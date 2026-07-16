@@ -2853,6 +2853,58 @@ export class RoomlogService implements OnModuleDestroy {
     return this.auth.ensureLandlordRoomFromListing(userId, listing);
   }
 
+  ensureRoomFromTradeListing(
+    ownerId: string,
+    listing: {
+      roomId?: string;
+      title?: string;
+      location?: string;
+      detailAddress?: string;
+      buildingName?: string;
+    }
+  ) {
+    const buildingName = this.tradeListingBuildingName(listing);
+    const roomNo = this.tradeListingRoomNo(listing);
+    const address = this.tradeListingAddress(listing);
+    const linkedRoomId = listing.roomId?.trim();
+    let room = linkedRoomId
+      ? this.store.rooms.find((item) => item.id === linkedRoomId)
+      : undefined;
+
+    if (room?.landlordId && room.landlordId !== ownerId) {
+      throw new ForbiddenException("담당 호실에만 접근할 수 있습니다.");
+    }
+
+    const exactRoom = this.store.rooms.find(
+      (item) => item.buildingName === buildingName && item.roomNo === roomNo
+    );
+    if (exactRoom && exactRoom.id !== room?.id) {
+      if (exactRoom.landlordId && exactRoom.landlordId !== ownerId) {
+        throw new ForbiddenException("담당 호실에만 접근할 수 있습니다.");
+      }
+      room = exactRoom;
+    }
+
+    if (!room) {
+      room = {
+        id: id("room"),
+        buildingName,
+        roomNo,
+        address,
+        landlordId: ownerId
+      };
+      this.store.rooms.push(room);
+    } else {
+      room.buildingName = buildingName;
+      room.roomNo = roomNo;
+      room.address = address;
+      room.landlordId = ownerId;
+    }
+
+    this.persistStore();
+    return { ...room };
+  }
+
   /** 계약 수락 → 세입자를 매물 room에 연결(tenantRooms) — TENANT capability가 파생된다. */
   assignTenantRoomFromContract(tenantId: string, landlordId: string, listing: { title: string; location: string }) {
     return this.auth.assignTenantRoomFromContract(tenantId, landlordId, listing);
@@ -12847,6 +12899,21 @@ export class RoomlogService implements OnModuleDestroy {
 
   private displayUnitId(room: Room) {
     return room.roomNo.replace(/호$/u, "");
+  }
+
+  private tradeListingBuildingName(listing: { title?: string; buildingName?: string }) {
+    const buildingName = listing.buildingName?.trim();
+    if (buildingName) return buildingName;
+    return listing.title?.trim() || "Trade listing";
+  }
+
+  private tradeListingRoomNo(listing: { detailAddress?: string }) {
+    const roomNo = listing.detailAddress?.trim().replace(/호+$/u, "").trim();
+    return roomNo || "101";
+  }
+
+  private tradeListingAddress(listing: { location?: string }) {
+    return listing.location?.trim() || "Location unavailable";
   }
 
   private elapsedHours(startIso: string, endIso: string) {

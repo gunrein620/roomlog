@@ -3,7 +3,7 @@ import { FilesInterceptor } from "@nestjs/platform-express";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogService } from "../roomlog/roomlog.service";
 import { TradeContractBillingBridge } from "./trade-contract-billing-bridge.service";
-import { TradeService, type TradeListingInput, type TradeThread } from "./trade.service";
+import { TradeService, type TradeListing, type TradeListingInput, type TradeThread } from "./trade.service";
 
 type UploadedImageFile = { buffer: Buffer; originalname: string; mimetype: string };
 
@@ -30,6 +30,18 @@ export class TradeController {
     });
   }
 
+  private ensureRoomForListing(listing: TradeListing): TradeListing {
+    const room = this.roomlogService.ensureRoomFromTradeListing(listing.ownerId, {
+      roomId: listing.roomId,
+      title: listing.title,
+      location: listing.location,
+      detailAddress: listing.detailAddress,
+      buildingName: listing.buildingName
+    });
+
+    return this.tradeService.attachListingRoom(listing.ownerId, listing.id, room.id);
+  }
+
   @Get("listings/public")
   listPublicListings() {
     return this.tradeService.listPublicListings();
@@ -43,7 +55,9 @@ export class TradeController {
     @Query("mine") mine?: string
   ) {
     if (mine === "1" || mine === "true") {
-      return this.tradeService.listListingsByOwner(this.user(authorization).id);
+      return this.tradeService
+        .listListingsByOwner(this.user(authorization).id)
+        .map((listing) => this.ensureRoomForListing(listing));
     }
     return this.tradeService.listListings();
   }
@@ -55,13 +69,12 @@ export class TradeController {
   ) {
     const user = this.user(authorization);
     const listing = this.tradeService.createListing(user, body);
-    const listingLocation = [listing.location, listing.detailAddress].filter(Boolean).join(" ");
-    // 첫 매물 등록이 곧 임대인 관계 생성 — 마이페이지 임대인 가드("관리 중인 집 연결 필요")가 풀린다.
-    this.roomlogService.ensureLandlordRoomFromListing(user.id, {
-      title: listing.title,
-      location: listingLocation
-    });
-    return listing;
+    try {
+      return this.ensureRoomForListing(listing);
+    } catch (error) {
+      this.tradeService.deleteListing(user, listing.id);
+      throw error;
+    }
   }
 
   /** 매물 수정 — 소유자 전용(서비스에서 검증). 전달된 필드만 갱신. */
@@ -71,7 +84,8 @@ export class TradeController {
     @Param("listingId") listingId: string,
     @Body() body: Partial<TradeListingInput>
   ) {
-    return this.tradeService.updateListing(this.user(authorization), listingId, body);
+    const user = this.user(authorization);
+    return this.ensureRoomForListing(this.tradeService.updateListing(user, listingId, body));
   }
 
   /** 매물 삭제(내리기) — 소유자 전용. */

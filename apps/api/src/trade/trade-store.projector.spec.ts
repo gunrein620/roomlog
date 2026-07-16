@@ -48,7 +48,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
     const { projector, persisted } = makeFakeProjector([]);
     const service = new TradeService(tempStorePath(), { storeProjector: projector });
 
-    service.createListing(owner, input);
+    service.createListing(owner, input, "room-402");
     await service.onModuleDestroy(); // 순차 프로젝션 큐를 flush
 
     const lastSnapshot = persisted[persisted.length - 1];
@@ -59,6 +59,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
     );
     assert.equal(lastSnapshot[0].detailAddress, "402호");
     assert.equal(lastSnapshot[0].buildingName, "방배 루미에르");
+    assert.equal(lastSnapshot[0].roomId, "room-402");
   });
 
   it("hydrates listings from the DB on boot, overriding the JSON store", () => {
