@@ -11,6 +11,7 @@ import {
   persistTourUploadPlanWalls,
   planWallFootprint,
   planWallsFromPayload,
+  readFloorPlanDraftServerId,
   wallsToPlanBounds
 } from "../splat-plan-shape";
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
@@ -42,6 +43,9 @@ export default function Page() {
   const [planSource, setPlanSource] = useState<PlanSource>("placeholder");
   const [planMessage, setPlanMessage] = useState("");
   const [splatReady, setSplatReady] = useState(false);
+  // 정합 저장 시 자산에 붙일 서버 도면 id. 서버 저장된 floorPlanDraft를 쓸 때만 값이 생긴다.
+  // 업로드/플레이스홀더 도면은 서버 id가 없어 null → 이 경우 가구 연결은 만들어지지 않는다.
+  const [planServerId, setPlanServerId] = useState<string | null>(null);
 
   // 실도면: 도면 에디터 저장본(localStorage)이 있으면 자동 로드. 업로드가 오면 그쪽이 이긴다.
   useEffect(() => {
@@ -49,6 +53,8 @@ export default function Page() {
     if (stored) {
       setPlanWalls(stored.walls);
       setPlanSource("storage");
+      // 에디터 저장본(floor-plan-draft)일 때만 서버 id가 존재한다. 거주자 디자인은 서버 도면이 아님.
+      setPlanServerId(stored.source === "floor-plan-draft" ? readFloorPlanDraftServerId(window.localStorage) : null);
     }
   }, []);
 
@@ -61,6 +67,7 @@ export default function Page() {
       }
       setPlanWalls(walls);
       setPlanSource("upload");
+      setPlanServerId(null); // 업로드 도면은 서버 FloorPlan이 아님 — 가구 연결 대상에서 제외
       setPlanPicks([]); // 도면이 바뀌면 기존 도면 픽은 무효
       setPreview(false);
       // 뷰어(벽 대체·걷기 경계·미니맵)와 공유 — 투어 페이지는 새로고침 시 이 도면을 읽는다.
@@ -196,9 +203,14 @@ export default function Page() {
     setSaveState("saving");
     setSaveMessage("");
     try {
-      await registerSplatAsset(assetId.trim(), transform, pairs);
+      // planServerId가 있으면(서버 저장된 도면으로 정합) 자산에 붙여 공개 뷰어가 그 가구를 받게 한다.
+      await registerSplatAsset(assetId.trim(), transform, pairs, planServerId ?? undefined);
       setSaveState("saved");
-      setSaveMessage("정합 결과를 저장했습니다 (status: REGISTERED).");
+      setSaveMessage(
+        planServerId
+          ? "정합 결과를 저장했습니다 (status: REGISTERED · 도면 가구 연결됨)."
+          : "정합 결과를 저장했습니다 (status: REGISTERED)."
+      );
     } catch (error) {
       setSaveState("error");
       setSaveMessage(error instanceof Error ? error.message : "저장 실패");

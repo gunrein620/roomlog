@@ -41,7 +41,8 @@ export class SplatAssetController {
 
   @Get(":id")
   get(@Param("id") id: string) {
-    return this.splatAssetService.getById(id);
+    // 공개 조회 — ?asset= 링크 방문자용. 연결된 도면 가구를 동봉한다(getForViewer).
+    return this.splatAssetService.getForViewer(id);
   }
 
   @Post()
@@ -52,41 +53,48 @@ export class SplatAssetController {
 
   @Post("intake")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 800 * 1024 * 1024 } }))
-  intake(
+  async intake(
     @Headers("authorization") authorization: string | undefined,
     @Body() body: unknown,
     @UploadedFile() file: UploadedSplatAssetFile | undefined
   ) {
-    this.requireRole(authorization, ["LANDLORD"]);
-    return this.splatAssetService.intake(parseIntakeInput(body), file);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const input = parseIntakeInput(body);
+    // 남의 매물에 3D를 접수하지 못하게 서버에서 소유권을 강제한다(intake는 항상 listingId를 가짐).
+    await this.splatAssetService.assertListingOwner(input.listingId, user.id);
+    return this.splatAssetService.intake(input, file);
   }
 
   @Patch(":id/registration")
-  register(
+  async register(
     @Headers("authorization") authorization: string | undefined,
     @Param("id") id: string,
     @Body() body: unknown
   ) {
-    this.requireRole(authorization, ["LANDLORD"]);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    await this.splatAssetService.assertAssetOwner(id, user.id);
     return this.splatAssetService.register(id, parseRegisterInput(body));
   }
 
   @Patch(":id/file")
-  updateFile(
+  async updateFile(
     @Headers("authorization") authorization: string | undefined,
     @Headers("x-worker-secret") workerSecret: string | undefined,
     @Param("id") id: string,
     @Body() body: unknown
   ) {
+    // 워커 시크릿(콜백)은 시스템 주체라 소유권 면제. 사람(LANDLORD) 경로만 소유권을 강제한다.
     if (!workerSecretMatches(workerSecret)) {
-      this.requireRole(authorization, ["LANDLORD"]);
+      const user = this.requireRole(authorization, ["LANDLORD"]);
+      await this.splatAssetService.assertAssetOwner(id, user.id);
     }
     return this.splatAssetService.updateFile(id, parseUpdateFileInput(body));
   }
 
   @Delete(":id")
-  remove(@Headers("authorization") authorization: string | undefined, @Param("id") id: string) {
-    this.requireRole(authorization, ["LANDLORD"]);
+  async remove(@Headers("authorization") authorization: string | undefined, @Param("id") id: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    await this.splatAssetService.assertAssetOwner(id, user.id);
     return this.splatAssetService.remove(id);
   }
 

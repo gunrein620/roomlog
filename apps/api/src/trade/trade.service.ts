@@ -468,6 +468,11 @@ export class TradeService implements OnModuleDestroy {
     return this.listListings().filter((listing) => listing.status === "노출중");
   }
 
+  /** 소유자 스코프 매물 목록 — ?mine=1 경로가 소비(마이페이지·앱 픽커). */
+  listListingsByOwner(ownerId: string): TradeListing[] {
+    return this.listListings().filter((listing) => listing.ownerId === ownerId);
+  }
+
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
     const detailAddress = normalizeDetailAddress(input.detailAddress);

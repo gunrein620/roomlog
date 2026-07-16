@@ -59,3 +59,84 @@ describe("SplatAssetController authorization", () => {
     assert.deepEqual(calls, ["updateFile"]);
   });
 });
+
+// 소유권 게이트 — 컨트롤러가 소유권 강제 메서드를 호출하고 403을 전파하는지, 워커는 면제되는지.
+describe("SplatAssetController ownership gate", () => {
+  function ownershipController(options: { owns: boolean }) {
+    const calls: string[] = [];
+    const denial = new ForbiddenException("본인 매물의 3D 자산만 다룰 수 있습니다.");
+    const service = {
+      intake: async () => {
+        calls.push("intake");
+        return { id: "asset-1" };
+      },
+      register: async () => {
+        calls.push("register");
+        return { id: "asset-1" };
+      },
+      updateFile: async () => {
+        calls.push("updateFile");
+        return { id: "asset-1" };
+      },
+      remove: async () => {
+        calls.push("remove");
+        return { id: "asset-1", deleted: true };
+      },
+      assertListingOwner: async () => {
+        calls.push("assertListingOwner");
+        if (!options.owns) throw denial;
+      },
+      assertAssetOwner: async () => {
+        calls.push("assertAssetOwner");
+        if (!options.owns) throw denial;
+      }
+    };
+    const roomlog = {
+      getUserFromToken: (authorization?: string) => {
+        if (!authorization) throw new UnauthorizedException("인증 토큰이 필요합니다.");
+        return { id: "user-1", role: "LANDLORD" };
+      },
+      rolesForUser: () => ["LANDLORD"]
+    };
+    return { calls, controller: new SplatAssetController(service as any, roomlog as any) };
+  }
+
+  it("blocks intake into a listing the landlord does not own", async () => {
+    const { calls, controller } = ownershipController({ owns: false });
+    await assert.rejects(
+      () => controller.intake("Bearer landlord", { listingId: "listing-9" }, undefined),
+      ForbiddenException
+    );
+    assert.deepEqual(calls, ["assertListingOwner"]); // intake는 호출되지 않음
+  });
+
+  it("allows intake into an owned listing", async () => {
+    const { calls, controller } = ownershipController({ owns: true });
+    await controller.intake("Bearer landlord", { listingId: "listing-1" }, undefined);
+    assert.deepEqual(calls, ["assertListingOwner", "intake"]);
+  });
+
+  it("blocks registration and deletion of another landlord's asset", async () => {
+    const reg = ownershipController({ owns: false });
+    await assert.rejects(() => reg.controller.register("Bearer landlord", "asset-1", { transform: {} }), ForbiddenException);
+    assert.deepEqual(reg.calls, ["assertAssetOwner"]);
+
+    const del = ownershipController({ owns: false });
+    await assert.rejects(() => del.controller.remove("Bearer landlord", "asset-1"), ForbiddenException);
+    assert.deepEqual(del.calls, ["assertAssetOwner"]);
+  });
+
+  it("enforces ownership on the human updateFile path but exempts the worker secret", async () => {
+    const human = ownershipController({ owns: false });
+    await assert.rejects(
+      () => human.controller.updateFile("Bearer landlord", undefined, "asset-1", { fileUrl: "/r.spz" }),
+      ForbiddenException
+    );
+    assert.deepEqual(human.calls, ["assertAssetOwner"]);
+
+    process.env.GPU_WORKER_SECRET = "worker-secret";
+    const worker = ownershipController({ owns: false });
+    await worker.controller.updateFile(undefined, "worker-secret", "asset-1", { fileUrl: "/r.spz" });
+    assert.deepEqual(worker.calls, ["updateFile"]); // 소유권 검사 건너뜀
+  });
+});

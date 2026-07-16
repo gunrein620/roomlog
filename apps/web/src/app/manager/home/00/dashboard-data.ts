@@ -157,7 +157,7 @@ export async function assembleManagerDashboard(user: SessionUser | null): Promis
 
 async function loadListings(user: SessionUser | null): Promise<SourceResult<DashboardListing[]>> {
   try {
-    const all = await serverFetch<TradeListing[]>("/trade/listings");
+    const all = await serverFetch<TradeListing[]>("/trade/listings?mine=1");
     const listings = all
       .filter((listing) => listing.ownerId === user?.userId && listing.status !== "계약완료")
       .map((listing) => ({

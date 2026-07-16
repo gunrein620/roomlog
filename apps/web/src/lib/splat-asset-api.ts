@@ -21,6 +21,8 @@ export interface SplatAsset {
   status: SplatAssetStatus;
   transform: SplatTransform | null;
   registrationPairs: RegistrationPointPair[] | null;
+  /** 공개 뷰어 동봉 가구 — 연결된 도면(floorPlanId)/매물 스냅샷의 furnitures. 미검증 JSON이라 웹에서 isValidPlacedFurniture로 거른다. */
+  furnitures?: unknown[] | null;
   capturedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -116,16 +118,17 @@ export async function createSplatAsset(input: CreateSplatAssetInput): Promise<Sp
   return asJson<SplatAsset>(response);
 }
 
-/** 2점 정합 결과 반영 — transform 저장 + status REGISTERED 승격. */
+/** 2점 정합 결과 반영 — transform 저장 + status REGISTERED 승격. floorPlanId를 주면 자산에 연결한다(공개 뷰어 가구용). */
 export async function registerSplatAsset(
   id: string,
   transform: SplatTransform,
-  registrationPairs?: RegistrationPointPair[]
+  registrationPairs?: RegistrationPointPair[],
+  floorPlanId?: string
 ): Promise<SplatAsset> {
   const response = await fetch(apiUrl(`/splat-assets/${encodeURIComponent(id)}/registration`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ transform, registrationPairs })
+    body: JSON.stringify({ transform, registrationPairs, ...(floorPlanId ? { floorPlanId } : {}) })
   });
   return asJson<SplatAsset>(response);
 }

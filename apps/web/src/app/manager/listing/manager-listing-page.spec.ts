@@ -14,7 +14,8 @@ test("manager listing page keeps the manager shell and registration entry", () =
 });
 
 test("manager listing surface renders list, empty, and error states without demo data", () => {
-  assert.match(pageSource, /serverFetch<TradeListing\[]>\("\/trade\/listings"\)/);
+  // 소유자 스코프(?mine=1) — 서버가 내 매물만 반환한다(전체 반환 후 클라 필터가 아니라 서버 강제).
+  assert.match(pageSource, /serverFetch<TradeListing\[]>\("\/trade\/listings\?mine=1"\)/);
   assert.match(pageSource, /toManagerListingRows\(listings, user\.userId\)/);
   assert.match(pageSource, /등록한 매물/);
   assert.match(boardSource, /등록된 매물이 없습니다/);

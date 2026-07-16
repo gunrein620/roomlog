@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, UploadedFiles, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query, UploadedFiles, UseInterceptors } from "@nestjs/common";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogService } from "../roomlog/roomlog.service";
@@ -35,8 +35,16 @@ export class TradeController {
     return this.tradeService.listPublicListings();
   }
 
+  // 기본은 전체 반환(공개 매물 브라우징이 이 경로를 씀 — 스코프 걸면 깨진다).
+  // ?mine=1 + Bearer면 소유자 매물만 — 마이페이지 배지·앱 매물 픽커용(fail-closed: 토큰 없으면 던짐).
   @Get("listings")
-  listListings() {
+  listListings(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("mine") mine?: string
+  ) {
+    if (mine === "1" || mine === "true") {
+      return this.tradeService.listListingsByOwner(this.user(authorization).id);
+    }
     return this.tradeService.listListings();
   }
 

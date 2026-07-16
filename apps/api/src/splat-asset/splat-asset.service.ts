@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { basename, extname, resolve } from "node:path";
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
@@ -45,6 +45,35 @@ function classifyIntakeFile(file: UploadedSplatAssetFile): IntakeFileClassificat
   }
 
   throw new BadRequestException("영상, 캡처 zip 또는 스플랫 파일만 접수할 수 있습니다.");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** JSON 값이 배열이면 그대로(가구 배열), 아니면 null. 항목 검증은 웹(isValidPlacedFurniture)이 맡는다. */
+function asFurnitureArray(value: unknown): unknown[] | null {
+  return Array.isArray(value) && value.length > 0 ? value : null;
+}
+
+/**
+ * 공개 뷰어 노출용 가구 필터 — `visibleToTenant === false`인 항목을 서버에서 제외한다.
+ * 공개 링크는 임차인 시점이므로 그 플래그 의도를 그대로 강제한다(클라가 아니라 여기서).
+ * 소스가 이미 확정됐다면 필터 후 비어도 그대로 반환한다(폴백으로 넘어가지 않음).
+ */
+function filterPublicFurniture(items: unknown[]): unknown[] {
+  return items.filter((item) => !(isRecord(item) && item.visibleToTenant === false));
+}
+
+/**
+ * 매물 도면 스냅샷(TradeListing.floorPlan JSON)에서 furnitures 배열만 뽑는다.
+ * 허용 형태: { furnitures: [...] } | { room3d: { furnitures: [...] } }
+ * (manager-listing-media.ts의 normalizeManagerListingFloorPlan과 같은 위치를 읽는다).
+ */
+function furnituresFromListingSnapshot(value: unknown): unknown[] | null {
+  if (!isRecord(value)) return null;
+  const room3d = isRecord(value.room3d) ? value.room3d : null;
+  return asFurnitureArray(value.furnitures ?? room3d?.furnitures);
 }
 
 function safeUploadedFileName(prefix: string, originalName: string, extension: string): string {
@@ -110,6 +139,43 @@ export class SplatAssetService {
     const asset = await this.getPrisma().splatAsset.findUnique({ where: { id } });
     if (!asset) throw new NotFoundException(`splat 자산을 찾을 수 없습니다: ${id}`);
     return asset;
+  }
+
+  /**
+   * 공개 뷰어(?asset= 링크 방문자)용 조회 — 자산에 연결된 도면 가구를 동봉한다.
+   * 공개 엔드포인트이므로 도면 전체·소유자·주소는 노출하지 않고 furnitures 배열만 프로젝션한다.
+   * 소스 우선순위: 정합된 도면(floorPlanId) → 매물 스냅샷(listingId.floorPlan). 둘 다 없으면 null.
+   */
+  async getForViewer(id: string) {
+    const asset = await this.getById(id);
+    return { ...asset, furnitures: await this.projectFurnitures(asset) };
+  }
+
+  private async projectFurnitures(asset: {
+    floorPlanId: string | null;
+    listingId: string | null;
+  }): Promise<unknown[] | null> {
+    if (asset.floorPlanId) {
+      // 도면 전체가 아니라 furnitures 컬럼만 select — 벽·소유자 정보가 새지 않게 한다.
+      const plan = await this.getPrisma().floorPlan.findUnique({
+        where: { id: asset.floorPlanId },
+        select: { furnitures: true }
+      });
+      const furnitures = asFurnitureArray(plan?.furnitures);
+      if (furnitures) return filterPublicFurniture(furnitures);
+    }
+
+    if (asset.listingId) {
+      // 폴백: 직접등록 매물의 도면 스냅샷(walls3D/furnitures JSON). 여기서도 furnitures만 뽑는다.
+      const listing = await this.getPrisma().tradeListing.findUnique({
+        where: { id: asset.listingId },
+        select: { floorPlan: true }
+      });
+      const furnitures = furnituresFromListingSnapshot(listing?.floorPlan);
+      if (furnitures) return filterPublicFurniture(furnitures);
+    }
+
+    return null;
   }
 
   /** 업로드된 파일로 자산 생성 — 정합 전(status: UPLOADED). */
@@ -179,14 +245,32 @@ export class SplatAssetService {
   /** 2점 정합 결과 반영 — transform 저장 + status REGISTERED 승격. */
   async register(id: string, input: RegisterSplatAssetInput) {
     await this.getById(id); // 존재 검증(없으면 404)
+    // 정합에 쓴 도면을 자산에 붙여, 공개 뷰어가 그 도면 가구를 동봉받게 한다.
+    // 존재하지 않는 도면 id로 정합 자체가 깨지지 않도록 방어적으로 존재를 먼저 확인한다.
+    const floorPlanId = await this.resolveLinkableFloorPlanId(input.floorPlanId);
     return this.getPrisma().splatAsset.update({
       where: { id },
       data: {
         transform: input.transform as unknown as Prisma.InputJsonValue,
         registrationPairs: (input.registrationPairs ?? []) as unknown as Prisma.InputJsonValue,
-        status: "REGISTERED"
+        status: "REGISTERED",
+        ...(floorPlanId ? { floorPlanId } : {})
       }
     });
+  }
+
+  /** 정합 body의 floorPlanId가 실재하는 도면일 때만 연결값으로 통과시킨다(FK 위반·오타 방어). */
+  private async resolveLinkableFloorPlanId(floorPlanId: string | undefined): Promise<string | null> {
+    if (!floorPlanId) return null;
+    const plan = await this.getPrisma().floorPlan.findUnique({
+      where: { id: floorPlanId },
+      select: { id: true }
+    });
+    if (!plan) {
+      console.warn(`[splat-asset] 정합 도면 연결 건너뜀 — 존재하지 않는 floorPlanId=${floorPlanId}`);
+      return null;
+    }
+    return plan.id;
   }
 
   /** GPU 파이프라인이 생성한 spz 파일을 붙이고, 제작 중이면 정합 대기 상태로 승격한다. */
@@ -238,6 +322,29 @@ export class SplatAssetService {
       return null;
     }
     return listing.ownerId;
+  }
+
+  /**
+   * 자산(id)에 연결된 매물의 소유자만 통과시킨다 — registration/updateFile/delete 게이트.
+   * 존재하지 않는 자산은 404, 소유권 위반/확인불가는 403.
+   */
+  async assertAssetOwner(assetId: string, userId: string): Promise<void> {
+    const asset = await this.getById(assetId);
+    await this.assertListingOwner(asset.listingId, userId);
+  }
+
+  /**
+   * 매물 소유권을 서버에서 강제한다(fail-closed). listingId가 없는 자산(roomId 직접 생성)은
+   * 소유권 개념 밖이라 통과시켜 기존 동작을 유지한다. 소유자 확인 불가(매물 없음)는 403.
+   * 소유자 조회는 prisma TradeListing 프로젝션을 쓴다 — trade 런타임 truth는 JSON 스토어지만
+   * 프로젝터가 write-through(원자적)라 커밋된 매물의 ownerId는 신뢰할 수 있다.
+   */
+  async assertListingOwner(listingId: string | null | undefined, userId: string): Promise<void> {
+    if (!listingId) return;
+    const ownerId = await this.findListingOwnerId(listingId);
+    if (!ownerId || ownerId !== userId) {
+      throw new ForbiddenException("본인 매물의 3D 자산만 다룰 수 있습니다.");
+    }
   }
 
   private async updateStoredFile(

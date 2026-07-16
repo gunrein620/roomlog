@@ -8,7 +8,7 @@ import { Armchair, ChevronDown, Footprints, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
 import { SplatDropzone } from "./splat-dropzone";
-import { loadSplatFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
+import { loadViewerFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
 import { SplatFurnitureLayer } from "./splat-furniture-layer";
 import { SplatPlanWalls } from "./splat-plan-walls";
 import { loadPlanWallsFromBrowser, wallsToPlanBounds, type PlanBounds } from "./splat-plan-shape";
@@ -148,9 +148,20 @@ export default function TourViewer() {
         setAssetTransform(transform);
         // 벽 패널도 기본 OFF(2026-07-07 결정, splat-scene의 클립 기본값과 일치) — ?splatWalls=1로 옵트인.
         setShowPlanWalls(resolveWallReplace(window.location.search, false));
+        // 서버 동봉 가구를 우선순위대로 재해석한다. REGISTERED+유효 furnitures면 서버가 이기고,
+        // 아니면 마운트 때 채운 로컬/데모가 유지된다. ?furniture=0은 resolveViewerFurniture가 존중.
+        const furniture = loadViewerFurnitureFromBrowser(asset);
+        setFurnitureState(furniture);
         console.info(
           "[splat-tour] asset " +
-            JSON.stringify({ id: asset.id, status: asset.status, hasTransform: asset.transform !== null, fileUrl: asset.fileUrl })
+            JSON.stringify({
+              id: asset.id,
+              status: asset.status,
+              hasTransform: asset.transform !== null,
+              fileUrl: asset.fileUrl,
+              furnitureSource: furniture.source,
+              furnitureCount: furniture.furnitures.length
+            })
         );
       })
       .catch((error) => {
@@ -186,7 +197,8 @@ export default function TourViewer() {
   }, []);
 
   useEffect(() => {
-    const state = loadSplatFurnitureFromBrowser();
+    // 마운트 즉시 로컬/데모/off로 채운다. ?asset= 서버 가구는 자산 조회 후 아래 effect가 덮어쓴다.
+    const state = loadViewerFurnitureFromBrowser(null);
     setFurnitureState(state);
     console.info("[splat-tour] furniture " + JSON.stringify({ source: state.source, count: state.furnitures.length }));
   }, []);

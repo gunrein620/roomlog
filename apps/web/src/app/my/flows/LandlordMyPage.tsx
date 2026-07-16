@@ -485,7 +485,8 @@ export default function LandlordMyPage() {
   const loadOwnerListingAssets = useCallback(async () => {
     let listings: TradeListing[] = [];
     try {
-      const res = await fetch("/api/trade/listings", { cache: "no-store" });
+      // ?mine=1 — 내 매물만(서버 소유자 스코프). 비로그인이면 서버가 던져 res.ok=false → 빈 상태 유지.
+      const res = await fetch("/api/trade/listings?mine=1", { cache: "no-store" });
       if (!res.ok) return; // 비로그인/매물 없음 — 빈 상태 유지
       const parsed = (await res.json()) as unknown;
       if (!Array.isArray(parsed)) return;
