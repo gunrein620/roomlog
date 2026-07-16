@@ -42,7 +42,8 @@ export const tokenSecret = process.env.JWT_SECRET || "roomlog-local-dev-secret";
 export type UserRoleRelations = {
   tenantRooms: Record<string, string>;
   rooms: Array<{ landlordId?: string }>;
-  vendors: Array<{ userId: string }>;
+  // Legacy callers may still pass catalog rows, but they are never an authority source.
+  vendors?: readonly unknown[];
 };
 
 /**
@@ -51,16 +52,20 @@ export type UserRoleRelations = {
  * - SEEKER: 모든 계정 기본
  * - TENANT: TenantRoom 연결 존재
  * - LANDLORD: 소유한 Room 존재
- * - VENDOR: VendorProfile 연결 존재
- * legacy user.role은 관계가 아직 없어도 포함시킨다(기존 단일-role 계정 회귀 방지).
+ * VENDOR 권한은 ACTIVE VendorAccountLink의 비동기 resolver에서만 추가한다.
+ * legacy user.role 호환은 TENANT/LANDLORD에만 유지한다.
  */
 export function deriveUserRoles(user: UserAccount, relations: UserRoleRelations): UserRole[] {
   const roles: UserRole[] = ["SEEKER"];
 
   if (relations.tenantRooms[user.id]) roles.push("TENANT");
   if (relations.rooms.some((room) => room.landlordId === user.id)) roles.push("LANDLORD");
-  if (relations.vendors.some((vendor) => vendor.userId === user.id)) roles.push("VENDOR");
-  if (user.role !== "SEEKER" && !roles.includes(user.role)) roles.push(user.role);
+  if (
+    (user.role === "TENANT" || user.role === "LANDLORD") &&
+    !roles.includes(user.role)
+  ) {
+    roles.push(user.role);
+  }
 
   return roles;
 }

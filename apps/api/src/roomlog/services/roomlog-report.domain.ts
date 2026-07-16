@@ -6,6 +6,7 @@ import type {
   CreateManagerReportFollowUpInput,
   CreateManagerReportInput,
   CreateMessagingThreadInput,
+  Cost,
   ManagerReport,
   ManagerReportAuditLogEntry,
   ManagerReportChatAnswer,
@@ -53,7 +54,11 @@ export class RoomlogReportDomain {
       .map((report) => this.presentReport(report, false));
   }
 
-  createManagerReport(managerId: string, input: CreateManagerReportInput): ManagerReport {
+  createManagerReport(
+    managerId: string,
+    input: CreateManagerReportInput,
+    managerCosts: readonly Cost[] = this.store.costs
+  ): ManagerReport {
     this.assertReportInput(input);
     const rooms = this.resolveScopeRooms(managerId, input.scope);
     const roomIds = new Set(rooms.map((room) => room.id));
@@ -70,7 +75,8 @@ export class RoomlogReportDomain {
       periodEnd,
       rooms,
       roomIds,
-      unitIds
+      unitIds,
+      managerCosts
     };
     const { sections, references } = this.buildSnapshotSections(context);
     const createdAt = snapshotAt;
@@ -91,7 +97,7 @@ export class RoomlogReportDomain {
       snapshotAt,
       recipient: input.recipient,
       disclaimer: "AI 정리 스냅샷입니다. 모든 수치와 항목은 생성 시점 원천 데이터 기준이며 후속 발송은 원본 채널에서 재확인합니다.",
-      summary: `${input.periodLabel.trim()} ${input.scope.buildingName.trim()} 운영 리포트입니다. 하자 ${this.complaintsFor(roomIds, periodStart, periodEnd).length}건, 비용 ${this.costsFor(managerId, unitIds, periodStart, periodEnd).length}건을 스냅샷으로 기록했습니다.`,
+      summary: `${input.periodLabel.trim()} ${input.scope.buildingName.trim()} 운영 리포트입니다. 하자 ${this.complaintsFor(roomIds, periodStart, periodEnd).length}건, 비용 ${this.costsFor(managerCosts, managerId, unitIds, periodStart, periodEnd).length}건을 스냅샷으로 기록했습니다.`,
       nextActions: [
         {
           label: "생활 공지 초안 만들기",
@@ -430,9 +436,16 @@ export class RoomlogReportDomain {
     rooms: Room[];
     roomIds: Set<string>;
     unitIds: string[];
+    managerCosts: readonly Cost[];
   }) {
     const complaints = this.complaintsFor(context.roomIds, context.periodStart, context.periodEnd);
-    const costs = this.costsFor(context.managerId, context.unitIds, context.periodStart, context.periodEnd);
+    const costs = this.costsFor(
+      context.managerCosts,
+      context.managerId,
+      context.unitIds,
+      context.periodStart,
+      context.periodEnd
+    );
     const contracts = this.contractsFor(context.roomIds);
     const moveouts = this.store.moveouts.filter((moveout) => context.roomIds.has(moveout.roomId));
     const threads = this.store.messagingThreads.filter((thread) => context.roomIds.has(thread.roomId));
@@ -494,10 +507,16 @@ export class RoomlogReportDomain {
     );
   }
 
-  private costsFor(managerId: string, unitIds: string[], periodStart: string, periodEnd: string) {
+  private costsFor(
+    costs: readonly Cost[],
+    managerId: string,
+    unitIds: string[],
+    periodStart: string,
+    periodEnd: string
+  ) {
     const unitSet = new Set(unitIds);
 
-    return this.store.costs.filter(
+    return costs.filter(
       (cost) =>
         (cost.managerId === managerId || (cost.unitId ? unitSet.has(cost.unitId) : false)) &&
         this.timeOf(cost.date) >= this.timeOf(periodStart) &&

@@ -1,26 +1,43 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
   Get,
+  GoneException,
   Headers,
+  Optional,
   Param,
   Patch,
   Post,
+  Put,
   Query,
+  ServiceUnavailableException,
+  StreamableFile,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import type {
+  ConfirmTenantVendorConnectionInput,
+  DecideRepairCompletionInput,
+  PrepareTenantVendorConnectionInput,
+  SubmitVendorCompletionInput,
+  TenantVendorCompletionDecisionInput,
+  TenantVendorEstimateReviewInput,
+  TenantVendorVisitScheduleInput,
+  VendorCatalogSearchFilters,
+  VendorEstimateDraftInput,
+  VendorEstimateReviewInput,
+  VendorVisitScheduleInput
+} from "@roomlog/types";
 import {
   AddMessagingThreadMessageInput,
   AnnouncementTranslationRequest,
   AttachmentCategory,
   AddTenantComplaintMessageInput,
-  AddVendorRepairMessageInput,
-  ApproveRepairEstimateInput,
   ConfirmTenantCompletionInput,
   ConfirmBillPaymentInput,
   CreateAnnouncementDraftInput,
@@ -80,6 +97,12 @@ import {
   UserRole
 } from "./roomlog.types";
 import { RoomlogService } from "./roomlog.service";
+import { VendorActivationDomainError } from "./services/roomlog-vendor-activation.domain";
+import { RoomlogManagerVendorDomain } from "./services/roomlog-manager-vendor.domain";
+import { RoomlogVendorWorkflowDomain } from "./services/roomlog-vendor-workflow.domain";
+import { RoomlogTenantVendorConnectionDomain } from "./services/roomlog-tenant-vendor-connection.domain";
+import { VendorCompletionAttachmentService } from "./vendor-completion-attachment.service";
+import { VendorActivationRepositoryError } from "./vendor-activation.repository";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { issueSocketTicket } from "../realtime/socket-ticket";
 
@@ -90,11 +113,95 @@ type UploadedImageFile = {
   size: number;
 };
 
+function exactStringBody(body: unknown, field: string): string {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    Object.getPrototypeOf(body) !== Object.prototype
+  ) {
+    throw new BadRequestException("요청 본문 형식이 올바르지 않습니다.");
+  }
+
+  const keys = Reflect.ownKeys(body);
+  const value = (body as Record<string, unknown>)[field];
+  if (
+    keys.length !== 1 ||
+    keys[0] !== field ||
+    typeof value !== "string" ||
+    value.trim().length === 0
+  ) {
+    throw new BadRequestException("요청 본문 형식이 올바르지 않습니다.");
+  }
+
+  return value;
+}
+
+function rejectCallerIdentity(body: unknown, forbiddenFields: readonly string[]) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return;
+  const record = body as Record<string, unknown>;
+  if (forbiddenFields.some((field) => Object.hasOwn(record, field))) {
+    throw new BadRequestException("요청 본문에 사용자 식별자를 포함할 수 없습니다.");
+  }
+}
+
+function catalogFilters(
+  query?: string,
+  trade?: string,
+  serviceArea?: string,
+  verificationStatus?: string,
+  isActive?: string
+): VendorCatalogSearchFilters {
+  const filters: VendorCatalogSearchFilters = {};
+  if (query?.trim()) filters.query = query.trim();
+  if (trade?.trim()) filters.trade = trade.trim();
+  if (serviceArea?.trim()) filters.serviceArea = serviceArea.trim();
+  if (verificationStatus?.trim()) {
+    if (!["VERIFIED", "PENDING", "REJECTED"].includes(verificationStatus)) {
+      throw new BadRequestException("업체 인증 상태 필터가 올바르지 않습니다.");
+    }
+    filters.verificationStatus = verificationStatus as VendorCatalogSearchFilters["verificationStatus"];
+  }
+  if (isActive !== undefined) {
+    if (isActive !== "true" && isActive !== "false") {
+      throw new BadRequestException("업체 활성 상태 필터가 올바르지 않습니다.");
+    }
+    filters.isActive = isActive === "true";
+  }
+  return filters;
+}
+
+function rethrowVendorActivationError(error: unknown): never {
+  if (!(error instanceof VendorActivationDomainError)) throw error;
+
+  switch (error.response.code) {
+    case "INVALID_KEY":
+      throw new BadRequestException(error.response);
+    case "EXPIRED_KEY":
+      throw new GoneException(error.response);
+    case "UNAVAILABLE_VENDOR":
+    case "ALREADY_CLAIMED":
+    case "DEDICATED_ACCOUNT_REQUIRED":
+    case "ACCOUNT_ALREADY_LINKED":
+      throw new ConflictException(error.response);
+    case "ACTIVATION_UNAVAILABLE":
+      throw new ServiceUnavailableException(error.response);
+  }
+}
+
 @Controller()
 export class RoomlogController {
   constructor(
     private readonly roomlogService: RoomlogService,
-    private readonly realtime: RealtimeGateway
+    private readonly realtime: RealtimeGateway,
+    @Optional()
+    private readonly managerVendor?: RoomlogManagerVendorDomain,
+    @Optional()
+    private readonly vendorWorkflow?: RoomlogVendorWorkflowDomain,
+    @Optional()
+    private readonly vendorCompletionAttachments?: VendorCompletionAttachmentService,
+    @Optional()
+    private readonly tenantVendorConnection?: RoomlogTenantVendorConnectionDomain
   ) {}
 
   @Get("roomlog/demo")
@@ -105,6 +212,35 @@ export class RoomlogController {
   @Get("roomlog/runtime-config")
   getRuntimeConfig() {
     return this.roomlogService.getRuntimeConfig();
+  }
+
+  @Post("auth/vendor-activations/preview")
+  async previewVendorActivation(@Body() body: unknown) {
+    const key = exactStringBody(body, "key");
+
+    try {
+      return await this.roomlogService.previewVendorActivation(key);
+    } catch (error) {
+      return rethrowVendorActivationError(error);
+    }
+  }
+
+  @Post("auth/vendor-activations/claim")
+  async claimVendorActivation(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: unknown
+  ) {
+    const activationSession = exactStringBody(body, "activationSession");
+    const user = this.roomlogService.getUserFromToken(authorization);
+
+    try {
+      return await this.roomlogService.claimVendorActivation(
+        user.id,
+        activationSession
+      );
+    } catch (error) {
+      return rethrowVendorActivationError(error);
+    }
   }
 
   @Post("auth/signup")
@@ -185,8 +321,8 @@ export class RoomlogController {
   }
 
   @Get("auth/me")
-  getMe(@Headers("authorization") authorization?: string) {
-    return this.roomlogService.getMe(authorization);
+  async getMe(@Headers("authorization") authorization?: string) {
+    return await this.roomlogService.getMe(authorization);
   }
 
   // 소켓 핸드셰이크용 단기 티켓 — httpOnly 쿠키 토큰을 못 읽는 브라우저 JS 대신 BFF가 받아간다.
@@ -199,12 +335,22 @@ export class RoomlogController {
 
   @Post("attachments")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
-  uploadAttachment(
+  async uploadAttachment(
     @Headers("authorization") authorization: string | undefined,
     @UploadedFile() file: UploadedImageFile | undefined,
     @Body() body: { category?: AttachmentCategory }
   ) {
-    const user = this.requireRole(authorization, ["TENANT", "LANDLORD", "VENDOR"]);
+    const user = this.roomlogService.getUserFromToken(authorization);
+    const locallyAuthorized = this.roomlogService
+      .rolesForUser(user)
+      .some((role) => role === "TENANT" || role === "LANDLORD");
+
+    if (!locallyAuthorized) {
+      const vendorId = await this.resolveActiveVendorId(user.id);
+      if (!vendorId) {
+        throw new ForbiddenException("업체 계정 연결이 필요합니다.");
+      }
+    }
 
     if (!file?.buffer) {
       throw new BadRequestException("업로드할 이미지 파일이 필요합니다.");
@@ -308,11 +454,12 @@ export class RoomlogController {
   }
 
   @Get("tenant/home")
-  getTenantHome(@Headers("authorization") authorization?: string) {
+  async getTenantHome(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);
+    const profile = await this.roomlogService.getMe(authorization);
 
     return {
-      profile: this.roomlogService.getMe(authorization),
+      profile,
       complaints: this.roomlogService.listTenantComplaints(user.id),
       moveInChecklist: this.roomlogService.listTenantMoveInChecklist(user.id),
       roomTimeline: this.roomlogService.getTenantRoomTimeline(user.id)
@@ -506,14 +653,18 @@ export class RoomlogController {
   }
 
   @Post("tenant/complaints/intake/sessions/:sessionId/finalize")
-  finalizeIntakeSession(
+  async finalizeIntakeSession(
     @Headers("authorization") authorization: string | undefined,
     @Param("sessionId") sessionId: string,
     @Body() body: FinalizeIntakeInput
   ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.finalizeIntakeSession(user.id, sessionId, body);
+    const result = await Promise.resolve(
+      this.roomlogService.finalizeIntakeSession(user.id, sessionId, body)
+    );
+    await this.roomlogService.ensurePersistenceDurability();
+    return result;
   }
 
   @Post("tenant/complaints/intake/sessions/:sessionId/realtime/client-secret")
@@ -590,6 +741,109 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["TENANT"]);
 
     return this.roomlogService.submitTenantAiFeedback(user.id, complaintId, body);
+  }
+
+  @Get("tenant/complaints/:complaintId/vendor-candidates")
+  searchTenantPartnerVendors(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("complaintId") complaintId: string,
+    @Query("query") query?: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireTenantVendorConnectionDomain().search(
+      user.id,
+      complaintId,
+      query
+    );
+  }
+
+  @Post("tenant/complaints/:complaintId/vendor-connection/preview")
+  prepareTenantVendorConnection(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("complaintId") complaintId: string,
+    @Body() body: PrepareTenantVendorConnectionInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireTenantVendorConnectionDomain().prepare(
+      user.id,
+      complaintId,
+      body
+    );
+  }
+
+  @Post("tenant/complaints/:complaintId/vendor-connection/confirm")
+  confirmTenantVendorConnection(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("complaintId") complaintId: string,
+    @Body() body: ConfirmTenantVendorConnectionInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireTenantVendorConnectionDomain().confirm(
+      user.id,
+      complaintId,
+      body
+    );
+  }
+
+  @Get("tenant/complaints/:complaintId/vendor-workflow")
+  getTenantVendorWorkflow(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("complaintId") complaintId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireVendorWorkflowDomain().getTenantWorkflow(
+      user.id,
+      complaintId
+    );
+  }
+
+  @Post("tenant/repairs/:repairId/estimates/:estimateId/review")
+  reviewTenantVendorEstimate(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Param("estimateId") estimateId: string,
+    @Body() body: TenantVendorEstimateReviewInput
+  ) {
+    rejectCallerIdentity(body, ["tenantId", "managerId", "actorUserId", "vendorId"]);
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireVendorWorkflowDomain().reviewTenantEstimate(
+      user.id,
+      repairId,
+      estimateId,
+      body
+    );
+  }
+
+  @Post("tenant/repairs/:repairId/estimates/:estimateId/confirm-visit")
+  confirmTenantVendorEstimateVisit(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Param("estimateId") estimateId: string,
+    @Body() body: TenantVendorVisitScheduleInput
+  ) {
+    rejectCallerIdentity(body, ["tenantId", "managerId", "actorUserId", "vendorId"]);
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireVendorWorkflowDomain().confirmTenantEstimateVisit(
+      user.id,
+      repairId,
+      estimateId,
+      body
+    );
+  }
+
+  @Post("tenant/repairs/:repairId/completion-decisions")
+  decideTenantVendorCompletion(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: TenantVendorCompletionDecisionInput
+  ) {
+    rejectCallerIdentity(body, ["tenantId", "managerId", "actorUserId", "vendorId"]);
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireVendorWorkflowDomain().decideTenantCompletion(
+      user.id,
+      repairId,
+      body
+    );
   }
 
   @Post("tenant/messaging/threads")
@@ -1156,10 +1410,10 @@ export class RoomlogController {
   }
 
   @Get("manager/bills/deposits")
-  listManagerBillDeposits(@Headers("authorization") authorization?: string) {
+  async listManagerBillDeposits(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.listManagerBillDeposits(user.id);
+    return await this.roomlogService.listManagerBillDeposits(user.id);
   }
 
   @Post("manager/bills/deposits/:depositId/match")
@@ -1597,10 +1851,10 @@ export class RoomlogController {
   }
 
   @Get("manager/costs")
-  listManagerCosts(@Headers("authorization") authorization?: string) {
+  async listManagerCosts(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.listManagerCosts(user.id);
+    return await this.roomlogService.listManagerCosts(user.id);
   }
 
   @Get("manager/costs/review-queue-summary")
@@ -1611,13 +1865,13 @@ export class RoomlogController {
   }
 
   @Get("manager/costs/monthly-summary")
-  getManagerMonthlyCostSummary(
+  async getManagerMonthlyCostSummary(
     @Headers("authorization") authorization: string | undefined,
     @Query("month") month?: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getManagerMonthlyCostSummary(user.id, month);
+    return await this.roomlogService.getManagerMonthlyCostSummary(user.id, month);
   }
 
   @Get("manager/costs/receipts")
@@ -1638,13 +1892,13 @@ export class RoomlogController {
   }
 
   @Post("manager/costs/receipt-ocrs/:ocrId/confirm")
-  confirmManagerReceiptOcr(
+  async confirmManagerReceiptOcr(
     @Headers("authorization") authorization: string | undefined,
     @Param("ocrId") ocrId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.confirmManagerReceiptOcr(user.id, ocrId);
+    return await this.roomlogService.confirmManagerReceiptOcr(user.id, ocrId);
   }
 
   @Get("manager/costs/disclosure-settings")
@@ -1658,45 +1912,45 @@ export class RoomlogController {
   }
 
   @Get("manager/costs/:costId")
-  getManagerCost(
+  async getManagerCost(
     @Headers("authorization") authorization: string | undefined,
     @Param("costId") costId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getManagerCost(user.id, costId);
+    return await this.roomlogService.getManagerCost(user.id, costId);
   }
 
   @Post("manager/costs/:costId/confirm")
-  confirmManagerCost(
+  async confirmManagerCost(
     @Headers("authorization") authorization: string | undefined,
     @Param("costId") costId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.confirmManagerCost(user.id, costId);
+    return await this.roomlogService.confirmManagerCost(user.id, costId);
   }
 
   @Post("manager/costs/:costId/void")
-  voidManagerCost(
+  async voidManagerCost(
     @Headers("authorization") authorization: string | undefined,
     @Param("costId") costId: string,
     @Body() body: { reason?: string }
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.voidManagerCost(user.id, costId, body.reason);
+    return await this.roomlogService.voidManagerCost(user.id, costId, body.reason);
   }
 
   @Patch("manager/costs/:costId/disclosure")
-  updateManagerCostDisclosure(
+  async updateManagerCostDisclosure(
     @Headers("authorization") authorization: string | undefined,
     @Param("costId") costId: string,
     @Body() body: { disclosure: "public" | "private" }
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.updateManagerCostDisclosure(user.id, costId, body.disclosure);
+    return await this.roomlogService.updateManagerCostDisclosure(user.id, costId, body.disclosure);
   }
 
   @Patch("manager/tickets/:ticketId")
@@ -1761,39 +2015,29 @@ export class RoomlogController {
     return this.roomlogService.reviewTenantAiFeedback(user.id, ticketId, feedbackId, body);
   }
 
-  @Get("manager/vendors")
-  listVendors(@Headers("authorization") authorization?: string) {
-    this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.listVendors();
-  }
-
   @Get("manager/vendor-mgmt/vendors")
   listManagerVendorMgmtVendors(
     @Headers("authorization") authorization: string | undefined,
-    @Query("q") q?: string,
+    @Query("query") query?: string,
     @Query("trade") trade?: string,
-    @Query("sort") sort?: string
+    @Query("serviceArea") serviceArea?: string,
+    @Query("verificationStatus") verificationStatus?: string,
+    @Query("isActive") isActive?: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.listManagerVendorMgmtVendors(user.id, { q, trade, sort });
+    return this.requireManagerVendorDomain().list(
+      user.id,
+      catalogFilters(query, trade, serviceArea, verificationStatus, isActive)
+    );
   }
 
-  @Post("manager/vendor-mgmt/vendors")
-  createManagerVendorMgmtVendor(
+  @Get("manager/vendor-mgmt/tickets/:ticketId/job")
+  getManagerVendorJobByTicket(
     @Headers("authorization") authorization: string | undefined,
-    @Body()
-    body: {
-      businessName?: string;
-      contactPerson?: string;
-      phone?: string;
-      serviceArea?: string;
-    }
+    @Param("ticketId") ticketId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.createManagerVendorProfile(user.id, body);
+    return this.requireManagerVendorDomain().findJobByTicket(user.id, ticketId);
   }
 
   @Get("manager/vendor-mgmt/vendors/:vendorId")
@@ -1802,66 +2046,66 @@ export class RoomlogController {
     @Param("vendorId") vendorId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.getManagerVendorMgmtDetail(user.id, vendorId);
+    return this.requireManagerVendorDomain().getDetail(user.id, vendorId);
   }
 
-  @Patch("manager/vendor-mgmt/vendors/:vendorId")
-  updateManagerVendorMgmtVendor(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("vendorId") vendorId: string,
-    @Body()
-    body: {
-      businessName?: string;
-      contactPerson?: string;
-      phone?: string;
-      serviceArea?: string;
-    }
-  ) {
-    const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.updateManagerVendorProfile(user.id, vendorId, body);
-  }
-
-  @Get("manager/vendor-mgmt/vendors/:vendorId/perf")
-  getManagerVendorMgmtPerf(
+  @Get("manager/vendor-mgmt/vendors/:vendorId/performance")
+  async getManagerVendorMgmtPerformance(
     @Headers("authorization") authorization: string | undefined,
     @Param("vendorId") vendorId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.getManagerVendorMgmtPerf(user.id, vendorId);
+    const detail = await this.requireManagerVendorDomain().getDetail(user.id, vendorId);
+    return detail.performance;
   }
 
-  @Get("manager/vendor-mgmt/duplicate-candidates")
-  listManagerVendorDuplicateCandidates(@Headers("authorization") authorization: string | undefined) {
-    const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.listManagerVendorDuplicateCandidates(user.id);
-  }
-
-  @Post("manager/vendors/invites")
-  createVendorInvite(
+  @Get("manager/vendor-mgmt/search")
+  searchManagerVendorCatalog(
     @Headers("authorization") authorization: string | undefined,
-    @Body()
-    body: {
-      email?: string;
-      businessName: string;
-      contactPerson: string;
-      phone: string;
-      serviceArea: string;
-    }
+    @Query("query") query?: string,
+    @Query("trade") trade?: string,
+    @Query("serviceArea") serviceArea?: string,
+    @Query("verificationStatus") verificationStatus?: string,
+    @Query("isActive") isActive?: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.createVendorInvite(user.id, body);
+    return this.requireManagerVendorDomain().searchCatalog(
+      user.id,
+      catalogFilters(query, trade, serviceArea, verificationStatus, isActive)
+    );
   }
 
-  @Get("manager/vendors/invites")
-  listVendorInvites(@Headers("authorization") authorization?: string) {
+  @Put("manager/vendor-mgmt/vendors/:vendorId/registration")
+  registerManagerVendor(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("vendorId") vendorId: string
+  ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireManagerVendorDomain().register(user.id, vendorId);
+  }
 
-    return this.roomlogService.listVendorInvites(user.id);
+  @Delete("manager/vendor-mgmt/vendors/:vendorId/registration")
+  archiveManagerVendor(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("vendorId") vendorId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireManagerVendorDomain().archive(user.id, vendorId);
+  }
+
+  @Patch("manager/vendor-mgmt/vendors/:vendorId/manager-note")
+  updateManagerVendorNote(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("vendorId") vendorId: string,
+    @Body() body: { managerNote: string }
+  ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId"]);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireManagerVendorDomain().updateNote(
+      user.id,
+      vendorId,
+      body.managerNote
+    );
   }
 
   @Post("manager/tenants/invites")
@@ -1894,38 +2138,201 @@ export class RoomlogController {
     @Param("ticketId") ticketId: string,
     @Body() body: { vendorId: string; requestNote: string }
   ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId"]);
     const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.assignVendor(user.id, ticketId, body);
+    return this.requireVendorWorkflowDomain().assignVendor(user.id, ticketId, body);
   }
 
-  @Post("manager/tickets/:ticketId/approve-completion")
-  approveCompletion(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("ticketId") ticketId: string,
-    @Body() body: { note?: string }
-  ) {
-    const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.approveCompletion(user.id, ticketId, body.note);
-  }
-
-  @Post("manager/repairs/:repairId/approve-estimate")
-  approveRepairEstimate(
+  @Post("manager/repairs/:repairId/estimates/:estimateId/review")
+  reviewVendorEstimate(
     @Headers("authorization") authorization: string | undefined,
     @Param("repairId") repairId: string,
-    @Body() body: ApproveRepairEstimateInput
+    @Param("estimateId") estimateId: string,
+    @Body() body: VendorEstimateReviewInput
   ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId", "vendorId"]);
     const user = this.requireRole(authorization, ["LANDLORD"]);
-
-    return this.roomlogService.approveRepairEstimate(user.id, repairId, body);
+    return this.requireVendorWorkflowDomain().reviewEstimate(
+      user.id,
+      repairId,
+      estimateId,
+      body
+    );
   }
 
+  @Post("manager/repairs/:repairId/estimates/:estimateId/confirm-visit")
+  confirmVendorEstimateVisit(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Param("estimateId") estimateId: string,
+    @Body() body: VendorVisitScheduleInput
+  ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId", "vendorId"]);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireVendorWorkflowDomain().confirmEstimateVisit(
+      user.id,
+      repairId,
+      estimateId,
+      body
+    );
+  }
+
+  @Post("manager/repairs/:repairId/completion-decisions")
+  decideVendorCompletion(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: DecideRepairCompletionInput
+  ) {
+    rejectCallerIdentity(body, ["managerId", "actorUserId", "vendorId"]);
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireVendorWorkflowDomain().decideCompletion(user.id, repairId, body);
+  }
+
+  @Get("vendor/jobs")
+  async listVendorJobs(@Headers("authorization") authorization?: string) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().listJobs(user.id);
+  }
+
+  @Get("vendor/jobs/:repairId")
+  async getVendorJob(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string
+  ) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().getJob(user.id, repairId);
+  }
+
+  @Put("vendor/jobs/:repairId/estimate-draft")
+  async saveVendorEstimateDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: VendorEstimateDraftInput
+  ) {
+    rejectCallerIdentity(body, ["vendorId", "userId", "managerId", "actorUserId"]);
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().saveEstimateDraft(
+      user.id,
+      repairId,
+      undefined,
+      body
+    );
+  }
+
+  @Put("vendor/jobs/:repairId/estimate-draft/:estimateId")
+  async updateVendorEstimateDraft(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Param("estimateId") estimateId: string,
+    @Body() body: VendorEstimateDraftInput
+  ) {
+    rejectCallerIdentity(body, ["vendorId", "userId", "managerId", "actorUserId"]);
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().saveEstimateDraft(
+      user.id,
+      repairId,
+      estimateId,
+      body
+    );
+  }
+
+  @Post("vendor/jobs/:repairId/estimates/:estimateId/submit")
+  async submitVendorEstimate(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Param("estimateId") estimateId: string
+  ) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().submitEstimate(user.id, repairId, estimateId);
+  }
+
+  @Post("vendor/jobs/:repairId/estimates/:estimateId/withdraw")
+  async withdrawVendorEstimate(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Param("estimateId") estimateId: string
+  ) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().withdrawEstimate(user.id, repairId, estimateId);
+  }
+
+  @Post("vendor/jobs/:repairId/schedule")
+  async scheduleVendorJob(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: VendorVisitScheduleInput
+  ) {
+    rejectCallerIdentity(body, ["vendorId", "userId", "managerId", "actorUserId"]);
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().scheduleApprovedJob(user.id, repairId, body);
+  }
+
+  @Post("vendor/jobs/:repairId/start")
+  async startVendorJob(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string
+  ) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().startJob(user.id, repairId);
+  }
+
+  @Post("vendor/jobs/:repairId/completion-attachments")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async uploadVendorCompletionAttachment(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @UploadedFile() file: UploadedImageFile | undefined
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException("업로드할 완료 사진이 필요합니다.");
+    }
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorCompletionAttachmentService().save(user.id, repairId, {
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mimeType: file.mimetype
+    });
+  }
+
+  @Get("vendor-completion-files/:fileKey")
+  async readVendorCompletionAttachment(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("fileKey") fileKey: string
+  ) {
+    const user = this.roomlogService.getUserFromToken(authorization);
+    const file = await this.requireVendorCompletionAttachmentService().read(
+      user.id,
+      this.roomlogService.rolesForUser(user),
+      fileKey
+    );
+    return new StreamableFile(file.buffer, {
+      type: file.mimeType,
+      disposition: "inline",
+      length: file.buffer.length
+    });
+  }
+
+  @Post("vendor/jobs/:repairId/completion-reports")
+  async submitVendorCompletion(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("repairId") repairId: string,
+    @Body() body: SubmitVendorCompletionInput
+  ) {
+    rejectCallerIdentity(body, ["vendorId", "userId", "managerId", "actorUserId"]);
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().submitCompletion(user.id, repairId, body);
+  }
+
+  @Get("vendor/settlements")
+  async listVendorSettlements(@Headers("authorization") authorization?: string) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().listSettlements(user.id);
+  }
+
+  // 한 릴리스 동안만 유지하는 읽기 전용 별칭. 모든 mutation은 vendor/jobs로만 제공한다.
   @Get("vendor/repairs")
   listVendorRepairs(@Headers("authorization") authorization?: string) {
-    const user = this.requireRole(authorization, ["VENDOR"]);
-
-    return this.roomlogService.listVendorRepairs(user.id);
+    return this.listVendorJobs(authorization);
   }
 
   @Get("vendor/repairs/:repairId")
@@ -1933,53 +2340,7 @@ export class RoomlogController {
     @Headers("authorization") authorization: string | undefined,
     @Param("repairId") repairId: string
   ) {
-    const user = this.requireRole(authorization, ["VENDOR"]);
-
-    return this.roomlogService.getVendorRepair(user.id, repairId);
-  }
-
-  @Post("vendor/repairs/:repairId/messages")
-  addVendorRepairMessage(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("repairId") repairId: string,
-    @Body() body: AddVendorRepairMessageInput
-  ) {
-    const user = this.requireRole(authorization, ["VENDOR"]);
-
-    return this.roomlogService.addVendorRepairMessage(user.id, repairId, body);
-  }
-
-  @Post("vendor/repairs/:repairId/estimate")
-  submitEstimate(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("repairId") repairId: string,
-    @Body() body: { estimateAmount: number; estimateDescription: string }
-  ) {
-    const user = this.requireRole(authorization, ["VENDOR"]);
-
-    return this.roomlogService.submitEstimate(user.id, repairId, body);
-  }
-
-  @Post("vendor/repairs/:repairId/schedule")
-  scheduleRepair(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("repairId") repairId: string,
-    @Body() body: { scheduledAt: string }
-  ) {
-    const user = this.requireRole(authorization, ["VENDOR"]);
-
-    return this.roomlogService.scheduleRepair(user.id, repairId, body);
-  }
-
-  @Post("vendor/repairs/:repairId/report-completion")
-  reportCompletion(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("repairId") repairId: string,
-    @Body() body: { completionNote: string; completionPhotoUrls?: string[] }
-  ) {
-    const user = this.requireRole(authorization, ["VENDOR"]);
-
-    return this.roomlogService.reportCompletion(user.id, repairId, body);
+    return this.getVendorJob(authorization, repairId);
   }
 
   // capability 가드 — user.role 단일값이 아니라 관계에서 파생한 roles로 판단한다.
@@ -1993,5 +2354,67 @@ export class RoomlogController {
     }
 
     return user;
+  }
+
+  private requireManagerVendorDomain() {
+    if (!this.managerVendor) {
+      throw new ServiceUnavailableException("업체 관리 데이터 연결을 사용할 수 없습니다.");
+    }
+    return this.managerVendor;
+  }
+
+  private async requireVendorRole(
+    authorization: string | undefined
+  ): Promise<UserAccount> {
+    const user = this.roomlogService.getUserFromToken(authorization);
+    if (this.roomlogService.rolesForUser(user).includes("VENDOR")) return user;
+
+    // 업체 등록키로 활성화한 전용 SEEKER 계정은 legacy store role을 바꾸지 않는다.
+    // 활성 account-link가 VENDOR capability의 권위이며 workflow domain도 다시 검증한다.
+    const vendorId = await this.resolveActiveVendorId(user.id);
+    if (!vendorId) {
+      throw new ForbiddenException("활성 업체 계정으로만 접근할 수 있습니다.");
+    }
+    return user;
+  }
+
+  private requireVendorWorkflowDomain() {
+    if (!this.vendorWorkflow) {
+      throw new ServiceUnavailableException("업체 작업 데이터 연결을 사용할 수 없습니다.");
+    }
+    return this.vendorWorkflow;
+  }
+
+  private requireTenantVendorConnectionDomain() {
+    if (!this.tenantVendorConnection) {
+      throw new ServiceUnavailableException(
+        "임차인 협력업체 연결 데이터를 사용할 수 없습니다."
+      );
+    }
+    return this.tenantVendorConnection;
+  }
+
+  private requireVendorCompletionAttachmentService() {
+    if (!this.vendorCompletionAttachments) {
+      throw new ServiceUnavailableException("완료 사진 저장 연결을 사용할 수 없습니다.");
+    }
+    return this.vendorCompletionAttachments;
+  }
+
+  private async resolveActiveVendorId(userId: string): Promise<string | undefined> {
+    try {
+      return await this.roomlogService.resolveActiveVendorId(userId);
+    } catch (error) {
+      if (
+        error instanceof VendorActivationRepositoryError &&
+        error.code === "ACTIVATION_UNAVAILABLE"
+      ) {
+        throw new ServiceUnavailableException({
+          code: "ACTIVATION_UNAVAILABLE",
+          message: "업체 계정 활성화를 현재 사용할 수 없습니다."
+        });
+      }
+      throw error;
+    }
   }
 }
