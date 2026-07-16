@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { getRealtimeSocket } from "@/lib/realtime-client";
-import { TRADE_LISTING_NO_PREFIX } from "@/lib/listing-catalog";
+import { TRADE_LISTING_NO_PREFIX, tradePriceLabel, type TradeListing } from "@/lib/listing-catalog";
 import { tradeChatDisplayMode } from "./trade-chat-display";
 
 // 매물 거래 채팅 센터(당근식) — 매물을 보고 연락하는 사람들의 채팅 채널.
@@ -438,6 +438,110 @@ export function TradeChatCenter({
     markThreadSeen(thread.id, thread.messageCount);
   };
 
+  // 스레드 우클릭 컨텍스트 메뉴 — 간단한 매물 정보와 "채팅방 나가기"를 띄운다.
+  const [threadMenu, setThreadMenu] = useState<{ x: number; y: number; thread: TradeThreadSummary } | null>(null);
+  // 메뉴에 보여줄 매물 정보 — 직접등록 매물이면 공개 목록에서 찾는다(데모 매물은 제목만).
+  const [menuListing, setMenuListing] = useState<TradeListing | null>(null);
+  const [isLeavingThread, setIsLeavingThread] = useState(false);
+
+  useEffect(() => {
+    if (!threadMenu) return;
+    const close = () => setThreadMenu(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [threadMenu]);
+
+  useEffect(() => {
+    setMenuListing(null);
+    const listingId = threadMenu?.thread.listingId;
+    if (!listingId) return;
+    let cancelled = false;
+    fetch("/api/trade/listings/public", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: TradeListing[]) => {
+        if (cancelled || !Array.isArray(data)) return;
+        setMenuListing(data.find((listing) => listing.id === listingId) ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [threadMenu?.thread.listingId]);
+
+  const openThreadMenu = (event: React.MouseEvent, thread: TradeThreadSummary) => {
+    event.preventDefault();
+    // 메뉴가 화면 밖으로 나가지 않게 대략적인 크기만큼 클램프한다.
+    const x = Math.min(event.clientX, window.innerWidth - 280);
+    const y = Math.min(event.clientY, window.innerHeight - 220);
+    setThreadMenu({ x, y, thread });
+  };
+
+  const leaveThread = async (thread: Pick<TradeThreadSummary, "id" | "listingTitle">) => {
+    if (isLeavingThread) return;
+    if (!window.confirm(`'${thread.listingTitle}' 채팅방을 나갈까요?\n내 목록에서 사라지고, 새 메시지가 오면 다시 나타납니다.`)) return;
+    setIsLeavingThread(true);
+    try {
+      const res = await fetch(`/api/trade/threads/${thread.id}/leave`, { method: "POST" });
+      if (!res.ok) {
+        window.alert("채팅방 나가기에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+      setThreadMenu(null);
+      if (openThreadIdRef.current === thread.id) {
+        setOpenThreadId(null);
+        setOpenThread(null);
+        setOpenContract(null);
+      }
+      loadThreads();
+    } finally {
+      setIsLeavingThread(false);
+    }
+  };
+
+  // 우클릭 메뉴 — 매물 요약(직접등록이면 주소·건물명·가격까지) + 채팅방 나가기
+  const renderThreadMenu = () => {
+    if (!threadMenu) return null;
+    const { thread } = threadMenu;
+    return (
+      <div
+        className="trade-thread-menu"
+        role="menu"
+        style={{ left: threadMenu.x, top: threadMenu.y }}
+        onClick={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <div className="trade-thread-menu-info">
+          <strong>{thread.listingTitle}</strong>
+          {menuListing ? (
+            <>
+              <small>{[menuListing.location, menuListing.detailAddress].filter(Boolean).join(" ")}</small>
+              {menuListing.buildingName ? <small>건물명 · {menuListing.buildingName}</small> : null}
+              <small>{tradePriceLabel(menuListing)} · {menuListing.roomType}</small>
+            </>
+          ) : (
+            <small>{thread.role === "buyer" ? "보낸 채팅" : "받은 채팅"} · {thread.counterpartName}님과의 대화</small>
+          )}
+        </div>
+        <button
+          type="button"
+          role="menuitem"
+          className="trade-thread-menu-leave"
+          disabled={isLeavingThread}
+          onClick={() => leaveThread(thread)}
+        >
+          채팅방 나가기
+        </button>
+      </div>
+    );
+  };
+
   const displayMode = tradeChatDisplayMode({
     needsLogin,
     threadsLoaded: threads !== null,
@@ -590,11 +694,23 @@ export function TradeChatCenter({
             <strong>{isHub ? counterpart : openThread.listingTitle}</strong>
             <small>{isHub ? openThread.listingTitle : `${counterpart}님과의 대화`}</small>
           </div>
-          {lockedThreadId || isHubDesktop ? null : (
-            <button type="button" className="trade-chat-back" onClick={() => setOpenThreadId(null)}>
-              목록으로
-            </button>
-          )}
+          <div className="trade-chat-room-actions">
+            {lockedThreadId || isHubDesktop ? null : (
+              <button type="button" className="trade-chat-back" onClick={() => setOpenThreadId(null)}>
+                목록으로
+              </button>
+            )}
+            {lockedThreadId ? null : (
+              <button
+                type="button"
+                className="trade-chat-leave"
+                disabled={isLeavingThread}
+                onClick={() => leaveThread({ id: openThread.id, listingTitle: openThread.listingTitle })}
+              >
+                채팅방 나가기
+              </button>
+            )}
+          </div>
         </header>
         {contractBar}
         <div ref={scrollRef} className="trade-chat-scroll">
@@ -693,6 +809,7 @@ export function TradeChatCenter({
             type="button"
             className={openThreadId === thread.id ? "trade-hub-item active" : "trade-hub-item"}
             onClick={() => openThreadFromList(thread)}
+            onContextMenu={(event) => openThreadMenu(event, thread)}
           >
             <span className="trade-hub-avatar" aria-hidden="true">
               {(thread.counterpartName || "집").slice(0, 1)}
@@ -733,6 +850,7 @@ export function TradeChatCenter({
     }
     return (
       <div className="trade-hub-desktop">
+        {renderThreadMenu()}
         {renderHubList(threads)}
         <div className="trade-hub-room">
           {openThreadId ? (
@@ -779,15 +897,22 @@ export function TradeChatCenter({
   // 스레드 목록 — 허브(앱)는 당근식 채팅 목록, 그 외는 기존 카드 목록
   const visibleThreads = threads ?? [];
   if (isHub) {
-    return renderHubList(visibleThreads);
+    return (
+      <>
+        {renderThreadMenu()}
+        {renderHubList(visibleThreads)}
+      </>
+    );
   }
   return (
     <div style={{ display: "grid", gap: 10 }} aria-label="채팅 목록">
+      {renderThreadMenu()}
       {visibleThreads.map((thread) => (
         <button
           key={thread.id}
           type="button"
           onClick={() => openThreadFromList(thread)}
+          onContextMenu={(event) => openThreadMenu(event, thread)}
           style={{
             display: "grid",
             gap: 5,

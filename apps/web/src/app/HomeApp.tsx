@@ -973,23 +973,6 @@ function FilterBottomSheet({
           </label>
         </div>
 
-        <div className="filter-sheet-section compact">
-          <strong>입주 조건</strong>
-          <div className="filter-priority-grid">
-            {[
-              ["즉시입주", "오늘 방문 가능"],
-              ["확인매물", "실제 방문 확인"],
-              ["3D 투어", "방문 전 구조 확인"],
-              ["안심분석", "권리관계 요약"]
-            ].map(([label, caption]) => (
-              <button type="button" key={label}>
-                <span>{label}</span>
-                <small>{caption}</small>
-              </button>
-            ))}
-          </div>
-        </div>
-
         <button className="filter-apply-button" type="button" onClick={onApply}>
           조건 적용하고 {resultCount}개 보기
         </button>

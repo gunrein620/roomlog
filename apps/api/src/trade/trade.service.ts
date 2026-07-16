@@ -115,6 +115,8 @@ export type TradeThread = {
   createdAt: string;
   updatedAt: string;
   messages: TradeMessage[];
+  /** 채팅방을 나간 참여자 — 이 사용자의 목록에서 숨긴다. 새 메시지가 오면 되살아난다. */
+  leftUserIds?: string[];
 };
 
 export type TradeThreadSummary = {
@@ -631,6 +633,7 @@ export class TradeService implements OnModuleDestroy {
   listThreads(userId: string): TradeThreadSummary[] {
     return this.store.threads
       .filter((thread) => thread.buyerId === userId || thread.ownerId === userId)
+      .filter((thread) => !thread.leftUserIds?.includes(userId))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map((thread) => {
         const last = thread.messages[thread.messages.length - 1];
@@ -676,6 +679,20 @@ export class TradeService implements OnModuleDestroy {
       createdAt: now
     });
     thread.updatedAt = now;
+    // 새 메시지는 나간 사람의 목록에도 채팅방을 되살린다(같은 매물 재문의·상대의 후속 연락).
+    if (thread.leftUserIds?.length) delete thread.leftUserIds;
+  }
+
+  /** 채팅방 나가기 — 내 목록에서만 숨긴다(상대는 그대로). 새 메시지가 오면 다시 나타난다. */
+  leaveThread(userId: string, threadId: string): { ok: true } {
+    const thread = this.getThread(userId, threadId);
+    const left = new Set(thread.leftUserIds ?? []);
+    if (!left.has(userId)) {
+      left.add(userId);
+      thread.leftUserIds = [...left];
+      this.persist();
+    }
+    return { ok: true };
   }
 
   /** 계약 조건 한 줄 표기 — 채팅 안내 메시지 공용. */

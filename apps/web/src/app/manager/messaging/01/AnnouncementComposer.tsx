@@ -78,6 +78,7 @@ export function AnnouncementComposer({
 }) {
   const router = useRouter();
   const [currentDraftId, setCurrentDraftId] = useState(draftId);
+  const [hasScopeSelection, setHasScopeSelection] = useState(Boolean(draftId));
   const [category, setCategory] = useState(initialDraft.category);
   const [scope, setScope] = useState(initialDraft.scope);
   const [title, setTitle] = useState(initialDraft.title);
@@ -110,12 +111,16 @@ export function AnnouncementComposer({
     new Set(managedRooms.map((room) => room.buildingName).filter(Boolean)),
   ) as string[];
   const selectableRooms = roomsForBuilding(managedRooms, selectedBuilding);
-  const target = buildAnnouncementTarget(
+  const calculatedTarget = buildAnnouncementTarget(
     managedRooms,
     scope,
     selectedBuilding,
     selectedRoomIds,
   );
+  const target = hasScopeSelection
+    ? calculatedTarget
+    : { targetRoomIds: [], targetLabel: "" };
+  const hasValidTarget = target.targetRoomIds.length > 0;
   const deliveryTranslations = translationsForDelivery(deliveryMode, translations);
 
   function updateSource(field: "title" | "body", value: string) {
@@ -200,6 +205,7 @@ export function AnnouncementComposer({
   }
 
   function changeScope(nextScope: AnnouncementScope) {
+    setHasScopeSelection(true);
     setScope(nextScope);
     if (nextScope === "unit") setSelectedRoomIds([]);
   }
@@ -299,7 +305,7 @@ export function AnnouncementComposer({
                     type="radio"
                     name="scope"
                     value={option.value}
-                    checked={scope === option.value}
+                    checked={hasScopeSelection && scope === option.value}
                     onChange={() => changeScope(option.value)}
                   />
                   <span className={styles.categoryPill}>{option.label}</span>
@@ -308,7 +314,7 @@ export function AnnouncementComposer({
             </div>
 
             <div className={styles.targetControls}>
-              {scope === "building" || scope === "unit" ? (
+              {hasScopeSelection && (scope === "building" || scope === "unit") ? (
                 <div className={styles.selectWrap}>
                   <select
                     className={styles.select}
@@ -323,7 +329,7 @@ export function AnnouncementComposer({
                 </div>
               ) : null}
 
-              {scope === "unit" ? (
+              {hasScopeSelection && scope === "unit" ? (
                 <div className={styles.unitList} role="group" aria-label="공지 대상 호실">
                   {selectableRooms.length > 0
                     ? selectableRooms.map((room) => (
@@ -344,12 +350,16 @@ export function AnnouncementComposer({
                 </div>
               ) : null}
 
-              <div className={styles.targetBox}>
-                <span>{target.targetLabel}</span>
-              </div>
-              <div className={styles.targetHint}>
-                공지 대상을 선택하세요.<br />
-                미납 세대 옵션은 없습니다. 연체·독촉은 별도 채널에서 처리합니다.
+              <div className={styles.targetSummary}>
+                {hasValidTarget ? (
+                  <div className={styles.targetBox}>
+                    <span>{target.targetLabel}</span>
+                  </div>
+                ) : (
+                  <div className={styles.targetHint}>
+                    공지 대상을 선택하세요.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -424,11 +434,6 @@ export function AnnouncementComposer({
       </div>
 
       <aside className={styles.rightColumn}>
-        <section className={styles.primaryInfo}>
-          <h2>발송은 다음 화면에서만</h2>
-          <p>이 화면은 작성과 저장까지만 담당합니다. 자동 발송 없이 검토 게이트를 거칩니다.</p>
-        </section>
-
         <section className={styles.card}>
           <div className={styles.translationHeader}>
             <h2>{category === "urgent" ? "긴급 다국어 검수" : "다국어 번역"}</h2>

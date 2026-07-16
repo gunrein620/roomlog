@@ -9,6 +9,7 @@ import {
   isDialogBackdropPoint,
   type ManagerAssistantBriefingItem,
 } from "@/lib/manager-assistant";
+import { useManagerMessagingUnreadCount } from "@/lib/manager-messaging-unread";
 import { ManagerAssistantLauncher, ManagerAssistantPanel } from "./ManagerAssistant";
 import { ManagerSectionNav } from "./ManagerSectionNav";
 import { ManagerSidebar } from "./ManagerSidebar";
@@ -43,6 +44,7 @@ export function ManagerAppShell({
   const [navCollapsed, setNavCollapsed] = useState(false);
   const mobileDialogRef = useRef<HTMLDialogElement>(null);
   const pathname = usePathname();
+  const messagingUnreadCount = useManagerMessagingUnreadCount(pathname);
   const fullAssistant = pathname.startsWith("/manager/agent/realtime");
 
   // 접힘 상태는 화면(레이아웃) 간 이동에도 유지 — SSR 불일치를 피하려고 마운트 후에 복원한다.
@@ -119,7 +121,7 @@ export function ManagerAppShell({
         context={context}
         navCollapsed={navCollapsed}
         theme={theme}
-        nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} /></Suspense>}
+        nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} messagingUnreadCount={messagingUnreadCount} /></Suspense>}
         subnav={subnav ?? <Suspense fallback={null}><ManagerSectionNav /></Suspense>}
         headerActions={action}
         rightRail={rail}
@@ -144,7 +146,7 @@ export function ManagerAppShell({
         onClick={closeMobileNavigationOnBackdrop}
         onClose={() => setMobileOpen(false)}
       >
-        <Suspense fallback={null}><ManagerSidebar onNavigate={closeMobileNavigation} showCloseButton /></Suspense>
+        <Suspense fallback={null}><ManagerSidebar onNavigate={closeMobileNavigation} showCloseButton messagingUnreadCount={messagingUnreadCount} /></Suspense>
       </dialog>
       {!showAssistantRail && !fullAssistant && !hideAssistantLauncher ? (
         <ManagerAssistantLauncher

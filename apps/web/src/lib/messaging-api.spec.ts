@@ -43,6 +43,10 @@ describe("messaging api path contracts", () => {
       "/manager/messaging/threads/mth_1/messages"
     );
     assert.equal(
+      managerMessagingPaths.readThread("mth_1"),
+      "/manager/messaging/threads/mth_1/read"
+    );
+    assert.equal(
       managerMessagingPaths.deleteThread("mth_1"),
       "/manager/messaging/threads/mth_1"
     );

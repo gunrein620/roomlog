@@ -55,15 +55,18 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   assert.match(sidebar, /const isCollapsible = isTicket \|\| isMessaging/);
   assert.match(sidebar, /const expanded = isTicket \? ticketExpanded : messagingExpanded/);
   assert.match(sidebar, /manager-messaging-subnav/);
-  assert.match(
-    sidebar,
-    /aria-label=\{`\$\{item\.label\} 메뉴 \$\{expanded \? "접기" : "펼치기"\}`\}/,
-  );
+  assert.match(sidebar, /const messagingUnreadLabel =/);
+  assert.match(sidebar, /aria-label=\{`\$\{item\.label\} 메뉴[\s\S]*?\$\{messagingUnreadLabel\}`\}/);
   assert.match(sidebar, /const showChildren = isCollapsible \? expanded : active/);
   assert.match(
     sidebar,
-    /isCollapsible \? \(\s*<button[\s\S]*?className=\{`manager-sidebar__parent-toggle\$\{active \? " is-active" : ""\}`\}[\s\S]*?<Icon aria-hidden="true" \/>[\s\S]*?<span>\{item\.label\}<\/span>[\s\S]*?<ChevronDown aria-hidden="true" \/>/,
+    /isCollapsible \? \(\s*<button[\s\S]*?className=\{`manager-sidebar__parent-toggle\$\{active \? " is-active" : ""\}`\}[\s\S]*?<Icon aria-hidden="true" \/>[\s\S]*?<span className="manager-sidebar__label">\{item\.label\}<\/span>[\s\S]*?<ChevronDown aria-hidden="true" \/>/,
   );
+  assert.match(sidebar, /messagingUnreadCount\?: number/);
+  assert.match(sidebar, /aria-label=\{`미확인 메시지 \$\{messagingUnreadCount\}개`\}/);
+  assert.match(sidebar, /manager-sidebar__unread-badge/);
+  assert.match(appShellSource, /useManagerMessagingUnreadCount\(pathname\)/);
+  assert.match(appShellSource, /messagingUnreadCount=\{messagingUnreadCount\}/);
   assert.match(managerCss, /manager-sidebar__parent-toggle/);
   assert.doesNotMatch(managerCss, /manager-sidebar__ticket-toggle/);
   assert.match(
@@ -134,10 +137,13 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   // useEffect는 사이드바 접힘 상태(localStorage) 복원용.
   assert.match(appShellSource, /import \{ Suspense, useEffect, useRef, useState \} from "react"/);
   // 데스크톱 사이드바에는 접기 토글이 헤더 액션으로 꽂힌다.
-  assert.match(appShellSource, /<Suspense fallback=\{null\}><ManagerSidebar headerAction=\{collapseAction\} \/><\/Suspense>/);
   assert.match(
     appShellSource,
-    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton \/><\/Suspense>/,
+    /<Suspense fallback=\{null\}><ManagerSidebar headerAction=\{collapseAction\} messagingUnreadCount=\{messagingUnreadCount\} \/><\/Suspense>/,
+  );
+  assert.match(
+    appShellSource,
+    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton messagingUnreadCount=\{messagingUnreadCount\} \/><\/Suspense>/,
   );
 });
 

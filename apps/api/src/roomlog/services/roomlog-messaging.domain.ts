@@ -83,6 +83,7 @@ export class RoomlogMessagingDomain {
       contextLabel: input.contextLabel?.trim() || "일반 문의",
       lastMessage: body || "대화가 시작되었습니다.",
       unreadCount: 0,
+      managerUnreadCount: 0,
       pendingRequest: false,
       archivedNotice: true,
       createdAt,
@@ -146,6 +147,7 @@ export class RoomlogMessagingDomain {
       contextLabel: input.contextLabel?.trim() || undefined,
       lastMessage: input.initialMessage?.body.trim() || "대화가 시작되었습니다.",
       unreadCount: input.initialMessage?.sender === "manager" ? 1 : 0,
+      managerUnreadCount: 0,
       pendingRequest: input.initialMessage?.kind === "photo_request",
       archivedNotice: true,
       createdAt,
@@ -306,6 +308,14 @@ export class RoomlogMessagingDomain {
 
   getManagerMessagingThread(managerId: string, threadId: string): MessagingThread {
     const thread = this.findManagerThread(managerId, threadId);
+
+    return this.presentThread(thread, true);
+  }
+
+  markManagerMessagingThreadRead(managerId: string, threadId: string): MessagingThread {
+    const thread = this.findManagerThread(managerId, threadId);
+    thread.managerUnreadCount = 0;
+    this.persistStore();
 
     return this.presentThread(thread, true);
   }
@@ -577,6 +587,8 @@ export class RoomlogMessagingDomain {
 
     if (message.sender === "manager") {
       thread.unreadCount += 1;
+    } else {
+      thread.managerUnreadCount += 1;
     }
 
     if (message.kind === "photo_request") {

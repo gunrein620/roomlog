@@ -37,6 +37,7 @@ export interface Thread {
   lastMessage: string;
   lastMessageSender?: MessageSender; // 목록 응답에도 포함 — 관리인 미응답(마지막 발신자=세입자) 판정용
   unreadCount: number; // 단일 미읽음 소스
+  managerUnreadCount: number; // 관리인이 아직 확인하지 않은 임차인 메시지 수
   pendingRequest: boolean; // 추가 사진/설명 요청 대기
   archivedNotice: boolean; // "이 대화는 관리 기록에 보관돼요" 고지
   updatedAt: string;
