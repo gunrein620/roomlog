@@ -83,8 +83,10 @@ class FakeGpu implements GpuInstance {
     this.calls.ssm++;
     return this.ssmOnline;
   }
-  async sendJobCommand() {
+  lastSend: any = null;
+  async sendJobCommand(params?: any) {
     this.calls.send++;
+    this.lastSend = params;
     return this.nextCommandId;
   }
   async getCommandStatus() {
@@ -198,6 +200,8 @@ describe("orchestrator 정상 전이", () => {
     assert.equal(h.prisma.assets[0].jobState, "RUNNING");
     assert.equal(h.prisma.assets[0].jobCommandId, "cmd-1");
     assert.equal(h.prisma.assets[0].jobAttempts, 1);
+    // 콜백 base엔 글로벌 프리픽스 /api가 붙어야 한다(2026-07-16 prod 404 회귀 가드).
+    assert.equal(h.gpu.lastSend.callbackBase, "https://api.test/api");
   });
 
   it("인스턴스가 이미 running이면 바로 GPU_STARTING으로 승격", async () => {
@@ -332,6 +336,16 @@ describe("orchestrator idle-stop", () => {
   it("인스턴스가 이미 stopped면 정지 시도 안 함", async () => {
     const h = harness();
     h.gpu.state = "stopped";
+    await h.service.tick();
+    await h.service.tick();
+    assert.equal(h.gpu.calls.stop, 0);
+  });
+
+  it("GPU_KEEP_WARM이면 큐 공백이어도 인스턴스를 정지하지 않는다", async () => {
+    const h = harness({ keepWarm: true });
+    h.gpu.state = "running";
+    // 3틱 연속 공백이어도 stop 호출 0 — 데모 기간 사람이 수동 관리.
+    await h.service.tick();
     await h.service.tick();
     await h.service.tick();
     assert.equal(h.gpu.calls.stop, 0);

@@ -57,6 +57,9 @@ services:
       GPU_REGION: ${GPU_REGION:-}
       GPU_WORKER_SECRET: ${GPU_WORKER_SECRET:-}
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://api.woo-zu.com}
+      # GPU_KEEP_WARM=1: 오케스트레이터가 인스턴스를 절대 stop하지 않음(사람이 수동 관리).
+      # stop=NVMe 초기화로 docker 이미지가 날아가 bootstrap이 재실패하는 함정 회피 — 데모 기간 권장.
+      GPU_KEEP_WARM: ${GPU_KEEP_WARM:-}
     ports:
       - "4000:4000"
     volumes:

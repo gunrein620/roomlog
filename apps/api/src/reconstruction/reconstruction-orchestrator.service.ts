@@ -50,6 +50,7 @@ export interface OrchestratorConfig {
   callbackGraceMs: number; // 커맨드 Success인데 콜백 미도착 유예
   capacityBackoffMs: number; // 용량 부족 시 재기동 백오프
   iters: number;
+  keepWarm: boolean; // GPU_KEEP_WARM: 켜면 오케스트레이터가 인스턴스를 절대 stop 안 함(stop=NVMe 초기화 함정 회피, 사람이 수동 관리)
   publicApiBase: string;
   workerSecret: string;
 }
@@ -68,6 +69,16 @@ function envInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/**
+ * 콜백 base = PUBLIC_API_BASE_URL + 글로벌 프리픽스 `/api`.
+ * 소스 파일 URL(videoUrl은 이미 `/api/files/...`)과 달리 콜백 경로엔 프리픽스가 안 붙어
+ * `/splat-assets/...`로 나가 404가 났다(2026-07-16 prod 실 E2E). 이미 `/api`로 끝나면 중복 안 붙인다.
+ */
+function reconstructionCallbackBase(publicApiBase: string): string {
+  const base = publicApiBase.replace(/\/+$/, "");
+  return /\/api$/i.test(base) ? base : `${base}/api`;
+}
+
 function defaultConfig(env: NodeJS.ProcessEnv): OrchestratorConfig {
   return {
     pollIntervalMs: envInt(env.GPU_POLL_INTERVAL_MS, 60_000),
@@ -77,6 +88,7 @@ function defaultConfig(env: NodeJS.ProcessEnv): OrchestratorConfig {
     callbackGraceMs: envInt(env.GPU_CALLBACK_GRACE_MS, 5 * 60 * 1000),
     capacityBackoffMs: envInt(env.GPU_CAPACITY_BACKOFF_MS, 5 * 60 * 1000),
     iters: envInt(env.GPU_ITERS, 30_000),
+    keepWarm: isTruthy(env.GPU_KEEP_WARM),
     publicApiBase: (env.PUBLIC_API_BASE_URL ?? "").trim(),
     workerSecret: (env.GPU_WORKER_SECRET ?? "").trim()
   };
@@ -255,7 +267,7 @@ export class ReconstructionOrchestratorService implements OnModuleInit, OnModule
       assetId: active.id,
       sourceUrl,
       sourceKind,
-      callbackBase: this.config.publicApiBase,
+      callbackBase: reconstructionCallbackBase(this.config.publicApiBase),
       workerSecret: this.config.workerSecret,
       iters: this.config.iters
     });
@@ -323,6 +335,12 @@ export class ReconstructionOrchestratorService implements OnModuleInit, OnModule
   private async maybeIdleStop(): Promise<void> {
     const state = await this.gpu.describeState();
     if (state !== "running") {
+      this.emptyQueueTicks = 0;
+      return;
+    }
+    // GPU_KEEP_WARM이면 절대 stop하지 않는다 — stop이 인스턴스스토어(NVMe)를 초기화해
+    // docker/containerd·이미지가 날아가는 함정 때문에(bootstrap 재실패) 데모 기간엔 사람이 수동 관리.
+    if (this.config.keepWarm) {
       this.emptyQueueTicks = 0;
       return;
     }
