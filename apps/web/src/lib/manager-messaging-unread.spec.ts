@@ -40,3 +40,10 @@ test("marks a thread read from a mounted client receipt instead of server render
   assert.match(unreadSource, /window\.addEventListener\(MANAGER_MESSAGING_READ_EVENT/);
   assert.match(unreadSource, /window\.removeEventListener\(MANAGER_MESSAGING_READ_EVENT/);
 });
+
+test("refreshes the manager unread badge from realtime messaging activity", () => {
+  assert.match(unreadSource, /getRealtimeSocket/);
+  assert.match(unreadSource, /socket\.on\("roomlog:activity", onActivity\)/);
+  assert.match(unreadSource, /socket\.off\("roomlog:activity", onActivity\)/);
+  assert.match(unreadSource, /kind === "messaging"/);
+});

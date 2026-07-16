@@ -2,6 +2,7 @@
 
 import type { Thread } from "@roomlog/types";
 import { useEffect, useState } from "react";
+import { getRealtimeSocket } from "./realtime-client";
 
 const MANAGER_UNREAD_REFRESH_MS = 10_000;
 export const MANAGER_MESSAGING_READ_EVENT = "manager-messaging-read";
@@ -37,11 +38,24 @@ export function useManagerMessagingUnreadCount(pathname: string): number {
         });
     }
 
+    const socket = getRealtimeSocket();
+    const onActivity = (payload: unknown) => {
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { kind?: unknown }).kind === "messaging"
+      ) {
+        loadUnreadCount();
+      }
+    };
+
     loadUnreadCount();
+    socket.on("roomlog:activity", onActivity);
     const interval = window.setInterval(loadUnreadCount, MANAGER_UNREAD_REFRESH_MS);
     window.addEventListener(MANAGER_MESSAGING_READ_EVENT, loadUnreadCount);
 
     return () => {
+      socket.off("roomlog:activity", onActivity);
       window.clearInterval(interval);
       window.removeEventListener(MANAGER_MESSAGING_READ_EVENT, loadUnreadCount);
       controller.abort();

@@ -63,10 +63,14 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
     /isCollapsible \? \(\s*<button[\s\S]*?className=\{`manager-sidebar__parent-toggle\$\{active \? " is-active" : ""\}`\}[\s\S]*?<Icon aria-hidden="true" \/>[\s\S]*?<span className="manager-sidebar__label">\{item\.label\}<\/span>[\s\S]*?<ChevronDown aria-hidden="true" \/>/,
   );
   assert.match(sidebar, /messagingUnreadCount\?: number/);
+  assert.match(sidebar, /ticketUnreadCount\?: number/);
   assert.match(sidebar, /aria-label=\{`미확인 메시지 \$\{messagingUnreadCount\}개`\}/);
+  assert.match(sidebar, /aria-label=\{`미확인 민원·하자 \$\{ticketUnreadCount\}개`\}/);
   assert.match(sidebar, /manager-sidebar__unread-badge/);
   assert.match(appShellSource, /useManagerMessagingUnreadCount\(pathname\)/);
+  assert.match(appShellSource, /useManagerTicketUnreadCount\(pathname\)/);
   assert.match(appShellSource, /messagingUnreadCount=\{messagingUnreadCount\}/);
+  assert.match(appShellSource, /ticketUnreadCount=\{ticketUnreadCount\}/);
   assert.match(managerCss, /manager-sidebar__parent-toggle/);
   assert.doesNotMatch(managerCss, /manager-sidebar__ticket-toggle/);
   assert.match(
@@ -139,11 +143,11 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   // 데스크톱 사이드바에는 접기 토글이 헤더 액션으로 꽂힌다.
   assert.match(
     appShellSource,
-    /<Suspense fallback=\{null\}><ManagerSidebar headerAction=\{collapseAction\} messagingUnreadCount=\{messagingUnreadCount\} \/><\/Suspense>/,
+    /<Suspense fallback=\{null\}><ManagerSidebar headerAction=\{collapseAction\} messagingUnreadCount=\{messagingUnreadCount\} ticketUnreadCount=\{ticketUnreadCount\} \/><\/Suspense>/,
   );
   assert.match(
     appShellSource,
-    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton messagingUnreadCount=\{messagingUnreadCount\} \/><\/Suspense>/,
+    /<Suspense fallback=\{null\}><ManagerSidebar onNavigate=\{closeMobileNavigation\} showCloseButton messagingUnreadCount=\{messagingUnreadCount\} ticketUnreadCount=\{ticketUnreadCount\} \/><\/Suspense>/,
   );
 });
 
