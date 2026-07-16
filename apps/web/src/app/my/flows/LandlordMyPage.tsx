@@ -2,7 +2,7 @@
 
 // 내놓은 집(임대인) 등록 폼 — 사진 업로드, 3D 도면 연결, 매물 등록.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Box, Braces, Camera, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
@@ -22,7 +22,10 @@ import {
   parseOwnerDraft,
   serializeOwnerDraft
 } from "@/lib/owner-draft";
-import { intakeSplatAsset } from "@/lib/splat-asset-api";
+import { intakeSplatAsset, listSplatAssetsByListing } from "@/lib/splat-asset-api";
+import { getRealtimeSocket } from "@/lib/realtime-client";
+import { tradePriceLabel, type TradeListing } from "@/lib/listing-catalog";
+import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus, type SplatAssetUpdatedPayload } from "@roomlog/types";
 
 // 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
 let naverMapsLoadPromise: Promise<boolean> | null = null;
@@ -324,6 +327,25 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
+// 매물당 여러 자산이 있을 수 있어 배지 하나만 남긴다 — "정합 필요(UPLOADED)"가 가장 시급하고,
+// 실패·제작 중이 그다음, 이미 정합 완료(REGISTERED)는 가장 낮은 우선순위로 대표를 고른다.
+const LISTING_ASSET_PRIORITY: Record<SplatAssetStatus, number> = {
+  UPLOADED: 4,
+  FAILED: 3,
+  PROCESSING: 2,
+  REGISTERED: 1
+};
+
+function pickListingSplatAsset(
+  assets: { id: string; status: SplatAssetStatus }[]
+): { assetId: string; status: SplatAssetStatus } | null {
+  const best = assets.reduce<{ id: string; status: SplatAssetStatus } | null>((chosen, asset) => {
+    if (!chosen) return asset;
+    return LISTING_ASSET_PRIORITY[asset.status] > LISTING_ASSET_PRIORITY[chosen.status] ? asset : chosen;
+  }, null);
+  return best ? { assetId: best.id, status: best.status } : null;
+}
+
 export default function LandlordMyPage() {
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
@@ -389,6 +411,11 @@ export default function LandlordMyPage() {
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const [ownerToast, setOwnerToast] = useState("");
+  // 내 매물(서버 진실)과 매물별 대표 3D 자산 — 정합 필요/제작 중/실패 배지의 소스.
+  const [ownerListings, setOwnerListings] = useState<TradeListing[]>([]);
+  const [listingAssetByListing, setListingAssetByListing] = useState<
+    Record<string, { assetId: string; status: SplatAssetStatus }>
+  >({});
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const postcodeEmbedRef = useRef<HTMLDivElement | null>(null);
@@ -452,6 +479,58 @@ export default function LandlordMyPage() {
     const timer = window.setTimeout(() => setOwnerToast(""), 3500);
     return () => window.clearTimeout(timer);
   }, [ownerToast]);
+
+  // 내 매물과 매물별 대표 3D 자산 상태를 서버에서 가져온다. 개인 임대인(1~5채) 스케일이라
+  // 매물당 자산 조회를 병렬로 돌려도 부담이 없다. 비로그인/오류면 조용히 빈 목록을 유지한다.
+  const loadOwnerListingAssets = useCallback(async () => {
+    let listings: TradeListing[] = [];
+    try {
+      const res = await fetch("/api/trade/listings", { cache: "no-store" });
+      if (!res.ok) return; // 비로그인/매물 없음 — 빈 상태 유지
+      const parsed = (await res.json()) as unknown;
+      if (!Array.isArray(parsed)) return;
+      listings = parsed as TradeListing[];
+    } catch {
+      return; // 일시 오류 — 다음 이벤트/포커스에서 다시 채워진다
+    }
+    setOwnerListings(listings);
+
+    const entries = await Promise.all(
+      listings.map(async (listing) => {
+        try {
+          const assets = await listSplatAssetsByListing(listing.id);
+          return [listing.id, pickListingSplatAsset(assets)] as const;
+        } catch {
+          return [listing.id, null] as const;
+        }
+      })
+    );
+    setListingAssetByListing(
+      Object.fromEntries(entries.filter((entry): entry is [string, { assetId: string; status: SplatAssetStatus }] => entry[1] !== null))
+    );
+  }, []);
+
+  useEffect(() => {
+    void loadOwnerListingAssets();
+  }, [loadOwnerListingAssets]);
+
+  // 소켓으로 3D 자산 상태 변화를 받으면 매물 목록을 재조회한다. 페이로드는 식별자만 신뢰하고
+  // 실제 상태·라벨은 REST 재조회로 확정한다(게이트웨이 원칙). 완성/실패는 토스트로도 알린다.
+  useEffect(() => {
+    const socket = getRealtimeSocket();
+    const onAssetUpdated = (payload: SplatAssetUpdatedPayload) => {
+      void loadOwnerListingAssets();
+      if (payload.status === "UPLOADED") {
+        setOwnerToast("3D 투어가 완성됐어요 — 도면 정합을 진행해 주세요");
+      } else if (payload.status === "FAILED") {
+        setOwnerToast("3D 제작에 실패했어요 — 파일을 다시 업로드해 주세요");
+      }
+    };
+    socket.on(SPLAT_ASSET_UPDATED_EVENT, onAssetUpdated);
+    return () => {
+      socket.off(SPLAT_ASSET_UPDATED_EVENT, onAssetUpdated);
+    };
+  }, [loadOwnerListingAssets]);
 
   // 주소 입력을 디바운스로 지오코딩 — 상세 지도에 실제 매물 좌표를 찍기 위함.
   useEffect(() => {
@@ -632,6 +711,8 @@ export default function LandlordMyPage() {
         setGeoCoords(null);
         if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
+        // 새로 등록한 매물(과 방금 접수한 3D 자산)을 내 매물 목록에 즉시 반영한다.
+        void loadOwnerListingAssets();
         const listingSuccessToast = "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
         // 등록 성공과 투어 접수 결과가 연속으로 덮어쓰기 되지 않게 하나의 토스트로 합친다.
         setOwnerToast(splatIntakeToast ? `${listingSuccessToast} ${splatIntakeToast}` : listingSuccessToast);
@@ -647,6 +728,10 @@ export default function LandlordMyPage() {
   const ownerPriceLabel = ownerForm.tradeType === "전세"
     ? `전세 ${ownerForm.jeonse || "0"}만원`
     : `${ownerForm.tradeType} ${ownerForm.deposit || "0"}/${ownerForm.monthly || "0"}`;
+  // 실패 배지의 "다시 업로드"는 STEP 03(영상·스플랫 접수)로 스크롤해 재접수를 유도한다.
+  const scrollToTourIntake = () => {
+    document.getElementById("owner-tour-intake")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-registration-title">
@@ -899,7 +984,7 @@ export default function LandlordMyPage() {
           <p>등록하면 즉시 매물이 노출되고, 문의는 채팅으로 바로 도착합니다.</p>
         </section>
 
-        <section className="owner-card">
+        <section className="owner-card" id="owner-tour-intake">
           <div className="form-heading">
             <div>
               <span>STEP 03</span>
@@ -914,7 +999,7 @@ export default function LandlordMyPage() {
               </span>
               <span className="upload-tile-main">
                 <strong>영상/스플랫 접수</strong>
-                <span className="upload-tile-desc">영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
+                <span className="upload-tile-desc">캡처앱 zip(권장)이나 영상은 등록 후 3D 투어 제작이 접수됩니다(수 시간 소요). 스캔앱 .spz 파일이면 바로 정합 단계로 갑니다.</span>
                 <span className="upload-tile-status">
                   {tourSourceFile ? `${tourSourceFile.name} · ${formatFileSize(tourSourceFile.size)}` : "선택된 파일 없음"}
                 </span>
@@ -923,7 +1008,7 @@ export default function LandlordMyPage() {
               <input
                 ref={tourSourceInputRef}
                 type="file"
-                accept="video/*,.spz"
+                accept="video/*,.spz,.zip"
                 aria-label="영상 또는 스플랫 파일 업로드"
                 onChange={(event) => {
                   setTourSourceFile(event.currentTarget.files?.[0] ?? null);
@@ -945,6 +1030,46 @@ export default function LandlordMyPage() {
           )}
         </button>
       </form>
+
+      {ownerListings.length > 0 ? (
+        <section className="owner-card owner-tour-listings" aria-label="내 매물 3D 투어 상태">
+          <div className="form-heading">
+            <div>
+              <span>내 매물</span>
+              <h3>3D 투어 진행 상태</h3>
+            </div>
+          </div>
+          <ul className="owner-tour-list">
+            {ownerListings.map((listing) => {
+              const asset = listingAssetByListing[listing.id];
+              return (
+                <li key={listing.id} className="owner-tour-item">
+                  <div className="owner-tour-item-main">
+                    <strong>{listing.title}</strong>
+                    <span>{tradePriceLabel(listing)}</span>
+                  </div>
+                  {asset?.status === "UPLOADED" ? (
+                    <a className="owner-tour-badge is-ready" href={`/splat-tour/register?asset=${asset.assetId}`}>
+                      정합 필요
+                    </a>
+                  ) : asset?.status === "PROCESSING" ? (
+                    <span className="owner-tour-badge is-processing">3D 제작 중</span>
+                  ) : asset?.status === "FAILED" ? (
+                    <button type="button" className="owner-tour-badge is-failed" onClick={scrollToTourIntake}>
+                      제작 실패 · 다시 업로드
+                    </button>
+                  ) : asset?.status === "REGISTERED" ? (
+                    <span className="owner-tour-badge is-done">정합 완료</span>
+                  ) : (
+                    <span className="owner-tour-badge is-none">3D 미접수</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       {isPostcodeSearchOpen ? (
         <div className="postcode-sheet-backdrop" role="presentation" onClick={() => setIsPostcodeSearchOpen(false)}>
           <section

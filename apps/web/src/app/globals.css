@@ -12463,3 +12463,96 @@ p {
   font-size: 0.82rem;
   font-weight: 700;
 }
+
+/* 내 매물 3D 투어 진행 상태 — 정합 필요/제작 중/실패 배지 (GPU 파이프라인) */
+.owner-tour-listings {
+  display: grid;
+  gap: 14px;
+}
+
+.owner-tour-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.owner-tour-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.owner-tour-item-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.owner-tour-item-main strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-tour-item-main span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.owner-tour-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* 정합 필요 — 가장 시급한 CTA(링크) */
+a.owner-tour-badge.is-ready {
+  background: var(--blue);
+  color: var(--paper);
+  cursor: pointer;
+}
+
+a.owner-tour-badge.is-ready:hover {
+  background: var(--blue-dark);
+}
+
+.owner-tour-badge.is-processing {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+button.owner-tour-badge.is-failed {
+  background: var(--error-container);
+  color: var(--error);
+  cursor: pointer;
+}
+
+.owner-tour-badge.is-done {
+  background: color-mix(in srgb, var(--green) 16%, var(--paper));
+  color: var(--green);
+}
+
+.owner-tour-badge.is-none {
+  background: var(--canvas);
+  color: var(--subtle);
+}

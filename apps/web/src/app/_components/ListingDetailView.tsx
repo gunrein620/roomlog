@@ -32,8 +32,10 @@ import {
   neighborhoodItems,
   optionItems,
   safetyReportItems,
+  TRADE_LISTING_NO_PREFIX,
   type Listing
 } from "@/lib/listing-catalog";
+import { listSplatAssetsByListing } from "@/lib/splat-asset-api";
 import type { InquiryPayload } from "@/lib/inquiry-flow";
 import { NaverMapPreview } from "./NaverMapPreview";
 
@@ -76,6 +78,34 @@ export function ListingDetailView({
   // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
   const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
+  // 직접등록 매물의 대표 3D 자산 id — 있으면 "1인칭 체험"이 이 매물 전용 투어로 연결된다.
+  const [splatAssetId, setSplatAssetId] = useState<string | null>(null);
+
+  // 직접등록 매물이면 연결된 splat 자산을 조회해 대표 하나를 고른다(REGISTERED > UPLOADED > PROCESSING).
+  // 자산이 없거나 조회가 실패하면 splatAssetId는 null로 남고 기본 데모 투어(/splat-tour)를 쓴다.
+  useEffect(() => {
+    if (!isDirectListing || !listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX)) {
+      setSplatAssetId(null);
+      return;
+    }
+    const listingId = listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
+    let cancelled = false;
+    listSplatAssetsByListing(listingId)
+      .then((assets) => {
+        if (cancelled) return;
+        const priority: Record<string, number> = { REGISTERED: 3, UPLOADED: 2, PROCESSING: 1 };
+        const pick = assets
+          .filter((asset) => asset.status in priority)
+          .sort((a, b) => priority[b.status] - priority[a.status])[0];
+        setSplatAssetId(pick?.id ?? null);
+      })
+      .catch(() => {
+        // 조회 실패 — 기본 데모 링크(/splat-tour)를 유지한다.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDirectListing, listing.listingNo]);
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
   // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
@@ -387,11 +417,18 @@ export function ListingDetailView({
           <span>3D</span>
           <strong>둘러보기</strong>
         </button>
-        {/* 임시 데모용 — 1인칭 체험은 splat 투어 페이지로 바로 이동한다(woo-zu.com/splat-tour) */}
-        <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
-          <span>1인칭</span>
-          <strong>체험</strong>
-        </a>
+        {/* 1인칭 체험 — 이 매물에 연결된 splat 자산이 있으면 전용 투어로, 없으면 기본 데모 투어로 간다. */}
+        {splatAssetId ? (
+          <a className="detail-contact-tour detail-contact-splat" href={`/splat-tour?asset=${splatAssetId}`}>
+            <span>1인칭</span>
+            <strong>체험</strong>
+          </a>
+        ) : (
+          <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
+            <span>1인칭</span>
+            <strong>체험 (데모)</strong>
+          </a>
+        )}
         <button className="detail-contact-primary" type="button" onClick={() => setIsInquirySheetOpen(true)}>
           <strong>문자로 문의하기</strong>
           <span>방문 가능 여부 바로 확인</span>
