@@ -6,7 +6,6 @@ import {
   StatusBadges,
   TicketHeader,
   Timeline,
-  callRoutes,
   muted,
   pageStack,
   row,
@@ -77,7 +76,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <div style={{ ...row, justifyContent: "space-between" }}>
               <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">AI 답변/거절 통보</LinkButton>
               <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
-              <LinkButton href={callRoutes["01"]} variant="ghost">음성으로 빠른 승인</LinkButton>
             </div>
           </Card>
         </div>

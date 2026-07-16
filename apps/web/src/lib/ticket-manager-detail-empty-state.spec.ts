@@ -36,4 +36,8 @@ describe("manager ticket detail empty states", () => {
     assert.match(pageSource, /조회할 첨부 내용이 없습니다\./);
     assert.doesNotMatch(pageSource, /사진 \{detail\.attachmentUrls\.length\}장|반복 민원 1건|연결 티켓 보기/);
   });
+
+  it("does not expose the temporary voice approval action", () => {
+    assert.doesNotMatch(pageSource, /음성으로 빠른 승인|callRoutes/);
+  });
 });
