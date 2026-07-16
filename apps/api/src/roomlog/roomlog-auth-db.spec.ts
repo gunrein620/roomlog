@@ -120,3 +120,35 @@ describe("RoomlogService auth DB-first", () => {
     assert.equal(login.userId, result.userId);
   });
 });
+
+describe("verifyPassword defensive handling", () => {
+  it("treats empty or malformed stored hashes as a mismatch instead of crashing", async () => {
+    const { verifyPassword, hashPassword } = await import("./roomlog-support");
+    // 레닥션된 JSON 폴백 부팅(빈 해시)·손상 데이터 — 500 크래시가 아니라 로그인 불일치(false)여야 한다.
+    assert.equal(verifyPassword("password123!", ""), false);
+    assert.equal(verifyPassword("password123!", "no-colon-hash"), false);
+    assert.equal(verifyPassword("password123!", ":"), false);
+    assert.equal(verifyPassword("password123!", "salt-only:"), false);
+    // 정상 해시는 여전히 통과
+    assert.equal(verifyPassword("password123!", hashPassword("password123!")), true);
+  });
+
+  it("returns 401-style auth failure for an account with a redacted hash", async () => {
+    const { repo, dbUsers } = makeFakeRepo();
+    dbUsers.set("usr-redacted", {
+      id: "usr-redacted",
+      email: "redacted@roomlog.test",
+      passwordHash: "",
+      name: "레닥션계정",
+      role: "SEEKER",
+      status: "ACTIVE",
+      createdAt: "2026-07-01T00:00:00.000Z"
+    });
+    const service = makeService(repo);
+    // 이전에는 Buffer.from(undefined) TypeError로 500 — 이제 인증 실패(401)로 귀결돼야 한다.
+    await assert.rejects(
+      service.loginWithDb({ email: "redacted@roomlog.test", password: "password123!" }),
+      /올바르지 않습니다/
+    );
+  });
+});
