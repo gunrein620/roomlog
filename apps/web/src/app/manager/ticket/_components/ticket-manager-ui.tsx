@@ -195,9 +195,9 @@ export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | n
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>
         {responsibilityLabel[analysis.responsibility]} {percent}%
       </div>
-      <div style={muted}>확정 아님 · 관리자가 근거 확인 후 수정할 수 있음</div>
+      <div style={muted}>확정 아님 · 추가 정보 확인 후 다시 검토할 수 있음</div>
       <div style={row}>
-        <Button variant="secondary">책임 가능성 수정</Button>
+        <Button variant="secondary">추가 정보 입력</Button>
         <Badge>{analysis.moveinComparisonAvailable ? "입주 기록 비교 가능" : "입주 기록 없음"}</Badge>
       </div>
     </Card>
