@@ -78,18 +78,24 @@ export function ListingDetailView({
   // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
   const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
+  // 매물별 3D 게이트 대상은 직접등록(TRADE-) 매물뿐 — 정적(하드코딩) 매물은 기존 데모 링크를 그대로 둔다(곧 삭제 예정).
+  const isTradeDirectListing = isDirectListing && listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX);
   // 직접등록 매물의 대표 3D 자산 id — 있으면 "1인칭 체험"이 이 매물 전용 투어로 연결된다.
   const [splatAssetId, setSplatAssetId] = useState<string | null>(null);
+  // 자산 조회 완료 여부 — 조회 중엔 "준비 안 됨"을 성급히 띄우지 않는다(로딩과 없음을 구분).
+  const [splatChecked, setSplatChecked] = useState(false);
 
   // 직접등록 매물이면 연결된 splat 자산을 조회해 대표 하나를 고른다(REGISTERED > UPLOADED > PROCESSING).
-  // 자산이 없거나 조회가 실패하면 splatAssetId는 null로 남고 기본 데모 투어(/splat-tour)를 쓴다.
+  // 자산이 없거나(또는 FAILED뿐) 조회가 실패하면 splatAssetId는 null로 남고, 아래에서 매물별 게이트("준비 안 됨")를 노출한다.
   useEffect(() => {
-    if (!isDirectListing || !listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX)) {
+    if (!isTradeDirectListing) {
       setSplatAssetId(null);
+      setSplatChecked(false);
       return;
     }
     const listingId = listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
     let cancelled = false;
+    setSplatChecked(false);
     listSplatAssetsByListing(listingId)
       .then((assets) => {
         if (cancelled) return;
@@ -98,14 +104,17 @@ export function ListingDetailView({
           .filter((asset) => asset.status in priority)
           .sort((a, b) => priority[b.status] - priority[a.status])[0];
         setSplatAssetId(pick?.id ?? null);
+        setSplatChecked(true);
       })
       .catch(() => {
-        // 조회 실패 — 기본 데모 링크(/splat-tour)를 유지한다.
+        // 조회 실패 — 자산 없음으로 간주하고 게이트를 정직하게 노출한다(데모로 은폐하지 않음).
+        if (cancelled) return;
+        setSplatChecked(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [isDirectListing, listing.listingNo]);
+  }, [isTradeDirectListing, listing.listingNo]);
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
   // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
@@ -417,12 +426,31 @@ export function ListingDetailView({
           <span>3D</span>
           <strong>둘러보기</strong>
         </button>
-        {/* 1인칭 체험 — 이 매물에 연결된 splat 자산이 있으면 전용 투어로, 없으면 기본 데모 투어로 간다. */}
+        {/* 1인칭 체험 — 매물별 정직 게이트.
+            · 직접등록(TRADE-) + 대표 자산 있음 → 이 매물 전용 splat 투어(?asset=)
+            · 직접등록 + 자산 없음/FAILED뿐 → 비활성 "준비 안 됨"(링크 아님, 없는 상태를 그대로 노출)
+            · 정적(하드코딩) 매물 → 기존 공통 데모 투어(/splat-tour) 유지(곧 삭제 예정) */}
         {splatAssetId ? (
           <a className="detail-contact-tour detail-contact-splat" href={`/splat-tour?asset=${splatAssetId}`}>
             <span>1인칭</span>
             <strong>체험</strong>
           </a>
+        ) : isTradeDirectListing ? (
+          <span
+            className="detail-contact-tour detail-contact-splat detail-contact-splat-empty"
+            role="note"
+            aria-label="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            title="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            style={{
+              background: "var(--surface-container)",
+              borderColor: "var(--border)",
+              color: "var(--on-surface-variant)",
+              cursor: "default"
+            }}
+          >
+            <span style={{ color: "var(--on-surface-variant)" }}>1인칭</span>
+            <strong>{splatChecked ? "준비 안 됨" : "확인 중"}</strong>
+          </span>
         ) : (
           <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
             <span>1인칭</span>
