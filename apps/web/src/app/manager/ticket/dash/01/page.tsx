@@ -40,6 +40,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     <div style={pageStack}>
       <TicketHeader
         ticket={ticket}
+        showBuildingName
         title={(
           <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-sm)" }}>
             <TicketDetailBackButton />

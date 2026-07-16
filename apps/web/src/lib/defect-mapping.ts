@@ -54,7 +54,7 @@ export interface TeamComplaint {
   occurredAt?: string;
   createdAt: string;
   updatedAt: string;
-  room?: { roomNo?: string };
+  room?: { buildingName?: string; roomNo?: string };
   ticket: TeamTicket;
 }
 
@@ -124,6 +124,7 @@ export function toTicket(c: TeamComplaint): Ticket {
   return {
     id: c.id,
     type: c.ticket.kind ?? ticketTypeFromCategory(c.ticket.category ?? c.ticket.analysis?.category),
+    buildingName: c.room?.buildingName?.trim() || undefined,
     // 화면들이 `{unitId}호`로 렌더하므로 unitId는 호 없는 숫자여야 한다(roomNo "301호" → "301").
     unitId: (c.room?.roomNo ?? "").replace(/\s*호\s*$/, ""),
     title: c.title,

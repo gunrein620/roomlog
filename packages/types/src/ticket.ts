@@ -60,6 +60,7 @@ export type TicketDisposition =
 export interface Ticket {
   id: string;
   type: TicketType;
+  buildingName?: string; // 건물명
   unitId: string; // 호실
   title: string; // 예: "에어컨 물샘"
   description: string;

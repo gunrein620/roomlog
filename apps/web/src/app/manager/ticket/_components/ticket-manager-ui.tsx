@@ -151,13 +151,25 @@ export function LinkButton({
   );
 }
 
-export function TicketHeader({ ticket, title }: { ticket: Ticket; title: ReactNode }) {
+export function TicketHeader({
+  ticket,
+  title,
+  showBuildingName = false,
+}: {
+  ticket: Ticket;
+  title: ReactNode;
+  showBuildingName?: boolean;
+}) {
+  const locationLabel = showBuildingName && ticket.buildingName
+    ? `${ticket.buildingName} / ${ticket.unitId}호`
+    : `${ticket.unitId}호`;
+
   return (
     <div style={{ ...row, justifyContent: "space-between" }}>
       <div>
         <div style={{ fontSize: "var(--fs-title)", fontWeight: "var(--fw-title)" }}>{title}</div>
         <div style={{ ...muted, marginTop: "var(--space-xs)" }}>
-          {ticket.unitId}호
+          {locationLabel}
         </div>
       </div>
       <div style={row}>
