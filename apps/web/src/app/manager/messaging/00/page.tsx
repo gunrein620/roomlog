@@ -107,7 +107,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <form
           method="get"
           style={{
-            flex: "1 1 360px",
+            flex: "0 1 420px",
+            maxWidth: "100%",
             minWidth: 0,
             display: "grid",
             gridTemplateColumns: "minmax(0, 1fr) auto",
@@ -133,9 +134,23 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               aria-label="제목 및 내용 검색"
               placeholder="제목/내용 검색"
               defaultValue={searchQuery}
+              style={{
+                height: "var(--space-xxl)",
+                padding: "0 var(--space-md)",
+                fontSize: "var(--fs-caption)",
+              }}
             />
           </label>
-          <Button type="submit">검색</Button>
+          <Button
+            type="submit"
+            style={{
+              height: "var(--space-xxl)",
+              padding: "0 var(--space-md)",
+              fontSize: "var(--fs-caption)",
+            }}
+          >
+            검색
+          </Button>
         </form>
         <div
           style={{

@@ -80,9 +80,13 @@ test("removes non-working messaging actions and their empty side rail", () => {
 test("places compact reply status beside the building and title-content search", () => {
   assert.match(listPage, /className="manager-messaging-toolbar"/);
   assert.match(listPage, /<BuildingFilter/);
+  assert.match(listPage, /flex: "0 1 420px"/);
+  assert.match(listPage, /maxWidth: "100%"/);
   assert.match(listPage, /aria-label="제목 및 내용 검색"/);
   assert.match(listPage, /placeholder="제목\/내용 검색"/);
-  assert.match(listPage, /<Button type="submit">검색<\/Button>/);
+  assert.match(listPage, /height: "var\(--space-xxl\)"/);
+  assert.match(listPage, /fontSize: "var\(--fs-caption\)"/);
+  assert.match(listPage, /<Button[\s\S]*type="submit"[\s\S]*검색[\s\S]*<\/Button>/);
   assert.match(listPage, /<Badge emphasis>답장 필요 \{needsReply\}건<\/Badge>/);
   assert.doesNotMatch(listPage, /대화 내 검색만 제공하며 전역 검색은 셸 소유입니다\./);
   assert.doesNotMatch(listPage, /aria-label="티켓 검색"/);
