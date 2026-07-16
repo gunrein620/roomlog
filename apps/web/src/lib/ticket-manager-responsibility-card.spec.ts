@@ -12,6 +12,10 @@ describe("manager ticket responsibility card", () => {
   it("guides managers to add information instead of directly editing responsibility", () => {
     assert.match(uiSource, /추가 정보 입력/);
     assert.match(uiSource, /AI 책임 검토는 참고용입니다\./);
+    assert.match(
+      uiSource,
+      /<div style=\{row\}>[\s\S]*추가 정보 입력[\s\S]*<\/div>\s*<div style=\{\{ \.\.\.muted, alignSelf: "flex-end" \}\}>AI 책임 검토는 참고용입니다\.<\/div>/,
+    );
     assert.doesNotMatch(uiSource, /확정 아님 · 추가 정보 확인 후 다시 검토할 수 있음/);
     assert.doesNotMatch(uiSource, /책임 가능성 수정/);
   });

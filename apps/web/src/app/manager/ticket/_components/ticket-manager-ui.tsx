@@ -211,11 +211,11 @@ export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | n
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>
         {responsibilityLabel[analysis.responsibility]} {percent}%
       </div>
-      <div style={muted}>AI 책임 검토는 참고용입니다.</div>
       <div style={row}>
         <Button variant="secondary">추가 정보 입력</Button>
         {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
       </div>
+      <div style={{ ...muted, alignSelf: "flex-end" }}>AI 책임 검토는 참고용입니다.</div>
     </Card>
   );
 }
