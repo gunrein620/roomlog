@@ -165,6 +165,7 @@ export type MessagingThread = {
   lastMessage: string;
   lastMessageSender?: MessagingMessageSender; // 목록 응답에도 포함 — 관리인 미응답 판정용 (presentThread에서 채움)
   unreadCount: number;
+  managerUnreadCount: number;
   pendingRequest: boolean;
   archivedNotice: boolean;
   createdAt: string;
@@ -187,10 +188,11 @@ export type CreateMessagingThreadInput = {
 };
 
 export type CreateTenantMessagingThreadInput = {
+  roomId?: string;
   context?: MessagingThreadContext;
   contextRef?: string;
   contextLabel?: string;
-  body: string;
+  body?: string;
   kind?: MessagingMessageKind;
   attachmentUrls?: string[];
 };
@@ -1555,6 +1557,7 @@ export type IntakeDraft = {
   requiredInfo: string[];
   photoRequested: boolean;
   readyToFinalize: boolean;
+  filingIntent: boolean;
   location?: string;
   occurredAt?: string;
   availableTimes?: string;
@@ -1733,6 +1736,7 @@ export type PaymentReport = {
   status: PaymentReportStatus;
   etaHours: number;
   reportedAt: string;
+  confirmedAt?: string;
 };
 
 export type Deposit = {
@@ -1865,6 +1869,43 @@ export type TeamReport = PaymentReport;
 
 export type TeamDeposit = Deposit;
 
+export type TeamTransactionLedgerBill = {
+  buildingName?: string;
+  unitId: string;
+  tenantName: string;
+  billingMonth: string;
+  dueDate: string;
+  totalAmount: number;
+  paidAmount: number;
+  status: BillStatus;
+  items: TeamBill["items"];
+};
+
+export type TeamTransactionLedgerCost = {
+  type: CostType;
+  scope: CostAttributionScope;
+  verified: boolean;
+  evidenceAvailable: boolean;
+  status: "confirmed" | "amended";
+};
+
+export type TeamTransactionLedgerRow = {
+  id: string;
+  direction: "deposit" | "withdrawal";
+  occurredAt: string;
+  amount: number;
+  statusLabel: string;
+  buildingName?: string;
+  unitId?: string;
+  candidateUnitId?: string;
+  partyName?: string;
+  itemLabel: string;
+  depositorName?: string;
+  linkedBillRelation?: "matched" | "candidate";
+  linkedBill?: TeamTransactionLedgerBill;
+  cost?: TeamTransactionLedgerCost;
+};
+
 export type TeamBillPaymentOrder = {
   billId: string;
   orderId: string;
@@ -1942,6 +1983,11 @@ export type TeamCollectionBrief = {
   collectedAmount: number;
   unpaidAmount: number;
   collectionRate: number;
+  billedUnits: number;
+  fullyPaidUnits: number;
+  partiallyPaidUnits: number;
+  threeMonthAverageRate: number;
+  sixMonthAverageRate: number;
   previousCollectionRate?: number;
   rateDelta?: number;
   confirmingAmount: number;
@@ -1953,6 +1999,30 @@ export type TeamCollectionPoint = {
   collectedAmount: number;
   unpaidAmount: number;
   collectionRate: number;
+  billedUnits: number;
+  fullyPaidUnits: number;
+  partiallyPaidUnits: number;
+};
+
+export type TeamCollectionHistoryRange = {
+  availableFromMonth: string;
+  availableToMonth: string;
+  appliedFromMonth: string;
+  appliedToMonth: string;
+};
+
+export type TeamCollectionTimingPoint = {
+  day: number;
+  currentCumulativeAmount: number;
+  previousCumulativeAmount: number;
+};
+
+export type TeamCollectionTiming = {
+  currentMonth: string;
+  previousMonth: string;
+  onTimeCollectionRate: number;
+  averageCollectionDay?: number;
+  points: TeamCollectionTimingPoint[];
 };
 
 export type TeamCollectionBuildingRow = TeamCollectionPoint & {
@@ -1969,6 +2039,8 @@ export type TeamCollection = {
   billingMonth: string;
   brief: TeamCollectionBrief;
   trend: TeamCollectionPoint[];
+  history: TeamCollectionHistoryRange;
+  timing: TeamCollectionTiming;
   buildings: TeamCollectionBuildingRow[];
   collectionRate: number;
   collectedAmount: number;

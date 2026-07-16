@@ -2,17 +2,23 @@
 
 // 사는 집(세입자) 마이페이지 — 계약 상태, 수리요청(실제 민원 API), 관리비, 집주인 채팅.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
-import type { ChangeEvent, FormEvent } from "react";
+import type {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent
+} from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import type { Announcement, Contract, TenantLandlordConversation, Thread } from "@roomlog/types";
-import { Bath, Bot, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Send, Snowflake, X } from "lucide-react";
+import type { Announcement, Contract, Message, Thread } from "@roomlog/types";
+import { Bath, Bot, Check, ChevronRight, FileText, Headphones, ImagePlus, Megaphone, MessageCircle, MessageSquare, Mic, PhoneOff, Send, Snowflake, X } from "lucide-react";
+import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
   tenantLandlordConversationPaths,
-  tenantLandlordThreadHref,
   tenantLandlordThreadInput
 } from "@/lib/tenant-landlord-conversation";
 import {
@@ -20,8 +26,8 @@ import {
   type TenantBillingCardModel,
 } from "./tenant-current-bill";
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
+import { useTenantAiAssistant } from "./useTenantAiAssistant";
 
-const TENANT_AI_GREETING = "안녕하세요! 우주(Woo-zu) AI 어시스턴트입니다. 무엇을 도와드릴까요?";
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   current: null,
   upcoming: null,
@@ -47,12 +53,26 @@ type TenantContractSummary = {
 };
 
 type TenantTenancy = {
+  roomId: string;
   buildingName: string;
   roomNo: string;
   address: string;
+  landlordId?: string;
   imageUrl?: string;
   contract: TenantContractSummary | null;
   leaseContract: Contract | null;
+};
+
+type TenantRoomOption = {
+  roomId: string;
+  buildingName: string;
+  roomNo: string;
+  address: string;
+  landlordId?: string;
+  landlordName?: string;
+  contractId?: string;
+  contractStatus?: string;
+  isCurrent?: boolean;
 };
 
 type TenantListingPhotoSummary = {
@@ -125,12 +145,6 @@ type TenantAnnouncementState =
 type TenantAiMode = "text" | "call";
 type TenantAiStage = "choose" | "text" | "voice";
 
-type TenantAiMessage = {
-  id: string;
-  sender: "assistant" | "tenant";
-  text: string;
-};
-
 // 계약 조건 한 줄 표기 — 실제 연결된 계약이 없으면 위조하지 않고 그 사실을 그대로 알린다.
 function tenancyTermsLabel(contract: TenantContractSummary | null): string {
   if (!contract) return "계약 조건 정보 없음";
@@ -150,6 +164,11 @@ function tenancyDateLabel(iso?: string): string {
 
 function formatKrw(amount: number): string {
   return `${amount.toLocaleString("ko-KR")} KRW`;
+}
+
+function formatTenantRoomTitle(buildingName: string, roomNo: string): string {
+  const normalizedRoomNo = roomNo.replace(/호+$/u, "").trim();
+  return `${buildingName} ${normalizedRoomNo}`.trim();
 }
 
 function billingDateLabel(iso?: string): string {
@@ -355,6 +374,149 @@ function TenantFloorPlanPreview({
   );
 }
 
+function TenantLandlordChatModal({
+  thread,
+  draft,
+  isSending,
+  latestAnnouncement,
+  onDraftChange,
+  onClose,
+  onSubmit
+}: {
+  thread: Thread;
+  draft: string;
+  isSending: boolean;
+  latestAnnouncement: Announcement | null;
+  onDraftChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const messages = thread.messages ?? [];
+  const unitLabel = compactTenantThreadUnit(thread.unitId);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isNoticeOpen, setIsNoticeOpen] = useState(false);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [thread.id]);
+
+  const modal = (
+    <div className="tenant-chat-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="tenant-landlord-chat-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tenant-landlord-chat-title"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="tenant-chat-modal-head">
+          <button type="button" onClick={onClose} aria-label="채팅 닫기">
+            <X size={18} strokeWidth={2.5} aria-hidden="true" />
+          </button>
+          <div>
+            <h2 id="tenant-landlord-chat-title">관리인</h2>
+            <p>{unitLabel ? `${unitLabel} · ${thread.contextLabel ?? "일반 문의"}` : thread.contextLabel ?? "일반 문의"}</p>
+          </div>
+        </header>
+
+        {latestAnnouncement ? (
+          <section className="tenant-chat-modal-notice" aria-label="최근 공지사항">
+            <button type="button" onClick={() => setIsNoticeOpen((open) => !open)} aria-expanded={isNoticeOpen}>
+              <Megaphone size={18} strokeWidth={2.4} aria-hidden="true" />
+              <span>{latestAnnouncement.title}</span>
+              <ChevronRight size={18} strokeWidth={2.4} aria-hidden="true" />
+            </button>
+            {isNoticeOpen ? (
+              <div className="tenant-chat-modal-notice-detail">
+                <strong>최근 공지</strong>
+                <p>{latestAnnouncement.body}</p>
+                <small>
+                  {latestAnnouncement.sender} · {tenancyDateLabel(latestAnnouncement.sentAt)}
+                </small>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <main className="tenant-chat-modal-stream" aria-label="메시지 타임라인">
+          {messages.length > 0 ? (
+            messages.map((message) => <TenantChatMessageBubble key={message.id} message={message} />)
+          ) : (
+            <div className="tenant-chat-modal-empty" aria-hidden="true" />
+          )}
+        </main>
+
+        <form className="tenant-chat-modal-compose" onSubmit={onSubmit}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            placeholder="메시지를 입력하세요"
+            autoComplete="off"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <button type="submit" disabled={!draft.trim() || isSending}>
+            {isSending ? "전송 중" : "보내기"}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+
+  return typeof document === "undefined" ? null : createPortal(modal, document.body);
+}
+
+function TenantChatMessageBubble({ message }: { message: Message }) {
+  const isMine = message.sender === "tenant";
+  return (
+    <article className={isMine ? "tenant-chat-message mine" : "tenant-chat-message"}>
+      <div className="tenant-chat-bubble">
+        <p>{message.body}</p>
+        <time>{formatTenantMessageTime(message.createdAt)}</time>
+      </div>
+    </article>
+  );
+}
+
+async function fetchTenantMessageThread(threadId: string): Promise<Thread> {
+  const response = await fetch(`/api/tenant/messaging/threads/${encodeURIComponent(threadId)}`, {
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "대화를 불러오지 못했습니다.");
+  }
+  return payload as Thread;
+}
+
+async function sendTenantMessageToThread(threadId: string, body: string): Promise<Thread> {
+  const response = await fetch(`/api/tenant/messaging/threads/${encodeURIComponent(threadId)}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "메시지를 보내지 못했습니다.");
+  }
+  return payload as Thread;
+}
+
+function formatTenantMessageTime(iso: string): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(iso));
+}
+
+function compactTenantThreadUnit(unitId: string): string {
+  return unitId.replace(/\s*호$/u, "").trim();
+}
+
 export default function TenantMyPage({
   onGoInquiry,
   onGoHome
@@ -362,10 +524,11 @@ export default function TenantMyPage({
   onGoInquiry: () => void;
   onGoHome: () => void;
 }) {
-  const router = useRouter();
   // 이 계정에 실제로 연결된 집 — 없으면 null(연결 안내), 확인 전엔 "loading".
   // 하드코딩된 매물 정보를 보여주던 자리를 실제 계약 데이터로 교체한다(위조 금지).
   const [tenancy, setTenancy] = useState<TenantTenancy | null | "loading">("loading");
+  const [tenantRooms, setTenantRooms] = useState<TenantRoomOption[]>([]);
+  const [selectedTenantRoomId, setSelectedTenantRoomId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -378,11 +541,60 @@ export default function TenantMyPage({
         }
         const me = (await meRes.json()) as {
           userId?: string;
-          room?: { buildingName: string; roomNo: string; address: string; landlordId?: string };
+          room?: { id?: string; buildingName: string; roomNo: string; address: string; landlordId?: string };
         };
         if (!me.userId || !me.room) {
           if (!cancelled) setTenancy(null);
           return;
+        }
+
+        let roomOptions: TenantRoomOption[] = [];
+        try {
+          const roomsRes = await fetch("/api/tenant/rooms", { cache: "no-store" });
+          if (roomsRes.ok) {
+            const rooms = (await roomsRes.json()) as TenantRoomOption[];
+            if (Array.isArray(rooms)) {
+              roomOptions = rooms.filter((room) => room.roomId);
+            }
+          }
+        } catch {
+          roomOptions = [];
+        }
+
+        const fallbackRoom: TenantRoomOption = {
+          roomId: me.room.id || `${me.room.buildingName}-${me.room.roomNo}`,
+          buildingName: me.room.buildingName,
+          roomNo: me.room.roomNo,
+          address: me.room.address,
+          landlordId: me.room.landlordId,
+          isCurrent: true
+        };
+        if (roomOptions.length === 0) {
+          roomOptions = [fallbackRoom];
+        }
+
+        const storedRoomId =
+          typeof window !== "undefined" ? window.localStorage.getItem("woozuTenantRoomId") : "";
+        const selectedRoom =
+          roomOptions.find((room) => room.roomId === selectedTenantRoomId) ??
+          roomOptions.find((room) => room.roomId === storedRoomId) ??
+          roomOptions.find((room) => room.isCurrent) ??
+          roomOptions[0];
+
+        if (!selectedRoom) {
+          if (!cancelled) {
+            setTenantRooms([]);
+            setTenancy(null);
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setTenantRooms(roomOptions);
+          if (selectedTenantRoomId !== selectedRoom.roomId) {
+            setSelectedTenantRoomId(selectedRoom.roomId);
+          }
+          window.localStorage.setItem("woozuTenantRoomId", selectedRoom.roomId);
         }
 
         let contract: TenantContractSummary | null = null;
@@ -407,7 +619,7 @@ export default function TenantMyPage({
               (item) =>
                 item.tenantId === me.userId &&
                 item.status === "accepted" &&
-                item.landlordId === me.room?.landlordId
+                item.landlordId === selectedRoom.landlordId
             );
             if (accepted) {
               contract = {
@@ -425,7 +637,7 @@ export default function TenantMyPage({
                 if (listingsRes.ok) {
                   const listings = (await listingsRes.json()) as TenantListingPhotoSummary[];
                   if (Array.isArray(listings)) {
-                    residenceImageUrl = findTenantListingImage(listings, accepted.listingId, me.room);
+                    residenceImageUrl = findTenantListingImage(listings, accepted.listingId, selectedRoom);
                   }
                 }
               } catch {
@@ -438,7 +650,10 @@ export default function TenantMyPage({
         }
 
         try {
-          const leaseRes = await fetch("/api/tenant/current-contract", { cache: "no-store" });
+          const leaseRes = await fetch(
+            `/api/tenant/current-contract?roomId=${encodeURIComponent(selectedRoom.roomId)}`,
+            { cache: "no-store" }
+          );
           if (leaseRes.ok) {
             leaseContract = (await leaseRes.json()) as Contract | null;
           }
@@ -448,9 +663,11 @@ export default function TenantMyPage({
 
         if (!cancelled) {
           setTenancy({
-            buildingName: me.room.buildingName,
-            roomNo: me.room.roomNo,
-            address: me.room.address,
+            roomId: selectedRoom.roomId,
+            buildingName: selectedRoom.buildingName,
+            roomNo: selectedRoom.roomNo,
+            address: selectedRoom.address,
+            landlordId: selectedRoom.landlordId,
             imageUrl: residenceImageUrl,
             contract,
             leaseContract
@@ -463,7 +680,7 @@ export default function TenantMyPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedTenantRoomId]);
 
   const [announcementState, setAnnouncementState] = useState<TenantAnnouncementState>({
     status: "loading",
@@ -549,12 +766,10 @@ export default function TenantMyPage({
   const [isBillLoading, setIsBillLoading] = useState(true);
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
-  const [isLandlordChatOpen, setIsLandlordChatOpen] = useState(false);
-  const [landlordConversation, setLandlordConversation] = useState<TenantLandlordConversation | null>(null);
-  const [landlordMessageDraft, setLandlordMessageDraft] = useState("");
-  const [landlordConversationError, setLandlordConversationError] = useState("");
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
-  const [isLandlordMessageSubmitting, setIsLandlordMessageSubmitting] = useState(false);
+  const [landlordChatThread, setLandlordChatThread] = useState<Thread | null>(null);
+  const [landlordChatDraft, setLandlordChatDraft] = useState("");
+  const [isLandlordMessageSending, setIsLandlordMessageSending] = useState(false);
   const [isRequestSheetOpen, setIsRequestSheetOpen] = useState(false);
   const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
   const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
@@ -564,13 +779,11 @@ export default function TenantMyPage({
   const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
   const [isRepairDetailLoading, setIsRepairDetailLoading] = useState(false);
   const [repairDetailError, setRepairDetailError] = useState("");
-  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
   const [aiMode, setAiMode] = useState<TenantAiMode>("text");
   const [aiDraft, setAiDraft] = useState("");
-  const [aiMessages, setAiMessages] = useState<TenantAiMessage[]>([
-    { id: "tenant-ai-welcome", sender: "assistant", text: TENANT_AI_GREETING }
-  ]);
+  const aiDialogRef = useRef<HTMLDialogElement>(null);
+  const aiMessagesRef = useRef<HTMLDivElement>(null);
   const [tenantToast, setTenantToast] = useState("");
 
   const showToast = (message: string) => {
@@ -578,67 +791,85 @@ export default function TenantMyPage({
     window.setTimeout(() => setTenantToast(""), 2400);
   };
 
+  // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
+  const ai = useTenantAiAssistant({
+    roomId: tenancy && tenancy !== "loading" ? tenancy.roomId : undefined,
+    onComplaintFiled: () => {
+      showToast("민원/하자 요청이 접수되었습니다.");
+      void loadRepairRequests();
+    }
+  });
+
+  useEffect(() => {
+    const container = aiMessagesRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  }, [ai.messages.length, ai.busy, ai.readyToFinalize]);
+
   const openLandlordConversation = async () => {
     if (!tenancy || tenancy === "loading") {
-      showToast("입주 연결이 완료되면 임대인 문의를 열 수 있습니다.");
+      showToast("입주 연결이 완료되면 임대인에게 문의할 수 있습니다.");
       return;
     }
 
     setIsLandlordConversationLoading(true);
-    setLandlordConversationError("");
     try {
-      const response = await fetch(tenantLandlordConversationPaths.current(), { cache: "no-store" });
+      const response = await fetch(tenantLandlordConversationPaths.current(tenancy.roomId), { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(payload?.message || "대화 정보를 불러오지 못했습니다.");
       }
 
-      const conversation = payload as TenantLandlordConversation;
-      if (conversation.threadId) {
-        router.push(tenantLandlordThreadHref(conversation.threadId));
-        return;
+      let thread: Thread | null = null;
+      if (payload?.threadId) {
+        thread = await fetchTenantMessageThread(String(payload.threadId));
+      } else {
+        const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(tenantLandlordThreadInput("", tenancy.roomId))
+        });
+        const created = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok) {
+          throw new Error(created?.message || "대화를 시작하지 못했습니다.");
+        }
+        thread = created as Thread;
       }
 
-      setLandlordConversation(conversation);
-      setIsLandlordChatOpen(true);
+      if (!thread?.id) {
+        throw new Error("대화 스레드를 만들지 못했습니다.");
+      }
+
+      setLandlordChatThread(thread);
+      setLandlordChatDraft("");
     } catch (error) {
-      setLandlordConversationError(
-        error instanceof Error ? error.message : "대화 정보를 불러오지 못했습니다."
-      );
-      setIsLandlordChatOpen(true);
+      showToast(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {
       setIsLandlordConversationLoading(false);
     }
   };
 
-  const submitLandlordMessage = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const input = tenantLandlordThreadInput(landlordMessageDraft);
-    if (!input.body || isLandlordMessageSubmitting) return;
-
-    setIsLandlordMessageSubmitting(true);
-    setLandlordConversationError("");
-    try {
-      const response = await fetch(tenantLandlordConversationPaths.threads(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input)
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || "메시지를 보내지 못했습니다.");
-      }
-
-      router.push(tenantLandlordThreadHref((payload as Thread).id));
-    } catch (error) {
-      setLandlordConversationError(
-        error instanceof Error ? error.message : "메시지를 보내지 못했습니다."
-      );
-    } finally {
-      setIsLandlordMessageSubmitting(false);
-    }
+  const closeLandlordChat = () => {
+    setLandlordChatThread(null);
+    setLandlordChatDraft("");
   };
 
+  const handleLandlordMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = landlordChatDraft.trim();
+    if (!landlordChatThread || !body || isLandlordMessageSending) return;
+
+    setIsLandlordMessageSending(true);
+    try {
+      const nextThread = await sendTenantMessageToThread(landlordChatThread.id, body);
+      setLandlordChatThread(nextThread);
+      setLandlordChatDraft("");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "메시지를 보내지 못했습니다.");
+    } finally {
+      setIsLandlordMessageSending(false);
+    }
+  };
   useEffect(() => {
     let cancelled = false;
 
@@ -672,7 +903,7 @@ export default function TenantMyPage({
   const contractRows: Array<[string, string]> =
     tenancy && tenancy !== "loading"
       ? [
-          ["집 주소", `${tenancy.buildingName} ${tenancy.roomNo}호`],
+          ["집 주소", formatTenantRoomTitle(tenancy.buildingName, tenancy.roomNo)],
           ["상세 주소", tenancy.address || "미등록"],
           ["임대인", tenancy.leaseContract?.landlordName ?? tenancy.contract?.landlordName ?? "정보 없음"],
           ["거래 유형", tenancy.contract?.tradeType ?? "정보 없음"],
@@ -704,16 +935,11 @@ export default function TenantMyPage({
           ["체결일", tenancy.contract?.respondedAt ? tenancyDateLabel(tenancy.contract.respondedAt) : "정보 없음"]
         ]
       : [["안내", "아직 연결된 집이 없습니다. 계약이 체결되면 이 자리에 실제 계약 정보가 표시됩니다."]];
-  const landlordChatTitle = landlordConversation?.landlordName
-    ? `${landlordConversation.landlordName} 임대인`
-    : tenancy && tenancy !== "loading" && tenancy.contract?.landlordName
-      ? `${tenancy.contract.landlordName} 임대인`
-      : "연결된 임대인";
   const tenantRoomTitle =
     tenancy === "loading"
       ? "입주 정보 확인 중"
       : tenancy
-        ? `${tenancy.buildingName} ${tenancy.roomNo}호`
+        ? formatTenantRoomTitle(tenancy.buildingName, tenancy.roomNo)
         : "연결된 집이 없습니다";
   const tenantAddress =
     tenancy === "loading"
@@ -915,19 +1141,68 @@ export default function TenantMyPage({
   const handleAiSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextMessage = aiDraft.trim();
-    if (!nextMessage || aiStage === "choose" || aiMode !== "text") return;
+    if (!nextMessage || aiStage === "choose" || aiMode !== "text" || ai.busy) return;
 
-    const timestamp = Date.now();
-    setAiMessages((messages) => [
-      ...messages,
-      { id: `tenant-ai-user-${timestamp}`, sender: "tenant", text: nextMessage },
-      {
-        id: `tenant-ai-reply-${timestamp}`,
-        sender: "assistant",
-        text: "현재는 데모 상담 화면입니다. 실제 AI 응답이 연결되면 이 대화에서 이어서 도와드릴게요."
-      }
-    ]);
     setAiDraft("");
+    void ai.submitText(nextMessage);
+  };
+
+  const submitAiFromKeyboard = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || ai.busy) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  };
+
+  const selectAiMode = (nextMode: TenantAiMode) => {
+    setAiMode(nextMode);
+    setAiStage(nextMode === "text" ? "text" : "voice");
+    if (nextMode === "text") {
+      ai.voice.disconnect();
+      void ai.startTextSession();
+    } else {
+      setAiDraft("");
+    }
+  };
+
+  const openAiAssistant = () => {
+    setAiStage("choose");
+    aiDialogRef.current?.showModal();
+  };
+
+  const closeAiAssistant = () => {
+    ai.voice.disconnect();
+    aiDialogRef.current?.close();
+  };
+
+  // 관리자 비서와 동일한 백드롭 클릭 닫기 — 다이얼로그 사각형 밖 클릭만 닫는다.
+  const closeAiOnBackdrop = (event: ReactMouseEvent<HTMLDialogElement>) => {
+    if (event.target !== event.currentTarget) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (isDialogBackdropPoint(event, bounds)) closeAiAssistant();
+  };
+
+  // Push to Talk — 누르고 있는 동안만 송신(포인터·키보드 모두 지원, 관리자 비서와 동일).
+  const startAiPushToTalk = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    ai.voice.startTalking();
+  };
+
+  const stopAiPushToTalk = () => {
+    ai.voice.stopTalking();
+  };
+
+  const startAiPushToTalkFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.repeat || (event.key !== " " && event.key !== "Enter")) return;
+    event.preventDefault();
+    ai.voice.startTalking();
+  };
+
+  const stopAiPushToTalkFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== " " && event.key !== "Enter") return;
+    event.preventDefault();
+    ai.voice.stopTalking();
   };
 
   return (
@@ -967,10 +1242,27 @@ export default function TenantMyPage({
       </section>
 
       <section className="tenant-residence-card" aria-label="입주 정보">
-        <TenantFloorPlanPreview
-          imageUrl={tenancy && tenancy !== "loading" ? tenancy.imageUrl : undefined}
-          title={tenantRoomTitle}
-        />
+        <div className="tenant-residence-media">
+          {tenantRooms.length > 0 && tenancy && tenancy !== "loading" ? (
+            <label className="tenant-room-select">
+              <span>집 선택</span>
+              <select
+                value={selectedTenantRoomId || tenancy.roomId}
+                onChange={(event) => setSelectedTenantRoomId(event.currentTarget.value)}
+              >
+                {tenantRooms.map((room) => (
+                  <option key={room.roomId} value={room.roomId}>
+                    {formatTenantRoomTitle(room.buildingName, room.roomNo)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <TenantFloorPlanPreview
+            imageUrl={tenancy && tenancy !== "loading" ? tenancy.imageUrl : undefined}
+            title={tenantRoomTitle}
+          />
+        </div>
         <div className="tenant-residence-details">
           <span className="tenant-pill">입주 정보</span>
           <h3>{tenantRoomTitle}</h3>
@@ -1107,200 +1399,215 @@ export default function TenantMyPage({
       <button
         className="tenant-ai-assist-button"
         type="button"
-        onClick={() => {
-          setAiStage("choose");
-          setIsAiAssistantOpen((isOpen) => !isOpen);
-        }}
-        aria-label={isAiAssistantOpen ? "AI 생활 도우미 닫기" : "AI 생활 도우미 열기"}
-        aria-controls="tenant-ai-assistant-panel"
-        aria-expanded={isAiAssistantOpen}
+        onClick={openAiAssistant}
+        aria-label="AI 생활 도우미 열기"
+        aria-haspopup="dialog"
+        aria-controls="tenant-ai-assistant-dialog"
       >
         <Bot size={30} strokeWidth={2.3} aria-hidden="true" />
       </button>
 
-      {isAiAssistantOpen ? (
-        <aside
-          className="tenant-ai-panel"
-          id="tenant-ai-assistant-panel"
-          role="dialog"
-          aria-modal="false"
-          aria-labelledby="tenant-ai-title"
-        >
-          <header className="tenant-ai-panel-head">
-            <div className="tenant-ai-brand">
-              <Bot size={18} strokeWidth={2.4} aria-hidden="true" />
-              <h3 id="tenant-ai-title">Woo-zu AI Assistant</h3>
+      {/* 관리자 AI 비서(ManagerAssistantLauncher)와 동일한 다이얼로그 UI — 데이터만 세입자 intake 세션 */}
+      <dialog
+        ref={aiDialogRef}
+        id="tenant-ai-assistant-dialog"
+        className="manager-assistant-dialog"
+        aria-labelledby="tenant-ai-dialog-title"
+        onClick={closeAiOnBackdrop}
+        onClose={ai.voice.disconnect}
+      >
+        <header className="manager-assistant-dialog__header">
+          <span className="manager-assistant-dialog__brand">
+            <Bot aria-hidden="true" />
+            <strong id="tenant-ai-dialog-title">Woo-zu AI 비서</strong>
+          </span>
+          <button
+            type="button"
+            aria-label="AI 생활 도우미 닫기"
+            onClick={closeAiAssistant}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </header>
+        {aiStage === "choose" ? (
+          <section className="manager-ai-mode-picker" aria-label="AI 상담 모드 선택">
+            <div className="manager-ai-mode-picker__copy">
+              <h2>상담 방식을 선택해 주세요</h2>
+              <p>Woo-zu AI와 어떻게 대화하시겠어요?</p>
             </div>
-            <button
-              className="tenant-ai-close-button"
-              type="button"
-              onClick={() => setIsAiAssistantOpen(false)}
-              aria-label="AI 생활 도우미 닫기"
+            <div className="manager-ai-mode-cards">
+              <button type="button" onClick={() => selectAiMode("text")}>
+                <span className="manager-ai-mode-icon" aria-hidden="true">
+                  <MessageSquare />
+                </span>
+                <strong>텍스트 채팅</strong>
+                <small>TEXT</small>
+              </button>
+              <button type="button" onClick={() => selectAiMode("call")}>
+                <span className="manager-ai-mode-icon" aria-hidden="true">
+                  <Headphones />
+                </span>
+                <strong>음성 통화</strong>
+                <small>CALL</small>
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="manager-ai-conversation" aria-label="AI 생활 도우미 대화">
+            <div
+              ref={aiMessagesRef}
+              className="manager-ai-transcript"
+              role="log"
+              aria-live="polite"
             >
-              <X size={20} strokeWidth={2.4} aria-hidden="true" />
-            </button>
-          </header>
-          {aiStage === "choose" ? (
-            <div className="tenant-ai-mode-picker" aria-label="AI 상담 모드 선택">
-              <div className="tenant-ai-mode-picker-copy">
-                <h4>Choose your consultation mode</h4>
-                <p>How would you like to talk with Woo-zu AI?</p>
-              </div>
-              <div className="tenant-ai-mode-cards">
-                <button
-                  className="tenant-ai-mode-card"
-                  type="button"
-                  onClick={() => {
-                    setAiMode("text");
-                    setAiStage("text");
-                  }}
-                >
-                  <span className="tenant-ai-mode-icon" aria-hidden="true">
-                    <MessageSquare size={38} strokeWidth={2.2} />
-                  </span>
-                  <strong>Text Chat</strong>
-                  <small>TEXT</small>
-                </button>
-                <button
-                  className="tenant-ai-mode-card"
-                  type="button"
-                  onClick={() => {
-                    setAiMode("call");
-                    setAiStage("voice");
-                    setAiDraft("");
-                  }}
-                >
-                  <span className="tenant-ai-mode-icon" aria-hidden="true">
-                    <Headphones size={40} strokeWidth={2.2} />
-                  </span>
-                  <strong>Voice Call</strong>
-                  <small>CALL</small>
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {aiStage !== "choose" ? (
-            <>
-              <div className="tenant-ai-messages" aria-live="polite">
-                {aiMessages.map((message) => (
-                  <div className={`tenant-ai-message ${message.sender}`} key={message.id}>
-                    {message.sender === "assistant" ? (
-                      <span className="tenant-ai-avatar" aria-hidden="true">
-                        <Bot size={15} strokeWidth={2.4} />
+              {ai.messages.map((message) =>
+                message.sender === "receipt" ? (
+                  <p key={message.id} className="manager-ai-receipt">
+                    {message.text}
+                  </p>
+                ) : (
+                  <div
+                    key={message.id}
+                    className={`manager-ai-message manager-ai-message--${
+                      message.sender === "tenant" ? "user" : message.sender
+                    }`}
+                  >
+                    {message.sender !== "tenant" ? (
+                      <span className="manager-ai-message__avatar" aria-hidden="true">
+                        <Bot />
                       </span>
                     ) : null}
-                    <p className="tenant-ai-bubble">{message.text}</p>
+                    <p>{message.text}</p>
                   </div>
-                ))}
-                {aiMode === "call" ? (
-                  <p className="tenant-ai-call-note" role="status">
-                    통화 모드에서는 메시지 입력 대신 음성 상담 상태를 이어서 확인합니다.
-                  </p>
-                ) : null}
-              </div>
-              <form className="tenant-ai-composer" onSubmit={handleAiSubmit}>
-                <input
-                  type="text"
-                  value={aiDraft}
-                  onChange={(event) => setAiDraft(event.target.value)}
-                  placeholder={aiMode === "call" ? "통화 모드로 연결 준비 중..." : "메시지를 입력하세요..."}
-                  aria-label="AI 어시스턴트 메시지 입력"
-                  disabled={aiMode === "call"}
-                />
-                <button
-                  className="tenant-ai-mode-toggle"
-                  type="button"
-                  role="switch"
-                  aria-label="AI 상담 모드 전환"
-                  aria-checked={aiMode === "call"}
-                  onClick={() => {
-                    const nextMode: TenantAiMode = aiMode === "text" ? "call" : "text";
-                    setAiMode(nextMode);
-                    setAiStage(nextMode === "text" ? "text" : "voice");
-                    if (nextMode === "call") setAiDraft("");
-                  }}
-                >
-                  <span>text</span>
-                  <span className="tenant-ai-switch" aria-hidden="true">
-                    <span />
-                  </span>
-                  <span>call</span>
-                </button>
-                <button
-                  className="tenant-ai-send-button"
-                  type="submit"
-                  disabled={aiMode === "call" || !aiDraft.trim()}
-                  aria-label="AI 어시스턴트 메시지 보내기"
-                >
-                  <Send size={22} strokeWidth={2.3} aria-hidden="true" />
-                </button>
-              </form>
-            </>
-          ) : null}
-        </aside>
-      ) : null}
-
-      {isLandlordChatOpen ? (
-        <>
-          <button
-            className="tenant-chat-backdrop"
-            type="button"
-            aria-label="집주인 채팅 닫기"
-            onClick={() => setIsLandlordChatOpen(false)}
-          />
-          <aside
-            className="tenant-chat-panel"
-            id="tenant-landlord-chat-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tenant-landlord-chat-title"
-          >
-            <header className="tenant-chat-panel-head">
-              <div>
-                <span>{landlordChatTitle}</span>
-                <h2 id="tenant-landlord-chat-title">집주인 채팅</h2>
-                <p>{tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "계약한 집"}</p>
-              </div>
-              <button type="button" onClick={() => setIsLandlordChatOpen(false)} aria-label="집주인 채팅 닫기">
-                <X size={18} strokeWidth={2.5} aria-hidden="true" />
-              </button>
-            </header>
-            <div className="tenant-chat-panel-body">
-              <form className="tenant-landlord-message-form" onSubmit={submitLandlordMessage}>
-                <div className="tenant-landlord-message-context">
-                  <span>연결된 입주 정보</span>
-                  <strong>
-                    {landlordConversation
-                      ? `${landlordConversation.buildingName} ${landlordConversation.unitId}호`
-                      : tenancy && tenancy !== "loading"
-                        ? `${tenancy.buildingName} ${tenancy.roomNo}호`
-                        : "입주 정보 확인 필요"}
-                  </strong>
-                  <p>보낸 문의는 관리자 소통 화면에 같은 대화로 표시됩니다.</p>
-                </div>
-                <label htmlFor="tenant-landlord-message">첫 메시지</label>
-                <textarea
-                  id="tenant-landlord-message"
-                  value={landlordMessageDraft}
-                  onChange={(event) => setLandlordMessageDraft(event.target.value)}
-                  placeholder="임대인에게 문의할 내용을 입력하세요."
-                  disabled={isLandlordMessageSubmitting || !landlordConversation}
-                />
-                {landlordConversationError ? <p role="alert">{landlordConversationError}</p> : null}
-                <button
-                  type="submit"
-                  disabled={
-                    !landlordConversation ||
-                    !landlordMessageDraft.trim() ||
-                    isLandlordMessageSubmitting
-                  }
-                >
-                  {isLandlordMessageSubmitting ? "보내는 중..." : "문의 보내기"}
-                </button>
-              </form>
+                ),
+              )}
+              {ai.busy ? (
+                <p className="manager-ai-notice" role="status">
+                  AI가 내용을 정리하고 있어요...
+                </p>
+              ) : null}
+              {ai.readyToFinalize ? (
+                <section className="manager-assistant-action-card" aria-label="민원 접수 확인">
+                  <div className="manager-assistant-action-card__heading">
+                    <span className="manager-assistant-action-card__eyebrow">접수 전 확인</span>
+                    <strong className="manager-assistant-action-card__title">
+                      상담 내용이 정리되었습니다. 이대로 관리자에게 민원을 접수할까요?
+                    </strong>
+                  </div>
+                  <div className="manager-assistant-action-card__actions">
+                    <button
+                      type="button"
+                      onClick={() => void ai.finalizeComplaint()}
+                      disabled={ai.busy}
+                      className="manager-assistant-action-card__button manager-assistant-action-card__button--primary"
+                    >
+                      <Check size={16} aria-hidden="true" />
+                      민원 접수
+                    </button>
+                  </div>
+                </section>
+              ) : null}
             </div>
-          </aside>
-        </>
+            {aiMode === "text" ? (
+              <form className="manager-ai-composer" onSubmit={handleAiSubmit}>
+                <label>
+                  <span>대화 입력</span>
+                  <textarea
+                    value={aiDraft}
+                    rows={3}
+                    disabled={ai.busy}
+                    placeholder={ai.busy ? "AI 응답을 기다리는 중..." : "불편한 점을 알려주세요"}
+                    onChange={(event) => setAiDraft(event.target.value)}
+                    onKeyDown={submitAiFromKeyboard}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  aria-label="AI 생활 도우미에 메시지 전송"
+                  disabled={ai.busy || !aiDraft.trim()}
+                >
+                  <Send aria-hidden="true" />
+                  <span>{ai.busy ? "전송 중" : "전송"}</span>
+                </button>
+              </form>
+            ) : (
+              <div className="manager-ai-voice-controls">
+                <p role="status" aria-live="polite">
+                  <span className={`manager-ai-voice-status manager-ai-voice-status--${ai.voice.status}`} />
+                  {ai.voice.statusLabel}
+                </p>
+                {ai.voice.status === "connected" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="manager-ai-push-to-talk"
+                      aria-pressed={ai.voice.isTalking}
+                      onPointerDown={startAiPushToTalk}
+                      onPointerUp={stopAiPushToTalk}
+                      onPointerCancel={stopAiPushToTalk}
+                      onLostPointerCapture={stopAiPushToTalk}
+                      onKeyDown={startAiPushToTalkFromKeyboard}
+                      onKeyUp={stopAiPushToTalkFromKeyboard}
+                      onBlur={stopAiPushToTalk}
+                    >
+                      <Mic aria-hidden="true" />
+                      {ai.voice.isTalking ? "말하는 중…" : "Push to Talk"}
+                    </button>
+                    <button type="button" className="is-disconnect" onClick={ai.voice.disconnect}>
+                      <PhoneOff aria-hidden="true" />
+                      통화 종료
+                    </button>
+                  </>
+                ) : ai.voice.status === "connecting" ? (
+                  <button type="button" className="is-disconnect" onClick={ai.voice.disconnect}>
+                    <PhoneOff aria-hidden="true" />
+                    통화 종료
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => void ai.voice.connect()}>
+                    <Mic aria-hidden="true" />
+                    통화 시작
+                  </button>
+                )}
+                <small>
+                  {ai.voice.status === "connected"
+                    ? "버튼을 누르고 있는 동안만 음성이 전달됩니다."
+                    : "통화 시작을 누른 뒤 마이크 권한을 허용해 주세요."}
+                </small>
+              </div>
+            )}
+            <div className="manager-ai-mode-toggle" aria-label="AI 상담 모드 전환">
+              <button
+                type="button"
+                aria-pressed={aiMode === "text"}
+                onClick={() => selectAiMode("text")}
+              >
+                <MessageSquare aria-hidden="true" />
+                텍스트
+              </button>
+              <button
+                type="button"
+                aria-pressed={aiMode === "call"}
+                onClick={() => selectAiMode("call")}
+              >
+                <Headphones aria-hidden="true" />
+                음성
+              </button>
+            </div>
+          </section>
+        )}
+      </dialog>
+
+      {landlordChatThread ? (
+        <TenantLandlordChatModal
+          thread={landlordChatThread}
+          draft={landlordChatDraft}
+          isSending={isLandlordMessageSending}
+          latestAnnouncement={announcementState.status === "ready" ? announcementState.announcement : null}
+          onDraftChange={setLandlordChatDraft}
+          onClose={closeLandlordChat}
+          onSubmit={handleLandlordMessageSubmit}
+        />
       ) : null}
 
       {isContractSheetOpen ? (
@@ -1317,7 +1624,9 @@ export default function TenantMyPage({
               <div>
                 <span>전자 계약서</span>
                 <h2 id="contract-sheet-title">
-                  {tenancy && tenancy !== "loading" ? `${tenancy.buildingName} ${tenancy.roomNo}호` : "연결된 집 없음"}
+                  {tenancy && tenancy !== "loading"
+                    ? formatTenantRoomTitle(tenancy.buildingName, tenancy.roomNo)
+                    : "연결된 집 없음"}
                 </h2>
                 <p>
                   {tenancy && tenancy !== "loading" && tenancy.contract?.respondedAt

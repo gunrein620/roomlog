@@ -222,6 +222,7 @@ import {
   TeamCollection,
   TeamCollectionBuildingRow,
   TeamCollectionPoint,
+  TeamCollectionTiming,
   TeamDashSummary,
   TeamDeposit,
   TeamDunning,
@@ -233,6 +234,7 @@ import {
   TeamTenantBillingOverview,
   TeamTenantPaymentHistory,
   TeamTenantPaymentHistoryEvent,
+  TeamTransactionLedgerRow,
   Ticket,
   TicketMessage,
   TicketStatus,
@@ -696,6 +698,19 @@ export type ConfirmContractInput = {
 };
 
 
+/**
+ * 인증 계정(UserAccount/SocialAccount)의 DB 단일 원본 저장소.
+ * 전체 스토어 프로젝션(StoreProjector)과 달리 응답 전에 동기 커밋된다 —
+ * 회원가입은 이 저장이 성공해야 토큰을 반환하고, 로그인은 DB에서 계정을 직접 조회한다.
+ */
+export interface AuthAccountRepository {
+  assertAccountAvailable(email: string, phone?: string): Promise<void>;
+  findUserByEmail(email: string): Promise<UserAccount | null>;
+  saveUser(user: UserAccount): Promise<void>;
+  saveSocialAccount(account: SocialAccount): Promise<void>;
+  disconnect?(): Promise<void>;
+}
+
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
@@ -704,6 +719,7 @@ export type RoomlogServiceOptions = {
   seedDemoData?: boolean;
   initialStore?: Store;
   storeProjector?: StoreProjector;
+  authRepository?: AuthAccountRepository;
   paymentGateway?: TossPaymentGateway;
 };
 
@@ -1967,6 +1983,7 @@ function createDemoStore(): Store {
         contextLabel: "생활 문의",
         lastMessage: "확인 후 오늘 안으로 답변드리겠습니다.",
         unreadCount: 1,
+        managerUnreadCount: 0,
         pendingRequest: false,
         archivedNotice: true,
         createdAt,
@@ -2420,6 +2437,8 @@ export class RoomlogService {
   private readonly storageAdapter: FileStorageAdapter;
   private readonly seedDemoData: boolean;
   private readonly storeProjector?: StoreProjector;
+  // 인증 계정의 DB 단일 원본 — 있으면 가입/로그인/소셜이 응답 전에 DB로 동기 커밋된다.
+  private readonly authRepository?: AuthAccountRepository;
   private readonly paymentGateway: TossPaymentGateway;
   private readonly billsWithPaymentConfirmation = new Set<string>();
   private pendingPersistence = Promise.resolve();
@@ -2449,6 +2468,7 @@ export class RoomlogService {
     this.uploadDir = options.uploadDir ?? process.env.LOCAL_UPLOAD_DIR ?? "uploads";
     this.seedDemoData = shouldSeedDemoData(options.seedDemoData);
     this.storeProjector = options.storeProjector;
+    this.authRepository = options.authRepository;
     this.paymentGateway = options.paymentGateway ?? new TossPaymentsGateway();
     this.publicUploadBaseUrl = (
       options.publicUploadBaseUrl ??
@@ -2603,16 +2623,138 @@ export class RoomlogService {
     return this.auth.signup(input);
   }
 
+  /**
+   * DB-first 회원가입 — 컨트롤러가 쓰는 경로.
+   * DB(authRepository)가 있으면: DB 중복 검사 → 메모리 가입 → DB 동기 커밋 순서로,
+   * DB 저장이 성공해야 토큰을 반환한다(실패 시 메모리 롤백 후 에러).
+   * 기존 비동기 프로젝션만으로는 "가입 성공 응답 후 DB 저장 실패 → 재시작 시 계정 증발"이 가능했다.
+   */
+  async signupWithDb(input: SignupInput): Promise<AuthResult> {
+    if (!this.authRepository) return this.auth.signup(input);
+
+    const email = input.email?.trim().toLowerCase() ?? "";
+    const phone = normalizePhoneNumber(input.phone);
+    await this.authRepository.assertAccountAvailable(email, phone);
+
+    const snapshot = this.captureAuthSnapshot();
+    const result = this.auth.signup(input);
+    const user = this.store.users.find((account) => account.id === result.userId);
+    try {
+      if (user) await this.authRepository.saveUser(user);
+    } catch (error) {
+      // DB 확정 실패 — 메모리·JSON에 남은 반쪽 계정을 되돌리고 실패를 그대로 알린다.
+      this.restoreAuthSnapshot(snapshot);
+      this.persistStore();
+      throw error;
+    }
+    return result;
+  }
+
   login(input: LoginInput): AuthResult {
     return this.auth.login(input);
   }
 
+  /**
+   * DB-first 로그인 — 컨트롤러가 쓰는 경로.
+   * DB에서 이메일로 직접 조회해 메모리 캐시를 갱신한 뒤 검증한다 —
+   * 운영자가 DB에 직접 넣었거나 다른 인스턴스가 만든 계정도 재시작 없이 로그인된다.
+   * DB 장애 시에는 메모리로 폴백한다(로그인은 fail-safe).
+   */
+  async loginWithDb(input: LoginInput): Promise<AuthResult> {
+    if (this.authRepository) {
+      const email = input.email?.trim().toLowerCase();
+      if (email) {
+        try {
+          const dbUser = await this.authRepository.findUserByEmail(email);
+          if (dbUser) this.mergeUserIntoStore(dbUser);
+        } catch {
+          // DB 장애 — 메모리 캐시로 계속 진행
+        }
+      }
+    }
+    return this.auth.login(input);
+  }
+
   async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
-    return await this.auth.loginWithGoogle(input);
+    return await this.commitSocialLogin(() => this.auth.loginWithGoogle(input));
   }
 
   async loginWithKakao(input: KakaoSocialLoginInput): Promise<AuthResult> {
-    return await this.auth.loginWithKakao(input);
+    return await this.commitSocialLogin(() => this.auth.loginWithKakao(input));
+  }
+
+  /**
+   * 소셜 로그인 DB 커밋 — 신규 생성 계정은 DB 저장이 성공해야 응답한다(실패 시 롤백).
+   * 기존 계정의 재로그인은 프로필 갱신 저장이 실패해도 로그인을 막지 않는다(fail-safe,
+   * 다음 전체 프로젝션이 따라잡는다).
+   */
+  private async commitSocialLogin(run: () => Promise<AuthResult>): Promise<AuthResult> {
+    if (!this.authRepository) return await run();
+
+    const knownUserIds = new Set(this.store.users.map((account) => account.id));
+    const snapshot = this.captureAuthSnapshot();
+    const result = await run();
+    const isNewAccount = !knownUserIds.has(result.userId);
+    const user = this.store.users.find((account) => account.id === result.userId);
+    const socialAccounts = this.store.socialAccounts.filter(
+      (account) => account.userId === result.userId
+    );
+    try {
+      if (user) await this.authRepository.saveUser(user);
+      for (const account of socialAccounts) {
+        await this.authRepository.saveSocialAccount(account);
+      }
+    } catch (error) {
+      if (isNewAccount) {
+        this.restoreAuthSnapshot(snapshot);
+        this.persistStore();
+        throw error;
+      }
+      // 기존 계정 로그인 — DB 갱신 실패는 로그인 성공을 막지 않는다.
+    }
+    return result;
+  }
+
+  /** DB에서 읽은 계정을 메모리 캐시에 반영 — 로그인 검증은 항상 최신 DB 자격증명 기준이 된다. */
+  private mergeUserIntoStore(dbUser: UserAccount) {
+    const existing =
+      this.store.users.find((account) => account.id === dbUser.id) ??
+      this.store.users.find((account) => account.email === dbUser.email);
+    if (existing) {
+      existing.email = dbUser.email;
+      existing.passwordHash = dbUser.passwordHash;
+      existing.name = dbUser.name;
+      existing.phone = dbUser.phone;
+      existing.role = dbUser.role;
+      existing.status = dbUser.status;
+      return;
+    }
+    this.store.users.push({ ...dbUser });
+  }
+
+  /** 가입/소셜 커밋 실패 롤백용 — 인증 경로가 건드리는 컬렉션만 스냅샷한다. */
+  private captureAuthSnapshot() {
+    return structuredClone({
+      users: this.store.users,
+      socialAccounts: this.store.socialAccounts,
+      rooms: this.store.rooms,
+      vendors: this.store.vendors,
+      tenantRooms: this.store.tenantRooms,
+      tenantInvites: this.store.tenantInvites,
+      vendorInvites: this.store.vendorInvites
+    });
+  }
+
+  /** 도메인 협력 객체들이 같은 배열 인스턴스를 참조하므로 배열은 제자리(in-place)로 되돌린다. */
+  private restoreAuthSnapshot(snapshot: ReturnType<RoomlogService["captureAuthSnapshot"]>) {
+    this.store.users.splice(0, this.store.users.length, ...snapshot.users);
+    this.store.socialAccounts.splice(0, this.store.socialAccounts.length, ...snapshot.socialAccounts);
+    this.store.rooms.splice(0, this.store.rooms.length, ...snapshot.rooms);
+    this.store.vendors.splice(0, this.store.vendors.length, ...snapshot.vendors);
+    this.store.tenantInvites.splice(0, this.store.tenantInvites.length, ...snapshot.tenantInvites);
+    this.store.vendorInvites.splice(0, this.store.vendorInvites.length, ...snapshot.vendorInvites);
+    for (const key of Object.keys(this.store.tenantRooms)) delete this.store.tenantRooms[key];
+    Object.assign(this.store.tenantRooms, snapshot.tenantRooms);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
@@ -3135,7 +3277,9 @@ export class RoomlogService {
   getManagerCollection(
     managerId: string,
     buildingName?: string,
-    billingMonth?: string
+    billingMonth?: string,
+    historyFrom?: string,
+    historyTo?: string
   ): TeamCollection {
     const month = this.validateBillingMonth(billingMonth);
     const { scope, rooms } = this.resolveManagerBillingScope(managerId, buildingName);
@@ -3175,13 +3319,59 @@ export class RoomlogService {
       .sort((left, right) => right.depositedAt.localeCompare(left.depositedAt))
       .slice(0, 5)
       .map((deposit) => this.presentDeposit(deposit));
-    const trend = Array.from({ length: 12 }, (_, index) => this.shiftBillingMonth(month, index - 11))
-      .map((trendMonth) =>
-        this.collectionPointForBills(
-          trendMonth,
-          scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+    const scopedBillMonths = scopedBills
+      .map((bill) => bill.billingMonth)
+      .filter((candidate) => candidate <= month)
+      .sort((left, right) => left.localeCompare(right));
+    const availableFromMonth = scopedBillMonths[0] ?? month;
+    const availableToMonth = scopedBillMonths[scopedBillMonths.length - 1] ?? month;
+    const hasRecordedHistory = scopedBillMonths.length > 0;
+    const defaultHistoryTo = hasRecordedHistory ? availableToMonth : month;
+    const requestedFromMonth = this.validateBillingMonth(
+      historyFrom ?? this.shiftBillingMonth(defaultHistoryTo, -5)
+    );
+    const requestedToMonth = this.validateBillingMonth(historyTo ?? defaultHistoryTo);
+    if (requestedFromMonth > requestedToMonth) {
+      throw new BadRequestException("실적 조회 시작 월은 종료 월보다 늦을 수 없습니다.");
+    }
+    if (requestedToMonth > month) {
+      throw new BadRequestException("실적 조회 종료 월은 선택한 청구 월보다 늦을 수 없습니다.");
+    }
+    const boundedFromMonth =
+      requestedFromMonth < availableFromMonth ? availableFromMonth : requestedFromMonth;
+    const boundedToMonth =
+      requestedToMonth > availableToMonth ? availableToMonth : requestedToMonth;
+    const hasAppliedHistory =
+      hasRecordedHistory && boundedFromMonth <= boundedToMonth;
+    const appliedFromMonth = hasAppliedHistory ? boundedFromMonth : availableFromMonth;
+    const appliedToMonth = hasAppliedHistory ? boundedToMonth : availableToMonth;
+    const trend = hasAppliedHistory
+      ? this.billingMonthsBetween(appliedFromMonth, appliedToMonth).map((trendMonth) =>
+          this.collectionPointForBills(
+            trendMonth,
+            scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+          )
         )
-      );
+      : [];
+    const rollingFromMonth = hasRecordedHistory
+      ? this.shiftBillingMonth(availableToMonth, -5) < availableFromMonth
+        ? availableFromMonth
+        : this.shiftBillingMonth(availableToMonth, -5)
+      : month;
+    const rollingAverageTrend = hasRecordedHistory
+      ? this.billingMonthsBetween(rollingFromMonth, availableToMonth).map((trendMonth) =>
+          this.collectionPointForBills(
+            trendMonth,
+            scopedBills.filter((bill) => bill.billingMonth === trendMonth)
+          )
+        )
+      : [];
+    const timing = this.collectionTimingForBills(
+      month,
+      selectedBills,
+      previousMonth,
+      scopedBills.filter((bill) => bill.billingMonth === previousMonth)
+    );
     const buildings: TeamCollectionBuildingRow[] = scope.buildings
       .filter((building) => !scope.selectedBuilding || building.buildingName === scope.selectedBuilding)
       .map((building) => {
@@ -3226,11 +3416,23 @@ export class RoomlogService {
         collectedAmount: currentPoint.collectedAmount,
         unpaidAmount,
         collectionRate: currentPoint.collectionRate,
+        billedUnits: currentPoint.billedUnits,
+        fullyPaidUnits: currentPoint.fullyPaidUnits,
+        partiallyPaidUnits: currentPoint.partiallyPaidUnits,
+        threeMonthAverageRate: this.averageCollectionRate(rollingAverageTrend, 3),
+        sixMonthAverageRate: this.averageCollectionRate(rollingAverageTrend, 6),
         previousCollectionRate: previousPoint.collectionRate,
         rateDelta,
         confirmingAmount
       },
       trend,
+      history: {
+        availableFromMonth,
+        availableToMonth,
+        appliedFromMonth,
+        appliedToMonth
+      },
+      timing,
       buildings,
       collectionRate: currentPoint.collectionRate,
       collectedAmount: currentPoint.collectedAmount,
@@ -3247,6 +3449,7 @@ export class RoomlogService {
     deposits: TeamDeposit[];
     orphanDeposits: TeamDeposit[];
     mismatchDeposits: TeamDeposit[];
+    ledgerRows: TeamTransactionLedgerRow[];
   } {
     const billIdsWithReports = new Set(
       this.store.paymentReports
@@ -3263,6 +3466,23 @@ export class RoomlogService {
       .filter((bill) => billIdsWithReports.has(bill.id))
       .map((bill) => this.presentManagerBillRow(bill, managerId));
     const deposits = this.managerRelevantDeposits(managerId);
+    const depositRows = deposits.map((deposit) =>
+      this.presentManagerTransactionDeposit(managerId, deposit)
+    );
+    const managerCosts = this.listManagerCosts(managerId);
+    const supersededCostIds = new Set(
+      managerCosts
+        .filter((cost) => cost.status === "amended" && cost.supersedesId)
+        .map((cost) => cost.supersedesId as string)
+    );
+    const withdrawalRows = managerCosts
+      .filter(
+        (cost): cost is Cost & { status: "confirmed" | "amended" } =>
+          (cost.status === "confirmed" || cost.status === "amended") &&
+          cost.repairPayment !== "unpaid" &&
+          !supersededCostIds.has(cost.id)
+      )
+      .map((cost) => this.presentManagerTransactionCost(managerId, cost));
 
     return {
       paymentReports,
@@ -3274,7 +3494,10 @@ export class RoomlogService {
         .map((deposit) => this.presentDeposit(deposit)),
       mismatchDeposits: deposits
         .filter((deposit) => deposit.matchStatus === "MISMATCH")
-        .map((deposit) => this.presentDeposit(deposit))
+        .map((deposit) => this.presentDeposit(deposit)),
+      ledgerRows: [...depositRows, ...withdrawalRows].sort((left, right) =>
+        right.occurredAt.localeCompare(left.occurredAt)
+      )
     };
   }
 
@@ -3335,8 +3558,10 @@ export class RoomlogService {
     }
 
     if (report.status !== "MATCHED") {
+      const confirmedAt = now();
       this.applyConfirmedPayment(bill, report.amount);
       report.status = "MATCHED";
+      report.confirmedAt = confirmedAt;
     }
 
     this.refreshBillStatusAfterPaymentChange(bill);
@@ -3678,6 +3903,7 @@ export class RoomlogService {
         contextLabel,
         lastMessage: text,
         unreadCount: 0,
+        managerUnreadCount: 0,
         pendingRequest: false,
         archivedNotice: true,
         createdAt,
@@ -3711,8 +3937,8 @@ export class RoomlogService {
     return this.contract.listTenantContracts(tenantId);
   }
 
-  getTenantCurrentContract(tenantId: string): Contract | null {
-    return this.contract.getTenantCurrentContract(tenantId);
+  getTenantCurrentContract(tenantId: string, roomId?: string): Contract | null {
+    return this.contract.getTenantCurrentContract(tenantId, roomId);
   }
 
   getTenantContract(tenantId: string, contractId: string): Contract {
@@ -3914,7 +4140,25 @@ export class RoomlogService {
     session.updatedAt = now();
     this.persistStore();
 
-    return { session: this.presentIntakeSession(session), assistantMessage };
+    const autoFinalized = this.maybeAutoFinalizeIntake(tenantId, session);
+
+    return { session: this.presentIntakeSession(session), assistantMessage, autoFinalized };
+  }
+
+  // 세입자가 접수를 명시 요청했고(filingIntent) 초안이 준비되면 버튼 없이 같은 턴에서 바로 접수한다.
+  // 수동 "민원 접수" 버튼과 같은 경로라 중복 후보가 있어도 새 티켓으로 접수된다(AI가 중복 가능성은 대화에서 안내).
+  private maybeAutoFinalizeIntake(tenantId: string, session: IntakeSession) {
+    if (!session.draft.readyToFinalize || !session.draft.filingIntent) {
+      return undefined;
+    }
+
+    try {
+      const finalized = this.finalizeIntakeSession(tenantId, session.id);
+      return { complaint: finalized.complaint, ticket: finalized.ticket };
+    } catch {
+      // 자동 접수에 실패해도 상담은 유지 — 기존 수동 접수 버튼 경로로 폴백한다.
+      return undefined;
+    }
   }
 
   async recordRealtimeTurn(
@@ -7652,6 +7896,45 @@ export class RoomlogService {
     return this.findRoom(roomId);
   }
 
+  listTenantRooms(tenantId: string) {
+    const currentRoomId = this.store.tenantRooms[tenantId];
+    const linkedRoomIds = new Set<string>();
+
+    if (currentRoomId) {
+      linkedRoomIds.add(currentRoomId);
+    }
+
+    this.store.contracts
+      .filter((contract) => contract.tenantId === tenantId)
+      .forEach((contract) => linkedRoomIds.add(contract.roomId));
+
+    return [...linkedRoomIds]
+      .map((roomId) => {
+        const room = this.findRoom(roomId);
+        const contract = this.contract.getTenantCurrentContract(tenantId, roomId);
+        const landlord = room.landlordId
+          ? this.store.users.find((user) => user.id === room.landlordId)
+          : undefined;
+
+        return {
+          roomId: room.id,
+          buildingName: room.buildingName,
+          roomNo: room.roomNo,
+          address: room.address,
+          landlordId: room.landlordId,
+          landlordName: landlord?.name ?? contract?.landlordName,
+          contractId: contract?.id,
+          contractStatus: contract?.lifecycle,
+          isCurrent: room.id === currentRoomId,
+          updatedAt: contract?.updatedAt
+        };
+      })
+      .sort((left, right) => {
+        if (left.isCurrent !== right.isCurrent) return left.isCurrent ? -1 : 1;
+        return this.timeOf(right.updatedAt) - this.timeOf(left.updatedAt);
+      });
+  }
+
   listTenantMoveouts(tenantId: string) {
     return this.moveout.listTenantMoveouts(tenantId);
   }
@@ -7783,8 +8066,8 @@ export class RoomlogService {
     return this.messaging.createTenantMessagingThread(tenantId, input);
   }
 
-  getTenantLandlordConversation(tenantId: string) {
-    return this.messaging.getTenantLandlordConversation(tenantId);
+  getTenantLandlordConversation(tenantId: string, roomId?: string) {
+    return this.messaging.getTenantLandlordConversation(tenantId, roomId);
   }
 
   listTenantMessagingThreads(tenantId: string) {
@@ -7821,6 +8104,10 @@ export class RoomlogService {
 
   getManagerMessagingThread(managerId: string, threadId: string) {
     return this.messaging.getManagerMessagingThread(managerId, threadId);
+  }
+
+  markManagerMessagingThreadRead(managerId: string, threadId: string) {
+    return this.messaging.markManagerMessagingThreadRead(managerId, threadId);
   }
 
   addManagerMessagingThreadMessage(
@@ -8222,6 +8509,16 @@ export class RoomlogService {
     return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
   }
 
+  private billingMonthsBetween(fromMonth: string, toMonth: string) {
+    const [fromYear, fromNumber] = fromMonth.split("-").map(Number);
+    const [toYear, toNumber] = toMonth.split("-").map(Number);
+    const monthCount = (toYear - fromYear) * 12 + toNumber - fromNumber;
+    return Array.from(
+      { length: monthCount + 1 },
+      (_, index) => this.shiftBillingMonth(fromMonth, index)
+    );
+  }
+
   private billingDueDate(month: string, paymentDay: number) {
     const [year, monthNumber] = month.split("-").map(Number);
     const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
@@ -8310,13 +8607,119 @@ export class RoomlogService {
     );
     const billedAmount = included.reduce((sum, bill) => sum + bill.totalAmount, 0);
     const collectedAmount = included.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    const billedUnits = included.length;
+    const fullyPaidUnits = included.filter(
+      (bill) => bill.totalAmount > 0 && bill.paidAmount >= bill.totalAmount
+    ).length;
+    const partiallyPaidUnits = included.filter(
+      (bill) => bill.paidAmount > 0 && bill.paidAmount < bill.totalAmount
+    ).length;
     return {
       billingMonth,
       billedAmount,
       collectedAmount,
       unpaidAmount: Math.max(0, billedAmount - collectedAmount),
-      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0
+      collectionRate: billedAmount > 0 ? collectedAmount / billedAmount : 0,
+      billedUnits,
+      fullyPaidUnits,
+      partiallyPaidUnits
     };
+  }
+
+  private averageCollectionRate(points: TeamCollectionPoint[], months: number) {
+    const eligible = points.filter((point) => point.billedAmount > 0).slice(-months);
+    return eligible.length > 0
+      ? eligible.reduce((sum, point) => sum + point.collectionRate, 0) / eligible.length
+      : 0;
+  }
+
+  private collectionTimingForBills(
+    currentMonth: string,
+    currentBills: Bill[],
+    previousMonth: string,
+    previousBills: Bill[]
+  ): TeamCollectionTiming {
+    const currentEvents = this.confirmedCollectionEventsForBills(currentBills);
+    const previousEvents = this.confirmedCollectionEventsForBills(previousBills);
+    const totalCurrentAmount = currentEvents.reduce((sum, event) => sum + event.amount, 0);
+    const onTimeAmount = currentEvents
+      .filter(
+        (event) =>
+          billingDateInSeoul(event.occurredAt) <= billingDateInSeoul(event.bill.dueDate)
+      )
+      .reduce((sum, event) => sum + event.amount, 0);
+    const weightedCollectionDay = currentEvents.reduce(
+      (sum, event) =>
+        sum + this.collectionDayForMonth(event.occurredAt, currentMonth) * event.amount,
+      0
+    );
+
+    return {
+      currentMonth,
+      previousMonth,
+      onTimeCollectionRate: totalCurrentAmount > 0 ? onTimeAmount / totalCurrentAmount : 0,
+      averageCollectionDay:
+        totalCurrentAmount > 0 ? weightedCollectionDay / totalCurrentAmount : undefined,
+      points: Array.from({ length: 31 }, (_, index) => {
+        const day = index + 1;
+        return {
+          day,
+          currentCumulativeAmount: currentEvents
+            .filter((event) => this.collectionDayForMonth(event.occurredAt, currentMonth) <= day)
+            .reduce((sum, event) => sum + event.amount, 0),
+          previousCumulativeAmount: previousEvents
+            .filter((event) => this.collectionDayForMonth(event.occurredAt, previousMonth) <= day)
+            .reduce((sum, event) => sum + event.amount, 0)
+        };
+      })
+    };
+  }
+
+  private confirmedCollectionEventsForBills(bills: Bill[]) {
+    return bills
+      .filter((bill) => !["CANCELED", "CORRECTED"].includes(bill.status))
+      .flatMap((bill) => {
+        const events: Array<{ bill: Bill; amount: number; occurredAt: string }> = [];
+        let remainingAmount = Math.max(0, bill.paidAmount);
+        const appendEvent = (amount: number, occurredAt: string) => {
+          const confirmedAmount = Math.min(remainingAmount, Math.max(0, amount));
+          if (confirmedAmount <= 0) return;
+          events.push({ bill, amount: confirmedAmount, occurredAt });
+          remainingAmount -= confirmedAmount;
+        };
+
+        this.store.deposits
+          .filter(
+            (deposit) => deposit.matchStatus === "MATCHED" && deposit.matchedBillId === bill.id
+          )
+          .sort((left, right) => left.depositedAt.localeCompare(right.depositedAt))
+          .forEach((deposit) => appendEvent(deposit.amount, deposit.depositedAt));
+
+        this.store.paymentReports
+          .filter(
+            (report) =>
+              report.billId === bill.id &&
+              report.status === "MATCHED" &&
+              Boolean(report.confirmedAt)
+          )
+          .sort((left, right) =>
+            (left.confirmedAt ?? "").localeCompare(right.confirmedAt ?? "")
+          )
+          .forEach((report) => appendEvent(report.amount, report.confirmedAt ?? bill.updatedAt));
+
+        appendEvent(remainingAmount, bill.updatedAt);
+        return events;
+      });
+  }
+
+  private collectionDayForMonth(occurredAt: string, billingMonth: string) {
+    const occurredDate = billingDateInSeoul(occurredAt);
+    const elapsed = Math.floor(
+      (Date.parse(`${occurredDate}T00:00:00.000Z`) -
+        Date.parse(`${billingMonth}-01T00:00:00.000Z`)) /
+        86_400_000
+    );
+    return Math.min(31, Math.max(1, elapsed + 1));
   }
 
   private findBill(billId: string) {
@@ -8846,12 +9249,106 @@ export class RoomlogService {
     };
   }
 
+  private presentManagerTransactionDeposit(
+    managerId: string,
+    deposit: Deposit
+  ): TeamTransactionLedgerRow {
+    const bill = deposit.matchedBillId
+      ? this.managerBills(managerId).find((candidate) => candidate.id === deposit.matchedBillId)
+      : undefined;
+    const presentedBill = bill ? this.presentBill(bill) : undefined;
+    const room = bill ? this.roomForManagerBill(managerId, bill) : undefined;
+    const statusLabels: Record<Deposit["matchStatus"], string> = {
+      MATCHED: "매칭 완료",
+      UNMATCHED: "확인 필요",
+      ORPHAN: "미연결",
+      MISMATCH: "불일치"
+    };
+
+    return {
+      id: deposit.id,
+      direction: "deposit",
+      occurredAt: deposit.depositedAt,
+      amount: deposit.amount,
+      statusLabel: statusLabels[deposit.matchStatus],
+      buildingName: room?.buildingName,
+      unitId: bill ? room?.roomNo ?? this.normalizeUnitId(bill.unitId) : undefined,
+      candidateUnitId: bill ? undefined : deposit.guessedUnitId,
+      partyName: bill ? this.tenantNameForBill(bill) : undefined,
+      itemLabel:
+        presentedBill && presentedBill.items.length > 0
+          ? presentedBill.items.map((item) => item.label).join(" · ")
+          : "입금",
+      depositorName: deposit.depositorName,
+      linkedBillRelation: bill
+        ? deposit.matchStatus === "MATCHED"
+          ? "matched"
+          : "candidate"
+        : undefined,
+      linkedBill:
+        bill && presentedBill
+          ? {
+              buildingName: room?.buildingName,
+              unitId: room?.roomNo ?? this.normalizeUnitId(bill.unitId),
+              tenantName: this.tenantNameForBill(bill),
+              billingMonth: bill.billingMonth,
+              dueDate: bill.dueDate,
+              totalAmount: bill.totalAmount,
+              paidAmount: bill.paidAmount,
+              status: presentedBill.status,
+              items: presentedBill.items
+            }
+          : undefined
+    };
+  }
+
+  private presentManagerTransactionCost(
+    managerId: string,
+    cost: Cost & { status: "confirmed" | "amended" }
+  ): TeamTransactionLedgerRow {
+    const candidateRooms =
+      cost.scope === "unit" && cost.unitId
+        ? this.store.rooms.filter(
+            (room) =>
+              this.canManagerAccessRoom(managerId, room.id) &&
+              this.unitsEqual(this.displayUnitId(room), cost.unitId)
+          )
+        : [];
+    const room = candidateRooms.length === 1 ? candidateRooms[0] : undefined;
+    const receipt = cost.receiptId
+      ? this.store.receipts.find((candidate) => candidate.id === cost.receiptId)
+      : undefined;
+
+    return {
+      id: cost.id,
+      direction: "withdrawal",
+      occurredAt: cost.date,
+      amount: cost.amount,
+      statusLabel:
+        cost.status === "amended"
+          ? "정정된 비용"
+          : cost.verified
+            ? "확정 비용"
+            : "확정 비용 · 미검증",
+      buildingName: room?.buildingName,
+      unitId: cost.unitId,
+      itemLabel: cost.item,
+      cost: {
+        type: cost.type,
+        scope: cost.scope,
+        verified: cost.verified,
+        evidenceAvailable: Boolean(receipt?.hasEvidence),
+        status: cost.status
+      }
+    };
+  }
+
   private stageForDaysOverdue(daysOverdue: number): TeamOverdue["stage"] {
-    if (daysOverdue >= 30) {
+    if (daysOverdue >= 31) {
       return "SEVERE";
     }
 
-    if (daysOverdue >= 7) {
+    if (daysOverdue >= 8) {
       return "WARNING";
     }
 
@@ -8964,7 +9461,8 @@ export class RoomlogService {
         ...thread,
         archivedNotice: thread.archivedNotice ?? true,
         pendingRequest: thread.pendingRequest ?? false,
-        unreadCount: thread.unreadCount ?? 0
+        unreadCount: thread.unreadCount ?? 0,
+        managerUnreadCount: thread.managerUnreadCount ?? 0
       })),
       messagingMessages: (parsed.messagingMessages ?? []).map((message) => ({
         ...message,
@@ -9161,7 +9659,12 @@ export class RoomlogService {
 
     mkdirSync(dirname(this.storeFilePath), { recursive: true });
     const tempFilePath = `${this.storeFilePath}.tmp`;
-    writeFileSync(tempFilePath, JSON.stringify(this.store, null, 2));
+    // DB가 인증 원본인 환경에서는 JSON 백업에 passwordHash를 복제하지 않는다(민감정보 최소화).
+    // DB 모드에서 JSON은 부팅 소스로 쓰이지 않으므로(initialStore가 우선) 빈 해시가 안전하다.
+    const fileSnapshot = this.authRepository
+      ? { ...this.store, users: this.store.users.map((user) => ({ ...user, passwordHash: "" })) }
+      : this.store;
+    writeFileSync(tempFilePath, JSON.stringify(fileSnapshot, null, 2));
     renameSync(tempFilePath, this.storeFilePath);
     this.projectStore();
   }
@@ -9336,6 +9839,7 @@ export class RoomlogService {
       requiredInfo: ["문제 위치", "증상", "방문 가능 시간"],
       photoRequested: false,
       readyToFinalize: false,
+      filingIntent: false,
       duplicateCandidates: []
     };
   }
@@ -9649,11 +10153,20 @@ export class RoomlogService {
       requiredInfo,
       photoRequested,
       readyToFinalize: requiredInfo.length === 0,
+      filingIntent: this.detectFilingIntent(text),
       location,
       occurredAt,
       availableTimes,
       duplicateCandidates
     };
+  }
+
+  // 세입자가 접수를 명시적으로 요청했는지(로컬 폴백 판정) — 단순 증상 설명은 해당하지 않는다.
+  private detectFilingIntent(text: string) {
+    const compact = text.replace(/\s+/g, "");
+    return /(민원|하자|신고|티켓)(을|를)?(넣|올려|접수)|접수(해줘|해주세요|해요|하고싶|부탁|진행|원해|할래|할게)|신고(해줘|해주세요|하고싶|할래|할게)|넣어줘|넣어주세요|올려줘|올려주세요/.test(
+      compact
+    );
   }
 
   private nextQuestionsForDraft(input: {
@@ -10146,7 +10659,9 @@ export class RoomlogService {
       "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
       "- 사진이 있으면 사진 URL을 관리자 검토 자료로 연결하고, 사진이 부족하면 근접/전체 사진을 구분해서 요청합니다.",
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
-      "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다."
+      "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
+      "- draft.filingIntent는 세입자가 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했다면 false입니다.",
+      "- filingIntent와 readyToFinalize가 모두 true이면 시스템이 이번 턴에서 민원을 자동 접수하므로, assistantMessage에서 정리한 내용으로 접수를 진행한다고 안내합니다."
     ].join("\n");
   }
 
@@ -10330,6 +10845,10 @@ export class RoomlogService {
         typeof generated.readyToFinalize === "boolean"
           ? generated.readyToFinalize
           : fallback.readyToFinalize,
+      filingIntent:
+        typeof generated.filingIntent === "boolean"
+          ? generated.filingIntent
+          : fallback.filingIntent,
       location: generated.location?.trim() || fallback.location,
       occurredAt: generated.occurredAt?.trim() || fallback.occurredAt,
       availableTimes: generated.availableTimes?.trim() || fallback.availableTimes,
@@ -10758,6 +11277,7 @@ export class RoomlogService {
             "requiredInfo",
             "photoRequested",
             "readyToFinalize",
+            "filingIntent",
             "location",
             "occurredAt",
             "availableTimes"
@@ -10876,6 +11396,7 @@ export class RoomlogService {
             },
             photoRequested: { type: "boolean" },
             readyToFinalize: { type: "boolean" },
+            filingIntent: { type: "boolean" },
             location: { type: "string" },
             occurredAt: { type: "string" },
             availableTimes: { type: "string" }

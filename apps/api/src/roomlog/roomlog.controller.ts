@@ -125,7 +125,8 @@ export class RoomlogController {
       serviceArea?: string;
     }
   ) {
-    return this.roomlogService.signup(body);
+    // DB가 연결된 환경에서는 DB 커밋이 성공해야 가입 성공을 응답한다.
+    return this.roomlogService.signupWithDb(body);
   }
 
   @Get("auth/invites/:role/:inviteToken")
@@ -151,7 +152,8 @@ export class RoomlogController {
 
   @Post("auth/login")
   login(@Body() body: { email: string; password: string }) {
-    return this.roomlogService.login(body);
+    // DB에서 이메일로 직접 조회 — 다른 인스턴스/운영자 추가 계정도 재시작 없이 로그인된다.
+    return this.roomlogService.loginWithDb(body);
   }
 
   @Post("auth/social/google/callback")
@@ -324,6 +326,13 @@ export class RoomlogController {
     return this.roomlogService.getTenantRoomTimeline(user.id);
   }
 
+  @Get("tenant/rooms")
+  listTenantRooms(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    return this.roomlogService.listTenantRooms(user.id);
+  }
+
   @Get("tenant/move-in-checklist")
   listTenantMoveInChecklist(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["TENANT"]);
@@ -363,10 +372,13 @@ export class RoomlogController {
   }
 
   @Get("tenant/current-contract")
-  getTenantCurrentContract(@Headers("authorization") authorization?: string) {
+  getTenantCurrentContract(
+    @Headers("authorization") authorization?: string,
+    @Query("roomId") roomId?: string
+  ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.getTenantCurrentContract(user.id);
+    return this.roomlogService.getTenantCurrentContract(user.id, roomId);
   }
 
   @Get("tenant/bills/history")
@@ -594,10 +606,13 @@ export class RoomlogController {
   }
 
   @Get("tenant/messaging/landlord-conversation")
-  getTenantLandlordConversation(@Headers("authorization") authorization?: string) {
+  getTenantLandlordConversation(
+    @Headers("authorization") authorization?: string,
+    @Query("roomId") roomId?: string
+  ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.getTenantLandlordConversation(user.id);
+    return this.roomlogService.getTenantLandlordConversation(user.id, roomId);
   }
 
   @Get("tenant/messaging/threads")
@@ -1125,11 +1140,19 @@ export class RoomlogController {
   getManagerCollection(
     @Headers("authorization") authorization?: string,
     @Query("building") building?: string,
-    @Query("month") month?: string
+    @Query("month") month?: string,
+    @Query("historyFrom") historyFrom?: string,
+    @Query("historyTo") historyTo?: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getManagerCollection(user.id, building, month);
+    return this.roomlogService.getManagerCollection(
+      user.id,
+      building,
+      month,
+      historyFrom,
+      historyTo
+    );
   }
 
   @Get("manager/bills/deposits")
@@ -1323,6 +1346,16 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.getManagerMessagingThread(user.id, threadId);
+  }
+
+  @Post("manager/messaging/threads/:threadId/read")
+  markManagerMessagingThreadRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.markManagerMessagingThreadRead(user.id, threadId);
   }
 
   @Post("manager/messaging/threads/:threadId/messages")

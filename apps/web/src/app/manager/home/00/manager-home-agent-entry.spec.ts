@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
 const root = process.cwd();
 const pageSource = readFileSync(join(root, "src/app/manager/home/00/page.tsx"), "utf8");
+const legacyCopilotPath = join(root, "src/app/manager/home/00/CopilotPanel.tsx");
 
 // 홈은 공용 ManagerAppShell 안에서 렌더된다. 대시보드 상단의 AI 브리핑 배너(CopilotPanel)는
 // "한눈에 보이는 대시보드" 개편에서 제거됐고, AI 진입은 다른 관리 화면과 동일하게 공용
@@ -15,6 +16,7 @@ test("manager home renders inside the shared workspace shell without the AI brie
   assert.doesNotMatch(pageSource, /data-copilot-slot/);
   assert.doesNotMatch(pageSource, /통합 예정/);
   assert.doesNotMatch(pageSource, /ManagerHomeTabs/);
+  assert.equal(existsSync(legacyCopilotPath), false);
 });
 
 test("manager home keeps AI available via the shared floating launcher", () => {

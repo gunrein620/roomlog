@@ -131,6 +131,7 @@ export const managerMessagingPaths = {
   thread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
   deleteThread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}`,
   threadMessages: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}/messages`,
+  readThread: (id: string) => `/manager/messaging/threads/${encodeURIComponent(id)}/read`,
   recipients: () => "/manager/messaging/recipients",
   conversations: () => "/manager/messaging/conversations",
   announcementDrafts: () => "/manager/messaging/announcement-drafts",
@@ -176,6 +177,10 @@ export function startManagerConversation(input: StartManagerConversationInput): 
 
 export async function getManagerThread(id: string): Promise<Thread> {
   return serverFetch<Thread>(managerMessagingPaths.thread(id));
+}
+
+export function markManagerThreadRead(id: string): Promise<Thread> {
+  return serverFetch<Thread>(managerMessagingPaths.readThread(id), { method: "POST" });
 }
 
 export function addManagerThreadMessage(

@@ -1131,6 +1131,7 @@ model MessagingThread {
   contextLabel   String?
   lastMessage    String
   unreadCount    Int                    @default(0)
+  managerUnreadCount Int                 @default(0)
   pendingRequest Boolean                @default(false)
   archivedNotice Boolean                @default(true)
   createdAt      DateTime               @default(now())
@@ -1503,6 +1504,7 @@ model TradeListing {
   monthlyRentManwon Int      @default(0)
   location          String
   detailAddress     String?
+  buildingName      String? // 건물명 — 관리 화면의 건물별 그룹 보기 기준
   description       String   @default("")
   images            String[] @default([])
   lat               Float?

@@ -8,6 +8,7 @@ import type {
 import { Badge, Button, Card } from "@roomlog/ui";
 import { MANAGER_MESSAGING_ROUTES } from "@/lib/messaging-manager-nav";
 import { stripScreenId } from "@/lib/screen-id";
+export { formatDateTime } from "./messaging-date-time";
 
 export const CATEGORY_LABEL: Record<AnnouncementCategory, string> = {
   urgent: "긴급",
@@ -48,15 +49,6 @@ export const gridStyle = {
   gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
   gap: "var(--space-md)",
 } as const;
-
-export function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
 
 export function ManagerMessagingNav() {
   const items = [

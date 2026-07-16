@@ -112,7 +112,7 @@ export function BillingWorkspaceHeader({
         ) : asOf ? (
           <div className={styles.fieldGroup}>
             <span className={styles.fieldLabel}>기준일</span>
-            <div className={styles.monthControl}>
+            <div className={`${styles.monthControl} ${styles.asOfControl}`}>
               <CalendarDays aria-hidden="true" size={16} />
               <span className={styles.smallPill}>{asOf}</span>
             </div>

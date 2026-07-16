@@ -15,6 +15,7 @@ const input = {
   monthlyRentManwon: 80,
   location: "서울 성동구",
   detailAddress: "202호",
+  buildingName: "정글빌",
   description: "수정 설명",
   images: ["/uploads/old.jpg"],
   floorPlan: {

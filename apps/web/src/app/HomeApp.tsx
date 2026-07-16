@@ -32,6 +32,7 @@ import {
   X
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -672,15 +673,18 @@ const trustItems = [
 
 
 function SavedListingsSection({
+  allListings,
   savedListingNos,
   openListing,
   onToggleSaved
 }: {
+  /** 데모 + 직접등록(TRADE-) 병합 피드 — 정적 배열만 보면 서버 매물 찜이 목록에서 빠진다. */
+  allListings: Listing[];
   savedListingNos: string[];
   openListing: (listing: Listing) => void;
   onToggleSaved: (listingNo: string) => void;
 }) {
-  const savedListings = listings.filter((listing) => savedListingNos.includes(listing.listingNo));
+  const savedListings = allListings.filter((listing) => savedListingNos.includes(listing.listingNo));
 
   return (
     <section className="screen saved-screen" id="saved-list" aria-labelledby="saved-title">
@@ -1263,15 +1267,19 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const isAuthHistoryPushedRef = useRef(false);
   // 공개된 집주인 직접등록 매물 — 모든 계정의 홈 피드 맨 앞에 합류한다.
   const [tradeListings, setTradeListings] = useState<TradeListing[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
+  // 등록 직후 홈 피드 복귀 시에도 호출한다 — 30초 폴링을 기다리지 않고 방금 등록한 매물이 바로 보이게.
+  const loadTradeListings = useCallback(
+    () =>
       fetch("/api/trade/listings/public", { cache: "no-store" })
         .then((res) => (res.ok ? res.json() : []))
         .then((data: TradeListing[]) => {
-          if (!cancelled && Array.isArray(data)) setTradeListings(data);
+          if (Array.isArray(data)) setTradeListings(data);
         })
-        .catch(() => undefined);
+        .catch(() => undefined),
+    []
+  );
+  useEffect(() => {
+    const load = loadTradeListings;
     load();
     const timer = window.setInterval(load, 30000);
     // 다른 탭/앱에 다녀오면 즉시 갱신 — 30초 폴링만으로는 "새로고침해야 보이는" 답답함이 남는다.
@@ -1281,12 +1289,11 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     window.addEventListener("focus", reloadOnReturn);
     document.addEventListener("visibilitychange", reloadOnReturn);
     return () => {
-      cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("focus", reloadOnReturn);
       document.removeEventListener("visibilitychange", reloadOnReturn);
     };
-  }, []);
+  }, [loadTradeListings]);
 
   function requestMapCurrentLocation(force = false) {
     if (!force && mapLocationRequestedRef.current) return;
@@ -2540,6 +2547,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
         {activeTab === "saved" ? (
         <SavedListingsSection
+          allListings={allListings}
           savedListingNos={savedListingNos}
           openListing={openListing}
           onToggleSaved={toggleSavedListing}
@@ -2549,7 +2557,13 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           <InquiryHubSection onRequireLogin={() => openAuthScreen("login")} focusThreadId={buyerFocusThreadId} composeListing={composeListing} />
         ) : null}
         {activeTab === "sell" ? (
-          <LandlordMyPage />
+          <LandlordMyPage
+            onGoHome={() => {
+              // 등록 성공 팝업 확인 → 홈 피드로. 목록을 즉시 갱신해 방금 등록한 매물이 바로 보이게 한다.
+              void loadTradeListings();
+              activateTab("home");
+            }}
+          />
         ) : null}
         {activeTab === "living" ? (
           <TenantMyPage

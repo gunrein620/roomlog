@@ -42,30 +42,34 @@ export class RoomlogMessagingDomain {
     tenantId: string,
     input: CreateTenantMessagingThreadInput
   ): MessagingThread {
-    const room = this.requireTenantRoom(tenantId);
+    const room = this.requireTenantRoom(tenantId, input.roomId);
 
     if (!room.landlordId) {
       throw new BadRequestException("연결된 관리인이 없어 메시지 스레드를 시작할 수 없습니다.");
     }
 
-    const body = input.body?.trim();
-    if (!body) {
-      throw new BadRequestException("메시지 내용을 입력해주세요.");
-    }
+    const body = input.body?.trim() ?? "";
+    const isGeneralLandlordThread = (input.context ?? "general") === "general" && !input.contextRef?.trim();
 
     const existing =
-      (input.context ?? "general") === "general" && !input.contextRef?.trim()
+      isGeneralLandlordThread
         ? this.findTenantGeneralThread(tenantId, room.id)
         : undefined;
     if (existing) {
-      this.addThreadMessageInternal(existing, tenantId, {
-        sender: "tenant",
-        body,
-        kind: input.kind ?? "text",
-        attachmentUrls: input.attachmentUrls
-      });
-      this.persistStore();
+      if (body) {
+        this.addThreadMessageInternal(existing, tenantId, {
+          sender: "tenant",
+          body,
+          kind: input.kind ?? "text",
+          attachmentUrls: input.attachmentUrls
+        });
+        this.persistStore();
+      }
       return this.presentThread(existing, true);
+    }
+
+    if (!body && !isGeneralLandlordThread) {
+      throw new BadRequestException("메시지 내용을 입력해주세요.");
     }
 
     const createdAt = now();
@@ -77,8 +81,9 @@ export class RoomlogMessagingDomain {
       context: input.context ?? "general",
       contextRef: input.contextRef?.trim() || undefined,
       contextLabel: input.contextLabel?.trim() || "일반 문의",
-      lastMessage: body,
+      lastMessage: body || "대화가 시작되었습니다.",
       unreadCount: 0,
+      managerUnreadCount: 0,
       pendingRequest: false,
       archivedNotice: true,
       createdAt,
@@ -86,19 +91,21 @@ export class RoomlogMessagingDomain {
     };
 
     this.store.messagingThreads.push(thread);
-    this.addThreadMessageInternal(thread, tenantId, {
-      sender: "tenant",
-      body,
-      kind: input.kind ?? "text",
-      attachmentUrls: input.attachmentUrls
-    });
+    if (body) {
+      this.addThreadMessageInternal(thread, tenantId, {
+        sender: "tenant",
+        body,
+        kind: input.kind ?? "text",
+        attachmentUrls: input.attachmentUrls
+      });
+    }
     this.persistStore();
 
     return this.presentThread(thread, true);
   }
 
-  getTenantLandlordConversation(tenantId: string): TenantLandlordConversation {
-    const room = this.requireTenantRoom(tenantId);
+  getTenantLandlordConversation(tenantId: string, roomId?: string): TenantLandlordConversation {
+    const room = this.requireTenantRoom(tenantId, roomId);
     if (!room.landlordId) {
       throw new BadRequestException("연결된 관리인이 없어 대화를 시작할 수 없습니다.");
     }
@@ -110,6 +117,7 @@ export class RoomlogMessagingDomain {
 
     return {
       threadId: this.findTenantGeneralThread(tenantId, room.id)?.id,
+      roomId: room.id,
       buildingName: room.buildingName,
       unitId: this.displayUnitId(room),
       landlordName: landlord.name
@@ -139,6 +147,7 @@ export class RoomlogMessagingDomain {
       contextLabel: input.contextLabel?.trim() || undefined,
       lastMessage: input.initialMessage?.body.trim() || "대화가 시작되었습니다.",
       unreadCount: input.initialMessage?.sender === "manager" ? 1 : 0,
+      managerUnreadCount: 0,
       pendingRequest: input.initialMessage?.kind === "photo_request",
       archivedNotice: true,
       createdAt,
@@ -299,6 +308,14 @@ export class RoomlogMessagingDomain {
 
   getManagerMessagingThread(managerId: string, threadId: string): MessagingThread {
     const thread = this.findManagerThread(managerId, threadId);
+
+    return this.presentThread(thread, true);
+  }
+
+  markManagerMessagingThreadRead(managerId: string, threadId: string): MessagingThread {
+    const thread = this.findManagerThread(managerId, threadId);
+    thread.managerUnreadCount = 0;
+    this.persistStore();
 
     return this.presentThread(thread, true);
   }
@@ -570,6 +587,8 @@ export class RoomlogMessagingDomain {
 
     if (message.sender === "manager") {
       thread.unreadCount += 1;
+    } else {
+      thread.managerUnreadCount += 1;
     }
 
     if (message.kind === "photo_request") {
@@ -641,11 +660,19 @@ export class RoomlogMessagingDomain {
     return this.findRoom(thread.roomId).landlordId ?? "";
   }
 
-  private requireTenantRoom(tenantId: string) {
-    const roomId = this.store.tenantRooms[tenantId];
+  private requireTenantRoom(tenantId: string, selectedRoomId?: string) {
+    const roomId = selectedRoomId?.trim() || this.store.tenantRooms[tenantId];
 
     if (!roomId) {
       throw new NotFoundException("임차인 호실을 찾을 수 없습니다.");
+    }
+
+    const canAccess =
+      this.store.tenantRooms[tenantId] === roomId ||
+      this.store.contracts.some((contract) => contract.tenantId === tenantId && contract.roomId === roomId);
+
+    if (!canAccess) {
+      throw new ForbiddenException("해당 호실 임차인만 대화를 시작할 수 있습니다.");
     }
 
     return this.findRoom(roomId);

@@ -10,6 +10,7 @@ export interface TradeListing {
   roomType: string;
   location: string;
   detailAddress?: string;
+  buildingName?: string;
   tradeType: "월세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
@@ -36,6 +37,7 @@ export interface ManagerListingRow {
   monthlyRentManwon: number;
   location: string;
   detailAddress: string;
+  buildingName: string;
   description: string;
   images: string[];
   floorPlan: ManagerListingFloorPlan | null;
@@ -59,6 +61,28 @@ export function toManagerListingRows(
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+const UNGROUPED_BUILDING_LABEL = "건물 미지정";
+
+/** 건물명 기준으로 매물을 묶는다 — 건물명이 없는 매물은 "건물 미지정" 그룹 맨 뒤로. */
+export function groupListingsByBuilding(
+  listings: readonly ManagerListingRow[],
+): Array<{ buildingName: string; listings: ManagerListingRow[] }> {
+  const groups = new Map<string, ManagerListingRow[]>();
+  for (const listing of listings) {
+    const key = listing.buildingName || UNGROUPED_BUILDING_LABEL;
+    const group = groups.get(key);
+    if (group) group.push(listing);
+    else groups.set(key, [listing]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => {
+      if (a === UNGROUPED_BUILDING_LABEL) return 1;
+      if (b === UNGROUPED_BUILDING_LABEL) return -1;
+      return a.localeCompare(b, "ko-KR");
+    })
+    .map(([buildingName, grouped]) => ({ buildingName, listings: grouped }));
+}
+
 export function toManagerListingRow(listing: TradeListing): ManagerListingRow {
   const floorPlan = normalizeManagerListingFloorPlan(listing.floorPlan);
   const images = Array.isArray(listing.images) ? listing.images.filter(Boolean) : [];
@@ -78,6 +102,7 @@ export function toManagerListingRow(listing: TradeListing): ManagerListingRow {
     monthlyRentManwon: listing.monthlyRentManwon,
     location: listing.location,
     detailAddress: listing.detailAddress ?? "",
+    buildingName: listing.buildingName?.trim() ?? "",
     description: listing.description,
     images,
     floorPlan,

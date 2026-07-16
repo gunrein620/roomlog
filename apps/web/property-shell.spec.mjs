@@ -110,6 +110,21 @@ const managerMessagingComposerCssSource = readFileSync(
 const managerMessagingComposerSource = existsSync(managerMessagingComposerPath)
   ? readFileSync(managerMessagingComposerPath, "utf8")
   : "";
+const managerMessagingSavedDraftListPath = new URL(
+  "./src/app/manager/messaging/01/SavedAnnouncementDraftList.tsx",
+  import.meta.url,
+);
+const managerMessagingSavedDraftModalPath = new URL(
+  "./src/app/manager/messaging/01/SavedAnnouncementDraftModal.tsx",
+  import.meta.url,
+);
+const managerMessagingSavedDraftModalSource = existsSync(managerMessagingSavedDraftModalPath)
+  ? readFileSync(managerMessagingSavedDraftModalPath, "utf8")
+  : "";
+const managerSectionNavSource = readFileSync(
+  new URL("./src/app/manager/_components/ManagerSectionNav.tsx", import.meta.url),
+  "utf8",
+);
 const managerMessagingActionsSource = existsSync(managerMessagingActionsPath)
   ? readFileSync(managerMessagingActionsPath, "utf8")
   : "";
@@ -460,6 +475,45 @@ test("auto-refreshes open messaging thread details without infrastructure change
 });
 
 test("manager announcement compose edits targets and translates each language before review", () => {
+  assert.equal(existsSync(managerMessagingSavedDraftModalPath), true);
+  assert.equal(existsSync(managerMessagingSavedDraftListPath), false);
+  assert.match(managerMessagingComposeSource, /listAnnouncementDrafts/);
+  assert.match(managerSectionNavSource, /savedDraftsModalHref/);
+  assert.match(managerSectionNavSource, /aria-haspopup="dialog"/);
+  assert.match(managerSectionNavSource, />\s*<span>임시 저장<\/span>/);
+  assert.match(managerMessagingComposeSource, /drafts\?: string/);
+  assert.match(managerMessagingComposeSource, /<SavedAnnouncementDraftModal/);
+  assert.doesNotMatch(managerMessagingComposeSource, /<SavedAnnouncementDraftList/);
+  assert.match(managerMessagingComposeSource, /<AnnouncementComposer\s+key=\{id \?\? "new"\}/);
+  assert.match(managerMessagingSavedDraftModalSource, /<dialog/);
+  assert.match(managerMessagingSavedDraftModalSource, /showModal\(\)/);
+  assert.match(managerMessagingSavedDraftModalSource, /aria-labelledby="manager-saved-drafts-title"/);
+  assert.match(managerMessagingSavedDraftModalSource, /onKeyDown=\{closeOnEscape\}/);
+  assert.match(managerMessagingSavedDraftModalSource, /event\.key !== "Escape"/);
+  assert.match(managerMessagingSavedDraftModalSource, /임시 저장된 공지가 없습니다\./);
+  assert.match(managerMessagingSavedDraftModalSource, /savedAnnouncementDraftTitle/);
+  assert.match(managerMessagingSavedDraftModalSource, /formatDateTime\(draft\.updatedAt\)/);
+  assert.match(managerMessagingSavedDraftModalSource, />\s*불러오기\s*<\/Link>/);
+  assert.match(
+    managerMessagingSavedDraftModalSource,
+    /MANAGER_MESSAGING_ROUTES\["M-MSG-01"\][\s\S]*encodeURIComponent\(draft\.id\)/,
+  );
+  assert.doesNotMatch(
+    managerMessagingComposeSource,
+    /actions=\{<LinkButton href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\} variant="secondary">\s*허브\s*<\/LinkButton>\}/,
+  );
+  assert.doesNotMatch(managerMessagingComposeSource, />\s*허브\s*</);
+  assert.match(
+    managerMessagingResultSource,
+    /actions=\{<LinkButton href=\{MANAGER_MESSAGING_ROUTES\["M-MSG-00"\]\} variant="secondary">\s*허브\s*<\/LinkButton>\}/,
+  );
+  assert.doesNotMatch(managerMessagingComposerSource, /발송은 다음 화면에서만/);
+  assert.doesNotMatch(
+    managerMessagingComposerSource,
+    /이 화면은 작성과 저장까지만 담당합니다\. 자동 발송 없이 검토 게이트를 거칩니다\./,
+  );
+  assert.doesNotMatch(managerMessagingComposerCssSource, /\.primaryInfo/);
+  assert.match(managerMessagingComposerSource, /▷ 검토하고 발송으로/);
   assert.match(
     managerMessagingComposeSource,
     /prepareAnnouncementDraftForCompose\(draft, Boolean\(id\)\)/,
@@ -519,6 +573,55 @@ test("manager announcement compose edits targets and translates each language be
     managerMessagingComposeFeatureSource,
     /<div className=\{styles\.targetBox\}>\s*<span>\{target\.targetLabel\}<\/span>\s*<\/div>/,
   );
+  assert.match(
+    managerMessagingComposerSource,
+    /const \[hasScopeSelection, setHasScopeSelection\] = useState\(Boolean\(draftId\)\);/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /const calculatedTarget = buildAnnouncementTarget\(/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /const target = hasScopeSelection\s*\? calculatedTarget\s*:\s*\{ targetRoomIds: \[\], targetLabel: "" \};/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /const hasValidTarget = target\.targetRoomIds\.length > 0;/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /checked=\{hasScopeSelection && scope === option\.value\}/,
+  );
+  assert.match(managerMessagingComposerSource, /setHasScopeSelection\(true\)/);
+  assert.match(
+    managerMessagingComposerSource,
+    /hasScopeSelection && \(scope === "building" \|\| scope === "unit"\)/,
+  );
+  assert.match(
+    managerMessagingComposerSource,
+    /<div className=\{styles\.targetSummary\}>\s*\{hasValidTarget \? \(\s*<div className=\{styles\.targetBox\}>[\s\S]*?\) : \(\s*<div className=\{styles\.targetHint\}>\s*공지 대상을 선택하세요\.\s*<\/div>\s*\)\}\s*<\/div>/,
+  );
+  assert.match(
+    managerMessagingComposerCssSource,
+    /\.targetSummary\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) max-content;/,
+  );
+  assert.match(
+    managerMessagingComposerCssSource,
+    /\.targetHint\s*\{[\s\S]*?width: max-content;[\s\S]*?white-space: nowrap;/,
+  );
+  assert.match(
+    managerMessagingComposerCssSource,
+    /@media \(max-width: 640px\)[\s\S]*?\.targetSummary\s*\{\s*grid-template-columns: 1fr;\s*\}/,
+  );
+  assert.match(managerMessagingComposerSource, /공지 대상을 선택하세요\./);
+  assert.doesNotMatch(
+    managerMessagingComposerSource,
+    /미납 세대 옵션은 없습니다\. 연체·독촉은 별도 채널에서 처리합니다\./,
+  );
+  assert.match(managerMessagingComposerSource, /\{ value: "all", label: "전체" \}/);
+  assert.match(managerMessagingComposerSource, /\{ value: "building", label: "건물" \}/);
+  assert.match(managerMessagingComposerSource, /\{ value: "unit", label: "호실" \}/);
   assert.match(managerMessagingComposeFeatureSource, /className=\{styles\.selectWrap\}/);
   assert.match(managerMessagingComposeFeatureSource, /appearance: none/);
   assert.match(
@@ -571,6 +674,8 @@ test("manager announcement review keeps only final delivery actions in the conte
   for (const removedCopy of ["폰 read-only 미리보기", "문구 톤 체크", "확인 게이트"]) {
     assert.doesNotMatch(managerMessagingReviewSource, new RegExp(removedCopy));
   }
+  assert.doesNotMatch(managerMessagingReviewSource, /체크 완료/);
+  assert.doesNotMatch(managerMessagingReviewSource, /\bStaticButton\b/);
   assert.match(managerMessagingReviewSource, /const reviewActions = \(/);
   assert.match(managerMessagingReviewSource, /justifyContent: "flex-end"/);
   assert.match(managerMessagingReviewSource, /\{!isUrgent \? reviewActions : null\}/);
@@ -1088,7 +1193,7 @@ test("gives tenants a real resident dashboard instead of the generic profile", (
   assert.doesNotMatch(pageSource, /AI 생활 도우미는 곧 연결됩니다/);
   assert.match(pageSource, /tenant-chat-panel/);
   assert.match(pageSource, /setIsLandlordChatOpen\(true\)/);
-  assert.match(pageSource, /tenantLandlordConversationPaths\.current\(\)/);
+  assert.match(pageSource, /tenantLandlordConversationPaths\.current\(tenancy\.roomId\)/);
   assert.match(pageSource, /submitLandlordMessage/);
   assert.doesNotMatch(pageSource, /lockedThreadId=\{tenancy\.contract\.threadId\}/);
   assert.match(cssSource, /\.tenant-chat-panel/);

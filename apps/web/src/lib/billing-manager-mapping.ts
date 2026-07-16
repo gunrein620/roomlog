@@ -1,6 +1,8 @@
 import type {
   Bill,
   BillDashboardSummary,
+  BillLineItemKind,
+  BillLineItemStatus,
   BillStatus,
   CollectionSummary,
   Deposit,
@@ -20,6 +22,8 @@ import type {
   ManagerCollectionBuildingRow,
   ManagerCollectionPoint,
   ManagerOverdueWorkspace,
+  ManagerTransactionLedgerData,
+  ManagerTransactionLedgerRow,
   OverdueCase,
   OverdueStage,
   PaymentBadge,
@@ -117,11 +121,23 @@ export interface TeamCollection {
     collectedAmount?: number;
     unpaidAmount?: number;
     collectionRate?: number;
+    billedUnits?: number;
+    fullyPaidUnits?: number;
+    partiallyPaidUnits?: number;
+    threeMonthAverageRate?: number;
+    sixMonthAverageRate?: number;
     previousCollectionRate?: number;
     rateDelta?: number;
     confirmingAmount?: number;
   };
   trend?: TeamCollectionPoint[];
+  history?: {
+    availableFromMonth?: string;
+    availableToMonth?: string;
+    appliedFromMonth?: string;
+    appliedToMonth?: string;
+  };
+  timing?: TeamCollectionTiming;
   buildings?: TeamCollectionBuildingRow[];
   collectionRate: number;
   collectedAmount: number;
@@ -177,6 +193,21 @@ export interface TeamCollectionPoint {
   collectedAmount?: number;
   unpaidAmount?: number;
   collectionRate?: number;
+  billedUnits?: number;
+  fullyPaidUnits?: number;
+  partiallyPaidUnits?: number;
+}
+
+export interface TeamCollectionTiming {
+  currentMonth?: string;
+  previousMonth?: string;
+  onTimeCollectionRate?: number;
+  averageCollectionDay?: number;
+  points?: Array<{
+    day?: number;
+    currentCumulativeAmount?: number;
+    previousCumulativeAmount?: number;
+  }>;
 }
 
 export interface TeamCollectionBuildingRow extends TeamCollectionPoint {
@@ -235,6 +266,46 @@ export interface TeamDepositsResponse {
   deposits?: TeamDeposit[];
   orphanDeposits?: TeamDeposit[];
   mismatchDeposits?: TeamDeposit[];
+  ledgerRows?: TeamTransactionLedgerRow[];
+}
+
+export interface TeamTransactionLedgerRow {
+  id?: string;
+  direction?: string;
+  occurredAt?: string;
+  amount?: number;
+  statusLabel?: string;
+  buildingName?: string;
+  unitId?: string;
+  candidateUnitId?: string;
+  partyName?: string;
+  itemLabel?: string;
+  depositorName?: string;
+  linkedBillRelation?: string;
+  linkedBill?: {
+    buildingName?: string;
+    unitId?: string;
+    tenantName?: string;
+    billingMonth?: string;
+    dueDate?: string;
+    totalAmount?: number;
+    paidAmount?: number;
+    status?: string;
+    items?: Array<{
+      label?: string;
+      kind?: string;
+      amount?: number;
+      paidAmount?: number;
+      status?: string;
+    }>;
+  };
+  cost?: {
+    type?: string;
+    scope?: string;
+    verified?: boolean;
+    evidenceAvailable?: boolean;
+    status?: string;
+  };
 }
 
 export type ManagerPaymentReportRow = ManagerBillRow & { reportId?: string };
@@ -492,6 +563,88 @@ export function toManagerDepositsData(data: TeamDepositsResponse) {
     deposits: (data.deposits ?? []).map(toDeposit),
     orphanDeposits: (data.orphanDeposits ?? []).map(toDeposit),
     mismatchDeposits: (data.mismatchDeposits ?? []).map(toDeposit),
+    ledger: {
+      source: "database",
+      rows: (data.ledgerRows ?? []).map(toManagerTransactionLedgerRow),
+    } satisfies ManagerTransactionLedgerData,
+  };
+}
+
+function mapLedgerItemKind(value: unknown): BillLineItemKind {
+  const key = enumKey(value);
+  if (key === "RENT") return "rent";
+  if (key === "MAINTENANCE") return "maintenance";
+  return "other";
+}
+
+function mapLedgerItemStatus(value: unknown): BillLineItemStatus | undefined {
+  const key = enumKey(value);
+  if (key === "UNPAID") return "unpaid";
+  if (key === "PARTIAL") return "partial";
+  if (key === "PAID") return "paid";
+  return undefined;
+}
+
+function toManagerTransactionLedgerRow(
+  row: TeamTransactionLedgerRow,
+): ManagerTransactionLedgerRow {
+  const direction = enumKey(row.direction) === "WITHDRAWAL" ? "withdrawal" : "deposit";
+  const relation = enumKey(row.linkedBillRelation);
+  const costStatus = enumKey(row.cost?.status);
+  const costType = enumKey(row.cost?.type).toLocaleLowerCase("en-US");
+  const costScope = enumKey(row.cost?.scope).toLocaleLowerCase("en-US");
+  return {
+    id: stringOr(row.id),
+    direction,
+    occurredAt: stringOr(row.occurredAt),
+    amount: numberOr(row.amount),
+    statusLabel: stringOr(row.statusLabel),
+    buildingName: row.buildingName ? stringOr(row.buildingName) : undefined,
+    unitId: row.unitId ? normalizeUnitId(row.unitId) : undefined,
+    candidateUnitId: row.candidateUnitId
+      ? normalizeUnitId(row.candidateUnitId)
+      : undefined,
+    partyName: row.partyName ? stringOr(row.partyName) : undefined,
+    itemLabel: stringOr(row.itemLabel, direction === "deposit" ? "입금" : "출금"),
+    depositorName: row.depositorName ? stringOr(row.depositorName) : undefined,
+    linkedBillRelation:
+      relation === "MATCHED" || relation === "CANDIDATE"
+        ? relation.toLocaleLowerCase("en-US") as "matched" | "candidate"
+        : undefined,
+    linkedBill: row.linkedBill
+      ? {
+          buildingName: row.linkedBill.buildingName
+            ? stringOr(row.linkedBill.buildingName)
+            : undefined,
+          unitId: normalizeUnitId(stringOr(row.linkedBill.unitId)),
+          tenantName: stringOr(row.linkedBill.tenantName, "임차인 정보 없음"),
+          billingMonth: stringOr(row.linkedBill.billingMonth),
+          dueDate: stringOr(row.linkedBill.dueDate),
+          totalAmount: numberOr(row.linkedBill.totalAmount),
+          paidAmount: numberOr(row.linkedBill.paidAmount),
+          status: mapBillStatus(row.linkedBill.status),
+          items: (row.linkedBill.items ?? []).map((item) => ({
+            label: stringOr(item.label, "항목"),
+            kind: mapLedgerItemKind(item.kind),
+            amount: numberOr(item.amount),
+            paidAmount: numberOr(item.paidAmount),
+            status: mapLedgerItemStatus(item.status),
+          })),
+        }
+      : undefined,
+    cost: row.cost
+      ? {
+          type: (["repair", "maintenance", "common", "other"].includes(costType)
+            ? costType
+            : "other") as "repair" | "maintenance" | "common" | "other",
+          scope: (costScope === "unit" ? "unit" : "building") as "unit" | "building",
+          verified: Boolean(row.cost.verified),
+          evidenceAvailable: Boolean(row.cost.evidenceAvailable),
+          status: (costStatus === "AMENDED" ? "amended" : "confirmed") as
+            | "confirmed"
+            | "amended",
+        }
+      : undefined,
   };
 }
 
@@ -524,6 +677,9 @@ function toCollectionPoint(point: TeamCollectionPoint): ManagerCollectionPoint {
     collectedAmount: numberOr(point.collectedAmount),
     unpaidAmount: numberOr(point.unpaidAmount),
     collectionRate: numberOr(point.collectionRate),
+    billedUnits: numberOr(point.billedUnits),
+    fullyPaidUnits: numberOr(point.fullyPaidUnits),
+    partiallyPaidUnits: numberOr(point.partiallyPaidUnits),
   };
 }
 
@@ -546,14 +702,29 @@ function toCollectionBuildingRow(
 
 export function toManagerCollection(data: TeamCollection): ManagerCollectionAnalytics {
   const brief = data.brief;
+  const billingMonth = stringOr(data.billingMonth);
+  const trend = (data.trend ?? []).map(toCollectionPoint);
+  const eligibleRates = trend.filter((point) => point.billedAmount > 0);
+  const averageRate = (months: number) => {
+    const points = eligibleRates.slice(-months);
+    return points.length > 0
+      ? points.reduce((sum, point) => sum + point.collectionRate, 0) / points.length
+      : 0;
+  };
+  const timingPoints = data.timing?.points ?? [];
   return {
     scope: toBillingScope(data.scope),
-    billingMonth: stringOr(data.billingMonth),
+    billingMonth,
     brief: {
       billedAmount: numberOr(brief?.billedAmount),
       collectedAmount: numberOr(brief?.collectedAmount, data.collectedAmount),
       unpaidAmount: numberOr(brief?.unpaidAmount, data.unpaidAmount),
       collectionRate: numberOr(brief?.collectionRate, data.collectionRate),
+      billedUnits: numberOr(brief?.billedUnits),
+      fullyPaidUnits: numberOr(brief?.fullyPaidUnits),
+      partiallyPaidUnits: numberOr(brief?.partiallyPaidUnits),
+      threeMonthAverageRate: numberOr(brief?.threeMonthAverageRate, averageRate(3)),
+      sixMonthAverageRate: numberOr(brief?.sixMonthAverageRate, averageRate(6)),
       previousCollectionRate:
         brief?.previousCollectionRate === undefined
           ? undefined
@@ -561,7 +732,42 @@ export function toManagerCollection(data: TeamCollection): ManagerCollectionAnal
       rateDelta: brief?.rateDelta === undefined ? undefined : numberOr(brief.rateDelta),
       confirmingAmount: numberOr(brief?.confirmingAmount, data.confirmingAmount),
     },
-    trend: (data.trend ?? []).map(toCollectionPoint),
+    trend,
+    history: {
+      availableFromMonth: stringOr(
+        data.history?.availableFromMonth,
+        trend[0]?.billingMonth ?? billingMonth,
+      ),
+      availableToMonth: stringOr(
+        data.history?.availableToMonth,
+        trend[trend.length - 1]?.billingMonth ?? billingMonth,
+      ),
+      appliedFromMonth: stringOr(
+        data.history?.appliedFromMonth,
+        trend[0]?.billingMonth ?? billingMonth,
+      ),
+      appliedToMonth: stringOr(
+        data.history?.appliedToMonth,
+        trend[trend.length - 1]?.billingMonth ?? billingMonth,
+      ),
+    },
+    timing: {
+      currentMonth: stringOr(data.timing?.currentMonth, billingMonth),
+      previousMonth: stringOr(data.timing?.previousMonth),
+      onTimeCollectionRate: numberOr(data.timing?.onTimeCollectionRate),
+      averageCollectionDay:
+        data.timing?.averageCollectionDay === undefined
+          ? undefined
+          : numberOr(data.timing.averageCollectionDay),
+      points: Array.from({ length: 31 }, (_, index) => {
+        const point = timingPoints[index];
+        return {
+          day: numberOr(point?.day, index + 1),
+          currentCumulativeAmount: numberOr(point?.currentCumulativeAmount),
+          previousCumulativeAmount: numberOr(point?.previousCumulativeAmount),
+        };
+      }),
+    },
     buildings: (data.buildings ?? []).map(toCollectionBuildingRow),
   };
 }

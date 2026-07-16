@@ -22,6 +22,7 @@ export class TradeStoreProjector {
       const rows = await this.prisma.tradeListing.findMany({ orderBy: { createdAt: "desc" } });
       return rows.map((row) => {
         const detailAddress = (row as unknown as { detailAddress?: string | null }).detailAddress?.trim();
+        const buildingName = (row as unknown as { buildingName?: string | null }).buildingName?.trim();
         return {
           id: row.id,
           ownerId: row.ownerId,
@@ -33,6 +34,7 @@ export class TradeStoreProjector {
           monthlyRentManwon: row.monthlyRentManwon,
           location: row.location,
           ...(detailAddress ? { detailAddress } : {}),
+          ...(buildingName ? { buildingName } : {}),
           description: row.description,
           images: Array.isArray(row.images) ? row.images : [],
           ...(row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : {}),
@@ -68,6 +70,7 @@ export class TradeStoreProjector {
           monthlyRentManwon: Math.trunc(listing.monthlyRentManwon) || 0,
           location: listing.location,
           detailAddress: listing.detailAddress?.trim() || null,
+          buildingName: listing.buildingName?.trim() || null,
           description: listing.description ?? "",
           images: listing.images ?? [],
           lat: listing.lat ?? null,

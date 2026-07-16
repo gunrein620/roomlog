@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
-import type { Deposit, ManagerBillRow } from "@roomlog/types";
+import type { ChangeEvent, ReactNode } from "react";
+import type {
+  ManagerTransactionLedgerData,
+  ManagerTransactionLedgerRow,
+} from "@roomlog/types";
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,98 +13,44 @@ import {
   Search,
   Upload,
 } from "lucide-react";
+import {
+  formatBillingDate,
+  formatTransactionDateTime,
+  transactionLedgerStatusLabel,
+} from "@/lib/billing-manager-workspace";
 import styles from "./manager-transaction-ledger.module.css";
 
 interface ManagerTransactionLedgerProps {
-  deposits: Deposit[];
-  bills: ManagerBillRow[];
+  ledgerData: ManagerTransactionLedgerData;
 }
-
-type ChargeKind =
-  | "월세+관리비"
-  | "월세"
-  | "관리비"
-  | "보증금"
-  | "수리비"
-  | "유지보수"
-  | "보증금 반환";
-
-interface LedgerRow {
-  id: string;
-  direction: "입금" | "출금";
-  status: Deposit["matchStatus"] | null;
-  statusLabel: string;
-  building: string;
-  unit: string;
-  counterparty: string;
-  transactionDate: string;
-  depositorName: string;
-  chargeKind: ChargeKind;
-  depositAmount: number;
-  rentAmount: number;
-  maintenanceAmount: number;
-  totalAmount: number;
-  leasePeriod?: string;
-  memo: string;
-  matchedBillId?: string;
-  linkedComplaint?: string;
-}
-
-const fallbackNames = [
-  "오세훈",
-  "신동현",
-  "정미래",
-  "김나래",
-  "윤가온",
-  "조시우",
-  "유준서",
-  "나봄",
-  "이서연",
-  "박지윤",
-  "장민수",
-  "김도현",
-  "강하늘",
-  "임준호",
-  "한지민",
-] as const;
-
-const leasePeriods = [
-  "2026-07-01 ~ 2026-07-31",
-  "2026-06-25 ~ 2026-07-24",
-  "2026-06-19 ~ 2026-07-18",
-  "2026-06-18 ~ 2026-07-17",
-  "2026-06-15 ~ 2026-07-14",
-] as const;
-
-const statusLabels: Record<Deposit["matchStatus"], string> = {
-  matched: "매칭 완료",
-  unmatched: "확인 필요",
-  orphan: "미연결",
-  mismatch: "불일치",
-};
 
 const PAGE_SIZE = 50;
+const UNKNOWN_BUILDING = "건물 미확인";
 
-function latestMonthOf(deposits: Deposit[]): string {
+const costTypeLabels: Record<NonNullable<ManagerTransactionLedgerRow["cost"]>["type"], string> = {
+  repair: "수리비",
+  maintenance: "유지보수비",
+  common: "공용 비용",
+  other: "기타 비용",
+};
+
+function latestMonthOf(rows: ManagerTransactionLedgerRow[]): string {
   let latest = "";
-  for (const deposit of deposits) {
-    const month = deposit.depositedAt.slice(0, 7);
+  for (const row of rows) {
+    const month = row.occurredAt.slice(0, 7);
     if (month > latest) latest = month;
   }
   return latest || "all";
 }
 
-export function ManagerTransactionLedger({ deposits, bills }: ManagerTransactionLedgerProps) {
-  const rows = useMemo(() => {
-    const depositRows = buildLedgerRows(deposits, bills);
-    const withdrawalRows = buildWithdrawalRows(latestMonthOf(deposits));
-    return [...depositRows, ...withdrawalRows].sort((a, b) =>
-      b.transactionDate.localeCompare(a.transactionDate)
-    );
-  }, [deposits, bills]);
+export function ManagerTransactionLedger({ ledgerData }: ManagerTransactionLedgerProps) {
+  const rows = useMemo(
+    () => [...ledgerData.rows].sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
+    [ledgerData.rows],
+  );
   const [building, setBuilding] = useState("all");
   const [unit, setUnit] = useState("all");
-  const [month, setMonth] = useState(() => latestMonthOf(deposits));
+  const [month, setMonth] = useState(() => latestMonthOf(ledgerData.rows));
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -110,45 +59,52 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const buildings = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.building))).sort((a, b) => a.localeCompare(b, "ko")),
-    [rows]
+    () =>
+      Array.from(new Set(rows.map(buildingLabel))).sort((left, right) =>
+        left.localeCompare(right, "ko"),
+      ),
+    [rows],
   );
   const units = useMemo(
     () =>
       Array.from(
-        new Set(
+        new Map(
           rows
-            .filter((row) => building === "all" || row.building === building)
-            .map((row) => row.unit)
-        )
-      ).sort((a, b) => a.localeCompare(b, "ko", { numeric: true })),
-    [building, rows]
+            .filter((row) => building === "all" || buildingLabel(row) === building)
+            .map((row) => [unitFilterKey(row), unitLabel(row)]),
+        ).entries(),
+      ).sort((left, right) => left[1].localeCompare(right[1], "ko", { numeric: true })),
+    [building, rows],
   );
   const months = useMemo(
     () =>
-      Array.from(new Set(rows.map((row) => row.transactionDate.slice(0, 7)))).sort((a, b) =>
-        b.localeCompare(a)
+      Array.from(new Set(rows.map((row) => row.occurredAt.slice(0, 7)))).sort((left, right) =>
+        right.localeCompare(left),
       ),
-    [rows]
+    [rows],
   );
 
   const visibleRows = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("ko");
     return rows.filter((row) => {
-      if (building !== "all" && row.building !== building) return false;
-      if (unit !== "all" && row.unit !== unit) return false;
-      if (month !== "all" && !row.transactionDate.startsWith(month)) return false;
+      if (building !== "all" && buildingLabel(row) !== building) return false;
+      if (unit !== "all" && unitFilterKey(row) !== unit) return false;
+      if (month !== "all" && !row.occurredAt.startsWith(month)) return false;
       if (!normalizedQuery) return true;
       return [
-        row.direction,
-        row.building,
-        row.unit,
-        row.counterparty,
-        row.depositorName,
-        row.chargeKind,
+        directionLabel(row),
         row.statusLabel,
-        row.memo,
+        row.buildingName,
+        row.unitId,
+        row.candidateUnitId,
+        row.partyName,
+        row.depositorName,
+        row.itemLabel,
+        row.linkedBill?.tenantName,
+        row.linkedBill?.billingMonth,
+        ...(row.linkedBill?.items.map((item) => item.label) ?? []),
       ]
+        .filter(Boolean)
         .join(" ")
         .toLocaleLowerCase("ko")
         .includes(normalizedQuery);
@@ -159,8 +115,8 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
     let deposit = 0;
     let withdrawal = 0;
     for (const row of visibleRows) {
-      if (row.direction === "입금") deposit += row.totalAmount;
-      else withdrawal += row.totalAmount;
+      if (row.direction === "deposit") deposit += row.amount;
+      else withdrawal += row.amount;
     }
     return { depositTotal: deposit, withdrawalTotal: withdrawal };
   }, [visibleRows]);
@@ -169,11 +125,9 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
   const safePage = Math.min(page, pageCount);
   const pagedRows = useMemo(
     () => visibleRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [safePage, visibleRows]
+    [safePage, visibleRows],
   );
-
-  const allPagedSelected =
-    pagedRows.length > 0 && pagedRows.every((row) => selected.has(row.id));
+  const allPagedSelected = pagedRows.length > 0 && pagedRows.every((row) => selected.has(row.id));
 
   function changeBuilding(value: string) {
     setBuilding(value);
@@ -181,29 +135,11 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
     setPage(1);
   }
 
-  function changeUnit(value: string) {
-    setUnit(value);
-    setPage(1);
-  }
-
-  function changeMonth(value: string) {
-    setMonth(value);
-    setPage(1);
-  }
-
-  function changeQuery(value: string) {
-    setQuery(value);
-    setPage(1);
-  }
-
   function toggleAllPaged() {
     setSelected((current) => {
       const next = new Set(current);
-      if (allPagedSelected) {
-        pagedRows.forEach((row) => next.delete(row.id));
-      } else {
-        pagedRows.forEach((row) => next.add(row.id));
-      }
+      if (allPagedSelected) pagedRows.forEach((row) => next.delete(row.id));
+      else pagedRows.forEach((row) => next.add(row.id));
       return next;
     });
   }
@@ -222,35 +158,29 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
       "구분",
       "상태",
       "건물명",
-      "호실",
+      "확정 호실",
+      "확인 후보 호실",
       "임차인/지급처",
       "거래일",
       "입금자명",
       "항목",
-      "보증금",
-      "월세",
-      "관리비",
-      "총액",
-      "임대기간",
-      "연결 청구서/민원",
-      "메모",
+      "금액",
+      "청구월",
+      "납부기한",
     ];
     const csvRows = visibleRows.map((row) => [
-      row.direction,
+      directionLabel(row),
       row.statusLabel,
-      row.building,
-      row.unit,
-      row.counterparty,
-      row.transactionDate,
-      row.depositorName,
-      row.chargeKind,
-      row.depositAmount,
-      row.rentAmount,
-      row.maintenanceAmount,
-      row.totalAmount,
-      row.leasePeriod ?? "",
-      row.direction === "입금" ? row.matchedBillId ?? "" : row.linkedComplaint ?? "",
-      row.memo,
+      row.buildingName ?? "",
+      row.unitId ?? "",
+      row.candidateUnitId ?? "",
+      row.partyName ?? "",
+      row.occurredAt.slice(0, 10),
+      row.depositorName ?? "",
+      row.itemLabel,
+      row.amount,
+      row.linkedBill?.billingMonth ?? "",
+      row.linkedBill?.dueDate ? formatBillingDate(row.linkedBill.dueDate) : "",
     ]);
     const csv = [headers, ...csvRows]
       .map((values) => values.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","))
@@ -291,16 +221,28 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
           </label>
           <label className={styles.selectField}>
             <span className={styles.srOnly}>호실 선택</span>
-            <select value={unit} onChange={(event) => changeUnit(event.target.value)}>
+            <select
+              value={unit}
+              onChange={(event) => {
+                setUnit(event.target.value);
+                setPage(1);
+              }}
+            >
               <option value="all">호실 전체</option>
-              {units.map((item) => (
-                <option key={item} value={item}>{formatUnit(item)}</option>
+              {units.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
               ))}
             </select>
           </label>
           <label className={styles.selectField}>
             <span className={styles.srOnly}>조회 월 선택</span>
-            <select value={month} onChange={(event) => changeMonth(event.target.value)}>
+            <select
+              value={month}
+              onChange={(event) => {
+                setMonth(event.target.value);
+                setPage(1);
+              }}
+            >
               <option value="all">전체 기간</option>
               {months.map((item) => (
                 <option key={item} value={item}>{formatMonth(item)}</option>
@@ -314,16 +256,15 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
               type="search"
               value={query}
               placeholder="임차인명 또는 호실 검색"
-              onChange={(event) => changeQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
             />
           </label>
         </div>
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.ghostButton}
-            onClick={() => uploadRef.current?.click()}
-          >
+          <button type="button" className={styles.ghostButton} onClick={() => uploadRef.current?.click()}>
             <Upload aria-hidden="true" />
             업로드
           </button>
@@ -341,6 +282,11 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
         </div>
       </div>
 
+      {ledgerData.source === "demo" ? (
+        <div className={styles.notice} role="status">
+          데모 데이터입니다. API 연결 시 실제 입출금 원장으로 전환됩니다.
+        </div>
+      ) : null}
       {notice ? (
         <div className={styles.notice} role="status">
           {notice}
@@ -378,7 +324,7 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
               pagedRows.map((row) => {
                 const expanded = expandedId === row.id;
                 return (
-                  <FragmentRow
+                  <TransactionRow
                     key={row.id}
                     row={row}
                     checked={selected.has(row.id)}
@@ -395,8 +341,8 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
 
       <div className={styles.tableFooter}>
         <span>
-          총 {visibleRows.length}건 · 입금 {depositTotal.toLocaleString("ko-KR")}원 · 출금 {withdrawalTotal.toLocaleString("ko-KR")}원
-          · 순액 {(depositTotal - withdrawalTotal).toLocaleString("ko-KR")}원
+          총 {visibleRows.length}건 · 입금 {formatWon(depositTotal)} · 출금 {formatWon(withdrawalTotal)}
+          {" · "}순액 {signedWon(depositTotal - withdrawalTotal)}
         </span>
         <div className={styles.footerRight}>
           <span>선택 {selected.size}건</span>
@@ -427,28 +373,31 @@ export function ManagerTransactionLedger({ deposits, bills }: ManagerTransaction
   );
 }
 
-function FragmentRow({
+function TransactionRow({
   row,
   checked,
   expanded,
   onToggle,
   onExpand,
 }: {
-  row: LedgerRow;
+  row: ManagerTransactionLedgerRow;
   checked: boolean;
   expanded: boolean;
   onToggle: () => void;
   onExpand: () => void;
 }) {
-  const isDeposit = row.direction === "입금";
-  const depositorDiffers = isDeposit && row.depositorName !== row.counterparty;
+  const isDeposit = row.direction === "deposit";
+  const location = `${buildingLabel(row)} ${unitLabel(row)}`;
+  const party = row.partyName ?? (isDeposit ? "임차인 미확인" : "지급처 정보 없음");
+  const statusClass = statusClassName(row.statusLabel);
+
   return (
     <>
       <tr className={checked ? styles.selectedRow : undefined}>
         <td className={styles.checkboxCell}>
           <input
             type="checkbox"
-            aria-label={`${row.building} ${formatUnit(row.unit)} 내역 선택`}
+            aria-label={`${location} 내역 선택`}
             checked={checked}
             onChange={onToggle}
           />
@@ -456,29 +405,27 @@ function FragmentRow({
         <td>
           <div className={styles.directionCell}>
             <span className={isDeposit ? styles.directionText : styles.directionOutText}>
-              {row.direction}
+              {directionLabel(row)}
             </span>
-            {row.status && row.status !== "matched" ? (
-              <span className={`${styles.statusBadge} ${styles[`status_${row.status}`]}`}>
-                {row.statusLabel}
-              </span>
+            {row.statusLabel && row.statusLabel !== "매칭 완료" ? (
+              <span className={`${styles.statusBadge} ${statusClass}`}>{row.statusLabel}</span>
             ) : null}
           </div>
         </td>
         <td className={styles.strongCell}>
-          {row.building} <span className={styles.unitText}>{formatUnit(row.unit)}</span>
+          {buildingLabel(row)} <span className={styles.unitText}>{unitLabel(row)}</span>
         </td>
-        <td>{row.counterparty}</td>
-        <td className={styles.mutedCell}>{row.transactionDate}</td>
-        <td className={styles.mutedCell}>{row.chargeKind}</td>
+        <td>{party}</td>
+        <td className={styles.mutedCell}>{row.occurredAt.slice(0, 10)}</td>
+        <td className={styles.mutedCell}>{row.itemLabel}</td>
         <td className={`${styles.amountCell} ${styles.totalAmount}`}>
-          {isDeposit ? formatWon(row.totalAmount) : `−${formatWon(row.totalAmount)}`}
+          {isDeposit ? formatWon(row.amount) : `−${formatWon(row.amount)}`}
         </td>
         <td className={styles.expandCell}>
           <button
             type="button"
             className={`${styles.expandButton} ${expanded ? styles.expanded : ""}`}
-            aria-label={`${row.building} ${formatUnit(row.unit)} 상세 ${expanded ? "접기" : "열기"}`}
+            aria-label={`${location} 상세 ${expanded ? "접기" : "열기"}`}
             aria-expanded={expanded}
             onClick={onExpand}
           >
@@ -489,35 +436,8 @@ function FragmentRow({
       {expanded ? (
         <tr className={styles.detailRow}>
           <td colSpan={8}>
-            <div>
-              {row.depositAmount > 0 ? (
-                <span><strong>보증금</strong> {formatWon(row.depositAmount)}</span>
-              ) : null}
-              {row.rentAmount > 0 ? (
-                <span><strong>월세</strong> {formatWon(row.rentAmount)}</span>
-              ) : null}
-              {row.maintenanceAmount > 0 ? (
-                <span><strong>관리비</strong> {formatWon(row.maintenanceAmount)}</span>
-              ) : null}
-              {isDeposit ? (
-                <span>
-                  <strong>입금자</strong> {row.depositorName}
-                  {depositorDiffers ? (
-                    <span className={`${styles.statusBadge} ${styles.status_unmatched}`}>임차인과 다름</span>
-                  ) : null}
-                </span>
-              ) : (
-                <span><strong>지급처</strong> {row.counterparty}</span>
-              )}
-              {row.leasePeriod ? (
-                <span><strong>임대기간</strong> {row.leasePeriod}</span>
-              ) : null}
-              {isDeposit ? (
-                <span><strong>연결 청구서</strong> {row.matchedBillId ?? "아직 연결되지 않음"}</span>
-              ) : (
-                <span><strong>연결 민원</strong> {row.linkedComplaint ?? "연결 없음 (정기 지출)"}</span>
-              )}
-              <span><strong>메모</strong> {row.memo}</span>
+            <div className={styles.detailContent}>
+              {isDeposit ? <DepositDetail row={row} /> : <WithdrawalDetail row={row} />}
             </div>
           </td>
         </tr>
@@ -526,136 +446,118 @@ function FragmentRow({
   );
 }
 
-function buildLedgerRows(deposits: Deposit[], bills: ManagerBillRow[]): LedgerRow[] {
-  return deposits
-    .map((deposit, index) => {
-      const matchedBill = bills.find((bill) => bill.billId === deposit.matchedBillId);
-      const unit = matchedBill?.unitId ?? deposit.guessedUnitId ?? inferUnit(deposit.matchedBillId, index);
-      const tenantFallback = fallbackNames[index % fallbackNames.length];
-      const tenantName = readableKorean(matchedBill?.tenantName, tenantFallback);
-      const depositorName = readableKorean(deposit.depositorName, tenantName);
-      const chargeKind = chargeKindFor(index, deposit);
-      const amounts = splitAmount(deposit.amount, chargeKind);
+function DepositDetail({ row }: { row: ManagerTransactionLedgerRow }) {
+  const bill = row.linkedBill;
+  const unpaidAmount = bill
+    ? Math.max(0, bill.totalAmount - bill.paidAmount)
+    : undefined;
 
-      return {
-        id: deposit.id,
-        direction: "입금" as const,
-        status: deposit.matchStatus,
-        statusLabel: statusLabels[deposit.matchStatus],
-        building: buildingFor(index),
-        unit,
-        counterparty: tenantName,
-        transactionDate: deposit.depositedAt.slice(0, 10),
-        depositorName,
-        chargeKind,
-        ...amounts,
-        totalAmount: deposit.amount,
-        leasePeriod: leasePeriods[index % leasePeriods.length],
-        memo: memoFor(chargeKind, deposit.matchStatus, deposit.amount),
-        matchedBillId: deposit.matchedBillId,
-      };
-    });
+  return (
+    <>
+      <section className={styles.detailGroup}>
+        <h3 className={styles.detailGroupTitle}>입금 정보</h3>
+        <dl className={styles.detailFields} data-columns="4">
+          <DetailField label="입금자">{row.depositorName ?? "정보 없음"}</DetailField>
+          <DetailField label="입금일시">{formatTransactionDateTime(row.occurredAt)}</DetailField>
+          <DetailField label="이번 입금">{formatWon(row.amount)}</DetailField>
+          <DetailField label="처리 상태">{transactionLedgerStatusLabel(row)}</DetailField>
+        </dl>
+      </section>
+      {bill ? (
+        <section className={styles.detailGroup}>
+          <h3 className={styles.detailGroupTitle}>청구 정보</h3>
+          <dl className={styles.detailFields} data-columns="6">
+            <DetailField label="청구월">{formatMonth(bill.billingMonth)}</DetailField>
+            <DetailField label="청구 내역">
+              {bill.items.length > 0
+                ? bill.items.map(formatBillItem).join(" · ")
+                : "항목 정보 없음"}
+            </DetailField>
+            <DetailField label="납부기한">{formatBillingDate(bill.dueDate)}</DetailField>
+            <DetailField label="청구금액">{formatWon(bill.totalAmount)}</DetailField>
+            <DetailField label="누적 수납">{formatWon(bill.paidAmount)}</DetailField>
+            <DetailField label="미수금">{formatWon(unpaidAmount ?? 0)}</DetailField>
+          </dl>
+        </section>
+      ) : (
+        <section className={styles.detailGroup}>
+          <h3 className={styles.detailGroupTitle}>청구 정보</h3>
+          <dl className={styles.detailFields} data-columns="4">
+            <DetailField label="청구 내역">확인 필요</DetailField>
+            {row.candidateUnitId ? (
+              <DetailField label="확인할 호실">{formatUnit(row.candidateUnitId)}</DetailField>
+            ) : null}
+          </dl>
+        </section>
+      )}
+    </>
+  );
 }
 
-function buildWithdrawalRows(latestMonth: string): LedgerRow[] {
-  if (latestMonth === "all") return [];
-  const base = {
-    direction: "출금" as const,
-    status: null,
-    statusLabel: "",
-    depositorName: "",
-    depositAmount: 0,
-    rentAmount: 0,
-    maintenanceAmount: 0,
-  };
-  return [
-    {
-      ...base,
-      id: "wd-boiler-302",
-      building: "세움타워",
-      unit: "302",
-      counterparty: "한빛설비",
-      transactionDate: `${latestMonth}-08`,
-      chargeKind: "수리비",
-      totalAmount: 250_000,
-      linkedComplaint: "302호 보일러 누수 (06-30 접수)",
-      memo: "부품 교체 포함 출장 수리",
-    },
-    {
-      ...base,
-      id: "wd-paint-201",
-      building: "그린오피스",
-      unit: "201",
-      counterparty: "조은도장",
-      transactionDate: `${latestMonth}-12`,
-      chargeKind: "수리비",
-      totalAmount: 420_000,
-      linkedComplaint: "201호 벽면 누수 도장 (07-02 접수)",
-      memo: "방수 처리 후 재도장",
-    },
-    {
-      ...base,
-      id: "wd-elevator",
-      building: "한빛스퀘어",
-      unit: "공용",
-      counterparty: "대성엘리베이터",
-      transactionDate: `${latestMonth}-05`,
-      chargeKind: "유지보수",
-      totalAmount: 180_000,
-      memo: "엘리베이터 정기점검",
-    },
-    {
-      ...base,
-      id: "wd-deposit-refund-105",
-      building: "세움타워",
-      unit: "105",
-      counterparty: "김도현",
-      transactionDate: `${latestMonth}-15`,
-      chargeKind: "보증금 반환",
-      totalAmount: 3_000_000,
-      memo: "퇴실 정산 완료 후 반환",
-    },
-  ];
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className={styles.detailField}>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+function WithdrawalDetail({ row }: { row: ManagerTransactionLedgerRow }) {
+  const cost = row.cost;
+  if (!cost) {
+    return (
+      <section className={styles.detailGroup}>
+        <h3 className={styles.detailGroupTitle}>출금 정보</h3>
+        <dl className={styles.detailFields} data-columns="4">
+          <DetailField label="원장 구분">확정 비용 정보 없음</DetailField>
+        </dl>
+      </section>
+    );
+  }
+  return (
+    <section className={styles.detailGroup}>
+      <h3 className={styles.detailGroupTitle}>출금 정보</h3>
+      <dl className={styles.detailFields} data-columns="6">
+        <DetailField label="원장 구분">확정 비용 원장</DetailField>
+        <DetailField label="비용 유형">{costTypeLabels[cost.type]}</DetailField>
+        <DetailField label="적용 범위">{cost.scope === "unit" ? "호실" : "건물"}</DetailField>
+        <DetailField label="검증 상태">{cost.verified ? "검증 완료" : "미검증"}</DetailField>
+        <DetailField label="증빙">{cost.evidenceAvailable ? "증빙 있음" : "증빙 없음"}</DetailField>
+        <DetailField label="원장 상태">{cost.status === "amended" ? "정정 확정" : "확정"}</DetailField>
+      </dl>
+    </section>
+  );
+}
+
+function directionLabel(row: ManagerTransactionLedgerRow): "입금" | "출금" {
+  return row.direction === "deposit" ? "입금" : "출금";
+}
+
+function buildingLabel(row: ManagerTransactionLedgerRow): string {
+  return row.buildingName ?? UNKNOWN_BUILDING;
+}
+
+function unitFilterKey(row: ManagerTransactionLedgerRow): string {
+  if (row.unitId) return `unit:${row.unitId}`;
+  if (row.candidateUnitId) return `candidate:${row.candidateUnitId}`;
+  return "unknown";
+}
+
+function unitLabel(row: ManagerTransactionLedgerRow): string {
+  if (row.unitId) return formatUnit(row.unitId);
+  if (row.candidateUnitId) return `후보 ${formatUnit(row.candidateUnitId)}`;
+  return "호실 미확인";
+}
+
+function statusClassName(statusLabel: string): string {
+  if (statusLabel.includes("불일치") || statusLabel.includes("미검증")) return styles.status_mismatch;
+  if (statusLabel.includes("미연결")) return styles.status_orphan;
+  return styles.status_unmatched;
 }
 
 function formatUnit(unit: string): string {
   return /^\d/.test(unit) ? `${unit}호` : unit;
-}
-
-function inferUnit(billId: string | undefined, index: number): string {
-  const matched = billId?.match(/(\d{3})(?!.*\d)/)?.[1];
-  return matched ?? String(201 + index);
-}
-
-function buildingFor(index: number): string {
-  const buildings = ["세움타워", "한빛스퀘어", "그린오피스"] as const;
-  return buildings[index % buildings.length];
-}
-
-function readableKorean(value: string | undefined, fallback: string): string {
-  return value && /[가-힣]/.test(value) ? value : fallback;
-}
-
-function chargeKindFor(index: number, deposit: Deposit): ChargeKind {
-  if (deposit.amount >= 2_000_000) return "보증금";
-  const kinds: ChargeKind[] = ["월세+관리비", "관리비", "월세", "월세+관리비"];
-  return kinds[index % kinds.length];
-}
-
-function splitAmount(amount: number, kind: ChargeKind) {
-  if (kind === "보증금") return { depositAmount: amount, rentAmount: 0, maintenanceAmount: 0 };
-  if (kind === "관리비") return { depositAmount: 0, rentAmount: 0, maintenanceAmount: amount };
-  if (kind === "월세") return { depositAmount: 0, rentAmount: amount, maintenanceAmount: 0 };
-  const maintenanceAmount = Math.min(150_000, Math.max(50_000, Math.round(amount * 0.1 / 10_000) * 10_000));
-  return { depositAmount: 0, rentAmount: amount - maintenanceAmount, maintenanceAmount };
-}
-
-function memoFor(kind: ChargeKind, status: Deposit["matchStatus"], amount: number): string {
-  const amountText = `${amount.toLocaleString("ko-KR")}원`;
-  if (status === "orphan") return `입금자 확인 필요 · ${amountText}`;
-  if (status === "mismatch") return `청구 금액과 입금액 불일치 · ${amountText}`;
-  if (kind === "보증금") return `계약 보증금 ${amountText}`;
-  return `${kind.replace("+", " · ")} ${amountText}`;
 }
 
 function formatMonth(value: string): string {
@@ -663,6 +565,15 @@ function formatMonth(value: string): string {
   return `${year}년 ${Number(month)}월`;
 }
 
+function formatBillItem(item: { label: string; amount: number }): string {
+  return `${item.label} ${formatWon(item.amount)}`;
+}
+
 function formatWon(amount: number): string {
-  return amount > 0 ? `${amount.toLocaleString("ko-KR")}원` : "—";
+  return `${amount.toLocaleString("ko-KR")}원`;
+}
+
+function signedWon(amount: number): string {
+  if (amount < 0) return `−${formatWon(Math.abs(amount))}`;
+  return formatWon(amount);
 }

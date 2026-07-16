@@ -84,7 +84,8 @@ test("manager realtime route uses a browser console wired to BFF agent APIs", ()
   assert.match(consoleSource, /https:\/\/api\.openai\.com\/v1\/realtime\/calls/);
   assert.doesNotMatch(consoleSource, /v1\/realtime\?model/);
   assert.match(consoleSource, /Realtime SDP 교환 실패/);
-  assert.match(consoleSource, /response\.function_call_arguments\.done/);
+  assert.match(consoleSource, /parseManagerRealtimeEvent/);
+  assert.match(consoleSource, /closeManagerRealtimeResources/);
   assert.match(consoleSource, /ticket\.query/);
   assert.match(consoleSource, /billing\.summary/);
   assert.match(consoleSource, /billing\.send_dunning/);

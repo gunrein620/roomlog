@@ -17,6 +17,10 @@ services:
       ROOMLOG_PUBLIC_ORIGIN: ${ROOMLOG_PUBLIC_ORIGIN:-https://www.woo-zu.com}
       GOOGLE_LOGIN_CLIENT_ID: ${GOOGLE_LOGIN_CLIENT_ID:-}
       GOOGLE_LOGIN_CALLBACK_URL: ${GOOGLE_LOGIN_CALLBACK_URL:-}
+      # 카카오 로그인 시작 라우트(/api/auth/kakao/start)가 web 컨테이너에서 돈다 —
+      # web은 env_file이 없으므로 여기 명시해야 키가 전달된다(secret은 api 전용이라 불필요).
+      KAKAO_LOGIN_REST_API_KEY: ${KAKAO_LOGIN_REST_API_KEY:-}
+      KAKAO_LOGIN_CALLBACK_URL: ${KAKAO_LOGIN_CALLBACK_URL:-}
     depends_on:
       - api
     ports:

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { BriefingInput } from "./briefing-input";
 import { buildBriefing, buildPresetResponses } from "./copilot-briefing";
-import { toChatMessages } from "./CopilotPanel";
+import { toManagerCopilotMessages } from "../../_components/manager-assistant-session";
 
 const quietInput: BriefingInput = {
   managerName: "김민지",
@@ -72,14 +72,14 @@ describe("copilot preset responses", () => {
 
 describe("copilot transcript transport", () => {
   it("excludes local-only UI entries and receipts from upstream chat messages", () => {
-    const messages = toChatMessages([
-      { id: "preset-question", role: "user", content: "미납 있어?", localOnly: true },
-      { id: "preset-answer", role: "assistant", content: "현재 연체 청구는 0건이에요.", localOnly: true },
-      { id: "real-question", role: "user", content: "302호에 안내 보내줘" },
-      { id: "real-answer", role: "assistant", content: "발송 전 확인이 필요합니다." },
-      { id: "cancel", role: "assistant", content: "취소했어요.", localOnly: true },
-      { id: "system", role: "system", content: "네트워크 오류" },
-      { id: "receipt", type: "receipt", kind: "messaging.send_reply", summary: "302호 안내 발송" }
+    const messages = toManagerCopilotMessages([
+      { id: "preset-question", kind: "message", role: "user", content: "미납 있어?", localOnly: true },
+      { id: "preset-answer", kind: "message", role: "assistant", content: "현재 연체 청구는 0건이에요.", localOnly: true },
+      { id: "real-question", kind: "message", role: "user", content: "302호에 안내 보내줘" },
+      { id: "real-answer", kind: "message", role: "assistant", content: "발송 전 확인이 필요합니다." },
+      { id: "cancel", kind: "message", role: "assistant", content: "취소했어요.", localOnly: true },
+      { id: "system", kind: "message", role: "system", content: "네트워크 오류" },
+      { id: "receipt", kind: "receipt", receiptKind: "messaging.send_reply", summary: "302호 안내 발송" }
     ]);
 
     assert.deepEqual(messages, [

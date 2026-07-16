@@ -108,6 +108,7 @@ export type TradeListing = {
   monthlyRentManwon: number;
   location: string;
   detailAddress?: string;
+  buildingName?: string;
   description: string;
   status: string;
   createdAt: string;

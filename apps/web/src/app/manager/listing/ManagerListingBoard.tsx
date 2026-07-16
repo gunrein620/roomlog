@@ -18,11 +18,12 @@ import {
   readManagerListingFloorPlanSnapshot,
   type ManagerListingFloorPlan,
 } from "./manager-listing-media";
-import { toManagerListingRow, type ManagerListingRow } from "./manager-listing-model";
+import { groupListingsByBuilding, toManagerListingRow, type ManagerListingRow } from "./manager-listing-model";
 import styles from "./ManagerListingBoard.module.css";
 
 type DialogMode = "view" | "edit" | "remove";
 type ListingStatusTab = "contracted" | "available";
+type ListingViewMode = "all" | "building";
 
 const STATUS_TAB_LABELS: Record<ListingStatusTab, string> = {
   contracted: "계약완료",
@@ -57,6 +58,7 @@ function ListingCard({ listing, onOpen }: { listing: ManagerListingRow; onOpen: 
         <div className={styles.cardContent}>
           <div className={styles.badges}>
             <Badge emphasis={listing.statusLabel === "노출중"}>{listing.statusLabel}</Badge>
+            {listing.buildingName ? <Badge>{listing.buildingName}</Badge> : null}
             <Badge>사진 {listing.photoCount}장</Badge>
             <Badge>{listing.has3D ? "3D 연결" : "3D 미연결"}</Badge>
           </div>
@@ -86,6 +88,7 @@ export function ManagerListingBoard({
   activeStatus: ListingStatusTab;
 }) {
   const [listings, setListings] = useState(initialListings);
+  const [viewMode, setViewMode] = useState<ListingViewMode>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<DialogMode>("view");
   const [pending, setPending] = useState(false);
@@ -222,6 +225,7 @@ export function ManagerListingBoard({
         monthlyRentManwon: Number(data.get("monthlyRentManwon")) || 0,
         location: String(data.get("location") ?? ""),
         detailAddress: String(data.get("detailAddress") ?? ""),
+        buildingName: String(data.get("buildingName") ?? ""),
         description: String(data.get("description") ?? ""),
         images: [...existingImages, ...uploadedImages],
         floorPlan: floorPlanDraft,
@@ -269,11 +273,50 @@ export function ManagerListingBoard({
           <p>다른 탭에서 등록한 매물을 확인할 수 있습니다.</p>
         </Card>
       ) : (
-        <section className={styles.list} aria-label={`${activeStatusLabel} 매물 목록`}>
-          {visibleListings.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} onOpen={() => openListing(listing.id)} />
-          ))}
-        </section>
+        <>
+          <div className={styles.viewToggle} role="group" aria-label="매물 보기 방식">
+            <button
+              type="button"
+              data-active={viewMode === "all"}
+              onClick={() => setViewMode("all")}
+            >
+              전체 보기
+            </button>
+            <button
+              type="button"
+              data-active={viewMode === "building"}
+              onClick={() => setViewMode("building")}
+            >
+              건물별 보기
+            </button>
+          </div>
+
+          {viewMode === "all" ? (
+            <section className={styles.list} aria-label={`${activeStatusLabel} 매물 목록`}>
+              {visibleListings.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} onOpen={() => openListing(listing.id)} />
+              ))}
+            </section>
+          ) : (
+            groupListingsByBuilding(visibleListings).map((group) => (
+              <section
+                key={group.buildingName}
+                className={styles.buildingGroup}
+                aria-label={`${group.buildingName} 매물 목록`}
+              >
+                <h2 className={styles.buildingGroupTitle}>
+                  {group.buildingName}
+                  <span>{group.listings.length}개</span>
+                </h2>
+                <div className={styles.list}>
+                  {group.listings.map((listing) => (
+                    <ListingCard key={listing.id} listing={listing} onOpen={() => openListing(listing.id)} />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
+        </>
       )}
 
       <dialog
@@ -318,6 +361,7 @@ export function ManagerListingBoard({
                   <h3>{selected.title}</h3>
                   <dl className={styles.detailGrid}>
                     <DetailItem label="주소" value={selected.address} />
+                    <DetailItem label="건물명" value={selected.buildingName || "미지정"} />
                     <DetailItem label="방 유형" value={selected.roomType} />
                     <DetailItem label="거래 유형" value={selected.tradeType} />
                     <DetailItem label="가격" value={selected.priceLabel} />
@@ -335,9 +379,13 @@ export function ManagerListingBoard({
               ) : mode === "edit" ? (
                 <form className={styles.form} onSubmit={saveListing}>
                   <div className={styles.formGrid}>
-                    <label className={`${styles.field} ${styles.fullWidth}`}>
+                    <label className={styles.field}>
                       <span>매물명</span>
                       <input name="title" defaultValue={selected.title} required />
+                    </label>
+                    <label className={styles.field}>
+                      <span>건물명</span>
+                      <input name="buildingName" defaultValue={selected.buildingName} placeholder="건물별 보기 기준 (선택)" />
                     </label>
                     <label className={styles.field}>
                       <span>방 유형</span>

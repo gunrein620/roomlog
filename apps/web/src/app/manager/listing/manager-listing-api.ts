@@ -9,6 +9,7 @@ export interface ManagerListingUpdateInput {
   monthlyRentManwon: number;
   location: string;
   detailAddress: string;
+  buildingName: string;
   description: string;
   images: string[];
   floorPlan: ManagerListingFloorPlan | null;
@@ -25,6 +26,7 @@ export function buildManagerListingUpdatePayload(
     monthlyRentManwon: Number(input.monthlyRentManwon) || 0,
     location: input.location.trim(),
     detailAddress: input.detailAddress.trim(),
+    buildingName: input.buildingName.trim(),
     description: input.description.trim(),
     images: input.images.filter((url) => typeof url === "string" && url.trim()),
     floorPlan: input.floorPlan,

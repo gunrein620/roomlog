@@ -4,7 +4,7 @@
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Box, Braces, Camera, Search, Video, X } from "lucide-react";
+import { Box, Braces, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
 import type { ListingFloorPlan3D } from "@/app/_components/ListingTourRoom3D";
 import type { PlacedFurniture, WheretoputWall3D } from "@/app/floor-plan-3d/room-model/types";
@@ -338,7 +338,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
-export default function LandlordMyPage() {
+export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } = {}) {
   // 입력 칸은 빈 값으로 시작(예시는 placeholder가 담당). 새로고침 유실은 localStorage draft로 방지.
   const [ownerForm, setOwnerForm] = useState(emptyOwnerForm);
   const [photoCount, setPhotoCount] = useState(0);
@@ -425,6 +425,8 @@ export default function LandlordMyPage() {
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const [ownerToast, setOwnerToast] = useState("");
+  // 등록 결과 팝업 — 성공/실패를 모달로 알린다. 성공 확인 시 홈 피드로 이동(onGoHome).
+  const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const postcodeEmbedRef = useRef<HTMLDivElement | null>(null);
@@ -488,6 +490,24 @@ export default function LandlordMyPage() {
     const timer = window.setTimeout(() => setOwnerToast(""), 3500);
     return () => window.clearTimeout(timer);
   }, [ownerToast]);
+
+  // 결과 팝업 닫기 — 실패면 폼에 남아 재시도(작성 내용은 draft로 보존), 성공이면 홈 피드로 보낸다.
+  const closeSubmitResult = () => {
+    const wasSuccess = submitResult?.ok === true;
+    setSubmitResult(null);
+    if (wasSuccess) onGoHome?.();
+  };
+
+  useEffect(() => {
+    if (!submitResult) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeSubmitResult();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // closeSubmitResult는 submitResult가 바뀔 때마다 이 효과와 함께 재생성된다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitResult]);
 
   // 주소 입력을 디바운스로 지오코딩 — 상세 지도에 실제 매물 좌표를 찍기 위함.
   useEffect(() => {
@@ -615,14 +635,14 @@ export default function LandlordMyPage() {
           photoFiles.forEach((file) => form.append("files", file));
           const uploadRes = await fetch("/api/trade/uploads", { method: "POST", body: form });
           if (uploadRes.status === 401) {
-            setOwnerToast("매물을 등록하려면 WOOZU 계정 로그인이 필요합니다.");
+            setSubmitResult({ ok: false, message: "매물을 등록하려면 WOOZU 계정 로그인이 필요합니다." });
             return;
           }
           if (uploadRes.ok) {
             const uploaded = (await uploadRes.json()) as { images?: string[] };
             images = Array.isArray(uploaded.images) ? uploaded.images : [];
           } else {
-            setOwnerToast("사진 업로드에 실패했습니다. 사진 없이 등록하거나 잠시 후 다시 시도해 주세요.");
+            setSubmitResult({ ok: false, message: "사진 업로드에 실패했습니다. 사진 없이 등록하거나 잠시 후 다시 시도해 주세요." });
             return;
           }
         }
@@ -637,6 +657,7 @@ export default function LandlordMyPage() {
           monthlyRentManwon: Number(ownerForm.monthly) || 0,
           location: ownerForm.address || "위치 미입력",
           detailAddress,
+          buildingName: ownerForm.buildingName.trim(),
           description: [
             ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
             ownerForm.floor ? `${ownerForm.floor}층` : "",
@@ -657,17 +678,17 @@ export default function LandlordMyPage() {
         });
 
         if (response.status === 401) {
-          setOwnerToast("매물을 등록하려면 WOOZU 계정 로그인이 필요합니다.");
+          setSubmitResult({ ok: false, message: "매물을 등록하려면 WOOZU 계정 로그인이 필요합니다." });
           return;
         }
         if (!response.ok) {
-          setOwnerToast("매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+          setSubmitResult({ ok: false, message: "매물 등록에 실패했습니다. 잠시 후 다시 시도해 주세요." });
           return;
         }
 
         const savedListing = (await response.json().catch(() => null)) as { id?: string } | null;
 
-        let splatIntakeToast = "";
+        let splatIntakeNote = "";
         let shouldClearTourSourceFile = true;
         if (savedListing?.id && tourSourceFile) {
           try {
@@ -677,13 +698,13 @@ export default function LandlordMyPage() {
               address: [ownerForm.address, detailAddress].filter(Boolean).join(" "),
               file: tourSourceFile
             });
-            splatIntakeToast =
+            splatIntakeNote =
               asset.status === "UPLOADED"
                 ? "스플랫 접수 완료 — 정합 대기"
                 : "3D 투어 제작이 접수됐습니다";
           } catch {
             shouldClearTourSourceFile = false;
-            splatIntakeToast = "매물은 저장됐지만 3D 투어 접수에 실패했습니다. 파일을 다시 선택해 재시도해 주세요.";
+            splatIntakeNote = "매물은 저장됐지만 3D 투어 접수에 실패했습니다. 파일을 다시 선택해 재시도해 주세요.";
           }
         }
 
@@ -700,17 +721,19 @@ export default function LandlordMyPage() {
         void clearOwnerPhotos();
         if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
-        const listingSuccessToast = "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
-        // 등록 성공과 투어 접수 결과가 연속으로 덮어쓰기 되지 않게 하나의 토스트로 합친다.
-        setOwnerToast(splatIntakeToast ? `${listingSuccessToast} ${splatIntakeToast}` : listingSuccessToast);
+        const listingSuccessMessage = "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
+        // 등록 성공과 투어 접수 결과를 하나의 팝업 메시지로 합친다.
+        setSubmitResult({
+          ok: true,
+          message: splatIntakeNote ? `${listingSuccessMessage} ${splatIntakeNote}` : listingSuccessMessage
+        });
       } catch {
-        setOwnerToast("매물 등록에 실패했습니다. 네트워크를 확인해 주세요.");
+        setSubmitResult({ ok: false, message: "매물 등록에 실패했습니다. 네트워크를 확인해 주세요." });
       } finally {
         isSubmittingListingRef.current = false;
         setIsSubmittingListing(false);
       }
     })();
-    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
   const ownerPriceLabel = ownerForm.tradeType === "전세"
     ? `전세 ${ownerForm.jeonse || "0"}만원`
@@ -738,10 +761,22 @@ export default function LandlordMyPage() {
 
           {/* 넓은 폭을 활용해 필드를 여러 열로 흘려 세로 높이를 줄인다(데스크톱 3열 / 모바일 2열) */}
           <div className="owner-step1-fields">
-            <label className="owner-step1-wide">
-              매물명
-              <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
-            </label>
+            {/* 매물명 · 건물명은 한 행에서 반반(1:1)으로 — 건물명은 관리 화면의 건물별 보기 기준 */}
+            <div className="owner-step1-addr-row">
+              <label>
+                매물명
+                <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
+              </label>
+
+              <label>
+                건물명
+                <input
+                  value={ownerForm.buildingName}
+                  onChange={(event) => updateOwnerForm("buildingName", event.target.value)}
+                  placeholder="예: 방배 루미에르 (선택)"
+                />
+              </label>
+            </div>
 
             {/* 주소 · 세부주소는 한 행에서 반반(1:1)으로 */}
             <div className="owner-step1-addr-row">
@@ -1038,6 +1073,27 @@ export default function LandlordMyPage() {
                 <p className="postcode-search-status error">주소 검색창을 불러오지 못했습니다. 네트워크 상태를 확인해 주세요.</p>
               ) : null}
             </div>
+          </section>
+        </div>
+      ) : null}
+      {submitResult ? (
+        <div className="listing-result-backdrop" role="presentation" onClick={closeSubmitResult}>
+          <section
+            className={`listing-result-dialog ${submitResult.ok ? "is-success" : "is-error"}`}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="listing-result-title"
+            aria-describedby="listing-result-desc"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="listing-result-icon" aria-hidden="true">
+              {submitResult.ok ? <CheckCircle2 size={30} strokeWidth={2.2} /> : <CircleAlert size={30} strokeWidth={2.2} />}
+            </span>
+            <h2 id="listing-result-title">{submitResult.ok ? "매물 등록 완료" : "매물 등록 실패"}</h2>
+            <p id="listing-result-desc">{submitResult.message}</p>
+            <button type="button" onClick={closeSubmitResult}>
+              {submitResult.ok ? "홈 피드에서 확인하기" : "닫기"}
+            </button>
           </section>
         </div>
       ) : null}

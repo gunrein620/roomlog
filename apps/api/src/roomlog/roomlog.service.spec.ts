@@ -512,6 +512,222 @@ describe("RoomlogService", () => {
     assert.deepEqual(guardedDetail.guard, guardedCase.guard, "상세도 목록과 같은 입금 확인 상태를 반환해야 한다.");
   });
 
+  it("returns scoped rolling collection metrics and monotonic timing points", () => {
+    const service = new RoomlogService();
+    const dashboard = service.getManagerBillDashboard("landlord-demo");
+    const buildingName = dashboard.scope.buildings[0]?.buildingName;
+    assert.ok(buildingName);
+
+    const collection = service.getManagerCollection(
+      "landlord-demo",
+      buildingName,
+      dashboard.billingMonth,
+    );
+
+    assert.equal(collection.scope.selectedBuilding, buildingName);
+    assert.equal(collection.trend.length > 0, true);
+    assert.equal(collection.trend.length <= 6, true);
+    assert.equal(
+      collection.trend[0]?.billingMonth >= collection.history.availableFromMonth,
+      true,
+    );
+    assert.equal(collection.timing.points.length, 31);
+    assert.equal(collection.timing.currentMonth, collection.billingMonth);
+    assert.equal(collection.brief.billedUnits >= collection.brief.fullyPaidUnits, true);
+    assert.equal(collection.brief.billedUnits >= collection.brief.partiallyPaidUnits, true);
+    assert.equal(collection.brief.threeMonthAverageRate >= 0, true);
+    assert.equal(collection.brief.sixMonthAverageRate >= 0, true);
+    assert.equal(
+      collection.timing.points[30]?.currentCumulativeAmount,
+      collection.brief.collectedAmount,
+    );
+    assert.equal(collection.timing.onTimeCollectionRate >= 0, true);
+    assert.equal(collection.timing.onTimeCollectionRate <= 1, true);
+    if (collection.timing.averageCollectionDay !== undefined) {
+      assert.equal(collection.timing.averageCollectionDay >= 1, true);
+      assert.equal(collection.timing.averageCollectionDay <= 31, true);
+    }
+
+    for (let index = 1; index < collection.timing.points.length; index += 1) {
+      assert.equal(
+        collection.timing.points[index].currentCumulativeAmount >=
+          collection.timing.points[index - 1].currentCumulativeAmount,
+        true,
+      );
+      assert.equal(
+        collection.timing.points[index].previousCumulativeAmount >=
+          collection.timing.points[index - 1].previousCumulativeAmount,
+        true,
+      );
+    }
+  });
+
+  it("defaults collection history to at most six recorded months and accepts an explicit range", () => {
+    const service = new RoomlogService();
+    const dashboard = service.getManagerBillDashboard("landlord-demo");
+    const buildingName = dashboard.scope.buildings[0]?.buildingName;
+    assert.ok(buildingName);
+
+    const defaultResult = service.getManagerCollection(
+      "landlord-demo",
+      buildingName,
+      dashboard.billingMonth,
+    );
+    assert.equal(defaultResult.trend.length > 0, true);
+    assert.equal(defaultResult.trend.length <= 6, true);
+    assert.equal(
+      defaultResult.history.appliedFromMonth >= defaultResult.history.availableFromMonth,
+      true,
+    );
+    assert.equal(
+      defaultResult.history.appliedToMonth <= defaultResult.history.availableToMonth,
+      true,
+    );
+
+    const customResult = service.getManagerCollection(
+      "landlord-demo",
+      buildingName,
+      dashboard.billingMonth,
+      "2025-07",
+      dashboard.billingMonth,
+    );
+    assert.equal(
+      customResult.history.appliedFromMonth,
+      customResult.history.availableFromMonth,
+    );
+    assert.equal(
+      customResult.history.appliedToMonth,
+      customResult.history.availableToMonth,
+    );
+    assert.equal(
+      customResult.history.availableFromMonth <= customResult.history.availableToMonth,
+      true,
+    );
+  });
+
+  it("starts collection history at the first recorded month instead of padding six months", () => {
+    const service = new RoomlogService();
+    const dashboard = service.getManagerBillDashboard("landlord-demo");
+    const buildingName = dashboard.scope.buildings[0]?.buildingName;
+    assert.ok(buildingName);
+    const month = dashboard.billingMonth;
+    const previousMonth = (service as any).shiftBillingMonth(month, -1) as string;
+    const store = (service as any).store;
+    const billForBuilding = store.bills.find((bill: any) => {
+      const room = (service as any).roomForManagerBill("landlord-demo", bill);
+      return room?.buildingName === buildingName && bill.billingMonth === month;
+    });
+    assert.ok(billForBuilding);
+
+    store.bills = store.bills.filter((bill: any) => {
+      const room = (service as any).roomForManagerBill("landlord-demo", bill);
+      return room?.buildingName !== buildingName;
+    });
+    store.bills.push(
+      { ...billForBuilding, id: "bill-history-previous", billingMonth: previousMonth },
+      { ...billForBuilding, id: "bill-history-current", billingMonth: month },
+    );
+
+    const result = service.getManagerCollection("landlord-demo", buildingName, month);
+    assert.deepEqual(
+      result.trend.map((point) => point.billingMonth),
+      [previousMonth, month],
+    );
+    assert.equal(result.history.availableFromMonth, previousMonth);
+    assert.equal(result.history.appliedFromMonth, previousMonth);
+    assert.equal(result.history.appliedToMonth, month);
+  });
+
+  it("returns no collection trend rows when the selected scope has no billing records", () => {
+    const service = new RoomlogService();
+    const dashboard = service.getManagerBillDashboard("landlord-demo");
+    const buildingName = dashboard.scope.buildings[0]?.buildingName;
+    assert.ok(buildingName);
+    const store = (service as any).store;
+    store.bills = store.bills.filter((bill: any) => {
+      const room = (service as any).roomForManagerBill("landlord-demo", bill);
+      return room?.buildingName !== buildingName;
+    });
+
+    const result = service.getManagerCollection(
+      "landlord-demo",
+      buildingName,
+      dashboard.billingMonth,
+    );
+    assert.deepEqual(result.trend, []);
+  });
+
+  it("uses 8 and 31 days as the manager overdue stage boundaries", () => {
+    const service = new RoomlogService();
+
+    assert.equal((service as any).stageForDaysOverdue(7), "MINOR");
+    assert.equal((service as any).stageForDaysOverdue(8), "WARNING");
+    assert.equal((service as any).stageForDaysOverdue(30), "WARNING");
+    assert.equal((service as any).stageForDaysOverdue(31), "SEVERE");
+  });
+
+  it("builds ledger rows from stored deposits, linked bills, and confirmed costs", () => {
+    const service = new RoomlogService();
+    const store = (service as any).store;
+    const timestamp = "2026-07-14T09:00:00.000Z";
+    store.receipts.push({
+      id: "receipt-ledger-confirmed",
+      managerId: "landlord-demo",
+      source: "manual",
+      hasEvidence: true,
+      uploadedAt: timestamp,
+    });
+    store.costs.push(
+      {
+        id: "cost-ledger-confirmed",
+        managerId: "landlord-demo",
+        date: timestamp,
+        item: "공용 전기 설비 점검",
+        amount: 180_000,
+        type: "common",
+        scope: "building",
+        status: "confirmed",
+        verified: true,
+        receiptId: "receipt-ledger-confirmed",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: "cost-ledger-draft",
+        managerId: "landlord-demo",
+        date: timestamp,
+        item: "검토 중 비용",
+        amount: 90_000,
+        type: "other",
+        scope: "building",
+        status: "draft",
+        verified: false,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    );
+
+    const result = service.listManagerBillDeposits("landlord-demo");
+    const linkedDeposit = result.ledgerRows.find(
+      (row) => row.direction === "deposit" && row.linkedBill,
+    );
+    assert.ok(linkedDeposit?.linkedBill);
+    assert.ok(linkedDeposit.linkedBill.billingMonth);
+    assert.ok(linkedDeposit.linkedBill.items.length > 0);
+    assert.equal("billId" in linkedDeposit.linkedBill, false);
+
+    const withdrawal = result.ledgerRows.find(
+      (row) => row.id === "cost-ledger-confirmed",
+    );
+    assert.equal(withdrawal?.direction, "withdrawal");
+    assert.equal(withdrawal?.itemLabel, "공용 전기 설비 점검");
+    assert.equal(withdrawal?.cost?.evidenceAvailable, true);
+    assert.equal(
+      result.ledgerRows.some((row) => row.id === "cost-ledger-draft"),
+      false,
+    );
+  });
+
   it("backfills manager billing dummy rows when a persisted demo snapshot has empty billing tables", () => {
     const legacyDemoSnapshot = JSON.parse(
       JSON.stringify((new RoomlogService({ seedDemoData: true } as any) as any).store)
@@ -3457,6 +3673,34 @@ describe("RoomlogService", () => {
     assert.equal(service.getIntakeSession("tenant-demo", second.session.id).status, "ACTIVE");
   });
 
+  it("auto-finalizes an intake thread when the tenant explicitly asks to file the complaint", async () => {
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    const describeReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "301호 복도 쪽 엘리베이터 소음이 밤마다 너무 심해요.",
+      inputMode: "CHAT"
+    });
+
+    assert.equal(describeReply.autoFinalized, undefined);
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "ACTIVE");
+
+    const fileReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "네 맞아요, 이대로 민원 넣어주세요.",
+      inputMode: "CHAT"
+    });
+
+    assert.ok(fileReply.autoFinalized, "expected explicit filing request to auto-finalize");
+    assert.ok(fileReply.autoFinalized.complaint.id);
+    assert.ok(fileReply.autoFinalized.ticket.id);
+    assert.equal(fileReply.session.status, "FINALIZED");
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "FINALIZED");
+    assert.equal(
+      service.getIntakeSession("tenant-demo", session.id).ticketId,
+      fileReply.autoFinalized.ticket.id
+    );
+  });
+
   it("detects duplicate intake candidates and can attach a consultation to an existing ticket", async () => {
     const service = new RoomlogService();
     const original = service.createComplaint("tenant-demo", {
@@ -3673,6 +3917,74 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("tracks and clears manager unread general inquiry messages", () => {
+    const service = new RoomlogService();
+    const manager = service.signup({
+      email: "manager-unread@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "미확인 관리자",
+      phone: "010-8100-1000",
+      role: "LANDLORD",
+      buildingName: "미확인 빌라",
+      roomNo: "101호",
+      address: "서울시 성동구 미확인로 1"
+    } as any);
+    const tenant = service.signup({
+      email: "tenant-unread@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "문의 임차인",
+      phone: "010-8100-2000",
+      role: "TENANT",
+      buildingName: "미확인 빌라",
+      roomNo: "101호",
+      address: "서울시 성동구 미확인로 1"
+    } as any);
+
+    const thread = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      body: "확인 부탁드립니다."
+    });
+    assert.equal(thread.managerUnreadCount, 1);
+
+    const second = service.addTenantMessagingThreadMessage(tenant.userId, thread.id, {
+      body: "한 번 더 문의드립니다."
+    });
+    assert.equal(second.managerUnreadCount, 2);
+
+    service.addManagerMessagingThreadMessage(manager.userId, thread.id, {
+      body: "확인하겠습니다."
+    });
+    assert.equal(
+      service.getManagerMessagingThread(manager.userId, thread.id).managerUnreadCount,
+      2
+    );
+
+    const read = service.markManagerMessagingThreadRead(manager.userId, thread.id);
+    assert.equal(read.managerUnreadCount, 0);
+    assert.equal(
+      service.listManagerMessagingThreads(manager.userId, "general")[0]?.managerUnreadCount,
+      0
+    );
+
+    const otherManager = service.signup({
+      email: "other-unread-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "외부 관리자",
+      phone: "010-8100-3000",
+      role: "LANDLORD",
+      buildingName: "외부 빌라",
+      roomNo: "1호",
+      address: "서울시 성동구 외부로 1"
+    } as any);
+    assert.throws(
+      () => service.markManagerMessagingThreadRead(otherManager.userId, thread.id),
+      /메시지 스레드를 찾을 수 없습니다/
+    );
+  });
+
   it("links tenant landlord inquiry to the manager messaging thread", () => {
     const service = new RoomlogService();
     const existing = service
@@ -3702,6 +4014,47 @@ describe("RoomlogService", () => {
     assert.equal(result.messages?.at(-1)?.body, "임대인에게 문의드립니다.");
     assert.equal(
       service.listManagerMessagingThreads("landlord-demo").some((thread) => thread.id === result.id),
+      true
+    );
+  });
+
+  it("opens a tenant landlord messaging thread before the first message is typed", () => {
+    const service = new RoomlogService();
+    const manager = service.signup({
+      email: "empty-thread-manager@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "빈 스레드 관리자",
+      phone: "010-7000-1801",
+      role: "LANDLORD",
+      buildingName: "빈스레드빌라",
+      roomNo: "1801호",
+      address: "서울시 강동구 빈스레드로 18"
+    } as any);
+
+    const tenant = service.signup({
+      email: "empty-thread-tenant@roomlog.test",
+      password: "password123!",
+      passwordConfirm: "password123!",
+      name: "빈 스레드 세입자",
+      phone: "010-7000-3801",
+      role: "TENANT",
+      buildingName: "빈스레드빌라",
+      roomNo: "1801호",
+      address: "서울시 강동구 빈스레드로 18"
+    } as any);
+
+    const thread = service.createTenantMessagingThread(tenant.userId, {
+      context: "general",
+      contextLabel: "일반 문의"
+    });
+
+    assert.equal(thread.tenantId, tenant.userId);
+    assert.equal(thread.messages?.length, 0);
+    assert.equal(thread.lastMessage, "대화가 시작되었습니다.");
+    assert.equal(service.getTenantLandlordConversation(tenant.userId).threadId, thread.id);
+    assert.equal(
+      service.listManagerMessagingThreads(manager.userId).some((item) => item.id === thread.id),
       true
     );
   });
@@ -3906,6 +4259,60 @@ describe("RoomlogService", () => {
         body: "잘못된 호실 조합"
       }),
       /해당 세대 임차인/
+    );
+  });
+
+  it("lets tenants choose among linked rooms for contract and landlord conversation scope", () => {
+    const service = new RoomlogService();
+    const state = service.getDemoState();
+
+    state.contracts.push({
+      id: "ct_tenant_multi_302",
+      roomId: "room-302",
+      tenantId: "tenant-demo",
+      managerId: "landlord-demo",
+      unitId: "302",
+      landlordName: "Demo Manager",
+      lifecycle: "active",
+      review: "confirmed",
+      deletion: "none",
+      valueSource: "confirmed",
+      monthlyRent: 720000,
+      maintenanceFee: 80000,
+      paymentDay: 10,
+      startDate: "2026-07-01T00:00:00+09:00",
+      endDate: "2028-06-30T00:00:00+09:00",
+      createdAt: "2026-07-08T09:20:00+09:00",
+      updatedAt: "2026-07-12T15:10:00+09:00"
+    } as any);
+
+    const rooms = service.listTenantRooms("tenant-demo");
+    assert.deepEqual(
+      rooms.map((room) => room.roomId),
+      ["room-301", "room-302"]
+    );
+    assert.equal(rooms[0].isCurrent, true);
+
+    const selectedContract = service.getTenantCurrentContract("tenant-demo", "room-302");
+    assert.equal(selectedContract?.roomId, "room-302");
+    assert.equal(selectedContract?.monthlyRent, 720000);
+
+    const conversation = service.getTenantLandlordConversation("tenant-demo", "room-302");
+    assert.equal(conversation.roomId, "room-302");
+    assert.equal(conversation.unitId, "302");
+
+    const thread = service.createTenantMessagingThread("tenant-demo", {
+      roomId: "room-302",
+      context: "general",
+      contextLabel: "Second room",
+      body: "Hello from selected room"
+    });
+    assert.equal(thread.roomId, "room-302");
+
+    assert.equal(service.getTenantCurrentContract("tenant-demo", "room-412"), null);
+    assert.throws(
+      () => service.getTenantLandlordConversation("tenant-demo", "room-412"),
+      /호실|tenant|임차/
     );
   });
 

@@ -1,4 +1,6 @@
-# syntax=docker/dockerfile:1
+# `# syntax=docker/dockerfile:1` 지시어는 의도적으로 없음 — frontend 이미지 resolve가
+# 로컬 Docker Desktop에서 반복적으로 DeadlineExceeded를 내서, BuildKit 내장 frontend를 쓴다
+# (--mount=type=cache는 내장 frontend도 지원).
 # 베이스 이미지는 digest로 고정 — FROM 태그 조회 네트워크 왕복 최소화(빌드 타임아웃 완화).
 # node 버전 올릴 때: docker pull node:<태그> 후 RepoDigests 값으로 교체.
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS base

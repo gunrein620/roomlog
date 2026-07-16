@@ -17,7 +17,6 @@ import {
   NoticeCard,
   SCOPE_LABEL,
   ScreenHeader,
-  StaticButton,
   sectionTitleStyle,
 } from "../_components";
 
@@ -53,9 +52,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         marginTop: "var(--space-md)",
       }}
     >
-      <div style={{ display: "grid", width: "min(280px, 100%)" }}>
-        <StaticButton>체크 완료</StaticButton>
-      </div>
       <div style={{ width: "min(280px, 100%)" }}>
         <AnnouncementSendForm
           draftId={draft.id}
