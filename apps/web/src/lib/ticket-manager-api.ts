@@ -1,5 +1,5 @@
 import type { DefectAnalysis, ManagerQueueSummary, RepairJob, Ticket } from "@roomlog/types";
-import { serverFetch } from "./server-api";
+import { ApiError, serverFetch } from "./server-api";
 import {
   toManagerTicket,
   toManagerAnalysis,
@@ -22,6 +22,56 @@ import { managerDefectDashboardDemoRecord } from "./manager-defect-dashboard-dem
 async function listTeamTickets(filter?: string): Promise<TeamManagerTicket[]> {
   const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
   return serverFetch<TeamManagerTicket[]>(`/manager/tickets${query}`);
+}
+
+export type ManagerTicketDetail = {
+  ticket: Ticket;
+  analysis: DefectAnalysis | null;
+  repair: RepairJob | null;
+  attachmentUrls: string[];
+};
+
+type ManagerTicketDetailLoaders = {
+  byId: (id: string) => Promise<TeamManagerTicket | null>;
+  list: () => Promise<TeamManagerTicket[]>;
+};
+
+export async function managerTicketByIdOrNull(
+  id: string,
+  fetchTicket: (path: string) => Promise<TeamManagerTicket> = (path) =>
+    serverFetch<TeamManagerTicket>(path),
+): Promise<TeamManagerTicket | null> {
+  try {
+    return await fetchTicket(`/manager/tickets/${encodeURIComponent(id)}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+function toManagerTicketDetail(ticket: TeamManagerTicket): ManagerTicketDetail {
+  return {
+    ticket: toManagerTicket(ticket),
+    analysis: toManagerAnalysis(ticket),
+    repair: toManagerRepair(ticket),
+    attachmentUrls: managerTicketAttachmentUrls(ticket),
+  };
+}
+
+export async function getManagerTicketDetail(
+  id?: string,
+  loaders: ManagerTicketDetailLoaders = {
+    byId: managerTicketByIdOrNull,
+    list: () => listTeamTickets(),
+  },
+): Promise<ManagerTicketDetail | null> {
+  if (id) {
+    const ticket = await loaders.byId(id);
+    return ticket ? toManagerTicketDetail(ticket) : null;
+  }
+
+  const [ticket] = await loaders.list();
+  return ticket ? toManagerTicketDetail(ticket) : null;
 }
 
 export function managerTicketAttachmentUrls(ticket: TeamManagerTicket): string[] {

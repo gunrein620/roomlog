@@ -1,10 +1,5 @@
 import { Badge, Button, Card } from "@roomlog/ui";
-import {
-  MANAGER_DEMO_TICKET_ID,
-  getManagerAnalysis,
-  getManagerRepair,
-  getManagerTicket,
-} from "@/lib/ticket-manager-api";
+import { getManagerTicketDetail } from "@/lib/ticket-manager-api";
 import {
   EvidencePanel,
   LinkButton,
@@ -24,13 +19,19 @@ type SearchParams = Promise<{ id?: string }>;
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
-  const ticketId = id ?? MANAGER_DEMO_TICKET_ID;
-  const [ticket, analysis, repair] = await Promise.all([
-    getManagerTicket(ticketId),
-    getManagerAnalysis(ticketId),
-    getManagerRepair(ticketId),
-  ]);
-  const completionGuard = repair.stage === "completed" || repair.stage === "paid";
+  const detail = await getManagerTicketDetail(id);
+
+  if (!detail) {
+    return (
+      <Card role="status" style={{ display: "grid", gap: "var(--space-sm)" }}>
+        <div style={sectionTitle}>티켓 상세 & 검토</div>
+        <div style={muted}>조회할 티켓이 없습니다.</div>
+      </Card>
+    );
+  }
+
+  const { ticket, analysis, repair } = detail;
+  const completionGuard = repair?.stage === "completed" || repair?.stage === "paid";
 
   return (
     <div style={pageStack}>
@@ -41,28 +42,36 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <div style={pageStack}>
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
             <div style={sectionTitle}>AI 요약</div>
-            <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>{ticket.title}</div>
-            <div style={muted}>{ticket.description}</div>
-            <div style={row}>
-              {analysis.problemCandidates.map((candidate) => (
-                <Badge key={candidate}>{candidate}</Badge>
-              ))}
-              {analysis.safetyRisk ? <Badge emphasis>위험 키워드 상향</Badge> : null}
-            </div>
+            {analysis ? (
+              <>
+                <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>{ticket.title}</div>
+                <div style={muted}>{ticket.description}</div>
+                <div style={row}>
+                  {analysis.problemCandidates.map((candidate) => (
+                    <Badge key={candidate}>{candidate}</Badge>
+                  ))}
+                  {analysis.safetyRisk ? <Badge emphasis>위험 키워드 상향</Badge> : null}
+                </div>
+              </>
+            ) : (
+              <div style={muted}>조회할 AI 분석 내용이 없습니다.</div>
+            )}
           </Card>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-lg)" }}>
             <ResponsibilityCard analysis={analysis} />
-            <EvidencePanel compact />
+            <EvidencePanel compact available={false} />
           </div>
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitle}>임차인 입력·첨부</div>
-            <div style={muted}>{ticket.location} · {ticket.description}</div>
+            <div style={muted}>{[ticket.location, ticket.description].filter(Boolean).join(" · ")}</div>
             <div style={row}>
-              <Badge>사진 3장</Badge>
-              <Badge>반복 민원 1건</Badge>
-              <Button variant="secondary">연결 티켓 보기</Button>
+              {detail.attachmentUrls.length > 0 ? (
+                <Badge>사진 {detail.attachmentUrls.length}장</Badge>
+              ) : (
+                <span style={muted}>조회할 첨부 내용이 없습니다.</span>
+              )}
             </div>
           </Card>
 

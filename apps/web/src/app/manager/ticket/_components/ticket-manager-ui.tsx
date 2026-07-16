@@ -168,7 +168,7 @@ export function TicketHeader({ ticket, title }: { ticket: Ticket; title: string 
   );
 }
 
-export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: RepairJob }) {
+export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: RepairJob | null }) {
   return (
     <div style={row}>
       <Badge emphasis>티켓 {ticketStatusLabel[ticket.status]}</Badge>
@@ -178,7 +178,16 @@ export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: Repa
   );
 }
 
-export function ResponsibilityCard({ analysis }: { analysis: DefectAnalysis }) {
+export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | null }) {
+  if (!analysis) {
+    return (
+      <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+        <div style={sectionTitle}>AI 책임 검토</div>
+        <div style={muted}>조회할 책임 검토 내용이 없습니다.</div>
+      </Card>
+    );
+  }
+
   const percent = Math.round(analysis.confidence * 100);
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
@@ -195,7 +204,22 @@ export function ResponsibilityCard({ analysis }: { analysis: DefectAnalysis }) {
   );
 }
 
-export function EvidencePanel({ compact }: { compact?: boolean }) {
+export function EvidencePanel({
+  compact,
+  available = true,
+}: {
+  compact?: boolean;
+  available?: boolean;
+}) {
+  if (!available) {
+    return (
+      <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+        <div style={sectionTitle}>사진 비교·근거</div>
+        <div style={muted}>조회할 사진 비교·근거 내용이 없습니다.</div>
+      </Card>
+    );
+  }
+
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
       <div style={sectionTitle}>사진 비교·근거</div>
@@ -239,8 +263,8 @@ export function Timeline({
   repair,
 }: {
   ticket: Ticket;
-  analysis?: DefectAnalysis;
-  repair?: RepairJob;
+  analysis?: DefectAnalysis | null;
+  repair?: RepairJob | null;
 }) {
   const items = buildTicketTimeline({
     ticketStatus: ticket.status,
