@@ -63,6 +63,7 @@ import {
   DEMO_VENDORS
 } from "../lib/demo-vendor-mgmt";
 import {
+  VENDOR_ACTIVATION_LOGIN_ACTION,
   WoozuLoginScreen,
   type AppRole,
   type AuthMode,
@@ -2030,6 +2031,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         mode={authMode}
         onAuthenticated={completeServiceAuth}
         onGoHome={closeAuthScreen}
+        vendorActivationAction={VENDOR_ACTIVATION_LOGIN_ACTION}
       />
     );
   }

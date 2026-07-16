@@ -1,5 +1,6 @@
 import {
   VendorActivationRepositoryError,
+  type ResceneVendorActivationIssuePersistenceInput,
   type VendorAccountResolver,
   type VendorActivationRepository
 } from "./vendor-activation.repository";
@@ -20,7 +21,13 @@ export class UnavailableVendorActivationRepository
     return fail();
   }
 
-  async getById(_activationId: string): Promise<never> {
+  async listRescene(): Promise<never> {
+    return fail();
+  }
+
+  async issue(
+    _input: ResceneVendorActivationIssuePersistenceInput
+  ): Promise<never> {
     return fail();
   }
 

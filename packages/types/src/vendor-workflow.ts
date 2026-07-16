@@ -300,9 +300,10 @@ export interface StartVendorJobResult {
 }
 
 export interface VendorSettlementRow {
-  paymentRequest: VendorJobPaymentView;
+  repairId: string;
   jobTitle: string;
-  approvedAmount: number;
-  requestedAt: string;
-  statusLabel: string;
+  completedAt: string;
+  paymentRequest?: VendorJobPaymentView;
+  approvedAmount?: number;
+  requestedAt?: string;
 }

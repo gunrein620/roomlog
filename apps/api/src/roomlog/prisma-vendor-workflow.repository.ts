@@ -453,22 +453,6 @@ function mapDecision(row: DecisionProjection): SharedRepairCompletionDecision {
   };
 }
 
-function paymentStatusLabel(status: PaymentProjection["status"]) {
-  const labels: Record<PaymentProjection["status"], string> = {
-    WAITING_COMPLETION: "완료 승인 대기",
-    PENDING_APPROVAL: "결제 승인 대기",
-    AUTO_PAID: "크레딧 자동 결제 완료",
-    MANUAL_CREDIT_PAID: "크레딧 결제 완료",
-    DIRECT_PAID: "직접 결제 완료",
-    TOSS_PAID: "Toss 결제 완료",
-    INSUFFICIENT_CREDIT: "크레딧 잔액 부족",
-    CANCELLED: "결제 요청 취소",
-    REVERSED: "크레딧 결제 취소",
-    DIRECT_PAYMENT_VOIDED: "직접 결제 취소"
-  };
-  return labels[status];
-}
-
 function mapJobPayment(row: PaymentProjection): VendorJobPaymentView {
   return {
     id: row.id,
@@ -638,7 +622,7 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
 
   async listJobs(vendorId: string): Promise<VendorJobSummary[]> {
     const rows = await this.prisma.repairRequest.findMany({
-      where: { vendorId },
+      where: { vendorId, status: { not: "COMPLETED" } },
       include: this.jobInclude(),
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
@@ -2047,18 +2031,29 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
 
   async listSettlements(vendorId: string): Promise<VendorSettlementRow[]> {
     const normalizedVendorId = requiredText(vendorId, "업체 정보를 확인해 주세요.");
-    const rows = await this.prisma.vendorPaymentRequest.findMany({
-      where: { vendorId: normalizedVendorId },
-      include: { repair: { select: { title: true } } },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    const rows = await this.prisma.repairRequest.findMany({
+      where: { vendorId: normalizedVendorId, status: "COMPLETED" },
+      include: this.jobInclude(),
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
-    return rows.map((row) => ({
-      paymentRequest: mapJobPayment(row),
-      jobTitle: row.repair.title,
-      approvedAmount: row.amount,
-      requestedAt: row.createdAt.toISOString(),
-      statusLabel: paymentStatusLabel(row.status)
-    }));
+    return rows.map((row) => {
+      const job = this.projectSummary(row);
+      return {
+        repairId: row.id,
+        jobTitle: row.title,
+        completedAt:
+          job.latestCompletion?.completedAt ??
+          row.completedAt?.toISOString() ??
+          row.updatedAt.toISOString(),
+        ...(job.paymentRequest
+          ? {
+              paymentRequest: job.paymentRequest,
+              approvedAmount: job.paymentRequest.amount,
+              requestedAt: job.paymentRequest.createdAt
+            }
+          : {})
+      };
+    });
   }
 
   private async projectJob(

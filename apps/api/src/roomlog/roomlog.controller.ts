@@ -97,7 +97,10 @@ import {
   UserRole
 } from "./roomlog.types";
 import { RoomlogService } from "./roomlog.service";
-import { VendorActivationDomainError } from "./services/roomlog-vendor-activation.domain";
+import {
+  VendorActivationDomainError,
+  VendorActivationIssueValidationError
+} from "./services/roomlog-vendor-activation.domain";
 import { RoomlogManagerVendorDomain } from "./services/roomlog-manager-vendor.domain";
 import { RoomlogVendorWorkflowDomain } from "./services/roomlog-vendor-workflow.domain";
 import { RoomlogTenantVendorConnectionDomain } from "./services/roomlog-tenant-vendor-connection.domain";
@@ -225,19 +228,44 @@ export class RoomlogController {
     }
   }
 
+  @Get("auth/vendor-activations/rescene")
+  async listResceneVendorActivations(
+    @Headers("authorization") authorization: string | undefined
+  ) {
+    this.roomlogService.getUserFromToken(authorization);
+    try {
+      return await this.roomlogService.listResceneVendorActivations();
+    } catch (error) {
+      return rethrowVendorActivationError(error);
+    }
+  }
+
+  @Post("auth/vendor-activations/rescene")
+  async issueVendorActivation(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: unknown
+  ) {
+    this.roomlogService.getUserFromToken(authorization);
+    try {
+      return await this.roomlogService.issueVendorActivation(body);
+    } catch (error) {
+      if (error instanceof VendorActivationIssueValidationError) {
+        throw new BadRequestException("업체 입력값이 올바르지 않습니다.");
+      }
+      return rethrowVendorActivationError(error);
+    }
+  }
+
   @Post("auth/vendor-activations/claim")
   async claimVendorActivation(
     @Headers("authorization") authorization: string | undefined,
     @Body() body: unknown
   ) {
-    const activationSession = exactStringBody(body, "activationSession");
+    const key = exactStringBody(body, "key");
     const user = this.roomlogService.getUserFromToken(authorization);
 
     try {
-      return await this.roomlogService.claimVendorActivation(
-        user.id,
-        activationSession
-      );
+      return await this.roomlogService.claimVendorActivation(user.id, key);
     } catch (error) {
       return rethrowVendorActivationError(error);
     }
@@ -1370,7 +1398,7 @@ export class RoomlogController {
   listManagerTickets(@Headers("authorization") authorization?: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.listTicketsForManager(user.id);
+    return this.roomlogService.listCurrentTicketsForManager(user.id);
   }
 
   @Get("manager/bills/dashboard")
@@ -1827,7 +1855,7 @@ export class RoomlogController {
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
-    return this.roomlogService.getTicketDetailForManager(user.id, ticketId);
+    return this.roomlogService.getCurrentTicketDetailForManager(user.id, ticketId);
   }
 
   @Get("manager/rooms/:roomId/timeline")
