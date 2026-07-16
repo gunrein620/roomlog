@@ -207,7 +207,9 @@ export class RoomlogAuthDomain {
   }
 
   login(input: LoginInput): AuthResult {
-    const user = this.store.users.find((account) => account.email === input.email);
+    // 가입 시 이메일을 소문자로 저장하므로 로그인 입력도 동일하게 정규화해 비교한다(DB 조회와 일관).
+    const email = input.email?.trim().toLowerCase();
+    const user = this.store.users.find((account) => account.email === email);
 
     if (!user || !verifyPassword(input.password, user.passwordHash)) {
       throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");

@@ -698,6 +698,19 @@ export type ConfirmContractInput = {
 };
 
 
+/**
+ * 인증 계정(UserAccount/SocialAccount)의 DB 단일 원본 저장소.
+ * 전체 스토어 프로젝션(StoreProjector)과 달리 응답 전에 동기 커밋된다 —
+ * 회원가입은 이 저장이 성공해야 토큰을 반환하고, 로그인은 DB에서 계정을 직접 조회한다.
+ */
+export interface AuthAccountRepository {
+  assertAccountAvailable(email: string, phone?: string): Promise<void>;
+  findUserByEmail(email: string): Promise<UserAccount | null>;
+  saveUser(user: UserAccount): Promise<void>;
+  saveSocialAccount(account: SocialAccount): Promise<void>;
+  disconnect?(): Promise<void>;
+}
+
 export type RoomlogServiceOptions = {
   storeFilePath?: string;
   uploadDir?: string;
@@ -706,6 +719,7 @@ export type RoomlogServiceOptions = {
   seedDemoData?: boolean;
   initialStore?: Store;
   storeProjector?: StoreProjector;
+  authRepository?: AuthAccountRepository;
   paymentGateway?: TossPaymentGateway;
 };
 
@@ -2423,6 +2437,8 @@ export class RoomlogService {
   private readonly storageAdapter: FileStorageAdapter;
   private readonly seedDemoData: boolean;
   private readonly storeProjector?: StoreProjector;
+  // 인증 계정의 DB 단일 원본 — 있으면 가입/로그인/소셜이 응답 전에 DB로 동기 커밋된다.
+  private readonly authRepository?: AuthAccountRepository;
   private readonly paymentGateway: TossPaymentGateway;
   private readonly billsWithPaymentConfirmation = new Set<string>();
   private pendingPersistence = Promise.resolve();
@@ -2452,6 +2468,7 @@ export class RoomlogService {
     this.uploadDir = options.uploadDir ?? process.env.LOCAL_UPLOAD_DIR ?? "uploads";
     this.seedDemoData = shouldSeedDemoData(options.seedDemoData);
     this.storeProjector = options.storeProjector;
+    this.authRepository = options.authRepository;
     this.paymentGateway = options.paymentGateway ?? new TossPaymentsGateway();
     this.publicUploadBaseUrl = (
       options.publicUploadBaseUrl ??
@@ -2606,16 +2623,138 @@ export class RoomlogService {
     return this.auth.signup(input);
   }
 
+  /**
+   * DB-first 회원가입 — 컨트롤러가 쓰는 경로.
+   * DB(authRepository)가 있으면: DB 중복 검사 → 메모리 가입 → DB 동기 커밋 순서로,
+   * DB 저장이 성공해야 토큰을 반환한다(실패 시 메모리 롤백 후 에러).
+   * 기존 비동기 프로젝션만으로는 "가입 성공 응답 후 DB 저장 실패 → 재시작 시 계정 증발"이 가능했다.
+   */
+  async signupWithDb(input: SignupInput): Promise<AuthResult> {
+    if (!this.authRepository) return this.auth.signup(input);
+
+    const email = input.email?.trim().toLowerCase() ?? "";
+    const phone = normalizePhoneNumber(input.phone);
+    await this.authRepository.assertAccountAvailable(email, phone);
+
+    const snapshot = this.captureAuthSnapshot();
+    const result = this.auth.signup(input);
+    const user = this.store.users.find((account) => account.id === result.userId);
+    try {
+      if (user) await this.authRepository.saveUser(user);
+    } catch (error) {
+      // DB 확정 실패 — 메모리·JSON에 남은 반쪽 계정을 되돌리고 실패를 그대로 알린다.
+      this.restoreAuthSnapshot(snapshot);
+      this.persistStore();
+      throw error;
+    }
+    return result;
+  }
+
   login(input: LoginInput): AuthResult {
     return this.auth.login(input);
   }
 
+  /**
+   * DB-first 로그인 — 컨트롤러가 쓰는 경로.
+   * DB에서 이메일로 직접 조회해 메모리 캐시를 갱신한 뒤 검증한다 —
+   * 운영자가 DB에 직접 넣었거나 다른 인스턴스가 만든 계정도 재시작 없이 로그인된다.
+   * DB 장애 시에는 메모리로 폴백한다(로그인은 fail-safe).
+   */
+  async loginWithDb(input: LoginInput): Promise<AuthResult> {
+    if (this.authRepository) {
+      const email = input.email?.trim().toLowerCase();
+      if (email) {
+        try {
+          const dbUser = await this.authRepository.findUserByEmail(email);
+          if (dbUser) this.mergeUserIntoStore(dbUser);
+        } catch {
+          // DB 장애 — 메모리 캐시로 계속 진행
+        }
+      }
+    }
+    return this.auth.login(input);
+  }
+
   async loginWithGoogle(input: GoogleSocialLoginInput): Promise<AuthResult> {
-    return await this.auth.loginWithGoogle(input);
+    return await this.commitSocialLogin(() => this.auth.loginWithGoogle(input));
   }
 
   async loginWithKakao(input: KakaoSocialLoginInput): Promise<AuthResult> {
-    return await this.auth.loginWithKakao(input);
+    return await this.commitSocialLogin(() => this.auth.loginWithKakao(input));
+  }
+
+  /**
+   * 소셜 로그인 DB 커밋 — 신규 생성 계정은 DB 저장이 성공해야 응답한다(실패 시 롤백).
+   * 기존 계정의 재로그인은 프로필 갱신 저장이 실패해도 로그인을 막지 않는다(fail-safe,
+   * 다음 전체 프로젝션이 따라잡는다).
+   */
+  private async commitSocialLogin(run: () => Promise<AuthResult>): Promise<AuthResult> {
+    if (!this.authRepository) return await run();
+
+    const knownUserIds = new Set(this.store.users.map((account) => account.id));
+    const snapshot = this.captureAuthSnapshot();
+    const result = await run();
+    const isNewAccount = !knownUserIds.has(result.userId);
+    const user = this.store.users.find((account) => account.id === result.userId);
+    const socialAccounts = this.store.socialAccounts.filter(
+      (account) => account.userId === result.userId
+    );
+    try {
+      if (user) await this.authRepository.saveUser(user);
+      for (const account of socialAccounts) {
+        await this.authRepository.saveSocialAccount(account);
+      }
+    } catch (error) {
+      if (isNewAccount) {
+        this.restoreAuthSnapshot(snapshot);
+        this.persistStore();
+        throw error;
+      }
+      // 기존 계정 로그인 — DB 갱신 실패는 로그인 성공을 막지 않는다.
+    }
+    return result;
+  }
+
+  /** DB에서 읽은 계정을 메모리 캐시에 반영 — 로그인 검증은 항상 최신 DB 자격증명 기준이 된다. */
+  private mergeUserIntoStore(dbUser: UserAccount) {
+    const existing =
+      this.store.users.find((account) => account.id === dbUser.id) ??
+      this.store.users.find((account) => account.email === dbUser.email);
+    if (existing) {
+      existing.email = dbUser.email;
+      existing.passwordHash = dbUser.passwordHash;
+      existing.name = dbUser.name;
+      existing.phone = dbUser.phone;
+      existing.role = dbUser.role;
+      existing.status = dbUser.status;
+      return;
+    }
+    this.store.users.push({ ...dbUser });
+  }
+
+  /** 가입/소셜 커밋 실패 롤백용 — 인증 경로가 건드리는 컬렉션만 스냅샷한다. */
+  private captureAuthSnapshot() {
+    return structuredClone({
+      users: this.store.users,
+      socialAccounts: this.store.socialAccounts,
+      rooms: this.store.rooms,
+      vendors: this.store.vendors,
+      tenantRooms: this.store.tenantRooms,
+      tenantInvites: this.store.tenantInvites,
+      vendorInvites: this.store.vendorInvites
+    });
+  }
+
+  /** 도메인 협력 객체들이 같은 배열 인스턴스를 참조하므로 배열은 제자리(in-place)로 되돌린다. */
+  private restoreAuthSnapshot(snapshot: ReturnType<RoomlogService["captureAuthSnapshot"]>) {
+    this.store.users.splice(0, this.store.users.length, ...snapshot.users);
+    this.store.socialAccounts.splice(0, this.store.socialAccounts.length, ...snapshot.socialAccounts);
+    this.store.rooms.splice(0, this.store.rooms.length, ...snapshot.rooms);
+    this.store.vendors.splice(0, this.store.vendors.length, ...snapshot.vendors);
+    this.store.tenantInvites.splice(0, this.store.tenantInvites.length, ...snapshot.tenantInvites);
+    this.store.vendorInvites.splice(0, this.store.vendorInvites.length, ...snapshot.vendorInvites);
+    for (const key of Object.keys(this.store.tenantRooms)) delete this.store.tenantRooms[key];
+    Object.assign(this.store.tenantRooms, snapshot.tenantRooms);
   }
 
   getUserFromToken(authorization?: string): UserAccount {
@@ -9520,7 +9659,12 @@ export class RoomlogService {
 
     mkdirSync(dirname(this.storeFilePath), { recursive: true });
     const tempFilePath = `${this.storeFilePath}.tmp`;
-    writeFileSync(tempFilePath, JSON.stringify(this.store, null, 2));
+    // DB가 인증 원본인 환경에서는 JSON 백업에 passwordHash를 복제하지 않는다(민감정보 최소화).
+    // DB 모드에서 JSON은 부팅 소스로 쓰이지 않으므로(initialStore가 우선) 빈 해시가 안전하다.
+    const fileSnapshot = this.authRepository
+      ? { ...this.store, users: this.store.users.map((user) => ({ ...user, passwordHash: "" })) }
+      : this.store;
+    writeFileSync(tempFilePath, JSON.stringify(fileSnapshot, null, 2));
     renameSync(tempFilePath, this.storeFilePath);
     this.projectStore();
   }
