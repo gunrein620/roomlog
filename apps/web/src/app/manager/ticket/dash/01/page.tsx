@@ -79,7 +79,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </Card>
         </div>
 
-        <Timeline />
+        <Timeline ticket={ticket} analysis={analysis} repair={repair} />
       </div>
     </div>
   );

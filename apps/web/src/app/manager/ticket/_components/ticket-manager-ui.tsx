@@ -11,6 +11,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { stripScreenId } from "@/lib/screen-id";
+import { buildTicketTimeline } from "@/lib/ticket-timeline";
 
 export const dashRoutes = {
   "00": "/manager/ticket/dash/00",
@@ -232,24 +233,43 @@ export function EvidencePanel({ compact }: { compact?: boolean }) {
   );
 }
 
-export function Timeline() {
-  const items = ["접수됨", "AI 분석 완료", "관리인 검토 대기", "업체 진행 상태 동기화"];
+export function Timeline({
+  ticket,
+  analysis,
+  repair,
+}: {
+  ticket: Ticket;
+  analysis?: DefectAnalysis;
+  repair?: RepairJob;
+}) {
+  const items = buildTicketTimeline({
+    ticketStatus: ticket.status,
+    hasAnalysis: Boolean(analysis),
+    repairStage: repair?.stage,
+  });
+
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <div style={sectionTitle}>처리 이력</div>
       {items.map((item) => (
-        <div key={item} style={{ ...row, alignItems: "flex-start" }}>
+        <div key={item.label} style={{ ...row, alignItems: "flex-start" }}>
           <span
+            role="img"
+            aria-label={`${item.label}: ${item.reached ? "진행됨" : "미진행"}`}
             style={{
               width: "var(--space-sm)",
               height: "var(--space-sm)",
               marginTop: "var(--space-sm)",
               borderRadius: "var(--radius-full)",
-              background: "var(--primary)",
+              background: item.reached
+                ? "var(--primary)"
+                : "var(--surface-container-lowest)",
+              border: `1.5px solid var(--primary)`,
+              boxSizing: "border-box",
               flex: "none",
             }}
           />
-          <span style={muted}>{item}</span>
+          <span style={muted}>{item.label}</span>
         </div>
       ))}
     </Card>
