@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { basename, extname, resolve } from "node:path";
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException
+} from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
@@ -312,6 +321,51 @@ export class SplatAssetService {
         status: "FAILED",
         jobState: "FAILED",
         jobError: error.slice(0, 2048)
+      }
+    });
+  }
+
+  /** 실패한 재구성 작업을 기존 소스 또는 새 영상/캡처 zip으로 다시 큐에 넣는다. */
+  async requeueReconstruction(id: string, file?: UploadedSplatAssetFile) {
+    const asset = await this.getById(id);
+    if (asset.status !== "FAILED") {
+      throw new ConflictException("실패한 3D 재구성 작업만 다시 시도할 수 있습니다.");
+    }
+
+    let replacement: { videoUrl: string; fileKind: "video" | "record3d-zip"; sizeBytes: number } | undefined;
+    if (file) {
+      if (!file.buffer?.length) throw new BadRequestException("업로드할 파일이 비어 있습니다.");
+      if (file.buffer.length > MAX_UPLOAD_BYTES) {
+        throw new BadRequestException("영상 또는 캡처 zip은 800MB 이하만 접수할 수 있습니다.");
+      }
+
+      const classification = classifyIntakeFile(file);
+      if (classification.kind === "splat") {
+        throw new BadRequestException("재구성 재시도에는 영상 또는 캡처 zip 파일만 사용할 수 있습니다.");
+      }
+
+      const stored = await this.storageAdapter.save({
+        buffer: file.buffer,
+        fileName: safeUploadedFileName(`splat-${classification.kind}`, file.originalname, classification.extension),
+        mimeType: file.mimetype
+      });
+      replacement = {
+        videoUrl: stored.fileUrl,
+        fileKind: classification.fileKind,
+        sizeBytes: file.buffer.length
+      };
+    }
+
+    return this.getPrisma().splatAsset.update({
+      where: { id },
+      data: {
+        ...(replacement ?? {}),
+        status: "PROCESSING",
+        jobState: "QUEUED",
+        jobError: null,
+        jobAttempts: 0,
+        jobCommandId: null,
+        jobStartedAt: null
       }
     });
   }

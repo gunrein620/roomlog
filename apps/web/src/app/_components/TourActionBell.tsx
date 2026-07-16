@@ -17,11 +17,12 @@ function actionLabel(action: OwnerTourAction): string {
     : `『${action.title}』 — 3D 제작 실패, 다시 업로드해주세요`;
 }
 
-// UPLOADED → 해당 자산의 정합 화면으로 직행. FAILED → 매물등록(영상·스플랫 재접수) 화면으로.
+// UPLOADED → 해당 자산의 정합 화면으로 직행. FAILED → 그 매물의 편집 화면(3D 재작업)으로 —
+// 새 매물 등록 폼(/sell)이 아니라 기존 매물에서 재큐잉하도록 listingId를 실어 보낸다.
 function actionHref(action: OwnerTourAction): string {
   return action.status === "UPLOADED"
     ? `/splat-tour/register?asset=${encodeURIComponent(action.assetId)}`
-    : "/sell";
+    : `/sell?listingId=${encodeURIComponent(action.listingId)}`;
 }
 
 export default function TourActionBell() {
