@@ -3,7 +3,7 @@
 // `ASSET_ID=... bash gpu-job.sh`로 실행한다. (스크립트 파일 자체는 W-C가 작성 — 여기선 경로만 맞춘다.)
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { SplatSourceKind } from "@roomlog/types";
+import type { SplatSourceKind } from "@roomlog/types/splat-pipeline";
 
 /** gpu-job.sh가 env로 받는 잡 파라미터. */
 export interface JobCommandParams {

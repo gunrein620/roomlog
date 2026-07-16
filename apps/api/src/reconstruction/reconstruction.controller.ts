@@ -9,7 +9,7 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus } from "@roomlog/types";
+import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus } from "@roomlog/types/splat-pipeline";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { SplatAssetService, type UploadedSplatAssetFile } from "../splat-asset/splat-asset.service";
 import { requireWorkerSecret } from "../splat-asset/worker-secret";

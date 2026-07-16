@@ -7,11 +7,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./ticket": "./src/ticket.ts",
-    "./payment": "./src/payment.ts"
+    "./payment": "./src/payment.ts",
+    "./splat-pipeline": "./src/splat-pipeline.ts"
   },
   "typesVersions": {
     "*": {
-      "payment": ["src/payment.ts"]
+      "payment": ["src/payment.ts"],
+      "splat-pipeline": ["src/splat-pipeline.ts"]
     }
   },
   "scripts": {

@@ -9,7 +9,7 @@
 import { Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { SPLAT_ASSET_UPDATED_EVENT, type SplatSourceKind } from "@roomlog/types";
+import { SPLAT_ASSET_UPDATED_EVENT, type SplatSourceKind } from "@roomlog/types/splat-pipeline";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import {
   GpuInstanceService,
