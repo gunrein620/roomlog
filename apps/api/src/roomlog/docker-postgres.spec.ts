@@ -68,4 +68,11 @@ describe("Docker Postgres local database wiring", () => {
       /ROBOFLOW_API_KEY\|VENDOR_ACTIVATION_KEY_PEPPER\|VENDOR_ACTIVATION_SESSION_SECRET/
     );
   });
+
+  it("prevents the migration container from consuming the remote deploy script stdin", () => {
+    assert.match(
+      deployWorkflowSource,
+      /compose -f docker-compose\.prod\.yml run --rm migration < \/dev\/null/
+    );
+  });
 });
