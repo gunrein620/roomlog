@@ -206,16 +206,18 @@ export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | n
 
   const percent = Math.round(analysis.confidence * 100);
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+    <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", padding: "var(--space-md)" }}>
       <div style={sectionTitle}>AI 책임 검토</div>
       <div style={{ fontSize: "var(--fs-subtitle)", fontWeight: "var(--fw-subtitle)" }}>
         {responsibilityLabel[analysis.responsibility]} {percent}%
       </div>
-      <div style={row}>
-        <Button variant="secondary">추가 정보 입력</Button>
-        {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
+      <div style={{ ...row, justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div style={row}>
+          <Button variant="secondary">추가 정보 입력</Button>
+          {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
+        </div>
+        <div style={muted}>AI 책임 검토는 참고용입니다.</div>
       </div>
-      <div style={{ ...muted, alignSelf: "flex-end" }}>AI 책임 검토는 참고용입니다.</div>
     </Card>
   );
 }
