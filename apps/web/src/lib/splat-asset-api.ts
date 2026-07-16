@@ -105,6 +105,22 @@ export async function intakeSplatAsset(input: IntakeSplatAssetInput): Promise<Sp
   return asJson<SplatAsset>(response);
 }
 
+/**
+ * 제작 실패(FAILED) 자산 재큐잉 — 파일 없이 호출하면 이미 저장된 원본으로 재시도(원클릭),
+ * 파일을 주면 원본을 교체 후 재시도(멀티파트). 서버가 status=PROCESSING·jobState=QUEUED로 되돌린다.
+ * intakeSplatAsset과 같은 멀티파트 규약(field `file`) — 인증은 쿠키→Bearer BFF 프록시가 처리한다.
+ */
+export async function requeueSplatAsset(id: string, file?: File): Promise<SplatAsset> {
+  const init: RequestInit = { method: "PATCH" };
+  if (file) {
+    const form = new FormData();
+    form.append("file", file);
+    init.body = form;
+  }
+  const response = await fetch(apiUrl(`/splat-assets/${encodeURIComponent(id)}/requeue`), init);
+  return asJson<SplatAsset>(response);
+}
+
 export async function getSplatAsset(id: string): Promise<SplatAsset> {
   const response = await fetch(apiUrl(`/splat-assets/${encodeURIComponent(id)}`), { cache: "no-store" });
   return asJson<SplatAsset>(response);

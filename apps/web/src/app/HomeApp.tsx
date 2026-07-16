@@ -78,7 +78,9 @@ import {
   demoMapItems,
   getListingPriceRows,
   isRemotePhoto,
+  LISTING_PHOTO_PLACEHOLDER,
   listingDetailAddressLabel,
+  listingRegisteredAgoLabel,
   mapListings,
   monthlyDealLabel,
   tradeListingToCard,
@@ -243,52 +245,7 @@ const notificationItems = [
   }
 ];
 
-const marketSignals = [
-  { label: "실매물 확인", value: "92%", caption: "최근 7일 확인율" },
-  { label: "문의 응답", value: "8분", caption: "파트너 평균" }
-];
-
-const conditionSummaryItems = [
-  { label: "예산", value: "보증금 1,000만 · 월세 130만 이하" },
-  { label: "입주", value: "즉시입주 · 풀옵션 우선" },
-  { label: "생활권", value: "내방역 도보 10분 · 주차 가능" }
-];
-
-const homeServiceActions = [
-  { label: "최근 본 방", value: "3개", body: "가격·위치 비교하기" },
-  { label: "문의 대기", value: "1건", body: "평균 8분 내 답변" },
-  { label: "방 내놓기", value: "무료", body: "집주인 등록 바로가기" }
-];
-
-
-const residentChecklist = [
-  { label: "등기·권리", value: "위험 낮음" },
-  { label: "관리비", value: "상세 공개" },
-  { label: "주변소음", value: "보통" },
-  { label: "채광", value: "남동향" }
-];
-
-const mapInsightItems = [
-  { label: "3D 가능", value: "12개", caption: "투어 우선 보기" }
-];
-
-
-const homeWebSummaryItems = [
-  { label: "중개사 응답", value: "평균 8분" },
-  { label: "오늘 확인", value: "39개" },
-  { label: "3D 가능", value: "12개" }
-];
-
-const aiBrokerSuggestions = [
-  { label: "방문 추천", value: "방배 루미에르", body: "예산·역세권·3D 투어 조건이 가장 잘 맞습니다." },
-  { label: "가격 주의", value: "관리비 확인", body: "월세가 낮은 매물은 관리비 포함 여부를 먼저 보세요." },
-  { label: "대체 후보", value: "성수 복층", body: "반려동물 조건을 유지하면 성수동 매물이 더 넓습니다." }
-];
-
-const neighborhoodRankItems = [
-  { rank: "1", label: "교통", value: "내방역 도보 5분" },
-  { rank: "2", label: "생활", value: "편의점 4곳 · 카페 7곳" }
-];
+// 하드코딩 데모 지표/추천/체크리스트 상수들 제거 — 데모 컨셉 정리(4d1010a8 후속)
 
 
 const DEFAULT_MAP_CONTEXT: MapSearchContext = {
@@ -865,7 +822,7 @@ const resetWindowScrollSoon = () => {
 /** 직접등록 매물을 지도 패널 아이템으로 투영 — 좌표 없으면 NaN(마커 제외, 목록에는 노출). */
 function tradeListingToMapItem(listing: TradeListing, index: number, total: number): MapPanelItem {
   const shortPrice =
-    listing.tradeType === "월세"
+    listing.tradeType === "월세" || listing.tradeType === "반전세"
       ? monthlyDealLabel(listing.depositManwon, listing.monthlyRentManwon)
       : tradePriceLabel(listing);
   return {
@@ -875,9 +832,9 @@ function tradeListingToMapItem(listing: TradeListing, index: number, total: numb
     meta: `${listing.roomType} · 집주인 직접`,
     distance: listing.location,
     detailAddress: listing.detailAddress,
-    updated: "방금 등록",
+    updated: listingRegisteredAgoLabel(listing.createdAt),
     flags: ["집주인 직접"],
-    image: (Array.isArray(listing.images) && listing.images[0]) || "/listing-studio.jpg",
+    image: (Array.isArray(listing.images) && listing.images[0]) || LISTING_PHOTO_PLACEHOLDER,
     lat: typeof listing.lat === "number" ? listing.lat : Number.NaN,
     lng: typeof listing.lng === "number" ? listing.lng : Number.NaN,
     mapLabel: shortPrice,
@@ -943,7 +900,7 @@ const agentCards = [
     rating: "평점 4.8",
     response: "평균 응답 8분",
     inventory: "확인매물 126개",
-    tags: ["헛걸음 보상", "현장촬영", "문자문의"]
+    tags: ["현장촬영", "문자문의"]
   },
   {
     name: "방배 스마트부동산",
@@ -955,10 +912,6 @@ const agentCards = [
   }
 ];
 
-const trustItems = [
-  { title: "주변 안전", body: "CCTV, 치안센터, 야간동선" },
-  { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
-];
 
 
 
@@ -1001,7 +954,7 @@ function SavedListingsSection({
                   <b>{listing.price}</b>
                   <strong>{listing.title}</strong>
                   <em>{listing.location}</em>
-                  <em>세부주소: {listingDetailAddressLabel(listing)}</em>
+                  {listing.detailAddress ? <em>세부주소: {listing.detailAddress}</em> : null}
                 </span>
               </button>
               <div>
@@ -1791,21 +1744,18 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       ? Math.round(marketAverageListings.reduce((total, listing) => total + listing.monthlyRent, 0) / marketAverageListings.length)
       : null;
   const mapMarketAreaLabel = isLocationScopedMap ? "현재 위치 주변" : mapAreaDisplayTitle;
+  // 지도 생활권 요약 — 전부 표시 매물 기준 실계산("3D 가능 12개" 같은 고정 수치 제거).
   const dynamicMapInsightItems = [
     {
       label: "전월세 평균",
       value: marketAverageRent !== null ? `월 ${marketAverageRent}만` : "매물 없음",
       caption: `${mapMarketAreaLabel} ${marketAverageBaseListings.length > 0 ? "원룸" : "표시 매물"} 기준`
     },
-    ...mapInsightItems
-  ];
-  const dynamicMarketSignals = [
     {
-      label: "전월세 평균",
-      value: marketAverageRent !== null ? `월 ${marketAverageRent}만` : "매물 없음",
-      caption: `${mapMarketAreaLabel} ${marketAverageBaseListings.length > 0 ? "원룸" : "표시 매물"} 기준`
-    },
-    ...marketSignals
+      label: "3D 가능",
+      value: `${visibleMapListings.filter((listing) => listing.has3DTour).length}개`,
+      caption: "투어 우선 보기"
+    }
   ];
   const mapScopeLabel = isLocationScopedMap
     ? "현재 위치"
@@ -2247,12 +2197,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     await runMapSearch(keyword, true);
   };
 
-  const applySavedCondition = async (condition: (typeof savedConditions)[number]) => {
-    setActiveCategory(condition.category);
-    setActiveQuickFilters(condition.filters);
-    await selectSearchArea(condition.area);
-  };
-
   useEffect(() => {
     if (activeRole && !authMode) {
       resetWindowScrollSoon();
@@ -2313,18 +2257,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       // /inquiry?thread=<id>처럼 경로 진입 + 스레드 지목 — 파라미터만 정리한다.
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
     } else if (initialTab === "home" && window.location.pathname === "/") {
-      // 새로고침이 홈으로 튕기지 않게 — 이 탭에서 마지막으로 보던 탭/역할을 복원한다(딥링크와 같은 취급).
-      // 탭 경로(/map 등)로 직접 들어온 경우엔 그 경로가 진실이므로 복원하지 않는다.
-      const storedTab = normalizeAppTab(window.sessionStorage.getItem("woozuLastTab"));
+      // URL이 진실 — "/"로 들어오면 홈을 보여준다. 탭 전환은 pushState로 경로를 남기므로
+      // 새로고침은 어차피 그 경로(/map 등)로 복원된다. 이전의 "마지막 탭 복원"은
+      // 링크 공유·주소창 직접 진입 때 홈 대신 엉뚱한 탭이 떠서 제거했다.
+      // 역할 프리뷰만 세션에서 복원한다(네비 구성 유지, 화면은 홈).
       const storedRole = normalizeAppRole(window.sessionStorage.getItem("woozuLastRole"));
       if (storedRole && storedRole !== "seeker") {
         urlRoleAppliedRef.current = true;
         setIsDevRolePreview(true);
         setActiveRole(storedRole);
-      }
-      if (storedTab && storedTab !== "home") {
-        setActiveTab(storedTab);
-        window.history.replaceState(null, "", TAB_PATHS[storedTab]);
       }
     }
     setIsRouteReady(true);
@@ -2624,20 +2565,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                     </button>
                   </article>
                 ))}
-                <article className="home-web-summary-card" aria-label="방배동 생활권 요약">
-                  <span>방배동 생활권 요약</span>
-                  <h3>방문 전에 확인할 핵심 정보</h3>
-                  <p>시세, 안전, 중개사 응답, 3D 가능 매물을 한 화면에서 같이 비교합니다.</p>
-                  <div>
-                    {homeWebSummaryItems.map((item) => (
-                      <strong key={item.label}>
-                        <small>{item.label}</small>
-                        {item.value}
-                      </strong>
-                    ))}
-                  </div>
-                  <button type="button" onClick={() => activateTab("map")}>지도에서 비교하기</button>
-                </article>
+                {/* "방배동 생활권 요약"(평균 8분·39개 등 하드코딩 수치) 카드 제거 — 데모 컨셉 정리 */}
               </>
             ) : (
               <article className="listing-empty-card">
@@ -2653,67 +2581,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             )}
           </div>
 
-          <section className="condition-summary-card" aria-label="내 검색 조건 요약">
-            <div className="condition-summary-head">
-              <div>
-                <span>내 조건 요약</span>
-                <strong>{selectedAreaTitle}에서 바로 볼 만한 방</strong>
-              </div>
-              <button type="button" onClick={() => setIsFilterSheetOpen(true)}>수정</button>
-            </div>
-            <div className="condition-summary-list">
-              {conditionSummaryItems.map((item) => (
-                <article key={item.label}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="ai-broker-card" aria-label="AI중개사 추천">
-            <div className="ai-broker-head">
-              <div>
-                <span>AI중개사 추천</span>
-                <h2>조건을 읽고 먼저 볼 방을 골랐어요</h2>
-              </div>
-              <button type="button" onClick={() => openListing(listings[0])}>1순위 보기</button>
-            </div>
-            <div className="ai-broker-list">
-              {aiBrokerSuggestions.map((item) => (
-                <article key={item.label}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                  <p>{item.body}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="saved-condition-panel" aria-label="저장한 검색 조건">
-            <div>
-              <strong>조건 저장</strong>
-              <span>맞는 방이 올라오면 바로 확인</span>
-            </div>
-            <div className="saved-condition-list">
-              {savedConditions.map((condition) => (
-                <button type="button" key={condition.label} onClick={() => applySavedCondition(condition)}>
-                  {condition.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="market-signal-grid" aria-label="지역 매물 지표">
-            {dynamicMarketSignals.map((item) => (
-              <article key={item.label}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.caption}</p>
-              </article>
-            ))}
-          </section>
-
+          {/* 하드코딩 데모 컨셉 섹션(내 조건 요약·AI중개사 추천·저장한 검색 조건·지역 지표) 제거 —
+              가짜 수치가 실데이터처럼 보이던 문제. 실데이터가 생기면 그때 실계산으로 되살린다. */}
           <article className="map-entry-card">
             <div className="map-entry-copy">
               <span>지도 기반 검색</span>
@@ -2731,74 +2600,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             </div>
           </article>
 
-          <section className="home-action-panel" aria-label="빠른 서비스 메뉴">
-            {homeServiceActions.map((action) => (
-              <button
-                type="button"
-                key={action.label}
-                onClick={() => {
-                  if (action.label === "최근 본 방") {
-                    openListing(listings[0]);
-                    return;
-                  }
-
-                  if (action.label === "문의 대기") {
-                    activateTab("inquiry");
-                    return;
-                  }
-
-                  // "방 내놓기" → 매물등록
-                  activateTab("sell");
-                }}
-              >
-                <span>{action.label}</span>
-                <strong>{action.value}</strong>
-                <small>{action.body}</small>
-              </button>
-            ))}
-          </section>
-
-          <section className="trust-grid" aria-label="신뢰 정보">
-            {trustItems.map((item) => (
-              <article key={item.title}>
-                <strong>{item.title}</strong>
-                <p>{item.body}</p>
-              </article>
-            ))}
-          </section>
-
-          <section className="resident-check-card" aria-label="실거주 체크">
-            <div>
-              <span>실거주 체크</span>
-              <h2>사진만으로 놓치기 쉬운 정보를 먼저 확인해요</h2>
-              <p>권리관계, 관리비, 소음, 채광처럼 방문 전에 걸러야 할 항목을 매물 카드와 함께 봅니다.</p>
-            </div>
-            <div className="resident-check-grid">
-              {residentChecklist.map((item) => (
-                <article key={item.label}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="neighborhood-rank-card" aria-label="동네정보 랭킹">
-            <div>
-              <span>동네정보 랭킹</span>
-              <h2>{selectedAreaTitle} 생활 점수</h2>
-              <p>교통, 생활, 안전 정보를 방문 전에 빠르게 비교합니다.</p>
-            </div>
-            <div className="neighborhood-rank-list">
-              {neighborhoodRankItems.map((item) => (
-                <article key={item.label}>
-                  <b>{item.rank}</b>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                </article>
-              ))}
-            </div>
-          </section>
+          {/* 하드코딩 데모 컨셉 섹션(빠른 서비스 메뉴·신뢰 정보·실거주 체크·동네정보 랭킹) 제거 —
+              가짜 수치("최근 본 방 3개")와 미구현 약속("헛걸음 보상")이 실기능처럼 보이던 문제. */}
         </section>
         ) : null}
 
@@ -2948,10 +2751,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 <span>3D 가능</span>
                 <strong>{visibleMapListings.filter((listing) => listing.has3DTour).length}개</strong>
               </article>
-              <article>
-                <span>평균 응답</span>
-                <strong>{visibleMapListings.length > 0 ? "8분" : "정보 없음"}</strong>
-              </article>
+              {/* "평균 응답 8분" 하드코딩 지표 제거 — 실측 데이터가 생기면 되살린다 */}
             </section>
 
             {activeMapResultTab === "rooms" ? (
@@ -2985,18 +2785,19 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                           role="img"
                           aria-label={`${listing.title} 썸네일`}
                         >
-                          <span>확인매물</span>
+                          {/* 검증 절차를 거치지 않은 직접등록 매물에 "확인매물" 신뢰 배지를 붙이지 않는다 */}
+                          <span>{listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX) ? "직접 등록" : "확인매물"}</span>
                         </div>
                         <div className="map-listing-copy">
                           <div className="map-card-badge-row">
-                            <span>실매물 확인</span>
+                            <span>{listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX) ? "집주인 직접" : "실매물 확인"}</span>
                             <span>{listing.updated}</span>
                           </div>
                           <h3 title={listing.title}>{listing.title}</h3>
                           <strong className={listing.dealTone === "jeonse" ? "map-price-text is-jeonse" : "map-price-text"}>{listing.price}</strong>
                           <p>{listing.meta}</p>
                           <small>{mapListingDistanceLabel(listing)}</small>
-                          <small>세부주소: {listingDetailAddressLabel(listing)}</small>
+                          {listing.detailAddress?.trim() ? <small>세부주소: {listing.detailAddress.trim()}</small> : null}
                           <div className="map-card-tags">
                             {listing.flags.map((flag) => (
                               <em key={flag}>{flag}</em>

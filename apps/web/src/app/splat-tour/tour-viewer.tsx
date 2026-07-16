@@ -4,9 +4,11 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { Armchair, ChevronDown, Footprints, UploadCloud } from "lucide-react";
+import { Armchair, ChevronDown, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
+import { TourJoystick, type TourJoystickVector } from "./tour-joystick";
+import type { TourMoveInput } from "./tour-camera";
 import { SplatDropzone } from "./splat-dropzone";
 import { loadViewerFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
 import { SplatFurnitureLayer } from "./splat-furniture-layer";
@@ -15,7 +17,6 @@ import { loadPlanWallsFromBrowser, wallsToPlanBounds, type PlanBounds } from "./
 import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
-import { DEMO_PRESETS } from "./tour-presets";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
 import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
@@ -64,7 +65,12 @@ export default function TourViewer() {
   const [isLoadingVisible, setIsLoadingVisible] = useState(true);
   const [showHint, setShowHint] = useState(true);
   const [isDropzoneOpen, setIsDropzoneOpen] = useState(false);
-  const [isWalkMode, setIsWalkMode] = useState(false);
+  // 이동 입력 방식 분기: coarse pointer(터치)면 화면 조이스틱, fine pointer면 WASD. 마운트 후
+  // matchMedia로 판정(SSR 안전 — 초기값 false, effect에서 갱신).
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+  // 조이스틱 아날로그 이동 입력. TourCamera가 매 프레임 ref.current를 읽어 WASD와 합산하므로
+  // state가 아닌 ref로 들고 리렌더 없이 갱신한다(놓으면 0,0).
+  const moveInputRef = useRef<TourMoveInput>({ forward: 0, strafe: 0 });
   const [minimapPosition, setMinimapPosition] = useState<{ x: number; y: number } | null>(null);
   const [showFurniture, setShowFurniture] = useState(true);
   const [furnitureState, setFurnitureState] = useState<SplatFurnitureState>({
@@ -100,6 +106,21 @@ export default function TourViewer() {
     },
     [planBounds]
   );
+
+  // 조이스틱 → 아날로그 이동 ref. null(놓음)이면 정지(0,0). setState가 아니라 ref 갱신이라
+  // 매 프레임 리렌더가 없다 — TourCamera의 RAF 루프가 값을 직접 읽는다.
+  const handleJoystickChange = useCallback((vector: TourJoystickVector | null) => {
+    moveInputRef.current = vector ?? { forward: 0, strafe: 0 };
+  }, []);
+
+  // 터치/coarse pointer 감지(마운트 후). 하이브리드 기기 대응으로 maxTouchPoints도 함께 본다.
+  useEffect(() => {
+    const query = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsCoarsePointer(query.matches || navigator.maxTouchPoints > 0);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   const initialCamera: [number, number, number] = SPAWN_VIEW.position;
 
@@ -633,11 +654,11 @@ export default function TourViewer() {
         ) : null}
         <TourCamera
           activeId={activeId}
+          moveInputRef={moveInputRef}
           onArrive={setActiveId}
           onCameraMove={handleCameraMove}
-          presets={DEMO_PRESETS}
+          presets={[]}
           spawnView={SPAWN_VIEW}
-          walkMode={isWalkMode}
           walkBounds={planBounds}
         />
       </Canvas>
@@ -678,15 +699,17 @@ export default function TourViewer() {
       ) : null}
 
       <p className={`tour-hint${isLoaded && showHint ? "" : " is-hidden"}`}>
-        드래그로 둘러보고, 아래 버튼으로 이동하세요
+        {isCoarsePointer ? "조이스틱으로 이동 · 드래그로 둘러보기" : "WASD로 이동 · 드래그로 둘러보기"}
       </p>
+
+      {isCoarsePointer ? <TourJoystick onChange={handleJoystickChange} /> : null}
 
       <div className="tour-minimap-dock">
         <TourMinimap
           activeId={activeId}
           livePosition={minimapPosition}
           onSelect={setActiveId}
-          presets={DEMO_PRESETS}
+          presets={[]}
         />
       </div>
 
@@ -708,36 +731,8 @@ export default function TourViewer() {
         ) : null}
       </div>
 
-      <div
-        role="group"
-        aria-label="시점 프리셋"
-        className="tour-preset-bar"
-      >
-        {DEMO_PRESETS.map((preset) => {
-          const isActive = preset.id === activeId;
-          return (
-            <button
-              aria-pressed={isActive}
-              className={`tour-preset-button${isActive ? " is-active" : ""}`}
-              key={preset.id}
-              onClick={() => setActiveId(preset.id)}
-              type="button"
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-        <span aria-hidden className="tour-preset-divider" />
-        <button
-          aria-pressed={isWalkMode}
-          className={`tour-walk-toggle${isWalkMode ? " is-active" : ""}`}
-          onClick={() => setIsWalkMode((current) => !current)}
-          type="button"
-        >
-          <Footprints aria-hidden size={16} strokeWidth={2.4} />
-          <span>걷기</span>
-        </button>
-        {furnitureState.furnitures.length > 0 ? (
+      {furnitureState.furnitures.length > 0 ? (
+        <div role="group" aria-label="3D 투어 옵션" className="tour-preset-bar">
           <button
             aria-pressed={showFurniture}
             className={`tour-walk-toggle${showFurniture ? " is-active" : ""}`}
@@ -747,8 +742,8 @@ export default function TourViewer() {
             <Armchair aria-hidden size={16} strokeWidth={2.4} />
             <span>가구</span>
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

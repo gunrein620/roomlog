@@ -121,6 +121,7 @@ export class PrismaStoreProjector implements StoreProjector {
       intakeSessions,
       complaints,
       tickets,
+      managerTicketReads,
       feedback,
       repairs,
       costs,
@@ -183,6 +184,7 @@ export class PrismaStoreProjector implements StoreProjector {
       }),
       this.prisma.complaint.findMany(),
       this.prisma.ticket.findMany(),
+      this.prisma.managerTicketRead.findMany(),
       this.prisma.aiFeedback.findMany(),
       this.prisma.repairRequest.findMany(),
       this.prisma.cost.findMany(),
@@ -621,6 +623,11 @@ export class PrismaStoreProjector implements StoreProjector {
         createdAt: asIso(ticket.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(ticket.updatedAt) ?? new Date().toISOString()
       })),
+      managerTicketReads: managerTicketReads.map((read) => ({
+        managerId: read.managerId,
+        ticketId: read.ticketId,
+        readAt: asIso(read.readAt) ?? new Date().toISOString()
+      })),
       repairs: repairs.map((repair) => ({
         id: repair.id,
         ticketId: repair.ticketId,
@@ -1036,6 +1043,10 @@ export class PrismaStoreProjector implements StoreProjector {
       );
 
       for (const user of store.users) {
+        // 빈 passwordHash는 DB의 실제 해시를 절대 덮어쓰지 않는다 —
+        // DB 모드에서 JSON 백업은 해시를 레닥션해 저장하므로, RDS 순단으로 JSON 폴백 부팅한
+        // 스냅샷이 프로젝션될 때 빈 해시가 원본(DB) 해시를 지워 전 계정 로그인이 깨지는 사고 방지.
+        const hasPasswordHash = Boolean(user.passwordHash);
         await tx.userAccount.upsert({
           where: { id: user.id },
           create: {
@@ -1050,7 +1061,7 @@ export class PrismaStoreProjector implements StoreProjector {
           },
           update: {
             email: user.email,
-            passwordHash: user.passwordHash,
+            ...(hasPasswordHash ? { passwordHash: user.passwordHash } : {}),
             name: user.name,
             phone: user.phone,
             role: toPrismaUserRole(user.role),
@@ -1881,6 +1892,25 @@ export class PrismaStoreProjector implements StoreProjector {
             }
           });
         }
+      }
+
+      for (const read of store.managerTicketReads ?? []) {
+        await tx.managerTicketRead.upsert({
+          where: {
+            managerId_ticketId: {
+              managerId: read.managerId,
+              ticketId: read.ticketId
+            }
+          },
+          create: {
+            managerId: read.managerId,
+            ticketId: read.ticketId,
+            readAt: asDate(read.readAt)
+          },
+          update: {
+            readAt: asDate(read.readAt)
+          }
+        });
       }
 
       for (const feedback of store.aiFeedback) {

@@ -29,7 +29,10 @@ export function hashPassword(password: string, salt = randomBytes(12).toString("
 }
 
 export function verifyPassword(password: string, storedHash: string) {
-  const [salt, key] = storedHash.split(":");
+  // 빈/깨진 해시(레닥션된 JSON 폴백 부팅, 손상 데이터)는 500 크래시가 아니라 조용한 불일치(401)로.
+  const [salt, key] = (storedHash ?? "").split(":");
+  if (!salt || !key) return false;
+
   const actual = Buffer.from(hashPassword(password, salt).split(":")[1], "hex");
   const expected = Buffer.from(key, "hex");
 

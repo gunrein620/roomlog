@@ -4,7 +4,7 @@ import type { ManagerListingFloorPlan } from "./manager-listing-media";
 export interface ManagerListingUpdateInput {
   title: string;
   roomType: string;
-  tradeType: "월세" | "전세" | "매매";
+  tradeType: "월세" | "반전세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;

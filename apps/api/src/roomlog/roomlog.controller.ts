@@ -1376,6 +1376,18 @@ export class RoomlogController {
     return this.roomlogService.listTicketsForManager(user.id);
   }
 
+  @Post("manager/tickets/:ticketId/read")
+  markManagerTicketRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = this.roomlogService.markManagerTicketRead(user.id, ticketId);
+    this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+
+    return result;
+  }
+
   @Get("manager/bills/dashboard")
   getManagerBillDashboard(
     @Headers("authorization") authorization?: string,

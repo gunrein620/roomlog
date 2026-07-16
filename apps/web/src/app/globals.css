@@ -3987,12 +3987,28 @@ p {
   font-size: 0.9rem;
 }
 
-.tour-room-box-empty em {
-  position: absolute;
-  left: 50%;
-  bottom: -56px;
-  transform: translateX(-50%);
-  white-space: nowrap;
+/* 3D 미연결 안내 — 텍스트는 3D 변형 밖(.tour-room-empty-copy)에서 평평하게 쌓는다 */
+.tour-room-empty-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 34px;
+  padding-bottom: 12px;
+}
+
+.tour-room-empty-copy {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.tour-room-empty-copy strong {
+  color: var(--blue);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.tour-room-empty-copy em {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;

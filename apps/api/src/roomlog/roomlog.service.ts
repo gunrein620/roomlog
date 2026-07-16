@@ -796,6 +796,7 @@ export type Store = {
   complaints: Complaint[];
   analyses: Record<string, AiAnalysis>;
   tickets: Ticket[];
+  managerTicketReads?: ManagerTicketRead[];
   repairs: RepairRequest[];
   costs: Cost[];
   receipts: Receipt[];
@@ -818,6 +819,12 @@ export type Store = {
   moveoutDisputes: MoveoutDispute[];
   moveoutReportAudits: MoveoutReportAuditEntry[];
   history: StatusHistory[];
+};
+
+export type ManagerTicketRead = {
+  managerId: string;
+  ticketId: string;
+  readAt: string;
 };
 
 export type StoreProjector = {
@@ -5728,7 +5735,7 @@ export class RoomlogService implements OnModuleDestroy {
   listTicketsForManager(managerId: string) {
     return this.store.tickets
       .filter((ticket) => this.canManagerAccessRoom(managerId, ticket.roomId))
-      .map((ticket) => this.presentTicket(ticket));
+      .map((ticket) => this.presentTicketForManager(managerId, ticket));
   }
 
   queryManagerAssistant(
@@ -5858,7 +5865,28 @@ export class RoomlogService implements OnModuleDestroy {
     const ticket = this.findTicket(ticketId);
     this.assertManagerCanAccessTicket(managerId, ticket);
 
-    return this.presentTicket(ticket);
+    return this.presentTicketForManager(managerId, ticket);
+  }
+
+  markManagerTicketRead(managerId: string, ticketId: string) {
+    const ticket = this.findTicket(ticketId);
+    this.assertManagerCanAccessTicket(managerId, ticket);
+    const reads =
+      this.store.managerTicketReads ??
+      (this.store.managerTicketReads = []);
+    const readAt = now();
+    const existing = reads.find(
+      (read) => read.managerId === managerId && read.ticketId === ticketId,
+    );
+
+    if (existing) {
+      existing.readAt = readAt;
+    } else {
+      reads.push({ managerId, ticketId, readAt });
+    }
+
+    this.persistStore();
+    return this.presentTicketForManager(managerId, ticket);
   }
 
   getTenantRoomTimeline(tenantId: string) {
@@ -9578,6 +9606,7 @@ export class RoomlogService implements OnModuleDestroy {
       })),
       messagingAnnouncements: parsed.messagingAnnouncements ?? [],
       messagingAnnouncementDeliveries: parsed.messagingAnnouncementDeliveries ?? [],
+      managerTicketReads: parsed.managerTicketReads ?? [],
       managerReports: (parsed.managerReports ?? []).map((report) => ({
         ...report,
         scope: {
@@ -9853,6 +9882,8 @@ export class RoomlogService implements OnModuleDestroy {
           Array.isArray(snapshot.messagingAnnouncements)) &&
         (snapshot.messagingAnnouncementDeliveries === undefined ||
           Array.isArray(snapshot.messagingAnnouncementDeliveries)) &&
+        (snapshot.managerTicketReads === undefined ||
+          Array.isArray(snapshot.managerTicketReads)) &&
         (snapshot.managerReports === undefined || Array.isArray(snapshot.managerReports)) &&
         (snapshot.managerReportSourceReferences === undefined ||
           Array.isArray(snapshot.managerReportSourceReferences)) &&
@@ -12668,6 +12699,18 @@ export class RoomlogService implements OnModuleDestroy {
       history: this.store.history.filter((history) => history.ticketId === ticket.id),
       roomTimeline: this.presentRoomTimeline(ticket.roomId),
       callbot: this.presentCallbotContext(ticket)
+    };
+  }
+
+  private presentTicketForManager(managerId: string, ticket: Ticket) {
+    const managerReadAt = this.store.managerTicketReads?.find(
+      (read) => read.managerId === managerId && read.ticketId === ticket.id,
+    )?.readAt;
+
+    return {
+      ...this.presentTicket(ticket),
+      managerReadAt,
+      isManagerUnread: !managerReadAt,
     };
   }
 

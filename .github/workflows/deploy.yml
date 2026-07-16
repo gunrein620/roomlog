@@ -59,6 +59,10 @@ jobs:
           AWS_ACCESS_KEY_ID: "${{ secrets.AWS_ACCESS_KEY_ID }}"
           AWS_SECRET_ACCESS_KEY: "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
           CLOUDFRONT_BASE_URL: "${{ secrets.CLOUDFRONT_BASE_URL }}"
+          GPU_PIPELINE_ENABLED: "${{ secrets.GPU_PIPELINE_ENABLED }}"
+          GPU_INSTANCE_ID: "${{ secrets.GPU_INSTANCE_ID }}"
+          GPU_REGION: "${{ secrets.GPU_REGION }}"
+          GPU_WORKER_SECRET: "${{ secrets.GPU_WORKER_SECRET }}"
           MOLIT_SERVICE_KEY: "${{ secrets.MOLIT_SERVICE_KEY }}"
           ROBOFLOW_API_KEY: "${{ secrets.ROBOFLOW_API_KEY }}"
           VENDOR_ACTIVATION_KEY_PEPPER: "${{ secrets.VENDOR_ACTIVATION_KEY_PEPPER }}"
@@ -181,9 +185,31 @@ jobs:
             CLOUDFRONT_BASE_URL="$(read_prod_env_key CLOUDFRONT_BASE_URL)"
           fi
 
+          # GPU 오케스트레이터 — 개별 secret 우선, 없으면 PROD_ENV에서 읽는다.
+          # 네 값이 모두 있어야 앱에서 활성화되므로 미등록 환경은 안전하게 비활성 상태를 유지한다.
+          GPU_PIPELINE_ENABLED="${GPU_PIPELINE_ENABLED:-}"
+          if [ -z "$GPU_PIPELINE_ENABLED" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_PIPELINE_ENABLED="$(read_prod_env_key GPU_PIPELINE_ENABLED)"
+          fi
+
+          GPU_INSTANCE_ID="${GPU_INSTANCE_ID:-}"
+          if [ -z "$GPU_INSTANCE_ID" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_INSTANCE_ID="$(read_prod_env_key GPU_INSTANCE_ID)"
+          fi
+
+          GPU_REGION="${GPU_REGION:-}"
+          if [ -z "$GPU_REGION" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_REGION="$(read_prod_env_key GPU_REGION)"
+          fi
+
+          GPU_WORKER_SECRET="${GPU_WORKER_SECRET:-}"
+          if [ -z "$GPU_WORKER_SECRET" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_WORKER_SECRET="$(read_prod_env_key GPU_WORKER_SECRET)"
+          fi
+
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|KAKAO_LOGIN_REST_API_KEY|KAKAO_LOGIN_CLIENT_SECRET|KAKAO_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY|VENDOR_ACTIVATION_KEY_PEPPER|VENDOR_ACTIVATION_SESSION_SECRET)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|KAKAO_LOGIN_REST_API_KEY|KAKAO_LOGIN_CLIENT_SECRET|KAKAO_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|GPU_PIPELINE_ENABLED|GPU_INSTANCE_ID|GPU_REGION|GPU_WORKER_SECRET|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY|VENDOR_ACTIVATION_KEY_PEPPER|VENDOR_ACTIVATION_SESSION_SECRET)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -233,6 +259,18 @@ jobs:
           fi
           if [ -n "$CLOUDFRONT_BASE_URL" ]; then
             echo "CLOUDFRONT_BASE_URL=${CLOUDFRONT_BASE_URL}" >> .env.production
+          fi
+          if [ -n "$GPU_PIPELINE_ENABLED" ]; then
+            echo "GPU_PIPELINE_ENABLED=${GPU_PIPELINE_ENABLED}" >> .env.production
+          fi
+          if [ -n "$GPU_INSTANCE_ID" ]; then
+            echo "GPU_INSTANCE_ID=${GPU_INSTANCE_ID}" >> .env.production
+          fi
+          if [ -n "$GPU_REGION" ]; then
+            echo "GPU_REGION=${GPU_REGION}" >> .env.production
+          fi
+          if [ -n "$GPU_WORKER_SECRET" ]; then
+            echo "GPU_WORKER_SECRET=${GPU_WORKER_SECRET}" >> .env.production
           fi
 
       - name: Deploy to EC2

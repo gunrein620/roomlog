@@ -10,17 +10,27 @@ const { Client } = pg;
 
 const currentFile = fileURLToPath(import.meta.url);
 const repositoryRoot = resolve(dirname(currentFile), "../../..");
+const apiRoot = join(repositoryRoot, "apps/api");
+const prismaExecutable = join(apiRoot, "node_modules/.bin/prisma");
 const migrationsRoot = join(repositoryRoot, "prisma/migrations");
 const baselinePath = join(
   repositoryRoot,
   "apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql"
 );
-const SUPPORTED_POSTGRES_SERVER_VERSION_NUM = "180003";
+// 마이그레이션 카탈로그 계약은 PostgreSQL 18 메이저 기준 — 18.3 이상, 19 미만을 허용한다.
+// 정확 핀(=== 180003)은 RDS 마이너 자동 패치(예: 18.4)만으로 다음 배포가 깨지는 지뢰라 범위로 완화.
+const MIN_POSTGRES_SERVER_VERSION_NUM = 180003;
+const EXCLUSIVE_MAX_POSTGRES_SERVER_VERSION_NUM = 190000;
 
 export const assertSupportedPostgresVersion = (serverVersionNum) => {
-  if (String(serverVersionNum) !== SUPPORTED_POSTGRES_SERVER_VERSION_NUM) {
+  const version = Number(serverVersionNum);
+  if (
+    !Number.isFinite(version) ||
+    version < MIN_POSTGRES_SERVER_VERSION_NUM ||
+    version >= EXCLUSIVE_MAX_POSTGRES_SERVER_VERSION_NUM
+  ) {
     throw new Error(
-      `Migration catalog contract requires PostgreSQL 18.3 (server_version_num 180003); connected server reports ${serverVersionNum}`
+      `Migration catalog contract requires PostgreSQL 18.3+ (18.x, server_version_num in [180003, 190000)); connected server reports ${serverVersionNum}`
     );
   }
 };
@@ -764,10 +774,10 @@ const detectPendingArtifacts = async (client, pendingNames) => {
 
 const runPrisma = (args, databaseUrl) => {
   const result = spawnSync(
-    "pnpm",
-    ["--filter", "api", "exec", "prisma", ...args, "--config", "../../prisma.config.ts"],
+    prismaExecutable,
+    [...args, "--config", "prisma.config.mjs"],
     {
-      cwd: repositoryRoot,
+      cwd: apiRoot,
       env: { ...process.env, DATABASE_URL: databaseUrl },
       encoding: "utf8"
     }

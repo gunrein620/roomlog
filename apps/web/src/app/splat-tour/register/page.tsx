@@ -5,7 +5,6 @@ import { OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef } from "react";
 import { SplatScene, loadSplatTuningProfile, type SplatTuningProfile } from "../splat-scene";
 import { composeWithPickViewTuning, solveSimilarity } from "../similarity-solve";
-import { SPLAT_CLIP_ROOM } from "../splat-clip";
 import {
   loadPlanWallsFromBrowser,
   persistTourUploadPlanWalls,
@@ -363,7 +362,7 @@ export default function Page() {
                   ? `매물 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
                   : planSource === "storage"
                     ? `에디터 저장 도면 사용 중 (벽 ${planWalls?.length ?? 0}개)`
-                    : planMessage || "도면 없음 — 3×4m 플레이스홀더 사용 중"}
+                    : planMessage || "도면 없음 — 정합 건너뜀 (3D는 그대로 표시)"}
             </span>
           </div>
           <PlanPicker walls={planWalls} picks={planPicks} onPick={(x, y) => addPick("plan", { x, y })} />
@@ -453,7 +452,8 @@ function PickPlane({ onPick }: { onPick: (x: number, z: number) => void }) {
   );
 }
 
-// 도면 2D SVG. 실벽(walls)이 있으면 발자국 폴리곤을 그리고, 없으면 3m×4m 플레이스홀더 사각형.
+// 도면 2D SVG. 실벽(walls)이 있으면 발자국 폴리곤을 그린다. 도면이 없으면 가짜
+// 플레이스홀더 박스를 깔지 않고 "도면 없음" 빈 상태를 보여준다(정합 건너뜀).
 // 클릭 → 도면 프레임 미터 좌표(투어 월드와 동일 프레임 — 벽·가구·미니맵이 쓰는 그 좌표계).
 function PlanPicker({
   walls,
@@ -464,11 +464,22 @@ function PlanPicker({
   picks: Point2[];
   onPick: (x: number, y: number) => void;
 }) {
-  const bounds = walls && walls.length > 0 ? wallsToPlanBounds(walls) : null;
-  const minX = bounds ? bounds.minX : -SPLAT_CLIP_ROOM.width / 2;
-  const minZ = bounds ? bounds.minZ : -SPLAT_CLIP_ROOM.depth / 2;
-  const width = bounds ? bounds.width : SPLAT_CLIP_ROOM.width;
-  const depth = bounds ? bounds.depth : SPLAT_CLIP_ROOM.depth;
+  if (!walls || walls.length === 0) {
+    return (
+      <div style={canvasWrap}>
+        <div style={planEmptyState}>
+          <strong style={{ fontSize: 14, color: "#334155" }}>도면 없음</strong>
+          <span>정합할 도면이 없어 이 단계를 건너뜁니다. 3D는 그대로 표시됩니다.</span>
+          <span style={{ fontSize: 12 }}>매물에 도면을 추가하면 이 자산과 정합할 수 있어요.</span>
+        </div>
+      </div>
+    );
+  }
+  const bounds = wallsToPlanBounds(walls);
+  const minX = bounds.minX;
+  const minZ = bounds.minZ;
+  const width = bounds.width;
+  const depth = bounds.depth;
   // 큰 도면이 패널을 넘지 않게 스케일 캡 (기본 70px/m)
   const scale = Math.min(PLAN_PX_PER_M, 520 / Math.max(width, 0.5), 420 / Math.max(depth, 0.5));
   const w = width * scale;
@@ -489,21 +500,17 @@ function PlanPicker({
           onPick(Number(x.toFixed(3)), Number(y.toFixed(3)));
         }}
       >
-        {walls && walls.length > 0 ? (
-          walls.map((wall) => (
-            <polygon
-              key={wall.id}
-              points={planWallFootprint(wall)
-                .map((c) => `${pad + (c.x - minX) * scale},${pad + (c.z - minZ) * scale}`)
-                .join(" ")}
-              fill="#cbd5e1"
-              stroke="#64748b"
-              strokeWidth={1}
-            />
-          ))
-        ) : (
-          <rect x={pad} y={pad} width={w} height={h} fill="none" stroke="#94a3b8" strokeWidth={2} rx={6} />
-        )}
+        {walls.map((wall) => (
+          <polygon
+            key={wall.id}
+            points={planWallFootprint(wall)
+              .map((c) => `${pad + (c.x - minX) * scale},${pad + (c.z - minZ) * scale}`)
+              .join(" ")}
+            fill="#cbd5e1"
+            stroke="#64748b"
+            strokeWidth={1}
+          />
+        ))}
         {picks.map((p, i) => (
           <circle
             key={i}
@@ -545,6 +552,22 @@ const canvasWrap: CSSProperties = {
 };
 const footer: CSSProperties = { display: "flex", flexDirection: "column", gap: 8 };
 const muted: CSSProperties = { color: "#64748b", fontSize: 13 };
+const planEmptyState: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  height: "100%",
+  minHeight: 200,
+  padding: 24,
+  color: "#64748b",
+  fontSize: 13,
+  border: "1px dashed #cbd5e1",
+  borderRadius: 8,
+  background: "var(--surface, #f8fafc)"
+};
 const assetBannerStyle: CSSProperties = {
   border: "1px solid",
   borderRadius: 8,

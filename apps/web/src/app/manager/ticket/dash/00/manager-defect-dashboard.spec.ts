@@ -136,6 +136,8 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.doesNotMatch(pageSource, /MANAGER_DEFECT_DASHBOARD_DEMO_ROWS/);
   assert.match(pageSource, /listManagerTicketRows/);
   assert.match(componentSource, /initialTemplate/);
+  assert.match(componentSource, /markManagerTicketRead/);
+  assert.match(componentSource, /void markManagerTicketRead\(row\.ticket\.id\)/);
   assert.match(componentSource, /disabled/);
   assert.match(componentSource, /row\.buildingName \?\? "—"/);
   assert.match(componentSource, /const buildings/);
@@ -205,12 +207,12 @@ test("manager defect dashboard matches the approved body with the ticket sidebar
   assert.match(componentSource, /"민원\/하자 관리"/);
   assert.equal(
     sha256(sidebarSource),
-    // 2026-07-14 dev 병합: 통합 대시보드 하위 탭 제거에 맞춰 스크롤스파이와 해시 추적 제거.
-    "7ca63c953c5f9650ee771a02426c5cfe8591532e1ccde8529f2437888b54bb0c",
+    // 2026-07-16: 민원·하자 미확인 배지와 접근성 레이블을 사이드바에 추가.
+    "6105a849a871ec677cb1173d1c57b9006b1c087a71bc240d0f63bd08f1144a20",
   );
   assert.equal(
     sha256(navigationSource),
-    // 2026-07-14 dev 병합: 통합 대시보드 children 제거와 티켓 ticketView 개편이 합쳐진 소스.
-    "bf440768d0228e20323a71ecbfcbe7f16ce8ec2ea8feef6a9024a91ceef99b76",
+    // 2026-07-16 kms-manager-chat 기준 티켓 내비게이션 소스.
+    "6757c4f9932ccb15dbe875350c2caf42faeb16f054dffe5d16ee88a5b900c775",
   );
 });

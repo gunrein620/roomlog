@@ -23,6 +23,12 @@ export class TradeStoreProjector {
       return rows.map((row) => {
         const detailAddress = (row as unknown as { detailAddress?: string | null }).detailAddress?.trim();
         const buildingName = (row as unknown as { buildingName?: string | null }).buildingName?.trim();
+        const specRow = row as unknown as {
+          exclusiveAreaM2?: number | null;
+          floorInfo?: string | null;
+          maintenanceFeeManwon?: number | null;
+        };
+        const floorInfo = specRow.floorInfo?.trim();
         return {
           id: row.id,
           ownerId: row.ownerId,
@@ -35,6 +41,9 @@ export class TradeStoreProjector {
           location: row.location,
           ...(detailAddress ? { detailAddress } : {}),
           ...(buildingName ? { buildingName } : {}),
+          ...(specRow.exclusiveAreaM2 != null ? { exclusiveAreaM2: specRow.exclusiveAreaM2 } : {}),
+          ...(floorInfo ? { floorInfo } : {}),
+          ...(specRow.maintenanceFeeManwon != null ? { maintenanceFeeManwon: specRow.maintenanceFeeManwon } : {}),
           description: row.description,
           options: normalizeStringArray((row as unknown as { options?: unknown }).options),
           images: Array.isArray(row.images) ? row.images : [],
@@ -72,6 +81,10 @@ export class TradeStoreProjector {
           location: listing.location,
           detailAddress: listing.detailAddress?.trim() || null,
           buildingName: listing.buildingName?.trim() || null,
+          exclusiveAreaM2: listing.exclusiveAreaM2 ?? null,
+          floorInfo: listing.floorInfo?.trim() || null,
+          maintenanceFeeManwon:
+            listing.maintenanceFeeManwon != null ? Math.trunc(listing.maintenanceFeeManwon) : null,
           description: listing.description ?? "",
           options: listing.options ?? [],
           images: listing.images ?? [],
@@ -97,7 +110,7 @@ export class TradeStoreProjector {
 }
 
 function normalizeTradeType(value: string): TradeListing["tradeType"] {
-  return value === "전세" || value === "매매" ? value : "월세";
+  return value === "반전세" || value === "전세" || value === "매매" ? value : "월세";
 }
 
 // options 컬럼 추가 이전에 생성된 Prisma client와도 컴파일되도록 unknown으로 받는다.

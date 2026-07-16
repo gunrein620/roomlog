@@ -3,6 +3,7 @@
 // 내놓은 집(임대인) 등록 폼 — 사진 업로드, 3D 도면 연결, 매물 등록.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Box, Braces, Camera, CheckCircle2, CircleAlert, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
@@ -22,7 +23,10 @@ import {
   parseOwnerDraft,
   serializeOwnerDraft
 } from "@/lib/owner-draft";
-import { intakeSplatAsset } from "@/lib/splat-asset-api";
+import { intakeSplatAsset, listSplatAssetsByListing, requeueSplatAsset } from "@/lib/splat-asset-api";
+import { pickListingSplatAsset } from "@/lib/owner-tour-assets";
+import { getRealtimeSocket } from "@/lib/realtime-client";
+import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus } from "@roomlog/types";
 import { listingRoomTypes, optionItems } from "@/lib/listing-catalog";
 import { clearOwnerPhotos, loadOwnerPhotos, saveOwnerPhotos } from "@/lib/owner-photo-store";
 
@@ -341,6 +345,12 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   const [floorPlan3D, setFloorPlan3D] = useState<ListingFloorPlan3D | null>(null);
   const [tourSourceFile, setTourSourceFile] = useState<File | null>(null);
   const tourSourceInputRef = useRef<HTMLInputElement | null>(null);
+  // 편집 모드: /sell?listingId=... 로 진입하면(주로 벨의 "제작 실패" 알림) 그 매물의 3D 재작업을 노출한다.
+  const searchParams = useSearchParams();
+  const editListingId = searchParams.get("listingId");
+  // 편집 대상 매물의 대표 3D 자산(id + 상태). FAILED면 재큐잉 UI, PROCESSING이면 제작 중 표시.
+  const [editTourAsset, setEditTourAsset] = useState<{ id: string; status: SplatAssetStatus } | null>(null);
+  const [isRequeuing, setIsRequeuing] = useState(false);
   useEffect(() => {
     const urls = photoFiles.map((file) => URL.createObjectURL(file));
     setPhotoPreviewUrls(urls);
@@ -470,6 +480,67 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
 
   // 3D 투어 상태(정합 필요/제작 중/실패)는 상단 네비 벨(TourActionBell)이 단일 소스로 알린다.
   // 예전 하단 "3D 투어 진행 상태" 섹션과 그 집계·소켓 구독은 벨로 대체되어 제거됐다.
+  // 다만 편집 모드(?listingId=)에서는 그 매물의 대표 자산만 별도로 구독해 재큐잉 UI에 반영한다.
+  useEffect(() => {
+    if (!editListingId) {
+      setEditTourAsset(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const assets = await listSplatAssetsByListing(editListingId);
+        if (cancelled) return;
+        const picked = pickListingSplatAsset(assets);
+        setEditTourAsset(picked ? { id: picked.assetId, status: picked.status } : null);
+      } catch {
+        if (!cancelled) setEditTourAsset(null);
+      }
+    };
+    void load();
+    // 재구성 완료/실패를 소켓으로 받으면 재조회한다(페이로드 식별자만 신뢰, 상태는 REST로 확정 — 벨과 동일 규약).
+    const socket = getRealtimeSocket();
+    const onAssetUpdated = () => {
+      void load();
+    };
+    socket.on(SPLAT_ASSET_UPDATED_EVENT, onAssetUpdated);
+    return () => {
+      cancelled = true;
+      socket.off(SPLAT_ASSET_UPDATED_EVENT, onAssetUpdated);
+    };
+  }, [editListingId]);
+
+  const editTourFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 저장된 원본으로 원클릭 재시도. 서버가 status=PROCESSING으로 되돌리며, 응답으로 즉시 반영한다.
+  const handleRequeueSameSource = async () => {
+    if (!editTourAsset || isRequeuing) return;
+    setIsRequeuing(true);
+    try {
+      const updated = await requeueSplatAsset(editTourAsset.id);
+      setEditTourAsset({ id: updated.id, status: updated.status });
+      setOwnerToast("3D 투어 재제작이 접수됐습니다. 완료되면 상단 알림으로 알려드릴게요.");
+    } catch {
+      setOwnerToast("재제작 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setIsRequeuing(false);
+    }
+  };
+
+  // 다른 파일로 원본을 교체 후 재시도(멀티파트). accept는 STEP 03 업로드 입력과 동일.
+  const handleRequeueWithFile = async (file: File | undefined) => {
+    if (!file || !editTourAsset || isRequeuing) return;
+    setIsRequeuing(true);
+    try {
+      const updated = await requeueSplatAsset(editTourAsset.id, file);
+      setEditTourAsset({ id: updated.id, status: updated.status });
+      setOwnerToast("새 파일로 3D 투어 재제작이 접수됐습니다. 완료되면 알려드릴게요.");
+    } catch {
+      setOwnerToast("파일 재접수에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setIsRequeuing(false);
+    }
+  };
 
   // 결과 팝업 닫기 — 실패면 폼에 남아 재시도(작성 내용은 draft로 보존), 성공이면 홈 피드로 보낸다.
   const closeSubmitResult = () => {
@@ -627,11 +698,11 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           location: listingAddress || "위치 미입력",
           detailAddress,
           buildingName: ownerForm.buildingName.trim(),
-          description: [
-            ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
-            ownerForm.floor ? `${ownerForm.floor}층` : "",
-            ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
-          ].filter(Boolean).join(" · "),
+          // 면적/층/관리비는 전용 필드로 보낸다 — 상세 스펙 항목("확인 중")에 실제 값이 뜨게.
+          exclusiveAreaM2: Number(ownerForm.area) || undefined,
+          floorInfo: ownerForm.floor.trim() || undefined,
+          maintenanceFeeManwon: Number(ownerForm.maintenance) || undefined,
+          description: ownerForm.moveIn ? `입주 가능일 ${ownerForm.moveIn}` : "",
           lat: listingCoords?.lat,
           lng: listingCoords?.lng,
           options: ownerForm.options
@@ -714,6 +785,67 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
       {ownerToast ? <p className="mypage-toast" role="status">{ownerToast}</p> : null}
 
       <form className="owner-form" id="owner-registration-form">
+        {editListingId ? (
+          <section className="owner-card" aria-label="3D 재작업">
+            <div className="form-heading">
+              <div>
+                <span>3D 재작업</span>
+                <h3>이 매물의 3D 투어</h3>
+              </div>
+            </div>
+
+            {editTourAsset && editTourAsset.status === "FAILED" ? (
+              <>
+                <p role="status">
+                  <CircleAlert size={16} aria-hidden="true" /> 지난 3D 투어 제작이 실패했습니다. 저장된 원본으로 다시 시도하거나, 다른 파일로 올려 재제작할 수 있어요.
+                </p>
+                <div className="summary-media-actions">
+                  <button
+                    type="button"
+                    className="summary-media-btn"
+                    onClick={() => void handleRequeueSameSource()}
+                    disabled={isRequeuing}
+                    aria-busy={isRequeuing}
+                  >
+                    {isRequeuing ? <span className="btn-spinner" aria-hidden="true" /> : <Video size={16} strokeWidth={2.2} aria-hidden="true" />}
+                    다시 시도
+                  </button>
+                  <label className="summary-media-btn summary-media-btn--ghost">
+                    <Video size={16} strokeWidth={2.2} aria-hidden="true" />
+                    다른 파일로 올리기
+                    <input
+                      ref={editTourFileInputRef}
+                      type="file"
+                      accept="video/*,.spz,.zip"
+                      aria-label="다른 파일로 3D 재제작"
+                      disabled={isRequeuing}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = "";
+                        void handleRequeueWithFile(file);
+                      }}
+                    />
+                  </label>
+                </div>
+              </>
+            ) : editTourAsset && editTourAsset.status === "PROCESSING" ? (
+              <p role="status">
+                <span className="btn-spinner" aria-hidden="true" /> 3D 투어를 제작하는 중입니다. 완료되면 상단 알림으로 알려드릴게요.
+              </p>
+            ) : editTourAsset ? (
+              <p role="status">이 매물의 3D 투어는 재작업이 필요하지 않습니다.</p>
+            ) : (
+              <p role="status">이 매물에 접수된 3D 투어 자산이 없습니다.</p>
+            )}
+
+            {/* TODO(kjw): 매물 메타데이터(제목·가격·주소·사진) 수정은 이 폼의 create(POST) 흐름과 충돌해 이번엔 보류.
+                아래 폼은 새 매물 등록용이며, 이 화면의 목적은 위 3D 재작업이다. 전체 편집은 관리 화면으로 유도한다. */}
+            <a className="summary-media-btn summary-media-btn--ghost" href="/manager/listing">
+              매물 정보(제목·가격·사진) 전체 수정은 관리 화면에서 →
+            </a>
+          </section>
+        ) : null}
+
         <section className="owner-card">
           <div className="form-heading">
             <div>
@@ -784,8 +916,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               거래유형
               <select value={ownerForm.tradeType} onChange={(event) => updateOwnerForm("tradeType", event.target.value)}>
                 <option>월세</option>
-                <option>전세</option>
                 <option>반전세</option>
+                <option>전세</option>
+                <option>매매</option>
               </select>
             </label>
             <label>

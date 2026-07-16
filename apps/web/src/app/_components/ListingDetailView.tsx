@@ -21,7 +21,6 @@ import {
   getListingBuildingRows,
   getListingPriceRows,
   isRemotePhoto,
-  listingDetailAddressLabel,
   listingMapAddress,
   optionItems,
   TRADE_LISTING_NO_PREFIX,
@@ -39,12 +38,15 @@ const ListingTourRoom3D = dynamic(() => import("./ListingTourRoom3D"), {
 export function ListingDetailView({
   listing,
   isSaved,
+  isOwner = false,
   onBack,
   onToggleSaved,
   onStartChat
 }: {
   listing: Listing;
   isSaved: boolean;
+  /** 현재 로그인 사용자가 이 매물(직접등록)의 집주인인지 — 서버 페이지가 판정해 내려준다. */
+  isOwner?: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
   /** "문자로 문의하기" 등 문의 진입점 — 채팅 탭의 이 매물 대화로 바로 보낸다. */
@@ -57,7 +59,6 @@ export function ListingDetailView({
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
-  const detailAddressLabel = listingDetailAddressLabel(listing);
   const mapAddress = listingMapAddress(listing);
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
   // 매물별 3D 게이트 대상은 직접등록(TRADE-) 매물뿐 — 정적(하드코딩) 매물은 기존 데모 링크를 그대로 둔다(곧 삭제 예정).
@@ -129,6 +130,41 @@ export function ListingDetailView({
         </div>
       </header>
 
+      {isOwner ? (
+        <div
+          className="detail-owner-bar"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "10px 18px",
+            background: "var(--surface-container)",
+            borderBottom: "1px solid var(--border)"
+          }}
+        >
+          <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--on-surface-variant)" }}>
+            내가 등록한 매물이에요
+          </span>
+          <a
+            href={`/sell?listingId=${encodeURIComponent(listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length))}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              height: 32,
+              padding: "0 14px",
+              borderRadius: 999,
+              background: "var(--primary)",
+              color: "var(--on-primary)",
+              fontSize: "0.82rem",
+              fontWeight: 800
+            }}
+          >
+            관리/수정
+          </a>
+        </div>
+      ) : null}
+
       <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
         <div className="gallery-main">
           <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority unoptimized={isRemotePhoto(activePhoto)} />
@@ -166,7 +202,9 @@ export function ListingDetailView({
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>{listing.location}</span>
         </div>
-        <div className="detail-address-detail">세부주소: {detailAddressLabel}</div>
+        {listing.detailAddress?.trim() ? (
+          <div className="detail-address-detail">세부주소: {listing.detailAddress.trim()}</div>
+        ) : null}
       </div>
 
       <div className="listing-detail-facts" aria-label="매물 기본 정보">
@@ -261,7 +299,7 @@ export function ListingDetailView({
       </section>
 
       <div className="detail-contact-bar" id="detail-contact">
-        <span className="contact-tooltip">로그인 없이 문의 가능 · 평균 응답 8분</span>
+        <span className="contact-tooltip">로그인 없이 문의 가능 · 채팅으로 바로 연결</span>
         <button className="detail-contact-small" type="button" aria-label="전화문의" onClick={onStartChat}>
           <span aria-hidden="true"><Phone size={20} strokeWidth={2.5} /></span>
           <strong>전화</strong>
@@ -326,14 +364,19 @@ export function ListingDetailView({
                   <ListingTourRoom3D floorPlan={listing.floorPlan3D} />
                 </div>
               ) : (
-                <div className="tour-room-box tour-room-box-empty">
-                  <span className="tour-wall wall-left" />
-                  <span className="tour-wall wall-right" />
-                  <span className="tour-bed" />
-                  <span className="tour-desk" />
-                  <span className="tour-window" />
-                  <strong>3D 도면 미연결 매물</strong>
-                  <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                <div className="tour-room-empty-wrap">
+                  {/* 안내 텍스트는 3D 변형 밖에 둔다 — 박스 안에 두면 회전된 채 서로 겹쳐 읽기 어렵다 */}
+                  <div className="tour-room-box tour-room-box-empty">
+                    <span className="tour-wall wall-left" />
+                    <span className="tour-wall wall-right" />
+                    <span className="tour-bed" />
+                    <span className="tour-desk" />
+                    <span className="tour-window" />
+                  </div>
+                  <div className="tour-room-empty-copy">
+                    <strong>3D 도면 미연결 매물</strong>
+                    <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                  </div>
                 </div>
               )}
             </div>

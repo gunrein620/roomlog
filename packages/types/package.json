@@ -8,12 +8,14 @@
     ".": "./src/index.ts",
     "./ticket": "./src/ticket.ts",
     "./payment": "./src/payment.ts",
-    "./splat-pipeline": "./src/splat-pipeline.ts"
+    "./splat-pipeline": "./src/splat-pipeline.ts",
+    "./tenant-furniture": "./src/tenant-furniture.ts"
   },
   "typesVersions": {
     "*": {
       "payment": ["src/payment.ts"],
-      "splat-pipeline": ["src/splat-pipeline.ts"]
+      "splat-pipeline": ["src/splat-pipeline.ts"],
+      "tenant-furniture": ["src/tenant-furniture.ts"]
     }
   },
   "scripts": {
