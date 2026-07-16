@@ -767,7 +767,7 @@ const detectPendingArtifacts = async (client, pendingNames) => {
 const runPrisma = (args, databaseUrl) => {
   const result = spawnSync(
     prismaExecutable,
-    [...args, "--config", "prisma.config.ts"],
+    [...args, "--config", "prisma.config.mjs"],
     {
       cwd: apiRoot,
       env: { ...process.env, DATABASE_URL: databaseUrl },

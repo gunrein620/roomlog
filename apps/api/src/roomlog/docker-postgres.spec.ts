@@ -8,6 +8,7 @@ const readmeSource = readFileSync("../../README.md", "utf8");
 const rootPackageSource = readFileSync("../../package.json", "utf8");
 const deployWorkflowSource = readFileSync("../../.github/workflows/deploy.yml", "utf8");
 const migrationBootstrapSource = readFileSync("scripts/migrate-database.mjs", "utf8");
+const apiPrismaConfigSource = readFileSync("prisma.config.mjs", "utf8");
 const migrationSources = readdirSync("../../prisma/migrations", { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => readFileSync(`../../prisma/migrations/${entry.name}/migration.sql`, "utf8"))
@@ -126,6 +127,9 @@ describe("Docker Postgres local database wiring", () => {
       /const prismaExecutable = join\(apiRoot, "node_modules\/\.bin\/prisma"\)/
     );
     assert.match(migrationBootstrapSource, /spawnSync\(\s*prismaExecutable,/);
+    assert.match(migrationBootstrapSource, /\[\.\.\.args, "--config", "prisma\.config\.mjs"\]/);
+    assert.match(migrationBootstrapSource, /cwd: apiRoot/);
     assert.doesNotMatch(migrationBootstrapSource, /spawnSync\(\s*"pnpm",/);
+    assert.match(apiPrismaConfigSource, /schema: "\.\.\/\.\.\/prisma\/schema\.prisma"/);
   });
 });
