@@ -33,3 +33,11 @@ export function rayPlaneIntersectionXZ(ray: Ray3Like, planeY = 0): { x: number; 
 
   return { x, z };
 }
+
+/** 픽 클릭이 드래그(회전/이동)였는지 판정할 화면 이동 거리(px). 6px 초과면 드래그로 본다. */
+export const PICK_DRAG_THRESHOLD_PX = 6;
+
+/** 두 화면 좌표(px) 사이 유클리드 이동 거리. pointerdown→click 이동량 측정용. */
+export function pointerTravelPx(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}

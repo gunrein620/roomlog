@@ -130,6 +130,7 @@ export function SplatScene({
   transform,
   defaultFitMode,
   planWalls = null,
+  ceilingClipHeightMeters = null,
   onLoaded
 }: {
   src: string;
@@ -139,11 +140,16 @@ export function SplatScene({
   defaultFitMode?: SplatFitMode;
   // 실 FloorPlan.walls(월드=도면 프레임). 있으면 wallClip이 플레이스홀더 박스 대신 이걸로 판정한다.
   planWalls?: WheretoputWall3D[] | null;
+  // 픽 뷰 전용 천장 클립: 바닥(≈y0) 기준 이 높이(m) 위 가우시안을 숨겨 밀폐 스캔 내부를 드러낸다.
+  // null/미지정이면 아무 것도 하지 않는다(투어 뷰어는 미지정 → 무영향·비용 0). 스플랫 리로드 없이 되돌림 가능.
+  ceilingClipHeightMeters?: number | null;
   onLoaded?: () => void;
 }) {
   const gl = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
   const onLoadedRef = useRef(onLoaded);
+  // 천장 클립 되돌림용 — 이 메시의 원본 opacity 스냅샷(최초 사용 시 1회 캡처).
+  const ceilingSnapshotRef = useRef<{ mesh: SplatMeshObject; opacities: Float32Array } | null>(null);
   // 객체 참조 불안정으로 인한 리로드를 막기 위해 값 기반 키로 effect 의존성을 건다.
   const transformKey = transform ? JSON.stringify(transform) : null;
   const planWallsKey = planWalls && planWalls.length > 0 ? JSON.stringify(planWalls) : null;
@@ -250,6 +256,66 @@ export function SplatScene({
       nextSparkRenderer?.dispose();
     };
   }, [gl, invalidate, src, transformKey, defaultFitMode, planWallsKey]);
+
+  // 천장 클립(픽 뷰 전용) — 로드된 splatMesh에 직접 opacity 마스크. 높이 변경/토글은 스플랫 리로드 없이
+  // 이 effect만 재실행한다. 원본 opacity 스냅샷으로 되돌리므로 슬라이더/토글이 부드럽다.
+  useEffect(() => {
+    if (!splatMesh) {
+      ceilingSnapshotRef.current = null;
+      return;
+    }
+
+    const threshold =
+      typeof ceilingClipHeightMeters === "number" && Number.isFinite(ceilingClipHeightMeters) && ceilingClipHeightMeters > 0
+        ? ceilingClipHeightMeters
+        : null;
+    const snapshotValid = ceilingSnapshotRef.current?.mesh === splatMesh;
+    // 이 메시에 천장 클립을 쓴 적 없고 지금도 끔 → 아무 것도 안 함(투어 뷰어 등 비사용 경로 비용 0).
+    if (threshold === null && !snapshotValid) return;
+
+    const packed = splatMesh.packedSplats;
+    if (!packed) return;
+
+    // 최초 사용 시 원본 opacity 1회 스냅샷(이후 되돌림 기준). numSplats 미확정이면 클립 불가.
+    if (!snapshotValid) {
+      const count = getSplatCount(splatMesh);
+      if (count === null) return;
+      const opacities = new Float32Array(count);
+      packed.forEachSplat((index, _center, _scales, _quaternion, opacity) => {
+        if (index < count) opacities[index] = opacity;
+      });
+      ceilingSnapshotRef.current = { mesh: splatMesh, opacities };
+    }
+
+    const snapshot = ceilingSnapshotRef.current;
+    if (!snapshot) return;
+
+    splatMesh.updateMatrixWorld(true);
+    const worldCenter = new Vector3();
+    let hidden = 0;
+    let changed = false;
+
+    packed.forEachSplat((index, center, scales, quaternion, opacity, color) => {
+      const original = index < snapshot.opacities.length ? snapshot.opacities[index] : opacity;
+      let target = original;
+      if (threshold !== null) {
+        worldCenter.copy(center).applyMatrix4(splatMesh.matrixWorld);
+        if (worldCenter.y > threshold) target = 0;
+      }
+      if (target === 0 && original !== 0) hidden += 1;
+      if (target !== opacity) {
+        packed.setSplat(index, center, scales, quaternion, target, color);
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      packed.needsUpdate = true;
+      splatMesh.needsUpdate = true;
+      invalidate();
+    }
+    console.info("[splat-tour] ceiling clip " + JSON.stringify({ thresholdY: threshold, hidden }));
+  }, [splatMesh, ceilingClipHeightMeters, invalidate]);
 
   if (hasFailed) {
     return <FallbackRoom />;

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { rayPlaneIntersectionXZ } from "./register-pick";
+import { PICK_DRAG_THRESHOLD_PX, pointerTravelPx, rayPlaneIntersectionXZ } from "./register-pick";
 
 const near = (actual: number, expected: number, eps = 1e-6) =>
   assert.ok(Math.abs(actual - expected) <= eps, `${actual} ≉ ${expected}`);
@@ -52,5 +52,21 @@ describe("rayPlaneIntersectionXZ — 바닥 평면 픽", () => {
   it("교차가 광선 뒤쪽(위쪽을 향해 쏨)이면 null", () => {
     // 카메라가 평면 위에서 위로 쏘면 바닥 평면은 뒤쪽 → 픽 아님.
     assert.equal(rayPlaneIntersectionXZ({ origin: { x: 0, y: 8, z: 0 }, direction: { x: 0, y: 1, z: 0 } }), null);
+  });
+});
+
+describe("pointerTravelPx — 드래그 vs 픽 판정", () => {
+  it("실측 누수 재현: (390,380)→(390,560) 세로 180px 드래그는 임계값 초과 → 드래그", () => {
+    const moved = pointerTravelPx({ x: 390, y: 380 }, { x: 390, y: 560 });
+    assert.equal(moved, 180);
+    assert.ok(moved > PICK_DRAG_THRESHOLD_PX);
+  });
+
+  it("제자리 클릭(미세 이동)은 임계값 이하 → 픽 허용", () => {
+    assert.ok(pointerTravelPx({ x: 200, y: 200 }, { x: 202, y: 203 }) <= PICK_DRAG_THRESHOLD_PX);
+  });
+
+  it("같은 좌표는 이동 0", () => {
+    assert.equal(pointerTravelPx({ x: 12, y: 34 }, { x: 12, y: 34 }), 0);
   });
 });

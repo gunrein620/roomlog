@@ -16,7 +16,7 @@ import {
 } from "../splat-plan-shape";
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
-import { rayPlaneIntersectionXZ } from "../register-pick";
+import { PICK_DRAG_THRESHOLD_PX, pointerTravelPx, rayPlaneIntersectionXZ } from "../register-pick";
 import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl, type SplatAsset } from "@/lib/splat-asset-api";
 import { fetchOwnerListings, resolveRegisterPlanSource } from "@/lib/owner-tour-assets";
 
@@ -45,6 +45,9 @@ export default function Page() {
   const [planSource, setPlanSource] = useState<PlanSource>("placeholder");
   const [planMessage, setPlanMessage] = useState("");
   const [splatReady, setSplatReady] = useState(false);
+  // 천장 클립(픽 뷰 전용) — 밀폐 스캔이 외부 카메라에서 검은 상자로만 보이는 문제. 기본 ON, 바닥 기준 1.6m 위 절단.
+  const [ceilingCutOn, setCeilingCutOn] = useState(true);
+  const [ceilingHeight, setCeilingHeight] = useState(1.6);
   // 오빗 컨트롤 인스턴스 — "위에서 보기" 버튼이 탑다운 프리셋으로 되돌릴 때 reset()을 호출한다.
   const orbitRef = useRef<ElementRef<typeof OrbitControls>>(null);
   // 탑다운 복귀: 생성 시점(카메라 [0,8,0]·zoom 140·target 원점)으로 되돌린다.
@@ -286,6 +289,7 @@ export default function Page() {
                 defaultFitMode="native"
                 src={splatSrc}
                 transform={preview ? transform : null}
+                ceilingClipHeightMeters={ceilingCutOn ? ceilingHeight : null}
                 onLoaded={() => setSplatReady(true)}
               />
               <PickPlane onPick={(x, z) => addPick("splat", { x, y: z })} />
@@ -310,6 +314,28 @@ export default function Page() {
             <button type="button" style={topDownBtn} onClick={resetToTopDown} title="탑다운 시점으로 되돌리기">
               위에서 보기
             </button>
+            {/* 천장 클립: 밀폐 스캔은 외부 카메라에서 검은 상자로만 보이므로, 바닥 기준 높이 위를 잘라 내부를 드러낸다. */}
+            <div style={ceilingPanel}>
+              <label style={ceilingToggle}>
+                <input type="checkbox" checked={ceilingCutOn} onChange={(event) => setCeilingCutOn(event.target.checked)} />
+                천장 자르기
+              </label>
+              {ceilingCutOn ? (
+                <label style={ceilingSliderRow}>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={2.6}
+                    step={0.1}
+                    value={ceilingHeight}
+                    aria-label="천장 자르기 높이(m)"
+                    onChange={(event) => setCeilingHeight(Number(event.target.value))}
+                    style={{ width: 96 }}
+                  />
+                  <span style={{ minWidth: 34, textAlign: "right" }}>{ceilingHeight.toFixed(1)}m</span>
+                </label>
+              ) : null}
+            </div>
             <span style={hint}>클릭 = 점 찍기 (A→B, 3번째 = 처음부터) · 드래그 = 회전 · 우드래그 = 이동 · 휠 = 확대</span>
           </div>
         </section>
@@ -397,11 +423,24 @@ export default function Page() {
 // 무관하게 XZ를 픽한다. 오빗 회전 후에도 좌표가 정확하다. 넉넉한 크기라 틸트 상태 클릭도 평면 위에 떨어진다.
 // onPointerDown이 아니라 onClick + delta 가드: 회전/이동 드래그가 픽으로 오인되지 않게.
 function PickPlane({ onPick }: { onPick: (x: number, z: number) => void }) {
+  // pointerdown 화면 좌표를 직접 기록해 click 시점 이동거리를 잰다. R3F의 event.delta는 OrbitControls가
+  // pointermove를 소비하면 0으로 새어(실측: 세로 180px 드래그가 픽으로 등록) 신뢰할 수 없다.
+  const downRef = useRef<{ x: number; y: number } | null>(null);
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
+      onPointerDown={(event) => {
+        downRef.current = { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY };
+      }}
       onClick={(event) => {
-        if (event.delta > 4) return; // 드래그(회전/이동)였다 — 픽 아님
+        const down = downRef.current;
+        downRef.current = null;
+        // 드래그(회전/이동)면 픽 금지 — 직접 측정한 pointerdown→click 픽셀 이동으로 판정.
+        if (down) {
+          if (pointerTravelPx(down, { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) > PICK_DRAG_THRESHOLD_PX) return;
+        } else if (event.delta > PICK_DRAG_THRESHOLD_PX) {
+          return; // pointerdown을 놓친 경우의 폴백(기존 R3F delta 가드)
+        }
         event.stopPropagation();
         // 광선-바닥 교차가 정석. 평행/뒤쪽 등 실패 시 mesh 교차점(event.point)으로 폴백.
         const hit = rayPlaneIntersectionXZ(event.ray) ?? { x: event.point.x, z: event.point.z };
@@ -545,6 +584,23 @@ const topDownBtn: CSSProperties = {
   fontSize: 12,
   cursor: "pointer"
 };
+const ceilingPanel: CSSProperties = {
+  position: "absolute",
+  top: 8,
+  left: 8,
+  zIndex: 2,
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  background: "rgba(15, 23, 42, 0.82)",
+  color: "#fff",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 700
+};
+const ceilingToggle: CSSProperties = { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" };
+const ceilingSliderRow: CSSProperties = { display: "flex", alignItems: "center", gap: 6 };
 const loadingOverlay: CSSProperties = {
   position: "absolute",
   inset: 0,
