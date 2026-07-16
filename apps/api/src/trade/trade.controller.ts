@@ -41,12 +41,13 @@ export class TradeController {
   }
 
   @Post("listings")
-  createListing(
+  async createListing(
     @Headers("authorization") authorization: string | undefined,
     @Body() body: TradeListingInput
   ) {
     const user = this.user(authorization);
     const listing = this.tradeService.createListing(user, body);
+    await this.tradeService.ensureListingDurability();
     const listingLocation = [listing.location, listing.detailAddress].filter(Boolean).join(" ");
     // 첫 매물 등록이 곧 임대인 관계 생성 — 마이페이지 임대인 가드("관리 중인 집 연결 필요")가 풀린다.
     this.roomlogService.ensureLandlordRoomFromListing(user.id, {
@@ -58,12 +59,14 @@ export class TradeController {
 
   /** 매물 수정 — 소유자 전용(서비스에서 검증). 전달된 필드만 갱신. */
   @Patch("listings/:listingId")
-  updateListing(
+  async updateListing(
     @Headers("authorization") authorization: string | undefined,
     @Param("listingId") listingId: string,
     @Body() body: Partial<TradeListingInput>
   ) {
-    return this.tradeService.updateListing(this.user(authorization), listingId, body);
+    const listing = this.tradeService.updateListing(this.user(authorization), listingId, body);
+    await this.tradeService.ensureListingDurability();
+    return listing;
   }
 
   /** 매물 삭제(내리기) — 소유자 전용. */

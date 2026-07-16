@@ -695,6 +695,7 @@ model TenantRoom {
   room   Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, roomId])
+  @@unique([tenantId])
   @@index([roomId])
 }
 

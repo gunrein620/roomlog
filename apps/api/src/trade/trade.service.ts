@@ -333,7 +333,17 @@ export class TradeService implements OnModuleDestroy {
     // undefined = DB 로드 실패(미도달) — JSON 상태를 유지하고 DB는 건드리지 않는다(기존 DB 매물 보호).
     if (initialListings === undefined) return;
     if (initialListings.length > 0) {
-      this.store.listings = initialListings; // DB가 매물의 진실원천
+      const dbListingIds = new Set(initialListings.map((listing) => listing.id));
+      const acceptedListingIds = new Set(
+        this.store.contracts
+          .filter((contract) => contract.status === "accepted")
+          .map((contract) => contract.listingId)
+      );
+      const recoveryListings = this.store.listings.filter(
+        (listing) => acceptedListingIds.has(listing.id) && !dbListingIds.has(listing.id)
+      );
+      this.store.listings = [...initialListings, ...recoveryListings]; // DB truth + 고립 accepted 복구
+      if (recoveryListings.length > 0) this.projectListings();
       return;
     }
     // DB에 도달했고 비어 있음 — 기존 JSON 매물이 있으면 일회성 백필(유실 방지).
@@ -388,6 +398,15 @@ export class TradeService implements OnModuleDestroy {
 
     if (!this.storeProjector) return;
     const requiredGeneration = this.projectionGeneration;
+    await this.awaitListingProjection(requiredGeneration);
+  }
+
+  async ensureListingDurability(): Promise<void> {
+    if (!this.storeProjector) return;
+    await this.awaitListingProjection(this.projectionGeneration);
+  }
+
+  private async awaitListingProjection(requiredGeneration: number): Promise<void> {
     await this.pendingProjection;
     if (this.completedProjectionGeneration < requiredGeneration) {
       throw this.projectionFailure?.error ?? new Error("매물 저장을 완료하지 못했습니다.");

@@ -348,6 +348,11 @@ const POST_BASELINE_ARTIFACTS = Object.freeze([
       WHERE namespace.nspname = 'public' AND owner.relname = 'RepairPaymentOrder'
         AND catalog_constraint.conname = 'RepairPaymentOrder_retryOfOrderId_fkey'
     ) AS present`]
+  },
+  {
+    migration: "20260717100000_trade_listing_current_tenant_room",
+    columns: [["TradeListing", "buildingName"], ["TradeListing", "options"]],
+    indexes: ["TenantRoom_tenantId_key"]
   }
 ]);
 
