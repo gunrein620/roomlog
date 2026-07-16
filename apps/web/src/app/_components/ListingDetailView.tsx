@@ -39,12 +39,15 @@ const ListingTourRoom3D = dynamic(() => import("./ListingTourRoom3D"), {
 export function ListingDetailView({
   listing,
   isSaved,
+  isOwner = false,
   onBack,
   onToggleSaved,
   onStartChat
 }: {
   listing: Listing;
   isSaved: boolean;
+  /** 현재 로그인 사용자가 이 매물(직접등록)의 집주인인지 — 서버 페이지가 판정해 내려준다. */
+  isOwner?: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
   /** "문자로 문의하기" 등 문의 진입점 — 채팅 탭의 이 매물 대화로 바로 보낸다. */
@@ -128,6 +131,41 @@ export function ListingDetailView({
           </button>
         </div>
       </header>
+
+      {isOwner ? (
+        <div
+          className="detail-owner-bar"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "10px 18px",
+            background: "var(--surface-container)",
+            borderBottom: "1px solid var(--border)"
+          }}
+        >
+          <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--on-surface-variant)" }}>
+            내가 등록한 매물이에요
+          </span>
+          <a
+            href={`/sell?listingId=${encodeURIComponent(listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length))}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              height: 32,
+              padding: "0 14px",
+              borderRadius: 999,
+              background: "var(--primary)",
+              color: "var(--on-primary)",
+              fontSize: "0.82rem",
+              fontWeight: 800
+            }}
+          >
+            관리/수정
+          </a>
+        </div>
+      ) : null}
 
       <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
         <div className="gallery-main">

@@ -91,6 +91,23 @@ export class SplatAssetController {
     return this.splatAssetService.updateFile(id, parseUpdateFileInput(body));
   }
 
+  @Patch(":id/requeue")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 800 * 1024 * 1024 } }))
+  async requeueReconstruction(
+    @Headers("authorization") authorization: string | undefined,
+    @Headers("x-worker-secret") workerSecret: string | undefined,
+    @Param("id") id: string,
+    @UploadedFile() file: UploadedSplatAssetFile | undefined
+  ) {
+    // 워커 시크릿은 시스템 주체라 소유권 면제. 사람(LANDLORD)은 자산의 매물 소유권을 강제한다.
+    if (!workerSecretMatches(workerSecret)) {
+      const user = this.requireRole(authorization, ["LANDLORD"]);
+      const asset = await this.splatAssetService.getById(id);
+      await this.splatAssetService.assertListingOwner(asset.listingId, user.id);
+    }
+    return this.splatAssetService.requeueReconstruction(id, file);
+  }
+
   @Delete(":id")
   async remove(@Headers("authorization") authorization: string | undefined, @Param("id") id: string) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
