@@ -57,6 +57,7 @@ async function runContractOcrEval(
       JSON.stringify({
         output_text: JSON.stringify({
           summary: "계약 OCR eval 샘플",
+          clauseSummary: "특약: 보증금 반환 전 정산",
           highlights: ["eval fixture"],
           items,
           fields,
@@ -129,6 +130,7 @@ describe("Contract OCR eval fixtures", () => {
     assert.match(deposit?.value ?? "", /전환 후 53,288,000원/);
     assert.equal(deposit?.needsCheck, false);
     assert.equal(specialTerms?.value, "보증금 반환 전 미납 관리비와 원상복구 비용을 정산한다.");
+    assert.equal(result.extraction.clauseSummary, "특약: 보증금 반환 전 정산");
     assert.equal(extractionValue(result, "월세"), undefined);
     assert.equal(extractionValue(result, "계약 기간"), undefined);
   });

@@ -63,6 +63,7 @@ type AcceptedTradeContractPlan = {
 type ContractOcrResult = {
   source: "openai" | "mock";
   summary: string;
+  clauseSummary: string;
   highlights: string[];
   items: ContractExtraction["items"];
   helpNotes: ContractExtraction["helpNotes"];
@@ -681,6 +682,7 @@ export class RoomlogContractDomain {
     return {
       source: "mock",
       summary,
+      clauseSummary: "OCR 실패로 특약성 조항 확인 필요",
       highlights: [
         `${summary} · ${document?.fileName ?? "계약서 원본"} 기준`,
         "실제 OCR 값은 추출되지 않았습니다.",
@@ -725,6 +727,7 @@ export class RoomlogContractDomain {
       sourceLine,
       ...result.highlights.filter(Boolean)
     ].slice(0, 6);
+    extraction.clauseSummary = result.clauseSummary || this.buildContractClauseSummary(result.items);
     extraction.helpNotes = result.helpNotes.length
       ? result.helpNotes
       : [
@@ -783,6 +786,8 @@ export class RoomlogContractDomain {
           "월세, 관리비, 납부일, 주소, 계약 기간, 계좌처럼 DB에 이미 있는 매물·계약 기본값은 추출 대상에서 제외한다.",
           "불확실하거나 원문 재확인이 필요한 항목은 needsCheck를 true로 둔다.",
           "특약, 자동연장, 원상복구, 수선 책임 조항이 원문에 명시되어 있지 않으면 value를 '문서에 없음', needsCheck를 false로 둔다.",
+          "clauseSummary에는 특약, 자동연장, 원상복구, 수선 책임만 대상으로 대시보드에 바로 보여줄 60자 이내 한 줄 요약을 넣는다.",
+          "특약성 조항이 모두 원문에 없으면 clauseSummary는 '특약성 조항 없음'으로 둔다.",
           "문서가 흐리거나 일부 영역을 읽지 못해 없는지 판단할 수 없을 때만 value를 빈 문자열로 두고 needsCheck를 true로 둔다.",
           "반드시 한국어 JSON만 반환한다."
         ].join("\n"),
@@ -828,6 +833,7 @@ export class RoomlogContractDomain {
     return {
       source: "openai",
       summary: parsed.summary || `${document.fileName}에서 계약 핵심 항목을 추출했습니다.`,
+      clauseSummary: parsed.clauseSummary,
       highlights: parsed.highlights,
       items: parsed.items,
       helpNotes: parsed.helpNotes,
@@ -1912,6 +1918,8 @@ export class RoomlogContractDomain {
       contract: this.presentContract(contract),
       tenantName: this.contractTenant(contract)?.name ?? "미연결 임차인",
       buildingName: room.buildingName,
+      depositSummary: this.extractionValue(extraction, "보증금"),
+      clauseSummary: extraction.clauseSummary || this.buildContractClauseSummary(extraction.items),
       origin,
       statusLabel: this.contractStatusLabel(contract, needsCheckCount),
       slaOverdue: this.isContractReviewSlaOverdue(contract),
@@ -2107,6 +2115,35 @@ export class RoomlogContractDomain {
     return extraction.items.find((item) => item.label === label)?.value;
   }
 
+  private buildContractClauseSummary(items: ContractExtraction["items"]) {
+    const clauseItems = items.filter((item) => this.isOptionalContractClauseLabel(item.label));
+    const needsCheck = clauseItems.filter((item) => item.needsCheck);
+
+    if (needsCheck.length > 0) {
+      return `${needsCheck.map((item) => item.label).slice(0, 2).join("·")} 확인 필요`;
+    }
+
+    const presentClauses = clauseItems.filter(
+      (item) => !this.isMissingExtractionValue(item.value) && !this.isDocumentAbsentContractValue(item.value)
+    );
+
+    if (presentClauses.length === 0) return "특약성 조항 없음";
+
+    return presentClauses
+      .slice(0, 2)
+      .map((item) => `${item.label}: ${this.compactContractClauseSummary(item.value)}`)
+      .join(" · ");
+  }
+
+  private compactContractClauseSummary(value: string) {
+    return value
+      .replace(/\s+/g, " ")
+      .replace(/합니다|한다|하여야 한다|하여야 합니다/g, "")
+      .replace(/[.。]+$/g, "")
+      .trim()
+      .slice(0, 42);
+  }
+
   private currentContractDocument(contract: Contract) {
     const byId = contract.documentId
       ? this.store.contractDocuments.find((item) => item.id === contract.documentId)
@@ -2191,6 +2228,7 @@ export class RoomlogContractDomain {
       "등록 DB 기본값은 비교 참고용일 뿐 추출하거나 items에 넣지 마. 월세, 관리비, 납부일, 주소, 계약 기간, 계좌는 제외한다.",
       "권장 label은 보증금, 특약, 자동연장, 원상복구, 수선 책임이다.",
       "fields에는 depositBaseAmount, depositConversionAmount, depositFinalAmount, specialTerms, autoRenewal, restorationDuty, repairDuty를 가능한 범위에서 채워줘.",
+      "clauseSummary에는 특약, 자동연장, 원상복구, 수선 책임을 합쳐 대시보드에 표시할 한 줄 요약을 넣어줘. 예: '특약: 미납 관리비·원상복구비 정산', '원상복구·수선 책임 확인 필요', '특약성 조항 없음'.",
       "보증금이 문서에 없거나 읽히지 않으면 추측하지 말고 value를 빈 문자열로 두고 needsCheck를 true로 둬.",
       "특약, 자동연장, 원상복구, 수선 책임이 원문에 명시되어 있지 않으면 value는 반드시 '문서에 없음', needsCheck는 false로 둬.",
       "조항이 없는지 판단할 수 없을 만큼 흐리거나 가려졌다면 value를 빈 문자열로 두고 needsCheck를 true로 둬.",
@@ -2230,6 +2268,7 @@ export class RoomlogContractDomain {
       additionalProperties: false,
       properties: {
         summary: { type: "string" },
+        clauseSummary: { type: "string" },
         highlights: {
           type: "array",
           items: { type: "string" }
@@ -2270,7 +2309,7 @@ export class RoomlogContractDomain {
           }
         }
       },
-      required: ["summary", "highlights", "items", "fields", "helpNotes"]
+      required: ["summary", "clauseSummary", "highlights", "items", "fields", "helpNotes"]
     };
   }
 
@@ -2304,6 +2343,7 @@ export class RoomlogContractDomain {
 
     return {
       summary: this.stringValue(parsed.summary) || "계약 OCR 분석 완료",
+      clauseSummary: this.stringValue(parsed.clauseSummary) || this.buildContractClauseSummary(mergedItems),
       highlights: this.stringArray(parsed.highlights).slice(0, 5),
       items: this.validateOpenAiOcrItems(mergedItems),
       helpNotes: this.normalizeOpenAiHelpNotes(parsed.helpNotes)

@@ -7,7 +7,7 @@ import {
 } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import { ApiError } from "@/lib/server-api";
-import { ContractShell, PageStack, Section } from "../_components";
+import { ContractShell, PageStack } from "../_components";
 import { ContractRegisterForm, type ContractRegisterActionState } from "./ContractRegisterForm";
 
 export const dynamic = "force-dynamic";
@@ -89,9 +89,7 @@ export default function Page() {
   return (
     <ContractShell id="M-DOC-02" title="계약서 등록">
       <PageStack>
-        <Section title="계약서 등록 접수">
-          <ContractRegisterForm action={createContractAction} />
-        </Section>
+        <ContractRegisterForm action={createContractAction} />
       </PageStack>
     </ContractShell>
   );

@@ -815,6 +815,7 @@ export type ContractExtraction = {
   contractId: string;
   confirmed: boolean;
   highlights: string[];
+  clauseSummary?: string;
   items: ExtractionItem[];
   helpNotes: ContractHelpNote[];
   createdAt: string;

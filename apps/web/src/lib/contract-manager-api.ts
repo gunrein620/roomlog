@@ -4,12 +4,14 @@ import { apiUrl } from "./api-url";
 import { AUTH_COOKIE } from "./auth-cookie";
 import { ApiError, serverFetch } from "./server-api";
 
-export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual";
+export type ManagerContractOrigin = "tenant_upload" | "manager_upload" | "manual" | "trade_acceptance";
 
 export interface ManagerContractRow {
   contract: Contract;
   tenantName: string;
   buildingName: string;
+  depositSummary?: string;
+  clauseSummary?: string;
   origin: ManagerContractOrigin;
   statusLabel: string;
   slaOverdue: boolean;

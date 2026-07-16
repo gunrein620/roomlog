@@ -665,6 +665,8 @@ export type ManagerContractRow = {
   contract: Contract;
   tenantName: string;
   buildingName: string;
+  depositSummary?: string;
+  clauseSummary?: string;
   origin: ManagerContractOrigin;
   statusLabel: string;
   slaOverdue: boolean;
