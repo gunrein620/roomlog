@@ -45,6 +45,7 @@ function apiUrl(path: string) {
 export function resolveAssetFileUrl(fileUrl: string): string {
   if (/^https?:\/\//.test(fileUrl)) return fileUrl;
   if (!fileUrl.startsWith("/")) return fileUrl;
+  if (fileUrl.startsWith("/api/vendor-completion-files/")) return fileUrl;
 
   const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   try {

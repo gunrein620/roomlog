@@ -9,6 +9,7 @@ export const MANAGER_DEMO_TICKETS: Ticket[] = [
   {
     id: "tk_0001",
     type: "defect",
+    category: "냉난방",
     unitId: "302",
     title: "에어컨 물샘",
     description: "거실 에어컨에서 물이 새요. 어제 저녁부터 바닥에 물이 고입니다.",
@@ -25,6 +26,7 @@ export const MANAGER_DEMO_TICKETS: Ticket[] = [
   {
     id: "tk_0002",
     type: "complaint",
+    category: "배관/수전",
     unitId: "1201",
     title: "욕실 천장 누수 의심",
     description: "욕실 조명 주변에 물자국이 번지고 전등이 깜빡입니다.",
@@ -40,6 +42,7 @@ export const MANAGER_DEMO_TICKETS: Ticket[] = [
   {
     id: "tk_0003",
     type: "defect",
+    category: "창호",
     unitId: "508",
     title: "창문 잠금장치 파손",
     description: "창문 잠금 레버가 헛돌아 외출 시 잠글 수 없습니다.",
@@ -56,6 +59,7 @@ export const MANAGER_DEMO_TICKETS: Ticket[] = [
   {
     id: "tk_0004",
     type: "defect",
+    category: "출입/보안",
     unitId: "701",
     title: "현관 도어락 배터리 누액",
     description: "도어락 내부에서 배터리 누액이 보여 작동이 불안정합니다.",
@@ -72,6 +76,7 @@ export const MANAGER_DEMO_TICKETS: Ticket[] = [
   {
     id: "tk_0005",
     type: "defect",
+    category: "배관/수전",
     unitId: "412",
     title: "세면대 하부 누수",
     description: "욕실 세면대 아래 배관에서 물방울이 계속 떨어지고 수납장이 젖었습니다.",

@@ -9,12 +9,18 @@ export type TenantIntakeMessage = {
   createdAt?: string;
 };
 
+export type TenantIntakeResponsibilityHint =
+  | "임대인 책임 가능성"
+  | "임차인 책임 가능성"
+  | "판단 어려움";
+
 export type TenantIntakeDraft = {
   title: string;
   summary: string;
   category?: string;
   detailCategory?: string;
   priority?: number;
+  responsibilityHint?: TenantIntakeResponsibilityHint;
   readyToFinalize: boolean;
   requiredInfo: string[];
   nextQuestions: string[];
@@ -39,12 +45,23 @@ export type TenantRealtimeClientSecret = {
 export type TenantIntakeFinalizeResult = {
   complaint?: { id: string; title?: string };
   ticket?: { id: string };
+  analysis?: { responsibilityHint?: TenantIntakeResponsibilityHint };
 };
 
 export type TenantRealtimeTurnResult = {
   session: TenantIntakeSession;
   deduplicated?: boolean;
 };
+
+export class TenantClientApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TenantClientApiError";
+  }
+}
 
 const intakeBasePath = "/api/tenant/complaints/intake/sessions";
 
@@ -131,7 +148,10 @@ async function requestJson(path: string, payload: unknown): Promise<unknown> {
   const body = await response.json().catch(() => undefined);
 
   if (!response.ok) {
-    throw new Error(responseMessage(body) || "AI 상담 요청을 처리하지 못했습니다.");
+    throw new TenantClientApiError(
+      response.status,
+      responseMessage(body) || "AI 상담 요청을 처리하지 못했습니다.",
+    );
   }
 
   return body;
