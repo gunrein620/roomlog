@@ -29,6 +29,7 @@ import {
   getListingPriceRows,
   isRemotePhoto,
   listingDetailAddressLabel,
+  listingMapAddress,
   neighborhoodItems,
   optionItems,
   safetyReportItems,
@@ -67,6 +68,7 @@ export function ListingDetailView({
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const detailAddressLabel = listingDetailAddressLabel(listing);
+  const mapAddress = listingMapAddress(listing);
   const safetyScore = listing.score.replace("안심 ", "");
   // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
   const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
@@ -368,6 +370,7 @@ export function ListingDetailView({
               ? { lat: listing.lat, lng: listing.lng }
               : null
           }
+          address={mapAddress}
           title={listing.title}
         />
       </section>
