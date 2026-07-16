@@ -9176,6 +9176,104 @@ p {
   color: #24418f;
 }
 
+/* 도면 인식 중 스캔 애니메이션 — 캔버스를 위아래로 훑는 빔 + 상태 라벨. 클릭은 통과시킨다. */
+.floor-plan-scan-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(47, 85, 255, 0.05);
+}
+
+.floor-plan-scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 16%;
+  background: linear-gradient(
+    to bottom,
+    rgba(47, 85, 255, 0) 0%,
+    rgba(47, 85, 255, 0.1) 70%,
+    rgba(47, 85, 255, 0.32) 100%
+  );
+  border-bottom: 2px solid rgba(47, 85, 255, 0.85);
+  box-shadow: 0 3px 22px rgba(47, 85, 255, 0.4);
+  animation: floor-plan-scan-sweep 2.4s ease-in-out infinite alternate;
+}
+
+/* 빔 높이(16%) 기준 자기높이 % 이동 — -100%(캔버스 위 바깥)에서 625%(바닥)까지 왕복 */
+@keyframes floor-plan-scan-sweep {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(625%);
+  }
+}
+
+.floor-plan-scan-label {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.78);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  backdrop-filter: blur(4px);
+}
+
+.floor-plan-scan-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.floor-plan-scan-dots > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #9db9ff;
+  animation: floor-plan-scan-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.floor-plan-scan-dots > span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.floor-plan-scan-dots > span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes floor-plan-scan-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floor-plan-scan-beam,
+  .floor-plan-scan-dots > span {
+    animation: none;
+  }
+
+  .floor-plan-scan-beam {
+    top: 42%;
+  }
+}
+
 .floor-plan-empty-guide {
   position: absolute;
   inset: 0;

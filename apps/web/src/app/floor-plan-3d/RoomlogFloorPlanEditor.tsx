@@ -797,6 +797,8 @@ export default function RoomlogFloorPlanEditor() {
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
   const [isProcessing, setIsProcessing] = useState(false);
+  // 도면 인식(자동 탐지)이 도는 동안 캔버스 위에 스캔 애니메이션을 띄운다.
+  const [isScanningPlan, setIsScanningPlan] = useState(false);
   // 상태 메시지 토스트 — 예전엔 span 하나가 60여 종 피드백(줌·삭제·undo·저장…)을 덮어썼고
   // 자동으로 사라지지도 않았다. 최근 3개까지 쌓이고 몇 초 뒤 사라지는 토스트로 교체.
   // 호출부가 매우 많아 setUploadStatus라는 이름은 그대로 둔다.
@@ -3207,6 +3209,7 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     setIsProcessing(true);
+    setIsScanningPlan(true);
     setAiAnalysisStatus("문/창문 후보 탐지중");
     try {
       const response = await floorPlanAuthorizedFetch(apiUrl("/floor-plans/opening-detection"), {
@@ -3300,6 +3303,7 @@ export default function RoomlogFloorPlanEditor() {
       setAiAnalysisStatus("도면 인식 실패");
     } finally {
       setIsProcessing(false);
+      setIsScanningPlan(false);
     }
   }
 
@@ -4236,6 +4240,19 @@ export default function RoomlogFloorPlanEditor() {
                 ref={canvasRef}
               />
             </div>
+            {isScanningPlan ? (
+              <div className="floor-plan-scan-overlay" role="status" aria-live="polite">
+                <div className="floor-plan-scan-beam" aria-hidden="true" />
+                <span className="floor-plan-scan-label">
+                  도면 인식 중
+                  <span className="floor-plan-scan-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </span>
+              </div>
+            ) : null}
             <div className="floor-plan-zoom-controls" role="group" aria-label="화면 배율 조절">
               <button aria-label="축소" onClick={() => zoomViewBy(1 / 1.2)} title="축소" type="button">
                 −
