@@ -169,10 +169,14 @@ export function TicketHeader({ ticket, title }: { ticket: Ticket; title: string 
 }
 
 export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: RepairJob | null }) {
+  const repairStatusLabel = repair?.stage === "in_progress"
+    ? "수리중"
+    : `수리 ${repair ? repairStageLabel[repair.stage] : "대기"}`;
+
   return (
     <div style={row}>
       <Badge emphasis>티켓 {ticketStatusLabel[ticket.status]}</Badge>
-      <Badge>수리 {repair ? repairStageLabel[repair.stage] : "대기"}</Badge>
+      <Badge>{repairStatusLabel}</Badge>
       {ticket.disposition === "on_hold" ? <Badge>보류 큐</Badge> : null}
     </div>
   );
