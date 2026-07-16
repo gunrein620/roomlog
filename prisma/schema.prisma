@@ -628,6 +628,7 @@ model UserAccount {
   vendorPaymentAuditEvents   VendorPaymentAuditEvent[]  @relation("VendorPaymentAuditActor")
   managedDomainEvents        DomainEventOutbox[]        @relation("DomainEventManager")
   actedDomainEvents          DomainEventOutbox[]        @relation("DomainEventActor")
+  managerTicketReads         ManagerTicketRead[]
   creditAccount              CreditAccount?             @relation("ManagerCreditAccount")
   autoPayPolicy              AutoPayPolicy?             @relation("ManagerAutoPayPolicy")
 
@@ -1563,10 +1564,23 @@ model Ticket {
   feedback  AiFeedback[]
   analysis  AiAnalysis?
   history   StatusHistory[]
+  managerReads ManagerTicketRead[]
 
   @@index([roomId, status])
   @@index([assignedVendorId, status])
   @@index([priority, status])
+}
+
+model ManagerTicketRead {
+  managerId String
+  ticketId  String
+  readAt    DateTime @default(now())
+
+  manager UserAccount @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  ticket  Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@id([managerId, ticketId])
+  @@index([managerId, readAt])
 }
 
 model AiAnalysis {

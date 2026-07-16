@@ -121,6 +121,7 @@ export class PrismaStoreProjector implements StoreProjector {
       intakeSessions,
       complaints,
       tickets,
+      managerTicketReads,
       feedback,
       repairs,
       costs,
@@ -183,6 +184,7 @@ export class PrismaStoreProjector implements StoreProjector {
       }),
       this.prisma.complaint.findMany(),
       this.prisma.ticket.findMany(),
+      this.prisma.managerTicketRead.findMany(),
       this.prisma.aiFeedback.findMany(),
       this.prisma.repairRequest.findMany(),
       this.prisma.cost.findMany(),
@@ -620,6 +622,11 @@ export class PrismaStoreProjector implements StoreProjector {
         dueAt: asIso(ticket.dueAt),
         createdAt: asIso(ticket.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(ticket.updatedAt) ?? new Date().toISOString()
+      })),
+      managerTicketReads: managerTicketReads.map((read) => ({
+        managerId: read.managerId,
+        ticketId: read.ticketId,
+        readAt: asIso(read.readAt) ?? new Date().toISOString()
       })),
       repairs: repairs.map((repair) => ({
         id: repair.id,
@@ -1881,6 +1888,25 @@ export class PrismaStoreProjector implements StoreProjector {
             }
           });
         }
+      }
+
+      for (const read of store.managerTicketReads ?? []) {
+        await tx.managerTicketRead.upsert({
+          where: {
+            managerId_ticketId: {
+              managerId: read.managerId,
+              ticketId: read.ticketId
+            }
+          },
+          create: {
+            managerId: read.managerId,
+            ticketId: read.ticketId,
+            readAt: asDate(read.readAt)
+          },
+          update: {
+            readAt: asDate(read.readAt)
+          }
+        });
       }
 
       for (const feedback of store.aiFeedback) {
