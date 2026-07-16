@@ -21,7 +21,7 @@ export default async function Page() {
   const [ticket, analysis, repair] = await Promise.all([
     getManagerTicket(MANAGER_DEMO_TICKET_ID),
     getManagerAnalysis(MANAGER_DEMO_TICKET_ID),
-    getManagerRepair(),
+    getManagerRepair(MANAGER_DEMO_TICKET_ID),
   ]);
 
   return (

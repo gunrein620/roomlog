@@ -124,7 +124,6 @@ export class PrismaStoreProjector implements StoreProjector {
       feedback,
       repairs,
       costs,
-      financeOwnedCostLinks,
       receipts,
       receiptOcrs,
       messages,
@@ -168,14 +167,7 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.deposit.findMany(),
       this.prisma.maintenanceFee.findMany(),
       this.prisma.maintenanceFeeItem.findMany(),
-      this.prisma.attachment.findMany({
-        where: {
-          origin: "USER_UPLOAD",
-          uploadedBy: { not: null },
-          category: { not: "COMPLETION_PHOTO" },
-          completionReportAttachment: null
-        }
-      }),
+      this.prisma.attachment.findMany(),
       this.prisma.floorPlan.findMany(),
       this.prisma.moveInChecklistItem.findMany(),
       this.prisma.intakeSession.findMany({
@@ -186,9 +178,6 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.aiFeedback.findMany(),
       this.prisma.repairRequest.findMany(),
       this.prisma.cost.findMany(),
-      this.prisma.vendorPaymentRequest.findMany({
-        select: { costId: true, repairId: true }
-      }),
       this.prisma.receipt.findMany(),
       this.prisma.receiptOcr.findMany(),
       this.prisma.ticketMessage.findMany(),
@@ -213,19 +202,10 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.statusHistory.findMany(),
       this.prisma.aiAnalysis.findMany()
     ]);
-    const financeOwnedCostIds = new Set(
-      financeOwnedCostLinks
-        .map((link) => link.costId)
-        .filter((costId): costId is string => costId !== null)
-    );
-    const financeOwnedRepairIds = new Set(
-      financeOwnedCostLinks.map((link) => link.repairId)
-    );
 
     if (
       !users.length &&
       !rooms.length &&
-      !vendors.length &&
       !contracts.length &&
       !bills.length &&
       !paymentReports.length &&
@@ -293,18 +273,13 @@ export class PrismaStoreProjector implements StoreProjector {
       ),
       vendors: vendors.map((vendor) => ({
         id: vendor.id,
+        userId: vendor.userId,
         businessName: vendor.businessName,
         contactPerson: vendor.contactPerson,
         phone: vendor.phone,
         serviceArea: vendor.serviceArea,
-        businessNumber: optional(vendor.businessNumber),
-        trades: [...vendor.trades],
-        serviceAreas: [...vendor.serviceAreas],
-        verificationStatus: vendor.verificationStatus,
-        isActive: vendor.isActive,
         activeJobs: vendor.activeJobs,
-        createdAt: asIso(vendor.createdAt) ?? new Date().toISOString(),
-        updatedAt: asIso(vendor.updatedAt) ?? new Date().toISOString()
+        createdByManagerId: optional(vendor.createdByManagerId)
       })),
       vendorInvites: vendorInvites.map((invite) => ({
         id: invite.id,
@@ -493,7 +468,7 @@ export class PrismaStoreProjector implements StoreProjector {
       })),
       attachments: attachments.map((attachment) => ({
         id: attachment.id,
-        uploadedByUserId: attachment.uploadedBy!,
+        uploadedByUserId: attachment.uploadedBy,
         category: attachment.category,
         fileName: attachment.fileName,
         fileUrl: attachment.fileUrl,
@@ -640,43 +615,33 @@ export class PrismaStoreProjector implements StoreProjector {
         createdAt: asIso(repair.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(repair.updatedAt) ?? new Date().toISOString()
       })),
-      costs: costs
-        .filter(
-          (cost) =>
-            !financeOwnedCostIds.has(cost.id) &&
-            (!cost.paymentRef || !financeOwnedRepairIds.has(cost.paymentRef))
-        )
-        .map((cost) => ({
-          id: cost.id,
-          managerId: optional(cost.managerId),
-          date: asIso(cost.date) ?? new Date().toISOString(),
-          item: cost.item,
-          amount: cost.amount,
-          type: toLowerEnum<Store["costs"][number]["type"]>(cost.type) ?? "other",
-          scope:
-            toLowerEnum<Store["costs"][number]["scope"]>(cost.scope) ??
-            "building",
-          unitId: optional(cost.unitId),
-          status:
-            toLowerEnum<Store["costs"][number]["status"]>(cost.status) ??
-            "draft",
-          verified: cost.verified,
-          reviewReason: toLowerEnum<
-            NonNullable<Store["costs"][number]["reviewReason"]>
-          >(cost.reviewReason),
-          disclosure: toLowerEnum<
-            NonNullable<Store["costs"][number]["disclosure"]>
-          >(cost.disclosure),
-          repairPayment: toLowerEnum<
-            NonNullable<Store["costs"][number]["repairPayment"]>
-          >(cost.repairPayment),
-          paymentRef: optional(cost.paymentRef),
-          receiptId: optional(cost.receiptId),
-          supersedesId: optional(cost.supersedesId),
-          voidReason: optional(cost.voidReason),
-          createdAt: asIso(cost.createdAt) ?? new Date().toISOString(),
-          updatedAt: asIso(cost.updatedAt) ?? new Date().toISOString()
-        })),
+      costs: costs.map((cost) => ({
+        id: cost.id,
+        managerId: optional(cost.managerId),
+        date: asIso(cost.date) ?? new Date().toISOString(),
+        item: cost.item,
+        amount: cost.amount,
+        type: toLowerEnum<Store["costs"][number]["type"]>(cost.type) ?? "other",
+        scope: toLowerEnum<Store["costs"][number]["scope"]>(cost.scope) ?? "building",
+        unitId: optional(cost.unitId),
+        status: toLowerEnum<Store["costs"][number]["status"]>(cost.status) ?? "draft",
+        verified: cost.verified,
+        reviewReason: toLowerEnum<NonNullable<Store["costs"][number]["reviewReason"]>>(
+          cost.reviewReason
+        ),
+        disclosure: toLowerEnum<NonNullable<Store["costs"][number]["disclosure"]>>(
+          cost.disclosure
+        ),
+        repairPayment: toLowerEnum<NonNullable<Store["costs"][number]["repairPayment"]>>(
+          cost.repairPayment
+        ),
+        paymentRef: optional(cost.paymentRef),
+        receiptId: optional(cost.receiptId),
+        supersedesId: optional(cost.supersedesId),
+        voidReason: optional(cost.voidReason),
+        createdAt: asIso(cost.createdAt) ?? new Date().toISOString(),
+        updatedAt: asIso(cost.updatedAt) ?? new Date().toISOString()
+      })),
       receipts: receipts.map((receipt) => ({
         id: receipt.id,
         managerId: optional(receipt.managerId),
@@ -1023,18 +988,6 @@ export class PrismaStoreProjector implements StoreProjector {
 
   async persist(store: Store) {
     await this.prisma.$transaction(async (tx) => {
-      const financeOwnedLinks = await tx.vendorPaymentRequest.findMany({
-        select: { costId: true, repairId: true }
-      });
-      const financeOwnedCostIds = new Set(
-        financeOwnedLinks
-          .map((link) => link.costId)
-          .filter((costId): costId is string => costId !== null)
-      );
-      const financeOwnedRepairIds = new Set(
-        financeOwnedLinks.map((link) => link.repairId)
-      );
-
       for (const user of store.users) {
         await tx.userAccount.upsert({
           where: { id: user.id },
@@ -1120,32 +1073,22 @@ export class PrismaStoreProjector implements StoreProjector {
           where: { id: vendor.id },
           create: {
             id: vendor.id,
+            userId: vendor.userId,
             businessName: vendor.businessName,
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            businessNumber: vendor.businessNumber ?? null,
-            trades: [...(vendor.trades ?? [])],
-            serviceAreas: [...(vendor.serviceAreas ?? [])],
-            verificationStatus: vendor.verificationStatus ?? "PENDING",
-            isActive: vendor.isActive ?? true,
             activeJobs: vendor.activeJobs,
-            createdAt: asDate(vendor.createdAt),
-            updatedAt: asDate(vendor.updatedAt)
+            createdByManagerId: vendor.createdByManagerId
           },
           update: {
+            userId: vendor.userId,
             businessName: vendor.businessName,
             contactPerson: vendor.contactPerson,
             phone: vendor.phone,
             serviceArea: vendor.serviceArea,
-            businessNumber: vendor.businessNumber,
-            trades: [...(vendor.trades ?? [])],
-            serviceAreas: [...(vendor.serviceAreas ?? [])],
-            verificationStatus: vendor.verificationStatus,
-            isActive: vendor.isActive,
             activeJobs: vendor.activeJobs,
-            createdAt: asDate(vendor.createdAt),
-            updatedAt: asDate(vendor.updatedAt)
+            createdByManagerId: vendor.createdByManagerId
           }
         });
       }
@@ -1627,22 +1570,6 @@ export class PrismaStoreProjector implements StoreProjector {
       }
 
       for (const attachment of store.attachments) {
-        if (attachment.category === "COMPLETION_PHOTO") continue;
-
-        const persistedAttachment = await tx.attachment.findUnique({
-          where: { id: attachment.id },
-          select: {
-            category: true,
-            completionReportAttachment: { select: { completionReportId: true } }
-          }
-        });
-        if (
-          persistedAttachment?.category === "COMPLETION_PHOTO" ||
-          persistedAttachment?.completionReportAttachment
-        ) {
-          continue;
-        }
-
         await tx.attachment.upsert({
           where: { id: attachment.id },
           create: {
@@ -1653,7 +1580,6 @@ export class PrismaStoreProjector implements StoreProjector {
             mimeType: attachment.mimeType,
             sizeBytes: attachment.sizeBytes,
             category: attachment.category,
-            origin: "USER_UPLOAD",
             createdAt: asDate(attachment.createdAt)
           },
           update: {
@@ -1662,8 +1588,7 @@ export class PrismaStoreProjector implements StoreProjector {
             fileUrl: attachment.fileUrl,
             mimeType: attachment.mimeType,
             sizeBytes: attachment.sizeBytes,
-            category: attachment.category,
-            origin: "USER_UPLOAD"
+            category: attachment.category
           }
         });
       }
@@ -1793,10 +1718,9 @@ export class PrismaStoreProjector implements StoreProjector {
       }
 
       for (const complaint of store.complaints) {
-        const snapshotUpdatedAt =
-          asDate(complaint.updatedAt) ?? new Date(0);
-        await tx.complaint.createMany({
-          data: [{
+        await tx.complaint.upsert({
+          where: { id: complaint.id },
+          create: {
             id: complaint.id,
             tenantId: complaint.tenantId,
             roomId: complaint.roomId,
@@ -1809,16 +1733,9 @@ export class PrismaStoreProjector implements StoreProjector {
             availableTimes: complaint.availableTimes,
             status: complaint.status,
             createdAt: asDate(complaint.createdAt),
-            updatedAt: snapshotUpdatedAt
-          }],
-          skipDuplicates: true
-        });
-        await tx.complaint.updateMany({
-          where: {
-            id: complaint.id,
-            updatedAt: { lte: snapshotUpdatedAt }
+            updatedAt: asDate(complaint.updatedAt)
           },
-          data: {
+          update: {
             tenantId: complaint.tenantId,
             roomId: complaint.roomId,
             ticketId: complaint.ticketId,
@@ -1829,16 +1746,15 @@ export class PrismaStoreProjector implements StoreProjector {
             occurredAt: asDate(complaint.occurredAt),
             availableTimes: complaint.availableTimes,
             status: complaint.status,
-            updatedAt: snapshotUpdatedAt
+            updatedAt: asDate(complaint.updatedAt)
           }
         });
       }
 
       for (const ticket of store.tickets) {
-        const existingTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
-        if (!existingTicket) {
-          await tx.ticket.create({
-            data: {
+        await tx.ticket.upsert({
+          where: { id: ticket.id },
+          create: {
             id: ticket.id,
             complaintId: ticket.complaintId,
             tenantId: ticket.tenantId,
@@ -1852,35 +1768,23 @@ export class PrismaStoreProjector implements StoreProjector {
             aiSummary: ticket.aiSummary,
             dueAt: asDate(ticket.dueAt),
             createdAt: asDate(ticket.createdAt),
-              updatedAt: asDate(ticket.updatedAt)
-            }
-          });
-        } else if (
-          existingTicket.complaintId !== ticket.complaintId ||
-          existingTicket.tenantId !== ticket.tenantId ||
-          existingTicket.roomId !== ticket.roomId ||
-          existingTicket.sourceChannel !== ticket.sourceChannel ||
-          existingTicket.category !== ticket.category ||
-          existingTicket.priority !== ticket.priority ||
-          existingTicket.responsibilityHint !== ticket.responsibilityHint ||
-          existingTicket.aiSummary !== ticket.aiSummary ||
-          existingTicket.dueAt?.getTime() !== asDate(ticket.dueAt)?.getTime()
-        ) {
-          await tx.ticket.update({
-            where: { id: ticket.id },
-            data: {
+            updatedAt: asDate(ticket.updatedAt)
+          },
+          update: {
             complaintId: ticket.complaintId,
             tenantId: ticket.tenantId,
             roomId: ticket.roomId,
+            assignedVendorId: ticket.assignedVendorId,
             sourceChannel: ticket.sourceChannel,
             category: ticket.category,
             priority: ticket.priority,
+            status: ticket.status,
             responsibilityHint: ticket.responsibilityHint,
             aiSummary: ticket.aiSummary,
-              dueAt: asDate(ticket.dueAt)
-            }
-          });
-        }
+            dueAt: asDate(ticket.dueAt),
+            updatedAt: asDate(ticket.updatedAt)
+          }
+        });
       }
 
       for (const feedback of store.aiFeedback) {
@@ -1926,10 +1830,9 @@ export class PrismaStoreProjector implements StoreProjector {
       }
 
       for (const repair of store.repairs) {
-        const existingRepair = await tx.repairRequest.findUnique({ where: { id: repair.id } });
-        if (!existingRepair) {
-          await tx.repairRequest.create({
-            data: {
+        await tx.repairRequest.upsert({
+          where: { id: repair.id },
+          create: {
             id: repair.id,
             ticketId: repair.ticketId,
             vendorId: repair.vendorId,
@@ -1946,22 +1849,26 @@ export class PrismaStoreProjector implements StoreProjector {
             completionNote: repair.completionNote,
             completionPhotoUrls: repair.completionPhotoUrls,
             createdAt: asDate(repair.createdAt),
-              updatedAt: asDate(repair.updatedAt)
-            }
-          });
-        } else if (
-          existingRepair.title !== repair.title ||
-          existingRepair.description !== repair.description
-        ) {
-          await tx.repairRequest.update({
-            where: { id: repair.id },
-            data: {
-              title: repair.title,
-              description: repair.description
-            }
+            updatedAt: asDate(repair.updatedAt)
+          },
+          update: {
+            ticketId: repair.ticketId,
+            vendorId: repair.vendorId,
+            status: repair.status,
+            title: repair.title,
+            description: repair.description,
+            estimateAmount: repair.estimateAmount,
+            estimateDescription: repair.estimateDescription,
+            costBearer: repair.costBearer,
+            estimateApprovedAt: asDate(repair.estimateApprovedAt),
+            estimateApprovalNote: repair.estimateApprovalNote,
+            scheduledAt: asDate(repair.scheduledAt),
+            completedAt: asDate(repair.completedAt),
+            completionNote: repair.completionNote,
+            completionPhotoUrls: repair.completionPhotoUrls,
+            updatedAt: asDate(repair.updatedAt)
           }
-          );
-        }
+        });
       }
 
       for (const receipt of store.receipts) {
@@ -1988,13 +1895,6 @@ export class PrismaStoreProjector implements StoreProjector {
       }
 
       for (const cost of store.costs) {
-        if (
-          financeOwnedCostIds.has(cost.id) ||
-          (cost.paymentRef && financeOwnedRepairIds.has(cost.paymentRef))
-        ) {
-          continue;
-        }
-
         await tx.cost.upsert({
           where: { id: cost.id },
           create: {

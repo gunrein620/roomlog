@@ -27,9 +27,6 @@ import {
 } from "./tenant-current-bill";
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
-import { TenantVendorConnectionCard } from "./TenantVendorConnectionCard";
-import { TenantVendorWorkflowPanel } from "./TenantVendorWorkflowPanel";
-import { tenantVendorConnectionEligible } from "./tenant-vendor-connection";
 
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   current: null,
@@ -780,7 +777,6 @@ export default function TenantMyPage({
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
-  const returnedComplaintOpenedRef = useRef(false);
   const [isRepairDetailLoading, setIsRepairDetailLoading] = useState(false);
   const [repairDetailError, setRepairDetailError] = useState("");
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
@@ -1025,19 +1021,6 @@ export default function TenantMyPage({
       setIsRepairDetailLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (returnedComplaintOpenedRef.current || repairRequests.length === 0) return;
-    const returnedComplaintId = new URLSearchParams(window.location.search).get("complaintId");
-    if (!returnedComplaintId) {
-      returnedComplaintOpenedRef.current = true;
-      return;
-    }
-    const returnedRequest = repairRequests.find((request) => request.id === returnedComplaintId);
-    if (!returnedRequest) return;
-    returnedComplaintOpenedRef.current = true;
-    void openRepairDetailSheet(returnedRequest);
-  }, [repairRequests]);
 
   const closeRepairDetailSheet = () => {
     setSelectedRepairRequest(null);
@@ -1524,14 +1507,6 @@ export default function TenantMyPage({
                   </div>
                 </section>
               ) : null}
-              {ai.filedComplaint && tenantVendorConnectionEligible(
-                ai.filedComplaint.responsibilityHint,
-              ) ? (
-                <TenantVendorConnectionCard
-                  complaintId={ai.filedComplaint.id}
-                  onRequested={() => void loadRepairRequests()}
-                />
-              ) : null}
             </div>
             {aiMode === "text" ? (
               <form className="manager-ai-composer" onSubmit={handleAiSubmit}>
@@ -1741,8 +1716,6 @@ export default function TenantMyPage({
                   ))}
                 </div>
               ) : null}
-
-              <TenantVendorWorkflowPanel complaintId={selectedRepairRequest.id} />
 
               <div className="tenant-request-actions">
                 <button className="primary" type="button" onClick={closeRepairDetailSheet}>

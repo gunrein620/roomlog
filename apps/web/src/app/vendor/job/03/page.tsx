@@ -1,84 +1,39 @@
-import { Card } from "@roomlog/ui";
-import { redirect } from "next/navigation";
+import { Button, Card } from "@roomlog/ui";
+import { getVendorRepair, getVendorTicket } from "@/lib/vendor-api";
 import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
-import {
-  getVendorWorkflowJob,
-  nextVendorJobRoute,
-  vendorJobStatusLabel,
-} from "@/lib/vendor-workflow-api";
-import {
-  Body,
-  DemoReadOnlyNotice,
-  Footer,
-  InlineNotice,
-  LinkButton,
-  ScreenHeader,
-  SettlementSummary,
-  Stepper,
-  WorkflowEstimateSummary,
-  WorkflowJobSummary,
-  mutedStyle,
-} from "../_components";
+import { Body, Footer, LinkButton, QuoteSummary, ScreenHeader, Stepper, labelStyle, mutedStyle } from "../_components";
 
-function progress(status: string) {
-  if (["COMPLETED", "COMPLETION_REPORTED"].includes(status)) return 4;
-  if (status === "IN_PROGRESS") return 3;
-  if (["ESTIMATE_APPROVED", "SCHEDULED"].includes(status)) return 2;
-  if (status === "VENDOR_ASSIGNED") return 0;
-  return 1;
-}
-
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<{ id?: string; reported?: string }>;
-}) {
-  const { id, reported } = await searchParams;
-  const { data: job, source, accessDenied } = await getVendorWorkflowJob(id);
-  if (accessDenied) redirect(ROUTES["V-JOB-E0"]);
-  if (!job) redirect(ROUTES["V-JOB-00"]);
-  const nextRoute = nextVendorJobRoute(job);
-  const hasNextAction = !["/vendor/job/03"].includes(nextRoute);
+export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  const { id } = await searchParams;
+  const [ticket, repair] = await Promise.all([
+    getVendorTicket(id),
+    getVendorRepair(id),
+  ]);
 
   return (
     <>
-      <ScreenHeader title="작업 진행 상태" backTo={ROUTES["V-JOB-00"]} />
+      <ScreenHeader title="회신 완료" ticketId={ticket.id} backTo={ROUTES["V-JOB-00"]} />
       <Body>
-        {source === "DEMO" ? <DemoReadOnlyNotice /> : null}
-        {reported ? (
-          <InlineNotice tone="success">
-            완료 보고를 제출했습니다. 관리자가 확인하면 정산 상태가 이 화면에 반영됩니다.
-          </InlineNotice>
-        ) : null}
-        <Stepper steps={["요청", "견적", "일정", "작업", "정산"]} current={progress(job.status)} />
-        <WorkflowJobSummary job={job} />
-        <WorkflowEstimateSummary job={job} />
+        <Stepper steps={["요청", "회신", "선정", "수리", "완료"]} current={1} />
+        <QuoteSummary repair={repair} />
         <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 15, fontWeight: 800 }}>{vendorJobStatusLabel(job.status)}</div>
+          <div style={labelStyle}>현재 상태</div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>승인 대기 — 관리자 검토 중</div>
           <p style={{ ...mutedStyle, margin: 0 }}>
-            {job.status === "ESTIMATE_SUBMITTED"
-              ? "관리자가 견적을 검토 중입니다. 수정 요청 또는 승인 결과가 이 화면에 표시됩니다."
-              : job.status === "COMPLETION_REPORTED"
-                ? "관리자가 완료 사진과 작업 내용을 확인 중입니다. 별도 승인 전에는 지급 완료로 표시하지 않습니다."
-                : job.status === "COMPLETED"
-                  ? "작업 확인이 완료되었습니다. 아래 정산 상태에서 지급 처리 결과를 확인하세요."
-                  : "현재 상태에 맞는 다음 작업을 확인해 주세요."}
+            선정 전 진행은 불가합니다. 마감 전에는 견적 수정 또는 철회가 가능합니다. 예상 응답 ETA 2시간.
           </p>
         </Card>
-        <SettlementSummary job={job} />
+        <details style={{ border: "1px dashed var(--outline-variant)", borderRadius: "var(--radius-md)", padding: 12 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700 }}>시스템 분기 보기</summary>
+          <p style={mutedStyle}>다른 업체 선정, 재견적 요청, 마감 잠금, 견적 불가 정상 종료가 이 화면 안에서 안내됩니다.</p>
+        </details>
       </Body>
-      {hasNextAction ? (
-        <Footer>
-          {source === "DEMO" ? (
-            <button type="button" disabled style={{ minHeight: "var(--touch-target)" }}>
-              실제 연결 후 다음 단계 진행 가능
-            </button>
-          ) : (
-            <LinkButton href={withId(nextRoute, job.repairId)}>다음 단계 확인</LinkButton>
-          )}
-        </Footer>
-      ) : null}
+      <Footer>
+        <Button fullWidth variant="secondary">진행 상태 새로고침</Button>
+        <LinkButton href={withId(ROUTES["V-JOB-02"], id)} variant="secondary">견적 수정</LinkButton>
+        <LinkButton href={withId(ROUTES["V-JOB-04"], id)}>일정 확정하러 가기</LinkButton>
+      </Footer>
     </>
   );
 }

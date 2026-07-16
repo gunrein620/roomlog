@@ -35,9 +35,9 @@ const intentGuidance: Record<LoginIntent, { title: string; body: string; linkHin
     linkHint: "집 내놓기 시작"
   },
   vendor: {
-    title: "업체 전용 계정 연결이 필요합니다",
-    body: "운영팀에서 받은 등록 키로 업체 정보를 확인한 뒤 전용 계정을 연결해 주세요. 세입자·관리자 계정은 업체 계정으로 사용할 수 없습니다.",
-    linkHint: "등록 키로 업체 계정 만들기"
+    title: "협력업체 연결이 필요합니다",
+    body: "이 WOOZU 계정에는 아직 연결된 협력업체가 없습니다. 관리인에게 받은 업체 초대 링크를 열면 이 계정에 업체가 연결됩니다.",
+    linkHint: "관리인 초대 링크로 연결"
   }
 };
 
@@ -142,13 +142,7 @@ export default function UnifiedLoginPage() {
             {/* landlord는 보호된 매물등록(/sell)이 아니라 비보호 등록 시작(flow=listing)으로 —
                 capability 없는 계정이 CTA를 눌러 다시 /login으로 돌아오는 루프 방지 (QA 2) */}
             <a
-              href={
-                state.intent === "landlord"
-                  ? "/?flow=listing"
-                  : state.intent === "vendor"
-                    ? "/vendor/activate"
-                    : "/"
-              }
+              href={state.intent === "landlord" ? "/?flow=listing" : "/"}
               style={{
                 padding: "10px 16px",
                 borderRadius: "var(--radius-btn, 10px)",
@@ -189,10 +183,6 @@ export default function UnifiedLoginPage() {
       googleRedirectTo={redirectTo ?? defaultRedirectForIntent(intent)}
       googleErrorRedirectTo={unifiedLoginPath(intent, redirectTo)}
       initialError={initialError}
-      vendorActivationAction={{
-        href: "/vendor/activate",
-        label: "등록 키로 업체 등록하기"
-      }}
     />
   );
 }

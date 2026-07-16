@@ -11,11 +11,8 @@ import {
 } from "@/lib/manager-assistant";
 import { useManagerMessagingUnreadCount } from "@/lib/manager-messaging-unread";
 import { ManagerAssistantLauncher, ManagerAssistantPanel } from "./ManagerAssistant";
-import { ManagerCreditUtility } from "./ManagerCreditUtility";
-import creditStyles from "./ManagerCreditUtility.module.css";
 import { ManagerSectionNav } from "./ManagerSectionNav";
 import { ManagerSidebar } from "./ManagerSidebar";
-import { DomainEventNotifications } from "../../_components/DomainEventNotifications";
 
 export interface ManagerAppShellProps {
   title: ReactNode;
@@ -98,12 +95,6 @@ export function ManagerAppShell({
       <Menu aria-hidden="true" />
     </button>
   );
-  const headerActions = (
-    <div className={creditStyles.headerActions}>
-      <ManagerCreditUtility />
-      {action}
-    </div>
-  );
   // 접기 토글은 사이드바 우측 상단(브랜드 옆)에 상주 — 색은 사이드바 토큰을 따라간다.
   const collapseAction = (
     <button
@@ -132,7 +123,7 @@ export function ManagerAppShell({
         theme={theme}
         nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} messagingUnreadCount={messagingUnreadCount} /></Suspense>}
         subnav={subnav ?? <Suspense fallback={null}><ManagerSectionNav /></Suspense>}
-        headerActions={headerActions}
+        headerActions={action}
         rightRail={rail}
       >
         {children}
@@ -163,7 +154,6 @@ export function ManagerAppShell({
           contextLabel={typeof title === "string" ? title : "현재 관리자 화면"}
         />
       ) : null}
-      <DomainEventNotifications placement="manager" />
     </>
   );
 }

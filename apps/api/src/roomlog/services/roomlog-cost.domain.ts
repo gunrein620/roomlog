@@ -28,18 +28,12 @@ export class RoomlogCostDomain {
     private readonly cloneReceiptOcr: (ocr: ReceiptOcr) => ReceiptOcr
   ) {}
 
-  listManagerCosts(managerId: string, financeOwnedCosts: readonly Cost[] = []) {
-    return this.managerCosts(managerId, financeOwnedCosts);
+  listManagerCosts(managerId: string) {
+    return this.managerCosts(managerId);
   }
 
-  getManagerCost(
-    managerId: string,
-    costId: string,
-    financeOwnedCosts: readonly Cost[] = []
-  ) {
-    const cost = this.managerCosts(managerId, financeOwnedCosts).find(
-      (item) => item.id === costId
-    );
+  getManagerCost(managerId: string, costId: string) {
+    const cost = this.managerCosts(managerId).find((item) => item.id === costId);
 
     if (!cost) {
       throw new NotFoundException("관리 가능한 비용을 찾을 수 없습니다.");
@@ -152,15 +146,10 @@ export class RoomlogCostDomain {
     };
   }
 
-  getManagerMonthlyCostSummary(
-    managerId: string,
-    month = this.currentMonth(),
-    financeOwnedCosts: readonly Cost[] = []
-  ) {
-    const activeCosts = this.activeManagerCostsForSummary(
-      managerId,
-      financeOwnedCosts
-    ).filter((cost) => cost.date.startsWith(month));
+  getManagerMonthlyCostSummary(managerId: string, month = this.currentMonth()) {
+    const activeCosts = this.activeManagerCostsForSummary(managerId).filter((cost) =>
+      cost.date.startsWith(month)
+    );
     const byType = this.emptyCostTypeAmounts();
 
     for (const cost of activeCosts) {
@@ -221,44 +210,19 @@ export class RoomlogCostDomain {
     };
   }
 
-  private managerCosts(managerId: string, financeOwnedCosts: readonly Cost[] = []) {
-    const authoritativeById = new Map(
-      financeOwnedCosts
-        .filter((cost) => cost.managerId === managerId)
-        .map((cost) => [cost.id, cost] as const)
-    );
-    const authoritative = [...authoritativeById.values()];
-    const authoritativeIds = new Set(authoritativeById.keys());
-    const authoritativeRepairRefs = new Set(
-      authoritative
+  private managerCosts(managerId: string) {
+    const stored = this.store.costs.filter((cost) => this.canManagerAccessCost(managerId, cost));
+    const storedRepairPaymentRefs = new Set(
+      stored
         .map((cost) => cost.paymentRef)
         .filter((paymentRef): paymentRef is string => Boolean(paymentRef))
-    );
-    const stored = this.store.costs
-      .filter((cost) => this.canManagerAccessCost(managerId, cost))
-      .filter(
-        (cost) =>
-          !authoritativeIds.has(cost.id) &&
-          (!cost.paymentRef || !authoritativeRepairRefs.has(cost.paymentRef))
-      );
-    const storedRepairPaymentRefs = new Set(
-      [
-        ...authoritativeRepairRefs,
-        ...stored
-          .map((cost) => cost.paymentRef)
-          .filter((paymentRef): paymentRef is string => Boolean(paymentRef))
-      ]
     );
     const projected = this.store.repairs
       .filter((repair) => !storedRepairPaymentRefs.has(repair.id))
       .map((repair) => this.projectRepairCost(managerId, repair))
       .filter((cost): cost is Cost => Boolean(cost));
 
-    return [
-      ...authoritative.map((cost) => ({ ...cost })),
-      ...stored.map((cost) => ({ ...cost })),
-      ...projected
-    ].sort(
+    return [...stored.map((cost) => ({ ...cost })), ...projected].sort(
       (a, b) => this.timeOf(b.date) - this.timeOf(a.date)
     );
   }
@@ -350,11 +314,8 @@ export class RoomlogCostDomain {
     return Number.isNaN(parsed.getTime()) ? now() : parsed.toISOString();
   }
 
-  private activeManagerCostsForSummary(
-    managerId: string,
-    financeOwnedCosts: readonly Cost[] = []
-  ) {
-    const costs = this.managerCosts(managerId, financeOwnedCosts);
+  private activeManagerCostsForSummary(managerId: string) {
+    const costs = this.managerCosts(managerId);
     const supersededIds = new Set(
       costs
         .filter((cost) => cost.status === "amended" && cost.supersedesId)

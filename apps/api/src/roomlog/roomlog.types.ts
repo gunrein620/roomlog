@@ -2171,6 +2171,23 @@ export type ConfirmBillPaymentInput = {
   amount: number;
 };
 
+export type TossConfirmPaymentInput = {
+  paymentKey: string;
+  orderId: string;
+  amount: number;
+};
+
+export type TossConfirmPaymentResult = TossConfirmPaymentInput & {
+  method?: string;
+  approvedAt?: string;
+  status?: string;
+  raw?: unknown;
+};
+
+export type TossPaymentGateway = {
+  confirmPayment(input: TossConfirmPaymentInput): Promise<TossConfirmPaymentResult>;
+};
+
 export type MatchDepositInput = {
   billId: string;
 };

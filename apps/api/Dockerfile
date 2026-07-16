@@ -52,11 +52,9 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --filter api --prod --frozen-lockfile --store-dir /pnpm/store
 RUN pnpm --filter api exec prisma generate --schema ../../prisma/schema.prisma
 
-COPY apps/api/scripts ./apps/api/scripts
-COPY apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql ./apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql
 COPY --from=builder /app/packages/types ./packages/types
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 EXPOSE 4000
 
-CMD ["pnpm", "--filter", "api", "start:prod"]
+CMD ["sh", "-c", "pnpm --filter api exec prisma db push --config ../../prisma.config.ts && pnpm --filter api start:prod"]

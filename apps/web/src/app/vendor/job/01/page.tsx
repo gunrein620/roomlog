@@ -1,60 +1,53 @@
 import { Badge, Card } from "@roomlog/ui";
-import { redirect } from "next/navigation";
+import { getVendorAnalysis, getVendorTicket } from "@/lib/vendor-api";
 import { withId } from "@/lib/nav";
 import { ROUTES } from "@/lib/vendor-nav";
-import { getVendorWorkflowJob, nextVendorJobRoute } from "@/lib/vendor-workflow-api";
 import {
-  AttachmentGallery,
   Body,
-  DemoReadOnlyNotice,
+  ContactThread,
   Footer,
   LinkButton,
+  PhotoPreview,
   ScreenHeader,
-  WorkflowEstimateSummary,
-  WorkflowJobSummary,
+  TicketSummary,
+  TrustBadges,
+  labelStyle,
   mutedStyle,
 } from "../_components";
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   const { id } = await searchParams;
-  const { data: job, source, accessDenied } = await getVendorWorkflowJob(id);
-  if (accessDenied) redirect(ROUTES["V-JOB-E0"]);
-  if (!job) redirect(ROUTES["V-JOB-00"]);
-  const nextRoute = nextVendorJobRoute(job);
+  const [ticket, analysis] = await Promise.all([
+    getVendorTicket(id),
+    getVendorAnalysis(id),
+  ]);
 
   return (
     <>
-      <ScreenHeader title="수리 요청 상세" backTo={ROUTES["V-JOB-00"]} />
+      <ScreenHeader title="하자 상세" ticketId={ticket.id} backTo={ROUTES["V-JOB-00"]} />
       <Body>
-        {source === "DEMO" ? <DemoReadOnlyNotice /> : null}
-        <WorkflowJobSummary job={job} />
-        <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          <div style={{ fontWeight: 800 }}>전달된 자료</div>
-          <AttachmentGallery
-            urls={job.attachmentUrls}
-            emptyLabel="관리자가 공유한 하자 사진이 없습니다."
-          />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <Badge emphasis>관리자 배정 완료</Badge>
-            <Badge>개인정보 비공개</Badge>
+        <section>
+          <div style={labelStyle}>정제된 사진</div>
+          <PhotoPreview />
+          <div style={{ marginTop: 8 }}>
+            <TrustBadges />
           </div>
+        </section>
+
+        <TicketSummary ticket={ticket} analysis={analysis} />
+
+        <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={labelStyle}>전달 정보 범위</div>
+          <Badge emphasis>관리자 검수 완료</Badge>
           <p style={{ ...mutedStyle, margin: 0 }}>
-            업체에는 수리에 필요한 공개 위치와 증상만 전달됩니다. 계약서와 임차인 연락처는
-            표시하지 않습니다.
+            정확 주소, 임차인 연락처, 계약서, 책임·비용 판단은 업체에게 전달되지 않습니다.
           </p>
         </Card>
-        <WorkflowEstimateSummary job={job} />
+
+        <ContactThread />
       </Body>
       <Footer>
-        {source === "DEMO" ? (
-          <button type="button" disabled style={{ minHeight: "var(--touch-target)" }}>
-            실제 연결 후 견적 회신 가능
-          </button>
-        ) : (
-          <LinkButton href={withId(nextRoute, job.repairId)}>
-            {nextRoute === ROUTES["V-JOB-02"] ? "견적 회신하기" : "진행 상태 보기"}
-          </LinkButton>
-        )}
+        <LinkButton href={withId(ROUTES["V-JOB-02"], id)}>견적 회신하기</LinkButton>
       </Footer>
     </>
   );

@@ -33,18 +33,10 @@ export class RealtimeGateway implements OnGatewayConnection {
 
   /** 특정 사용자들에게만 보낸다 (거래 채팅 등 1:1 알림). */
   notifyUsers(userIds: string[], event: string, payload: Record<string, unknown>) {
-    if (!this.server) return false;
-    const rooms = [...new Set(userIds)].map((userId) => `user:${userId}`);
-    if (
-      rooms.length === 0
-      || rooms.some((room) => !this.server.sockets.adapter.rooms.get(room)?.size)
-    ) {
-      return false;
+    if (!this.server) return;
+    for (const userId of new Set(userIds)) {
+      this.server.to(`user:${userId}`).emit(event, payload);
     }
-    for (const room of rooms) {
-      this.server.to(room).emit(event, payload);
-    }
-    return true;
   }
 
   /** 인증된 전체 클라이언트에게 보낸다 (룸로그 메시징/공지 갱신 신호). */

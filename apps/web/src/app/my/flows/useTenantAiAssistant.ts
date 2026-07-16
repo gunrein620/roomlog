@@ -14,7 +14,6 @@ import {
   recordTenantRealtimeTurn,
   sendTenantIntakeMessage,
   type TenantIntakeFinalizeResult,
-  type TenantIntakeResponsibilityHint,
   type TenantIntakeSession,
 } from "@/lib/tenant-intake-api";
 import {
@@ -56,10 +55,6 @@ export function useTenantAiAssistant({
   ]);
   const [busy, setBusy] = useState(false);
   const [readyToFinalize, setReadyToFinalize] = useState(false);
-  const [filedComplaint, setFiledComplaint] = useState<{
-    id: string;
-    responsibilityHint?: TenantIntakeResponsibilityHint;
-  } | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<TenantVoiceConnectionState>("idle");
   const [voiceActivity, setVoiceActivity] = useState<TenantVoiceActivity>("idle");
   const [isTalking, setIsTalking] = useState(false);
@@ -68,10 +63,6 @@ export function useTenantAiAssistant({
   roomIdRef.current = roomId;
   const sessionIdRef = useRef<string | null>(null);
   const sessionPromiseRef = useRef<Promise<TenantIntakeSession> | null>(null);
-
-  useEffect(() => {
-    setFiledComplaint(null);
-  }, [roomId]);
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
@@ -179,14 +170,6 @@ export function useTenantAiAssistant({
   // 접수 완료 처리 공통 — 영수증 메시지를 남기고, 다음 대화는 새 세션으로 시작한다.
   function announceComplaintFiled(result: TenantIntakeFinalizeResult) {
     const title = result.complaint?.title;
-    if (result.complaint?.id) {
-      setFiledComplaint({
-        id: result.complaint.id,
-        ...(result.analysis?.responsibilityHint
-          ? { responsibilityHint: result.analysis.responsibilityHint }
-          : {}),
-      });
-    }
     appendMessage(
       "receipt",
       title
@@ -395,7 +378,6 @@ export function useTenantAiAssistant({
     messages,
     busy,
     readyToFinalize,
-    filedComplaint,
     startTextSession,
     submitText,
     finalizeComplaint,
