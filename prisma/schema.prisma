@@ -1503,6 +1503,7 @@ model TradeListing {
   monthlyRentManwon Int      @default(0)
   location          String
   detailAddress     String?
+  buildingName      String? // 건물명 — 관리 화면의 건물별 그룹 보기 기준
   description       String   @default("")
   images            String[] @default([])
   lat               Float?

@@ -610,6 +610,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           monthlyRentManwon: Number(ownerForm.monthly) || 0,
           location: ownerForm.address || "위치 미입력",
           detailAddress,
+          buildingName: ownerForm.buildingName.trim(),
           description: [
             ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
             ownerForm.floor ? `${ownerForm.floor}층` : "",
@@ -713,10 +714,22 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
 
           {/* 넓은 폭을 활용해 필드를 여러 열로 흘려 세로 높이를 줄인다(데스크톱 3열 / 모바일 2열) */}
           <div className="owner-step1-fields">
-            <label className="owner-step1-wide">
-              매물명
-              <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
-            </label>
+            {/* 매물명 · 건물명은 한 행에서 반반(1:1)으로 — 건물명은 관리 화면의 건물별 보기 기준 */}
+            <div className="owner-step1-addr-row">
+              <label>
+                매물명
+                <input value={ownerForm.title} onChange={(event) => updateOwnerForm("title", event.target.value)} placeholder="예: 방배 루미에르 402호" />
+              </label>
+
+              <label>
+                건물명
+                <input
+                  value={ownerForm.buildingName}
+                  onChange={(event) => updateOwnerForm("buildingName", event.target.value)}
+                  placeholder="예: 방배 루미에르 (선택)"
+                />
+              </label>
+            </div>
 
             {/* 주소 · 세부주소는 한 행에서 반반(1:1)으로 */}
             <div className="owner-step1-addr-row">

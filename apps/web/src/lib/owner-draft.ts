@@ -7,6 +7,7 @@ const OWNER_DRAFT_VERSION = 1 as const;
 
 export type OwnerFormValues = {
   title: string;
+  buildingName: string;
   address: string;
   detailAddress: string;
   tradeType: string;
@@ -41,6 +42,7 @@ export type OwnerListingDraft = {
 // 예시는 각 input의 placeholder가 담당한다. tradeType만 select 기본 선택값.
 export const emptyOwnerForm: OwnerFormValues = {
   title: "",
+  buildingName: "",
   address: "",
   detailAddress: "",
   tradeType: "월세",
@@ -102,10 +104,14 @@ export function parseOwnerDraft(raw: string | null): OwnerListingDraft | null {
   if (!ownerFormKeys.every((key) => typeof (form as Record<string, unknown>)[key] === "string")) {
     return null;
   }
+  // detailAddress/buildingName은 나중에 추가된 필드 — 이전 버전 draft에는 없으므로 빈 값으로 보정한다.
   const normalizedForm = {
     ...(form as OwnerFormValues),
     detailAddress: typeof (form as Record<string, unknown>).detailAddress === "string"
       ? (form as Record<string, string>).detailAddress
+      : "",
+    buildingName: typeof (form as Record<string, unknown>).buildingName === "string"
+      ? (form as Record<string, string>).buildingName
       : ""
   };
 

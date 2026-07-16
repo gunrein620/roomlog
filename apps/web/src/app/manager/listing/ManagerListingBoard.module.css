@@ -3,6 +3,53 @@
   gap: var(--space-md);
 }
 
+.viewToggle {
+  display: inline-flex;
+  gap: var(--space-sm);
+}
+
+.viewToggle button {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-lg);
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.viewToggle button[data-active="true"] {
+  color: var(--on-primary);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.viewToggle button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--space-xs);
+}
+
+.buildingGroup {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.buildingGroupTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin: 0;
+  font-size: var(--fs-subtitle);
+}
+
+.buildingGroupTitle span {
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  font-weight: 800;
+}
+
 .cardButton {
   all: unset;
   display: block;

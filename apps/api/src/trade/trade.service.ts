@@ -49,6 +49,8 @@ export type TradeListingInput = {
   monthlyRentManwon: number;
   location: string;
   detailAddress?: string;
+  /** 건물명 — 관리 화면에서 건물별 그룹 보기의 기준(선택 입력) */
+  buildingName?: string;
   description?: string;
   /** 업로드된 매물 사진 URL 배열(없으면 카드가 목업으로 폴백) */
   images?: string[];
@@ -164,6 +166,11 @@ function normalizeCoords(lat?: number, lng?: number): { lat?: number; lng?: numb
 
 function normalizeDetailAddress(value?: string): string | undefined {
   const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || undefined;
+}
+
+function normalizeBuildingName(value?: string): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim().slice(0, 80) : "";
   return trimmed || undefined;
 }
 
@@ -384,6 +391,9 @@ export class TradeService implements OnModuleDestroy {
           const detailAddress = normalizeDetailAddress(listing.detailAddress);
           if (detailAddress) listing.detailAddress = detailAddress;
           else delete listing.detailAddress;
+          const buildingName = normalizeBuildingName(listing.buildingName);
+          if (buildingName) listing.buildingName = buildingName;
+          else delete listing.buildingName;
           if (listing.status !== "계약완료") listing.status = "노출중";
         });
         parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
@@ -471,6 +481,7 @@ export class TradeService implements OnModuleDestroy {
   createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
     const detailAddress = normalizeDetailAddress(input.detailAddress);
+    const buildingName = normalizeBuildingName(input.buildingName);
     const listing: TradeListing = {
       id: randomUUID().slice(0, 8),
       ownerId: owner.id,
@@ -482,6 +493,7 @@ export class TradeService implements OnModuleDestroy {
       monthlyRentManwon: Number(input.monthlyRentManwon) || 0,
       location: input.location?.trim() || "위치 미입력",
       ...(detailAddress ? { detailAddress } : {}),
+      ...(buildingName ? { buildingName } : {}),
       description: input.description?.trim() || "",
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
@@ -528,6 +540,11 @@ export class TradeService implements OnModuleDestroy {
       const detailAddress = normalizeDetailAddress(input.detailAddress);
       if (detailAddress) listing.detailAddress = detailAddress;
       else delete listing.detailAddress;
+    }
+    if (typeof input.buildingName === "string") {
+      const buildingName = normalizeBuildingName(input.buildingName);
+      if (buildingName) listing.buildingName = buildingName;
+      else delete listing.buildingName;
     }
     if (typeof input.description === "string") listing.description = input.description.trim();
     if (Array.isArray(input.images)) listing.images = normalizeImages(input.images);

@@ -33,6 +33,7 @@ const input = {
   monthlyRentManwon: 50,
   location: "서울 서초구 방배동",
   detailAddress: "402호",
+  buildingName: "방배 루미에르",
   description: "등록 매물",
   images: ["https://example.test/listing.jpg"]
 };
@@ -57,6 +58,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       [input.title]
     );
     assert.equal(lastSnapshot[0].detailAddress, "402호");
+    assert.equal(lastSnapshot[0].buildingName, "방배 루미에르");
   });
 
   it("hydrates listings from the DB on boot, overriding the JSON store", () => {
