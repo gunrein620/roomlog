@@ -30,11 +30,17 @@ type SearchParams = Promise<{
   confirmError?: string;
 }>;
 type ManagerContractDetailResult = Awaited<ReturnType<typeof getManagerContractDetail>>;
+const DOCUMENT_ABSENT_VALUE = "문서에 없음";
 const IMPORTANT_CONTRACT_LABELS = ["보증금", "특약", "자동연장", "원상복구", "수선 책임"] as const;
 type ImportantContractLabel = (typeof IMPORTANT_CONTRACT_LABELS)[number];
+const OPTIONAL_CONTRACT_CLAUSE_LABELS = ["특약", "자동연장", "원상복구", "수선 책임"] as const;
 
 function isImportantContractLabel(label: string): label is ImportantContractLabel {
   return IMPORTANT_CONTRACT_LABELS.includes(label as ImportantContractLabel);
+}
+
+function isOptionalContractClauseLabel(label: string) {
+  return OPTIONAL_CONTRACT_CLAUSE_LABELS.includes(label as (typeof OPTIONAL_CONTRACT_CLAUSE_LABELS)[number]);
 }
 
 function contractReviewItems(items: ManagerContractDetailResult["extraction"]["items"]) {
@@ -205,7 +211,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   <strong>검토 확정 실패</strong>
                   <span>{confirmError}</span>
                   <span style={confirmErrorHintStyle}>
-                    이 화면에서는 계약서 원문 확인이 필요한 보증금·특약만 수정합니다. DB 기본값 오류라면 매물/계약 등록값을 먼저 정리해 주세요.
+                    이 화면에서는 계약서 원문 확인이 필요한 보증금·특약성 조항만 확정합니다. 확인 필요 항목은 원문과 대조했다는 확인이 필요합니다.
                   </span>
                 </div>
               </Card>
@@ -388,7 +394,9 @@ function ValueText({ value, strong = false }: { value: string; strong?: boolean 
   return (
     <span
       style={{
-        color: isMissingDisplayValue(value) || value === "직접 입력 필요" ? "var(--on-surface-variant)" : "var(--on-surface)",
+        color: isMissingDisplayValue(value) || value === "직접 입력 필요" || isDocumentAbsentValue(value)
+          ? "var(--on-surface-variant)"
+          : "var(--on-surface)",
         fontWeight: strong ? 900 : 700,
       }}
     >
@@ -561,8 +569,15 @@ function makeValueRow(
 ): ValueRow {
   const item = detail.extraction.items.find((candidate) => candidate.label === label);
   const ocrFailed = sourceKind === "mock";
-  const rawOcrValue = item?.value?.trim() || "미확인";
   const normalizedDbValue = dbValue.trim();
+  const rawItemValue = item?.value?.trim();
+  const initialMissingOcrLeftover = Boolean(item && isMissingDisplayValue(rawItemValue) && !item.evidence?.trim());
+  const inferredDocumentAbsent =
+    sourceKind === "openai" &&
+    isOptionalContractClauseLabel(label) &&
+    !normalizedDbValue &&
+    (!item || initialMissingOcrLeftover);
+  const rawOcrValue = inferredDocumentAbsent ? DOCUMENT_ABSENT_VALUE : rawItemValue || "미확인";
   const validationMessages = validationMessagesFromEvidence(ocrFailed ? undefined : item?.evidence);
   const hasUsableOcrValue = !isMissingDisplayValue(rawOcrValue);
   const hasDbValue = Boolean(normalizedDbValue);
@@ -573,8 +588,11 @@ function makeValueRow(
       ? rawOcrValue
       : normalizedDbValue || "직접 입력 필요";
   const missingFinal = isMissingDisplayValue(finalRawValue) || finalRawValue === "직접 입력 필요";
+  const documentAbsent = isDocumentAbsentValue(finalRawValue);
   const finalSource = missingFinal
     ? "직접 입력 필요"
+    : documentAbsent
+      ? "원문에 해당 조항 없음"
     : shouldPreferDbValue
       ? ocrFailed
         ? "OCR 실패로 저장값 사용"
@@ -594,9 +612,9 @@ function makeValueRow(
     dbValue: displayDbValue,
     finalValue: displayFinalValue,
     finalSource,
-    status: missingFinal ? "부족" : ocrFailed ? "원문 확인" : item?.needsCheck ? "확인 필요" : "확인",
-    statusEmphasis: missingFinal || (!ocrFailed && Boolean(item?.needsCheck)),
-    evidence: ocrFailed ? undefined : item?.evidence,
+    status: documentAbsent ? "해당 없음" : missingFinal ? "부족" : ocrFailed ? "원문 확인" : item?.needsCheck ? "확인 필요" : "확인",
+    statusEmphasis: !documentAbsent && (missingFinal || (!ocrFailed && Boolean(item?.needsCheck))),
+    evidence: ocrFailed ? undefined : item?.evidence ?? (inferredDocumentAbsent ? "성공한 OCR에서 해당 조항을 찾지 못했습니다." : undefined),
     ocrDetails: ocrFailed ? [] : contractValueDetails(label, rawOcrValue),
     dbDetails: contractValueDetails(label, normalizedDbValue),
     finalDetails: contractValueDetails(label, finalRawValue),
@@ -618,6 +636,7 @@ function validationMessagesFromEvidence(evidence?: string) {
 function summarizeContractValue(label: string, value: string) {
   const normalized = value.trim();
   if (!normalized) return "없음";
+  if (isDocumentAbsentValue(normalized)) return DOCUMENT_ABSENT_VALUE;
   if (isMissingDisplayValue(normalized) || normalized === "직접 입력 필요") return normalized;
 
   if (label === "보증금") {
@@ -641,6 +660,7 @@ function preferredMoneySummary(value: string, labels: string[]) {
 function contractValueDetails(label: string, value: string): ValueDetail[] {
   const normalized = value.trim();
   if (!normalized || isMissingDisplayValue(normalized) || normalized === "직접 입력 필요") return [];
+  if (isDocumentAbsentValue(normalized)) return [{ label: "판정", value: "원문에 해당 조항 없음" }];
 
   if (label === "보증금") return moneyDetails(normalized, ["기본", "전환보증금", "전환 후", "임대보증금", "보증금"]);
   if (["특약", "자동연장", "원상복구", "수선 책임"].includes(label)) return [{ label: "조항 요약", value: normalized }];
@@ -701,6 +721,11 @@ function textInputCandidate(detail: ManagerContractDetailResult, label: string, 
 function isMissingDisplayValue(value?: string) {
   const normalized = value?.trim();
   return !normalized || normalized === "미확인" || normalized === "원문 확인 필요" || normalized === "관리자 수동값 없음" || normalized === "없음";
+}
+
+function isDocumentAbsentValue(value?: string) {
+  const normalized = value?.replace(/\s+/g, "").trim();
+  return normalized === "문서에없음" || normalized === "해당없음" || normalized === "해당사항없음";
 }
 
 function textValue(formData: FormData, name: string) {

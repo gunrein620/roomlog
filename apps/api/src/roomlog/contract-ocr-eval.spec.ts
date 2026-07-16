@@ -160,6 +160,91 @@ describe("Contract OCR eval fixtures", () => {
     assert.equal(extractionValue(result, "특약")?.value, "전대 및 양도는 임대인 사전 동의를 받는다.");
   });
 
+  it("treats absent optional clauses as not applicable instead of unread", async () => {
+    const result = await runContractOcrEval(
+      ocrFields({
+        depositFinalAmount: {
+          value: "53,288,000원",
+          evidence: "전환 후 임대보증금 53,288,000원",
+          needsCheck: false
+        },
+        specialTerms: {
+          value: "",
+          evidence: "원문에 특약 항목 없음",
+          needsCheck: false
+        },
+        autoRenewal: {
+          value: "해당 없음",
+          evidence: "자동연장 조항 미기재",
+          needsCheck: false
+        },
+        restorationDuty: {
+          value: "없음",
+          evidence: "원상복구 조항 미기재",
+          needsCheck: false
+        },
+        repairDuty: {
+          value: "문서에 없음",
+          evidence: "수선 책임 조항 미기재",
+          needsCheck: false
+        }
+      })
+    );
+
+    assert.equal(extractionValue(result, "보증금")?.needsCheck, false);
+
+    for (const label of ["특약", "자동연장", "원상복구", "수선 책임"]) {
+      const item = extractionValue(result, label);
+
+      assert.equal(item?.value, "문서에 없음");
+      assert.equal(item?.needsCheck, false);
+    }
+  });
+
+  it("keeps optional clauses as unread when OCR explicitly cannot determine them", async () => {
+    const result = await runContractOcrEval(
+      ocrFields({
+        depositFinalAmount: {
+          value: "53,288,000원",
+          evidence: "전환 후 임대보증금 53,288,000원",
+          needsCheck: false
+        },
+        restorationDuty: {
+          value: "",
+          evidence: "원상복구 조항 영역이 흐려 판독 불가",
+          needsCheck: true
+        }
+      })
+    );
+    const restorationDuty = extractionValue(result, "원상복구");
+
+    assert.notEqual(restorationDuty?.value, "문서에 없음");
+    assert.equal(restorationDuty?.needsCheck, true);
+  });
+
+  it("clears initial missing optional clauses after a successful OCR that omits them", async () => {
+    const result = await runContractOcrEval(
+      {} as Record<OcrFieldKey, OcrField>,
+      [
+        {
+          label: "보증금",
+          value: "53,288,000원",
+          group: "money",
+          needsCheck: false,
+          evidence: "전환 후 임대보증금 53,288,000원",
+          masked: false
+        }
+      ]
+    );
+
+    for (const label of ["특약", "자동연장", "원상복구", "수선 책임"]) {
+      const item = extractionValue(result, label);
+
+      assert.equal(item?.value, "문서에 없음");
+      assert.equal(item?.needsCheck, false);
+    }
+  });
+
   it("marks deposit text without an amount as needs-check", async () => {
     const result = await runContractOcrEval(
       ocrFields({

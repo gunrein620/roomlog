@@ -288,14 +288,21 @@ describe("trade contract billing bridge", () => {
       false,
     );
 
-    assert.throws(() => service.confirmManagerContractReview("landlord-demo", first.id, {
+    const reviewOnlyConfirmed = service.confirmManagerContractReview("landlord-demo", first.id, {
       confirmNeedsCheck: true,
-    }), /계약 시작일/);
-    const failedConfirmation = service.getManagerContractDetail("landlord-demo", first.id);
-    assert.equal(failedConfirmation.row.contract.lifecycle, "analyzing");
-    assert.equal(failedConfirmation.row.contract.review, "pending");
-    assert.equal(failedConfirmation.row.contract.valueSource, "unverified");
-    assert.equal(failedConfirmation.extraction.confirmed, false);
+    });
+    assert.equal(reviewOnlyConfirmed.row.contract.review, "confirmed");
+    assert.equal(reviewOnlyConfirmed.extraction.confirmed, true);
+    assert.equal(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .options.some((option) => option.contractId === first.id),
+      false,
+    );
+    assert.deepEqual(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .unavailableOptions.find((option) => option.contractId === first.id)?.reasons,
+      ["MAINTENANCE_FEE_MISSING", "PAYMENT_DAY_MISSING"],
+    );
 
     const manualValues = {
       deposit: "10,000,000원",
@@ -323,11 +330,11 @@ describe("trade contract billing bridge", () => {
     assert.throws(() => service.confirmManagerContractReview("landlord-demo", first.id, {
       confirmNeedsCheck: false,
     }), /원문과 대조/);
-    const stillPending = service.getManagerContractDetail("landlord-demo", first.id);
-    assert.equal(stillPending.row.contract.lifecycle, "analyzing");
-    assert.equal(stillPending.row.contract.review, "pending");
-    assert.equal(stillPending.row.contract.valueSource, "manual");
-    assert.equal(stillPending.extraction.confirmed, false);
+    const stillNeedsAcknowledgement = service.getManagerContractDetail("landlord-demo", first.id);
+    assert.equal(stillNeedsAcknowledgement.row.contract.lifecycle, "active");
+    assert.equal(stillNeedsAcknowledgement.row.contract.review, "confirmed");
+    assert.equal(stillNeedsAcknowledgement.row.contract.valueSource, "manual");
+    assert.equal(stillNeedsAcknowledgement.extraction.confirmed, true);
 
     const confirmed = service.confirmManagerContractReview("landlord-demo", first.id, {
       confirmNeedsCheck: true,
@@ -497,9 +504,10 @@ describe("trade contract billing bridge", () => {
     assert.equal(detail.extraction.confirmed, false);
   });
 
-  it("requires both rent and maintenance fee before confirmation", () => {
+  it("confirms review without rent or maintenance fee but excludes it from billing", () => {
     const rentMissingService = new RoomlogService();
-    const rentMissing = createManagerDraft(rentMissingService, "rent-missing").contract;
+    const rentMissingDraft = createManagerDraft(rentMissingService, "rent-missing");
+    const rentMissing = rentMissingDraft.contract;
     const maintenanceOnly = {
       maintenanceFee: 0,
       paymentDay: 10,
@@ -511,15 +519,19 @@ describe("trade contract billing bridge", () => {
       rentMissing.id,
       maintenanceOnly,
     );
-    assert.throws(
-      () => rentMissingService.confirmManagerContractReview("landlord-demo", rentMissing.id, {
-        confirmNeedsCheck: true,
-      }),
-      /월세를 입력/,
+    const rentMissingConfirmed = rentMissingService.confirmManagerContractReview("landlord-demo", rentMissing.id, {
+      confirmNeedsCheck: true,
+    });
+    assert.equal(rentMissingConfirmed.row.contract.review, "confirmed");
+    assert.ok(
+      rentMissingService.getManagerBillCreationOptions("landlord-demo", rentMissingDraft.room.buildingName, "2026-08")
+        .unavailableOptions.find((option) => option.contractId === rentMissing.id)
+        ?.reasons.includes("MONTHLY_RENT_MISSING"),
     );
 
     const feeMissingService = new RoomlogService();
-    const feeMissing = createManagerDraft(feeMissingService, "fee-missing").contract;
+    const feeMissingDraft = createManagerDraft(feeMissingService, "fee-missing");
+    const feeMissing = feeMissingDraft.contract;
     const rentOnly = {
       monthlyRent: 0,
       paymentDay: 10,
@@ -527,11 +539,14 @@ describe("trade contract billing bridge", () => {
       endDate: "2099-07-12",
     };
     feeMissingService.updateManagerContractManualValues("landlord-demo", feeMissing.id, rentOnly);
-    assert.throws(
-      () => feeMissingService.confirmManagerContractReview("landlord-demo", feeMissing.id, {
-        confirmNeedsCheck: true,
-      }),
-      /관리비를 입력/,
+    const feeMissingConfirmed = feeMissingService.confirmManagerContractReview("landlord-demo", feeMissing.id, {
+      confirmNeedsCheck: true,
+    });
+    assert.equal(feeMissingConfirmed.row.contract.review, "confirmed");
+    assert.ok(
+      feeMissingService.getManagerBillCreationOptions("landlord-demo", feeMissingDraft.room.buildingName, "2026-08")
+        .unavailableOptions.find((option) => option.contractId === feeMissing.id)
+        ?.reasons.includes("MAINTENANCE_FEE_MISSING"),
     );
   });
 
@@ -573,11 +588,14 @@ describe("trade contract billing bridge", () => {
     };
     service.updateManagerContractManualValues("landlord-demo", contract.id, manualValues);
 
-    assert.throws(
-      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
-        confirmNeedsCheck: true,
-      }),
-      /납부일을 입력/,
+    const confirmedWithoutPaymentDay = service.confirmManagerContractReview("landlord-demo", contract.id, {
+      confirmNeedsCheck: true,
+    });
+    assert.equal(confirmedWithoutPaymentDay.row.contract.review, "confirmed");
+    assert.ok(
+      service.getManagerBillCreationOptions("landlord-demo", room.buildingName, "2026-08")
+        .unavailableOptions.find((option) => option.contractId === contract.id)
+        ?.reasons.includes("PAYMENT_DAY_MISSING"),
     );
 
     const store = (service as unknown as {
@@ -843,12 +861,10 @@ describe("trade contract billing bridge", () => {
       cleared.extraction.items.find((item) => item.label === "계약 기간")?.value,
       undefined,
     );
-    assert.throws(
-      () => service.confirmManagerContractReview("landlord-demo", contract.id, {
-        confirmNeedsCheck: true,
-      }),
-      /계약 시작일/,
-    );
+    const confirmedWithoutStartDate = service.confirmManagerContractReview("landlord-demo", contract.id, {
+      confirmNeedsCheck: true,
+    });
+    assert.equal(confirmedWithoutStartDate.row.contract.review, "confirmed");
   });
 
   it("does not leave partial draft state when deposit validation fails", () => {
