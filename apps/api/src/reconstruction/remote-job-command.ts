@@ -93,7 +93,11 @@ export function buildJobCommand(
   const scriptsDir = resolveScriptsDir(env);
   const encoded = readScriptFiles(scriptsDir);
 
-  const lines: string[] = ["set -euo pipefail", `mkdir -p ${REMOTE_WORK_DIR}`, `cd ${REMOTE_WORK_DIR}`];
+  // SSM AWS-RunShellScript는 이 래퍼를 셔뱅 무시하고 /bin/sh(우분투=dash)로 실행한다.
+  // dash엔 `pipefail`이 없어 `set -euo pipefail`은 첫 줄에서 "Illegal option -o pipefail"으로 죽는다(2026-07-16 prod 실측).
+  // 래퍼는 POSIX sh 문법만 쓴다 — 유일한 파이프(printf|base64 -d)는 종료코드가 마지막 명령 것이라 `set -eu`로도 실패가 잡힌다.
+  // bash 전용 문법(Eeuo pipefail 등)은 아래에서 `bash gpu-job.sh`로 재진입한 본체에서만 사용한다.
+  const lines: string[] = ["set -eu", `mkdir -p ${REMOTE_WORK_DIR}`, `cd ${REMOTE_WORK_DIR}`];
   for (const { remoteName, base64 } of encoded) {
     // printf '%s' 로 개행 없이 base64를 흘려 디코드 — echo의 백슬래시/개행 이슈 회피.
     lines.push(`printf '%s' ${shellSingleQuote(base64)} | base64 -d > ${shellSingleQuote(remoteName)}`);
