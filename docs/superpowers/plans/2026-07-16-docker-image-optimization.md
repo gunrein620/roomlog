@@ -215,10 +215,7 @@ ENV PORT=4000
 
 COPY --from=builder /prod/api /app/apps/api
 COPY --from=builder /app/apps/api/dist /app/apps/api/dist
-COPY --from=builder /app/package.json /app/package.json
-COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-workspace.yaml
 COPY --from=builder /app/prisma /app/prisma
-COPY --from=builder /app/prisma.config.ts /app/prisma.config.ts
 COPY --from=builder /app/packages/types /app/packages/types
 COPY --from=builder /app/scripts/reconstruct /app/scripts/reconstruct
 RUN ln -sfn /app/packages/types /app/apps/api/node_modules/@roomlog/types
@@ -228,7 +225,7 @@ EXPOSE 4000
 CMD ["node", "apps/api/dist/main"]
 ```
 
-The `/prod/api` copy contains package metadata, tracked migration assets, and production dependencies. Legacy deploy does not preserve Prisma's generated `.prisma/client` directory, so the builder copies that first and only generated client into the deployed dependency tree. The explicit `dist` copy avoids package-packlist rules excluding the gitignored build directory. Root workspace metadata keeps the migration script's existing `pnpm --filter api exec prisma` command valid. The runner restores `@roomlog/types` as a link to `/app/packages/types`, matching the previous image layout and keeping Node's TypeScript stripping outside `node_modules`. The explicit reconstruction copy preserves runtime file reads.
+The `/prod/api` copy contains package metadata, the API-local Prisma config, tracked migration assets, and production dependencies. Legacy deploy does not preserve Prisma's generated `.prisma/client` directory, so the builder copies that first and only generated client into the deployed dependency tree. The explicit `dist` copy avoids package-packlist rules excluding the gitignored build directory. The migration bootstrap invokes `/app/apps/api/node_modules/.bin/prisma` directly with the API-local config, so the runner does not need root workspace metadata and cannot trigger pnpm workspace repair at deploy time. The runner restores `@roomlog/types` as a link to `/app/packages/types`, matching the previous image layout and keeping Node's TypeScript stripping outside `node_modules`. The explicit reconstruction copy preserves runtime file reads.
 
 - [ ] **Step 3: Run the focused API contract and verify GREEN**
 

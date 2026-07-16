@@ -118,4 +118,14 @@ describe("Docker Postgres local database wiring", () => {
       /compose -f docker-compose\.prod\.yml run --rm migration < \/dev\/null/
     );
   });
+
+  it("runs the packaged Prisma CLI without pnpm workspace repair", () => {
+    assert.match(migrationBootstrapSource, /const apiRoot = join\(repositoryRoot, "apps\/api"\)/);
+    assert.match(
+      migrationBootstrapSource,
+      /const prismaExecutable = join\(apiRoot, "node_modules\/\.bin\/prisma"\)/
+    );
+    assert.match(migrationBootstrapSource, /spawnSync\(\s*prismaExecutable,/);
+    assert.doesNotMatch(migrationBootstrapSource, /spawnSync\(\s*"pnpm",/);
+  });
 });

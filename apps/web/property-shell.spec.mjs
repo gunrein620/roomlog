@@ -165,6 +165,7 @@ test("serves role frontends from the single web container on port 3000", () => {
   }
 
   assert.match(nextConfigSource, /output:\s*["']standalone["']/);
+  assert.match(nextConfigSource, /outputFileTracingRoot:\s*join\(__dirname, "\.\.", "\.\."\)/);
   assert.match(webDockerfileSource, /FROM base AS runner/);
   assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/.next\/standalone/);
   assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/.next\/static \/app\/apps\/web\/.next\/static/);
