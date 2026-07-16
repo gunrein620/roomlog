@@ -1,16 +1,14 @@
-import { Fragment, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
 import {
   confirmManagerContract,
   getManagerContractDetail,
-  runManagerContractOcr,
   updateManagerContractManualValues,
 } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import { ApiError } from "@/lib/server-api";
 import {
-  BackLink,
   Badge,
   Card,
   ContractShell,
@@ -18,10 +16,8 @@ import {
   Section,
   StaticButton,
   captionStyle,
-  formatDateTime,
 } from "../_components";
 import { ContractConfirmErrorFocus } from "./ContractConfirmErrorFocus";
-import { OcrSubmitButton } from "./OcrSubmitButton";
 
 type SearchParams = Promise<{
   id?: string;
@@ -80,14 +76,6 @@ function confirmationFailureUrl(contractId: string, message: string) {
   return `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?${params.toString()}#contract-confirm-error`;
 }
 
-async function runOcrAction(formData: FormData) {
-  "use server";
-
-  const contractId = String(formData.get("contractId") ?? "");
-  await runManagerContractOcr(contractId);
-  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}`);
-}
-
 async function updateManualCorrectionAction(formData: FormData) {
   "use server";
 
@@ -125,10 +113,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const valueRows = buildValueRows(detail, source.kind);
   const reviewItems = contractReviewItems(detail.extraction.items);
   const needsCheckCount = reviewItems.filter((item) => item.needsCheck).length;
-  const readItemCount =
-    source.kind === "mock"
-      ? 0
-      : reviewItems.filter((item) => !isMissingDisplayValue(item.value)).length;
   const notice = pageNotice(sourceParam);
   const saveError = errorParam?.trim().slice(0, 240);
   const confirmError = confirmErrorParam?.trim().slice(0, 240);
@@ -136,50 +120,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   return (
     <ContractShell id="M-DOC-01" title="계약서 OCR 검토·확정">
       <PageStack>
-        <Card style={headerCardStyle}>
-          <div style={{ display: "grid", gap: "var(--space-md)" }}>
-            <BackLink />
-            <div style={stepRowStyle}>
-              <StepPill>1 계약서 입력</StepPill>
-              <StepPill active>2 OCR 분석</StepPill>
-              <StepPill active={sourceParam === "manual-saved"}>3 핵심값 보정</StepPill>
-              <StepPill active={detail.row.contract.review === "confirmed"}>4 확정</StepPill>
-            </div>
-            <div style={{ display: "grid", gap: "var(--space-xs)" }}>
-              <h1 style={titleStyle}>계약서 핵심 조항 검토</h1>
-              <p style={mutedBodyStyle}>
-                매물·계약 기본값은 DB 값을 사용하고, 원문에서 확인해야 하는 보증금과 특약성 조항만 수정하세요.
-              </p>
-            </div>
-            <div style={badgeRowStyle}>
-              <Badge emphasis>{detail.row.contract.unitId}호</Badge>
-              <Badge>{detail.row.tenantName}</Badge>
-              <Badge emphasis={source.emphasis}>{source.label}</Badge>
-              <Badge emphasis={needsCheckCount > 0}>{needsCheckCount ? `확인 필요 ${needsCheckCount}` : "확인 완료"}</Badge>
-            </div>
-          </div>
-
-          <div style={headerActionStyle}>
-            <form action={runOcrAction}>
-              <input type="hidden" name="contractId" value={detail.row.contract.id} />
-              <OcrSubmitButton />
-            </form>
-            <form action={confirmContractAction}>
-              <input type="hidden" name="contractId" value={detail.row.contract.id} />
-              <StaticButton type="submit" style={{ gap: "var(--space-xs)" }}>
-                <ShieldCheck size={16} strokeWidth={2.5} aria-hidden="true" />
-                <span>검토 확정</span>
-              </StaticButton>
-            </form>
-          </div>
-        </Card>
-
-        <div style={summaryGridStyle}>
-          <SummaryTile label="OCR 상태" value={source.label} note={source.note} emphasis={source.emphasis} />
-          <SummaryTile label="읽은 항목" value={`${readItemCount}개`} note={`최근 분석 ${formatDateTime(detail.extraction.createdAt)}`} />
-          <SummaryTile label="확인 필요" value={`${needsCheckCount}개`} note={needsCheckCount ? "최종 수정 후 확정" : "바로 확정 가능"} emphasis={needsCheckCount > 0} />
-        </div>
-
         {failureInfo ? <OcrFailureCard info={failureInfo} /> : null}
 
         {notice ? (
@@ -219,11 +159,19 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </>
         ) : null}
 
-        <Section title="계약서 핵심 항목 검토">
-          <Card style={{ padding: 0, overflow: "hidden" }}>
+        <div style={ocrWorkspaceStyle}>
+          <ContractDocumentPreview detail={detail} sourceLabel={source.label} />
+          <Card style={coreReviewCardStyle}>
+            <div style={coreReviewHeaderStyle}>
+              <div>
+                <h2 style={coreReviewTitleStyle}>계약서 핵심 항목 검토</h2>
+                <p style={coreReviewCaptionStyle}>원문과 대조해야 하는 보증금·특약성 조항만 확인하세요.</p>
+              </div>
+              <Badge emphasis={needsCheckCount > 0}>{needsCheckCount ? `확인 필요 ${needsCheckCount}` : "확정 가능"}</Badge>
+            </div>
             <ComparisonTable rows={valueRows} />
           </Card>
-        </Section>
+        </div>
 
         <Section title="보증금·특약 수정">
           <ManualCorrectionForm detail={detail} sourceKind={source.kind} />
@@ -254,70 +202,152 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   );
 }
 
+function ContractDocumentPreview({
+  detail,
+  sourceLabel,
+}: {
+  detail: ManagerContractDetailResult;
+  sourceLabel: string;
+}) {
+  const document = detail.currentDocument;
+  const previewUrl = contractDocumentPreviewUrl(document);
+  const previewKind = contractDocumentPreviewKind(document);
+
+  return (
+    <Card style={documentPreviewCardStyle}>
+      <div style={documentPreviewHeaderStyle}>
+        <div>
+          <h2 style={coreReviewTitleStyle}>계약서 이미지</h2>
+          <p style={coreReviewCaptionStyle}>{document?.fileName ?? `${detail.row.buildingName} ${detail.row.contract.unitId}호`}</p>
+        </div>
+        <div style={documentChipRowStyle}>
+          <Badge emphasis>{sourceLabel}</Badge>
+          <Badge>{previewKind === "image" ? "이미지 원문" : "PDF 원문"}</Badge>
+        </div>
+      </div>
+      <div style={documentFrameStyle}>
+        {previewUrl ? (
+          previewKind === "image" ? (
+            <img src={previewUrl} alt="계약서 원문 미리보기" style={documentImageStyle} />
+          ) : (
+            <iframe title="계약서 PDF 원문 미리보기" src={pdfPreviewSrc(previewUrl)} style={documentIframeStyle} />
+          )
+        ) : (
+          <ContractDocumentFallback tenantName={detail.row.tenantName} />
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function ContractDocumentFallback({ tenantName }: { tenantName: string }) {
+  return (
+    <div style={documentPageStyle} aria-label="계약서 원문 미리보기">
+      <div style={documentTitleStyle}>계약(해약) 사실확인원</div>
+      <div style={docLineMidStyle} />
+      <div style={docLineStyle} />
+      <div style={docLineShortStyle} />
+      <div style={depositHighlightStyle}>
+        <span>보증금 근거</span>
+      </div>
+      <div style={{ ...docLineStyle, marginTop: 88 }} />
+      <div style={docLineMidStyle} />
+      <div style={docLineShortStyle} />
+      <div style={clauseHighlightStyle}>
+        <span>특약성 조항 영역</span>
+      </div>
+      <div style={{ ...docLineStyle, marginTop: 92 }} />
+      <div style={docLineMidStyle} />
+      <div style={docLineStyle} />
+      <div style={documentMetaStyle}>
+        <strong>{tenantName}</strong>
+        <span>원문 파일 없음</span>
+      </div>
+    </div>
+  );
+}
+
+function contractDocumentPreviewUrl(document: ManagerContractDetailResult["currentDocument"]) {
+  const fileUrl = document?.fileUrl?.trim();
+  const fileName = document?.fileName?.trim();
+
+  if (fileUrl && /^https?:\/\//i.test(fileUrl)) return fileUrl;
+  if (fileUrl?.startsWith("/api/files/")) return fileUrl;
+  if (fileUrl?.startsWith("api/files/")) return `/${fileUrl}`;
+  if (fileUrl?.startsWith("/uploads/")) {
+    return `/api/files/${encodeFilePath(fileName || fileUrl.slice("/uploads/".length))}`;
+  }
+  if (fileUrl?.startsWith("/")) return fileUrl;
+  if (fileUrl) return `/api/files/${encodeFilePath(fileUrl)}`;
+  if (fileName) return `/api/files/${encodeFilePath(fileName)}`;
+
+  return "";
+}
+
+function contractDocumentPreviewKind(document: ManagerContractDetailResult["currentDocument"]) {
+  const value = `${document?.fileName ?? ""} ${document?.fileUrl ?? ""}`.toLowerCase();
+  return /\.(png|jpe?g|webp|gif|bmp|avif)(\?|#|$)/i.test(value) ? "image" : "pdf";
+}
+
+function pdfPreviewSrc(url: string) {
+  return url.includes("#") ? url : `${url}#toolbar=1&navpanes=0&view=FitH`;
+}
+
+function encodeFilePath(value: string) {
+  return value
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
 function ComparisonTable({ rows }: { rows: ValueRow[] }) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>항목</th>
-            <th style={thStyle}>OCR 요약</th>
-            <th style={thStyle}>저장값 요약</th>
-            <th style={thStyle}>최종값</th>
-            <th style={thStyle}>상태</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const hasDetails =
-              row.ocrDetails.length > 0 ||
-              row.dbDetails.length > 0 ||
-              row.finalDetails.length > 0 ||
-              row.validationMessages.length > 0 ||
-              Boolean(row.evidence?.trim());
+    <div style={coreReviewListStyle}>
+      {rows.map((row) => {
+        const hasDetails =
+          row.ocrDetails.length > 0 ||
+          row.dbDetails.length > 0 ||
+          row.validationMessages.length > 0 ||
+          Boolean(row.evidence?.trim());
 
-            return (
-              <Fragment key={row.label}>
-                <tr>
-                  <td style={tdStrongStyle}>
-                    <span style={rowLabelStyle}>{row.label}</span>
-                  </td>
-                  <td style={tdStyle}>
-                    <ValueText value={row.ocrValue} />
-                  </td>
-                  <td style={tdStyle}>
-                    <ValueText value={row.dbValue} />
-                  </td>
-                  <td style={tdStrongStyle}>
-                    <div style={finalValueCellStyle}>
-                      <ValueText value={row.finalValue} strong />
-                      <span style={finalSourceStyle}>{row.finalSource}</span>
-                    </div>
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={statusCellStyle}>
-                      <Badge emphasis={row.statusEmphasis}>{row.status}</Badge>
-                      {row.validationMessages.length ? (
-                        <span style={validationCountStyle}>검증 사유 {row.validationMessages.length}</span>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-                {hasDetails ? (
-                  <tr>
-                    <td colSpan={5} style={detailRowCellStyle}>
-                      <details style={detailsStyle}>
-                        <summary style={detailsSummaryStyle}>상세 보기</summary>
-                        <RowDetailPanel row={row} />
-                      </details>
-                    </td>
-                  </tr>
+        return (
+          <article key={row.label} style={coreReviewItemStyle}>
+            <div style={coreReviewItemTopStyle}>
+              <span style={coreReviewItemTitleStyle}>{row.label}</span>
+              <div style={coreReviewStatusStyle}>
+                <Badge emphasis={row.statusEmphasis}>{row.status}</Badge>
+                {row.validationMessages.length ? (
+                  <span style={validationCountStyle}>검증 사유 {row.validationMessages.length}</span>
                 ) : null}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+              </div>
+            </div>
+            <div style={compareGridStyle}>
+              <div style={compareBoxStyle}>
+                <span style={compareLabelStyle}>OCR 요약</span>
+                <ValueText value={row.ocrValue} />
+              </div>
+              <div style={compareBoxStyle}>
+                <span style={compareLabelStyle}>저장값 요약</span>
+                <ValueText value={row.dbValue} />
+              </div>
+              <div style={compareBoxStrongStyle}>
+                <span style={compareLabelStyle}>최종값</span>
+                <ValueText value={row.finalValue} strong />
+                <span style={finalSourceStyle}>{row.finalSource}</span>
+              </div>
+            </div>
+            {row.evidence ? <div style={coreEvidenceStyle}>{row.evidence}</div> : null}
+            {hasDetails ? (
+              <details style={coreDetailsStyle}>
+                <summary style={coreDetailsSummaryStyle}>상세 보기</summary>
+                <RowDetailPanel row={row} />
+              </details>
+            ) : null}
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -338,12 +368,6 @@ function RowDetailPanel({ row }: { row: ValueRow }) {
       <div style={rowDetailPanelStyle}>
         <DetailGroup title="OCR 분석" summary={row.ocrValue} details={row.ocrDetails} evidence={row.evidence} />
         <DetailGroup title="저장값" summary={row.dbValue} details={row.dbDetails} />
-        <DetailGroup
-          title="최종 반영"
-          summary={row.finalValue}
-          details={[{ label: "반영 기준", value: row.finalSource }, ...row.finalDetails]}
-          strong
-        />
       </div>
     </div>
   );
@@ -487,30 +511,6 @@ function CorrectionField({
   );
 }
 
-function StepPill({ active = false, children }: { active?: boolean; children: ReactNode }) {
-  return <Badge emphasis={active}>{children}</Badge>;
-}
-
-function SummaryTile({
-  label,
-  value,
-  note,
-  emphasis = false,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  emphasis?: boolean;
-}) {
-  return (
-    <Card style={{ display: "grid", gap: "var(--space-xs)", minHeight: 104, alignContent: "space-between", borderColor: emphasis ? "var(--primary)" : undefined }}>
-      <div style={captionStyle}>{label}</div>
-      <div style={{ fontSize: "var(--fs-subtitle)", lineHeight: "var(--lh-title)", fontWeight: 900 }}>{value}</div>
-      <div style={{ color: "var(--on-surface-variant)", fontSize: "var(--fs-caption)" }}>{note}</div>
-    </Card>
-  );
-}
-
 function OcrFailureCard({ info }: { info: OcrFailureInfo }) {
   return (
     <Card style={ocrFailureCardStyle}>
@@ -537,7 +537,6 @@ type ValueRow = {
   evidence?: string;
   ocrDetails: ValueDetail[];
   dbDetails: ValueDetail[];
-  finalDetails: ValueDetail[];
   validationMessages: string[];
 };
 
@@ -617,7 +616,6 @@ function makeValueRow(
     evidence: ocrFailed ? undefined : item?.evidence ?? (inferredDocumentAbsent ? "성공한 OCR에서 해당 조항을 찾지 못했습니다." : undefined),
     ocrDetails: ocrFailed ? [] : contractValueDetails(label, rawOcrValue),
     dbDetails: contractValueDetails(label, normalizedDbValue),
-    finalDetails: contractValueDetails(label, finalRawValue),
     validationMessages,
   };
 }
@@ -801,42 +799,166 @@ function pageNotice(sourceParam?: string) {
   return "";
 }
 
-const headerCardStyle = {
+const ocrWorkspaceStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))",
   gap: "var(--space-lg)",
-  alignItems: "start",
+  alignItems: "stretch",
 } as const;
 
-const stepRowStyle = {
+const documentPreviewCardStyle = {
+  display: "grid",
+  gridTemplateRows: "auto 1fr",
+  gap: "var(--space-md)",
+  minHeight: 680,
+  padding: "var(--space-lg)",
+  background: "linear-gradient(180deg, var(--surface-container-lowest), var(--surface-container-low))",
+  boxShadow: "inset 0 0 0 12px var(--surface-container-low)",
+} as const;
+
+const documentPreviewHeaderStyle = {
   display: "flex",
-  gap: "var(--space-sm)",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "var(--space-md)",
   flexWrap: "wrap",
 } as const;
 
-const badgeRowStyle = {
+const documentChipRowStyle = {
   display: "flex",
-  gap: "var(--space-sm)",
-  flexWrap: "wrap",
-} as const;
-
-const titleStyle = {
-  margin: 0,
-  fontSize: "var(--fs-title)",
-  lineHeight: "var(--lh-title)",
-} as const;
-
-const headerActionStyle = {
-  display: "flex",
-  gap: "var(--space-sm)",
+  gap: "var(--space-xs)",
   flexWrap: "wrap",
   justifyContent: "flex-end",
 } as const;
 
-const summaryGridStyle = {
+const documentFrameStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  minHeight: 560,
+} as const;
+
+const documentIframeStyle = {
+  width: "100%",
+  minHeight: 560,
+  height: "100%",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--surface-container-lowest)",
+} as const;
+
+const documentImageStyle = {
+  width: "100%",
+  minHeight: 560,
+  height: "100%",
+  objectFit: "contain",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--surface-container-lowest)",
+} as const;
+
+const documentPageStyle = {
+  position: "relative",
+  display: "grid",
+  alignContent: "start",
+  minHeight: 560,
+  overflow: "hidden",
+  padding: "32px",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--surface-container-lowest)",
+  boxShadow: "0 20px 44px rgba(15, 23, 42, 0.08)",
+} as const;
+
+const documentTitleStyle = {
+  margin: "4px 0 28px",
+  textAlign: "center",
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-subtitle)",
+  fontWeight: 900,
+  lineHeight: "var(--lh-title)",
+} as const;
+
+const docLineStyle = {
+  height: 13,
+  margin: "14px 0",
+  borderRadius: 2,
+  background: "var(--surface-container-high)",
+} as const;
+
+const docLineMidStyle = {
+  ...docLineStyle,
+  width: "78%",
+} as const;
+
+const docLineShortStyle = {
+  ...docLineStyle,
+  width: "58%",
+} as const;
+
+const depositHighlightStyle = {
+  position: "absolute",
+  top: 214,
+  left: 58,
+  right: 58,
+  display: "flex",
+  alignItems: "center",
+  height: 48,
+  padding: "0 var(--space-sm)",
+  border: "2px solid var(--primary)",
+  borderRadius: "var(--radius-sm)",
+  color: "var(--primary)",
+  background: "rgba(92, 69, 217, 0.08)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 900,
+} as const;
+
+const clauseHighlightStyle = {
+  ...depositHighlightStyle,
+  top: 384,
+  borderColor: "#18a36d",
+  color: "#047857",
+  background: "rgba(18, 128, 92, 0.08)",
+} as const;
+
+const documentMetaStyle = {
+  position: "absolute",
+  right: 32,
+  bottom: 28,
+  display: "grid",
+  gap: 4,
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  textAlign: "right",
+} as const;
+
+const coreReviewCardStyle = {
+  display: "grid",
+  gridTemplateRows: "auto 1fr",
   gap: "var(--space-md)",
+  minHeight: 680,
+  padding: "var(--space-lg)",
+} as const;
+
+const coreReviewHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "var(--space-md)",
+  flexWrap: "wrap",
+} as const;
+
+const coreReviewTitleStyle = {
+  margin: 0,
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-subtitle)",
+  lineHeight: "var(--lh-title)",
+  fontWeight: 900,
+} as const;
+
+const coreReviewCaptionStyle = {
+  margin: "var(--space-xs) 0 0",
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  lineHeight: "var(--lh-body)",
 } as const;
 
 const noticeCardStyle = {
@@ -905,46 +1027,41 @@ const ocrFailureHintStyle = {
   fontWeight: 800,
 } as const;
 
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: 1040,
+const coreReviewListStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
+  alignContent: "start",
 } as const;
 
-const thStyle = {
+const coreReviewItemStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
   padding: "var(--space-md)",
-  textAlign: "left",
-  borderBottom: "1px solid var(--border)",
-  color: "var(--on-surface-variant)",
-  fontSize: "var(--fs-caption)",
-  fontWeight: 900,
-  background: "var(--surface-container-low)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-lowest)",
 } as const;
 
-const tdStyle = {
-  padding: "var(--space-md)",
-  borderBottom: "1px solid var(--border)",
-  verticalAlign: "top",
-  fontSize: "var(--fs-caption)",
-  lineHeight: "var(--lh-body)",
+const coreReviewItemTopStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "var(--space-sm)",
+  flexWrap: "wrap",
 } as const;
 
-const tdStrongStyle = {
-  ...tdStyle,
+const coreReviewItemTitleStyle = {
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-body)",
   fontWeight: 900,
 } as const;
 
-const rowLabelStyle = {
-  display: "inline-block",
-  minWidth: 70,
-} as const;
-
-const statusCellStyle = {
+const coreReviewStatusStyle = {
   display: "flex",
   alignItems: "center",
+  gap: "var(--space-xs)",
+  flexWrap: "wrap",
   justifyContent: "flex-end",
-  flexDirection: "column",
-  gap: 6,
 } as const;
 
 const validationCountStyle = {
@@ -954,10 +1071,34 @@ const validationCountStyle = {
   whiteSpace: "nowrap",
 } as const;
 
-const finalValueCellStyle = {
+const compareGridStyle = {
   display: "grid",
-  gap: 4,
-  minWidth: 160,
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 140px), 1fr))",
+  gap: "var(--space-xs)",
+} as const;
+
+const compareBoxStyle = {
+  display: "grid",
+  gap: 6,
+  alignContent: "start",
+  minHeight: 92,
+  padding: "var(--space-sm)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--surface-container-low)",
+  lineHeight: "var(--lh-body)",
+} as const;
+
+const compareBoxStrongStyle = {
+  ...compareBoxStyle,
+  borderColor: "rgba(92, 69, 217, 0.42)",
+  background: "var(--primary-container)",
+} as const;
+
+const compareLabelStyle = {
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 900,
 } as const;
 
 const finalSourceStyle = {
@@ -968,25 +1109,27 @@ const finalSourceStyle = {
   lineHeight: "var(--lh-caption)",
 } as const;
 
-const detailRowCellStyle = {
-  padding: "0 var(--space-md) var(--space-md)",
-  borderBottom: "1px solid var(--border)",
-  background: "var(--surface-container-lowest)",
+const coreEvidenceStyle = {
+  padding: "var(--space-sm)",
+  borderRadius: "var(--radius-sm)",
+  color: "var(--on-surface-variant)",
+  background: "var(--surface-container-low)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  lineHeight: "var(--lh-body)",
 } as const;
 
-const detailsStyle = {
+const coreDetailsStyle = {
   display: "grid",
-  gap: "var(--space-xs)",
-  marginTop: "calc(var(--space-xs) * -1)",
+  gap: "var(--space-sm)",
 } as const;
 
-const detailsSummaryStyle = {
+const coreDetailsSummaryStyle = {
   width: "fit-content",
   cursor: "pointer",
   color: "var(--primary)",
   fontSize: "var(--fs-caption)",
   fontWeight: 800,
-  marginLeft: "auto",
   padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "999px",
   background: "var(--primary-container)",

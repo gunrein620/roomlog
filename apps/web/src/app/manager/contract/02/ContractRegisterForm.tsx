@@ -17,18 +17,38 @@ type ContractRegisterAction = (
 
 const INITIAL_ACTION_STATE: ContractRegisterActionState = {};
 
-export function ContractRegisterForm({ action }: { action: ContractRegisterAction }) {
+export type ManagedContractRoomOption = {
+  id: string;
+  buildingName: string;
+  roomNo: string;
+  address?: string;
+};
+
+export function ContractRegisterForm({
+  action,
+  rooms,
+}: {
+  action: ContractRegisterAction;
+  rooms: ManagedContractRoomOption[];
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const notifiedRedirectRef = useRef<string | null>(null);
   const [actionState, formAction, pending] = useActionState(action, INITIAL_ACTION_STATE);
   const [fileName, setFileName] = useState("파일 미선택");
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [hasFile, setHasFile] = useState(false);
-  const submitDisabled = pending || !hasFile;
+  const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.id ?? "");
+  const selectedRoom = rooms.find((room) => room.id === selectedRoomId);
+  const hasRooms = rooms.length > 0;
+  const submitDisabled = pending || !hasFile || !selectedRoomId;
 
   useEffect(() => {
     if (!actionState.redirectTo) return;
+    if (notifiedRedirectRef.current === actionState.redirectTo) return;
+    notifiedRedirectRef.current = actionState.redirectTo;
+    window.alert("등록 되었습니다.");
     router.push(actionState.redirectTo);
   }, [actionState.redirectTo, router]);
 
@@ -119,6 +139,31 @@ export function ContractRegisterForm({ action }: { action: ContractRegisterActio
         </Card>
 
         <Card style={ocrGuideCardStyle}>
+          <div style={roomSelectPanelStyle}>
+            <label htmlFor="manager-contract-room" style={roomSelectLabelStyle}>매물 선택</label>
+            <select
+              id="manager-contract-room"
+              name="roomId"
+              value={selectedRoomId}
+              required={hasRooms}
+              disabled={pending || !hasRooms}
+              onChange={(event) => setSelectedRoomId(event.currentTarget.value)}
+              style={pending || !hasRooms ? disabledRoomSelectStyle : roomSelectStyle}
+            >
+              {hasRooms ? (
+                rooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.buildingName} {room.roomNo}
+                  </option>
+                ))
+              ) : (
+                <option value="">등록된 매물 없음</option>
+              )}
+            </select>
+            <span style={roomSelectMetaStyle}>
+              {selectedRoom ? selectedRoom.address || "주소 미입력" : "매물을 먼저 등록해 주세요"}
+            </span>
+          </div>
           <h3 style={guideTitleStyle}>이번 OCR이 읽는 항목</h3>
           <div style={guideListStyle}>
             <OcrReadItem index="1" title="보증금 구조" note="기본 보증금, 전환보증금, 최종 보증금" badge="필수" emphasis />
@@ -282,6 +327,46 @@ const ocrGuideCardStyle = {
   gap: "var(--space-lg)",
   borderRadius: "var(--radius-lg)",
   padding: "var(--space-xl)",
+} as const;
+
+const roomSelectPanelStyle = {
+  display: "grid",
+  gap: "var(--space-sm)",
+  padding: "var(--space-md)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-container-low)",
+} as const;
+
+const roomSelectLabelStyle = {
+  color: "var(--on-surface)",
+  fontSize: "var(--fs-body)",
+  fontWeight: 900,
+} as const;
+
+const roomSelectStyle = {
+  minHeight: "var(--touch-target)",
+  width: "100%",
+  border: "1px solid var(--input-border)",
+  borderRadius: "var(--radius-btn)",
+  padding: "0 var(--space-md)",
+  color: "var(--input-text)",
+  background: "var(--surface-container-lowest)",
+  font: "inherit",
+  fontWeight: 800,
+} as const;
+
+const disabledRoomSelectStyle = {
+  ...roomSelectStyle,
+  opacity: 0.55,
+  cursor: "not-allowed",
+} as const;
+
+const roomSelectMetaStyle = {
+  color: "var(--on-surface-variant)",
+  fontSize: "var(--fs-caption)",
+  fontWeight: 800,
+  lineHeight: "var(--lh-caption)",
 } as const;
 
 const guideTitleStyle = {

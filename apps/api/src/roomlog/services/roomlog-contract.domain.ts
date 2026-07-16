@@ -456,6 +456,7 @@ export class RoomlogContractDomain {
     const privacy = this.findContractPrivacy(contract);
     const room = this.findRoom(contract.roomId);
     const tenant = this.contractTenant(contract);
+    const currentDocument = this.currentContractDocument(contract);
     const tenantName = tenant?.name ?? row.tenantName;
     const deletionRequests = this.managerContracts(managerId)
       .filter((item) => item.deletion === "requested")
@@ -478,6 +479,7 @@ export class RoomlogContractDomain {
 
     return {
       row,
+      currentDocument,
       extraction: this.presentContractExtraction(extraction),
       privacy: this.presentContractPrivacy(privacy),
       tenant: {

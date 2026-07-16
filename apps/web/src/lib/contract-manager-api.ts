@@ -34,6 +34,15 @@ export interface ManagerContractDashboard {
 
 export interface ManagerContractDetail {
   row: ManagerContractRow;
+  currentDocument?: {
+    id: string;
+    contractId: string;
+    uploadedByUserId?: string;
+    origin: Exclude<ManagerContractOrigin, "trade_acceptance">;
+    fileName?: string;
+    fileUrl?: string;
+    uploadedAt: string;
+  };
   extraction: ContractExtraction;
   privacy: ContractPrivacy;
   tenant: {
