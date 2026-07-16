@@ -1,4 +1,12 @@
-import type { DefectAnalysis, ManagerQueueSummary, RepairJob, Ticket } from "@roomlog/types";
+import type {
+  DefectAnalysis,
+  ManagerQueueSummary,
+  ManagerReplyDraftInput,
+  ManagerReplyDraftResult,
+  ManagerTicketReplyInput,
+  RepairJob,
+  Ticket,
+} from "@roomlog/types";
 import { ApiError, serverFetch } from "./server-api";
 import {
   toManagerTicket,
@@ -180,6 +188,32 @@ export async function getManagerRepair(
   if (mapped) return mapped;
   console.warn("[manager/api] 실제 수리 없음(미배정/취소) → 데모 폴백");
   return managerDemoRepair(ticketId);
+}
+
+export async function draftManagerTicketReply(
+  ticketId: string,
+  input: ManagerReplyDraftInput = {},
+): Promise<ManagerReplyDraftResult> {
+  return serverFetch<ManagerReplyDraftResult>(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/reply-draft`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function sendManagerTicketReply(
+  ticketId: string,
+  input: ManagerTicketReplyInput,
+): Promise<unknown> {
+  return serverFetch(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/replies`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 // 관리인 mutation(상태/책임/긴급도 변경)은 화면 TicketStatus(lowercase 6)→팀 UPPERCASE(11)
