@@ -39,9 +39,11 @@ COPY apps/web apps/web
 
 RUN pnpm --filter web build
 
-FROM deps AS runner
+FROM base AS runner
 
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 ARG NEXT_PUBLIC_API_URL=/api
 ARG NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=
 ARG NEXT_PUBLIC_SOCKET_URL=
@@ -51,9 +53,10 @@ ENV NEXT_PUBLIC_NAVER_MAP_CLIENT_ID=$NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
 ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 ENV NEXT_PUBLIC_TOSS_CLIENT_KEY=$NEXT_PUBLIC_TOSS_CLIENT_KEY
 
-COPY --from=builder /app/packages ./packages
-COPY --from=builder /app/apps/web ./apps/web
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static /app/apps/web/.next/static
+COPY --from=builder /app/apps/web/public /app/apps/web/public
 
 EXPOSE 3000
 
-CMD ["pnpm", "--filter", "web", "start"]
+CMD ["node", "apps/web/server.js"]

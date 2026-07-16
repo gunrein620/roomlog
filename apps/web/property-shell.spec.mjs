@@ -164,9 +164,37 @@ test("serves role frontends from the single web container on port 3000", () => {
     assert.doesNotMatch(source, /3001:3001|3002:3002|3003:3003/);
   }
 
-  assert.match(webDockerfileSource, /COPY assets assets/);
+  assert.match(nextConfigSource, /output:\s*["']standalone["']/);
+  assert.match(nextConfigSource, /outputFileTracingRoot:\s*join\(__dirname, "\.\.", "\.\."\)/);
+  assert.match(webDockerfileSource, /FROM base AS runner/);
+  assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/.next\/standalone/);
+  assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/.next\/static \/app\/apps\/web\/.next\/static/);
+  assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/public \/app\/apps\/web\/public/);
+  assert.match(webDockerfileSource, /ENV HOSTNAME=0\.0\.0\.0/);
   assert.match(webDockerfileSource, /EXPOSE 3000/);
-  assert.match(webDockerfileSource, /CMD \["pnpm", "--filter", "web", "start"\]/);
+  assert.match(webDockerfileSource, /CMD \["node", "apps\/web\/server\.js"\]/);
+  assert.doesNotMatch(webDockerfileSource, /FROM deps AS runner/);
+});
+
+test("packages the production API without reinstalling dependencies in the runner", () => {
+  assert.equal(apiDockerfileSource.match(/pnpm install/g)?.length, 1);
+  assert.equal(apiDockerfileSource.match(/prisma generate/g)?.length, 1);
+  assert.match(apiDockerfileSource, /pnpm --filter api deploy --legacy --prod \/prod\/api/);
+  assert.match(apiDockerfileSource, /cp -R "\$builder_client_root\/\.prisma" "\$deployed_client_root\/\.prisma"/);
+
+  const runnerSource = requireSourceMatch(
+    apiDockerfileSource,
+    /FROM base AS runner[\s\S]*$/,
+    "api runner stage",
+  );
+  assert.doesNotMatch(runnerSource, /pnpm install/);
+  assert.doesNotMatch(runnerSource, /prisma generate/);
+  assert.match(runnerSource, /COPY --from=builder \/prod\/api \/app\/apps\/api/);
+  assert.match(runnerSource, /COPY --from=builder \/app\/apps\/api\/dist \/app\/apps\/api\/dist/);
+  assert.match(runnerSource, /COPY --from=builder \/app\/prisma \/app\/prisma/);
+  assert.match(runnerSource, /COPY --from=builder \/app\/scripts\/reconstruct \/app\/scripts\/reconstruct/);
+  assert.match(runnerSource, /ln -sfn \/app\/packages\/types \/app\/apps\/api\/node_modules\/@roomlog\/types/);
+  assert.match(runnerSource, /CMD \["node", "apps\/api\/dist\/main"\]/);
 });
 
 test("production deploy removes stale role containers before rebinding port 3000", () => {

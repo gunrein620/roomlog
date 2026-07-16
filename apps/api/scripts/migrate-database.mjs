@@ -10,6 +10,8 @@ const { Client } = pg;
 
 const currentFile = fileURLToPath(import.meta.url);
 const repositoryRoot = resolve(dirname(currentFile), "../../..");
+const apiRoot = join(repositoryRoot, "apps/api");
+const prismaExecutable = join(apiRoot, "node_modules/.bin/prisma");
 const migrationsRoot = join(repositoryRoot, "prisma/migrations");
 const baselinePath = join(
   repositoryRoot,
@@ -764,10 +766,10 @@ const detectPendingArtifacts = async (client, pendingNames) => {
 
 const runPrisma = (args, databaseUrl) => {
   const result = spawnSync(
-    "pnpm",
-    ["--filter", "api", "exec", "prisma", ...args, "--config", "../../prisma.config.ts"],
+    prismaExecutable,
+    [...args, "--config", "prisma.config.mjs"],
     {
-      cwd: repositoryRoot,
+      cwd: apiRoot,
       env: { ...process.env, DATABASE_URL: databaseUrl },
       encoding: "utf8"
     }
