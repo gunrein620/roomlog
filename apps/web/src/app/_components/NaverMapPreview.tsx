@@ -38,6 +38,7 @@ type NaverMarker = {
 type NaverPoint = unknown;
 type NaverInfoWindow = {
   open: (map: NaverMap, marker: NaverMarker) => void;
+  close: () => void;
 };
 type NaverMapListener = { remove?: () => void };
 type NaverMapsApi = {
@@ -58,7 +59,7 @@ type NaverMapsApi = {
       anchor?: NaverPoint;
     };
   }) => NaverMarker;
-  InfoWindow: new (options: { content: string }) => NaverInfoWindow;
+  InfoWindow: new (options: { content: string | HTMLElement }) => NaverInfoWindow;
   Point: new (x: number, y: number) => NaverPoint;
   Event?: {
     addListener: (target: unknown, eventName: string, listener: () => void) => NaverMapListener;
@@ -100,6 +101,49 @@ function escapeHtml(value: string): string {
       default: return "&#39;";
     }
   });
+}
+
+function createDismissibleInfoWindow(
+  maps: NaverMapsApi,
+  map: NaverMap,
+  marker: NaverMarker,
+  label: string,
+  detail: string
+) {
+  const content = document.createElement("div");
+  content.className = "naver-info-window";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "naver-info-window-close";
+  closeButton.setAttribute("aria-label", "말풍선 닫기");
+  closeButton.textContent = "×";
+
+  const labelElement = document.createElement("b");
+  labelElement.textContent = label;
+  const detailElement = document.createElement("strong");
+  detailElement.textContent = detail;
+  content.append(closeButton, labelElement, detailElement);
+
+  const infoWindow = new maps.InfoWindow({ content });
+  closeButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    infoWindow.close();
+  });
+  const markerListener = maps.Event?.addListener(marker, "click", () => {
+    infoWindow.open(map, marker);
+  });
+  infoWindow.open(map, marker);
+  return { infoWindow, markerListener };
+}
+
+function removeMapListener(maps: NaverMapsApi | undefined, listener: NaverMapListener | null) {
+  if (!listener) return;
+  if (listener.remove) {
+    listener.remove();
+    return;
+  }
+  maps?.Event?.removeListener?.(listener);
 }
 
 // geocoder 서브모듈 포함 — 주소→좌표 변환(naver.maps.Service.geocode)을 쓰기 위함.
@@ -179,6 +223,8 @@ export function NaverMapPreview({
   const isMapInitializedRef = useRef(false);
   const mapInstanceRef = useRef<NaverMap | null>(null);
   const centerMarkerRef = useRef<NaverMarker | null>(null);
+  const centerInfoWindowRef = useRef<NaverInfoWindow | null>(null);
+  const centerInfoWindowListenerRef = useRef<NaverMapListener | null>(null);
   const dynamicMarkersRef = useRef<NaverMarker[]>([]);
   const viewportListenersRef = useRef<NaverMapListener[]>([]);
   const viewportPollTimerRef = useRef<number | null>(null);
@@ -203,6 +249,10 @@ export function NaverMapPreview({
   useEffect(() => {
     return () => {
       const maps = window.naver?.maps;
+      centerInfoWindowRef.current?.close();
+      centerInfoWindowRef.current = null;
+      removeMapListener(maps, centerInfoWindowListenerRef.current);
+      centerInfoWindowListenerRef.current = null;
       viewportListenersRef.current.forEach((listener) => {
         if (listener.remove) {
           listener.remove();
@@ -269,12 +319,15 @@ export function NaverMapPreview({
         position: centerLatLng
       });
       centerMarkerRef.current = marker;
-      const infoWindow = new maps.InfoWindow({
-        content: hasCenter
-          ? `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "이 매물"}</b><strong>현재 위치</strong></div>`
-          : '<div class="naver-info-window"><b>선택 매물</b><strong>매1.4억</strong></div>'
-      });
-      infoWindow.open(map, marker);
+      const infoWindowHandle = createDismissibleInfoWindow(
+        maps,
+        map,
+        marker,
+        hasCenter ? title || "이 매물" : "선택 매물",
+        hasCenter ? "현재 위치" : "매1.4억"
+      );
+      centerInfoWindowRef.current = infoWindowHandle.infoWindow;
+      centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
     }
     setLoadState("ready");
 
@@ -330,6 +383,10 @@ export function NaverMapPreview({
     onViewportChangeRef.current?.(readMapViewport(map));
 
     if (!showCenterMarker) {
+      centerInfoWindowRef.current?.close();
+      centerInfoWindowRef.current = null;
+      removeMapListener(maps, centerInfoWindowListenerRef.current);
+      centerInfoWindowListenerRef.current = null;
       centerMarkerRef.current?.setMap(null);
       centerMarkerRef.current = null;
       return;
@@ -341,11 +398,21 @@ export function NaverMapPreview({
     }
 
     centerMarkerRef.current?.setMap(null);
-    centerMarkerRef.current = new maps.Marker({
+    const marker = new maps.Marker({
       map,
       position: nextCenter
     });
-  }, [centerKey, loadState, showCenterMarker]);
+    centerMarkerRef.current = marker;
+    const infoWindowHandle = createDismissibleInfoWindow(
+      maps,
+      map,
+      marker,
+      title || "이 매물",
+      addressKey || "현재 위치"
+    );
+    centerInfoWindowRef.current = infoWindowHandle.infoWindow;
+    centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
+  }, [addressKey, centerKey, loadState, showCenterMarker, title]);
 
   useEffect(() => {
     if (centerKey || !addressKey || loadState !== "ready") return;
@@ -366,6 +433,10 @@ export function NaverMapPreview({
       onViewportChangeRef.current?.(readMapViewport(map));
 
       if (!showCenterMarker) {
+        centerInfoWindowRef.current?.close();
+        centerInfoWindowRef.current = null;
+        removeMapListener(maps, centerInfoWindowListenerRef.current);
+        centerInfoWindowListenerRef.current = null;
         centerMarkerRef.current?.setMap(null);
         centerMarkerRef.current = null;
         return;
@@ -382,10 +453,9 @@ export function NaverMapPreview({
         position: nextCenter
       });
       centerMarkerRef.current = marker;
-      const infoWindow = new maps.InfoWindow({
-        content: `<div class="naver-info-window"><b>매물 위치</b><strong>${escapeHtml(addressKey)}</strong></div>`
-      });
-      infoWindow.open(map, marker);
+      const infoWindowHandle = createDismissibleInfoWindow(maps, map, marker, "매물 위치", addressKey);
+      centerInfoWindowRef.current = infoWindowHandle.infoWindow;
+      centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
     });
   }, [addressKey, centerKey, loadState, showCenterMarker]);
 
