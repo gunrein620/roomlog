@@ -227,14 +227,7 @@ export const getListingBuildingRows = (listing: Listing) => [
 // 차단하므로 절대 URL 사진은 unoptimized로 브라우저가 직접 로드하게 한다(번들 목업은 그대로 최적화).
 export const isRemotePhoto = (src: string) => /^https?:\/\//.test(src);
 
-// 상세 화면 고정 데모 데이터 — 안심 리포트/옵션/주변 정보(실데이터 연동 전 껍데기)
-export const safetyReportItems = [
-  { label: "등기 변동", value: "최근 변동 없음", status: "안전" },
-  { label: "보증금 비율", value: "권장 범위", status: "양호" },
-  { label: "대출·특약", value: "방문 시 확인", status: "확인" },
-  { label: "주변 치안", value: "야간 동선 양호", status: "양호" }
-];
-
+// 상세 화면 고정 데모 데이터 — 옵션/주변 정보(실데이터 연동 전 껍데기)
 export const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
 
 export const neighborhoodItems = [

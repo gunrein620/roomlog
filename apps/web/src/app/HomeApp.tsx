@@ -730,7 +730,6 @@ const agentCards = [
 ];
 
 const trustItems = [
-  { title: "안심 리포트", body: "등기·시세·권리관계 요약" },
   { title: "주변 안전", body: "CCTV, 치안센터, 야간동선" },
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];

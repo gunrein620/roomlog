@@ -32,7 +32,6 @@ import {
   listingMapAddress,
   neighborhoodItems,
   optionItems,
-  safetyReportItems,
   type Listing
 } from "@/lib/listing-catalog";
 import { NaverMapPreview } from "./NaverMapPreview";
@@ -69,9 +68,6 @@ export function ListingDetailView({
   const listingBuildingRows = getListingBuildingRows(listing);
   const detailAddressLabel = listingDetailAddressLabel(listing);
   const mapAddress = listingMapAddress(listing);
-  const safetyScore = listing.score.replace("안심 ", "");
-  // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
-  const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
@@ -112,9 +108,6 @@ export function ListingDetailView({
 
     setDetailToast("매물번호를 복사했어요");
     window.setTimeout(() => setDetailToast(""), 1600);
-  };
-  const scrollToSafetyReport = () => {
-    document.querySelector(".detail-report-card")?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
   return (
@@ -176,10 +169,6 @@ export function ListingDetailView({
           <button type="button" onClick={() => setIsTourSheetOpen(true)}>
             <span>3D</span>
             <strong>투어 보기</strong>
-          </button>
-          <button type="button" onClick={scrollToSafetyReport}>
-            <span>{safetyScoreLabel}</span>
-            <strong>안심 리포트</strong>
           </button>
           <button type="button" onClick={() => setIsComplexSheetOpen(true)}>
             <span>단지</span>
@@ -264,34 +253,6 @@ export function ListingDetailView({
             </div>
           ))}
         </dl>
-      </section>
-
-      <section className="safety-analysis-card" aria-label="AI 안전분석">
-        <div>
-          <span>AI 안전분석</span>
-          <h2>권리관계 특이사항 낮음</h2>
-          <p>등기 변동, 보증금 비율, 관리비 수준을 함께 본 결과입니다.</p>
-        </div>
-        <strong>{safetyScoreLabel}</strong>
-      </section>
-
-      <section className="detail-report-card" aria-label="지킴 진단 리포트">
-        <div className="detail-report-head">
-          <div>
-            <span>지킴 진단 리포트</span>
-            <h2>계약 전 확인할 항목을 정리했어요</h2>
-          </div>
-          <strong>{safetyScore}</strong>
-        </div>
-        <div className="detail-report-grid">
-          {safetyReportItems.map((item) => (
-            <article key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.status}</small>
-            </article>
-          ))}
-        </div>
       </section>
 
       <section className="agent-summary-card" aria-label="중개사 정보">
