@@ -12972,6 +12972,82 @@ p {
   font-weight: 900;
 }
 
+/* 대화창 오른쪽 위 액션 묶음(목록으로 · 채팅방 나가기) */
+.trade-chat-room-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.trade-chat-leave {
+  flex: none;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(224, 82, 82, 0.4);
+  border-radius: 999px;
+  background: var(--paper);
+  color: #d64545;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.trade-chat-leave:disabled {
+  opacity: 0.6;
+}
+
+/* ── 스레드 우클릭 컨텍스트 메뉴 — 간단한 매물 정보 + 채팅방 나가기 ── */
+.trade-thread-menu {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+  max-width: 260px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: 0 14px 34px rgba(18, 24, 40, 0.18);
+}
+
+.trade-thread-menu-info {
+  display: grid;
+  gap: 3px;
+}
+
+.trade-thread-menu-info strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-thread-menu-info small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-thread-menu-leave {
+  min-height: 36px;
+  border: 1px solid rgba(224, 82, 82, 0.4);
+  border-radius: 10px;
+  background: rgba(224, 82, 82, 0.08);
+  color: #d64545;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.trade-thread-menu-leave:disabled {
+  opacity: 0.6;
+}
+
 /* ── 계약 바 — 채팅 상단에서 양쪽 모두에게 항상 보이는 계약 액션 ──
    집주인: "계약 제안하기" / 세입자: "제안 수락"(제안 전엔 잠김, 제안 오면 둥둥 활성화) */
 .contract-bar {
