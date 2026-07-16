@@ -4,7 +4,6 @@ import path from "node:path";
 
 export const MITUNET_INTERNAL_SERVICE_URL =
   process.env.MITUNET_INTERNAL_SERVICE_URL ??
-  process.env.NEXT_PUBLIC_MITUNET_EDITOR_URL ??
   "http://127.0.0.1:8012";
 
 const FALLBACK_MITUNET_PROJECT_ROOT = "C:/Users/smoun/Jungle/floorplan-to-3d-mitunet";
@@ -79,14 +78,9 @@ export function transformMitunetViewerHtml(html: string) {
 
 export function transformRoomLogIntegrationModule(source: string, storageKey: string, returnPath: string) {
   return source.replace(
-    /export function sendRoomLogCompletion\(context, plan, sourceName, opener\) \{[\s\S]*?\n\}/,
-    `export function sendRoomLogCompletion(context, plan, sourceName, opener) {
+    /export function sendRoomLogCompletion\([^)]*\) \{[\s\S]*?\n\}/,
+    `export function sendRoomLogCompletion(context, plan, sourceName) {
   const message = buildRoomLogCompletion(context, plan, sourceName);
-  if (opener && !opener.closed && typeof opener.postMessage === "function") {
-    opener.postMessage(message, context.returnOrigin);
-    return message;
-  }
-
   const storageValue = {
     name: message.payload.name,
     savedAt: Date.now(),

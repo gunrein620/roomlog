@@ -38,3 +38,11 @@ test("proxies MitUNet inference requests from the RoomLog origin", () => {
   assert.match(apiRouteSource, /integration-config/);
   assert.match(apiRouteSource, /healthz/);
 });
+
+test("keeps completion inside RoomLog instead of using legacy external-window messaging", () => {
+  assert.doesNotMatch(proxySource, /NEXT_PUBLIC_MITUNET_EDITOR_URL/);
+  assert.doesNotMatch(proxySource, /postMessage/);
+  assert.doesNotMatch(proxySource, /\bopener\b/);
+  assert.match(proxySource, /window\.localStorage\.setItem/);
+  assert.match(proxySource, /window\.location\.href/);
+});

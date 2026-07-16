@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   buildRoomlogMitunetEditorPath,
-  parseMitunetMessage,
   parseMitunetProjectJson,
 } from "./mitunet-floor-plan";
 
@@ -13,14 +12,6 @@ const polygons = {
   window: [],
 };
 
-const payload = {
-  name: "home.png",
-  canvasSize: [1024, 1024],
-  contentRect: [0, 0, 1024, 1024],
-  millimetersPerPixel: 4.25,
-  polygons,
-};
-
 test("builds the RoomLog-internal MitUNet editor path", () => {
   const url = new URL(buildRoomlogMitunetEditorPath("http://localhost:3000", "req-1"), "http://localhost:3000");
 
@@ -28,39 +19,6 @@ test("builds the RoomLog-internal MitUNet editor path", () => {
   assert.equal(url.searchParams.get("integration"), "roomlog");
   assert.equal(url.searchParams.get("returnOrigin"), "http://localhost:3000");
   assert.equal(url.searchParams.get("requestId"), "req-1");
-});
-
-test("accepts only the expected origin source and request", () => {
-  const editorWindow = {} as Window;
-  const session = {
-    editorOrigin: "http://127.0.0.1:8012",
-    editorWindow,
-    requestId: "req-1",
-  };
-  const data = {
-    type: "roomlog.floor-plan.completed",
-    schema: "roomlog-mitunet-floor-plan",
-    version: 1,
-    requestId: "req-1",
-    payload,
-  };
-
-  assert.ok(parseMitunetMessage({ origin: session.editorOrigin, source: editorWindow, data }, session));
-  assert.equal(
-    parseMitunetMessage({ origin: "https://evil.example", source: editorWindow, data }, session),
-    null,
-  );
-  assert.equal(
-    parseMitunetMessage({ origin: session.editorOrigin, source: {} as Window, data }, session),
-    null,
-  );
-  assert.equal(
-    parseMitunetMessage(
-      { origin: session.editorOrigin, source: editorWindow, data: { ...data, requestId: "other" } },
-      session,
-    ),
-    null,
-  );
 });
 
 test("imports existing MitUNet project JSON without its source image", () => {

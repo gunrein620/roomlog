@@ -23,12 +23,6 @@ export type MitunetFloorPlan = {
   polygons: MitunetPolygonGroups;
 };
 
-export type MitunetLaunchSession = {
-  editorOrigin: string;
-  editorWindow: Window;
-  requestId: string;
-};
-
 type UnknownRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -86,18 +80,6 @@ function normalizePolygonGroup(value: unknown, maximumCoordinate: number): Mitun
   return polygons;
 }
 
-export function buildMitunetEditorUrl(
-  editorUrl: string,
-  roomlogOrigin: string,
-  requestId: string,
-): string {
-  const url = new URL(editorUrl);
-  url.searchParams.set("integration", "roomlog");
-  url.searchParams.set("returnOrigin", roomlogOrigin);
-  url.searchParams.set("requestId", requestId);
-  return url.toString();
-}
-
 export function buildRoomlogMitunetEditorPath(roomlogOrigin: string, requestId: string): string {
   const url = new URL("/floor-plan-3d/mitunet", roomlogOrigin);
   url.searchParams.set("integration", "roomlog");
@@ -135,23 +117,6 @@ export function normalizeMitunetPayload(value: unknown): MitunetFloorPlan | null
     millimetersPerPixel,
     polygons: { wall, door, window },
   };
-}
-
-export function parseMitunetMessage(
-  event: Pick<MessageEvent, "origin" | "source" | "data">,
-  session: MitunetLaunchSession,
-): MitunetFloorPlan | null {
-  if (event.origin !== session.editorOrigin || event.source !== session.editorWindow) return null;
-  if (!isRecord(event.data)) return null;
-  if (
-    event.data.type !== "roomlog.floor-plan.completed" ||
-    event.data.schema !== MITUNET_SCHEMA ||
-    event.data.version !== MITUNET_VERSION ||
-    event.data.requestId !== session.requestId
-  ) {
-    return null;
-  }
-  return normalizeMitunetPayload(event.data.payload);
 }
 
 export function parseMitunetProjectJson(value: unknown): MitunetFloorPlan | null {
