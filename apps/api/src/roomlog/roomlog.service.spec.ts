@@ -3673,6 +3673,34 @@ describe("RoomlogService", () => {
     assert.equal(service.getIntakeSession("tenant-demo", second.session.id).status, "ACTIVE");
   });
 
+  it("auto-finalizes an intake thread when the tenant explicitly asks to file the complaint", async () => {
+    const service = new RoomlogService();
+    const { session } = service.createIntakeSession("tenant-demo", { roomId: "room-301" });
+
+    const describeReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "301호 복도 쪽 엘리베이터 소음이 밤마다 너무 심해요.",
+      inputMode: "CHAT"
+    });
+
+    assert.equal(describeReply.autoFinalized, undefined);
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "ACTIVE");
+
+    const fileReply = await service.sendIntakeMessage("tenant-demo", session.id, {
+      messageText: "네 맞아요, 이대로 민원 넣어주세요.",
+      inputMode: "CHAT"
+    });
+
+    assert.ok(fileReply.autoFinalized, "expected explicit filing request to auto-finalize");
+    assert.ok(fileReply.autoFinalized.complaint.id);
+    assert.ok(fileReply.autoFinalized.ticket.id);
+    assert.equal(fileReply.session.status, "FINALIZED");
+    assert.equal(service.getIntakeSession("tenant-demo", session.id).status, "FINALIZED");
+    assert.equal(
+      service.getIntakeSession("tenant-demo", session.id).ticketId,
+      fileReply.autoFinalized.ticket.id
+    );
+  });
+
   it("detects duplicate intake candidates and can attach a consultation to an existing ticket", async () => {
     const service = new RoomlogService();
     const original = service.createComplaint("tenant-demo", {

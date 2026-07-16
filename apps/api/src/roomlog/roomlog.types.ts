@@ -1556,6 +1556,7 @@ export type IntakeDraft = {
   requiredInfo: string[];
   photoRequested: boolean;
   readyToFinalize: boolean;
+  filingIntent: boolean;
   location?: string;
   occurredAt?: string;
   availableTimes?: string;

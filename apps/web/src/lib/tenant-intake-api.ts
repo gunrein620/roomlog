@@ -60,7 +60,11 @@ export async function createTenantIntakeSession(
 export async function sendTenantIntakeMessage(
   sessionId: string,
   messageText: string,
-): Promise<{ session: TenantIntakeSession; assistantMessage: TenantIntakeMessage }> {
+): Promise<{
+  session: TenantIntakeSession;
+  assistantMessage: TenantIntakeMessage;
+  autoFinalized?: TenantIntakeFinalizeResult;
+}> {
   const body = await requestJson(
     `${intakeBasePath}/${encodeURIComponent(sessionId)}/messages`,
     { messageText, inputMode: "CHAT" },
@@ -68,11 +72,16 @@ export async function sendTenantIntakeMessage(
   const result = body as {
     session?: TenantIntakeSession;
     assistantMessage?: TenantIntakeMessage;
+    autoFinalized?: TenantIntakeFinalizeResult;
   };
   if (!result.session || !result.assistantMessage) {
     throw new Error("AI 응답을 해석하지 못했습니다.");
   }
-  return { session: result.session, assistantMessage: result.assistantMessage };
+  return {
+    session: result.session,
+    assistantMessage: result.assistantMessage,
+    autoFinalized: result.autoFinalized,
+  };
 }
 
 export async function finalizeTenantIntakeSession(

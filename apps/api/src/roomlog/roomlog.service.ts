@@ -3999,7 +3999,25 @@ export class RoomlogService {
     session.updatedAt = now();
     this.persistStore();
 
-    return { session: this.presentIntakeSession(session), assistantMessage };
+    const autoFinalized = this.maybeAutoFinalizeIntake(tenantId, session);
+
+    return { session: this.presentIntakeSession(session), assistantMessage, autoFinalized };
+  }
+
+  // 세입자가 접수를 명시 요청했고(filingIntent) 초안이 준비되면 버튼 없이 같은 턴에서 바로 접수한다.
+  // 수동 "민원 접수" 버튼과 같은 경로라 중복 후보가 있어도 새 티켓으로 접수된다(AI가 중복 가능성은 대화에서 안내).
+  private maybeAutoFinalizeIntake(tenantId: string, session: IntakeSession) {
+    if (!session.draft.readyToFinalize || !session.draft.filingIntent) {
+      return undefined;
+    }
+
+    try {
+      const finalized = this.finalizeIntakeSession(tenantId, session.id);
+      return { complaint: finalized.complaint, ticket: finalized.ticket };
+    } catch {
+      // 자동 접수에 실패해도 상담은 유지 — 기존 수동 접수 버튼 경로로 폴백한다.
+      return undefined;
+    }
   }
 
   async recordRealtimeTurn(
@@ -9670,6 +9688,7 @@ export class RoomlogService {
       requiredInfo: ["문제 위치", "증상", "방문 가능 시간"],
       photoRequested: false,
       readyToFinalize: false,
+      filingIntent: false,
       duplicateCandidates: []
     };
   }
@@ -9983,11 +10002,20 @@ export class RoomlogService {
       requiredInfo,
       photoRequested,
       readyToFinalize: requiredInfo.length === 0,
+      filingIntent: this.detectFilingIntent(text),
       location,
       occurredAt,
       availableTimes,
       duplicateCandidates
     };
+  }
+
+  // 세입자가 접수를 명시적으로 요청했는지(로컬 폴백 판정) — 단순 증상 설명은 해당하지 않는다.
+  private detectFilingIntent(text: string) {
+    const compact = text.replace(/\s+/g, "");
+    return /(민원|하자|신고|티켓)(을|를)?(넣|올려|접수)|접수(해줘|해주세요|해요|하고싶|부탁|진행|원해|할래|할게)|신고(해줘|해주세요|하고싶|할래|할게)|넣어줘|넣어주세요|올려줘|올려주세요/.test(
+      compact
+    );
   }
 
   private nextQuestionsForDraft(input: {
@@ -10480,7 +10508,9 @@ export class RoomlogService {
       "- draft.intakeSlots에는 symptom, location, occurrence, risk, photo, visitTime 6개를 항상 넣고, 이미 확인된 정보는 COLLECTED, 더 물어볼 정보는 NEEDS_INFO, 이번 이슈에 덜 중요한 정보는 OPTIONAL로 표시합니다.",
       "- 사진이 있으면 사진 URL을 관리자 검토 자료로 연결하고, 사진이 부족하면 근접/전체 사진을 구분해서 요청합니다.",
       "- 응답은 세입자에게 보낼 assistantMessage와 접수 초안 draft를 JSON으로만 반환합니다.",
-      "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다."
+      "- draft.readyToFinalize는 증상, 위치, 긴급도 판단, 방문 가능 시간 또는 후속 안내가 충분할 때만 true입니다.",
+      "- draft.filingIntent는 세입자가 '민원 넣어줘', '접수해 주세요'처럼 접수를 명시적으로 요청하거나 동의했을 때만 true입니다. 문제를 설명하기만 했다면 false입니다.",
+      "- filingIntent와 readyToFinalize가 모두 true이면 시스템이 이번 턴에서 민원을 자동 접수하므로, assistantMessage에서 정리한 내용으로 접수를 진행한다고 안내합니다."
     ].join("\n");
   }
 
@@ -10664,6 +10694,10 @@ export class RoomlogService {
         typeof generated.readyToFinalize === "boolean"
           ? generated.readyToFinalize
           : fallback.readyToFinalize,
+      filingIntent:
+        typeof generated.filingIntent === "boolean"
+          ? generated.filingIntent
+          : fallback.filingIntent,
       location: generated.location?.trim() || fallback.location,
       occurredAt: generated.occurredAt?.trim() || fallback.occurredAt,
       availableTimes: generated.availableTimes?.trim() || fallback.availableTimes,
@@ -11092,6 +11126,7 @@ export class RoomlogService {
             "requiredInfo",
             "photoRequested",
             "readyToFinalize",
+            "filingIntent",
             "location",
             "occurredAt",
             "availableTimes"
@@ -11210,6 +11245,7 @@ export class RoomlogService {
             },
             photoRequested: { type: "boolean" },
             readyToFinalize: { type: "boolean" },
+            filingIntent: { type: "boolean" },
             location: { type: "string" },
             occurredAt: { type: "string" },
             availableTimes: { type: "string" }

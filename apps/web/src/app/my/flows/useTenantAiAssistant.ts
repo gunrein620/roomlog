@@ -5,6 +5,7 @@
 // 음성: OpenAI Realtime WebRTC + Push to Talk(버튼을 누른 동안만 마이크 전달, 관리자 비서와 동일 UX)
 //       — 턴 전사를 같은 세션에 기록한다.
 // 접수 준비(readyToFinalize)가 되면 finalize로 실제 민원/티켓을 생성한다.
+// 텍스트 턴에서 세입자가 접수를 명시 요청하면(autoFinalized) 서버가 같은 턴에 자동 접수한다.
 import { useEffect, useRef, useState } from "react";
 import {
   createTenantIntakeSession,
@@ -12,6 +13,7 @@ import {
   finalizeTenantIntakeSession,
   recordTenantRealtimeTurn,
   sendTenantIntakeMessage,
+  type TenantIntakeFinalizeResult,
   type TenantIntakeSession,
 } from "@/lib/tenant-intake-api";
 import {
@@ -150,6 +152,11 @@ export function useTenantAiAssistant({
       const session = await ensureSession();
       const result = await sendTenantIntakeMessage(session.id, trimmed);
       appendMessage("assistant", result.assistantMessage.messageText);
+      if (result.autoFinalized) {
+        // 세입자가 접수를 요청해 서버가 이번 턴에서 바로 민원을 생성한 경우.
+        announceComplaintFiled(result.autoFinalized);
+        return true;
+      }
       applySessionDraft(result.session);
       return true;
     } catch (error) {
@@ -160,6 +167,21 @@ export function useTenantAiAssistant({
     }
   }
 
+  // 접수 완료 처리 공통 — 영수증 메시지를 남기고, 다음 대화는 새 세션으로 시작한다.
+  function announceComplaintFiled(result: TenantIntakeFinalizeResult) {
+    const title = result.complaint?.title;
+    appendMessage(
+      "receipt",
+      title
+        ? `접수 완료 · ${title} — 처리 상태는 민원/하자 이력에서 확인할 수 있어요.`
+        : "접수 완료 · 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
+    );
+    sessionIdRef.current = null;
+    sessionPromiseRef.current = null;
+    setReadyToFinalize(false);
+    onComplaintFiled?.();
+  }
+
   // 접수: 세션 초안을 실제 민원/티켓으로 확정한다. 이후 대화는 새 세션으로 시작한다.
   async function finalizeComplaint(): Promise<boolean> {
     const sessionId = sessionIdRef.current;
@@ -168,17 +190,7 @@ export function useTenantAiAssistant({
     setBusy(true);
     try {
       const result = await finalizeTenantIntakeSession(sessionId);
-      const title = result.complaint?.title;
-      appendMessage(
-        "receipt",
-        title
-          ? `접수 완료 · ${title} — 처리 상태는 민원/하자 이력에서 확인할 수 있어요.`
-          : "접수 완료 · 처리 상태는 민원/하자 이력에서 확인할 수 있어요.",
-      );
-      sessionIdRef.current = null;
-      sessionPromiseRef.current = null;
-      setReadyToFinalize(false);
-      onComplaintFiled?.();
+      announceComplaintFiled(result);
       return true;
     } catch (error) {
       appendError(error, "민원 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.");
