@@ -135,11 +135,13 @@ export async function listManagerTickets(filter?: string): Promise<Ticket[]> {
 export async function listManagerTicketRows(
   loadTickets: () => Promise<TeamManagerTicket[]> = listTeamTickets,
 ): Promise<
-  { ticket: Ticket; repair?: RepairJob; attachmentUrls: string[] }[]
+  { ticket: Ticket; repair?: RepairJob; buildingName?: string; attachmentUrls: string[] }[]
 > {
   return (await loadTickets()).map((t) => ({
     ticket: toManagerTicket(t),
     repair: toManagerRepair(t) ?? undefined,
+    // 팀 응답의 room.buildingName을 그대로 실어 대시보드 "건물/호실"이 "—"로 비지 않게 한다.
+    buildingName: t.room?.buildingName?.trim() || undefined,
     attachmentUrls: managerTicketAttachmentUrls(t)
   }));
 }

@@ -698,11 +698,11 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
           location: listingAddress || "위치 미입력",
           detailAddress,
           buildingName: ownerForm.buildingName.trim(),
-          description: [
-            ownerForm.area ? `전용 ${ownerForm.area}m²` : "",
-            ownerForm.floor ? `${ownerForm.floor}층` : "",
-            ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
-          ].filter(Boolean).join(" · "),
+          // 면적/층/관리비는 전용 필드로 보낸다 — 상세 스펙 항목("확인 중")에 실제 값이 뜨게.
+          exclusiveAreaM2: Number(ownerForm.area) || undefined,
+          floorInfo: ownerForm.floor.trim() || undefined,
+          maintenanceFeeManwon: Number(ownerForm.maintenance) || undefined,
+          description: ownerForm.moveIn ? `입주 가능일 ${ownerForm.moveIn}` : "",
           lat: listingCoords?.lat,
           lng: listingCoords?.lng,
           options: ownerForm.options
@@ -916,8 +916,9 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               거래유형
               <select value={ownerForm.tradeType} onChange={(event) => updateOwnerForm("tradeType", event.target.value)}>
                 <option>월세</option>
-                <option>전세</option>
                 <option>반전세</option>
+                <option>전세</option>
+                <option>매매</option>
               </select>
             </label>
             <label>

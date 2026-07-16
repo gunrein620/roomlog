@@ -21,7 +21,6 @@ import {
   getListingBuildingRows,
   getListingPriceRows,
   isRemotePhoto,
-  listingDetailAddressLabel,
   listingMapAddress,
   optionItems,
   TRADE_LISTING_NO_PREFIX,
@@ -60,7 +59,6 @@ export function ListingDetailView({
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
-  const detailAddressLabel = listingDetailAddressLabel(listing);
   const mapAddress = listingMapAddress(listing);
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
   // 매물별 3D 게이트 대상은 직접등록(TRADE-) 매물뿐 — 정적(하드코딩) 매물은 기존 데모 링크를 그대로 둔다(곧 삭제 예정).
@@ -204,7 +202,9 @@ export function ListingDetailView({
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>{listing.location}</span>
         </div>
-        <div className="detail-address-detail">세부주소: {detailAddressLabel}</div>
+        {listing.detailAddress?.trim() ? (
+          <div className="detail-address-detail">세부주소: {listing.detailAddress.trim()}</div>
+        ) : null}
       </div>
 
       <div className="listing-detail-facts" aria-label="매물 기본 정보">
@@ -364,14 +364,19 @@ export function ListingDetailView({
                   <ListingTourRoom3D floorPlan={listing.floorPlan3D} />
                 </div>
               ) : (
-                <div className="tour-room-box tour-room-box-empty">
-                  <span className="tour-wall wall-left" />
-                  <span className="tour-wall wall-right" />
-                  <span className="tour-bed" />
-                  <span className="tour-desk" />
-                  <span className="tour-window" />
-                  <strong>3D 도면 미연결 매물</strong>
-                  <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                <div className="tour-room-empty-wrap">
+                  {/* 안내 텍스트는 3D 변형 밖에 둔다 — 박스 안에 두면 회전된 채 서로 겹쳐 읽기 어렵다 */}
+                  <div className="tour-room-box tour-room-box-empty">
+                    <span className="tour-wall wall-left" />
+                    <span className="tour-wall wall-right" />
+                    <span className="tour-bed" />
+                    <span className="tour-desk" />
+                    <span className="tour-window" />
+                  </div>
+                  <div className="tour-room-empty-copy">
+                    <strong>3D 도면 미연결 매물</strong>
+                    <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                  </div>
                 </div>
               )}
             </div>

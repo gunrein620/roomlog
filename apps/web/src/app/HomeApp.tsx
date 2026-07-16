@@ -78,7 +78,9 @@ import {
   demoMapItems,
   getListingPriceRows,
   isRemotePhoto,
+  LISTING_PHOTO_PLACEHOLDER,
   listingDetailAddressLabel,
+  listingRegisteredAgoLabel,
   mapListings,
   monthlyDealLabel,
   tradeListingToCard,
@@ -865,7 +867,7 @@ const resetWindowScrollSoon = () => {
 /** 직접등록 매물을 지도 패널 아이템으로 투영 — 좌표 없으면 NaN(마커 제외, 목록에는 노출). */
 function tradeListingToMapItem(listing: TradeListing, index: number, total: number): MapPanelItem {
   const shortPrice =
-    listing.tradeType === "월세"
+    listing.tradeType === "월세" || listing.tradeType === "반전세"
       ? monthlyDealLabel(listing.depositManwon, listing.monthlyRentManwon)
       : tradePriceLabel(listing);
   return {
@@ -875,9 +877,9 @@ function tradeListingToMapItem(listing: TradeListing, index: number, total: numb
     meta: `${listing.roomType} · 집주인 직접`,
     distance: listing.location,
     detailAddress: listing.detailAddress,
-    updated: "방금 등록",
+    updated: listingRegisteredAgoLabel(listing.createdAt),
     flags: ["집주인 직접"],
-    image: (Array.isArray(listing.images) && listing.images[0]) || "/listing-studio.jpg",
+    image: (Array.isArray(listing.images) && listing.images[0]) || LISTING_PHOTO_PLACEHOLDER,
     lat: typeof listing.lat === "number" ? listing.lat : Number.NaN,
     lng: typeof listing.lng === "number" ? listing.lng : Number.NaN,
     mapLabel: shortPrice,
@@ -1001,7 +1003,7 @@ function SavedListingsSection({
                   <b>{listing.price}</b>
                   <strong>{listing.title}</strong>
                   <em>{listing.location}</em>
-                  <em>세부주소: {listingDetailAddressLabel(listing)}</em>
+                  {listing.detailAddress ? <em>세부주소: {listing.detailAddress}</em> : null}
                 </span>
               </button>
               <div>
@@ -2313,18 +2315,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       // /inquiry?thread=<id>처럼 경로 진입 + 스레드 지목 — 파라미터만 정리한다.
       window.history.replaceState(null, "", window.location.pathname + window.location.hash);
     } else if (initialTab === "home" && window.location.pathname === "/") {
-      // 새로고침이 홈으로 튕기지 않게 — 이 탭에서 마지막으로 보던 탭/역할을 복원한다(딥링크와 같은 취급).
-      // 탭 경로(/map 등)로 직접 들어온 경우엔 그 경로가 진실이므로 복원하지 않는다.
-      const storedTab = normalizeAppTab(window.sessionStorage.getItem("woozuLastTab"));
+      // URL이 진실 — "/"로 들어오면 홈을 보여준다. 탭 전환은 pushState로 경로를 남기므로
+      // 새로고침은 어차피 그 경로(/map 등)로 복원된다. 이전의 "마지막 탭 복원"은
+      // 링크 공유·주소창 직접 진입 때 홈 대신 엉뚱한 탭이 떠서 제거했다.
+      // 역할 프리뷰만 세션에서 복원한다(네비 구성 유지, 화면은 홈).
       const storedRole = normalizeAppRole(window.sessionStorage.getItem("woozuLastRole"));
       if (storedRole && storedRole !== "seeker") {
         urlRoleAppliedRef.current = true;
         setIsDevRolePreview(true);
         setActiveRole(storedRole);
-      }
-      if (storedTab && storedTab !== "home") {
-        setActiveTab(storedTab);
-        window.history.replaceState(null, "", TAB_PATHS[storedTab]);
       }
     }
     setIsRouteReady(true);
@@ -2985,18 +2984,19 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                           role="img"
                           aria-label={`${listing.title} 썸네일`}
                         >
-                          <span>확인매물</span>
+                          {/* 검증 절차를 거치지 않은 직접등록 매물에 "확인매물" 신뢰 배지를 붙이지 않는다 */}
+                          <span>{listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX) ? "직접 등록" : "확인매물"}</span>
                         </div>
                         <div className="map-listing-copy">
                           <div className="map-card-badge-row">
-                            <span>실매물 확인</span>
+                            <span>{listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX) ? "집주인 직접" : "실매물 확인"}</span>
                             <span>{listing.updated}</span>
                           </div>
                           <h3 title={listing.title}>{listing.title}</h3>
                           <strong className={listing.dealTone === "jeonse" ? "map-price-text is-jeonse" : "map-price-text"}>{listing.price}</strong>
                           <p>{listing.meta}</p>
                           <small>{mapListingDistanceLabel(listing)}</small>
-                          <small>세부주소: {listingDetailAddressLabel(listing)}</small>
+                          {listing.detailAddress?.trim() ? <small>세부주소: {listing.detailAddress.trim()}</small> : null}
                           <div className="map-card-tags">
                             {listing.flags.map((flag) => (
                               <em key={flag}>{flag}</em>

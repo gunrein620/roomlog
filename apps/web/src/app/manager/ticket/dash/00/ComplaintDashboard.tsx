@@ -203,7 +203,8 @@ export function ComplaintDashboard({ rows }: { rows: readonly DefectDashboardRow
               <span className="manager-complaint-dashboard__metric-label">{label}</span>
               <strong>{value}</strong>
               {id === "total" ? (
-                <span className="manager-complaint-dashboard__metric-change" data-positive={dashboard.summary.change >= 0}>
+                // 민원은 늘어나는 게 나쁜 신호 — 감소를 긍정(초록), 증가를 경고(빨강)로 칠한다.
+                <span className="manager-complaint-dashboard__metric-change" data-positive={dashboard.summary.change <= 0}>
                   {dashboard.summary.change >= 0 ? "↗" : "↘"} {Math.abs(dashboard.summary.change)}% 지난 달 대비
                 </span>
               ) : null}
