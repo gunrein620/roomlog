@@ -7,6 +7,10 @@ const pageSource = readFileSync(
   join(__dirname, "../app/manager/ticket/dash/01/page.tsx"),
   "utf8",
 );
+const layoutSource = readFileSync(
+  join(__dirname, "../app/manager/ticket/dash/layout.tsx"),
+  "utf8",
+);
 const uiSource = readFileSync(
   join(__dirname, "../app/manager/ticket/_components/ticket-manager-ui.tsx"),
   "utf8",
@@ -39,5 +43,11 @@ describe("manager ticket detail empty states", () => {
 
   it("does not expose the temporary voice approval action", () => {
     assert.doesNotMatch(pageSource, /음성으로 빠른 승인|callRoutes/);
+  });
+
+  it("removes the shared ticket header box and uses the concise detail title", () => {
+    assert.match(layoutSource, /hideHeader/);
+    assert.match(pageSource, /하자\/민원 처리/);
+    assert.doesNotMatch(pageSource, /티켓 상세 & 검토/);
   });
 });

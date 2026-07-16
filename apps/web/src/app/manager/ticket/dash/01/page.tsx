@@ -23,7 +23,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   if (!detail) {
     return (
       <Card role="status" style={{ display: "grid", gap: "var(--space-sm)" }}>
-        <div style={sectionTitle}>티켓 상세 & 검토</div>
+        <div style={sectionTitle}>하자/민원 처리</div>
         <div style={muted}>조회할 티켓이 없습니다.</div>
       </Card>
     );
@@ -34,7 +34,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   return (
     <div style={pageStack}>
-      <TicketHeader ticket={ticket} title="티켓 상세 & 검토" />
+      <TicketHeader ticket={ticket} title="하자/민원 처리" />
       <StatusBadges ticket={ticket} repair={repair} />
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "var(--space-lg)", alignItems: "start" }}>
