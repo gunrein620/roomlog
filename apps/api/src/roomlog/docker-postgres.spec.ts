@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 
@@ -8,6 +8,10 @@ const readmeSource = readFileSync("../../README.md", "utf8");
 const rootPackageSource = readFileSync("../../package.json", "utf8");
 const deployWorkflowSource = readFileSync("../../.github/workflows/deploy.yml", "utf8");
 const migrationBootstrapSource = readFileSync("scripts/migrate-database.mjs", "utf8");
+const migrationSources = readdirSync("../../prisma/migrations", { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => readFileSync(`../../prisma/migrations/${entry.name}/migration.sql`, "utf8"))
+  .join("\n");
 
 describe("Docker Postgres local database wiring", () => {
   it("uses PostgreSQL 18.3 and creates a local test database in Compose", () => {
@@ -67,6 +71,45 @@ describe("Docker Postgres local database wiring", () => {
       deployWorkflowSource,
       /ROBOFLOW_API_KEY\|VENDOR_ACTIVATION_KEY_PEPPER\|VENDOR_ACTIVATION_SESSION_SECRET/
     );
+  });
+
+  it("carries optional GPU orchestrator secrets into the production environment", () => {
+    for (const key of [
+      "GPU_PIPELINE_ENABLED",
+      "GPU_INSTANCE_ID",
+      "GPU_REGION",
+      "GPU_WORKER_SECRET",
+    ]) {
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`${key}: "\\$\\{\\{ secrets\\.${key} \\}\\}"`)
+      );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`${key}="\\$\\(read_prod_env_key ${key}\\)"`)
+      );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`echo "${key}=\\$\\{${key}\\}" >> \\.env\\.production`)
+      );
+    }
+    assert.match(
+      deployWorkflowSource,
+      /GPU_PIPELINE_ENABLED\|GPU_INSTANCE_ID\|GPU_REGION\|GPU_WORKER_SECRET/
+    );
+  });
+
+  it("migrates the GPU reconstruction job state tracked by the Prisma schema", () => {
+    assert.match(migrationSources, /CREATE TYPE "SplatReconstructionJobState" AS ENUM/);
+    for (const column of [
+      "jobState",
+      "jobError",
+      "jobAttempts",
+      "jobCommandId",
+      "jobStartedAt",
+    ]) {
+      assert.match(migrationSources, new RegExp(`ADD COLUMN(?: IF NOT EXISTS)? "${column}"`));
+    }
   });
 
   it("prevents the migration container from consuming the remote deploy script stdin", () => {
