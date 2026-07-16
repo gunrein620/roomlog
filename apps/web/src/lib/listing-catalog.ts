@@ -235,6 +235,9 @@ export const getListingBuildingRows = (listing: Listing) => [
 // 차단하므로 절대 URL 사진은 unoptimized로 브라우저가 직접 로드하게 한다(번들 목업은 그대로 최적화).
 export const isRemotePhoto = (src: string) => /^https?:\/\//.test(src);
 
+// 등록 폼의 매물유형 드롭다운 — 홈 카테고리(전체 제외)와 같은 구성. 등록값이 카테고리 필터·카운트에 그대로 잡힌다.
+export const listingRoomTypes = ["원룸", "투룸", "오피스텔", "아파트", "빌라", "단기임대"];
+
 // 등록 폼에서 선택 가능한 옵션 목록 — API(trade.service ALLOWED_LISTING_OPTIONS)와 같은 값·순서.
 // 데모 매물 상세는 options가 없어 이 목록 전체를 폴백으로 보여준다.
 export const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];

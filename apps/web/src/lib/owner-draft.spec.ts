@@ -54,12 +54,13 @@ describe("owner listing draft persistence", () => {
     assert.ok(restored);
     assert.deepEqual(restored.ownerForm.options, ["에어컨", "CCTV"]);
 
-    // options 필드 추가 이전에 저장된 draft — 빈 배열로 보정돼야 한다.
-    const { options: _options, ...legacyOwnerForm } = sampleState.ownerForm;
+    // options/roomType 필드 추가 이전에 저장된 draft — 기본값으로 보정돼야 한다.
+    const { options: _options, roomType: _roomType, ...legacyOwnerForm } = sampleState.ownerForm;
     const legacyRaw = JSON.stringify({ version: 1, savedAt: "2026-07-05T12:34:56.000Z", ...sampleState, ownerForm: legacyOwnerForm });
     const legacyRestored = parseOwnerDraft(legacyRaw);
     assert.ok(legacyRestored);
     assert.deepEqual(legacyRestored.ownerForm.options, []);
+    assert.equal(legacyRestored.ownerForm.roomType, "원룸");
   });
 
   it("rejects unknown versions and corrupted payloads", () => {

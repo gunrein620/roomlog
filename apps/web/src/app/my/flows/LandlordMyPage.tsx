@@ -23,7 +23,7 @@ import {
   serializeOwnerDraft
 } from "@/lib/owner-draft";
 import { intakeSplatAsset } from "@/lib/splat-asset-api";
-import { optionItems } from "@/lib/listing-catalog";
+import { listingRoomTypes, optionItems } from "@/lib/listing-catalog";
 import { clearOwnerPhotos, loadOwnerPhotos, saveOwnerPhotos } from "@/lib/owner-photo-store";
 
 // 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
@@ -617,7 +617,7 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
         if (!geoCoords && listingCoords) setGeoCoords(listingCoords);
         const payload: Record<string, unknown> = {
           title: ownerForm.title,
-          roomType: "원룸",
+          roomType: ownerForm.roomType || "원룸",
           tradeType: ownerForm.tradeType,
           depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
           monthlyRentManwon: Number(ownerForm.monthly) || 0,
@@ -768,6 +768,15 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               </label>
             </div>
 
+            <label>
+              매물유형
+              {/* 홈 카테고리(원룸·투룸 등)와 같은 목록 — 등록값이 카테고리 필터·카운트에 그대로 잡힌다 */}
+              <select value={ownerForm.roomType} onChange={(event) => updateOwnerForm("roomType", event.target.value)}>
+                {listingRoomTypes.map((roomType) => (
+                  <option key={roomType}>{roomType}</option>
+                ))}
+              </select>
+            </label>
             <label>
               거래유형
               <select value={ownerForm.tradeType} onChange={(event) => updateOwnerForm("tradeType", event.target.value)}>

@@ -11,6 +11,8 @@ export type OwnerFormValues = {
   address: string;
   detailAddress: string;
   tradeType: string;
+  /** 매물유형(원룸·투룸 등) — listing-catalog listingRoomTypes 중 하나 */
+  roomType: string;
   moveIn: string;
   deposit: string;
   monthly: string;
@@ -48,6 +50,7 @@ export const emptyOwnerForm: OwnerFormValues = {
   address: "",
   detailAddress: "",
   tradeType: "월세",
+  roomType: "원룸",
   moveIn: "",
   deposit: "",
   monthly: "",
@@ -107,12 +110,14 @@ export function parseOwnerDraft(raw: string | null): OwnerListingDraft | null {
   if (!ownerFormKeys.every((key) => typeof (form as Record<string, unknown>)[key] === "string")) {
     return null;
   }
-  // detailAddress/buildingName/options는 나중에 추가된 필드 — 이전 버전 draft에는 없으므로 빈 값으로 보정한다.
+  // detailAddress/buildingName/options/roomType은 나중에 추가된 필드 — 이전 버전 draft에는 없으므로 기본값으로 보정한다.
   const formRecord = form as Record<string, unknown>;
   const normalizedForm = {
     ...(form as OwnerFormValues),
     detailAddress: typeof formRecord.detailAddress === "string" ? formRecord.detailAddress : "",
     buildingName: typeof formRecord.buildingName === "string" ? formRecord.buildingName : "",
+    roomType:
+      typeof formRecord.roomType === "string" && formRecord.roomType.trim() ? formRecord.roomType : "원룸",
     options: Array.isArray(formRecord.options)
       ? formRecord.options.filter((item): item is string => typeof item === "string")
       : []
