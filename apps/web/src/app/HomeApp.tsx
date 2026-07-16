@@ -80,10 +80,12 @@ import {
   listingDetailAddressLabel,
   mapListings,
   neighborhoodItems,
+  monthlyDealLabel,
   tradeListingToCard,
   tradePriceLabel,
   TRADE_LISTING_NO_PREFIX,
   type Listing,
+  type MapDealTone,
   type MapPanelItem,
   type TradeListing
 } from "../lib/listing-catalog";
@@ -142,6 +144,7 @@ type MapListingGroup = {
   title: string;
   price: string;
   mapLabel: string;
+  dealTone?: MapDealTone;
   clusterLabel: string;
   updated: string;
 };
@@ -578,6 +581,7 @@ const groupMapListings = (listings: MapPanelItem[]): MapListingGroup[] => {
   return Array.from(groups.entries()).map(([groupKey, groupListings]) => {
     const representative = groupListings[0];
     const title = groupListings.length > 1 ? mapBuildingTitle(representative) : representative.title;
+    const dealTone = groupListings.every((listing) => listing.dealTone === "jeonse") ? "jeonse" : representative.dealTone;
     return {
       groupKey,
       listings: groupListings,
@@ -587,6 +591,7 @@ const groupMapListings = (listings: MapPanelItem[]): MapListingGroup[] => {
       title,
       price: mapGroupPriceLabel(groupListings),
       mapLabel: mapGroupLabel(groupListings),
+      dealTone,
       clusterLabel: groupListings.length > 1 ? `${groupListings.length}개` : representative.clusterLabel,
       updated: groupListings.length > 1 ? "건물 매물" : representative.updated
     };
@@ -635,7 +640,7 @@ const resetWindowScrollSoon = () => {
 function tradeListingToMapItem(listing: TradeListing, index: number, total: number): MapPanelItem {
   const shortPrice =
     listing.tradeType === "월세"
-      ? `${listing.depositManwon}/${listing.monthlyRentManwon}`
+      ? monthlyDealLabel(listing.depositManwon, listing.monthlyRentManwon)
       : tradePriceLabel(listing);
   return {
     listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
@@ -650,6 +655,7 @@ function tradeListingToMapItem(listing: TradeListing, index: number, total: numb
     lat: typeof listing.lat === "number" ? listing.lat : Number.NaN,
     lng: typeof listing.lng === "number" ? listing.lng : Number.NaN,
     mapLabel: shortPrice,
+    dealTone: listing.tradeType === "전세" ? "jeonse" : "monthly",
     clusterLabel: "직접",
     verifyStatus: "집주인 직접 등록",
     responseStatus: "채팅 문의 가능",
@@ -1277,6 +1283,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const [selectedArea, setSelectedArea] = useState(DEFAULT_MAP_CONTEXT.label);
+  const [mapTopbarSearchValue, setMapTopbarSearchValue] = useState(DEFAULT_MAP_CONTEXT.label);
   const [mapSearchContext, setMapSearchContext] = useState<MapSearchContext>(DEFAULT_MAP_CONTEXT);
   const [mapViewport, setMapViewport] = useState<NaverMapViewport | null>(null);
   const [mapLocationStatus, setMapLocationStatus] = useState<MapLocationStatus>("idle");
@@ -1416,6 +1423,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
   // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
   // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).
+  useEffect(() => {
+    setMapTopbarSearchValue(selectedArea);
+  }, [selectedArea]);
+
   const sortedTradeListings = tradeListings
     .filter((listing) => listing.status !== "계약완료")
     .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
@@ -1622,6 +1633,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       lat: group.lat,
       lng: group.lng,
       mapLabel: group.mapLabel,
+      dealTone: group.dealTone,
       clusterLabel: group.clusterLabel,
       title: group.title,
       price: group.price
@@ -1813,6 +1825,35 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     const resolvedContext = candidates[0];
     if (resolvedContext) {
       applyResolvedMapCandidate(keyword, resolvedContext);
+      return;
+    }
+
+    applyMapAreaSelection(keyword, { ...DEFAULT_MAP_CONTEXT, label: keyword });
+    setMapQueryStatus("fallback");
+    setRecentSearches((current) => [keyword, ...current.filter((item) => item !== keyword)].slice(0, 5));
+    setIsSearchSheetOpen(false);
+    setActiveMapResultTab("rooms");
+    activateTab("map");
+  };
+
+  const submitMapTopbarSearch = async () => {
+    const keyword = mapTopbarSearchValue.trim();
+    if (!keyword) {
+      setMapTopbarSearchValue(selectedArea);
+      return;
+    }
+
+    const requestId = ++mapContextRequestIdRef.current;
+    setMapQueryCandidates([]);
+    setMapQueryCandidateKeyword(keyword);
+    setMapQueryStatus("resolving");
+    const candidates = await resolveMapQueryCandidates(keyword);
+    if (requestId !== mapContextRequestIdRef.current) return;
+
+    const resolvedContext = candidates[0];
+    if (resolvedContext) {
+      applyResolvedMapCandidate(keyword, resolvedContext);
+      setMapTopbarSearchValue(resolvedContext.label);
       return;
     }
 
@@ -2390,11 +2431,23 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
         {activeTab === "map" ? (
         <section className="screen map-screen" id="map-list" aria-labelledby="map-title">
-          <div className="map-topbar">
+          <form
+            className="map-topbar"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitMapTopbarSearch();
+            }}
+          >
             <label>
               <Search size={20} strokeWidth={2.4} aria-hidden="true" />
-              <input value={selectedArea} readOnly aria-label="지도 검색어" onFocus={() => setIsSearchSheetOpen(true)} />
+              <input
+                value={mapTopbarSearchValue}
+                onChange={(event) => setMapTopbarSearchValue(event.target.value)}
+                aria-label="지도 검색어"
+                placeholder="동네, 역, 주소 검색"
+              />
             </label>
+            <span className="map-location-action-label">내 위치 보기</span>
             <button
               type="button"
               onClick={() => requestMapCurrentLocation(true)}
@@ -2407,7 +2460,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <button type="button" onClick={() => setIsFilterSheetOpen(true)} aria-label="필터">
               <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
             </button>
-          </div>
+          </form>
 
           <div className="map-filter-row">
             {["시세", "원룸·투룸", "보증금", "안전", "3D 가능"].map((filter) => (
@@ -2448,50 +2501,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               markers={mapMarkers}
               onViewportChange={setMapViewport}
             />
-            {selectedMapGroup && selectedMapListing ? (
-              <article className="map-selected-card" aria-label="지도 선택 매물">
-                <div className="map-selected-summary">
-                  <span>{selectedMapGroup.clusterLabel} · {selectedMapGroup.updated}</span>
-                  <strong>
-                    {selectedMapGroup.title}
-                    {selectedMapGroup.listings.length > 1 ? ` 매물 ${selectedMapGroup.listings.length}개` : ""}
-                  </strong>
-                  <small>{selectedMapGroup.price} · {mapListingDistanceLabel(selectedMapGroup.representative)}</small>
-                </div>
-                <div className="map-selected-actions">
-                  <em>{selectedMapListing.flags[0]}</em>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const card = findListingCardByNo(selectedMapListing.listingNo);
-                      if (card) openListing(card);
-                    }}
-                  >
-                    상세
-                  </button>
-                </div>
-                {selectedMapGroup.listings.length > 1 ? (
-                  <div className="map-selected-room-list" aria-label={`${selectedMapGroup.title} 매물 목록`}>
-                    {selectedMapGroup.listings.map((listing) => (
-                      <button
-                        className={selectedMapListing.listingNo === listing.listingNo ? "active" : ""}
-                        key={listing.listingNo}
-                        type="button"
-                        onClick={() => setSelectedMapListingNo(listing.listingNo)}
-                      >
-                        <strong>{listing.title}</strong>
-                        <span>{listing.price}</span>
-                        <small>{listingDetailAddressLabel(listing)}</small>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <small className="map-selected-detail-address">
-                    세부주소: {listingDetailAddressLabel(selectedMapGroup.representative)}
-                  </small>
-                )}
-              </article>
-            ) : null}
           </div>
 
           <div className="result-sheet">
@@ -2578,8 +2587,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                             <span>실매물 확인</span>
                             <span>{listing.updated}</span>
                           </div>
-                          <h3>{listing.title}</h3>
-                          <strong>{listing.price}</strong>
+                          <h3 title={listing.title}>{listing.title}</h3>
+                          <strong className={listing.dealTone === "jeonse" ? "map-price-text is-jeonse" : "map-price-text"}>{listing.price}</strong>
                           <p>{listing.meta}</p>
                           <small>{mapListingDistanceLabel(listing)}</small>
                           <small>세부주소: {listingDetailAddressLabel(listing)}</small>

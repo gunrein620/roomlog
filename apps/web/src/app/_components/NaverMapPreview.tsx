@@ -111,6 +111,7 @@ export type MapMarkerInput = {
   lat: number;
   lng: number;
   mapLabel: string;
+  dealTone?: "monthly" | "jeonse";
   clusterLabel: string;
   title: string;
   price: string;
@@ -187,7 +188,7 @@ export function NaverMapPreview({
   const scriptUrl = naverMapScriptUrl;
   // 좌표 배열이 실제로 달라졌을 때만 마커를 다시 그린다 (렌더마다 새 배열이 와도 무시).
   const markersKey = markers
-    ? JSON.stringify(markers.map((deal) => [deal.lat, deal.lng, deal.mapLabel, deal.clusterLabel, deal.title, deal.price]))
+    ? JSON.stringify(markers.map((deal) => [deal.lat, deal.lng, deal.mapLabel, deal.dealTone ?? "", deal.clusterLabel, deal.title, deal.price]))
     : "";
   const centerKey =
     center && Number.isFinite(center.lat) && Number.isFinite(center.lng)
@@ -297,16 +298,17 @@ export function NaverMapPreview({
     if (!maps || !map) return;
 
     dynamicMarkersRef.current.forEach((marker) => marker.setMap(null));
-    const parsed = JSON.parse(markersKey) as Array<[number, number, string]>;
-    dynamicMarkersRef.current = parsed.map(([lat, lng, mapLabel], index) => {
+    const parsed = JSON.parse(markersKey) as Array<[number, number, string, string]>;
+    dynamicMarkersRef.current = parsed.map(([lat, lng, mapLabel, dealTone], index) => {
       const clusterLabel = escapeHtml(String((markers ?? [])[index]?.clusterLabel ?? ""));
       const markerTitle = escapeHtml(String((markers ?? [])[index]?.title ?? ""));
       const price = escapeHtml(String((markers ?? [])[index]?.price ?? ""));
+      const markerClassName = `naver-price-marker${dealTone === "jeonse" ? " is-jeonse" : ""}${index === 0 ? " active" : ""}`;
       return new maps.Marker({
         map,
         position: new maps.LatLng(lat, lng),
         icon: {
-          content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${markerTitle} ${price}"><b>${clusterLabel}</b><strong>${escapeHtml(String(mapLabel))}</strong></button>`,
+          content: `<button class="${markerClassName}" type="button" aria-label="${markerTitle} ${price}"><b>${clusterLabel}</b><strong>${escapeHtml(String(mapLabel))}</strong></button>`,
           anchor: new maps.Point(42, 56)
         }
       });
