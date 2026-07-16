@@ -53,6 +53,10 @@ export interface ManagerVendorJobLookup {
   job: VendorJobSummary;
 }
 
+export interface ManagerVendorJobLookupResponse {
+  data: ManagerVendorJobLookup | null;
+}
+
 export type VendorEstimateResponseType =
   | "FIXED_ESTIMATE"
   | "VISIT_REQUIRED"

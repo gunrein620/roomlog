@@ -2,6 +2,7 @@ import type {
   DecideRepairCompletionInput,
   ManagerVendorDetail,
   ManagerVendorJobLookup,
+  ManagerVendorJobLookupResponse,
   ManagerVendorView,
   VendorCatalogSearchFilters,
   VendorCatalogSearchResult,
@@ -165,9 +166,9 @@ export function findManagerVendorJobByTicket(
   ticketId: string,
 ): Promise<VendorReadResult<ManagerVendorJobLookup | null>> {
   return readVendorData(
-    () => serverFetch<ManagerVendorJobLookup | null>(
+    () => serverFetch<ManagerVendorJobLookupResponse>(
       `/manager/vendor-mgmt/tickets/${encodeURIComponent(ticketId)}/job`,
-    ),
+    ).then(({ data }) => data),
     findDemoManagerVendorJobByTicket(ticketId),
   );
 }

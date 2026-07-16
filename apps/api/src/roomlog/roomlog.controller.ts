@@ -2037,7 +2037,9 @@ export class RoomlogController {
     @Param("ticketId") ticketId: string
   ) {
     const user = this.requireRole(authorization, ["LANDLORD"]);
-    return this.requireManagerVendorDomain().findJobByTicket(user.id, ticketId);
+    return this.requireManagerVendorDomain()
+      .findJobByTicket(user.id, ticketId)
+      .then((data) => ({ data }));
   }
 
   @Get("manager/vendor-mgmt/vendors/:vendorId")
