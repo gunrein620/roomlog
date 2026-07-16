@@ -15,7 +15,6 @@ import { loadPlanWallsFromBrowser, wallsToPlanBounds, type PlanBounds } from "./
 import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
-import { DEMO_PRESETS } from "./tour-presets";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
 import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
@@ -635,7 +634,7 @@ export default function TourViewer() {
           activeId={activeId}
           onArrive={setActiveId}
           onCameraMove={handleCameraMove}
-          presets={DEMO_PRESETS}
+          presets={[]}
           spawnView={SPAWN_VIEW}
           walkMode={isWalkMode}
           walkBounds={planBounds}
@@ -678,7 +677,7 @@ export default function TourViewer() {
       ) : null}
 
       <p className={`tour-hint${isLoaded && showHint ? "" : " is-hidden"}`}>
-        드래그로 둘러보고, 아래 버튼으로 이동하세요
+        드래그로 둘러보고, 걷기 모드로 이동하세요
       </p>
 
       <div className="tour-minimap-dock">
@@ -686,7 +685,7 @@ export default function TourViewer() {
           activeId={activeId}
           livePosition={minimapPosition}
           onSelect={setActiveId}
-          presets={DEMO_PRESETS}
+          presets={[]}
         />
       </div>
 
@@ -713,21 +712,6 @@ export default function TourViewer() {
         aria-label="시점 프리셋"
         className="tour-preset-bar"
       >
-        {DEMO_PRESETS.map((preset) => {
-          const isActive = preset.id === activeId;
-          return (
-            <button
-              aria-pressed={isActive}
-              className={`tour-preset-button${isActive ? " is-active" : ""}`}
-              key={preset.id}
-              onClick={() => setActiveId(preset.id)}
-              type="button"
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-        <span aria-hidden className="tour-preset-divider" />
         <button
           aria-pressed={isWalkMode}
           className={`tour-walk-toggle${isWalkMode ? " is-active" : ""}`}
