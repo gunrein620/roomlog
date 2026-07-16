@@ -60,6 +60,8 @@ export type TicketDisposition =
 export interface Ticket {
   id: string;
   type: TicketType;
+  /** 운영 원장의 세부 하자/민원 분류. 업체 업종 적합성 판단에 사용한다. */
+  category?: string;
   unitId: string; // 호실
   title: string; // 예: "에어컨 물샘"
   description: string;
