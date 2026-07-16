@@ -12,6 +12,7 @@ import {
 } from "./splat-clip";
 import { estimateSplatFloorY } from "./splat-floor";
 import { isNearAnyPlanWall, wallsToPlanBounds } from "./splat-plan-shape";
+import { defaultRotationXDegreesForSrc } from "./splat-orientation";
 import { isWallShellPoint, readWallReplaceParam } from "./splat-walls";
 import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
 import type { SplatTransform } from "./tour-types";
@@ -23,7 +24,6 @@ const SPLAT_MIN_VISIBLE_SIZE_METERS = 1.5;
 const SPLAT_MIN_AUTO_SCALE = SPLAT_MIN_VISIBLE_SIZE_METERS / SPLAT_TARGET_MAX_DIMENSION_METERS;
 const SPLAT_MAX_AUTO_SCALE = 1.6;
 const SPLAT_FLOATER_GUARD_SCALE = 0.6;
-const SPZ_Y_DOWN_TO_Y_UP_ROTATION_X_DEGREES = 180;
 const DEFAULT_SPLAT_SCALE_MULTIPLIER = 1;
 const DEFAULT_SPLAT_CENTER = { x: 0, y: ROOM.height / 2, z: -0.5 };
 const SPLAT_ROTATION_X_AXIS = new Vector3(1, 0, 0);
@@ -188,8 +188,8 @@ export function SplatScene({
         if (isDisposed) return;
 
         const tuning = transform
-          ? tuningFromTransform(transform, profile)
-          : readSplatTuningFromLocation(profile);
+          ? tuningFromTransform(transform, profile, src)
+          : readSplatTuningFromLocation(profile, src);
         if (!transform && defaultFitMode && tuning.sources.fitMode === "default") {
           tuning.fitMode = defaultFitMode;
         }
@@ -700,10 +700,11 @@ function parseSplatTuningProfile(rawValue: unknown): SplatTuningProfile | null {
   return profile;
 }
 
-function createDefaultSplatTuning(): SplatTuning {
+// tuning 프로파일/URL이 없을 때 쓰는 기본값. rotX 기본은 포맷 규약(.ply=180·.spz 등=0)을 따른다.
+function createDefaultSplatTuning(src: string): SplatTuning {
   return {
     scaleMultiplier: DEFAULT_SPLAT_SCALE_MULTIPLIER,
-    rotationXDegrees: SPZ_Y_DOWN_TO_Y_UP_ROTATION_X_DEGREES,
+    rotationXDegrees: defaultRotationXDegreesForSrc(src),
     rotationYDegrees: 0,
     offsetX: 0,
     offsetY: 0,
@@ -745,8 +746,8 @@ function createDefaultSplatTuning(): SplatTuning {
 // 영속화된 정합 결과(SplatTransform)를 씬 튜닝으로 변환한다. 정합값은 도면 좌표계의
 // 절대 배치이므로 fitMode를 "native"로 고정해 bbox auto-fit을 건너뛴다. 클립 설정은
 // 프로파일/기본값을 유지 — 정합은 배치만 결정하고 클립(방 밖 floater 제거)은 별개 관심사.
-function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProfile | null): SplatTuning {
-  const base = applyProfileTuning(createDefaultSplatTuning(), profile);
+function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProfile | null, src: string): SplatTuning {
+  const base = applyProfileTuning(createDefaultSplatTuning(src), profile);
   const injected: SplatTuningSource = "profile"; // 영속 정합값을 profile 소스로 표기
   // transform 주입 경로는 URL 튜닝을 안 읽으므로, 벽 대체만 예외적으로 URL > profile > 기본OFF 순서로 해석한다.
   // 기본 OFF(2026-07-07 결정): 도면 벽 패널이 splat을 가리는 게 실사용에서 더 거슬려서, 원하면 ?splatWalls=1로 켠다.
@@ -793,8 +794,8 @@ function tuningFromTransform(transform: SplatTransform, profile: SplatTuningProf
   };
 }
 
-function readSplatTuningFromLocation(profile: SplatTuningProfile | null): SplatTuning {
-  const tuning = applyProfileTuning(createDefaultSplatTuning(), profile);
+function readSplatTuningFromLocation(profile: SplatTuningProfile | null, src: string): SplatTuning {
+  const tuning = applyProfileTuning(createDefaultSplatTuning(src), profile);
 
   if (typeof window === "undefined") {
     return tuning;
