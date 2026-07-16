@@ -125,7 +125,8 @@ export class RoomlogController {
       serviceArea?: string;
     }
   ) {
-    return this.roomlogService.signup(body);
+    // DB가 연결된 환경에서는 DB 커밋이 성공해야 가입 성공을 응답한다.
+    return this.roomlogService.signupWithDb(body);
   }
 
   @Get("auth/invites/:role/:inviteToken")
@@ -151,7 +152,8 @@ export class RoomlogController {
 
   @Post("auth/login")
   login(@Body() body: { email: string; password: string }) {
-    return this.roomlogService.login(body);
+    // DB에서 이메일로 직접 조회 — 다른 인스턴스/운영자 추가 계정도 재시작 없이 로그인된다.
+    return this.roomlogService.loginWithDb(body);
   }
 
   @Post("auth/social/google/callback")

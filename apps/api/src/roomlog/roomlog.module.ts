@@ -6,6 +6,7 @@ import {
   RoomlogServiceOptions
 } from "./roomlog.service";
 import { PrismaStoreProjector } from "./prisma-store-projector";
+import { PrismaAuthRepository } from "./prisma-auth-repository";
 import { RealtimeModule } from "../realtime/realtime.module";
 
 export async function createRoomlogServiceOptions(
@@ -16,7 +17,9 @@ export async function createRoomlogServiceOptions(
 
   return {
     initialStore: await storeProjector?.load?.(),
-    storeProjector
+    storeProjector,
+    // 인증 계정은 DB를 단일 원본으로 — 가입/로그인/소셜이 응답 전에 동기 커밋·직접 조회한다.
+    authRepository: databaseUrl ? new PrismaAuthRepository(databaseUrl) : undefined
   };
 }
 
