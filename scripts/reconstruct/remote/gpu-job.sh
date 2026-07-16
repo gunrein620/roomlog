@@ -212,14 +212,20 @@ if [[ "$SOURCE_KIND" == "record3d-zip" ]]; then
 
       # RUNBOOK.md section 6 is the measured command source. Keep its viewer mode;
       # max-gauss-ratio is the remote-worker safety addition from the W-C contract.
+      # T1 튜닝 레시피(2026-07-16 실측 승자): densify-grad-thresh 절반 + 풀해상도 학습
+      # → 표면 스케일 1.05→0.77cm(Scaniverse 0.72 근접), 이방성 2.81x. L4 24GB에서 VRAM ~6GB.
+      # opacity 레버(cull-alpha-thresh 0.005)는 눈검증 대기 — 채택 시 cull_floaters min-opacity도 0.02~0.05로 세트 완화 필수.
       ns-train splatfacto \
         --data /workspace/recon-data \
         --pipeline.model.use-scale-regularization True \
         --pipeline.model.max-gauss-ratio 3.0 \
+        --pipeline.model.densify-grad-thresh 0.0004 \
+        --pipeline.model.num-downscales 0 \
         --max-num-iterations "$JOB_ITERS" \
         --output-dir /workspace/train \
         --viewer.quit-on-train-completion True \
-        --experiment-name "$JOB_ASSET_ID"
+        --experiment-name "$JOB_ASSET_ID" \
+        nerfstudio-data --downscale-factor 1 --orientation-method none --center-method none --auto-scale-poses False
 
       CONFIG="$(find /workspace/train -type f -name config.yml | sort | tail -1)"
       [[ -n "$CONFIG" ]] || { echo "ERROR: config.yml not found after training" >&2; exit 1; }
