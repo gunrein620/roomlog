@@ -17,6 +17,10 @@ const buildingFilter = readFileSync(
   path.join(webRoot, "app/manager/messaging/00/BuildingFilter.tsx"),
   "utf8",
 );
+const messagingLayout = readFileSync(
+  path.join(webRoot, "app/manager/messaging/layout.tsx"),
+  "utf8",
+);
 
 test("formats a messaging thread with its building and unit", () => {
   assert.equal(
@@ -44,6 +48,11 @@ test("uses the shared location label on manager messaging list and detail pages"
   assert.match(detailPage, /title=\{`\$\{locationLabel\} 채팅 스레드`\}/);
   assert.match(detailPage, /\{locationLabel\}<\/Badge>/);
   assert.match(detailPage, /aria-label=\{`\$\{locationLabel\}/);
+});
+
+test("uses the natural manager messaging context copy", () => {
+  assert.match(messagingLayout, /context="관리 중인 집과 소통"/);
+  assert.doesNotMatch(messagingLayout, /관리 중인 집 · 소통/);
 });
 
 test("hides the connected-work note while keeping the context title", () => {
