@@ -79,6 +79,8 @@ test("manager app shell exposes accessible sidebar and assistant dialogs", () =>
   );
   assert.match(sectionNavSource, /item\.children\.map/);
   assert.match(sectionNavSource, /aria-current/);
+  assert.match(sectionNavSource, /<span>저장 목록<\/span>/);
+  assert.doesNotMatch(sectionNavSource, /<span>임시 저장<\/span>/);
   assert.match(assistant, /showModal\(\)/);
   assert.match(assistant, /aria-label="AI 관리 비서 닫기"/);
   assert.match(assistant, /getBoundingClientRect\(\)/);
