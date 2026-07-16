@@ -7,6 +7,7 @@ export type SaveStoredFileInput = {
   buffer: Buffer;
   fileName: string;
   mimeType: string;
+  keyPrefix?: string;
 };
 
 export type StoredFile = {
@@ -20,6 +21,15 @@ export interface FileStorageAdapter {
   read(fileName: string): Promise<Buffer | null>;
 }
 
+function safeKeyPrefix(value: string | undefined) {
+  const normalized = value?.trim().replace(/^\/+|\/+$/g, "") ?? "";
+  if (!normalized) return "";
+  if (!normalized.split("/").every((segment) => /^[a-zA-Z0-9_-]+$/.test(segment))) {
+    throw new TypeError("storage keyPrefix contains an invalid path segment.");
+  }
+  return normalized;
+}
+
 export class LocalStorageAdapter implements FileStorageAdapter {
   constructor(
     private readonly uploadDir: string,
@@ -27,13 +37,16 @@ export class LocalStorageAdapter implements FileStorageAdapter {
   ) {}
 
   async save(input: SaveStoredFileInput): Promise<StoredFile> {
-    mkdirSync(this.uploadDir, { recursive: true });
+    const keyPrefix = safeKeyPrefix(input.keyPrefix);
+    const targetDir = keyPrefix ? join(this.uploadDir, keyPrefix) : this.uploadDir;
+    const storedName = keyPrefix ? `${keyPrefix}/${input.fileName}` : input.fileName;
+    mkdirSync(targetDir, { recursive: true });
     // 동기 쓰기는 수백 MB 영상(splat intake) 동안 이벤트 루프를 통째로 세운다 — 반드시 비동기로.
-    await writeFile(join(this.uploadDir, input.fileName), input.buffer);
+    await writeFile(join(targetDir, input.fileName), input.buffer);
 
     return {
-      fileName: input.fileName,
-      fileUrl: `${this.publicUploadBaseUrl.replace(/\/$/, "")}/${input.fileName}`
+      fileName: storedName,
+      fileUrl: `${this.publicUploadBaseUrl.replace(/\/$/, "")}/${storedName}`
     };
   }
 
@@ -61,7 +74,8 @@ export class S3StorageAdapter implements FileStorageAdapter {
   }
 
   async save(input: SaveStoredFileInput): Promise<StoredFile> {
-    const key = `floor-plans/${input.fileName}`;
+    const keyPrefix = safeKeyPrefix(input.keyPrefix) || "floor-plans";
+    const key = `${keyPrefix}/${input.fileName}`;
 
     await this.client.send(
       new PutObjectCommand({
