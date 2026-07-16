@@ -8,11 +8,13 @@ const source = readFileSync(
   "utf8",
 );
 
-test("vendor assignment appears before AI reply in the next-action row", () => {
+test("vendor assignment appears beside the reply draft action", () => {
   const vendorIndex = source.indexOf("업체 배정/견적");
-  const replyIndex = source.indexOf("AI 답변/거절 통보");
+  const replyIndex = source.indexOf("답변 초안 생성");
 
   assert.notEqual(vendorIndex, -1);
   assert.notEqual(replyIndex, -1);
   assert.ok(vendorIndex < replyIndex);
+  assert.doesNotMatch(source, /justifyContent: "space-between"/);
+  assert.doesNotMatch(source, /AI 답변\/거절 통보/);
 });

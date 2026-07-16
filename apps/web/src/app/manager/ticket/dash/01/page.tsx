@@ -86,9 +86,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <Button disabled={!completionGuard} style={!completionGuard ? { opacity: 0.45, cursor: "not-allowed" } : undefined}>
               {completionGuard ? "완료 처리" : "완료 처리 · 수리완료/결제 가드"}
             </Button>
-            <div style={{ ...row, justifyContent: "space-between" }}>
+            <div style={row}>
               <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
-              <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">AI 답변/거절 통보</LinkButton>
+              <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">답변 초안 생성</LinkButton>
             </div>
           </Card>
         </div>
