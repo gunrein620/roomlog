@@ -157,7 +157,7 @@ export function TicketHeader({ ticket, title }: { ticket: Ticket; title: string 
       <div>
         <div style={{ fontSize: "var(--fs-title)", fontWeight: "var(--fw-title)" }}>{title}</div>
         <div style={{ ...muted, marginTop: "var(--space-xs)" }}>
-          {ticket.unitId}호 · {ticket.id} · {ticket.title}
+          {ticket.unitId}호
         </div>
       </div>
       <div style={row}>
