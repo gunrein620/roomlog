@@ -59,6 +59,7 @@ describe("TradeController public listings", () => {
         monthlyRentManwon: 50,
         location: "서울 서초구 방배동",
         description: "",
+        options: [],
         images: [],
         status: "노출중",
         createdAt: "2026-07-09T00:00:00.000Z"
@@ -74,6 +75,33 @@ describe("TradeController public listings", () => {
     );
 
     assert.equal(controller.listPublicListings(), publicListings);
+  });
+
+  it("returns all listings by default but scopes to the owner with ?mine=1", () => {
+    const calls: string[] = [];
+    const ownerListings = [{ id: "mine-1" }] as unknown as TradeListing[];
+    const allListings = [{ id: "mine-1" }, { id: "other-1" }] as unknown as TradeListing[];
+    const controller = new TradeController(
+      {
+        listListings: () => {
+          calls.push("all");
+          return allListings;
+        },
+        listListingsByOwner: (ownerId: string) => {
+          calls.push(`owner:${ownerId}`);
+          return ownerListings;
+        }
+      } as any,
+      { getUserFromToken: () => ({ id: "owner-1", name: "집주인" }) } as any,
+      { notifyUsers: () => undefined } as any,
+      { ensure: () => undefined } as any
+    );
+
+    // 기본(브라우징) — 전체 반환, 인증 불필요
+    assert.equal(controller.listListings(undefined, undefined), allListings);
+    // ?mine=1 — 소유자 스코프
+    assert.equal(controller.listListings("Bearer owner", "1"), ownerListings);
+    assert.deepEqual(calls, ["all", "owner:owner-1"]);
   });
 });
 

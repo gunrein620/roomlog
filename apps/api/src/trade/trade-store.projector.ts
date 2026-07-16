@@ -36,6 +36,7 @@ export class TradeStoreProjector {
           ...(detailAddress ? { detailAddress } : {}),
           ...(buildingName ? { buildingName } : {}),
           description: row.description,
+          options: normalizeStringArray((row as unknown as { options?: unknown }).options),
           images: Array.isArray(row.images) ? row.images : [],
           ...(row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : {}),
           ...(row.floorPlan ? { floorPlan: row.floorPlan as unknown as ListingFloorPlan } : {}),
@@ -72,6 +73,7 @@ export class TradeStoreProjector {
           detailAddress: listing.detailAddress?.trim() || null,
           buildingName: listing.buildingName?.trim() || null,
           description: listing.description ?? "",
+          options: listing.options ?? [],
           images: listing.images ?? [],
           lat: listing.lat ?? null,
           lng: listing.lng ?? null,
@@ -96,4 +98,9 @@ export class TradeStoreProjector {
 
 function normalizeTradeType(value: string): TradeListing["tradeType"] {
   return value === "전세" || value === "매매" ? value : "월세";
+}
+
+// options 컬럼 추가 이전에 생성된 Prisma client와도 컴파일되도록 unknown으로 받는다.
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }

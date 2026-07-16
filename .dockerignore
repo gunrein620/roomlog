@@ -24,5 +24,10 @@ tmp
 tools
 
 # 대용량 로컬 전용 샘플 — 이미지에 넣지 않는다 (뷰어는 spz만 로드)
+# spz는 기본 전체 제외 후 커밋된 3종만 되살린다(프로덕션 뷰어가 로드) —
+# 로컬 실험 spz 수백 MB가 빌드 컨텍스트를 질식시키는 것 방지(2026-07-16 실측).
 apps/web/public/samples/*.ply
-apps/web/public/samples/ms_home.spz
+apps/web/public/samples/*.spz
+!apps/web/public/samples/home_clean.spz
+!apps/web/public/samples/room.spz
+!apps/web/public/samples/room2-hloc.spz

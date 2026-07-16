@@ -1,82 +1,56 @@
+import Link from "next/link";
 import { Badge, Card } from "@roomlog/ui";
-import { VENDOR_DEMO_TICKET_ID, getVendorAnalysis, getVendorTicket, listVendorJobs } from "@/lib/vendor-api";
 import { withId } from "@/lib/nav";
-import { ROUTES, type VendorRoute } from "@/lib/vendor-nav";
+import {
+  listVendorWorkflowJobs,
+  nextVendorJobRoute,
+  vendorJobStatusLabel,
+} from "@/lib/vendor-workflow-api";
 import {
   Body,
-  ContactThread,
-  DEMO_EXPIRES_AT,
-  Footer,
-  LinkButton,
-  REQUESTER,
-  Stepper,
-  TicketSummary,
-  TrustBadges,
-  labelStyle,
+  DemoReadOnlyNotice,
+  InfoRow,
+  ScreenHeader,
+  formatDateTime,
   mutedStyle,
+  primaryLinkStyle,
 } from "../_components";
 
 export default async function Page() {
-  const [jobs, ticket, analysis] = await Promise.all([
-    listVendorJobs(),
-    getVendorTicket(VENDOR_DEMO_TICKET_ID),
-    getVendorAnalysis(VENDOR_DEMO_TICKET_ID),
-  ]);
-  const job = jobs[0];
-  const cta: { label: string; href: VendorRoute } =
-    job?.stage === "scheduled"
-      ? { label: "일정·수리 진행", href: ROUTES["V-JOB-04"] }
-      : job?.quoteType
-        ? { label: "진행 상태 보기", href: ROUTES["V-JOB-03"] }
-        : { label: "견적 회신하기", href: ROUTES["V-JOB-02"] };
+  const { data: jobs, source } = await listVendorWorkflowJobs();
 
   return (
     <>
-      <header
-        style={{
-          flex: "none",
-          padding: "16px 14px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 800 }}>{REQUESTER}</div>
-            <div style={mutedStyle}>룸로그를 통한 정식 수리 견적 요청</div>
-          </div>
-          <Badge emphasis>{ticket.id}</Badge>
-        </div>
-        <TrustBadges />
-      </header>
-
+      <ScreenHeader title="배정된 수리 작업" />
       <Body>
-        <section>
-          <div style={labelStyle}>진행 단계</div>
-          <Stepper steps={["요청", "회신", "선정", "수리", "완료"]} current={job?.quoteType ? 1 : 0} />
-        </section>
-
-        <TicketSummary ticket={ticket} analysis={analysis} />
-
-        <Card style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={labelStyle}>링크 상태</div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>유효 기한 {DEMO_EXPIRES_AT}</div>
-          <p style={{ ...mutedStyle, margin: 0 }}>
-            토큰 링크는 일회성입니다. 기기 바인딩 위반, 관리자 철회, 재발급 시 무효 처리됩니다.
-          </p>
-        </Card>
-
-        <LinkButton href={ROUTES["V-JOB-01"]} variant="secondary">
-          하자 상세 보기
-        </LinkButton>
-        <ContactThread />
+        {source === "DEMO" ? <DemoReadOnlyNotice /> : null}
+        {jobs.length === 0 ? (
+          <Card style={{ display: "flex", flexDirection: "column", gap: 8, textAlign: "center" }}>
+            <div style={{ fontWeight: 800 }}>현재 배정된 작업이 없습니다.</div>
+            <p style={{ ...mutedStyle, margin: 0 }}>
+              관리자가 협력업체로 배정하면 이 목록에서 견적 요청을 확인할 수 있습니다.
+            </p>
+          </Card>
+        ) : jobs.map((job) => (
+          <Card key={job.repairId} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{job.title}</div>
+                <div style={{ ...mutedStyle, marginTop: 3 }}>{job.publicLocation}</div>
+              </div>
+              <Badge emphasis>{vendorJobStatusLabel(job.status)}</Badge>
+            </div>
+            <InfoRow label="작업 분야" value={job.trade || "확인 필요"} />
+            <InfoRow label="최근 업데이트" value={formatDateTime(job.updatedAt)} />
+            <Link
+              href={withId(nextVendorJobRoute(job), job.repairId)}
+              style={primaryLinkStyle}
+            >
+              {job.status === "VENDOR_ASSIGNED" ? "견적 회신하기" : "작업 확인하기"}
+            </Link>
+          </Card>
+        ))}
       </Body>
-
-      <Footer>
-        <LinkButton href={withId(cta.href, job?.id)}>{cta.label}</LinkButton>
-      </Footer>
     </>
   );
 }

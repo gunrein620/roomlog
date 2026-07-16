@@ -1,5 +1,5 @@
 import type { DefectAnalysis, ManagerQueueSummary, RepairJob, Ticket } from "@roomlog/types";
-import { serverFetch } from "./server-api";
+import { ApiError, serverFetch } from "./server-api";
 import {
   toManagerTicket,
   toManagerAnalysis,
@@ -119,17 +119,23 @@ export async function getManagerAnalysis(
   return managerDemoAnalysis(ticketId);
 }
 
-export async function getManagerRepair(
-  ticketId: string = MANAGER_DEMO_TICKET_ID
-): Promise<RepairJob> {
-  const demo = managerDefectDashboardDemoRecord(ticketId);
+export function getManagerRepair(): Promise<RepairJob>;
+export function getManagerRepair(ticketId: string): Promise<RepairJob | null>;
+export async function getManagerRepair(ticketId?: string): Promise<RepairJob | null> {
+  const selectedId = ticketId ?? MANAGER_DEMO_TICKET_ID;
+  const demo = managerDefectDashboardDemoRecord(selectedId);
   if (demo) return demo.repair;
+  if (selectedId === MANAGER_DEMO_TICKET_ID) return managerDemoRepair(selectedId);
 
-  const t = await selectedTeamTicket(ticketId);
-  const mapped = t && toManagerRepair(t);
-  if (mapped) return mapped;
-  console.warn("[manager/api] 실제 수리 없음(미배정/취소) → 데모 폴백");
-  return managerDemoRepair(ticketId);
+  try {
+    const ticket = await serverFetch<TeamManagerTicket>(
+      `/manager/tickets/${encodeURIComponent(selectedId)}`,
+    );
+    return toManagerRepair(ticket);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 // 관리인 mutation(상태/책임/긴급도 변경)은 화면 TicketStatus(lowercase 6)→팀 UPPERCASE(11)

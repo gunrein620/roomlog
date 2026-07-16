@@ -1407,8 +1407,13 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(cssSource, /\.detail-quick-actions button:first-child/);
   // 전화·3D 둘러보기·1인칭 체험·문자 문의 4버튼 그리드(임시 데모).
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*52px minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.35fr\)/s);
-  // 1인칭 체험 버튼은 splat 투어 페이지로 직접 이동한다.
+  // 1인칭 체험 버튼은 splat 투어 페이지로 직접 이동한다(정적 매물 = 기존 데모 링크 유지).
   assert.match(pageSource, /detail-contact-splat[\s\S]*href="\/splat-tour"/);
+  // 직접등록(TRADE-) 매물은 매물별로 게이트: 대표 자산이 없으면 공통 데모 링크 대신
+  // "준비 안 됨" 비활성 상태를 링크 아닌 요소로 정직하게 노출한다(데모 은폐 금지).
+  assert.match(listingDetailViewSource, /isTradeDirectListing/);
+  assert.match(listingDetailViewSource, /이 매물은 3D 투어가 준비되어 있지 않습니다/);
+  assert.match(listingDetailViewSource, /detail-contact-splat-empty/);
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*padding:\s*24px 14px 12px/s);
   assert.match(cssSource, /\.detail-contact-small,\s*[\s\S]*?\.detail-contact-tour\s*{[^}]*min-height:\s*54px/s);
   assert.match(cssSource, /\.detail-gallery\s*{[^}]*height:\s*clamp\(380px, 48vh, 440px\)/s);

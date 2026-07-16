@@ -32,6 +32,28 @@ enum InviteStatus {
   REVOKED
 }
 
+enum VendorVerificationStatus {
+  VERIFIED
+  PENDING
+  REJECTED
+}
+
+enum VendorAccountRole {
+  OWNER
+}
+
+enum VendorAccountLinkStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum VendorActivationStatus {
+  ISSUED
+  CLAIMED
+  EXPIRED
+  REVOKED
+}
+
 enum ComplaintSourceChannel {
   DIRECT_FORM
   REALTIME_CHAT
@@ -208,6 +230,183 @@ enum AttachmentCategory {
   FLOOR_PLAN_SOURCE
 }
 
+enum AttachmentOrigin {
+  USER_UPLOAD
+  LEGACY_COMPLETION_URL
+}
+
+enum ManagerVendorStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum VendorEstimateResponseType {
+  FIXED_ESTIMATE
+  VISIT_REQUIRED
+  DECLINED
+}
+
+enum VendorEstimateStatus {
+  DRAFT
+  SUBMITTED
+  VISIT_SCHEDULED
+  DECLINED
+  REVISION_REQUESTED
+  APPROVED
+  REJECTED
+  WITHDRAWN
+  SUPERSEDED
+}
+
+enum VendorEstimateLineItemCategory {
+  VISIT
+  LABOR
+  MATERIAL
+  LEGACY_TOTAL
+}
+
+enum VendorWorkflowRecordOrigin {
+  LIVE
+  LEGACY_MIGRATION
+}
+
+enum RepairCompletionDecisionSource {
+  MANAGER
+  TENANT
+  LEGACY_MIGRATION
+}
+
+enum RepairCompletionDecisionValue {
+  APPROVED
+  REJECTED
+}
+
+enum VendorPaymentRequestStatus {
+  WAITING_COMPLETION
+  PENDING_APPROVAL
+  AUTO_PAID
+  MANUAL_CREDIT_PAID
+  DIRECT_PAID
+  TOSS_PAID
+  INSUFFICIENT_CREDIT
+  CANCELLED
+  REVERSED
+  DIRECT_PAYMENT_VOIDED
+}
+
+enum VendorPaymentAttemptMode {
+  AUTO_CREDIT
+  MANUAL_CREDIT
+  DIRECT
+  TOSS
+}
+
+enum VendorPaymentPayerRole {
+  MANAGER
+  TENANT
+}
+
+enum RepairPaymentFlow {
+  TOSS_ONE_TIME
+}
+
+enum RepairPaymentInitiator {
+  USER_UI
+  AI_AGENT
+  SYSTEM_POLICY
+}
+
+enum RepairPaymentOrderStatus {
+  READY
+  CONFIRMING
+  RECONCILIATION_REQUIRED
+  APPROVED
+  FAILED
+  CANCELLED
+}
+
+enum CreditLedgerEntryType {
+  OPENING_BALANCE
+  TOPUP
+  AUTO_DEBIT
+  MANUAL_DEBIT
+  REVERSAL
+}
+
+enum CreditTopupOrderStatus {
+  READY
+  CONFIRMING
+  RECONCILIATION_REQUIRED
+  APPROVED
+  FAILED
+  CANCELLED
+}
+
+enum AutoPayPolicyMode {
+  ALWAYS_REQUIRE_APPROVAL
+  AUTO_DEBIT_UNDER_LIMIT
+}
+
+enum VendorPaymentAttemptStatus {
+  STARTED
+  SUCCEEDED
+  INSUFFICIENT_CREDIT
+  FAILED
+}
+
+enum VendorPaymentCommandType {
+  CREDIT_REVERSAL
+  DIRECT_VOID
+  PAYMENT_CANCEL
+}
+
+enum VendorPaymentAuditEventType {
+  REQUESTED
+  COMPLETION_APPROVED
+  COMPLETION_REJECTED
+  PENDING_APPROVAL
+  INSUFFICIENT_CREDIT
+  AUTO_PAID
+  MANUAL_CREDIT_PAID
+  DIRECT_PAID
+  TOSS_PAID
+  CREDIT_REVERSED
+  DIRECT_PAYMENT_VOIDED
+  CANCELLED
+}
+
+enum DomainEventDeliveryConsumer {
+  NOTIFICATION
+  CREDIT_EVALUATION
+}
+
+enum DomainEventDeliveryState {
+  PENDING
+  PROCESSING
+  DELIVERED
+}
+
+enum RoomlogDomainEventType {
+  VENDOR_JOB_ASSIGNED
+  VENDOR_ESTIMATE_SUBMITTED
+  VENDOR_ESTIMATE_REVISED
+  VENDOR_ESTIMATE_APPROVED
+  VENDOR_ESTIMATE_REVISION_REQUESTED
+  VENDOR_ESTIMATE_REJECTED
+  VENDOR_COMPLETION_SUBMITTED
+  VENDOR_PAYMENT_REQUEST_CREATED
+  VENDOR_COMPLETION_APPROVED
+  VENDOR_COMPLETION_REJECTED
+  VENDOR_PAYMENT_PENDING_APPROVAL
+  VENDOR_PAYMENT_PAID
+  VENDOR_PAYMENT_REVERSED
+  VENDOR_PAYMENT_CANCELLED
+  VENDOR_DIRECT_PAYMENT_VOIDED
+  VENDOR_PAYMENT_INSUFFICIENT_CREDIT
+  MANAGER_CREDIT_TOPUP_SUCCEEDED
+  MANAGER_CREDIT_TOPUP_FAILED
+}
+
 enum FloorPlanStatus {
   DRAFT
   PUBLISHED
@@ -381,10 +580,19 @@ enum AiFeedbackStatus {
 }
 
 enum SplatAssetStatus {
-  PROCESSING // 영상만 접수됨 — spz 생성 전. fileUrl 빈 문자열, videoUrl에 원본 영상
+  PROCESSING // 원본 소스(영상/캡처 zip)만 접수됨 — spz 생성 전. fileUrl 빈 문자열, videoUrl에 원본
   UPLOADED // 파일만 존재, 도면 정합 전
   REGISTERED // 2점 정합 완료 — transform 존재, 하이브리드 기능 해금
-  FAILED
+  FAILED // 재구성 실패 — SplatAsset.jobError에 사유
+}
+
+// GPU 재구성 잡 상태 (SplatAsset.jobState) — 계약: packages/types/src/splat-pipeline.ts
+enum SplatReconstructionJobState {
+  QUEUED // 접수됨, GPU 배정 대기
+  GPU_STARTING // 인스턴스 기동/SSM 온라인 대기
+  RUNNING // 재구성 실행 중 (jobCommandId로 추적)
+  DONE // spz 콜백 수신, 자산 UPLOADED로 승격됨
+  FAILED // 재시도 소진 — jobError에 사유
 }
 
 model UserAccount {
@@ -398,15 +606,30 @@ model UserAccount {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  tenantRooms          TenantRoom[]
-  uploadedAttachments  Attachment[]       @relation("UploadedAttachments")
-  floorPlans           FloorPlan[]        @relation("OwnedFloorPlans")
-  intakeSessions       IntakeSession[]     @relation("TenantIntakeSessions")
-  complaints           Complaint[]         @relation("TenantComplaints")
-  tickets              Ticket[]            @relation("TenantTickets")
-  moveoutRequests      MoveoutRequest[]    @relation("TenantMoveouts")
-  moveInChecklistItems MoveInChecklistItem[]
-  socialAccounts       SocialAccount[]
+  tenantRooms                TenantRoom[]
+  uploadedAttachments        Attachment[]               @relation("UploadedAttachments")
+  floorPlans                 FloorPlan[]                @relation("OwnedFloorPlans")
+  intakeSessions             IntakeSession[]            @relation("TenantIntakeSessions")
+  complaints                 Complaint[]                @relation("TenantComplaints")
+  tickets                    Ticket[]                   @relation("TenantTickets")
+  moveoutRequests            MoveoutRequest[]           @relation("TenantMoveouts")
+  moveInChecklistItems       MoveInChecklistItem[]
+  socialAccounts             SocialAccount[]
+  vendorAccountLinks         VendorAccountLink[]
+  claimedVendorActivations   VendorActivation[]
+  managerVendors             ManagerVendor[]            @relation("ManagerVendorManager")
+  reviewedVendorEstimates    VendorEstimate[]           @relation("VendorEstimateReviewer")
+  reviewedTenantVendorEstimates VendorEstimate[]        @relation("VendorEstimateTenantReviewer")
+  repairCompletionDecisions  RepairCompletionDecision[] @relation("RepairCompletionManager")
+  tenantRepairCompletionDecisions RepairCompletionDecision[] @relation("RepairCompletionTenant")
+  vendorPaymentRequests      VendorPaymentRequest[]     @relation("VendorPaymentManager")
+  payerVendorPaymentRequests VendorPaymentRequest[]     @relation("VendorPaymentPayer")
+  repairPaymentOrders        RepairPaymentOrder[]       @relation("RepairPaymentOrderPayer")
+  vendorPaymentAuditEvents   VendorPaymentAuditEvent[]  @relation("VendorPaymentAuditActor")
+  managedDomainEvents        DomainEventOutbox[]        @relation("DomainEventManager")
+  actedDomainEvents          DomainEventOutbox[]        @relation("DomainEventActor")
+  creditAccount              CreditAccount?             @relation("ManagerCreditAccount")
+  autoPayPolicy              AutoPayPolicy?             @relation("ManagerAutoPayPolicy")
 
   @@index([role, status])
 }
@@ -449,8 +672,8 @@ model Room {
   moveInChecklistItems MoveInChecklistItem[]
   bills                Bill[]
 
-  @@index([landlordId])
   @@unique([buildingName, roomNo])
+  @@index([landlordId])
 }
 
 model RoomWall {
@@ -485,27 +708,27 @@ model TenantRoom {
 }
 
 model Bill {
-  id                             String         @id
-  roomId                         String?
-  unitId                         String
-  billingMonth                   String
-  status                         BillStatus     @default(DRAFT)
-  totalAmount                    Int
-  paidAmount                     Int            @default(0)
-  dueDate                        DateTime
-  bankName                       String
-  accountNumber                  String
-  accountHolder                  String
-  correctionHistory              String[]       @default([])
-  maintenanceFeeId               String?
-  depositConfirmationRequested   Boolean        @default(false)
-  items                          BillLineItem[]
-  reports                        PaymentReport[]
-  deposits                       Deposit[]
-  paymentTransactions            BillPaymentTransaction[]
-  room                           Room?          @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  createdAt                      DateTime       @default(now())
-  updatedAt                      DateTime       @updatedAt
+  id                           String                   @id
+  roomId                       String?
+  unitId                       String
+  billingMonth                 String
+  status                       BillStatus               @default(DRAFT)
+  totalAmount                  Int
+  paidAmount                   Int                      @default(0)
+  dueDate                      DateTime
+  bankName                     String
+  accountNumber                String
+  accountHolder                String
+  correctionHistory            String[]                 @default([])
+  maintenanceFeeId             String?
+  depositConfirmationRequested Boolean                  @default(false)
+  items                        BillLineItem[]
+  reports                      PaymentReport[]
+  deposits                     Deposit[]
+  paymentTransactions          BillPaymentTransaction[]
+  room                         Room?                    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
 
   @@index([unitId, billingMonth])
   @@index([roomId, billingMonth])
@@ -544,16 +767,16 @@ model PaymentReport {
 }
 
 model Deposit {
-  id            String             @id
-  depositorName String
-  amount        Int
-  depositedAt   DateTime
-  matchStatus   DepositMatchStatus @default(UNMATCHED)
-  matchedBillId String?
-  guessedUnitId String?
+  id                   String             @id
+  depositorName        String
+  amount               Int
+  depositedAt          DateTime
+  matchStatus          DepositMatchStatus @default(UNMATCHED)
+  matchedBillId        String?
+  guessedUnitId        String?
   paymentTransactionId String?
 
-  bill               Bill?                    @relation(fields: [matchedBillId], references: [id])
+  bill               Bill?                   @relation(fields: [matchedBillId], references: [id])
   paymentTransaction BillPaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
 
   @@index([matchStatus])
@@ -593,7 +816,7 @@ model BillPaymentAllocation {
   kind           BillLineItemKind
   amount         Int
 
-  transaction BillPaymentTransaction @relation(fields: [transactionId], references: [id])
+  transaction  BillPaymentTransaction @relation(fields: [transactionId], references: [id])
   billLineItem BillLineItem           @relation(fields: [billLineItemId], references: [id])
 
   @@index([transactionId])
@@ -601,22 +824,22 @@ model BillPaymentAllocation {
 }
 
 model MaintenanceFee {
-  id            String               @id
-  unitId        String
-  billingMonth  String
-  totalAmount   Int
-  available     Boolean              @default(false)
-  items         MaintenanceFeeItem[]
+  id           String               @id
+  unitId       String
+  billingMonth String
+  totalAmount  Int
+  available    Boolean              @default(false)
+  items        MaintenanceFeeItem[]
 
   @@index([unitId, billingMonth])
 }
 
 model MaintenanceFeeItem {
-  id                 String  @id
-  maintenanceFeeId   String
-  label              String
-  amount             Int
-  receiptAvailable   Boolean @default(false)
+  id               String  @id
+  maintenanceFeeId String
+  label            String
+  amount           Int
+  receiptAvailable Boolean @default(false)
 
   fee MaintenanceFee @relation(fields: [maintenanceFeeId], references: [id])
 
@@ -624,20 +847,406 @@ model MaintenanceFeeItem {
 }
 
 model VendorProfile {
-  id                 String   @id
-  userId             String   @unique
+  id                 String                   @id
   businessName       String
   contactPerson      String
   phone              String
   serviceArea        String
-  activeJobs         Int      @default(0)
-  createdByManagerId String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  businessNumber     String?
+  trades             String[]                 @default([])
+  serviceAreas       String[]                 @default([])
+  verificationStatus VendorVerificationStatus @default(PENDING)
+  isActive           Boolean                  @default(true)
+  activeJobs         Int                      @default(0)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
-  repairs RepairRequest[]
+  repairs           RepairRequest[]
+  accountLinks      VendorAccountLink[]
+  activations       VendorActivation[]
+  managerVendors    ManagerVendor[]
+  estimates         VendorEstimate[]
+  completionReports VendorCompletionReport[]
+  paymentRequests   VendorPaymentRequest[]
+  domainEvents      DomainEventOutbox[]
+}
 
-  @@index([createdByManagerId])
+model VendorAccountLink {
+  id       String                  @id
+  vendorId String
+  userId   String
+  role     VendorAccountRole       @default(OWNER)
+  status   VendorAccountLinkStatus @default(ACTIVE)
+  linkedAt DateTime                @default(now())
+  vendor   VendorProfile           @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  user     UserAccount             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([vendorId, status])
+  @@index([userId, status])
+}
+
+model VendorActivation {
+  id              String                 @id
+  vendorId        String
+  keyHash         String                 @unique
+  status          VendorActivationStatus @default(ISSUED)
+  expiresAt       DateTime
+  claimedByUserId String?
+  claimedAt       DateTime?
+  createdAt       DateTime               @default(now())
+  vendor          VendorProfile          @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  claimedByUser   UserAccount?           @relation(fields: [claimedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([vendorId, status, expiresAt])
+  @@index([claimedByUserId])
+}
+
+model ManagerVendor {
+  id           String              @id
+  managerId    String
+  vendorId     String
+  status       ManagerVendorStatus @default(ACTIVE)
+  managerNote  String?
+  registeredAt DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  manager      UserAccount         @relation("ManagerVendorManager", fields: [managerId], references: [id], onDelete: Restrict)
+  vendor       VendorProfile       @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@unique([managerId, vendorId])
+  @@index([managerId, status])
+}
+
+model VendorEstimate {
+  id                       String                     @id
+  repairId                 String
+  vendorId                 String
+  version                  Int
+  responseType             VendorEstimateResponseType
+  status                   VendorEstimateStatus
+  origin                   VendorWorkflowRecordOrigin @default(LIVE)
+  visitAvailableAt         DateTime?
+  estimatedDurationMinutes Int?
+  workDescription          String?
+  declineReason            String?
+  totalAmount              Int?
+  submittedAt              DateTime?
+  reviewedAt               DateTime?
+  reviewedByManagerId      String?
+  reviewedByTenantId       String?
+  reviewNote               String?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  repair                   RepairRequest              @relation(fields: [repairId], references: [id], onDelete: Restrict)
+  vendor                   VendorProfile              @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  reviewedByManager        UserAccount?               @relation("VendorEstimateReviewer", fields: [reviewedByManagerId], references: [id], onDelete: Restrict)
+  reviewedByTenant         UserAccount?               @relation("VendorEstimateTenantReviewer", fields: [reviewedByTenantId], references: [id], onDelete: Restrict)
+  lineItems                VendorEstimateLineItem[]
+  paymentRequests          VendorPaymentRequest[]
+
+  @@unique([repairId, version])
+  @@index([vendorId, status])
+}
+
+model VendorEstimateLineItem {
+  id          String                         @id
+  estimateId  String
+  category    VendorEstimateLineItemCategory
+  description String
+  quantity    Int
+  unitAmount  Int
+  lineAmount  Int
+  sortOrder   Int
+  estimate    VendorEstimate                 @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@unique([estimateId, sortOrder])
+}
+
+model VendorCompletionReport {
+  id              String                             @id
+  repairId        String
+  vendorId        String
+  version         Int
+  origin          VendorWorkflowRecordOrigin         @default(LIVE)
+  workSummary     String
+  completedAt     DateTime
+  submissionKey   String                             @unique
+  payloadHash     String
+  submittedAt     DateTime                           @default(now())
+  repair          RepairRequest                      @relation(fields: [repairId], references: [id], onDelete: Restrict)
+  vendor          VendorProfile                      @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  attachments     VendorCompletionReportAttachment[]
+  decision        RepairCompletionDecision?
+  paymentRequests VendorPaymentRequest[]
+
+  @@unique([repairId, version])
+}
+
+model VendorCompletionReportAttachment {
+  completionReportId String
+  attachmentId       String                 @unique
+  sortOrder          Int
+  completionReport   VendorCompletionReport @relation(fields: [completionReportId], references: [id], onDelete: Cascade)
+  attachment         Attachment             @relation(fields: [attachmentId], references: [id], onDelete: Restrict)
+
+  @@id([completionReportId, attachmentId])
+  @@unique([completionReportId, sortOrder])
+}
+
+model RepairCompletionDecision {
+  id                 String                         @id
+  repairId           String
+  completionReportId String                         @unique
+  managerId          String?
+  tenantId           String?
+  source             RepairCompletionDecisionSource
+  decision           RepairCompletionDecisionValue
+  note               String?
+  decidedAt          DateTime                       @default(now())
+  repair             RepairRequest                  @relation(fields: [repairId], references: [id], onDelete: Restrict)
+  completionReport   VendorCompletionReport         @relation(fields: [completionReportId], references: [id], onDelete: Restrict)
+  manager            UserAccount?                   @relation("RepairCompletionManager", fields: [managerId], references: [id], onDelete: Restrict)
+  tenant             UserAccount?                   @relation("RepairCompletionTenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  paymentRequest     VendorPaymentRequest?
+  paymentAttempts    VendorPaymentAttempt[]
+  paymentAuditEvent  VendorPaymentAuditEvent?
+  domainEvents       DomainEventOutbox[]
+}
+
+model VendorPaymentRequest {
+  id                     String                        @id
+  repairId               String                        @unique
+  vendorId               String
+  managerId              String
+  payerRole              VendorPaymentPayerRole
+  payerUserId            String
+  approvedEstimateId     String
+  completionReportId     String
+  completionDecisionId   String?                       @unique
+  costId                 String?                       @unique
+  amount                 Int
+  status                 VendorPaymentRequestStatus    @default(WAITING_COMPLETION)
+  failureReason          String?
+  lastAttemptMode        VendorPaymentAttemptMode?
+  directPaidAt           DateTime?
+  directPaymentReference String?
+  ledgerEntryId          String?                       @unique
+  createdAt              DateTime                      @default(now())
+  processedAt            DateTime?
+  repair                 RepairRequest                 @relation(fields: [repairId], references: [id], onDelete: Restrict)
+  vendor                 VendorProfile                 @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  manager                UserAccount                   @relation("VendorPaymentManager", fields: [managerId], references: [id], onDelete: Restrict)
+  payer                  UserAccount                   @relation("VendorPaymentPayer", fields: [payerUserId], references: [id], onDelete: Restrict)
+  approvedEstimate       VendorEstimate                @relation(fields: [approvedEstimateId], references: [id], onDelete: Restrict)
+  completionReport       VendorCompletionReport        @relation(fields: [completionReportId], references: [id], onDelete: Restrict)
+  completionDecision     RepairCompletionDecision?     @relation(fields: [completionDecisionId], references: [id], onDelete: Restrict)
+  cost                   Cost?                         @relation(fields: [costId], references: [id], onDelete: Restrict)
+  ledgerEntry            CreditLedgerEntry?            @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+  attempts               VendorPaymentAttempt[]
+  repairPaymentOrders    RepairPaymentOrder[]
+  commandReceipts        VendorPaymentCommandReceipt[]
+  auditEvents            VendorPaymentAuditEvent[]
+  domainEvents           DomainEventOutbox[]
+
+  @@index([managerId, status, createdAt])
+  @@index([payerRole, payerUserId, status, createdAt])
+  @@index([vendorId, status, createdAt])
+}
+
+model RepairPaymentOrder {
+  id               String                   @id
+  paymentRequestId String
+  payerRole        VendorPaymentPayerRole
+  payerUserId      String
+  orderId          String                   @unique
+  creationKey      String                   @unique
+  payloadHash      String
+  retryOfOrderId   String?
+  openOrderKey     String?                  @unique
+  flow             RepairPaymentFlow        @default(TOSS_ONE_TIME)
+  amount           Int
+  status           RepairPaymentOrderStatus @default(READY)
+  paymentKey       String?                  @unique
+  method           String?
+  failureReason    String?
+  returnPath       String
+  initiatedBy      RepairPaymentInitiator
+  confirmationId   String?
+  toolCallId       String?
+  approvedAt       DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  paymentRequest   VendorPaymentRequest     @relation(fields: [paymentRequestId], references: [id], onDelete: Restrict)
+  payer            UserAccount              @relation("RepairPaymentOrderPayer", fields: [payerUserId], references: [id], onDelete: Restrict)
+  retryOfOrder      RepairPaymentOrder?      @relation("RepairPaymentOrderRetry", fields: [retryOfOrderId, paymentRequestId], references: [id, paymentRequestId], onDelete: Restrict, onUpdate: Restrict)
+  retryOrders       RepairPaymentOrder[]     @relation("RepairPaymentOrderRetry")
+
+  @@index([paymentRequestId, status, updatedAt])
+  @@index([payerRole, payerUserId, status, updatedAt])
+  @@index([retryOfOrderId])
+  @@unique([id, paymentRequestId])
+}
+
+model CreditAccount {
+  id        String   @id
+  managerId String   @unique
+  balance   BigInt   @default(0)
+  version   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manager       UserAccount         @relation("ManagerCreditAccount", fields: [managerId], references: [id], onDelete: Restrict)
+  ledgerEntries CreditLedgerEntry[]
+  topupOrders   CreditTopupOrder[]
+
+  @@unique([id, managerId])
+}
+
+model CreditLedgerEntry {
+  id                    String                @id
+  creditAccountId       String
+  type                  CreditLedgerEntryType
+  signedAmount          BigInt
+  balanceAfter          BigInt
+  referenceType         String
+  referenceId           String
+  idempotencyKey        String                @unique
+  reversesLedgerEntryId String?               @unique
+  createdAt             DateTime              @default(now())
+
+  creditAccount  CreditAccount         @relation(fields: [creditAccountId], references: [id], onDelete: Restrict)
+  reverses       CreditLedgerEntry?    @relation("CreditLedgerReversal", fields: [reversesLedgerEntryId], references: [id], onDelete: Restrict)
+  reversedBy     CreditLedgerEntry?    @relation("CreditLedgerReversal")
+  paymentRequest VendorPaymentRequest?
+  paymentAttempt VendorPaymentAttempt?
+
+  @@index([creditAccountId, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model CreditTopupOrder {
+  id              String                 @id
+  creditAccountId String
+  managerId       String
+  orderId         String                 @unique
+  creationKey     String                 @unique
+  payloadHash     String
+  amount          BigInt
+  status          CreditTopupOrderStatus @default(READY)
+  paymentKey      String?                @unique
+  method          String?
+  failureReason   String?
+  returnPath      String
+  approvedAt      DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  creditAccount CreditAccount @relation(fields: [creditAccountId, managerId], references: [id, managerId], onDelete: Restrict)
+
+  @@index([managerId, status, updatedAt])
+}
+
+model AutoPayPolicy {
+  id              String            @id
+  managerId       String            @unique
+  mode            AutoPayPolicyMode @default(ALWAYS_REQUIRE_APPROVAL)
+  perRequestLimit BigInt?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  manager UserAccount @relation("ManagerAutoPayPolicy", fields: [managerId], references: [id], onDelete: Restrict)
+}
+
+model VendorPaymentAttempt {
+  id                   String                     @id
+  paymentRequestId     String
+  completionDecisionId String?
+  mode                 VendorPaymentAttemptMode
+  status               VendorPaymentAttemptStatus @default(STARTED)
+  idempotencyKey       String                     @unique
+  payloadHash          String
+  actorUserId          String
+  ledgerEntryId        String?                    @unique
+  failureReason        String?
+  createdAt            DateTime                   @default(now())
+  completedAt          DateTime?
+
+  paymentRequest     VendorPaymentRequest      @relation(fields: [paymentRequestId], references: [id], onDelete: Restrict)
+  completionDecision RepairCompletionDecision? @relation(fields: [completionDecisionId], references: [id], onDelete: Restrict)
+  ledgerEntry        CreditLedgerEntry?        @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+
+  @@index([paymentRequestId, createdAt])
+}
+
+model VendorPaymentCommandReceipt {
+  id               String                     @id
+  idempotencyKey   String                     @unique
+  paymentRequestId String
+  commandType      VendorPaymentCommandType
+  payloadHash      String
+  resultStatus     VendorPaymentRequestStatus
+  createdAt        DateTime                   @default(now())
+
+  paymentRequest VendorPaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Restrict)
+
+  @@index([paymentRequestId, createdAt])
+}
+
+model VendorPaymentAuditEvent {
+  id               String                      @id
+  paymentRequestId String
+  type             VendorPaymentAuditEventType
+  dedupeKey        String                      @unique
+  decisionId       String?                     @unique
+  actorUserId      String?
+  note             String?
+  createdAt        DateTime                    @default(now())
+  paymentRequest   VendorPaymentRequest        @relation(fields: [paymentRequestId], references: [id], onDelete: Restrict)
+  decision         RepairCompletionDecision?   @relation(fields: [decisionId], references: [id], onDelete: Restrict)
+  actor            UserAccount?                @relation("VendorPaymentAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([paymentRequestId, createdAt])
+}
+
+model DomainEventOutbox {
+  id                   String                    @id
+  eventKey             String                    @unique
+  payloadHash          String
+  type                 RoomlogDomainEventType
+  targetUserIds        String[]
+  vendorId             String?
+  managerId            String?
+  repairId             String?
+  paymentRequestId     String?
+  completionDecisionId String?
+  actorUserId          String?
+  statusCode           String
+  occurredAt           DateTime                  @default(now())
+  vendor               VendorProfile?            @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  manager              UserAccount?              @relation("DomainEventManager", fields: [managerId], references: [id], onDelete: Restrict)
+  repair               RepairRequest?            @relation(fields: [repairId], references: [id], onDelete: Restrict)
+  paymentRequest       VendorPaymentRequest?     @relation(fields: [paymentRequestId], references: [id], onDelete: Restrict)
+  completionDecision   RepairCompletionDecision? @relation(fields: [completionDecisionId], references: [id], onDelete: Restrict)
+  actor                UserAccount?              @relation("DomainEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  deliveries           DomainEventDelivery[]
+}
+
+model DomainEventDelivery {
+  id             String                      @id
+  eventId        String
+  consumer       DomainEventDeliveryConsumer
+  state          DomainEventDeliveryState    @default(PENDING)
+  attemptCount   Int                         @default(0)
+  availableAt    DateTime                    @default(now())
+  lockedAt       DateTime?
+  lockToken      String?
+  leaseExpiresAt DateTime?
+  deliveredAt    DateTime?
+  lastError      String?
+  event          DomainEventOutbox           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, consumer])
+  @@index([consumer, state, availableAt])
+  @@index([consumer, state, leaseExpiresAt])
 }
 
 model VendorInvite {
@@ -701,11 +1310,11 @@ model Contract {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
-  room       Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  documents  ContractDocument[]
-  extraction ContractExtraction?
-  privacy    ContractPrivacy?
-  invites    ContractInvite[]
+  room            Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  documents       ContractDocument[]
+  extraction      ContractExtraction?
+  privacy         ContractPrivacy?
+  invites         ContractInvite[]
   moveoutRequests MoveoutRequest[]
 
   @@index([roomId])
@@ -757,10 +1366,10 @@ model ContractPrivacy {
 }
 
 model ContractInvite {
-  id                 String   @id
+  id                 String    @id
   contractId         String
   roomId             String
-  inviteToken        String   @unique
+  inviteToken        String    @unique
   invitedByManagerId String
   tenantName         String
   email              String?
@@ -768,7 +1377,7 @@ model ContractInvite {
   state              String
   signupUrl          String
   audit              String
-  createdAt          DateTime @default(now())
+  createdAt          DateTime  @default(now())
   acceptedAt         DateTime?
   acceptedByUserId   String?
 
@@ -780,18 +1389,23 @@ model ContractInvite {
 }
 
 model Attachment {
-  id          String             @id
-  uploadedBy  String
-  fileName    String
-  fileUrl     String
-  mimeType    String
-  sizeBytes   Int
-  category    AttachmentCategory
-  createdAt   DateTime           @default(now())
+  id         String             @id
+  uploadedBy String?
+  repairId   String?
+  fileName   String
+  fileUrl    String
+  mimeType   String
+  sizeBytes  Int
+  category   AttachmentCategory
+  origin     AttachmentOrigin   @default(USER_UPLOAD)
+  createdAt  DateTime           @default(now())
 
-  uploader UserAccount @relation("UploadedAttachments", fields: [uploadedBy], references: [id])
+  uploader                   UserAccount?                      @relation("UploadedAttachments", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  repair                     RepairRequest?                    @relation(fields: [repairId], references: [id], onDelete: Restrict)
+  completionReportAttachment VendorCompletionReportAttachment?
 
   @@index([uploadedBy, category])
+  @@index([repairId])
 }
 
 model FloorPlan {
@@ -877,8 +1491,8 @@ model IntakeSession {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
-  tenant  UserAccount     @relation("TenantIntakeSessions", fields: [tenantId], references: [id])
-  room    Room            @relation(fields: [roomId], references: [id])
+  tenant   UserAccount     @relation("TenantIntakeSessions", fields: [tenantId], references: [id])
+  room     Room            @relation(fields: [roomId], references: [id])
   messages IntakeMessage[]
 
   @@index([tenantId, updatedAt])
@@ -956,7 +1570,7 @@ model Ticket {
 }
 
 model AiAnalysis {
-  ticketId           String  @id
+  ticketId           String   @id
   summary            String
   category           String
   detailCategory     String?
@@ -997,27 +1611,34 @@ model AiFeedback {
 }
 
 model RepairRequest {
-  id                  String            @id
-  ticketId            String
-  vendorId            String
-  status              RepairStatus
-  title               String
-  description         String
-  estimateAmount      Int?
-  estimateDescription String?
-  costBearer          RepairCostBearer?
-  estimateApprovedAt  DateTime?
+  id                   String            @id
+  ticketId             String
+  vendorId             String
+  status               RepairStatus
+  title                String
+  description          String
+  estimateAmount       Int?
+  estimateDescription  String?
+  costBearer           RepairCostBearer?
+  estimateApprovedAt   DateTime?
   estimateApprovalNote String?
-  scheduledAt         DateTime?
-  completedAt         DateTime?
-  completionNote      String?
-  completionPhotoUrls String[]
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  scheduledAt          DateTime?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  completionNote       String?
+  completionPhotoUrls  String[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
-  ticket   Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  vendor   VendorProfile @relation(fields: [vendorId], references: [id])
-  messages TicketMessage[]
+  ticket              Ticket                     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  vendor              VendorProfile              @relation(fields: [vendorId], references: [id])
+  messages            TicketMessage[]
+  estimates           VendorEstimate[]
+  completionReports   VendorCompletionReport[]
+  completionDecisions RepairCompletionDecision[]
+  paymentRequest      VendorPaymentRequest?
+  domainEvents        DomainEventOutbox[]
+  attachments         Attachment[]
 
   @@index([vendorId, status])
   @@index([ticketId, status])
@@ -1043,7 +1664,7 @@ model Receipt {
 }
 
 model Cost {
-  id            String                 @id
+  id            String               @id
   managerId     String?
   date          DateTime
   item          String
@@ -1051,8 +1672,8 @@ model Cost {
   type          CostType
   scope         CostAttributionScope
   unitId        String?
-  status        CostStatus             @default(DRAFT)
-  verified      Boolean                @default(false)
+  status        CostStatus           @default(DRAFT)
+  verified      Boolean              @default(false)
   reviewReason  CostReviewReason?
   disclosure    DisclosureState?
   repairPayment RepairPaymentState?
@@ -1060,13 +1681,14 @@ model Cost {
   receiptId     String?
   supersedesId  String?
   voidReason    String?
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
-  receipt   Receipt?     @relation(fields: [receiptId], references: [id])
-  supersedes Cost?       @relation("CostAmendments", fields: [supersedesId], references: [id])
-  amendments Cost[]      @relation("CostAmendments")
-  ocrs      ReceiptOcr[]
+  receipt              Receipt?              @relation(fields: [receiptId], references: [id])
+  supersedes           Cost?                 @relation("CostAmendments", fields: [supersedesId], references: [id])
+  amendments           Cost[]                @relation("CostAmendments")
+  ocrs                 ReceiptOcr[]
+  vendorPaymentRequest VendorPaymentRequest?
 
   @@index([managerId])
   @@index([status, date])
@@ -1160,7 +1782,7 @@ model MessagingMessage {
 }
 
 model MessagingAnnouncementDraft {
-  id                 String                          @id
+  id                 String                           @id
   category           MessagingAnnouncementCategory
   scope              MessagingAnnouncementScope
   targetLabel        String
@@ -1168,11 +1790,11 @@ model MessagingAnnouncementDraft {
   title              String
   body               String
   translations       Json
-  confirmRequired    Boolean                         @default(false)
+  confirmRequired    Boolean                          @default(false)
   status             MessagingAnnouncementDraftStatus @default(DRAFT)
   createdByManagerId String
-  createdAt          DateTime                        @default(now())
-  updatedAt          DateTime                        @updatedAt
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
 
   @@index([createdByManagerId, updatedAt])
 }
@@ -1316,9 +1938,9 @@ model MoveoutRequest {
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
-  tenant     UserAccount        @relation("TenantMoveouts", fields: [tenantId], references: [id], onDelete: Cascade)
-  room       Room               @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  contract   Contract?          @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  tenant     UserAccount               @relation("TenantMoveouts", fields: [tenantId], references: [id], onDelete: Cascade)
+  room       Room                      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  contract   Contract?                 @relation(fields: [contractId], references: [id], onDelete: SetNull)
   records    MoveoutRecord[]
   checklist  MoveoutChecklistItem[]
   settlement MoveoutSettlement?
@@ -1332,16 +1954,16 @@ model MoveoutRequest {
 }
 
 model MoveoutRecord {
-  id                         String              @id
-  moveoutId                  String
-  source                     MoveoutRecordSource
-  title                      String
-  description                String
-  occurredAt                 DateTime?
-  wearVerdict                MoveoutWearVerdict?
-  wearNote                   String?
-  moveinComparisonAvailable  Boolean             @default(false)
-  createdAt                  DateTime            @default(now())
+  id                        String              @id
+  moveoutId                 String
+  source                    MoveoutRecordSource
+  title                     String
+  description               String
+  occurredAt                DateTime?
+  wearVerdict               MoveoutWearVerdict?
+  wearNote                  String?
+  moveinComparisonAvailable Boolean             @default(false)
+  createdAt                 DateTime            @default(now())
 
   moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
 
@@ -1430,17 +2052,17 @@ model MoveoutDisputeEvent {
 }
 
 model MoveoutReportAuditEntry {
-  id             String                       @id
+  id             String                      @id
   moveoutId      String
   recordItemId   String
   action         MoveoutWearAdjustmentAction
   fromVerdict    MoveoutWearVerdict?
   toVerdict      MoveoutWearVerdict?
   evidenceNote   String
-  tenantNotified Boolean                      @default(false)
+  tenantNotified Boolean                     @default(false)
   managerName    String
   managerId      String
-  createdAt      DateTime                     @default(now())
+  createdAt      DateTime                    @default(now())
 
   moveout MoveoutRequest @relation(fields: [moveoutId], references: [id], onDelete: Cascade)
 
@@ -1449,14 +2071,14 @@ model MoveoutReportAuditEntry {
 }
 
 model StatusHistory {
-  id          String   @id
+  id          String            @id
   ticketId    String
   fromStatus  String?
   toStatus    String
   actorUserId String
   actorRole   MessageSenderRole
   note        String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
@@ -1466,20 +2088,27 @@ model StatusHistory {
 // 원격 3D 투어용 Gaussian Splat 자산. 문서: docs/remote-3d-tour.md §4.
 // 도면(FloorPlan)과 각각 선택적 자산 — 둘 다 있고 transform이 붙으면 하이브리드 해금(§5).
 model SplatAsset {
-  id          String           @id
-  roomId      String
-  listingId   String? // 직접등록 매물(TradeListing, JSON 스토어라 FK 없음) 연결
-  floorPlanId String? // 정합 대상 도면. 있으면 미니맵/프리셋/클립 해금
-  fileUrl     String // .spz/.sog 경로
-  fileKind    String           @default("spz")
-  sizeBytes   Int?
-  videoUrl    String? // PROCESSING 접수 시 원본 영상 경로
-  status      SplatAssetStatus @default(UPLOADED)
-  transform   Json? // SplatTransform (tour-types.ts). null이면 미정합
+  id                String           @id
+  roomId            String
+  listingId         String? // 직접등록 매물(TradeListing, JSON 스토어라 FK 없음) 연결
+  floorPlanId       String? // 정합 대상 도면. 있으면 미니맵/프리셋/클립 해금
+  fileUrl           String // .spz/.sog 경로
+  fileKind          String           @default("spz")
+  sizeBytes         Int?
+  videoUrl          String? // PROCESSING 접수 시 원본 소스(영상 또는 캡처 zip) 경로 — 종류는 fileKind로 구분
+  status            SplatAssetStatus @default(UPLOADED)
+  transform         Json? // SplatTransform (tour-types.ts). null이면 미정합
   registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용
-  capturedAt  DateTime? // 촬영 시각 메타 (§7 편향 표기용)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  capturedAt        DateTime? // 촬영 시각 메타 (§7 편향 표기용)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // GPU 재구성 잡 추적 — 별도 Job 모델 대신 자산당 최신 잡만 기록(개인 임대인 스케일, 이력은 로그로)
+  jobState     SplatReconstructionJobState? // null = 파이프라인 무관 자산(직접 spz 업로드)
+  jobError     String? // FAILED 사유(2KB 절단) — 마이페이지 실패 안내 원천
+  jobAttempts  Int       @default(0)
+  jobCommandId String? // SSM RunCommand id — api 재기동 후 재부착·디버깅용
+  jobStartedAt DateTime?
 
   room      Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
   floorPlan FloorPlan? @relation(fields: [floorPlanId], references: [id])
@@ -1506,6 +2135,7 @@ model TradeListing {
   detailAddress     String?
   buildingName      String? // 건물명 — 관리 화면의 건물별 그룹 보기 기준
   description       String   @default("")
+  options           String[] @default([]) // 옵션(에어컨·세탁기 등) — 허용 목록은 서비스에서 검증
   images            String[] @default([])
   lat               Float?
   lng               Float?

@@ -90,6 +90,23 @@ describe("TradeService public listings", () => {
 
     assert.equal(created.detailAddress, undefined);
   });
+
+  it("stores only allowed options in canonical order and defaults to []", () => {
+    const service = serviceWithTempStore();
+
+    // 허용 목록 밖 값·중복은 버리고, 저장 순서는 허용 목록 순서를 따른다.
+    const created = service.createListing(owner, {
+      ...input,
+      options: ["CCTV", "에어컨", "금고", "에어컨"]
+    });
+    assert.deepEqual(created.options, ["에어컨", "CCTV"]);
+
+    const withoutOptions = service.createListing(owner, { ...input, title: "옵션 없는 매물" });
+    assert.deepEqual(withoutOptions.options, []);
+
+    const updated = service.updateListing(owner, created.id, { options: ["세탁기"] });
+    assert.deepEqual(updated.options, ["세탁기"]);
+  });
 });
 
 describe("TradeService contract acceptance", () => {

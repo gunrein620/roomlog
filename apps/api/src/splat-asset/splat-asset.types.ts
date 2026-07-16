@@ -30,6 +30,8 @@ export interface CreateSplatAssetInput {
 export interface RegisterSplatAssetInput {
   transform: SplatTransformInput;
   registrationPairs?: RegistrationPointPairInput[];
+  /** 정합에 쓴 서버 도면 id — 있으면 SplatAsset.floorPlanId를 채워 공개 뷰어가 가구를 동봉받는다. */
+  floorPlanId?: string;
 }
 
 export interface IntakeSplatAssetInput {
@@ -130,6 +132,8 @@ export function parseRegisterInput(body: unknown): RegisterSplatAssetInput {
   const input: RegisterSplatAssetInput = {
     transform: parseTransform(raw.transform)
   };
+
+  if (raw.floorPlanId != null) input.floorPlanId = requireNonEmptyString(raw.floorPlanId, "floorPlanId");
 
   if (raw.registrationPairs != null) {
     if (!Array.isArray(raw.registrationPairs)) {

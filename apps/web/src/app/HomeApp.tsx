@@ -69,6 +69,7 @@ import {
   type ViewerProfile
 } from "./_components/WoozuLoginScreen";
 import { MobileRoleMenu } from "./_components/MobileRoleMenu";
+import TourActionBell from "./_components/TourActionBell";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { intakeSplatAsset, listSplatAssetsByListing, type SplatAsset } from "@/lib/splat-asset-api";
 import type { ListingFloorPlan3D } from "./_components/ListingTourRoom3D";
@@ -79,7 +80,6 @@ import {
   isRemotePhoto,
   listingDetailAddressLabel,
   mapListings,
-  neighborhoodItems,
   monthlyDealLabel,
   tradeListingToCard,
   tradePriceLabel,
@@ -192,14 +192,25 @@ const appRoleForViewer = (viewer: ViewerProfile): AppRole => {
 };
 
 const categories = [
-  { label: "전체", count: "1,287", Icon: Building },
-  { label: "원룸", count: "632", Icon: DoorOpen },
-  { label: "투룸", count: "248", Icon: Bed },
-  { label: "오피스텔", count: "186", Icon: BriefcaseBusiness },
-  { label: "아파트", count: "91", Icon: Building2 },
-  { label: "빌라", count: "73", Icon: House },
-  { label: "단기임대", count: "57", Icon: CalendarClock }
+  { label: "전체", Icon: Building },
+  { label: "원룸", Icon: DoorOpen },
+  { label: "투룸", Icon: Bed },
+  { label: "오피스텔", Icon: BriefcaseBusiness },
+  { label: "아파트", Icon: Building2 },
+  { label: "빌라", Icon: House },
+  { label: "단기임대", Icon: CalendarClock }
 ];
+
+// 카테고리 ↔ 매물 매칭 — 홈 피드 필터와 카테고리 카드의 실제 매물 수가 같은 규칙을 쓴다.
+const listingMatchesCategory = (label: string, listing: Listing): boolean => {
+  if (label === "전체") return true;
+  if (label === "원룸" || label === "오피스텔" || label === "아파트" || label === "빌라") {
+    return listing.roomType === label;
+  }
+  if (label === "투룸") return listing.spec.includes("투룸") || listing.spec.includes("복층");
+  if (label === "단기임대") return listing.tags.includes("단기") || listing.tags.includes("단기임대");
+  return false;
+};
 
 const quickFilters = ["월세", "전세", "관리비 포함", "반려동물", "주차", "풀옵션"];
 
@@ -261,12 +272,6 @@ const mapInsightItems = [
   { label: "3D 가능", value: "12개", caption: "투어 우선 보기" }
 ];
 
-
-const savedComparisonItems = [
-  { label: "저장 조건", value: "월세 130 이하", caption: "방배동 · 내방역" },
-  { label: "가격 변동", value: "변동 없음", caption: "최근 7일 기준" },
-  { label: "방문 후보", value: "오늘 3시", caption: "2개 매물 가능" }
-];
 
 const homeWebSummaryItems = [
   { label: "중개사 응답", value: "평균 8분" },
@@ -951,7 +956,6 @@ const agentCards = [
 ];
 
 const trustItems = [
-  { title: "안심 리포트", body: "등기·시세·권리관계 요약" },
   { title: "주변 안전", body: "CCTV, 치안센터, 야간동선" },
   { title: "헛걸음 보상", body: "정보 불일치 신고 접수 가능" }
 ];
@@ -986,16 +990,6 @@ function SavedListingsSection({
         </div>
         <strong>{savedListings.length}개</strong>
       </div>
-
-      <section className="saved-compare-strip" aria-label="찜한 매물 비교 요약">
-        {savedComparisonItems.map((item) => (
-          <article key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <small>{item.caption}</small>
-          </article>
-        ))}
-      </section>
 
       <div className="saved-card-list">
         {savedListings.length > 0 ? (
@@ -1532,9 +1526,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const [activeMapResultTab, setActiveMapResultTab] = useState<MapResultTab>("rooms");
   const [selectedMapListingNo, setSelectedMapListingNo] = useState(demoMapItems[0]?.listingNo ?? "");
   // 찜은 localStorage와 동기화 — 상세 라우트(/listing/[id])와 같은 키를 써서 라우트를 오가도 유지된다.
-  const [savedListingNos, setSavedListingNos] = useState<string[]>([listings[0].listingNo, listings[2].listingNo]);
+  // 기본값은 빈 목록 — 계정과 무관하게 데모 매물이 찜돼 있던 하드코딩 제거.
+  const [savedListingNos, setSavedListingNos] = useState<string[]>([]);
   useEffect(() => {
-    setSavedListingNos(loadSavedListingNos([listings[0].listingNo, listings[2].listingNo]));
+    setSavedListingNos(loadSavedListingNos([]));
   }, []);
   // 문의 전송 직후 채팅으로 바로 진입할 스레드 id (채팅 탭 TradeChatCenter로 전달)
   const [buyerFocusThreadId, setBuyerFocusThreadId] = useState<string | undefined>(undefined);
@@ -1664,16 +1659,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const mapAreaDisplayTitle = mapAreaTitle || "지역 미선택";
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const visibleHomeListings = allListings.filter((listing) => {
-    const categoryMatches =
-      activeCategory === "전체"
-        ? true
-        : activeCategory === "원룸"
-        ? listing.roomType === "원룸"
-        : activeCategory === "오피스텔"
-          ? listing.roomType === "오피스텔"
-          : activeCategory === "투룸"
-            ? listing.spec.includes("투룸") || listing.spec.includes("복층")
-            : false;
+    const categoryMatches = listingMatchesCategory(activeCategory, listing);
     // 거래유형(월세/전세/매매/단기)끼리는 OR — 둘 다 켜면 "월세 또는 전세"다 (QA: every()로 AND 되던 버그).
     const dealTypeFilters = activeQuickFilters.filter((filter) => ["월세", "전세", "매매", "단기"].includes(filter));
     const dealTypeMatches =
@@ -2490,11 +2476,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <div className="web-topbar-actions">
               {/* 역할은 상단 메뉴(세입자·관리·매물등록)에서 직접 진입한다 — 별도 역할 셀렉트/칩 없음. */}
               {viewer ? (
-                <div className="web-profile-menu" aria-label="로그인 사용자">
-                  <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
-                  <span className="web-profile-name">{viewer.name}</span>
-                  <button className="web-logout" type="button" onClick={logout}>로그아웃</button>
-                </div>
+                <>
+                  {/* 임대인 계정만: 재구성 완료(정합 필요)·실패(재업로드) 자산을 상단에서 상시 알린다. */}
+                  {hasCapability(viewer, "LANDLORD") ? <TourActionBell /> : null}
+                  <div className="web-profile-menu" aria-label="로그인 사용자">
+                    <span className="web-profile-avatar" aria-hidden="true">{viewer.name.slice(0, 1)}</span>
+                    <span className="web-profile-name">{viewer.name}</span>
+                    <button className="web-logout" type="button" onClick={logout}>로그아웃</button>
+                  </div>
+                </>
               ) : (
                 <>
                   <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
@@ -2550,6 +2540,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           >
             {categories.map((category) => {
               const CategoryIcon = category.Icon;
+              // 하드코딩 수치 대신 지금 피드에 실제로 있는 매물 수를 보여준다.
+              const count = allListings.filter((listing) => listingMatchesCategory(category.label, listing)).length;
 
               return (
                 <button
@@ -2562,7 +2554,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                     <CategoryIcon size={18} strokeWidth={2.4} />
                   </i>
                   <span>{category.label}</span>
-                  <strong>{category.count}</strong>
+                  <strong>{count.toLocaleString("ko-KR")}</strong>
                 </button>
               );
             })}
@@ -2773,21 +2765,6 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 <p>{item.body}</p>
               </article>
             ))}
-          </section>
-
-          <section className="neighborhood-strip" aria-label="주변 정보">
-            <div>
-              <h2>주변 정보</h2>
-              <p>생활 편의시설과 이동 시간을 같이 봅니다.</p>
-            </div>
-            <div>
-              {neighborhoodItems.map((item) => (
-                <span key={item.label}>
-                  <b>{item.label}</b>
-                  {item.value}
-                </span>
-              ))}
-            </div>
           </section>
 
           <section className="resident-check-card" aria-label="실거주 체크">

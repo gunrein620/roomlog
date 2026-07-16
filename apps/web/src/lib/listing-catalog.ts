@@ -90,6 +90,8 @@ export type Listing = (typeof demoListings)[number] & {
   lng?: number;
   has3DTour?: boolean;
   floorPlan3D?: ListingFloorPlan3D;
+  /** 등록 시 선택한 옵션 — 없으면(데모 매물) 상세가 고정 데모 목록으로 폴백 */
+  options?: string[];
 };
 
 // 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
@@ -108,6 +110,7 @@ export type TradeListing = {
   description: string;
   status: string;
   createdAt: string;
+  options?: string[];
   images?: string[];
   lat?: number;
   lng?: number;
@@ -154,6 +157,9 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     listing.floorPlan && Array.isArray(listing.floorPlan.walls3D) && listing.floorPlan.walls3D.length > 0
       ? listing.floorPlan
       : undefined;
+  const options = Array.isArray(listing.options)
+    ? listing.options.filter((item) => typeof item === "string" && item)
+    : [];
   return {
     listingNo: `${TRADE_LISTING_NO_PREFIX}${listing.id}`,
     detailHeader: `직접등록 매물 · ${listing.title}`,
@@ -175,7 +181,8 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     image,
     gallery,
     badges: floorPlan3D ? ["집주인 직접", "3D 투어"] : ["집주인 직접"],
-    tags: floorPlan3D ? [listing.tradeType, listing.roomType, "3D 투어"] : [listing.tradeType, listing.roomType],
+    // 등록 폼에서 고른 옵션(에어컨·CCTV 등)을 태그로 노출 — 상세 태그가 실데이터가 된다.
+    tags: [listing.tradeType, listing.roomType, ...options, ...(floorPlan3D ? ["3D 투어"] : [])],
     score: "안심 확인중",
     updated: "방금 등록",
     broker: `${listing.ownerName} (집주인)`,
@@ -184,7 +191,8 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     lat: listing.lat,
     lng: listing.lng,
     has3DTour: Boolean(floorPlan3D),
-    floorPlan3D
+    floorPlan3D,
+    options
   };
 }
 
@@ -227,22 +235,12 @@ export const getListingBuildingRows = (listing: Listing) => [
 // 차단하므로 절대 URL 사진은 unoptimized로 브라우저가 직접 로드하게 한다(번들 목업은 그대로 최적화).
 export const isRemotePhoto = (src: string) => /^https?:\/\//.test(src);
 
-// 상세 화면 고정 데모 데이터 — 안심 리포트/옵션/주변 정보(실데이터 연동 전 껍데기)
-export const safetyReportItems = [
-  { label: "등기 변동", value: "최근 변동 없음", status: "안전" },
-  { label: "보증금 비율", value: "권장 범위", status: "양호" },
-  { label: "대출·특약", value: "방문 시 확인", status: "확인" },
-  { label: "주변 치안", value: "야간 동선 양호", status: "양호" }
-];
+// 등록 폼의 매물유형 드롭다운 — 홈 카테고리(전체 제외)와 같은 구성. 등록값이 카테고리 필터·카운트에 그대로 잡힌다.
+export const listingRoomTypes = ["원룸", "투룸", "오피스텔", "아파트", "빌라", "단기임대"];
 
+// 등록 폼에서 선택 가능한 옵션 목록 — API(trade.service ALLOWED_LISTING_OPTIONS)와 같은 값·순서.
+// 데모 매물 상세는 options가 없어 이 목록 전체를 폴백으로 보여준다.
 export const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
-
-export const neighborhoodItems = [
-  { label: "편의점", value: "4곳" },
-  { label: "지하철", value: "도보 5분" },
-  { label: "치안센터", value: "1곳" },
-  { label: "공원", value: "650m" }
-];
 
 // 지도 탭 데모 매물 마커/패널 아이템 — NaverMapPreview의 폴백 마커로도 쓰인다.
 export const mapListings = [

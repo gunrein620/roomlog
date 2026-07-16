@@ -18,23 +18,16 @@ import {
   Share2
 } from "lucide-react";
 import {
-  formatManwon,
-  getMarketSummary,
-  propertyTypeForRoom,
-  regionForLocation,
-  type MarketSummary
-} from "@/lib/api";
-import {
   getListingBuildingRows,
   getListingPriceRows,
   isRemotePhoto,
   listingDetailAddressLabel,
   listingMapAddress,
-  neighborhoodItems,
   optionItems,
-  safetyReportItems,
+  TRADE_LISTING_NO_PREFIX,
   type Listing
 } from "@/lib/listing-catalog";
+import { listSplatAssetsByListing } from "@/lib/splat-asset-api";
 import { NaverMapPreview } from "./NaverMapPreview";
 
 // 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
@@ -58,50 +51,55 @@ export function ListingDetailView({
   onStartChat: () => void;
 }) {
   const [isTourSheetOpen, setIsTourSheetOpen] = useState(false);
-  const [isComplexSheetOpen, setIsComplexSheetOpen] = useState(false);
-  const [isAgentSheetOpen, setIsAgentSheetOpen] = useState(false);
   const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
   const [detailToast, setDetailToast] = useState("");
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-  const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const activePhoto = listing.gallery[activePhotoIndex] ?? listing.gallery[0];
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const detailAddressLabel = listingDetailAddressLabel(listing);
   const mapAddress = listingMapAddress(listing);
-  const safetyScore = listing.score.replace("안심 ", "");
-  // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
-  const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
+  // 매물별 3D 게이트 대상은 직접등록(TRADE-) 매물뿐 — 정적(하드코딩) 매물은 기존 데모 링크를 그대로 둔다(곧 삭제 예정).
+  const isTradeDirectListing = isDirectListing && listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX);
+  // 직접등록 매물의 대표 3D 자산 id — 있으면 "1인칭 체험"이 이 매물 전용 투어로 연결된다.
+  const [splatAssetId, setSplatAssetId] = useState<string | null>(null);
+  // 자산 조회 완료 여부 — 조회 중엔 "준비 안 됨"을 성급히 띄우지 않는다(로딩과 없음을 구분).
+  const [splatChecked, setSplatChecked] = useState(false);
 
-  // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
-  // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
+  // 직접등록 매물이면 연결된 splat 자산을 조회해 대표 하나를 고른다(REGISTERED > UPLOADED > PROCESSING).
+  // 자산이 없거나(또는 FAILED뿐) 조회가 실패하면 splatAssetId는 null로 남고, 아래에서 매물별 게이트("준비 안 됨")를 노출한다.
   useEffect(() => {
-    const controller = new AbortController();
-    const region = regionForLocation(listing.location);
-    getMarketSummary(
-      { lawdCd: region.lawdCd, propertyType: propertyTypeForRoom(listing.roomType), months: 3 },
-      controller.signal
-    ).then((summary) => {
-      if (summary && summary.count > 0) {
-        setMarketSummary(summary);
-      }
-    });
-    return () => controller.abort();
-  }, [listing.location, listing.roomType]);
+    if (!isTradeDirectListing) {
+      setSplatAssetId(null);
+      setSplatChecked(false);
+      return;
+    }
+    const listingId = listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
+    let cancelled = false;
+    setSplatChecked(false);
+    listSplatAssetsByListing(listingId)
+      .then((assets) => {
+        if (cancelled) return;
+        const priority: Record<string, number> = { REGISTERED: 3, UPLOADED: 2, PROCESSING: 1 };
+        const pick = assets
+          .filter((asset) => asset.status in priority)
+          .sort((a, b) => priority[b.status] - priority[a.status])[0];
+        setSplatAssetId(pick?.id ?? null);
+        setSplatChecked(true);
+      })
+      .catch(() => {
+        // 조회 실패 — 자산 없음으로 간주하고 게이트를 정직하게 노출한다(데모로 은폐하지 않음).
+        if (cancelled) return;
+        setSplatChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isTradeDirectListing, listing.listingNo]);
 
-  const marketRecent = marketSummary?.recent[0];
-  const complexRecentLabel = marketRecent
-    ? marketRecent.tradeType === "월세"
-      ? `${formatManwon(marketRecent.depositManwon)}/${marketRecent.monthlyRentManwon}만`
-      : formatManwon(marketRecent.depositManwon)
-    : listing.complexPrice;
-  const complexAvgLabel =
-    marketSummary && marketSummary.count > 0
-      ? formatManwon(marketSummary.avgJeonseDepositManwon || marketSummary.avgDepositManwon)
-      : listing.unitCount;
-  const complexMonthlyAvgLabel =
-    marketSummary && marketSummary.monthlyCount > 0 ? `${marketSummary.avgMonthlyRentManwon}만` : "76만";
+  // 직접등록 매물은 집주인이 등록 시 고른 옵션만, 데모 매물(options 없음)은 기존 고정 목록을 보여준다.
+  const listingOptions = listing.options ?? optionItems;
 
   const copyListingNo = async () => {
     const text = listing.listingLabel;
@@ -112,9 +110,6 @@ export function ListingDetailView({
 
     setDetailToast("매물번호를 복사했어요");
     window.setTimeout(() => setDetailToast(""), 1600);
-  };
-  const scrollToSafetyReport = () => {
-    document.querySelector(".detail-report-card")?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
   return (
@@ -172,24 +167,6 @@ export function ListingDetailView({
           <span>{listing.location}</span>
         </div>
         <div className="detail-address-detail">세부주소: {detailAddressLabel}</div>
-        <div className="detail-quick-actions" aria-label="상세 빠른 액션">
-          <button type="button" onClick={() => setIsTourSheetOpen(true)}>
-            <span>3D</span>
-            <strong>투어 보기</strong>
-          </button>
-          <button type="button" onClick={scrollToSafetyReport}>
-            <span>{safetyScoreLabel}</span>
-            <strong>안심 리포트</strong>
-          </button>
-          <button type="button" onClick={() => setIsComplexSheetOpen(true)}>
-            <span>단지</span>
-            <strong>정보 보기</strong>
-          </button>
-          <button type="button" onClick={onStartChat}>
-            <span>8분 응답</span>
-            <strong>문의하기</strong>
-          </button>
-        </div>
       </div>
 
       <div className="listing-detail-facts" aria-label="매물 기본 정보">
@@ -217,40 +194,6 @@ export function ListingDetailView({
         ))}
       </div>
 
-      <section className="detail-trust-list" aria-label="안심 거래 정보">
-        <div className="detail-section-heading">
-          <h2>안심 거래 정보</h2>
-          <span>{listing.verification}</span>
-        </div>
-        <ul>
-          <li>
-            <span>거래상태</span>
-            <strong>문의 가능</strong>
-          </li>
-          <li>
-            <span>실매물 확인</span>
-            <strong>{listing.verification}</strong>
-          </li>
-          <li>
-            <span>문의 응답</span>
-            <strong>{listing.response}</strong>
-          </li>
-          <li>
-            <span>등록 사진</span>
-            <strong>{listing.gallery.length}장 · 현장 촬영</strong>
-          </li>
-          <li>
-            <span>헛걸음 보상</span>
-            <strong>정보 불일치 시 보상</strong>
-          </li>
-        </ul>
-      </section>
-
-      <button className="complex-button" type="button" onClick={() => setIsComplexSheetOpen(true)}>
-        <Building2 size={20} strokeWidth={2.4} aria-hidden="true" />
-        단지 정보 보러가기
-      </button>
-
       <section className="detail-info-section" aria-label="가격 정보">
         <div className="detail-section-heading">
           <h2>가격 정보</h2>
@@ -266,67 +209,21 @@ export function ListingDetailView({
         </dl>
       </section>
 
-      <section className="safety-analysis-card" aria-label="AI 안전분석">
-        <div>
-          <span>AI 안전분석</span>
-          <h2>권리관계 특이사항 낮음</h2>
-          <p>등기 변동, 보증금 비율, 관리비 수준을 함께 본 결과입니다.</p>
-        </div>
-        <strong>{safetyScoreLabel}</strong>
-      </section>
-
-      <section className="detail-report-card" aria-label="지킴 진단 리포트">
-        <div className="detail-report-head">
-          <div>
-            <span>지킴 진단 리포트</span>
-            <h2>계약 전 확인할 항목을 정리했어요</h2>
-          </div>
-          <strong>{safetyScore}</strong>
-        </div>
-        <div className="detail-report-grid">
-          {safetyReportItems.map((item) => (
-            <article key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.status}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="agent-summary-card" aria-label="중개사 정보">
-        <div>
-          <span>{isDirectListing ? "집주인 직접 거래" : "중개사 평점 4.8"}</span>
-          <h2>{listing.broker}</h2>
-          <p>
-            {isDirectListing
-              ? `${listing.response} · ${listing.verification} · 헛걸음 보상 참여`
-              : `${listing.response} · 확인매물 126개 · 헛걸음 보상 참여`}
-          </p>
-        </div>
-        <button type="button" onClick={() => setIsAgentSheetOpen(true)}>프로필</button>
-      </section>
-
-      <section className="messenger-card" aria-label="매물확인 메신저">
-        <div>
-          <span>매물확인 메신저</span>
-          <h2>방문 전 거래 가능 여부 확인</h2>
-          <p>중개사가 계약 가능, 계약 불가능, 대체 매물을 문자로 답변합니다.</p>
-        </div>
-        <button type="button" onClick={onStartChat}>간편문의</button>
-      </section>
-
       <div className="detail-info-pair">
         <section className="detail-info-section" aria-label="옵션 정보">
           <div className="detail-section-heading">
             <h2>옵션 정보</h2>
-            <span>현장 확인 필요</span>
+            <span>{isDirectListing ? "집주인 등록 기준" : "현장 확인 필요"}</span>
           </div>
-          <div className="option-chip-grid">
-            {optionItems.map((option) => (
-              <span key={option}>{option}</span>
-            ))}
-          </div>
+          {listingOptions.length > 0 ? (
+            <div className="option-chip-grid">
+              {listingOptions.map((option) => (
+                <span key={option}>{option}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="option-empty-note">집주인이 등록한 옵션이 없습니다.</p>
+          )}
         </section>
 
         <section className="detail-info-section" aria-label="건물 정보">
@@ -344,18 +241,6 @@ export function ListingDetailView({
           </dl>
         </section>
       </div>
-
-      <section className="detail-neighborhood-card" aria-label="상세 주변 정보">
-        <h2>주변 정보</h2>
-        <div>
-          {neighborhoodItems.map((item) => (
-            <span key={item.label}>
-              <b>{item.label}</b>
-              {item.value}
-            </span>
-          ))}
-        </div>
-      </section>
 
       {/* 3D 진입은 하단 고정 바의 "3D 둘러보기"가 담당 — 본문 중복 배너는 제거했다. */}
       <section className="detail-map-section" aria-label="상세 위치">
@@ -385,11 +270,37 @@ export function ListingDetailView({
           <span>3D</span>
           <strong>둘러보기</strong>
         </button>
-        {/* 임시 데모용 — 1인칭 체험은 splat 투어 페이지로 바로 이동한다(woo-zu.com/splat-tour) */}
-        <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
-          <span>1인칭</span>
-          <strong>체험</strong>
-        </a>
+        {/* 1인칭 체험 — 매물별 정직 게이트.
+            · 직접등록(TRADE-) + 대표 자산 있음 → 이 매물 전용 splat 투어(?asset=)
+            · 직접등록 + 자산 없음/FAILED뿐 → 비활성 "준비 안 됨"(링크 아님, 없는 상태를 그대로 노출)
+            · 정적(하드코딩) 매물 → 기존 공통 데모 투어(/splat-tour) 유지(곧 삭제 예정) */}
+        {splatAssetId ? (
+          <a className="detail-contact-tour detail-contact-splat" href={`/splat-tour?asset=${splatAssetId}`}>
+            <span>1인칭</span>
+            <strong>체험</strong>
+          </a>
+        ) : isTradeDirectListing ? (
+          <span
+            className="detail-contact-tour detail-contact-splat detail-contact-splat-empty"
+            role="note"
+            aria-label="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            title="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            style={{
+              background: "var(--surface-container)",
+              borderColor: "var(--border)",
+              color: "var(--on-surface-variant)",
+              cursor: "default"
+            }}
+          >
+            <span style={{ color: "var(--on-surface-variant)" }}>1인칭</span>
+            <strong>{splatChecked ? "준비 안 됨" : "확인 중"}</strong>
+          </span>
+        ) : (
+          <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
+            <span>1인칭</span>
+            <strong>체험 (데모)</strong>
+          </a>
+        )}
         <button className="detail-contact-primary" type="button" onClick={onStartChat}>
           <strong>문자로 문의하기</strong>
           <span>방문 가능 여부 바로 확인</span>
@@ -440,189 +351,34 @@ export function ListingDetailView({
           <section className="share-sheet" role="dialog" aria-modal="true" aria-labelledby="share-sheet-title" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-handle" aria-hidden="true" />
             <header>
-              <div>
-                <span>매물 공유</span>
-                <h2 id="share-sheet-title">매물 공유하기</h2>
-                <p>{listing.title} 정보를 같이 볼 사람에게 전달하세요.</p>
-              </div>
+              <h2 id="share-sheet-title">매물 공유하기</h2>
               <button type="button" onClick={() => setIsShareSheetOpen(false)} aria-label="공유 닫기">×</button>
             </header>
 
-            <div className="share-listing-preview">
-              <span>{listing.price}</span>
-              <strong>{listing.title}</strong>
-              <p>{listing.location} · {detailAddressLabel} · {listing.spec}</p>
-            </div>
+            <p className="share-listing-line">{listing.title} · {listing.price}</p>
 
-            <div className="share-action-grid" aria-label="공유 방법">
-              {["링크 복사", "문자 공유", "카카오 공유", "관심목록 저장"].map((label) => (
-                <button
-                  type="button"
-                  key={label}
-                  onClick={async () => {
-                    if (label === "관심목록 저장" && !isSaved) {
-                      onToggleSaved(listing.listingNo);
-                    }
-
-                    // 상세가 라우트가 된 덕에 링크 복사가 실제 공유 가능한 URL을 준다.
-                    if (label === "링크 복사" && navigator.clipboard) {
-                      await navigator.clipboard
-                        .writeText(`${window.location.origin}/listing/${encodeURIComponent(listing.listingNo)}`)
-                        .catch(() => undefined);
-                    }
-
-                    setDetailToast(
-                      label === "관심목록 저장"
-                        ? "관심목록에 저장했어요"
-                        : label === "링크 복사"
-                        ? "매물 링크를 복사했어요"
-                        : `${label}를 선택했어요`
-                    );
-                    setIsShareSheetOpen(false);
-                    window.setTimeout(() => setDetailToast(""), 1600);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <button
+              className="share-copy-button"
+              type="button"
+              onClick={async () => {
+                // 상세가 라우트가 된 덕에 링크 복사가 실제 공유 가능한 URL을 준다.
+                if (navigator.clipboard) {
+                  await navigator.clipboard
+                    .writeText(`${window.location.origin}/listing/${encodeURIComponent(listing.listingNo)}`)
+                    .catch(() => undefined);
+                }
+                setDetailToast("매물 링크를 복사했어요");
+                setIsShareSheetOpen(false);
+                window.setTimeout(() => setDetailToast(""), 1600);
+              }}
+            >
+              <Copy size={17} strokeWidth={2.4} aria-hidden="true" />
+              링크 복사
+            </button>
           </section>
         </div>
       ) : null}
 
-      {isComplexSheetOpen ? (
-        <div className="complex-sheet-backdrop" role="presentation" onClick={() => setIsComplexSheetOpen(false)}>
-          <section className="complex-sheet" role="dialog" aria-modal="true" aria-labelledby="complex-sheet-title" onClick={(event) => event.stopPropagation()}>
-            <div className="sheet-handle" aria-hidden="true" />
-            <header>
-              <div>
-                <span>단지 리포트</span>
-                <h2 id="complex-sheet-title">단지 정보</h2>
-                <p>{listing.location} 기준 건물, 시세, 주변 생활권을 요약했습니다.</p>
-              </div>
-              <button type="button" onClick={() => setIsComplexSheetOpen(false)} aria-label="단지 정보 닫기">×</button>
-            </header>
-
-            <div className="complex-price-summary">
-              <article>
-                <span>최근 실거래</span>
-                <strong>{complexRecentLabel}</strong>
-              </article>
-              <article>
-                <span>동일 면적 평균</span>
-                <strong>{complexAvgLabel}</strong>
-              </article>
-              <article>
-                <span>월세 평균</span>
-                <strong>{complexMonthlyAvgLabel}</strong>
-              </article>
-            </div>
-
-            {marketSummary && marketSummary.count > 0 ? (
-              <p className="complex-source-note">
-                국토교통부 실거래가 {marketSummary.count}건 기준 · 최근 3개월
-              </p>
-            ) : null}
-
-            <section className="complex-building-card" aria-label="단지 건물 요약">
-              <div>
-                <strong>방배 루미에르</strong>
-                <span>준공 2021년 · 총 16층 · 84세대</span>
-              </div>
-              <p>엘리베이터, CCTV, 무인택배함, 주차 가능 여부를 현장 확인 기준으로 정리했습니다.</p>
-            </section>
-
-            <div className="complex-score-grid" aria-label="단지 생활 점수">
-              {[
-                ["교통", "도보 5분"],
-                ["보안", "CCTV 7곳"],
-                ["관리", "관리비 보통"],
-                ["소음", "큰길가"]
-              ].map(([label, value]) => (
-                <span key={label}>
-                  <b>{label}</b>
-                  {value}
-                </span>
-              ))}
-            </div>
-
-            <div className="complex-sheet-actions">
-              <button type="button" onClick={() => setIsComplexSheetOpen(false)}>닫기</button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsComplexSheetOpen(false);
-                  onStartChat();
-                }}
-              >
-                단지 문의하기
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {isAgentSheetOpen ? (
-        <div className="agent-sheet-backdrop" role="presentation" onClick={() => setIsAgentSheetOpen(false)}>
-          <section className="agent-sheet" role="dialog" aria-modal="true" aria-labelledby="agent-sheet-title" onClick={(event) => event.stopPropagation()}>
-            <div className="sheet-handle" aria-hidden="true" />
-            <header>
-              <div>
-                <span>중개사 정보</span>
-                <h2 id="agent-sheet-title">내방역 푸른공인중개사</h2>
-                <p>확인매물 중심으로 운영하는 집우집주 파트너 중개사무소입니다.</p>
-              </div>
-              <button type="button" onClick={() => setIsAgentSheetOpen(false)} aria-label="중개사 프로필 닫기">×</button>
-            </header>
-
-            <div className="agent-profile-summary">
-              <div className="agent-avatar" aria-hidden="true">푸</div>
-              <div>
-                <strong>대표 공인중개사 김하늘</strong>
-                <span>서울 서초구 방배동 · 등록번호 9254-18-00421</span>
-              </div>
-            </div>
-
-            <section className="agent-metric-grid" aria-label="중개사 신뢰 지표">
-              {[
-                ["응답률", "98%"],
-                ["평균 응답", "8분"],
-                ["확인매물", "126개"],
-                ["후기 평점", "4.8"]
-              ].map(([label, value]) => (
-                <article key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </article>
-              ))}
-            </section>
-
-            <section className="agent-review-card" aria-label="최근 중개 후기">
-              <strong>최근 후기</strong>
-              <p>“방문 전 사진과 실제 상태가 거의 같았고, 관리비 포함 내역을 바로 알려줬어요.”</p>
-              <span>입주 상담 완료 · 2일 전</span>
-            </section>
-
-            <div className="agent-listing-row" aria-label="중개사 보유 매물">
-              <span>보유 매물</span>
-              <strong>방배동 원룸 42개 · 오피스텔 18개 · 3D 가능 12개</strong>
-            </div>
-
-            <div className="agent-sheet-actions">
-              <button type="button" onClick={() => setIsAgentSheetOpen(false)}>닫기</button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAgentSheetOpen(false);
-                  onStartChat();
-                }}
-              >
-                중개사 문의하기
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
     </section>
   );
 }
