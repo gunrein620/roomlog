@@ -47,7 +47,7 @@ export function BuildingFilter({
         onChange={(event) => changeBuilding(event.target.value)}
         style={{
           width: "100%",
-          minHeight: "var(--touch-target)",
+          minHeight: "var(--space-xxl)",
           border: "1px solid var(--border)",
           borderRadius: "var(--radius-btn)",
           padding: "0 var(--space-md)",

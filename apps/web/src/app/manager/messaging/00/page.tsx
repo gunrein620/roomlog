@@ -91,7 +91,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           marginBottom: "var(--space-lg)",
           display: "flex",
           flexWrap: "wrap",
-          alignItems: "end",
+          alignItems: "flex-start",
           gap: "var(--space-md)",
           padding: "var(--space-md)",
           border: "1px solid var(--border)",
@@ -155,7 +155,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <div
           style={{
             flex: "0 0 auto",
-            minHeight: "var(--touch-target)",
+            minHeight: "var(--space-xxl)",
+            marginInlineStart: "auto",
+            alignSelf: "flex-end",
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-end",
