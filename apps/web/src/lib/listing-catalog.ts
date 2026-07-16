@@ -121,6 +121,12 @@ export function listingDetailAddressLabel(listing: object & { detailAddress?: st
   return detailAddress || DETAIL_ADDRESS_FALLBACK;
 }
 
+export function listingMapAddress(listing: object & { location?: string | null; detailAddress?: string | null }): string {
+  const location = listing.location?.trim();
+  if (location) return location;
+  return listing.detailAddress?.trim() || "";
+}
+
 export function formatManwonAmount(value: number): string {
   const amount = Math.abs(value) < 10000 ? String(value) : value.toLocaleString("ko-KR");
   return `${amount}만`;

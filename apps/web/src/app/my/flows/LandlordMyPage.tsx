@@ -602,13 +602,16 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
 
         // 2) 매물 등록 — 사진 URL과 지오코딩 좌표를 함께 저장한다.
         const detailAddress = ownerForm.detailAddress.trim();
+        const listingAddress = ownerForm.address.trim();
+        const listingCoords = geoCoords ?? await geocodeAddress(listingAddress);
+        if (!geoCoords && listingCoords) setGeoCoords(listingCoords);
         const payload: Record<string, unknown> = {
           title: ownerForm.title,
           roomType: "원룸",
           tradeType: ownerForm.tradeType,
           depositManwon: Number(ownerForm.tradeType === "전세" ? ownerForm.jeonse : ownerForm.deposit) || 0,
           monthlyRentManwon: Number(ownerForm.monthly) || 0,
-          location: ownerForm.address || "위치 미입력",
+          location: listingAddress || "위치 미입력",
           detailAddress,
           buildingName: ownerForm.buildingName.trim(),
           description: [
@@ -616,8 +619,8 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
             ownerForm.floor ? `${ownerForm.floor}층` : "",
             ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
           ].filter(Boolean).join(" · "),
-          lat: geoCoords?.lat,
-          lng: geoCoords?.lng
+          lat: listingCoords?.lat,
+          lng: listingCoords?.lng
         };
         payload.images = images;
         // 3D방 연결 상태이고 에디터 스냅샷이 있으면 매물에 도면을 실어 보낸다 → 상세 "3D 보기"에서 실제 렌더.

@@ -352,7 +352,7 @@ export function NaverMapPreview({
     const maps = window.naver?.maps;
     const map = mapInstanceRef.current;
     if (!maps || !map?.setCenter || !maps.Service?.geocode) return;
-    const setCenter = map.setCenter;
+    const setMapCenter = map.setCenter.bind(map);
 
     maps.Service.geocode({ query: addressKey }, (status, response) => {
       if (status !== maps.Service?.Status.OK) return;
@@ -362,7 +362,7 @@ export function NaverMapPreview({
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
       const nextCenter = new maps.LatLng(lat, lng);
-      setCenter(nextCenter);
+      setMapCenter(nextCenter);
       onViewportChangeRef.current?.(readMapViewport(map));
 
       if (!showCenterMarker) {
@@ -383,11 +383,11 @@ export function NaverMapPreview({
       });
       centerMarkerRef.current = marker;
       const infoWindow = new maps.InfoWindow({
-        content: `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "매물 위치"}</b><strong>${escapeHtml(addressKey)}</strong></div>`
+        content: `<div class="naver-info-window"><b>매물 위치</b><strong>${escapeHtml(addressKey)}</strong></div>`
       });
       infoWindow.open(map, marker);
     });
-  }, [addressKey, centerKey, loadState, showCenterMarker, title]);
+  }, [addressKey, centerKey, loadState, showCenterMarker]);
 
   const handleScriptReady = () => {
     requestAnimationFrame(() => {

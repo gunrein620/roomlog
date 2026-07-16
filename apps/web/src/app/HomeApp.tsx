@@ -2462,14 +2462,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 placeholder="동네, 역, 주소 검색"
               />
             </label>
-            <span className="map-location-action-label">내 위치 보기</span>
             <button
+              className="map-location-action-button"
               type="button"
               onClick={() => requestMapCurrentLocation(true)}
               aria-label="현재 위치 주변 매물 보기"
               title="내 위치 주변"
               disabled={mapLocationStatus === "requesting"}
             >
+              <span className="map-location-action-label">내 위치 보기</span>
               <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
             </button>
             <button type="button" onClick={() => setIsFilterSheetOpen(true)} aria-label="필터">
