@@ -19,6 +19,8 @@ if (cloudfrontHost) {
 }
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  outputFileTracingRoot: join(__dirname, "..", ".."),
   allowedDevOrigins: ["127.0.0.1"],
   devIndicators: false,
   images: {
