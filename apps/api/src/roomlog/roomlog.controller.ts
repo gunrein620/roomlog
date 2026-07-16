@@ -657,10 +657,13 @@ export class RoomlogController {
   }
 
   @Get("tenant/messaging/announcements")
-  listTenantMessagingAnnouncements(@Headers("authorization") authorization?: string) {
+  listTenantMessagingAnnouncements(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("roomId") roomId?: string
+  ) {
     const user = this.requireRole(authorization, ["TENANT"]);
 
-    return this.roomlogService.listTenantMessagingAnnouncements(user.id);
+    return this.roomlogService.listTenantMessagingAnnouncements(user.id, roomId);
   }
 
   @Get("tenant/messaging/announcements/:announcementId")
