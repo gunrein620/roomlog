@@ -34,7 +34,7 @@ export function ContractRegisterForm({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const previewUrlRef = useRef<string | null>(null);
-  const notifiedRedirectRef = useRef<string | null>(null);
+  const navigatedRedirectRef = useRef<string | null>(null);
   const [actionState, formAction, pending] = useActionState(action, INITIAL_ACTION_STATE);
   const [fileName, setFileName] = useState("파일 미선택");
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
@@ -46,9 +46,8 @@ export function ContractRegisterForm({
 
   useEffect(() => {
     if (!actionState.redirectTo) return;
-    if (notifiedRedirectRef.current === actionState.redirectTo) return;
-    notifiedRedirectRef.current = actionState.redirectTo;
-    window.alert("등록 되었습니다.");
+    if (navigatedRedirectRef.current === actionState.redirectTo) return;
+    navigatedRedirectRef.current = actionState.redirectTo;
     router.push(actionState.redirectTo);
   }, [actionState.redirectTo, router]);
 

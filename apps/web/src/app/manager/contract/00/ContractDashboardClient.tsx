@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ManagerContractDashboard, ManagerContractRow } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 
@@ -34,11 +34,14 @@ export function ContractDashboardClient({
   counts,
   rows,
   focusedContractId,
+  showRegistrationAlert = false,
 }: {
   counts: ManagerContractDashboard["counts"];
   rows: ManagerContractRow[];
   focusedContractId?: string;
+  showRegistrationAlert?: boolean;
 }) {
+  const registrationAlertShownRef = useRef(false);
   const [filters, setFilters] = useState({
     status: "all" as ContractStatusFilter,
     building: "all",
@@ -83,6 +86,12 @@ export function ContractDashboardClient({
   const firstResult = filteredRows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const lastResult = Math.min(currentPage * PAGE_SIZE, filteredRows.length);
   const focusedRow = focusedRowIndex >= 0 ? rows[focusedRowIndex] : undefined;
+
+  useEffect(() => {
+    if (!showRegistrationAlert || registrationAlertShownRef.current) return;
+    registrationAlertShownRef.current = true;
+    window.alert("등록되었습니다.");
+  }, [showRegistrationAlert]);
 
   useEffect(() => {
     if (!focusedContractId) return;

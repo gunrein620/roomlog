@@ -64,7 +64,7 @@ async function confirmContractAction(formData: FormData) {
     redirect(confirmationFailureUrl(contractId, failure.message));
   }
 
-  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-00"]}?focus=${encodeURIComponent(contractId)}`);
+  redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-00"]}?focus=${encodeURIComponent(contractId)}&registered=1`);
 }
 
 function confirmationFailureUrl(contractId: string, message: string) {

@@ -7,10 +7,10 @@ import { ContractDashboardClient } from "./ContractDashboardClient";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ focus?: string }>;
+type SearchParams = Promise<{ focus?: string; registered?: string }>;
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const { focus } = await searchParams;
+  const { focus, registered } = await searchParams;
   const dashboard = await getManagerContractDashboard();
   const sortedRows = [...dashboard.rows].sort((a, b) => {
     const score = (row: ManagerContractRow) =>
@@ -28,6 +28,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           counts={dashboard.counts}
           rows={sortedRows}
           focusedContractId={focus}
+          showRegistrationAlert={registered === "1"}
         />
       </PageStack>
     </ContractShell>
