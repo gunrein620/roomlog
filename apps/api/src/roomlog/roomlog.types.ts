@@ -899,6 +899,10 @@ export type CreateManagerContractInput = {
 
 export type UpdateManagerContractManualValuesInput = {
   deposit?: string;
+  specialTerms?: string;
+  autoRenewal?: string;
+  restorationDuty?: string;
+  repairDuty?: string;
   monthlyRent?: number;
   maintenanceFee?: number;
   paymentDay?: number;

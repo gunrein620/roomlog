@@ -46,6 +46,10 @@ export interface ManagerContractDetail {
     maintenanceFee: string;
     paymentDay: string;
     account: string;
+    specialTerms?: string;
+    autoRenewal?: string;
+    restorationDuty?: string;
+    repairDuty?: string;
   };
   inventory: string[];
   timeline: ManagerContractTimelineItem[];
@@ -184,6 +188,10 @@ export function updateManagerContractManualValues(
   id: string,
   input: {
     deposit?: string;
+    specialTerms?: string;
+    autoRenewal?: string;
+    restorationDuty?: string;
+    repairDuty?: string;
     monthlyRent?: number;
     maintenanceFee?: number;
     paymentDay?: number;

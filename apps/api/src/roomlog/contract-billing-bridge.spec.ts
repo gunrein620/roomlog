@@ -313,11 +313,11 @@ describe("trade contract billing bridge", () => {
     assert.equal(manuallyUpdated.manualValues.maintenanceFee, "0원");
     assert.equal(
       manuallyUpdated.extraction.items.find((item) => item.label === "관리비")?.value,
-      "0원",
+      undefined,
     );
     assert.equal(
       manuallyUpdated.extraction.items.find((item) => item.label === "계약 기간")?.value,
-      "2026-07-13 ~ 2099-07-12",
+      undefined,
     );
 
     assert.throws(() => service.confirmManagerContractReview("landlord-demo", first.id, {
@@ -841,7 +841,7 @@ describe("trade contract billing bridge", () => {
     assert.equal(cleared.row.contract.startDate, undefined);
     assert.equal(
       cleared.extraction.items.find((item) => item.label === "계약 기간")?.value,
-      "미확인 ~ 2099-07-12",
+      undefined,
     );
     assert.throws(
       () => service.confirmManagerContractReview("landlord-demo", contract.id, {
@@ -900,7 +900,7 @@ describe("trade contract billing bridge", () => {
     const detail = service.getManagerContractDetail("landlord-demo", draft.id);
     assert.equal(draft.monthlyRent, 0);
     assert.equal(detail.manualValues.rent, "0원");
-    assert.equal(detail.extraction.items.find((item) => item.label === "월세")?.value, "0원");
+    assert.equal(detail.extraction.items.find((item) => item.label === "월세")?.value, undefined);
   });
 
   it("rejects a deterministic relationship conflict before same-party active reuse", () => {

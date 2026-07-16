@@ -6011,8 +6011,9 @@ describe("RoomlogService", () => {
     assert.equal(tenantPrivacy.maskingEnabled, true);
     const managerDashboard = service.getManagerContractDashboard("landlord-demo");
     assert.equal(managerDashboard.rows.some((row) => row.contract.id === "ct_demo_302"), true);
+    const reviewLabels = new Set(["보증금", "특약", "자동연장", "원상복구", "수선 책임"]);
     assert.equal(
-      managerDashboard.counts.needsCheck >= tenantExtraction.items.filter((item) => item.needsCheck).length,
+      managerDashboard.counts.needsCheck >= tenantExtraction.items.filter((item) => item.needsCheck && reviewLabels.has(item.label)).length,
       true
     );
 

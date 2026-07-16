@@ -1,23 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CheckCircle2, FileText, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
 import {
   confirmManagerContract,
   getManagerContractDetail,
   runManagerContractOcr,
   updateManagerContractManualValues,
 } from "@/lib/contract-manager-api";
-import { hasContractPrefillInput, storedContractPrefillInput } from "@/lib/contract-prefill";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 import { ApiError } from "@/lib/server-api";
-import {
-  confirmationFieldLabel,
-  confirmationFieldsFromMessage,
-  contractConfirmationIssues,
-  parseConfirmationFields,
-  type ContractConfirmationField,
-  type ContractConfirmationIssue,
-} from "../contract-confirmation";
 import {
   BackLink,
   Badge,
@@ -37,9 +28,18 @@ type SearchParams = Promise<{
   source?: string;
   error?: string;
   confirmError?: string;
-  confirmFields?: string;
 }>;
 type ManagerContractDetailResult = Awaited<ReturnType<typeof getManagerContractDetail>>;
+const IMPORTANT_CONTRACT_LABELS = ["보증금", "특약", "자동연장", "원상복구", "수선 책임"] as const;
+type ImportantContractLabel = (typeof IMPORTANT_CONTRACT_LABELS)[number];
+
+function isImportantContractLabel(label: string): label is ImportantContractLabel {
+  return IMPORTANT_CONTRACT_LABELS.includes(label as ImportantContractLabel);
+}
+
+function contractReviewItems(items: ManagerContractDetailResult["extraction"]["items"]) {
+  return items.filter((item) => isImportantContractLabel(item.label));
+}
 
 export const dynamic = "force-dynamic";
 
@@ -47,48 +47,31 @@ async function confirmContractAction(formData: FormData) {
   "use server";
 
   const contractId = String(formData.get("contractId") ?? "");
-  let failure: { message: string; fields: ContractConfirmationField[] } | undefined;
+  let failure: { message: string } | undefined;
 
   try {
-    const detail = await getManagerContractDetail(contractId);
-    const issues = contractConfirmationIssues(detail.row.contract);
-
-    if (issues.length > 0) {
-      failure = {
-        message: "확정 전에 필수 계약값을 수정해 주세요.",
-        fields: issues.map((issue) => issue.field),
-      };
-    } else {
-      await confirmManagerContract(contractId);
-    }
+    await confirmManagerContract(contractId);
   } catch (error) {
     const message = error instanceof ApiError && error.message.trim()
       ? error.message
-      : "계약을 확정하지 못했습니다. 표시된 계약값을 확인한 뒤 다시 시도해 주세요.";
-    failure = { message, fields: confirmationFieldsFromMessage(message) };
+      : "계약을 확정하지 못했습니다. 보증금과 특약 조항을 확인한 뒤 다시 시도해 주세요.";
+    failure = { message };
   }
 
   if (failure) {
-    redirect(confirmationFailureUrl(contractId, failure.message, failure.fields));
+    redirect(confirmationFailureUrl(contractId, failure.message));
   }
 
   redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-00"]}?focus=${encodeURIComponent(contractId)}`);
 }
 
-function confirmationFailureUrl(
-  contractId: string,
-  message: string,
-  fields: ContractConfirmationField[],
-) {
-  const uniqueFields = [...new Set(fields)];
+function confirmationFailureUrl(contractId: string, message: string) {
   const params = new URLSearchParams({
     id: contractId,
     confirmError: message.slice(0, 240),
   });
-  if (uniqueFields.length > 0) params.set("confirmFields", uniqueFields.join(","));
 
-  const target = uniqueFields[0] ? contractFieldId(uniqueFields[0]) : "contract-confirm-error";
-  return `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?${params.toString()}#${target}`;
+  return `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?${params.toString()}#contract-confirm-error`;
 }
 
 async function runOcrAction(formData: FormData) {
@@ -108,12 +91,10 @@ async function updateManualCorrectionAction(formData: FormData) {
   try {
     await updateManagerContractManualValues(contractId, {
       deposit: textValue(formData, "deposit"),
-      monthlyRent: numberValue(formData, "monthlyRent"),
-      maintenanceFee: numberValue(formData, "maintenanceFee"),
-      paymentDay: numberValue(formData, "paymentDay"),
-      account: textValue(formData, "landlordAccount"),
-      startDate: dateValue(formData, "startDate"),
-      endDate: dateValue(formData, "endDate"),
+      specialTerms: textValue(formData, "specialTerms"),
+      autoRenewal: textValue(formData, "autoRenewal"),
+      restorationDuty: textValue(formData, "restorationDuty"),
+      repairDuty: textValue(formData, "repairDuty"),
     });
   } catch (error) {
     const message = error instanceof ApiError
@@ -125,62 +106,26 @@ async function updateManualCorrectionAction(formData: FormData) {
   redirect(`${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}&source=manual-saved`);
 }
 
-async function prefillStoredContractValuesAction(formData: FormData) {
-  "use server";
-
-  const contractId = String(formData.get("contractId") ?? "");
-  const detail = await getManagerContractDetail(contractId);
-  const input = storedContractPrefillInput(detail);
-  const hasInput = hasContractPrefillInput(input);
-
-  if (hasInput) {
-    await updateManagerContractManualValues(contractId, input);
-  }
-
-  redirect(
-    `${MANAGER_CONTRACT_ROUTES["M-DOC-01"]}?id=${encodeURIComponent(contractId)}&source=${hasInput ? "db-prefill" : "db-prefill-empty"}`,
-  );
-}
-
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const {
     id,
     source: sourceParam,
     error: errorParam,
     confirmError: confirmErrorParam,
-    confirmFields: confirmFieldsParam,
   } = await searchParams;
   const detail = await getManagerContractDetail(id);
   const source = ocrSource(detail.extraction.highlights);
   const failureInfo = source.kind === "mock" ? ocrFailureInfo(detail.extraction.highlights) : undefined;
   const valueRows = buildValueRows(detail, source.kind);
-  const needsCheckCount = detail.extraction.items.filter((item) => item.needsCheck).length;
+  const reviewItems = contractReviewItems(detail.extraction.items);
+  const needsCheckCount = reviewItems.filter((item) => item.needsCheck).length;
   const readItemCount =
     source.kind === "mock"
       ? 0
-      : detail.extraction.items.filter((item) => !isMissingDisplayValue(item.value)).length;
+      : reviewItems.filter((item) => !isMissingDisplayValue(item.value)).length;
   const notice = pageNotice(sourceParam);
   const saveError = errorParam?.trim().slice(0, 240);
   const confirmError = confirmErrorParam?.trim().slice(0, 240);
-  const requestedConfirmFields = parseConfirmationFields(confirmFieldsParam);
-  const detectedConfirmationIssues = confirmError
-    ? contractConfirmationIssues(detail.row.contract)
-    : [];
-  const confirmationIssues: ContractConfirmationIssue[] = detectedConfirmationIssues.length > 0
-    ? detectedConfirmationIssues
-    : confirmError && requestedConfirmFields[0]
-      ? [{
-          field: requestedConfirmFields[0],
-          label: confirmationFieldLabel(requestedConfirmFields[0]),
-          message: confirmError,
-        }]
-      : [];
-  const issueFields = new Set(confirmationIssues.map((issue) => issue.field));
-  const focusedConfirmationField =
-    requestedConfirmFields.find((field) => issueFields.has(field)) ?? confirmationIssues[0]?.field;
-  const confirmErrorTargetId = focusedConfirmationField
-    ? contractFieldId(focusedConfirmationField)
-    : "contract-confirm-error";
 
   return (
     <ContractShell id="M-DOC-01" title="계약서 OCR 검토·확정">
@@ -191,13 +136,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             <div style={stepRowStyle}>
               <StepPill>1 계약서 입력</StepPill>
               <StepPill active>2 OCR 분석</StepPill>
-              <StepPill active={sourceParam === "db-prefill"}>3 값 보강</StepPill>
+              <StepPill active={sourceParam === "manual-saved"}>3 핵심값 보정</StepPill>
               <StepPill active={detail.row.contract.review === "confirmed"}>4 확정</StepPill>
             </div>
             <div style={{ display: "grid", gap: "var(--space-xs)" }}>
-              <h1 style={titleStyle}>OCR 결과를 계약값으로 확정</h1>
+              <h1 style={titleStyle}>계약서 핵심 조항 검토</h1>
               <p style={mutedBodyStyle}>
-                OCR 값, 기존 DB 값, 최종 입력값을 한 표에서 비교한 뒤 필요한 부분만 수정하세요.
+                매물·계약 기본값은 DB 값을 사용하고, 원문에서 확인해야 하는 보증금과 특약성 조항만 수정하세요.
               </p>
             </div>
             <div style={badgeRowStyle}>
@@ -252,26 +197,15 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
         {confirmError ? (
           <>
-            <ContractConfirmErrorFocus targetId={confirmErrorTargetId} />
+            <ContractConfirmErrorFocus targetId="contract-confirm-error" />
             <div id="contract-confirm-error" role="alert" aria-live="assertive" tabIndex={-1}>
               <Card style={confirmErrorCardStyle}>
                 <AlertTriangle size={20} strokeWidth={2.5} color="var(--error)" aria-hidden="true" />
                 <div style={confirmErrorTextStyle}>
                   <strong>검토 확정 실패</strong>
                   <span>{confirmError}</span>
-                  {confirmationIssues.length > 0 ? (
-                    <ul style={confirmErrorListStyle}>
-                      {confirmationIssues.map((issue) => (
-                        <li key={`${issue.field}-${issue.message}`}>
-                          <a href={`#${contractFieldId(issue.field)}`} style={confirmErrorLinkStyle}>
-                            <strong>{issue.label}</strong>: {issue.message}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
                   <span style={confirmErrorHintStyle}>
-                    아래 값을 수정하고 <strong>수정 저장</strong>한 뒤 다시 검토 확정해 주세요.
+                    이 화면에서는 계약서 원문 확인이 필요한 보증금·특약만 수정합니다. DB 기본값 오류라면 매물/계약 등록값을 먼저 정리해 주세요.
                   </span>
                 </div>
               </Card>
@@ -279,29 +213,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </>
         ) : null}
 
-        <Section
-          title="OCR 결과 · DB값 비교"
-          action={
-            <form action={prefillStoredContractValuesAction}>
-              <input type="hidden" name="contractId" value={detail.row.contract.id} />
-              <StaticButton type="submit" variant="secondary" style={{ gap: "var(--space-xs)" }}>
-                <FileText size={16} strokeWidth={2.5} aria-hidden="true" />
-                <span>기존 DB 계약값 불러오기</span>
-              </StaticButton>
-            </form>
-          }
-        >
+        <Section title="계약서 핵심 항목 검토">
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <ComparisonTable rows={valueRows} />
           </Card>
         </Section>
 
-        <Section title="최종 계약값 수정">
-          <ManualCorrectionForm
-            detail={detail}
-            sourceKind={source.kind}
-            confirmationIssues={confirmationIssues}
-          />
+        <Section title="보증금·특약 수정">
+          <ManualCorrectionForm detail={detail} sourceKind={source.kind} />
         </Section>
 
         <Card style={footerCardStyle}>
@@ -313,7 +232,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             )}
             <div>
               <div style={{ fontWeight: 900 }}>{needsCheckCount ? "확정 전 확인이 남아 있습니다" : "확정 가능한 상태입니다"}</div>
-              <div style={captionStyle}>수정 저장 후 검토 확정을 누르면 납부·하자·퇴실 기준값으로 사용됩니다.</div>
+              <div style={captionStyle}>수정 저장 후 검토 확정을 누르면 보증금·특약 검토값으로 사용됩니다.</div>
             </div>
           </div>
           <form action={confirmContractAction}>
@@ -337,7 +256,7 @@ function ComparisonTable({ rows }: { rows: ValueRow[] }) {
           <tr>
             <th style={thStyle}>항목</th>
             <th style={thStyle}>OCR 요약</th>
-            <th style={thStyle}>기존 DB 요약</th>
+            <th style={thStyle}>저장값 요약</th>
             <th style={thStyle}>최종값</th>
             <th style={thStyle}>상태</th>
           </tr>
@@ -412,7 +331,7 @@ function RowDetailPanel({ row }: { row: ValueRow }) {
       ) : null}
       <div style={rowDetailPanelStyle}>
         <DetailGroup title="OCR 분석" summary={row.ocrValue} details={row.ocrDetails} evidence={row.evidence} />
-        <DetailGroup title="기존 DB" summary={row.dbValue} details={row.dbDetails} />
+        <DetailGroup title="저장값" summary={row.dbValue} details={row.dbDetails} />
         <DetailGroup
           title="최종 반영"
           summary={row.finalValue}
@@ -478,109 +397,39 @@ function ValueText({ value, strong = false }: { value: string; strong?: boolean 
   );
 }
 
-function ManualCorrectionForm({
-  detail,
-  sourceKind,
-  confirmationIssues,
-}: {
-  detail: ManagerContractDetailResult;
-  sourceKind: OcrSourceKind;
-  confirmationIssues: ContractConfirmationIssue[];
-}) {
+function ManualCorrectionForm({ detail, sourceKind }: { detail: ManagerContractDetailResult; sourceKind: OcrSourceKind }) {
   const values = manualDefaults(detail, sourceKind);
-  const issueByField = new Map(confirmationIssues.map((issue) => [issue.field, issue]));
-  const startDateIssue = issueByField.get("startDate");
-  const endDateIssue = issueByField.get("endDate");
-  const monthlyRentIssue = issueByField.get("monthlyRent");
-  const maintenanceFeeIssue = issueByField.get("maintenanceFee");
-  const paymentDayIssue = issueByField.get("paymentDay");
 
   return (
     <Card style={manualCardStyle}>
       <div style={manualHeaderStyle}>
-        <div style={{ fontWeight: 900 }}>최종값은 여기서 손으로 고칠 수 있습니다</div>
-        <p style={mutedBodyStyle}>OCR 값과 DB 값이 다르면 실제 원문 기준으로 수정한 뒤 저장하세요.</p>
+        <div style={{ fontWeight: 900 }}>계약서 원문에서 중요한 부분만 고칩니다</div>
+        <p style={mutedBodyStyle}>월세·관리비·기간·납부일·주소는 매물 DB 값을 사용하고, 보증금과 특약성 조항만 원문 기준으로 저장하세요.</p>
       </div>
       <form action={updateManualCorrectionAction} style={{ display: "grid", gap: "var(--space-md)" }}>
         <input type="hidden" name="contractId" value={detail.row.contract.id} />
         <div style={correctionGroupGridStyle}>
-          <CorrectionGroup title="계약 기간" note="계약서 원문 기준 시작일과 종료일을 확인하세요.">
-            <div style={twoColumnFieldStyle}>
-              <CorrectionField fieldId={contractFieldId("startDate")} label="계약 시작일" error={startDateIssue?.message}>
-                <input
-                  id={contractFieldId("startDate")}
-                  name="startDate"
-                  type="date"
-                  defaultValue={values.startDate}
-                  aria-invalid={Boolean(startDateIssue)}
-                  aria-describedby={startDateIssue ? contractFieldErrorId("startDate") : undefined}
-                  style={correctionInputStateStyle(Boolean(startDateIssue))}
-                />
-              </CorrectionField>
-              <CorrectionField fieldId={contractFieldId("endDate")} label="계약 종료일" error={endDateIssue?.message}>
-                <input
-                  id={contractFieldId("endDate")}
-                  name="endDate"
-                  type="date"
-                  defaultValue={values.endDate}
-                  aria-invalid={Boolean(endDateIssue)}
-                  aria-describedby={endDateIssue ? contractFieldErrorId("endDate") : undefined}
-                  style={correctionInputStateStyle(Boolean(endDateIssue))}
-                />
-              </CorrectionField>
-            </div>
-          </CorrectionGroup>
-
-          <CorrectionGroup title="금액" note="보증금은 복합 조건이 길 수 있어 그대로 보관합니다. 월세와 관리비는 숫자만 저장됩니다.">
+          <CorrectionGroup title="보증금" note="기본 보증금, 전환보증금, 최종 보증금처럼 계약서에 적힌 보증금 구조를 그대로 남깁니다.">
             <CorrectionField fieldId="contract-field-deposit" label="보증금">
               <textarea id="contract-field-deposit" name="deposit" defaultValue={values.deposit} placeholder="예: 기본 36,288,000원; 전환보증금 17,000,000원; 전환 후 53,288,000원" style={correctionTextareaStyle} />
             </CorrectionField>
-            <div style={twoColumnFieldStyle}>
-              <CorrectionField fieldId={contractFieldId("monthlyRent")} label="월세" error={monthlyRentIssue?.message}>
-                <input
-                  id={contractFieldId("monthlyRent")}
-                  name="monthlyRent"
-                  inputMode="numeric"
-                  defaultValue={formatNumberInput(values.monthlyRent)}
-                  placeholder="예: 650,000"
-                  aria-invalid={Boolean(monthlyRentIssue)}
-                  aria-describedby={monthlyRentIssue ? contractFieldErrorId("monthlyRent") : undefined}
-                  style={correctionInputStateStyle(Boolean(monthlyRentIssue))}
-                />
-              </CorrectionField>
-              <CorrectionField fieldId={contractFieldId("maintenanceFee")} label="관리비" error={maintenanceFeeIssue?.message}>
-                <input
-                  id={contractFieldId("maintenanceFee")}
-                  name="maintenanceFee"
-                  inputMode="numeric"
-                  defaultValue={formatNumberInput(values.maintenanceFee)}
-                  placeholder="예: 70,000"
-                  aria-invalid={Boolean(maintenanceFeeIssue)}
-                  aria-describedby={maintenanceFeeIssue ? contractFieldErrorId("maintenanceFee") : undefined}
-                  style={correctionInputStateStyle(Boolean(maintenanceFeeIssue))}
-                />
-              </CorrectionField>
-            </div>
           </CorrectionGroup>
 
-          <CorrectionGroup title="납부·계좌" note="납부일은 매월 기준 일자만 입력하고, 계좌는 은행명과 계좌번호를 함께 적습니다.">
+          <CorrectionGroup title="특약·책임 조항" note="특약, 자동연장, 원상복구, 수선 책임처럼 분쟁 기준이 되는 조항만 원문 기준으로 정리합니다.">
+            <CorrectionField fieldId="contract-field-specialTerms" label="특약">
+              <textarea id="contract-field-specialTerms" name="specialTerms" defaultValue={values.specialTerms} placeholder="예: 임대인·임차인 특약사항, 보증금 반환/공제 조건, 추가 약정" style={correctionTextareaStyle} />
+            </CorrectionField>
             <div style={twoColumnFieldStyle}>
-              <CorrectionField fieldId={contractFieldId("paymentDay")} label="납부일" error={paymentDayIssue?.message}>
-                <input
-                  id={contractFieldId("paymentDay")}
-                  name="paymentDay"
-                  inputMode="numeric"
-                  defaultValue={values.paymentDay}
-                  placeholder="예: 25"
-                  aria-invalid={Boolean(paymentDayIssue)}
-                  aria-describedby={paymentDayIssue ? contractFieldErrorId("paymentDay") : undefined}
-                  style={correctionInputStateStyle(Boolean(paymentDayIssue))}
-                />
+              <CorrectionField fieldId="contract-field-autoRenewal" label="자동연장">
+                <textarea id="contract-field-autoRenewal" name="autoRenewal" defaultValue={values.autoRenewal} placeholder="예: 자동연장/갱신 여부, 통지 기한" style={correctionTextareaStyle} />
               </CorrectionField>
-              <CorrectionField fieldId="contract-field-landlordAccount" label="임대인 계좌">
-                <input id="contract-field-landlordAccount" name="landlordAccount" defaultValue={values.landlordAccount} placeholder="은행명 계좌번호" style={correctionInputStyle} />
+              <CorrectionField fieldId="contract-field-restorationDuty" label="원상복구">
+                <textarea id="contract-field-restorationDuty" name="restorationDuty" defaultValue={values.restorationDuty} placeholder="예: 퇴실 시 원상복구 범위와 예외" style={correctionTextareaStyle} />
               </CorrectionField>
             </div>
+            <CorrectionField fieldId="contract-field-repairDuty" label="수선 책임">
+              <textarea id="contract-field-repairDuty" name="repairDuty" defaultValue={values.repairDuty} placeholder="예: 하자·수선 발생 시 비용 부담 주체" style={correctionTextareaStyle} />
+            </CorrectionField>
           </CorrectionGroup>
         </div>
         <div style={manualSubmitRowStyle}>
@@ -662,7 +511,7 @@ function OcrFailureCard({ info }: { info: OcrFailureInfo }) {
         <strong>실제 OCR 결과를 사용하지 못했습니다</strong>
         <span>{info.reason}</span>
         <span style={ocrFailureHintStyle}>
-          현재 표의 OCR 요약은 신뢰하지 않고, 기존 DB 계약값 또는 수동 입력값으로 최종값을 보강해야 합니다.
+          현재 표의 OCR 요약은 신뢰하지 않고, 계약서 원문을 보며 보증금과 특약성 조항을 직접 정리해야 합니다.
         </span>
       </div>
     </Card>
@@ -695,18 +544,9 @@ type OcrFailureInfo = {
 };
 
 function buildValueRows(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind): ValueRow[] {
-  const contract = detail.row.contract;
-  const termDb = contract.startDate || contract.endDate ? `${dateInputValue(contract.startDate) || "시작일 미등록"} ~ ${dateInputValue(contract.endDate) || "종료일 미등록"}` : "";
-  const detailAddressDb = `${detail.row.buildingName} ${detail.row.contract.unitId}호`.trim();
-
   return [
-    makeValueRow(detail, "계약 기간", termDb, sourceKind),
     makeValueRow(detail, "보증금", storedManualValue(detail, "보증금", detail.manualValues.deposit), sourceKind),
-    makeValueRow(detail, "월세", contract.monthlyRent !== undefined ? `${contract.monthlyRent.toLocaleString("ko-KR")}원` : "", sourceKind),
-    makeValueRow(detail, "관리비", contract.maintenanceFee !== undefined ? `${contract.maintenanceFee.toLocaleString("ko-KR")}원` : "", sourceKind),
-    makeValueRow(detail, "납부일", contract.paymentDay !== undefined ? `매월 ${contract.paymentDay}일` : "", sourceKind),
-    makeValueRow(detail, "임대인 계좌", storedManualValue(detail, "임대인 계좌", detail.manualValues.account), sourceKind),
-    makeValueRow(detail, "상세 주소", detailAddressDb, sourceKind),
+    makeValueRow(detail, "특약", storedManualValue(detail, "특약", detail.manualValues.specialTerms), sourceKind),
     makeValueRow(detail, "자동연장", "", sourceKind),
     makeValueRow(detail, "원상복구", "", sourceKind),
     makeValueRow(detail, "수선 책임", "", sourceKind),
@@ -737,12 +577,12 @@ function makeValueRow(
     ? "직접 입력 필요"
     : shouldPreferDbValue
       ? ocrFailed
-        ? "OCR 실패로 DB값 사용"
-        : "확인 필요 OCR 대신 DB값 사용"
+        ? "OCR 실패로 저장값 사용"
+        : "확인 필요 OCR 대신 저장값 사용"
       : hasUsableOcrValue
         ? "OCR값 사용"
         : hasDbValue
-          ? "DB값 사용"
+          ? "저장값 사용"
           : "직접 입력 필요";
   const displayOcrValue = ocrFailed ? "OCR 실패 - 미추출" : summarizeContractValue(label, rawOcrValue);
   const displayDbValue = normalizedDbValue ? summarizeContractValue(label, normalizedDbValue) : "없음";
@@ -754,7 +594,7 @@ function makeValueRow(
     dbValue: displayDbValue,
     finalValue: displayFinalValue,
     finalSource,
-    status: missingFinal ? "부족" : ocrFailed ? "DB/수동 확인" : item?.needsCheck ? "확인 필요" : "확인",
+    status: missingFinal ? "부족" : ocrFailed ? "원문 확인" : item?.needsCheck ? "확인 필요" : "확인",
     statusEmphasis: missingFinal || (!ocrFailed && Boolean(item?.needsCheck)),
     evidence: ocrFailed ? undefined : item?.evidence,
     ocrDetails: ocrFailed ? [] : contractValueDetails(label, rawOcrValue),
@@ -784,18 +624,6 @@ function summarizeContractValue(label: string, value: string) {
     return preferredMoneySummary(normalized, ["전환 후", "임대보증금", "보증금", "기본"]);
   }
 
-  if (label === "월세") {
-    return preferredMoneySummary(normalized, ["전환 후", "월임대료", "월세", "기본"]);
-  }
-
-  if (label === "납부일" && /확인되지 않음/.test(normalized)) {
-    return "정기 납부일 확인 필요";
-  }
-
-  if (label === "임대인 계좌" && /확인되지 않음/.test(normalized)) {
-    return "계좌 확인 필요";
-  }
-
   return normalized;
 }
 
@@ -814,26 +642,10 @@ function contractValueDetails(label: string, value: string): ValueDetail[] {
   const normalized = value.trim();
   if (!normalized || isMissingDisplayValue(normalized) || normalized === "직접 입력 필요") return [];
 
-  if (label === "계약 기간") return termDetails(normalized);
   if (label === "보증금") return moneyDetails(normalized, ["기본", "전환보증금", "전환 후", "임대보증금", "보증금"]);
-  if (label === "월세") return moneyDetails(normalized, ["기본", "전환 후", "월임대료", "월세"]);
-  if (label === "관리비") return maintenanceDetails(normalized);
-  if (label === "납부일") return paymentDayDetails(normalized);
-  if (label === "임대인 계좌") return accountDetails(normalized);
-  if (label === "상세 주소") return addressDetails(normalized);
-  if (["자동연장", "원상복구", "수선 책임"].includes(label)) return [{ label: "조항 요약", value: normalized }];
+  if (["특약", "자동연장", "원상복구", "수선 책임"].includes(label)) return [{ label: "조항 요약", value: normalized }];
 
   return [];
-}
-
-function termDetails(value: string): ValueDetail[] {
-  const match = value.match(/(\d{4}[.-]\d{2}[.-]\d{2})\s*~\s*(\d{4}[.-]\d{2}[.-]\d{2})/);
-  if (!match) return [];
-
-  return [
-    { label: "시작일", value: match[1] ?? "" },
-    { label: "종료일", value: match[2] ?? "" },
-  ].filter((detail) => detail.value);
 }
 
 function moneyDetails(value: string, labels: string[]): ValueDetail[] {
@@ -852,77 +664,26 @@ function moneyDetails(value: string, labels: string[]): ValueDetail[] {
   return amounts.map((amount, index) => ({ label: `후보 ${index + 1}`, value: amount }));
 }
 
-function maintenanceDetails(value: string): ValueDetail[] {
-  const details = moneyDetails(value, ["관리비", "등록값", "월 관리비"]);
-  if (/확인되지 않음/.test(value)) details.unshift({ label: "OCR 상태", value: "확인되지 않음" });
-  return details;
-}
-
-function paymentDayDetails(value: string): ValueDetail[] {
-  const details: ValueDetail[] = [];
-  const recurring = value.match(/매월\s*\d{1,2}일/);
-  const dates = value.match(/\d{4}[.-]\d{2}[.-]\d{2}/g);
-
-  if (recurring?.[0]) details.push({ label: "정기 납부일", value: recurring[0] });
-  if (/확인되지 않음/.test(value)) details.push({ label: "OCR 상태", value: "정기 납부일 확인되지 않음" });
-  if (dates?.length) details.push({ label: "납부현황 기재일", value: dates.join(", ") });
-
-  return details;
-}
-
-function accountDetails(value: string): ValueDetail[] {
-  if (/확인되지 않음/.test(value)) return [{ label: "OCR 상태", value: "계좌 확인 필요" }];
-
-  const parts = value.split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return [];
-
-  return [
-    { label: "은행/예금주", value: parts.slice(0, -1).join(" ") },
-    { label: "계좌번호", value: parts[parts.length - 1] ?? "" },
-  ];
-}
-
-function addressDetails(value: string): ValueDetail[] {
-  const match = value.match(/^(.+)\s+([^\s]+호)$/);
-  if (!match) return [];
-
-  return [
-    { label: "건물", value: match[1] ?? "" },
-    { label: "호실", value: match[2] ?? "" },
-  ].filter((detail) => detail.value);
-}
-
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function manualDefaults(detail: ManagerContractDetailResult, sourceKind: OcrSourceKind) {
-  const contract = detail.row.contract;
-  const rentCandidate = sourceKind === "mock" ? "" : extractionValue(detail, "월세");
-  const maintenanceFeeCandidate = sourceKind === "mock" ? "" : extractionValue(detail, "관리비");
-  const paymentDayCandidate = sourceKind === "mock" ? "" : extractionValue(detail, "납부일");
-
   return {
-    startDate: dateInputValue(contract.startDate),
-    endDate: dateInputValue(contract.endDate),
     deposit:
       storedManualValue(detail, "보증금", detail.manualValues.deposit) ||
       textInputCandidate(detail, "보증금", sourceKind),
-    monthlyRent: String(contract.monthlyRent ?? parseMoneyNumber(rentCandidate) ?? ""),
-    maintenanceFee: String(contract.maintenanceFee ?? parseMoneyNumber(maintenanceFeeCandidate) ?? ""),
-    paymentDay: String(contract.paymentDay ?? parsePaymentDay(paymentDayCandidate) ?? ""),
-    landlordAccount:
-      storedManualValue(detail, "임대인 계좌", detail.manualValues.account) ||
-      textInputCandidate(detail, "임대인 계좌", sourceKind),
+    specialTerms:
+      storedManualValue(detail, "특약", detail.manualValues.specialTerms) ||
+      textInputCandidate(detail, "특약", sourceKind),
+    autoRenewal: textInputCandidate(detail, "자동연장", sourceKind),
+    restorationDuty: textInputCandidate(detail, "원상복구", sourceKind),
+    repairDuty: textInputCandidate(detail, "수선 책임", sourceKind),
   };
 }
 
 function extractionItem(detail: ManagerContractDetailResult, label: string) {
   return detail.extraction.items.find((item) => item.label === label);
-}
-
-function extractionValue(detail: ManagerContractDetailResult, label: string) {
-  return extractionItem(detail, label)?.value?.trim() ?? "";
 }
 
 function storedManualValue(detail: ManagerContractDetailResult, label: string, value?: string) {
@@ -942,55 +703,8 @@ function isMissingDisplayValue(value?: string) {
   return !normalized || normalized === "미확인" || normalized === "원문 확인 필요" || normalized === "관리자 수동값 없음" || normalized === "없음";
 }
 
-function parseMoneyNumber(value?: string) {
-  const digits = value?.replace(/[^\d]/g, "");
-  if (!digits) return undefined;
-  const parsed = Number(digits);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function formatNumberInput(value?: string) {
-  const digits = value?.replace(/[^\d]/g, "");
-  if (!digits) return "";
-
-  const parsed = Number(digits);
-  return Number.isFinite(parsed) ? parsed.toLocaleString("ko-KR") : value ?? "";
-}
-
-function parsePaymentDay(value?: string) {
-  const match = value?.match(/\d{1,2}/);
-  if (!match) return undefined;
-  const parsed = Number(match[0]);
-  return parsed >= 1 && parsed <= 31 ? parsed : undefined;
-}
-
 function textValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
-}
-
-function numberValue(formData: FormData, name: string) {
-  const raw = textValue(formData, name).replaceAll(",", "").replace(/[^\d]/g, "");
-  if (!raw) return undefined;
-
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? Math.floor(parsed) : undefined;
-}
-
-function dateValue(formData: FormData, name: string) {
-  const value = textValue(formData, name);
-  return value || undefined;
-}
-
-function dateInputValue(iso?: string) {
-  return iso?.slice(0, 10) ?? "";
-}
-
-function contractFieldId(field: ContractConfirmationField) {
-  return `contract-field-${field}`;
-}
-
-function contractFieldErrorId(field: ContractConfirmationField) {
-  return `${contractFieldId(field)}-error`;
 }
 
 function manualInputValue(value?: string) {
@@ -1057,10 +771,8 @@ function ocrFailureInfo(highlights: string[]): OcrFailureInfo {
 }
 
 function pageNotice(sourceParam?: string) {
-  if (sourceParam === "db-prefill") return "기존 DB 계약값을 부족한 항목에 반영했습니다. 최종값을 확인해 주세요.";
-  if (sourceParam === "db-prefill-empty") return "추가로 채울 기존 DB 계약값이 없습니다. 직접 입력해 주세요.";
-  if (sourceParam === "manual-saved") return "수정한 최종 계약값을 저장했습니다.";
-  if (sourceParam === "ocr-first") return "계약서 입력 후 OCR 분석을 실행했습니다. 부족한 값은 DB값으로 보강할 수 있습니다.";
+  if (sourceParam === "manual-saved") return "수정한 보증금·특약 검토값을 저장했습니다.";
+  if (sourceParam === "ocr-first") return "계약서 입력 후 OCR 분석을 실행했습니다. 보증금과 특약성 조항만 확인해 주세요.";
   return "";
 }
 
@@ -1139,19 +851,6 @@ const confirmErrorTextStyle = {
   gap: "var(--space-sm)",
   width: "100%",
   lineHeight: "var(--lh-body)",
-} as const;
-
-const confirmErrorListStyle = {
-  display: "grid",
-  gap: "var(--space-xs)",
-  margin: 0,
-  paddingLeft: "var(--space-lg)",
-} as const;
-
-const confirmErrorLinkStyle = {
-  color: "inherit",
-  textDecoration: "underline",
-  textUnderlineOffset: "var(--space-xs)",
 } as const;
 
 const confirmErrorHintStyle = {

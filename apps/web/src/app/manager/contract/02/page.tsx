@@ -128,6 +128,9 @@ function uploadedFile(formData: FormData, name: string) {
 
 function contractActionErrorMessage(error: unknown) {
   if (error instanceof ApiError && error.message.trim()) return error.message;
+  if (error instanceof Error && /fetch failed|failed to fetch|networkerror|load failed/i.test(error.message)) {
+    return "API 서버에 연결하지 못했습니다. 현재 localhost:3000/4000을 Docker 컨테이너가 잡고 있거나 API 서버가 다른 환경으로 떠 있는지 확인해 주세요.";
+  }
   if (error instanceof Error && error.message.trim()) return error.message;
   return "계약서 등록 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
 }

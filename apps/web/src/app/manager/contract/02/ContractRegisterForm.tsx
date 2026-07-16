@@ -74,7 +74,7 @@ export function ContractRegisterForm({ action }: { action: ContractRegisterActio
             <StepPill>4 확정</StepPill>
           </div>
           <h2 style={titleStyle}>계약서 파일만 먼저 입력하세요</h2>
-          <p style={mutedStyle}>OCR이 읽은 뒤 부족한 값은 기존 DB 계약값으로 보강하고, 마지막에 사람이 직접 수정합니다.</p>
+          <p style={mutedStyle}>매물 기본값은 DB를 사용하고, OCR은 계약서 원문에서 보증금과 특약성 조항만 확인합니다.</p>
         </div>
 
         <div className="contract-register-upload-grid" style={uploadGridStyle}>

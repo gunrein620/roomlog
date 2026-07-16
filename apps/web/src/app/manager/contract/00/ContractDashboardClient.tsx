@@ -274,7 +274,7 @@ function ContractDashboardTable({
                     {row.slaOverdue ? "검토 필요" : row.statusLabel}
                   </span>
                 </td>
-                <td>
+                <td className="manager-contract-table__building">
                   <Link href={detailHref} className="manager-contract-table__primary-link">
                     {row.buildingName}
                   </Link>
