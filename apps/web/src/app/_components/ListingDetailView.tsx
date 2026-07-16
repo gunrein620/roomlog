@@ -368,6 +368,7 @@ export function ListingDetailView({
               ? { lat: listing.lat, lng: listing.lng }
               : null
           }
+          address={[listing.location, listing.detailAddress].filter(Boolean).join(" ")}
           title={listing.title}
         />
       </section>

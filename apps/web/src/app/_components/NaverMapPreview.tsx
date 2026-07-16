@@ -4,7 +4,6 @@
 // 상세 라우트 분리(1단계)로 page.tsx에서 추출했다. 전역 window.naver 타입 선언도 이 모듈이 단일 소유.
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
-import { mapListings } from "@/lib/listing-catalog";
 
 type NaverLatLng = {
   lat?: () => number;
@@ -125,7 +124,7 @@ export type NaverMapViewport = {
   zoom: number | null;
 };
 
-const mapDealMarkers = mapListings;
+const DEFAULT_MAP_CENTER = { lat: 37.5665, lng: 126.9780 };
 
 function coordinateValue(point: NaverLatLng | undefined, axis: "lat" | "lng") {
   if (!point) return NaN;
@@ -158,6 +157,7 @@ export function NaverMapPreview({
   className = "",
   center,
   showCenterMarker = true,
+  address,
   title,
   markers,
   onViewportChange
@@ -167,6 +167,7 @@ export function NaverMapPreview({
   center?: { lat: number; lng: number } | null;
   /** 지도 탭은 중심 이동만 필요할 수 있어 현재 위치/상세 마커 표시를 분리한다. */
   showCenterMarker?: boolean;
+  address?: string | null;
   title?: string;
   /** 지도 탭용 동적 마커 목록 — 값이 바뀌면 마커를 다시 그린다(직접등록 매물 포함). */
   markers?: MapMarkerInput[];
@@ -192,6 +193,7 @@ export function NaverMapPreview({
     center && Number.isFinite(center.lat) && Number.isFinite(center.lng)
       ? `${center.lat}:${center.lng}`
       : "";
+  const addressKey = typeof address === "string" ? address.trim() : "";
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
@@ -237,11 +239,12 @@ export function NaverMapPreview({
 
     isMapInitializedRef.current = true;
     const maps = window.naver.maps;
-    // 매물 좌표가 주어지면 그 위치를, 아니면 기존 데모 중심(방배)을 쓴다.
+    // 매물 좌표가 주어지면 그 위치를 쓰고, 좌표가 없으면 주소 지오코딩 결과로 이동한다.
     const hasCenter = center && Number.isFinite(center.lat) && Number.isFinite(center.lng);
+    const hasAddressFallback = Boolean(addressKey);
     const centerLatLng = hasCenter
       ? new maps.LatLng(center.lat, center.lng)
-      : new maps.LatLng(37.4875, 126.9931);
+      : new maps.LatLng(DEFAULT_MAP_CENTER.lat, DEFAULT_MAP_CENTER.lng);
     const map = new maps.Map(mapRef.current, {
       center: centerLatLng,
       zoom: 16,
@@ -258,22 +261,7 @@ export function NaverMapPreview({
     viewportListenersRef.current = viewportListeners;
     viewportPollTimerRef.current = window.setInterval(emitViewport, 500);
 
-    // markers 프롭이 있으면(지도 탭) 마커는 아래 동기화 이펙트가 그린다 — 여기서는 지도만 만든다.
-    if (!hasCenter && !markers) {
-      mapDealMarkers.forEach((deal, index) => {
-        const position = new maps.LatLng(deal.lat, deal.lng);
-        new maps.Marker({
-          map,
-          position,
-          icon: {
-            content: `<button class="naver-price-marker ${index === 0 ? "active" : ""}" type="button" aria-label="${deal.title} ${deal.price}"><b>${deal.clusterLabel}</b><strong>${deal.mapLabel}</strong></button>`,
-            anchor: new maps.Point(42, 56)
-          }
-        });
-      });
-    }
-
-    const shouldShowCenterMarker = hasCenter ? showCenterMarker : !markers;
+    const shouldShowCenterMarker = hasCenter ? showCenterMarker : false;
     if (shouldShowCenterMarker) {
       const marker = new maps.Marker({
         map,
@@ -299,7 +287,7 @@ export function NaverMapPreview({
         setLoadState("error");
       }
     }, 600);
-  }, [isScriptReady, loadState]);
+  }, [addressKey, center, isScriptReady, loadState, markers, showCenterMarker, title]);
 
   // 동적 마커 동기화 — 매물 목록(직접등록 포함)이 바뀌면 기존 마커를 지우고 다시 그린다.
   useEffect(() => {
@@ -357,6 +345,48 @@ export function NaverMapPreview({
     });
   }, [centerKey, loadState, showCenterMarker]);
 
+  useEffect(() => {
+    if (centerKey || !addressKey || loadState !== "ready") return;
+    const maps = window.naver?.maps;
+    const map = mapInstanceRef.current;
+    if (!maps || !map?.setCenter || !maps.Service?.geocode) return;
+    const setCenter = map.setCenter;
+
+    maps.Service.geocode({ query: addressKey }, (status, response) => {
+      if (status !== maps.Service?.Status.OK) return;
+      const firstAddress = response.v2?.addresses?.[0];
+      const lat = Number(firstAddress?.y);
+      const lng = Number(firstAddress?.x);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const nextCenter = new maps.LatLng(lat, lng);
+      setCenter(nextCenter);
+      onViewportChangeRef.current?.(readMapViewport(map));
+
+      if (!showCenterMarker) {
+        centerMarkerRef.current?.setMap(null);
+        centerMarkerRef.current = null;
+        return;
+      }
+
+      if (centerMarkerRef.current?.setPosition) {
+        centerMarkerRef.current.setPosition(nextCenter);
+        return;
+      }
+
+      centerMarkerRef.current?.setMap(null);
+      const marker = new maps.Marker({
+        map,
+        position: nextCenter
+      });
+      centerMarkerRef.current = marker;
+      const infoWindow = new maps.InfoWindow({
+        content: `<div class="naver-info-window"><b>${title ? escapeHtml(title) : "매물 위치"}</b><strong>${escapeHtml(addressKey)}</strong></div>`
+      });
+      infoWindow.open(map, marker);
+    });
+  }, [addressKey, centerKey, loadState, showCenterMarker, title]);
+
   const handleScriptReady = () => {
     requestAnimationFrame(() => {
       if (window.naver?.maps) {
@@ -412,12 +442,6 @@ export function NaverMapPreview({
         </div>
       ) : null}
 
-      {loadState === "ready" ? (
-        <div className="map-live-controls" aria-label="지도 도구">
-          <button className="float-action shot" type="button">현장촬영</button>
-          <button className="float-action draw" type="button">그리기</button>
-        </div>
-      ) : null}
     </div>
   );
 }

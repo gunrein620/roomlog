@@ -218,7 +218,6 @@ const notificationItems = [
 ];
 
 const marketSignals = [
-  { label: "전월세 평균", value: "월 76만", caption: "방배동 원룸 기준" },
   { label: "실매물 확인", value: "92%", caption: "최근 7일 확인율" },
   { label: "문의 응답", value: "8분", caption: "파트너 평균" }
 ];
@@ -244,9 +243,6 @@ const residentChecklist = [
 ];
 
 const mapInsightItems = [
-  { label: "전월세 평균", value: "월 76만", caption: "방배동 원룸" },
-  { label: "안전시설", value: "CCTV 12곳", caption: "치안센터 1곳" },
-  { label: "즐겨찾기", value: "조건 저장", caption: "지도 조건 알림" },
   { label: "3D 가능", value: "12개", caption: "투어 우선 보기" }
 ];
 
@@ -260,8 +256,7 @@ const savedComparisonItems = [
 const homeWebSummaryItems = [
   { label: "중개사 응답", value: "평균 8분" },
   { label: "오늘 확인", value: "39개" },
-  { label: "3D 가능", value: "12개" },
-  { label: "안전시설", value: "CCTV 12곳" }
+  { label: "3D 가능", value: "12개" }
 ];
 
 const aiBrokerSuggestions = [
@@ -272,8 +267,7 @@ const aiBrokerSuggestions = [
 
 const neighborhoodRankItems = [
   { rank: "1", label: "교통", value: "내방역 도보 5분" },
-  { rank: "2", label: "생활", value: "편의점 4곳 · 카페 7곳" },
-  { rank: "3", label: "안전", value: "CCTV 12곳 · 치안센터 1곳" }
+  { rank: "2", label: "생활", value: "편의점 4곳 · 카페 7곳" }
 ];
 
 
@@ -1480,6 +1474,29 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
       return a.accuracyRank - b.accuracyRank;
     });
+  const marketAverageBaseListings = visibleMapListings.filter((listing) => listing.meta.includes("원룸"));
+  const marketAverageListings = marketAverageBaseListings.length > 0 ? marketAverageBaseListings : visibleMapListings;
+  const marketAverageRent =
+    marketAverageListings.length > 0
+      ? Math.round(marketAverageListings.reduce((total, listing) => total + listing.monthlyRent, 0) / marketAverageListings.length)
+      : null;
+  const mapMarketAreaLabel = isLocationScopedMap ? "현재 위치 주변" : selectedAreaTitle;
+  const dynamicMapInsightItems = [
+    {
+      label: "전월세 평균",
+      value: marketAverageRent !== null ? `월 ${marketAverageRent}만` : "매물 없음",
+      caption: `${mapMarketAreaLabel} ${marketAverageBaseListings.length > 0 ? "원룸" : "표시 매물"} 기준`
+    },
+    ...mapInsightItems
+  ];
+  const dynamicMarketSignals = [
+    {
+      label: "전월세 평균",
+      value: marketAverageRent !== null ? `월 ${marketAverageRent}만` : "매물 없음",
+      caption: `${mapMarketAreaLabel} ${marketAverageBaseListings.length > 0 ? "원룸" : "표시 매물"} 기준`
+    },
+    ...marketSignals
+  ];
   const mapScopeLabel = isLocationScopedMap
     ? "현재 위치"
     : mapSearchContext.queryType
@@ -2180,11 +2197,11 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </section>
 
           <section className="market-signal-grid" aria-label="지역 매물 지표">
-            {marketSignals.map((item) => (
+            {dynamicMarketSignals.map((item) => (
               <article key={item.label}>
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
-                <p>{item.label === "전월세 평균" ? `${selectedAreaTitle} 원룸 기준` : item.caption}</p>
+                <p>{item.caption}</p>
               </article>
             ))}
           </section>
@@ -2334,7 +2351,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </div>
 
           <section className="map-insight-strip" aria-label="지도 생활권 요약">
-            {mapInsightItems.map((item) => (
+            {dynamicMapInsightItems.map((item) => (
               <article key={item.label}>
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
