@@ -202,7 +202,7 @@ export function ResponsibilityCard({ analysis }: { analysis?: DefectAnalysis | n
       <div style={muted}>확정 아님 · 추가 정보 확인 후 다시 검토할 수 있음</div>
       <div style={row}>
         <Button variant="secondary">추가 정보 입력</Button>
-        <Badge>{analysis.moveinComparisonAvailable ? "입주 기록 비교 가능" : "입주 기록 없음"}</Badge>
+        {analysis.moveinComparisonAvailable ? <Badge>입주 기록 비교 가능</Badge> : null}
       </div>
     </Card>
   );
