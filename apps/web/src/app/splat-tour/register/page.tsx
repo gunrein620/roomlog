@@ -1,8 +1,8 @@
 "use client";
 
-import { Canvas, useThree } from "@react-three/fiber";
-import { MapControls } from "@react-three/drei";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef } from "react";
 import { SplatScene, loadSplatTuningProfile, type SplatTuningProfile } from "../splat-scene";
 import { composeWithPickViewTuning, solveSimilarity } from "../similarity-solve";
 import { SPLAT_CLIP_ROOM } from "../splat-clip";
@@ -16,6 +16,7 @@ import {
 } from "../splat-plan-shape";
 import type { WheretoputWall3D } from "../../floor-plan-3d/room-model/types";
 import type { Point2, RegistrationPointPair, SplatTransform } from "../tour-types";
+import { rayPlaneIntersectionXZ } from "../register-pick";
 import { getSplatAsset, registerSplatAsset, resolveAssetFileUrl, type SplatAsset } from "@/lib/splat-asset-api";
 import { fetchOwnerListings, resolveRegisterPlanSource } from "@/lib/owner-tour-assets";
 
@@ -44,6 +45,10 @@ export default function Page() {
   const [planSource, setPlanSource] = useState<PlanSource>("placeholder");
   const [planMessage, setPlanMessage] = useState("");
   const [splatReady, setSplatReady] = useState(false);
+  // 오빗 컨트롤 인스턴스 — "위에서 보기" 버튼이 탑다운 프리셋으로 되돌릴 때 reset()을 호출한다.
+  const orbitRef = useRef<ElementRef<typeof OrbitControls>>(null);
+  // 탑다운 복귀: 생성 시점(카메라 [0,8,0]·zoom 140·target 원점)으로 되돌린다.
+  const resetToTopDown = () => orbitRef.current?.reset();
   // 정합 저장 시 자산에 붙일 서버 도면 id. 서버 저장된 floorPlanDraft를 쓸 때만 값이 생긴다.
   // 업로드/플레이스홀더 도면은 서버 id가 없어 null → 이 경우 가구 연결은 만들어지지 않는다.
   const [planServerId, setPlanServerId] = useState<string | null>(null);
@@ -265,9 +270,18 @@ export default function Page() {
           <PaneTitle step="1" label="splat 탑다운 — 바닥 모서리 클릭" picks={splatPicks.length} />
           <div style={canvasWrap}>
             <Canvas orthographic camera={{ position: [0, 8, 0], zoom: 140, near: 0.1, far: 100 }}>
-              <TopDownRig />
-              {/* 탑다운 전용 컨트롤: 휠=확대, 드래그=이동. 회전은 잠근다(픽 좌표는 XZ 정사영 전제). */}
-              <MapControls enableRotate={false} makeDefault minZoom={40} maxZoom={600} />
+              {/* 자유 시점: 드래그=회전/틸트, 우드래그=이동, 휠=확대. 시작·복귀는 탑다운([0,8,0]).
+                  픽은 카메라와 무관한 바닥 평면 레이캐스트라(rayPlaneIntersectionXZ) 각도가 좌표에 영향 없음. */}
+              <OrbitControls
+                ref={orbitRef}
+                makeDefault
+                enableDamping
+                minZoom={40}
+                maxZoom={600}
+                minPolarAngle={0}
+                maxPolarAngle={Math.PI / 2 - 0.05}
+                target={[0, 0, 0]}
+              />
               <SplatScene
                 defaultFitMode="native"
                 src={splatSrc}
@@ -293,7 +307,10 @@ export default function Page() {
               // 페인트 전 빈 화면에 클릭하는 사고 방지 — 로드 완료까지 클릭을 막고 안내한다.
               <div style={loadingOverlay}>splat 로딩 중… (수십 초 걸릴 수 있어요)</div>
             ) : null}
-            <span style={hint}>클릭 = 점 찍기 (A→B, 3번째 클릭 = 처음부터) · 드래그 = 이동 · 휠 = 확대</span>
+            <button type="button" style={topDownBtn} onClick={resetToTopDown} title="탑다운 시점으로 되돌리기">
+              위에서 보기
+            </button>
+            <span style={hint}>클릭 = 점 찍기 (A→B, 3번째 = 처음부터) · 드래그 = 회전 · 우드래그 = 이동 · 휠 = 확대</span>
           </div>
         </section>
 
@@ -376,31 +393,22 @@ export default function Page() {
   );
 }
 
-// 탑다운 정사영: 카메라를 위에서 아래(-Y)로 내려다보게 세팅. up을 -Z로 두어 화면 위=방 안쪽.
-function TopDownRig() {
-  const camera = useThree((s) => s.camera);
-  useEffect(() => {
-    camera.up.set(0, 0, -1);
-    camera.position.set(0, 8, 0);
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-  }, [camera]);
-  return null;
-}
-
-// y=0 바닥 평면. onClick의 event.point가 월드 교차점을 직접 준다(수동 언프로젝트 불필요).
-// onPointerDown이 아니라 onClick + delta 가드: MapControls 드래그(팬) 시작이 픽으로 오인되지 않게.
+// y=0 바닥 평면. 클릭 광선을 이 평면과 analytic하게 교차시켜(rayPlaneIntersectionXZ) 카메라 각도와
+// 무관하게 XZ를 픽한다. 오빗 회전 후에도 좌표가 정확하다. 넉넉한 크기라 틸트 상태 클릭도 평면 위에 떨어진다.
+// onPointerDown이 아니라 onClick + delta 가드: 회전/이동 드래그가 픽으로 오인되지 않게.
 function PickPlane({ onPick }: { onPick: (x: number, z: number) => void }) {
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
       onClick={(event) => {
-        if (event.delta > 4) return; // 드래그였다 — 픽 아님
+        if (event.delta > 4) return; // 드래그(회전/이동)였다 — 픽 아님
         event.stopPropagation();
-        onPick(event.point.x, event.point.z);
+        // 광선-바닥 교차가 정석. 평행/뒤쪽 등 실패 시 mesh 교차점(event.point)으로 폴백.
+        const hit = rayPlaneIntersectionXZ(event.ray) ?? { x: event.point.x, z: event.point.z };
+        onPick(hit.x, hit.z);
       }}
     >
-      <planeGeometry args={[40, 40]} />
+      <planeGeometry args={[80, 80]} />
       <meshBasicMaterial color="#38bdf8" transparent opacity={0.06} />
     </mesh>
   );
@@ -523,6 +531,20 @@ const assetBannerTone: Record<AssetBanner["tone"], CSSProperties> = {
   }
 };
 const hint: CSSProperties = { position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "#64748b" };
+const topDownBtn: CSSProperties = {
+  position: "absolute",
+  top: 8,
+  right: 8,
+  zIndex: 2,
+  background: "#0f172a",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  padding: "7px 12px",
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: "pointer"
+};
 const loadingOverlay: CSSProperties = {
   position: "absolute",
   inset: 0,
