@@ -53,7 +53,19 @@ describe("Docker Postgres local database wiring", () => {
         deployWorkflowSource,
         new RegExp(`${key}: "\\$\\{\\{ secrets\\.${key} \\}\\}"`)
       );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`${key}="\\$\\(read_prod_env_key ${key}\\)"`)
+      );
+      assert.match(
+        deployWorkflowSource,
+        new RegExp(`:\\s+"\\$\\{${key}:\\?${key} secret is required\\}"`)
+      );
       assert.match(deployWorkflowSource, new RegExp(`^\\s+${key}=\\$\\{${key}\\}$`, "m"));
     }
+    assert.match(
+      deployWorkflowSource,
+      /ROBOFLOW_API_KEY\|VENDOR_ACTIVATION_KEY_PEPPER\|VENDOR_ACTIVATION_SESSION_SECRET/
+    );
   });
 });
