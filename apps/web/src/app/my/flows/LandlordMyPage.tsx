@@ -768,7 +768,6 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               <input
                 type="date"
                 value={ownerForm.moveIn}
-                min={new Date().toISOString().slice(0, 10)}
                 onChange={(event) => updateOwnerForm("moveIn", event.target.value)}
                 aria-label="입주가능일 달력 선택"
               />

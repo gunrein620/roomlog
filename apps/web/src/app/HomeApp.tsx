@@ -684,6 +684,10 @@ const getMapFilterSummary = (filter: string) => {
     return "3D 투어 가능";
   }
 
+  if (filter === "찜한 매물") {
+    return "관심목록 기준";
+  }
+
   return "시세 지도 기준";
 };
 
@@ -1473,6 +1477,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   });
   const visibleHomeCount = visibleHomeListings.length;
   const mapFilterSummary = getMapFilterSummary(activeMapFilter);
+  const mapFilterOptions = ["시세", "원룸·투룸", "보증금", "안전", "3D 가능", "찜한 매물"];
   // 직접등록 매물을 지도 목록·마커에 합류 — 좌표(lat/lng) 있는 매물은 지도에 찍히고, 없는 매물도 목록에는 뜬다.
   const allMapItems = [
     ...tradeListings.map((listing, index) => tradeListingToMapItem(listing, index, tradeListings.length)),
@@ -1514,6 +1519,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     : mapItemsWithDistance;
   const visibleMapListings = locationScopedMapItems
     .filter((listing) => {
+      if (activeMapFilter === "찜한 매물") {
+        return savedListingNos.includes(listing.listingNo);
+      }
+
       if (activeMapFilter === "3D 가능") {
         return listing.has3DTour;
       }
@@ -1603,14 +1612,20 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       : listing.distance;
   const mapRoomsFeedback = isRadiusEmptyMap
     ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
+    : activeMapFilter === "찜한 매물"
+      ? `관심목록에 저장한 매물 ${visibleMapListings.length}개를 보여줍니다.`
     : `${activeSort} · ${mapFilterSummary} 조건으로 우선 매물 ${visibleMapListings.length}개를 먼저 보여줍니다.`;
   const mapEmptyTitle = isRadiusEmptyMap
     ? isLocationScopedMap
       ? "내 위치 반경 내 매물이 없습니다"
       : "반경 내 매물이 없습니다"
+    : activeMapFilter === "찜한 매물"
+      ? "찜한 매물이 없습니다"
     : "조건에 맞는 매물이 없습니다";
   const mapEmptyDescription = isRadiusEmptyMap
     ? `${isLocationScopedMap ? "현재 위치" : selectedAreaTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
+    : activeMapFilter === "찜한 매물"
+      ? "관심목록에 저장한 매물이 있으면 지도와 목록에 함께 표시됩니다."
     : `${activeSort} · ${mapFilterSummary} 조건에 맞는 매물이 없습니다.`;
   const mapViewportSpanM = mapViewportMaxSpanMeters(mapViewport);
   const mapPopupScopeRadiusM = isDistanceScopedMap ? mapSearchContext.radiusM : MAP_SEARCH_RADIUS_M;
@@ -2463,7 +2478,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </form>
 
           <div className="map-filter-row">
-            {["시세", "원룸·투룸", "보증금", "안전", "3D 가능"].map((filter) => (
+            {mapFilterOptions.map((filter) => (
               <button
                 className={activeMapFilter === filter ? "active" : ""}
                 type="button"
