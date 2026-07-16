@@ -122,3 +122,24 @@ A4_POINTINIT="--keyframe-mode sharp --depth-out png --depth-resize-rgb" \
   ③ `ns-render dataset --help` ④ dn-splatter 설치 가능성(A4 go/no-go).
 - dataparser passthrough(`--orientation-method none --auto-scale-poses False`)로 **metric·ARKit
   Y-up 프레임이 그대로 보존**된다 — 산출 ply가 뷰어에서 rotX 0으로 서는지가 B7 검증 포인트.
+
+---
+
+## 부록 B. 논문 크로스체크 (2026-07-17 서베이)
+
+T1 레시피의 레버들이 저텍스처·실내 3DGS 문헌의 처방과 일치하는지 검증. 결과: **일치 — 절반은 이미 적용돼 있었다.** 레버별 대응:
+
+| T1 레버 | 대응 논문 | 상태 |
+|---|---|---|
+| `use-scale-regularization` + `max-gauss-ratio 3.0` (needle 억제) | eRank Regularization ([2406.11672](https://arxiv.org/pdf/2406.11672)) — 같은 진단(과도 이방성 needle), 더 정교한 처방(공분산 유효랭크 페널티) | ✅ 적용. needle 잔존 시 eRank가 업그레이드 카드 (splatfacto 커스텀 손실 필요) |
+| `densify-grad-thresh 0.0004` + `cull_floaters.py` | Pixel-GS ([2403.15530](https://arxiv.org/pdf/2403.15530)) — 픽셀 인지 density control로 floater/needle 억제 | ✅ 적용 (우리는 후처리 컬링으로 보완) |
+| A4: dn-splatter depth loss (W1-B) | DN-Splatter ([WACV 2025](https://arxiv.org/abs/2403.17822)) — 센서 depth+normal 감독이 실내 저텍스처에서 화질·기하 동시 개선 실증 | ❌ 미적용. 단 07-16 눈검증(통계 대등에도 눈 격차 잔존 = 3지표 모델 반증) 이후 **해상도 판정 실험 다음으로 후퇴** |
+| (참고) 평면 프라이어 계열 | 2DGS-Room ([2412.03428](https://arxiv.org/html/2412.03428v1)), PlanarGS (NeurIPS 2025, [2510.23930](https://arxiv.org/html/2510.23930v1)) | 메시/기하 지향 — 사진급 투어 목적엔 DN-Splatter 우선 |
+
+- **LingBot-Map** ([2604.14141](https://arxiv.org/abs/2604.14141), 피드포워드 스트리밍 재구성): 본선(Record3D 경로)엔 불필요 — 포즈·depth는 ARKit 센서가 이미 공급. 비-LiDAR 폰용 video 폴백 경로 강화 카드로만 보류 (안드로이드 지원 시점에 재검토).
+
+**정정 크로스체크 (같은 날, scaniverse-quality-gap 실측 기록 대조): 안티앨리어싱·캡처 해상도**
+- **AA — 이미 단일변인 실측 완료(07-16 저녁)**: T1 + `rasterize-mode antialiased` → 3지표 사실상 불변(2.83x·불투명 77%·**스케일 0.72cm = Scaniverse 동률**). **무해 확정 — 남은 건 gpu-job.sh T1 레시피에 플래그 반영뿐**(현재 스크립트엔 아직 없음). 눈검증은 고해상 최종 런에 편승(spz 회수 실수로 소실, 단독 재실행 생략 판단).
+- **해상도 — 후순위 아님, 판정 실험 0순위(예약됨)**: 현 캡처 RGB는 **960×720(0.69MP)**. 07-16 눈검증에서 T1/T2가 통계 3지표를 거의 따라잡고도 Scaniverse와 눈 격차 잔존 = **3지표 모델이 격차의 본질이 아니라는 반증** — 유력 용의자가 캡처 해상도(학습 데이터에 디테일 자체가 없으면 splat이 선명해질 수 없음). 예약 실험: ① 캡처 RGB 1920×1440 상향(설정 몇 줄) ② AA 플래그 ③ 같은 방 재촬영 → T1 학습 → 눈검증. 비용 ~GPU 1런 30분. **이 한 번이 "Scaniverse를 넘을 수 있나"의 진짜 판정.** VRAM: T1@0.69MP가 5.8GB → 4배 픽셀이면 ~23GB 추정 = **L4 24GB 경계선. 판정 런은 g6e(L40S 48GB)에서 — num-downscales 후퇴가 끼면 단일변인이 깨진다.** 단 g6e는 NVMe 인스턴스 스토어라 stop 후엔 docker 이미지 생존 확인(없으면 bootstrap-nvme부터).
+- **opacity 레버(T2) — 실측 완료·승격 보류**: cull-alpha-thresh 0.005로 불투명>0.9 73→31.8%(raw) 달성했으나 눈검증 "T1/T2 도긴개긴" → T1 표준 유지. cull_floaters min-opacity 커플링 함정은 gpu-job.sh 주석 참조.
+- 요약(정정): 남은 헤드룸 우선순위 = **⓪ 캡처 1920×1440 + AA 재촬영 판정 실험(예약)** ① AA 플래그 레시피 반영 ② A4(depth loss — 판정 실험 결과에 따라) ③ eRank(needle 잔존 시). 제품 우회로: intake가 .spz 직접 업로드를 받으므로 화질 최우선 매물은 Scaniverse export 경로가 이미 열려 있음 — 자체 캡처 포지션은 자동화+metric+원샷.
