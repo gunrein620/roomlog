@@ -114,7 +114,7 @@ import {
 type AppTab = "home" | "map" | "saved" | "inquiry" | "sell" | "living";
 type MapResultTab = "rooms" | "complexes" | "agents";
 type MapPoint = { lat: number; lng: number };
-type MapQueryType = "neighborhood" | "address" | "road" | "building" | "station";
+type MapQueryType = "neighborhood" | "address" | "road" | "building" | "station" | "place";
 type MapQueryPrecision = "neighborhood" | "address" | "point";
 type MapSearchContext = {
   source: "default" | "search" | "user-location";
@@ -310,7 +310,8 @@ const MAP_QUERY_TYPE_LABELS: Record<MapQueryType, string> = {
   address: "주소",
   road: "도로명",
   building: "장소",
-  station: "역"
+  station: "역",
+  place: "랜드마크"
 };
 
 const formatAreaTitle = (area: string) => area.replace(/^서울특별시\s*/, "").replace(/^서초구\s*/, "");
@@ -398,6 +399,122 @@ function hasRoadNameSignal(query: string) {
   return /(로|길)\s*\d*/.test(query);
 }
 
+const MAP_ADMIN_ALIASES: Record<string, string> = {
+  서울: "서울특별시",
+  서울시: "서울특별시",
+  부산: "부산광역시",
+  부산시: "부산광역시",
+  대구: "대구광역시",
+  대구시: "대구광역시",
+  인천: "인천광역시",
+  인천시: "인천광역시",
+  광주: "광주광역시",
+  광주시: "광주광역시",
+  대전: "대전광역시",
+  대전시: "대전광역시",
+  울산: "울산광역시",
+  울산시: "울산광역시",
+  세종: "세종특별자치시",
+  세종시: "세종특별자치시",
+  경기: "경기도",
+  강원: "강원특별자치도",
+  강원도: "강원특별자치도",
+  충북: "충청북도",
+  충남: "충청남도",
+  전남: "전라남도",
+  전북: "전북특별자치도",
+  전라북도: "전북특별자치도",
+  경북: "경상북도",
+  경남: "경상남도",
+  제주: "제주특별자치도",
+  제주도: "제주특별자치도"
+};
+
+type ParsedMapSearch = {
+  normalized: string;
+  adminTokens: string[];
+  roadNames: string[];
+  otherTokens: string[];
+};
+
+function normalizeMapSearchText(value: string) {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[()[\]{},]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalMapAdminToken(token: string) {
+  return MAP_ADMIN_ALIASES[token] ?? token;
+}
+
+function parseMapSearch(value: string): ParsedMapSearch {
+  const normalized = normalizeMapSearchText(value);
+  const words = normalized.split(" ").filter(Boolean);
+  const roadNames = Array.from(
+    new Set(normalized.match(/[가-힣a-z0-9·.-]+(?:대로|로|길)/g) ?? [])
+  );
+  const adminTokens = Array.from(
+    new Set(
+      words
+        .filter(
+          (word) =>
+            Boolean(MAP_ADMIN_ALIASES[word]) ||
+            /(특별시|광역시|특별자치시|특별자치도|도|시|군|구|읍|면|동|리)$/.test(word)
+        )
+        .map(canonicalMapAdminToken)
+    )
+  );
+  const structuralTokens = new Set([...adminTokens, ...roadNames]);
+  const otherTokens = words.filter((word) => {
+    if (word === "대한민국") return false;
+    const canonicalWord = canonicalMapAdminToken(word);
+    if (structuralTokens.has(canonicalWord)) return false;
+    return !roadNames.includes(word);
+  });
+
+  return { normalized, adminTokens, roadNames, otherTokens };
+}
+
+function mapAddressMatchesExplicitQuery(query: string, address: string) {
+  const parsedQuery = parseMapSearch(query);
+  const parsedAddress = parseMapSearch(address);
+  const hasExplicitBuildingNumber = parsedQuery.otherTokens.some((token) => /^\d+(?:-\d+)?$/.test(token));
+  const queryBuildingNumbers = parsedQuery.roadNames.length > 0
+    ? parsedQuery.otherTokens.filter((token) => /^\d+(?:-\d+)?$/.test(token))
+    : [];
+  const addressWords = normalizeMapSearchText(address).split(" ");
+  const roadMatches = (queryRoad: string) =>
+    parsedAddress.roadNames.some((addressRoad) => {
+      if (addressRoad === queryRoad) return true;
+      if (hasExplicitBuildingNumber || !queryRoad.endsWith("로") || !addressRoad.startsWith(queryRoad)) return false;
+      return /^\d+(?:번)?길$/.test(addressRoad.slice(queryRoad.length));
+    });
+  return (
+    parsedQuery.adminTokens.every((token) => parsedAddress.adminTokens.includes(token)) &&
+    parsedQuery.roadNames.every(roadMatches) &&
+    queryBuildingNumbers.every((number) => addressWords.includes(number))
+  );
+}
+
+function mapListingMatchesQuery(listing: MapPanelItem, query: string) {
+  const parsedQuery = parseMapSearch(query);
+  if (!parsedQuery.normalized) return true;
+
+  const addressText = [listing.distance, listing.detailAddress ?? ""].join(" ");
+  if (!mapAddressMatchesExplicitQuery(query, addressText)) return false;
+
+  const searchableText = normalizeMapSearchText(
+    [listing.title, listing.price, listing.meta, listing.distance, listing.detailAddress ?? "", ...listing.flags].join(" ")
+  );
+  const searchableWords = searchableText.split(" ");
+  return parsedQuery.otherTokens.every((token) =>
+    /^\d+(?:-\d+)?$/.test(token) ? searchableWords.includes(token) : searchableText.includes(token)
+  );
+}
+
 function inferMapQueryType(query: string, address?: { roadAddress?: string; jibunAddress?: string }): MapQueryType {
   const compactQuery = query.trim().replace(/\s+/g, " ");
   if (isStationMapQuery(compactQuery)) return "station";
@@ -409,7 +526,7 @@ function inferMapQueryType(query: string, address?: { roadAddress?: string; jibu
 
 function precisionForMapQueryType(type: MapQueryType): MapQueryPrecision {
   if (type === "neighborhood") return "neighborhood";
-  if (type === "station" || type === "building") return "point";
+  if (type === "station" || type === "building" || type === "place") return "point";
   return "address";
 }
 
@@ -476,6 +593,12 @@ async function resolveMapQueryCandidates(query: string): Promise<MapResolvedQuer
 
         const seen = new Set<string>();
         const candidates = (response.v2?.addresses ?? [])
+          .filter((address) =>
+            mapAddressMatchesExplicitQuery(
+              keyword,
+              [address.roadAddress ?? "", address.jibunAddress ?? ""].join(" ")
+            )
+          )
           .map((address) => resolvedMapQueryFromAddress(keyword, address))
           .filter((candidate): candidate is MapResolvedQuery => Boolean(candidate))
           .filter((candidate) => {
@@ -491,6 +614,104 @@ async function resolveMapQueryCandidates(query: string): Promise<MapResolvedQuer
       resolve([]);
     }
   });
+}
+
+type NaverLocalPlaceSearchResponse = {
+  configured?: boolean;
+  message?: string;
+  items?: Array<{
+    kind?: "address" | "place";
+    title?: string;
+    category?: string;
+    description?: string;
+    address?: string;
+    roadAddress?: string;
+    canonicalAddress?: string;
+    lat?: number;
+    lng?: number;
+  }>;
+};
+
+type ExternalMapSearchResult = {
+  candidates: MapResolvedQuery[];
+  errorMessage?: string;
+};
+
+async function resolveLocalPlaceCandidates(query: string): Promise<ExternalMapSearchResult> {
+  const keyword = query.trim();
+  if (!keyword) return { candidates: [] };
+
+  try {
+    const response = await fetch(`/api/map/search?q=${encodeURIComponent(keyword)}`, { cache: "no-store" });
+    const payload = (await response.json()) as NaverLocalPlaceSearchResponse;
+    if (!response.ok || payload.configured === false) {
+      return {
+        candidates: [],
+        errorMessage: payload.message || "지역 검색 서비스를 확인할 수 없습니다."
+      };
+    }
+
+    const seen = new Set<string>();
+    const candidates: MapResolvedQuery[] = [];
+    let addressCandidateCount = 0;
+
+    for (const item of payload.items ?? []) {
+      const addressText = item.roadAddress?.trim() || item.address?.trim() || "";
+      const label = item.title?.trim() || addressText;
+      if (!label || !mapAddressMatchesExplicitQuery(keyword, addressText)) continue;
+
+      if (item.kind === "address" || item.canonicalAddress) {
+        addressCandidateCount += 1;
+        const canonicalAddress = item.canonicalAddress?.trim() || addressText;
+        const geocoded = (await resolveMapQueryCandidates(canonicalAddress))[0];
+        if (!geocoded) continue;
+
+        const key = `address|${geocoded.center.lat.toFixed(6)}|${geocoded.center.lng.toFixed(6)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push({
+          ...geocoded,
+          label,
+          radiusM: MAP_SEARCH_RADIUS_M,
+          queryType: "road",
+          precision: "address",
+          addressText: canonicalAddress,
+          description: [item.category?.trim(), canonicalAddress].filter(Boolean).join(" · ")
+        });
+        continue;
+      }
+
+      const lat = Number(item.lat);
+      const lng = Number(item.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+      const key = `${label}|${lat.toFixed(6)}|${lng.toFixed(6)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const detail = [item.category?.trim(), addressText].filter(Boolean).join(" · ");
+      candidates.push({
+        source: "search",
+        label,
+        center: { lat, lng },
+        radiusM: MAP_SEARCH_RADIUS_M,
+        queryType: "place",
+        precision: "point",
+        addressText,
+        description: detail || item.description?.trim() || "네이버 지역 검색 결과"
+      });
+    }
+
+    return {
+      candidates: candidates.slice(0, 5),
+      errorMessage:
+        addressCandidateCount > 0 && candidates.length === 0
+          ? "도로명주소는 확인했지만 지도 좌표를 확인하지 못했습니다."
+          : undefined
+    };
+  } catch {
+    return { candidates: [], errorMessage: "지역 검색 서비스 연결에 실패했습니다." };
+  }
 }
 
 const distanceBetweenMeters = (from: MapPoint, to: MapPoint) => {
@@ -979,6 +1200,7 @@ function SearchBottomSheet({
   isOpen,
   currentArea,
   isResolving = false,
+  isMapMode = false,
   queryCandidates = [],
   candidateKeyword = "",
   recentSearches,
@@ -990,6 +1212,7 @@ function SearchBottomSheet({
   isOpen: boolean;
   currentArea: string;
   isResolving?: boolean;
+  isMapMode?: boolean;
   queryCandidates?: MapResolvedQuery[];
   candidateKeyword?: string;
   recentSearches: string[];
@@ -1043,30 +1266,32 @@ function SearchBottomSheet({
           <button type="submit" disabled={isResolving}>{isResolving ? "확인 중" : "검색"}</button>
         </form>
 
-        <section className="search-live-preview" aria-label="검색 결과 미리보기">
-          <div>
-            <span>바로 보기</span>
-            <strong>{normalizedSearchValue} 주변 확인매물</strong>
-            <p>지도에서 시세, 3D 투어, 중개사 응답 상태를 함께 비교합니다.</p>
-          </div>
-          <div className="search-live-stats">
-            <span>
-              <b>{searchPreviewCount}개</b>
-              예상 매물
-            </span>
-            <span>
-              <b>{Math.max(3, Math.round(searchPreviewCount * 0.28))}개</b>
-              3D 가능
-            </span>
-            <span>
-              <b>8분</b>
-              평균 응답
-            </span>
-          </div>
-          <button type="button" onClick={submitSearch} disabled={isResolving}>
-            {isResolving ? "위치 확인 중" : <>지도에서 {normalizedSearchValue} 보기</>}
-          </button>
-        </section>
+        {!isMapMode ? (
+          <section className="search-live-preview" aria-label="검색 결과 미리보기">
+            <div>
+              <span>바로 보기</span>
+              <strong>{normalizedSearchValue} 주변 확인매물</strong>
+              <p>지도에서 시세, 3D 투어, 중개사 응답 상태를 함께 비교합니다.</p>
+            </div>
+            <div className="search-live-stats">
+              <span>
+                <b>{searchPreviewCount}개</b>
+                예상 매물
+              </span>
+              <span>
+                <b>{Math.max(3, Math.round(searchPreviewCount * 0.28))}개</b>
+                3D 가능
+              </span>
+              <span>
+                <b>8분</b>
+                평균 응답
+              </span>
+            </div>
+            <button type="button" onClick={submitSearch} disabled={isResolving}>
+              {isResolving ? "위치 확인 중" : <>지도에서 {normalizedSearchValue} 보기</>}
+            </button>
+          </section>
+        ) : null}
 
         {queryCandidates.length > 0 ? (
           <section className="search-result-candidates" aria-label="주소 검색 결과">
@@ -1091,14 +1316,16 @@ function SearchBottomSheet({
           </section>
         ) : null}
 
-        <section className="search-condition-strip" aria-label="추천 검색 조건">
-          {savedConditions.slice(0, 3).map((condition) => (
-            <button type="button" key={condition.label} onClick={() => onSelectArea(condition.area)} disabled={isResolving}>
-              <span>{condition.category}</span>
-              <strong>{condition.label}</strong>
-            </button>
-          ))}
-        </section>
+        {!isMapMode ? (
+          <section className="search-condition-strip" aria-label="추천 검색 조건">
+            {savedConditions.slice(0, 3).map((condition) => (
+              <button type="button" key={condition.label} onClick={() => onSelectArea(condition.area)} disabled={isResolving}>
+                <span>{condition.category}</span>
+                <strong>{condition.label}</strong>
+              </button>
+            ))}
+          </section>
+        ) : null}
 
         <section className="search-suggestion-section" aria-label="최근 검색">
           <div>
@@ -1118,35 +1345,40 @@ function SearchBottomSheet({
           </div>
         </section>
 
-        <section className="search-suggestion-section" aria-label="인기 지역">
-          <div>
-            <strong>인기 지역</strong>
-            <span>실매물 많은 순</span>
-          </div>
-          <div className="district-rank-list">
-            {searchSuggestions.districts.map((district, index) => (
-              <button type="button" key={district} onClick={() => onSelectArea(district)} disabled={isResolving}>
-                <b>{index + 1}</b>
-                <span>{district}</span>
-                <em>{index === 0 ? "42개" : `${28 - index * 3}개`}</em>
-              </button>
-            ))}
-          </div>
-        </section>
+        {!isMapMode ? (
+          <>
+            <section className="search-suggestion-section" aria-label="인기 지역">
+              <div>
+                <strong>인기 지역</strong>
+                <span>실매물 많은 순</span>
+              </div>
+              <div className="district-rank-list">
+                {searchSuggestions.districts.map((district, index) => (
+                  <button type="button" key={district} onClick={() => onSelectArea(district)} disabled={isResolving}>
+                    <b>{index + 1}</b>
+                    <span>{district}</span>
+                    <em>{index === 0 ? "42개" : `${28 - index * 3}개`}</em>
+                  </button>
+                ))}
+              </div>
+            </section>
 
-        <section className="search-suggestion-section" aria-label="지하철 추천">
-          <div>
-            <strong>지하철로 찾기</strong>
-            <span>도보 10분 기준</span>
-          </div>
-          <div className="subway-suggestion-grid">
-            {searchSuggestions.subways.map((station) => (
-              <button type="button" key={station} onClick={() => onSelectArea(station)} disabled={isResolving}>
-                {station}
-              </button>
-            ))}
-          </div>
-        </section>
+            <section className="search-suggestion-section" aria-label="지하철 추천">
+              <div>
+                <strong>지하철로 찾기</strong>
+                <span>도보 10분 기준</span>
+              </div>
+              <div className="subway-suggestion-grid">
+                {searchSuggestions.subways.map((station) => (
+                  <button type="button" key={station} onClick={() => onSelectArea(station)} disabled={isResolving}>
+                    {station}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </>
+        ) : null}
+
       </section>
     </div>
   );
@@ -1264,13 +1496,16 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const [selectedArea, setSelectedArea] = useState(DEFAULT_MAP_CONTEXT.label);
-  const [mapTopbarSearchValue, setMapTopbarSearchValue] = useState(DEFAULT_MAP_CONTEXT.label);
+  const [mapTopbarSearchValue, setMapTopbarSearchValue] = useState("");
   const [mapSearchContext, setMapSearchContext] = useState<MapSearchContext>(DEFAULT_MAP_CONTEXT);
+  const [hasResolvedMapContext, setHasResolvedMapContext] = useState(false);
   const [mapViewport, setMapViewport] = useState<NaverMapViewport | null>(null);
   const [mapLocationStatus, setMapLocationStatus] = useState<MapLocationStatus>("idle");
   const [mapQueryStatus, setMapQueryStatus] = useState<MapQueryStatus>("idle");
   const [mapQueryCandidates, setMapQueryCandidates] = useState<MapResolvedQuery[]>([]);
   const [mapQueryCandidateKeyword, setMapQueryCandidateKeyword] = useState("");
+  const [mapSearchMatchedListingNos, setMapSearchMatchedListingNos] = useState<string[]>([]);
+  const [mapSearchErrorMessage, setMapSearchErrorMessage] = useState("");
   const mapLocationRequestedRef = useRef(false);
   const mapContextRequestIdRef = useRef(0);
   const categoryStripRef = useRef<HTMLElement | null>(null);
@@ -1379,6 +1614,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           center,
           radiusM: 3000
         });
+        setMapSearchMatchedListingNos([]);
+        setHasResolvedMapContext(true);
         setSelectedArea("내 위치 주변");
         setActiveMapResultTab("rooms");
         setMapLocationStatus("granted");
@@ -1396,24 +1633,30 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   }
 
   useEffect(() => {
-    if (activeTab !== "map" || mapSearchContext.source !== "default" || selectedArea !== DEFAULT_MAP_CONTEXT.label) return;
+    if (activeTab !== "map" || hasResolvedMapContext) return;
     requestMapCurrentLocation();
     // 지도 탭 첫 진입 때 한 번만 현재 위치를 요청한다. 검색/수동 위치 변경은 별도 액션이 소유한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, mapSearchContext.source, selectedArea]);
+  }, [activeTab, hasResolvedMapContext]);
 
   // 실사진 있는 매물을 앞으로 — 사진 없는 등록(목업 폴백 카드)이 첫 화면을 가리지 않게 한다.
   // sort는 안정 정렬이라 같은 그룹 안에서는 서버의 최신순이 유지된다.
   // 계약완료 매물은 공개 피드에서 제외한다(집주인 마이페이지/관리 콘솔에서만 관리).
   useEffect(() => {
-    setMapTopbarSearchValue(selectedArea);
-  }, [selectedArea]);
+    if (hasResolvedMapContext || mapQueryStatus === "fallback") {
+      setMapTopbarSearchValue(selectedArea);
+    }
+  }, [hasResolvedMapContext, mapQueryStatus, selectedArea]);
 
   const sortedTradeListings = tradeListings
     .filter((listing) => listing.status !== "계약완료")
     .sort((a, b) => Number((b.images?.length ?? 0) > 0) - Number((a.images?.length ?? 0) > 0));
   const allListings = [...sortedTradeListings.map(tradeListingToCard), ...listings];
   const selectedAreaTitle = formatAreaTitle(selectedArea);
+  const hasVisibleMapContext = hasResolvedMapContext && mapQueryStatus !== "fallback";
+  const mapAreaTitle =
+    hasResolvedMapContext || mapQueryStatus === "fallback" ? selectedAreaTitle : "";
+  const mapAreaDisplayTitle = mapAreaTitle || "지역 미선택";
   const activeFilterSummary = [activeCategory, ...activeQuickFilters].join(" · ");
   const visibleHomeListings = allListings.filter((listing) => {
     const categoryMatches = listingMatchesCategory(activeCategory, listing);
@@ -1452,20 +1695,23 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     ...tradeListings.map((listing, index) => tradeListingToMapItem(listing, index, tradeListings.length)),
     ...demoMapItems
   ];
-  // 지역 검색이 개수·목록에 실제 반영되도록 지역 토큰으로 필터 (QA: 지역 바꿔도 개수가 그대로던 표기이상).
-  // 토큰 = 선택 지역의 마지막 단어에서 동/역/구 접미사 제거(예: "서초구 방배동"→"방배").
-  const areaSearchToken = (selectedAreaTitle.split(" ").pop() ?? "").replace(/(동|역|구)$/, "").trim();
-  const areaMatchedMapItems = areaSearchToken
-    ? allMapItems.filter((listing) =>
-        [listing.title, listing.meta, listing.distance, listing.detailAddress ?? ""].join(" ").includes(areaSearchToken)
-      )
+  // 검색어에 명시된 행정구역·도로명을 모두 만족하는 매물만 표시한다.
+  const hasAreaSearchQuery = Boolean(parseMapSearch(mapAreaTitle).normalized);
+  const areaMatchedMapItems = hasAreaSearchQuery
+    ? allMapItems.filter((listing) => mapListingMatchesQuery(listing, mapAreaTitle))
     : allMapItems;
-  // 매칭이 하나도 없으면 전체로 폴백 — 데모 데이터 범위 밖 지역을 골라도 지도가 텅 비지 않게.
-  const areaScopedMapItems = areaMatchedMapItems.length > 0 ? areaMatchedMapItems : allMapItems;
-  const isLocationScopedMap = mapSearchContext.source === "user-location";
-  const isSearchScopedMap = mapSearchContext.source === "search";
+  // 지역 검색 결과가 없을 때 다른 지역의 매물을 섞지 않는다.
+  const areaScopedMapItems = hasAreaSearchQuery ? areaMatchedMapItems : allMapItems;
+  const isLocationScopedMap = hasResolvedMapContext && mapSearchContext.source === "user-location";
+  const isSearchScopedMap = hasResolvedMapContext && mapSearchContext.source === "search";
   const isDistanceScopedMap = isLocationScopedMap || isSearchScopedMap;
-  const distanceCandidateMapItems = isDistanceScopedMap ? allMapItems : areaScopedMapItems;
+  const distanceCandidateMapItems = !hasResolvedMapContext
+    ? mapQueryStatus === "fallback"
+      ? areaScopedMapItems
+      : []
+    : isDistanceScopedMap
+      ? allMapItems
+      : areaScopedMapItems;
   const mapItemsWithDistance = distanceCandidateMapItems.map((listing) => {
     const hasCoordinates = Number.isFinite(listing.lat) && Number.isFinite(listing.lng);
     return {
@@ -1478,13 +1724,22 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
   const nearbyMapItems = isDistanceScopedMap
     ? mapItemsWithDistance.filter((listing) => listing.distanceFromCenterM <= mapSearchContext.radiusM)
     : [];
-  const isRadiusEmptyMap = isDistanceScopedMap && nearbyMapItems.length === 0;
-  const locationScopedMapItems = isDistanceScopedMap
-    ? (
-        nearbyMapItems.length > 0
-          ? nearbyMapItems
-          : []
+  const explicitlyMatchedMapItems = isSearchScopedMap
+    ? mapItemsWithDistance.filter((listing) => mapSearchMatchedListingNos.includes(listing.listingNo))
+    : [];
+  const isRadiusEmptyMap =
+    isDistanceScopedMap && nearbyMapItems.length === 0 && explicitlyMatchedMapItems.length === 0;
+  const isAreaSearchEmptyMap =
+    !isDistanceScopedMap && hasAreaSearchQuery && areaMatchedMapItems.length === 0;
+  const isMapContextEmpty = !hasResolvedMapContext && mapQueryStatus !== "fallback";
+  const locationScopedMapItems = isSearchScopedMap
+    ? Array.from(
+        new Map(
+          [...explicitlyMatchedMapItems, ...nearbyMapItems].map((listing) => [listing.listingNo, listing])
+        ).values()
       )
+    : isDistanceScopedMap
+      ? nearbyMapItems
     : mapItemsWithDistance;
   const visibleMapListings = locationScopedMapItems
     .filter((listing) => {
@@ -1535,7 +1790,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     marketAverageListings.length > 0
       ? Math.round(marketAverageListings.reduce((total, listing) => total + listing.monthlyRent, 0) / marketAverageListings.length)
       : null;
-  const mapMarketAreaLabel = isLocationScopedMap ? "현재 위치 주변" : selectedAreaTitle;
+  const mapMarketAreaLabel = isLocationScopedMap ? "현재 위치 주변" : mapAreaDisplayTitle;
   const dynamicMapInsightItems = [
     {
       label: "전월세 평균",
@@ -1567,32 +1822,54 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 내 매물 없음`
           : `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)}`
         : mapQueryStatus === "fallback"
-          ? "주소 확인 실패 · 문자열 기준"
+          ? "검색 지역 확인 실패 · 지도 표시 안 함"
         : mapLocationStatus === "denied"
-          ? "위치 권한 미허용 · 기본 지역"
+          ? "위치 권한 미허용 · 지역을 검색해 주세요"
         : mapLocationStatus === "unavailable"
-          ? "위치 확인 불가 · 기본 지역"
-          : selectedArea === DEFAULT_MAP_CONTEXT.label
-            ? "기본 지역 기준"
+          ? "위치 확인 불가 · 지역을 검색해 주세요"
+          : !hasResolvedMapContext
+            ? "지역을 검색하거나 내 위치를 확인해 주세요"
             : "지역 검색 기준";
   const mapListingDistanceLabel = (listing: { distance: string; distanceFromCenterM?: number }) =>
     isDistanceScopedMap && Number.isFinite(listing.distanceFromCenterM)
       ? `${isLocationScopedMap ? "현재 위치" : `${mapScopeLabel} 위치`} ${formatDistanceLabel(listing.distanceFromCenterM ?? 0)} · ${listing.distance}`
       : listing.distance;
-  const mapRoomsFeedback = isRadiusEmptyMap
-    ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
+  const mapRoomsFeedback = isMapContextEmpty
+    ? mapQueryStatus === "resolving" || mapLocationStatus === "requesting"
+      ? "표시할 위치를 확인하고 있습니다."
+      : "지역을 검색하거나 내 위치 보기를 선택해 주세요."
+    : mapSearchErrorMessage
+      ? mapSearchErrorMessage
+    : isAreaSearchEmptyMap
+      ? `"${mapAreaDisplayTitle}" 검색 결과가 없습니다.`
+    : isRadiusEmptyMap
+      ? `${mapScopeLabel} 반경 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : activeMapFilter === "찜한 매물"
       ? `관심목록에 저장한 매물 ${visibleMapListings.length}개를 보여줍니다.`
     : `${activeSort} · ${mapFilterSummary} 조건으로 우선 매물 ${visibleMapListings.length}개를 먼저 보여줍니다.`;
-  const mapEmptyTitle = isRadiusEmptyMap
-    ? isLocationScopedMap
-      ? "내 위치 반경 내 매물이 없습니다"
-      : "반경 내 매물이 없습니다"
+  const mapEmptyTitle = isMapContextEmpty
+    ? mapQueryStatus === "resolving" || mapLocationStatus === "requesting"
+      ? "위치를 확인하고 있습니다"
+      : "지역을 선택해 주세요"
+    : mapSearchErrorMessage
+      ? "검색 서비스를 확인해 주세요"
+    : isAreaSearchEmptyMap
+      ? "검색 결과가 없습니다"
+    : isRadiusEmptyMap
+      ? isLocationScopedMap
+        ? "내 위치 반경 내 매물이 없습니다"
+        : "반경 내 매물이 없습니다"
     : activeMapFilter === "찜한 매물"
       ? "찜한 매물이 없습니다"
     : "조건에 맞는 매물이 없습니다";
-  const mapEmptyDescription = isRadiusEmptyMap
-    ? `${isLocationScopedMap ? "현재 위치" : selectedAreaTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
+  const mapEmptyDescription = isMapContextEmpty
+    ? "지역 검색 또는 내 위치 보기를 이용하면 주변 매물을 표시합니다."
+    : mapSearchErrorMessage
+      ? mapSearchErrorMessage
+    : isAreaSearchEmptyMap
+      ? `"${mapAreaDisplayTitle}"에 일치하는 매물이 없습니다. 다른 지역이나 주소로 검색해 주세요.`
+    : isRadiusEmptyMap
+      ? `${isLocationScopedMap ? "현재 위치" : mapAreaDisplayTitle} 기준 ${formatDistanceLabel(mapSearchContext.radiusM)} 안에 표시할 매물이 없습니다.`
     : activeMapFilter === "찜한 매물"
       ? "관심목록에 저장한 매물이 있으면 지도와 목록에 함께 표시됩니다."
     : `${activeSort} · ${mapFilterSummary} 조건에 맞는 매물이 없습니다.`;
@@ -1780,29 +2057,136 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
     setMapQueryCandidateKeyword("");
   };
 
-  const applyResolvedMapCandidate = (keyword: string, candidate: MapResolvedQuery) => {
-    applyMapAreaSelection(candidate.label, candidate);
-    setMapQueryStatus("resolved");
+  const finishMapSearch = (keyword: string, status: MapQueryStatus) => {
+    setMapQueryStatus(status);
     setRecentSearches((current) => [keyword, ...current.filter((item) => item !== keyword)].slice(0, 5));
     setIsSearchSheetOpen(false);
     setActiveMapResultTab("rooms");
     activateTab("map");
   };
 
-  const selectSearchArea = async (area: string) => {
-    const keyword = area.trim();
-    if (!keyword) return;
+  const applyResolvedMapCandidate = (keyword: string, candidate: MapResolvedQuery) => {
+    setMapSearchErrorMessage("");
+    setMapSearchMatchedListingNos(
+      allMapItems
+        .filter((listing) => mapListingMatchesQuery(listing, keyword))
+        .map((listing) => listing.listingNo)
+    );
+    applyMapAreaSelection(candidate.label, candidate);
+    setHasResolvedMapContext(true);
+    finishMapSearch(keyword, "resolved");
+  };
 
+  const applyMatchedMapListings = (keyword: string, matches: MapPanelItem[]) => {
+    setMapSearchErrorMessage("");
+    setMapSearchMatchedListingNos(matches.map((listing) => listing.listingNo));
+    const parsedQuery = parseMapSearch(keyword);
+    const matchedRegions = new Set(
+      matches
+        .map((listing) => parseMapSearch(listing.distance).adminTokens.join("|"))
+        .filter(Boolean)
+    );
+    if (parsedQuery.adminTokens.length === 0 && matchedRegions.size > 1) {
+      applyUnresolvedMapSearch(keyword);
+      return;
+    }
+
+    const positioned = matches.filter(
+      (listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng)
+    );
+    if (positioned.length === 0) {
+      applyUnresolvedMapSearch(keyword);
+      return;
+    }
+
+    const center = positioned.reduce(
+      (total, listing) => ({ lat: total.lat + listing.lat, lng: total.lng + listing.lng }),
+      { lat: 0, lng: 0 }
+    );
+    center.lat /= positioned.length;
+    center.lng /= positioned.length;
+    const queryType: MapQueryType = parsedQuery.roadNames.length > 0
+      ? "road"
+      : parsedQuery.adminTokens.length > 0
+        ? "neighborhood"
+        : "building";
+    const precision = precisionForMapQueryType(queryType);
+
+    applyMapAreaSelection(keyword, {
+      source: "default",
+      label: keyword,
+      center,
+      radiusM: MAP_SEARCH_RADIUS_BY_PRECISION[precision],
+      queryType,
+      precision,
+      addressText: keyword,
+      description: `${MAP_QUERY_TYPE_LABELS[queryType]} 매물 주소 일치`
+    });
+    setHasResolvedMapContext(true);
+    finishMapSearch(keyword, "resolved");
+  };
+
+  const applyUnresolvedMapSearch = (keyword: string, errorMessage = "") => {
+    setMapSearchErrorMessage(errorMessage);
+    setMapSearchMatchedListingNos(
+      allMapItems
+        .filter((listing) => mapListingMatchesQuery(listing, keyword))
+        .map((listing) => listing.listingNo)
+    );
+    applyMapAreaSelection(keyword, {
+      source: "default",
+      label: keyword,
+      center: mapSearchContext.center,
+      radiusM: DEFAULT_MAP_CONTEXT.radiusM
+    });
+    finishMapSearch(keyword, "fallback");
+  };
+
+  const runMapSearch = async (keyword: string, openCandidateSheet: boolean) => {
     const requestId = ++mapContextRequestIdRef.current;
+    setMapSearchErrorMessage("");
     setMapQueryCandidates([]);
     setMapQueryCandidateKeyword(keyword);
     setMapQueryStatus("resolving");
+    const parsedQuery = parseMapSearch(keyword);
+    const matchingListings = allMapItems.filter((listing) => mapListingMatchesQuery(listing, keyword));
+    const hasExplicitLocation = parsedQuery.adminTokens.length > 0;
+
+    const hasPositionedMatchingListing = matchingListings.some(
+      (listing) => Number.isFinite(listing.lat) && Number.isFinite(listing.lng)
+    );
+
+    if (hasExplicitLocation && hasPositionedMatchingListing) {
+      applyMatchedMapListings(keyword, matchingListings);
+      return;
+    }
+
+    if (hasExplicitLocation && matchingListings.length > 0) {
+      const listingAddressQueries = Array.from(
+        new Set(
+          matchingListings
+            .map((listing) => listing.distance.trim())
+            .filter(Boolean)
+        )
+      );
+
+      for (const listingAddress of listingAddressQueries) {
+        const listingCandidate = (await resolveMapQueryCandidates(listingAddress))[0];
+        if (requestId !== mapContextRequestIdRef.current) return;
+        if (listingCandidate) {
+          applyResolvedMapCandidate(keyword, listingCandidate);
+          return;
+        }
+      }
+    }
+
     const candidates = await resolveMapQueryCandidates(keyword);
     if (requestId !== mapContextRequestIdRef.current) return;
 
     if (candidates.length > 1) {
       setMapQueryCandidates(candidates);
       setMapQueryStatus("resolved");
+      setIsSearchSheetOpen(true);
       return;
     }
 
@@ -1812,12 +2196,45 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       return;
     }
 
-    applyMapAreaSelection(keyword, { ...DEFAULT_MAP_CONTEXT, label: keyword });
-    setMapQueryStatus("fallback");
-    setRecentSearches((current) => [keyword, ...current.filter((item) => item !== keyword)].slice(0, 5));
-    setIsSearchSheetOpen(false);
-    setActiveMapResultTab("rooms");
-    activateTab("map");
+    const shouldSearchNaverLocal =
+      parsedQuery.roadNames.length > 0 ||
+      parsedQuery.otherTokens.length > 0 ||
+      parsedQuery.adminTokens.length === 0;
+    if (shouldSearchNaverLocal) {
+      const externalSearch = await resolveLocalPlaceCandidates(keyword);
+      if (requestId !== mapContextRequestIdRef.current) return;
+      const placeCandidates = externalSearch.candidates;
+
+      if (placeCandidates.length > 1) {
+        setMapQueryCandidates(placeCandidates);
+        setMapQueryStatus("resolved");
+        setIsSearchSheetOpen(true);
+        return;
+      }
+
+      if (placeCandidates[0]) {
+        applyResolvedMapCandidate(keyword, placeCandidates[0]);
+        return;
+      }
+
+      if (externalSearch.errorMessage) {
+        applyUnresolvedMapSearch(keyword, externalSearch.errorMessage);
+        return;
+      }
+    }
+
+    if (matchingListings.length > 0) {
+      applyMatchedMapListings(keyword, matchingListings);
+      return;
+    }
+
+    applyUnresolvedMapSearch(keyword);
+  };
+
+  const selectSearchArea = async (area: string) => {
+    const keyword = area.trim();
+    if (!keyword) return;
+    await runMapSearch(keyword, false);
   };
 
   const submitMapTopbarSearch = async () => {
@@ -1827,26 +2244,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
       return;
     }
 
-    const requestId = ++mapContextRequestIdRef.current;
-    setMapQueryCandidates([]);
-    setMapQueryCandidateKeyword(keyword);
-    setMapQueryStatus("resolving");
-    const candidates = await resolveMapQueryCandidates(keyword);
-    if (requestId !== mapContextRequestIdRef.current) return;
-
-    const resolvedContext = candidates[0];
-    if (resolvedContext) {
-      applyResolvedMapCandidate(keyword, resolvedContext);
-      setMapTopbarSearchValue(resolvedContext.label);
-      return;
-    }
-
-    applyMapAreaSelection(keyword, { ...DEFAULT_MAP_CONTEXT, label: keyword });
-    setMapQueryStatus("fallback");
-    setRecentSearches((current) => [keyword, ...current.filter((item) => item !== keyword)].slice(0, 5));
-    setIsSearchSheetOpen(false);
-    setActiveMapResultTab("rooms");
-    activateTab("map");
+    await runMapSearch(keyword, true);
   };
 
   const applySavedCondition = async (condition: (typeof savedConditions)[number]) => {
@@ -2452,31 +2850,62 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </div>
 
           <div className="map-context-bar" aria-label="지도 요약 정보">
-            <strong>{selectedAreaTitle} {activeMapFilter}</strong>
+            <strong>{mapAreaDisplayTitle} {activeMapFilter}</strong>
             <span>{mapLocationSummary}</span>
             <span>{mapFilterSummary}</span>
             <span>결과 {visibleMapListings.length}개</span>
           </div>
 
-          <section className="map-insight-strip" aria-label="지도 생활권 요약">
-            {dynamicMapInsightItems.map((item) => (
-              <article key={item.label}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <small>{item.caption}</small>
-              </article>
-            ))}
-          </section>
+          {hasVisibleMapContext ? (
+            <section className="map-insight-strip" aria-label="지도 생활권 요약">
+              {dynamicMapInsightItems.map((item) => (
+                <article key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <small>{item.caption}</small>
+                </article>
+              ))}
+            </section>
+          ) : null}
 
           <div className="map-canvas-stack">
-            <NaverMapPreview
-              className="map-stage"
-              center={mapSearchContext.center}
-              showCenterMarker={isDistanceScopedMap}
-              title={isLocationScopedMap ? "현재 위치" : selectedAreaTitle}
-              markers={mapMarkers}
-              onViewportChange={setMapViewport}
-            />
+            {hasVisibleMapContext ? (
+              <NaverMapPreview
+                className="map-stage"
+                center={mapSearchContext.center}
+                showCenterMarker={isDistanceScopedMap}
+                address={isSearchScopedMap ? mapSearchContext.addressText ?? mapAreaDisplayTitle : null}
+                title={isLocationScopedMap ? "현재 위치" : mapAreaDisplayTitle}
+                markers={mapMarkers}
+                onViewportChange={setMapViewport}
+              />
+            ) : (
+              <div className="map-unresolved-state" role="status">
+                <MapPinned size={30} strokeWidth={2.2} aria-hidden="true" />
+                <strong>
+                  {mapQueryStatus === "fallback"
+                    ? mapSearchErrorMessage
+                      ? "검색 서비스를 확인해 주세요"
+                      : areaMatchedMapItems.length > 0
+                      ? "지도 위치를 하나로 정할 수 없습니다"
+                      : "검색 위치를 확인할 수 없습니다"
+                    : mapLocationStatus === "requesting"
+                      ? "현재 위치를 확인하고 있습니다"
+                      : "표시할 지역이 없습니다"}
+                </strong>
+                <p>
+                  {mapQueryStatus === "fallback"
+                    ? mapSearchErrorMessage
+                      ? mapSearchErrorMessage
+                      : areaMatchedMapItems.length > 0
+                      ? "동일한 이름의 지역이 여러 곳이거나 매물 좌표가 없습니다. 시·군·구를 함께 검색해 주세요."
+                      : "일치하는 지역이나 매물이 없습니다. 지역명을 더 정확히 입력해 주세요."
+                    : mapLocationStatus === "requesting"
+                      ? "위치 확인이 끝나면 지도를 표시합니다."
+                      : "지역을 검색하거나 내 위치 보기를 선택해 주세요."}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="result-sheet">
@@ -2497,9 +2926,9 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             <div className="section-title compact">
               <div>
                 <h2 id="map-title">
-                  {activeMapResultTab === "rooms" ? `${selectedAreaTitle} 매물 ${visibleMapListings.length}개` : null}
-                  {activeMapResultTab === "complexes" ? `${selectedAreaTitle} 단지 18곳` : null}
-                  {activeMapResultTab === "agents" ? "인근 중개사무소 9곳" : null}
+                  {activeMapResultTab === "rooms" ? `${mapAreaDisplayTitle} 매물 ${visibleMapListings.length}개` : null}
+                  {activeMapResultTab === "complexes" ? `${mapAreaDisplayTitle} 단지 ${hasVisibleMapContext ? 18 : 0}곳` : null}
+                  {activeMapResultTab === "agents" ? `인근 중개사무소 ${hasVisibleMapContext ? 9 : 0}곳` : null}
                 </h2>
                 <p>시세 지도 · {mapFilterSummary} · {activeSort}</p>
               </div>
@@ -2521,7 +2950,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
               </article>
               <article>
                 <span>평균 응답</span>
-                <strong>8분</strong>
+                <strong>{visibleMapListings.length > 0 ? "8분" : "정보 없음"}</strong>
               </article>
             </section>
 
@@ -2715,6 +3144,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           isOpen={isSearchSheetOpen}
           currentArea={selectedArea}
           isResolving={mapQueryStatus === "resolving"}
+          isMapMode={activeTab === "map"}
           queryCandidates={mapQueryCandidates}
           candidateKeyword={mapQueryCandidateKeyword}
           recentSearches={recentSearches}

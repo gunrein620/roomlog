@@ -324,7 +324,7 @@ export function NaverMapPreview({
         map,
         marker,
         hasCenter ? title || "이 매물" : "선택 매물",
-        hasCenter ? "현재 위치" : "매1.4억"
+        hasCenter ? addressKey || "현재 위치" : "매1.4억"
       );
       centerInfoWindowRef.current = infoWindowHandle.infoWindow;
       centerInfoWindowListenerRef.current = infoWindowHandle.markerListener ?? null;
