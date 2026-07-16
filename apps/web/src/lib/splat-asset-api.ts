@@ -1,11 +1,11 @@
 import type { RegistrationPointPair, SplatTransform } from "@/app/splat-tour/tour-types";
+import type { SplatAssetStatus } from "@roomlog/types";
 
 // web → NestJS(api) splat 자산 CRUD 클라이언트.
 // 픽 UI/뷰어가 이 헬퍼로 서버와 통신한다. 정합 결과(transform)는 solver(③a)가
 // 계산하지만, 이 헬퍼 자체는 solver와 무관하게 동작한다.
 
-// PROCESSING: 영상만 접수된 상태 — fileUrl은 빈 문자열, videoUrl에 원본 영상. spz가 나오면 UPLOADED로 승격.
-export type SplatAssetStatus = "PROCESSING" | "UPLOADED" | "REGISTERED" | "FAILED";
+// PROCESSING: 원본 영상/캡처만 접수된 상태 — fileUrl은 빈 문자열, videoUrl에 원본. spz가 나오면 UPLOADED로 승격.
 
 export interface SplatAsset {
   id: string;
@@ -36,7 +36,7 @@ export interface CreateSplatAssetInput {
 }
 
 function apiUrl(path: string) {
-  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const base = process.env.NEXT_PUBLIC_API_URL || "/api";
   const normalized = base.replace(/\/$/, "");
   return normalized.endsWith("/api") ? `${normalized}${path}` : `${normalized}/api${path}`;
 }
@@ -84,13 +84,13 @@ export interface IntakeSplatAssetInput {
   /** Room 브리지 생성용 메타(없으면 서버 기본값) */
   title?: string;
   address?: string;
-  /** 영상(video/*) 또는 스캔앱 스플랫(.spz) 파일 */
+  /** 영상(video/*), Record3D 캡처 zip(.zip) 또는 스캔앱 스플랫(.spz) 파일 */
   file: File;
 }
 
 /**
- * 매물 등록 STEP 02의 영상/스플랫 접수 — 멀티파트.
- * 서버가 파일 종류를 판별해 .spz → UPLOADED(정합 대기), 영상 → PROCESSING(제작 중)으로 만든다.
+ * 매물 등록 STEP 02의 영상/캡처 zip/스플랫 접수 — 멀티파트.
+ * 서버가 파일 종류를 판별해 .spz → UPLOADED(정합 대기), 영상/zip → PROCESSING(제작 중)으로 만든다.
  */
 export async function intakeSplatAsset(input: IntakeSplatAssetInput): Promise<SplatAsset> {
   const form = new FormData();

@@ -1,17 +1,31 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { resolveAssetFileUrl } from "./splat-asset-api";
+import { listSplatAssets, resolveAssetFileUrl } from "./splat-asset-api";
 
 const env = process.env as Record<string, string | undefined>;
 const originalNextPublicApiUrl = env.NEXT_PUBLIC_API_URL;
+const originalFetch = globalThis.fetch;
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   if (originalNextPublicApiUrl === undefined) {
     delete env.NEXT_PUBLIC_API_URL;
     return;
   }
 
   env.NEXT_PUBLIC_API_URL = originalNextPublicApiUrl;
+});
+
+test("splat API calls use the same-origin BFF by default", async () => {
+  delete env.NEXT_PUBLIC_API_URL;
+  let requestedUrl = "";
+  globalThis.fetch = (async (input) => {
+    requestedUrl = String(input);
+    return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  assert.deepEqual(await listSplatAssets("room 1"), []);
+  assert.equal(requestedUrl, "/api/splat-assets?roomId=room%201");
 });
 
 test("resolveAssetFileUrl keeps absolute file URLs", () => {
