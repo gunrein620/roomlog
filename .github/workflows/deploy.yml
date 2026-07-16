@@ -365,7 +365,7 @@ jobs:
             exit 1
           fi
 
-          compose -f docker-compose.prod.yml run --rm migration
+          compose -f docker-compose.prod.yml run --rm migration < /dev/null
           compose -f docker-compose.prod.yml up -d --no-build --remove-orphans api web
           deployment_complete=true
           docker image prune -f
