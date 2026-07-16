@@ -2,7 +2,7 @@
 
 // 내놓은 집(임대인) 등록 폼 — 사진 업로드, 3D 도면 연결, 매물 등록.
 // 역할 흐름 분리(3단계)로 HomeApp에서 추출(동작 불변).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Box, Braces, Camera, Search, Video, X } from "lucide-react";
 import { naverMapScriptUrl } from "@/app/_components/NaverMapPreview";
@@ -23,10 +23,6 @@ import {
   serializeOwnerDraft
 } from "@/lib/owner-draft";
 import { intakeSplatAsset } from "@/lib/splat-asset-api";
-import { fetchOwnerListingAssets } from "@/lib/owner-tour-assets";
-import { getRealtimeSocket } from "@/lib/realtime-client";
-import { tradePriceLabel, type TradeListing } from "@/lib/listing-catalog";
-import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus, type SplatAssetUpdatedPayload } from "@roomlog/types";
 
 // 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
 let naverMapsLoadPromise: Promise<boolean> | null = null;
@@ -393,11 +389,6 @@ export default function LandlordMyPage() {
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const [ownerToast, setOwnerToast] = useState("");
-  // 내 매물(서버 진실)과 매물별 대표 3D 자산 — 정합 필요/제작 중/실패 배지의 소스.
-  const [ownerListings, setOwnerListings] = useState<TradeListing[]>([]);
-  const [listingAssetByListing, setListingAssetByListing] = useState<
-    Record<string, { assetId: string; status: SplatAssetStatus }>
-  >({});
   const [isSubmittingListing, setIsSubmittingListing] = useState(false);
   const isSubmittingListingRef = useRef(false);
   const postcodeEmbedRef = useRef<HTMLDivElement | null>(null);
@@ -462,38 +453,8 @@ export default function LandlordMyPage() {
     return () => window.clearTimeout(timer);
   }, [ownerToast]);
 
-  // 내 매물과 매물별 대표 3D 자산 상태를 서버에서 가져온다. 개인 임대인(1~5채) 스케일이라
-  // 매물당 자산 조회를 병렬로 돌려도 부담이 없다. 비로그인/오류면 조용히 빈 목록을 유지한다.
-  const loadOwnerListingAssets = useCallback(async () => {
-    // 내 매물 + 매물별 대표 3D 자산은 벨 알림과 공유하는 owner-tour-assets 유틸에서 모은다.
-    // 비로그인/오류면 빈 결과를 돌려주므로 빈 상태가 유지된다.
-    const data = await fetchOwnerListingAssets();
-    if (!data) return; // 비로그인/일시 오류 — 기존 상태 유지(다음 이벤트/포커스에서 다시 채워짐)
-    setOwnerListings(data.listings);
-    setListingAssetByListing(data.assetByListing);
-  }, []);
-
-  useEffect(() => {
-    void loadOwnerListingAssets();
-  }, [loadOwnerListingAssets]);
-
-  // 소켓으로 3D 자산 상태 변화를 받으면 매물 목록을 재조회한다. 페이로드는 식별자만 신뢰하고
-  // 실제 상태·라벨은 REST 재조회로 확정한다(게이트웨이 원칙). 완성/실패는 토스트로도 알린다.
-  useEffect(() => {
-    const socket = getRealtimeSocket();
-    const onAssetUpdated = (payload: SplatAssetUpdatedPayload) => {
-      void loadOwnerListingAssets();
-      if (payload.status === "UPLOADED") {
-        setOwnerToast("3D 투어가 완성됐어요 — 도면 정합을 진행해 주세요");
-      } else if (payload.status === "FAILED") {
-        setOwnerToast("3D 제작에 실패했어요 — 파일을 다시 업로드해 주세요");
-      }
-    };
-    socket.on(SPLAT_ASSET_UPDATED_EVENT, onAssetUpdated);
-    return () => {
-      socket.off(SPLAT_ASSET_UPDATED_EVENT, onAssetUpdated);
-    };
-  }, [loadOwnerListingAssets]);
+  // 3D 투어 상태(정합 필요/제작 중/실패)는 상단 네비 벨(TourActionBell)이 단일 소스로 알린다.
+  // 예전 하단 "3D 투어 진행 상태" 섹션과 그 집계·소켓 구독은 벨로 대체되어 제거됐다.
 
   // 주소 입력을 디바운스로 지오코딩 — 상세 지도에 실제 매물 좌표를 찍기 위함.
   useEffect(() => {
@@ -674,8 +635,6 @@ export default function LandlordMyPage() {
         setGeoCoords(null);
         if (typeof window !== "undefined") window.localStorage.removeItem(LISTING_FLOOR_PLAN_STORAGE_KEY);
         setRegistrationStatus("노출중");
-        // 새로 등록한 매물(과 방금 접수한 3D 자산)을 내 매물 목록에 즉시 반영한다.
-        void loadOwnerListingAssets();
         const listingSuccessToast = "매물이 등록됐습니다. 지금부터 홈 피드에 노출되고, 문의가 오면 채팅으로 이어집니다.";
         // 등록 성공과 투어 접수 결과가 연속으로 덮어쓰기 되지 않게 하나의 토스트로 합친다.
         setOwnerToast(splatIntakeToast ? `${listingSuccessToast} ${splatIntakeToast}` : listingSuccessToast);
@@ -691,10 +650,6 @@ export default function LandlordMyPage() {
   const ownerPriceLabel = ownerForm.tradeType === "전세"
     ? `전세 ${ownerForm.jeonse || "0"}만원`
     : `${ownerForm.tradeType} ${ownerForm.deposit || "0"}/${ownerForm.monthly || "0"}`;
-  // 실패 배지의 "다시 업로드"는 STEP 03(영상·스플랫 접수)로 스크롤해 재접수를 유도한다.
-  const scrollToTourIntake = () => {
-    document.getElementById("owner-tour-intake")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   return (
     <section className="screen owner-screen" id="my-page" aria-labelledby="owner-registration-title">
@@ -993,45 +948,6 @@ export default function LandlordMyPage() {
           )}
         </button>
       </form>
-
-      {ownerListings.length > 0 ? (
-        <section className="owner-card owner-tour-listings" aria-label="내 매물 3D 투어 상태">
-          <div className="form-heading">
-            <div>
-              <span>내 매물</span>
-              <h3>3D 투어 진행 상태</h3>
-            </div>
-          </div>
-          <ul className="owner-tour-list">
-            {ownerListings.map((listing) => {
-              const asset = listingAssetByListing[listing.id];
-              return (
-                <li key={listing.id} className="owner-tour-item">
-                  <div className="owner-tour-item-main">
-                    <strong>{listing.title}</strong>
-                    <span>{tradePriceLabel(listing)}</span>
-                  </div>
-                  {asset?.status === "UPLOADED" ? (
-                    <a className="owner-tour-badge is-ready" href={`/splat-tour/register?asset=${asset.assetId}`}>
-                      정합 필요
-                    </a>
-                  ) : asset?.status === "PROCESSING" ? (
-                    <span className="owner-tour-badge is-processing">3D 제작 중</span>
-                  ) : asset?.status === "FAILED" ? (
-                    <button type="button" className="owner-tour-badge is-failed" onClick={scrollToTourIntake}>
-                      제작 실패 · 다시 업로드
-                    </button>
-                  ) : asset?.status === "REGISTERED" ? (
-                    <span className="owner-tour-badge is-done">정합 완료</span>
-                  ) : (
-                    <span className="owner-tour-badge is-none">3D 미접수</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
 
       {isPostcodeSearchOpen ? (
         <div className="postcode-sheet-backdrop" role="presentation" onClick={() => setIsPostcodeSearchOpen(false)}>
