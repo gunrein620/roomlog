@@ -900,7 +900,7 @@ const agentCards = [
     rating: "평점 4.8",
     response: "평균 응답 8분",
     inventory: "확인매물 126개",
-    tags: ["헛걸음 보상", "현장촬영", "문자문의"]
+    tags: ["현장촬영", "문자문의"]
   },
   {
     name: "방배 스마트부동산",
