@@ -691,6 +691,14 @@ export default function TenantMyPage({
   });
 
   useEffect(() => {
+    if (!selectedTenantRoomId && tenancy !== "loading") {
+      setAnnouncementState({ status: "empty", announcement: null });
+    }
+  }, [selectedTenantRoomId, tenancy]);
+
+  useEffect(() => {
+    if (!selectedTenantRoomId) return;
+
     let cancelled = false;
     let requestVersion = 0;
 
@@ -698,7 +706,10 @@ export default function TenantMyPage({
       const currentRequest = ++requestVersion;
 
       try {
-        const response = await fetch("/api/tenant/messaging/announcements", { cache: "no-store" });
+        const response = await fetch(
+          `/api/tenant/messaging/announcements?roomId=${encodeURIComponent(selectedTenantRoomId)}`,
+          { cache: "no-store" },
+        );
         if (!response.ok) throw new Error("공지 조회 실패");
 
         const payload: unknown = await response.json();
@@ -728,6 +739,7 @@ export default function TenantMyPage({
     };
     const socket = getRealtimeSocket();
 
+    setAnnouncementState({ status: "loading", announcement: null });
     void loadAnnouncements();
     socket.on("roomlog:activity", loadAnnouncements);
     window.addEventListener("focus", loadAnnouncements);
@@ -739,7 +751,7 @@ export default function TenantMyPage({
       window.removeEventListener("focus", loadAnnouncements);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, []);
+  }, [selectedTenantRoomId]);
 
   const [repairRequests, setRepairRequests] = useState<TenantRepairRequest[]>([]);
 

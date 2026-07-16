@@ -16,3 +16,4 @@ export * from "./domain-event";
 export * from "./vendor-credit";
 export * from "./repair-payment";
 export * from "./tenant-vendor-connection";
+export * from "./splat-pipeline";

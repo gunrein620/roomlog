@@ -8249,8 +8249,8 @@ export class RoomlogService implements OnModuleDestroy {
     return this.messaging.sendManagerAnnouncementDraft(managerId, draftId);
   }
 
-  listTenantMessagingAnnouncements(tenantId: string) {
-    return this.messaging.listTenantMessagingAnnouncements(tenantId);
+  listTenantMessagingAnnouncements(tenantId: string, roomId?: string) {
+    return this.messaging.listTenantMessagingAnnouncements(tenantId, roomId);
   }
 
   getTenantMessagingAnnouncement(tenantId: string, announcementId: string) {

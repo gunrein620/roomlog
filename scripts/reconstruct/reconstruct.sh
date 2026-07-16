@@ -75,7 +75,7 @@ SPZ="${ROOT}/${NAME}.spz"
 # 최신 2.7.1까지 전 구간에서 --spz-version 3가 gzip(1f8b) 출력을 낸다 — 버전 고정 불필요,
 # 플래그만 있으면 됨. 업그레이드 조건: Spark가 v4(비압축)를 지원하게 되면 플래그 제거.
 if command -v node >/dev/null 2>&1; then
-  npx --yes @playcanvas/splat-transform "$PLY" --spz-version 3 "$SPZ"
+  npx --yes @playcanvas/splat-transform@2 -w "$PLY" --spz-version 3 "$SPZ"  # @2 핀: v3 CLI는 NGSP(v4)로 뽑아 뷰어가 못 읽음(2026-07-16)
   echo "✓ 완료: $SPZ  ($(du -h "$SPZ" | cut -f1))"
   echo ""
   echo "다음: 이 파일을 웹앱 apps/web/public/samples/ 에 두고, 같은 basename의 <이름>.tuning.json"

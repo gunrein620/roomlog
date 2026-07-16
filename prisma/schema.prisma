@@ -580,10 +580,19 @@ enum AiFeedbackStatus {
 }
 
 enum SplatAssetStatus {
-  PROCESSING // 영상만 접수됨 — spz 생성 전. fileUrl 빈 문자열, videoUrl에 원본 영상
+  PROCESSING // 원본 소스(영상/캡처 zip)만 접수됨 — spz 생성 전. fileUrl 빈 문자열, videoUrl에 원본
   UPLOADED // 파일만 존재, 도면 정합 전
   REGISTERED // 2점 정합 완료 — transform 존재, 하이브리드 기능 해금
-  FAILED
+  FAILED // 재구성 실패 — SplatAsset.jobError에 사유
+}
+
+// GPU 재구성 잡 상태 (SplatAsset.jobState) — 계약: packages/types/src/splat-pipeline.ts
+enum SplatReconstructionJobState {
+  QUEUED // 접수됨, GPU 배정 대기
+  GPU_STARTING // 인스턴스 기동/SSM 온라인 대기
+  RUNNING // 재구성 실행 중 (jobCommandId로 추적)
+  DONE // spz 콜백 수신, 자산 UPLOADED로 승격됨
+  FAILED // 재시도 소진 — jobError에 사유
 }
 
 model UserAccount {
@@ -2086,13 +2095,20 @@ model SplatAsset {
   fileUrl           String // .spz/.sog 경로
   fileKind          String           @default("spz")
   sizeBytes         Int?
-  videoUrl          String? // PROCESSING 접수 시 원본 영상 경로
+  videoUrl          String? // PROCESSING 접수 시 원본 소스(영상 또는 캡처 zip) 경로 — 종류는 fileKind로 구분
   status            SplatAssetStatus @default(UPLOADED)
   transform         Json? // SplatTransform (tour-types.ts). null이면 미정합
   registrationPairs Json? // RegistrationPointPair[] — 정합 근거, 재정합용
   capturedAt        DateTime? // 촬영 시각 메타 (§7 편향 표기용)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  // GPU 재구성 잡 추적 — 별도 Job 모델 대신 자산당 최신 잡만 기록(개인 임대인 스케일, 이력은 로그로)
+  jobState     SplatReconstructionJobState? // null = 파이프라인 무관 자산(직접 spz 업로드)
+  jobError     String? // FAILED 사유(2KB 절단) — 마이페이지 실패 안내 원천
+  jobAttempts  Int       @default(0)
+  jobCommandId String? // SSM RunCommand id — api 재기동 후 재부착·디버깅용
+  jobStartedAt DateTime?
 
   room      Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
   floorPlan FloorPlan? @relation(fields: [floorPlanId], references: [id])

@@ -56,6 +56,8 @@ COPY apps/api/scripts ./apps/api/scripts
 COPY apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql ./apps/api/src/roomlog/fixtures/pre-vendor-catalog-baseline.sql
 COPY --from=builder /app/packages/types ./packages/types
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+# GPU 오케스트레이터가 SSM으로 원격에 실을 재구성 스크립트(base64 인라인 소스). buildJobCommand가 /app/scripts/reconstruct에서 읽는다.
+COPY scripts/reconstruct scripts/reconstruct
 
 EXPOSE 4000
 
