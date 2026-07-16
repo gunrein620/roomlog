@@ -9,7 +9,7 @@ export const demoListings = [
     listingLabel: "매물번호 57804322",
     title: "방배 루미에르 402호",
     location: "방배동 · 내방역 도보 5분",
-    price: "월세 1000/130",
+    price: "월세 1000만 / 130만",
     headline: "전입OK 신축원룸 정말 깔끔해요 수납 굿",
     spec: "24.5m² · 4층 · 즉시입주",
     roomType: "오피스텔",
@@ -35,7 +35,7 @@ export const demoListings = [
     listingLabel: "매물번호 57804323",
     title: "성수 어반 스튜디오",
     location: "성수동 · 서울숲 9분",
-    price: "월세 800 / 80",
+    price: "월세 800만 / 80만",
     headline: "서울숲 가까운 복층 스튜디오 반려동물 가능",
     spec: "32.2m² · 복층 · 반려동물",
     roomType: "원룸",
@@ -61,7 +61,7 @@ export const demoListings = [
     listingLabel: "매물번호 57804324",
     title: "역삼 스카이 테라스",
     location: "역삼동 · 강남역 7분",
-    price: "전세 4억 6,000",
+    price: "전세 4억 6,000만",
     headline: "강남역 생활권 고층 오피스텔 전망 좋은 방",
     spec: "30.0m² · 14층 · 관리비 15만",
     roomType: "오피스텔",
@@ -122,10 +122,25 @@ export function listingDetailAddressLabel(listing: object & { detailAddress?: st
   return detailAddress || DETAIL_ADDRESS_FALLBACK;
 }
 
+export function listingMapAddress(listing: object & { location?: string | null; detailAddress?: string | null }): string {
+  const location = listing.location?.trim();
+  if (location) return location;
+  return listing.detailAddress?.trim() || "";
+}
+
+export function formatManwonAmount(value: number): string {
+  const amount = Math.abs(value) < 10000 ? String(value) : value.toLocaleString("ko-KR");
+  return `${amount}만`;
+}
+
+export function monthlyDealLabel(depositManwon: number, monthlyRentManwon: number): string {
+  return `${formatManwonAmount(depositManwon)} / ${formatManwonAmount(monthlyRentManwon)}`;
+}
+
 export function tradePriceLabel(listing: TradeListing): string {
-  if (listing.tradeType === "월세") return `월세 ${listing.depositManwon}/${listing.monthlyRentManwon}`;
-  if (listing.tradeType === "전세") return `전세 ${listing.depositManwon.toLocaleString("ko-KR")}만`;
-  return `매매 ${listing.depositManwon.toLocaleString("ko-KR")}만`;
+  if (listing.tradeType === "월세") return `월세 ${monthlyDealLabel(listing.depositManwon, listing.monthlyRentManwon)}`;
+  if (listing.tradeType === "전세") return `전세 ${formatManwonAmount(listing.depositManwon)}`;
+  return `매매 ${formatManwonAmount(listing.depositManwon)}`;
 }
 
 // 직접등록 매물을 홈 카드/상세가 쓰는 쇼케이스 매물 형태로 투영한다.
@@ -174,7 +189,7 @@ export function tradeListingToCard(listing: TradeListing): Listing {
 }
 
 export const getListingPriceRows = (listing: Listing) => {
-  const monthlyMatch = listing.price.match(/월세\s*([\d,]+)\s*\/\s*([\d,]+)/);
+  const monthlyMatch = listing.price.match(/월세\s*([\d,]+)\s*만?\s*\/\s*([\d,]+)\s*만?/);
   const jeonseMatch = listing.price.match(/전세\s*(.+)/);
 
   if (monthlyMatch) {
@@ -234,7 +249,7 @@ export const mapListings = [
   {
     listingIndex: 0,
     title: "방배 루미에르 402호",
-    price: "월세 1000/130",
+    price: "월세 1000만 / 130만",
     meta: "원룸 · 24.5m² · 4층",
     distance: "내방역 도보 5분 · 큰길가",
     updated: "1일전",
@@ -242,7 +257,8 @@ export const mapListings = [
     image: "/listing-studio.jpg",
     lat: 37.4875,
     lng: 126.9931,
-    mapLabel: "1000/130",
+    mapLabel: "1000만 / 130만",
+    dealTone: "monthly",
     clusterLabel: "14개",
     verifyStatus: "오늘 현장확인",
     responseStatus: "평균 응답 8분",
@@ -255,7 +271,7 @@ export const mapListings = [
   {
     listingIndex: 2,
     title: "역삼 스카이 테라스",
-    price: "전세 4억 6,000",
+    price: "전세 4억 6,000만",
     meta: "오피스텔 · 30.0m² · 14층",
     distance: "강남역 도보 7분 · 보안 우수",
     updated: "오늘확인",
@@ -263,7 +279,8 @@ export const mapListings = [
     image: "/listing-building.jpg",
     lat: 37.4902,
     lng: 126.9908,
-    mapLabel: "전세 4.6억",
+    mapLabel: "전세 4억 6,000만",
+    dealTone: "jeonse",
     clusterLabel: "오늘",
     verifyStatus: "오늘 서류확인",
     responseStatus: "보상 정책 참여",
@@ -276,7 +293,7 @@ export const mapListings = [
   {
     listingIndex: 1,
     title: "성수 어반 스튜디오",
-    price: "월세 800/80",
+    price: "월세 800만 / 80만",
     meta: "복층 · 반려동물 가능",
     distance: "서울숲 9분",
     updated: "방금확인",
@@ -284,7 +301,8 @@ export const mapListings = [
     image: "/listing-loft.jpg",
     lat: 37.4859,
     lng: 126.9964,
-    mapLabel: "800/80",
+    mapLabel: "800만 / 80만",
+    dealTone: "monthly",
     clusterLabel: "3D",
     verifyStatus: "방금 갱신",
     responseStatus: "즉시 문의 가능",
@@ -297,10 +315,17 @@ export const mapListings = [
 ];
 
 // 지도 탭 패널·마커 공용 아이템 — 데모는 listingNo로 정규화하고, 직접등록 매물은 렌더 시 합류한다.
-export type MapPanelItem = Omit<(typeof mapListings)[number], "listingIndex"> & { listingNo: string; detailAddress?: string };
+export type MapDealTone = "monthly" | "jeonse";
+
+export type MapPanelItem = Omit<(typeof mapListings)[number], "listingIndex"> & {
+  listingNo: string;
+  detailAddress?: string;
+  dealTone?: MapDealTone;
+};
 
 export const demoMapItems: MapPanelItem[] = mapListings.map(({ listingIndex, ...item }) => ({
   ...item,
+  dealTone: item.dealTone as MapDealTone,
   listingNo: demoListings[listingIndex].listingNo
 }));
 
