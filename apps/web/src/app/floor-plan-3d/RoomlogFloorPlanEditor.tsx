@@ -797,6 +797,8 @@ export default function RoomlogFloorPlanEditor() {
   const [cachedBackgroundImage, setCachedBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.3);
   const [isProcessing, setIsProcessing] = useState(false);
+  // 도면 인식(자동 탐지)이 도는 동안 캔버스 위에 스캔 애니메이션을 띄운다.
+  const [isScanningPlan, setIsScanningPlan] = useState(false);
   // 상태 메시지 토스트 — 예전엔 span 하나가 60여 종 피드백(줌·삭제·undo·저장…)을 덮어썼고
   // 자동으로 사라지지도 않았다. 최근 3개까지 쌓이고 몇 초 뒤 사라지는 토스트로 교체.
   // 호출부가 매우 많아 setUploadStatus라는 이름은 그대로 둔다.
@@ -853,21 +855,28 @@ export default function RoomlogFloorPlanEditor() {
   const dragHistoryPushedRef = useRef(false);
   const lastHistorySnapshotRef = useRef<EditorHistorySnapshot>({ fixtures: fixtureCandidates, openings: openingCandidates, walls });
 
-  // 마운트 시 저장된 도면 초안(floorPlanDraft)을 복원한다 — "다시 열기"로 재진입해도
-  // 그렸던 벽·문/창문·설비·가구·축척이 남아있게(예전엔 walls가 항상 []로 시작해 빈 캔버스가 됐다).
-  // roomWalls3D는 walls·축척에서 파생되므로 2D 상태만 되살리면 3D도 그대로 복구된다.
+  // 저장된 도면 초안(floorPlanDraft)은 자동 복원하지 않는다 — 항상 빈 캔버스로 시작하고,
+  // 초안이 있으면 시작 안내에 "이전 초안 이어서 하기" 버튼만 노출한다(사용자가 눌러야 복원).
+  // 자동 복원 시절엔 배경 도면 이미지 없이 후보 박스만 되살아나 과거 데이터가 유령처럼 떠 보였다.
+  const [availableDraft, setAvailableDraft] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    let draft: Record<string, unknown> | null = null;
     try {
       const raw = window.localStorage.getItem("floorPlanDraft");
-      draft = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+      const draft = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+      // 의미 있는 벽이 없는 초안은 이어서 할 것도 없다 — 버튼을 띄우지 않는다.
+      if (draft && Array.isArray(draft.walls) && (draft.walls as Wall[]).length > 0) {
+        setAvailableDraft(draft);
+      }
     } catch {
-      draft = null;
+      // 손상된 초안은 무시하고 빈 캔버스로 시작한다.
     }
+  }, []);
+
+  function restoreSavedDraft() {
+    const draft = availableDraft;
     if (!draft) return;
-    const restoredWalls = Array.isArray(draft.walls) ? (draft.walls as Wall[]) : [];
-    if (restoredWalls.length === 0) return; // 의미 있는 벽이 없으면 빈 캔버스 유지(새로 그리기)
+    const restoredWalls = draft.walls as Wall[];
 
     editHistorySkipRef.current = true; // 복원은 실행취소 이력에 쌓지 않는다
     setWalls(restoredWalls);
@@ -883,9 +892,9 @@ export default function RoomlogFloorPlanEditor() {
     }
     if (typeof draft.id === "string") setFloorPlanDraftId(draft.id);
     fitViewToWalls(restoredWalls);
+    setAvailableDraft(null);
     setUploadStatus("저장된 도면을 불러왔어요 — 이어서 수정할 수 있어요");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
   const [isDragging, setIsDragging] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
   const [wallDragOperation, setWallDragOperation] = useState<WallDragOperation | null>(null);
@@ -3207,6 +3216,7 @@ export default function RoomlogFloorPlanEditor() {
     }
 
     setIsProcessing(true);
+    setIsScanningPlan(true);
     setAiAnalysisStatus("문/창문 후보 탐지중");
     try {
       const response = await floorPlanAuthorizedFetch(apiUrl("/floor-plans/opening-detection"), {
@@ -3300,6 +3310,7 @@ export default function RoomlogFloorPlanEditor() {
       setAiAnalysisStatus("도면 인식 실패");
     } finally {
       setIsProcessing(false);
+      setIsScanningPlan(false);
     }
   }
 
@@ -4236,6 +4247,19 @@ export default function RoomlogFloorPlanEditor() {
                 ref={canvasRef}
               />
             </div>
+            {isScanningPlan ? (
+              <div className="floor-plan-scan-overlay" role="status" aria-live="polite">
+                <div className="floor-plan-scan-beam" aria-hidden="true" />
+                <span className="floor-plan-scan-label">
+                  도면 인식 중
+                  <span className="floor-plan-scan-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </span>
+              </div>
+            ) : null}
             <div className="floor-plan-zoom-controls" role="group" aria-label="화면 배율 조절">
               <button aria-label="축소" onClick={() => zoomViewBy(1 / 1.2)} title="축소" type="button">
                 −
@@ -4262,6 +4286,20 @@ export default function RoomlogFloorPlanEditor() {
                   <label className="floor-plan-primary floor-plan-upload-label" htmlFor="floor-plan-source-input">
                     도면 이미지 등록
                   </label>
+                  {availableDraft ? (
+                    <button
+                      className="floor-plan-secondary"
+                      onClick={restoreSavedDraft}
+                      title={
+                        typeof availableDraft.savedAt === "number"
+                          ? `${new Date(availableDraft.savedAt).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} 저장본`
+                          : "마지막으로 저장한 도면을 불러옵니다"
+                      }
+                      type="button"
+                    >
+                      이전 초안 이어서 하기
+                    </button>
+                  ) : null}
                   <button
                     className="floor-plan-secondary"
                     onClick={() => {

@@ -2010,6 +2010,14 @@ p {
   font-size: 0.78rem;
 }
 
+.map-location-action-label {
+  display: none;
+}
+
+.map-location-action-button {
+  gap: 8px;
+}
+
 .map-context-bar {
   display: flex;
   align-items: center;
@@ -2130,6 +2138,7 @@ p {
 }
 
 .naver-info-window {
+  position: relative;
   display: grid;
   min-width: 84px;
   overflow: hidden;
@@ -2147,30 +2156,56 @@ p {
 }
 
 .naver-info-window b {
+  padding-right: 36px;
+  padding-left: 36px;
   border-bottom: 1px solid #d9d9d9;
   color: #2f55ff;
 }
 
+.naver-info-window-close {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #68707d;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.naver-info-window-close:hover {
+  background: #eef1f5;
+  color: #171a21;
+}
+
 .naver-price-marker {
   display: grid;
-  min-width: 84px;
-  overflow: hidden;
-  border: 2px solid #ffffff;
-  border-radius: 8px;
-  background: #1f2530;
-  color: #ffffff;
+  min-width: 104px;
+  overflow: visible;
+  border: 2px solid var(--blue);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--blue);
   text-align: center;
-  box-shadow: 0 10px 22px rgba(18, 24, 40, 0.28);
+  box-shadow: 0 10px 22px rgba(47, 85, 255, 0.22);
 }
 
 .naver-price-marker::after {
   position: absolute;
   right: 50%;
-  bottom: -8px;
-  width: 14px;
-  height: 14px;
-  border-right: 2px solid #ffffff;
-  border-bottom: 2px solid #ffffff;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid var(--blue);
+  border-bottom: 2px solid var(--blue);
   background: inherit;
   content: "";
   transform: translateX(50%) rotate(45deg);
@@ -2181,21 +2216,41 @@ p {
   position: relative;
   z-index: 1;
   display: block;
-  padding: 5px 11px;
+  padding: 5px 10px;
 }
 
 .naver-price-marker b {
-  background: #ffffff;
-  color: var(--blue);
-  font-size: 0.72rem;
+  display: none;
 }
 
 .naver-price-marker strong {
   font-size: 0.82rem;
+  font-weight: 950;
 }
 
 .naver-price-marker.active {
   background: var(--blue);
+  color: #ffffff;
+}
+
+.naver-price-marker.is-jeonse {
+  border-color: #0b3558;
+  color: #0b3558;
+  box-shadow: 0 10px 22px rgba(11, 53, 88, 0.22);
+}
+
+.naver-price-marker.is-jeonse::after {
+  border-right-color: #0b3558;
+  border-bottom-color: #0b3558;
+}
+
+.naver-price-marker.is-jeonse.active {
+  background: #0b3558;
+  color: #ffffff;
+}
+
+.map-price-text.is-jeonse {
+  color: #0b3558;
 }
 
 .map-api-state {
@@ -2337,7 +2392,8 @@ p {
   backdrop-filter: blur(12px);
 }
 
-.map-selected-card > button {
+.map-selected-card > button,
+.map-selected-summary {
   display: grid;
   min-width: 0;
   gap: 4px;
@@ -2358,6 +2414,8 @@ p {
 }
 
 .map-selected-card strong {
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   color: #171923;
   font-size: 0.98rem;
@@ -2366,7 +2424,7 @@ p {
   white-space: nowrap;
 }
 
-.map-selected-card > div {
+.map-selected-actions {
   display: grid;
   justify-items: end;
   gap: 7px;
@@ -2385,7 +2443,7 @@ p {
   font-weight: 900;
 }
 
-.map-selected-card > div button {
+.map-selected-actions button {
   min-height: 34px;
   padding: 0 13px;
   border-radius: 12px;
@@ -2393,6 +2451,50 @@ p {
   color: #ffffff;
   font-size: 0.74rem;
   font-weight: 900;
+}
+
+.map-selected-room-list {
+  grid-column: 1 / -1;
+  display: grid;
+  max-height: 126px;
+  gap: 7px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.map-selected-room-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(47, 85, 255, 0.14);
+  border-radius: 13px;
+  background: #f8fbff;
+  color: inherit;
+  text-align: left;
+}
+
+.map-selected-room-list button.active {
+  border-color: rgba(47, 85, 255, 0.72);
+  background: #eef3ff;
+}
+
+.map-selected-room-list strong,
+.map-selected-room-list span,
+.map-selected-room-list small {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-selected-room-list small {
+  grid-column: 1 / -1;
+}
+
+.map-selected-detail-address {
+  grid-column: 1 / -1;
 }
 
 .result-sheet {
@@ -2515,7 +2617,7 @@ p {
 
 .map-listing-action {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 96px) minmax(0, 1fr);
   align-items: start;
   gap: 12px;
   width: 100%;
@@ -2541,7 +2643,7 @@ p {
 
 .map-listing-thumb {
   position: relative;
-  width: 96px;
+  width: 100%;
   min-height: 112px;
   overflow: hidden;
   border-radius: 12px;
@@ -2566,13 +2668,18 @@ p {
 }
 
 .map-listing-copy {
+  overflow: hidden;
   min-width: 0;
+  max-width: 100%;
 }
 
 .map-card-badge-row {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .map-card-badge-row span {
@@ -2588,6 +2695,8 @@ p {
 }
 
 .map-listing h3 {
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   margin-top: 7px;
   color: var(--ink);
@@ -2599,24 +2708,36 @@ p {
 
 .map-listing strong {
   display: block;
+  max-width: 100%;
+  overflow: hidden;
   margin-top: 5px;
   color: var(--blue);
   font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .map-listing p {
+  max-width: 100%;
+  overflow: hidden;
   margin-top: 5px;
   color: #4a5160;
   font-size: 0.72rem;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .map-listing small {
   display: block;
+  max-width: 100%;
+  overflow: hidden;
   margin-top: 4px;
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .map-card-tags {
@@ -3050,7 +3171,7 @@ p {
 
 .detail-quick-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 16px;
 }
@@ -9176,6 +9297,104 @@ p {
   color: #24418f;
 }
 
+/* 도면 인식 중 스캔 애니메이션 — 캔버스를 위아래로 훑는 빔 + 상태 라벨. 클릭은 통과시킨다. */
+.floor-plan-scan-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(47, 85, 255, 0.05);
+}
+
+.floor-plan-scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 16%;
+  background: linear-gradient(
+    to bottom,
+    rgba(47, 85, 255, 0) 0%,
+    rgba(47, 85, 255, 0.1) 70%,
+    rgba(47, 85, 255, 0.32) 100%
+  );
+  border-bottom: 2px solid rgba(47, 85, 255, 0.85);
+  box-shadow: 0 3px 22px rgba(47, 85, 255, 0.4);
+  animation: floor-plan-scan-sweep 2.4s ease-in-out infinite alternate;
+}
+
+/* 빔 높이(16%) 기준 자기높이 % 이동 — -100%(캔버스 위 바깥)에서 625%(바닥)까지 왕복 */
+@keyframes floor-plan-scan-sweep {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(625%);
+  }
+}
+
+.floor-plan-scan-label {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.78);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  backdrop-filter: blur(4px);
+}
+
+.floor-plan-scan-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.floor-plan-scan-dots > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #9db9ff;
+  animation: floor-plan-scan-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.floor-plan-scan-dots > span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.floor-plan-scan-dots > span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes floor-plan-scan-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floor-plan-scan-beam,
+  .floor-plan-scan-dots > span {
+    animation: none;
+  }
+
+  .floor-plan-scan-beam {
+    top: 42%;
+  }
+}
+
 .floor-plan-empty-guide {
   position: absolute;
   inset: 0;
@@ -10654,21 +10873,25 @@ p {
     margin-left: auto;
   }
 
+  .map-screen {
+    width: min(100% - 32px, 1680px);
+  }
+
   /* 행 구성: 1 검색바 · 2 필터 · 3 요약바 · 4 인사이트 스트립 · 5 지도+결과시트(늘어나는 행) */
   .map-screen {
     display: grid;
     grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr) 390px;
-    grid-template-rows: auto auto auto auto minmax(0, 1fr);
-    gap: 12px 16px;
-    padding-right: 24px;
-    padding-left: 24px;
+    grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 12px 18px;
+    min-height: calc(100vh - 104px);
+    padding: 16px 20px 22px;
     border-top: 1px solid var(--line);
+    background: #eef2f8;
   }
 
   .map-topbar,
-  .map-filter-row,
-  .map-context-bar {
+  .map-filter-row {
     grid-column: 1 / -1;
     margin-right: 0;
     margin-left: 0;
@@ -10676,19 +10899,81 @@ p {
     padding-left: 0;
   }
 
+  .map-topbar {
+    grid-row: 1;
+    gap: 0;
+    overflow: hidden;
+    border: 2px solid var(--blue);
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 16px 36px rgba(47, 85, 255, 0.1);
+  }
+
+  .map-topbar label {
+    min-height: 60px;
+    border: 0;
+    border-radius: 0;
+    background: #ffffff;
+  }
+
+  .map-topbar > button {
+    width: 66px;
+    height: 60px;
+    border-left: 1px solid var(--line);
+    border-radius: 0;
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  .map-topbar > .map-location-action-button {
+    width: auto;
+    min-width: 150px;
+    padding: 0 18px;
+    border-left: 0;
+  }
+
+  .map-location-action-label {
+    display: inline-flex;
+    align-items: center;
+    color: #596170;
+    font-size: 0.78rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .map-topbar > button:last-child {
+    width: 76px;
+    background: var(--blue);
+    color: #ffffff;
+  }
+
+  .map-filter-row {
+    grid-row: 2;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .map-filter-row button {
+    min-height: 42px;
+    padding: 0 16px;
+    background: #ffffff;
+    box-shadow: 0 10px 22px rgba(18, 24, 40, 0.06);
+  }
+
+  .map-context-bar {
+    display: none;
+  }
+
   /* 지도 자리를 차지하며 세로로 늘어나던 인사이트 카드 → 지도 위 슬림한 가로 스트립으로 */
   .map-screen > .map-insight-strip {
-    grid-column: 1 / -1;
-    grid-row: 4;
-    align-self: start;
-    margin: 0;
-    overflow: visible;
+    display: none;
   }
 
   /* 지도는 map-canvas-stack으로 감싸져 있으므로 그리드 배치는 stack에 준다 */
   .map-canvas-stack {
-    grid-column: 1;
-    grid-row: 5;
+    grid-column: 2;
+    grid-row: 3;
+    min-height: calc(100vh - 240px);
   }
 
   /* [data-state] 셀렉터는 오류/키없음 상태에서 height 340px를 거는
@@ -10696,26 +10981,30 @@ p {
   .map-stage,
   .map-canvas-stack .map-stage[data-state] {
     height: 100%;
-    min-height: 520px;
+    min-height: calc(100vh - 240px);
     margin-top: 0;
     border: 1px solid var(--line);
-    border-radius: 20px;
+    border-radius: 18px;
   }
 
   .map-selected-card {
-    bottom: 16px;
+    right: auto;
+    bottom: 18px;
+    left: 18px;
+    width: min(520px, calc(100% - 36px));
   }
 
   .result-sheet {
-    grid-column: 2;
-    grid-row: 5;
-    max-height: min(680px, calc(100vh - 280px));
+    grid-column: 1;
+    grid-row: 3;
+    align-self: stretch;
+    max-height: calc(100vh - 240px);
     overflow-y: auto;
     margin-top: 0;
-    padding: 12px;
+    padding: 14px;
     border: 1px solid var(--line);
-    border-radius: 20px;
-    box-shadow: 0 16px 36px rgba(18, 24, 40, 0.1);
+    border-radius: 18px;
+    box-shadow: 0 16px 36px rgba(18, 24, 40, 0.12);
   }
 
   .result-sheet .sheet-handle {
@@ -10723,8 +11012,37 @@ p {
   }
 
   .map-listing {
-    min-height: 124px;
-    padding-right: 38px;
+    min-height: 176px;
+    padding: 12px 42px 12px 12px;
+    border-radius: 16px;
+    box-shadow: 0 12px 26px rgba(18, 24, 40, 0.07);
+  }
+
+  .result-sheet .map-list {
+    gap: 14px;
+  }
+
+  .result-sheet .map-listing-action {
+    grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .result-sheet .map-listing-thumb {
+    min-height: 164px;
+    border-radius: 12px;
+  }
+
+  .result-sheet .map-listing h3 {
+    margin-top: 8px;
+    font-size: 1.04rem;
+  }
+
+  .result-sheet .map-listing strong {
+    font-size: 0.96rem;
+  }
+
+  .result-sheet .map-verification-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* ── 마이페이지·문의·찜: 6컬럼 명시 배치 (모바일 세로 흐름을 데스크톱 대시보드로) ── */

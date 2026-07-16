@@ -898,13 +898,15 @@ function complaintStatusFor(ticketStatus: TicketStatus): ComplaintStatus {
   return map[ticketStatus];
 }
 
-function createDemoStore(): Store {
+/**
+ * 로그인 가능한 핵심 데모 계정 4종 — 데모 스토어(createDemoStore)와
+ * DB 부팅 보정(ensureCoreDemoLoginAccounts)이 같은 정의를 공유한다.
+ * DB가 원본인 환경에서 계정 유실이 있어도 이 계정들로는 항상 로그인할 수 있어야 한다.
+ */
+export function coreDemoLoginAccounts(): UserAccount[] {
   const createdAt = now();
-  const moveoutCreatedAt = "2026-07-01T09:00:00+09:00";
-  const moveoutUpdatedAt = "2026-07-02T09:00:00+09:00";
-  const moveoutDisputeCreatedAt = "2026-06-28T09:00:00+09:00";
-  const moveoutDisputeDeadline = "2026-07-01T09:00:00+09:00";
-  const users: UserAccount[] = [
+
+  return [
     {
       id: "tenant-demo",
       email: "tenant@roomlog.test",
@@ -948,6 +950,15 @@ function createDemoStore(): Store {
       createdAt
     }
   ];
+}
+
+function createDemoStore(): Store {
+  const moveoutCreatedAt = "2026-07-01T09:00:00+09:00";
+  const moveoutUpdatedAt = "2026-07-02T09:00:00+09:00";
+  const moveoutDisputeCreatedAt = "2026-06-28T09:00:00+09:00";
+  const moveoutDisputeDeadline = "2026-07-01T09:00:00+09:00";
+  const createdAt = now();
+  const users: UserAccount[] = coreDemoLoginAccounts();
   const contractCreatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
   const contractUpdatedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000 + 10 * 60 * 1000).toISOString();
   const billingDate = new Date();
