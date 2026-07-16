@@ -2,7 +2,7 @@
 // 라우트를 오가도 찜 상태가 유지된다. (기존엔 SPA 메모리 state뿐이라 새로고침에 소실)
 const STORAGE_KEY = "woozuSavedListingNos";
 
-/** 데모 기본 찜 2개 — 저장된 값이 없을 때만 사용(첫 방문 데모 경험 유지). */
+/** 저장된 찜 목록을 읽는다 — 없거나 깨졌으면 defaults(현재 모든 호출부가 빈 배열). */
 export function loadSavedListingNos(defaults: string[]): string[] {
   if (typeof window === "undefined") return defaults;
   try {
