@@ -4,7 +4,7 @@ import { MANAGER_CROSS, MHOME_ROUTES } from "./manager-home-nav";
 import { MANAGER_MESSAGING_ROUTES } from "./messaging-manager-nav";
 import { MANAGER_REPORT_ROUTES } from "./report-nav";
 import { MANAGER_TICKET_ROUTES } from "./ticket-manager-nav";
-import { MANAGER_VENDOR_MGMT_ROUTES } from "./vendor-mgmt-nav";
+import { MANAGER_VENDOR_MGMT_NAV, MANAGER_VENDOR_MGMT_PATHS } from "./vendor-mgmt-nav";
 
 export type ManagerNavItemId =
   | "dashboard" | "listing" | "contract" | "billing" | "cost" | "ticket"
@@ -127,13 +127,10 @@ export const MANAGER_NAV_GROUPS: readonly ManagerNavGroup[] = [
       {
         id: "vendor",
         label: "업체 관리",
-        href: MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"],
+        href: MANAGER_VENDOR_MGMT_PATHS.vendors,
         icon: "vendor",
         activePrefixes: ["/manager/vendor-mgmt"],
-        children: [
-          { label: "업체 주소록", href: MANAGER_VENDOR_MGMT_ROUTES["M-VEND-00"] },
-          { label: "등록·편집", href: MANAGER_VENDOR_MGMT_ROUTES["M-VEND-03"] },
-        ],
+        children: MANAGER_VENDOR_MGMT_NAV,
       },
     ],
   },

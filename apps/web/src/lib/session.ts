@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { VendorAccountView } from "@roomlog/types";
 import { serverFetch, ApiError } from "./server-api";
 import {
   defaultRedirectForIntent,
@@ -24,7 +25,7 @@ export interface SessionUser {
   room?: { id: string; roomNo?: string; buildingId?: string } | undefined;
   managedRooms?: Array<{ id: string; buildingName?: string; roomNo?: string; address?: string }> | undefined;
   vendorId?: string;
-  vendor?: unknown;
+  vendor?: VendorAccountView;
 }
 
 /** 로그인 안 됐으면 null (쿠키 없음/만료). 화면에서 분기용. */

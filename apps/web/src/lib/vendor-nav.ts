@@ -13,6 +13,7 @@ export const ROUTES = {
   "V-JOB-04": "/vendor/job/04",
   "V-JOB-05": "/vendor/job/05",
   "V-JOB-06": "/vendor/job/06",
+  "V-JOB-SETTLEMENT": "/vendor/job/settlements",
   "V-JOB-E0": "/vendor/job/e0",
 } as const;
 

@@ -11,6 +11,15 @@ import {
   togglePayableItem,
   type PayableItemSelection,
 } from "@/lib/tenant-payment-items";
+import {
+  createTossWidgets,
+  isTossPaymentsReady,
+  requestTossPayment as requestTossCheckout,
+  tossPaymentMode,
+  TOSS_PAYMENTS_SDK_URL,
+  type TossPaymentMode,
+  type TossWidgets,
+} from "@/lib/toss-payments";
 import styles from "../tenant-payment-pages.module.css";
 
 // T-PAY-02 · 납부 신고 폼
@@ -35,45 +44,6 @@ type BillPaymentOrderResult = {
   clientKey?: string;
 };
 
-type TossWidgets = {
-  setAmount(input: { currency: "KRW"; value: number }): Promise<void>;
-  renderPaymentMethods(input: { selector: string; variantKey?: string }): Promise<void>;
-  renderAgreement(input: { selector: string; variantKey?: string }): Promise<void>;
-  requestPayment(input: {
-    orderId: string;
-    orderName: string;
-    successUrl: string;
-    failUrl: string;
-    customerName?: string;
-  }): Promise<void>;
-};
-
-type TossPaymentWindow = {
-  requestPayment(input: {
-    method: "CARD";
-    amount: { currency: "KRW"; value: number };
-    orderId: string;
-    orderName: string;
-    successUrl: string;
-    failUrl: string;
-    customerName?: string;
-    card?: { flowMode: "DEFAULT" };
-  }): Promise<void>;
-};
-
-type TossPaymentsInstance = {
-  widgets(input: { customerKey: string }): TossWidgets;
-  payment(input: { customerKey: string }): TossPaymentWindow;
-};
-
-type TossPaymentMode = "widget" | "payment-window";
-
-declare global {
-  interface Window {
-    TossPayments?: (clientKey: string) => TossPaymentsInstance;
-  }
-}
-
 function won(n: number): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
@@ -96,10 +66,6 @@ const itemStatusLabel: Record<BillLineItemStatus, string> = {
 
 function messageFromError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
-}
-
-function tossPaymentMode(clientKey: string): TossPaymentMode {
-  return clientKey.includes("_gck_") ? "widget" : "payment-window";
 }
 
 export function PaymentReportForm({
@@ -137,31 +103,22 @@ export function PaymentReportForm({
   const selectedAmount = itemSelection.selectedAmount;
 
   useEffect(() => {
-    setSdkReady(Boolean(window.TossPayments));
+    setSdkReady(isTossPaymentsReady());
   }, []);
 
   useEffect(() => {
     if (!paymentOrder?.clientKey || paymentMode !== "widget") return;
-    if (!sdkReady && !window.TossPayments) return;
+    if (!sdkReady && !isTossPaymentsReady()) return;
 
     const clientKey = paymentOrder.clientKey;
     let canceled = false;
     const frame = window.requestAnimationFrame(async () => {
-      const tossPayments = window.TossPayments;
-
-      if (!tossPayments) {
-        setPaymentMessage("Toss 결제위젯 SDK를 불러오지 못했습니다.");
-        return;
-      }
-
       setRenderingWidget(true);
       setWidgetReady(false);
       widgetsRef.current = null;
 
       try {
-        const widgets = tossPayments(clientKey).widgets({
-          customerKey: paymentOrder.customerKey,
-        });
+        const widgets = createTossWidgets(clientKey, paymentOrder.customerKey);
 
         await widgets.setAmount({ currency: "KRW", value: paymentOrder.amount });
         await Promise.all([
@@ -278,42 +235,19 @@ export function PaymentReportForm({
       const successUrl = `${window.location.origin}/tenant/payment/success?billId=${billQuery}`;
       const failUrl = `${window.location.origin}/tenant/payment/fail?billId=${billQuery}`;
 
-      if (paymentMode === "payment-window") {
-        const tossPayments = window.TossPayments;
-
-        if (!paymentOrder.clientKey || !tossPayments) {
-          setPaymentMessage("Toss 결제 SDK를 불러오지 못했습니다.");
-          setRequestingPayment(false);
-          return;
-        }
-
-        await tossPayments(paymentOrder.clientKey).payment({
-          customerKey: paymentOrder.customerKey,
-        }).requestPayment({
-          method: "CARD",
-          amount: { currency: "KRW", value: paymentOrder.amount },
-          orderId: paymentOrder.orderId,
-          orderName: paymentOrder.orderName,
-          successUrl,
-          failUrl,
-          customerName: "집우집주 임차인",
-          card: { flowMode: "DEFAULT" },
-        });
-        return;
+      if (!paymentOrder.clientKey) {
+        throw new Error("Toss 결제 SDK를 불러오지 못했습니다.");
       }
-
-      if (!widgetsRef.current) {
-        setPaymentMessage("결제위젯을 먼저 불러와 주세요.");
-        setRequestingPayment(false);
-        return;
-      }
-
-      await widgetsRef.current.requestPayment({
+      await requestTossCheckout({
+        clientKey: paymentOrder.clientKey,
+        customerKey: paymentOrder.customerKey,
         orderId: paymentOrder.orderId,
+        amount: paymentOrder.amount,
         orderName: paymentOrder.orderName,
         successUrl,
         failUrl,
         customerName: "집우집주 임차인",
+        ...(widgetsRef.current ? { widgets: widgetsRef.current } : {}),
       });
     } catch (error) {
       setPaymentMessage(messageFromError(error, "결제 요청이 취소되었거나 실패했습니다."));
@@ -356,7 +290,7 @@ export function PaymentReportForm({
   return (
     <>
       <Script
-        src="https://js.tosspayments.com/v2/standard"
+        src={TOSS_PAYMENTS_SDK_URL}
         strategy="afterInteractive"
         onLoad={() => setSdkReady(true)}
         onError={() => setPaymentMessage("Toss 결제위젯 SDK를 불러오지 못했습니다.")}

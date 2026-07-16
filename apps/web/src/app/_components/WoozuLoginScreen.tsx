@@ -98,7 +98,8 @@ export function WoozuLoginScreen({
   onGoHome,
   googleRedirectTo,
   googleErrorRedirectTo,
-  initialError
+  initialError,
+  vendorActivationAction
 }: {
   mode: AuthMode;
   onAuthenticated: (viewer: ViewerProfile) => void;
@@ -106,6 +107,10 @@ export function WoozuLoginScreen({
   googleRedirectTo?: string;
   googleErrorRedirectTo?: string;
   initialError?: string;
+  vendorActivationAction?: {
+    href: string;
+    label: string;
+  };
 }) {
   const socialLoginNotice = "WOOZU 계정 하나로 방 찾기, 사는 집, 내놓은 집, 관리 중인 집을 이어갑니다.";
   const [serviceEmail, setServiceEmail] = useState("");
@@ -260,8 +265,17 @@ export function WoozuLoginScreen({
               </button>
             </form>
             <a className="service-signup-link" href="/signup">일반 회원가입</a>
+            {vendorActivationAction ? (
+              <div className="login-vendor-activation-entry">
+                <a
+                  className="login-vendor-activation-link"
+                  href={vendorActivationAction.href}
+                >
+                  {vendorActivationAction.label}
+                </a>
+              </div>
+            ) : null}
           </div>
-
         </div>
       </section>
     </main>
