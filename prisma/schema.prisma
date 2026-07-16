@@ -2164,3 +2164,33 @@ model TradeListing {
   @@index([status, createdAt])
   @@index([ownerId])
 }
+
+// ─── 임차인 가구 배치(트랙 C) — docs/tenant-furniture-fit.md ──────────────────
+// 임차인 계정 소유 가구 인벤토리(RoomPlan 스캔·직접입력·Object Capture 메시). 여러 매물에서 재사용.
+// category/source는 문자열(타입은 packages/types/src/tenant-furniture.ts가 강제). sizeMm는 3컬럼.
+model TenantFurniture {
+  id            String   @id
+  ownerTenantId String
+  category      String // TenantFurnitureCategory
+  label         String?
+  widthMm       Int
+  depthMm       Int
+  heightMm      Int
+  source        String // TenantFurnitureSource: roomplan|object-capture|manual|catalog
+  meshUrl       String? // Object Capture GLB(C-2). null이면 회색 박스 렌더
+  createdAt     DateTime @default(now())
+
+  @@index([ownerTenantId])
+}
+
+// 임차인이 특정 매물 방(splat 정합 프레임)에 자기 가구를 놓은 배치안. 매물×임차인 1개.
+model TenantFurniturePlacement {
+  id        String   @id
+  tenantId  String
+  listingId String
+  items     Json // TenantFurniturePlacementItem[] (furnitureId, position[x,z], rotation)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, listingId])
+  @@index([tenantId])
+}

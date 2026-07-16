@@ -6,6 +6,7 @@ import { MarketModule } from "./market/market.module";
 import { MapSearchModule } from "./map/map-search.module";
 import { RoomlogModule } from "./roomlog/roomlog.module";
 import { SplatAssetModule } from "./splat-asset/splat-asset.module";
+import { TenantFurnitureModule } from "./tenant-furniture/tenant-furniture.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { ReconstructionModule } from "./reconstruction/reconstruction.module";
 import { TradeModule } from "./trade/trade.module";
@@ -19,6 +20,7 @@ import { TradeModule } from "./trade/trade.module";
     MapSearchModule,
     ListingsModule,
     SplatAssetModule,
+    TenantFurnitureModule,
     TradeModule,
     RealtimeModule,
     ReconstructionModule
