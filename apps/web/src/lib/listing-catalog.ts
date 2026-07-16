@@ -90,6 +90,8 @@ export type Listing = (typeof demoListings)[number] & {
   lng?: number;
   has3DTour?: boolean;
   floorPlan3D?: ListingFloorPlan3D;
+  /** 등록 시 선택한 옵션 — 없으면(데모 매물) 상세가 고정 데모 목록으로 폴백 */
+  options?: string[];
 };
 
 // 서버(집주인 직접등록) 매물 — /api/trade/listings 응답 형태
@@ -108,6 +110,7 @@ export type TradeListing = {
   description: string;
   status: string;
   createdAt: string;
+  options?: string[];
   images?: string[];
   lat?: number;
   lng?: number;
@@ -184,7 +187,10 @@ export function tradeListingToCard(listing: TradeListing): Listing {
     lat: listing.lat,
     lng: listing.lng,
     has3DTour: Boolean(floorPlan3D),
-    floorPlan3D
+    floorPlan3D,
+    options: Array.isArray(listing.options)
+      ? listing.options.filter((item) => typeof item === "string" && item)
+      : []
   };
 }
 
@@ -227,7 +233,8 @@ export const getListingBuildingRows = (listing: Listing) => [
 // 차단하므로 절대 URL 사진은 unoptimized로 브라우저가 직접 로드하게 한다(번들 목업은 그대로 최적화).
 export const isRemotePhoto = (src: string) => /^https?:\/\//.test(src);
 
-// 상세 화면 고정 데모 데이터 — 옵션/주변 정보(실데이터 연동 전 껍데기)
+// 등록 폼에서 선택 가능한 옵션 목록 — API(trade.service ALLOWED_LISTING_OPTIONS)와 같은 값·순서.
+// 데모 매물 상세는 options가 없어 이 목록 전체를 폴백으로 보여준다.
 export const optionItems = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"];
 
 export const neighborhoodItems = [

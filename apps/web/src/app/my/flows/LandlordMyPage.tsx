@@ -23,6 +23,7 @@ import {
   serializeOwnerDraft
 } from "@/lib/owner-draft";
 import { intakeSplatAsset } from "@/lib/splat-asset-api";
+import { optionItems } from "@/lib/listing-catalog";
 import { clearOwnerPhotos, loadOwnerPhotos, saveOwnerPhotos } from "@/lib/owner-photo-store";
 
 // 지도/지오코딩 스크립트를 필요할 때 1회만 로드한다(등록 폼은 NaverMapPreview가 없는 화면이라 자체 로드 필요).
@@ -399,8 +400,17 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
   const postcodeEmbedRef = useRef<HTMLDivElement | null>(null);
   const [isPostcodeSearchOpen, setIsPostcodeSearchOpen] = useState(false);
   const [postcodeLoadState, setPostcodeLoadState] = useState<KakaoPostcodeLoadState>("idle");
-  const updateOwnerForm = (key: keyof typeof ownerForm, value: string) => {
+  const updateOwnerForm = (key: Exclude<keyof typeof ownerForm, "options">, value: string) => {
     setOwnerForm((current) => ({ ...current, [key]: value }));
+    setRegistrationStatus("작성 중");
+  };
+  const toggleOwnerOption = (option: string) => {
+    setOwnerForm((current) => ({
+      ...current,
+      options: current.options.includes(option)
+        ? current.options.filter((item) => item !== option)
+        : [...current.options, option]
+    }));
     setRegistrationStatus("작성 중");
   };
 
@@ -620,7 +630,8 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
             ownerForm.moveIn ? `입주 ${ownerForm.moveIn}` : ""
           ].filter(Boolean).join(" · "),
           lat: listingCoords?.lat,
-          lng: listingCoords?.lng
+          lng: listingCoords?.lng,
+          options: ownerForm.options
         };
         payload.images = images;
         // 3D방 연결 상태이고 에디터 스냅샷이 있으면 매물에 도면을 실어 보낸다 → 상세 "3D 보기"에서 실제 렌더.
@@ -802,6 +813,27 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
               층수
               <input value={ownerForm.floor} onChange={(event) => updateOwnerForm("floor", event.target.value)} placeholder="예: 4층 / 16층" />
             </label>
+
+            {/* 옵션 — 여기서 고른 항목이 매물 상세의 "옵션 정보"에 그대로 노출된다 */}
+            <div className="owner-step1-wide owner-option-field">
+              <span className="owner-option-label">옵션 (선택)</span>
+              <div className="owner-option-chip-grid" role="group" aria-label="옵션 선택">
+                {optionItems.map((option) => {
+                  const selected = ownerForm.options.includes(option);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      className={selected ? "selected" : undefined}
+                      aria-pressed={selected}
+                      onClick={() => toggleOwnerOption(option)}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </section>
 

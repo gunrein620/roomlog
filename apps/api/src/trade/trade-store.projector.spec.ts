@@ -73,6 +73,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       monthlyRentManwon: 0,
       location: "서울 성동구 성수동",
       description: "",
+      options: [],
       images: [],
       status: "노출중",
       createdAt: "2026-07-01T00:00:00.000Z"
@@ -100,6 +101,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       monthlyRentManwon: 45,
       location: "서울 강남구 역삼동",
       description: "",
+      options: [],
       images: [],
       status: "노출중",
       createdAt: "2026-06-01T00:00:00.000Z"
@@ -133,6 +135,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       monthlyRentManwon: 45,
       location: "서울 강남구 역삼동",
       description: "",
+      options: [],
       images: [],
       status: "노출중",
       createdAt: "2026-06-01T00:00:00.000Z"
@@ -169,6 +172,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       location: "서울 서초구 재기동로 1",
       detailAddress: "501호",
       description: "",
+      options: [],
       images: [],
       status: "계약완료",
       createdAt: "2026-07-13T00:00:00.000Z",

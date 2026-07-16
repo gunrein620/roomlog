@@ -1506,6 +1506,7 @@ model TradeListing {
   detailAddress     String?
   buildingName      String? // 건물명 — 관리 화면의 건물별 그룹 보기 기준
   description       String   @default("")
+  options           String[] @default([]) // 옵션(에어컨·세탁기 등) — 허용 목록은 서비스에서 검증
   images            String[] @default([])
   lat               Float?
   lng               Float?

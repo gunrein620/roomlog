@@ -3443,6 +3443,15 @@ p {
   margin-top: 14px;
 }
 
+/* 직접등록 매물인데 고른 옵션이 없을 때의 빈 상태 문구 */
+.option-empty-note {
+  margin-top: 14px;
+  padding: 12px 0;
+  color: #6b7280;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .option-chip-grid span {
   display: inline-flex;
   min-height: 38px;
@@ -6314,6 +6323,50 @@ p {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px 16px;
+}
+
+/* 옵션 선택 — 상세 "옵션 정보" 칩과 같은 언어의 토글 버튼. 선택 시 파란 채움 */
+.owner-option-field {
+  display: grid;
+  gap: 8px;
+}
+
+.owner-option-label {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #373f4e;
+}
+
+.owner-option-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.owner-option-chip-grid button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dde2ec;
+  border-radius: 12px;
+  background: #f8faff;
+  color: #373f4e;
+  font-size: 0.78rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.owner-option-chip-grid button.selected {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+@media (min-width: 960px) {
+  .owner-option-chip-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 /* 업로드 타일 — 사진/3D도면/JSON/영상을 하나의 통일된 카드 언어로 묶는다.

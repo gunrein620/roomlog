@@ -69,6 +69,8 @@ export function ListingDetailView({
   const detailAddressLabel = listingDetailAddressLabel(listing);
   const mapAddress = listingMapAddress(listing);
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
+  // 직접등록 매물은 집주인이 등록 시 고른 옵션만, 데모 매물(options 없음)은 기존 고정 목록을 보여준다.
+  const listingOptions = listing.options ?? optionItems;
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
   // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
@@ -281,13 +283,17 @@ export function ListingDetailView({
         <section className="detail-info-section" aria-label="옵션 정보">
           <div className="detail-section-heading">
             <h2>옵션 정보</h2>
-            <span>현장 확인 필요</span>
+            <span>{isDirectListing ? "집주인 등록 기준" : "현장 확인 필요"}</span>
           </div>
-          <div className="option-chip-grid">
-            {optionItems.map((option) => (
-              <span key={option}>{option}</span>
-            ))}
-          </div>
+          {listingOptions.length > 0 ? (
+            <div className="option-chip-grid">
+              {listingOptions.map((option) => (
+                <span key={option}>{option}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="option-empty-note">집주인이 등록한 옵션이 없습니다.</p>
+          )}
         </section>
 
         <section className="detail-info-section" aria-label="건물 정보">
