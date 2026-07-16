@@ -673,15 +673,18 @@ const trustItems = [
 
 
 function SavedListingsSection({
+  allListings,
   savedListingNos,
   openListing,
   onToggleSaved
 }: {
+  /** 데모 + 직접등록(TRADE-) 병합 피드 — 정적 배열만 보면 서버 매물 찜이 목록에서 빠진다. */
+  allListings: Listing[];
   savedListingNos: string[];
   openListing: (listing: Listing) => void;
   onToggleSaved: (listingNo: string) => void;
 }) {
-  const savedListings = listings.filter((listing) => savedListingNos.includes(listing.listingNo));
+  const savedListings = allListings.filter((listing) => savedListingNos.includes(listing.listingNo));
 
   return (
     <section className="screen saved-screen" id="saved-list" aria-labelledby="saved-title">
@@ -2544,6 +2547,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
         {activeTab === "saved" ? (
         <SavedListingsSection
+          allListings={allListings}
           savedListingNos={savedListingNos}
           openListing={openListing}
           onToggleSaved={toggleSavedListing}
