@@ -133,3 +133,20 @@ describe("Docker Postgres local database wiring", () => {
     assert.match(apiPrismaConfigSource, /schema: "\.\.\/\.\.\/prisma\/schema\.prisma"/);
   });
 });
+
+describe("Migration Postgres version contract", () => {
+  it("accepts any PostgreSQL 18.3+ minor but rejects other majors", async () => {
+    // 정확 핀(=== 180003)은 RDS 마이너 자동 패치만으로 배포가 깨졌다 — 18.x 범위 허용을 고정한다.
+    const { assertSupportedPostgresVersion } = await import("../../scripts/migrate-database.mjs");
+
+    assert.doesNotThrow(() => assertSupportedPostgresVersion("180003")); // 18.3
+    assert.doesNotThrow(() => assertSupportedPostgresVersion("180004")); // 18.4 마이너 패치
+    assert.doesNotThrow(() => assertSupportedPostgresVersion(180012));
+
+    assert.throws(() => assertSupportedPostgresVersion("180002"), /requires PostgreSQL 18\.3\+/); // 18.2
+    assert.throws(() => assertSupportedPostgresVersion("170005"), /requires PostgreSQL 18\.3\+/); // 17.x
+    assert.throws(() => assertSupportedPostgresVersion("190000"), /requires PostgreSQL 18\.3\+/); // 19 메이저
+    assert.throws(() => assertSupportedPostgresVersion(undefined), /requires PostgreSQL 18\.3\+/);
+    assert.throws(() => assertSupportedPostgresVersion("not-a-number"), /requires PostgreSQL 18\.3\+/);
+  });
+});
