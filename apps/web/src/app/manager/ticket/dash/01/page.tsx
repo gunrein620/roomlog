@@ -14,6 +14,7 @@ import {
   ticketDashHref,
 } from "../../_components/ticket-manager-ui";
 import { TicketEvidenceGallery } from "./TicketEvidenceGallery";
+import { AttachmentThumbnailGallery } from "./AttachmentThumbnailGallery";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -66,13 +67,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             <div style={sectionTitle}>임차인 입력·첨부</div>
             <div style={muted}>{[ticket.location, ticket.description].filter(Boolean).join(" · ")}</div>
-            <div style={row}>
-              {detail.attachmentUrls.length > 0 ? (
-                <Badge>사진 {detail.attachmentUrls.length}장</Badge>
-              ) : (
-                <span style={muted}>조회할 첨부 내용이 없습니다.</span>
-              )}
-            </div>
+            <AttachmentThumbnailGallery
+              attachmentUrls={detail.attachmentUrls}
+              emptyMessage="조회할 첨부 내용이 없습니다."
+            />
           </Card>
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>

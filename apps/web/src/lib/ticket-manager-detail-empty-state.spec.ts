@@ -35,9 +35,10 @@ describe("manager ticket detail empty states", () => {
     assert.match(pageSource, /attachmentUrls=\{detail\.attachmentUrls\}/);
   });
 
-  it("shows only actual attachment counts or an attachment empty state", () => {
-    assert.match(pageSource, /detail\.attachmentUrls\.length/);
+  it("shows actual attachment thumbnails or an attachment empty state", () => {
+    assert.match(pageSource, /AttachmentThumbnailGallery/);
+    assert.match(pageSource, /attachmentUrls=\{detail\.attachmentUrls\}/);
     assert.match(pageSource, /조회할 첨부 내용이 없습니다\./);
-    assert.doesNotMatch(pageSource, /반복 민원 1건|연결 티켓 보기/);
+    assert.doesNotMatch(pageSource, /사진 \{detail\.attachmentUrls\.length\}장|반복 민원 1건|연결 티켓 보기/);
   });
 });
