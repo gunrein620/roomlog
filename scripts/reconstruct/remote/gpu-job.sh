@@ -243,9 +243,10 @@ if [[ "$SOURCE_KIND" == "record3d-zip" ]]; then
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nodejs
       fi
       # @2 버전 핀 필수: v3.x CLI는 --spz-version을 잃고 NGSP(v4, 비압축)로 뽑아 뷰어(Spark)가 못 읽는다(2026-07-16 실측).
-      # -r -90,0,0: ARKit/nerfstudio Z-up → 뷰어 Y-up 중력 정렬을 산출물에 굽는다(뷰어 보정 불필요).
+      # 회전 굽기 금지: point-init 체인은 ARKit 중력 정렬(Y-up)을 그대로 보존한다(축 span 실측으로 확인).
+      # 뷰어는 spz 기본 rotX 0 규약으로 그대로 세운다 — 여기서 회전을 추가하면 오히려 눕는다.
       npx --yes @playcanvas/splat-transform@2 -w /workspace/clean.ply \
-        -r -90,0,0 --spz-version 3 /workspace/out.spz
+        --spz-version 3 /workspace/out.spz
     '
 else
   copy_payload_file reconstruct.sh
