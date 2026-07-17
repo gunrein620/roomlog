@@ -775,9 +775,9 @@ test("routes every roomlog entry through the unified WOOZU /login with capabilit
   assert.equal(existsSync(new URL("./src/app/login/page.tsx", import.meta.url)), true);
   assert.match(unifiedLoginPageSource, /WoozuLoginScreen/);
   assert.match(unifiedLoginPageSource, /resolvePostLoginDestination/);
-  // capability가 없으면 재로그인이 아니라 "연결 필요" 안내 상태로 이어진다.
-  assert.match(unifiedLoginPageSource, /link-required/);
-  assert.match(unifiedLoginPageSource, /다른 계정으로 로그인/);
+  // capability가 없어도 "연결 필요" 안내 인터스티셜 없이 진입점으로 바로 리다이렉트한다.
+  assert.doesNotMatch(unifiedLoginPageSource, /link-required/);
+  assert.doesNotMatch(unifiedLoginPageSource, /연결이 필요합니다/);
 
   // 기존 역할별 로그인 경로는 삭제하지 않고 /login?intent=... 호환 redirect로 남긴다.
   for (const [dir, intent] of [
@@ -804,11 +804,14 @@ test("routes every roomlog entry through the unified WOOZU /login with capabilit
   assert.doesNotMatch(googleAuthSharedSource, /return "\/(tenant|manager|vendor)\/login"/);
 });
 
-test("landlord link-required CTA starts the unprotected listing flow instead of looping to /login", () => {
-  // QA 2 회귀 방지: capability 없는 계정의 "집 내놓기"가 보호된 마이페이지로 갔다가
-  // 다시 /login으로 돌아오는 루프가 없어야 한다.
-  assert.match(unifiedLoginPageSource, /\/\?flow=listing/);
-  assert.doesNotMatch(unifiedLoginPageSource, /"\/(\?role=landlord&tab=mypage)"/);
+test("capability-less landlord lands on the unprotected listing form instead of looping to /login", () => {
+  // QA 2 회귀 방지: capability 없는 계정의 "집 내놓기"가 보호된 경로로 갔다가
+  // 다시 /login으로 돌아오는 루프가 없어야 한다 — /login은 곧장 /sell로 보낸다.
+  const unifiedLoginLibSource = readFileSync(
+    new URL("./src/lib/unified-login.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(unifiedLoginLibSource, /landlord: "\/sell"/);
   assert.match(pageSource, /flow === "listing"/);
   // 매물등록(sell) 탭은 아예 비보호 — 집 없는(처음 가입) 계정도 별도 시작 버튼 없이 바로 폼으로 간다.
   assert.doesNotMatch(pageSource, /isListingStartMode/);
