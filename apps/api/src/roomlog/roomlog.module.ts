@@ -62,6 +62,15 @@ import {
   TENANT_VENDOR_CONNECTION_REPOSITORY,
   type TenantVendorConnectionRepository
 } from "./tenant-vendor-connection.repository";
+import {
+  TENANT_COMPLAINT_DRAFT_REPOSITORY,
+  type TenantComplaintDraftRepository
+} from "./tenant-complaint-draft.repository";
+import { PrismaTenantComplaintDraftRepository } from "./prisma-tenant-complaint-draft.repository";
+import {
+  RoomlogTenantComplaintDraftDomain,
+  TenantComplaintDraftCleanupWorker
+} from "./services/roomlog-tenant-complaint-draft.domain";
 
 export const VENDOR_COMPLETION_STORAGE = Symbol("VENDOR_COMPLETION_STORAGE");
 
@@ -171,6 +180,16 @@ class UnavailableTenantVendorConnectionRepository
   }
 }
 
+class UnavailableTenantComplaintDraftRepository implements TenantComplaintDraftRepository {
+  private unavailable(): never {
+    throw new ServiceUnavailableException("DATABASE_URL이 없어 민원 초안을 저장할 수 없습니다.");
+  }
+  async findActive(): Promise<never> { return this.unavailable(); }
+  async upsert(): Promise<never> { return this.unavailable(); }
+  async delete(): Promise<never> { return this.unavailable(); }
+  async deleteExpired(): Promise<never> { return this.unavailable(); }
+}
+
 export function createManagerVendorRepository(
   env: NodeJS.ProcessEnv = process.env
 ): ManagerVendorRepository {
@@ -198,6 +217,15 @@ export function createTenantVendorConnectionRepository(
   return databaseUrl
     ? new PrismaTenantVendorConnectionRepository(databaseUrl, events)
     : new UnavailableTenantVendorConnectionRepository();
+}
+
+export function createTenantComplaintDraftRepository(
+  env: NodeJS.ProcessEnv = process.env
+): TenantComplaintDraftRepository {
+  const databaseUrl = env.DATABASE_URL?.trim();
+  return databaseUrl
+    ? new PrismaTenantComplaintDraftRepository(databaseUrl)
+    : new UnavailableTenantComplaintDraftRepository();
 }
 
 @Injectable()
@@ -364,6 +392,10 @@ export async function createRoomlogServiceOptions(
         createTenantVendorConnectionRepository(process.env, events)
     },
     {
+      provide: TENANT_COMPLAINT_DRAFT_REPOSITORY,
+      useFactory: () => createTenantComplaintDraftRepository()
+    },
+    {
       provide: RoomlogManagerVendorDomain,
       inject: [MANAGER_VENDOR_REPOSITORY],
       useFactory: (repository: ManagerVendorRepository) =>
@@ -385,6 +417,26 @@ export async function createRoomlogServiceOptions(
         repository: TenantVendorConnectionRepository,
         storeBridge: RoomlogService
       ) => new RoomlogTenantVendorConnectionDomain(repository, {}, storeBridge)
+    },
+    {
+      provide: RoomlogTenantComplaintDraftDomain,
+      inject: [TENANT_COMPLAINT_DRAFT_REPOSITORY, RoomlogService],
+      useFactory: (
+        repository: TenantComplaintDraftRepository,
+        roomlogService: RoomlogService
+      ) => new RoomlogTenantComplaintDraftDomain(
+        repository,
+        {
+          canAccessRoom: (tenantId, roomId) =>
+            roomlogService.listTenantRooms(tenantId).some((room) => room.roomId === roomId)
+        }
+      )
+    },
+    {
+      provide: TenantComplaintDraftCleanupWorker,
+      inject: [TENANT_COMPLAINT_DRAFT_REPOSITORY],
+      useFactory: (repository: TenantComplaintDraftRepository) =>
+        new TenantComplaintDraftCleanupWorker(repository)
     },
     {
       provide: VENDOR_COMPLETION_STORAGE,

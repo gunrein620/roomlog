@@ -4173,12 +4173,34 @@ export class RoomlogService implements OnModuleDestroy {
     this.validateComplaintInput(input);
 
     const roomId = input.roomId ?? this.store.tenantRooms[tenantId] ?? "room-301";
+    const requestFingerprint = input.clientRequestId
+      ? this.complaintRequestFingerprint(roomId, input)
+      : undefined;
+    const existing = input.clientRequestId
+      ? this.store.complaints.find(
+          (complaint) =>
+            complaint.tenantId === tenantId &&
+            complaint.clientRequestId === input.clientRequestId
+        )
+      : undefined;
+    if (existing) {
+      if (existing.requestFingerprint !== requestFingerprint) {
+        throw new ConflictException("같은 접수 요청에 변경된 내용을 다시 사용할 수 없습니다.");
+      }
+      const ticket = this.findTicket(existing.ticketId);
+      return {
+        complaint: this.presentComplaint(existing),
+        ticket: this.presentTicket(ticket),
+        analysis: this.store.analyses[ticket.id]
+      };
+    }
     const analysis = this.analyzeComplaint(input);
     return this.createComplaintRecord(tenantId, roomId, "DIRECT_FORM", input, analysis, [
       {
         senderUserId: tenantId,
         senderRole: "TENANT",
-        messageText: input.description
+        messageText: input.description,
+        attachmentUrls: input.attachmentUrls
       }
     ]);
   }
@@ -5601,6 +5623,10 @@ export class RoomlogService implements OnModuleDestroy {
       roomId,
       ticketId,
       sourceChannel,
+      clientRequestId: input.clientRequestId,
+      requestFingerprint: input.clientRequestId
+        ? this.complaintRequestFingerprint(roomId, input)
+        : undefined,
       title: input.title,
       description: input.description,
       location: input.location,
@@ -9971,6 +9997,32 @@ export class RoomlogService implements OnModuleDestroy {
     if (!input.location?.trim()) {
       throw new BadRequestException("발생 위치를 입력해주세요.");
     }
+
+    if (
+      input.attachmentUrls !== undefined &&
+      (!Array.isArray(input.attachmentUrls) ||
+        input.attachmentUrls.some((url) => typeof url !== "string" || !url.trim()))
+    ) {
+      throw new BadRequestException("첨부 이미지 주소가 올바르지 않습니다.");
+    }
+
+    if (input.clientRequestId !== undefined && !input.clientRequestId.trim()) {
+      throw new BadRequestException("접수 요청 식별자가 올바르지 않습니다.");
+    }
+  }
+
+  private complaintRequestFingerprint(roomId: string, input: CreateComplaintInput) {
+    return createHash("sha256")
+      .update(JSON.stringify({
+        roomId,
+        title: input.title,
+        description: input.description,
+        location: input.location,
+        occurredAt: input.occurredAt ?? null,
+        availableTimes: input.availableTimes ?? null,
+        attachmentUrls: input.attachmentUrls ?? []
+      }))
+      .digest("hex");
   }
 
   private emptyDraft(): IntakeDraft {
