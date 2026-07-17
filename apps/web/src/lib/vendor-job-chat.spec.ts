@@ -78,7 +78,10 @@ test("vendor detail renders the progress thread and hides the composer when read
   assert.match(pageSource, /job=\{job\}/);
   assert.match(componentSource, /export function VendorJobChat/);
   assert.match(componentSource, />진행 메시지</);
-  assert.match(componentSource, /job\.messages\.map/);
+  // 스크롤 고정(column-reverse) 도입으로 역순 렌더 — 스레드가 최신 하단 고정·스크롤되는 계약까지 포함.
+  assert.match(componentSource, /\[\.\.\.job\.messages\]\.reverse\(\)\.map/);
+  assert.match(componentSource, /column-reverse/);
+  assert.match(componentSource, /overflowY:\s*"auto"/);
   assert.match(componentSource, /vendorJobMessageSenderLabel\(message\.senderRole\)/);
   assert.match(componentSource, /canVendorSendJobMessage\(job\.status\)/);
   assert.match(componentSource, /name="messageText"/);

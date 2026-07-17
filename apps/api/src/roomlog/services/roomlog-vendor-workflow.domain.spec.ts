@@ -211,15 +211,21 @@ async function cleanupWorkflowFixture(
   prisma: PrismaClient,
   fixture: WorkflowFixture
 ) {
+  const repairIds = (
+    await prisma.repairRequest.findMany({
+      where: { ticketId: fixture.ticketId },
+      select: { id: true },
+    })
+  ).map(({ id }) => id);
   await prisma.domainEventDelivery.deleteMany({
-    where: { event: { repairId: fixture.repairId } }
+    where: { event: { repairId: { in: repairIds } } }
   });
   await prisma.domainEventOutbox.deleteMany({
-    where: { repairId: fixture.repairId }
+    where: { repairId: { in: repairIds } }
   });
   await prisma.ticketMessage.deleteMany({ where: { ticketId: fixture.ticketId } });
-  await prisma.vendorEstimate.deleteMany({ where: { repairId: fixture.repairId } });
-  await prisma.repairRequest.deleteMany({ where: { id: fixture.repairId } });
+  await prisma.vendorEstimate.deleteMany({ where: { repairId: { in: repairIds } } });
+  await prisma.repairRequest.deleteMany({ where: { ticketId: fixture.ticketId } });
   await prisma.ticket.deleteMany({ where: { id: fixture.ticketId } });
   await prisma.complaint.deleteMany({ where: { id: fixture.complaintId } });
   await prisma.managerVendor.deleteMany({ where: { vendorId: fixture.vendorId } });
@@ -283,6 +289,69 @@ async function withWorkflowFixture(
 }
 
 describe("RoomlogVendorWorkflowDomain visit negotiation", () => {
+  it(
+    "preserves a vendor decline, notifies the tenant once, and allows reassignment",
+    { skip: !databaseUrl },
+    async () => {
+      await withWorkflowFixture(
+        `${Date.now().toString(36)}_decline`,
+        {},
+        async ({ prisma, domain, fixture }) => {
+          const declineReason = "현재 긴급 출동 인력이 없습니다.";
+          await prisma.vendorEstimate.update({
+            where: { id: fixture.estimateId },
+            data: {
+              responseType: "DECLINED",
+              status: "DRAFT",
+              visitAvailableAt: null,
+              workDescription: null,
+              declineReason,
+              submittedAt: null,
+            },
+          });
+
+          const declined = await domain.submitEstimate(
+            fixture.vendorUserId,
+            fixture.repairId,
+            fixture.estimateId,
+          );
+
+          const [repair, ticket, estimate, tenantMessages] = await Promise.all([
+            prisma.repairRequest.findUniqueOrThrow({ where: { id: fixture.repairId } }),
+            prisma.ticket.findUniqueOrThrow({ where: { id: fixture.ticketId } }),
+            prisma.vendorEstimate.findUniqueOrThrow({ where: { id: fixture.estimateId } }),
+            prisma.ticketMessage.findMany({
+              where: {
+                ticketId: fixture.ticketId,
+                messageText: `업체가 요청을 진행하기 어렵다고 답변했습니다 — ${declineReason}`,
+              },
+            }),
+          ]);
+
+          assert.equal(declined.status, "DECLINED");
+          assert.equal(repair.status, "CANCELLED");
+          assert.equal(ticket.status, "VENDOR_ASSIGNMENT_PENDING");
+          assert.equal(ticket.assignedVendorId, null);
+          assert.equal(estimate.declineReason, declineReason);
+          assert.equal(tenantMessages.length, 1);
+          assert.equal(tenantMessages[0]?.senderRole, "VENDOR");
+          assert.equal(tenantMessages[0]?.repairId, fixture.repairId);
+
+          const reassigned = await domain.assignVendor(
+            fixture.managerId,
+            fixture.ticketId,
+            {
+              vendorId: fixture.vendorId,
+              requestNote: "일정을 다시 확인해 주세요.",
+            },
+          );
+          assert.equal(reassigned.status, "REQUESTED");
+          assert.notEqual(reassigned.repairId, fixture.repairId);
+        },
+      );
+    },
+  );
+
   it(
     "omits null and blank tenant available times and trims populated projection values",
     { skip: !databaseUrl },

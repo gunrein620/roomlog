@@ -11,6 +11,8 @@ import type {
   TicketDirectHandling,
   TicketResponsibilityDecision,
   TicketSelfRepairSummary,
+  TicketThreadMessage,
+  TicketVendorDecline,
 } from "@roomlog/types";
 import {
   toTicket,
@@ -50,7 +52,8 @@ export interface TeamManagerTicket {
   analysis?: TeamAnalysis;
   repairs?: TeamRepair[];
   assignedVendor?: { businessName?: string };
-  messages?: Array<{ attachmentUrls?: string[] }>;
+  messages?: TicketThreadMessage[];
+  vendorDecline?: TicketVendorDecline;
 }
 
 function asComplaint(t: TeamManagerTicket): TeamComplaint {

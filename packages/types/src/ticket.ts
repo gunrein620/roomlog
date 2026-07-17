@@ -53,6 +53,22 @@ export interface TicketSelfRepairSummary {
   statusLabel: string;
 }
 
+/** 관리자 상세에서 사용하는 티켓 전체 대화의 공개 계약. */
+export interface TicketThreadMessage {
+  id: string;
+  repairId?: string;
+  senderRole: "TENANT" | "LANDLORD" | "VENDOR" | "AI_ASSISTANT" | "SYSTEM";
+  messageText: string;
+  attachmentUrls: string[];
+  createdAt: string;
+}
+
+/** 취소된 수리 요청의 최신 업체 거절 정보. 관리자 상세에서만 노출한다. */
+export interface TicketVendorDecline {
+  repairId: string;
+  reason: string;
+}
+
 export type TicketAiFeedbackTarget =
   | "SUMMARY"
   | "CATEGORY"

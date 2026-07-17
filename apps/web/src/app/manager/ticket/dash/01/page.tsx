@@ -16,10 +16,12 @@ import {
 } from "../../_components/ticket-manager-ui";
 import { AttachmentThumbnailGallery } from "./AttachmentThumbnailGallery";
 import { TicketDetailBackButton } from "./TicketDetailBackButton";
+import { ManagerTicketChat } from "./ManagerTicketChat";
 import {
   cancelDirectHandlingAction,
   completeDirectHandlingAction,
   decideResponsibilityAction,
+  sendTicketChatAction,
   startDirectHandlingAction,
 } from "./actions";
 
@@ -98,6 +100,27 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               emptyMessage="조회할 첨부 내용이 없습니다."
             />
           </Card>
+
+          <ManagerTicketChat
+            ticketId={ticket.id}
+            messages={detail.messages}
+            action={sendTicketChatAction}
+          />
+
+          {detail.vendorDecline ? (
+            <Card style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <div style={{ fontWeight: 700 }}>업체가 배정을 거절했습니다</div>
+              <div style={muted}>{detail.vendorDecline.reason}</div>
+              <div style={{ ...row, justifyContent: "flex-end" }}>
+                <LinkButton
+                  href={ticketDashHref("04", ticket.id)}
+                  variant="secondary"
+                >
+                  다른 업체 배정
+                </LinkButton>
+              </div>
+            </Card>
+          ) : null}
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
             <div style={sectionTitle}>다음 행동</div>

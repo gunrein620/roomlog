@@ -9,6 +9,7 @@ import type {
   TicketResponsibilityDecision,
   Ticket,
   TicketStatus,
+  TicketThreadMessage,
   Urgency,
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
@@ -100,6 +101,15 @@ export const sectionTitle: CSSProperties = {
   color: "var(--on-surface-variant)",
   fontWeight: 700,
 };
+
+export function managerTicketMessageSenderLabel(
+  role: TicketThreadMessage["senderRole"],
+) {
+  if (role === "TENANT") return "세입자";
+  if (role === "LANDLORD") return "나";
+  if (role === "VENDOR") return "업체";
+  return "시스템·AI";
+}
 
 export function LinkButton({
   href,

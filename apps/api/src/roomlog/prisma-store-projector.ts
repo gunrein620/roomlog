@@ -307,7 +307,14 @@ export class PrismaStoreProjector implements StoreProjector {
       this.prisma.ticket.findMany(),
       this.prisma.managerTicketRead.findMany(),
       this.prisma.aiFeedback.findMany(),
-      this.prisma.repairRequest.findMany(),
+      this.prisma.repairRequest.findMany({
+        include: {
+          estimates: {
+            orderBy: [{ version: "desc" }, { id: "desc" }],
+            take: 1
+          }
+        }
+      }),
       this.prisma.cost.findMany(),
       this.prisma.vendorPaymentRequest.findMany({
         select: { costId: true, repairId: true }
@@ -774,6 +781,15 @@ export class PrismaStoreProjector implements StoreProjector {
         completedAt: asIso(repair.completedAt),
         completionNote: optional(repair.completionNote),
         completionPhotoUrls: repair.completionPhotoUrls,
+        ...(repair.estimates[0]
+          ? {
+              latestEstimate: {
+                status: repair.estimates[0].status,
+                declineReason: optional(repair.estimates[0].declineReason),
+                submittedAt: asIso(repair.estimates[0].submittedAt)
+              }
+            }
+          : {}),
         createdAt: asIso(repair.createdAt) ?? new Date().toISOString(),
         updatedAt: asIso(repair.updatedAt) ?? new Date().toISOString()
       })),

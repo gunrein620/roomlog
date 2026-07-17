@@ -5,6 +5,7 @@ import {
   cancelManagerTicketDirectHandling,
   completeManagerTicketDirectHandling,
   decideManagerTicketResponsibility,
+  sendManagerTicketReply,
   startManagerTicketDirectHandling,
 } from "@/lib/ticket-manager-api";
 import { requireUser } from "@/lib/session";
@@ -117,6 +118,27 @@ export async function cancelDirectHandlingAction(
     await cancelManagerTicketDirectHandling(ticketId, { reason });
     revalidateTicket(ticketId);
     return managerMutationSuccess("직접 처리를 취소하고 검토 단계로 돌렸습니다.");
+  } catch (error) {
+    return managerMutationError(error);
+  }
+}
+
+export async function sendTicketChatAction(
+  _previousState: ManagerMutationState,
+  formData: FormData,
+): Promise<ManagerMutationState> {
+  const ticketId = formString(formData, "ticketId");
+  const messageText = formString(formData, "messageText");
+
+  try {
+    await requireManager(ticketId);
+    if (!messageText) throw new Error("전송할 메시지를 입력해 주세요.");
+    await sendManagerTicketReply(ticketId, {
+      action: "SEND_REPLY",
+      messageText,
+    });
+    revalidateTicket(ticketId);
+    return managerMutationSuccess("진행 메시지를 전송했습니다.");
   } catch (error) {
     return managerMutationError(error);
   }

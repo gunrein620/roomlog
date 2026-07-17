@@ -12,6 +12,8 @@ import type {
   Ticket,
   TicketAiFeedback,
   TicketResponsibilityDecision,
+  TicketThreadMessage,
+  TicketVendorDecline,
 } from "@roomlog/types";
 import { ApiError, ApiPayloadError, serverFetch } from "./server-api";
 import {
@@ -45,6 +47,8 @@ export type ManagerTicketDetail = {
   attachmentUrls: string[];
   aiFeedback: TicketAiFeedback[];
   responsibilityDecision?: TicketResponsibilityDecision;
+  messages: TicketThreadMessage[];
+  vendorDecline?: TicketVendorDecline;
 };
 
 type ManagerTicketDetailLoaders = {
@@ -74,6 +78,8 @@ function toManagerTicketDetail(ticket: TeamManagerTicket): ManagerTicketDetail {
     attachmentUrls: managerTicketAttachmentUrls(ticket),
     aiFeedback: ticket.aiFeedback ?? [],
     responsibilityDecision: mappedTicket.responsibilityDecision,
+    messages: ticket.messages ?? [],
+    vendorDecline: ticket.vendorDecline,
   };
 }
 

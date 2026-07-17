@@ -1173,6 +1173,11 @@ export type RepairRequest = {
   completedAt?: string;
   completionNote?: string;
   completionPhotoUrls: string[];
+  latestEstimate?: {
+    status: string;
+    declineReason?: string;
+    submittedAt?: string;
+  };
   createdAt: string;
   updatedAt: string;
 };

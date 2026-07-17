@@ -5988,7 +5988,14 @@ export class RoomlogService implements OnModuleDestroy {
     const ticket = this.findTicket(ticketId, sourceStore);
     this.assertManagerCanAccessTicket(managerId, ticket, sourceStore);
 
-    return this.presentTicketForManager(managerId, ticket, sourceStore);
+    const detail = this.presentTicketForManager(managerId, ticket, sourceStore, {
+      includeDetail: true
+    });
+
+    return {
+      ...detail,
+      messages: detail.messages ?? []
+    };
   }
 
   async getCurrentTicketDetailForManager(managerId: string, ticketId: string) {
@@ -13334,7 +13341,8 @@ export class RoomlogService implements OnModuleDestroy {
   private presentTicketForManager(
     managerId: string,
     ticket: Ticket,
-    sourceStore: Store = this.store
+    sourceStore: Store = this.store,
+    options: { includeDetail?: boolean } = {}
   ) {
     const managerReadAt = sourceStore.managerTicketReads?.find(
       (read) => read.managerId === managerId && read.ticketId === ticket.id,
@@ -13347,9 +13355,24 @@ export class RoomlogService implements OnModuleDestroy {
           !["COMPLETED", "CANCELLED"].includes(repair.status)
       )
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const presentedTicket = this.presentTicket(ticket, sourceStore);
+    const { messages: unsortedMessages, ...ticketWithoutMessages } = presentedTicket;
+    const vendorDecline = sourceStore.repairs
+      .filter(
+        (repair) =>
+          repair.ticketId === ticket.id &&
+          repair.status === "CANCELLED" &&
+          repair.latestEstimate?.status === "DECLINED" &&
+          Boolean(repair.latestEstimate.declineReason?.trim())
+      )
+      .sort((left, right) => {
+        const leftAt = left.latestEstimate?.submittedAt ?? left.updatedAt;
+        const rightAt = right.latestEstimate?.submittedAt ?? right.updatedAt;
+        return rightAt.localeCompare(leftAt);
+      })[0];
 
     return {
-      ...this.presentTicket(ticket, sourceStore),
+      ...ticketWithoutMessages,
       managerReadAt,
       isManagerUnread: !managerReadAt,
       selfRepair: selfRepair
@@ -13358,6 +13381,22 @@ export class RoomlogService implements OnModuleDestroy {
             statusLabel: this.repairStatusLabel(selfRepair.status)
           }
         : null,
+      ...(options.includeDetail
+        ? {
+            messages: [...unsortedMessages].sort(
+              (left, right) =>
+                left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+            ),
+            ...(vendorDecline
+              ? {
+                  vendorDecline: {
+                    repairId: vendorDecline.id,
+                    reason: vendorDecline.latestEstimate!.declineReason!.trim()
+                  }
+                }
+              : {})
+          }
+        : {}),
     };
   }
 

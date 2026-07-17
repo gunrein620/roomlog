@@ -1230,6 +1230,10 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
       });
 
       if (status === "DECLINED") {
+        const declineReason = requiredText(
+          estimate.declineReason,
+          "작업 거절 사유를 확인할 수 없습니다."
+        );
         await tx.vendorEstimate.updateMany({
           where: { repairId, status: "APPROVED" },
           data: { status: "SUPERSEDED" }
@@ -1245,6 +1249,24 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         await tx.complaint.update({
           where: { id: repair.ticket.complaintId },
           data: { status: "REVIEWING" }
+        });
+        const tenantMessage = {
+          ticketId: repair.ticketId,
+          complaintId: repair.ticket.complaintId,
+          repairId: repair.id,
+          senderUserId: vendorId,
+          senderRole: "VENDOR" as const,
+          messageText: `업체가 요청을 진행하기 어렵다고 답변했습니다 — ${declineReason}`,
+          attachmentUrls: [],
+          createdAt: submittedAt
+        };
+        await tx.ticketMessage.upsert({
+          where: { id: `vendor-decline-${estimate.id}` },
+          create: {
+            id: `vendor-decline-${estimate.id}`,
+            ...tenantMessage
+          },
+          update: tenantMessage
         });
       } else if (!preserveLifecycle) {
         await tx.repairRequest.update({ where: { id: repairId }, data: { status: "ESTIMATE_SUBMITTED" } });
