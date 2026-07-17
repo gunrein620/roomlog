@@ -30,7 +30,7 @@ import {
   vendorServesAddress
 } from "./vendor-assignment-eligibility";
 import {
-  requiredVendorTrade,
+  suggestedVendorTrade,
   vendorSupportsRequiredTrade
 } from "./vendor-trade-compatibility";
 
@@ -335,12 +335,15 @@ export class PrismaManagerVendorRepository implements ManagerVendorRepository {
       orderBy: [{ businessName: "asc" }, { id: "asc" }],
       take: 25
     });
-    const requiredTrade = requiredVendorTrade(ticket.category);
-    return rows
-      .filter((vendor) =>
-        vendorSupportsRequiredTrade(vendor.trades, requiredTrade) &&
-        vendorServesAddress(vendor, ticket.room.address)
-      )
+    const suggestedTrade = suggestedVendorTrade(ticket.category);
+    const candidates = rows.filter((vendor) => vendorServesAddress(vendor, ticket.room.address));
+    if (suggestedTrade) {
+      candidates.sort((left, right) =>
+        Number(vendorSupportsRequiredTrade(right.trades, suggestedTrade))
+        - Number(vendorSupportsRequiredTrade(left.trades, suggestedTrade))
+      );
+    }
+    return candidates
       .map(mapSearchResult);
   }
 
