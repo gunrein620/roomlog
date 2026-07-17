@@ -29,6 +29,7 @@ test("serves the MitUNet viewer through a RoomLog route", () => {
   assert.match(proxySource, /\/floor-plan-3d\/mitunet-assets\//);
   assert.match(proxySource, /\/floor-plan-3d\/mitunet-api\/extract-image/);
   assert.match(proxySource, /\/floor-plan-3d\/mitunet-api\/compose-edits/);
+  assert.match(proxySource, /\/floor-plan-3d\/room-materials/);
   assert.match(proxySource, /\/floor-plan-3d\/mitunet-api\/integration-config/);
   assert.match(proxySource, /\/floor-plan-3d\/mitunet-api\/healthz/);
 });

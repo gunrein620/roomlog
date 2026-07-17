@@ -68,6 +68,7 @@ export function transformMitunetViewerHtml(html: string) {
     .replaceAll("'/viewer-assets/", "'/floor-plan-3d/mitunet-assets/")
     .replaceAll('fetch("/extract-image"', 'fetch("/floor-plan-3d/mitunet-api/extract-image"')
     .replaceAll('fetch("/compose-edits"', 'fetch("/floor-plan-3d/mitunet-api/compose-edits"')
+    .replaceAll('fetch("/room-materials"', 'fetch("/floor-plan-3d/room-materials"')
     .replaceAll('fetch("/integration-config"', 'fetch("/floor-plan-3d/mitunet-api/integration-config"')
     .replaceAll('fetch("/healthz"', 'fetch("/floor-plan-3d/mitunet-api/healthz"')
     .replaceAll(
