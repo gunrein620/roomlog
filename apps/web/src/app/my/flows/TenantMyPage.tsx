@@ -409,11 +409,18 @@ function TenantLandlordChatModal({
   const messages = thread.messages ?? [];
   const unitLabel = compactTenantThreadUnit(thread.unitId);
   const inputRef = useRef<HTMLInputElement>(null);
+  const messageStreamRef = useRef<HTMLDivElement>(null);
   const [isNoticeOpen, setIsNoticeOpen] = useState(false);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [thread.id]);
+
+  useEffect(() => {
+    const stream = messageStreamRef.current;
+    if (!stream) return;
+    stream.scrollTo({ top: stream.scrollHeight, behavior: "smooth" });
+  }, [thread.id, messages.length]);
 
   const modal = (
     <div className="tenant-chat-backdrop" role="presentation" onClick={onClose}>
@@ -454,7 +461,7 @@ function TenantLandlordChatModal({
           </section>
         ) : null}
 
-        <main className="tenant-chat-modal-stream" aria-label="메시지 타임라인">
+        <main ref={messageStreamRef} className="tenant-chat-modal-stream" aria-label="메시지 타임라인">
           {messages.length > 0 ? (
             messages.map((message) => <TenantChatMessageBubble key={message.id} message={message} />)
           ) : (
@@ -800,6 +807,25 @@ export default function TenantMyPage({
   useEffect(() => {
     void loadRepairRequests();
   }, [loadRepairRequests]);
+
+  useEffect(() => {
+    const refreshRepairRequests = (payload: unknown) => {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "kind" in payload &&
+        payload.kind === "ticket"
+      ) {
+        void loadRepairRequests();
+      }
+    };
+    const socket = getRealtimeSocket();
+    socket.on("roomlog:activity", refreshRepairRequests);
+
+    return () => {
+      socket.off("roomlog:activity", refreshRepairRequests);
+    };
+  }, [loadRepairRequests]);
   const [billingCard, setBillingCard] = useState<TenantBillingCardModel>(EMPTY_BILLING_CARD);
   const [isBillLoading, setIsBillLoading] = useState(true);
   const [billingError, setBillingError] = useState(false);
@@ -958,6 +984,33 @@ export default function TenantMyPage({
     setLandlordChatThread(null);
     setLandlordChatDraft("");
   };
+
+  useEffect(() => {
+    const threadId = landlordChatThread?.id;
+    if (!threadId) return;
+
+    let cancelled = false;
+    const refreshOpenLandlordConversation = (payload: unknown) => {
+      if (!isTenantLandlordMessagingActivity(payload)) return;
+
+      void fetchTenantMessageThread(threadId)
+        .then((thread) => {
+          if (!cancelled) {
+            setLandlordChatThread((current) => (current?.id === threadId ? thread : current));
+          }
+        })
+        .catch(() => {
+          // 연결이 잠시 끊겨도 열린 대화는 유지하고 다음 소켓 이벤트에서 재시도한다.
+        });
+    };
+    const socket = getRealtimeSocket();
+    socket.on("roomlog:activity", refreshOpenLandlordConversation);
+
+    return () => {
+      cancelled = true;
+      socket.off("roomlog:activity", refreshOpenLandlordConversation);
+    };
+  }, [landlordChatThread?.id]);
 
   const handleLandlordMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

@@ -81,3 +81,26 @@ test("tenant my page opens landlord inquiries through roomlog messaging", () => 
   assert.doesNotMatch(source, /setIsLandlordChatOpen/);
   assert.doesNotMatch(source, /TradeChatCenter/);
 });
+
+test("tenant my page refreshes the open landlord chat and complaint history from realtime activity", () => {
+  const source = readFileSync(
+    join(__dirname, "../app/my/flows/TenantMyPage.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /socket\.on\("roomlog:activity", refreshOpenLandlordConversation\)/);
+  assert.match(source, /socket\.on\("roomlog:activity", refreshRepairRequests\)/);
+  assert.match(source, /isTenantLandlordMessagingActivity\(payload\)/);
+  assert.match(source, /payload\.kind === "ticket"/);
+});
+
+test("tenant landlord chat scrolls to the newest message", () => {
+  const source = readFileSync(
+    join(__dirname, "../app/my/flows/TenantMyPage.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /const messageStreamRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(source, /stream\.scrollTo\(\{ top: stream\.scrollHeight, behavior: "smooth" \}\)/);
+  assert.match(source, /ref=\{messageStreamRef\}/);
+});
