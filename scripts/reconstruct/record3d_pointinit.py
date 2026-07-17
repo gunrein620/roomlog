@@ -233,6 +233,27 @@ def main():
     pts, cols = pts[uniq], cols[uniq]
     print(f"[voxel {args.voxel}m] 점 {len(pts):,}")
 
+    # 바닥 y=0 앵커 — ARKit 원점은 촬영 시작 시 기기 높이(≈1.1m)라 바닥이 offset된다.
+    # (--orientation-method/--center-method none으로 nerfstudio가 프레임을 그대로 두므로 offset이
+    #  spz까지 남는다.) 정합 뷰어가 런타임에 바닥을 추정·보정하던 부담(오판 시 방이 뒤집혀 앉음)을
+    # 없애려, dense 점군에서 바닥 슬래브를 찾아 여기서 y=0으로 굽는다. up축 = world Y(index 1,
+    # OpenGL/ARKit 중력정렬). 점군과 카메라 포즈를 같은 양만큼 rigid 이동해 일관성을 유지한다.
+    _ys = pts[:, 1]
+    _lo, _hi = float(_ys.min()), float(_ys.max())
+    _nbins = max(1, int(np.ceil((_hi - _lo) / 0.05)))  # 5cm 빈
+    _counts, _edges = np.histogram(_ys, bins=_nbins, range=(_lo, _hi))
+    # 바닥 = "가장 낮은 큰 수평 슬래브". 최빈 대비 비율 OR 전체 대비 절대 문턱 중 하나 넘는
+    # 최저 빈 — 바닥 아래 소수 플로터는 문턱에서 걸러지고, 벽처럼 Y로 퍼진 밀도엔 안 걸린다.
+    _thresh = max(0.33 * float(_counts.max()), 0.02 * float(_counts.sum()))
+    _floor_y = _lo
+    for _i, _c in enumerate(_counts):
+        if float(_c) >= _thresh:
+            _floor_y = 0.5 * (float(_edges[_i]) + float(_edges[_i + 1]))
+            break
+    pts[:, 1] -= _floor_y
+    poses[:, 5] -= _floor_y  # ty(카메라 world-Y)도 이동 → frame_entry·검증이 자동 일관
+    print(f"[floor-anchor] 바닥 y={_floor_y:.3f}m → 0 앵커 (점군·카메라 {len(poses)}개 rigid 이동)")
+
     # frames: train+eval을 원시 인덱스 순으로 병합, split은 filename 리스트로 선언
     def frame_entry(i):
         e = {"file_path": f"rgb/{i}.jpg",
