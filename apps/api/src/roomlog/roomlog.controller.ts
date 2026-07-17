@@ -886,6 +886,19 @@ export class RoomlogController {
     return this.roomlogService.getTenantMessagingThread(user.id, threadId);
   }
 
+  @Post("tenant/messaging/threads/:threadId/read")
+  markTenantMessagingThreadRead(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("threadId") threadId: string
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+
+    const result = this.roomlogService.markTenantMessagingThreadRead(user.id, threadId);
+    this.realtime.broadcast("roomlog:activity", { kind: "messaging", action: "read" });
+
+    return result;
+  }
+
   @Post("tenant/messaging/threads/:threadId/messages")
   addTenantMessagingThreadMessage(
     @Headers("authorization") authorization: string | undefined,

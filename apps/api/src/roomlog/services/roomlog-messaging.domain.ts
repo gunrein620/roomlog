@@ -186,6 +186,21 @@ export class RoomlogMessagingDomain {
     return this.presentThread(thread, true);
   }
 
+  markTenantMessagingThreadRead(tenantId: string, threadId: string): MessagingThread {
+    const thread = this.store.messagingThreads.find(
+      (item) => item.id === threadId && item.tenantId === tenantId
+    );
+
+    if (!thread) {
+      throw new NotFoundException("메시지 스레드를 찾을 수 없습니다.");
+    }
+
+    thread.unreadCount = 0;
+    this.persistStore();
+
+    return this.presentThread(thread, true);
+  }
+
   addTenantMessagingThreadMessage(
     tenantId: string,
     threadId: string,

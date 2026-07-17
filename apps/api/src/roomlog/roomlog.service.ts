@@ -8255,6 +8255,10 @@ export class RoomlogService implements OnModuleDestroy {
     return this.messaging.getTenantMessagingThread(tenantId, threadId);
   }
 
+  markTenantMessagingThreadRead(tenantId: string, threadId: string) {
+    return this.messaging.markTenantMessagingThreadRead(tenantId, threadId);
+  }
+
   addTenantMessagingThreadMessage(
     tenantId: string,
     threadId: string,

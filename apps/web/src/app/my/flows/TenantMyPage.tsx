@@ -18,6 +18,8 @@ import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
+  formatTenantLandlordUnreadCount,
+  isTenantLandlordMessagingActivity,
   tenantLandlordConversationPaths,
   tenantLandlordThreadInput
 } from "@/lib/tenant-landlord-conversation";
@@ -484,12 +486,23 @@ function TenantChatMessageBubble({ message }: { message: Message }) {
 }
 
 async function fetchTenantMessageThread(threadId: string): Promise<Thread> {
-  const response = await fetch(`/api/tenant/messaging/threads/${encodeURIComponent(threadId)}`, {
+  const response = await fetch(tenantLandlordConversationPaths.thread(threadId), {
     cache: "no-store"
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload?.message || "대화를 불러오지 못했습니다.");
+  }
+  return payload as Thread;
+}
+
+async function markTenantLandlordThreadRead(threadId: string): Promise<Thread> {
+  const response = await fetch(tenantLandlordConversationPaths.read(threadId), {
+    method: "POST"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "읽음 상태를 저장하지 못했습니다.");
   }
   return payload as Thread;
 }
@@ -782,6 +795,7 @@ export default function TenantMyPage({
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
+  const [landlordUnreadCount, setLandlordUnreadCount] = useState(0);
   const [landlordChatThread, setLandlordChatThread] = useState<Thread | null>(null);
   const [landlordChatDraft, setLandlordChatDraft] = useState("");
   const [isLandlordMessageSending, setIsLandlordMessageSending] = useState(false);
@@ -806,6 +820,58 @@ export default function TenantMyPage({
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
   };
+
+  const loadLandlordUnreadCount = useCallback(async (roomId: string): Promise<number> => {
+    const conversationResponse = await fetch(tenantLandlordConversationPaths.current(roomId), {
+      cache: "no-store"
+    });
+    const conversation = await conversationResponse.json().catch(() => ({}));
+    if (!conversationResponse.ok) {
+      throw new Error(conversation?.message || "대화 정보를 불러오지 못했습니다.");
+    }
+    if (!conversation?.threadId) return 0;
+
+    const thread = await fetchTenantMessageThread(String(conversation.threadId));
+    const count = Number(thread.unreadCount);
+    return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTenantRoomId) {
+      setLandlordUnreadCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const refreshUnreadCount = async () => {
+      try {
+        const count = await loadLandlordUnreadCount(selectedTenantRoomId);
+        if (!cancelled) setLandlordUnreadCount(count);
+      } catch {
+        // 문의 버튼은 유지하고 다음 실시간·포커스 갱신 때 다시 시도한다.
+      }
+    };
+    const refreshMessagingActivity = (payload: unknown) => {
+      if (isTenantLandlordMessagingActivity(payload)) void refreshUnreadCount();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshUnreadCount();
+    };
+    const socket = getRealtimeSocket();
+
+    setLandlordUnreadCount(0);
+    void refreshUnreadCount();
+    socket.on("roomlog:activity", refreshMessagingActivity);
+    window.addEventListener("focus", refreshUnreadCount);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      socket.off("roomlog:activity", refreshMessagingActivity);
+      window.removeEventListener("focus", refreshUnreadCount);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [loadLandlordUnreadCount, selectedTenantRoomId]);
 
   // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
   const ai = useTenantAiAssistant({
@@ -839,6 +905,14 @@ export default function TenantMyPage({
       let thread: Thread | null = null;
       if (payload?.threadId) {
         thread = await fetchTenantMessageThread(String(payload.threadId));
+        if (thread.unreadCount > 0) {
+          try {
+            thread = await markTenantLandlordThreadRead(thread.id);
+            setLandlordUnreadCount(0);
+          } catch {
+            // 메시지는 보여주되 서버 읽음 처리 실패 시 배지는 유지한다.
+          }
+        }
       } else {
         const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
           method: "POST",
@@ -850,6 +924,7 @@ export default function TenantMyPage({
           throw new Error(created?.message || "대화를 시작하지 못했습니다.");
         }
         thread = created as Thread;
+        setLandlordUnreadCount(0);
       }
 
       if (!thread?.id) {
@@ -1234,6 +1309,11 @@ export default function TenantMyPage({
     ai.voice.stopTalking();
   };
 
+  const landlordUnreadBadge = formatTenantLandlordUnreadCount(landlordUnreadCount);
+  const landlordInquiryLabel = landlordUnreadCount > 0
+    ? `임대인에게 문의하기, 미확인 메시지 ${landlordUnreadCount}개`
+    : "임대인에게 문의하기";
+
   return (
     <section className="screen tenant-screen tenant-portal-screen" id="my-page" aria-labelledby="tenant-title">
       <h2 id="tenant-title" className="visually-hidden">세입자 마이페이지</h2>
@@ -1324,9 +1404,15 @@ export default function TenantMyPage({
               type="button"
               onClick={() => void openLandlordConversation()}
               disabled={isLandlordConversationLoading}
+              aria-label={landlordInquiryLabel}
             >
               <MessageCircle size={18} strokeWidth={2.5} aria-hidden="true" />
               {isLandlordConversationLoading ? "문의 확인 중..." : "임대인에게 문의하기"}
+              {landlordUnreadBadge ? (
+                <span className="tenant-landlord-unread-badge" aria-hidden="true">
+                  {landlordUnreadBadge}
+                </span>
+              ) : null}
             </button>
           </div>
         </div>

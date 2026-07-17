@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  formatTenantLandlordUnreadCount,
+  isTenantLandlordMessagingActivity,
   tenantLandlordConversationPaths,
   tenantLandlordThreadHref,
   tenantLandlordThreadInput
@@ -14,6 +16,14 @@ test("builds the tenant landlord messaging contract", () => {
     "/api/tenant/messaging/landlord-conversation"
   );
   assert.equal(tenantLandlordConversationPaths.threads(), "/api/tenant/messaging/threads");
+  assert.equal(
+    tenantLandlordConversationPaths.thread("mth 1"),
+    "/api/tenant/messaging/threads/mth%201"
+  );
+  assert.equal(
+    tenantLandlordConversationPaths.read("mth 1"),
+    "/api/tenant/messaging/threads/mth%201/read"
+  );
   assert.equal(
     tenantLandlordConversationPaths.current("room 301"),
     "/api/tenant/messaging/landlord-conversation?roomId=room%20301"
@@ -30,6 +40,17 @@ test("builds the tenant landlord messaging contract", () => {
     body: "수도 문의입니다."
   });
   assert.equal(tenantLandlordThreadHref("mth 1"), "/tenant/messaging/01?id=mth%201");
+});
+
+test("formats and filters tenant landlord unread updates", () => {
+  assert.equal(formatTenantLandlordUnreadCount(0), "");
+  assert.equal(formatTenantLandlordUnreadCount(-1), "");
+  assert.equal(formatTenantLandlordUnreadCount(7), "7");
+  assert.equal(formatTenantLandlordUnreadCount(100), "99+");
+  assert.equal(isTenantLandlordMessagingActivity({ kind: "messaging" }), true);
+  assert.equal(isTenantLandlordMessagingActivity({ kind: "messaging", action: "read" }), true);
+  assert.equal(isTenantLandlordMessagingActivity({ kind: "ticket" }), false);
+  assert.equal(isTenantLandlordMessagingActivity(null), false);
 });
 
 test("trims an empty first message for client validation", () => {
@@ -52,7 +73,10 @@ test("tenant my page opens landlord inquiries through roomlog messaging", () => 
 
   assert.match(source, /tenantLandlordConversationPaths/);
   assert.match(source, /openLandlordConversation/);
-  assert.match(source, /tenantLandlordThreadHref/);
+  assert.match(source, /loadLandlordUnreadCount/);
+  assert.match(source, /markTenantLandlordThreadRead/);
+  assert.match(source, /tenant-landlord-unread-badge/);
+  assert.match(source, /landlordInquiryLabel/);
   assert.doesNotMatch(source, /submitLandlordMessage/);
   assert.doesNotMatch(source, /setIsLandlordChatOpen/);
   assert.doesNotMatch(source, /TradeChatCenter/);
