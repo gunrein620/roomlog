@@ -27,8 +27,7 @@ import type { DomainEventRepository } from "../domain-events/domain-event.reposi
 import { mapRepairPaymentOrder } from "../credit/prisma-repair-payment-order.repository";
 import { publicRepairPaymentOrder } from "../credit/repair-payment-order-public";
 import {
-  requiredVendorTrade,
-  vendorSupportsRequiredTrade
+  requiredVendorTrade
 } from "./vendor-trade-compatibility";
 import {
   vendorAssignmentWhere,
@@ -560,10 +559,6 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
           throw workflowError("VENDOR_NOT_ASSIGNABLE", "현재 상태의 업체는 배정할 수 없습니다.");
         }
 
-        const requiredTrade = requiredVendorTrade(ticket.category);
-        if (!vendorSupportsRequiredTrade(candidate.trades, requiredTrade)) {
-          throw workflowError("TRADE_MISMATCH", "하자 유형과 업체 업종이 맞지 않아 배정할 수 없습니다.");
-        }
         if (!vendorServesAddress(candidate, ticket.room.address)) {
           throw workflowError("VENDOR_NOT_ASSIGNABLE", "해당 하자 위치에 출동 가능한 업체가 아닙니다.");
         }
