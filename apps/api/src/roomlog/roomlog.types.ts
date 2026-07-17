@@ -162,6 +162,7 @@ export type MessagingThread = {
   context: MessagingThreadContext;
   contextRef?: string;
   contextLabel?: string;
+  isManagerTicketUnread?: boolean;
   lastMessage: string;
   lastMessageSender?: MessagingMessageSender; // 목록 응답에도 포함 — 관리인 미응답 판정용 (presentThread에서 채움)
   unreadCount: number;

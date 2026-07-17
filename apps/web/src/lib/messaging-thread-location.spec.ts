@@ -83,7 +83,10 @@ test("removes non-working messaging actions and their empty side rail", () => {
   assert.doesNotMatch(detailPage, /StaticButton/);
   assert.doesNotMatch(detailPage, /<aside/);
   assert.doesNotMatch(detailPage, /340px/);
-  assert.match(detailPage, /<ManagerThreadReadReceipt threadId=\{thread\.id\} \/>/);
+  assert.match(
+    detailPage,
+    /<ManagerThreadReadReceipt[\s\S]*threadId=\{thread\.id\}[\s\S]*\/>/,
+  );
   assert.match(detailPage, /<MessageAutoRefresh intervalMs=\{3000\} \/>/);
   assert.match(detailPage, />메시지 타임라인<\/div>/);
   assert.match(detailPage, /<Input name="body"/);
@@ -119,6 +122,17 @@ test("keeps communication tickets fixed and truncates only overflowing message c
     listPage,
     /data-testid="manager-thread-title"[^>]*textOverflow: "ellipsis"/,
   );
+});
+
+test("shows linked ticket unread separately from message unread state", () => {
+  assert.match(listPage, /thread\.isManagerTicketUnread/);
+  assert.match(listPage, /aria-label="티켓 미확인"/);
+  assert.match(listPage, />미확인<\/span>/);
+  assert.match(
+    listPage,
+    /aria-label="티켓 미확인"[\s\S]*background: "var\(--primary\)"/,
+  );
+  assert.match(listPage, /미읽음 \{thread\.unreadCount\}/);
 });
 
 test("replaces messaging tabs with the building ticket filter", () => {

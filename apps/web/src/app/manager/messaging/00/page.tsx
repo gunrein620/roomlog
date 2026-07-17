@@ -212,6 +212,33 @@ function ThreadCard({ thread }: { thread: Thread }) {
         <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
           <Badge emphasis={needsReply}>{locationLabel}</Badge>
           <Badge>{CONTEXT_LABEL[thread.context]}</Badge>
+          {thread.isManagerTicketUnread ? (
+            <span
+              aria-label="티켓 미확인"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--radius-full)",
+                color: "var(--primary)",
+                background: "var(--primary-container)",
+                fontSize: "var(--fs-caption)",
+                fontWeight: 800,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: "var(--space-sm)",
+                  height: "var(--space-sm)",
+                  borderRadius: "var(--radius-full)",
+                  background: "var(--primary)",
+                }}
+              />
+              <span>미확인</span>
+            </span>
+          ) : null}
         </div>
         {needsReply ? (
           <Badge emphasis>
