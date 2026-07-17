@@ -2,11 +2,13 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { resolveRoomlogRuntimePath } from "../../lib/runtime-asset-path";
+
 export const MITUNET_INTERNAL_SERVICE_URL =
   process.env.MITUNET_INTERNAL_SERVICE_URL ??
   "http://127.0.0.1:8012";
 
-const FALLBACK_MITUNET_PROJECT_ROOT = "C:/Users/smoun/Jungle/floorplan-to-3d-mitunet";
+const DEFAULT_MITUNET_PROJECT_ROOT = "services/mitunet";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -21,17 +23,17 @@ const CONTENT_TYPES: Record<string, string> = {
 
 function projectRootCandidates() {
   return [
-    process.env.MITUNET_PROJECT_ROOT,
-    path.resolve(process.cwd(), "..", "..", "..", "..", "floorplan-to-3d-mitunet"),
-    path.resolve(process.cwd(), "..", "floorplan-to-3d-mitunet"),
-    FALLBACK_MITUNET_PROJECT_ROOT,
+    process.env.MITUNET_PROJECT_ROOT
+      ? resolveRoomlogRuntimePath(process.env.MITUNET_PROJECT_ROOT)
+      : undefined,
+    resolveRoomlogRuntimePath(DEFAULT_MITUNET_PROJECT_ROOT),
   ].filter((candidate): candidate is string => Boolean(candidate));
 }
 
 function resolveMitunetProjectRoot() {
   const root = projectRootCandidates().find((candidate) => existsSync(path.join(candidate, "viewer", "index.html")));
   if (!root) {
-    throw new Error("MitUNet viewer files were not found. Set MITUNET_PROJECT_ROOT to the floorplan-to-3d-mitunet path.");
+    throw new Error("MitUNet viewer files were not found under RoomLog services/mitunet.");
   }
   return root;
 }
@@ -51,6 +53,13 @@ export async function readMitunetViewerFile(assetPath: string) {
 
 export function contentTypeFor(filePath: string) {
   return CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+export function applyRoomLogMitunetFormOptions(endpointPath: string, formData: FormData) {
+  if (endpointPath === "compose-edits") {
+    formData.set("wall_polygon_mode", "copy-wall");
+  }
+  return formData;
 }
 
 export function transformMitunetViewerHtml(html: string) {
@@ -79,18 +88,25 @@ export function transformMitunetViewerHtml(html: string) {
 export function transformRoomLogIntegrationModule(source: string, storageKey: string, returnPath: string) {
   return source.replace(
     /export function sendRoomLogCompletion\([^)]*\) \{[\s\S]*?\n\}/,
-    `export function sendRoomLogCompletion(context, plan, sourceName) {
-  const message = buildRoomLogCompletion(context, plan, sourceName);
+    `export function sendRoomLogCompletion(context, plan, sourceName, opener, furnitures = []) {
+  const message = buildRoomLogCompletion(context, plan, sourceName, furnitures);
   const storageValue = {
     name: message.payload.name,
     savedAt: Date.now(),
     walls3D: [],
-    furnitures: [],
+    furnitures: message.payload.furnitures,
     mitunet: message.payload,
   };
   window.localStorage.setItem(${JSON.stringify(storageKey)}, JSON.stringify(storageValue));
   window.location.href = new URL(${JSON.stringify(returnPath)}, context.returnOrigin).toString();
   return message;
 }`,
+  );
+}
+
+export function transformRoomLogReviewEditorModule(source: string) {
+  return source.replace(
+    "this.calibration = estimateCalibrationFromDoors(this.document.openings);",
+    "this.calibration = null;",
   );
 }

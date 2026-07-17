@@ -4,6 +4,7 @@ import type { MitunetFloorPlan, MitunetPolygon } from "@/lib/mitunet-floor-plan"
 import { createMitunetSceneLayout } from "./mitunet-geometry";
 import {
   buildInteriorMask,
+  buildRoomlogInteriorMask,
   buildWoodRgba,
   calculateMitunetGroundBounds,
   calculateMitunetTexturePlane,
@@ -56,6 +57,24 @@ describe("MitUNet surfaces", () => {
     assert.equal(rgba[(8 * 16 + 8) * 4 + 3], 255);
     assert.equal(rgba[3], 0);
     assert.deepEqual(buildWoodRgba(mask, 16, 16), rgba);
+  });
+
+  it("recovers interior floor when the saved payload omits a rejected doorway barrier", () => {
+    const polygons = {
+      wall: [
+        rectangle(18, 18, 36, 20),
+        rectangle(60, 18, 78, 20),
+        rectangle(18, 76, 38, 78),
+        rectangle(58, 76, 78, 78),
+        rectangle(18, 18, 20, 78),
+        rectangle(76, 18, 78, 78)
+      ],
+      door: [rectangle(38, 76, 58, 78)],
+      window: []
+    };
+
+    assert.equal(maskContains(buildInteriorMask(polygons, 96, 96), 96, 96, 48, 48), false);
+    assert.equal(maskContains(buildRoomlogInteriorMask(polygons, 96, 96), 96, 96, 48, 48), true);
   });
 
   it("aligns the full texture canvas with the centered polygon layout", () => {

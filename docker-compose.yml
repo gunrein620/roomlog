@@ -10,14 +10,23 @@ services:
         NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
     container_name: roomlog-web
     restart: unless-stopped
+    env_file:
+      - path: .env.local
+        required: false
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
       NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
+      # Host paths in .env.local cannot resolve inside the container; use the mount points.
+      MITUNET_PROJECT_ROOT: /mitunet
+      FURNITURE_DATASET_ROOT: /furniture
     depends_on:
       - api
     ports:
       - "3000:3000"
+    volumes:
+      - ${MITUNET_HOST_PROJECT_ROOT:-./services/mitunet}:/mitunet:ro
+      - ${FURNITURE_HOST_DATASET_ROOT:-./runtime-assets/furniture-glb-dataset}:/furniture:ro
 
   api:
     build:

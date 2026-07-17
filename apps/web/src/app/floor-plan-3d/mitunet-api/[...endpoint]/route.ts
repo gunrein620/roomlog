@@ -1,4 +1,7 @@
-import { MITUNET_INTERNAL_SERVICE_URL } from "../../mitunet-proxy";
+import {
+  applyRoomLogMitunetFormOptions,
+  MITUNET_INTERNAL_SERVICE_URL,
+} from "../../mitunet-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,7 @@ async function proxyFormRequest(request: Request, context: RouteContext) {
   if (!url) return new Response("Not found", { status: 404 });
 
   const formData = await request.formData();
+  applyRoomLogMitunetFormOptions(url.pathname.slice(1), formData);
   const response = await fetch(url, {
     body: formData,
     cache: "no-store",

@@ -9624,7 +9624,7 @@ p {
   line-height: 1;
 }
 
-/* 3D 배치 대기 가구 머리 위 액션 버튼(✓ 확정 / ⟳ 회전 / ✕ 취소) */
+/* 3D 가구 머리 위 아이콘 액션 */
 .floor-plan-pending-actions {
   display: flex;
   gap: 6px;
@@ -9637,8 +9637,10 @@ p {
 }
 
 .floor-plan-pending-actions button {
-  width: 34px;
-  height: 34px;
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
   border: 0;
   border-radius: 50%;
   background: #eef2f9;
@@ -9649,25 +9651,41 @@ p {
   cursor: pointer;
 }
 
+.floor-plan-pending-actions button svg {
+  width: 19px;
+  height: 19px;
+  pointer-events: none;
+}
+
+.floor-plan-pending-actions button:focus-visible {
+  outline: 3px solid rgba(47, 85, 255, 0.42);
+  outline-offset: 2px;
+}
+
 .floor-plan-pending-actions button:hover {
   background: #dde5f2;
 }
 
 .floor-plan-pending-actions button.is-confirm {
-  background: #2f55ff;
+  background: #16a34a;
   color: #ffffff;
 }
 
 .floor-plan-pending-actions button.is-confirm:hover {
-  background: #2242d9;
+  background: #15803d;
 }
 
 .floor-plan-pending-actions button.is-cancel {
-  color: #b91c1c;
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.floor-plan-pending-actions button.is-cancel:hover {
+  background: #b91c1c;
 }
 
 .floor-plan-pending-actions button.is-delete {
-  font-size: 0.85rem;
+  color: #dc2626;
 }
 
 /* 드로어 내부 섹션 — <details> 드롭다운. 제목(summary)을 클릭해 접고 펼친다 */

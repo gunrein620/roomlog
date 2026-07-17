@@ -1,0 +1,27 @@
+[Unit]
+Description=MitUNet floor-plan to 3D inference server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+# Secrets and tunables live here (not in git). Provisioning seeds it from
+# mitunet.env.example if absent.
+EnvironmentFile=-/etc/mitunet.env
+# Serve on all interfaces; lock down access with GCP firewall rules, NOT by
+# exposing this port publicly. Only the RoomLog server should reach it.
+ExecStart=@DIR@/.venv/bin/uvicorn server.main:app --host 0.0.0.0 --port @PORT@
+Restart=on-failure
+RestartSec=5
+# Model load can take a while on first cold start (weights + CUDA init).
+TimeoutStartSec=180
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

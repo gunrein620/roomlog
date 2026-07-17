@@ -136,18 +136,81 @@ function closeRasterGaps(mask: Uint8Array, width: number, height: number, radius
   return closed;
 }
 
-export function buildInteriorMask(polygons: MitunetPolygonGroups, width: number, height: number) {
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
-    throw new RangeError("Interior mask dimensions must be positive integers");
+function dilateSquare(mask: Uint8Array, width: number, height: number, radius: number) {
+  const horizontal = new Uint8Array(mask.length);
+  const dilated = new Uint8Array(mask.length);
+
+  for (let y = 0; y < height; y += 1) {
+    const row = y * width;
+    let count = 0;
+    for (let x = 0; x <= Math.min(radius, width - 1); x += 1) count += mask[row + x];
+    for (let x = 0; x < width; x += 1) {
+      horizontal[row + x] = count > 0 ? 1 : 0;
+      const removeX = x - radius;
+      const addX = x + radius + 1;
+      if (removeX >= 0) count -= mask[row + removeX];
+      if (addX < width) count += mask[row + addX];
+    }
   }
 
-  const permanentSolid = new Uint8Array(width * height);
-  rasterize([...polygons.wall, ...polygons.window], width, height, permanentSolid);
+  for (let x = 0; x < width; x += 1) {
+    let count = 0;
+    for (let y = 0; y <= Math.min(radius, height - 1); y += 1) count += horizontal[y * width + x];
+    for (let y = 0; y < height; y += 1) {
+      dilated[y * width + x] = count > 0 ? 1 : 0;
+      const removeY = y - radius;
+      const addY = y + radius + 1;
+      if (removeY >= 0) count -= horizontal[removeY * width + x];
+      if (addY < height) count += horizontal[addY * width + x];
+    }
+  }
+  return dilated;
+}
 
-  const floodBlocked = permanentSolid.slice();
-  rasterize(polygons.door, width, height, floodBlocked);
-  const floodBarrier = closeRasterGaps(floodBlocked, width, height, 2);
+function erodeSquare(mask: Uint8Array, width: number, height: number, radius: number) {
+  const horizontal = new Uint8Array(mask.length);
+  const eroded = new Uint8Array(mask.length);
+  const windowSize = radius * 2 + 1;
 
+  for (let y = 0; y < height; y += 1) {
+    const row = y * width;
+    let count = 0;
+    for (let x = 0; x <= Math.min(radius, width - 1); x += 1) count += mask[row + x];
+    for (let x = 0; x < width; x += 1) {
+      horizontal[row + x] = x - radius >= 0 && x + radius < width && count === windowSize ? 1 : 0;
+      const removeX = x - radius;
+      const addX = x + radius + 1;
+      if (removeX >= 0) count -= mask[row + removeX];
+      if (addX < width) count += mask[row + addX];
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    let count = 0;
+    for (let y = 0; y <= Math.min(radius, height - 1); y += 1) count += horizontal[y * width + x];
+    for (let y = 0; y < height; y += 1) {
+      eroded[y * width + x] = y - radius >= 0 && y + radius < height && count === windowSize ? 1 : 0;
+      const removeY = y - radius;
+      const addY = y + radius + 1;
+      if (removeY >= 0) count -= horizontal[removeY * width + x];
+      if (addY < height) count += horizontal[addY * width + x];
+    }
+  }
+  return eroded;
+}
+
+function closeRasterGapsFast(mask: Uint8Array, width: number, height: number, radius: number) {
+  const safeRadius = Math.max(0, Math.floor(radius));
+  if (safeRadius === 0) return mask.slice();
+  return erodeSquare(dilateSquare(mask, width, height, safeRadius), width, height, safeRadius);
+}
+
+function classifyInterior(
+  permanentSolid: Uint8Array,
+  floodBarrier: Uint8Array,
+  width: number,
+  height: number
+) {
   const outside = new Uint8Array(width * height);
   const queue: number[] = [];
   const enqueue = (x: number, y: number) => {
@@ -181,6 +244,85 @@ export function buildInteriorMask(polygons: MitunetPolygonGroups, width: number,
     interior[index] = permanentSolid[index] || outside[index] ? 0 : 1;
   }
   return interior;
+}
+
+function polygonBoundsArea(polygons: MitunetPolygonGroups) {
+  const points = [...polygons.wall, ...polygons.door, ...polygons.window]
+    .flatMap((polygon) => polygon.outer);
+  if (points.length === 0) return 0;
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  return Math.max(0, Math.max(...xs) - Math.min(...xs))
+    * Math.max(0, Math.max(...ys) - Math.min(...ys));
+}
+
+function polygonLongSide(polygon: MitunetPolygon) {
+  const xs = polygon.outer.map(([x]) => x);
+  const ys = polygon.outer.map(([, y]) => y);
+  return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+}
+
+export function buildInteriorMask(polygons: MitunetPolygonGroups, width: number, height: number) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+    throw new RangeError("Interior mask dimensions must be positive integers");
+  }
+
+  const permanentSolid = new Uint8Array(width * height);
+  rasterize([...polygons.wall, ...polygons.window], width, height, permanentSolid);
+
+  const floodBlocked = permanentSolid.slice();
+  rasterize(polygons.door, width, height, floodBlocked);
+  const floodBarrier = closeRasterGaps(floodBlocked, width, height, 2);
+  return classifyInterior(permanentSolid, floodBarrier, width, height);
+}
+
+export function buildRoomlogInteriorMask(
+  polygons: MitunetPolygonGroups,
+  width: number,
+  height: number
+) {
+  const exact = buildInteriorMask(polygons, width, height);
+  const boundsArea = polygonBoundsArea(polygons);
+  const exactCount = exact.reduce((sum, value) => sum + value, 0);
+  const targetRatio = 0.55;
+  if (boundsArea <= 0 || exactCount / boundsArea >= targetRatio || polygons.door.length === 0) {
+    return exact;
+  }
+
+  const permanentSolid = new Uint8Array(width * height);
+  rasterize([...polygons.wall, ...polygons.window], width, height, permanentSolid);
+  const floodBlocked = permanentSolid.slice();
+  rasterize(polygons.door, width, height, floodBlocked);
+
+  const doorLengths = polygons.door.map(polygonLongSide).sort((a, b) => a - b);
+  const referenceDoorLength = doorLengths[Math.min(
+    doorLengths.length - 1,
+    Math.floor(doorLengths.length * 0.75)
+  )];
+  const maxRadius = Math.max(2, Math.min(
+    64,
+    Math.floor(Math.min(width, height) / 4),
+    Math.ceil(referenceDoorLength * 0.7)
+  ));
+  const radii = [...new Set(
+    [4, 8, 12, 16, 24, 32, 48, 64, maxRadius]
+      .filter((radius) => radius > 2 && radius <= maxRadius)
+      .sort((a, b) => a - b)
+  )];
+
+  let best = exact;
+  let bestCount = exactCount;
+  for (const radius of radii) {
+    const barrier = closeRasterGapsFast(floodBlocked, width, height, radius);
+    const candidate = classifyInterior(permanentSolid, barrier, width, height);
+    const candidateCount = candidate.reduce((sum, value) => sum + value, 0);
+    if (candidateCount > bestCount) {
+      best = candidate;
+      bestCount = candidateCount;
+    }
+    if (candidateCount / boundsArea >= targetRatio) return candidate;
+  }
+  return best;
 }
 
 export function maskContains(mask: Uint8Array, width: number, height: number, x: number, y: number) {

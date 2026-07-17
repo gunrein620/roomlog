@@ -6,12 +6,20 @@
 import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
+import { Check, Move, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { MitunetFloorPlan } from "@/lib/mitunet-floor-plan";
 import { FURNITURE_CATALOG, getFurnitureDimensions } from "../furniture-placement";
 import type { PlacedFurniture, WheretoputWall3D } from "../room-model/types";
 import { createMitunetSceneLayout, type MitunetSceneLayout, type MitunetScenePolygon } from "./mitunet-geometry";
+import {
+  calculateMitunetGroundBounds,
+  calculateMitunetTexturePlane,
+  MITUNET_RENDER_STYLE
+} from "./mitunet-surfaces";
+import { createConcreteTexture, createWoodTexture } from "./mitunet-textures";
 
 Array.from(new Set(FURNITURE_CATALOG.map((item) => item.modelUrl).filter((modelUrl): modelUrl is string => Boolean(modelUrl)))).forEach(
   (modelUrl) => useGLTF.preload(modelUrl)
@@ -51,11 +59,13 @@ function computeWallBoundsXZ(wallsData: WheretoputWall3D[]) {
 
 function RoomFloor({
   boundsOverride,
+  interactionOnly = false,
   onFloorPointerDown,
   onFloorPointerMove,
   wallsData
 }: {
   boundsOverride?: ReturnType<typeof computeWallBoundsXZ>;
+  interactionOnly?: boolean;
   onFloorPointerDown: (event: ThreeEvent<PointerEvent>) => void;
   onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   wallsData: WheretoputWall3D[];
@@ -71,7 +81,12 @@ function RoomFloor({
       rotation={[-Math.PI / 2, 0, 0]}
     >
       <planeGeometry args={[bounds.width, bounds.height]} />
-      <meshLambertMaterial color="#f3d9a0" />
+      <meshLambertMaterial
+        color="#f3d9a0"
+        depthWrite={!interactionOnly}
+        opacity={interactionOnly ? 0 : 1}
+        transparent={interactionOnly}
+      />
     </mesh>
   );
 }
@@ -96,14 +111,14 @@ function mitunetShape(polygon: MitunetScenePolygon) {
 }
 
 function MitunetExtrudedLayer({
-  color,
   height,
   polygons,
+  surface,
   y = 0
 }: {
-  color: string;
   height: number;
   polygons: MitunetScenePolygon[];
+  surface: "wall" | "glass";
   y?: number;
 }) {
   const geometry = useMemo(
@@ -114,18 +129,207 @@ function MitunetExtrudedLayer({
   if (polygons.length === 0) return null;
 
   return (
-    <mesh geometry={geometry} position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <meshLambertMaterial color={color} />
+    <mesh castShadow geometry={geometry} position={[0, y, 0]} receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+      {surface === "wall" ? (
+        <>
+          <meshStandardMaterial
+            attach="material-0"
+            color={MITUNET_RENDER_STYLE.wallCap}
+            metalness={0}
+            roughness={0.88}
+          />
+          <meshStandardMaterial
+            attach="material-1"
+            color={MITUNET_RENDER_STYLE.wallSide}
+            metalness={0}
+            roughness={0.82}
+          />
+        </>
+      ) : (
+        <meshPhysicalMaterial
+          color={MITUNET_RENDER_STYLE.glass}
+          ior={1.45}
+          metalness={0}
+          opacity={0.72}
+          roughness={0.08}
+          transmission={0.12}
+          transparent
+        />
+      )}
     </mesh>
   );
 }
 
+// Heights mirror the MitUNet viewer (viewer/index.html): an uncalibrated plan has
+// no real-world scale, so it renders as a low scaled-down model rather than
+// full-height walls. Keep both renderers in step.
+const WALL_HEIGHT = 0.55;
+const WINDOW_SILL = 0.16;
+const WINDOW_TOP = 0.45;
+const PHYSICAL_WALL_HEIGHT = 2.7;
+const PHYSICAL_WINDOW_SILL = 0.9;
+const PHYSICAL_WINDOW_TOP = 2.1;
+
 function MitunetFloorPlanMeshes({ layout }: { layout: MitunetSceneLayout }) {
+  const { hasPhysicalScale } = layout;
+  const wallHeight = hasPhysicalScale ? PHYSICAL_WALL_HEIGHT : WALL_HEIGHT;
+  const windowSill = hasPhysicalScale ? PHYSICAL_WINDOW_SILL : WINDOW_SILL;
+  const windowTop = hasPhysicalScale ? PHYSICAL_WINDOW_TOP : WINDOW_TOP;
+
   return (
     <>
-      <MitunetExtrudedLayer color="#f4f1eb" height={2.7} polygons={layout.wall} />
-      <MitunetExtrudedLayer color="#b77945" height={2.1} polygons={layout.door} />
-      <MitunetExtrudedLayer color="#8ecae6" height={1.15} polygons={layout.window} y={0.9} />
+      <MitunetExtrudedLayer height={wallHeight} polygons={layout.wall} surface="wall" />
+      {/* Doors stay fully open — no header wall above the opening. */}
+      {/* Windows: the cut runs full height, so restore wall below the sill and above
+          the lintel, leaving glass only in between. */}
+      <MitunetExtrudedLayer height={windowSill} polygons={layout.window} surface="wall" />
+      <MitunetExtrudedLayer
+        height={windowTop - windowSill}
+        polygons={layout.window}
+        surface="glass"
+        y={windowSill}
+      />
+      <MitunetExtrudedLayer
+        height={wallHeight - windowTop}
+        polygons={layout.window}
+        surface="wall"
+        y={windowTop}
+      />
+    </>
+  );
+}
+
+function MitunetSceneLook({ active }: { active: boolean }) {
+  const gl = useThree((state) => state.gl);
+  const invalidate = useThree((state) => state.invalidate);
+  const scene = useThree((state) => state.scene);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const previousEnvironment = scene.environment;
+    const previousFog = scene.fog;
+    const previousOutputColorSpace = gl.outputColorSpace;
+    const previousShadowEnabled = gl.shadowMap.enabled;
+    const previousShadowType = gl.shadowMap.type;
+    const previousToneMapping = gl.toneMapping;
+    const previousToneMappingExposure = gl.toneMappingExposure;
+    const pmremGenerator = new THREE.PMREMGenerator(gl);
+    const environmentTarget = pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
+
+    gl.outputColorSpace = THREE.SRGBColorSpace;
+    gl.shadowMap.enabled = true;
+    gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+    gl.toneMappingExposure = 1.05;
+    scene.environment = environmentTarget.texture;
+    scene.fog = new THREE.Fog(MITUNET_RENDER_STYLE.background, 34, 90);
+    invalidate();
+
+    return () => {
+      scene.environment = previousEnvironment;
+      scene.fog = previousFog;
+      gl.outputColorSpace = previousOutputColorSpace;
+      gl.shadowMap.enabled = previousShadowEnabled;
+      gl.shadowMap.type = previousShadowType;
+      gl.toneMapping = previousToneMapping;
+      gl.toneMappingExposure = previousToneMappingExposure;
+      environmentTarget.dispose();
+      pmremGenerator.dispose();
+      invalidate();
+    };
+  }, [active, gl, invalidate, scene]);
+
+  if (!active) {
+    return (
+      <>
+        <ambientLight intensity={0.72} />
+        <directionalLight intensity={1.4} position={[6, 12, 8]} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <hemisphereLight color={0xffffff} groundColor={0xece8e1} intensity={0.35} />
+      <directionalLight
+        castShadow
+        intensity={1.6}
+        position={[6, 12, 5]}
+        shadow-bias={-0.0005}
+        shadow-camera-bottom={-8}
+        shadow-camera-far={40}
+        shadow-camera-left={-8}
+        shadow-camera-near={0.5}
+        shadow-camera-right={8}
+        shadow-camera-top={8}
+        shadow-mapSize-height={2048}
+        shadow-mapSize-width={2048}
+      />
+      <ambientLight intensity={0.08} />
+      <directionalLight intensity={0.7} position={[0, -6, 0]} />
+    </>
+  );
+}
+
+function MitunetDecorativeFloor({
+  layout,
+  plan
+}: {
+  layout: MitunetSceneLayout;
+  plan: MitunetFloorPlan;
+}) {
+  const ground = useMemo(() => calculateMitunetGroundBounds(layout.bounds), [layout]);
+  const texturePlane = useMemo(() => calculateMitunetTexturePlane(plan, layout), [layout, plan]);
+  const concreteTexture = useMemo(
+    () => createConcreteTexture(ground.width, ground.depth),
+    [ground.depth, ground.width]
+  );
+  const woodTexture = useMemo(() => {
+    try {
+      return createWoodTexture(plan);
+    } catch {
+      return null;
+    }
+  }, [plan]);
+
+  useEffect(() => () => concreteTexture?.dispose(), [concreteTexture]);
+  useEffect(() => () => woodTexture?.dispose(), [woodTexture]);
+
+  return (
+    <>
+      <mesh
+        position={[ground.centerX, -0.01, ground.centerZ]}
+        raycast={() => null}
+        receiveShadow
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <planeGeometry args={[ground.width, ground.depth]} />
+        <meshStandardMaterial
+          color={0xffffff}
+          map={concreteTexture ?? undefined}
+          metalness={0}
+          roughness={0.96}
+        />
+      </mesh>
+      {woodTexture ? (
+        <mesh
+          position={[texturePlane.centerX, 0.004, texturePlane.centerZ]}
+          raycast={() => null}
+          receiveShadow
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[texturePlane.width, texturePlane.depth]} />
+          <meshStandardMaterial
+            alphaTest={0.01}
+            depthWrite={false}
+            map={woodTexture}
+            metalness={0}
+            roughness={0.82}
+            transparent
+          />
+        </mesh>
+      ) : null}
     </>
   );
 }
@@ -355,8 +559,10 @@ export function RoomlogThreeFloorPlanView({
   onFurniturePointerDown,
   onPendingCancel,
   onPendingConfirm,
-  onPendingDelete,
-  onPendingRotate,
+  onSelectedDelete,
+  onSelectedMove,
+  onSelectedRotateLeft,
+  onSelectedRotateRight,
   onWallPointerDown,
   pendingFurniture,
   selectedFurnitureId,
@@ -380,11 +586,16 @@ export function RoomlogThreeFloorPlanView({
   // 가구 드래그 이동용 — 바닥 위 커서 이동을 컨테이너에 전달한다.
   onFloorPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   onFurniturePointerDown: (furniture: PlacedFurniture, event: ThreeEvent<PointerEvent>) => void;
-  // 배치 대기 가구 머리 위 ✓/⟳/✕/삭제 버튼 — 필수 셋이 넘어올 때만 표시한다.
+  // 배치 중에는 취소/완료, 선택 중에는 이동/양방향 회전/삭제 버튼을 표시한다.
   onPendingCancel?: () => void;
   onPendingConfirm?: () => void;
+  // 읽기 전용 투어의 기존 호출부 호환용이며 편집 도구에는 표시하지 않는다.
   onPendingDelete?: () => void;
   onPendingRotate?: () => void;
+  onSelectedDelete?: () => void;
+  onSelectedMove?: () => void;
+  onSelectedRotateLeft?: () => void;
+  onSelectedRotateRight?: () => void;
   onWallPointerDown: (wall: WheretoputWall3D, event: ThreeEvent<PointerEvent>) => void;
   pendingFurniture: PlacedFurniture | null;
   selectedFurnitureId: string | null;
@@ -401,6 +612,8 @@ export function RoomlogThreeFloorPlanView({
         height: mitunetLayout.bounds.depth
       }
     : computeWallBoundsXZ(wallsData);
+  const hasMitunetStyle = Boolean(mitunetLayout && mitunetPlan);
+  const selectedFurniture = furnitureData.find((furniture) => furniture.id === selectedFurnitureId) ?? null;
 
   // dev(React StrictMode)에서 R3F의 초기 컨테이너 측정이 유실돼 캔버스가 300×150으로
   // 남고 씬이 그려지지 않는 경우가 있다. 마운트 직후 resize를 쏴서 재측정을 강제한다.
@@ -416,14 +629,20 @@ export function RoomlogThreeFloorPlanView({
 
   return (
     <div className="floor-plan-3d-preview" data-renderer="wheretoput 3D room renderer">
-      <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop}>
+      <Canvas camera={{ fov: 50, position: cameraPosition }} dpr={[1, 2]} frameloop={frameloop} shadows>
         <RoomCameraAutoFit bounds={wallBounds} />
-        <color attach="background" args={["#626260"]} />
-        <ambientLight intensity={0.72} />
-        <directionalLight intensity={1.4} position={[6, 12, 8]} />
+        <color
+          attach="background"
+          args={[hasMitunetStyle ? MITUNET_RENDER_STYLE.background : "#626260"]}
+        />
+        <MitunetSceneLook active={hasMitunetStyle} />
         <group scale={[sceneHorizontalScale, 1, sceneHorizontalScale]}>
+          {mitunetLayout && mitunetPlan ? (
+            <MitunetDecorativeFloor layout={mitunetLayout} plan={mitunetPlan} />
+          ) : null}
           <RoomFloor
             boundsOverride={mitunetLayout ? wallBounds : undefined}
+            interactionOnly={hasMitunetStyle}
             onFloorPointerDown={onFloorPointerDown}
             onFloorPointerMove={onFloorPointerMove}
             wallsData={wallsData}
@@ -455,7 +674,33 @@ export function RoomlogThreeFloorPlanView({
               onPointerDown={onFurniturePointerDown}
             />
           ) : null}
-          {pendingFurniture && onPendingConfirm && onPendingRotate && onPendingCancel ? (
+          {selectedFurniture && !pendingFurniture && onSelectedMove && onSelectedRotateLeft && onSelectedRotateRight && onSelectedDelete ? (
+            <Html
+              center
+              position={[
+                selectedFurniture.position[0],
+                selectedFurniture.position[1] + getFurnitureDimensions(selectedFurniture).height * furnitureVerticalScale + 0.5,
+                selectedFurniture.position[2]
+              ]}
+              zIndexRange={[30, 0]}
+            >
+              <div className="floor-plan-pending-actions" onPointerDown={(event) => event.stopPropagation()}>
+                <button aria-label="가구 이동" onClick={onSelectedMove} title="가구 이동" type="button">
+                  <Move aria-hidden="true" />
+                </button>
+                <button aria-label="왼쪽으로 90도 회전" onClick={onSelectedRotateLeft} title="왼쪽으로 90도 회전" type="button">
+                  <RotateCcw aria-hidden="true" />
+                </button>
+                <button aria-label="오른쪽으로 90도 회전" onClick={onSelectedRotateRight} title="오른쪽으로 90도 회전" type="button">
+                  <RotateCw aria-hidden="true" />
+                </button>
+                <button aria-label="가구 삭제" className="is-delete" onClick={onSelectedDelete} title="가구 삭제" type="button">
+                  <Trash2 aria-hidden="true" />
+                </button>
+              </div>
+            </Html>
+          ) : null}
+          {pendingFurniture && onPendingConfirm && onPendingCancel ? (
             <Html
               center
               position={[
@@ -465,21 +710,13 @@ export function RoomlogThreeFloorPlanView({
               ]}
               zIndexRange={[30, 0]}
             >
-              <div className="floor-plan-pending-actions">
-                <button aria-label="배치완료" className="is-confirm" onClick={onPendingConfirm} title="배치완료" type="button">
-                  ✓
-                </button>
-                <button aria-label="90도 회전" onClick={onPendingRotate} title="90도 회전" type="button">
-                  ⟳
-                </button>
+              <div className="floor-plan-pending-actions" onPointerDown={(event) => event.stopPropagation()}>
                 <button aria-label="배치 취소" className="is-cancel" onClick={onPendingCancel} title="취소 (재편집이면 원위치)" type="button">
-                  ✕
+                  <X aria-hidden="true" />
                 </button>
-                {onPendingDelete ? (
-                  <button aria-label="가구 삭제" className="is-delete" onClick={onPendingDelete} title="가구 삭제" type="button">
-                    🗑
-                  </button>
-                ) : null}
+                <button aria-label="배치완료" className="is-confirm" onClick={onPendingConfirm} title="배치완료" type="button">
+                  <Check aria-hidden="true" />
+                </button>
               </div>
             </Html>
           ) : null}
