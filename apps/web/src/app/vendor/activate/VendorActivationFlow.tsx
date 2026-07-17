@@ -1,6 +1,6 @@
 "use client";
 
-import type { VendorActivationPreview } from "@roomlog/types";
+import { vendorTradeLabel, type VendorActivationPreview } from "@roomlog/types";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { formatVendorActivationKeyInput } from "@/lib/vendor-activation";
@@ -126,7 +126,7 @@ export function VendorActivationFlow({ viewerName }: { viewerName: string }) {
             <p>{viewerName} 계정에 연결할 업체가 맞는지 확인해 주세요.</p>
           </div>
           <dl className={styles.summary}>
-            <div><dt>업종</dt><dd>{preview.vendor.trades.join(" · ") || "정보 없음"}</dd></div>
+            <div><dt>업종</dt><dd>{preview.vendor.trades.map(vendorTradeLabel).join(" · ") || "정보 없음"}</dd></div>
             <div><dt>서비스 지역</dt><dd>{preview.vendor.serviceAreas.join(" · ") || "정보 없음"}</dd></div>
             <div><dt>연락처</dt><dd>{preview.vendor.maskedPhone}</dd></div>
           </dl>

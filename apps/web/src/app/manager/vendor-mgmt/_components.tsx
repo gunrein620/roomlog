@@ -10,6 +10,7 @@ import type {
   VendorJobSummary,
   VendorVerificationStatus,
 } from "@roomlog/types";
+import { vendorTradeLabel } from "@roomlog/types";
 import { Badge } from "@roomlog/ui";
 import { MANAGER_VENDOR_MGMT_PATHS } from "@/lib/vendor-mgmt-nav";
 import { vendorJobStatusLabel as sharedVendorJobStatusLabel } from "@/lib/vendor-workflow-presenter";
@@ -146,7 +147,7 @@ export function CatalogIdentity({ catalog }: { catalog: VendorCatalogRecord }) {
 export function TagList({ values }: { values: string[] }) {
   return (
     <div className={styles.tagList}>
-      {values.map((value) => <span className={styles.tag} key={value}>{value}</span>)}
+      {values.map((value) => <span className={styles.tag} key={value}>{vendorTradeLabel(value)}</span>)}
     </div>
   );
 }
@@ -253,7 +254,7 @@ export function JobTable({ jobs }: { jobs: VendorJobSummary[] }) {
         <tbody>
           {jobs.map((job) => (
             <tr key={job.repairId}>
-              <td><strong>{job.title}</strong><span className={styles.subtle}>{job.trade}</span></td>
+              <td><strong>{job.title}</strong><span className={styles.subtle}>{vendorTradeLabel(job.trade)}</span></td>
               <td>{job.publicLocation}</td>
               <td>{formatVendorJobStatus(job.status)}</td>
               <td>{formatWon(job.latestEstimate?.totalAmount)}</td>

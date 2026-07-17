@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { VendorJobDetail, VendorJobSummary } from "@roomlog/types";
+import { vendorTradeLabel } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import type { VendorRoute } from "@/lib/vendor-nav";
 import { resolveAssetFileUrl } from "@/lib/splat-asset-api";
@@ -257,7 +258,7 @@ export function WorkflowJobSummary({ job }: { job: VendorJobSummary | VendorJobD
         </div>
         <Badge emphasis>{vendorJobStatusLabel(job.status)}</Badge>
       </div>
-      <InfoRow label="작업 분야" value={job.trade || "확인 필요"} />
+      <InfoRow label="작업 분야" value={vendorTradeLabel(job.trade) || "확인 필요"} />
       {"description" in job && job.description ? (
         <p style={{ ...mutedStyle, margin: 0 }}>{job.description}</p>
       ) : null}

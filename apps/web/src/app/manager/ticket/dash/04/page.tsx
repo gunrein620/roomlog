@@ -1,4 +1,4 @@
-import { requiredVendorTrade, vendorSupportsRequiredTrade } from "@roomlog/types";
+import { requiredVendorTrade, vendorSupportsRequiredTrade, vendorTradeLabel } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import {
   findManagerVendorJobByTicket,
@@ -79,7 +79,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
             <div style={{ ...row, justifyContent: "space-between" }}>
               <div>
                 <strong>{candidate.catalog.businessName}</strong>
-                <div style={muted}>{candidate.catalog.trades.join(" · ")} · {candidate.catalog.serviceAreas.join(", ")}</div>
+                <div style={muted}>{candidate.catalog.trades.map(vendorTradeLabel).join(" · ")} · {candidate.catalog.serviceAreas.join(", ")}</div>
               </div>
               <StatusPill active={assignable || sameActiveVendor}>
                 {sameActiveVendor

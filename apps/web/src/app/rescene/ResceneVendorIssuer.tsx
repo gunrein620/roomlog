@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import {
   VENDOR_TRADE_OPTIONS,
+  vendorTradeLabel,
   type ResceneVendorActivation,
   type VendorActivationIssueInput,
   type VendorTrade
@@ -150,7 +151,7 @@ export function ResceneVendorIssuer({
               <span>{item.verificationStatus} · {item.activationStatus}</span>
             </div>
             <p>{item.contactPerson} · {item.phone}</p>
-            <p>{item.serviceAreas.join(" · ")} · {item.trades.map((trade) => VENDOR_TRADE_OPTIONS.find(({ value }) => value === trade)?.label ?? trade).join(", ")}</p>
+            <p>{item.serviceAreas.join(" · ")} · {item.trades.map(vendorTradeLabel).join(", ")}</p>
             <div className={styles.keyRow}>
               <code>{item.activationKey}</code>
               <button type="button" onClick={() => void copyKey(item.activationKey)}>
