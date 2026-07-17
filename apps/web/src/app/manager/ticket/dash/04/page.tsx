@@ -24,11 +24,27 @@ import {
   sectionTitle,
   ticketDashHref,
 } from "../../_components/ticket-manager-ui";
-import { assignVendorAction, confirmVisitAction, reviewEstimateAction } from "./actions";
+import {
+  assignVendorAction,
+  confirmVisitAction,
+  requestVisitRevisionAction,
+  reviewEstimateAction,
+} from "./actions";
 import { ConfirmAssignmentButton } from "./ConfirmAssignmentButton";
 import { IncompleteVendorDataState } from "./IncompleteVendorDataState";
 
 type SearchParams = Promise<{ id?: string }>;
+
+function formatVisitProposal(value?: string) {
+  if (!value) return "일정 확인 필요";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "일정 확인 필요";
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
+}
 
 export default async function VendorAssignmentPage({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
@@ -161,13 +177,28 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
               </div>
             ) : null}
             {!readOnly && estimate?.status === "SUBMITTED" && estimate.responseType === "VISIT_REQUIRED" ? (
-              <ManagerMutationForm action={confirmVisitAction} className={styles.formCard}>
-                <input type="hidden" name="ticketId" value={ticket.id} />
-                <input type="hidden" name="repairId" value={assigned.job.repairId} />
-                <input type="hidden" name="estimateId" value={estimate.id} />
-                <label className={styles.field}>방문 일정<input className={styles.input} type="datetime-local" name="scheduledAt" required /></label>
-                <button className={styles.button} type="submit" disabled={demo}>방문 일정 확정</button>
-              </ManagerMutationForm>
+              <div style={{ display: "grid", gap: "var(--space-md)" }}>
+                <div>
+                  <strong>업체 제안 일정</strong>
+                  <div style={muted}>{formatVisitProposal(estimate.visitAvailableAt)}</div>
+                </div>
+                <div className={styles.formGrid}>
+                  <ManagerMutationForm action={confirmVisitAction} className={styles.formCard}>
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <input type="hidden" name="repairId" value={assigned.job.repairId} />
+                    <input type="hidden" name="estimateId" value={estimate.id} />
+                    <div style={muted}>업체가 제안한 방문 시간을 그대로 확정합니다.</div>
+                    <button className={styles.button} type="submit" disabled={demo}>이 일정으로 확정</button>
+                  </ManagerMutationForm>
+                  <ManagerMutationForm action={requestVisitRevisionAction} className={styles.formCard}>
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <input type="hidden" name="repairId" value={assigned.job.repairId} />
+                    <input type="hidden" name="estimateId" value={estimate.id} />
+                    <label className={styles.field}>다른 시간 요청 사유<textarea className={styles.textarea} name="note" required placeholder="가능한 시간과 요청 사유를 적어 주세요." /></label>
+                    <button className={styles.secondaryButton} type="submit" disabled={demo}>다른 시간 요청</button>
+                  </ManagerMutationForm>
+                </div>
+              </div>
             ) : null}
             {readOnly ? (
               <div style={muted}>세입자가 연결한 업체의 현재 진행 상태를 표시하고 있습니다.</div>

@@ -10,6 +10,7 @@ import {
   Footer,
   LinkButton,
   ScreenHeader,
+  TenantAvailableTimes,
   WorkflowEstimateSummary,
   WorkflowJobSummary,
   mutedStyle,
@@ -28,6 +29,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ i
       <Body>
         {source === "DEMO" ? <DemoReadOnlyNotice /> : null}
         <WorkflowJobSummary job={job} />
+        <TenantAvailableTimes value={job.tenantAvailableTimes} />
         <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           <div style={{ fontWeight: 800 }}>전달된 자료</div>
           <AttachmentGallery

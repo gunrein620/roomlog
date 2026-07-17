@@ -48,6 +48,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function normalizeTenantAvailableTimes(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new BadRequestException("방문 가능 시간을 올바르게 입력해 주세요.");
+  }
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 200) {
+    throw new BadRequestException("방문 가능 시간은 1자 이상 200자 이하로 입력해 주세요.");
+  }
+  return normalized;
+}
+
 function translateWorkflowError(error: unknown): never {
   if (!(error instanceof VendorWorkflowRepositoryError)) throw error;
 
@@ -317,7 +328,14 @@ export class RoomlogVendorWorkflowDomain {
       ? { action: "APPROVE" as const }
       : {
           action: "REQUEST_REVISION" as const,
-          note: normalizeIdentifier(input.note, "수정 요청 사유를 입력해 주세요.")
+          note: normalizeIdentifier(input.note, "수정 요청 사유를 입력해 주세요."),
+          ...(input.tenantAvailableTimes === undefined
+            ? {}
+            : {
+                tenantAvailableTimes: normalizeTenantAvailableTimes(
+                  input.tenantAvailableTimes
+                )
+              })
         };
     return this.execute(() => this.repository.reviewTenantEstimate(
       normalizeIdentifier(tenantId, "임차인 정보가 올바르지 않습니다."),
@@ -583,6 +601,19 @@ export class RoomlogVendorWorkflowDomain {
     }
     const note = typeof input.note === "string" ? input.note.trim() : "";
     if (!note) throw new BadRequestException("검토 사유를 입력해 주세요.");
+    if (action === "REQUEST_REVISION") {
+      return {
+        action,
+        note,
+        ...(input.tenantAvailableTimes === undefined
+          ? {}
+          : {
+              tenantAvailableTimes: normalizeTenantAvailableTimes(
+                input.tenantAvailableTimes
+              )
+            })
+      };
+    }
     return { action, note };
   }
 

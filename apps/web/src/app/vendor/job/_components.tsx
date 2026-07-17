@@ -267,6 +267,18 @@ export function WorkflowJobSummary({ job }: { job: VendorJobSummary | VendorJobD
   );
 }
 
+export function TenantAvailableTimes({ value }: { value?: string }) {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <div style={labelStyle}>세입자 방문 가능 시간</div>
+      <p style={{ margin: 0, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{normalized}</p>
+    </Card>
+  );
+}
+
 export function WorkflowEstimateSummary({ job }: { job: VendorJobSummary | VendorJobDetail }) {
   const estimate = job.latestEstimate;
   return (

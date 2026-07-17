@@ -886,6 +886,7 @@ export default function TenantMyPage({
   const [complaintChatDraft, setComplaintChatDraft] = useState("");
   const [isSendingComplaintMessage, setIsSendingComplaintMessage] = useState(false);
   const [requestUrgency, setRequestUrgency] = useState<1 | 2 | 3 | 4 | undefined>(undefined);
+  const [requestAvailableTimes, setRequestAvailableTimes] = useState("");
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
   const [aiMode, setAiMode] = useState<TenantAiMode>("text");
   const [aiDraft, setAiDraft] = useState("");
@@ -1424,6 +1425,7 @@ export default function TenantMyPage({
     if (resetDraft) {
       setRequestDraft(EMPTY_REQUEST_DRAFT);
       setRequestUrgency(undefined);
+      setRequestAvailableTimes("");
       clearRequestImages();
     }
   };
@@ -1539,6 +1541,7 @@ export default function TenantMyPage({
           location: tenantRoomTitle,
           occurredAt: requestDraft.occurredAt ? new Date(requestDraft.occurredAt).toISOString() : undefined,
           ...(requestUrgency ? { urgency: requestUrgency } : {}),
+          ...(requestAvailableTimes.trim() ? { availableTimes: requestAvailableTimes.trim() } : {}),
           description: [
             `[${requestDraft.category}]`,
             requestDraft.description.trim()
@@ -1553,6 +1556,7 @@ export default function TenantMyPage({
       setIsRequestSheetOpen(false);
       setRequestDraft(EMPTY_REQUEST_DRAFT);
       setRequestUrgency(undefined);
+      setRequestAvailableTimes("");
       clearRequestImages();
       showToast("민원/하자 요청이 접수되었습니다.");
       void loadRepairRequests();
@@ -2391,6 +2395,17 @@ export default function TenantMyPage({
                   ))}
                 </div>
               </div>
+
+              <label className="tenant-request-title-field">
+                <span>방문 가능 시간 (선택)</span>
+                <input
+                  type="text"
+                  value={requestAvailableTimes}
+                  maxLength={200}
+                  placeholder="예: 평일 18시 이후, 주말 오전"
+                  onChange={(event) => setRequestAvailableTimes(event.target.value)}
+                />
+              </label>
 
               <div className="tenant-request-image-strip" aria-label="이미지 첨부">
                 <label className="tenant-request-image-input">

@@ -158,7 +158,12 @@ export type VendorEstimateReviewInput =
       costBearer: "LANDLORD" | "TENANT" | "PENDING";
       note?: string;
     }
-  | { action: "REQUEST_REVISION" | "REJECT"; note: string };
+  | {
+      action: "REQUEST_REVISION";
+      note: string;
+      tenantAvailableTimes?: string;
+    }
+  | { action: "REJECT"; note: string };
 
 export type VendorPaymentRequestStatus =
   | "WAITING_COMPLETION"
@@ -302,6 +307,7 @@ export interface VendorJobDetail extends VendorJobSummary {
   attachmentIds: string[];
   /** 임차인/관리자가 작업 요청에 첨부한 공개 가능한 하자 이미지 URL. */
   attachmentUrls?: string[];
+  tenantAvailableTimes?: string;
   scheduledAt?: string;
   estimates: VendorJobEstimateView[];
   completionReports: VendorCompletionReport[];

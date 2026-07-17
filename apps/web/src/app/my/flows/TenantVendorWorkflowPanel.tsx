@@ -16,7 +16,7 @@ type TenantVendorWorkflowPanelProps = {
   complaintId: string;
 };
 
-type NoteMode = "estimate" | "completion" | null;
+type NoteMode = "estimate" | "visit" | "completion" | null;
 
 const LINE_ITEM_LABEL: Record<VendorEstimateLineItemCategory, string> = {
   VISIT: "출장비",
@@ -68,6 +68,7 @@ export function TenantVendorWorkflowPanel({
   const [error, setError] = useState("");
   const [noteMode, setNoteMode] = useState<NoteMode>(null);
   const [note, setNote] = useState("");
+  const [visitTimes, setVisitTimes] = useState("");
 
   const loadWorkflow = useCallback(async () => {
     setIsLoading(true);
@@ -88,6 +89,7 @@ export function TenantVendorWorkflowPanel({
     setError("");
     setNoteMode(null);
     setNote("");
+    setVisitTimes("");
     void getTenantVendorWorkflow(complaintId)
       .then((result) => {
         if (active) setWorkflow(result);
@@ -114,6 +116,7 @@ export function TenantVendorWorkflowPanel({
       setWorkflow(await request());
       setNoteMode(null);
       setNote("");
+      setVisitTimes("");
     } catch (requestError) {
       setError(workflowErrorMessage(requestError));
     } finally {
@@ -235,21 +238,31 @@ export function TenantVendorWorkflowPanel({
                 <strong>{formatDateTime(estimate.visitAvailableAt)}</strong>
               </div>
               {canConfirmVisit ? (
-                <button
-                  type="button"
-                  className="tenant-vendor-primary"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => void updateWorkflow(
-                    "visit-confirm",
-                    () => confirmTenantVendorVisit(
-                      workflow.repairId,
-                      estimate.id,
-                      { scheduledAt: estimate.visitAvailableAt! },
-                    ),
-                  )}
-                >
-                  {busyAction === "visit-confirm" ? "확인 중..." : "이 일정으로 확인"}
-                </button>
+                <div className="tenant-vendor-workflow-actions">
+                  <button
+                    type="button"
+                    className="tenant-vendor-secondary"
+                    disabled={Boolean(busyAction)}
+                    onClick={() => setNoteMode("visit")}
+                  >
+                    다른 시간 요청
+                  </button>
+                  <button
+                    type="button"
+                    className="tenant-vendor-primary"
+                    disabled={Boolean(busyAction)}
+                    onClick={() => void updateWorkflow(
+                      "visit-confirm",
+                      () => confirmTenantVendorVisit(
+                        workflow.repairId,
+                        estimate.id,
+                        { scheduledAt: estimate.visitAvailableAt! },
+                      ),
+                    )}
+                  >
+                    {busyAction === "visit-confirm" ? "확인 중..." : "이 일정으로 확인"}
+                  </button>
+                </div>
               ) : null}
             </div>
           ) : (
@@ -257,6 +270,50 @@ export function TenantVendorWorkflowPanel({
               {estimate.declineReason ?? "업체가 요청을 진행하기 어렵다고 답변했습니다."}
             </p>
           )}
+
+          {noteMode === "visit" ? (
+            <div className="tenant-vendor-workflow-note-form">
+              <label>
+                제안된 시간이 어려운 이유를 적어주세요
+                <textarea
+                  value={note}
+                  maxLength={500}
+                  placeholder="예: 그 시간에는 근무 중이라 집에 없어요."
+                  onChange={(event) => setNote(event.target.value)}
+                />
+              </label>
+              <label>
+                가능한 시간대 (선택)
+                <input
+                  type="text"
+                  value={visitTimes}
+                  maxLength={200}
+                  placeholder="예: 평일 18시 이후, 주말 오전"
+                  onChange={(event) => setVisitTimes(event.target.value)}
+                />
+              </label>
+              <div>
+                <button type="button" className="tenant-vendor-text-button" onClick={() => setNoteMode(null)}>
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="tenant-vendor-secondary"
+                  disabled={!note.trim() || Boolean(busyAction)}
+                  onClick={() => void updateWorkflow(
+                    "visit-reschedule",
+                    () => reviewTenantVendorEstimate(workflow.repairId, estimate.id, {
+                      action: "REQUEST_REVISION",
+                      note: `방문 시간 재협의: ${note.trim()}`,
+                      ...(visitTimes.trim() ? { tenantAvailableTimes: visitTimes.trim() } : {}),
+                    }),
+                  )}
+                >
+                  {busyAction === "visit-reschedule" ? "요청 중..." : "다른 시간 요청 보내기"}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {noteMode === "estimate" ? (
             <div className="tenant-vendor-workflow-note-form">

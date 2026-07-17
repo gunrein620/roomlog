@@ -6,9 +6,10 @@ import type { VendorEstimateReviewInput } from "@roomlog/types";
 import {
   assignManagerVendor,
   confirmEstimateVisit,
+  findManagerVendorJobByTicket,
   reviewVendorEstimate,
-  toSeoulScheduleIso,
 } from "@/lib/vendor-mgmt-api";
+import { requireCurrentManagerVisitProposal } from "@/lib/visit-negotiation";
 import { ticketDashHref } from "../../_components/ticket-manager-ui";
 import type { ManagerMutationState } from "../../../_components/manager-mutation-state";
 import { managerMutationError } from "../../../_components/manager-mutation-state";
@@ -17,6 +18,15 @@ function required(formData: FormData, key: string) {
   const value = formData.get(key);
   if (typeof value !== "string" || !value.trim()) throw new Error(`${key} 값이 필요합니다.`);
   return value.trim();
+}
+
+async function currentVisitProposal(
+  ticketId: string,
+  repairId: string,
+  estimateId: string,
+) {
+  const lookup = await findManagerVendorJobByTicket(ticketId);
+  return requireCurrentManagerVisitProposal(lookup, repairId, estimateId);
 }
 
 export async function assignVendorAction(
@@ -80,10 +90,43 @@ export async function confirmVisitAction(
   let ticketId: string;
   try {
     ticketId = required(formData, "ticketId");
-    await confirmEstimateVisit(
+    const proposal = await currentVisitProposal(
+      ticketId,
       required(formData, "repairId"),
       required(formData, "estimateId"),
-      { scheduledAt: toSeoulScheduleIso(required(formData, "scheduledAt")) },
+    );
+    await confirmEstimateVisit(
+      proposal.repairId,
+      proposal.estimateId,
+      { scheduledAt: proposal.visitAvailableAt },
+    );
+  } catch (error) {
+    return managerMutationError(error);
+  }
+  revalidatePath(ticketDashHref("04", ticketId));
+  redirect(ticketDashHref("04", ticketId));
+}
+
+export async function requestVisitRevisionAction(
+  _previousState: ManagerMutationState,
+  formData: FormData,
+): Promise<ManagerMutationState> {
+  let ticketId: string;
+  try {
+    ticketId = required(formData, "ticketId");
+    const proposal = await currentVisitProposal(
+      ticketId,
+      required(formData, "repairId"),
+      required(formData, "estimateId"),
+    );
+    const note = required(formData, "note");
+    await reviewVendorEstimate(
+      proposal.repairId,
+      proposal.estimateId,
+      {
+        action: "REQUEST_REVISION",
+        note: `방문 시간 재협의: ${note}`,
+      },
     );
   } catch (error) {
     return managerMutationError(error);

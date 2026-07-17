@@ -6692,6 +6692,18 @@ p {
   font-weight: 500;
 }
 
+.tenant-vendor-workflow-note-form input[type="text"] {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: var(--fs-caption);
+}
+
 .tenant-vendor-note textarea,
 .tenant-vendor-workflow-note-form textarea {
   width: 100%;
