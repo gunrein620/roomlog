@@ -361,7 +361,6 @@ const POST_BASELINE_ARTIFACTS = Object.freeze([
   },
   {
     migration: "20260717100000_trade_listing_current_tenant_room",
-    columns: [["TradeListing", "buildingName"], ["TradeListing", "options"]],
     indexes: ["TenantRoom_tenantId_key"]
   }
 ]);
