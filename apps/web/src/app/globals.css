@@ -10846,19 +10846,12 @@ p {
     background: rgba(255, 255, 255, 0.26);
   }
 
-  /* 로고 이미지 — 다른 탭: 앱아이콘 44px 라운드 */
+  /* 로고 이미지 — 홈/탭 구분 없이 단일 규칙 (위치·크기 통일) */
   .web-logo-img {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
     object-fit: cover;
-  }
-
-  /* 홈: trim 로고 52px + 라운드/그림자 (5b) */
-  .service-frame:has(.home-screen) .web-logo-img {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   }
 
