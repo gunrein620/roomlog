@@ -204,18 +204,19 @@ const categories = [
   { label: "투룸", Icon: Bed },
   { label: "오피스텔", Icon: BriefcaseBusiness },
   { label: "아파트", Icon: Building2 },
-  { label: "빌라", Icon: House },
-  { label: "단기임대", Icon: CalendarClock }
+  { label: "3D 투어", Icon: Layers3 }
 ];
 
 // 카테고리 ↔ 매물 매칭 — 홈 피드 필터와 카테고리 카드의 실제 매물 수가 같은 규칙을 쓴다.
 const listingMatchesCategory = (label: string, listing: Listing): boolean => {
   if (label === "전체") return true;
-  if (label === "원룸" || label === "오피스텔" || label === "아파트" || label === "빌라") {
+  if (label === "원룸" || label === "오피스텔" || label === "아파트") {
     return listing.roomType === label;
   }
   if (label === "투룸") return listing.spec.includes("투룸") || listing.spec.includes("복층");
-  if (label === "단기임대") return listing.tags.includes("단기") || listing.tags.includes("단기임대");
+  if (label === "3D 투어") {
+    return listing.badges.includes("3D 투어") || listing.tags.includes("3D") || listing.tags.includes("3D 투어");
+  }
   return false;
 };
 
@@ -2393,16 +2394,15 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         <header className="web-topbar" aria-label="웹 상단 메뉴">
           <div className="web-topbar-inner">
             <button className="web-logo" type="button" onClick={() => activateTab("home")}>
-              <span className="web-logo-icon" aria-hidden="true">
-                <svg className="web-logo-roof" viewBox="0 0 140 68" fill="none">
-                  <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-                  <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                  <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                  <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                  <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                </svg>
-              </span>
-              집우집주<span>WOOZU</span>
+              {/* 홈=히어로 사진 위라 배경 없는 trim 손글씨, 다른 탭=흰 상단바라 앱아이콘 */}
+              <Image
+                src={activeTab === "home" ? "/uju-logo-trim.png" : "/uju-logo.png"}
+                alt="집우집주"
+                width={52}
+                height={52}
+                className="web-logo-img"
+                priority
+              />
             </button>
             <nav className="web-nav" aria-label="주요 메뉴">
               <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
@@ -2423,10 +2423,10 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                 ) : null}
               </button>
               <button type="button" onClick={() => { window.location.href = "/manager/home/00"; }}>관리</button>
-              <button className={activeTab === "sell" ? "active" : ""} type="button" onClick={() => activateTab("sell")}>매물등록</button>
             </nav>
             <div className="web-topbar-actions">
-              {/* 역할은 상단 메뉴(세입자·관리·매물등록)에서 직접 진입한다 — 별도 역할 셀렉트/칩 없음. */}
+              {/* 매물 등록(박스 CTA) → 계정 영역이 맨 오른쪽 — 로그인 자리에 로그인 후 프로필이 그대로 들어온다 */}
+              <button className="web-sell-cta" type="button" onClick={() => activateTab("sell")}>매물 등록</button>
               {viewer ? (
                 <>
                   {/* 임대인 계정만: 재구성 완료(정합 필요)·실패(재업로드) 자산을 상단에서 상시 알린다. */}
@@ -2438,10 +2438,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                   </div>
                 </>
               ) : (
-                <>
-                  <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
-                  <button className="web-signup" type="button" onClick={() => { window.location.href = "/signup"; }}>회원가입</button>
-                </>
+                /* 회원가입은 로그인 화면 안의 "일반 회원가입" 링크로 통합 — 상단바는 로그인만 */
+                <button className="web-login" type="button" onClick={() => openAuthScreen("login")}>로그인</button>
               )}
             </div>
           </div>
@@ -2462,25 +2460,35 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           </header>
 
           <div className="web-hero-head" aria-hidden="true">
-            <h1>방 구할 땐, 우주에서</h1>
-            <p className="web-hero-sub">전월세부터 매매까지 | 방문 전 3D로 먼저 둘러보세요</p>
+            <span className="web-hero-eyebrow">FIND YOUR SPACE</span>
+            <h1>방 구할 땐,<br /><span className="hero-woozu">우주</span>에서</h1>
+            <p className="web-hero-sub">사진과 다른 집은 그만. 3D로 방 안을 미리 걸어보세요.</p>
           </div>
 
-          <label className="search-box">
-            {/* 아이콘 클릭 = 지역 선택 시트, 입력창 = 바로 타이핑해 매물 필터 (QA: onFocus 시트가 타이핑을 막던 문제) */}
-            <button type="button" aria-label="지역 선택" onClick={() => setIsSearchSheetOpen(true)} style={{ display: "inline-flex", background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit" }}>
-              <Search size={20} strokeWidth={2.4} aria-hidden="true" />
-            </button>
-            <input
-              value={searchKeyword}
-              placeholder="매물명, 지역, 조건 검색"
-              aria-label="매물 검색"
-              onChange={(event) => setSearchKeyword(event.target.value)}
-            />
-            <button type="button" aria-label="필터" onClick={() => setIsFilterSheetOpen(true)}>
-              <SlidersHorizontal size={18} strokeWidth={2.4} aria-hidden="true" />
-            </button>
-          </label>
+          {/* 5b 검색바 — 전세·월세/매매 · 지역/유형/가격 · 핑크 검색 CTA. 각 필드는 기존 시트를 연다 */}
+          <div className="search-box" aria-label="매물 검색">
+            <div className="search-deal-tabs">
+              <button type="button" className="search-deal-tab active">전세·월세</button>
+              <button type="button" className="search-deal-tab">매매</button>
+            </div>
+            <div className="search-fields">
+              <button type="button" className="search-field" onClick={() => setIsSearchSheetOpen(true)}>
+                <span className="search-field-label">지역</span>
+                <span className="search-field-value">{selectedAreaTitle} ▾</span>
+              </button>
+              <span className="search-field-divider" aria-hidden="true" />
+              <button type="button" className="search-field" onClick={() => setIsFilterSheetOpen(true)}>
+                <span className="search-field-label">매물 유형</span>
+                <span className="search-field-value">{activeCategory} ▾</span>
+              </button>
+              <span className="search-field-divider" aria-hidden="true" />
+              <button type="button" className="search-field" onClick={() => setIsFilterSheetOpen(true)}>
+                <span className="search-field-label">가격대</span>
+                <span className="search-field-value">전체 ▾</span>
+              </button>
+              <button type="button" className="search-submit" onClick={() => setIsSearchSheetOpen(true)}>검색</button>
+            </div>
+          </div>
 
           <nav
             ref={categoryStripRef}
@@ -2492,26 +2500,17 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             onPointerCancel={endCategoryDrag}
             onPointerLeave={endCategoryDrag}
           >
-            {categories.map((category) => {
-              const CategoryIcon = category.Icon;
-              // 하드코딩 수치 대신 지금 피드에 실제로 있는 매물 수를 보여준다.
-              const count = allListings.filter((listing) => listingMatchesCategory(category.label, listing)).length;
-
-              return (
-                <button
-                  className={activeCategory === category.label ? "category-card active" : "category-card"}
-                  type="button"
-                  key={category.label}
-                  onClick={() => selectCategory(category.label)}
-                >
-                  <i aria-hidden="true">
-                    <CategoryIcon size={18} strokeWidth={2.4} />
-                  </i>
-                  <span>{category.label}</span>
-                  <strong>{count.toLocaleString("ko-KR")}</strong>
-                </button>
-              );
-            })}
+            {/* 5b 카테고리 = 언더라인 텍스트 탭 (아이콘·카운트 제거) */}
+            {categories.map((category) => (
+              <button
+                className={activeCategory === category.label ? "category-tab active" : "category-tab"}
+                type="button"
+                key={category.label}
+                onClick={() => selectCategory(category.label)}
+              >
+                {category.label}
+              </button>
+            ))}
           </nav>
 
           <div className="quick-filter-row" aria-label="빠른 필터">
@@ -2534,13 +2533,13 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
           <div className="section-title">
             <div>
-              <h2>추천 매물</h2>
+              <h2>3D로 미리 보는 추천 매물</h2>
               <p>{activeFilterSummary} 조건에 맞는 매물을 보여줍니다.</p>
             </div>
             <a href="#map-list" onClick={(event) => {
               event.preventDefault();
               activateTab("map");
-            }}>전체</a>
+            }}>전체보기 →</a>
           </div>
 
           <div className="listing-feed">

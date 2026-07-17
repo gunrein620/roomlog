@@ -168,10 +168,10 @@ export function WoozuLoginScreen({
             <span className="login-home-icon" aria-hidden="true">
               <svg className="login-home-roof" viewBox="0 0 140 68" fill="none">
                 <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-                <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-                <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+                <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
+                <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
+                <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
+                <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
               </svg>
             </span>
             집우집주<span>WOOZU</span>
@@ -190,10 +190,10 @@ export function WoozuLoginScreen({
             </div>
             <svg className="brand-roof" viewBox="0 0 140 68" fill="none">
               <path d="M18 58 L70 18 L122 58" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" />
-              <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
-              <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#ec6a86" />
+              <rect x="61" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
+              <rect x="71" y="33" width="8" height="8" rx="2.4" fill="#f2899d" />
+              <rect x="61" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
+              <rect x="71" y="43" width="8" height="8" rx="2.4" fill="#f2899d" />
             </svg>
           </div>
           <div className="brand-word">우주</div>
