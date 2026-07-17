@@ -3,6 +3,52 @@ import {
   classifyEmptyRegions,
 } from "./wall-dimensions.mjs";
 
+const MIN_REJECTED_DOOR_CONFIDENCE = 0.6;
+
+const pointInRing = (x, y, ring) => {
+  let inside = false;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
+    const [currentX, currentY] = ring[index];
+    const [previousX, previousY] = ring[previous];
+    const crosses = (currentY > y) !== (previousY > y)
+      && x < ((previousX - currentX) * (y - currentY))
+        / ((previousY - currentY) || Number.EPSILON) + currentX;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+};
+
+const addRejectedDoorBarriers = (structure, openings, width, height) => {
+  const bridgeCandidates = [];
+  for (const opening of openings ?? []) {
+    const ring = opening?.mask_polygon;
+    const confidence = Number(opening?.confidence);
+    if (
+      opening?.valid !== false
+      || opening.kind !== "door"
+      || !Number.isFinite(confidence)
+      || confidence < MIN_REJECTED_DOOR_CONFIDENCE
+      || !Array.isArray(ring)
+      || ring.length < 3
+    ) continue;
+    bridgeCandidates.push({ ...opening, valid: true });
+
+    const xs = ring.map(point => Number(point?.[0])).filter(Number.isFinite);
+    const ys = ring.map(point => Number(point?.[1])).filter(Number.isFinite);
+    if (xs.length !== ring.length || ys.length !== ring.length) continue;
+    const left = Math.max(0, Math.floor(Math.min(...xs)));
+    const right = Math.min(width - 1, Math.ceil(Math.max(...xs)));
+    const top = Math.max(0, Math.floor(Math.min(...ys)));
+    const bottom = Math.min(height - 1, Math.ceil(Math.max(...ys)));
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        if (pointInRing(x + 0.5, y + 0.5, ring)) structure[y * width + x] = 1;
+      }
+    }
+  }
+  return buildDimensionStructureMask(structure, bridgeCandidates, width, height);
+};
+
 const validateScale = millimetersPerPixel => {
   const numeric = Number(millimetersPerPixel);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -25,7 +71,12 @@ export function extractRoomAreas(
     throw new RangeError("Minimum room area must be a non-negative number");
   }
 
-  const structure = buildDimensionStructureMask(wallMask, openings, width, height);
+  const structure = addRejectedDoorBarriers(
+    buildDimensionStructureMask(wallMask, openings, width, height),
+    openings,
+    width,
+    height,
+  );
   const classification = classifyEmptyRegions(structure, width, height);
   const aggregates = new Map();
 

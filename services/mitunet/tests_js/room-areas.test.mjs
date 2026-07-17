@@ -72,6 +72,113 @@ test("regions below one square metre and exterior pixels are excluded", () => {
   );
 });
 
+test("a high-confidence rejected door still seals an exterior leak for area classification", () => {
+  const width = 30;
+  const height = 30;
+  const mask = new Uint8Array(width * height);
+  fill(mask, width, 5, 5, 12, 6);
+  fill(mask, width, 18, 5, 25, 6);
+  fill(mask, width, 5, 24, 25, 25);
+  fill(mask, width, 5, 5, 6, 25);
+  fill(mask, width, 24, 5, 25, 25);
+
+  const rooms = extractRoomAreas(mask, [{
+    id: "door-rejected",
+    kind: "door",
+    valid: false,
+    confidence: 0.94,
+    mask_polygon: [[12, 5], [18, 5], [18, 6], [12, 6]],
+  }], width, height, 100, { minimumAreaM2: 1 });
+
+  assert.equal(rooms.length, 1);
+  assert.ok(rooms[0].areaM2 > 3);
+});
+
+test("a rejected vertical door bridges small endpoint seams in its wall", () => {
+  const width = 30;
+  const height = 30;
+  const mask = new Uint8Array(width * height);
+  fill(mask, width, 5, 5, 25, 6);
+  fill(mask, width, 5, 24, 25, 25);
+  fill(mask, width, 5, 5, 6, 12);
+  fill(mask, width, 5, 18, 6, 25);
+  fill(mask, width, 24, 5, 25, 25);
+
+  const rooms = extractRoomAreas(mask, [{
+    id: "door-rejected-with-seams",
+    kind: "door",
+    axis: "vertical",
+    center_x: 5.5,
+    center_y: 15,
+    width: 1,
+    height: 6,
+    valid: false,
+    confidence: 0.94,
+    mask_polygon: [[5, 13], [6, 13], [6, 17], [5, 17]],
+  }], width, height, 100, { minimumAreaM2: 1 });
+
+  assert.equal(rooms.length, 1);
+});
+
+test("a low-confidence rejected door does not create an enclosed area", () => {
+  const width = 30;
+  const height = 30;
+  const mask = new Uint8Array(width * height);
+  fill(mask, width, 5, 5, 12, 6);
+  fill(mask, width, 18, 5, 25, 6);
+  fill(mask, width, 5, 24, 25, 25);
+  fill(mask, width, 5, 5, 6, 25);
+  fill(mask, width, 24, 5, 25, 25);
+
+  const rooms = extractRoomAreas(mask, [{
+    id: "door-spurious",
+    kind: "door",
+    valid: false,
+    confidence: 0.31,
+    mask_polygon: [[12, 5], [18, 5], [18, 6], [12, 6]],
+  }], width, height, 100, { minimumAreaM2: 1 });
+
+  assert.deepEqual(rooms, []);
+});
+
+test("a rejected door without confidence does not create an enclosed area", () => {
+  const width = 30;
+  const height = 30;
+  const mask = new Uint8Array(width * height);
+  fill(mask, width, 5, 5, 12, 6);
+  fill(mask, width, 18, 5, 25, 6);
+  fill(mask, width, 5, 24, 25, 25);
+  fill(mask, width, 5, 5, 6, 25);
+  fill(mask, width, 24, 5, 25, 25);
+
+  const rooms = extractRoomAreas(mask, [{
+    id: "door-no-confidence",
+    kind: "door",
+    valid: false,
+    mask_polygon: [[12, 5], [18, 5], [18, 6], [12, 6]],
+  }], width, height, 100, { minimumAreaM2: 1 });
+
+  assert.deepEqual(rooms, []);
+});
+
+test("rejected-door barriers never mutate the source wall mask", () => {
+  const width = 20;
+  const height = 20;
+  const mask = new Uint8Array(width * height);
+  fill(mask, width, 2, 2, 18, 3);
+  const original = mask.slice();
+
+  extractRoomAreas(mask, [{
+    id: "door-temporary",
+    kind: "door",
+    valid: false,
+    confidence: 0.9,
+    mask_polygon: [[7, 2], [12, 2], [12, 3], [7, 3]],
+  }], width, height, 100, { minimumAreaM2: 0 });
+
+  assert.deepEqual(mask, original);
+});
+
 test("the chosen anchor is always a pixel inside its concave component", () => {
   const width = 40;
   const height = 40;
