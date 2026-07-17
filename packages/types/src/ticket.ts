@@ -40,6 +40,19 @@ export interface TicketResponsibilityDecision {
   note: string;
 }
 
+/** RepairRequest를 만들지 않는 관리자 직접 처리 진행 메타. */
+export interface TicketDirectHandling {
+  startedAt: string;
+  completedAt?: string;
+  note?: string;
+}
+
+/** 관리자 목록에 노출하는 세입자 주도 수리의 활성 진행 요약. */
+export interface TicketSelfRepairSummary {
+  active: true;
+  statusLabel: string;
+}
+
 export type TicketAiFeedbackTarget =
   | "SUMMARY"
   | "CATEGORY"
@@ -117,6 +130,22 @@ export interface DecideTicketResponsibilityInput {
   note: string;
 }
 
+export interface StartTicketDirectHandlingInput {
+  note?: string;
+}
+
+export interface CompleteTicketDirectHandlingInput {
+  note: string;
+  cost?: {
+    amount: number;
+    item?: string;
+  };
+}
+
+export interface CancelTicketDirectHandlingInput {
+  reason: string;
+}
+
 export interface SubmitTicketAiFeedbackInput {
   target: TicketAiFeedbackTarget;
   reason: string;
@@ -173,6 +202,10 @@ export interface Ticket {
   dispositionReason?: string;
   /** 관리자 확정 메타. AI 책임 가능성 분석과 혼동하지 않는다. */
   responsibilityDecision?: TicketResponsibilityDecision;
+  /** 관리자 직접 처리 메타. null/미지정이면 직접 처리 갈래가 아니다. */
+  directHandling?: TicketDirectHandling | null;
+  /** 관리자 표면에서만 오는 활성 자가수리 요약. */
+  selfRepair?: TicketSelfRepairSummary | null;
 }
 
 /**

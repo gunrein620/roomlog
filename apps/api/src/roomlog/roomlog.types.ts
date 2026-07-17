@@ -1146,6 +1146,9 @@ export type Ticket = {
   responsibilityDecidedById?: string;
   responsibilityDecidedAt?: string;
   responsibilityDecisionNote?: string;
+  directHandlingStartedAt?: string;
+  directHandlingCompletedAt?: string;
+  directHandlingNote?: string;
   aiSummary: string;
   dueAt?: string;
   createdAt: string;
@@ -1157,6 +1160,7 @@ export type RepairRequest = {
   ticketId: string;
   vendorId: string;
   status: RepairStatus;
+  tenantInitiated?: boolean;
   title: string;
   description: string;
   estimateAmount?: number;
@@ -2205,6 +2209,22 @@ export type CreateComplaintInput = {
 export type DecideTicketResponsibilityInput = {
   responsibility: "TENANT" | "LANDLORD";
   note: string;
+};
+
+export type StartDirectHandlingInput = {
+  note?: string;
+};
+
+export type CompleteDirectHandlingInput = {
+  note: string;
+  cost?: {
+    amount: number;
+    item?: string;
+  };
+};
+
+export type CancelDirectHandlingInput = {
+  reason: string;
 };
 
 export type CreateIntakeSessionInput = {

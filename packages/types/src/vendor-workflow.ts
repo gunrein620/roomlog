@@ -47,11 +47,24 @@ export interface ManagerVendorDetail {
   };
 }
 
-/** 관리자가 특정 하자 티켓에서 현재 진행 중인 업체 작업을 조회한 결과. */
-export interface ManagerVendorJobLookup {
-  vendor: ManagerVendorView;
-  job: VendorJobSummary;
+/** 등록 관계가 없는 세입자 연결 업체의 관리자용 공개 축약 뷰. */
+export interface ManagerVendorPublicView {
+  vendorId: string;
+  catalog: VendorCatalogRecord;
 }
+
+/** 관리자가 특정 하자 티켓에서 현재 진행 중인 업체 작업을 조회한 결과. */
+export type ManagerVendorJobLookup =
+  | {
+      partnership: "REGISTERED";
+      vendor: ManagerVendorView;
+      job: VendorJobSummary;
+    }
+  | {
+      partnership: "UNREGISTERED";
+      vendor: ManagerVendorPublicView;
+      job: VendorJobSummary;
+    };
 
 export interface ManagerVendorJobLookupResponse {
   data: ManagerVendorJobLookup | null;

@@ -49,6 +49,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
   const assigned = workflowResult.data;
   const estimate = assigned?.job.latestEstimate;
   const demo = candidatesResult.source === "DEMO" || workflowResult.source === "DEMO";
+  const readOnly = assigned?.partnership === "UNREGISTERED";
   const canReassign = !assigned
     || assigned.job.status === "REQUESTED"
     || assigned.job.status === "COMPLETED";
@@ -58,7 +59,13 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
     <div style={pageStack}>
       <TicketHeader ticket={ticket} title="업체 배정·견적 검토" />
       {demo ? <Badge emphasis>데모 데이터</Badge> : null}
-      <Card style={{ display: "grid", gap: "var(--space-md)" }}>
+      {readOnly ? (
+        <Card role="status" style={{ display: "grid", gap: "var(--space-sm)" }}>
+          <Badge emphasis>세입자가 연결한 플랫폼 업체 — 조회 전용</Badge>
+          <div style={muted}>업체 작업과 견적 진행만 확인할 수 있으며 관리자는 이 작업을 변경하지 않습니다.</div>
+        </Card>
+      ) : null}
+      {!readOnly ? <Card style={{ display: "grid", gap: "var(--space-md)" }}>
         <div style={sectionTitle}>등록된 업체 후보</div>
         <div style={muted}>내 업체로 등록된 후보만 표시합니다. 검증·활성·계정 연결 조건을 통과해야 배정할 수 있습니다.</div>
         {assigned ? (
@@ -119,7 +126,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
           </ManagerMutationForm>
         );
         }) : <EmptyState title="배정 가능한 등록 업체가 없습니다" description="업체 관리의 업체 찾기에서 먼저 내 업체로 등록해 주세요." />}
-      </Card>
+      </Card> : null}
 
       <Card style={{ display: "grid", gap: "var(--space-md)" }}>
         <div style={sectionTitle}>현재 작업·견적</div>
@@ -130,7 +137,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
               <Badge>{formatVendorJobStatus(assigned.job.status)}</Badge>
             </div>
             {estimate ? <EstimateSummary estimate={estimate} /> : <EmptyState title="견적 회신 대기" description="업체가 견적을 제출하면 이곳에서 전체 견적을 검토할 수 있습니다." />}
-            {estimate?.status === "SUBMITTED" && estimate.responseType === "FIXED_ESTIMATE" ? (
+            {!readOnly && estimate?.status === "SUBMITTED" && estimate.responseType === "FIXED_ESTIMATE" ? (
               <div className={styles.formGrid}>
                 <ManagerMutationForm action={reviewEstimateAction} className={styles.formCard}>
                   <input type="hidden" name="ticketId" value={ticket.id} />
@@ -153,7 +160,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
                 ))}
               </div>
             ) : null}
-            {estimate?.status === "SUBMITTED" && estimate.responseType === "VISIT_REQUIRED" ? (
+            {!readOnly && estimate?.status === "SUBMITTED" && estimate.responseType === "VISIT_REQUIRED" ? (
               <ManagerMutationForm action={confirmVisitAction} className={styles.formCard}>
                 <input type="hidden" name="ticketId" value={ticket.id} />
                 <input type="hidden" name="repairId" value={assigned.job.repairId} />
@@ -162,12 +169,19 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
                 <button className={styles.button} type="submit" disabled={demo}>방문 일정 확정</button>
               </ManagerMutationForm>
             ) : null}
+            {readOnly ? (
+              <div style={muted}>세입자가 연결한 업체의 현재 진행 상태를 표시하고 있습니다.</div>
+            ) : null}
           </>
         ) : <EmptyState title="아직 배정된 작업이 없습니다" description="위 후보에서 한 업체를 선택해 요청 내용을 전달해 주세요." />}
       </Card>
 
       <div style={row}>
-        {assigned ? <LinkButton href={`${ticketDashHref("05", ticket.id)}&repairId=${encodeURIComponent(assigned.job.repairId)}`}>수리 완료 확인</LinkButton> : null}
+        {assigned ? (
+          <LinkButton href={`${ticketDashHref("05", ticket.id)}&repairId=${encodeURIComponent(assigned.job.repairId)}`}>
+            {readOnly ? "수리 진행 자세히" : "수리 완료 확인"}
+          </LinkButton>
+        ) : null}
         <LinkButton href={ticketDashHref("01", ticket.id)} variant="ghost">티켓 상세로</LinkButton>
       </div>
     </div>

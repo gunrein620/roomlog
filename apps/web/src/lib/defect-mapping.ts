@@ -9,6 +9,7 @@ import type {
   RepairStage,
   ResponsibilityVerdict,
   TicketAiFeedback,
+  TicketDirectHandling,
   TicketResponsibilityDecision,
   TicketType,
   Urgency
@@ -41,6 +42,7 @@ export interface TeamTicket {
   priority: number;
   responsibilityHint: string;
   responsibilityDecision?: TicketResponsibilityDecision;
+  directHandling?: TicketDirectHandling | null;
   aiFeedback?: TeamAiFeedback[];
   /** 팀 Ticket.category(하자/소음/납부…) — 하자 민원 vs 일반 민원 구분 근거 */
   category?: string;
@@ -129,8 +131,16 @@ export function ticketTypeFromCategory(category?: string): Ticket["type"] {
   return category && COMPLAINT_CATEGORIES.has(category) ? "complaint" : "defect";
 }
 
+// 배열 순서와 무관하게 현재 진행 중인 수리를 완료 이력보다 우선한다.
+// 활성 수리가 없을 때만 COMPLETED를 이력 경로로 남기고 CANCELLED는 제외한다.
+export function selectRepairPath(repairs?: TeamRepair[]): TeamRepair | undefined {
+  return repairs?.find(
+    (repair) => repair.status !== "COMPLETED" && repair.status !== "CANCELLED",
+  ) ?? repairs?.find((repair) => repair.status === "COMPLETED");
+}
+
 export function toTicket(c: TeamComplaint): Ticket {
-  const repair = c.ticket.repairs?.[0];
+  const repair = selectRepairPath(c.ticket.repairs);
   return {
     id: c.id,
     type: c.ticket.kind ?? ticketTypeFromCategory(c.ticket.category ?? c.ticket.analysis?.category),
@@ -149,6 +159,7 @@ export function toTicket(c: TeamComplaint): Ticket {
     analysisId: c.ticket.analysis ? `${c.ticket.id}-analysis` : undefined,
     repairJobId: repair?.id,
     responsibilityDecision: c.ticket.responsibilityDecision,
+    directHandling: c.ticket.directHandling ?? null,
   };
 }
 
@@ -212,5 +223,9 @@ export function mapRepair(
 }
 
 export function toRepair(c: TeamComplaint): RepairJob | null {
-  return mapRepair(c.ticket.repairs?.[0], c.ticket.id, c.ticket.assignedVendor?.businessName);
+  return mapRepair(
+    selectRepairPath(c.ticket.repairs),
+    c.ticket.id,
+    c.ticket.assignedVendor?.businessName,
+  );
 }

@@ -13,6 +13,7 @@ import type {
 } from "@roomlog/types";
 import { Badge, Button, Card } from "@roomlog/ui";
 import { stripScreenId } from "@/lib/screen-id";
+import { resolveTicketDirectFlow } from "@/lib/ticket-direct-flow-state";
 import { buildTicketTimeline } from "@/lib/ticket-timeline";
 import { ManagerMutationForm } from "../../_components/ManagerMutationForm";
 import type { ManagerMutationAction } from "../../_components/manager-mutation-state";
@@ -196,6 +197,171 @@ export function StatusBadges({ ticket, repair }: { ticket: Ticket; repair?: Repa
       {ticket.disposition === "on_hold" ? <Badge>보류 큐</Badge> : null}
     </div>
   );
+}
+
+const directHandlingField: CSSProperties = {
+  display: "grid",
+  gap: "var(--space-xs)",
+  fontSize: "var(--fs-caption)",
+};
+
+const directHandlingInput: CSSProperties = {
+  minHeight: "var(--touch-target)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
+  background: "var(--surface-container-lowest)",
+  color: "var(--on-surface)",
+  padding: "var(--space-sm)",
+  font: "inherit",
+};
+
+export function DirectHandlingActions({
+  ticket,
+  repair,
+  startAction,
+  completeAction,
+  cancelAction,
+}: {
+  ticket: Ticket;
+  repair?: RepairJob | null;
+  startAction: ManagerMutationAction;
+  completeAction: ManagerMutationAction;
+  cancelAction: ManagerMutationAction;
+}) {
+  const directHandling = ticket.directHandling;
+  const flow = resolveTicketDirectFlow({
+    ticketStatus: ticket.status,
+    directHandling,
+    hasRepairPath: Boolean(repair),
+    repairStage: repair?.stage,
+  });
+  const directPhaseCopy = !directHandling
+    ? null
+    : flow.directPhase === "active"
+      ? {
+          label: "직접 처리 중",
+          description: "관리자가 업체 배정 없이 직접 처리하고 있습니다.",
+        }
+      : flow.directPhase === "completion_pending" && directHandling.completedAt
+        ? {
+            label: "직접 처리 완료 보고됨",
+            description: "세입자 완료 확인을 기다리고 있습니다.",
+          }
+        : flow.directPhase === "resolved_history"
+          ? {
+              label: "직접 처리 완료",
+              description: "세입자가 완료를 확인한 처리 이력입니다.",
+            }
+          : flow.directPhase === "reopened_history"
+            ? {
+                label: "이전 직접 처리 이력",
+                description: flow.canStartDirect
+                  ? "재요청된 티켓입니다. 새 직접 처리나 업체 배정을 시작할 수 있습니다."
+                  : "재요청된 티켓의 이전 직접 처리 기록입니다.",
+              }
+            : {
+                label: "이전 직접 처리 이력",
+                description: "현재 진행 상태와 분리된 직접 처리 기록입니다.",
+              };
+
+  return (
+    <div style={{ display: "grid", gap: "var(--space-md)" }}>
+      {directHandling && directPhaseCopy ? (
+        <div
+          style={{
+            display: "grid",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+          }}
+        >
+          <div style={row}>
+            <Badge emphasis>
+              {directPhaseCopy.label}
+            </Badge>
+            <span style={muted}>
+              {directPhaseCopy.description}
+            </span>
+          </div>
+          {directHandling.note ? <div style={muted}>{directHandling.note}</div> : null}
+        </div>
+      ) : null}
+
+      {flow.canStartDirect ? (
+        <ManagerMutationForm action={startAction}>
+          <input type="hidden" name="ticketId" value={ticket.id} />
+          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+            <label style={directHandlingField}>
+              시작 안내 (선택)
+              <textarea
+                name="note"
+                placeholder="세입자에게 보일 직접 처리 안내"
+                style={{ ...directHandlingInput, minHeight: "calc(var(--touch-target) * 2)", resize: "vertical" }}
+              />
+            </label>
+            <Button type="submit">직접 처리 시작</Button>
+          </div>
+        </ManagerMutationForm>
+      ) : null}
+
+      {flow.directPhase === "active" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: "var(--space-md)" }}>
+          <ManagerMutationForm action={completeAction}>
+            <input type="hidden" name="ticketId" value={ticket.id} />
+            <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <label style={directHandlingField}>
+                완료 처리 내용
+                <textarea
+                  name="note"
+                  required
+                  placeholder="처리한 내용과 확인 사항"
+                  style={{ ...directHandlingInput, minHeight: "calc(var(--touch-target) * 2)", resize: "vertical" }}
+                />
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
+                <label style={directHandlingField}>
+                  비용 금액 (선택)
+                  <input name="amount" type="number" min={1} max={2_147_483_647} step={1} style={directHandlingInput} />
+                </label>
+                <label style={directHandlingField}>
+                  비용 항목 (선택)
+                  <input name="item" type="text" style={directHandlingInput} />
+                </label>
+              </div>
+              <Button type="submit">처리 완료 보고</Button>
+            </div>
+          </ManagerMutationForm>
+
+          <ManagerMutationForm action={cancelAction}>
+            <input type="hidden" name="ticketId" value={ticket.id} />
+            <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <label style={directHandlingField}>
+                취소 사유
+                <textarea
+                  name="reason"
+                  required
+                  style={{ ...directHandlingInput, minHeight: "calc(var(--touch-target) * 2)", resize: "vertical" }}
+                />
+              </label>
+              <Button type="submit" variant="secondary">직접 처리 취소</Button>
+            </div>
+          </ManagerMutationForm>
+        </div>
+      ) : null}
+
+      {!flow.canStartDirect && flow.directPhase === "none" ? (
+        <div style={muted}>현재 수리 상태에서는 직접 처리를 시작할 수 없습니다.</div>
+      ) : null}
+    </div>
+  );
+}
+
+export function SelfRepairBadge({ ticket }: { ticket: Ticket }) {
+  const selfRepair = ticket.selfRepair;
+  return selfRepair?.active ? (
+    <Badge emphasis>세입자 자가수리 진행중 · {selfRepair.statusLabel}</Badge>
+  ) : null;
 }
 
 export function ResponsibilityCard({

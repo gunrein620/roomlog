@@ -8,7 +8,9 @@ import type {
   DefectAnalysis,
   RepairJob,
   ManagerQueueSummary,
+  TicketDirectHandling,
   TicketResponsibilityDecision,
+  TicketSelfRepairSummary,
 } from "@roomlog/types";
 import {
   toTicket,
@@ -27,6 +29,8 @@ export interface TeamManagerTicket {
   priority: number;
   responsibilityHint: string;
   responsibilityDecision?: TicketResponsibilityDecision;
+  directHandling?: TicketDirectHandling | null;
+  selfRepair?: TicketSelfRepairSummary | null;
   aiFeedback?: TeamAiFeedback[];
   /** 팀 Ticket.category(하자/소음/납부…) — presentTicket이 ticket 필드를 spread하므로 함께 온다 */
   category?: string;
@@ -66,6 +70,7 @@ function asComplaint(t: TeamManagerTicket): TeamComplaint {
       priority: t.priority,
       responsibilityHint: t.responsibilityHint,
       responsibilityDecision: t.responsibilityDecision,
+      directHandling: t.directHandling,
       aiFeedback: t.aiFeedback,
       category: t.category,
       kind: t.kind,
@@ -77,7 +82,10 @@ function asComplaint(t: TeamManagerTicket): TeamComplaint {
 }
 
 export function toManagerTicket(t: TeamManagerTicket): Ticket {
-  return toTicket(asComplaint(t));
+  return {
+    ...toTicket(asComplaint(t)),
+    selfRepair: t.selfRepair ?? null,
+  };
 }
 export function toManagerAnalysis(t: TeamManagerTicket): DefectAnalysis | null {
   return toAnalysis(asComplaint(t));

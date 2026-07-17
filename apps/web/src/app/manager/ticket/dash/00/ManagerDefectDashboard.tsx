@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
+import { SelfRepairBadge } from "../../_components/ticket-manager-ui";
 import { TicketActionMenu } from "./TicketActionMenu";
 import { TicketDetailDialog } from "./TicketDetailDialog";
 import {
@@ -90,12 +91,15 @@ function DashboardRow({ row, onSelect }: { row: DefectDashboardRow; onSelect: (r
         {formatDefectMoney(row.repair?.quoteAmount)}
       </td>
       <td>
-        <span
-          className="manager-defect-dashboard__status-badge"
-          data-status={displayStatus}
-        >
-          {displayStatusLabel[displayStatus]}
-        </span>
+        <div style={{ display: "grid", gap: "var(--space-xs)", justifyItems: "start" }}>
+          <span
+            className="manager-defect-dashboard__status-badge"
+            data-status={displayStatus}
+          >
+            {displayStatusLabel[displayStatus]}
+          </span>
+          <SelfRepairBadge ticket={row.ticket} />
+        </div>
       </td>
       <td>
         <div className="manager-defect-dashboard__action">

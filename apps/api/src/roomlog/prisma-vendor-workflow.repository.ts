@@ -45,6 +45,13 @@ import {
 } from "./vendor-workflow.repository";
 
 const CLOSED_REPAIR_STATUSES = ["COMPLETED", "CANCELLED"] as const;
+const NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES = [
+  "RECEIVED",
+  "REVIEWING",
+  "ADDITIONAL_INFO_REQUESTED",
+  "VENDOR_ASSIGNMENT_PENDING",
+  "REOPENED"
+] as const;
 const PRESERVED_REPAIR_LIFECYCLE_STATUSES = ["SCHEDULED", "IN_PROGRESS"] as const;
 const PENDING_ESTIMATE_STATUSES = [
   "DRAFT",
@@ -533,7 +540,12 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
         if (ticket.room.landlordId !== command.managerId) {
           throw workflowError("TICKET_ACCESS_DENIED", "이 하자 접수 건에 업체를 배정할 권한이 없습니다.");
         }
-
+        if (ticket.directHandlingStartedAt && !ticket.directHandlingCompletedAt) {
+          throw workflowError(
+            "INVALID_STATE",
+            "관리자 직접 처리가 진행 중인 티켓에는 업체를 배정할 수 없습니다."
+          );
+        }
         const candidate = await tx.vendorProfile.findFirst({
           where: {
             id: command.vendorId,
@@ -581,6 +593,15 @@ export class PrismaVendorWorkflowRepository implements VendorWorkflowRepository 
             where: { id: current.id },
             data: { status: "CANCELLED" }
           });
+        } else if (
+          !NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES.includes(
+            ticket.status as (typeof NEW_VENDOR_ASSIGNMENT_TICKET_STATUSES)[number]
+          )
+        ) {
+          throw workflowError(
+            "INVALID_STATE",
+            "현재 티켓 상태에서는 새 업체를 배정할 수 없습니다."
+          );
         }
 
         const repair = await tx.repairRequest.create({

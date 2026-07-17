@@ -1,7 +1,23 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { randomUUID } from "node:crypto";
 import { Store, StoreProjector } from "./roomlog.service";
-import { IntakeDraft, MessageSenderRole, PhotoAnalysis, TicketMessage } from "./roomlog.types";
+import {
+  Complaint,
+  Cost,
+  IntakeDraft,
+  MessageSenderRole,
+  PhotoAnalysis,
+  StatusHistory,
+  Ticket,
+  TicketMessage
+} from "./roomlog.types";
+import {
+  DirectHandlingPersistenceError,
+  type CancelDirectHandlingCommand,
+  type CompleteDirectHandlingCommand,
+  type StartDirectHandlingCommand
+} from "./direct-handling.persistence";
 import type {
   BillStatus as PrismaBillStatus,
   BillLineItemKind as PrismaBillLineItemKind,
@@ -82,6 +98,110 @@ function actorRoleFor(store: Store, userId: string): MessageSenderRole {
 
 function stableMoveoutDisputeEventId(disputeId: string, status: string, at: string) {
   return `${disputeId}_${status}_${at}`.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 180);
+}
+
+function directTicket(
+  ticket: Prisma.TicketGetPayload<Record<string, never>>
+): Ticket {
+  return {
+    id: ticket.id,
+    complaintId: ticket.complaintId,
+    tenantId: ticket.tenantId,
+    roomId: ticket.roomId,
+    assignedVendorId: optional(ticket.assignedVendorId),
+    sourceChannel: ticket.sourceChannel,
+    category: ticket.category,
+    priority: ticket.priority,
+    status: ticket.status,
+    responsibilityHint: ticket.responsibilityHint,
+    responsibilityDecidedById: optional(ticket.responsibilityDecidedById),
+    responsibilityDecidedAt: asIso(ticket.responsibilityDecidedAt),
+    responsibilityDecisionNote: optional(ticket.responsibilityDecisionNote),
+    directHandlingStartedAt: asIso(ticket.directHandlingStartedAt),
+    directHandlingCompletedAt: asIso(ticket.directHandlingCompletedAt),
+    directHandlingNote: optional(ticket.directHandlingNote),
+    aiSummary: ticket.aiSummary,
+    dueAt: asIso(ticket.dueAt),
+    createdAt: ticket.createdAt.toISOString(),
+    updatedAt: ticket.updatedAt.toISOString()
+  };
+}
+
+function directComplaint(
+  complaint: Prisma.ComplaintGetPayload<Record<string, never>>
+): Complaint {
+  return {
+    id: complaint.id,
+    tenantId: complaint.tenantId,
+    roomId: complaint.roomId,
+    ticketId: complaint.ticketId,
+    sourceChannel: complaint.sourceChannel,
+    clientRequestId: optional(complaint.clientRequestId),
+    requestFingerprint: optional(complaint.requestFingerprint),
+    title: complaint.title,
+    description: complaint.description,
+    location: complaint.location,
+    occurredAt: asIso(complaint.occurredAt),
+    availableTimes: optional(complaint.availableTimes),
+    status: complaint.status,
+    createdAt: complaint.createdAt.toISOString(),
+    updatedAt: complaint.updatedAt.toISOString()
+  };
+}
+
+function directMessage(
+  message: Prisma.TicketMessageGetPayload<Record<string, never>>
+): TicketMessage {
+  return {
+    id: message.id,
+    ticketId: message.ticketId,
+    complaintId: optional(message.complaintId),
+    senderUserId: message.senderUserId,
+    senderRole: message.senderRole,
+    messageText: message.messageText,
+    attachmentUrls: [...message.attachmentUrls],
+    createdAt: message.createdAt.toISOString()
+  };
+}
+
+function directHistory(
+  history: Prisma.StatusHistoryGetPayload<Record<string, never>>
+): StatusHistory {
+  return {
+    id: history.id,
+    ticketId: history.ticketId,
+    changedByUserId: history.actorUserId,
+    fromStatus: optional(history.fromStatus as Ticket["status"] | null),
+    toStatus: history.toStatus as Ticket["status"],
+    note: optional(history.note),
+    createdAt: history.createdAt.toISOString()
+  };
+}
+
+function directCost(cost: Prisma.CostGetPayload<Record<string, never>>): Cost {
+  return {
+    id: cost.id,
+    managerId: optional(cost.managerId),
+    date: cost.date.toISOString(),
+    item: cost.item,
+    amount: cost.amount,
+    type: toLowerEnum<Cost["type"]>(cost.type) ?? "other",
+    scope: toLowerEnum<Cost["scope"]>(cost.scope) ?? "building",
+    unitId: optional(cost.unitId),
+    status: toLowerEnum<Cost["status"]>(cost.status) ?? "draft",
+    verified: cost.verified,
+    reviewReason: toLowerEnum<NonNullable<Cost["reviewReason"]>>(cost.reviewReason),
+    disclosure: toLowerEnum<NonNullable<Cost["disclosure"]>>(cost.disclosure),
+    repairPayment: toLowerEnum<NonNullable<Cost["repairPayment"]>>(
+      cost.repairPayment
+    ),
+    paymentRef: optional(cost.paymentRef),
+    receiptId: optional(cost.receiptId),
+    supersedesId: optional(cost.supersedesId),
+    voidReason: optional(cost.voidReason),
+    createdAt: cost.createdAt.toISOString(),
+    updatedAt: cost.updatedAt.toISOString()
+  };
 }
 
 export class PrismaStoreProjector implements StoreProjector {
@@ -623,6 +743,9 @@ export class PrismaStoreProjector implements StoreProjector {
         responsibilityDecidedById: optional(ticket.responsibilityDecidedById),
         responsibilityDecidedAt: asIso(ticket.responsibilityDecidedAt),
         responsibilityDecisionNote: optional(ticket.responsibilityDecisionNote),
+        directHandlingStartedAt: asIso(ticket.directHandlingStartedAt),
+        directHandlingCompletedAt: asIso(ticket.directHandlingCompletedAt),
+        directHandlingNote: optional(ticket.directHandlingNote),
         aiSummary: ticket.aiSummary,
         dueAt: asIso(ticket.dueAt),
         createdAt: asIso(ticket.createdAt) ?? new Date().toISOString(),
@@ -638,6 +761,7 @@ export class PrismaStoreProjector implements StoreProjector {
         ticketId: repair.ticketId,
         vendorId: repair.vendorId,
         status: repair.status,
+        tenantInitiated: repair.tenantInitiated,
         title: repair.title,
         description: repair.description,
         estimateAmount: optional(repair.estimateAmount),
@@ -1031,6 +1155,286 @@ export class PrismaStoreProjector implements StoreProjector {
         createdAt: asIso(item.createdAt) ?? new Date().toISOString()
       }))
     };
+  }
+
+  async startDirectHandling(command: StartDirectHandlingCommand) {
+    return this.prisma.$transaction(async (tx) => {
+      const { ticket, activeRepair } = await this.lockDirectHandlingAuthority(
+        tx,
+        command.managerId,
+        command.ticketId
+      );
+      if (ticket.directHandlingStartedAt && !ticket.directHandlingCompletedAt) {
+        throw new DirectHandlingPersistenceError(
+          "ALREADY_ACTIVE",
+          "이미 관리자 직접 처리가 진행 중입니다."
+        );
+      }
+      if (activeRepair) {
+        throw new DirectHandlingPersistenceError(
+          "ACTIVE_REPAIR_CONFLICT",
+          "활성 수리가 진행 중인 티켓은 관리자 직접 처리를 시작할 수 없습니다."
+        );
+      }
+      if (
+        ![
+          "RECEIVED",
+          "REVIEWING",
+          "ADDITIONAL_INFO_REQUESTED",
+          "VENDOR_ASSIGNMENT_PENDING",
+          "REOPENED"
+        ].includes(ticket.status)
+      ) {
+        throw new DirectHandlingPersistenceError(
+          "INVALID_STATE",
+          "현재 티켓 상태에서는 관리자 직접 처리를 시작할 수 없습니다."
+        );
+      }
+      const occurredAt = new Date(command.occurredAt);
+      const updatedTicket = await tx.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          directHandlingStartedAt: occurredAt,
+          directHandlingCompletedAt: null,
+          directHandlingNote: command.note ?? null,
+          status: "REPAIR_IN_PROGRESS"
+        }
+      });
+      const updatedComplaint = await tx.complaint.update({
+        where: { id: ticket.complaintId },
+        data: { status: "REPAIR_IN_PROGRESS" }
+      });
+      const message = await tx.ticketMessage.create({
+        data: {
+          id: `msg-${randomUUID()}`,
+          ticketId: ticket.id,
+          complaintId: ticket.complaintId,
+          senderUserId: command.managerId,
+          senderRole: "LANDLORD",
+          messageText: command.note
+            ? `관리자가 직접 처리를 시작했습니다 — ${command.note}`
+            : "관리자가 직접 처리를 시작했습니다.",
+          attachmentUrls: [],
+          createdAt: occurredAt
+        }
+      });
+      const history = await tx.statusHistory.create({
+        data: {
+          id: `history-${randomUUID()}`,
+          ticketId: ticket.id,
+          fromStatus: ticket.status,
+          toStatus: "REPAIR_IN_PROGRESS",
+          actorUserId: command.managerId,
+          actorRole: "LANDLORD",
+          note: "관리자 직접 처리 시작",
+          createdAt: occurredAt
+        }
+      });
+      return {
+        ticket: directTicket(updatedTicket),
+        complaint: directComplaint(updatedComplaint),
+        message: directMessage(message),
+        history: directHistory(history)
+      };
+    });
+  }
+
+  async completeDirectHandling(command: CompleteDirectHandlingCommand) {
+    return this.prisma.$transaction(async (tx) => {
+      const { ticket, activeRepair } = await this.lockDirectHandlingAuthority(
+        tx,
+        command.managerId,
+        command.ticketId
+      );
+      if (activeRepair) {
+        throw new DirectHandlingPersistenceError(
+          "ACTIVE_REPAIR_CONFLICT",
+          "활성 수리가 진행 중인 티켓은 관리자 직접 처리로 완료할 수 없습니다."
+        );
+      }
+      if (
+        !ticket.directHandlingStartedAt ||
+        ticket.directHandlingCompletedAt ||
+        ticket.status !== "REPAIR_IN_PROGRESS"
+      ) {
+        throw new DirectHandlingPersistenceError(
+          "INVALID_STATE",
+          "직접 처리 중인 티켓만 완료를 보고할 수 있습니다."
+        );
+      }
+
+      const occurredAt = new Date(command.occurredAt);
+      const updatedTicket = await tx.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          directHandlingCompletedAt: occurredAt,
+          status: "COMPLETION_REPORTED"
+        }
+      });
+      const updatedComplaint = await tx.complaint.update({
+        where: { id: ticket.complaintId },
+        data: { status: "REPAIR_IN_PROGRESS" }
+      });
+      const message = await tx.ticketMessage.create({
+        data: {
+          id: `msg-${randomUUID()}`,
+          ticketId: ticket.id,
+          complaintId: ticket.complaintId,
+          senderUserId: command.managerId,
+          senderRole: "LANDLORD",
+          messageText: `관리자가 처리 완료를 보고했습니다 — 확인해 주세요. ${command.note}`,
+          attachmentUrls: [],
+          createdAt: occurredAt
+        }
+      });
+      const history = await tx.statusHistory.create({
+        data: {
+          id: `history-${randomUUID()}`,
+          ticketId: ticket.id,
+          fromStatus: ticket.status,
+          toStatus: "COMPLETION_REPORTED",
+          actorUserId: command.managerId,
+          actorRole: "LANDLORD",
+          note: "관리자 직접 처리 완료 보고",
+          createdAt: occurredAt
+        }
+      });
+      const cost = command.cost
+        ? await tx.cost.create({
+          data: {
+            id: `cost-${randomUUID()}`,
+            managerId: command.managerId,
+            date: occurredAt,
+            item: command.cost.item ?? `직접 처리 · ${ticket.category}`,
+            amount: command.cost.amount,
+            type: "REPAIR",
+            scope: "UNIT",
+            unitId: ticket.roomId,
+            status: "DRAFT",
+            verified: false,
+            createdAt: occurredAt
+          }
+        })
+        : undefined;
+      return {
+        ticket: directTicket(updatedTicket),
+        complaint: directComplaint(updatedComplaint),
+        message: directMessage(message),
+        history: directHistory(history),
+        ...(cost ? { cost: directCost(cost) } : {})
+      };
+    });
+  }
+
+  async cancelDirectHandling(command: CancelDirectHandlingCommand) {
+    return this.prisma.$transaction(async (tx) => {
+      const { ticket, activeRepair } = await this.lockDirectHandlingAuthority(
+        tx,
+        command.managerId,
+        command.ticketId
+      );
+      if (activeRepair) {
+        throw new DirectHandlingPersistenceError(
+          "ACTIVE_REPAIR_CONFLICT",
+          "활성 수리가 진행 중인 티켓은 관리자 직접 처리를 취소할 수 없습니다."
+        );
+      }
+      if (
+        !ticket.directHandlingStartedAt ||
+        ticket.directHandlingCompletedAt ||
+        ticket.status !== "REPAIR_IN_PROGRESS"
+      ) {
+        throw new DirectHandlingPersistenceError(
+          "INVALID_STATE",
+          "완료 보고 전 직접 처리만 취소할 수 있습니다."
+        );
+      }
+
+      const occurredAt = new Date(command.occurredAt);
+      const updatedTicket = await tx.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          directHandlingStartedAt: null,
+          directHandlingCompletedAt: null,
+          directHandlingNote: null,
+          status: "REVIEWING"
+        }
+      });
+      const updatedComplaint = await tx.complaint.update({
+        where: { id: ticket.complaintId },
+        data: { status: "REVIEWING" }
+      });
+      const message = await tx.ticketMessage.create({
+        data: {
+          id: `msg-${randomUUID()}`,
+          ticketId: ticket.id,
+          complaintId: ticket.complaintId,
+          senderUserId: command.managerId,
+          senderRole: "LANDLORD",
+          messageText: `직접 처리를 취소했습니다 — ${command.reason}`,
+          attachmentUrls: [],
+          createdAt: occurredAt
+        }
+      });
+      const history = await tx.statusHistory.create({
+        data: {
+          id: `history-${randomUUID()}`,
+          ticketId: ticket.id,
+          fromStatus: ticket.status,
+          toStatus: "REVIEWING",
+          actorUserId: command.managerId,
+          actorRole: "LANDLORD",
+          note: "관리자 직접 처리 취소",
+          createdAt: occurredAt
+        }
+      });
+      return {
+        ticket: directTicket(updatedTicket),
+        complaint: directComplaint(updatedComplaint),
+        message: directMessage(message),
+        history: directHistory(history)
+      };
+    });
+  }
+
+  private async lockDirectHandlingAuthority(
+    tx: Prisma.TransactionClient,
+    managerId: string,
+    ticketId: string
+  ) {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id" FROM "Ticket" WHERE "id" = ${ticketId} FOR UPDATE
+    `);
+    if (locked.length === 0) {
+      throw new DirectHandlingPersistenceError(
+        "TICKET_NOT_FOUND",
+        "관리자 직접 처리할 티켓을 찾을 수 없습니다."
+      );
+    }
+    const ticket = await tx.ticket.findUnique({
+      where: { id: ticketId },
+      include: { room: true }
+    });
+    if (!ticket) {
+      throw new DirectHandlingPersistenceError(
+        "TICKET_NOT_FOUND",
+        "관리자 직접 처리할 티켓을 찾을 수 없습니다."
+      );
+    }
+    if (ticket.room.landlordId !== managerId) {
+      throw new DirectHandlingPersistenceError(
+        "ACCESS_DENIED",
+        "담당 호실의 관리자만 직접 처리할 수 있습니다."
+      );
+    }
+    const activeRepair = await tx.repairRequest.findFirst({
+      where: {
+        ticketId,
+        status: { notIn: ["COMPLETED", "CANCELLED"] }
+      },
+      select: { id: true }
+    });
+    return { ticket, activeRepair };
   }
 
   async persist(store: Store) {
@@ -1872,6 +2276,9 @@ export class PrismaStoreProjector implements StoreProjector {
             responsibilityDecidedById: ticket.responsibilityDecidedById,
             responsibilityDecidedAt: asDate(ticket.responsibilityDecidedAt),
             responsibilityDecisionNote: ticket.responsibilityDecisionNote,
+            directHandlingStartedAt: asDate(ticket.directHandlingStartedAt) ?? null,
+            directHandlingCompletedAt: asDate(ticket.directHandlingCompletedAt) ?? null,
+            directHandlingNote: ticket.directHandlingNote ?? null,
             aiSummary: ticket.aiSummary,
             dueAt: asDate(ticket.dueAt),
             createdAt: asDate(ticket.createdAt),
@@ -1882,16 +2289,22 @@ export class PrismaStoreProjector implements StoreProjector {
           existingTicket.complaintId !== ticket.complaintId ||
           existingTicket.tenantId !== ticket.tenantId ||
           existingTicket.roomId !== ticket.roomId ||
+          optional(existingTicket.assignedVendorId) !== ticket.assignedVendorId ||
           existingTicket.sourceChannel !== ticket.sourceChannel ||
           existingTicket.category !== ticket.category ||
           existingTicket.priority !== ticket.priority ||
+          existingTicket.status !== ticket.status ||
           existingTicket.responsibilityHint !== ticket.responsibilityHint ||
           optional(existingTicket.responsibilityDecidedById) !== ticket.responsibilityDecidedById ||
           asIso(existingTicket.responsibilityDecidedAt) !== ticket.responsibilityDecidedAt ||
           optional(existingTicket.responsibilityDecisionNote) !==
             ticket.responsibilityDecisionNote ||
+          asIso(existingTicket.directHandlingStartedAt) !== ticket.directHandlingStartedAt ||
+          asIso(existingTicket.directHandlingCompletedAt) !== ticket.directHandlingCompletedAt ||
+          optional(existingTicket.directHandlingNote) !== ticket.directHandlingNote ||
           existingTicket.aiSummary !== ticket.aiSummary ||
-          existingTicket.dueAt?.getTime() !== asDate(ticket.dueAt)?.getTime()
+          existingTicket.dueAt?.getTime() !== asDate(ticket.dueAt)?.getTime() ||
+          existingTicket.updatedAt.getTime() !== asDate(ticket.updatedAt)?.getTime()
         ) {
           await tx.ticket.update({
             where: { id: ticket.id },
@@ -1899,15 +2312,21 @@ export class PrismaStoreProjector implements StoreProjector {
             complaintId: ticket.complaintId,
             tenantId: ticket.tenantId,
             roomId: ticket.roomId,
+            assignedVendorId: ticket.assignedVendorId,
             sourceChannel: ticket.sourceChannel,
             category: ticket.category,
             priority: ticket.priority,
+            status: ticket.status,
             responsibilityHint: ticket.responsibilityHint,
             responsibilityDecidedById: ticket.responsibilityDecidedById,
             responsibilityDecidedAt: asDate(ticket.responsibilityDecidedAt),
             responsibilityDecisionNote: ticket.responsibilityDecisionNote,
+            directHandlingStartedAt: asDate(ticket.directHandlingStartedAt) ?? null,
+            directHandlingCompletedAt: asDate(ticket.directHandlingCompletedAt) ?? null,
+            directHandlingNote: ticket.directHandlingNote ?? null,
             aiSummary: ticket.aiSummary,
-              dueAt: asDate(ticket.dueAt)
+              dueAt: asDate(ticket.dueAt),
+              updatedAt: asDate(ticket.updatedAt)
             }
           });
         }
@@ -1983,6 +2402,7 @@ export class PrismaStoreProjector implements StoreProjector {
             ticketId: repair.ticketId,
             vendorId: repair.vendorId,
             status: repair.status,
+            tenantInitiated: repair.tenantInitiated ?? false,
             title: repair.title,
             description: repair.description,
             estimateAmount: repair.estimateAmount,
@@ -2000,13 +2420,15 @@ export class PrismaStoreProjector implements StoreProjector {
           });
         } else if (
           existingRepair.title !== repair.title ||
-          existingRepair.description !== repair.description
+          existingRepair.description !== repair.description ||
+          existingRepair.tenantInitiated !== (repair.tenantInitiated ?? false)
         ) {
           await tx.repairRequest.update({
             where: { id: repair.id },
             data: {
               title: repair.title,
-              description: repair.description
+              description: repair.description,
+              tenantInitiated: repair.tenantInitiated ?? false
             }
           }
           );

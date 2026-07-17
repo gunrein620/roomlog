@@ -1,11 +1,14 @@
 import type {
   DefectAnalysis,
+  CancelTicketDirectHandlingInput,
+  CompleteTicketDirectHandlingInput,
   ManagerQueueSummary,
   ManagerReplyDraftInput,
   ManagerReplyDraftResult,
   ManagerTicketReplyInput,
   DecideTicketResponsibilityInput,
   RepairJob,
+  StartTicketDirectHandlingInput,
   Ticket,
   TicketAiFeedback,
   TicketResponsibilityDecision,
@@ -242,6 +245,45 @@ export async function decideManagerTicketResponsibility(
 ): Promise<TeamManagerTicket> {
   return serverFetch<TeamManagerTicket>(
     `/manager/tickets/${encodeURIComponent(ticketId)}/responsibility-decision`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function startManagerTicketDirectHandling(
+  ticketId: string,
+  input: StartTicketDirectHandlingInput,
+): Promise<TeamManagerTicket> {
+  return serverFetch<TeamManagerTicket>(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/direct-handling`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function completeManagerTicketDirectHandling(
+  ticketId: string,
+  input: CompleteTicketDirectHandlingInput,
+): Promise<TeamManagerTicket> {
+  return serverFetch<TeamManagerTicket>(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/direct-handling/complete`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function cancelManagerTicketDirectHandling(
+  ticketId: string,
+  input: CancelTicketDirectHandlingInput,
+): Promise<TeamManagerTicket> {
+  return serverFetch<TeamManagerTicket>(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/direct-handling/cancel`,
     {
       method: "POST",
       body: JSON.stringify(input),

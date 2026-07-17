@@ -17,7 +17,7 @@ test("vendor assignment appears beside the reply draft action", () => {
   assert.ok(vendorIndex < replyIndex);
   assert.match(
     source,
-    /<div style=\{\{ \.\.\.row, justifyContent: "flex-end" \}\}>\s*<LinkButton href=\{ticketDashHref\("04", ticket\.id\)\}/,
+    /<div style=\{\{ \.\.\.row, justifyContent: "flex-end" \}\}>\s*\{flow\.showVendorAssignment \? \(\s*<LinkButton href=\{ticketDashHref\("04", ticket\.id\)\}/,
   );
   assert.doesNotMatch(source, /AI 답변\/거절 통보/);
 });

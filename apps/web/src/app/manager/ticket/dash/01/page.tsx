@@ -1,7 +1,9 @@
-import { Badge, Button, Card } from "@roomlog/ui";
+import { Badge, Card } from "@roomlog/ui";
 import { getManagerTicketDetail } from "@/lib/ticket-manager-api";
+import { resolveTicketDirectFlow } from "@/lib/ticket-direct-flow-state";
 import {
   LinkButton,
+  DirectHandlingActions,
   ResponsibilityCard,
   StatusBadges,
   TicketHeader,
@@ -14,7 +16,12 @@ import {
 } from "../../_components/ticket-manager-ui";
 import { AttachmentThumbnailGallery } from "./AttachmentThumbnailGallery";
 import { TicketDetailBackButton } from "./TicketDetailBackButton";
-import { decideResponsibilityAction } from "./actions";
+import {
+  cancelDirectHandlingAction,
+  completeDirectHandlingAction,
+  decideResponsibilityAction,
+  startDirectHandlingAction,
+} from "./actions";
 
 type SearchParams = Promise<{ id?: string }>;
 
@@ -35,8 +42,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   }
 
   const { ticket, analysis, repair } = detail;
-  const completionGuard = repair?.stage === "completed" || repair?.stage === "paid";
-
+  const flow = resolveTicketDirectFlow({
+    ticketStatus: ticket.status,
+    directHandling: ticket.directHandling,
+    hasRepairPath: Boolean(repair),
+    repairStage: repair?.stage,
+  });
   return (
     <div style={pageStack}>
       <TicketHeader
@@ -90,11 +101,17 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
           <Card style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
             <div style={sectionTitle}>다음 행동</div>
-            <Button disabled={!completionGuard} style={!completionGuard ? { opacity: 0.45, cursor: "not-allowed" } : undefined}>
-              {completionGuard ? "완료 처리" : "완료 처리 · 수리완료/결제 가드"}
-            </Button>
+            <DirectHandlingActions
+              ticket={ticket}
+              repair={repair}
+              startAction={startDirectHandlingAction}
+              completeAction={completeDirectHandlingAction}
+              cancelAction={cancelDirectHandlingAction}
+            />
             <div style={{ ...row, justifyContent: "flex-end" }}>
-              <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
+              {flow.showVendorAssignment ? (
+                <LinkButton href={ticketDashHref("04", ticket.id)} variant="secondary">업체 배정/견적</LinkButton>
+              ) : null}
               <LinkButton href={ticketDashHref("03", ticket.id)} variant="secondary">답변 초안 생성</LinkButton>
             </div>
           </Card>

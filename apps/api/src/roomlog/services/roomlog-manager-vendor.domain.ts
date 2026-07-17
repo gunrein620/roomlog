@@ -152,7 +152,7 @@ export class RoomlogManagerVendorDomain {
       this.repository.findJobByTicket(managerId, ticketId)
     );
     return result
-      ? { vendor: result.vendor, job: publicJob(result.job) }
+      ? { ...result, job: publicJob(result.job) }
       : null;
   }
 

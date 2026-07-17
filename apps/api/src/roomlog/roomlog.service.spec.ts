@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { RoomlogService } from "./roomlog.service";
 import { RoomlogController } from "./roomlog.controller";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -487,6 +488,16 @@ function createReportTestService() {
       moveoutReportAudits: []
     } as any
   } as any);
+}
+
+function createDirectHandlingTestTicket(service: RoomlogService, title: string) {
+  return service.createComplaint("tenant-demo", {
+    title,
+    description: "관리자가 현장에서 직접 확인하고 처리할 수 있는 하자입니다.",
+    location: "현관 수납장",
+    occurredAt: "2026-07-17T09:00:00.000Z",
+    availableTimes: "오늘 오후"
+  });
 }
 
 describe("RoomlogService", () => {
@@ -5579,6 +5590,338 @@ describe("RoomlogService", () => {
       ),
       true
     );
+  });
+
+  it("runs direct handling through tenant confirmation without creating a repair", async () => {
+    const service = new RoomlogService();
+    const { complaint, ticket } = createDirectHandlingTestTicket(
+      service,
+      "현관 수납장 경첩 직접 처리"
+    );
+    const store = (service as any).store;
+
+    const started = await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "관리자가 교체용 경첩을 가지고 방문합니다."
+    });
+
+    assert.equal(started.status, "REPAIR_IN_PROGRESS");
+    assert.ok(started.directHandling?.startedAt);
+    assert.equal(started.directHandling?.completedAt, undefined);
+    assert.equal(started.directHandling?.note, "관리자가 교체용 경첩을 가지고 방문합니다.");
+    assert.equal(
+      started.messages.some(
+        (message: any) =>
+          message.messageText.includes("관리자가 직접 처리를 시작했습니다") &&
+          message.messageText.includes("교체용 경첩")
+      ),
+      true
+    );
+    assert.equal(store.repairs.filter((repair: any) => repair.ticketId === ticket.id).length, 0);
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-demo", ticket.id, {
+          note: "중복 시작 시도"
+        }),
+      /이미.*직접 처리|직접 처리.*진행/
+    );
+
+    const reported = await service.completeDirectHandling("landlord-demo", ticket.id, {
+      note: "경첩을 교체하고 문이 정상적으로 닫히는 것을 확인했습니다.",
+      cost: {
+        amount: 18000,
+        item: "수납장 경첩"
+      }
+    });
+
+    assert.equal(reported.status, "COMPLETION_REPORTED");
+    assert.ok(reported.directHandling?.completedAt);
+    assert.equal(
+      reported.messages.some(
+        (message: any) =>
+          message.messageText.includes("관리자가 처리 완료를 보고했습니다") &&
+          message.messageText.includes("정상적으로 닫히는 것")
+      ),
+      true
+    );
+    await assert.rejects(
+      async () =>
+        service.cancelDirectHandling("landlord-demo", ticket.id, {
+          reason: "완료 보고 뒤 취소 시도"
+        }),
+      /완료.*(취소|보고)|취소.*(상태|없)/
+    );
+
+    const directCosts = store.costs.filter(
+      (cost: any) => cost.unitId === ticket.roomId && cost.item === "수납장 경첩"
+    );
+    assert.equal(directCosts.length, 1);
+    assert.equal(directCosts[0].managerId, "landlord-demo");
+    assert.equal(directCosts[0].amount, 18000);
+    assert.equal(directCosts[0].type, "repair");
+    assert.equal(directCosts[0].scope, "unit");
+    assert.equal(directCosts[0].status, "draft");
+    assert.equal(directCosts[0].verified, false);
+
+    const confirmed = service.confirmTenantCompletion("tenant-demo", complaint.id, {
+      note: "문이 잘 닫힙니다."
+    });
+
+    assert.equal(confirmed.ticket.status, "COMPLETED");
+    assert.equal(confirmed.complaint.displayStatus, "완료");
+    assert.equal(confirmed.ticket.repairs.length, 0);
+    assert.equal(store.repairs.filter((repair: any) => repair.ticketId === ticket.id).length, 0);
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-demo", ticket.id, {
+          note: "완료 티켓 재시작 시도"
+        }),
+      /처리할 수 없는 티켓 상태|직접 처리.*상태/
+    );
+  });
+
+  it("rejects direct handling when the ticket has an active repair", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "업체 수리 진행 중 직접 처리 충돌"
+    );
+    const repair = service.assignVendor("landlord-demo", ticket.id, {
+      vendorId: "vendor-demo",
+      requestNote: "업체에서 경첩 상태를 확인해주세요."
+    });
+    assert.equal(repair.status, "REQUESTED");
+    assert.equal(service.getTicket(ticket.id)?.status, "VENDOR_ASSIGNED");
+    const messageCount = service.getTicketDetail(ticket.id).messages.length;
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-other", ticket.id, {
+          note: "관리 범위 밖 시작 시도"
+        }),
+      /담당 호실|접근/
+    );
+    await assert.rejects(
+      async () =>
+        service.startDirectHandling("landlord-demo", ticket.id, {
+          note: "관리자가 직접 처리로 전환합니다."
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ConflictException);
+        assert.equal(error.getStatus(), 409);
+        assert.match(error.message, /활성.*수리|수리.*진행|업체.*수리/);
+        return true;
+      }
+    );
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "VENDOR_ASSIGNED");
+    assert.equal(unchanged.directHandling, null);
+    assert.equal(unchanged.messages.length, messageCount);
+  });
+
+  it("rejects direct completion for a vendor repair ticket", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "업체 수리 티켓 직접 완료 보고 차단"
+    );
+    const storedTicket = service.getTicket(ticket.id);
+    assert.ok(storedTicket);
+    storedTicket.status = "REPAIR_IN_PROGRESS";
+
+    assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+    const store = (service as any).store;
+    const messageCount = service.getTicketDetail(ticket.id).messages.length;
+    await assert.rejects(
+      async () =>
+        service.completeDirectHandling("landlord-demo", ticket.id, {
+          note: "업체 수리를 관리자 직접 처리로 완료하려고 합니다."
+        }),
+      /직접 처리.*(시작|진행)|직접 처리 중/
+    );
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "REPAIR_IN_PROGRESS");
+    assert.equal(unchanged.directHandling, null);
+    assert.equal(unchanged.messages.length, messageCount);
+    assert.equal(store.costs.filter((cost: any) => cost.unitId === ticket.roomId).length, 0);
+  });
+
+  it("rejects a blank direct completion note without mutating the ticket", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "직접 처리 완료 메모 필수"
+    );
+    await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "현장 확인을 시작합니다."
+    });
+
+    await assert.rejects(
+      async () =>
+        service.completeDirectHandling("landlord-demo", ticket.id, {
+          note: "   "
+        }),
+      /완료.*(내용|메모)|내용.*입력|메모.*입력/
+    );
+
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "REPAIR_IN_PROGRESS");
+    assert.equal(unchanged.directHandling?.completedAt, undefined);
+  });
+
+  it("rejects invalid or PostgreSQL-unsafe direct completion costs without creating a draft", async () => {
+    for (const amount of [0, -1000, 1.5, 2_147_483_648, Number.MAX_SAFE_INTEGER + 1]) {
+      const service = new RoomlogService();
+      const { ticket } = createDirectHandlingTestTicket(
+        service,
+        `직접 처리 비용 검증 ${amount}`
+      );
+      const store = (service as any).store;
+      await service.startDirectHandling("landlord-demo", ticket.id, {
+        note: "현장 확인을 시작합니다."
+      });
+
+      await assert.rejects(
+        async () =>
+          service.completeDirectHandling("landlord-demo", ticket.id, {
+            note: "현장 조치를 완료했습니다.",
+            cost: { amount }
+          }),
+        /비용|금액|양수|1원/
+      );
+      assert.equal(store.costs.filter((cost: any) => cost.unitId === ticket.roomId).length, 0);
+      assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+    }
+  });
+
+  it("rejects every defined non-record direct completion cost before mutation", async () => {
+    for (const cost of [null, 0, false, "", [], {}, new Date()] as unknown[]) {
+      const service = new RoomlogService();
+      const { ticket } = createDirectHandlingTestTicket(
+        service,
+        `직접 처리 비용 객체 검증 ${String(cost)}`
+      );
+      const store = (service as any).store;
+      await service.startDirectHandling("landlord-demo", ticket.id, {
+        note: "현장 확인을 시작합니다."
+      });
+      const messageCount = service.getTicketDetail(ticket.id).messages.length;
+
+      await assert.rejects(
+        async () =>
+          service.completeDirectHandling("landlord-demo", ticket.id, {
+            note: "현장 조치를 완료했습니다.",
+            cost
+          } as any),
+        (error: unknown) => {
+          assert.ok(error instanceof BadRequestException);
+          assert.equal(error.getStatus(), 400);
+          return true;
+        }
+      );
+      assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+      assert.equal(service.getTicketDetail(ticket.id).messages.length, messageCount);
+      assert.equal(store.costs.filter((item: any) => item.unitId === ticket.roomId).length, 0);
+    }
+  });
+
+  it("rejects an inherited direct completion cost amount without mutation", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "직접 처리 비용 상속 속성 검증"
+    );
+    const store = (service as any).store;
+    await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "현장 확인을 시작합니다."
+    });
+    const messageCount = service.getTicketDetail(ticket.id).messages.length;
+    const inheritedAmountCost = new Proxy(Object.create({ amount: 18_000 }), {
+      getPrototypeOf: () => Object.prototype
+    });
+
+    assert.equal(Object.hasOwn(inheritedAmountCost, "amount"), false);
+    await assert.rejects(
+      async () =>
+        service.completeDirectHandling("landlord-demo", ticket.id, {
+          note: "현장 조치를 완료했습니다.",
+          cost: inheritedAmountCost
+        } as any),
+      (error: unknown) => {
+        assert.ok(error instanceof BadRequestException);
+        assert.equal(error.getStatus(), 400);
+        return true;
+      }
+    );
+
+    const unchanged = service.getTicketDetail(ticket.id);
+    assert.equal(unchanged.status, "REPAIR_IN_PROGRESS");
+    assert.equal(unchanged.directHandling?.completedAt, undefined);
+    assert.equal(unchanged.messages.length, messageCount);
+    assert.equal(store.costs.filter((item: any) => item.unitId === ticket.roomId).length, 0);
+  });
+
+  it("cancels direct handling back to reviewing and clears its metadata", async () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "직접 처리 시작 취소"
+    );
+    await service.startDirectHandling("landlord-demo", ticket.id, {
+      note: "관리자가 부품을 준비해 방문합니다."
+    });
+
+    await assert.rejects(
+      async () =>
+        service.cancelDirectHandling("landlord-demo", ticket.id, {
+          reason: "   "
+        }),
+      /취소.*사유|사유.*입력/
+    );
+    assert.equal(service.getTicket(ticket.id)?.status, "REPAIR_IN_PROGRESS");
+
+    const cancelled = await service.cancelDirectHandling("landlord-demo", ticket.id, {
+      reason: "현장 확인 결과 전문 업체 점검이 필요합니다."
+    });
+
+    assert.equal(cancelled.status, "REVIEWING");
+    assert.equal(cancelled.directHandling, null);
+    assert.equal(cancelled.directHandlingStartedAt, undefined);
+    assert.equal(cancelled.directHandlingCompletedAt, undefined);
+    assert.equal(cancelled.directHandlingNote, undefined);
+    assert.equal(
+      cancelled.messages.some(
+        (message: any) =>
+          message.messageText.includes("직접 처리를 취소했습니다") &&
+          message.messageText.includes("전문 업체 점검")
+      ),
+      true
+    );
+  });
+
+  it("presents active tenant-initiated repair status to the managing landlord", () => {
+    const service = new RoomlogService();
+    const { ticket } = createDirectHandlingTestTicket(
+      service,
+      "세입자 자가수리 관리자 목록 표시"
+    );
+    const repair = service.assignVendor("landlord-demo", ticket.id, {
+      vendorId: "vendor-demo",
+      requestNote: "세입자가 연결한 업체의 진행 상태를 표시합니다."
+    });
+    repair.tenantInitiated = true;
+
+    const active = service
+      .listTicketsForManager("landlord-demo")
+      .find((item) => item.id === ticket.id);
+    assert.deepEqual(active?.selfRepair, {
+      active: true,
+      statusLabel: "견적 요청"
+    });
+
+    repair.status = "COMPLETED";
+    const closed = service
+      .listTicketsForManager("landlord-demo")
+      .find((item) => item.id === ticket.id);
+    assert.equal(closed?.selfRepair, null);
   });
 
   it("moves a ticket through vendor assignment and completion approval", () => {
