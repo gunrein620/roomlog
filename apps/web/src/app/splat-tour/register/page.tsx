@@ -5,6 +5,7 @@ import { OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ElementRef } from "react";
 import { SplatScene, loadSplatTuningProfile, type SplatTuningProfile } from "../splat-scene";
 import { composeWithPickViewTuning, solveSimilarity } from "../similarity-solve";
+import { defaultRotationXDegreesForSrc } from "../splat-orientation";
 import {
   loadPlanWallsFromBrowser,
   persistTourUploadPlanWalls,
@@ -201,12 +202,18 @@ export default function Page() {
   const transform = useMemo<SplatTransform | null>(() => {
     if (splatPicks.length < 2 || planPicks.length < 2) return null;
     try {
-      const solved = solveSimilarity([
-        { splat: splatPicks[0], plan: planPicks[0] },
-        { splat: splatPicks[1], plan: planPicks[1] }
-      ]);
-      // 프로파일이 없으면 씬 기본값(rotX 180·scale 1·offset 0)이 픽 씬 배치와 일치하므로
-      // 솔버 기본값 그대로가 맞다. auto-fit 배치는 합성 불가 — native 프로파일 전제(§4).
+      // 저장 rotX를 픽 씬 "표시"와 일치시킨다. SplatScene은 defaultRotationXDegreesForSrc로
+      // 포맷기반(.spz=0 / .ply=180) 방향을 표시하는데, 프로파일이 없을 때 솔버 기본값(180)을
+      // 그대로 저장하면 표시(spz=0)와 저장(180)이 어긋나 Scaniverse spz가 뒤집힌다(바닥 밑에서 봄).
+      // 같은 함수로 저장 기본값을 맞춘다. auto-fit 배치는 합성 불가 — native 프로파일 전제(§4).
+      const solved = solveSimilarity(
+        [
+          { splat: splatPicks[0], plan: planPicks[0] },
+          { splat: splatPicks[1], plan: planPicks[1] }
+        ],
+        { rotationXDegrees: defaultRotationXDegreesForSrc(splatSrc) }
+      );
+      // pickProfile이 있으면 그 rotX가 우선(표시 프로파일), 없으면 위 포맷기반 값이 저장된다.
       return composeWithPickViewTuning(solved, pickProfile);
     } catch {
       return null; // 두 점이 겹치는 등 degenerate — 안내만
