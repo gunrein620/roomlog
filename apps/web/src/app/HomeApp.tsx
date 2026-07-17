@@ -2526,7 +2526,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
 
           <div className="section-title">
             <div>
-              <h2>3D로 미리 보는 추천 매물</h2>
+              {/* "3D로 미리 보는"은 전 매물 3D를 암시해 과장 — 브랜드 화자 큐레이션 문구로 */}
+              <h2>우주가 고른 추천 매물</h2>
               <p>{activeFilterSummary} 조건에 맞는 매물을 보여줍니다.</p>
             </div>
             <a href="#map-list" onClick={(event) => {
