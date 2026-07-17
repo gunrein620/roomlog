@@ -17,7 +17,12 @@ export type CopilotChatResponse = import("@roomlog/types").ManagerCopilotChatRes
 
 export type UserRole = "SEEKER" | "TENANT" | "LANDLORD" | "VENDOR";
 export type MessageSenderRole = Exclude<UserRole, "SEEKER"> | "AI_ASSISTANT" | "SYSTEM";
-export type ComplaintSourceChannel = "DIRECT_FORM" | "REALTIME_CHAT" | "VOICE_CHAT" | "CALLBOT";
+export type ComplaintSourceChannel =
+  | "DIRECT_FORM"
+  | "REALTIME_CHAT"
+  | "VOICE_CHAT"
+  | "CALLBOT"
+  | "MANAGER_PROXY";
 
 export type ComplaintStatus =
   | "SUBMITTED"
@@ -2211,6 +2216,20 @@ export type CreateComplaintInput = {
   occurredAt?: string;
   availableTimes?: string;
   urgency?: 1 | 2 | 3 | 4;
+};
+
+export type ManagerProxyIntakeInput = {
+  roomId: string;
+  tenantId?: string;
+  clientRequestId?: string;
+  title: string;
+  description: string;
+  location: string;
+  occurredAt?: string;
+  availableTimes?: string;
+  urgency?: 1 | 2 | 3 | 4;
+  reportedVia?: "phone" | "text" | "in_person" | "other";
+  attachmentUrls?: string[];
 };
 
 export type DecideTicketResponsibilityInput = {

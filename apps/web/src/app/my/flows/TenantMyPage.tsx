@@ -108,6 +108,7 @@ type TenantRepairRequest = {
   location?: string;
   occurredAt?: string;
   createdAt?: string;
+  sourceChannel?: string;
   attachments: TenantRepairAttachment[];
   /** 서버 티켓 표시 상태(접수됨/검토중/업체 배정…) 그대로 */
   status: string;
@@ -158,6 +159,7 @@ type TenantComplaintResponse = {
   location?: string;
   occurredAt?: string;
   createdAt?: string;
+  sourceChannel?: string;
   displayStatus?: string;
   status?: string;
   ticket?: TenantComplaintTicketInfo;
@@ -310,6 +312,7 @@ function normalizeTenantRepairRequest(item: TenantComplaintResponse): TenantRepa
     location: item.location,
     occurredAt: item.occurredAt,
     createdAt: item.createdAt,
+    sourceChannel: item.sourceChannel,
     attachments,
     status: item.displayStatus ?? item.status ?? "접수됨",
     date: repairDateLabel(item.createdAt)
@@ -2176,6 +2179,9 @@ export default function TenantMyPage({
               <div>
                 <span>민원/하자 접수 내용</span>
                 <h2 id="tenant-request-detail-title">{selectedRepairRequest.title}</h2>
+                {selectedRepairRequest.sourceChannel === "MANAGER_PROXY" ? (
+                  <span className="tenant-manager-proxy-badge">관리자 대리 접수</span>
+                ) : null}
               </div>
               <button type="button" onClick={closeRepairDetailSheet} aria-label="접수 내용 닫기">
                 <X size={18} strokeWidth={2.5} aria-hidden="true" />

@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { RoomlogService } from "./roomlog.service";
 import { RoomlogController } from "./roomlog.controller";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -3822,6 +3822,616 @@ describe("RoomlogService", () => {
     );
   });
 
+  it("creates manager proxy intake for the linked tenant with analysis, manager message, merged urgency, and dual visibility", async () => {
+    const service = new RoomlogService();
+
+    const managerMoreUrgent = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "tenant-demo",
+      title: "거실 벽지 얼룩 확인",
+      description: "거실 벽지에 작은 얼룩이 생겨 확인을 요청받았습니다.",
+      location: "거실 벽면",
+      occurredAt: "2026-07-18T09:00:00.000Z",
+      availableTimes: "평일 오후 7시 이후",
+      urgency: 2,
+      reportedVia: "phone",
+      attachmentUrls: ["/uploads/proxy-wall-stain.jpg"]
+    });
+    const aiMoreUrgent = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-301",
+      tenantId: "multi-demo",
+      title: "천장에서 물이 계속 떨어져요",
+      description: "거실 천장에서 물이 계속 떨어져 즉시 확인이 필요합니다.",
+      location: "거실 천장",
+      urgency: 4,
+      reportedVia: "text"
+    });
+
+    assert.equal(managerMoreUrgent.complaint.tenantId, "tenant-demo");
+    assert.equal(managerMoreUrgent.complaint.sourceChannel, "MANAGER_PROXY");
+    assert.equal(managerMoreUrgent.complaint.occurredAt, "2026-07-18T09:00:00.000Z");
+    assert.equal(managerMoreUrgent.complaint.availableTimes, "평일 오후 7시 이후");
+    assert.equal(managerMoreUrgent.ticket.tenantId, "tenant-demo");
+    assert.equal(managerMoreUrgent.ticket.sourceChannel, "MANAGER_PROXY");
+    assert.equal(managerMoreUrgent.ticket.priority, 2);
+    assert.equal(managerMoreUrgent.analysis.priority, 2);
+    assert.equal(
+      managerMoreUrgent.analysis.reasons?.includes("신고 지정 긴급도 2순위 반영"),
+      true
+    );
+    assert.equal(typeof managerMoreUrgent.analysis.category, "string");
+    assert.ok(managerMoreUrgent.analysis.category.length > 0);
+    assert.ok(managerMoreUrgent.analysis.summary.length > 0);
+    assert.equal(aiMoreUrgent.complaint.tenantId, "multi-demo");
+    assert.equal(aiMoreUrgent.complaint.occurredAt, undefined);
+    assert.equal(aiMoreUrgent.complaint.availableTimes, undefined);
+    assert.equal(aiMoreUrgent.ticket.tenantId, "multi-demo");
+    assert.equal(aiMoreUrgent.ticket.priority, 1);
+    assert.equal(aiMoreUrgent.analysis.priority, 1);
+
+    const managerDetail = service.getTicketDetailForManager(
+      "landlord-demo",
+      managerMoreUrgent.ticket.id
+    );
+    assert.equal(managerDetail.messages.length, 1);
+    const initialMessage = managerDetail.messages[0];
+    assert.ok(initialMessage, "expected an initial message");
+    assert.equal(initialMessage.senderRole, "LANDLORD");
+    assert.equal(initialMessage.senderUserId, "landlord-demo");
+    assert.match(initialMessage.messageText, /관리자 대리 접수/);
+    assert.match(initialMessage.messageText, /전화/);
+    assert.match(initialMessage.messageText, /거실 벽지에 작은 얼룩/);
+    assert.deepEqual(initialMessage.attachmentUrls, ["/uploads/proxy-wall-stain.jpg"]);
+    assert.equal(managerDetail.analysis.priority, 2);
+    assert.equal(managerDetail.analysis.category, managerMoreUrgent.analysis.category);
+    assert.equal(
+      managerDetail.history.find((entry) => entry.toStatus === "RECEIVED")?.note,
+      "관리자 대리 접수"
+    );
+
+    const textDetail = service.getTicketDetailForManager(
+      "landlord-demo",
+      aiMoreUrgent.ticket.id
+    );
+    assert.equal(textDetail.messages.length, 1);
+    const textInitialMessage = textDetail.messages[0];
+    assert.ok(textInitialMessage, "expected an initial text intake message");
+    assert.equal(textInitialMessage.senderRole, "LANDLORD");
+    assert.equal(textInitialMessage.senderUserId, "landlord-demo");
+    assert.match(textInitialMessage.messageText, /관리자 대리 접수/);
+    assert.match(textInitialMessage.messageText, /문자/);
+
+    const managerListItem = service
+      .listTicketsForManager("landlord-demo")
+      .find((ticket) => ticket.id === managerMoreUrgent.ticket.id);
+    assert.ok(managerListItem);
+    assert.equal(managerListItem.tenantId, "tenant-demo");
+    assert.equal(managerListItem.sourceChannel, "MANAGER_PROXY");
+
+    const tenantListItem = service
+      .listTenantComplaints("tenant-demo")
+      .find((complaint) => complaint.id === managerMoreUrgent.complaint.id);
+    assert.ok(tenantListItem);
+    assert.equal(tenantListItem.tenantId, "tenant-demo");
+    assert.equal(tenantListItem.sourceChannel, "MANAGER_PROXY");
+    assert.equal(
+      service
+        .listTenantComplaints("multi-demo")
+        .some((complaint) => complaint.id === aiMoreUrgent.complaint.id),
+      true
+    );
+  });
+
+  it("requires an explicit tenant for a room linked to multiple tenants", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-301",
+          title: "복수 세입자 호실 하자",
+          description: "연결된 세입자가 두 명인 호실에서 접수했습니다.",
+          location: "거실",
+          reportedVia: "phone"
+        }),
+      (error: unknown) =>
+        error instanceof BadRequestException && error.message === "세입자를 선택해 주세요"
+    );
+  });
+
+  it("auto-assigns the only linked tenant when tenantId is omitted", async () => {
+    const service = new RoomlogService();
+
+    const created = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-302",
+      title: "욕실 환풍기 점검",
+      description: "욕실 환풍기가 작동하지 않아 점검을 요청받았습니다.",
+      location: "욕실 천장",
+      reportedVia: "in_person"
+    });
+
+    assert.equal(created.complaint.tenantId, "tenant-billing-302");
+    assert.equal(created.ticket.tenantId, "tenant-billing-302");
+    assert.equal(created.complaint.roomId, "room-302");
+  });
+
+  it("rejects a tenantId that is not linked to the selected room", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-302",
+          tenantId: "tenant-demo",
+          title: "잘못 선택한 세입자",
+          description: "다른 호실에 연결된 세입자를 선택한 요청입니다.",
+          location: "현관",
+          reportedVia: "text"
+        }),
+      (error: unknown) =>
+        error instanceof BadRequestException &&
+        /호실.*세입자|세입자.*연결/u.test(error.message)
+    );
+  });
+
+  it("lists only managed proxy-intake rooms with minimal linked-tenant identity", () => {
+    const service = new RoomlogService();
+
+    const rooms = service.listManagerProxyIntakeRooms("landlord-demo");
+    const sharedRoom = rooms.find((room) => room.roomId === "room-301");
+    const singleTenantRoom = rooms.find((room) => room.roomId === "room-302");
+    const emptyRoom = rooms.find((room) => room.roomId === "room-601");
+
+    assert.ok(sharedRoom);
+    assert.equal(sharedRoom.buildingName, "정글빌라");
+    assert.equal(sharedRoom.unitLabel, "301호");
+    assert.equal(sharedRoom.hasTenant, true);
+    assert.deepEqual(
+      [...sharedRoom.tenants].sort((left, right) =>
+        left.tenantId.localeCompare(right.tenantId)
+      ),
+      [
+        { tenantId: "multi-demo", name: "정겸직" },
+        { tenantId: "tenant-demo", name: "김민수" }
+      ]
+    );
+
+    assert.ok(singleTenantRoom);
+    assert.equal(singleTenantRoom.hasTenant, true);
+    assert.deepEqual(singleTenantRoom.tenants, [
+      { tenantId: "tenant-billing-302", name: "김하윤" }
+    ]);
+
+    assert.ok(emptyRoom);
+    assert.equal(emptyRoom.hasTenant, false);
+    assert.deepEqual(emptyRoom.tenants, []);
+    assert.equal(rooms.some((room) => room.roomId === "room-402"), false);
+
+    for (const room of rooms) {
+      assert.equal(room.hasTenant, room.tenants.length > 0);
+      assert.equal(Object.hasOwn(room, "address"), false);
+      for (const tenant of room.tenants) {
+        assert.deepEqual(Object.keys(tenant).sort(), ["name", "tenantId"]);
+      }
+    }
+  });
+
+  it("validates proxy-intake text fields, urgency, and reportedVia", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const [field, expectedMessage] of [
+      ["title", /제목/u],
+      ["description", /내용|설명/u],
+      ["location", /위치/u]
+    ] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake("landlord-demo", {
+            ...validInput,
+            [field]: "   "
+          }),
+        (error: unknown) =>
+          error instanceof BadRequestException && expectedMessage.test(error.message)
+      );
+    }
+
+    for (const urgency of [0, 5, 1.5, "1"] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            {
+              ...validInput,
+              urgency
+            } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && /긴급도/u.test(error.message)
+      );
+    }
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake(
+          "landlord-demo",
+          {
+            ...validInput,
+            reportedVia: "fax"
+          } as any
+        ),
+      (error: unknown) =>
+        error instanceof BadRequestException && /접수 경로/u.test(error.message)
+    );
+  });
+
+  it("rejects non-string proxy-intake identity and text fields with a 400", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const [field, value, expectedMessage] of [
+      ["roomId", 302, /호실/u],
+      ["tenantId", { id: "tenant-billing-302" }, /세입자/u],
+      ["title", ["주방 수전 점검"], /제목/u],
+      ["description", 123, /내용|설명/u],
+      ["location", { label: "주방" }, /위치/u]
+    ] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            { ...validInput, [field]: value } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && expectedMessage.test(error.message)
+      );
+    }
+  });
+
+  it("rejects a non-string proxy-intake clientRequestId with a 400", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake(
+          "landlord-demo",
+          {
+            roomId: "room-302",
+            title: "주방 수전 점검",
+            description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+            location: "주방 싱크대",
+            reportedVia: "phone",
+            clientRequestId: 123
+          } as any
+        ),
+      (error: unknown) =>
+        error instanceof BadRequestException && /접수 요청 식별자/u.test(error.message)
+    );
+  });
+
+  it("deduplicates proxy-intake retries by resolved tenant and request fingerprint", async () => {
+    const service = new RoomlogService();
+    const input = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const,
+      clientRequestId: "proxy-intake-retry-1"
+    };
+
+    const first = await service.createManagerProxyIntake("landlord-demo", input);
+    const retried = await service.createManagerProxyIntake("landlord-demo", input);
+
+    assert.equal(retried.complaint.id, first.complaint.id);
+    assert.equal(retried.ticket.id, first.ticket.id);
+    assert.deepEqual(retried.analysis, first.analysis);
+    assert.equal(
+      service
+        .listTenantComplaints("tenant-billing-302")
+        .filter((complaint) => complaint.id === first.complaint.id).length,
+      1
+    );
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          ...input,
+          reportedVia: "text"
+        }),
+      (error: unknown) =>
+        error instanceof ConflictException && /변경된 내용/u.test(error.message)
+    );
+  });
+
+  it("scopes proxy-intake idempotency keys to the resolved tenant", async () => {
+    const service = new RoomlogService();
+    const input = {
+      roomId: "room-301",
+      title: "공용 거실 천장 점검",
+      description: "거실 천장에 얼룩이 보여 확인이 필요합니다.",
+      location: "거실 천장",
+      reportedVia: "in_person" as const,
+      clientRequestId: "proxy-intake-shared-room-1"
+    };
+
+    const firstTenant = await service.createManagerProxyIntake("landlord-demo", {
+      ...input,
+      tenantId: "tenant-demo"
+    });
+    const secondTenant = await service.createManagerProxyIntake("landlord-demo", {
+      ...input,
+      tenantId: "multi-demo"
+    });
+
+    assert.notEqual(secondTenant.complaint.id, firstTenant.complaint.id);
+    assert.notEqual(secondTenant.ticket.id, firstTenant.ticket.id);
+    assert.equal(firstTenant.complaint.tenantId, "tenant-demo");
+    assert.equal(secondTenant.complaint.tenantId, "multi-demo");
+  });
+
+  it("compensates a failed unkeyed proxy aggregate after a queued stale snapshot persists", async () => {
+    let releaseFirstFailure!: () => void;
+    let markFirstAttemptStarted!: () => void;
+    const firstFailureGate = new Promise<void>((resolve) => {
+      releaseFirstFailure = resolve;
+    });
+    const firstAttemptStarted = new Promise<void>((resolve) => {
+      markFirstAttemptStarted = resolve;
+    });
+    let persistenceAttempts = 0;
+    let failedIds:
+      | { complaintId: string; ticketId: string; historyIds: string[]; messageIds: string[] }
+      | undefined;
+    const persistedComplaintIds = new Set<string>();
+    const persistedTicketIds = new Set<string>();
+    const persistedHistoryIds = new Set<string>();
+    const persistedMessageIds = new Set<string>();
+    const compensationCalls: Array<NonNullable<typeof failedIds>> = [];
+    const projector = {
+      async persist(snapshot: any) {
+        const complaint = snapshot.complaints.find(
+          (item: any) => item.title === "내구성 실패 무키 대리접수"
+        );
+        if (complaint) {
+          persistenceAttempts += 1;
+          const ticket = snapshot.tickets.find((item: any) => item.id === complaint.ticketId);
+          failedIds ??= {
+            complaintId: complaint.id,
+            ticketId: ticket.id,
+            historyIds: snapshot.history
+              .filter((item: any) => item.ticketId === ticket.id)
+              .map((item: any) => item.id),
+            messageIds: snapshot.messages
+              .filter((item: any) => item.ticketId === ticket.id)
+              .map((item: any) => item.id)
+          };
+        }
+        if (complaint && persistenceAttempts === 1) {
+          markFirstAttemptStarted();
+          await firstFailureGate;
+          throw new Error("proxy persistence failed once");
+        }
+        for (const item of snapshot.complaints) persistedComplaintIds.add(item.id);
+        for (const item of snapshot.tickets) persistedTicketIds.add(item.id);
+        for (const item of snapshot.history) persistedHistoryIds.add(item.id);
+        for (const item of snapshot.messages) persistedMessageIds.add(item.id);
+      },
+      async removeComplaintAggregate(ids: NonNullable<typeof failedIds>) {
+        compensationCalls.push(ids);
+        persistedComplaintIds.delete(ids.complaintId);
+        persistedTicketIds.delete(ids.ticketId);
+        for (const historyId of ids.historyIds) persistedHistoryIds.delete(historyId);
+        for (const messageId of ids.messageIds) persistedMessageIds.delete(messageId);
+      }
+    };
+    const service = new RoomlogService({ storeProjector: projector as any });
+    const input = {
+      roomId: "room-302",
+      title: "내구성 실패 무키 대리접수",
+      description: "첫 저장 실패 뒤 aggregate가 남지 않아야 합니다.",
+      location: "302호 주방",
+      reportedVia: "phone" as const
+    };
+
+    const failedIntake = service.createManagerProxyIntake("landlord-demo", input);
+    await firstAttemptStarted;
+    const unrelated = service.createComplaint("tenant-demo", {
+      title: "대리접수 실패와 무관한 후속 민원",
+      description: "실패한 저장 뒤 큐에 들어간 별도 민원입니다.",
+      location: "301호 현관"
+    });
+    releaseFirstFailure();
+
+    await assert.rejects(
+      async () => failedIntake,
+      /proxy persistence failed once/
+    );
+    assert.ok(failedIds);
+    assert.deepEqual(compensationCalls, [failedIds]);
+    const store = (service as any).store;
+    assert.equal(store.complaints.some((item: any) => item.id === failedIds!.complaintId), false);
+    assert.equal(store.tickets.some((item: any) => item.id === failedIds!.ticketId), false);
+    assert.equal(Object.hasOwn(store.analyses, failedIds.ticketId), false);
+    assert.equal(
+      store.history.some((item: any) => failedIds!.historyIds.includes(item.id)),
+      false
+    );
+    assert.equal(
+      store.messages.some((item: any) => failedIds!.messageIds.includes(item.id)),
+      false
+    );
+    assert.equal(persistedComplaintIds.has(failedIds.complaintId), false);
+    assert.equal(persistedTicketIds.has(failedIds.ticketId), false);
+    assert.equal(failedIds.historyIds.some((id) => persistedHistoryIds.has(id)), false);
+    assert.equal(failedIds.messageIds.some((id) => persistedMessageIds.has(id)), false);
+    assert.equal(persistedComplaintIds.has(unrelated.complaint.id), true);
+    assert.equal(persistedTicketIds.has(unrelated.ticket.id), true);
+    assert.equal(persistenceAttempts, 2);
+  });
+
+  it("surfaces an explicit safety error when failed unkeyed persistence cannot compensate", async () => {
+    const service = new RoomlogService({
+      storeProjector: {
+        async persist(snapshot: any) {
+          if (
+            snapshot.complaints.some(
+              (item: any) => item.title === "보상 기능 없는 대리접수"
+            )
+          ) {
+            throw new Error("unsafe projector failure");
+          }
+        }
+      } as any
+    });
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-302",
+          title: "보상 기능 없는 대리접수",
+          description: "프로젝터가 보상 기능을 제공하지 않는 실패입니다.",
+          location: "302호 욕실",
+          reportedVia: "phone"
+        }),
+      /안전하게 보상할 수 없습니다/u
+    );
+  });
+
+  it("rejects non-string and invalid proxy-intake occurredAt values with a 400", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const occurredAt of [
+      123,
+      "not-a-date",
+      "2026-02-30",
+      "1",
+      "2026"
+    ] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            { ...validInput, occurredAt } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && /발생 시점|날짜/u.test(error.message)
+      );
+    }
+  });
+
+  it("accepts and preserves a valid full ISO proxy-intake occurredAt with an offset", async () => {
+    const service = new RoomlogService();
+    const occurredAt = "2026-07-18T18:00:00+09:00";
+
+    const created = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      occurredAt,
+      reportedVia: "phone"
+    });
+
+    assert.equal(created.complaint.occurredAt, occurredAt);
+  });
+
+  it("rejects non-string and blank proxy-intake availableTimes values with a 400", async () => {
+    const service = new RoomlogService();
+    const validInput = {
+      roomId: "room-302",
+      title: "주방 수전 점검",
+      description: "주방 수전에서 물이 새어 확인이 필요합니다.",
+      location: "주방 싱크대",
+      reportedVia: "phone" as const
+    };
+
+    for (const availableTimes of [123, "   "] as const) {
+      await assert.rejects(
+        () =>
+          service.createManagerProxyIntake(
+            "landlord-demo",
+            { ...validInput, availableTimes } as any
+          ),
+        (error: unknown) =>
+          error instanceof BadRequestException && /방문 가능 시간/u.test(error.message)
+      );
+    }
+  });
+
+  it("accepts the other reportedVia value and labels its initial manager message", async () => {
+    const service = new RoomlogService();
+
+    const created = await service.createManagerProxyIntake("landlord-demo", {
+      roomId: "room-302",
+      title: "기타 경로로 받은 하자",
+      description: "관리자가 기타 경로로 전달받은 하자 내용입니다.",
+      location: "현관",
+      reportedVia: "other"
+    });
+    const detail = service.getTicketDetailForManager("landlord-demo", created.ticket.id);
+
+    assert.equal(created.complaint.sourceChannel, "MANAGER_PROXY");
+    assert.equal(detail.messages.length, 1);
+    assert.equal(detail.messages[0].senderRole, "LANDLORD");
+    assert.equal(detail.messages[0].senderUserId, "landlord-demo");
+    assert.match(detail.messages[0].messageText, /관리자 대리 접수/);
+    assert.match(detail.messages[0].messageText, /기타/);
+  });
+
+  it("rejects manager proxy intake for a room outside the manager scope", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-402",
+          title: "외부 호실 대리 접수",
+          description: "담당하지 않는 호실의 하자를 대신 등록하려고 합니다.",
+          location: "현관",
+          reportedVia: "in_person"
+        }),
+      (error: unknown) => error instanceof ForbiddenException && /담당 호실/.test(error.message)
+    );
+  });
+
+  it("rejects manager proxy intake when the managed room has no linked tenant", async () => {
+    const service = new RoomlogService();
+
+    await assert.rejects(
+      () =>
+        service.createManagerProxyIntake("landlord-demo", {
+          roomId: "room-601",
+          title: "빈 호실 대리 접수",
+          description: "세입자가 연결되지 않은 호실의 하자입니다.",
+          location: "주방",
+          reportedVia: "phone"
+        }),
+      (error: unknown) =>
+        error instanceof BadRequestException &&
+        error.message === "연결된 세입자가 없는 호실입니다"
+    );
+  });
+
   it("keeps manager responsibility updates aligned with the ticket analysis", () => {
     const service = new RoomlogService();
     const created = service.createComplaint("tenant-demo", {
@@ -3921,13 +4531,13 @@ describe("RoomlogService", () => {
     assert.equal(tenantMoreUrgent.ticket.priority, 2);
     assert.equal(tenantMoreUrgent.analysis.priority, 2);
     assert.equal(
-      tenantMoreUrgent.analysis.reasons?.includes("세입자 지정 긴급도 2순위 반영"),
+      tenantMoreUrgent.analysis.reasons?.includes("신고 지정 긴급도 2순위 반영"),
       true
     );
     assert.equal(aiMoreUrgent.ticket.priority, 1);
     assert.equal(aiMoreUrgent.analysis.priority, 1);
     assert.equal(
-      aiMoreUrgent.analysis.reasons?.includes("세입자 지정 긴급도 3순위 반영"),
+      aiMoreUrgent.analysis.reasons?.includes("신고 지정 긴급도 3순위 반영"),
       true
     );
     assert.throws(
@@ -4996,9 +5606,20 @@ describe("RoomlogService", () => {
         vendorId: "vendor-demo",
         requestNote: "긴급 점검 부탁드립니다."
       });
+      const managerProxy = await service.createManagerProxyIntake("landlord-demo", {
+        roomId: "room-301",
+        tenantId: "tenant-demo",
+        title: "전화 대리 접수 누수",
+        description: "세입자가 전화로 거실 천장 누수를 알려왔습니다.",
+        location: "거실 천장",
+        reportedVia: "phone"
+      });
 
       const callbotResult = service.queryManagerAssistant("landlord-demo", {
         question: "콜봇으로 접수된 미처리 민원만 보여줘"
+      });
+      const managerProxyResult = service.queryManagerAssistant("landlord-demo", {
+        question: "대리 접수된 미처리 민원만 보여줘"
       });
       const urgentResult = service.queryManagerAssistant("landlord-demo", {
         question: "긴급도 1순위 민원 중 아직 업체 배정 안 된 건 보여줘"
@@ -5011,6 +5632,17 @@ describe("RoomlogService", () => {
       assert.equal(callbotResult.filters.includes("상태: 미처리"), true);
       assert.match(callbotResult.answer, /콜봇/);
       assert.match(callbotResult.answer, /1건/);
+
+      assert.equal(managerProxyResult.matchedTickets.length, 1);
+      assert.equal(managerProxyResult.matchedTickets[0].ticketId, managerProxy.ticket.id);
+      assert.equal(managerProxyResult.matchedTickets[0].sourceChannel, "MANAGER_PROXY");
+      assert.equal(
+        managerProxyResult.filters.includes("접수 채널: 관리자 대리 접수"),
+        true
+      );
+      assert.equal(managerProxyResult.filters.includes("상태: 미처리"), true);
+      assert.match(managerProxyResult.answer, /관리자 대리 접수/);
+      assert.match(managerProxyResult.answer, /1건/);
 
       assert.equal(
         urgentResult.matchedTickets.some((ticket) => ticket.ticketId === unassignedUrgent.ticket.id),
@@ -5491,6 +6123,12 @@ describe("RoomlogService", () => {
     assert.equal(complaint.ticket.category, "누수");
     assert.equal(complaint.ticket.priority, 1);
     assert.equal(complaint.analysis.responsibilityHint, "임대인 책임 가능성");
+    assert.equal(
+      service
+        .getTicketDetailForManager("landlord-demo", complaint.ticket.id)
+        .history.find((entry) => entry.toStatus === "RECEIVED")?.note,
+      "임차인 신고 접수"
+    );
   });
 
   it("surfaces repeated same-room issue context in manager ticket analysis", () => {

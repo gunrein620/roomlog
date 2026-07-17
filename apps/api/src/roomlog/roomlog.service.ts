@@ -184,6 +184,7 @@ import {
   ManagerAssistantQueryResult,
   ManagerAssistantTicketMatch,
   ManagerDunningActionPreview,
+  ManagerProxyIntakeInput,
   ManagerRealtimeClientSecretResult,
   ManagerReport,
   ManagerReportAuditLogEntry,
@@ -839,9 +840,19 @@ export type ManagerTicketRead = {
   readAt: string;
 };
 
+export type ComplaintAggregateIds = {
+  complaintId: string;
+  ticketId: string;
+  historyIds: string[];
+  messageIds: string[];
+};
+
 export type StoreProjector = Partial<DirectHandlingPersistence> & {
   load?(): Store | undefined | Promise<Store | undefined>;
   persist(store: Store): void | Promise<void>;
+  removeComplaintAggregate?(
+    ids: ComplaintAggregateIds
+  ): void | Promise<void>;
   disconnect?(): void | Promise<void>;
 };
 
@@ -2429,6 +2440,7 @@ export class RoomlogService implements OnModuleDestroy {
   private persistenceGeneration = 0;
   private completedPersistenceGeneration = 0;
   private persistenceFailure?: { generation: number; error: unknown };
+  private readonly pendingProxyIntakeBroadcastTicketIds = new Set<string>();
   private shutdownStarted = false;
   private shutdownPromise?: Promise<void>;
   private readonly auth: RoomlogAuthDomain;
@@ -4234,6 +4246,170 @@ export class RoomlogService implements OnModuleDestroy {
     ]);
   }
 
+  async createManagerProxyIntake(managerId: string, input: ManagerProxyIntakeInput) {
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Array.isArray(input) ||
+      typeof input.roomId !== "string" ||
+      !input.roomId.trim()
+    ) {
+      throw new BadRequestException("호실을 선택해 주세요.");
+    }
+    if (input.tenantId !== undefined && typeof input.tenantId !== "string") {
+      throw new BadRequestException("선택한 세입자가 해당 호실에 연결되어 있지 않습니다.");
+    }
+    this.assertManagerCanAccessRoom(managerId, input.roomId);
+    this.validateComplaintInput(input);
+
+    const reportedViaLabels: Record<
+      NonNullable<ManagerProxyIntakeInput["reportedVia"]>,
+      string
+    > = {
+      phone: "전화",
+      text: "문자",
+      in_person: "대면",
+      other: "기타"
+    };
+    const reportedVia = input.reportedVia ?? "other";
+    if (!Object.hasOwn(reportedViaLabels, reportedVia)) {
+      throw new BadRequestException("접수 경로가 올바르지 않습니다.");
+    }
+
+    const linkedTenantIds = Object.entries(this.store.tenantRooms)
+      .filter(([, roomId]) => roomId === input.roomId)
+      .map(([tenantId]) => tenantId);
+    if (linkedTenantIds.length === 0) {
+      throw new BadRequestException("연결된 세입자가 없는 호실입니다");
+    }
+
+    const requestedTenantId = input.tenantId?.trim();
+    if (input.tenantId !== undefined && !requestedTenantId) {
+      throw new BadRequestException("선택한 세입자가 해당 호실에 연결되어 있지 않습니다.");
+    }
+    if (!requestedTenantId && linkedTenantIds.length > 1) {
+      throw new BadRequestException("세입자를 선택해 주세요");
+    }
+
+    const tenantId = requestedTenantId ?? linkedTenantIds[0];
+    if (!tenantId || !linkedTenantIds.includes(tenantId)) {
+      throw new BadRequestException("선택한 세입자가 해당 호실에 연결되어 있지 않습니다.");
+    }
+
+    const normalizedInput = { ...input, reportedVia };
+    const requestFingerprint = normalizedInput.clientRequestId
+      ? this.complaintRequestFingerprint(input.roomId, normalizedInput)
+      : undefined;
+    const existing = normalizedInput.clientRequestId
+      ? this.store.complaints.find(
+          (complaint) =>
+            complaint.tenantId === tenantId &&
+            complaint.clientRequestId === normalizedInput.clientRequestId
+        )
+      : undefined;
+    if (existing) {
+      if (existing.requestFingerprint !== requestFingerprint) {
+        throw new ConflictException("같은 접수 요청에 변경된 내용을 다시 사용할 수 없습니다.");
+      }
+      const ticket = this.findTicket(existing.ticketId);
+      if (
+        this.persistenceFailure?.generation === this.persistenceGeneration &&
+        this.completedPersistenceGeneration < this.persistenceGeneration
+      ) {
+        this.projectStore();
+      }
+      await this.ensurePersistenceDurability();
+      const shouldBroadcast = this.pendingProxyIntakeBroadcastTicketIds.delete(ticket.id);
+      return {
+        complaint: this.presentComplaint(existing),
+        ticket: this.presentTicket(ticket),
+        analysis: this.store.analyses[ticket.id],
+        created: false as const,
+        shouldBroadcast
+      };
+    }
+
+    const analysis = this.analyzeComplaint(normalizedInput);
+    let createdRecordIds:
+      | { complaintId: string; ticketId: string; historyIds: string[]; messageIds: string[] }
+      | undefined;
+    try {
+      const created = this.createComplaintRecord(
+        tenantId,
+        input.roomId,
+        "MANAGER_PROXY",
+        normalizedInput,
+        analysis,
+        [
+          {
+            senderUserId: managerId,
+            senderRole: "LANDLORD",
+            messageText: `관리자 대리 접수 · ${reportedViaLabels[reportedVia]} · ${normalizedInput.description}`,
+            attachmentUrls: input.attachmentUrls
+          }
+        ],
+        undefined,
+        (ids) => {
+          createdRecordIds = ids;
+          this.pendingProxyIntakeBroadcastTicketIds.add(ids.ticketId);
+        }
+      );
+      await this.ensurePersistenceDurability();
+      const shouldBroadcast = this.pendingProxyIntakeBroadcastTicketIds.delete(
+        created.ticket.id
+      );
+
+      return { ...created, created: true as const, shouldBroadcast };
+    } catch (error) {
+      if (!normalizedInput.clientRequestId && createdRecordIds) {
+        this.rollbackComplaintRecord(createdRecordIds);
+        this.pendingProxyIntakeBroadcastTicketIds.delete(createdRecordIds.ticketId);
+        await this.drainPersistenceQueue();
+
+        if (!this.storeProjector?.removeComplaintAggregate) {
+          const safetyError = new Error(
+            "대리접수 저장 실패를 안전하게 보상할 수 없습니다."
+          ) as Error & { cause?: unknown };
+          safetyError.cause = error;
+          throw safetyError;
+        }
+
+        try {
+          await this.storeProjector.removeComplaintAggregate(createdRecordIds);
+        } catch (compensationError) {
+          const safetyError = new Error(
+            "대리접수 저장 실패 보상 작업을 완료하지 못했습니다."
+          ) as Error & { cause?: unknown };
+          safetyError.cause = compensationError;
+          throw safetyError;
+        }
+      }
+      throw error;
+    }
+  }
+
+  listManagerProxyIntakeRooms(managerId: string) {
+    const { rooms } = this.resolveManagerBillingScope(managerId);
+
+    return rooms.map((room) => {
+      const tenants = Object.entries(this.store.tenantRooms)
+        .filter(([, roomId]) => roomId === room.id)
+        .map(([tenantId]) => ({
+          tenantId,
+          name: this.store.users.find((user) => user.id === tenantId)?.name ?? "이름 미확인"
+        }))
+        .sort((left, right) => left.tenantId.localeCompare(right.tenantId));
+
+      return {
+        roomId: room.id,
+        buildingName: room.buildingName,
+        unitLabel: room.roomNo,
+        tenants,
+        hasTenant: tenants.length > 0
+      };
+    });
+  }
+
   createIntakeSession(tenantId: string, input: CreateIntakeSessionInput = {}) {
     const roomId = input.roomId ?? this.store.tenantRooms[tenantId] ?? "room-301";
     const createdAt = now();
@@ -5641,7 +5817,13 @@ export class RoomlogService implements OnModuleDestroy {
       attachmentUrls?: string[];
     }[],
     ticketResponsibilityHint: Ticket["responsibilityHint"] =
-      analysis.responsibilityHint
+      analysis.responsibilityHint,
+    onCreated?: (ids: {
+      complaintId: string;
+      ticketId: string;
+      historyIds: string[];
+      messageIds: string[];
+    }) => void
   ) {
     const createdAt = now();
     const complaintId = id("cmp");
@@ -5684,17 +5866,32 @@ export class RoomlogService implements OnModuleDestroy {
     this.store.complaints.unshift(complaint);
     this.store.tickets.unshift(ticket);
     this.store.analyses[ticket.id] = analysis;
-    this.pushHistory(ticket.id, "system", undefined, "RECEIVED", "임차인 신고 접수");
+    const initialHistory = this.pushHistory(
+      ticket.id,
+      "system",
+      undefined,
+      "RECEIVED",
+      sourceChannel === "MANAGER_PROXY" ? "관리자 대리 접수" : "임차인 신고 접수"
+    );
+    const createdMessages: TicketMessage[] = [];
     for (const message of initialMessages) {
-      this.addMessageInternal(
-        ticket.id,
-        complaint.id,
-        message.senderUserId,
-        message.senderRole,
-        message.messageText,
-        message.attachmentUrls
+      createdMessages.push(
+        this.addMessageInternal(
+          ticket.id,
+          complaint.id,
+          message.senderUserId,
+          message.senderRole,
+          message.messageText,
+          message.attachmentUrls
+        )
       );
     }
+    onCreated?.({
+      complaintId,
+      ticketId,
+      historyIds: [initialHistory.id],
+      messageIds: createdMessages.map((message) => message.id)
+    });
     this.persistStore();
 
     return {
@@ -5702,6 +5899,23 @@ export class RoomlogService implements OnModuleDestroy {
       ticket: this.presentTicket(ticket),
       analysis
     };
+  }
+
+  private rollbackComplaintRecord(ids: ComplaintAggregateIds) {
+    this.removeStoreRecordById(this.store.complaints, ids.complaintId);
+    this.removeStoreRecordById(this.store.tickets, ids.ticketId);
+    delete this.store.analyses[ids.ticketId];
+    for (const historyId of ids.historyIds) {
+      this.removeStoreRecordById(this.store.history, historyId);
+    }
+    for (const messageId of ids.messageIds) {
+      this.removeStoreRecordById(this.store.messages, messageId);
+    }
+  }
+
+  private removeStoreRecordById<T extends { id: string }>(records: T[], recordId: string) {
+    const index = records.findIndex((record) => record.id === recordId);
+    if (index >= 0) records.splice(index, 1);
   }
 
   listTenantComplaints(tenantId: string) {
@@ -5874,7 +6088,10 @@ export class RoomlogService implements OnModuleDestroy {
     const filters: string[] = [];
     const normalizedQuestion = question.replace(/\s+/g, " ");
 
-    if (/콜봇/.test(normalizedQuestion)) {
+    if (/대리\s*접수|관리자\s*대리/.test(normalizedQuestion)) {
+      matches = matches.filter((ticket) => ticket.sourceChannel === "MANAGER_PROXY");
+      filters.push("접수 채널: 관리자 대리 접수");
+    } else if (/콜봇/.test(normalizedQuestion)) {
       matches = matches.filter((ticket) => ticket.sourceChannel === "CALLBOT");
       filters.push("접수 채널: 콜봇");
     } else if (/음성/.test(normalizedQuestion)) {
@@ -10479,15 +10696,15 @@ export class RoomlogService implements OnModuleDestroy {
   }
 
   private validateComplaintInput(input: CreateComplaintInput) {
-    if (!input.title?.trim()) {
+    if (typeof input.title !== "string" || !input.title.trim()) {
       throw new BadRequestException("신고 제목을 입력해주세요.");
     }
 
-    if (!input.description?.trim()) {
+    if (typeof input.description !== "string" || !input.description.trim()) {
       throw new BadRequestException("신고 내용을 입력해주세요.");
     }
 
-    if (!input.location?.trim()) {
+    if (typeof input.location !== "string" || !input.location.trim()) {
       throw new BadRequestException("발생 위치를 입력해주세요.");
     }
 
@@ -10499,8 +10716,26 @@ export class RoomlogService implements OnModuleDestroy {
       throw new BadRequestException("첨부 이미지 주소가 올바르지 않습니다.");
     }
 
-    if (input.clientRequestId !== undefined && !input.clientRequestId.trim()) {
+    if (
+      input.clientRequestId !== undefined &&
+      (typeof input.clientRequestId !== "string" || !input.clientRequestId.trim())
+    ) {
       throw new BadRequestException("접수 요청 식별자가 올바르지 않습니다.");
+    }
+
+    if (
+      input.occurredAt !== undefined &&
+      (typeof input.occurredAt !== "string" ||
+        !this.isValidFullIsoDateTime(input.occurredAt))
+    ) {
+      throw new BadRequestException("발생 시점이 올바르지 않습니다.");
+    }
+
+    if (
+      input.availableTimes !== undefined &&
+      (typeof input.availableTimes !== "string" || !input.availableTimes.trim())
+    ) {
+      throw new BadRequestException("방문 가능 시간이 올바르지 않습니다.");
     }
 
     if (input.urgency !== undefined && ![1, 2, 3, 4].includes(input.urgency)) {
@@ -10508,18 +10743,54 @@ export class RoomlogService implements OnModuleDestroy {
     }
   }
 
-  private complaintRequestFingerprint(roomId: string, input: CreateComplaintInput) {
+  private isValidFullIsoDateTime(value: string) {
+    const match = value.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$/u
+    );
+    if (!match) return false;
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    const timezoneOffsetMinutes =
+      match[8] === "Z"
+        ? 0
+        : (match[9] === "+" ? 1 : -1) *
+          (Number(match[10]) * 60 + Number(match[11]));
+    const calendarAtInputOffset = new Date(
+      parsed.getTime() + timezoneOffsetMinutes * 60 * 1000
+    );
+    const expectedMilliseconds = Number((match[7] ?? "").padEnd(3, "0").slice(0, 3));
+
+    return (
+      calendarAtInputOffset.getUTCFullYear() === Number(match[1]) &&
+      calendarAtInputOffset.getUTCMonth() + 1 === Number(match[2]) &&
+      calendarAtInputOffset.getUTCDate() === Number(match[3]) &&
+      calendarAtInputOffset.getUTCHours() === Number(match[4]) &&
+      calendarAtInputOffset.getUTCMinutes() === Number(match[5]) &&
+      calendarAtInputOffset.getUTCSeconds() === Number(match[6]) &&
+      calendarAtInputOffset.getUTCMilliseconds() === expectedMilliseconds
+    );
+  }
+
+  private complaintRequestFingerprint(
+    roomId: string,
+    input: CreateComplaintInput & { reportedVia?: ManagerProxyIntakeInput["reportedVia"] }
+  ) {
+    const payload: Record<string, unknown> = {
+      roomId,
+      title: input.title,
+      description: input.description,
+      location: input.location,
+      occurredAt: input.occurredAt ?? null,
+      availableTimes: input.availableTimes ?? null,
+      urgency: input.urgency ?? null,
+      attachmentUrls: input.attachmentUrls ?? []
+    };
+    if (input.reportedVia !== undefined) payload.reportedVia = input.reportedVia;
+
     return createHash("sha256")
-      .update(JSON.stringify({
-        roomId,
-        title: input.title,
-        description: input.description,
-        location: input.location,
-        occurredAt: input.occurredAt ?? null,
-        availableTimes: input.availableTimes ?? null,
-        urgency: input.urgency ?? null,
-        attachmentUrls: input.attachmentUrls ?? []
-      }))
+      .update(JSON.stringify(payload))
       .digest("hex");
   }
 
@@ -12514,7 +12785,7 @@ export class RoomlogService implements OnModuleDestroy {
         `${category} 관련 표현이 신고 내용에서 확인됨`,
         aiPriority === 1 ? "긴급 키워드가 포함됨" : "관리자 검토 후 일정 조율 가능",
         ...(input.urgency !== undefined
-          ? [`세입자 지정 긴급도 ${input.urgency}순위 반영`]
+          ? [`신고 지정 긴급도 ${input.urgency}순위 반영`]
           : [])
       ],
       recommendedAction:
@@ -12848,7 +13119,8 @@ export class RoomlogService implements OnModuleDestroy {
       DIRECT_FORM: "앱 입력",
       REALTIME_CHAT: "AI 채팅",
       VOICE_CHAT: "AI 음성",
-      CALLBOT: "콜봇"
+      CALLBOT: "콜봇",
+      MANAGER_PROXY: "관리자 대리 접수"
     };
 
     return labels[sourceChannel];
@@ -13046,7 +13318,8 @@ export class RoomlogService implements OnModuleDestroy {
       DIRECT_FORM: "앱 직접 입력",
       REALTIME_CHAT: "리얼타임 챗봇",
       VOICE_CHAT: "음성 챗봇",
-      CALLBOT: "콜봇"
+      CALLBOT: "콜봇",
+      MANAGER_PROXY: "관리자 대리 접수"
     };
 
     return labels[sourceChannel];
@@ -13653,7 +13926,7 @@ export class RoomlogService implements OnModuleDestroy {
     toStatus: TicketStatus,
     note?: string
   ) {
-    this.store.history.unshift({
+    const history: StatusHistory = {
       id: id("hst"),
       ticketId,
       changedByUserId,
@@ -13661,7 +13934,10 @@ export class RoomlogService implements OnModuleDestroy {
       toStatus,
       note,
       createdAt: now()
-    });
+    };
+    this.store.history.unshift(history);
+
+    return history;
   }
 
   private addMessageInternal(

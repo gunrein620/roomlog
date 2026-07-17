@@ -16,22 +16,27 @@
 ## 데이터
 
 - `ComplaintSourceChannel` enum에 `MANAGER_PROXY` 추가(`prisma/schema.prisma` + migration `20260718xxxxxx_manager_proxy_source_channel`). 기존 값(DIRECT_FORM/REALTIME_CHAT/VOICE_CHAT/CALLBOT) 유지.
-- 스토어 타입(`roomlog.types.ts`)의 `ComplaintSourceChannel`에도 반영. 다른 스키마 변경 없음 — `Complaint.availableTimes`·urgency·attachmentUrls 재사용.
+- 스토어 타입(`roomlog.types.ts`)의 `ComplaintSourceChannel`에도 반영하고, `ManagerProxyIntakeInput`에는 선택 필드 `tenantId?: string`을 둔다. 호실에 연결된 세입자가 한 명뿐이면 생략할 수 있지만, 복수 세입자 호실에서는 반드시 선택해야 한다. 다른 스키마 변경 없음 — `Complaint.availableTimes`·urgency·attachmentUrls 재사용.
 - 실제 접수 경로(전화/문자/대면)는 **별도 컬럼 없이** 첫 메시지 텍스트에 담는다(예: "관리자 대리 접수 · 전화 · {description}"). enum 최소 변경 유지.
 
 ## API
 
 - `POST manager/tickets/proxy-intake` — LANDLORD 역할.
-  - 입력 `ManagerProxyIntakeInput`: `{ roomId(필수), title, description, location, occurredAt?, availableTimes?, urgency?(1~4), reportedVia?("phone"|"text"|"in_person"|"other"), attachmentUrls? }`
-  - 서버 게이트: `assertManagerCanAccessRoom(managerId, roomId)`(담당 호실만, 403). `roomId`의 세입자를 `tenantRooms`에서 역방향 조회(`Object.entries(store.tenantRooms).find(([, r]) => r === roomId)`) — 없으면 `400 "연결된 세입자가 없는 호실입니다"`. title/description/location 공백 검증, urgency 1~4, reportedVia enum 검증.
+  - 입력 `ManagerProxyIntakeInput`: `{ roomId(필수), tenantId?, title, description, location, occurredAt?, availableTimes?, urgency?(1~4), reportedVia?("phone"|"text"|"in_person"|"other"), attachmentUrls? }`
+  - 서버 게이트: 먼저 `assertManagerCanAccessRoom(managerId, roomId)`로 담당 호실만 허용한다(403). 그다음 `Object.entries(store.tenantRooms).filter(([, linkedRoomId]) => linkedRoomId === roomId)`로 해당 호실의 연결 세입자 전체를 구한다.
+    - 연결 세입자가 없으면 `400 "연결된 세입자가 없는 호실입니다"`.
+    - 연결 세입자가 정확히 한 명이고 `tenantId`가 생략되면 그 세입자에게 자동 귀속한다.
+    - 연결 세입자가 복수이고 `tenantId`가 생략되면 `400 "세입자를 선택해 주세요"`.
+    - `tenantId`가 제공되면 연결 세입자 수와 무관하게 해당 세입자가 그 `roomId`에 실제로 연결되어 있는지 서버에서 검증하고, 불일치하면 400으로 거부한다.
+    - title/description/location 공백, urgency 정수 1~4, reportedVia enum도 서버에서 검증한다.
   - 처리: `analyzeComplaint(input)` 실행 후 **기존 `createComplaintRecord(tenantId, roomId, "MANAGER_PROXY", input, analysis, initialMessages)` 재사용**. 초기 메시지는 `senderUserId: managerId, senderRole: "LANDLORD"`, 텍스트에 대리접수+reportedVia 라벨 프리픽스. urgency 병합은 2A와 동일하게 처리(수동 값 vs AI 우선순위 `Math.min`).
   - 컨트롤러: realtime `roomlog:activity` kind `"ticket"` 브로드캐스트.
-- `GET manager/proxy-intake/rooms` — 대리접수 폼의 호실 선택지. LANDLORD 역할. `resolveManagerBillingScope(managerId)`의 rooms를 재사용해 `{ roomId, buildingName, unitLabel, tenantName, hasTenant }[]` 반환(연결 세입자 없는 호실은 `hasTenant:false`로 표시하되 선택 시 서버가 거부). 세입자 개인정보는 이름까지만(연락처·주소 금지).
+- `GET manager/proxy-intake/rooms` — 대리접수 폼의 호실 선택지. LANDLORD 역할. `resolveManagerBillingScope(managerId)`의 rooms를 재사용해 `{ roomId, buildingName, unitLabel, tenants: { tenantId, name }[], hasTenant }[]` 반환한다. 연결 세입자 없는 호실은 `tenants:[]`, `hasTenant:false`로 표시하되 선택 시 서버가 거부한다. 각 세입자 정보는 식별자와 이름까지만 반환하며 연락처·이메일·주소 등 다른 개인정보는 포함하지 않는다.
 
 ## 관리자 화면
 
 - 진입점: 관리자 티켓 대시보드(`manager/ticket/dash/00`) 헤더에 **"대리 접수"** 버튼 추가(`ManagerDefectDashboard.tsx` 타이틀 옆).
-- 폼(클라이언트 모달 또는 전용 라우트 — 구현 시 대시보드 패턴에 맞춤): 호실 선택(위 API), 제목·내용·위치·발생시점·긴급도(4단계 토글, 2A/2C와 같은 UI)·방문 가능 시간·접수 경로(전화/문자/대면 라디오)·사진 첨부. 제출은 서버 액션 → `POST manager/tickets/proxy-intake` → 성공 시 대시보드 갱신.
+- 폼(클라이언트 모달 또는 전용 라우트 — 구현 시 대시보드 패턴에 맞춤): 호실 선택(위 API), 제목·내용·위치·발생시점·긴급도(4단계 토글, 2A/2C와 같은 UI)·방문 가능 시간·접수 경로(전화/문자/대면 라디오)·사진 첨부. 호실 선택 뒤 연결 세입자 이름을 표시하고, 한 명이면 자동 귀속을 안내하며, 복수이면 세입자 선택 UI를 필수로 노출한다. 세입자 선택값은 `tenantId`로 제출한다. 제출은 서버 액션 → `POST manager/tickets/proxy-intake` → 성공 시 대시보드 갱신.
 - 검증은 서버가 강제. HTML required는 편의.
 
 ## 세입자탭 (living — Claude 직접, my/flows 소유)
@@ -40,8 +45,8 @@
 
 ## 검증
 
-- 서비스 회귀 테스트: ① 대리접수가 실세입자 귀속 + MANAGER_PROXY 채널 + AI 분석 부착 + 관리자 발신 초기 메시지 생성, ② 담당 아닌 호실 403, ③ 세입자 미연결 호실 400, ④ urgency 수동/AI 병합, ⑤ 대리접수 티켓이 관리자 목록·세입자 이력 양쪽에 노출.
-- 웹 계약 테스트: 관리자 폼(호실 선택·필드·서버 액션 경로), 세입자탭 배지 문구.
+- 서비스 회귀 테스트: ① 복수 세입자 호실에서 명시한 실세입자 귀속 + MANAGER_PROXY 채널 + AI 분석 부착 + 관리자 발신 초기 메시지 생성, ② 복수 세입자 호실에서 `tenantId` 생략 시 정확히 `400 "세입자를 선택해 주세요"`, ③ 단일 세입자 호실에서 생략 시 자동 귀속, ④ 다른 호실의 `tenantId` 거부, ⑤ 담당 아닌 호실 403, ⑥ 세입자 미연결 호실 400, ⑦ title/description/location 공백·urgency·reportedVia 검증, ⑧ urgency 수동/AI 병합, ⑨ 대리접수 티켓이 관리자 목록·선택된 세입자 이력 양쪽에 `sourceChannel`·`tenantId`를 보존해 노출, ⑩ 호실 목록의 관리자 스코프·`tenants`·`hasTenant`와 연락처/주소 미노출.
+- 웹 계약 테스트: 관리자 폼(호실 선택·연결 세입자 표시·복수 세입자 선택·필드·서버 액션 경로), 세입자탭 배지 문구.
 - Prisma generate(enum 변경). 빌드·대상 스펙·`bash scripts/verify.sh`.
 
 ## 제약

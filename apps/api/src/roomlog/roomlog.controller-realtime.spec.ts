@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
+import { ForbiddenException } from "@nestjs/common";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoomlogController } from "./roomlog.controller";
 import { RoomlogService } from "./roomlog.service";
@@ -122,6 +123,113 @@ describe("roomlog complaint realtime activity", () => {
         payload: { kind: "ticket", action: "read" },
       },
     ]);
+  });
+
+  it("broadcasts exactly once for a durable manager proxy intake and not for its idempotent retry", async () => {
+    const { controller, broadcasts, header } = setupManagerController();
+    const input = {
+      roomId: "room-302",
+      title: "관리자 대리 접수 실시간 검증",
+      description: "세입자가 전화로 욕실 환풍기 고장을 알려왔습니다.",
+      location: "302호 욕실",
+      reportedVia: "phone" as const,
+      clientRequestId: "proxy-controller-broadcast-1"
+    };
+
+    const result = await controller.createManagerProxyIntake(header, input);
+    const retried = await controller.createManagerProxyIntake(header, input);
+
+    assert.equal(result.created, true);
+    assert.equal(result.shouldBroadcast, true);
+    assert.equal(retried.created, false);
+    assert.equal(retried.shouldBroadcast, false);
+    assert.equal(retried.complaint.id, result.complaint.id);
+    assert.equal(retried.ticket.id, result.ticket.id);
+    assert.equal(result.complaint.sourceChannel, "MANAGER_PROXY");
+    assert.deepEqual(broadcasts, [
+      { event: "roomlog:activity", payload: { kind: "ticket" } }
+    ]);
+  });
+
+  it("does not broadcast a failed proxy intake and durably retries the same clientRequestId", async () => {
+    let persistenceAttempts = 0;
+    let failedComplaintId: string | undefined;
+    let failedTicketId: string | undefined;
+    const projector = {
+      async persist(snapshot: any) {
+        const complaint = snapshot.complaints.find(
+          (item: any) => item.clientRequestId === "proxy-controller-fail-once-1"
+        );
+        if (!complaint) return;
+        persistenceAttempts += 1;
+        failedComplaintId = complaint.id;
+        failedTicketId = complaint.ticketId;
+        if (persistenceAttempts === 1) {
+          throw new Error("proxy controller persistence failed once");
+        }
+      }
+    };
+    const service = new RoomlogService({ storeProjector: projector as any });
+    const broadcasts: BroadcastRecord[] = [];
+    const realtime = {
+      broadcast(event: string, payload: Record<string, unknown>) {
+        broadcasts.push({ event, payload });
+      }
+    } as RealtimeGateway;
+    const controller = new RoomlogController(service, realtime);
+    const auth = service.login({
+      email: "manager@roomlog.test",
+      password: "password123!"
+    });
+    const header = `Bearer ${auth.accessToken}`;
+    const input = {
+      roomId: "room-302",
+      title: "저장 실패 대리접수",
+      description: "첫 projection 실패 후 같은 요청을 재시도합니다.",
+      location: "302호 현관",
+      reportedVia: "text" as const,
+      clientRequestId: "proxy-controller-fail-once-1"
+    };
+
+    await assert.rejects(
+      async () => controller.createManagerProxyIntake(header, input),
+      /proxy controller persistence failed once/
+    );
+    assert.deepEqual(broadcasts, []);
+
+    const recovered = await controller.createManagerProxyIntake(header, input);
+    const retried = await controller.createManagerProxyIntake(header, input);
+    assert.equal(recovered.created, false);
+    assert.equal(recovered.shouldBroadcast, true);
+    assert.equal(recovered.complaint.id, failedComplaintId);
+    assert.equal(recovered.ticket.id, failedTicketId);
+    assert.equal(retried.created, false);
+    assert.equal(retried.shouldBroadcast, false);
+    assert.equal(persistenceAttempts, 2);
+    assert.deepEqual(broadcasts, [
+      { event: "roomlog:activity", payload: { kind: "ticket" } }
+    ]);
+  });
+
+  it("guards manager proxy-intake POST and room-list GET with LANDLORD role", async () => {
+    const { controller, broadcasts, header } = setupTenantController();
+
+    await assert.rejects(
+      () =>
+        controller.createManagerProxyIntake(header, {
+          roomId: "room-301",
+          title: "권한 없는 대리 접수",
+          description: "세입자 토큰으로 관리자 대리 접수를 시도합니다.",
+          location: "301호 현관",
+          reportedVia: "text"
+        }),
+      (error: unknown) => error instanceof ForbiddenException
+    );
+    assert.throws(
+      () => controller.listManagerProxyIntakeRooms(header),
+      (error: unknown) => error instanceof ForbiddenException
+    );
+    assert.deepEqual(broadcasts, []);
   });
 
   it("broadcasts ticket activity after a manager finalizes responsibility", () => {

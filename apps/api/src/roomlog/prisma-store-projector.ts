@@ -1,7 +1,11 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { randomUUID } from "node:crypto";
-import { Store, StoreProjector } from "./roomlog.service";
+import {
+  Store,
+  StoreProjector,
+  type ComplaintAggregateIds
+} from "./roomlog.service";
 import {
   Complaint,
   Cost,
@@ -3179,6 +3183,39 @@ export class PrismaStoreProjector implements StoreProjector {
           }
         });
       }
+    });
+  }
+
+  async removeComplaintAggregate(ids: ComplaintAggregateIds) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ticketMessage.deleteMany({
+        where: {
+          id: { in: ids.messageIds },
+          ticketId: ids.ticketId,
+          complaintId: ids.complaintId
+        }
+      });
+      await tx.statusHistory.deleteMany({
+        where: {
+          id: { in: ids.historyIds },
+          ticketId: ids.ticketId
+        }
+      });
+      await tx.aiAnalysis.deleteMany({
+        where: { ticketId: ids.ticketId }
+      });
+      await tx.ticket.deleteMany({
+        where: {
+          id: ids.ticketId,
+          complaintId: ids.complaintId
+        }
+      });
+      await tx.complaint.deleteMany({
+        where: {
+          id: ids.complaintId,
+          ticketId: ids.ticketId
+        }
+      });
     });
   }
 

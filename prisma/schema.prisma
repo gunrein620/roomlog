@@ -59,6 +59,7 @@ enum ComplaintSourceChannel {
   REALTIME_CHAT
   VOICE_CHAT
   CALLBOT
+  MANAGER_PROXY
 }
 
 enum ComplaintStatus {

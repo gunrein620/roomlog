@@ -31,6 +31,94 @@ import {
 } from "./ticket-manager-demo";
 import { managerDefectDashboardDemoRecord } from "./manager-defect-dashboard-demo";
 
+export type ManagerProxyIntakeTenant = {
+  tenantId: string;
+  name: string;
+};
+
+export type ManagerProxyIntakeRoom = {
+  roomId: string;
+  buildingName: string;
+  unitLabel: string;
+  tenants: ManagerProxyIntakeTenant[];
+  hasTenant: boolean;
+};
+
+export type ManagerProxyIntakeInput = {
+  roomId: string;
+  tenantId?: string;
+  clientRequestId?: string;
+  title: string;
+  description: string;
+  location: string;
+  occurredAt?: string;
+  availableTimes?: string;
+  urgency?: 1 | 2 | 3 | 4;
+  reportedVia?: "phone" | "text" | "in_person" | "other";
+  attachmentUrls?: string[];
+};
+
+const MANAGER_PROXY_INTAKE_DEMO_ROOMS: ManagerProxyIntakeRoom[] = [
+  {
+    roomId: "room-301",
+    buildingName: "정글빌라",
+    unitLabel: "301호",
+    tenants: [
+      { tenantId: "tenant-demo", name: "김민수" },
+      { tenantId: "multi-demo", name: "정겸직" },
+    ],
+    hasTenant: true,
+  },
+  {
+    roomId: "room-302",
+    buildingName: "정글빌라",
+    unitLabel: "302호",
+    tenants: [{ tenantId: "tenant-billing-302", name: "김하윤" }],
+    hasTenant: true,
+  },
+  {
+    roomId: "room-601",
+    buildingName: "정글빌라",
+    unitLabel: "601호",
+    tenants: [],
+    hasTenant: false,
+  },
+];
+
+const NETWORK_TRANSPORT_ERROR_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+function hasNetworkTransportCause(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    cause?: unknown;
+    code?: unknown;
+    errors?: unknown[];
+  };
+  if (
+    typeof candidate.code === "string" &&
+    NETWORK_TRANSPORT_ERROR_CODES.has(candidate.code)
+  ) {
+    return true;
+  }
+  return (
+    candidate.errors?.some(hasNetworkTransportCause) === true ||
+    hasNetworkTransportCause(candidate.cause)
+  );
+}
+
+function isNetworkTransportError(error: unknown) {
+  return error instanceof TypeError && hasNetworkTransportCause(error.cause);
+}
+
 // 관리인 티켓 API 클라이언트 — 팀 실 백엔드(GET /manager/tickets)에 쿠키 인증으로 연결.
 // [레퍼런스 패턴 복제] 서버 컴포넌트 전용(serverFetch가 httpOnly 쿠키→Bearer forward).
 // 목록/요약은 실집계(빈 목록은 [], 위조 금지). 상세는 활성 티켓 매핑, 없을 때만 데모+경고.
@@ -38,6 +126,29 @@ import { managerDefectDashboardDemoRecord } from "./manager-defect-dashboard-dem
 async function listTeamTickets(filter?: string): Promise<TeamManagerTicket[]> {
   const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
   return serverFetch<TeamManagerTicket[]>(`/manager/tickets${query}`);
+}
+
+export async function listManagerProxyIntakeRooms(
+  loadRooms: () => Promise<ManagerProxyIntakeRoom[]> = () =>
+    serverFetch<ManagerProxyIntakeRoom[]>("/manager/proxy-intake/rooms"),
+): Promise<ManagerProxyIntakeRoom[]> {
+  try {
+    return await loadRooms();
+  } catch (error) {
+    if (error instanceof ApiError || error instanceof ApiPayloadError) throw error;
+    if (!isNetworkTransportError(error)) throw error;
+    console.error("[manager/api] 대리접수 호실 조회 실패 → 데모 폴백:", error);
+    return MANAGER_PROXY_INTAKE_DEMO_ROOMS;
+  }
+}
+
+export async function createManagerProxyIntake(
+  input: ManagerProxyIntakeInput,
+): Promise<unknown> {
+  return serverFetch("/manager/tickets/proxy-intake", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export type ManagerTicketDetail = {

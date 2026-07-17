@@ -73,6 +73,7 @@ import {
   CopilotChatRequest,
   ManagerAgentCommandInput,
   ManagerAssistantQueryInput,
+  ManagerProxyIntakeInput,
   ManagerReplyDraftInput,
   MessagingThreadContext,
   MoveoutAdjustDeductionInput,
@@ -1487,6 +1488,27 @@ export class RoomlogController {
     const user = this.requireRole(authorization, ["LANDLORD"]);
 
     return this.roomlogService.listCurrentTicketsForManager(user.id);
+  }
+
+  @Post("manager/tickets/proxy-intake")
+  async createManagerProxyIntake(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() body: ManagerProxyIntakeInput
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    const result = await this.roomlogService.createManagerProxyIntake(user.id, body);
+    if (result.shouldBroadcast) {
+      this.realtime.broadcast("roomlog:activity", { kind: "ticket" });
+    }
+
+    return result;
+  }
+
+  @Get("manager/proxy-intake/rooms")
+  listManagerProxyIntakeRooms(@Headers("authorization") authorization?: string) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+
+    return this.roomlogService.listManagerProxyIntakeRooms(user.id);
   }
 
   @Post("manager/tickets/:ticketId/read")

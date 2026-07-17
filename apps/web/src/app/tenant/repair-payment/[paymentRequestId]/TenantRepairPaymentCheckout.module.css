@@ -6,6 +6,13 @@
   background: var(--surface-container-low);
 }
 
+.embedded {
+  min-height: min(680px, 76vh);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
 .header {
   display: grid;
   grid-template-columns: var(--touch-target) minmax(0, 1fr) var(--touch-target);
@@ -15,7 +22,8 @@
   background: var(--surface-container-lowest);
 }
 
-.header > a {
+.header > a,
+.header > button {
   display: inline-grid;
   width: var(--touch-target);
   height: var(--touch-target);
@@ -26,7 +34,13 @@
   text-decoration: none;
 }
 
-.header > a:hover {
+.header > button {
+  border: 0;
+  background: transparent;
+}
+
+.header > a:hover,
+.header > button:hover {
   background: var(--surface-container-low);
 }
 

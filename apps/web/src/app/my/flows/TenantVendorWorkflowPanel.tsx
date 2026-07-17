@@ -11,6 +11,7 @@ import {
   getTenantVendorWorkflow,
   reviewTenantVendorEstimate,
 } from "@/lib/tenant-vendor-workflow-api";
+import { TenantRepairPaymentCheckout } from "@/app/tenant/repair-payment/[paymentRequestId]/TenantRepairPaymentCheckout";
 
 type TenantVendorWorkflowPanelProps = {
   complaintId: string;
@@ -69,6 +70,7 @@ export function TenantVendorWorkflowPanel({
   const [noteMode, setNoteMode] = useState<NoteMode>(null);
   const [note, setNote] = useState("");
   const [visitTimes, setVisitTimes] = useState("");
+  const [paymentCheckoutOpen, setPaymentCheckoutOpen] = useState(false);
 
   const loadWorkflow = useCallback(async () => {
     setIsLoading(true);
@@ -90,6 +92,7 @@ export function TenantVendorWorkflowPanel({
     setNoteMode(null);
     setNote("");
     setVisitTimes("");
+    setPaymentCheckoutOpen(false);
     void getTenantVendorWorkflow(complaintId)
       .then((result) => {
         if (active) setWorkflow(result);
@@ -122,6 +125,11 @@ export function TenantVendorWorkflowPanel({
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const closePaymentCheckout = async () => {
+    setPaymentCheckoutOpen(false);
+    await loadWorkflow();
   };
 
   if (isLoading) {
@@ -163,6 +171,17 @@ export function TenantVendorWorkflowPanel({
   );
   const isRepairCostPaid = payment?.status === "TOSS_PAID"
     || payment?.status === "DIRECT_PAID";
+
+  if (paymentCheckoutOpen && payment) {
+    return (
+      <TenantRepairPaymentCheckout
+        paymentRequestId={payment.id}
+        complaintId={complaintId}
+        embedded
+        onClose={() => void closePaymentCheckout()}
+      />
+    );
+  }
 
   return (
     <section className="tenant-vendor-workflow" aria-label="협력업체 수리 진행">
@@ -457,12 +476,13 @@ export function TenantVendorWorkflowPanel({
             </div>
           </div>
           {canPayRepairCost ? (
-            <a
+            <button
+              type="button"
               className="tenant-vendor-primary tenant-vendor-payment-link"
-              href={`/tenant/repair-payment/${encodeURIComponent(payment.id)}?complaintId=${encodeURIComponent(complaintId)}`}
+              onClick={() => setPaymentCheckoutOpen(true)}
             >
               결제하기
-            </a>
+            </button>
           ) : isDirectPaymentPending ? (
             <span className="tenant-vendor-payment-complete">업체 확인 대기</span>
           ) : isRepairCostPaid ? (
