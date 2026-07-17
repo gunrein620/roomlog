@@ -1,6 +1,7 @@
 import type {
   VendorEstimate,
   VendorJobSummary,
+  VendorPaymentAttemptMode,
   VendorPaymentRequestStatus,
 } from "@roomlog/types";
 
@@ -73,8 +74,17 @@ export function estimateStatusLabel(status?: VendorEstimate["status"]) {
   return labels[status];
 }
 
-export function paymentStatusLabel(status?: VendorPaymentRequestStatus) {
+export function paymentStatusLabel(
+  status?: VendorPaymentRequestStatus,
+  lastAttemptMode?: VendorPaymentAttemptMode,
+) {
   if (!status) return "완료 승인 후 정산 요청 생성";
+  if (status === "PENDING_APPROVAL" && lastAttemptMode === "DIRECT") {
+    return "직접결제 확인 대기";
+  }
+  if (status === "DIRECT_PAID" && lastAttemptMode === "DIRECT") {
+    return "직접결제 완료";
+  }
   const labels: Record<VendorPaymentRequestStatus, string> = {
     WAITING_COMPLETION: "관리자 완료 확인 대기",
     PENDING_APPROVAL: "관리자 지급 승인 대기",
@@ -84,8 +94,8 @@ export function paymentStatusLabel(status?: VendorPaymentRequestStatus) {
     TOSS_PAID: "Toss 결제 완료",
     INSUFFICIENT_CREDIT: "관리자 결제수단 확인 중",
     CANCELLED: "정산 요청 취소",
-    REVERSED: "지급 취소",
-    DIRECT_PAYMENT_VOIDED: "외부 지급 기록 취소",
+    REVERSED: "크레딧 지급 기록 정정",
+    DIRECT_PAYMENT_VOIDED: "직접 계좌이체 기록 정정",
   };
   return labels[status];
 }

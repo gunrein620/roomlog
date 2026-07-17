@@ -63,29 +63,37 @@ export class TradeController {
   }
 
   @Post("listings")
-  createListing(
+  async createListing(
     @Headers("authorization") authorization: string | undefined,
     @Body() body: TradeListingInput
   ) {
     const user = this.user(authorization);
     const listing = this.tradeService.createListing(user, body);
     try {
-      return this.ensureRoomForListing(listing);
+      await this.tradeService.ensureListingDurability();
+      const linked = this.ensureRoomForListing(listing);
+      await this.tradeService.ensureListingDurability();
+      return linked;
     } catch (error) {
       this.tradeService.deleteListing(user, listing.id);
+      await this.tradeService.ensureListingDurability();
       throw error;
     }
   }
 
   /** 매물 수정 — 소유자 전용(서비스에서 검증). 전달된 필드만 갱신. */
   @Patch("listings/:listingId")
-  updateListing(
+  async updateListing(
     @Headers("authorization") authorization: string | undefined,
     @Param("listingId") listingId: string,
     @Body() body: Partial<TradeListingInput>
   ) {
     const user = this.user(authorization);
-    return this.ensureRoomForListing(this.tradeService.updateListing(user, listingId, body));
+    const listing = this.ensureRoomForListing(
+      this.tradeService.updateListing(user, listingId, body)
+    );
+    await this.tradeService.ensureListingDurability();
+    return listing;
   }
 
   /** 매물 삭제(내리기) — 소유자 전용. */

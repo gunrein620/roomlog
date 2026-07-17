@@ -53,7 +53,11 @@ function normalize(value: string) {
 }
 
 export function requiredVendorTrade(category: string) {
-  return CATEGORY_TO_TRADE[normalize(category)] ?? "general";
+  return suggestedVendorTrade(category) ?? "general";
+}
+
+export function suggestedVendorTrade(category: string) {
+  return CATEGORY_TO_TRADE[normalize(category)];
 }
 
 export function vendorSupportsRequiredTrade(

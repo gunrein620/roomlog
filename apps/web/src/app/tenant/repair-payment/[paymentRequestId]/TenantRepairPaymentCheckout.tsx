@@ -6,6 +6,7 @@ import type {
   RepairPaymentCheckout,
   RepairPaymentOrderPublicView,
   TenantVendorWorkflowView,
+  VendorJobPaymentView,
 } from "@roomlog/types";
 import { getTenantVendorWorkflow } from "@/lib/tenant-vendor-workflow-api";
 import { repairPaymentRecovery } from "@/lib/repair-payment-recovery";
@@ -36,6 +37,8 @@ type TenantRepairPaymentCheckoutProps = {
   complaintId: string;
   callbackMarker?: string;
 };
+
+type PaymentMethod = "TOSS" | "DIRECT";
 
 async function tenantRepairPaymentBrowserFetch<T>(
   path: string,
@@ -113,22 +116,31 @@ export function TenantRepairPaymentCheckout({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(() => callbackMessage(callbackMarker));
   const [recovering, setRecovering] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("TOSS");
 
   const { checkout, busy, cleanupUncertain, sdkFailed, canPay } = snapshot;
   const payment = workflow?.paymentRequest;
   const latestRepairPaymentOrder = workflow?.latestRepairPaymentOrder;
   const recovery = repairPaymentRecovery(latestRepairPaymentOrder?.status);
   const ownsPaymentRequest = Boolean(payment && payment.id === paymentRequestId);
+  const isDirectPending = payment?.id === paymentRequestId
+    && payment.status === "PENDING_APPROVAL"
+    && payment.lastAttemptMode === "DIRECT";
   const canStartPayment = Boolean(
     payment
     && payment.id === paymentRequestId
     && payment.status === "PENDING_APPROVAL"
+    && !isDirectPending
     && (!latestRepairPaymentOrder
       || latestRepairPaymentOrder.status === "CANCELLED"
       || recovery?.canRetry),
   );
   const isPaid = payment?.id === paymentRequestId
-    && (payment.status === "TOSS_PAID" || latestRepairPaymentOrder?.status === "APPROVED");
+    && (payment.status === "TOSS_PAID"
+      || payment.status === "DIRECT_PAID"
+      || latestRepairPaymentOrder?.status === "APPROVED");
+  const isDirectPaid = payment?.id === paymentRequestId
+    && payment.status === "DIRECT_PAID";
   const returnHref = complaintId
     ? `/living?complaintId=${encodeURIComponent(complaintId)}`
     : "/living";
@@ -294,6 +306,30 @@ export function TenantRepairPaymentCheckout({
     if (mode === "payment-window") await requestPreparedPayment(result.value);
   }
 
+  async function requestDirectPayment(): Promise<void> {
+    if (!canStartPayment || !payment || busy || recovering) return;
+    setRecovering(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await tenantRepairPaymentBrowserFetch<VendorJobPaymentView>(
+        `/api/tenant/vendor-payment-requests/${encodeURIComponent(payment.id)}/direct-payment`,
+        {
+          method: "POST",
+          body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }),
+        },
+      );
+      setWorkflow((current) => current
+        ? { ...current, paymentRequest: updated }
+        : current);
+      setNotice("업체 확인 대기");
+    } catch (directError) {
+      setError(messageFromError(directError, "직접결제 요청을 처리하지 못했습니다."));
+    } finally {
+      setRecovering(false);
+    }
+  }
+
   async function cancelPreparedOrder(): Promise<void> {
     setError("");
     const result = await lifecycle.requestCleanup();
@@ -337,10 +373,12 @@ export function TenantRepairPaymentCheckout({
   const actionDisabled = !canStartPayment
     || busy
     || recovering
-    || sdkFailed
     || cleanupUncertain
-    || (Boolean(checkout) && !canPay)
-    || (paymentMode === "widget" && !widgetReady);
+    || (selectedMethod === "TOSS" && (
+      sdkFailed
+      || (Boolean(checkout) && !canPay)
+      || (paymentMode === "widget" && !widgetReady)
+    ));
 
   return (
     <div className={styles.screen}>
@@ -389,9 +427,15 @@ export function TenantRepairPaymentCheckout({
               </div>
             </section>
 
-            {(notice || isPaid) ? (
+            {(notice || isPaid || isDirectPending) ? (
               <p className={styles.notice} role="status">
-                {isPaid ? "결제 완료" : notice}
+                {isDirectPaid
+                  ? "직접결제 완료"
+                  : isPaid
+                    ? "결제 완료"
+                    : isDirectPending
+                      ? "업체 확인 대기"
+                      : notice}
               </p>
             ) : null}
 
@@ -400,6 +444,7 @@ export function TenantRepairPaymentCheckout({
             {latestRepairPaymentOrder
               && recovery
               && latestRepairPaymentOrder.status !== "CANCELLED"
+              && !isDirectPending
               && !checkout ? (
               <section className={styles.recoveryState} aria-label="결제 주문 상태">
                 <strong>{recovery.label}</strong>
@@ -420,7 +465,47 @@ export function TenantRepairPaymentCheckout({
               </section>
             ) : null}
 
-            {!canStartPayment && !isPaid && !recovery?.canReconcile ? (
+            {canStartPayment && !checkout ? (
+              <section className={styles.methodSelector} aria-label="결제 방법">
+                <strong>결제 방법</strong>
+                <div className={styles.methodOptions}>
+                  <button
+                    type="button"
+                    className={styles.methodButton}
+                    aria-pressed={selectedMethod === "TOSS"}
+                    onClick={() => {
+                      setSelectedMethod("TOSS");
+                      setError("");
+                    }}
+                  >
+                    Toss 결제
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.methodButton}
+                    aria-pressed={selectedMethod === "DIRECT"}
+                    onClick={() => {
+                      setSelectedMethod("DIRECT");
+                      setError("");
+                    }}
+                  >
+                    직접결제
+                  </button>
+                </div>
+                <p>
+                  직접결제는 업체가 실제 수령을 확인하면 결제 이력에 완료로 기록됩니다.
+                </p>
+              </section>
+            ) : null}
+
+            {isDirectPending ? (
+              <section className={styles.state}>
+                <strong>업체가 수령 여부를 확인하고 있어요</strong>
+                <p>확인 전까지 금액과 요청 내역은 그대로 유지됩니다.</p>
+              </section>
+            ) : null}
+
+            {!canStartPayment && !isPaid && !isDirectPending && !recovery?.canReconcile ? (
               <section className={styles.state}>
                 <strong>지금은 결제할 수 없습니다</strong>
                 <p>수리 상세에서 결제 요청 상태를 확인해 주세요.</p>
@@ -455,17 +540,27 @@ export function TenantRepairPaymentCheckout({
         <button
           type="button"
           className={styles.primaryButton}
-          disabled={(recovery?.canReconcile ? busy || recovering : actionDisabled) || isPaid}
+          disabled={(recovery?.canReconcile ? busy || recovering : actionDisabled)
+            || isPaid
+            || isDirectPending}
           onClick={() => {
             if (recovery?.canReconcile && !checkout) {
               void updateStoredOrder("reconcile");
               return;
             }
+            if (selectedMethod === "DIRECT" && !checkout) {
+              void requestDirectPayment();
+              return;
+            }
             void beginPayment();
           }}
         >
-          {isPaid
-            ? "결제 완료"
+          {isDirectPaid
+            ? "직접결제 완료"
+            : isPaid
+              ? "결제 완료"
+              : isDirectPending
+                ? "업체 확인 대기"
             : busy || recovering
               ? "결제 준비 중"
               : checkout && paymentMode === "widget"
@@ -474,7 +569,9 @@ export function TenantRepairPaymentCheckout({
                   ? "상태 다시 확인"
                   : recovery?.canRetry
                     ? "다시 결제"
-                    : "결제하기"}
+                    : selectedMethod === "DIRECT"
+                      ? "직접결제 요청"
+                      : "Toss로 결제"}
         </button>
       </footer>
     </div>

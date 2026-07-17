@@ -28,6 +28,11 @@ export interface ManagerVendorRepository {
     managerId: string,
     filters: VendorCatalogSearchFilters
   ): Promise<VendorCatalogSearchResult[]>;
+  searchAssignmentCandidates(
+    managerId: string,
+    ticketId: string,
+    query?: string
+  ): Promise<VendorCatalogSearchResult[]>;
   list(
     managerId: string,
     filters: VendorCatalogSearchFilters

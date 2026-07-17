@@ -18,6 +18,8 @@ import { isDialogBackdropPoint } from "@/lib/manager-assistant";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { toTenantBillingOverview, type TeamTenantBillingOverview } from "@/lib/payment-mapping";
 import {
+  formatTenantLandlordUnreadCount,
+  isTenantLandlordMessagingActivity,
   tenantLandlordConversationPaths,
   tenantLandlordThreadInput
 } from "@/lib/tenant-landlord-conversation";
@@ -30,6 +32,16 @@ import { useTenantAiAssistant } from "./useTenantAiAssistant";
 import { TenantVendorConnectionCard } from "./TenantVendorConnectionCard";
 import { TenantVendorWorkflowPanel } from "./TenantVendorWorkflowPanel";
 import { tenantVendorConnectionEligible } from "./tenant-vendor-connection";
+import {
+  createTenantComplaintDraftLoadGuard,
+  createTenantComplaintDraftMutationGuard,
+  deleteTenantComplaintDraft,
+  loadTenantComplaintDraft,
+  mergeTenantComplaintDraftImageUrls,
+  saveTenantComplaintDraft,
+  serializeTenantComplaintDraftOccurredAt,
+  type TenantComplaintDraftImage
+} from "@/lib/tenant-complaint-draft";
 
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   current: null,
@@ -124,10 +136,6 @@ type TenantComplaintResponse = {
   messages?: TenantComplaintMessage[];
 };
 
-type TenantComplaintCreateResponse = {
-  complaint?: TenantComplaintResponse;
-};
-
 type TenantAttachmentUploadResponse = {
   id?: string;
   fileName?: string;
@@ -135,11 +143,7 @@ type TenantAttachmentUploadResponse = {
   url?: string;
 };
 
-type RequestImagePreview = {
-  id: string;
-  file: File;
-  url: string;
-};
+type RequestImagePreview = TenantComplaintDraftImage;
 
 type TenantAnnouncementState =
   | { status: "loading" | "empty" | "error"; announcement: null }
@@ -218,6 +222,13 @@ function repairDateTimeLabel(iso?: string): string {
   }).format(date);
 }
 
+function dateTimeLocalValue(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
 function parseTenantRequestDescription(rawDescription?: string) {
   let text = (rawDescription ?? "").trim();
   let category: TenantRequestCategory = "민원";
@@ -280,6 +291,7 @@ async function uploadTenantRequestImages(images: RequestImagePreview[]) {
   const uploadedUrls: string[] = [];
 
   for (const image of images) {
+    if (!image.file) continue;
     const formData = new FormData();
     formData.append("file", image.file);
     formData.append("category", "COMPLAINT_PHOTO");
@@ -397,11 +409,18 @@ function TenantLandlordChatModal({
   const messages = thread.messages ?? [];
   const unitLabel = compactTenantThreadUnit(thread.unitId);
   const inputRef = useRef<HTMLInputElement>(null);
+  const messageStreamRef = useRef<HTMLDivElement>(null);
   const [isNoticeOpen, setIsNoticeOpen] = useState(false);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [thread.id]);
+
+  useEffect(() => {
+    const stream = messageStreamRef.current;
+    if (!stream) return;
+    stream.scrollTo({ top: stream.scrollHeight, behavior: "smooth" });
+  }, [thread.id, messages.length]);
 
   const modal = (
     <div className="tenant-chat-backdrop" role="presentation" onClick={onClose}>
@@ -442,7 +461,7 @@ function TenantLandlordChatModal({
           </section>
         ) : null}
 
-        <main className="tenant-chat-modal-stream" aria-label="메시지 타임라인">
+        <main ref={messageStreamRef} className="tenant-chat-modal-stream" aria-label="메시지 타임라인">
           {messages.length > 0 ? (
             messages.map((message) => <TenantChatMessageBubble key={message.id} message={message} />)
           ) : (
@@ -484,12 +503,23 @@ function TenantChatMessageBubble({ message }: { message: Message }) {
 }
 
 async function fetchTenantMessageThread(threadId: string): Promise<Thread> {
-  const response = await fetch(`/api/tenant/messaging/threads/${encodeURIComponent(threadId)}`, {
+  const response = await fetch(tenantLandlordConversationPaths.thread(threadId), {
     cache: "no-store"
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload?.message || "대화를 불러오지 못했습니다.");
+  }
+  return payload as Thread;
+}
+
+async function markTenantLandlordThreadRead(threadId: string): Promise<Thread> {
+  const response = await fetch(tenantLandlordConversationPaths.read(threadId), {
+    method: "POST"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || "읽음 상태를 저장하지 못했습니다.");
   }
   return payload as Thread;
 }
@@ -777,11 +807,31 @@ export default function TenantMyPage({
   useEffect(() => {
     void loadRepairRequests();
   }, [loadRepairRequests]);
+
+  useEffect(() => {
+    const refreshRepairRequests = (payload: unknown) => {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "kind" in payload &&
+        payload.kind === "ticket"
+      ) {
+        void loadRepairRequests();
+      }
+    };
+    const socket = getRealtimeSocket();
+    socket.on("roomlog:activity", refreshRepairRequests);
+
+    return () => {
+      socket.off("roomlog:activity", refreshRepairRequests);
+    };
+  }, [loadRepairRequests]);
   const [billingCard, setBillingCard] = useState<TenantBillingCardModel>(EMPTY_BILLING_CARD);
   const [isBillLoading, setIsBillLoading] = useState(true);
   const [billingError, setBillingError] = useState(false);
   const [isContractSheetOpen, setIsContractSheetOpen] = useState(false);
   const [isLandlordConversationLoading, setIsLandlordConversationLoading] = useState(false);
+  const [landlordUnreadCount, setLandlordUnreadCount] = useState(0);
   const [landlordChatThread, setLandlordChatThread] = useState<Thread | null>(null);
   const [landlordChatDraft, setLandlordChatDraft] = useState("");
   const [isLandlordMessageSending, setIsLandlordMessageSending] = useState(false);
@@ -789,7 +839,11 @@ export default function TenantMyPage({
   const [requestDraft, setRequestDraft] = useState(EMPTY_REQUEST_DRAFT);
   const [requestImages, setRequestImages] = useState<RequestImagePreview[]>([]);
   const requestImagesRef = useRef<RequestImagePreview[]>([]);
+  const requestDraftLoadGuardRef = useRef(createTenantComplaintDraftLoadGuard());
+  const requestDraftMutationGuardRef = useRef(createTenantComplaintDraftMutationGuard());
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [isLoadingRequestDraft, setIsLoadingRequestDraft] = useState(false);
+  const [isSavingRequestDraft, setIsSavingRequestDraft] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
   const returnedComplaintOpenedRef = useRef(false);
@@ -806,6 +860,58 @@ export default function TenantMyPage({
     setTenantToast(message);
     window.setTimeout(() => setTenantToast(""), 2400);
   };
+
+  const loadLandlordUnreadCount = useCallback(async (roomId: string): Promise<number> => {
+    const conversationResponse = await fetch(tenantLandlordConversationPaths.current(roomId), {
+      cache: "no-store"
+    });
+    const conversation = await conversationResponse.json().catch(() => ({}));
+    if (!conversationResponse.ok) {
+      throw new Error(conversation?.message || "대화 정보를 불러오지 못했습니다.");
+    }
+    if (!conversation?.threadId) return 0;
+
+    const thread = await fetchTenantMessageThread(String(conversation.threadId));
+    const count = Number(thread.unreadCount);
+    return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTenantRoomId) {
+      setLandlordUnreadCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const refreshUnreadCount = async () => {
+      try {
+        const count = await loadLandlordUnreadCount(selectedTenantRoomId);
+        if (!cancelled) setLandlordUnreadCount(count);
+      } catch {
+        // 문의 버튼은 유지하고 다음 실시간·포커스 갱신 때 다시 시도한다.
+      }
+    };
+    const refreshMessagingActivity = (payload: unknown) => {
+      if (isTenantLandlordMessagingActivity(payload)) void refreshUnreadCount();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshUnreadCount();
+    };
+    const socket = getRealtimeSocket();
+
+    setLandlordUnreadCount(0);
+    void refreshUnreadCount();
+    socket.on("roomlog:activity", refreshMessagingActivity);
+    window.addEventListener("focus", refreshUnreadCount);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      socket.off("roomlog:activity", refreshMessagingActivity);
+      window.removeEventListener("focus", refreshUnreadCount);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [loadLandlordUnreadCount, selectedTenantRoomId]);
 
   // AI 생활 도우미 — 실제 민원 intake 세션(텍스트·음성)에 연결. 접수되면 민원 이력이 갱신된다.
   const ai = useTenantAiAssistant({
@@ -839,6 +945,14 @@ export default function TenantMyPage({
       let thread: Thread | null = null;
       if (payload?.threadId) {
         thread = await fetchTenantMessageThread(String(payload.threadId));
+        if (thread.unreadCount > 0) {
+          try {
+            thread = await markTenantLandlordThreadRead(thread.id);
+            setLandlordUnreadCount(0);
+          } catch {
+            // 메시지는 보여주되 서버 읽음 처리 실패 시 배지는 유지한다.
+          }
+        }
       } else {
         const createResponse = await fetch(tenantLandlordConversationPaths.threads(), {
           method: "POST",
@@ -850,6 +964,7 @@ export default function TenantMyPage({
           throw new Error(created?.message || "대화를 시작하지 못했습니다.");
         }
         thread = created as Thread;
+        setLandlordUnreadCount(0);
       }
 
       if (!thread?.id) {
@@ -869,6 +984,33 @@ export default function TenantMyPage({
     setLandlordChatThread(null);
     setLandlordChatDraft("");
   };
+
+  useEffect(() => {
+    const threadId = landlordChatThread?.id;
+    if (!threadId) return;
+
+    let cancelled = false;
+    const refreshOpenLandlordConversation = (payload: unknown) => {
+      if (!isTenantLandlordMessagingActivity(payload)) return;
+
+      void fetchTenantMessageThread(threadId)
+        .then((thread) => {
+          if (!cancelled) {
+            setLandlordChatThread((current) => (current?.id === threadId ? thread : current));
+          }
+        })
+        .catch(() => {
+          // 연결이 잠시 끊겨도 열린 대화는 유지하고 다음 소켓 이벤트에서 재시도한다.
+        });
+    };
+    const socket = getRealtimeSocket();
+    socket.on("roomlog:activity", refreshOpenLandlordConversation);
+
+    return () => {
+      cancelled = true;
+      socket.off("roomlog:activity", refreshOpenLandlordConversation);
+    };
+  }, [landlordChatThread?.id]);
 
   const handleLandlordMessageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1016,9 +1158,38 @@ export default function TenantMyPage({
       typeof attachment.url === "string" && attachment.url.trim().length > 0
     ) ?? [];
 
-  const openRequestSheet = () => {
+  const openRequestSheet = async () => {
     setRequestError("");
     setIsRequestSheetOpen(true);
+    if (!selectedTenantRoomId) return;
+
+    const loadToken = requestDraftLoadGuardRef.current.begin(selectedTenantRoomId);
+    setRequestDraft(EMPTY_REQUEST_DRAFT);
+    clearRequestImages();
+    setIsLoadingRequestDraft(true);
+    try {
+      const draft = await loadTenantComplaintDraft(selectedTenantRoomId);
+      if (!requestDraftLoadGuardRef.current.isCurrent(loadToken)) return;
+      if (!draft) return;
+      setRequestDraft({
+        category: draft.category,
+        title: draft.title,
+        occurredAt: draft.occurredAt ? dateTimeLocalValue(draft.occurredAt) : "",
+        description: draft.description
+      });
+      setRequestImages(draft.attachmentUrls.map((url) => ({
+        id: `draft-image-${crypto.randomUUID()}`,
+        url,
+        uploadedUrl: url
+      })));
+    } catch (error) {
+      if (!requestDraftLoadGuardRef.current.isCurrent(loadToken)) return;
+      setRequestError(error instanceof Error ? error.message : "임시 저장 내용을 불러오지 못했습니다.");
+    } finally {
+      if (requestDraftLoadGuardRef.current.isCurrent(loadToken)) {
+        setIsLoadingRequestDraft(false);
+      }
+    }
   };
 
   const openRepairDetailSheet = async (request: TenantRepairRequest) => {
@@ -1063,17 +1234,23 @@ export default function TenantMyPage({
 
   useEffect(() => {
     return () => {
-      requestImagesRef.current.forEach((image) => URL.revokeObjectURL(image.url));
+      requestImagesRef.current.forEach((image) => {
+        if (image.file) URL.revokeObjectURL(image.url);
+      });
     };
   }, []);
 
   const clearRequestImages = () => {
-    requestImagesRef.current.forEach((image) => URL.revokeObjectURL(image.url));
+    requestImagesRef.current.forEach((image) => {
+      if (image.file) URL.revokeObjectURL(image.url);
+    });
     requestImagesRef.current = [];
     setRequestImages([]);
   };
 
   const closeRequestSheet = (resetDraft = false) => {
+    requestDraftLoadGuardRef.current.invalidate();
+    setIsLoadingRequestDraft(false);
     setIsRequestSheetOpen(false);
     setRequestError("");
     if (resetDraft) {
@@ -1101,29 +1278,94 @@ export default function TenantMyPage({
   const removeRequestImage = (imageId: string) => {
     setRequestImages((current) => {
       const target = current.find((image) => image.id === imageId);
-      if (target) URL.revokeObjectURL(target.url);
+      if (target?.file) URL.revokeObjectURL(target.url);
       return current.filter((image) => image.id !== imageId);
     });
   };
 
-  const handleRequestDraftSave = () => {
+  const handleRequestDraftSave = async () => {
     setRequestError("");
-    setIsRequestSheetOpen(false);
-    showToast("민원/하자 요청이 임시 저장되었습니다.");
+    if (!selectedTenantRoomId || isSavingRequestDraft) return;
+    const mutationToken = requestDraftMutationGuardRef.current.tryBegin("save");
+    if (!mutationToken) return;
+    setIsSavingRequestDraft(true);
+    try {
+      const uploadedUrls = await uploadTenantRequestImages(requestImages);
+      const attachmentUrls = mergeTenantComplaintDraftImageUrls(requestImages, uploadedUrls);
+      const saved = await saveTenantComplaintDraft({
+        roomId: selectedTenantRoomId,
+        category: requestDraft.category,
+        title: requestDraft.title,
+        occurredAt: serializeTenantComplaintDraftOccurredAt(requestDraft.occurredAt),
+        description: requestDraft.description,
+        attachmentUrls
+      });
+      clearRequestImages();
+      setRequestImages(saved.attachmentUrls.map((url) => ({
+        id: `draft-image-${crypto.randomUUID()}`,
+        url,
+        uploadedUrl: url
+      })));
+      setIsRequestSheetOpen(false);
+      showToast("민원/하자 요청이 임시 저장되었습니다.");
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "민원/하자 요청을 임시 저장하지 못했습니다.");
+    } finally {
+      setIsSavingRequestDraft(false);
+      requestDraftMutationGuardRef.current.end(mutationToken);
+    }
+  };
+
+  const handleRequestCancel = async () => {
+    setRequestError("");
+    if (!selectedTenantRoomId || isSavingRequestDraft) return;
+    const mutationToken = requestDraftMutationGuardRef.current.tryBegin("delete");
+    if (!mutationToken) return;
+    setIsSavingRequestDraft(true);
+    try {
+      await deleteTenantComplaintDraft(selectedTenantRoomId);
+      closeRequestSheet(true);
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "임시 저장 내용을 삭제하지 못했습니다.");
+    } finally {
+      setIsSavingRequestDraft(false);
+      requestDraftMutationGuardRef.current.end(mutationToken);
+    }
   };
 
   // 신규 민원/하자 접수 — 실제 민원 API(POST /tenant/complaints)로 보내 관리자 대시보드와 연결된다.
   const handleRequestSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isSubmittingRequest) return;
+    if (isSubmittingRequest || isLoadingRequestDraft || isSavingRequestDraft) return;
+    const mutationToken = requestDraftMutationGuardRef.current.tryBegin("submit");
+    if (!mutationToken) return;
     setIsSubmittingRequest(true);
     setRequestError("");
     try {
-      const attachmentUrls = await uploadTenantRequestImages(requestImages);
+      const uploadedUrls = await uploadTenantRequestImages(requestImages);
+      const attachmentUrls = mergeTenantComplaintDraftImageUrls(requestImages, uploadedUrls);
+      const stagedDraft = await saveTenantComplaintDraft({
+        roomId: selectedTenantRoomId,
+        category: requestDraft.category,
+        title: requestDraft.title,
+        occurredAt: serializeTenantComplaintDraftOccurredAt(requestDraft.occurredAt),
+        description: requestDraft.description,
+        attachmentUrls
+      });
+      const requestSubmissionId = stagedDraft.id;
+      clearRequestImages();
+      setRequestImages(stagedDraft.attachmentUrls.map((url) => ({
+        id: `draft-image-${crypto.randomUUID()}`,
+        url,
+        uploadedUrl: url
+      })));
       const res = await fetch("/api/tenant/complaints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          roomId: selectedTenantRoomId,
+          clientRequestId: requestSubmissionId,
+          attachmentUrls,
           title: requestDraft.title.trim(),
           location: tenantRoomTitle,
           occurredAt: requestDraft.occurredAt ? new Date(requestDraft.occurredAt).toISOString() : undefined,
@@ -1138,23 +1380,6 @@ export default function TenantMyPage({
         setRequestError(data?.message || "요청을 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
         return;
       }
-      const created = (await res.json().catch(() => undefined)) as TenantComplaintCreateResponse | undefined;
-      const complaintId = created?.complaint?.id;
-      if (complaintId && attachmentUrls.length > 0) {
-        const messageRes = await fetch(`/api/tenant/complaints/${encodeURIComponent(complaintId)}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messageText: "첨부 이미지를 제출했습니다.",
-            attachmentUrls
-          })
-        });
-        if (!messageRes.ok) {
-          const data = (await messageRes.json().catch(() => undefined)) as { message?: string } | undefined;
-          setRequestError(data?.message || "민원은 접수됐지만 이미지 첨부 연결에 실패했습니다.");
-          return;
-        }
-      }
       setIsRequestSheetOpen(false);
       setRequestDraft(EMPTY_REQUEST_DRAFT);
       clearRequestImages();
@@ -1164,6 +1389,7 @@ export default function TenantMyPage({
       setRequestError(error instanceof Error ? error.message : "네트워크 오류로 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setIsSubmittingRequest(false);
+      requestDraftMutationGuardRef.current.end(mutationToken);
     }
   };
 
@@ -1233,6 +1459,11 @@ export default function TenantMyPage({
     event.preventDefault();
     ai.voice.stopTalking();
   };
+
+  const landlordUnreadBadge = formatTenantLandlordUnreadCount(landlordUnreadCount);
+  const landlordInquiryLabel = landlordUnreadCount > 0
+    ? `임대인에게 문의하기, 미확인 메시지 ${landlordUnreadCount}개`
+    : "임대인에게 문의하기";
 
   return (
     <section className="screen tenant-screen tenant-portal-screen" id="my-page" aria-labelledby="tenant-title">
@@ -1324,9 +1555,15 @@ export default function TenantMyPage({
               type="button"
               onClick={() => void openLandlordConversation()}
               disabled={isLandlordConversationLoading}
+              aria-label={landlordInquiryLabel}
             >
               <MessageCircle size={18} strokeWidth={2.5} aria-hidden="true" />
               {isLandlordConversationLoading ? "문의 확인 중..." : "임대인에게 문의하기"}
+              {landlordUnreadBadge ? (
+                <span className="tenant-landlord-unread-badge" aria-hidden="true">
+                  {landlordUnreadBadge}
+                </span>
+              ) : null}
             </button>
           </div>
         </div>
@@ -1841,8 +2078,8 @@ export default function TenantMyPage({
                 </label>
                 {requestImages.map((image) => (
                   <div className="tenant-request-image-preview" key={image.id}>
-                    <img src={image.url} alt={`${image.file.name} 미리보기`} />
-                    <button type="button" onClick={() => removeRequestImage(image.id)} aria-label={`${image.file.name} 제거`}>
+                    <img src={image.url} alt={`${image.file?.name ?? "저장된 이미지"} 미리보기`} />
+                    <button type="button" onClick={() => removeRequestImage(image.id)} aria-label={`${image.file?.name ?? "저장된 이미지"} 제거`}>
                       <X size={14} strokeWidth={2.5} aria-hidden="true" />
                     </button>
                   </div>
@@ -1853,13 +2090,13 @@ export default function TenantMyPage({
               </div>
               {requestError ? <p className="tenant-request-error" role="alert">{requestError}</p> : null}
               <div className="tenant-request-actions">
-                <button type="button" onClick={() => closeRequestSheet(true)}>
+                <button type="button" onClick={() => void handleRequestCancel()} disabled={isLoadingRequestDraft || isSavingRequestDraft || isSubmittingRequest}>
                   취소
                 </button>
-                <button type="button" onClick={handleRequestDraftSave}>
-                  임시 저장
+                <button type="button" onClick={() => void handleRequestDraftSave()} disabled={isLoadingRequestDraft || isSavingRequestDraft || isSubmittingRequest}>
+                  {isSavingRequestDraft ? "저장 중" : "임시 저장"}
                 </button>
-                <button className="primary" type="submit" disabled={isSubmittingRequest}>
+                <button className="primary" type="submit" disabled={isSubmittingRequest || isLoadingRequestDraft || isSavingRequestDraft}>
                   {isSubmittingRequest ? "접수 중" : "요청 접수"}
                 </button>
               </div>

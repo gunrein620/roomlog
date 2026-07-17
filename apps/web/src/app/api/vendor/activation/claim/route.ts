@@ -9,9 +9,7 @@ export async function POST(request: Request) {
   return handleVendorActivationClaimRequest(request, {
     endpoint: apiUrl("/auth/vendor-activations/claim", { requestUrl: request.url }),
     cookieStore: {
-      get: (name) => store.get(name),
-      set: (name, value, options) => store.set(name, value, options),
-      delete: (name) => store.delete(name)
+      get: (name) => store.get(name)
     }
   });
 }

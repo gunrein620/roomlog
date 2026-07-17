@@ -143,6 +143,13 @@ export function listVendorSettlements() {
   );
 }
 
+export function confirmVendorDirectPayment(paymentRequestId: string) {
+  return serverFetch<VendorJobPaymentView>(
+    `/vendor/vendor-payment-requests/${encodeURIComponent(paymentRequestId)}/direct-payment/confirm`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+}
+
 export function saveVendorEstimateDraft(
   repairId: string,
   input: VendorEstimateDraftInput,

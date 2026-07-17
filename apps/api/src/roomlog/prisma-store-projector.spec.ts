@@ -192,6 +192,8 @@ describe("PrismaStoreProjector", () => {
             roomId,
             ticketId,
             sourceChannel: "REALTIME_CHAT",
+            clientRequestId: `draft-${suffix}`,
+            requestFingerprint: `fingerprint-${suffix}`,
             title: "싱크대 하부 누수",
             description: "싱크대 아래에서 물이 떨어집니다.",
             location: "주방 싱크대",
@@ -273,6 +275,8 @@ describe("PrismaStoreProjector", () => {
         assert.equal(session?.tenantId, tenantId);
         assert.equal(message?.messageText, "싱크대 아래에서 물이 떨어져요.");
         assert.equal(complaint?.ticketId, ticketId);
+        assert.equal(complaint?.clientRequestId, `draft-${suffix}`);
+        assert.equal(complaint?.requestFingerprint, `fingerprint-${suffix}`);
         assert.equal(ticket?.complaintId, complaintId);
         assert.equal(analysis?.summary, "싱크대 하부 누수 확인 필요");
       } finally {
@@ -409,6 +413,8 @@ describe("PrismaStoreProjector", () => {
             roomId,
             ticketId,
             sourceChannel: "CALLBOT",
+            clientRequestId: `draft-load-${suffix}`,
+            requestFingerprint: `fingerprint-load-${suffix}`,
             title: "501호 천장 누수",
             description: "전화로 접수된 천장 누수입니다.",
             location: "501호 천장",
@@ -495,6 +501,14 @@ describe("PrismaStoreProjector", () => {
         assert.equal(
           loaded.complaints.find((complaint) => complaint.id === complaintId)?.sourceChannel,
           "CALLBOT"
+        );
+        assert.equal(
+          loaded.complaints.find((complaint) => complaint.id === complaintId)?.clientRequestId,
+          `draft-load-${suffix}`
+        );
+        assert.equal(
+          loaded.complaints.find((complaint) => complaint.id === complaintId)?.requestFingerprint,
+          `fingerprint-load-${suffix}`
         );
         assert.equal(
           loaded.tickets.find((ticket) => ticket.id === ticketId)?.status,

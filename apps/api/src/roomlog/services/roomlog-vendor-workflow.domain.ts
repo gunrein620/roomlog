@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import type {
   DecideRepairCompletionInput,
+  RequestTenantDirectPaymentInput,
   StartVendorJobResult,
   SubmitVendorCompletionInput,
   SubmitVendorCompletionResult,
@@ -295,6 +296,14 @@ export class RoomlogVendorWorkflowDomain {
     ));
   }
 
+  async listTenantPayableWorkflows(
+    tenantId: string
+  ): Promise<TenantVendorWorkflowView[]> {
+    return this.execute(() => this.repository.listTenantPayableWorkflows(
+      normalizeIdentifier(tenantId, "임차인 정보가 올바르지 않습니다.")
+    ));
+  }
+
   async reviewTenantEstimate(
     tenantId: string,
     repairId: string,
@@ -436,6 +445,33 @@ export class RoomlogVendorWorkflowDomain {
     ));
     await this.events?.dispatchPending(25).catch(() => undefined);
     return publicCompletionDecision(committed);
+  }
+
+  async requestTenantDirectPayment(
+    tenantId: string,
+    paymentRequestId: string,
+    input: RequestTenantDirectPaymentInput
+  ) {
+    const idempotencyKey = isRecord(input)
+      ? normalizeIdentifier(
+          input.idempotencyKey,
+          "직접결제 요청 키를 확인해 주세요."
+        )
+      : normalizeIdentifier(undefined, "직접결제 요청 키를 확인해 주세요.");
+    return this.execute(() => this.repository.requestTenantDirectPayment(
+      normalizeIdentifier(tenantId, "임차인 정보가 올바르지 않습니다."),
+      normalizeIdentifier(paymentRequestId, "지급 요청 정보가 올바르지 않습니다."),
+      { idempotencyKey }
+    ));
+  }
+
+  async confirmVendorDirectPayment(userId: string, paymentRequestId: string) {
+    const vendorId = await this.requireVendorId(userId);
+    return this.execute(() => this.repository.confirmVendorDirectPayment(
+      vendorId,
+      normalizeIdentifier(userId, "업체 계정 정보가 올바르지 않습니다."),
+      normalizeIdentifier(paymentRequestId, "지급 요청 정보가 올바르지 않습니다.")
+    ));
   }
 
   async listSettlements(userId: string): Promise<VendorSettlementRow[]> {

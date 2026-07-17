@@ -1,6 +1,7 @@
 import type {
   DecideRepairCompletionInput,
   RepairCompletionDecision,
+  RequestTenantDirectPaymentInput,
   StartVendorJobResult,
   SubmitVendorCompletionInput,
   TenantVendorCompletionDecisionInput,
@@ -12,6 +13,7 @@ import type {
   VendorEstimateDraftInput,
   VendorEstimateReviewInput,
   VendorJobDetail,
+  VendorJobPaymentView,
   VendorJobSummary,
   VendorPaymentRequest,
   VendorSettlementRow,
@@ -33,7 +35,6 @@ export type VendorWorkflowRepositoryErrorCode =
   | "TICKET_NOT_FOUND"
   | "TICKET_ACCESS_DENIED"
   | "VENDOR_NOT_ASSIGNABLE"
-  | "TRADE_MISMATCH"
   | "CONCURRENT_ASSIGNMENT"
   | "REPAIR_NOT_FOUND"
   | "REPAIR_ACCESS_DENIED"
@@ -147,6 +148,9 @@ export interface VendorWorkflowRepository {
     tenantId: string,
     complaintId: string
   ): Promise<TenantVendorWorkflowView | null>;
+  listTenantPayableWorkflows(
+    tenantId: string
+  ): Promise<TenantVendorWorkflowView[]>;
   reviewTenantEstimate(
     tenantId: string,
     repairId: string,
@@ -164,5 +168,15 @@ export interface VendorWorkflowRepository {
     repairId: string,
     input: TenantVendorCompletionDecisionInput
   ): Promise<TenantVendorWorkflowView>;
+  requestTenantDirectPayment(
+    tenantId: string,
+    paymentRequestId: string,
+    input: RequestTenantDirectPaymentInput
+  ): Promise<VendorJobPaymentView>;
+  confirmVendorDirectPayment(
+    vendorId: string,
+    vendorUserId: string,
+    paymentRequestId: string
+  ): Promise<VendorJobPaymentView>;
   listSettlements(vendorId: string): Promise<VendorSettlementRow[]>;
 }

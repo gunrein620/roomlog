@@ -1,9 +1,10 @@
-import { requiredVendorTrade, vendorSupportsRequiredTrade } from "@roomlog/types";
+import { vendorTradeLabel } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import {
   findManagerVendorJobByTicket,
-  searchVendorCatalog,
+  searchAssignableVendorCandidates,
 } from "@/lib/vendor-mgmt-api";
+import { ApiPayloadError } from "@/lib/server-api";
 import { MANAGER_DEMO_TICKET_ID, getManagerTicket } from "@/lib/ticket-manager-api";
 import { ManagerMutationForm } from "../../../_components/ManagerMutationForm";
 import {
@@ -25,24 +26,29 @@ import {
 } from "../../_components/ticket-manager-ui";
 import { assignVendorAction, confirmVisitAction, reviewEstimateAction } from "./actions";
 import { ConfirmAssignmentButton } from "./ConfirmAssignmentButton";
+import { IncompleteVendorDataState } from "./IncompleteVendorDataState";
 
 type SearchParams = Promise<{ id?: string }>;
 
 export default async function VendorAssignmentPage({ searchParams }: { searchParams: SearchParams }) {
   const { id } = await searchParams;
   const ticketId = id ?? MANAGER_DEMO_TICKET_ID;
-  const [ticket, candidatesResult, workflowResult] = await Promise.all([
+  const loaded = await Promise.all([
     getManagerTicket(ticketId),
-    searchVendorCatalog({ isActive: true }),
+    searchAssignableVendorCandidates(ticketId),
     findManagerVendorJobByTicket(ticketId),
-  ]);
+  ]).catch((error: unknown) => {
+    if (error instanceof ApiPayloadError) return null;
+    throw error;
+  });
+  if (!loaded) return <IncompleteVendorDataState />;
+  const [ticket, candidatesResult, workflowResult] = loaded;
   const registeredCandidates = candidatesResult.data.filter(
     (candidate) => candidate.registrationStatus === "ACTIVE",
   );
   const assigned = workflowResult.data;
   const estimate = assigned?.job.latestEstimate;
   const demo = candidatesResult.source === "DEMO" || workflowResult.source === "DEMO";
-  const requiredTrade = requiredVendorTrade(ticket.category ?? ticket.title);
   const canReassign = !assigned
     || assigned.job.status === "REQUESTED"
     || assigned.job.status === "COMPLETED";
@@ -61,10 +67,9 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
           </div>
         ) : null}
         {registeredCandidates.length > 0 ? registeredCandidates.map((candidate) => {
-          const tradeCompatible = vendorSupportsRequiredTrade(candidate.catalog.trades, requiredTrade);
           const sameVendor = assigned?.vendor.vendorId === candidate.catalog.id;
           const sameActiveVendor = sameVendor && !startsNewRepair;
-          const assignable = candidate.canAssign && tradeCompatible && canReassign && !demo;
+          const assignable = candidate.canAssign && canReassign && !demo;
           return (
           <ManagerMutationForm action={assignVendorAction} className={styles.formCard} key={candidate.catalog.id}>
             <input type="hidden" name="ticketId" value={ticket.id} />
@@ -72,18 +77,16 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
             <div style={{ ...row, justifyContent: "space-between" }}>
               <div>
                 <strong>{candidate.catalog.businessName}</strong>
-                <div style={muted}>{candidate.catalog.trades.join(" · ")} · {candidate.catalog.serviceAreas.join(", ")}</div>
+                <div style={muted}>{candidate.catalog.trades.map(vendorTradeLabel).join(" · ")} · {candidate.catalog.serviceAreas.join(", ")}</div>
               </div>
               <StatusPill active={assignable || sameActiveVendor}>
                 {sameActiveVendor
                   ? "현재 배정 업체"
-                  : !tradeCompatible
-                    ? "하자 유형과 업종 불일치"
-                    : !canReassign
-                      ? "진행 중 작업 정리 필요"
-                      : candidate.canAssign
-                        ? "배정 가능"
-                        : candidate.assignmentBlockReasons.map((reason) => assignmentBlockLabel[reason]).join(" · ")}
+                  : !canReassign
+                    ? "진행 중 작업 정리 필요"
+                    : candidate.canAssign
+                      ? "배정 가능"
+                      : candidate.assignmentBlockReasons.map((reason) => assignmentBlockLabel[reason]).join(" · ")}
               </StatusPill>
             </div>
             <label className={styles.field}>
@@ -93,7 +96,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
                 name="requestNote"
                 required
                 defaultValue={`${ticket.location} · ${ticket.description}`}
-                disabled={demo || sameActiveVendor || !tradeCompatible || !canReassign}
+                disabled={demo || sameActiveVendor || !canReassign}
               />
             </label>
             <div className={styles.actions}>

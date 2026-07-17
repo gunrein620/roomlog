@@ -1,8 +1,13 @@
+import { randomUUID } from "node:crypto";
 import type {
+  ResceneVendorActivation,
   VendorActivationClaimResult,
   VendorActivationErrorCode,
   VendorActivationErrorResponse,
-  VendorActivationPreviewEnvelope
+  VendorActivationIssueInput,
+  VendorActivationIssueResult,
+  VendorActivationPreview,
+  VendorTrade
 } from "@roomlog/types";
 import type { UserAccount } from "../roomlog.types";
 import {
@@ -10,17 +15,15 @@ import {
   type UserRoleRelations
 } from "../roomlog-support";
 import {
+  RESCENE_ACTIVATION_ID_PREFIX,
+  RESCENE_VENDOR_ID_PREFIX,
   VendorActivationRepositoryError,
   type VendorActivationRecord,
   type VendorActivationRepository
 } from "../vendor-activation.repository";
 import {
-  VendorActivationSessionVerificationError,
+  deriveResceneActivationKey,
   hashActivationKey,
-  normalizeActivationKey,
-  signActivationSession,
-  verifyActivationKeyFingerprint,
-  verifyActivationSession,
   type VendorActivationSecurityConfig
 } from "./vendor-activation-security";
 
@@ -76,6 +79,73 @@ export class VendorActivationDomainError extends Error {
   }
 }
 
+export class VendorActivationIssueValidationError extends Error {}
+
+const activationLifetimeMs = 15 * 24 * 60 * 60 * 1000;
+const vendorTrades = new Set<VendorTrade>(
+  [
+    "plumbing",
+    "electrical",
+    "hvac",
+    "appliance",
+    "locksmith",
+    "waterproofing",
+    "cleaning",
+    "general",
+    "other"
+  ]
+);
+const issueFields = [
+  "businessName",
+  "contactPerson",
+  "phone",
+  "trades",
+  "serviceAreas"
+] as const;
+
+function issueInput(input: unknown): VendorActivationIssueInput {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new VendorActivationIssueValidationError();
+  }
+  const record = input as Record<string, unknown>;
+  if (
+    Object.keys(record).length !== issueFields.length ||
+    issueFields.some((field) => !Object.hasOwn(record, field))
+  ) {
+    throw new VendorActivationIssueValidationError();
+  }
+  const text = (field: "businessName" | "contactPerson" | "phone") => {
+    const value = record[field];
+    if (typeof value !== "string" || !value.trim() || value.trim().length > 120) {
+      throw new VendorActivationIssueValidationError();
+    }
+    return value.trim();
+  };
+  if (
+    !Array.isArray(record.trades) ||
+    record.trades.length === 0 ||
+    record.trades.some((trade) => typeof trade !== "string" || !vendorTrades.has(trade as VendorTrade))
+  ) {
+    throw new VendorActivationIssueValidationError();
+  }
+  if (
+    !Array.isArray(record.serviceAreas) ||
+    record.serviceAreas.length === 0 ||
+    record.serviceAreas.some(
+      (area) => typeof area !== "string" || !area.trim() || area.trim().length > 120
+    )
+  ) {
+    throw new VendorActivationIssueValidationError();
+  }
+  return {
+    businessName: text("businessName"),
+    contactPerson: text("contactPerson"),
+    phone: text("phone"),
+    trades: [...new Set(record.trades as VendorTrade[])],
+    serviceAreas: [...new Set((record.serviceAreas as string[]).map((area) => area.trim()))]
+  };
+}
+
 function fail(code: VendorActivationErrorCode): never {
   const response = publicErrors[code];
   throw new VendorActivationDomainError({ ...response });
@@ -121,21 +191,16 @@ function assertPreviewable(record: VendorActivationRecord, at: Date) {
 
 function assertClaimable(
   record: VendorActivationRecord,
-  userId: string,
   at: Date
 ) {
   assertAvailableVendor(record);
-
-  if (record.status === "CLAIMED") {
-    if (record.claimedByUserId !== userId) fail("ALREADY_CLAIMED");
-  } else {
-    if (record.status === "REVOKED") fail("INVALID_KEY");
-    if (
-      record.status === "EXPIRED" ||
-      record.expiresAt.getTime() <= at.getTime()
-    ) {
-      fail("EXPIRED_KEY");
-    }
+  if (record.status === "CLAIMED") fail("ALREADY_CLAIMED");
+  if (record.status === "REVOKED") fail("INVALID_KEY");
+  if (
+    record.status === "EXPIRED" ||
+    record.expiresAt.getTime() <= at.getTime()
+  ) {
+    fail("EXPIRED_KEY");
   }
 }
 
@@ -147,92 +212,70 @@ export class RoomlogVendorActivationDomain {
     private readonly now: () => Date = () => new Date()
   ) {}
 
-  async preview(rawKey: string): Promise<VendorActivationPreviewEnvelope> {
+  async issue(input: unknown): Promise<VendorActivationIssueResult> {
+    const vendor = issueInput(input);
+    const currentTime = this.now();
     const security = this.requireSecurity();
-    let normalizedKey: string;
-
+    const activationId = `${RESCENE_ACTIVATION_ID_PREFIX}${randomUUID()}`;
+    const activationKey = deriveResceneActivationKey(
+      activationId,
+      security.keyPepper
+    );
+    let record: VendorActivationRecord;
     try {
-      normalizedKey = normalizeActivationKey(rawKey);
-    } catch {
-      fail("INVALID_KEY");
-    }
-    const keyHash = hashActivationKey(normalizedKey, security.keyPepper);
-
-    let record: VendorActivationRecord | undefined;
-    try {
-      record = await this.repository.getByKeyHash(keyHash);
+      record = await this.repository.issue({
+        vendorId: `${RESCENE_VENDOR_ID_PREFIX}${randomUUID()}`,
+        activationId,
+        keyHash: hashActivationKey(activationKey, security.keyPepper),
+        now: currentTime,
+        expiresAt: new Date(currentTime.getTime() + activationLifetimeMs),
+        vendor
+      });
     } catch (error) {
       translateRepositoryError(error);
     }
+    return this.publicResceneActivation(record, activationKey);
+  }
 
-    if (!record) fail("INVALID_KEY");
+  async listRescene(): Promise<ResceneVendorActivation[]> {
+    const security = this.requireSecurity();
+    let records: VendorActivationRecord[];
+    try {
+      records = await this.repository.listRescene();
+    } catch (error) {
+      translateRepositoryError(error);
+    }
+    return records.map((record) => {
+      const activationKey = deriveResceneActivationKey(
+        record.id,
+        security.keyPepper
+      );
+      if (hashActivationKey(activationKey, security.keyPepper) !== record.keyHash) {
+        fail("ACTIVATION_UNAVAILABLE");
+      }
+      return this.publicResceneActivation(record, activationKey);
+    });
+  }
 
+  async preview(rawKey: string): Promise<VendorActivationPreview> {
+    const record = await this.recordForKey(rawKey);
     const currentTime = this.now();
     assertPreviewable(record, currentTime);
-    const session = signActivationSession(
-      {
-        activationId: record.id,
-        keyHash: record.keyHash,
-        now: currentTime
-      },
-      security.sessionSecret
-    );
-
     return {
-      preview: {
-        activationSessionExpiresAt: session.claims.expiresAt,
-        vendor: {
-          vendorId: record.vendor.id,
-          businessName: record.vendor.businessName,
-          trades: [...record.vendor.trades],
-          serviceAreas: [...record.vendor.serviceAreas],
-          verificationStatus: record.vendor.verificationStatus,
-          maskedPhone: maskPhone(record.vendor.phone)
-        }
-      },
-      activationSession: session.token
+      vendor: {
+        businessName: record.vendor.businessName,
+        trades: [...record.vendor.trades],
+        serviceAreas: [...record.vendor.serviceAreas],
+        verificationStatus: record.vendor.verificationStatus,
+        maskedPhone: maskPhone(record.vendor.phone)
+      }
     };
   }
 
-  async claim(
-    userId: string,
-    activationSession: string
-  ): Promise<VendorActivationClaimResult> {
-    const security = this.requireSecurity();
+  async claim(userId: string, rawKey: string): Promise<VendorActivationClaimResult> {
     const currentTime = this.now();
-    let claims: ReturnType<typeof verifyActivationSession>;
-
-    try {
-      claims = verifyActivationSession(
-        activationSession,
-        security.sessionSecret,
-        currentTime
-      );
-    } catch (error) {
-      if (error instanceof VendorActivationSessionVerificationError) {
-        if (error.reason === "EXPIRED_SESSION") fail("EXPIRED_KEY");
-        fail("INVALID_KEY");
-      }
-      throw error;
-    }
-
-    let record: VendorActivationRecord | undefined;
-    try {
-      record = await this.repository.getById(claims.activationId);
-    } catch (error) {
-      translateRepositoryError(error);
-    }
-
-    if (!record) fail("INVALID_KEY");
-
-    const fingerprintMatches = verifyActivationKeyFingerprint(
-      record.keyHash,
-      claims.keyFingerprint,
-      security.sessionSecret
-    );
-    if (!fingerprintMatches) fail("INVALID_KEY");
-
-    assertClaimable(record, userId, currentTime);
+    const record = await this.recordForKey(rawKey);
+    assertClaimable(record, currentTime);
 
     const context = await this.loadAccountContext(userId);
     if (!context || context.user.status !== "ACTIVE") {
@@ -267,8 +310,40 @@ export class RoomlogVendorActivationDomain {
         accountStatus: "LINKED",
         role: claimed.link.role
       },
-      idempotent: claimed.idempotent,
       nextPath: "/vendor/job/00"
+    };
+  }
+
+  private async recordForKey(rawKey: string) {
+    let keyHash: string;
+    try {
+      keyHash = hashActivationKey(rawKey, this.requireSecurity().keyPepper);
+    } catch {
+      fail("INVALID_KEY");
+    }
+    try {
+      const record = await this.repository.getByKeyHash(keyHash);
+      if (!record) fail("INVALID_KEY");
+      return record;
+    } catch (error) {
+      translateRepositoryError(error);
+    }
+  }
+
+  private publicResceneActivation(
+    record: VendorActivationRecord,
+    activationKey: string
+  ): ResceneVendorActivation {
+    return {
+      businessName: record.vendor.businessName,
+      contactPerson: record.vendor.contactPerson,
+      phone: record.vendor.phone,
+      trades: record.vendor.trades as VendorTrade[],
+      serviceAreas: [...record.vendor.serviceAreas],
+      verificationStatus: record.vendor.verificationStatus,
+      activationStatus: record.status,
+      expiresAt: record.expiresAt.toISOString(),
+      activationKey
     };
   }
 

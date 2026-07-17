@@ -582,6 +582,8 @@ export class PrismaStoreProjector implements StoreProjector {
         roomId: complaint.roomId,
         ticketId: complaint.ticketId,
         sourceChannel: complaint.sourceChannel,
+        clientRequestId: optional(complaint.clientRequestId),
+        requestFingerprint: optional(complaint.requestFingerprint),
         title: complaint.title,
         description: complaint.description,
         location: complaint.location,
@@ -1120,9 +1122,9 @@ export class PrismaStoreProjector implements StoreProjector {
 
       for (const [tenantId, roomId] of Object.entries(store.tenantRooms)) {
         await tx.tenantRoom.upsert({
-          where: { tenantId_roomId: { tenantId, roomId } },
+          where: { tenantId },
           create: { tenantId, roomId },
-          update: {}
+          update: { roomId }
         });
       }
 
@@ -1813,6 +1815,8 @@ export class PrismaStoreProjector implements StoreProjector {
             roomId: complaint.roomId,
             ticketId: complaint.ticketId,
             sourceChannel: complaint.sourceChannel,
+            clientRequestId: complaint.clientRequestId,
+            requestFingerprint: complaint.requestFingerprint,
             title: complaint.title,
             description: complaint.description,
             location: complaint.location,
@@ -1834,6 +1838,8 @@ export class PrismaStoreProjector implements StoreProjector {
             roomId: complaint.roomId,
             ticketId: complaint.ticketId,
             sourceChannel: complaint.sourceChannel,
+            clientRequestId: complaint.clientRequestId,
+            requestFingerprint: complaint.requestFingerprint,
             title: complaint.title,
             description: complaint.description,
             location: complaint.location,

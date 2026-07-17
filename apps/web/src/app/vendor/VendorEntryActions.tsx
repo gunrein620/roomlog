@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { vendorActivationAuthPaths } from "./vendor-signup";
 
 type VendorEntryActionsProps =
   | { mode: "entry" }
+  | { mode: "activation-auth-required" }
   | {
       mode: "dedicated-account-required";
       viewerName: string;
@@ -35,6 +37,7 @@ const secondaryActionStyle = {
 export function VendorEntryActions(props: VendorEntryActionsProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const activationAuth = vendorActivationAuthPaths();
 
   async function logout() {
     setPending(true);
@@ -91,6 +94,24 @@ export function VendorEntryActions(props: VendorEntryActionsProps) {
             {error}
           </p>
         ) : null}
+      </section>
+    );
+  }
+
+  if (props.mode === "activation-auth-required") {
+    return (
+      <section style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "var(--space-xl)", gap: "var(--space-xxl)" }}>
+        <div style={{ display: "grid", gap: "var(--space-md)" }}>
+          <span style={{ color: "var(--primary)", fontWeight: "var(--fw-header)" }}>업체 계정 등록</span>
+          <h1 style={{ margin: 0, fontSize: "var(--fs-title)", lineHeight: "var(--lh-title)" }}>먼저 업체 전용 계정으로 로그인해 주세요</h1>
+          <p style={{ margin: 0, color: "var(--on-surface-variant)", fontSize: "var(--fs-body)", lineHeight: "var(--lh-body)" }}>
+            로그인이나 회원가입을 마치면 이 화면으로 돌아와 등록 키를 입력할 수 있습니다.
+          </p>
+        </div>
+        <div style={{ display: "grid", gap: "var(--space-lg)" }}>
+          <a href={activationAuth.login} style={primaryActionStyle}>업체 계정 로그인</a>
+          <a href={activationAuth.signup} style={secondaryActionStyle}>업체 전용 계정 만들기</a>
+        </div>
       </section>
     );
   }

@@ -23,7 +23,8 @@ import {
   parseOwnerDraft,
   saveOwnerDraft
 } from "@/lib/owner-draft";
-import { intakeSplatAsset, listSplatAssetsByListing, requeueSplatAsset } from "@/lib/splat-asset-api";
+import { listSplatAssetsByListing, requeueSplatAsset } from "@/lib/splat-asset-api";
+import { startTourUpload } from "@/lib/tour-upload-store";
 import { pickListingSplatAsset } from "@/lib/owner-tour-assets";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { SPLAT_ASSET_UPDATED_EVENT, type SplatAssetStatus } from "@roomlog/types";
@@ -776,34 +777,27 @@ export default function LandlordMyPage({ onGoHome }: { onGoHome?: () => void } =
 
         const savedListing = (await response.json().catch(() => null)) as { id?: string } | null;
 
+        // 매물은 이미 저장됐다. 3D 투어 파일(수십~수백 MB)은 여기서 기다리지 않고
+        // 전역 스토어의 백그라운드 업로드로 넘긴다 — 상단 진행바가 진행률을 보여주고,
+        // 완료되면 자산이 생겨 TourActionBell이 이어받는다(실패는 진행바 에러 + 벨 FAILED로 커버).
         let splatIntakeNote = "";
-        let shouldClearTourSourceFile = true;
         if (savedListing?.id && tourSourceFile) {
-          try {
-            const asset = await intakeSplatAsset({
-              listingId: savedListing.id,
-              title: ownerForm.title,
-              address: [ownerForm.address, detailAddress].filter(Boolean).join(" "),
-              file: tourSourceFile
-            });
-            splatIntakeNote =
-              asset.status === "UPLOADED"
-                ? "스플랫 접수 완료 — 정합 대기"
-                : "3D 투어 제작이 접수됐습니다";
-          } catch {
-            shouldClearTourSourceFile = false;
-            splatIntakeNote = "매물은 저장됐지만 3D 투어 접수에 실패했습니다. 파일을 다시 선택해 재시도해 주세요.";
-          }
+          startTourUpload({
+            listingId: savedListing.id,
+            title: ownerForm.title,
+            address: [ownerForm.address, detailAddress].filter(Boolean).join(" "),
+            file: tourSourceFile
+          });
+          splatIntakeNote = "3D 투어 업로드는 백그라운드에서 계속됩니다 — 상단 진행바에서 확인할 수 있어요.";
         }
 
         // 등록 성공 → 작성 칸·첨부·3D 상태를 초기화해 다음 매물에 이전 내용이 남지 않게 한다.
+        // (파일 참조는 백그라운드 업로드 스토어가 붙잡으므로 여기서 비워도 전송은 계속된다.)
         setOwnerForm(emptyOwnerForm);
         setPhotoFiles([]);
         setPhotoCount(0);
-        if (shouldClearTourSourceFile) {
-          setTourSourceFile(null);
-          if (tourSourceInputRef.current) tourSourceInputRef.current.value = "";
-        }
+        setTourSourceFile(null);
+        if (tourSourceInputRef.current) tourSourceInputRef.current.value = "";
         setHas3DRoom(false);
         setGeoCoords(null);
         void clearOwnerPhotos();

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { VendorJobDetail, VendorJobSummary } from "@roomlog/types";
+import { vendorTradeLabel } from "@roomlog/types";
 import { Badge, Card } from "@roomlog/ui";
 import type { VendorRoute } from "@/lib/vendor-nav";
 import { resolveAssetFileUrl } from "@/lib/splat-asset-api";
@@ -257,7 +258,7 @@ export function WorkflowJobSummary({ job }: { job: VendorJobSummary | VendorJobD
         </div>
         <Badge emphasis>{vendorJobStatusLabel(job.status)}</Badge>
       </div>
-      <InfoRow label="작업 분야" value={job.trade || "확인 필요"} />
+      <InfoRow label="작업 분야" value={vendorTradeLabel(job.trade) || "확인 필요"} />
       {"description" in job && job.description ? (
         <p style={{ ...mutedStyle, margin: 0 }}>{job.description}</p>
       ) : null}
@@ -314,7 +315,10 @@ export function SettlementSummary({ job }: { job: VendorJobSummary | VendorJobDe
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={labelStyle}>정산 진행</div>
-      <InfoRow label="현재 상태" value={paymentStatusLabel(payment?.status)} />
+      <InfoRow
+        label="현재 상태"
+        value={paymentStatusLabel(payment?.status, payment?.lastAttemptMode)}
+      />
       {payment ? (
         <>
           <InfoRow label="정산 금액" value={`${payment.amount.toLocaleString()}원`} />
