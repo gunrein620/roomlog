@@ -1223,6 +1223,15 @@ export default function TenantMyPage({
   );
   const isCompletionReported = detailTicket?.status === "COMPLETION_REPORTED";
   const isTicketClosed = detailTicket?.status === "COMPLETED" || detailTicket?.status === "CANCELLED";
+  // 임차인 책임(협상 후 관리자 확정 포함) + 업체 미배정이면 상세에서 바로 업체 연결을 시작할 수 있어야
+  // 자가수리 결제까지 이어진다 — 서버 게이트(임차인 책임 가능성 + REQUESTABLE 상태)와 같은 조건.
+  const canStartSelfRepairConnection =
+    tenantVendorConnectionEligible(
+      detailTicket?.responsibilityHint as Parameters<typeof tenantVendorConnectionEligible>[0]
+    ) &&
+    ["RECEIVED", "REVIEWING", "ADDITIONAL_INFO_REQUESTED", "VENDOR_ASSIGNMENT_PENDING", "REOPENED"].includes(
+      detailTicket?.status ?? ""
+    );
   const selectedRepairPhotos =
     selectedRepairRequest?.attachments.filter((attachment): attachment is TenantRepairAttachment & { url: string } =>
       typeof attachment.url === "string" && attachment.url.trim().length > 0
@@ -2238,6 +2247,16 @@ export default function TenantMyPage({
               ) : null}
 
               <TenantVendorWorkflowPanel complaintId={selectedRepairRequest.id} />
+
+              {canStartSelfRepairConnection ? (
+                <TenantVendorConnectionCard
+                  complaintId={selectedRepairRequest.id}
+                  onRequested={() => {
+                    void refreshComplaintDetail(selectedRepairRequest.id);
+                    void loadRepairRequests();
+                  }}
+                />
+              ) : null}
 
               {detailTicket && !isTicketClosed ? (
                 <section className="tenant-defect-appeal" aria-label="책임 판단 이의제기">
