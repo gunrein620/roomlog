@@ -3,7 +3,6 @@ import {
   extractWallFaceDimensions,
   formatWallLength,
 } from "./wall-dimensions.mjs";
-import { layoutDimensionLabels } from "./measurement-layout.mjs";
 import { extractRoomAreas, formatRoomArea } from "./room-areas.mjs";
 
 const INTERNAL_SIZE = 1024;
@@ -625,7 +624,7 @@ export class ReviewEditor {
       this.drawOpening(this.previewOpening, true);
     }
     const roomAreaLayout = this.buildRoomAreaLabelLayout();
-    this.drawWallDimensions(roomAreaLayout.map(item => item.bounds));
+    this.drawWallDimensions();
     this.drawRoomAreaLabels(roomAreaLayout);
     this.drawScaleMeasurement();
   }
@@ -686,52 +685,7 @@ export class ReviewEditor {
     return layout;
   }
 
-  dimensionLabelLayout(reservedBounds = []) {
-    const context = this.context;
-    context.save();
-    context.font = "600 10px system-ui, sans-serif";
-    const candidates = this.wallDimensionSegments.map((segment, index) => {
-      const start = this.imageToScreen(segment.start.x, segment.start.y);
-      const end = this.imageToScreen(segment.end.x, segment.end.y);
-      const deltaX = end.x - start.x;
-      const deltaY = end.y - start.y;
-      const screenLength = Math.hypot(deltaX, deltaY);
-      if (!Number.isFinite(screenLength) || screenLength < 2) return null;
-      let angle = Math.atan2(deltaY, deltaX);
-      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-      const rawNormalX = Number(segment.normal?.x);
-      const rawNormalY = Number(segment.normal?.y);
-      const normalLength = Math.hypot(rawNormalX, rawNormalY);
-      const normal = Number.isFinite(normalLength) && normalLength > 0
-        ? { x: rawNormalX / normalLength, y: rawNormalY / normalLength }
-        : { x: -deltaY / screenLength, y: deltaX / screenLength };
-      const label = formatWallLength(
-        segment.lengthPixels * Number(this.calibration.millimetersPerPixel),
-      );
-      return {
-        id: `${segment.regionId}:${index}`,
-        segment,
-        start,
-        end,
-        tangent: { x: deltaX / screenLength, y: deltaY / screenLength },
-        normal,
-        anchor: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
-        width: context.measureText(label).width + 4,
-        height: 14,
-        angle,
-        label,
-        screenLength,
-      };
-    }).filter(Boolean);
-    context.restore();
-    return layoutDimensionLabels(candidates, reservedBounds, {
-      baseOffset: 14,
-      laneStep: 16,
-      collisionPadding: 2,
-    });
-  }
-
-  drawWallDimensions(reservedBounds = []) {
+  drawWallDimensions() {
     if (
       !this.calibration ||
       this.calibration.estimated ||
@@ -743,30 +697,48 @@ export class ReviewEditor {
     if (!Number.isFinite(millimetersPerPixel) || millimetersPerPixel <= 0) return;
 
     const context = this.context;
-    const layout = this.dimensionLabelLayout(reservedBounds);
     context.save();
     context.font = "600 10px system-ui, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
 
-    for (const item of layout) {
+    for (const segment of this.wallDimensionSegments) {
+      const start = this.imageToScreen(segment.start.x, segment.start.y);
+      const end = this.imageToScreen(segment.end.x, segment.end.y);
+      const deltaX = end.x - start.x;
+      const deltaY = end.y - start.y;
+      const screenLength = Math.hypot(deltaX, deltaY);
+      if (!Number.isFinite(screenLength) || screenLength < 2) continue;
+
+      const tangentX = deltaX / screenLength;
+      const tangentY = deltaY / screenLength;
+      const rawNormalX = Number(segment.normal?.x);
+      const rawNormalY = Number(segment.normal?.y);
+      const normalLength = Math.hypot(rawNormalX, rawNormalY);
+      const normalX = Number.isFinite(normalLength) && normalLength > 0
+        ? rawNormalX / normalLength
+        : -tangentY;
+      const normalY = Number.isFinite(normalLength) && normalLength > 0
+        ? rawNormalY / normalLength
+        : tangentX;
+      const offset = 16;
       const dimensionStart = {
-        x: item.start.x + item.normal.x * item.offset,
-        y: item.start.y + item.normal.y * item.offset,
+        x: start.x + normalX * offset,
+        y: start.y + normalY * offset,
       };
       const dimensionEnd = {
-        x: item.end.x + item.normal.x * item.offset,
-        y: item.end.y + item.normal.y * item.offset,
+        x: end.x + normalX * offset,
+        y: end.y + normalY * offset,
       };
-      const arrowLength = Math.min(5, item.screenLength / 4);
+      const arrowLength = Math.min(5, screenLength / 4);
       const arrowHalfWidth = 2.5;
 
       context.beginPath();
       context.strokeStyle = "rgba(17, 24, 39, 0.4)";
       context.lineWidth = 0.6;
-      context.moveTo(item.start.x, item.start.y);
+      context.moveTo(start.x, start.y);
       context.lineTo(dimensionStart.x, dimensionStart.y);
-      context.moveTo(item.end.x, item.end.y);
+      context.moveTo(end.x, end.y);
       context.lineTo(dimensionEnd.x, dimensionEnd.y);
       context.stroke();
 
@@ -777,35 +749,42 @@ export class ReviewEditor {
       context.lineTo(dimensionEnd.x, dimensionEnd.y);
       context.moveTo(dimensionStart.x, dimensionStart.y);
       context.lineTo(
-        dimensionStart.x + item.tangent.x * arrowLength + item.normal.x * arrowHalfWidth,
-        dimensionStart.y + item.tangent.y * arrowLength + item.normal.y * arrowHalfWidth,
+        dimensionStart.x + tangentX * arrowLength + normalX * arrowHalfWidth,
+        dimensionStart.y + tangentY * arrowLength + normalY * arrowHalfWidth,
       );
       context.moveTo(dimensionStart.x, dimensionStart.y);
       context.lineTo(
-        dimensionStart.x + item.tangent.x * arrowLength - item.normal.x * arrowHalfWidth,
-        dimensionStart.y + item.tangent.y * arrowLength - item.normal.y * arrowHalfWidth,
+        dimensionStart.x + tangentX * arrowLength - normalX * arrowHalfWidth,
+        dimensionStart.y + tangentY * arrowLength - normalY * arrowHalfWidth,
       );
       context.moveTo(dimensionEnd.x, dimensionEnd.y);
       context.lineTo(
-        dimensionEnd.x - item.tangent.x * arrowLength + item.normal.x * arrowHalfWidth,
-        dimensionEnd.y - item.tangent.y * arrowLength + item.normal.y * arrowHalfWidth,
+        dimensionEnd.x - tangentX * arrowLength + normalX * arrowHalfWidth,
+        dimensionEnd.y - tangentY * arrowLength + normalY * arrowHalfWidth,
       );
       context.moveTo(dimensionEnd.x, dimensionEnd.y);
       context.lineTo(
-        dimensionEnd.x - item.tangent.x * arrowLength - item.normal.x * arrowHalfWidth,
-        dimensionEnd.y - item.tangent.y * arrowLength - item.normal.y * arrowHalfWidth,
+        dimensionEnd.x - tangentX * arrowLength - normalX * arrowHalfWidth,
+        dimensionEnd.y - tangentY * arrowLength - normalY * arrowHalfWidth,
       );
       context.stroke();
 
+      const label = formatWallLength(segment.lengthPixels * millimetersPerPixel);
+      if (!label) continue;
+      const centerX = (dimensionStart.x + dimensionEnd.x) / 2;
+      const centerY = (dimensionStart.y + dimensionEnd.y) / 2;
+      let angle = Math.atan2(deltaY, deltaX);
+      if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+
       context.save();
-      context.translate(item.center.x, item.center.y);
-      context.rotate(item.angle);
+      context.translate(centerX, centerY);
+      context.rotate(angle);
       context.strokeStyle = "rgba(255, 255, 255, 0.96)";
       context.lineWidth = 3;
       context.lineJoin = "round";
-      context.strokeText(item.label, 0, 0);
+      context.strokeText(label, 0, 0);
       context.fillStyle = "#111827";
-      context.fillText(item.label, 0, 0);
+      context.fillText(label, 0, 0);
       context.restore();
     }
     context.restore();

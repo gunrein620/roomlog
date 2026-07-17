@@ -47,10 +47,12 @@ class ViewerShellTests(unittest.TestCase):
 
     def test_manual_measurements_use_black_dimensions_and_room_area_overlay(self):
         self.assertIn('from "./room-areas.mjs"', self.editor)
-        self.assertIn('from "./measurement-layout.mjs"', self.editor)
+        self.assertNotIn('from "./measurement-layout.mjs"', self.editor)
+        self.assertNotIn("dimensionLabelLayout(", self.editor)
+        self.assertIn("const offset = 16;", self.editor)
         self.assertIn('strokeStyle = "#111827"', self.editor)
         self.assertIn('strokeStyle = "rgba(17, 24, 39, 0.4)"', self.editor)
-        self.assertIn("context.strokeText(item.label, 0, 0)", self.editor)
+        self.assertIn("context.strokeText(label, 0, 0)", self.editor)
         self.assertIn("refreshRoomAreas()", self.editor)
         self.assertIn("drawRoomAreaLabels(roomAreaLayout)", self.editor)
         self.assertIn("{ minimumAreaM2: 1 }", self.editor)
