@@ -483,9 +483,18 @@ export class RoomlogMessagingDomain {
     return this.buildAnnouncementResult(announcement);
   }
 
-  listTenantMessagingAnnouncements(tenantId: string): MessagingAnnouncement[] {
+  listTenantMessagingAnnouncements(tenantId: string, roomId?: string): MessagingAnnouncement[] {
+    const selectedRoomId = roomId?.trim();
+    if (selectedRoomId) {
+      this.requireTenantRoom(tenantId, selectedRoomId);
+    }
+
     return this.store.messagingAnnouncementDeliveries
-      .filter((delivery) => delivery.tenantId === tenantId)
+      .filter(
+        (delivery) =>
+          delivery.tenantId === tenantId &&
+          (!selectedRoomId || delivery.roomId === selectedRoomId)
+      )
       .sort((a, b) => {
         const aAnnouncement = this.findAnnouncement(a.announcementId);
         const bAnnouncement = this.findAnnouncement(b.announcementId);

@@ -5,16 +5,16 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ListingDetailView } from "@/app/_components/ListingDetailView";
-import { demoListings, type Listing } from "@/lib/listing-catalog";
+import { type Listing } from "@/lib/listing-catalog";
 import { loadSavedListingNos, toggleSavedListingNo } from "@/lib/saved-listings";
 
-export function ListingDetailRoute({ listing }: { listing: Listing }) {
+export function ListingDetailRoute({ listing, isOwner = false }: { listing: Listing; isOwner?: boolean }) {
   const router = useRouter();
   const [savedListingNos, setSavedListingNos] = useState<string[]>([]);
 
   useEffect(() => {
-    // 첫 방문 기본 찜(데모 2개)은 SPA와 동일한 규칙 — 저장된 값이 있으면 그것만 쓴다.
-    setSavedListingNos(loadSavedListingNos([demoListings[0].listingNo, demoListings[2].listingNo]));
+    // SPA와 동일한 규칙 — 기본 찜 없음, 저장된 값만 쓴다.
+    setSavedListingNos(loadSavedListingNos([]));
   }, []);
 
   const goBack = () => {
@@ -36,6 +36,7 @@ export function ListingDetailRoute({ listing }: { listing: Listing }) {
     <ListingDetailView
       listing={listing}
       isSaved={savedListingNos.includes(listing.listingNo)}
+      isOwner={isOwner}
       onBack={goBack}
       onToggleSaved={(listingNo) => setSavedListingNos((current) => toggleSavedListingNo(current, listingNo))}
       onStartChat={startChat}

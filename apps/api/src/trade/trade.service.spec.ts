@@ -90,6 +90,23 @@ describe("TradeService public listings", () => {
 
     assert.equal(created.detailAddress, undefined);
   });
+
+  it("stores only allowed options in canonical order and defaults to []", () => {
+    const service = serviceWithTempStore();
+
+    // 허용 목록 밖 값·중복은 버리고, 저장 순서는 허용 목록 순서를 따른다.
+    const created = service.createListing(owner, {
+      ...input,
+      options: ["CCTV", "에어컨", "금고", "에어컨"]
+    });
+    assert.deepEqual(created.options, ["에어컨", "CCTV"]);
+
+    const withoutOptions = service.createListing(owner, { ...input, title: "옵션 없는 매물" });
+    assert.deepEqual(withoutOptions.options, []);
+
+    const updated = service.updateListing(owner, created.id, { options: ["세탁기"] });
+    assert.deepEqual(updated.options, ["세탁기"]);
+  });
 });
 
 describe("TradeService contract acceptance", () => {
@@ -372,5 +389,58 @@ describe("TradeService thread leave", () => {
     });
 
     assert.throws(() => service.leaveThread("stranger-1", thread.id), /참여자가 아닙니다/);
+  });
+});
+
+describe("TradeService listing essentials", () => {
+  const base = {
+    roomType: "원룸",
+    location: "서울 서초구 방배동",
+    description: ""
+  };
+
+  it("keeps 반전세 as-is instead of silently coercing it to 월세", () => {
+    const service = serviceWithTempStore();
+    const listing = service.createListing(owner, {
+      ...base,
+      title: "반전세 유지 검증",
+      tradeType: "반전세",
+      depositManwon: 3000,
+      monthlyRentManwon: 30
+    });
+    assert.equal(listing.tradeType, "반전세");
+  });
+
+  it("rejects zero-price and one-character titles before they reach the public feed", () => {
+    const service = serviceWithTempStore();
+    assert.throws(
+      () => service.createListing(owner, { ...base, title: "가격없는 월세", tradeType: "월세", depositManwon: 0, monthlyRentManwon: 0 }),
+      /월세 금액/
+    );
+    assert.throws(
+      () => service.createListing(owner, { ...base, title: "빈 전세", tradeType: "전세", depositManwon: 0, monthlyRentManwon: 0 }),
+      /전세금/
+    );
+    assert.throws(
+      () => service.createListing(owner, { ...base, title: "a", tradeType: "월세", depositManwon: 100, monthlyRentManwon: 50 }),
+      /2자 이상/
+    );
+  });
+
+  it("stores and returns the spec fields (area/floor/maintenance)", () => {
+    const service = serviceWithTempStore();
+    const listing = service.createListing(owner, {
+      ...base,
+      title: "스펙 필드 검증",
+      tradeType: "월세",
+      depositManwon: 500,
+      monthlyRentManwon: 45,
+      exclusiveAreaM2: 24.5,
+      floorInfo: "4층 / 16층",
+      maintenanceFeeManwon: 7
+    });
+    assert.equal(listing.exclusiveAreaM2, 24.5);
+    assert.equal(listing.floorInfo, "4층 / 16층");
+    assert.equal(listing.maintenanceFeeManwon, 7);
   });
 });

@@ -57,14 +57,16 @@ type TradeContract = {
   landlordId: string;
   tenantId: string;
   status: "proposed" | "accepted" | "declined" | "cancelled";
-  tradeType: "월세" | "전세" | "매매";
+  tradeType: "월세" | "반전세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
 };
 
 function contractTermsLabel(contract: TradeContract): string {
   const deposit = (contract.depositManwon || 0).toLocaleString("ko-KR");
-  if (contract.tradeType === "월세") return `월세 ${deposit}/${contract.monthlyRentManwon || 0}`;
+  if (contract.tradeType === "월세" || contract.tradeType === "반전세") {
+    return `${contract.tradeType} ${deposit}/${contract.monthlyRentManwon || 0}`;
+  }
   return `${contract.tradeType} ${deposit}만`;
 }
 

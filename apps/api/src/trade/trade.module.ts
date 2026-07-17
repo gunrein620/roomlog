@@ -34,6 +34,9 @@ export async function createTradeServiceOptions(
     },
     TradeService,
     TradeContractBillingBridge
-  ]
+  ],
+  // splat-asset 소유권 게이트가 runtime truth(JSON 스토어)로 소유자를 조회한다 —
+  // DB 프로젝션만 보면 프로젝션 지연/실패 시 정당한 임대인이 403을 맞는다(2026-07-16 실측).
+  exports: [TradeService]
 })
 export class TradeModule {}

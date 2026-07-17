@@ -4,18 +4,19 @@
 // 각 조각(SplatScene/TourCamera/TourMinimap)은 병렬 에이전트가 채워넣는다.
 
 import { Canvas } from "@react-three/fiber";
-import { Armchair, ChevronDown, Footprints, UploadCloud } from "lucide-react";
+import { Armchair, ChevronDown, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplatScene } from "./splat-scene";
+import { TourJoystick, type TourJoystickVector } from "./tour-joystick";
+import type { TourMoveInput } from "./tour-camera";
 import { SplatDropzone } from "./splat-dropzone";
-import { loadSplatFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
+import { loadViewerFurnitureFromBrowser, type SplatFurnitureState } from "./splat-furniture";
 import { SplatFurnitureLayer } from "./splat-furniture-layer";
 import { SplatPlanWalls } from "./splat-plan-walls";
 import { loadPlanWallsFromBrowser, wallsToPlanBounds, type PlanBounds } from "./splat-plan-shape";
 import { resolveWallReplace } from "./splat-walls";
 import { TourCamera } from "./tour-camera";
 import { TourMinimap } from "./tour-minimap";
-import { DEMO_PRESETS } from "./tour-presets";
 import { SPLAT_CLIP_ROOM } from "./splat-clip";
 import { getSplatAsset, resolveAssetFileUrl } from "@/lib/splat-asset-api";
 import type { WheretoputWall3D } from "../floor-plan-3d/room-model/types";
@@ -64,7 +65,12 @@ export default function TourViewer() {
   const [isLoadingVisible, setIsLoadingVisible] = useState(true);
   const [showHint, setShowHint] = useState(true);
   const [isDropzoneOpen, setIsDropzoneOpen] = useState(false);
-  const [isWalkMode, setIsWalkMode] = useState(false);
+  // 이동 입력 방식 분기: coarse pointer(터치)면 화면 조이스틱, fine pointer면 WASD. 마운트 후
+  // matchMedia로 판정(SSR 안전 — 초기값 false, effect에서 갱신).
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+  // 조이스틱 아날로그 이동 입력. TourCamera가 매 프레임 ref.current를 읽어 WASD와 합산하므로
+  // state가 아닌 ref로 들고 리렌더 없이 갱신한다(놓으면 0,0).
+  const moveInputRef = useRef<TourMoveInput>({ forward: 0, strafe: 0 });
   const [minimapPosition, setMinimapPosition] = useState<{ x: number; y: number } | null>(null);
   const [showFurniture, setShowFurniture] = useState(true);
   const [furnitureState, setFurnitureState] = useState<SplatFurnitureState>({
@@ -73,6 +79,9 @@ export default function TourViewer() {
   });
   // 저장된 정합 결과(SplatAsset.transform). 있으면 SplatScene이 auto-fit 대신 절대 배치를 쓴다.
   const [assetTransform, setAssetTransform] = useState<SplatTransform | null>(null);
+  // ?asset= 자산의 상태 안내. PROCESSING/FAILED면 샘플로 조용히 폴백하지 않고 안내 패널을,
+  // 조회 자체 실패면 샘플을 유지하되 배너로 알린다. null = 안내 없음(정상 로드).
+  const [assetNotice, setAssetNotice] = useState<"processing" | "failed" | "load-error" | null>(null);
   // 도면 벽 대체 렌더 게이트. 씬의 벽 클립 게이트(splat-scene wallReplace: URL splatWalls >
   // 정합 transform 유무)와 같은 규칙이어야 한다 — 어긋나면 "splat만 지워지고 벽은 안 그려지는"
   // 구멍이 생긴다(적대검증 실측). URL 명시가 최우선, 아니면 transform 있을 때만 켠다.
@@ -97,6 +106,21 @@ export default function TourViewer() {
     },
     [planBounds]
   );
+
+  // 조이스틱 → 아날로그 이동 ref. null(놓음)이면 정지(0,0). setState가 아니라 ref 갱신이라
+  // 매 프레임 리렌더가 없다 — TourCamera의 RAF 루프가 값을 직접 읽는다.
+  const handleJoystickChange = useCallback((vector: TourJoystickVector | null) => {
+    moveInputRef.current = vector ?? { forward: 0, strafe: 0 };
+  }, []);
+
+  // 터치/coarse pointer 감지(마운트 후). 하이브리드 기기 대응으로 maxTouchPoints도 함께 본다.
+  useEffect(() => {
+    const query = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsCoarsePointer(query.matches || navigator.maxTouchPoints > 0);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   const initialCamera: [number, number, number] = SPAWN_VIEW.position;
 
@@ -126,6 +150,23 @@ export default function TourViewer() {
     getSplatAsset(assetId)
       .then((asset) => {
         if (cancelled) return;
+        // PROCESSING: 아직 spz가 없다(fileUrl 빈 문자열). 예전엔 여기서 샘플로 조용히 폴백됐지만,
+        // 그 은폐를 걷어내고 "제작 중" 안내를 전면에 띄운다.
+        if (asset.status === "PROCESSING") {
+          setAssetNotice("processing");
+          console.info("[splat-tour] asset " + JSON.stringify({ id: asset.id, status: asset.status }));
+          return;
+        }
+        // FAILED: 재업로드 유도. 구체 사유(jobError)는 화면에 노출하지 않고 콘솔에만 남긴다.
+        if (asset.status === "FAILED") {
+          setAssetNotice("failed");
+          console.warn(
+            "[splat-tour] asset FAILED",
+            JSON.stringify({ id: asset.id, jobError: (asset as { jobError?: string | null }).jobError ?? null })
+          );
+          return;
+        }
+        setAssetNotice(null);
         if (asset.fileUrl) {
           setSrc(resolveAssetFileUrl(asset.fileUrl));
           setIsLoaded(false);
@@ -135,12 +176,26 @@ export default function TourViewer() {
         setAssetTransform(transform);
         // 벽 패널도 기본 OFF(2026-07-07 결정, splat-scene의 클립 기본값과 일치) — ?splatWalls=1로 옵트인.
         setShowPlanWalls(resolveWallReplace(window.location.search, false));
+        // 서버 동봉 가구를 우선순위대로 재해석한다. REGISTERED+유효 furnitures면 서버가 이기고,
+        // 아니면 마운트 때 채운 로컬/데모가 유지된다. ?furniture=0은 resolveViewerFurniture가 존중.
+        const furniture = loadViewerFurnitureFromBrowser(asset);
+        setFurnitureState(furniture);
         console.info(
           "[splat-tour] asset " +
-            JSON.stringify({ id: asset.id, status: asset.status, hasTransform: asset.transform !== null, fileUrl: asset.fileUrl })
+            JSON.stringify({
+              id: asset.id,
+              status: asset.status,
+              hasTransform: asset.transform !== null,
+              fileUrl: asset.fileUrl,
+              furnitureSource: furniture.source,
+              furnitureCount: furniture.furnitures.length
+            })
         );
       })
       .catch((error) => {
+        if (cancelled) return;
+        // 조회 자체 실패 — 샘플 폴백은 유지하되 배너로 사용자에게 알린다.
+        setAssetNotice("load-error");
         console.warn("[splat-tour] asset load failed — 기본 샘플로 폴백", error);
       });
 
@@ -170,7 +225,8 @@ export default function TourViewer() {
   }, []);
 
   useEffect(() => {
-    const state = loadSplatFurnitureFromBrowser();
+    // 마운트 즉시 로컬/데모/off로 채운다. ?asset= 서버 가구는 자산 조회 후 아래 effect가 덮어쓴다.
+    const state = loadViewerFurnitureFromBrowser(null);
     setFurnitureState(state);
     console.info("[splat-tour] furniture " + JSON.stringify({ source: state.source, count: state.furnitures.length }));
   }, []);
@@ -244,6 +300,55 @@ export default function TourViewer() {
             color: var(--ink);
             font-size: 14px;
             font-weight: 800;
+          }
+
+          .tour-asset-notice {
+            z-index: 6;
+          }
+
+          .tour-asset-refresh {
+            min-height: 38px;
+            padding: 9px 18px;
+            border: 1px solid var(--blue);
+            border-radius: 999px;
+            background: var(--blue);
+            color: var(--paper);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1;
+            transition: background 160ms ease;
+          }
+
+          .tour-asset-refresh:hover {
+            background: var(--blue-dark);
+          }
+
+          .tour-asset-refresh:focus-visible {
+            outline: 2px solid var(--blue);
+            outline-offset: 2px;
+          }
+
+          .tour-asset-banner {
+            position: absolute;
+            z-index: 6;
+            top: 16px;
+            left: 50%;
+            max-width: calc(100% - 32px);
+            transform: translateX(-50%);
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 8px 16px;
+            background: color-mix(in srgb, var(--paper) 92%, transparent);
+            box-shadow: var(--shadow);
+            color: var(--ink);
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.2;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            backdrop-filter: blur(12px);
           }
 
           .tour-minimap-dock {
@@ -549,11 +654,11 @@ export default function TourViewer() {
         ) : null}
         <TourCamera
           activeId={activeId}
+          moveInputRef={moveInputRef}
           onArrive={setActiveId}
           onCameraMove={handleCameraMove}
-          presets={DEMO_PRESETS}
+          presets={[]}
           spawnView={SPAWN_VIEW}
-          walkMode={isWalkMode}
           walkBounds={planBounds}
         />
       </Canvas>
@@ -570,16 +675,41 @@ export default function TourViewer() {
         </div>
       ) : null}
 
+      {assetNotice === "load-error" ? (
+        <div className="tour-asset-banner" role="status">
+          자산을 불러오지 못해 샘플을 표시 중입니다
+        </div>
+      ) : null}
+
+      {assetNotice === "processing" || assetNotice === "failed" ? (
+        <div aria-live="polite" className="tour-loading-overlay tour-asset-notice">
+          <div className="tour-loading-panel">
+            {assetNotice === "processing" ? (
+              <>
+                <p>3D 투어 제작 중 — 수 시간 걸릴 수 있어요</p>
+                <button type="button" className="tour-asset-refresh" onClick={() => window.location.reload()}>
+                  새로고침
+                </button>
+              </>
+            ) : (
+              <p>3D 제작에 실패했어요 — 파일을 다시 업로드해 주세요</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <p className={`tour-hint${isLoaded && showHint ? "" : " is-hidden"}`}>
-        드래그로 둘러보고, 아래 버튼으로 이동하세요
+        {isCoarsePointer ? "조이스틱으로 이동 · 드래그로 둘러보기" : "WASD로 이동 · 드래그로 둘러보기"}
       </p>
+
+      {isCoarsePointer ? <TourJoystick onChange={handleJoystickChange} /> : null}
 
       <div className="tour-minimap-dock">
         <TourMinimap
           activeId={activeId}
           livePosition={minimapPosition}
           onSelect={setActiveId}
-          presets={DEMO_PRESETS}
+          presets={[]}
         />
       </div>
 
@@ -601,36 +731,8 @@ export default function TourViewer() {
         ) : null}
       </div>
 
-      <div
-        role="group"
-        aria-label="시점 프리셋"
-        className="tour-preset-bar"
-      >
-        {DEMO_PRESETS.map((preset) => {
-          const isActive = preset.id === activeId;
-          return (
-            <button
-              aria-pressed={isActive}
-              className={`tour-preset-button${isActive ? " is-active" : ""}`}
-              key={preset.id}
-              onClick={() => setActiveId(preset.id)}
-              type="button"
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-        <span aria-hidden className="tour-preset-divider" />
-        <button
-          aria-pressed={isWalkMode}
-          className={`tour-walk-toggle${isWalkMode ? " is-active" : ""}`}
-          onClick={() => setIsWalkMode((current) => !current)}
-          type="button"
-        >
-          <Footprints aria-hidden size={16} strokeWidth={2.4} />
-          <span>걷기</span>
-        </button>
-        {furnitureState.furnitures.length > 0 ? (
+      {furnitureState.furnitures.length > 0 ? (
+        <div role="group" aria-label="3D 투어 옵션" className="tour-preset-bar">
           <button
             aria-pressed={showFurniture}
             className={`tour-walk-toggle${showFurniture ? " is-active" : ""}`}
@@ -640,8 +742,8 @@ export default function TourViewer() {
             <Armchair aria-hidden size={16} strokeWidth={2.4} />
             <span>가구</span>
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -11,6 +11,8 @@ export type OwnerFormValues = {
   address: string;
   detailAddress: string;
   tradeType: string;
+  /** 매물유형(원룸·투룸 등) — listing-catalog listingRoomTypes 중 하나 */
+  roomType: string;
   moveIn: string;
   deposit: string;
   monthly: string;
@@ -18,6 +20,8 @@ export type OwnerFormValues = {
   maintenance: string;
   area: string;
   floor: string;
+  /** 선택한 옵션(에어컨·세탁기 등) — listing-catalog optionItems 안의 값만 */
+  options: string[];
 };
 
 export type OwnerListing = {
@@ -46,13 +50,15 @@ export const emptyOwnerForm: OwnerFormValues = {
   address: "",
   detailAddress: "",
   tradeType: "월세",
+  roomType: "원룸",
   moveIn: "",
   deposit: "",
   monthly: "",
   jeonse: "",
   maintenance: "",
   area: "",
-  floor: ""
+  floor: "",
+  options: []
 };
 
 // 데모 매물은 안정된 고정 id를 쓴다 — 사용자가 추가한 매물(Date.now() 기반)과 절대 겹치지 않는다.
@@ -113,15 +119,17 @@ export function parseOwnerDraft(raw: string | null): OwnerListingDraft | null {
   if (!ownerFormKeys.every((key) => typeof (form as Record<string, unknown>)[key] === "string")) {
     return null;
   }
-  // detailAddress/buildingName은 나중에 추가된 필드 — 이전 버전 draft에는 없으므로 빈 값으로 보정한다.
+  // detailAddress/buildingName/options/roomType은 나중에 추가된 필드 — 이전 버전 draft에는 없으므로 기본값으로 보정한다.
+  const formRecord = form as Record<string, unknown>;
   const normalizedForm = {
     ...(form as OwnerFormValues),
-    detailAddress: typeof (form as Record<string, unknown>).detailAddress === "string"
-      ? (form as Record<string, string>).detailAddress
-      : "",
-    buildingName: typeof (form as Record<string, unknown>).buildingName === "string"
-      ? (form as Record<string, string>).buildingName
-      : ""
+    detailAddress: typeof formRecord.detailAddress === "string" ? formRecord.detailAddress : "",
+    buildingName: typeof formRecord.buildingName === "string" ? formRecord.buildingName : "",
+    roomType:
+      typeof formRecord.roomType === "string" && formRecord.roomType.trim() ? formRecord.roomType : "원룸",
+    options: Array.isArray(formRecord.options)
+      ? formRecord.options.filter((item): item is string => typeof item === "string")
+      : []
   };
 
   if (!Array.isArray(draft.myListings)) return null;

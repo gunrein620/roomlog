@@ -395,6 +395,7 @@ export function ManagerListingBoard({
                       <span>거래 유형</span>
                       <select name="tradeType" defaultValue={selected.tradeType}>
                         <option value="월세">월세</option>
+                        <option value="반전세">반전세</option>
                         <option value="전세">전세</option>
                         <option value="매매">매매</option>
                       </select>

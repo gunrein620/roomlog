@@ -43,17 +43,27 @@ export type ListingFloorPlan = {
   mitunet?: MitunetFloorPlan;
 };
 
+export type TradeTradeType = "월세" | "반전세" | "전세" | "매매";
+
 export type TradeListingInput = {
   title: string;
   roomType: string;
-  tradeType: "월세" | "전세" | "매매";
+  tradeType: TradeTradeType;
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
   detailAddress?: string;
   /** 건물명 — 관리 화면에서 건물별 그룹 보기의 기준(선택 입력) */
   buildingName?: string;
+  /** 전용면적(m²) — 상세 스펙에 표시(선택 입력) */
+  exclusiveAreaM2?: number;
+  /** 층수 표기(예: "4층 / 16층") — 상세 스펙에 표시(선택 입력) */
+  floorInfo?: string;
+  /** 관리비(만원) — 상세 스펙에 표시(선택 입력) */
+  maintenanceFeeManwon?: number;
   description?: string;
+  /** 옵션(에어컨·세탁기 등) — ALLOWED_LISTING_OPTIONS 안의 값만 저장 */
+  options?: string[];
   /** 업로드된 매물 사진 URL 배열(없으면 카드가 목업으로 폴백) */
   images?: string[];
   /** 주소 지오코딩 좌표(없으면 상세 지도는 데모/안내 상태 유지) */
@@ -63,13 +73,15 @@ export type TradeListingInput = {
   floorPlan?: ListingFloorPlan | null;
 };
 
-export type TradeListing = Omit<TradeListingInput, "images"> & {
+export type TradeListing = Omit<TradeListingInput, "images" | "options"> & {
   id: string;
   ownerId: string;
   ownerName: string;
+  roomId?: string;
   status: "노출중" | "계약완료";
   createdAt: string;
   images: string[];
+  options: string[];
 };
 
 /**
@@ -88,7 +100,7 @@ export type TradeContract = {
   tenantId: string;
   tenantName: string;
   status: TradeContractStatus;
-  tradeType: "월세" | "전세" | "매매";
+  tradeType: TradeTradeType;
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
@@ -168,6 +180,16 @@ function normalizeCoords(lat?: number, lng?: number): { lat?: number; lng?: numb
   return { lat: latNum, lng: lngNum };
 }
 
+/** 등록 폼에서 선택 가능한 옵션 목록 — 웹(listing-catalog.ts optionItems)과 같은 순서를 유지한다. */
+export const ALLOWED_LISTING_OPTIONS = ["에어컨", "세탁기", "냉장고", "인덕션", "붙박이장", "CCTV"] as const;
+
+/** 옵션 정규화 — 허용 목록에 있는 값만, 허용 목록 순서로 중복 없이 저장. */
+function normalizeOptions(options?: string[]): string[] {
+  if (!Array.isArray(options)) return [];
+  const selected = new Set(options.filter((item): item is string => typeof item === "string").map((item) => item.trim()));
+  return ALLOWED_LISTING_OPTIONS.filter((item) => selected.has(item));
+}
+
 function normalizeDetailAddress(value?: string): string | undefined {
   const trimmed = typeof value === "string" ? value.trim() : "";
   return trimmed || undefined;
@@ -176,6 +198,43 @@ function normalizeDetailAddress(value?: string): string | undefined {
 function normalizeBuildingName(value?: string): string | undefined {
   const trimmed = typeof value === "string" ? value.trim().slice(0, 80) : "";
   return trimmed || undefined;
+}
+
+function normalizeRoomId(value?: string): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || undefined;
+}
+
+function normalizeTradeType(value: unknown): TradeTradeType {
+  return value === "반전세" || value === "전세" || value === "매매" ? value : "월세";
+}
+
+/** 양수 숫자만 통과(범위 상한 포함) — 면적/관리비 같은 선택 스펙 입력 정규화. */
+function normalizePositiveNumber(value: unknown, max: number): number | undefined {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0 || num > max) return undefined;
+  return Math.round(num * 100) / 100;
+}
+
+function normalizeFloorInfo(value?: string): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim().slice(0, 40) : "";
+  return trimmed || undefined;
+}
+
+/**
+ * 등록/수정 공통 최소 검증 — 가격 0원·한 글자 제목 같은 무의미한 매물이
+ * 공개 피드에 "확인매물"처럼 노출되는 것을 서버에서 막는다.
+ */
+function assertListingEssentials(title: string, tradeType: TradeTradeType, depositManwon: number, monthlyRentManwon: number) {
+  if (title.trim().length < 2) {
+    throw new BadRequestException("매물명은 2자 이상 입력해주세요.");
+  }
+  if ((tradeType === "월세" || tradeType === "반전세") && monthlyRentManwon <= 0) {
+    throw new BadRequestException("월세 금액을 입력해주세요.");
+  }
+  if ((tradeType === "전세" || tradeType === "매매") && depositManwon <= 0) {
+    throw new BadRequestException(tradeType === "전세" ? "전세금을 입력해주세요." : "매매가를 입력해주세요.");
+  }
 }
 
 function fullListingLocation(listing: { location: string; detailAddress?: string }): string {
@@ -360,6 +419,8 @@ export class TradeService implements OnModuleDestroy {
           if (generation >= (this.projectionFailure?.generation ?? -1)) {
             this.projectionFailure = { generation, error };
           }
+          // 실패 은폐 금지 — 프로젝션이 죽으면 이 테이블을 읽는 모든 소비자가 스테일 데이터를 본다.
+          console.warn(`[trade] 매물 DB 프로젝션 실패(gen=${generation}):`, error);
         }
       );
     return generation;
@@ -399,6 +460,7 @@ export class TradeService implements OnModuleDestroy {
         // 구버전 레코드 후방호환 — images/contracts 없으면 빈 값으로, 손상된 floorPlan은 제거한다.
         parsed.listings.forEach((listing) => {
           listing.images = normalizeImages(listing.images);
+          listing.options = normalizeOptions(listing.options);
           listing.floorPlan = normalizeFloorPlan(listing.floorPlan);
           const detailAddress = normalizeDetailAddress(listing.detailAddress);
           if (detailAddress) listing.detailAddress = detailAddress;
@@ -406,6 +468,9 @@ export class TradeService implements OnModuleDestroy {
           const buildingName = normalizeBuildingName(listing.buildingName);
           if (buildingName) listing.buildingName = buildingName;
           else delete listing.buildingName;
+          const roomId = normalizeRoomId(listing.roomId);
+          if (roomId) listing.roomId = roomId;
+          else delete listing.roomId;
           if (listing.status !== "계약완료") listing.status = "노출중";
         });
         parsed.contracts = Array.isArray(parsed.contracts) ? parsed.contracts : [];
@@ -490,24 +555,53 @@ export class TradeService implements OnModuleDestroy {
     return this.listListings().filter((listing) => listing.status === "노출중");
   }
 
-  createListing(owner: { id: string; name: string }, input: TradeListingInput): TradeListing {
+  /** 소유자 스코프 매물 목록 — ?mine=1 경로가 소비(마이페이지·앱 픽커). */
+  listListingsByOwner(ownerId: string): TradeListing[] {
+    return this.listListings().filter((listing) => listing.ownerId === ownerId);
+  }
+
+  attachListingRoom(ownerId: string, listingId: string, roomId: string): TradeListing {
+    const listing = this.ownedListing(ownerId, listingId);
+    const normalizedRoomId = normalizeRoomId(roomId);
+    if (!normalizedRoomId) throw new BadRequestException("roomId is required.");
+    if (listing.roomId === normalizedRoomId) return listing;
+
+    listing.roomId = normalizedRoomId;
+    this.persist();
+    this.projectListings();
+    return listing;
+  }
+
+  createListing(owner: { id: string; name: string }, input: TradeListingInput, roomId?: string): TradeListing {
     if (!input.title?.trim()) throw new BadRequestException("매물명이 필요합니다.");
+    const tradeType = normalizeTradeType(input.tradeType);
+    const depositManwon = Number(input.depositManwon) || 0;
+    const monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
+    assertListingEssentials(input.title, tradeType, depositManwon, monthlyRentManwon);
     const detailAddress = normalizeDetailAddress(input.detailAddress);
     const floorPlan = normalizeSubmittedFloorPlan(input.floorPlan);
     const buildingName = normalizeBuildingName(input.buildingName);
+    const exclusiveAreaM2 = normalizePositiveNumber(input.exclusiveAreaM2, 10000);
+    const floorInfo = normalizeFloorInfo(input.floorInfo);
+    const maintenanceFeeManwon = normalizePositiveNumber(input.maintenanceFeeManwon, 1000);
     const listing: TradeListing = {
       id: randomUUID().slice(0, 8),
       ownerId: owner.id,
       ownerName: owner.name,
+      ...(normalizeRoomId(roomId) ? { roomId: normalizeRoomId(roomId) } : {}),
       title: input.title.trim(),
       roomType: input.roomType?.trim() || "원룸",
-      tradeType: input.tradeType === "전세" || input.tradeType === "매매" ? input.tradeType : "월세",
-      depositManwon: Number(input.depositManwon) || 0,
-      monthlyRentManwon: Number(input.monthlyRentManwon) || 0,
+      tradeType,
+      depositManwon,
+      monthlyRentManwon,
       location: input.location?.trim() || "위치 미입력",
       ...(detailAddress ? { detailAddress } : {}),
       ...(buildingName ? { buildingName } : {}),
+      ...(exclusiveAreaM2 !== undefined ? { exclusiveAreaM2 } : {}),
+      ...(floorInfo ? { floorInfo } : {}),
+      ...(maintenanceFeeManwon !== undefined ? { maintenanceFeeManwon } : {}),
       description: input.description?.trim() || "",
+      options: normalizeOptions(input.options),
       images: normalizeImages(input.images),
       ...normalizeCoords(input.lat, input.lng),
       ...(floorPlan ? { floorPlan } : {}),
@@ -541,13 +635,29 @@ export class TradeService implements OnModuleDestroy {
   updateListing(owner: { id: string }, listingId: string, input: Partial<TradeListingInput>): TradeListing {
     const listing = this.ownedListing(owner.id, listingId);
 
-    if (typeof input.title === "string" && input.title.trim()) listing.title = input.title.trim();
+    // 최종 값으로 먼저 검증하고 통과했을 때만 반영 — 검증 실패가 메모리 상태를 반쯤 바꿔놓지 않게.
+    const nextTitle =
+      typeof input.title === "string" && input.title.trim() ? input.title.trim() : listing.title;
+    const nextTradeType =
+      input.tradeType === "월세" ||
+      input.tradeType === "반전세" ||
+      input.tradeType === "전세" ||
+      input.tradeType === "매매"
+        ? input.tradeType
+        : listing.tradeType;
+    const nextDeposit =
+      input.depositManwon !== undefined ? Number(input.depositManwon) || 0 : listing.depositManwon;
+    const nextMonthly =
+      input.monthlyRentManwon !== undefined
+        ? Number(input.monthlyRentManwon) || 0
+        : listing.monthlyRentManwon;
+    assertListingEssentials(nextTitle, nextTradeType, nextDeposit, nextMonthly);
+
+    listing.title = nextTitle;
     if (typeof input.roomType === "string" && input.roomType.trim()) listing.roomType = input.roomType.trim();
-    if (input.tradeType === "월세" || input.tradeType === "전세" || input.tradeType === "매매") {
-      listing.tradeType = input.tradeType;
-    }
-    if (input.depositManwon !== undefined) listing.depositManwon = Number(input.depositManwon) || 0;
-    if (input.monthlyRentManwon !== undefined) listing.monthlyRentManwon = Number(input.monthlyRentManwon) || 0;
+    listing.tradeType = nextTradeType;
+    listing.depositManwon = nextDeposit;
+    listing.monthlyRentManwon = nextMonthly;
     if (typeof input.location === "string" && input.location.trim()) listing.location = input.location.trim();
     if (typeof input.detailAddress === "string") {
       const detailAddress = normalizeDetailAddress(input.detailAddress);
@@ -559,7 +669,23 @@ export class TradeService implements OnModuleDestroy {
       if (buildingName) listing.buildingName = buildingName;
       else delete listing.buildingName;
     }
+    if (input.exclusiveAreaM2 !== undefined) {
+      const area = normalizePositiveNumber(input.exclusiveAreaM2, 10000);
+      if (area !== undefined) listing.exclusiveAreaM2 = area;
+      else delete listing.exclusiveAreaM2;
+    }
+    if (input.floorInfo !== undefined) {
+      const floorInfo = normalizeFloorInfo(input.floorInfo);
+      if (floorInfo) listing.floorInfo = floorInfo;
+      else delete listing.floorInfo;
+    }
+    if (input.maintenanceFeeManwon !== undefined) {
+      const fee = normalizePositiveNumber(input.maintenanceFeeManwon, 1000);
+      if (fee !== undefined) listing.maintenanceFeeManwon = fee;
+      else delete listing.maintenanceFeeManwon;
+    }
     if (typeof input.description === "string") listing.description = input.description.trim();
+    if (Array.isArray(input.options)) listing.options = normalizeOptions(input.options);
     if (Array.isArray(input.images)) listing.images = normalizeImages(input.images);
     if (input.lat !== undefined || input.lng !== undefined) {
       const coords = normalizeCoords(input.lat, input.lng);
@@ -709,7 +835,9 @@ export class TradeService implements OnModuleDestroy {
   /** 계약 조건 한 줄 표기 — 채팅 안내 메시지 공용. */
   private contractTermsLabel(contract: Pick<TradeContract, "tradeType" | "depositManwon" | "monthlyRentManwon">): string {
     const deposit = (contract.depositManwon || 0).toLocaleString("ko-KR");
-    if (contract.tradeType === "월세") return `월세 ${deposit}/${contract.monthlyRentManwon || 0}`;
+    if (contract.tradeType === "월세" || contract.tradeType === "반전세") {
+      return `${contract.tradeType} ${deposit}/${contract.monthlyRentManwon || 0}`;
+    }
     return `${contract.tradeType} ${deposit}만`;
   }
 

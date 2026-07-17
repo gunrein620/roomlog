@@ -6,7 +6,7 @@ import { AUTH_COOKIE } from "@/lib/auth-cookie";
 async function forward(
   request: Request,
   path: string[],
-  method: "GET" | "POST" | "PATCH" | "DELETE"
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 ) {
   const token = (await cookies()).get(AUTH_COOKIE)?.value;
 
@@ -21,15 +21,26 @@ async function forward(
   };
   const init: RequestInit = { method, headers, cache: "no-store" };
 
-  if (method === "POST" || method === "PATCH") {
+  if (method === "POST" || method === "PUT" || method === "PATCH") {
     headers["Content-Type"] = "application/json";
     init.body = await request.text();
   }
 
-  const upstream = await fetch(
-    apiUrl(`/manager/${path.join("/")}${search}`, { requestUrl: request.url }),
-    init
-  );
+  let upstream: Response;
+  try {
+    upstream = await fetch(
+      apiUrl(`/manager/${path.join("/")}${search}`, { requestUrl: request.url }),
+      init
+    );
+  } catch {
+    return NextResponse.json(
+      {
+        code: "UPSTREAM_UNAVAILABLE",
+        message: "API 서버에 연결할 수 없습니다."
+      },
+      { status: 503 }
+    );
+  }
   const data = await upstream.json().catch(() => undefined);
 
   if (!upstream.ok) {
@@ -51,6 +62,11 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
 export async function POST(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   return forward(request, path, "POST");
+}
+
+export async function PUT(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  const { path } = await context.params;
+  return forward(request, path, "PUT");
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ path: string[] }> }) {

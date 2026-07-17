@@ -164,9 +164,37 @@ test("serves role frontends from the single web container on port 3000", () => {
     assert.doesNotMatch(source, /3001:3001|3002:3002|3003:3003/);
   }
 
-  assert.match(webDockerfileSource, /COPY assets assets/);
+  assert.match(nextConfigSource, /output:\s*["']standalone["']/);
+  assert.match(nextConfigSource, /outputFileTracingRoot:\s*join\(__dirname, "\.\.", "\.\."\)/);
+  assert.match(webDockerfileSource, /FROM base AS runner/);
+  assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/.next\/standalone/);
+  assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/.next\/static \/app\/apps\/web\/.next\/static/);
+  assert.match(webDockerfileSource, /COPY --from=builder \/app\/apps\/web\/public \/app\/apps\/web\/public/);
+  assert.match(webDockerfileSource, /ENV HOSTNAME=0\.0\.0\.0/);
   assert.match(webDockerfileSource, /EXPOSE 3000/);
-  assert.match(webDockerfileSource, /CMD \["pnpm", "--filter", "web", "start"\]/);
+  assert.match(webDockerfileSource, /CMD \["node", "apps\/web\/server\.js"\]/);
+  assert.doesNotMatch(webDockerfileSource, /FROM deps AS runner/);
+});
+
+test("packages the production API without reinstalling dependencies in the runner", () => {
+  assert.equal(apiDockerfileSource.match(/pnpm install/g)?.length, 1);
+  assert.equal(apiDockerfileSource.match(/prisma generate/g)?.length, 1);
+  assert.match(apiDockerfileSource, /pnpm --filter api deploy --legacy --prod \/prod\/api/);
+  assert.match(apiDockerfileSource, /cp -R "\$builder_client_root\/\.prisma" "\$deployed_client_root\/\.prisma"/);
+
+  const runnerSource = requireSourceMatch(
+    apiDockerfileSource,
+    /FROM base AS runner[\s\S]*$/,
+    "api runner stage",
+  );
+  assert.doesNotMatch(runnerSource, /pnpm install/);
+  assert.doesNotMatch(runnerSource, /prisma generate/);
+  assert.match(runnerSource, /COPY --from=builder \/prod\/api \/app\/apps\/api/);
+  assert.match(runnerSource, /COPY --from=builder \/app\/apps\/api\/dist \/app\/apps\/api\/dist/);
+  assert.match(runnerSource, /COPY --from=builder \/app\/prisma \/app\/prisma/);
+  assert.match(runnerSource, /COPY --from=builder \/app\/scripts\/reconstruct \/app\/scripts\/reconstruct/);
+  assert.match(runnerSource, /ln -sfn \/app\/packages\/types \/app\/apps\/api\/node_modules\/@roomlog\/types/);
+  assert.match(runnerSource, /CMD \["node", "apps\/api\/dist\/main"\]/);
 });
 
 test("production deploy removes stale role containers before rebinding port 3000", () => {
@@ -1407,8 +1435,13 @@ test("opens a Dabang-like listing detail view from a listing card", () => {
   assert.match(cssSource, /\.detail-quick-actions button:first-child/);
   // 전화·3D 둘러보기·1인칭 체험·문자 문의 4버튼 그리드(임시 데모).
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*grid-template-columns:\s*52px minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.35fr\)/s);
-  // 1인칭 체험 버튼은 splat 투어 페이지로 직접 이동한다.
+  // 1인칭 체험 버튼은 splat 투어 페이지로 직접 이동한다(정적 매물 = 기존 데모 링크 유지).
   assert.match(pageSource, /detail-contact-splat[\s\S]*href="\/splat-tour"/);
+  // 직접등록(TRADE-) 매물은 매물별로 게이트: 대표 자산이 없으면 공통 데모 링크 대신
+  // "준비 안 됨" 비활성 상태를 링크 아닌 요소로 정직하게 노출한다(데모 은폐 금지).
+  assert.match(listingDetailViewSource, /isTradeDirectListing/);
+  assert.match(listingDetailViewSource, /이 매물은 3D 투어가 준비되어 있지 않습니다/);
+  assert.match(listingDetailViewSource, /detail-contact-splat-empty/);
   assert.match(cssSource, /\.detail-contact-bar\s*{[^}]*padding:\s*24px 14px 12px/s);
   assert.match(cssSource, /\.detail-contact-small,\s*[\s\S]*?\.detail-contact-tour\s*{[^}]*min-height:\s*54px/s);
   assert.match(cssSource, /\.detail-gallery\s*{[^}]*height:\s*clamp\(380px, 48vh, 440px\)/s);

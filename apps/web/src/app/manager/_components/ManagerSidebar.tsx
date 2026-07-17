@@ -48,6 +48,7 @@ export interface ManagerSidebarProps {
   onNavigate?: () => void;
   showCloseButton?: boolean;
   messagingUnreadCount?: number;
+  ticketUnreadCount?: number;
   /** 사이드바 우측 상단 액션 슬롯 (예: 데스크톱 접기 토글) — 모바일 닫기 버튼과 같은 자리. */
   headerAction?: ReactNode;
 }
@@ -61,6 +62,7 @@ export function ManagerSidebar({
   onNavigate,
   showCloseButton = false,
   messagingUnreadCount = 0,
+  ticketUnreadCount = 0,
   headerAction,
 }: ManagerSidebarProps) {
   const pathname = usePathname();
@@ -155,7 +157,10 @@ export function ManagerSidebar({
                   isMessaging && messagingUnreadCount > 0
                     ? `, 미확인 메시지 ${messagingUnreadCount}개`
                     : "";
-
+                const ticketUnreadLabel =
+                  isTicket && ticketUnreadCount > 0
+                    ? `, 미확인 민원·하자 ${ticketUnreadCount}개`
+                    : "";
                 return (
                   <div key={item.id} className="manager-sidebar__item">
                     {isCollapsible ? (
@@ -164,12 +169,20 @@ export function ManagerSidebar({
                         className={`manager-sidebar__parent-toggle${active ? " is-active" : ""}`}
                         aria-expanded={expanded}
                         aria-controls={subnavId}
-                        aria-label={`${item.label} 메뉴 ${expanded ? "접기" : "펼치기"}${messagingUnreadLabel}`}
+                        aria-label={`${item.label} 메뉴 ${expanded ? "접기" : "펼치기"}${ticketUnreadLabel}${messagingUnreadLabel}`}
                         data-expanded={expanded}
                         onClick={() => setExpanded((current) => !current)}
                       >
                         <Icon aria-hidden="true" />
                         <span className="manager-sidebar__label">{item.label}</span>
+                        {isTicket && ticketUnreadCount > 0 ? (
+                          <span
+                            className="manager-sidebar__unread-badge"
+                            aria-label={`미확인 민원·하자 ${ticketUnreadCount}개`}
+                          >
+                            {ticketUnreadCount > 99 ? "99+" : ticketUnreadCount}
+                          </span>
+                        ) : null}
                         {isMessaging && messagingUnreadCount > 0 ? (
                           <span
                             className="manager-sidebar__unread-badge"

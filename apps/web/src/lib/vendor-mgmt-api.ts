@@ -1,147 +1,239 @@
 import type {
-  VendorDuplicateCandidate,
-  VendorJobRecord,
-  VendorPerf,
-  VendorProfile,
-  VendorTrade,
+  DecideRepairCompletionInput,
+  ManagerVendorDetail,
+  ManagerVendorJobLookup,
+  ManagerVendorView,
+  VendorCatalogSearchFilters,
+  VendorCatalogSearchResult,
+  VendorCompletionDecisionResult,
+  VendorEstimate,
+  VendorEstimateReviewInput,
+  VendorJobDetail,
+  VendorVisitScheduleInput,
 } from "@roomlog/types";
 import {
-  DEMO_VENDOR_DUPLICATE_CANDIDATES,
-  DEMO_VENDOR_ID,
-  DEMO_VENDOR_JOBS,
-  DEMO_VENDOR_PERF,
-  DEMO_VENDORS,
+  DEMO_MANAGER_VENDOR_DETAILS,
+  DEMO_MANAGER_VENDORS,
+  DEMO_VENDOR_SEARCH_RESULTS,
 } from "./demo-vendor-mgmt";
 import { serverFetch } from "./server-api";
 
-// 룸로그 API 클라이언트 (관리인 업체관리 M-VEND 슬라이스).
-// 서버 컴포넌트 전용: httpOnly 쿠키 토큰을 Nest /manager/vendor-mgmt projection API로 forward한다.
-// api가 안 떠 있거나 인증 전이면 경고 로그 후 데모 데이터로 폴백한다.
+export type VendorReadResult<T> = { data: T; source: "API" | "DEMO" };
 
-export const DEMO_MANAGER_VENDOR_ID = DEMO_VENDOR_ID;
-
-export type VendorSort = "trade_recent" | "recent";
-
-export interface VendorListFilters {
-  q?: string;
-  trade?: VendorTrade | "all";
-  sort?: VendorSort;
+/** Node/browser fetch가 연결 단계에서 내는 TypeError만 데모 허용 대상으로 본다. */
+export function canUseVendorReadDemo(error: unknown): boolean {
+  if (!(error instanceof TypeError)) return false;
+  return /fetch failed|failed to fetch|networkerror|load failed/i.test(error.message);
 }
 
-export interface VendorDetailBundle {
-  vendor: VendorProfile;
-  jobs: VendorJobRecord[];
-  perf?: VendorPerf;
-}
-
-export interface VendorPerfBundle {
-  vendor: VendorProfile;
-  jobs: VendorJobRecord[];
-  perf: VendorPerf;
-}
-
-export interface SaveVendorProfileInput {
-  businessName: string;
-  contactPerson: string;
-  phone: string;
-  serviceArea: string;
-}
-
-async function tryFetch<T>(path: string, fallback: T, label: string): Promise<T> {
+export async function readVendorData<T>(
+  read: () => Promise<T>,
+  demo: T,
+): Promise<VendorReadResult<T>> {
   try {
-    return await serverFetch<T>(path);
+    return { data: await read(), source: "API" };
   } catch (error) {
-    console.warn(`[vendor-mgmt/api] ${label} 실패 → 데모 폴백`, error);
-    return fallback;
+    if (!canUseVendorReadDemo(error)) throw error;
+    console.warn("[vendor-mgmt/api] API 연결 불가 · 명시적 데모 데이터 사용");
+    return { data: demo, source: "DEMO" };
   }
 }
 
-function byRecent(a: VendorProfile, b: VendorProfile): number {
-  const aTime = a.lastUsedAt ? new Date(a.lastUsedAt).getTime() : 0;
-  const bTime = b.lastUsedAt ? new Date(b.lastUsedAt).getTime() : 0;
-  return bTime - aTime;
+export function toSeoulScheduleIso(value: string) {
+  const normalized = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)) {
+    throw new Error("방문 일정을 확인해 주세요.");
+  }
+  const date = new Date(`${normalized}:00+09:00`);
+  if (Number.isNaN(date.getTime())) throw new Error("방문 일정을 확인해 주세요.");
+  return date.toISOString();
 }
 
-function filterVendors(vendors: VendorProfile[], filters: VendorListFilters = {}): VendorProfile[] {
-  const q = filters.q?.trim().toLowerCase();
-  const trade = filters.trade && filters.trade !== "all" ? filters.trade : undefined;
-
-  return vendors
-    .filter((vendor) => {
-      const matchesQuery =
-        !q ||
-        vendor.name.toLowerCase().includes(q) ||
-        vendor.phone?.toLowerCase().includes(q) ||
-        vendor.contactPerson?.toLowerCase().includes(q);
-      const matchesTrade = !trade || vendor.trades.includes(trade);
-      return matchesQuery && matchesTrade;
-    })
-    .sort(byRecent);
-}
-
-export function listVendors(filters: VendorListFilters = {}): Promise<VendorProfile[]> {
-  const fallback = filterVendors(DEMO_VENDORS, filters);
+function queryString(filters: VendorCatalogSearchFilters = {}) {
   const params = new URLSearchParams();
-  if (filters.q) params.set("q", filters.q);
-  if (filters.trade && filters.trade !== "all") params.set("trade", filters.trade);
-  if (filters.sort) params.set("sort", filters.sort);
-  const query = params.toString() ? `?${params.toString()}` : "";
-  return tryFetch(`/manager/vendor-mgmt/vendors${query}`, fallback, "업체 목록 조회");
+  if (filters.query?.trim()) params.set("query", filters.query.trim());
+  if (filters.trade?.trim()) params.set("trade", filters.trade.trim());
+  if (filters.serviceArea?.trim()) params.set("serviceArea", filters.serviceArea.trim());
+  if (filters.verificationStatus) {
+    params.set("verificationStatus", filters.verificationStatus);
+  }
+  if (typeof filters.isActive === "boolean") {
+    params.set("isActive", String(filters.isActive));
+  }
+  const value = params.toString();
+  return value ? `?${value}` : "";
 }
 
-export async function getVendorDetail(id = DEMO_MANAGER_VENDOR_ID): Promise<VendorDetailBundle> {
-  const fallbackVendor = DEMO_VENDORS.find((vendor) => vendor.id === id) ?? DEMO_VENDORS[0];
-  const fallback: VendorDetailBundle = {
-    vendor: fallbackVendor,
-    jobs: DEMO_VENDOR_JOBS.filter((job) => job.vendorId === fallbackVendor.id),
-    perf: DEMO_VENDOR_PERF.find((perf) => perf.vendorId === fallbackVendor.id),
-  };
-  return tryFetch(
-    `/manager/vendor-mgmt/vendors/${encodeURIComponent(id)}`,
-    fallback,
-    "업체 상세 조회"
+function includesText(values: Array<string | undefined>, query?: string) {
+  const normalized = query?.trim().toLocaleLowerCase("ko");
+  if (!normalized) return true;
+  return values.some((value) => value?.toLocaleLowerCase("ko").includes(normalized));
+}
+
+function filterManagerDemo(filters: VendorCatalogSearchFilters) {
+  return DEMO_MANAGER_VENDORS.filter(({ catalog }) =>
+    includesText(
+      [catalog.businessName, catalog.contactPerson, catalog.phone, catalog.businessNumber],
+      filters.query,
+    )
+    && (!filters.trade || catalog.trades.includes(filters.trade))
+    && (!filters.serviceArea || catalog.serviceAreas.some((area) => area.includes(filters.serviceArea!)))
+    && (!filters.verificationStatus || catalog.verificationStatus === filters.verificationStatus)
+    && (filters.isActive === undefined || catalog.isActive === filters.isActive),
   );
 }
 
-export function createVendorProfile(input: SaveVendorProfileInput): Promise<VendorDetailBundle> {
-  return serverFetch<VendorDetailBundle>(
-    "/manager/vendor-mgmt/vendors",
-    { method: "POST", body: JSON.stringify(input) }
+function filterSearchDemo(filters: VendorCatalogSearchFilters) {
+  return DEMO_VENDOR_SEARCH_RESULTS.filter(({ catalog }) =>
+    includesText(
+      [catalog.businessName, catalog.contactPerson, catalog.phone, catalog.businessNumber],
+      filters.query,
+    )
+    && (!filters.trade || catalog.trades.includes(filters.trade))
+    && (!filters.serviceArea || catalog.serviceAreas.some((area) => area.includes(filters.serviceArea!)))
+    && (!filters.verificationStatus || catalog.verificationStatus === filters.verificationStatus)
+    && (filters.isActive === undefined || catalog.isActive === filters.isActive),
   );
 }
 
-export function updateVendorProfile(
-  id: string,
-  input: SaveVendorProfileInput
-): Promise<VendorDetailBundle> {
-  return serverFetch<VendorDetailBundle>(
-    `/manager/vendor-mgmt/vendors/${encodeURIComponent(id)}`,
-    { method: "PATCH", body: JSON.stringify(input) }
+export function listManagerVendors(
+  filters: VendorCatalogSearchFilters = {},
+): Promise<VendorReadResult<ManagerVendorView[]>> {
+  return readVendorData(
+    () => serverFetch<ManagerVendorView[]>(`/manager/vendor-mgmt/vendors${queryString(filters)}`),
+    filterManagerDemo(filters),
   );
 }
 
-export async function getVendorPerf(id = DEMO_MANAGER_VENDOR_ID): Promise<VendorPerfBundle> {
-  const detail = await getVendorDetail(id);
-  const fallbackPerf =
-    detail.perf ??
-    DEMO_VENDOR_PERF.find((perf) => perf.vendorId === detail.vendor.id) ??
-    DEMO_VENDOR_PERF[0];
-  const fallback: VendorPerfBundle = {
-    vendor: detail.vendor,
-    jobs: detail.jobs,
-    perf: fallbackPerf,
-  };
-  return tryFetch(
-    `/manager/vendor-mgmt/vendors/${encodeURIComponent(id)}/perf`,
-    fallback,
-    "업체 성과 조회"
+export function searchVendorCatalog(
+  filters: VendorCatalogSearchFilters = {},
+): Promise<VendorReadResult<VendorCatalogSearchResult[]>> {
+  return readVendorData(
+    () => serverFetch<VendorCatalogSearchResult[]>(`/manager/vendor-mgmt/search${queryString(filters)}`),
+    filterSearchDemo(filters),
   );
 }
 
-export function listVendorDuplicateCandidates(): Promise<VendorDuplicateCandidate[]> {
-  return tryFetch(
-    "/manager/vendor-mgmt/duplicate-candidates",
-    DEMO_VENDOR_DUPLICATE_CANDIDATES,
-    "업체 중복 후보 조회"
+export function getManagerVendorDetail(
+  vendorId: string,
+): Promise<VendorReadResult<ManagerVendorDetail>> {
+  const demo = DEMO_MANAGER_VENDOR_DETAILS.find((detail) => detail.vendor.vendorId === vendorId);
+  if (!demo) {
+    return serverFetch<ManagerVendorDetail>(
+      `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}`,
+    ).then((data) => ({ data, source: "API" }));
+  }
+  return readVendorData(
+    () => serverFetch<ManagerVendorDetail>(
+      `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}`,
+    ),
+    demo,
+  );
+}
+
+export function getManagerVendorPerformance(
+  vendorId: string,
+): Promise<VendorReadResult<ManagerVendorDetail["performance"]>> {
+  const demo = DEMO_MANAGER_VENDOR_DETAILS.find((detail) => detail.vendor.vendorId === vendorId);
+  if (!demo) {
+    return serverFetch<ManagerVendorDetail["performance"]>(
+      `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}/performance`,
+    ).then((data) => ({ data, source: "API" }));
+  }
+  return readVendorData(
+    () => serverFetch<ManagerVendorDetail["performance"]>(
+      `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}/performance`,
+    ),
+    demo.performance,
+  );
+}
+
+export function findDemoManagerVendorJobByTicket(
+  ticketId: string,
+): ManagerVendorJobLookup | null {
+  const candidates = DEMO_MANAGER_VENDOR_DETAILS.flatMap((detail) =>
+    detail.jobs
+      .filter((job) => job.ticketId === ticketId && job.status !== "CANCELLED")
+      .map((job) => ({ vendor: detail.vendor, job })),
+  );
+  return candidates.find(({ job }) => job.status !== "COMPLETED")
+    ?? candidates.find(({ job }) => job.status === "COMPLETED")
+    ?? null;
+}
+
+export function findManagerVendorJobByTicket(
+  ticketId: string,
+): Promise<VendorReadResult<ManagerVendorJobLookup | null>> {
+  return readVendorData(
+    () => serverFetch<ManagerVendorJobLookup | null>(
+      `/manager/vendor-mgmt/tickets/${encodeURIComponent(ticketId)}/job`,
+    ),
+    findDemoManagerVendorJobByTicket(ticketId),
+  );
+}
+
+export function registerManagerVendor(vendorId: string): Promise<ManagerVendorView> {
+  return serverFetch<ManagerVendorView>(
+    `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}/registration`,
+    { method: "PUT", body: JSON.stringify({}) },
+  );
+}
+
+export function archiveManagerVendor(vendorId: string): Promise<ManagerVendorView> {
+  return serverFetch<ManagerVendorView>(
+    `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}/registration`,
+    { method: "DELETE" },
+  );
+}
+
+export function updateManagerVendorNote(
+  vendorId: string,
+  managerNote: string,
+): Promise<ManagerVendorView> {
+  return serverFetch<ManagerVendorView>(
+    `/manager/vendor-mgmt/vendors/${encodeURIComponent(vendorId)}/manager-note`,
+    { method: "PATCH", body: JSON.stringify({ managerNote }) },
+  );
+}
+
+export function assignManagerVendor(
+  ticketId: string,
+  input: { vendorId: string; requestNote: string },
+): Promise<VendorJobDetail> {
+  return serverFetch<VendorJobDetail>(
+    `/manager/tickets/${encodeURIComponent(ticketId)}/assign-vendor`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function reviewVendorEstimate(
+  repairId: string,
+  estimateId: string,
+  input: VendorEstimateReviewInput,
+): Promise<VendorEstimate> {
+  return serverFetch<VendorEstimate>(
+    `/manager/repairs/${encodeURIComponent(repairId)}/estimates/${encodeURIComponent(estimateId)}/review`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function confirmEstimateVisit(
+  repairId: string,
+  estimateId: string,
+  input: VendorVisitScheduleInput,
+): Promise<VendorJobDetail> {
+  return serverFetch<VendorJobDetail>(
+    `/manager/repairs/${encodeURIComponent(repairId)}/estimates/${encodeURIComponent(estimateId)}/confirm-visit`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function decideRepairCompletion(
+  repairId: string,
+  input: DecideRepairCompletionInput,
+): Promise<VendorCompletionDecisionResult> {
+  return serverFetch<VendorCompletionDecisionResult>(
+    `/manager/repairs/${encodeURIComponent(repairId)}/completion-decisions`,
+    { method: "POST", body: JSON.stringify(input) },
   );
 }

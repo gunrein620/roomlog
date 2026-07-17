@@ -1,61 +1,50 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, ChevronRight, EllipsisVertical } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ManagerContractDashboard, ManagerContractRow } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
 
 const PAGE_SIZE = 10;
 
 const CONTRACT_TABLE_COLUMNS = [
-  "우선",
-  "검토상태",
-  "건물",
-  "호실",
+  "우선순위",
+  "대상",
+  "건물·호실",
   "임차인",
-  "업로드",
-  "월세",
-  "관리비",
-  "납부일",
-  "시작일",
-  "종료일",
-  "D-Day",
+  "보증금",
   "확인",
-  "작업",
+  "다음 작업",
 ] as const;
 
 type ContractStatusFilter = "all" | "needs_check" | "sla" | "pending" | "expiring";
-type ContractOriginFilter = "all" | ManagerContractRow["origin"];
+
+const dashboardStatusFilters = ["all", "needs_check", "sla", "expiring"] as const;
 
 const statusFilterLabels: Record<ContractStatusFilter, string> = {
   all: "전체",
   needs_check: "확인 필요",
-  sla: "검토 필요",
+  sla: "기한 만료",
   pending: "검토 대기",
   expiring: "만료 예정",
-};
-
-const originFilterLabels: Record<ContractOriginFilter, string> = {
-  all: "전체",
-  tenant_upload: "임차인",
-  manager_upload: "관리자",
-  manual: "수동",
 };
 
 export function ContractDashboardClient({
   counts,
   rows,
   focusedContractId,
+  showRegistrationAlert = false,
 }: {
   counts: ManagerContractDashboard["counts"];
   rows: ManagerContractRow[];
   focusedContractId?: string;
+  showRegistrationAlert?: boolean;
 }) {
+  const registrationAlertShownRef = useRef(false);
   const [filters, setFilters] = useState({
     status: "all" as ContractStatusFilter,
     building: "all",
-    origin: "all" as ContractOriginFilter,
     query: "",
   });
   const focusedRowIndex = focusedContractId
@@ -73,16 +62,22 @@ export function ContractDashboardClient({
     [rows]
   );
   const statusCounts = useMemo(() => countContractStatuses(rows, counts), [rows, counts]);
+  const readyCount = useMemo(
+    () =>
+      rows.filter(
+        (row) => row.contract.review !== "confirmed" && row.needsCheckCount === 0 && !row.slaOverdue,
+      ).length,
+    [rows],
+  );
   const filteredRows = useMemo(() => {
     const normalizedQuery = normalizeSearchText(filters.query);
 
     return rows.filter((row) => {
       const matchesStatus = contractMatchesStatus(row, filters.status);
       const matchesBuilding = filters.building === "all" || row.buildingName === filters.building;
-      const matchesOrigin = filters.origin === "all" || row.origin === filters.origin;
       const matchesQuery = !normalizedQuery || contractSearchText(row).includes(normalizedQuery);
 
-      return matchesStatus && matchesBuilding && matchesOrigin && matchesQuery;
+      return matchesStatus && matchesBuilding && matchesQuery;
     });
   }, [filters, rows]);
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
@@ -91,6 +86,12 @@ export function ContractDashboardClient({
   const firstResult = filteredRows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const lastResult = Math.min(currentPage * PAGE_SIZE, filteredRows.length);
   const focusedRow = focusedRowIndex >= 0 ? rows[focusedRowIndex] : undefined;
+
+  useEffect(() => {
+    if (!showRegistrationAlert || registrationAlertShownRef.current) return;
+    registrationAlertShownRef.current = true;
+    window.alert("등록되었습니다.");
+  }, [showRegistrationAlert]);
 
   useEffect(() => {
     if (!focusedContractId) return;
@@ -111,7 +112,30 @@ export function ContractDashboardClient({
 
   return (
     <section className="manager-contract-dashboard" aria-labelledby="manager-contract-dashboard-title">
-      <h2 id="manager-contract-dashboard-title">계약 목록 · 검토대기/확인필요/검토 필요 상단</h2>
+      <div className="manager-contract-dashboard__hero">
+        <div className="manager-contract-dashboard__hero-copy">
+          <h2 id="manager-contract-dashboard-title">오늘 처리해야 할 계약만 먼저 보이는 검토 큐</h2>
+          <p>
+            전체 계약 표를 유지하되, 기한 만료·확인 필요·만료 예정 순으로 우선순위를 노출합니다.
+            관리자에게 중요한 것은 “어느 계약부터 열어야 하는지”입니다.
+          </p>
+        </div>
+        <div className="manager-contract-dashboard__hero-actions">
+          <button type="button" className="manager-contract-dashboard__secondary-action">
+            필터 저장
+          </button>
+          <Link className="manager-contract-dashboard__create-link" href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>
+            계약서 등록
+          </Link>
+        </div>
+      </div>
+
+      <div className="manager-contract-dashboard__metrics" aria-label="계약서 검토 요약">
+        <DashboardMetric label="검토 대기" value={`${counts.pending}건`} note="신규 업로드 포함" />
+        <DashboardMetric label="확인 필요" value={`${counts.needsCheck}건`} note="OCR 원문 대조 필요" />
+        <DashboardMetric label="기한 만료" value={`${counts.slaOverdue}건`} note="48시간 이상 미확정" />
+        <DashboardMetric label="바로 확정 가능" value={`${readyCount}건`} note="보증금·특약 확인 완료" />
+      </div>
 
       {focusedRow ? (
         <div className="manager-contract-dashboard__confirmation" role="status" aria-live="polite">
@@ -125,70 +149,56 @@ export function ContractDashboardClient({
         </div>
       ) : null}
 
-      <div className="manager-contract-dashboard__filter-header">
-        <div className="manager-contract-dashboard__status-filters" aria-label="계약 상태 필터">
-          {(Object.keys(statusFilterLabels) as ContractStatusFilter[]).map((status) => (
-            <button
-              key={status}
-              type="button"
-              aria-pressed={filters.status === status}
-              onClick={() => updateFilters({ status })}
-            >
-              {statusFilterLabels[status]} {statusCounts[status]}
-            </button>
-          ))}
+      <div className="manager-contract-dashboard__queue-panel">
+        <div className="manager-contract-dashboard__filter-header">
+          <h3>계약서 검토 큐</h3>
+          <div className="manager-contract-dashboard__status-filters" aria-label="계약 상태 필터">
+            {dashboardStatusFilters.map((status) => (
+              <button
+                key={status}
+                type="button"
+                aria-pressed={filters.status === status}
+                onClick={() => updateFilters({ status })}
+              >
+                {statusFilterLabels[status]} {statusCounts[status]}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <Link className="manager-contract-dashboard__create-link" href={MANAGER_CONTRACT_ROUTES["M-DOC-02"]}>
-          계약서 등록
-        </Link>
+        <div className="manager-contract-dashboard__filter-panel">
+          <label className="manager-contract-dashboard__search-field" htmlFor="manager-contract-search">
+            <span className="manager-contract-dashboard__field-label">검색</span>
+            <input
+              id="manager-contract-search"
+              aria-label="계약 검색"
+              placeholder="101호 / 미연결 임차인"
+              value={filters.query}
+              onChange={(event) => updateFilters({ query: event.target.value })}
+            />
+          </label>
+
+          <label htmlFor="manager-contract-building">
+            <span className="manager-contract-dashboard__field-label">건물</span>
+            <select
+              id="manager-contract-building"
+              aria-label="건물 필터"
+              value={filters.building}
+              onChange={(event) => updateFilters({ building: event.target.value })}
+            >
+              <option value="all">전체 건물</option>
+              {buildings.map((building) => (
+                <option key={building} value={building}>
+                  {building}
+                </option>
+              ))}
+            </select>
+          </label>
+
+        </div>
+
+        <ContractDashboardTable rows={pageRows} focusedContractId={focusedContractId} />
       </div>
-
-      <div className="manager-contract-dashboard__filter-panel">
-        <label className="manager-contract-dashboard__search-field" htmlFor="manager-contract-search">
-          <span>검색</span>
-          <input
-            id="manager-contract-search"
-            aria-label="계약 검색"
-            placeholder="건물, 호실, 임차인 검색"
-            value={filters.query}
-            onChange={(event) => updateFilters({ query: event.target.value })}
-          />
-        </label>
-
-        <label htmlFor="manager-contract-building">
-          <span>건물</span>
-          <select
-            id="manager-contract-building"
-            value={filters.building}
-            onChange={(event) => updateFilters({ building: event.target.value })}
-          >
-            <option value="all">전체</option>
-            {buildings.map((building) => (
-              <option key={building} value={building}>
-                {building}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label htmlFor="manager-contract-origin">
-          <span>업로드</span>
-          <select
-            id="manager-contract-origin"
-            value={filters.origin}
-            onChange={(event) => updateFilters({ origin: event.target.value as ContractOriginFilter })}
-          >
-            {(Object.keys(originFilterLabels) as ContractOriginFilter[]).map((origin) => (
-              <option key={origin} value={origin}>
-                {originFilterLabels[origin]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <ContractDashboardTable rows={pageRows} focusedContractId={focusedContractId} />
 
       <footer className="manager-contract-dashboard__pagination">
         <span>
@@ -225,6 +235,16 @@ export function ContractDashboardClient({
         </nav>
       </footer>
     </section>
+  );
+}
+
+function DashboardMetric({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="manager-contract-dashboard__metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </div>
   );
 }
 
@@ -269,45 +289,19 @@ function ContractDashboardTable({
                     {priority.label}
                   </span>
                 </td>
-                <td>
-                  <span className={`manager-contract-table__status manager-contract-table__status--${priority.kind}`}>
-                    {row.slaOverdue ? "검토 필요" : row.statusLabel}
-                  </span>
-                </td>
-                <td>
+                <td className="manager-contract-table__strong">{targetLabel(row, priority.kind)}</td>
+                <td className="manager-contract-table__building">
                   <Link href={detailHref} className="manager-contract-table__primary-link">
-                    {row.buildingName}
+                    {row.buildingName} {row.contract.unitId}호
                   </Link>
                 </td>
-                <td className="manager-contract-table__number">{row.contract.unitId}호</td>
                 <td className="manager-contract-table__strong">{row.tenantName}</td>
-                <td className="manager-contract-table__muted">{originLabel(row.origin)}</td>
-                <td className="manager-contract-table__money">{moneyLabel(row.contract.monthlyRent)}</td>
-                <td className="manager-contract-table__money">{moneyLabel(row.contract.maintenanceFee)}</td>
-                <td className="manager-contract-table__center">{paymentDayLabel(row.contract.paymentDay)}</td>
-                <td className="manager-contract-table__date">{shortDate(row.contract.startDate ?? row.contract.createdAt)}</td>
-                <td className="manager-contract-table__date">{shortDate(row.contract.endDate)}</td>
-                <td className="manager-contract-table__center">{expiryLabel(row)}</td>
-                <td className="manager-contract-table__center">{row.needsCheckCount}개</td>
+                <td className="manager-contract-table__money">{depositLabel(row.depositSummary)}</td>
+                <td className="manager-contract-table__strong">{clauseSummaryLabel(row)}</td>
                 <td>
-                  <div className="manager-contract-table__action">
-                    <details className="manager-contract-table__more-menu">
-                      <summary
-                        className="manager-contract-table__more-action"
-                        aria-label={`${row.buildingName} ${row.contract.unitId}호 계약 작업 메뉴`}
-                      >
-                        <EllipsisVertical aria-hidden="true" />
-                      </summary>
-                      <div className="manager-contract-table__more-menu-list" role="menu">
-                        <Link role="menuitem" href={detailHref}>
-                          검토 열기
-                        </Link>
-                        <Link role="menuitem" href={detailHref}>
-                          OCR 대조
-                        </Link>
-                      </div>
-                    </details>
-                  </div>
+                  <Link className="manager-contract-table__row-action" href={detailHref}>
+                    {actionLabel(row, priority.kind)}
+                  </Link>
                 </td>
               </tr>
             );
@@ -333,10 +327,8 @@ function contractSearchText(row: ManagerContractRow) {
       `${row.contract.unitId}호`,
       row.tenantName,
       row.statusLabel,
-      originLabel(row.origin),
-      moneyLabel(row.contract.monthlyRent),
-      moneyLabel(row.contract.maintenanceFee),
-      paymentDayLabel(row.contract.paymentDay),
+      depositLabel(row.depositSummary),
+      clauseSummaryLabel(row),
       shortDate(row.contract.startDate ?? row.contract.createdAt),
       shortDate(row.contract.endDate),
     ].join(" ")
@@ -369,36 +361,58 @@ function contractMatchesStatus(row: ManagerContractRow, status: ContractStatusFi
   return true;
 }
 
-function priorityFor(row: ManagerContractRow) {
-  if (row.slaOverdue) return { kind: "sla", label: "검토" };
-  if (row.needsCheckCount > 0) return { kind: "check", label: "확인" };
-  if (row.contract.review === "pending") return { kind: "pending", label: "대기" };
-  if (row.daysToExpire <= 30) return { kind: "expire", label: "만료" };
+type ContractPriorityKind = "sla" | "check" | "ready" | "expire" | "confirmed" | "pending" | "normal";
+
+function priorityFor(row: ManagerContractRow): { kind: ContractPriorityKind; label: string } {
+  if (row.slaOverdue) return { kind: "sla", label: "기한 만료" };
+  if (row.needsCheckCount > 0) return { kind: "check", label: "확인 필요" };
+  if (row.contract.review === "confirmed") return { kind: "confirmed", label: "확정 완료" };
+  if (row.daysToExpire <= 30) return { kind: "expire", label: "만료 예정" };
+  if (row.contract.review === "pending") return { kind: "ready", label: "확정 가능" };
 
   return { kind: "normal", label: "일반" };
 }
 
-function originLabel(origin: ManagerContractRow["origin"]) {
-  if (origin === "tenant_upload") return "임차인";
-  if (origin === "manager_upload") return "관리자";
-  return "수동";
+function targetLabel(row: ManagerContractRow, priority: ContractPriorityKind) {
+  if (priority === "sla") return "검토 지연";
+  if (priority === "check") return "OCR 검토";
+  if (priority === "confirmed") return "확정 완료";
+  if (priority === "expire") return "만료 전 확인";
+  if (row.contract.review === "info_requested") return "보완 요청";
+  return "최종 확인";
 }
 
-function moneyLabel(value?: number) {
-  if (!value) return "-";
-  return `${Math.round(value / 10000).toLocaleString("ko-KR")}만`;
+function actionLabel(row: ManagerContractRow, priority: ContractPriorityKind) {
+  if (priority === "confirmed") return "보기";
+  if (priority === "ready") return "확정";
+  if (row.needsCheckCount > 0 || row.slaOverdue) return "검토";
+  return "열기";
 }
 
-function paymentDayLabel(value?: number) {
-  return value ? `${value}일` : "-";
+function depositLabel(value?: string) {
+  const normalized = value?.trim();
+  if (!normalized) return "-";
+
+  const amounts = normalized.match(/[\d,]+(?=\s*원)/g) ?? normalized.match(/[\d,]+/g);
+  const amount = amounts?.at(-1);
+
+  return amount ? `${amount}원` : normalized;
+}
+
+function reviewSummary(row: ManagerContractRow) {
+  if (row.needsCheckCount > 0) return `${row.needsCheckCount}개 확인 필요`;
+  if (row.contract.review === "confirmed") return "0개";
+  if (row.slaOverdue) return "원문 확인 필요";
+  return "0개";
+}
+
+function clauseSummaryLabel(row: ManagerContractRow) {
+  const summary = row.clauseSummary?.trim();
+  if (summary) return summary;
+  return reviewSummary(row);
 }
 
 function shortDate(iso?: string) {
   if (!iso) return "-";
   return iso.slice(0, 10).replaceAll("-", ".");
-}
-
-function expiryLabel(row: ManagerContractRow) {
-  if (row.daysToExpire === 0) return "만료";
-  return `D-${row.daysToExpire}`;
 }

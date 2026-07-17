@@ -48,7 +48,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
     const { projector, persisted } = makeFakeProjector([]);
     const service = new TradeService(tempStorePath(), { storeProjector: projector });
 
-    service.createListing(owner, input);
+    service.createListing(owner, input, "room-402");
     await service.onModuleDestroy(); // 순차 프로젝션 큐를 flush
 
     const lastSnapshot = persisted[persisted.length - 1];
@@ -59,6 +59,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
     );
     assert.equal(lastSnapshot[0].detailAddress, "402호");
     assert.equal(lastSnapshot[0].buildingName, "방배 루미에르");
+    assert.equal(lastSnapshot[0].roomId, "room-402");
   });
 
   it("hydrates listings from the DB on boot, overriding the JSON store", () => {
@@ -73,6 +74,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       monthlyRentManwon: 0,
       location: "서울 성동구 성수동",
       description: "",
+      options: [],
       images: [],
       status: "노출중",
       createdAt: "2026-07-01T00:00:00.000Z"
@@ -100,6 +102,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       monthlyRentManwon: 45,
       location: "서울 강남구 역삼동",
       description: "",
+      options: [],
       images: [],
       status: "노출중",
       createdAt: "2026-06-01T00:00:00.000Z"
@@ -133,6 +136,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       monthlyRentManwon: 45,
       location: "서울 강남구 역삼동",
       description: "",
+      options: [],
       images: [],
       status: "노출중",
       createdAt: "2026-06-01T00:00:00.000Z"
@@ -169,6 +173,7 @@ describe("TradeService ↔ TradeStoreProjector (DB write-through)", () => {
       location: "서울 서초구 재기동로 1",
       detailAddress: "501호",
       description: "",
+      options: [],
       images: [],
       status: "계약완료",
       createdAt: "2026-07-13T00:00:00.000Z",

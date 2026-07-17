@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -59,8 +59,14 @@ jobs:
           AWS_ACCESS_KEY_ID: "${{ secrets.AWS_ACCESS_KEY_ID }}"
           AWS_SECRET_ACCESS_KEY: "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
           CLOUDFRONT_BASE_URL: "${{ secrets.CLOUDFRONT_BASE_URL }}"
+          GPU_PIPELINE_ENABLED: "${{ secrets.GPU_PIPELINE_ENABLED }}"
+          GPU_INSTANCE_ID: "${{ secrets.GPU_INSTANCE_ID }}"
+          GPU_REGION: "${{ secrets.GPU_REGION }}"
+          GPU_WORKER_SECRET: "${{ secrets.GPU_WORKER_SECRET }}"
           MOLIT_SERVICE_KEY: "${{ secrets.MOLIT_SERVICE_KEY }}"
           ROBOFLOW_API_KEY: "${{ secrets.ROBOFLOW_API_KEY }}"
+          VENDOR_ACTIVATION_KEY_PEPPER: "${{ secrets.VENDOR_ACTIVATION_KEY_PEPPER }}"
+          VENDOR_ACTIVATION_SESSION_SECRET: "${{ secrets.VENDOR_ACTIVATION_SESSION_SECRET }}"
         run: |
           set -euo pipefail
 
@@ -145,6 +151,19 @@ jobs:
             ROBOFLOW_API_KEY="$(read_prod_env_key ROBOFLOW_API_KEY)"
           fi
 
+          VENDOR_ACTIVATION_KEY_PEPPER="${VENDOR_ACTIVATION_KEY_PEPPER:-}"
+          if [ -z "$VENDOR_ACTIVATION_KEY_PEPPER" ] && [ -n "${PROD_ENV:-}" ]; then
+            VENDOR_ACTIVATION_KEY_PEPPER="$(read_prod_env_key VENDOR_ACTIVATION_KEY_PEPPER)"
+          fi
+
+          VENDOR_ACTIVATION_SESSION_SECRET="${VENDOR_ACTIVATION_SESSION_SECRET:-}"
+          if [ -z "$VENDOR_ACTIVATION_SESSION_SECRET" ] && [ -n "${PROD_ENV:-}" ]; then
+            VENDOR_ACTIVATION_SESSION_SECRET="$(read_prod_env_key VENDOR_ACTIVATION_SESSION_SECRET)"
+          fi
+
+          : "${VENDOR_ACTIVATION_KEY_PEPPER:?VENDOR_ACTIVATION_KEY_PEPPER secret is required}"
+          : "${VENDOR_ACTIVATION_SESSION_SECRET:?VENDOR_ACTIVATION_SESSION_SECRET secret is required}"
+
           # S3 업로드 전환 — secret이 채워진 경우에만 켠다(없으면 로컬 디스크 폴백 유지).
           S3_UPLOADS_ENABLED="${S3_UPLOADS_ENABLED:-}"
           if [ -z "$S3_UPLOADS_ENABLED" ] && [ -n "${PROD_ENV:-}" ]; then
@@ -166,9 +185,31 @@ jobs:
             CLOUDFRONT_BASE_URL="$(read_prod_env_key CLOUDFRONT_BASE_URL)"
           fi
 
+          # GPU 오케스트레이터 — 개별 secret 우선, 없으면 PROD_ENV에서 읽는다.
+          # 네 값이 모두 있어야 앱에서 활성화되므로 미등록 환경은 안전하게 비활성 상태를 유지한다.
+          GPU_PIPELINE_ENABLED="${GPU_PIPELINE_ENABLED:-}"
+          if [ -z "$GPU_PIPELINE_ENABLED" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_PIPELINE_ENABLED="$(read_prod_env_key GPU_PIPELINE_ENABLED)"
+          fi
+
+          GPU_INSTANCE_ID="${GPU_INSTANCE_ID:-}"
+          if [ -z "$GPU_INSTANCE_ID" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_INSTANCE_ID="$(read_prod_env_key GPU_INSTANCE_ID)"
+          fi
+
+          GPU_REGION="${GPU_REGION:-}"
+          if [ -z "$GPU_REGION" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_REGION="$(read_prod_env_key GPU_REGION)"
+          fi
+
+          GPU_WORKER_SECRET="${GPU_WORKER_SECRET:-}"
+          if [ -z "$GPU_WORKER_SECRET" ] && [ -n "${PROD_ENV:-}" ]; then
+            GPU_WORKER_SECRET="$(read_prod_env_key GPU_WORKER_SECRET)"
+          fi
+
           if [ -n "${PROD_ENV:-}" ]; then
             printf '%s\n' "$PROD_ENV" \
-              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|KAKAO_LOGIN_REST_API_KEY|KAKAO_LOGIN_CLIENT_SECRET|KAKAO_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY)$/ { next } { print }' \
+              | awk 'BEGIN { FS = "=" } !/^[[:space:]]*(#|$)/ && $1 ~ /^(DATABASE_URL|API_INTERNAL_URL|NEXT_PUBLIC_API_URL|NEXT_PUBLIC_NAVER_MAP_CLIENT_ID|NEXT_PUBLIC_SOCKET_URL|ROOMLOG_PUBLIC_ORIGIN|GOOGLE_LOGIN_CLIENT_ID|GOOGLE_LOGIN_CLIENT_SECRET|GOOGLE_LOGIN_CALLBACK_URL|KAKAO_LOGIN_REST_API_KEY|KAKAO_LOGIN_CLIENT_SECRET|KAKAO_LOGIN_CALLBACK_URL|PORT|AWS_REGION|S3_BUCKET_NAME|S3_UPLOADS_ENABLED|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|CLOUDFRONT_BASE_URL|GPU_PIPELINE_ENABLED|GPU_INSTANCE_ID|GPU_REGION|GPU_WORKER_SECRET|MOLIT_SERVICE_KEY|ROBOFLOW_API_KEY|VENDOR_ACTIVATION_KEY_PEPPER|VENDOR_ACTIVATION_SESSION_SECRET)$/ { next } { print }' \
               > .env.production
           else
             : > .env.production
@@ -187,6 +228,8 @@ jobs:
           PORT=${PORT}
           AWS_REGION=${AWS_REGION}
           S3_BUCKET_NAME=${S3_BUCKET_NAME}
+          VENDOR_ACTIVATION_KEY_PEPPER=${VENDOR_ACTIVATION_KEY_PEPPER}
+          VENDOR_ACTIVATION_SESSION_SECRET=${VENDOR_ACTIVATION_SESSION_SECRET}
           EOF
 
           # 값이 있을 때만 기록 — secret 미등록 상태에서 빈 값으로 덮지 않는다.
@@ -217,6 +260,18 @@ jobs:
           if [ -n "$CLOUDFRONT_BASE_URL" ]; then
             echo "CLOUDFRONT_BASE_URL=${CLOUDFRONT_BASE_URL}" >> .env.production
           fi
+          if [ -n "$GPU_PIPELINE_ENABLED" ]; then
+            echo "GPU_PIPELINE_ENABLED=${GPU_PIPELINE_ENABLED}" >> .env.production
+          fi
+          if [ -n "$GPU_INSTANCE_ID" ]; then
+            echo "GPU_INSTANCE_ID=${GPU_INSTANCE_ID}" >> .env.production
+          fi
+          if [ -n "$GPU_REGION" ]; then
+            echo "GPU_REGION=${GPU_REGION}" >> .env.production
+          fi
+          if [ -n "$GPU_WORKER_SECRET" ]; then
+            echo "GPU_WORKER_SECRET=${GPU_WORKER_SECRET}" >> .env.production
+          fi
 
       - name: Deploy to EC2
         env:
@@ -235,18 +290,28 @@ jobs:
           SSH_PORT="${EC2_SSH_PORT:-22}"
           APP_DIR="${EC2_APP_DIR:-/home/ec2-user/roomlog}"
           BRANCH="${GITHUB_REF_NAME:-main}"
+          REMOTE_ENV_PATH="/tmp/roomlog.env.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+
+          cleanup_uploaded_env() {
+            ssh -p "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
+              "$EC2_USER@$EC2_HOST" "rm -f -- '$REMOTE_ENV_PATH'" >/dev/null 2>&1 || true
+          }
+          trap cleanup_uploaded_env EXIT HUP INT TERM
 
           scp -P "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
-            .env.production "$EC2_USER@$EC2_HOST:/tmp/roomlog.env"
+            .env.production "$EC2_USER@$EC2_HOST:$REMOTE_ENV_PATH"
 
           ssh -p "$SSH_PORT" -i ~/.ssh/roomlog_ec2_key \
             "$EC2_USER@$EC2_HOST" \
-            "bash -se -- '$APP_DIR' '$GITHUB_REPOSITORY' '$BRANCH'" <<'REMOTE'
+            "bash -se -- '$APP_DIR' '$GITHUB_REPOSITORY' '$BRANCH' '$REMOTE_ENV_PATH'" <<'REMOTE'
           set -euo pipefail
 
           APP_DIR="$1"
           REPOSITORY="$2"
           BRANCH="$3"
+          ENV_PATH="$4"
+          api_was_running=false
+          deployment_complete=false
 
           dump_docker_state() {
             echo "== roomlog containers =="
@@ -255,19 +320,50 @@ jobs:
             (sudo ss -ltnp 2>/dev/null || ss -ltnp) | grep -E ':(3000|4000)\b' || true
           }
 
+          recover_previous_api() {
+            if [ "$api_was_running" != true ] || [ "$deployment_complete" = true ]; then
+              return 0
+            fi
+
+            if docker container inspect roomlog-api >/dev/null 2>&1 \
+              && [ "$(docker inspect --format '{{.State.Running}}' roomlog-api)" = "true" ]; then
+              return 0
+            fi
+
+            echo "Recovering the previous API container." >&2
+            compose -f docker-compose.prod.yml start api
+          }
+
           on_exit() {
             status="$?"
+            trap - EXIT HUP INT TERM
+            rm -f -- "$ENV_PATH"
             if [ "$status" -ne 0 ]; then
+              set +e
+              recover_previous_api
+              recovery_status="$?"
               echo "Deploy failed. Capturing Docker state for diagnosis."
               dump_docker_state
+              if [ "$recovery_status" -ne 0 ]; then
+                echo "Previous API recovery also failed." >&2
+              fi
             fi
             exit "$status"
           }
 
           trap on_exit EXIT
+          trap 'exit 129' HUP
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          mkdir -p "$(dirname "$APP_DIR")"
+          exec 9>"${APP_DIR}.deploy.lock"
+          if ! flock -n 9; then
+            echo "Another Roomlog deployment is already running." >&2
+            exit 1
+          fi
 
           if [ ! -d "$APP_DIR/.git" ]; then
-            mkdir -p "$(dirname "$APP_DIR")"
             git clone "https://github.com/$REPOSITORY.git" "$APP_DIR"
           fi
 
@@ -276,7 +372,8 @@ jobs:
           git fetch origin "$BRANCH"
           git reset --hard "origin/$BRANCH"
 
-          mv /tmp/roomlog.env .env
+          mv -- "$ENV_PATH" .env
+          chmod 600 .env
 
           if docker compose version >/dev/null 2>&1; then
             compose() { docker compose "$@"; }
@@ -290,9 +387,27 @@ jobs:
           echo "Container state before deploy:"
           dump_docker_state
 
-          docker rm -f roomlog-web roomlog-api 2>/dev/null || true
+          compose -f docker-compose.prod.yml build web api
 
-          compose -f docker-compose.prod.yml up -d --build --remove-orphans
+          if docker container inspect roomlog-api >/dev/null 2>&1; then
+            if [ "$(docker inspect --format '{{.State.Running}}' roomlog-api)" = "true" ]; then
+              api_was_running=true
+            fi
+            compose -f docker-compose.prod.yml stop api
+            if [ "$(docker inspect --format '{{.State.Running}}' roomlog-api)" != "false" ]; then
+              echo "Existing API container did not stop; refusing migration." >&2
+              exit 1
+            fi
+          elif ! docker info >/dev/null 2>&1; then
+            echo "Docker is unavailable; refusing migration." >&2
+            exit 1
+          fi
+
+          compose -f docker-compose.prod.yml run --rm migration < /dev/null
+          compose -f docker-compose.prod.yml up -d --no-build --remove-orphans api web
+          deployment_complete=true
           docker image prune -f
           compose -f docker-compose.prod.yml ps
           REMOTE
+
+          trap - EXIT HUP INT TERM

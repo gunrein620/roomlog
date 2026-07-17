@@ -77,6 +77,7 @@ export interface ContractExtraction {
   contractId: string;
   confirmed: boolean; // 관리자 확정 여부 (정직 표기)
   highlights: string[]; // "확인하면 좋을 3가지" 요약 (과밀 방지)
+  clauseSummary?: string; // 대시보드용 특약성 조항 한 줄 요약
   items: ExtractionItem[]; // 10항목 (3그룹)
   helpNotes: ContractHelpNote[]; // 알아두면 좋은 조항 (T-DOC-03)
   createdAt: string;

@@ -815,6 +815,7 @@ export type ContractExtraction = {
   contractId: string;
   confirmed: boolean;
   highlights: string[];
+  clauseSummary?: string;
   items: ExtractionItem[];
   helpNotes: ContractHelpNote[];
   createdAt: string;
@@ -899,6 +900,10 @@ export type CreateManagerContractInput = {
 
 export type UpdateManagerContractManualValuesInput = {
   deposit?: string;
+  specialTerms?: string;
+  autoRenewal?: string;
+  restorationDuty?: string;
+  repairDuty?: string;
   monthlyRent?: number;
   maintenanceFee?: number;
   paymentDay?: number;
@@ -2169,23 +2174,6 @@ export type ConfirmBillPaymentInput = {
   orderId: string;
   paymentKey: string;
   amount: number;
-};
-
-export type TossConfirmPaymentInput = {
-  paymentKey: string;
-  orderId: string;
-  amount: number;
-};
-
-export type TossConfirmPaymentResult = TossConfirmPaymentInput & {
-  method?: string;
-  approvedAt?: string;
-  status?: string;
-  raw?: unknown;
-};
-
-export type TossPaymentGateway = {
-  confirmPayment(input: TossConfirmPaymentInput): Promise<TossConfirmPaymentResult>;
 };
 
 export type MatchDepositInput = {

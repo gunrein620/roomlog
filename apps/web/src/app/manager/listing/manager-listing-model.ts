@@ -6,12 +6,13 @@ import {
 export interface TradeListing {
   id: string;
   ownerId: string;
+  roomId?: string;
   title: string;
   roomType: string;
   location: string;
   detailAddress?: string;
   buildingName?: string;
-  tradeType: "월세" | "전세" | "매매";
+  tradeType: "월세" | "반전세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
   status?: "노출중" | "계약완료";
@@ -32,7 +33,7 @@ export interface ManagerListingRow {
   has3D: boolean;
   createdAt: string;
   roomType: string;
-  tradeType: "월세" | "전세" | "매매";
+  tradeType: "월세" | "반전세" | "전세" | "매매";
   depositManwon: number;
   monthlyRentManwon: number;
   location: string;
@@ -45,8 +46,8 @@ export interface ManagerListingRow {
 
 function priceLabel(listing: TradeListing): string {
   const deposit = listing.depositManwon.toLocaleString("ko-KR");
-  if (listing.tradeType === "월세") {
-    return `월세 ${deposit}/${listing.monthlyRentManwon.toLocaleString("ko-KR")}`;
+  if (listing.tradeType === "월세" || listing.tradeType === "반전세") {
+    return `${listing.tradeType} ${deposit}/${listing.monthlyRentManwon.toLocaleString("ko-KR")}`;
   }
   return `${listing.tradeType} ${deposit}만`;
 }

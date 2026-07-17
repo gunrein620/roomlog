@@ -7,12 +7,14 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
         NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: ${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}
         NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-https://api.woo-zu.com}
+        NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
     container_name: roomlog-web
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
       NEXT_PUBLIC_NAVER_MAP_CLIENT_ID: ${NEXT_PUBLIC_NAVER_MAP_CLIENT_ID:-}
       NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-https://api.woo-zu.com}
+      NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
       ROOMLOG_PUBLIC_ORIGIN: ${ROOMLOG_PUBLIC_ORIGIN:-https://www.woo-zu.com}
       GOOGLE_LOGIN_CLIENT_ID: ${GOOGLE_LOGIN_CLIENT_ID:-}
@@ -30,6 +32,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    image: roomlog-api:${ROOMLOG_API_IMAGE_TAG:-deploy}
     container_name: roomlog-api
     restart: unless-stopped
     env_file:
@@ -47,10 +50,29 @@ services:
       # 버킷 생성 후 아래 두 값만 채우면(=true, CloudFront URL) 코드 변경 없이 S3 저장으로 전환된다.
       S3_UPLOADS_ENABLED: ${S3_UPLOADS_ENABLED:-}
       CLOUDFRONT_BASE_URL: ${CLOUDFRONT_BASE_URL:-}
+      # GPU 재구성 오케스트레이터 — 전부 채워져야 활성(하나라도 비면 자동 비활성, apps/api/src/reconstruction/).
+      GPU_PIPELINE_ENABLED: ${GPU_PIPELINE_ENABLED:-}
+      GPU_INSTANCE_ID: ${GPU_INSTANCE_ID:-}
+      # GPU 박스는 us-east-1 — 스토리지 리전(ap-northeast-2)과 다르므로 반드시 별도 값.
+      GPU_REGION: ${GPU_REGION:-}
+      GPU_WORKER_SECRET: ${GPU_WORKER_SECRET:-}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://api.woo-zu.com}
+      # GPU_KEEP_WARM=1: 오케스트레이터가 인스턴스를 절대 stop하지 않음(사람이 수동 관리).
+      # stop=NVMe 초기화로 docker 이미지가 날아가 bootstrap이 재실패하는 함정 회피 — 데모 기간 권장.
+      GPU_KEEP_WARM: ${GPU_KEEP_WARM:-}
     ports:
       - "4000:4000"
     volumes:
       - roomlog-api-data:/data
+
+  migration:
+    image: roomlog-api:${ROOMLOG_API_IMAGE_TAG:-deploy}
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required for production}
+    command: ["node", "apps/api/scripts/migrate-database.mjs"]
 
 volumes:
   roomlog-api-data:

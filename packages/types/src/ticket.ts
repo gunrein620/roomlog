@@ -57,9 +57,48 @@ export type TicketDisposition =
   | "on_hold" // 보류 큐
   | "rejected"; // 반려/종결
 
+/** 관리인 답변 초안의 목적 — 발송 전 관리인이 반드시 검토·편집한다. */
+export type ManagerReplyIntent =
+  | "RECEIPT_ACK"
+  | "REQUEST_PHOTO"
+  | "REQUEST_DETAILS"
+  | "SCHEDULE_VISIT"
+  | "ASSIGN_VENDOR_NOTICE"
+  | "COMPLETION_NOTICE";
+
+/** 답변 발송 시 적용할 티켓 워크플로 액션. */
+export type ManagerReplyAction = "SEND_REPLY" | "REQUEST_ADDITIONAL_INFO";
+
+export interface ManagerReplyDraftInput {
+  intent?: ManagerReplyIntent;
+  note?: string;
+}
+
+export interface ManagerTicketReplyInput {
+  action?: ManagerReplyAction;
+  messageText?: string;
+}
+
+export interface ManagerReplyDraftResult {
+  ticketId: string;
+  complaintId: string;
+  intent: ManagerReplyIntent;
+  subject: string;
+  messageText: string;
+  deliveryChannels: string[];
+  requiresTenantAction: boolean;
+  tenantActionLabel?: string;
+  evidence: string[];
+  warnings: string[];
+  generatedAt: string;
+}
+
 export interface Ticket {
   id: string;
   type: TicketType;
+  buildingName?: string; // 건물명
+  /** 운영 원장의 세부 하자/민원 분류. 업체 업종 적합성 판단에 사용한다. */
+  category?: string;
   unitId: string; // 호실
   title: string; // 예: "에어컨 물샘"
   description: string;

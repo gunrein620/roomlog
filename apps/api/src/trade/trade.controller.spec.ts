@@ -59,6 +59,7 @@ describe("TradeController public listings", () => {
         monthlyRentManwon: 50,
         location: "서울 서초구 방배동",
         description: "",
+        options: [],
         images: [],
         status: "노출중",
         createdAt: "2026-07-09T00:00:00.000Z"
@@ -74,6 +75,85 @@ describe("TradeController public listings", () => {
     );
 
     assert.equal(controller.listPublicListings(), publicListings);
+  });
+
+  it("returns all listings by default but scopes to the owner with ?mine=1", () => {
+    const calls: string[] = [];
+    const ownerListings = [
+      {
+        id: "mine-1",
+        ownerId: "owner-1",
+        title: "내 매물",
+        location: "서울 성동구",
+        detailAddress: "101호"
+      }
+    ] as unknown as TradeListing[];
+    const ownerListingsWithRoom = [{ ...ownerListings[0], roomId: "room-mine-1" }] as TradeListing[];
+    const allListings = [{ id: "mine-1" }, { id: "other-1" }] as unknown as TradeListing[];
+    const controller = new TradeController(
+      {
+        listListings: () => {
+          calls.push("all");
+          return allListings;
+        },
+        listListingsByOwner: (ownerId: string) => {
+          calls.push(`owner:${ownerId}`);
+          return ownerListings;
+        },
+        attachListingRoom: (ownerId: string, listingId: string, roomId: string) => {
+          calls.push(`attach:${ownerId}:${listingId}:${roomId}`);
+          return ownerListingsWithRoom[0];
+        }
+      } as any,
+      {
+        getUserFromToken: () => ({ id: "owner-1", name: "집주인" }),
+        ensureRoomFromTradeListing: (_ownerId: string, listing: TradeListing) => {
+          calls.push(`room:${listing.title}`);
+          return { id: "room-mine-1" };
+        }
+      } as any,
+      { notifyUsers: () => undefined } as any,
+      { ensure: () => undefined } as any
+    );
+
+    // 기본(브라우징) — 전체 반환, 인증 불필요
+    assert.equal(controller.listListings(undefined, undefined), allListings);
+    // ?mine=1 — 소유자 스코프
+    assert.deepEqual(controller.listListings("Bearer owner", "1"), ownerListingsWithRoom);
+    assert.deepEqual(calls, ["all", "owner:owner-1", "room:내 매물", "attach:owner-1:mine-1:room-mine-1"]);
+  });
+
+  it("links a newly created owner listing to a managed Room", () => {
+    const dir = mkdtempSync(join(tmpdir(), "roomlog-trade-listing-room-"));
+    const tradeService = new TradeService(join(dir, "trade.json"));
+    const roomlogService = new RoomlogService({ seedDemoData: false, storeFilePath: join(dir, "roomlog.json") });
+    const owner = { id: "owner-room-link", name: "방 주인" };
+    (roomlogService as unknown as { getUserFromToken: () => typeof owner }).getUserFromToken = () => owner;
+    const controller = new TradeController(
+      tradeService,
+      roomlogService,
+      { notifyUsers: () => undefined } as any,
+      { ensure: () => undefined } as any,
+    );
+
+    const listing = controller.createListing("Bearer owner", {
+      title: "복수 매물 테스트",
+      roomType: "원룸",
+      tradeType: "월세",
+      depositManwon: 1000,
+      monthlyRentManwon: 50,
+      location: "제주시 용문로12길 2",
+      detailAddress: "101호",
+      buildingName: "복수 매물 테스트 3:45",
+    });
+    const rooms = (roomlogService as unknown as { store: Store }).store.rooms
+      .filter((room) => room.landlordId === owner.id);
+
+    assert.equal(typeof listing.roomId, "string");
+    assert.equal(rooms.length, 1);
+    assert.equal(rooms[0].id, listing.roomId);
+    assert.equal(rooms[0].buildingName, "복수 매물 테스트 3:45");
+    assert.equal(rooms[0].roomNo, "101");
   });
 });
 

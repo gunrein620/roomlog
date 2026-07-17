@@ -29,12 +29,15 @@ import {
   getListingPriceRows,
   isRemotePhoto,
   listingDetailAddressLabel,
+  listingMapAddress,
   neighborhoodItems,
   optionItems,
   safetyReportItems,
   shouldShow3DTourControls,
+  TRADE_LISTING_NO_PREFIX,
   type Listing
 } from "@/lib/listing-catalog";
+import { listSplatAssetsByListing } from "@/lib/splat-asset-api";
 import { NaverMapPreview } from "./NaverMapPreview";
 
 // 상세 "3D 보기" 전용 — three.js 번들이 무거우므로 시트를 열 때만 지연 로드한다.
@@ -46,12 +49,15 @@ const ListingTourRoom3D = dynamic(() => import("./ListingTourRoom3D"), {
 export function ListingDetailView({
   listing,
   isSaved,
+  isOwner = false,
   onBack,
   onToggleSaved,
   onStartChat
 }: {
   listing: Listing;
   isSaved: boolean;
+  /** 현재 로그인 사용자가 이 매물(직접등록)의 집주인인지 — 서버 페이지가 판정해 내려준다. */
+  isOwner?: boolean;
   onBack: () => void;
   onToggleSaved: (listingNo: string) => void;
   /** "문자로 문의하기" 등 문의 진입점 — 채팅 탭의 이 매물 대화로 바로 보낸다. */
@@ -68,11 +74,52 @@ export function ListingDetailView({
   const listingPriceRows = getListingPriceRows(listing);
   const listingBuildingRows = getListingBuildingRows(listing);
   const detailAddressLabel = listingDetailAddressLabel(listing);
+  const mapAddress = listingMapAddress(listing);
   const has3DTour = shouldShow3DTourControls(listing);
   const safetyScore = listing.score.replace("안심 ", "");
   // 직접등록 매물은 점수가 "확인중" 같은 텍스트라 "점"을 붙이면 어색해진다("확인중점").
   const safetyScoreLabel = /^\d+$/.test(safetyScore) ? `${safetyScore}점` : safetyScore;
   const isDirectListing = listing.listingLabel === "집주인 직접등록";
+  // 매물별 Splat 게이트는 직접등록(TRADE-) 매물에만 적용한다.
+  const isTradeDirectListing = isDirectListing && listing.listingNo.startsWith(TRADE_LISTING_NO_PREFIX);
+  const [splatAssetId, setSplatAssetId] = useState<string | null>(null);
+  const [splatChecked, setSplatChecked] = useState(false);
+
+  // 직접등록 매물에 연결된 대표 Splat 자산을 고른다(REGISTERED > UPLOADED > PROCESSING).
+  useEffect(() => {
+    if (!isTradeDirectListing) {
+      setSplatAssetId(null);
+      setSplatChecked(false);
+      return;
+    }
+
+    const listingId = listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length);
+    let cancelled = false;
+    setSplatChecked(false);
+
+    listSplatAssetsByListing(listingId)
+      .then((assets) => {
+        if (cancelled) return;
+        const priority: Record<string, number> = { REGISTERED: 3, UPLOADED: 2, PROCESSING: 1 };
+        const pick = assets
+          .filter((asset) => asset.status in priority)
+          .sort((a, b) => priority[b.status] - priority[a.status])[0];
+        setSplatAssetId(pick?.id ?? null);
+        setSplatChecked(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSplatAssetId(null);
+        setSplatChecked(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isTradeDirectListing, listing.listingNo]);
+
+  // 직접등록 매물은 집주인이 고른 옵션을, 데모 매물은 기존 기본 옵션을 표시한다.
+  const listingOptions = listing.options ?? optionItems;
 
   // 국토교통부 실거래가(시세)를 불러와 단지 시세 영역을 실데이터로 채운다.
   // 키 미설정/네트워크 오류 시 summary가 비므로 아래 폴백(하드코딩)이 그대로 유지된다.
@@ -134,6 +181,41 @@ export function ListingDetailView({
         </div>
       </header>
 
+      {isOwner ? (
+        <div
+          className="detail-owner-bar"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "10px 18px",
+            background: "var(--surface-container)",
+            borderBottom: "1px solid var(--border)"
+          }}
+        >
+          <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--on-surface-variant)" }}>
+            내가 등록한 매물이에요
+          </span>
+          <a
+            href={`/sell?listingId=${encodeURIComponent(listing.listingNo.slice(TRADE_LISTING_NO_PREFIX.length))}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              height: 32,
+              padding: "0 14px",
+              borderRadius: 999,
+              background: "var(--primary)",
+              color: "var(--on-primary)",
+              fontSize: "0.82rem",
+              fontWeight: 800
+            }}
+          >
+            관리/수정
+          </a>
+        </div>
+      ) : null}
+
       <div className="detail-gallery" aria-label={`${listing.title} 사진 모음`}>
         <div className="gallery-main">
           <Image src={activePhoto} alt={`${listing.title} 대표 사진 ${activePhotoIndex + 1}`} width={760} height={880} priority unoptimized={isRemotePhoto(activePhoto)} />
@@ -171,7 +253,9 @@ export function ListingDetailView({
           <MapPinned size={18} strokeWidth={2.4} aria-hidden="true" />
           <span>{listing.location}</span>
         </div>
-        <div className="detail-address-detail">세부주소: {detailAddressLabel}</div>
+        {listing.detailAddress?.trim() ? (
+          <div className="detail-address-detail">세부주소: {listing.detailAddress.trim()}</div>
+        ) : null}
         <div className="detail-quick-actions" aria-label="상세 빠른 액션">
           {has3DTour ? (
             <button type="button" onClick={() => setIsTourSheetOpen(true)}>
@@ -322,13 +406,17 @@ export function ListingDetailView({
         <section className="detail-info-section" aria-label="옵션 정보">
           <div className="detail-section-heading">
             <h2>옵션 정보</h2>
-            <span>현장 확인 필요</span>
+            <span>{isDirectListing ? "집주인 등록 기준" : "현장 확인 필요"}</span>
           </div>
-          <div className="option-chip-grid">
-            {optionItems.map((option) => (
-              <span key={option}>{option}</span>
-            ))}
-          </div>
+          {listingOptions.length > 0 ? (
+            <div className="option-chip-grid">
+              {listingOptions.map((option) => (
+                <span key={option}>{option}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="option-empty-note">집주인이 등록한 옵션이 없습니다.</p>
+          )}
         </section>
 
         <section className="detail-info-section" aria-label="건물 정보">
@@ -372,6 +460,7 @@ export function ListingDetailView({
               ? { lat: listing.lat, lng: listing.lng }
               : null
           }
+          address={mapAddress}
           title={listing.title}
         />
       </section>
@@ -388,11 +477,34 @@ export function ListingDetailView({
             <strong>둘러보기</strong>
           </button>
         ) : null}
-        {/* 임시 데모용 — 1인칭 체험은 splat 투어 페이지로 바로 이동한다(woo-zu.com/splat-tour) */}
-        <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
-          <span>1인칭</span>
-          <strong>체험</strong>
-        </a>
+        {/* 직접등록 매물은 연결된 대표 Splat 자산으로 이동하고, 없으면 준비 상태를 그대로 표시한다. */}
+        {splatAssetId ? (
+          <a className="detail-contact-tour detail-contact-splat" href={`/splat-tour?asset=${splatAssetId}`}>
+            <span>1인칭</span>
+            <strong>체험</strong>
+          </a>
+        ) : isTradeDirectListing ? (
+          <span
+            className="detail-contact-tour detail-contact-splat detail-contact-splat-empty"
+            role="note"
+            aria-label="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            title="이 매물은 3D 투어가 준비되어 있지 않습니다"
+            style={{
+              background: "var(--surface-container)",
+              borderColor: "var(--border)",
+              color: "var(--on-surface-variant)",
+              cursor: "default"
+            }}
+          >
+            <span style={{ color: "var(--on-surface-variant)" }}>1인칭</span>
+            <strong>{splatChecked ? "준비 안 됨" : "확인 중"}</strong>
+          </span>
+        ) : (
+          <a className="detail-contact-tour detail-contact-splat" href="/splat-tour">
+            <span>1인칭</span>
+            <strong>체험 (데모)</strong>
+          </a>
+        )}
         <button className="detail-contact-primary" type="button" onClick={onStartChat}>
           <strong>문자로 문의하기</strong>
           <span>방문 가능 여부 바로 확인</span>
@@ -418,14 +530,18 @@ export function ListingDetailView({
                   <ListingTourRoom3D floorPlan={listing.floorPlan3D} />
                 </div>
               ) : (
-                <div className="tour-room-box tour-room-box-empty">
-                  <span className="tour-wall wall-left" />
-                  <span className="tour-wall wall-right" />
-                  <span className="tour-bed" />
-                  <span className="tour-desk" />
-                  <span className="tour-window" />
-                  <strong>3D 도면 미연결 매물</strong>
-                  <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                <div className="tour-room-empty-wrap">
+                  <div className="tour-room-box tour-room-box-empty">
+                    <span className="tour-wall wall-left" />
+                    <span className="tour-wall wall-right" />
+                    <span className="tour-bed" />
+                    <span className="tour-desk" />
+                    <span className="tour-window" />
+                  </div>
+                  <div className="tour-room-empty-copy">
+                    <strong>3D 도면 미연결 매물</strong>
+                    <em>집주인이 아직 3D 도면을 등록하지 않았어요</em>
+                  </div>
                 </div>
               )}
             </div>

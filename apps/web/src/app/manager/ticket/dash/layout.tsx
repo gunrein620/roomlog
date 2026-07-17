@@ -12,6 +12,7 @@ export default async function DashLayout({ children }: { children: ReactNode }) 
     <ManagerAppShell
       title="하자/민원 티켓 처리"
       context="관리 중인 집 · 하자·민원"
+      hideHeader
       subnav={false}
     >
       {children}

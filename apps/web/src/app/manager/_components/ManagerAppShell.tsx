@@ -10,9 +10,13 @@ import {
   type ManagerAssistantBriefingItem,
 } from "@/lib/manager-assistant";
 import { useManagerMessagingUnreadCount } from "@/lib/manager-messaging-unread";
+import { useManagerTicketUnreadCount } from "@/lib/manager-ticket-unread";
 import { ManagerAssistantLauncher, ManagerAssistantPanel } from "./ManagerAssistant";
+import { ManagerCreditUtility } from "./ManagerCreditUtility";
+import creditStyles from "./ManagerCreditUtility.module.css";
 import { ManagerSectionNav } from "./ManagerSectionNav";
 import { ManagerSidebar } from "./ManagerSidebar";
+import { DomainEventNotifications } from "../../_components/DomainEventNotifications";
 
 export interface ManagerAppShellProps {
   title: ReactNode;
@@ -23,6 +27,8 @@ export interface ManagerAppShellProps {
   assistantBriefing?: readonly ManagerAssistantBriefingItem[];
   /** 화면이 자체 AI 표면(예: 홈 코파일럿)을 내장할 때 플로팅 AI 비서 런처를 숨긴다. 기본값은 기존 동작 유지. */
   hideAssistantLauncher?: boolean;
+  /** 화면이 자체 제목을 제공할 때 공용 상단 헤더를 숨긴다. */
+  hideHeader?: boolean;
   /** 워크스페이스 테마(packages/ui tokens.css의 .theme-*). 관리 화면 전체를 코스믹(심야 우주)으로 통일 —
    *  기본값 "cosmic". 특정 화면만 v1(라이트)로 되돌리려면 theme={undefined}를 명시적으로 넘긴다. */
   theme?: "cosmic";
@@ -37,6 +43,7 @@ export function ManagerAppShell({
   showAssistantRail = false,
   assistantBriefing = [],
   hideAssistantLauncher = false,
+  hideHeader = false,
   theme = "cosmic",
   children,
 }: ManagerAppShellProps) {
@@ -45,6 +52,7 @@ export function ManagerAppShell({
   const mobileDialogRef = useRef<HTMLDialogElement>(null);
   const pathname = usePathname();
   const messagingUnreadCount = useManagerMessagingUnreadCount(pathname);
+  const ticketUnreadCount = useManagerTicketUnreadCount(pathname);
   const fullAssistant = pathname.startsWith("/manager/agent/realtime");
 
   // 접힘 상태는 화면(레이아웃) 간 이동에도 유지 — SSR 불일치를 피하려고 마운트 후에 복원한다.
@@ -95,6 +103,12 @@ export function ManagerAppShell({
       <Menu aria-hidden="true" />
     </button>
   );
+  const headerActions = (
+    <div className={creditStyles.headerActions}>
+      <ManagerCreditUtility />
+      {action}
+    </div>
+  );
   // 접기 토글은 사이드바 우측 상단(브랜드 옆)에 상주 — 색은 사이드바 토큰을 따라간다.
   const collapseAction = (
     <button
@@ -119,11 +133,12 @@ export function ManagerAppShell({
       <ManagerShell
         title={title}
         context={context}
+        hideHeader={hideHeader}
         navCollapsed={navCollapsed}
         theme={theme}
-        nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} messagingUnreadCount={messagingUnreadCount} /></Suspense>}
+        nav={<Suspense fallback={null}><ManagerSidebar headerAction={collapseAction} messagingUnreadCount={messagingUnreadCount} ticketUnreadCount={ticketUnreadCount} /></Suspense>}
         subnav={subnav ?? <Suspense fallback={null}><ManagerSectionNav /></Suspense>}
-        headerActions={action}
+        headerActions={headerActions}
         rightRail={rail}
       >
         {children}
@@ -146,7 +161,7 @@ export function ManagerAppShell({
         onClick={closeMobileNavigationOnBackdrop}
         onClose={() => setMobileOpen(false)}
       >
-        <Suspense fallback={null}><ManagerSidebar onNavigate={closeMobileNavigation} showCloseButton messagingUnreadCount={messagingUnreadCount} /></Suspense>
+        <Suspense fallback={null}><ManagerSidebar onNavigate={closeMobileNavigation} showCloseButton messagingUnreadCount={messagingUnreadCount} ticketUnreadCount={ticketUnreadCount} /></Suspense>
       </dialog>
       {!showAssistantRail && !fullAssistant && !hideAssistantLauncher ? (
         <ManagerAssistantLauncher
@@ -154,6 +169,7 @@ export function ManagerAppShell({
           contextLabel={typeof title === "string" ? title : "현재 관리자 화면"}
         />
       ) : null}
+      <DomainEventNotifications placement="manager" />
     </>
   );
 }

@@ -1,9 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { basename, extname, resolve } from "node:path";
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException
+} from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createFileStorageAdapter, type FileStorageAdapter } from "../roomlog/storage.service";
+import { TradeService } from "../trade/trade.service";
 import {
   type CreateSplatAssetInput,
   type IntakeSplatAssetInput,
@@ -21,12 +31,17 @@ const VIDEO_EXTENSIONS = [".mp4", ".mov", ".m4v", ".webm"];
 
 type IntakeFileClassification =
   | { kind: "splat"; extension: string; fileKind: string }
-  | { kind: "video"; extension: string; fileKind: "video" };
+  | { kind: "video"; extension: string; fileKind: "video" }
+  | { kind: "capture"; extension: ".zip"; fileKind: "record3d-zip" };
 
 function classifyIntakeFile(file: UploadedSplatAssetFile): IntakeFileClassification {
   const extension = extname(file.originalname).toLowerCase();
   if (SPLAT_EXTENSIONS.includes(extension)) {
     return { kind: "splat", extension, fileKind: extension.slice(1) };
+  }
+
+  if (extension === ".zip") {
+    return { kind: "capture", extension: ".zip", fileKind: "record3d-zip" };
   }
 
   if (VIDEO_EXTENSIONS.includes(extension) || file.mimetype?.startsWith("video/")) {
@@ -39,7 +54,36 @@ function classifyIntakeFile(file: UploadedSplatAssetFile): IntakeFileClassificat
     return { kind: "video", extension: VIDEO_EXTENSIONS.includes(extension) ? extension : fallbackByMime[file.mimetype] ?? ".video", fileKind: "video" };
   }
 
-  throw new BadRequestException("영상 또는 .spz 파일만 접수할 수 있습니다.");
+  throw new BadRequestException("영상, 캡처 zip 또는 스플랫 파일만 접수할 수 있습니다.");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** JSON 값이 배열이면 그대로(가구 배열), 아니면 null. 항목 검증은 웹(isValidPlacedFurniture)이 맡는다. */
+function asFurnitureArray(value: unknown): unknown[] | null {
+  return Array.isArray(value) && value.length > 0 ? value : null;
+}
+
+/**
+ * 공개 뷰어 노출용 가구 필터 — `visibleToTenant === false`인 항목을 서버에서 제외한다.
+ * 공개 링크는 임차인 시점이므로 그 플래그 의도를 그대로 강제한다(클라가 아니라 여기서).
+ * 소스가 이미 확정됐다면 필터 후 비어도 그대로 반환한다(폴백으로 넘어가지 않음).
+ */
+function filterPublicFurniture(items: unknown[]): unknown[] {
+  return items.filter((item) => !(isRecord(item) && item.visibleToTenant === false));
+}
+
+/**
+ * 매물 도면 스냅샷(TradeListing.floorPlan JSON)에서 furnitures 배열만 뽑는다.
+ * 허용 형태: { furnitures: [...] } | { room3d: { furnitures: [...] } }
+ * (manager-listing-media.ts의 normalizeManagerListingFloorPlan과 같은 위치를 읽는다).
+ */
+function furnituresFromListingSnapshot(value: unknown): unknown[] | null {
+  if (!isRecord(value)) return null;
+  const room3d = isRecord(value.room3d) ? value.room3d : null;
+  return asFurnitureArray(value.furnitures ?? room3d?.furnitures);
 }
 
 function safeUploadedFileName(prefix: string, originalName: string, extension: string): string {
@@ -66,7 +110,10 @@ export class SplatAssetService {
   constructor(
     @Optional()
     @Inject(SPLAT_ASSET_DATABASE_URL)
-    databaseUrl?: string
+    databaseUrl?: string,
+    // 소유권 조회의 1순위 소스 — trade 도메인의 runtime truth(JSON 스토어).
+    // DB 프로젝션(prisma.tradeListing)은 지연/실패할 수 있어 폴백으로만 쓴다(2026-07-16 실측 403).
+    @Optional() private readonly tradeService?: TradeService
   ) {
     const resolvedDatabaseUrl =
       databaseUrl?.trim() || process.env.SPLAT_ASSET_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
@@ -107,6 +154,43 @@ export class SplatAssetService {
     return asset;
   }
 
+  /**
+   * 공개 뷰어(?asset= 링크 방문자)용 조회 — 자산에 연결된 도면 가구를 동봉한다.
+   * 공개 엔드포인트이므로 도면 전체·소유자·주소는 노출하지 않고 furnitures 배열만 프로젝션한다.
+   * 소스 우선순위: 정합된 도면(floorPlanId) → 매물 스냅샷(listingId.floorPlan). 둘 다 없으면 null.
+   */
+  async getForViewer(id: string) {
+    const asset = await this.getById(id);
+    return { ...asset, furnitures: await this.projectFurnitures(asset) };
+  }
+
+  private async projectFurnitures(asset: {
+    floorPlanId: string | null;
+    listingId: string | null;
+  }): Promise<unknown[] | null> {
+    if (asset.floorPlanId) {
+      // 도면 전체가 아니라 furnitures 컬럼만 select — 벽·소유자 정보가 새지 않게 한다.
+      const plan = await this.getPrisma().floorPlan.findUnique({
+        where: { id: asset.floorPlanId },
+        select: { furnitures: true }
+      });
+      const furnitures = asFurnitureArray(plan?.furnitures);
+      if (furnitures) return filterPublicFurniture(furnitures);
+    }
+
+    if (asset.listingId) {
+      // 폴백: 직접등록 매물의 도면 스냅샷(walls3D/furnitures JSON). 여기서도 furnitures만 뽑는다.
+      const listing = await this.getPrisma().tradeListing.findUnique({
+        where: { id: asset.listingId },
+        select: { floorPlan: true }
+      });
+      const furnitures = furnituresFromListingSnapshot(listing?.floorPlan);
+      if (furnitures) return filterPublicFurniture(furnitures);
+    }
+
+    return null;
+  }
+
   /** 업로드된 파일로 자산 생성 — 정합 전(status: UPLOADED). */
   async create(input: CreateSplatAssetInput) {
     return this.getPrisma().splatAsset.create({
@@ -123,12 +207,12 @@ export class SplatAssetService {
     });
   }
 
-  /** 매물 STEP 02의 영상/spz 접수 — 영상은 PROCESSING, splat 파일은 UPLOADED로 생성한다. */
+  /** 매물 STEP 02의 영상/캡처 zip/spz 접수 — 원본 소스는 PROCESSING, splat 파일은 UPLOADED로 생성한다. */
   async intake(input: IntakeSplatAssetInput, file: UploadedSplatAssetFile | undefined) {
     if (!file) throw new BadRequestException("접수할 파일이 필요합니다.");
     if (!file.buffer?.length) throw new BadRequestException("업로드할 파일이 비어 있습니다.");
     if (file.buffer.length > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException("영상 또는 .spz 파일은 800MB 이하만 접수할 수 있습니다.");
+      throw new BadRequestException("영상, 캡처 zip 또는 스플랫 파일은 800MB 이하만 접수할 수 있습니다.");
     }
 
     const classification = classifyIntakeFile(file);
@@ -164,8 +248,9 @@ export class SplatAssetService {
         fileUrl: classification.kind === "splat" ? stored.fileUrl : "",
         fileKind: classification.fileKind,
         sizeBytes: file.buffer.length,
-        videoUrl: classification.kind === "video" ? stored.fileUrl : null,
-        status: classification.kind === "video" ? "PROCESSING" : "UPLOADED"
+        videoUrl: classification.kind === "splat" ? null : stored.fileUrl,
+        status: classification.kind === "splat" ? "UPLOADED" : "PROCESSING",
+        jobState: classification.kind === "splat" ? null : "QUEUED"
       }
     });
   }
@@ -173,18 +258,163 @@ export class SplatAssetService {
   /** 2점 정합 결과 반영 — transform 저장 + status REGISTERED 승격. */
   async register(id: string, input: RegisterSplatAssetInput) {
     await this.getById(id); // 존재 검증(없으면 404)
+    // 정합에 쓴 도면을 자산에 붙여, 공개 뷰어가 그 도면 가구를 동봉받게 한다.
+    // 존재하지 않는 도면 id로 정합 자체가 깨지지 않도록 방어적으로 존재를 먼저 확인한다.
+    const floorPlanId = await this.resolveLinkableFloorPlanId(input.floorPlanId);
     return this.getPrisma().splatAsset.update({
       where: { id },
       data: {
         transform: input.transform as unknown as Prisma.InputJsonValue,
         registrationPairs: (input.registrationPairs ?? []) as unknown as Prisma.InputJsonValue,
-        status: "REGISTERED"
+        status: "REGISTERED",
+        ...(floorPlanId ? { floorPlanId } : {})
       }
     });
   }
 
+  /** 정합 body의 floorPlanId가 실재하는 도면일 때만 연결값으로 통과시킨다(FK 위반·오타 방어). */
+  private async resolveLinkableFloorPlanId(floorPlanId: string | undefined): Promise<string | null> {
+    if (!floorPlanId) return null;
+    const plan = await this.getPrisma().floorPlan.findUnique({
+      where: { id: floorPlanId },
+      select: { id: true }
+    });
+    if (!plan) {
+      console.warn(`[splat-asset] 정합 도면 연결 건너뜀 — 존재하지 않는 floorPlanId=${floorPlanId}`);
+      return null;
+    }
+    return plan.id;
+  }
+
   /** GPU 파이프라인이 생성한 spz 파일을 붙이고, 제작 중이면 정합 대기 상태로 승격한다. */
   async updateFile(id: string, input: UpdateSplatAssetFileInput) {
+    return this.updateStoredFile(id, input);
+  }
+
+  /** GPU 콜백의 spz 바이트를 저장하고 자산을 정합 대기 상태로 승격한다. */
+  async attachReconstructedFile(id: string, file: UploadedSplatAssetFile) {
+    if (!file.buffer?.length) throw new BadRequestException("재구성 파일이 비어 있습니다.");
+    if (extname(file.originalname).toLowerCase() !== ".spz") {
+      throw new BadRequestException("재구성 결과는 .spz 파일이어야 합니다.");
+    }
+
+    // 저장 전에 존재를 검증해 잘못된 콜백이 고아 파일을 만들지 않게 한다.
+    await this.getById(id);
+    const stored = await this.storageAdapter.save({
+      buffer: file.buffer,
+      fileName: safeUploadedFileName("splat-reconstructed", file.originalname, ".spz"),
+      mimeType: file.mimetype
+    });
+
+    return this.updateStoredFile(
+      id,
+      { fileUrl: stored.fileUrl, fileKind: "spz", sizeBytes: file.buffer.length },
+      { status: "UPLOADED", jobState: "DONE", jobError: null }
+    );
+  }
+
+  async markReconstructionFailed(id: string, error: string) {
+    await this.getById(id);
+    return this.getPrisma().splatAsset.update({
+      where: { id },
+      data: {
+        status: "FAILED",
+        jobState: "FAILED",
+        jobError: error.slice(0, 2048)
+      }
+    });
+  }
+
+  /** 실패한 재구성 작업을 기존 소스 또는 새 영상/캡처 zip으로 다시 큐에 넣는다. */
+  async requeueReconstruction(id: string, file?: UploadedSplatAssetFile) {
+    const asset = await this.getById(id);
+    if (asset.status !== "FAILED") {
+      throw new ConflictException("실패한 3D 재구성 작업만 다시 시도할 수 있습니다.");
+    }
+
+    let replacement: { videoUrl: string; fileKind: "video" | "record3d-zip"; sizeBytes: number } | undefined;
+    if (file) {
+      if (!file.buffer?.length) throw new BadRequestException("업로드할 파일이 비어 있습니다.");
+      if (file.buffer.length > MAX_UPLOAD_BYTES) {
+        throw new BadRequestException("영상 또는 캡처 zip은 800MB 이하만 접수할 수 있습니다.");
+      }
+
+      const classification = classifyIntakeFile(file);
+      if (classification.kind === "splat") {
+        throw new BadRequestException("재구성 재시도에는 영상 또는 캡처 zip 파일만 사용할 수 있습니다.");
+      }
+
+      const stored = await this.storageAdapter.save({
+        buffer: file.buffer,
+        fileName: safeUploadedFileName(`splat-${classification.kind}`, file.originalname, classification.extension),
+        mimeType: file.mimetype
+      });
+      replacement = {
+        videoUrl: stored.fileUrl,
+        fileKind: classification.fileKind,
+        sizeBytes: file.buffer.length
+      };
+    }
+
+    return this.getPrisma().splatAsset.update({
+      where: { id },
+      data: {
+        ...(replacement ?? {}),
+        status: "PROCESSING",
+        jobState: "QUEUED",
+        jobError: null,
+        jobAttempts: 0,
+        jobCommandId: null,
+        jobStartedAt: null
+      }
+    });
+  }
+
+  async findListingOwnerId(listingId: string): Promise<string | null> {
+    // 1순위: trade runtime truth(JSON 스토어) — 프로젝션 지연/실패와 무관하게 최신.
+    const live = this.tradeService?.listListings().find((listing) => listing.id === listingId);
+    if (live?.ownerId) return live.ownerId;
+
+    // 폴백: DB 프로젝션 (tradeService 미주입 컨텍스트 — 단위테스트 등).
+    const listing = await this.getPrisma().tradeListing.findUnique({
+      where: { id: listingId },
+      select: { ownerId: true }
+    });
+    if (!listing?.ownerId) {
+      console.warn(`[splat-asset] 매물 소유자를 찾을 수 없습니다: listing=${listingId}`);
+      return null;
+    }
+    return listing.ownerId;
+  }
+
+  /**
+   * 자산(id)에 연결된 매물의 소유자만 통과시킨다 — registration/updateFile/delete 게이트.
+   * 존재하지 않는 자산은 404, 소유권 위반/확인불가는 403.
+   */
+  async assertAssetOwner(assetId: string, userId: string): Promise<void> {
+    const asset = await this.getById(assetId);
+    await this.assertListingOwner(asset.listingId, userId);
+  }
+
+  /**
+   * 매물 소유권을 서버에서 강제한다(fail-closed). listingId가 없는 자산(roomId 직접 생성)은
+   * 소유권 개념 밖이라 통과시켜 기존 동작을 유지한다. 소유자 확인 불가(매물 없음)는 403.
+   * 소유자 조회는 prisma TradeListing 프로젝션을 쓴다 — trade 런타임 truth는 JSON 스토어지만
+   * 프로젝터가 write-through(원자적)라 커밋된 매물의 ownerId는 신뢰할 수 있다.
+   */
+  async assertListingOwner(listingId: string | null | undefined, userId: string): Promise<void> {
+    if (!listingId) return;
+    const ownerId = await this.findListingOwnerId(listingId);
+    if (!ownerId || ownerId !== userId) {
+      throw new ForbiddenException("본인 매물의 3D 자산만 다룰 수 있습니다.");
+    }
+  }
+
+  private async updateStoredFile(
+    id: string,
+    input: UpdateSplatAssetFileInput,
+    completion: { status?: "UPLOADED"; jobState?: "DONE"; jobError?: null } = {}
+  ) {
     const asset = await this.getById(id); // 존재 검증(없으면 404)
     // 정합값(transform)은 특정 파일의 지오메트리에 대한 배치라, 파일이 바뀌면 무의미해진다.
     // REGISTERED 자산의 파일 교체는 정합을 리셋해 재정합을 강제한다 — 안 그러면 조용히 어긋난 투어가 나간다.
@@ -196,7 +426,8 @@ export class SplatAssetService {
         ...(input.fileKind != null ? { fileKind: input.fileKind } : {}),
         ...(input.sizeBytes != null ? { sizeBytes: input.sizeBytes } : {}),
         ...(wasRegistered ? { transform: Prisma.DbNull, registrationPairs: Prisma.DbNull } : {}),
-        status: asset.status === "PROCESSING" || wasRegistered ? "UPLOADED" : asset.status
+        status: asset.status === "PROCESSING" || wasRegistered ? "UPLOADED" : asset.status,
+        ...completion
       }
     });
   }

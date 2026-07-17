@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-label="사진 준비 중">
+  <rect width="640" height="480" fill="#eef1f6"/>
+  <g transform="translate(320 210)" fill="none" stroke="#a8b1c2" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-58 34 V-10 L0 -54 L58 -10 V34 Z"/>
+    <path d="M-18 34 V0 H18 V34"/>
+  </g>
+  <text x="320" y="316" text-anchor="middle" font-family="'Apple SD Gothic Neo','Malgun Gothic',sans-serif" font-size="26" font-weight="700" fill="#8a93a6">사진 준비 중</text>
+  <text x="320" y="350" text-anchor="middle" font-family="'Apple SD Gothic Neo','Malgun Gothic',sans-serif" font-size="18" fill="#aab2c2">집주인이 아직 사진을 올리지 않았어요</text>
+</svg>

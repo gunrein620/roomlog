@@ -27,6 +27,9 @@ import {
 } from "./tenant-current-bill";
 import { latestTenantAnnouncement } from "./tenant-announcement-card";
 import { useTenantAiAssistant } from "./useTenantAiAssistant";
+import { TenantVendorConnectionCard } from "./TenantVendorConnectionCard";
+import { TenantVendorWorkflowPanel } from "./TenantVendorWorkflowPanel";
+import { tenantVendorConnectionEligible } from "./tenant-vendor-connection";
 
 const EMPTY_BILLING_CARD: TenantBillingCardModel = {
   current: null,
@@ -688,6 +691,14 @@ export default function TenantMyPage({
   });
 
   useEffect(() => {
+    if (!selectedTenantRoomId && tenancy !== "loading") {
+      setAnnouncementState({ status: "empty", announcement: null });
+    }
+  }, [selectedTenantRoomId, tenancy]);
+
+  useEffect(() => {
+    if (!selectedTenantRoomId) return;
+
     let cancelled = false;
     let requestVersion = 0;
 
@@ -695,7 +706,10 @@ export default function TenantMyPage({
       const currentRequest = ++requestVersion;
 
       try {
-        const response = await fetch("/api/tenant/messaging/announcements", { cache: "no-store" });
+        const response = await fetch(
+          `/api/tenant/messaging/announcements?roomId=${encodeURIComponent(selectedTenantRoomId)}`,
+          { cache: "no-store" },
+        );
         if (!response.ok) throw new Error("공지 조회 실패");
 
         const payload: unknown = await response.json();
@@ -725,6 +739,7 @@ export default function TenantMyPage({
     };
     const socket = getRealtimeSocket();
 
+    setAnnouncementState({ status: "loading", announcement: null });
     void loadAnnouncements();
     socket.on("roomlog:activity", loadAnnouncements);
     window.addEventListener("focus", loadAnnouncements);
@@ -736,7 +751,7 @@ export default function TenantMyPage({
       window.removeEventListener("focus", loadAnnouncements);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, []);
+  }, [selectedTenantRoomId]);
 
   const [repairRequests, setRepairRequests] = useState<TenantRepairRequest[]>([]);
 
@@ -777,6 +792,7 @@ export default function TenantMyPage({
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [selectedRepairRequest, setSelectedRepairRequest] = useState<TenantRepairRequest | null>(null);
+  const returnedComplaintOpenedRef = useRef(false);
   const [isRepairDetailLoading, setIsRepairDetailLoading] = useState(false);
   const [repairDetailError, setRepairDetailError] = useState("");
   const [aiStage, setAiStage] = useState<TenantAiStage>("choose");
@@ -1021,6 +1037,19 @@ export default function TenantMyPage({
       setIsRepairDetailLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (returnedComplaintOpenedRef.current || repairRequests.length === 0) return;
+    const returnedComplaintId = new URLSearchParams(window.location.search).get("complaintId");
+    if (!returnedComplaintId) {
+      returnedComplaintOpenedRef.current = true;
+      return;
+    }
+    const returnedRequest = repairRequests.find((request) => request.id === returnedComplaintId);
+    if (!returnedRequest) return;
+    returnedComplaintOpenedRef.current = true;
+    void openRepairDetailSheet(returnedRequest);
+  }, [repairRequests]);
 
   const closeRepairDetailSheet = () => {
     setSelectedRepairRequest(null);
@@ -1507,6 +1536,14 @@ export default function TenantMyPage({
                   </div>
                 </section>
               ) : null}
+              {ai.filedComplaint && tenantVendorConnectionEligible(
+                ai.filedComplaint.responsibilityHint,
+              ) ? (
+                <TenantVendorConnectionCard
+                  complaintId={ai.filedComplaint.id}
+                  onRequested={() => void loadRepairRequests()}
+                />
+              ) : null}
             </div>
             {aiMode === "text" ? (
               <form className="manager-ai-composer" onSubmit={handleAiSubmit}>
@@ -1716,6 +1753,8 @@ export default function TenantMyPage({
                   ))}
                 </div>
               ) : null}
+
+              <TenantVendorWorkflowPanel complaintId={selectedRepairRequest.id} />
 
               <div className="tenant-request-actions">
                 <button className="primary" type="button" onClick={closeRepairDetailSheet}>

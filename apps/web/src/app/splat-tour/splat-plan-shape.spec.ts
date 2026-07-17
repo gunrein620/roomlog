@@ -5,6 +5,7 @@ import {
   isNearAnyPlanWall,
   planWallFootprint,
   planWallsFromPayload,
+  readFloorPlanDraftServerId,
   resolvePlanWalls,
   wallsToPlanBounds
 } from "./splat-plan-shape";
@@ -175,6 +176,24 @@ test("planWallFootprint: rotated wall footprint matches wallsToPlanBounds corner
   // 90° 회전: 길이 2(width)가 z축을 따라 눕는다 → z 스팬 2, x 스팬은 두께 0.15
   assertApproxEqual(bounds.maxZ - bounds.minZ, 2);
   assertApproxEqual(bounds.maxX - bounds.minX, 0.15);
+});
+
+test("readFloorPlanDraftServerId: returns the server id only for a server-saved draft", () => {
+  assert.equal(
+    readFloorPlanDraftServerId(fakeStorage({ floorPlanDraft: JSON.stringify({ id: "fp_123", savedAt: 5 }) })),
+    "fp_123"
+  );
+  // 서버 저장 실패로 남은 로컬 초안은 서버에 없으므로 연결 대상이 아니다.
+  assert.equal(
+    readFloorPlanDraftServerId(
+      fakeStorage({ floorPlanDraft: JSON.stringify({ id: "fp_stale", status: "LOCAL_DRAFT" }) })
+    ),
+    null
+  );
+  // id 없는 초안 / 초안 자체 없음 / 깨진 JSON 모두 null.
+  assert.equal(readFloorPlanDraftServerId(fakeStorage({ floorPlanDraft: JSON.stringify({ savedAt: 5 }) })), null);
+  assert.equal(readFloorPlanDraftServerId(fakeStorage({})), null);
+  assert.equal(readFloorPlanDraftServerId(fakeStorage({ floorPlanDraft: "{" })), null);
 });
 
 function fakeStorage(values: Record<string, string>): Pick<Storage, "getItem"> {

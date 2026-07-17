@@ -88,7 +88,7 @@ export function ManagerSectionNav() {
           aria-haspopup="dialog"
           onMouseEnter={(event) => slideGlassTo(event.currentTarget)}
         >
-          <span>임시 저장</span>
+          <span>저장 목록</span>
         </Link>
       ) : null}
     </nav>

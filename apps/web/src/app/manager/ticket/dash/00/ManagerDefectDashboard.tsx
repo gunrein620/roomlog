@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { markManagerTicketRead } from "@/lib/manager-ticket-unread";
 import { TicketActionMenu } from "./TicketActionMenu";
 import { TicketDetailDialog } from "./TicketDetailDialog";
 import {
@@ -155,6 +156,13 @@ export function ManagerDefectDashboard({
     setPage(1);
   }
 
+  function selectRow(row: DefectDashboardRow) {
+    setSelectedRow(row);
+    void markManagerTicketRead(row.ticket.id).catch(() => {
+      // 모달 확인은 유지하고 배지는 서버 저장이 성공할 때만 갱신한다.
+    });
+  }
+
   return (
     <section className="manager-defect-dashboard" aria-labelledby="manager-defect-title">
       <h2 id="manager-defect-title">
@@ -244,7 +252,7 @@ export function ManagerDefectDashboard({
           </thead>
           <tbody>
             {pageResult.rows.map((row) => (
-              <DashboardRow key={row.ticket.id} row={row} onSelect={setSelectedRow} />
+              <DashboardRow key={row.ticket.id} row={row} onSelect={selectRow} />
             ))}
             {pageResult.rows.length === 0 ? (
               <tr>
