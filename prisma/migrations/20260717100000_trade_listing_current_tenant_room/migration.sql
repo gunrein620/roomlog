@@ -1,6 +1,13 @@
 ALTER TABLE "TradeListing"
-ADD COLUMN "buildingName" TEXT,
-ADD COLUMN "options" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ADD COLUMN IF NOT EXISTS "buildingName" TEXT,
+ADD COLUMN IF NOT EXISTS "options" TEXT[] DEFAULT ARRAY[]::TEXT[];
+
+UPDATE "TradeListing"
+SET "options" = ARRAY[]::TEXT[]
+WHERE "options" IS NULL;
+
+ALTER TABLE "TradeListing"
+ALTER COLUMN "options" SET NOT NULL;
 
 WITH ranked AS (
   SELECT
