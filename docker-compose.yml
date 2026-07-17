@@ -14,6 +14,7 @@ services:
       - path: .env.local
         required: false
     environment:
+      PORT: "3000"
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
       NEXT_PUBLIC_TOSS_CLIENT_KEY: ${NEXT_PUBLIC_TOSS_CLIENT_KEY:-}
