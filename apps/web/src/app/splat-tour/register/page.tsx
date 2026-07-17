@@ -44,6 +44,8 @@ export default function Page() {
   const [planSource, setPlanSource] = useState<PlanSource>("placeholder");
   const [planMessage, setPlanMessage] = useState("");
   const [splatReady, setSplatReady] = useState(false);
+  // splat 로드 실패(대개 S3 CORS/네트워크). 참이면 검정 폴백 대신 에러 오버레이를 덮어 오해·오클릭을 막는다.
+  const [splatError, setSplatError] = useState(false);
   // 천장 클립(픽 뷰 전용) — 밀폐 스캔이 외부 카메라에서 검은 상자로만 보이는 문제. 기본 ON, 바닥 기준 1.6m 위 절단.
   const [ceilingCutOn, setCeilingCutOn] = useState(true);
   const [ceilingHeight, setCeilingHeight] = useState(1.6);
@@ -180,6 +182,7 @@ export default function Page() {
     setSaveState("idle");
     setSaveMessage("");
     setSplatReady(false);
+    setSplatError(false);
   }, [splatSrc]);
 
   // 픽 씬(SplatScene transform=null)이 같은 프로파일로 splat을 배치하므로, 솔버 결과를
@@ -290,6 +293,7 @@ export default function Page() {
                 transform={preview ? transform : null}
                 ceilingClipHeightMeters={ceilingCutOn ? ceilingHeight : null}
                 onLoaded={() => setSplatReady(true)}
+                onError={() => setSplatError(true)}
               />
               <PickPlane onPick={(x, z) => addPick("splat", { x, y: z })} />
               {splatPicks.map((p, i) => (
@@ -306,7 +310,17 @@ export default function Page() {
                 </group>
               ))}
             </Canvas>
-            {!splatReady ? (
+            {splatError ? (
+              // 로드 실패: 검정 폴백을 덮어 "정합할 3D가 실제로 떠 있는 것처럼" 보이는 오해와 오클릭을 막는다.
+              // 대개 S3 CORS 미설정 또는 네트워크 오류 — 콘솔의 "Failed to load Spark splat scene"이 원인.
+              <div style={errorOverlay}>
+                <strong style={{ fontSize: 15 }}>3D를 불러오지 못했습니다</strong>
+                <span style={{ fontSize: 13, opacity: 0.9 }}>
+                  spz 파일을 가져오지 못했습니다 (네트워크·저장소 접근 오류). 정합할 3D가 없어 이 단계를 진행할 수 없습니다.
+                </span>
+                <span style={{ fontSize: 12, opacity: 0.75 }}>브라우저 콘솔의 “Failed to load Spark splat scene” 로그를 확인하세요.</span>
+              </div>
+            ) : !splatReady ? (
               // 페인트 전 빈 화면에 클릭하는 사고 방지 — 로드 완료까지 클릭을 막고 안내한다.
               <div style={loadingOverlay}>splat 로딩 중… (수십 초 걸릴 수 있어요)</div>
             ) : null}
@@ -635,6 +649,22 @@ const loadingOverlay: CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
   zIndex: 1
+};
+const errorOverlay: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  padding: 24,
+  // 검정 폴백 위를 확실히 덮도록 로딩(zIndex 1)보다 위. 반투명 어둠 위에 흰 텍스트로 "실패"를 분명히.
+  background: "rgba(15, 23, 42, 0.82)",
+  color: "#f8fafc",
+  // 코너 컨트롤(위에서 보기·천장 자르기 = zIndex 2)까지 덮는다 — 로드 실패 시 그 버튼들은 무의미.
+  zIndex: 3
 };
 const badge: CSSProperties = {
   background: "#0f172a",

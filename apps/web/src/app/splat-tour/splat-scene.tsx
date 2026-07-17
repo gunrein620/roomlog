@@ -131,7 +131,8 @@ export function SplatScene({
   defaultFitMode,
   planWalls = null,
   ceilingClipHeightMeters = null,
-  onLoaded
+  onLoaded,
+  onError
 }: {
   src: string;
   // 영속화된 정합 결과. 있으면 URL/프로파일 튜닝 대신 이 절대 배치를 씬에 주입한다.
@@ -144,10 +145,14 @@ export function SplatScene({
   // null/미지정이면 아무 것도 하지 않는다(투어 뷰어는 미지정 → 무영향·비용 0). 스플랫 리로드 없이 되돌림 가능.
   ceilingClipHeightMeters?: number | null;
   onLoaded?: () => void;
+  // splat 로드 실패 콜백. 지정되면 실패 시 onLoaded 대신 이걸 부른다(호출부가 에러 상태를 직접 표시).
+  // 미지정이면 하위호환으로 실패 시에도 onLoaded를 불러 로딩 표시만 걷는다(기존 tour-viewer 동작).
+  onError?: () => void;
 }) {
   const gl = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
   const onLoadedRef = useRef(onLoaded);
+  const onErrorRef = useRef(onError);
   // 천장 클립 되돌림용 — 이 메시의 원본 opacity 스냅샷(최초 사용 시 1회 캡처).
   const ceilingSnapshotRef = useRef<{ mesh: SplatMeshObject; opacities: Float32Array } | null>(null);
   // 객체 참조 불안정으로 인한 리로드를 막기 위해 값 기반 키로 effect 의존성을 건다.
@@ -159,7 +164,8 @@ export function SplatScene({
 
   useEffect(() => {
     onLoadedRef.current = onLoaded;
-  }, [onLoaded]);
+    onErrorRef.current = onError;
+  }, [onLoaded, onError]);
 
   useEffect(() => {
     let isDisposed = false;
@@ -244,7 +250,9 @@ export function SplatScene({
         nextSplatMesh = null;
         nextSparkRenderer = null;
         setHasFailed(true);
-        onLoadedRef.current?.();
+        // 실패 신호: onError가 있으면 그쪽에 위임(호출부가 에러 UI 표시), 없으면 기존처럼 onLoaded로 로딩만 걷는다.
+        if (onErrorRef.current) onErrorRef.current();
+        else onLoadedRef.current?.();
       }
     }
 
