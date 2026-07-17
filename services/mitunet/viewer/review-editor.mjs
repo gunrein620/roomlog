@@ -689,7 +689,7 @@ export class ReviewEditor {
   dimensionLabelLayout(reservedBounds = []) {
     const context = this.context;
     context.save();
-    context.font = "600 11px system-ui, sans-serif";
+    context.font = "600 10px system-ui, sans-serif";
     const candidates = this.wallDimensionSegments.map((segment, index) => {
       const start = this.imageToScreen(segment.start.x, segment.start.y);
       const end = this.imageToScreen(segment.end.x, segment.end.y);
@@ -716,8 +716,8 @@ export class ReviewEditor {
         tangent: { x: deltaX / screenLength, y: deltaY / screenLength },
         normal,
         anchor: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
-        width: context.measureText(label).width + 10,
-        height: 18,
+        width: context.measureText(label).width + 4,
+        height: 14,
         angle,
         label,
         screenLength,
@@ -726,7 +726,7 @@ export class ReviewEditor {
     context.restore();
     return layoutDimensionLabels(candidates, reservedBounds, {
       baseOffset: 14,
-      laneStep: 20,
+      laneStep: 16,
       collisionPadding: 2,
     });
   }
@@ -745,7 +745,7 @@ export class ReviewEditor {
     const context = this.context;
     const layout = this.dimensionLabelLayout(reservedBounds);
     context.save();
-    context.font = "600 11px system-ui, sans-serif";
+    context.font = "600 10px system-ui, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
 
@@ -758,12 +758,12 @@ export class ReviewEditor {
         x: item.end.x + item.normal.x * item.offset,
         y: item.end.y + item.normal.y * item.offset,
       };
-      const arrowLength = Math.min(6, item.screenLength / 4);
-      const arrowHalfWidth = 3;
+      const arrowLength = Math.min(5, item.screenLength / 4);
+      const arrowHalfWidth = 2.5;
 
       context.beginPath();
-      context.strokeStyle = "rgba(17, 24, 39, 0.55)";
-      context.lineWidth = 0.75;
+      context.strokeStyle = "rgba(17, 24, 39, 0.4)";
+      context.lineWidth = 0.6;
       context.moveTo(item.start.x, item.start.y);
       context.lineTo(dimensionStart.x, dimensionStart.y);
       context.moveTo(item.end.x, item.end.y);
@@ -772,7 +772,7 @@ export class ReviewEditor {
 
       context.beginPath();
       context.strokeStyle = "#111827";
-      context.lineWidth = 1;
+      context.lineWidth = 0.8;
       context.moveTo(dimensionStart.x, dimensionStart.y);
       context.lineTo(dimensionEnd.x, dimensionEnd.y);
       context.moveTo(dimensionStart.x, dimensionStart.y);
@@ -800,8 +800,10 @@ export class ReviewEditor {
       context.save();
       context.translate(item.center.x, item.center.y);
       context.rotate(item.angle);
-      context.fillStyle = "rgba(255, 255, 255, 0.9)";
-      context.fillRect(-item.width / 2, -item.height / 2, item.width, item.height);
+      context.strokeStyle = "rgba(255, 255, 255, 0.96)";
+      context.lineWidth = 3;
+      context.lineJoin = "round";
+      context.strokeText(item.label, 0, 0);
       context.fillStyle = "#111827";
       context.fillText(item.label, 0, 0);
       context.restore();

@@ -8,6 +8,9 @@ class ViewerShellTests(unittest.TestCase):
         cls.html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(
             encoding="utf-8"
         )
+        cls.editor = (
+            Path(__file__).parents[1] / "viewer" / "review-editor.mjs"
+        ).read_text(encoding="utf-8")
 
     def test_embeds_empty_favicon_to_avoid_browser_404(self):
         self.assertIn('<link rel="icon" href="data:,">', self.html)
@@ -41,6 +44,16 @@ class ViewerShellTests(unittest.TestCase):
         self.assertIn("First point selected. Choose the second point.", self.html)
         self.assertIn("Choose Scale, then click two points.", self.html)
         self.assertNotIn("wall corner", self.html.lower())
+
+    def test_manual_measurements_use_black_dimensions_and_room_area_overlay(self):
+        self.assertIn('from "./room-areas.mjs"', self.editor)
+        self.assertIn('from "./measurement-layout.mjs"', self.editor)
+        self.assertIn('strokeStyle = "#111827"', self.editor)
+        self.assertIn('strokeStyle = "rgba(17, 24, 39, 0.4)"', self.editor)
+        self.assertIn("context.strokeText(item.label, 0, 0)", self.editor)
+        self.assertIn("refreshRoomAreas()", self.editor)
+        self.assertIn("drawRoomAreaLabels(roomAreaLayout)", self.editor)
+        self.assertIn("{ minimumAreaM2: 1 }", self.editor)
 
     def test_calibrated_plan_uses_real_world_scale_in_3d(self):
         self.assertIn("PHYSICAL_WALL_HEIGHT = 2.7", self.html)

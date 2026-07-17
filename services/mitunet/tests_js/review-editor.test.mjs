@@ -79,6 +79,8 @@ test("applying calibration replaces the base grid with a real millimeter grid", 
 test("manual measurements draw every wall label with thin black strokes and room areas", () => {
   const labels = [];
   const strokes = [];
+  const textOutlines = [];
+  const plates = [];
   const context = {
     save() {},
     restore() {},
@@ -86,10 +88,11 @@ test("manual measurements draw every wall label with thin black strokes and room
     moveTo() {},
     lineTo() {},
     stroke() { strokes.push({ strokeStyle: this.strokeStyle, lineWidth: this.lineWidth }); },
-    fillRect() {},
+    fillRect(...args) { plates.push(args); },
     translate() {},
     rotate() {},
     measureText(label) { return { width: label.length * 7 }; },
+    strokeText(label) { textOutlines.push(label); },
     fillText(label) { labels.push(label); },
   };
   const editor = Object.create(ReviewEditor.prototype);
@@ -132,8 +135,10 @@ test("manual measurements draw every wall label with thin black strokes and room
   editor.drawRoomAreaLabels(roomLayout);
 
   assert.deepEqual(labels.sort(), ["1,000 mm", "1,000 mm", "10.2 m²"].sort());
-  assert.ok(strokes.some(item => item.strokeStyle === "#111827" && item.lineWidth === 1));
-  assert.ok(strokes.some(item => item.strokeStyle === "rgba(17, 24, 39, 0.55)"));
+  assert.deepEqual(textOutlines.sort(), ["1,000 mm", "1,000 mm"].sort());
+  assert.equal(plates.length, 1);
+  assert.ok(strokes.some(item => item.strokeStyle === "#111827" && item.lineWidth === 0.8));
+  assert.ok(strokes.some(item => item.strokeStyle === "rgba(17, 24, 39, 0.4)"));
 });
 
 test("estimated calibration never calculates room areas", () => {
