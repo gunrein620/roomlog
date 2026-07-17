@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getRealtimeSocket } from "@/lib/realtime-client";
-import { isTicketActivity } from "./ticket-dashboard-activity";
+import { shouldRefreshTicketDashboard } from "./ticket-dashboard-activity";
 
 type TicketDashboardAutoRefreshProps = {
   intervalMs?: number;
@@ -41,7 +41,7 @@ export function TicketDashboardAutoRefresh({
       isSocketLiveRef.current = false;
     };
     const onActivity = (payload: unknown) => {
-      if (isTicketActivity(payload)) refreshVisibleDashboard();
+      if (shouldRefreshTicketDashboard(payload)) refreshVisibleDashboard();
     };
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") refreshVisibleDashboard();

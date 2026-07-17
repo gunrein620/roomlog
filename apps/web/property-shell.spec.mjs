@@ -5,6 +5,7 @@ import { test } from "node:test";
 // 라우트 분리 1·2단계 — 상세는 /listing/[id], 탭은 /map /saved /inquiry /my 라우트가 됐고
 // 소비자 SPA 본체는 HomeApp.tsx(page.tsx들은 진입 래퍼)다. 검증은 합산 코퍼스로 본다.
 const homeAppSource = readFileSync(new URL("./src/app/HomeApp.tsx", import.meta.url), "utf8");
+const tenantMyPageSource = readFileSync(new URL("./src/app/my/flows/TenantMyPage.tsx", import.meta.url), "utf8");
 const mobileRoleMenuSource = readFileSync(new URL("./src/app/_components/MobileRoleMenu.tsx", import.meta.url), "utf8");
 const spaSource = [
   homeAppSource,
@@ -33,6 +34,26 @@ const pageSource = [
   listingRoutePageSource,
   listingRouteClientSource
 ].join("\n");
+
+test("tenant complaint modal persists, restores, and clears the authenticated room draft", () => {
+  assert.match(tenantMyPageSource, /loadTenantComplaintDraft\(selectedTenantRoomId\)/);
+  assert.match(tenantMyPageSource, /saveTenantComplaintDraft\(\{/);
+  assert.match(tenantMyPageSource, /deleteTenantComplaintDraft\(selectedTenantRoomId\)/);
+  assert.match(tenantMyPageSource, /mergeTenantComplaintDraftImageUrls\(requestImages, uploadedUrls\)/);
+  assert.match(tenantMyPageSource, /roomId:\s*selectedTenantRoomId/);
+  assert.match(tenantMyPageSource, /requestDraftLoadGuardRef\.current\.isCurrent\(loadToken\)/);
+  assert.match(tenantMyPageSource, /setRequestDraft\(EMPTY_REQUEST_DRAFT\);[\s\S]*?clearRequestImages\(\);[\s\S]*?loadTenantComplaintDraft/);
+  assert.match(tenantMyPageSource, /serializeTenantComplaintDraftOccurredAt\(requestDraft\.occurredAt\)/);
+  assert.match(tenantMyPageSource, /requestDraftMutationGuardRef\.current\.tryBegin\("submit"\)/);
+  assert.match(tenantMyPageSource, /clientRequestId:\s*requestSubmissionId/);
+  assert.match(tenantMyPageSource, /attachmentUrls,?\n/);
+  assert.match(tenantMyPageSource, /setRequestImages\(stagedDraft\.attachmentUrls\.map/);
+  assert.doesNotMatch(tenantMyPageSource, /complaintId\)\}\/messages/);
+  assert.doesNotMatch(
+    tenantMyPageSource,
+    /const handleRequestDraftSave = \(\) => \{[\s\S]*?showToast\("민원\/하자 요청이 임시 저장되었습니다\."\);\n  \};/
+  );
+});
 const floorPlanPagePath = new URL("./src/app/floor-plan-3d/page.tsx", import.meta.url);
 const floorPlanPageSource = existsSync(floorPlanPagePath) ? readFileSync(floorPlanPagePath, "utf8") : "";
 const floorPlanEditorPath = new URL("./src/app/floor-plan-3d/RoomlogFloorPlanEditor.tsx", import.meta.url);
