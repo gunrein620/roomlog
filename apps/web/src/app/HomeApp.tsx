@@ -63,6 +63,7 @@ import {
   DEMO_VENDORS
 } from "../lib/demo-vendor-mgmt";
 import {
+  VENDOR_ACTIVATION_LOGIN_ACTION,
   WoozuLoginScreen,
   type AppRole,
   type AuthMode,
@@ -70,6 +71,7 @@ import {
 } from "./_components/WoozuLoginScreen";
 import { MobileRoleMenu } from "./_components/MobileRoleMenu";
 import TourActionBell from "./_components/TourActionBell";
+import TourUploadBanner from "./_components/TourUploadBanner";
 import { getRealtimeSocket } from "@/lib/realtime-client";
 import { formatTenantLandlordUnreadCount } from "@/lib/tenant-landlord-conversation";
 import { tenantLandlordNavLabel } from "@/lib/tenant-landlord-nav-unread";
@@ -2368,6 +2370,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         mode={authMode}
         onAuthenticated={completeServiceAuth}
         onGoHome={closeAuthScreen}
+        vendorActivationAction={VENDOR_ACTIVATION_LOGIN_ACTION}
       />
     );
   }
@@ -2443,6 +2446,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
             </div>
           </div>
         </header>
+        {/* 상단 네비 바로 아래 전역 진행바 — 3D 투어 백그라운드 업로드 중 어느 탭에서든 보인다. */}
+        <TourUploadBanner />
         {activeTab === "home" ? (
         <section className="screen home-screen" aria-labelledby="home-title">
           <header className="app-header">

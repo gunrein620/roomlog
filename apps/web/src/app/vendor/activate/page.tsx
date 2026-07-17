@@ -10,22 +10,24 @@ export const dynamic = "force-dynamic";
 
 export default async function VendorActivationPage() {
   const user = await getUser();
-  const dedicatedAccountRequired = Boolean(user && hasHousingCapability(user));
+  const dedicatedAccountRequired = user ? hasHousingCapability(user) : false;
 
-  if (!dedicatedAccountRequired && user && hasCapability(user, "VENDOR")) {
+  if (user && !dedicatedAccountRequired && hasCapability(user, "VENDOR")) {
     redirect("/vendor/job/00");
   }
 
   return (
     <PhoneFrame label={<span>업체 계정 등록</span>}>
-      {dedicatedAccountRequired && user ? (
+      {!user ? (
+        <VendorEntryActions mode="activation-auth-required" />
+      ) : dedicatedAccountRequired ? (
         <VendorEntryActions
           mode="dedicated-account-required"
           viewerName={user.name}
           logoutReturnTo="/vendor/activate"
         />
       ) : (
-        <VendorActivationFlow authenticated={Boolean(user)} viewerName={user?.name} />
+        <VendorActivationFlow viewerName={user.name} />
       )}
     </PhoneFrame>
   );

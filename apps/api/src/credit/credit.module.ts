@@ -194,6 +194,6 @@ class CreditPersistenceLifecycle implements OnModuleDestroy {
     RepairPaymentOrderService,
     CreditPersistenceLifecycle
   ],
-  exports: [CreditService]
+  exports: [CreditService, RepairPaymentOrderService]
 })
 export class CreditModule {}

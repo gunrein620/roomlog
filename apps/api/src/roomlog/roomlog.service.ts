@@ -20,10 +20,12 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
+  ResceneVendorActivation,
   TicketType,
   VendorAccountView,
   VendorActivationClaimResult,
-  VendorActivationPreviewEnvelope
+  VendorActivationIssueResult,
+  VendorActivationPreview
 } from "@roomlog/types";
 import {
   billingDateInSeoul,
@@ -2812,16 +2814,25 @@ export class RoomlogService implements OnModuleDestroy {
 
   async previewVendorActivation(
     rawKey: string
-  ): Promise<VendorActivationPreviewEnvelope> {
+  ): Promise<VendorActivationPreview> {
     return await this.vendorActivation.preview(rawKey);
+  }
+
+  async listResceneVendorActivations(): Promise<ResceneVendorActivation[]> {
+    return await this.vendorActivation.listRescene();
+  }
+
+  async issueVendorActivation(input: unknown): Promise<VendorActivationIssueResult> {
+    await this.flushPersistence();
+    return await this.vendorActivation.issue(input);
   }
 
   async claimVendorActivation(
     userId: string,
-    activationSession: string
+    rawKey: string
   ): Promise<VendorActivationClaimResult> {
     await this.flushPersistence();
-    return await this.vendorActivation.claim(userId, activationSession);
+    return await this.vendorActivation.claim(userId, rawKey);
   }
 
   async resolveActiveVendorId(userId: string): Promise<string | undefined> {
@@ -5027,7 +5038,7 @@ export class RoomlogService implements OnModuleDestroy {
     return await this.copilot.chat(managerId, input);
   }
 
-  private resolveManagerAgentPendingCommand(
+  resolveManagerAgentPendingCommand(
     managerId: string,
     kind: NonNullable<CopilotChatResponse["pendingAction"]>["kind"],
     input: ManagerAgentCommandInput
@@ -5810,10 +5821,19 @@ export class RoomlogService implements OnModuleDestroy {
     return this.store.tickets.map((ticket) => this.presentTicket(ticket));
   }
 
-  listTicketsForManager(managerId: string) {
-    return this.store.tickets
-      .filter((ticket) => this.canManagerAccessRoom(managerId, ticket.roomId))
-      .map((ticket) => this.presentTicketForManager(managerId, ticket));
+  private async currentManagerReadStore() {
+    if (!this.storeProjector?.load) return this.store;
+    return (await this.storeProjector.load()) ?? createEmptyStore();
+  }
+
+  listTicketsForManager(managerId: string, sourceStore: Store = this.store) {
+    return sourceStore.tickets
+      .filter((ticket) => this.canManagerAccessRoom(managerId, ticket.roomId, sourceStore))
+      .map((ticket) => this.presentTicketForManager(managerId, ticket, sourceStore));
+  }
+
+  async listCurrentTicketsForManager(managerId: string) {
+    return this.listTicketsForManager(managerId, await this.currentManagerReadStore());
   }
 
   queryManagerAssistant(
@@ -5939,11 +5959,23 @@ export class RoomlogService implements OnModuleDestroy {
     return this.presentTicket(ticket);
   }
 
-  getTicketDetailForManager(managerId: string, ticketId: string) {
-    const ticket = this.findTicket(ticketId);
-    this.assertManagerCanAccessTicket(managerId, ticket);
+  getTicketDetailForManager(
+    managerId: string,
+    ticketId: string,
+    sourceStore: Store = this.store
+  ) {
+    const ticket = this.findTicket(ticketId, sourceStore);
+    this.assertManagerCanAccessTicket(managerId, ticket, sourceStore);
 
-    return this.presentTicketForManager(managerId, ticket);
+    return this.presentTicketForManager(managerId, ticket, sourceStore);
+  }
+
+  async getCurrentTicketDetailForManager(managerId: string, ticketId: string) {
+    return this.getTicketDetailForManager(
+      managerId,
+      ticketId,
+      await this.currentManagerReadStore()
+    );
   }
 
   markManagerTicketRead(managerId: string, ticketId: string) {
@@ -11357,10 +11389,11 @@ export class RoomlogService implements OnModuleDestroy {
 
   private repeatIssueSummaryForTicket(
     ticket: Ticket,
-    analysis: AiAnalysis
+    analysis: AiAnalysis,
+    sourceStore: Store = this.store
   ): RepeatIssueSummary | undefined {
     const windowDays = 90;
-    const currentComplaint = this.findComplaint(ticket.complaintId);
+    const currentComplaint = this.findComplaint(ticket.complaintId, sourceStore);
     const detailCategory = analysis.detailCategory ?? analysis.category ?? ticket.category;
     const currentText = [
       currentComplaint.title,
@@ -11372,11 +11405,11 @@ export class RoomlogService implements OnModuleDestroy {
     ].join(" ");
     const referenceTime = this.issueReferenceTime(currentComplaint, ticket);
     const windowMs = windowDays * 24 * 60 * 60 * 1000;
-    const matchedTickets = this.store.tickets
+    const matchedTickets = sourceStore.tickets
       .filter((candidate) => candidate.id !== ticket.id && candidate.roomId === ticket.roomId)
       .map((candidate) => {
-        const complaint = this.findComplaint(candidate.complaintId);
-        const candidateAnalysis = this.store.analyses[candidate.id];
+        const complaint = this.findComplaint(candidate.complaintId, sourceStore);
+        const candidateAnalysis = sourceStore.analyses[candidate.id];
         const candidateText = [
           complaint.title,
           complaint.description,
@@ -11410,7 +11443,7 @@ export class RoomlogService implements OnModuleDestroy {
     }
 
     const isRepeated = matchedTickets.length >= 2;
-    const room = this.store.rooms.find((item) => item.id === ticket.roomId);
+    const room = sourceStore.rooms.find((item) => item.id === ticket.roomId);
     const roomLabel = [room?.buildingName, room?.roomNo].filter(Boolean).join(" ") || ticket.roomId;
     const label = isRepeated
       ? `최근 3개월 ${roomLabel} ${detailCategory} 관련 반복 민원 ${matchedTickets.length}건`
@@ -12090,16 +12123,20 @@ export class RoomlogService implements OnModuleDestroy {
     ticket.aiSummary = analysis.summary;
   }
 
-  private presentRoomTimeline(roomId: string, scope: { tenantId?: string } = {}): RoomTimelineEntry[] {
-    const room = this.findRoom(roomId);
-    const tickets = this.store.tickets.filter(
+  private presentRoomTimeline(
+    roomId: string,
+    scope: { tenantId?: string } = {},
+    sourceStore: Store = this.store
+  ): RoomTimelineEntry[] {
+    const room = this.findRoom(roomId, sourceStore);
+    const tickets = sourceStore.tickets.filter(
       (ticket) =>
         ticket.roomId === roomId && (!scope.tenantId || ticket.tenantId === scope.tenantId)
     );
     const ticketIds = new Set(tickets.map((ticket) => ticket.id));
     const entries: RoomTimelineEntry[] = [];
 
-    for (const item of this.store.moveInChecklist.filter(
+    for (const item of sourceStore.moveInChecklist.filter(
       (entry) =>
         entry.roomId === roomId && (!scope.tenantId || entry.tenantId === scope.tenantId)
     )) {
@@ -12116,7 +12153,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const session of this.store.intakeSessions.filter(
+    for (const session of sourceStore.intakeSessions.filter(
       (item) => item.roomId === roomId && (!scope.tenantId || item.tenantId === scope.tenantId)
     )) {
       entries.push({
@@ -12140,7 +12177,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const complaint of this.store.complaints.filter(
+    for (const complaint of sourceStore.complaints.filter(
       (item) => item.roomId === roomId && (!scope.tenantId || item.tenantId === scope.tenantId)
     )) {
       entries.push({
@@ -12158,7 +12195,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const feedback of this.store.aiFeedback.filter((item) => ticketIds.has(item.ticketId))) {
+    for (const feedback of sourceStore.aiFeedback.filter((item) => ticketIds.has(item.ticketId))) {
       entries.push({
         id: `timeline-${feedback.id}`,
         type: "AI_FEEDBACK",
@@ -12174,8 +12211,8 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const history of this.store.history.filter((item) => ticketIds.has(item.ticketId))) {
-      const ticket = this.findTicket(history.ticketId);
+    for (const history of sourceStore.history.filter((item) => ticketIds.has(item.ticketId))) {
+      const ticket = this.findTicket(history.ticketId, sourceStore);
       entries.push({
         id: `timeline-${history.id}`,
         type: "STATUS_CHANGE",
@@ -12191,7 +12228,7 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const message of this.store.messages.filter((item) => ticketIds.has(item.ticketId))) {
+    for (const message of sourceStore.messages.filter((item) => ticketIds.has(item.ticketId))) {
       entries.push({
         id: `timeline-${message.id}`,
         type: "MESSAGE",
@@ -12207,8 +12244,8 @@ export class RoomlogService implements OnModuleDestroy {
       });
     }
 
-    for (const repair of this.store.repairs.filter((item) => ticketIds.has(item.ticketId))) {
-      const ticket = this.findTicket(repair.ticketId);
+    for (const repair of sourceStore.repairs.filter((item) => ticketIds.has(item.ticketId))) {
+      const ticket = this.findTicket(repair.ticketId, sourceStore);
       entries.push({
         id: `timeline-${repair.id}`,
         type: "REPAIR",
@@ -12779,10 +12816,10 @@ export class RoomlogService implements OnModuleDestroy {
     };
   }
 
-  private presentTicket(ticket: Ticket) {
-    const complaint = this.findComplaint(ticket.complaintId);
-    const room = this.store.rooms.find((item) => item.id === ticket.roomId);
-    const analysis = this.store.analyses[ticket.id];
+  private presentTicket(ticket: Ticket, sourceStore: Store = this.store) {
+    const complaint = this.findComplaint(ticket.complaintId, sourceStore);
+    const room = sourceStore.rooms.find((item) => item.id === ticket.roomId);
+    const analysis = sourceStore.analyses[ticket.id];
 
     if (!analysis) {
       throw new NotFoundException("AI 분석을 찾을 수 없습니다.");
@@ -12793,30 +12830,34 @@ export class RoomlogService implements OnModuleDestroy {
       kind: this.ticketKindFromCategory(ticket.category),
       complaint,
       room,
-      analysis: this.presentAnalysis(analysis, ticket),
-      aiFeedback: this.store.aiFeedback
+      analysis: this.presentAnalysis(analysis, ticket, sourceStore),
+      aiFeedback: sourceStore.aiFeedback
         .filter((feedback) => feedback.ticketId === ticket.id)
         .map((feedback) => this.presentAiFeedback(feedback)),
       assignedVendor: ticket.assignedVendorId
-        ? this.store.vendors.find((vendor) => vendor.id === ticket.assignedVendorId)
+        ? sourceStore.vendors.find((vendor) => vendor.id === ticket.assignedVendorId)
         : undefined,
-      repairs: this.store.repairs.filter((repair) => repair.ticketId === ticket.id),
-      messages: this.store.messages
+      repairs: sourceStore.repairs.filter((repair) => repair.ticketId === ticket.id),
+      messages: sourceStore.messages
         .filter((message) => message.ticketId === ticket.id)
         .map((message) => this.presentTicketMessage(message)),
-      history: this.store.history.filter((history) => history.ticketId === ticket.id),
-      roomTimeline: this.presentRoomTimeline(ticket.roomId),
-      callbot: this.presentCallbotContext(ticket)
+      history: sourceStore.history.filter((history) => history.ticketId === ticket.id),
+      roomTimeline: this.presentRoomTimeline(ticket.roomId, {}, sourceStore),
+      callbot: this.presentCallbotContext(ticket, sourceStore)
     };
   }
 
-  private presentTicketForManager(managerId: string, ticket: Ticket) {
-    const managerReadAt = this.store.managerTicketReads?.find(
+  private presentTicketForManager(
+    managerId: string,
+    ticket: Ticket,
+    sourceStore: Store = this.store
+  ) {
+    const managerReadAt = sourceStore.managerTicketReads?.find(
       (read) => read.managerId === managerId && read.ticketId === ticket.id,
     )?.readAt;
 
     return {
-      ...this.presentTicket(ticket),
+      ...this.presentTicket(ticket, sourceStore),
       managerReadAt,
       isManagerUnread: !managerReadAt,
     };
@@ -12828,12 +12869,15 @@ export class RoomlogService implements OnModuleDestroy {
       : "defect";
   }
 
-  private presentCallbotContext(ticket: Ticket): CallbotTicketContext | undefined {
+  private presentCallbotContext(
+    ticket: Ticket,
+    sourceStore: Store = this.store
+  ): CallbotTicketContext | undefined {
     if (ticket.sourceChannel !== "CALLBOT") {
       return undefined;
     }
 
-    const messages = this.store.messages.filter((message) => message.ticketId === ticket.id);
+    const messages = sourceStore.messages.filter((message) => message.ticketId === ticket.id);
     const recordingMessage = messages.find((message) =>
       message.messageText.startsWith("콜봇 통화 녹음:")
     );
@@ -12897,9 +12941,13 @@ export class RoomlogService implements OnModuleDestroy {
     };
   }
 
-  private presentAnalysis(analysis: AiAnalysis, ticket?: Ticket) {
+  private presentAnalysis(
+    analysis: AiAnalysis,
+    ticket?: Ticket,
+    sourceStore: Store = this.store
+  ) {
     const repeatSummary = ticket
-      ? this.repeatIssueSummaryForTicket(ticket, analysis)
+      ? this.repeatIssueSummaryForTicket(ticket, analysis, sourceStore)
       : analysis.repeatSummary;
 
     return {
@@ -13087,8 +13135,8 @@ export class RoomlogService implements OnModuleDestroy {
     return message;
   }
 
-  private findComplaint(complaintId: string) {
-    const complaint = this.store.complaints.find((item) => item.id === complaintId);
+  private findComplaint(complaintId: string, sourceStore: Store = this.store) {
+    const complaint = sourceStore.complaints.find((item) => item.id === complaintId);
 
     if (!complaint) {
       throw new NotFoundException("민원을 찾을 수 없습니다.");
@@ -13097,8 +13145,8 @@ export class RoomlogService implements OnModuleDestroy {
     return complaint;
   }
 
-  private findTicket(ticketId: string) {
-    const ticket = this.store.tickets.find((item) => item.id === ticketId);
+  private findTicket(ticketId: string, sourceStore: Store = this.store) {
+    const ticket = sourceStore.tickets.find((item) => item.id === ticketId);
 
     if (!ticket) {
       throw new NotFoundException("티켓을 찾을 수 없습니다.");
@@ -13107,8 +13155,8 @@ export class RoomlogService implements OnModuleDestroy {
     return ticket;
   }
 
-  private findRoom(roomId: string) {
-    const room = this.store.rooms.find((item) => item.id === roomId);
+  private findRoom(roomId: string, sourceStore: Store = this.store) {
+    const room = sourceStore.rooms.find((item) => item.id === roomId);
 
     if (!room) {
       throw new NotFoundException("호실을 찾을 수 없습니다.");
@@ -13117,20 +13165,34 @@ export class RoomlogService implements OnModuleDestroy {
     return room;
   }
 
-  private canManagerAccessRoom(managerId: string, roomId: string) {
-    return this.store.rooms.some((room) => room.id === roomId && room.landlordId === managerId);
+  private canManagerAccessRoom(
+    managerId: string,
+    roomId: string,
+    sourceStore: Store = this.store
+  ) {
+    return sourceStore.rooms.some(
+      (room) => room.id === roomId && room.landlordId === managerId
+    );
   }
 
-  private assertManagerCanAccessRoom(managerId: string, roomId: string) {
-    const room = this.findRoom(roomId);
+  private assertManagerCanAccessRoom(
+    managerId: string,
+    roomId: string,
+    sourceStore: Store = this.store
+  ) {
+    const room = this.findRoom(roomId, sourceStore);
 
     if (room.landlordId !== managerId) {
       throw new ForbiddenException("담당 호실에만 접근할 수 있습니다.");
     }
   }
 
-  private assertManagerCanAccessTicket(managerId: string, ticket: Ticket) {
-    this.assertManagerCanAccessRoom(managerId, ticket.roomId);
+  private assertManagerCanAccessTicket(
+    managerId: string,
+    ticket: Ticket,
+    sourceStore: Store = this.store
+  ) {
+    this.assertManagerCanAccessRoom(managerId, ticket.roomId, sourceStore);
   }
 
   private findIntakeSession(tenantId: string, sessionId: string) {

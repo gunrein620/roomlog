@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, ChevronLeft, ChevronRight, EllipsisVertical } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ManagerContractDashboard, ManagerContractRow } from "@/lib/contract-manager-api";
 import { MANAGER_CONTRACT_ROUTES } from "@/lib/contract-manager-nav";
+import {
+  placeTicketActionMenu,
+  type TicketActionMenuPosition,
+} from "../../ticket/dash/00/ticket-action-menu-position";
 
 const PAGE_SIZE = 10;
 
@@ -255,6 +260,8 @@ function ContractDashboardTable({
   rows: ManagerContractRow[];
   focusedContractId?: string;
 }) {
+  const [openMenuContractId, setOpenMenuContractId] = useState<string | null>(null);
+
   return (
     <div className="manager-contract-table-wrap">
       <table className="manager-contract-table">
@@ -299,9 +306,14 @@ function ContractDashboardTable({
                 <td className="manager-contract-table__money">{depositLabel(row.depositSummary)}</td>
                 <td className="manager-contract-table__strong">{clauseSummaryLabel(row)}</td>
                 <td>
-                  <Link className="manager-contract-table__row-action" href={detailHref}>
-                    {actionLabel(row, priority.kind)}
-                  </Link>
+                  <div className="manager-contract-table__action">
+                    <ContractActionMenu
+                      row={row}
+                      detailHref={detailHref}
+                      open={openMenuContractId === row.contract.id}
+                      setOpenMenuContractId={setOpenMenuContractId}
+                    />
+                  </div>
                 </td>
               </tr>
             );
@@ -316,6 +328,121 @@ function ContractDashboardTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function ContractActionMenu({
+  row,
+  detailHref,
+  open,
+  setOpenMenuContractId,
+}: {
+  row: ManagerContractRow;
+  detailHref: string;
+  open: boolean;
+  setOpenMenuContractId: React.Dispatch<React.SetStateAction<string | null>>;
+}) {
+  const menuId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<TicketActionMenuPosition | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !menuRef.current) return;
+
+    const trigger = triggerRef.current.getBoundingClientRect();
+    const menu = menuRef.current.getBoundingClientRect();
+    const gap = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--space-xs"),
+    );
+
+    setPosition(
+      placeTicketActionMenu({
+        trigger: { top: trigger.top, right: trigger.right, bottom: trigger.bottom },
+        menu: { width: menu.width, height: menu.height },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        gap: Number.isFinite(gap) ? gap : 0,
+      }),
+    );
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function dismissMenu() {
+      setOpenMenuContractId(null);
+      setPosition(null);
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      dismissMenu();
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        dismissMenu();
+        triggerRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", dismissMenu, true);
+    window.addEventListener("resize", dismissMenu);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", dismissMenu, true);
+      window.removeEventListener("resize", dismissMenu);
+    };
+  }, [open, setOpenMenuContractId]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="manager-contract-table__more-action"
+        aria-label={`${row.buildingName} ${row.contract.unitId}호 계약 작업 메뉴`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => {
+          setPosition(null);
+          setOpenMenuContractId((current) =>
+            current === row.contract.id ? null : row.contract.id,
+          );
+        }}
+      >
+        <EllipsisVertical aria-hidden="true" />
+      </button>
+
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              id={menuId}
+              className="manager-contract-table__more-menu-list"
+              role="menu"
+              data-placement={position?.placement}
+              data-positioned={position ? "true" : "false"}
+              style={position ? { top: position.top, left: position.left } : undefined}
+            >
+              <Link role="menuitem" href={detailHref}>
+                검토 열기
+              </Link>
+              <Link role="menuitem" href={detailHref}>
+                OCR 대조
+              </Link>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 

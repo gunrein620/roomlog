@@ -10331,6 +10331,77 @@ p {
   display: none;
 }
 
+/* 3D 투어 백그라운드 업로드 전역 진행바 — 상단 네비 바로 아래, 어느 탭에서든 노출. */
+.tour-upload-banner {
+  position: sticky;
+  top: 0;
+  z-index: 54;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px var(--page-margin);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  border-bottom: 1px solid var(--outline-variant);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  line-height: var(--lh-caption);
+}
+
+.tour-upload-banner.is-error {
+  background: var(--error-container);
+  color: var(--on-error-container);
+}
+
+.tour-upload-banner__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.tour-upload-banner__label {
+  flex-shrink: 0;
+}
+
+.tour-upload-banner__file {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.tour-upload-banner__track {
+  flex: 1;
+  min-width: 60px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--on-primary-container) 18%, transparent);
+  overflow: hidden;
+}
+
+.tour-upload-banner__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  transition: width 0.25s ease;
+}
+
+.tour-upload-banner__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tour-upload-banner__close:hover {
+  background: color-mix(in srgb, var(--on-error-container) 12%, transparent);
+}
+
 @media (min-width: 1080px) {
   .app-canvas {
     padding: 0;
@@ -10380,6 +10451,13 @@ p {
     z-index: 55;
     background: #ffffff;
     border-bottom: 1px solid #ecedf2;
+  }
+
+  /* 데스크톱은 topbar(68px + 1px 보더)가 sticky라 진행바를 그 아래에 고정한다. */
+  .tour-upload-banner {
+    top: 69px;
+    padding-left: max(var(--page-margin), calc((100% - 1200px) / 2 + 32px));
+    padding-right: max(var(--page-margin), calc((100% - 1200px) / 2 + 32px));
   }
 
   .web-topbar-inner {

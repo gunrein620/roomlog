@@ -63,7 +63,8 @@
 
 .summary,
 .state,
-.recoveryState {
+.recoveryState,
+.methodSelector {
   display: grid;
   gap: var(--space-md);
   padding: var(--space-lg);
@@ -130,6 +131,40 @@
 
 .state p {
   margin: 0;
+}
+
+.methodSelector strong {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+.methodSelector p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+.methodOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.methodButton {
+  min-height: var(--touch-target);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-subtitle);
+}
+
+.methodButton[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
 }
 
 .notice,

@@ -37,7 +37,6 @@ services:
       PUBLIC_UPLOAD_BASE_URL: ${PUBLIC_UPLOAD_BASE_URL:-http://localhost:4000/api/files}
       # 로컬 Compose 전용 기본값. 배포는 PROD_ENV의 별도 시크릿을 사용한다.
       VENDOR_ACTIVATION_KEY_PEPPER: ${VENDOR_ACTIVATION_KEY_PEPPER:-roomlog-local-vendor-activation-pepper}
-      VENDOR_ACTIVATION_SESSION_SECRET: ${VENDOR_ACTIVATION_SESSION_SECRET:-roomlog-local-vendor-session-secret}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:-roomlog-files}
     ports:
@@ -79,7 +78,7 @@ services:
       - roomlog-postgres-data:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10

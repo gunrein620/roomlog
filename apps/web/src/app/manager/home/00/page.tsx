@@ -4,6 +4,7 @@ import { getUser } from "@/lib/session";
 import { AlertStatTiles } from "./AlertStatTiles";
 import { HomeCards } from "./HomeCards";
 import { InstrumentPanel } from "./InstrumentPanel";
+import { RepairExpenseSection } from "./RepairExpenseSection";
 import { TodayTasksCard } from "./TodayTasksCard";
 import { DASHBOARD_SOURCE_LABELS } from "./dashboard-calculations";
 import { assembleManagerDashboard } from "./dashboard-data";
@@ -72,7 +73,9 @@ export default async function Page() {
 
         <AlertStatTiles warnings={warnings} />
 
-        <ReportSection />
+        <ReportSection repairExpenses={dashboard.repairExpenses} />
+
+        <RepairExpenseSection repairExpenses={dashboard.repairExpenses} />
 
         {/* ── 운영 존: 관리 중인 집·미계약 | 오늘 확인할 업무 — 2단으로 스캔 거리를 줄인다 ── */}
         <div className="manager-home-ops">

@@ -28,6 +28,10 @@ const googleLogoSvg = (
 );
 
 export const defaultAuthRedirectPath = "/";
+export const VENDOR_ACTIVATION_LOGIN_ACTION = {
+  href: "/vendor/activate",
+  label: "등록 키로 업체 등록하기"
+} as const;
 
 // 소셜 로그인 실패 시 돌아올 기본 경로 — 반드시 ?error=코드를 "표시하는" 화면이어야 한다.
 // 홈("/")으로 보내면 에러 파라미터를 아무도 읽지 않아 사용자는 조용히 홈에 떨어진다.

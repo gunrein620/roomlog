@@ -1,3 +1,5 @@
+import type { VendorTrade } from "./vendor-mgmt";
+
 export type VendorVerificationStatus = "VERIFIED" | "PENDING" | "REJECTED";
 export type VendorAccountRole = "OWNER";
 export type VendorAccountLinkStatus = "ACTIVE" | "DISABLED";
@@ -38,9 +40,7 @@ export interface VendorAccountView {
 }
 
 export interface VendorActivationPreview {
-  activationSessionExpiresAt: string;
   vendor: {
-    vendorId: string;
     businessName: string;
     trades: string[];
     serviceAreas: string[];
@@ -49,17 +49,27 @@ export interface VendorActivationPreview {
   };
 }
 
-/** API → server BFF only. The BFF stores activationSession in an HttpOnly cookie. */
-export interface VendorActivationPreviewEnvelope {
-  preview: VendorActivationPreview;
-  activationSession: string;
-}
-
 export interface VendorActivationClaimResult {
   vendor: VendorAccountView;
-  idempotent: boolean;
   nextPath: "/vendor/job/00";
 }
+
+export interface VendorActivationIssueInput {
+  businessName: string;
+  contactPerson: string;
+  phone: string;
+  trades: VendorTrade[];
+  serviceAreas: string[];
+}
+
+export interface ResceneVendorActivation extends VendorActivationIssueInput {
+  verificationStatus: VendorVerificationStatus;
+  activationStatus: VendorActivationStatus;
+  expiresAt: string;
+  activationKey: string;
+}
+
+export type VendorActivationIssueResult = ResceneVendorActivation;
 
 export type VendorActivationErrorCode =
   | "INVALID_KEY"

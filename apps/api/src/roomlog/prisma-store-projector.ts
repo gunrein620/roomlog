@@ -1122,9 +1122,9 @@ export class PrismaStoreProjector implements StoreProjector {
 
       for (const [tenantId, roomId] of Object.entries(store.tenantRooms)) {
         await tx.tenantRoom.upsert({
-          where: { tenantId_roomId: { tenantId, roomId } },
+          where: { tenantId },
           create: { tenantId, roomId },
-          update: {}
+          update: { roomId }
         });
       }
 

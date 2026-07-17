@@ -325,6 +325,15 @@ enum RepairPaymentOrderStatus {
   CANCELLED
 }
 
+enum AgentToolActionStatus {
+  PENDING
+  EXECUTING
+  EXECUTED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
 enum CreditLedgerEntryType {
   OPENING_BALANCE
   TOPUP
@@ -626,6 +635,7 @@ model UserAccount {
   vendorPaymentRequests      VendorPaymentRequest[]     @relation("VendorPaymentManager")
   payerVendorPaymentRequests VendorPaymentRequest[]     @relation("VendorPaymentPayer")
   repairPaymentOrders        RepairPaymentOrder[]       @relation("RepairPaymentOrderPayer")
+  agentToolActions           AgentToolAction[]
   vendorPaymentAuditEvents   VendorPaymentAuditEvent[]  @relation("VendorPaymentAuditActor")
   managedDomainEvents        DomainEventOutbox[]        @relation("DomainEventManager")
   actedDomainEvents          DomainEventOutbox[]        @relation("DomainEventActor")
@@ -708,6 +718,7 @@ model TenantRoom {
   room   Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, roomId])
+  @@unique([tenantId])
   @@index([roomId])
 }
 
@@ -1088,6 +1099,32 @@ model RepairPaymentOrder {
   @@index([payerRole, payerUserId, status, updatedAt])
   @@index([retryOfOrderId])
   @@unique([id, paymentRequestId])
+}
+
+model AgentToolAction {
+  id               String                 @id
+  activeKey        String?                @unique
+  principalUserId  String
+  principalRole    String
+  toolName         String
+  executorName     String?
+  toolCallId       String
+  arguments        Json
+  commandPayload   Json?
+  confirmationCard Json?
+  result           Json?
+  failureSummary   String?
+  status           AgentToolActionStatus
+  initiatedBy      RepairPaymentInitiator @default(AI_AGENT)
+  expiresAt        DateTime?
+  confirmedAt      DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  principal        UserAccount            @relation(fields: [principalUserId], references: [id], onDelete: Restrict)
+
+  @@unique([principalUserId, principalRole, toolCallId])
+  @@index([principalUserId, status, createdAt])
 }
 
 model CreditAccount {

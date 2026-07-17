@@ -10,6 +10,7 @@ import { TenantFurnitureModule } from "./tenant-furniture/tenant-furniture.modul
 import { RealtimeModule } from "./realtime/realtime.module";
 import { ReconstructionModule } from "./reconstruction/reconstruction.module";
 import { TradeModule } from "./trade/trade.module";
+import { AgentToolsModule } from "./agent-tools/agent-tools.module";
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { TradeModule } from "./trade/trade.module";
     TenantFurnitureModule,
     TradeModule,
     RealtimeModule,
+    AgentToolsModule,
     ReconstructionModule
   ]
 })

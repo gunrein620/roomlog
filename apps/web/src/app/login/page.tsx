@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  VENDOR_ACTIVATION_LOGIN_ACTION,
   WoozuLoginScreen,
   socialAuthErrorMessage,
   type AppRole,
@@ -189,10 +190,7 @@ export default function UnifiedLoginPage() {
       googleRedirectTo={redirectTo ?? defaultRedirectForIntent(intent)}
       googleErrorRedirectTo={unifiedLoginPath(intent, redirectTo)}
       initialError={initialError}
-      vendorActivationAction={{
-        href: "/vendor/activate",
-        label: "등록 키로 업체 등록하기"
-      }}
+      vendorActivationAction={VENDOR_ACTIVATION_LOGIN_ACTION}
     />
   );
 }
