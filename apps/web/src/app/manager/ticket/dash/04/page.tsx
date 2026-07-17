@@ -2,7 +2,7 @@ import { requiredVendorTrade, vendorSupportsRequiredTrade } from "@roomlog/types
 import { Badge, Card } from "@roomlog/ui";
 import {
   findManagerVendorJobByTicket,
-  searchVendorCatalog,
+  searchAssignableVendorCandidates,
 } from "@/lib/vendor-mgmt-api";
 import { ApiPayloadError } from "@/lib/server-api";
 import { MANAGER_DEMO_TICKET_ID, getManagerTicket } from "@/lib/ticket-manager-api";
@@ -35,7 +35,7 @@ export default async function VendorAssignmentPage({ searchParams }: { searchPar
   const ticketId = id ?? MANAGER_DEMO_TICKET_ID;
   const loaded = await Promise.all([
     getManagerTicket(ticketId),
-    searchVendorCatalog({ isActive: true }),
+    searchAssignableVendorCandidates(ticketId),
     findManagerVendorJobByTicket(ticketId),
   ]).catch((error: unknown) => {
     if (error instanceof ApiPayloadError) return null;

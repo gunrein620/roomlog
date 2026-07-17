@@ -115,6 +115,21 @@ export function searchVendorCatalog(
   );
 }
 
+export function searchAssignableVendorCandidates(
+  ticketId: string,
+  query?: string,
+): Promise<VendorReadResult<VendorCatalogSearchResult[]>> {
+  const suffix = query?.trim()
+    ? `?query=${encodeURIComponent(query.trim())}`
+    : "";
+  return readVendorData(
+    () => serverFetch<VendorCatalogSearchResult[]>(
+      `/manager/vendor-mgmt/tickets/${encodeURIComponent(ticketId)}/candidates${suffix}`,
+    ),
+    filterSearchDemo({ query }).filter((candidate) => candidate.canAssign),
+  );
+}
+
 export function getManagerVendorDetail(
   vendorId: string,
 ): Promise<VendorReadResult<ManagerVendorDetail>> {

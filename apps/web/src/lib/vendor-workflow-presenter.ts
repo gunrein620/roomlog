@@ -1,6 +1,7 @@
 import type {
   VendorEstimate,
   VendorJobSummary,
+  VendorPaymentAttemptMode,
   VendorPaymentRequestStatus,
 } from "@roomlog/types";
 
@@ -73,8 +74,17 @@ export function estimateStatusLabel(status?: VendorEstimate["status"]) {
   return labels[status];
 }
 
-export function paymentStatusLabel(status?: VendorPaymentRequestStatus) {
+export function paymentStatusLabel(
+  status?: VendorPaymentRequestStatus,
+  lastAttemptMode?: VendorPaymentAttemptMode,
+) {
   if (!status) return "완료 승인 후 정산 요청 생성";
+  if (status === "PENDING_APPROVAL" && lastAttemptMode === "DIRECT") {
+    return "직접결제 확인 대기";
+  }
+  if (status === "DIRECT_PAID" && lastAttemptMode === "DIRECT") {
+    return "직접결제 완료";
+  }
   const labels: Record<VendorPaymentRequestStatus, string> = {
     WAITING_COMPLETION: "관리자 완료 확인 대기",
     PENDING_APPROVAL: "관리자 지급 승인 대기",

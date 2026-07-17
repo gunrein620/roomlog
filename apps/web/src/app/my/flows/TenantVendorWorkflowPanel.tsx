@@ -151,8 +151,15 @@ export function TenantVendorWorkflowPanel({
     && Boolean(estimate.visitAvailableAt);
   const canReviewCompletion = Boolean(completion && !completion.review)
     && workflow.status === "COMPLETION_REPORTED";
-  const canPayRepairCost = Boolean(payment && payment.status === "PENDING_APPROVAL");
-  const isRepairCostPaid = Boolean(payment && payment.status === "TOSS_PAID");
+  const isDirectPaymentPending = payment?.status === "PENDING_APPROVAL"
+    && payment.lastAttemptMode === "DIRECT";
+  const canPayRepairCost = Boolean(
+    payment
+    && payment.status === "PENDING_APPROVAL"
+    && !isDirectPaymentPending,
+  );
+  const isRepairCostPaid = payment?.status === "TOSS_PAID"
+    || payment?.status === "DIRECT_PAID";
 
   return (
     <section className="tenant-vendor-workflow" aria-label="협력업체 수리 진행">
@@ -379,8 +386,17 @@ export function TenantVendorWorkflowPanel({
           <div>
             <span>3</span>
             <div>
-              <strong>결제 준비 완료</strong>
+              <strong>
+                {payment.status === "DIRECT_PAID"
+                  ? "직접결제 완료"
+                  : payment.status === "TOSS_PAID"
+                    ? "Toss 결제 완료"
+                    : isDirectPaymentPending
+                      ? "직접결제 확인 대기"
+                      : "결제 준비 완료"}
+              </strong>
               <p>완료 확인 금액 {formatKrw(payment.amount)}</p>
+              {payment.processedAt ? <p>처리 시각 {formatDateTime(payment.processedAt)}</p> : null}
             </div>
           </div>
           {canPayRepairCost ? (
@@ -390,6 +406,8 @@ export function TenantVendorWorkflowPanel({
             >
               결제하기
             </a>
+          ) : isDirectPaymentPending ? (
+            <span className="tenant-vendor-payment-complete">업체 확인 대기</span>
           ) : isRepairCostPaid ? (
             <span className="tenant-vendor-payment-complete">결제 완료</span>
           ) : (

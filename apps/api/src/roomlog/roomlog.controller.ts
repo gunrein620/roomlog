@@ -24,6 +24,7 @@ import type {
   ConfirmTenantVendorConnectionInput,
   DecideRepairCompletionInput,
   PrepareTenantVendorConnectionInput,
+  RequestTenantDirectPaymentInput,
   SubmitVendorCompletionInput,
   TenantVendorCompletionDecisionInput,
   TenantVendorEstimateReviewInput,
@@ -871,6 +872,20 @@ export class RoomlogController {
       user.id,
       repairId,
       body
+    );
+  }
+
+  @Post("tenant/vendor-payment-requests/:paymentRequestId/direct-payment")
+  requestTenantDirectPayment(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("paymentRequestId") paymentRequestId: string,
+    @Body() body: RequestTenantDirectPaymentInput
+  ) {
+    const user = this.requireRole(authorization, ["TENANT"]);
+    return this.requireVendorWorkflowDomain().requestTenantDirectPayment(
+      user.id,
+      paymentRequestId,
+      { idempotencyKey: exactStringBody(body, "idempotencyKey") }
     );
   }
 
@@ -2070,6 +2085,20 @@ export class RoomlogController {
       .then((data) => ({ data }));
   }
 
+  @Get("manager/vendor-mgmt/tickets/:ticketId/candidates")
+  searchManagerVendorAssignmentCandidates(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("ticketId") ticketId: string,
+    @Query("query") query?: string
+  ) {
+    const user = this.requireRole(authorization, ["LANDLORD"]);
+    return this.requireManagerVendorDomain().searchAssignmentCandidates(
+      user.id,
+      ticketId,
+      query
+    );
+  }
+
   @Get("manager/vendor-mgmt/vendors/:vendorId")
   getManagerVendorMgmtDetail(
     @Headers("authorization") authorization: string | undefined,
@@ -2357,6 +2386,18 @@ export class RoomlogController {
   async listVendorSettlements(@Headers("authorization") authorization?: string) {
     const user = await this.requireVendorRole(authorization);
     return this.requireVendorWorkflowDomain().listSettlements(user.id);
+  }
+
+  @Post("vendor/vendor-payment-requests/:paymentRequestId/direct-payment/confirm")
+  async confirmVendorDirectPayment(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("paymentRequestId") paymentRequestId: string
+  ) {
+    const user = await this.requireVendorRole(authorization);
+    return this.requireVendorWorkflowDomain().confirmVendorDirectPayment(
+      user.id,
+      paymentRequestId
+    );
   }
 
   // 한 릴리스 동안만 유지하는 읽기 전용 별칭. 모든 mutation은 vendor/jobs로만 제공한다.

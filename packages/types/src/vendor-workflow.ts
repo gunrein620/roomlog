@@ -241,6 +241,11 @@ export interface VendorJobPaymentView {
   processedAt?: string;
 }
 
+/** 세입자 직접결제 대기 기록에는 클라이언트가 금액을 전달하지 않는다. */
+export interface RequestTenantDirectPaymentInput {
+  idempotencyKey: string;
+}
+
 /** 완료 승인 응답에 공개 가능한 결제 정보. 실제 결제자 식별자는 포함하지 않는다. */
 export interface VendorCompletionDecisionPaymentView
   extends VendorJobPaymentView {

@@ -75,6 +75,9 @@ class UnavailableManagerVendorRepository implements ManagerVendorRepository {
   async searchCatalog() {
     return workflowUnavailable();
   }
+  async searchAssignmentCandidates() {
+    return workflowUnavailable();
+  }
   async list() {
     return workflowUnavailable();
   }
@@ -151,6 +154,12 @@ class UnavailableVendorWorkflowRepository implements VendorWorkflowRepository {
     return workflowUnavailable();
   }
   async decideTenantCompletion(): Promise<never> {
+    return workflowUnavailable();
+  }
+  async requestTenantDirectPayment(): Promise<never> {
+    return workflowUnavailable();
+  }
+  async confirmVendorDirectPayment(): Promise<never> {
     return workflowUnavailable();
   }
 }

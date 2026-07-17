@@ -314,7 +314,10 @@ export function SettlementSummary({ job }: { job: VendorJobSummary | VendorJobDe
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={labelStyle}>정산 진행</div>
-      <InfoRow label="현재 상태" value={paymentStatusLabel(payment?.status)} />
+      <InfoRow
+        label="현재 상태"
+        value={paymentStatusLabel(payment?.status, payment?.lastAttemptMode)}
+      />
       {payment ? (
         <>
           <InfoRow label="정산 금액" value={`${payment.amount.toLocaleString()}원`} />

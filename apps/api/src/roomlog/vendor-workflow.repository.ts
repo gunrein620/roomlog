@@ -1,6 +1,7 @@
 import type {
   DecideRepairCompletionInput,
   RepairCompletionDecision,
+  RequestTenantDirectPaymentInput,
   StartVendorJobResult,
   SubmitVendorCompletionInput,
   TenantVendorCompletionDecisionInput,
@@ -12,6 +13,7 @@ import type {
   VendorEstimateDraftInput,
   VendorEstimateReviewInput,
   VendorJobDetail,
+  VendorJobPaymentView,
   VendorJobSummary,
   VendorPaymentRequest,
   VendorSettlementRow,
@@ -164,5 +166,15 @@ export interface VendorWorkflowRepository {
     repairId: string,
     input: TenantVendorCompletionDecisionInput
   ): Promise<TenantVendorWorkflowView>;
+  requestTenantDirectPayment(
+    tenantId: string,
+    paymentRequestId: string,
+    input: RequestTenantDirectPaymentInput
+  ): Promise<VendorJobPaymentView>;
+  confirmVendorDirectPayment(
+    vendorId: string,
+    vendorUserId: string,
+    paymentRequestId: string
+  ): Promise<VendorJobPaymentView>;
   listSettlements(vendorId: string): Promise<VendorSettlementRow[]>;
 }
