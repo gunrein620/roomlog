@@ -80,6 +80,18 @@ function requiredText(value: unknown, message: string) {
   return normalized;
 }
 
+function optionalBoundedText(value: unknown, label: string) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new BadRequestException(`${label}이 올바르지 않습니다.`);
+  }
+  const normalized = value.trim();
+  if (normalized.length > 120) {
+    throw new BadRequestException(`${label}은 120자 이하여야 합니다.`);
+  }
+  return normalized;
+}
+
 type ExistingPendingKind = "billing.send_dunning" | "messaging.send_reply";
 
 export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
@@ -655,16 +667,44 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
       };
     }
     if (tool === "repair_payment.prepare") {
-      only(args, ["paymentRef", "method"]);
+      const method = requiredText(args.method, "결제 방식을 선택해 주세요.");
+      only(args, method === "EXTERNAL_TRANSFER"
+        ? ["paymentRef", "method", "paidAt", "transactionReference", "memo"]
+        : ["paymentRef", "method"]);
       const paymentId = this.refs.read(principal, "payment", args.paymentRef).resourceId;
       const payment = await this.requirePayment(principal, paymentId);
-      const method = requiredText(args.method, "결제 방식을 선택해 주세요.");
-      if (method !== "CREDIT" && method !== "TOSS") {
-        throw new BadRequestException("관리자 수리비는 크레딧 또는 Toss로 결제할 수 있습니다.");
+      if (method !== "CREDIT" && method !== "TOSS" && method !== "EXTERNAL_TRANSFER") {
+        throw new BadRequestException("관리자 수리비는 크레딧, Toss 또는 직접 계좌이체 기록으로 처리할 수 있습니다.");
       }
       if (payment.latestRepairPaymentOrder &&
           payment.latestRepairPaymentOrder.status !== "CANCELLED") {
         throw new ConflictException("기존 결제 주문을 상태 확인·취소·재결제한 뒤 다시 시도해 주세요.");
+      }
+      if (method === "EXTERNAL_TRANSFER") {
+        const paidAt = this.externalPaidAt(args.paidAt);
+        const transfer = this.externalTransferDetails(args);
+        return {
+          executorName: tool,
+          commandPayload: {
+            paymentRequestId: payment.id,
+            method,
+            paidAt,
+            reference: transfer.reference,
+          },
+          card: {
+            ...this.paymentCard(
+              payment,
+              "외부에서 지급한 사실을 비용·지급 이력에 기록합니다. 실제 송금이나 환불은 수행하지 않습니다.",
+              method,
+              "직접 계좌이체 기록 확인",
+              paidAt,
+            ),
+            ...(transfer.transactionReference
+              ? { transactionReference: transfer.transactionReference }
+              : {}),
+            ...(transfer.memo ? { memo: transfer.memo } : {}),
+          },
+        };
       }
       return {
         executorName: tool,
@@ -746,6 +786,24 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
         );
         return {
           summary: `${payment.vendorName ?? "업체"} 수리비를 크레딧으로 지급했습니다.`,
+          payment: this.publicPaymentRequest(principal, result.request),
+        };
+      }
+      if (method === "EXTERNAL_TRANSFER") {
+        const paidAt = requiredText(payload.paidAt, "외부 지급 시각을 확인할 수 없습니다.");
+        const reference = requiredText(payload.reference, "외부 지급 근거를 확인할 수 없습니다.");
+        const result = await this.creditService().settlePaymentRequest(
+          principal.userId,
+          payment.id,
+          {
+            mode: "DIRECT",
+            idempotencyKey: `ai:${context.confirmationId}`,
+            paidAt,
+            reference,
+          },
+        );
+        return {
+          summary: `${payment.vendorName ?? "업체"} 직접 계좌이체 내역을 기록했습니다.`,
           payment: this.publicPaymentRequest(principal, result.request),
         };
       }
@@ -859,8 +917,9 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
   private paymentCard(
     payment: ManagerVendorPaymentRequestView,
     action: string,
-    paymentMethod: "CREDIT" | "TOSS",
+    paymentMethod: "CREDIT" | "TOSS" | "EXTERNAL_TRANSFER",
     title = "업체 수리비 결제 확인",
+    paidAt?: string,
   ) {
     return {
       title,
@@ -870,8 +929,34 @@ export class ManagerAgentToolAdapter implements AgentRoleToolAdapter {
       work: payment.repairTitle,
       amount: payment.amount,
       paymentMethod,
+      ...(paidAt ? { paidAt } : {}),
       action,
     };
+  }
+
+  private externalPaidAt(value: unknown) {
+    const supplied = optionalBoundedText(value, "외부 지급 시각");
+    const paidAt = supplied ? new Date(supplied) : new Date();
+    if (!Number.isFinite(paidAt.getTime())) {
+      throw new BadRequestException("외부 지급 시각이 올바르지 않습니다.");
+    }
+    if (paidAt.getTime() > Date.now()) {
+      throw new BadRequestException("외부 지급 시각은 현재보다 이후일 수 없습니다.");
+    }
+    return paidAt.toISOString();
+  }
+
+  private externalTransferDetails(args: Record<string, unknown>) {
+    const transactionReference = optionalBoundedText(args.transactionReference, "거래번호");
+    const memo = optionalBoundedText(args.memo, "메모");
+    const reference = [
+      transactionReference ? `거래번호: ${transactionReference}` : undefined,
+      memo ? `메모: ${memo}` : undefined,
+    ].filter((part): part is string => Boolean(part)).join(" | ") || "관리자 확인 기록";
+    if (reference.length > 120) {
+      throw new BadRequestException("거래번호와 메모는 합계 120자 이하여야 합니다.");
+    }
+    return { reference, transactionReference, memo };
   }
 
   private requireMutableOrder(status: string, action: string) {

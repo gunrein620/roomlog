@@ -43,7 +43,7 @@ export const MANAGER_AGENT_TOOL_NAMES = [
 export type TenantAgentToolName = (typeof TENANT_AGENT_TOOL_NAMES)[number];
 export type ManagerAgentToolName = (typeof MANAGER_AGENT_TOOL_NAMES)[number];
 export type AgentToolName = TenantAgentToolName | ManagerAgentToolName;
-export type AgentPaymentMethod = "TOSS" | "DIRECT" | "CREDIT";
+export type AgentPaymentMethod = "TOSS" | "DIRECT" | "CREDIT" | "EXTERNAL_TRANSFER";
 
 export interface AgentToolInvokeInput {
   tool: string;
@@ -59,6 +59,9 @@ export interface AgentConfirmationCard {
   work?: string;
   amount?: number;
   paymentMethod?: AgentPaymentMethod;
+  paidAt?: string;
+  transactionReference?: string;
+  memo?: string;
   action: string;
 }
 

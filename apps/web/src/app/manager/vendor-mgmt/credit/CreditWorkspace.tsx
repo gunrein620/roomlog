@@ -21,10 +21,8 @@ import {
   loadMoreCreditHistoryAction,
   reconcileCreditTopupAction,
   refreshCreditWorkspaceAction,
-  reverseCreditPaymentAction,
   settleCreditPaymentAction,
   updateCreditPolicyAction,
-  voidDirectPaymentAction,
 } from "./actions";
 import styles from "./CreditWorkspace.module.css";
 import type {
@@ -35,10 +33,13 @@ import {
   ManagerRepairPaymentDialog,
   type ManagerRepairPaymentDialogHandle,
 } from "./ManagerRepairPaymentDialog";
+import {
+  ManagerPaymentRecordDialog,
+  type ManagerPaymentRecordDialogHandle,
+} from "./ManagerPaymentRecordDialog";
 import { CreditFeedbackSequence } from "./credit-feedback-sequence";
 
 type Feedback = { kind: "success" | "error" | "info"; title?: string; text: string };
-type DirectPaymentDraft = { paidAt: string; reference: string };
 
 const policyModeLabel: Record<AutoPayPolicyMode, string> = {
   ALWAYS_REQUIRE_APPROVAL: "항상 승인 후 결제",
@@ -50,12 +51,12 @@ const paymentStatusLabel: Record<VendorPaymentRequestStatus, string> = {
   PENDING_APPROVAL: "지급 승인 대기",
   AUTO_PAID: "자동 크레딧 지급 완료",
   MANUAL_CREDIT_PAID: "크레딧 지급 완료",
-  DIRECT_PAID: "외부 지급 기록 완료",
+  DIRECT_PAID: "직접 계좌이체 기록 완료",
   TOSS_PAID: "Toss 결제 완료",
   INSUFFICIENT_CREDIT: "크레딧 잔액 부족",
   CANCELLED: "지급 요청 취소",
-  REVERSED: "크레딧 지급 취소",
-  DIRECT_PAYMENT_VOIDED: "외부 지급 기록 취소",
+  REVERSED: "크레딧 지급 기록 정정",
+  DIRECT_PAYMENT_VOIDED: "직접 계좌이체 기록 정정",
 };
 
 const repairPaymentMessage: Record<RepairPaymentOrderStatus, string> = {
@@ -81,7 +82,7 @@ const ledgerTypeLabel: Record<CreditLedgerEntryType, string> = {
   TOPUP: "크레딧 충전",
   AUTO_DEBIT: "자동 업체 지급",
   MANUAL_DEBIT: "수동 업체 지급",
-  REVERSAL: "업체 지급 취소",
+  REVERSAL: "크레딧 지급 기록 정정",
 };
 
 const topupStatusLabel: Record<CreditTopupOrderStatus, string> = {
@@ -234,15 +235,13 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
   const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [directPaymentDrafts, setDirectPaymentDrafts] = useState<
-    Record<string, DirectPaymentDraft>
-  >({});
   const refreshSequence = useRef(0);
   const feedbackSequenceRef = useRef<CreditFeedbackSequence | null>(null);
   const feedbackSequence = feedbackSequenceRef.current
     ?? (feedbackSequenceRef.current = new CreditFeedbackSequence());
   const repairPaymentResultHandled = useRef(false);
   const repairPaymentDialogRef = useRef<ManagerRepairPaymentDialogHandle>(null);
+  const paymentRecordDialogRef = useRef<ManagerPaymentRecordDialogHandle>(null);
   const workspace = workspaceResult.data;
   const demoReadOnly = workspaceResult.source === "DEMO";
 
@@ -267,6 +266,23 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
         setFeedback({
           kind: "error",
           text: "처리는 완료됐지만 최신 내역을 불러오지 못했습니다. 현재 화면의 기존 데이터는 유지됩니다. 새로고침해 주세요.",
+        });
+      });
+    });
+  }, [feedbackSequence, refreshWorkspace]);
+
+  const handlePaymentRecordCompleted = useCallback((message: string) => {
+    notifyManagerCreditBalanceChanged();
+    const feedbackToken = feedbackSequence.begin();
+    void refreshWorkspace().then(() => {
+      feedbackSequence.publish(feedbackToken, () => {
+        setFeedback({ kind: "success", text: message });
+      });
+    }).catch(() => {
+      feedbackSequence.publish(feedbackToken, () => {
+        setFeedback({
+          kind: "error",
+          text: "처리는 완료됐지만 최신 내역을 불러오지 못했습니다. 새로고침해 주세요.",
         });
       });
     });
@@ -473,9 +489,15 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
     const busy = busyKeys.has(key);
     const settlementPending = request.status === "PENDING_APPROVAL"
       || request.status === "INSUFFICIENT_CREDIT";
-    const directDraft = directPaymentDrafts[request.id] ?? { paidAt: "", reference: "" };
     const latestRepairOrder = request.latestRepairPaymentOrder;
     const recovery = repairPaymentRecovery(latestRepairOrder?.status);
+    const paymentRecordTarget = {
+      paymentRequestId: request.id,
+      vendorName: request.vendorName ?? "업체 정보 확인 필요",
+      roomLabel: request.roomLabel,
+      workLabel: request.repairTitle,
+      amount: request.amount,
+    };
 
     if (request.status === "WAITING_COMPLETION") {
       return (
@@ -492,19 +514,21 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
 
     return (
       <div className={styles.requestControls}>
-        <label className={styles.noteField}>
-          취소·정정 사유
-          <input
-            value={notes[request.id] ?? ""}
-            aria-label={`업체 지급 요청 ${index + 1} 취소·정정 사유`}
-            placeholder="예: 지급 방식 변경"
-            onChange={(event) => setNotes((current) => ({
-              ...current,
-              [request.id]: event.target.value,
-            }))}
-            disabled={busy || demoReadOnly}
-          />
-        </label>
+        {settlementPending ? (
+          <label className={styles.noteField}>
+            지급 요청 취소 사유
+            <input
+              value={notes[request.id] ?? ""}
+              aria-label={`업체 지급 요청 ${index + 1} 취소 사유`}
+              placeholder="예: 지급 방식 변경"
+              onChange={(event) => setNotes((current) => ({
+                ...current,
+                [request.id]: event.target.value,
+              }))}
+              disabled={busy || demoReadOnly}
+            />
+          </label>
+        ) : null}
         <div className={styles.requestActions}>
           {settlementPending ? (
             <div className={styles.paymentMethodGroup}>
@@ -615,65 +639,17 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
                 >
                   Toss로 결제
                 </button>
-                <div className={styles.externalPaymentPanel}>
-                  <div className={styles.externalPaymentHeading}>
-                    <strong>외부 지급 기록</strong>
-                    <span>계좌이체 등 이미 지급한 내역을 증빙과 함께 남깁니다.</span>
-                  </div>
-                  <div className={styles.directPaymentFields}>
-                    <label className={styles.noteField}>
-                      외부 지급 일시
-                      <input
-                        type="datetime-local"
-                        value={directDraft.paidAt}
-                        onChange={(event) => setDirectPaymentDrafts((current) => ({
-                          ...current,
-                          [request.id]: { ...directDraft, paidAt: event.target.value },
-                        }))}
-                        disabled={busy || demoReadOnly}
-                      />
-                    </label>
-                    <label className={styles.noteField}>
-                      거래 참조·이체 메모
-                      <input
-                        value={directDraft.reference}
-                        placeholder="예: 국민은행 이체 0715"
-                        onChange={(event) => setDirectPaymentDrafts((current) => ({
-                          ...current,
-                          [request.id]: { ...directDraft, reference: event.target.value },
-                        }))}
-                        disabled={busy || demoReadOnly}
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={busy || demoReadOnly}
-                    onClick={() => {
-                      const reference = directDraft.reference.trim();
-                      const paidAtDate = new Date(directDraft.paidAt);
-                      if (!directDraft.paidAt || Number.isNaN(paidAtDate.getTime())) {
-                        publishFeedback({ kind: "error", text: "외부 지급 일시를 입력해 주세요." });
-                        return;
-                      }
-                      if (!reference) {
-                        publishFeedback({ kind: "error", text: "거래 참조나 이체 메모를 입력해 주세요." });
-                        return;
-                      }
-                      if (!confirmPaymentAction(request, "외부 지급 완료 기록")) return;
-                      void runMutation(key, "외부 지급 내역을 기록했습니다.", () =>
-                        settleCreditPaymentAction(request.id, {
-                          mode: "DIRECT",
-                          idempotencyKey: crypto.randomUUID(),
-                          paidAt: paidAtDate.toISOString(),
-                          reference,
-                        }));
-                    }}
-                  >
-                    외부 지급 기록
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={busy || demoReadOnly}
+                  onClick={() => paymentRecordDialogRef.current?.open({
+                    kind: "EXTERNAL_TRANSFER",
+                    ...paymentRecordTarget,
+                  })}
+                >
+                  직접 계좌이체 내역 등록
+                </button>
               </div>
               )}
               {!latestRepairOrder || latestRepairOrder.status === "CANCELLED" ? (
@@ -697,43 +673,27 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
               ) : null}
             </div>
           ) : null}
-          {request.status === "AUTO_PAID" || request.status === "MANUAL_CREDIT_PAID" ? (
-            <button
-              type="button"
-              className={styles.dangerButton}
-              disabled={busy || demoReadOnly}
-              onClick={() => {
-                const note = noteFor(request);
-                if (!note) return;
-                if (!confirmPaymentAction(request, "크레딧 지급 취소")) return;
-                void runMutation(key, "크레딧 지급을 취소하고 잔액을 복원했습니다.", () =>
-                  reverseCreditPaymentAction(request.id, {
-                    note,
-                    idempotencyKey: crypto.randomUUID(),
-                  }));
-              }}
-            >
-              크레딧 지급 취소
-            </button>
-          ) : null}
-          {request.status === "DIRECT_PAID" ? (
-            <button
-              type="button"
-              className={styles.dangerButton}
-              disabled={busy || demoReadOnly}
-              onClick={() => {
-                const note = noteFor(request);
-                if (!note) return;
-                if (!confirmPaymentAction(request, "외부 지급 기록 취소")) return;
-                void runMutation(key, "외부 지급 기록을 취소했습니다.", () =>
-                  voidDirectPaymentAction(request.id, {
-                    note,
-                    idempotencyKey: crypto.randomUUID(),
-                  }));
-              }}
-            >
-              외부 지급 기록 취소
-            </button>
+          {request.status === "AUTO_PAID"
+          || request.status === "MANUAL_CREDIT_PAID"
+          || request.status === "DIRECT_PAID" ? (
+            <details className={styles.auxiliaryActions}>
+              <summary>보조 작업</summary>
+              <div>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={busy || demoReadOnly}
+                  onClick={() => paymentRecordDialogRef.current?.open({
+                    kind: request.status === "DIRECT_PAID"
+                      ? "DIRECT_CORRECTION"
+                      : "CREDIT_CORRECTION",
+                    ...paymentRecordTarget,
+                  })}
+                >
+                  지급 기록 정정
+                </button>
+              </div>
+            </details>
           ) : null}
         </div>
       </div>
@@ -994,6 +954,10 @@ export function CreditWorkspace({ initialResult }: { initialResult: CreditWorksp
         ref={repairPaymentDialogRef}
         onResultMessage={handleRepairPaymentDialogMessage}
         onWorkspaceRefresh={handleRepairPaymentWorkspaceRefresh}
+      />
+      <ManagerPaymentRecordDialog
+        ref={paymentRecordDialogRef}
+        onCompleted={handlePaymentRecordCompleted}
       />
     </div>
   );

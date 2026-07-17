@@ -94,8 +94,8 @@ export function paymentStatusLabel(
     TOSS_PAID: "Toss 결제 완료",
     INSUFFICIENT_CREDIT: "관리자 결제수단 확인 중",
     CANCELLED: "정산 요청 취소",
-    REVERSED: "지급 취소",
-    DIRECT_PAYMENT_VOIDED: "외부 지급 기록 취소",
+    REVERSED: "크레딧 지급 기록 정정",
+    DIRECT_PAYMENT_VOIDED: "직접 계좌이체 기록 정정",
   };
   return labels[status];
 }
