@@ -22,6 +22,46 @@ if [[ "${EUID}" -ne 0 ]]; then
   die "must run as root"
 fi
 
+# --- NVMe container-runtime reinit (stop이 인스턴스스토어를 초기화하는 문제 대응) ----------
+# containerd root와 docker data-root는 /opt/dlami/nvme/{containerd,docker}에 있고(설정은
+# /etc/containerd/config.toml·/etc/docker/daemon.json — EBS라 stop에도 생존), 데이터만
+# 인스턴스스토어라 stop 때 날아간다. 재시작 시 DLAMI가 빈 NVMe를 마운트하는데, docker/
+# containerd가 마운트 전에 떠서 snapshotter metadata.db가 마운트에 가려지거나 빈 data-root로
+# 떠 있으면 `docker pull`이 "metadata.db: no such file or directory"로 실패한다. → 마운트를
+# 기다리고, data-root 디렉토리를 보장한 뒤, 런타임을 재시작해 containerd가 깨끗이 재초기화하게 한다.
+NVME_ROOT="/opt/dlami/nvme"
+CONTAINERD_META="$NVME_ROOT/containerd/io.containerd.snapshotter.v1.overlayfs/metadata.db"
+
+CURRENT_STEP="waiting for NVMe mount"
+mount_deadline=$((SECONDS + 120))
+until mountpoint -q "$NVME_ROOT"; do
+  if (( SECONDS >= mount_deadline )); then
+    die "$NVME_ROOT is not a mountpoint after 120s (instance-store not attached?)"
+  fi
+  sleep 3
+done
+printf 'NVMe mounted at %s\n' "$NVME_ROOT"
+
+CURRENT_STEP="reinitializing container runtime on NVMe"
+# 멱등: 워밍 상태(메타DB 존재 + docker 정상)면 건너뛴다.
+if [[ ! -f "$CONTAINERD_META" ]] || ! docker info >/dev/null 2>&1; then
+  printf 'Container storage stale after stop — reinitializing containerd/docker on %s\n' "$NVME_ROOT"
+  command -v systemctl >/dev/null 2>&1 || die "systemctl unavailable — cannot reinitialize container runtime"
+  systemctl stop docker docker.socket containerd >/dev/null 2>&1 || true
+  mkdir -p "$NVME_ROOT/containerd" "$NVME_ROOT/docker"
+  systemctl start containerd
+  cd_deadline=$((SECONDS + 60))
+  until [[ -S /run/containerd/containerd.sock ]]; do
+    if (( SECONDS >= cd_deadline )); then
+      die "containerd socket did not appear within 60s after restart"
+    fi
+    sleep 2
+  done
+  systemctl start docker >/dev/null 2>&1 || true
+  printf 'containerd/docker reinitialized on fresh NVMe\n'
+fi
+# --------------------------------------------------------------------------------------
+
 CURRENT_STEP="starting Docker"
 if ! docker info >/dev/null 2>&1; then
   if command -v systemctl >/dev/null 2>&1; then
