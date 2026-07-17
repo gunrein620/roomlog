@@ -2455,7 +2455,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
           <div className="web-hero-head" aria-hidden="true">
             <span className="web-hero-eyebrow">FIND YOUR SPACE</span>
             <h1>방 구할 땐,<br /><span className="hero-woozu">우주</span>에서</h1>
-            <p className="web-hero-sub">사진과 다른 집은 그만. 3D로 방 안을 미리 걸어보세요.</p>
+            <p className="web-hero-sub">사진과 다른 집은 그만. 3D로 먼저 둘러보세요.</p>
           </div>
 
           {/* 5b 검색바 — 전세·월세/매매 · 지역/유형/가격 · 핑크 검색 CTA. 각 필드는 기존 시트를 연다 */}
