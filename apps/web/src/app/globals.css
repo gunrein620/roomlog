@@ -10615,14 +10615,27 @@ p {
     overflow: visible;
   }
 
-  /* 상단 가로 네비게이션 */
+  /* 상단 가로 네비게이션 — 모든 탭에서 얇은 밤하늘 띠(galaxy-texture)로 홈 히어로와 세계관 연결 */
   .web-topbar {
     display: block;
     position: sticky;
     top: 0;
     z-index: 55;
-    background: #ffffff;
-    border-bottom: 1px solid #ecedf2;
+    background:
+      url("/topbar-stars.svg") center / cover no-repeat,
+      linear-gradient(100deg, #241d4e, #322868 55%, #3a2f77);
+  }
+
+  /* 아래 밝은 콘텐츠와 뚝 끊기지 않게 — 띠 색이 아래로 번지며 사라지는 페이드아웃 */
+  .web-topbar::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -16px;
+    height: 16px;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(50, 40, 104, 0.35), transparent);
   }
 
   /* 홈 = 별밤 히어로 위 상단바 오버레이 (5b). 공용 헤더라 홈에서만 :has로 격리 */
@@ -10633,6 +10646,11 @@ p {
     right: 0;
     background: transparent;
     border-bottom: none;
+  }
+
+  /* 홈은 히어로가 곧 배경 — 띠 하단 페이드가 사진 위 얼룩이 되므로 끈다 */
+  .service-frame.with-bottom-tabs:has(.home-screen) .web-topbar::after {
+    content: none;
   }
 
   .service-frame:has(.home-screen) .web-nav button {
@@ -10720,19 +10738,19 @@ p {
     padding: 8px 14px;
     border-radius: 10px;
     background: none;
-    color: #3d4351;
+    color: rgba(255, 255, 255, 0.92);
     font-size: 1rem;
     font-weight: 800;
   }
 
   .web-nav button:hover {
-    background: #f2f4f8;
-    color: var(--blue);
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
   }
 
   .web-nav button.active {
-    background: var(--blue-soft);
-    color: var(--blue);
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
   }
 
   .web-nav .nav-badge {
@@ -10757,19 +10775,30 @@ p {
   }
 
   .web-topbar-actions .web-login {
-    padding: 9px 6px;
+    padding: 9px 12px;
+    border-radius: 10px;
     background: none;
-    color: #5b6270;
+    color: #ffffff;
     font-weight: 800;
   }
 
-  /* 매물등록 — 시안(5b) 우측 액션 CTA (딥퍼플 채움, 핑크는 검색 전용이라 제외) */
+  /* 로그인도 나머지 메뉴와 같은 호버 문법 */
+  .web-topbar-actions .web-login:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  /* 매물등록 — 시안(5b) 반투명 박스 CTA. 상단바가 전 탭 밤하늘 띠라 홈/비홈 동일 */
   .web-sell-cta {
     padding: 9px 16px;
     border-radius: 10px;
-    background: var(--blue);
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.32);
     color: #ffffff;
     font-weight: 800;
+  }
+
+  .web-sell-cta:hover {
+    background: rgba(255, 255, 255, 0.26);
   }
 
   /* 로고 이미지 — 다른 탭: 앱아이콘 44px 라운드 */
@@ -10843,7 +10872,7 @@ p {
   .web-profile-name {
     max-width: 120px;
     overflow: hidden;
-    color: #2b3140;
+    color: #ffffff;
     font-weight: 900;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -10852,9 +10881,13 @@ p {
   .web-logout {
     padding: 9px 14px;
     border-radius: 10px;
-    background: #f2f4f8;
-    color: #5b6270;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
     font-weight: 800;
+  }
+
+  .web-logout:hover {
+    background: rgba(255, 255, 255, 0.24);
   }
 
   .screen {
@@ -10914,13 +10947,14 @@ p {
 
   /* 히어로 */
   /* 별밤 히어로 — 은하수 사진 + 코랄/퍼플 그레이딩 + 하단 가독성 그라디언트 (5b) */
-  /* 5b: 히어로 660px, 사진은 하단(집)이 보이게 center 100% */
+  /* 히어로 = 5b(660px)의 ~3/4로 압축 — 첫 화면에서 검색카드가 통째로 보이게.
+     사진은 bottom 기준이라 줄인 만큼 윗하늘만 잘리고 집은 유지된다 */
   .web-hero-head {
     display: block;
     position: relative;
-    min-height: 660px;
+    min-height: 550px;
     margin: 0;
-    padding: 146px 56px 0;
+    padding: 120px 56px 0;
     border-radius: 0;
     overflow: hidden;
     text-align: left;

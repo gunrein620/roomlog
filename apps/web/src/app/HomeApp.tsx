@@ -2394,15 +2394,8 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
         <header className="web-topbar" aria-label="웹 상단 메뉴">
           <div className="web-topbar-inner">
             <button className="web-logo" type="button" onClick={() => activateTab("home")}>
-              {/* 홈=히어로 사진 위라 배경 없는 trim 손글씨, 다른 탭=흰 상단바라 앱아이콘 */}
-              <Image
-                src={activeTab === "home" ? "/uju-logo-trim.png" : "/uju-logo.png"}
-                alt="집우집주"
-                width={52}
-                height={52}
-                className="web-logo-img"
-                priority
-              />
+              {/* 로고 = 흰 테두리 정리된 trim 단일본 — 상단바가 전 탭 밤하늘 띠라 어디서든 어울린다 */}
+              <Image src="/uju-logo-trim.png" alt="집우집주" width={52} height={52} className="web-logo-img" priority />
             </button>
             <nav className="web-nav" aria-label="주요 메뉴">
               <button className={activeTab === "map" ? "active" : ""} type="button" onClick={() => activateTab("map")}>지도</button>
@@ -2550,11 +2543,7 @@ export default function HomeApp({ initialTab = "home" }: { initialTab?: AppTab }
                     <button className="listing-card-action" type="button" onClick={() => openListing(listing)}>
                       <div className="listing-photo">
                         <Image src={listing.image} alt={`${listing.title} 사진`} width={1200} height={800} unoptimized={isRemotePhoto(listing.image)} />
-                        <div className="badge-row">
-                          {listing.badges.map((badge) => (
-                            <span key={badge}>{badge}</span>
-                          ))}
-                        </div>
+                        {/* 신뢰 배지(확인매물·3D투어 등)는 홈 피드에서 제거 — 사진이 주인공, 배지는 상세에서 */}
                       </div>
                       {/* 카드 본문은 가격·제목·핵심 스펙만 — 신뢰 배지는 사진 위, 나머지는 상세에서. */}
                       <div className="listing-body">
