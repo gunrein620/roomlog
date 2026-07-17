@@ -132,7 +132,15 @@ test("shows linked ticket unread separately from message unread state", () => {
     listPage,
     /aria-label="티켓 미확인"[\s\S]*background: "var\(--primary\)"/,
   );
-  assert.match(listPage, /미읽음 \{thread\.unreadCount\}/);
+  assert.doesNotMatch(listPage, /미읽음 \{thread\.unreadCount\}/);
+  assert.match(listPage, /managerThreadConfirmationLabel\(thread\)/);
+  assert.match(listPage, />\{confirmationLabel\}<\/span>/);
+});
+
+test("uses manager-facing reply and sorting rules", () => {
+  assert.match(listPage, /sortManagerThreads\(searchedThreads\)/);
+  assert.match(listPage, /managerThreadNeedsReply\(thread\)/);
+  assert.doesNotMatch(listPage, /thread\.unreadCount > 0 \|\| thread\.pendingRequest/);
 });
 
 test("replaces messaging tabs with the building ticket filter", () => {
